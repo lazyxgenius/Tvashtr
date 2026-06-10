@@ -1,0 +1,23 @@
+# Phase 0 / P0.1 runs Postgres only. The backend and frontend run as local
+# processes (via Make targets) so the crash-resume demo has a killable PID.
+services:
+  postgres:
+    image: postgres:16
+    container_name: tvashtr-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tvashtr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tvashtr}
+      POSTGRES_DB: ${POSTGRES_DB:-tvashtr}
+    # Host 5433 -> container 5432, to avoid clashing with a local Postgres.
+    ports:
+      - "5433:5432"
+    volumes:
+      - tvashtr_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tvashtr} -d ${POSTGRES_DB:-tvashtr}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  tvashtr_pgdata:
