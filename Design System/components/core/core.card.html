@@ -1,0 +1,67 @@
+<!-- @dsCard group="Components" viewport="700x430" name="Buttons & Brand" subtitle="Primary / secondary / ghost / tint · icon buttons · logo lockup" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="../../styles.css" />
+<style>
+  body { margin: 0; background: var(--surface-page); }
+  .wrap { padding: 28px 32px; display: flex; flex-direction: column; gap: 22px; }
+  .row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .lbl { font-family: var(--font-ui); font-size: var(--fs-micro); letter-spacing: var(--tracking-wide);
+         text-transform: uppercase; color: var(--text-tertiary); width: 100%; }
+  svg { width: 18px; height: 18px; }
+</style>
+</head>
+<body>
+<div id="root" class="wrap"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+  const { Button, IconButton, Logo } = window.DesignSystem_dbaa69;
+  const Plus = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>);
+  const Arrow = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>);
+  const Gear = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9z"/></svg>);
+  const Pin = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v6l-2 4h10l-2-4V4M12 18v3M8 4h8"/></svg>);
+
+  function Demo() {
+    return (
+      <>
+        <div className="row">
+          <span className="lbl">Buttons</span>
+          <Button variant="primary">Start a thread</Button>
+          <Button variant="secondary">Cancel</Button>
+          <Button variant="ghost" iconLeft={<Plus/>}>New</Button>
+          <Button variant="tint">Tint</Button>
+          <Button variant="primary" loading>Working…</Button>
+          <Button variant="secondary" disabled>Disabled</Button>
+        </div>
+        <div className="row">
+          <span className="lbl">Sizes</span>
+          <Button variant="primary" size="sm">Small</Button>
+          <Button variant="primary" size="md">Medium</Button>
+          <Button variant="primary" size="lg" iconRight={<Arrow/>}>Large</Button>
+        </div>
+        <div className="row">
+          <span className="lbl">Icon buttons</span>
+          <IconButton aria-label="Add"><Plus/></IconButton>
+          <IconButton variant="outline" aria-label="Settings"><Gear/></IconButton>
+          <IconButton variant="solid" aria-label="Send"><Arrow/></IconButton>
+          <IconButton active aria-label="Pin"><Pin/></IconButton>
+        </div>
+        <div className="row">
+          <span className="lbl">Logo lockup</span>
+          <Logo tone="coral" size={30} markSrc="../../assets/logo/mark-coral.png" />
+          <Logo tone="charcoal" size={30} showWordmark={false} markSrc="../../assets/logo/mark-charcoal.png" />
+        </div>
+      </>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<!-- @dsCard group="Brand" viewport="700x240" name="Logo lockups" subtitle="The rosette mark + wordmark; coral default, charcoal & cream alternates" -->
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-ui); }
+  .wrap { padding: 26px 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .cell { display: flex; align-items: center; gap: 14px; padding: 22px 24px; border-radius: var(--radius-lg);
+          border: 1px solid var(--border-hairline); }
+  .cell.dark { background: var(--ink-900); border-color: var(--ink-700); }
+  .cell.coral { background: var(--coral-500); border-color: transparent; }
+  .word { font-family: var(--font-serif); font-weight: 400; font-size: 26px; letter-spacing: -0.02em; }
+  .w-dark { color: var(--ink-900); }
+  .w-cream { color: var(--cream-100); }
+  .cap { display:block; font-family: var(--font-ui); font-size: var(--fs-micro); color: var(--text-tertiary); margin-top: 3px; }
+  .cap.on-dark { color: var(--stone-400); }
+  img { display: block; }
+</style></head>
+<body><div class="wrap">
+  <div class="cell"><img src="../assets/logo/mark-coral.png" width="48" height="48" alt="Tvashtr mark coral"><div><span class="word w-dark">Tvashtr</span><span class="cap">Coral on cream · primary</span></div></div>
+  <div class="cell"><img src="../assets/logo/mark-charcoal.png" width="48" height="48" alt="Tvashtr mark charcoal"><div><span class="word w-dark">Tvashtr</span><span class="cap">Charcoal · quiet mono</span></div></div>
+  <div class="cell dark"><img src="../assets/logo/mark-cream.png" width="48" height="48" alt="Tvashtr mark cream"><div><span class="word w-cream">Tvashtr</span><span class="cap on-dark">Cream on charcoal</span></div></div>
+  <div class="cell coral"><img src="../assets/logo/mark-cream.png" width="48" height="48" alt="Tvashtr mark cream on coral"><div><span class="word w-cream">Tvashtr</span><span class="cap on-dark">Cream on coral</span></div></div>
+</div></body></html>

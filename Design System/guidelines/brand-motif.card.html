@@ -1,0 +1,32 @@
+<!-- @dsCard group="Brand" viewport="700x230" name="App icon & motif" subtitle="The mark as app icon and as a sparse loading / empty-state motif" -->
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-ui); }
+  .wrap { padding: 26px 30px; display: flex; gap: 30px; align-items: center; }
+  .icons { display: flex; gap: 18px; align-items: flex-end; }
+  .ico { border-radius: 22%; display: grid; place-items: center; box-shadow: var(--shadow-sm); }
+  .ico.cream { background: var(--cream-100); border: 1px solid var(--border-hairline); }
+  .ico.coral { background: var(--coral-500); }
+  .ico.dark { background: var(--ink-900); }
+  .cap { text-align: center; font-size: var(--fs-micro); color: var(--text-tertiary); margin-top: 8px; }
+  .empty { flex: 1; border-left: 1px solid var(--border-hairline); padding-left: 30px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; }
+  .empty img { opacity: 0.55; }
+  .empty .t { font-family: var(--font-serif); font-weight: 400; font-size: 19px; color: var(--text-primary); letter-spacing: -0.01em; }
+  .empty .s { font-size: var(--fs-caption); color: var(--text-secondary); }
+</style></head>
+<body><div class="wrap">
+  <div>
+    <div class="icons">
+      <div><div class="ico cream" style="width:64px;height:64px"><img src="../assets/logo/mark-coral.png" width="44" height="44" alt=""></div><div class="cap">Cream</div></div>
+      <div><div class="ico coral" style="width:64px;height:64px"><img src="../assets/logo/mark-cream.png" width="44" height="44" alt=""></div><div class="cap">Coral</div></div>
+      <div><div class="ico dark" style="width:64px;height:64px"><img src="../assets/logo/mark-cream.png" width="44" height="44" alt=""></div><div class="cap">Charcoal</div></div>
+    </div>
+  </div>
+  <div class="empty">
+    <img src="../assets/logo/mark-charcoal.png" width="56" height="56" alt="">
+    <div class="t">Nothing here yet</div>
+    <div class="s">Start a thread and it’ll appear on the loom.</div>
+  </div>
+</div></body></html>

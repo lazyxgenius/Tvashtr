@@ -1,0 +1,20 @@
+<!-- @dsCard group="Spacing" viewport="700x210" name="Elevation & borders" subtitle="Hairline borders first; very soft, warm shadows only when needed" -->
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-ui); }
+  .wrap { padding: 30px 32px; display: flex; gap: 26px; align-items: center; }
+  .col { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .box { width: 110px; height: 72px; background: var(--surface-card); border-radius: var(--radius-lg); display: grid; place-items: center;
+         font-size: var(--fs-micro); color: var(--text-tertiary); }
+  .hair { border: 1px solid var(--border-hairline); }
+  .n { font-size: var(--fs-caption); color: var(--text-primary); font-weight: 500; }
+  .v { font-size: var(--fs-micro); color: var(--text-tertiary); }
+</style></head>
+<body><div class="wrap">
+  <div class="col"><div class="box hair">hairline</div><div class="n">Border</div><div class="v">default surface</div></div>
+  <div class="col"><div class="box" style="box-shadow:var(--shadow-sm)">sm</div><div class="n">Shadow sm</div><div class="v">subtle lift</div></div>
+  <div class="col"><div class="box" style="box-shadow:var(--shadow-md)">md</div><div class="n">Shadow md</div><div class="v">popovers</div></div>
+  <div class="col"><div class="box" style="box-shadow:var(--shadow-lg)">lg</div><div class="n">Shadow lg</div><div class="v">dialogs</div></div>
+</div></body></html>
