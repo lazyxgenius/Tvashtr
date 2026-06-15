@@ -18,7 +18,7 @@ document.
 from dbos import DBOS
 
 from tvashtr.config import get_settings
-from tvashtr.documents.service import add_version, create_document, get_version_by_key
+from tvashtr.documents.service import create_document_with_initial_version
 from tvashtr.gateway import CompletionRequest, complete
 from tvashtr.metering import record_cost
 
@@ -49,19 +49,17 @@ def llm_step(topic: str, workflow_id: str) -> dict:
 
 @DBOS.step()
 def persist_step(topic: str, text: str, workflow_id: str) -> str:
-    """Write ``text`` as version 1 of a new document; idempotent on re-run."""
-    version_key = f"{workflow_id}:v1"
-    existing = get_version_by_key(version_key)
-    if existing is not None:
-        # A prior (partial) run already persisted this version — reuse its
-        # document rather than creating a second one.
-        return str(existing.document_id)
-    document = create_document(title=f"Mini-PRD: {topic}", doc_type="prd")
-    add_version(
-        document.id,
+    """Write ``text`` as version 1 of a new document; idempotent on re-run.
+
+    Uses the atomic create-doc+v1 helper, so a crash mid-step never strands an
+    empty orphan ``Document`` (both rows commit together, keyed on ``{wf}:v1``).
+    """
+    document = create_document_with_initial_version(
+        title=f"Mini-PRD: {topic}",
+        doc_type="prd",
         content=text,
         created_by="agent:doc_writer",
-        idempotency_key=version_key,
+        idempotency_key=f"{workflow_id}:v1",
     )
     return str(document.id)
 

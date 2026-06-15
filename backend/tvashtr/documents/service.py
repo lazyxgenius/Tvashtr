@@ -26,6 +26,57 @@ def create_document(title: str, doc_type: str) -> Document:
         return document
 
 
+def create_document_with_initial_version(
+    title: str,
+    doc_type: str,
+    content: str,
+    created_by: str,
+    idempotency_key: str,
+) -> Document:
+    """Create a Document **and** its version-1 DocumentVersion in ONE transaction,
+    idempotent on ``idempotency_key``.
+
+    If a version already exists for the key, return its parent document (no new
+    document) — this closes the orphan-``Document`` hazard of the two-transaction
+    create->add sequence. The unique-violation race is handled by re-reading.
+    """
+    with session_scope() as session:
+        existing = session.execute(
+            select(DocumentVersion).where(DocumentVersion.idempotency_key == idempotency_key)
+        ).scalar_one_or_none()
+        if existing is not None:
+            return session.execute(
+                select(Document).where(Document.id == existing.document_id)
+            ).scalar_one()
+
+        document = Document(title=title, doc_type=doc_type)
+        session.add(document)
+        session.flush()  # assign the document uuid
+        session.add(
+            DocumentVersion(
+                document_id=document.id,
+                version_no=1,
+                content=content,
+                created_by=created_by,
+                idempotency_key=idempotency_key,
+            )
+        )
+        try:
+            session.flush()
+        except IntegrityError:
+            session.rollback()
+            won = session.execute(
+                select(DocumentVersion).where(DocumentVersion.idempotency_key == idempotency_key)
+            ).scalar_one_or_none()
+            if won is not None:
+                return session.execute(
+                    select(Document).where(Document.id == won.document_id)
+                ).scalar_one()
+            raise
+        session.refresh(document)
+        return document
+
+
 def get_version_by_key(idempotency_key: str) -> DocumentVersion | None:
     """Return the version previously written under this key, if any."""
     with session_scope() as session:
