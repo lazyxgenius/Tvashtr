@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test crash-demo lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test smoke crash-demo lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -44,6 +44,9 @@ frontend: ## Run the Vite dev server
 
 test: ## Run backend tests (requires db-up + migrate first)
 	cd backend && uv run pytest
+
+smoke: ## Live gateway smoke — one real LLM call (needs OPENROUTER_API_KEY; skips cleanly otherwise)
+	cd backend && uv run python ../scripts/smoke_gateway.py
 
 crash-demo: ## Prove durable resume across a kill -9
 	./scripts/crash_resume_demo.sh
