@@ -1,1 +1,141 @@
+/* ============================================================
+   Tvashtr — frontend global styles.
+
+   Cascade order is load-bearing:
+   1. Tailwind (its preflight lives in @layer base)
+   2. React Flow's base stylesheet (required, unlayered)
+   3. The Design System tokens (UNLAYERED -> beats Tailwind's layered
+      preflight, so the body renders on DS paper cream, never white/dark)
+   4. our canvas re-skin (after React Flow's CSS -> overrides its defaults)
+   ============================================================ */
+
 @import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+@import "./design-system/tokens/colors.css";
+@import "./design-system/tokens/typography.css";
+@import "./design-system/tokens/spacing.css";
+@import "./design-system/tokens/base.css";
+@import "./canvas.css";
+
+/* Map DS semantic tokens into Tailwind v4 so we get on-brand utilities
+   (bg-page, text-secondary, border-hairline, text-accent, font-display, …).
+   Every value still resolves to a DS variable — no ad-hoc colors anywhere. */
+@theme inline {
+  --color-page: var(--surface-page);
+  --color-card: var(--surface-card);
+  --color-panel: var(--surface-panel);
+  --color-ink: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-tertiary: var(--text-tertiary);
+  --color-accent: var(--accent);
+  --color-accent-tint: var(--accent-tint);
+  --color-hairline: var(--border-hairline);
+  --color-strong: var(--border-strong);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+
+  --font-display: var(--font-serif);
+  --font-code: var(--font-mono);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* ---- UI primitives (ported from the DS component CSS, token-driven) ---- */
+
+.tv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 40px;
+  padding: 0 var(--space-5);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    transform var(--dur-fast) var(--ease-standard);
+}
+.tv-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.tv-btn:active:not(:disabled) {
+  background: var(--accent-active);
+  transform: translateY(0.5px);
+}
+.tv-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.tv-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.tv-btn--ghost {
+  color: var(--ink-700);
+  background: transparent;
+  border-color: var(--border-strong);
+}
+.tv-btn--ghost:hover:not(:disabled) {
+  background: var(--panel-300);
+}
+
+.tv-card {
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+}
+
+/* A small status pill: dot + sentence-case label, DS Badge vocabulary. */
+.tv-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 10px;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  border-radius: var(--radius-pill);
+  border: var(--border-width) solid transparent;
+  background: var(--panel-300);
+  color: var(--ink-600);
+}
+.tv-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.tv-pill--idle {
+  background: var(--panel-300);
+  color: var(--ink-500);
+}
+.tv-pill--running {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.tv-pill--done {
+  background: var(--sage-100);
+  color: #4f6038;
+}
+.tv-pill--failed {
+  background: var(--red-100);
+  color: #8e3a2e;
+}

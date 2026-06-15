@@ -1,0 +1,214 @@
+/* ============================================================
+   Tvashtr — React Flow re-skin to the Design System.
+   Loaded AFTER @xyflow/react/dist/style.css so these win.
+   Paper surface, ink text, hairline borders, one coral accent,
+   calm motion (state transitions only — no marching dashes,
+   no infinite loops; the active node gets one bounded pulse).
+   ============================================================ */
+
+.react-flow {
+  background: var(--surface-page);
+}
+
+/* ---- Background dots ---- */
+.react-flow__background-pattern.dots circle {
+  fill: var(--line-400);
+}
+
+/* ---- Custom node card ---- */
+.rf-node {
+  position: relative;
+  width: 216px;
+  padding: var(--space-4);
+  font-family: var(--font-ui);
+  background: var(--surface-card);
+  border: 1.5px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color var(--dur-base) var(--ease-standard),
+    box-shadow var(--dur-base) var(--ease-standard),
+    background var(--dur-base) var(--ease-standard);
+}
+.react-flow__node.selected .rf-node {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.rf-node__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.rf-node__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  color: var(--ink-700);
+  background: var(--panel-300);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+}
+.rf-node__role {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-snug);
+  color: var(--text-primary);
+  line-height: 1.25;
+}
+.rf-node__kind {
+  margin-top: 2px;
+  font-size: var(--fs-micro);
+  color: var(--text-secondary);
+}
+.rf-node__model {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: var(--border-width) solid var(--border-faint);
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rf-node__foot {
+  margin-top: var(--space-3);
+}
+
+/* ---- Per-node status (DS calm vocabulary) ---- */
+.rf-node--running {
+  border-color: var(--accent-tint-border);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* one bounded pulse on entering "running" — plays once, never loops */
+.rf-node--running::after {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 2px var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  animation: rf-pulse-once 1.3s var(--ease-out) 1 forwards;
+}
+@keyframes rf-pulse-once {
+  0% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+}
+.rf-node--done {
+  border-color: var(--sage-500);
+  background: color-mix(in srgb, var(--sage-100) 55%, var(--surface-card));
+}
+.rf-node--failed {
+  border-color: var(--red-500);
+  background: color-mix(in srgb, var(--red-100) 55%, var(--surface-card));
+}
+
+/* ---- Handles: minimal, just anchors for the edge ---- */
+.react-flow__handle {
+  width: 7px;
+  height: 7px;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface-card);
+  border: 1.5px solid var(--border-strong);
+}
+.react-flow__handle:hover {
+  border-color: var(--accent);
+}
+
+/* ---- The work edge ---- */
+.react-flow__edge-path {
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+  transition:
+    stroke var(--dur-base) var(--ease-standard),
+    stroke-width var(--dur-base) var(--ease-standard);
+}
+.react-flow__edge.rf-edge--flow .react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+.react-flow__edge.rf-edge--done .react-flow__edge-path {
+  stroke: var(--sage-500);
+  stroke-width: 2;
+}
+
+/* ---- Controls: paper buttons, hairline borders, ink icons, coral hover ---- */
+.react-flow__controls {
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: var(--border-width) solid var(--border-hairline);
+}
+.react-flow__controls-button {
+  width: 30px;
+  height: 30px;
+  background: var(--surface-card);
+  border-bottom: var(--border-width) solid var(--border-faint);
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+.react-flow__controls-button:hover {
+  background: var(--panel-300);
+}
+.react-flow__controls-button svg {
+  fill: var(--ink-700);
+}
+.react-flow__controls-button:hover svg {
+  fill: var(--accent);
+}
+
+/* ---- MiniMap: paper, hairline, unobtrusive ---- */
+.react-flow__minimap {
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.react-flow__minimap-mask {
+  fill: color-mix(in srgb, var(--surface-page) 62%, transparent);
+}
+
+/* ---- Empty state (DS voice) ---- */
+.rf-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  text-align: center;
+  padding: var(--space-6);
+  pointer-events: none;
+}
+.rf-empty__mark {
+  width: 56px;
+  height: 56px;
+  opacity: 0.85;
+}
+.rf-empty__title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: var(--fs-h3);
+  letter-spacing: var(--tracking-snug);
+  color: var(--text-primary);
+}
+.rf-empty__sub {
+  max-width: 32ch;
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+  line-height: var(--lh-relaxed);
+}

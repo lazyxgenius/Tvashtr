@@ -1,59 +1,129 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-type Health = { status: string; db: string };
-
-type Probe =
-  | { state: "loading" }
-  | { state: "ok"; health: Health }
-  | { state: "error"; message: string };
+import { TeamCanvas } from "./canvas/TeamCanvas";
+import { BackendDot } from "./components/BackendDot";
+import { RunBanner } from "./components/RunBanner";
+import {
+  type CostRow,
+  type GraphData,
+  getGraph,
+  getRunStatus,
+  type RunRow,
+  startRun,
+} from "./lib/api";
+import { isRunTerminal } from "./lib/status";
 
 export default function App() {
-  const [probe, setProbe] = useState<Probe>({ state: "loading" });
+  const [runId, setRunId] = useState<string | null>(null);
+  const [graph, setGraph] = useState<GraphData | null>(null);
+  const [run, setRun] = useState<RunRow | null>(null);
+  const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);
+  const [costs, setCosts] = useState<CostRow[]>([]);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState(false);
 
-  useEffect(() => {
-    let active = true;
-    const check = async () => {
-      try {
-        const res = await fetch("/health");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const health = (await res.json()) as Health;
-        if (active) setProbe({ state: "ok", health });
-      } catch (err) {
-        if (active) setProbe({ state: "error", message: String(err) });
-      }
-    };
-    void check();
-    const id = setInterval(check, 3000);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
+  const terminal = isRunTerminal(run, workflowStatus);
+  const inFlight = runId !== null && !terminal;
+
+  const handleStart = useCallback(async () => {
+    setStarting(true);
+    setError(false);
+    setRunId(null);
+    setGraph(null);
+    setRun(null);
+    setWorkflowStatus(null);
+    setCosts([]);
+    try {
+      const id = await startRun();
+      const g = await getGraph(id);
+      setGraph(g);
+      setRunId(id);
+    } catch {
+      setError(true);
+    } finally {
+      setStarting(false);
+    }
   }, []);
 
-  const healthy = probe.state === "ok" && probe.health.db === "ok";
+  // Poll the run while it is active and not terminal; stop once terminal.
+  useEffect(() => {
+    if (!runId || terminal) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const s = await getRunStatus(runId);
+        if (cancelled) return;
+        setRun(s.run);
+        setWorkflowStatus(s.workflow_status);
+        setCosts(s.costs);
+      } catch {
+        /* transient — keep the last snapshot and retry next tick */
+      }
+    };
+    void poll();
+    const handle = setInterval(poll, 1800);
+    return () => {
+      cancelled = true;
+      clearInterval(handle);
+    };
+  }, [runId, terminal]);
+
+  const buttonLabel = starting
+    ? "Starting…"
+    : inFlight
+      ? "Running…"
+      : runId
+        ? "Start another run"
+        : "Start the run";
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-neutral-950 text-neutral-100">
-      <h1 className="text-5xl font-semibold tracking-tight">Tvashtr</h1>
-      <div className="flex items-center gap-3 rounded-full border border-neutral-800 bg-neutral-900 px-5 py-2.5">
-        <span
-          className={`inline-block h-3 w-3 rounded-full ${
-            probe.state === "loading"
-              ? "animate-pulse bg-amber-400"
-              : healthy
-                ? "bg-emerald-400"
-                : "bg-rose-500"
-          }`}
-        />
-        <span className="text-sm text-neutral-300">
-          {probe.state === "loading"
-            ? "checking backend…"
-            : probe.state === "error"
-              ? "backend unreachable"
-              : `backend: ${probe.health.status} · db: ${probe.health.db}`}
-        </span>
+    <>
+      <header
+        className="flex items-center justify-between gap-4 px-6 py-4"
+        style={{ borderBottom: "1px solid var(--border-hairline)" }}
+      >
+        <div className="flex items-center gap-3">
+          <img src="/mark-coral.png" alt="" style={{ width: 24, height: 24 }} />
+          <span
+            style={{
+              fontFamily: "var(--font-display)",
+              fontWeight: "var(--fw-display)" as unknown as number,
+              fontSize: "var(--fs-h3)",
+              letterSpacing: "var(--tracking-tight)",
+              color: "var(--text-primary)",
+            }}
+          >
+            Tvashtr
+          </span>
+          <span style={{ fontSize: "var(--fs-caption)", color: "var(--text-secondary)" }}>
+            the living canvas
+          </span>
+        </div>
+        <BackendDot />
+      </header>
+
+      <div
+        className="flex flex-wrap items-center gap-4 px-6 py-3"
+        style={{ borderBottom: "1px solid var(--border-hairline)" }}
+      >
+        <button
+          className="tv-btn"
+          onClick={() => void handleStart()}
+          disabled={starting || inFlight}
+        >
+          {buttonLabel}
+        </button>
+        <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
+        {error && (
+          <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
+            Couldn't start the run — is the backend running?
+          </span>
+        )}
       </div>
-      <p className="text-xs text-neutral-600">Phase 0 · durable spine</p>
-    </main>
+
+      <main className="relative min-h-0 flex-1">
+        <TeamCanvas graph={graph} run={run} workflowStatus={workflowStatus} />
+      </main>
+    </>
   );
 }
