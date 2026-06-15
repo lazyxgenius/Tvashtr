@@ -5,17 +5,20 @@ GET endpoints return plain dicts (matching the P0.1 style) to avoid coupling the
 API to ORM/gateway types.
 """
 
+import os
 import uuid
 
-from dbos import DBOS
+from dbos import DBOS, SetWorkflowID
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from tvashtr import db
 from tvashtr.control_plane.doc_writer import generate_doc
+from tvashtr.control_plane.team_run import run_team
+from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.documents.service import get_document_with_versions, list_documents
-from tvashtr.models import CostRecord, Document, DocumentVersion, RunEvent
+from tvashtr.models import CostRecord, Document, DocumentVersion, Run, RunEvent
 
 router = APIRouter()
 
@@ -26,6 +29,20 @@ class GenerateDocRequest(BaseModel):
 
 class StartResponse(BaseModel):
     workflow_id: str
+
+
+class CreateRunRequest(BaseModel):
+    idea: str | None = None
+
+
+# Pinned, deterministically-checkable deliverable (env-overridable). Keeping the
+# target fixed is what makes skeleton-run (and P0.4b) deterministic despite LLM
+# variance: the PM restates this exact path + line, the Engineer creates it.
+DEFAULT_IDEA = os.environ.get(
+    "TVASHTR_SKELETON_IDEA",
+    "Add a file named greeting.txt at the repository root, containing exactly this "
+    "single line and nothing else:\nShipped by the Tvashtr PM->Engineer team",
+)
 
 
 def _cost_to_dict(row: CostRecord) -> dict:
@@ -152,3 +169,69 @@ def get_run_events(run_id: str) -> dict:
                 for r in rows
             ],
         }
+
+
+def _run_to_dict(run: Run) -> dict:
+    return {
+        "id": str(run.id),
+        "team_graph_id": str(run.team_graph_id),
+        "idea": run.idea,
+        "status": run.status,
+        "pm_document_id": str(run.pm_document_id) if run.pm_document_id else None,
+        "ship_commit_sha": run.ship_commit_sha,
+        "ship_tag": run.ship_tag,
+        "cost_total_usd": float(run.cost_total_usd) if run.cost_total_usd is not None else None,
+        "created_at": run.created_at.isoformat(),
+        "updated_at": run.updated_at.isoformat(),
+    }
+
+
+@router.post("/api/runs")
+def create_run(body: CreateRunRequest) -> dict:
+    """Build a fresh 2-node team, create the run row, and start ``run_team`` with
+    an explicit workflow id == run_id, so ``DBOS.workflow_id`` keys every write."""
+    idea = body.idea or DEFAULT_IDEA
+    team_graph_id = build_two_node_team()
+    run_id = str(uuid.uuid4())
+
+    with db.session_scope() as session:
+        session.add(
+            Run(
+                id=uuid.UUID(run_id),
+                team_graph_id=uuid.UUID(team_graph_id),
+                idea=idea,
+                workflow_id=run_id,
+                status="running",
+            )
+        )
+
+    with SetWorkflowID(run_id):
+        DBOS.start_workflow(run_team, idea)
+
+    return {"run_id": run_id}
+
+
+@router.get("/api/runs/{run_id}")
+def get_run(run_id: str) -> dict:
+    """Return the DBOS workflow status, the run row, and the run's cost rows."""
+    status = DBOS.get_workflow_status(run_id)
+    workflow_status = status.status if status is not None else "NOT_FOUND"
+
+    with db.session_scope() as session:
+        run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
+        cost_rows = (
+            session.execute(
+                select(CostRecord).where(CostRecord.workflow_id == run_id).order_by(CostRecord.id)
+            )
+            .scalars()
+            .all()
+        )
+        costs = [_cost_to_dict(r) for r in cost_rows]
+        run_dict = _run_to_dict(run) if run is not None else None
+
+    return {
+        "run_id": run_id,
+        "workflow_status": workflow_status,
+        "run": run_dict,
+        "costs": costs,
+    }
