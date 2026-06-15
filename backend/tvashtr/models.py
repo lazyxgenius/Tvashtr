@@ -20,6 +20,7 @@ from sqlalchemy import (
     Uuid,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -116,3 +117,26 @@ class DocumentVersion(Base):
     )
 
     document: Mapped["Document"] = relationship(back_populates="versions")
+
+
+class RunEvent(Base):
+    """One normalized event from an engine run (P0.3).
+
+    ``run_id`` is a P0.3-local identifier; the real ``Run`` entity arrives in
+    P0.4. ``kind`` is the engine-neutral value (action/observation/message/error)
+    and ``payload`` the normalized JSON the adapter produced. Unique
+    ``(run_id, seq)`` makes re-emitting an event a no-op — the same at-least-once-
+    safe convention as the metering and document-version writes.
+    """
+
+    __tablename__ = "run_events"
+    __table_args__ = (UniqueConstraint("run_id", "seq", name="uq_run_events_run_seq"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    run_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
