@@ -14,6 +14,7 @@ from tvashtr import db
 from tvashtr.config import get_settings
 from tvashtr.control_plane.hello_durable import hello_durable
 from tvashtr.models import SpikeHelloEvent
+from tvashtr.routers import router as api_router
 
 settings = get_settings()
 
@@ -25,6 +26,9 @@ _dbos_config: DBOSConfig = {
     "run_admin_server": settings.run_dbos_admin_server,
 }
 DBOS(fastapi=app, config=_dbos_config)
+
+# P0.2 gateway + document-layer endpoints (generate-doc, documents, costs).
+app.include_router(api_router)
 
 
 class HealthResponse(BaseModel):
