@@ -96,6 +96,32 @@ body,
 .tv-btn--ghost:hover:not(:disabled) {
   background: var(--panel-300);
 }
+/* Armed "confirm cancel" — the muted brick danger tone, used sparingly. */
+.tv-btn--danger {
+  color: color-mix(in srgb, var(--danger) 72%, var(--ink-900));
+  background: transparent;
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border-strong));
+}
+.tv-btn--danger:hover:not(:disabled) {
+  background: var(--red-100);
+}
+/* A quiet inline text button (the "keep running" escape on the confirm step). */
+.tv-btn--link {
+  height: auto;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.tv-btn--link:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 .tv-card {
   background: var(--surface-card);
@@ -132,6 +158,13 @@ body,
   background: var(--coral-100);
   color: var(--coral-700);
 }
+/* paused = awaiting a human: same coral, but ringed so it reads as "needs you"
+   rather than the borderless "working" fill. */
+.tv-pill--paused {
+  background: var(--coral-100);
+  color: var(--coral-700);
+  border-color: var(--coral-500);
+}
 .tv-pill--done {
   background: var(--sage-100);
   color: color-mix(in srgb, var(--sage-500) 62%, var(--ink-900));
@@ -139,4 +172,107 @@ body,
 .tv-pill--failed {
   background: var(--red-100);
   color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
+}
+/* stopped = the run ended (rejected/cancelled) before this node finished: a muted
+   neutral, deeper than idle and ringed by a defined hairline — not coral, not
+   red, no motion (it is terminal). */
+.tv-pill--stopped {
+  background: var(--panel-400);
+  color: var(--ink-600);
+  border-color: var(--border-strong);
+}
+
+/* ============================================================
+   Tasks-for-Human — the gate's attention strip.
+   A full-width band under the toolbar so a blocker is always
+   visible without a node click. Coral, calm: a soft wash, a
+   left accent bar, an editorial serif title — no alarm-red,
+   one bounded entrance.
+   ============================================================ */
+.tv-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  background: color-mix(in srgb, var(--coral-100) 32%, var(--surface-page));
+  border-bottom: var(--border-width) solid var(--accent-tint-border);
+}
+.tv-task {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  padding-left: var(--space-6);
+  overflow: hidden;
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--accent-tint-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  animation: tv-task-in var(--dur-slow) var(--ease-out);
+}
+/* the left coral bar — the calm "attention" motif */
+.tv-task::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--accent);
+}
+@keyframes tv-task-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tv-task {
+    animation: none;
+  }
+}
+.tv-task__body {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 360px;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.tv-task__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.tv-task__prio {
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--coral-700);
+}
+.tv-task__title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: var(--fs-h3);
+  letter-spacing: var(--tracking-snug);
+  line-height: var(--lh-snug);
+  color: var(--text-primary);
+}
+.tv-task__desc {
+  max-width: 68ch;
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--text-secondary);
+}
+.tv-task__actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
 }

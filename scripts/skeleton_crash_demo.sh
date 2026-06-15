@@ -31,6 +31,11 @@ if [[ -f "$ROOT/.env" ]]; then
   set +a
 fi
 
+# Auto-approve the P1.1a PRD gate so this deterministic crash demo doesn't block
+# on a human. Exported -> inherited by both uvicorn processes; the workflow reads
+# it inside a recorded step, so the gate decision replays identically post-crash.
+export TVASHTR_AUTO_APPROVE_GATES="${TVASHTR_AUTO_APPROVE_GATES:-1}"
+
 if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
   echo "[skeleton-crash] OPENROUTER_API_KEY not set — skipping. (Not a failure.)"
   exit 0

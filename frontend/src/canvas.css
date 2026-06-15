@@ -105,6 +105,42 @@
     transform: scale(1.05);
   }
 }
+/* paused = blocked at a human gate: a soft coral wash + a fuller coral ring than
+   "running", with one bounded pulse when the gate opens (distinct keyframe name
+   so it replays on the running -> paused transition). */
+.rf-node--paused {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--coral-100) 50%, var(--surface-card));
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.rf-node--paused::after {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 2px var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  animation: rf-pulse-paused 1.4s var(--ease-out) 1 forwards;
+}
+@keyframes rf-pulse-paused {
+  0% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+/* one-shot pulses only — honor reduced-motion for both node states */
+@media (prefers-reduced-motion: reduce) {
+  .rf-node--running::after,
+  .rf-node--paused::after {
+    animation: none;
+  }
+}
+
 .rf-node--done {
   border-color: var(--sage-500);
   background: color-mix(in srgb, var(--sage-100) 55%, var(--surface-card));
@@ -112,6 +148,13 @@
 .rf-node--failed {
   border-color: var(--red-500);
   background: color-mix(in srgb, var(--red-100) 55%, var(--surface-card));
+}
+/* stopped = concluded without finishing (run rejected/cancelled): a calm muted
+   card — a defined neutral border + a faint neutral wash. Not coral, not red,
+   and NO pulse/animation (it is terminal). */
+.rf-node--stopped {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--panel-300) 50%, var(--surface-card));
 }
 
 /* ---- Handles: minimal, just anchors for the edge ---- */

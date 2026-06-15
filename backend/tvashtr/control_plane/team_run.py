@@ -20,6 +20,7 @@ import uuid
 from dbos import DBOS
 from sqlalchemy import func, select, update
 
+from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
 from tvashtr.db import session_scope
 from tvashtr.documents.service import create_document_with_initial_version
@@ -148,8 +149,9 @@ def ship_step(run_id: str, workspace: str) -> dict:
 
 
 @DBOS.step()
-def finalize_run_step(run_id: str) -> dict:
-    """Mark the run completed and total its cost rows (idempotent aggregate)."""
+def finalize_run_step(run_id: str, status: str = "completed") -> dict:
+    """Mark the run terminal (default ``completed``; ``rejected`` when a human
+    rejects the gate) and total its cost rows (idempotent aggregate)."""
     with session_scope() as session:
         total = session.execute(
             select(func.coalesce(func.sum(CostRecord.cost_usd), 0)).where(
@@ -159,7 +161,7 @@ def finalize_run_step(run_id: str) -> dict:
         session.execute(
             update(Run)
             .where(Run.id == uuid.UUID(run_id))
-            .values(status="completed", cost_total_usd=total)
+            .values(status=status, cost_total_usd=total)
         )
     return {"cost_total_usd": float(total)}
 
@@ -177,6 +179,31 @@ def run_team(idea: str) -> dict:
 
     config = load_team_config_step(run_id)
     pm = pm_step(run_id, idea, config["pm_model"])
+
+    # HitL gate (P1.1a): pause for human PRD approval before the Engineer builds.
+    # Inlined at a fixed position here; first-class graph-placed gates are P1.5.
+    gate = wait_at_gate(
+        run_id,
+        topic=f"gate:{run_id}:prd-approval",
+        kind="gate_approval",
+        priority="high_blocker",
+        blocking=True,
+        title="Approve the PRD before the Engineer builds",
+        description=(
+            f"The PM wrote PRD document {pm['document_id']}. Approve to let the "
+            "Engineer build and ship it; reject to stop the run without shipping."
+        ),
+    )
+    if gate["resolution"] == "rejected":
+        final = finalize_run_step(run_id, status="rejected")
+        DBOS.logger.info(f"run_team rejected at PRD gate run_id={run_id}")
+        return {
+            "run_id": run_id,
+            "status": "rejected",
+            "document_id": pm["document_id"],
+            "cost_total": final["cost_total_usd"],
+        }
+
     workspace = engineer_setup_step(run_id)
     engineer = engineer_run_step(run_id, pm["prd_text"], workspace, config["eng_model"])
 

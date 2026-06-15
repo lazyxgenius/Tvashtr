@@ -32,7 +32,8 @@ export interface RunRow {
   id: string;
   team_graph_id: string;
   idea: string;
-  status: string; // pending | running | completed | failed
+  // pending | running | awaiting_human | completed | failed | rejected | cancelled
+  status: string;
   pm_document_id: string | null;
   ship_commit_sha: string | null;
   ship_tag: string | null;
@@ -85,6 +86,72 @@ export const getRunStatus = (runId: string): Promise<RunStatus> =>
   getJSON<RunStatus>(`/api/runs/${runId}`);
 
 export const getHealth = (): Promise<Health> => getJSON<Health>("/health");
+
+// ---- Tasks-for-Human (the gate: approve / reject / cancel) ----
+
+export interface HumanTask {
+  id: number;
+  run_id: string;
+  kind: string; // e.g. "gate_approval"
+  priority: string; // "high_blocker" | "low_nudge"
+  blocking: boolean;
+  topic: string | null;
+  title: string;
+  description: string;
+  status: string; // "pending" | "resolved"
+  resolution: string | null; // "approved" | "rejected" | "cancelled"
+  resolution_note: string | null;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export interface RunTasksResponse {
+  run_id: string;
+  tasks: HumanTask[]; // oldest first
+}
+
+export type TaskDecision = "approve" | "reject";
+
+interface ResolveResponse {
+  run_id: string;
+  task_id: number;
+  decision: TaskDecision;
+  resolution: string;
+  signaled: boolean;
+}
+
+interface CancelResponse {
+  run_id: string;
+  status: string | null;
+  workflow_status: string;
+}
+
+export const getRunTasks = (runId: string): Promise<RunTasksResponse> =>
+  getJSON<RunTasksResponse>(`/api/runs/${runId}/tasks`);
+
+export async function resolveTask(
+  runId: string,
+  taskId: number,
+  decision: TaskDecision,
+  note?: string | null,
+): Promise<ResolveResponse> {
+  const res = await fetch(`/api/runs/${runId}/tasks/${taskId}/resolve`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ decision, note: note ?? null }),
+  });
+  if (!res.ok) throw new Error(`POST resolve ${taskId} -> ${res.status}`);
+  return (await res.json()) as ResolveResponse;
+}
+
+export async function cancelRun(runId: string): Promise<CancelResponse> {
+  const res = await fetch(`/api/runs/${runId}/cancel`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`POST cancel -> ${res.status}`);
+  return (await res.json()) as CancelResponse;
+}
 
 // ---- Documents (the PM panel) ----
 

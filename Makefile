@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke skeleton-run skeleton-crash crash-demo lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke skeleton-run skeleton-crash crash-demo hitl-demo lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -52,13 +52,16 @@ agent-smoke: ## Live OpenHands agent smoke — trivial task in a local workspace
 	cd backend && uv run python ../scripts/smoke_agent.py
 
 skeleton-run: ## Live 2-node skeleton run: PM -> Engineer ships a file (needs key; skips otherwise)
-	cd backend && uv run python ../scripts/skeleton_run.py
+	cd backend && TVASHTR_AUTO_APPROVE_GATES=1 uv run python ../scripts/skeleton_run.py
 
 skeleton-crash: ## Prove the 2-node run resumes across a kill -9 mid agent-run (needs key; skips otherwise)
 	./scripts/skeleton_crash_demo.sh
 
 crash-demo: ## Prove durable resume across a kill -9
 	./scripts/crash_resume_demo.sh
+
+hitl-demo: ## Live HitL gate demo: approve->ship + cancel-at-gate->no-resurrect (needs key; skips otherwise)
+	./scripts/hitl_demo.sh
 
 lint: ## ruff check + format check
 	cd backend && uv run ruff check . && uv run ruff format --check .

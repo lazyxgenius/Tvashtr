@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Identity,
@@ -199,7 +200,14 @@ class Edge(Base):
 class Run(Base):
     """One execution of a team graph against an idea. ``workflow_id`` equals
     ``str(id)`` — the DBOS workflow is started with that explicit id so
-    ``DBOS.workflow_id`` is the deterministic key for all the run's writes."""
+    ``DBOS.workflow_id`` is the deterministic key for all the run's writes.
+
+    ``status`` is free Text (no enum migration). The documented vocabulary is:
+    ``pending`` / ``running`` (in flight) ; ``awaiting_human`` (paused at a
+    blocking gate, P1.1a) ; the terminals ``completed`` (shipped), ``failed``
+    (engine error), ``rejected`` (a human rejected a gate — no ship), and
+    ``cancelled`` (kill switch — ``DBOS.cancel_workflow`` + this status; NOT
+    resurrected by recovery)."""
 
     __tablename__ = "runs"
 
@@ -209,7 +217,8 @@ class Run(Base):
     )
     idea: Mapped[str] = mapped_column(Text, nullable=False)
     workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(Text, nullable=False)  # pending|running|completed|failed
+    # pending|running|awaiting_human|completed|failed|rejected|cancelled  (see docstring)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
     pm_document_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("documents.id"), nullable=True
     )
@@ -238,3 +247,39 @@ class EngineerRunAttempt(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class HumanTask(Base):
+    """A Tasks-for-Human item created when a workflow pauses at a gate (P1.1a).
+
+    A blocking ``gate_approval`` task pauses a run on a ``DBOS.recv(topic)`` until
+    a human resolves it (approve/reject). ``run_id`` is the run's ``workflow_id``
+    (== ``str(runs.id)``); it is plain Text + an index, the same convention as
+    ``run_events``/``engineer_run_attempts`` (no FK).
+
+    Unique ``(run_id, topic)`` makes gate-open idempotent: a crash-then-resume
+    re-running ``open_gate_step`` returns the existing row instead of inserting a
+    duplicate. The workflow's ``close_gate_step`` is the **single writer** of the
+    resolution — the resolve API only signals via ``DBOS.send``.
+    """
+
+    __tablename__ = "human_tasks"
+    __table_args__ = (UniqueConstraint("run_id", "topic", name="uq_human_tasks_run_topic"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    run_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)  # e.g. "gate_approval"
+    priority: Mapped[str] = mapped_column(Text, nullable=False)  # "high_blocker"|"low_nudge"
+    blocking: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # The recv topic this task gates (nullable for a future non-gate nudge).
+    topic: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)  # "pending"|"resolved"
+    # "approved"|"rejected" (human at the gate) | "cancelled" (run cancelled under it)
+    resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

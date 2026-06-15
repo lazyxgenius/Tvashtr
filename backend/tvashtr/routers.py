@@ -7,18 +7,33 @@ API to ORM/gateway types.
 
 import os
 import uuid
+from typing import Literal
 
 from dbos import DBOS, SetWorkflowID
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 
 from tvashtr import db
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.team_run import run_team
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.documents.service import get_document_with_versions, list_documents
-from tvashtr.models import AgentNode, CostRecord, Document, DocumentVersion, Edge, Run, RunEvent
+from tvashtr.models import (
+    AgentNode,
+    CostRecord,
+    Document,
+    DocumentVersion,
+    Edge,
+    HumanTask,
+    Run,
+    RunEvent,
+)
+
+# Run statuses that are already terminal: a kill switch must not clobber them.
+_TERMINAL_RUN_STATUSES = ("completed", "failed", "rejected")
+# Map the resolve API's decision verb to the durable resolution recorded on the task.
+_DECISION_TO_RESOLUTION = {"approve": "approved", "reject": "rejected"}
 
 router = APIRouter()
 
@@ -33,6 +48,11 @@ class StartResponse(BaseModel):
 
 class CreateRunRequest(BaseModel):
     idea: str | None = None
+
+
+class ResolveTaskRequest(BaseModel):
+    decision: Literal["approve", "reject"]
+    note: str | None = None
 
 
 # Pinned, deterministically-checkable deliverable (env-overridable). Keeping the
@@ -282,3 +302,110 @@ def get_run_graph(run_id: str) -> dict:
                 for e in edges
             ],
         }
+
+
+def _humantask_to_dict(task: HumanTask) -> dict:
+    return {
+        "id": task.id,
+        "run_id": task.run_id,
+        "kind": task.kind,
+        "priority": task.priority,
+        "blocking": task.blocking,
+        "topic": task.topic,
+        "title": task.title,
+        "description": task.description,
+        "status": task.status,
+        "resolution": task.resolution,
+        "resolution_note": task.resolution_note,
+        "created_at": task.created_at.isoformat(),
+        "resolved_at": task.resolved_at.isoformat() if task.resolved_at else None,
+    }
+
+
+@router.get("/api/runs/{run_id}/tasks")
+def get_run_tasks(run_id: str) -> dict:
+    """Tasks-for-Human items for a run, oldest first (what the P1.1b panel draws)."""
+    with db.session_scope() as session:
+        rows = (
+            session.execute(
+                select(HumanTask).where(HumanTask.run_id == run_id).order_by(HumanTask.id)
+            )
+            .scalars()
+            .all()
+        )
+        return {"run_id": run_id, "tasks": [_humantask_to_dict(t) for t in rows]}
+
+
+@router.post("/api/runs/{run_id}/tasks/{task_id}/resolve")
+def resolve_task(run_id: str, task_id: int, body: ResolveTaskRequest) -> dict:
+    """Resolve a pending gate task by **signaling** the waiting workflow.
+
+    This endpoint is a pure signal: it validates the task is pending and calls
+    ``DBOS.send``. The workflow's ``close_gate_step`` is the single writer that
+    marks the ``HumanTask`` resolved, so the table can't disagree with the run.
+    """
+    with db.session_scope() as session:
+        task = session.execute(
+            select(HumanTask).where(HumanTask.id == task_id, HumanTask.run_id == run_id)
+        ).scalar_one_or_none()
+        if task is None:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.status != "pending":
+            raise HTTPException(status_code=409, detail=f"task already {task.status}")
+        if task.topic is None:
+            raise HTTPException(status_code=409, detail="task has no gate topic to signal")
+        topic = task.topic
+
+    resolution = _DECISION_TO_RESOLUTION[body.decision]
+    DBOS.send(run_id, {"resolution": resolution, "note": body.note}, topic=topic)
+    return {
+        "run_id": run_id,
+        "task_id": task_id,
+        "decision": body.decision,
+        "resolution": resolution,
+        "signaled": True,
+    }
+
+
+@router.post("/api/runs/{run_id}/cancel")
+def cancel_run(run_id: str) -> dict:
+    """Kill switch: cancel the run's workflow and mark the run ``cancelled``.
+
+    ``DBOS.cancel_workflow`` flips the workflow to ``CANCELLED`` (so recovery's
+    PENDING-only scan never resurrects it, and its next step/recv boundary aborts)
+    but does NOT interrupt a blocked ``recv``; the workflow may run no further step
+    to record the status, so we set ``Run.status`` here directly, and we close the
+    run's pending gate tasks (``resolution="cancelled"``) so a dead run leaves no
+    actionable task. An **already-terminal** run is left fully untouched — no
+    cancel, no status write — so cancelling a just-completed run can't flip a
+    ``completed`` run's workflow to ``CANCELLED``.
+    """
+    blocked = (*_TERMINAL_RUN_STATUSES, "cancelled")
+    with db.session_scope() as session:
+        run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
+        already_terminal = run is not None and run.status in blocked
+
+    if not already_terminal:
+        DBOS.cancel_workflow(run_id)
+        with db.session_scope() as session:
+            session.execute(
+                update(Run)
+                .where(Run.workflow_id == run_id, Run.status.notin_(blocked))
+                .values(status="cancelled")
+            )
+            session.execute(
+                update(HumanTask)
+                .where(HumanTask.run_id == run_id, HumanTask.status == "pending")
+                .values(status="resolved", resolution="cancelled", resolved_at=func.now())
+            )
+
+    with db.session_scope() as session:
+        run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
+        run_status = run.status if run is not None else None
+
+    workflow_status = DBOS.get_workflow_status(run_id)
+    return {
+        "run_id": run_id,
+        "status": run_status,
+        "workflow_status": workflow_status.status if workflow_status is not None else "NOT_FOUND",
+    }
