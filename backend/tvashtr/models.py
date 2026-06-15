@@ -140,3 +140,85 @@ class RunEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class TeamGraph(Base):
+    """A team of agent nodes wired by edges (P0.4). Minimal, forward-compatible
+    subset — JSONB configs and the rest arrive when the canvas needs them."""
+
+    __tablename__ = "team_graphs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class AgentNode(Base):
+    """One node in a team graph. ``kind`` discriminates a direct-LLM
+    ``completion`` node (PM) from an ``agent`` node backed by an ``engine``."""
+
+    __tablename__ = "agent_nodes"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    team_graph_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_graphs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role_name: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)  # "completion" | "agent"
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    engine: Mapped[str | None] = mapped_column(Text, nullable=True)  # "openhands" | NULL
+    position: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Edge(Base):
+    """A directed edge between two agent nodes (e.g. PM -> Engineer work edge)."""
+
+    __tablename__ = "edges"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    team_graph_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_graphs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_node_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_nodes.id", ondelete="CASCADE"), nullable=False
+    )
+    target_node_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_nodes.id", ondelete="CASCADE"), nullable=False
+    )
+    edge_type: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Run(Base):
+    """One execution of a team graph against an idea. ``workflow_id`` equals
+    ``str(id)`` — the DBOS workflow is started with that explicit id so
+    ``DBOS.workflow_id`` is the deterministic key for all the run's writes."""
+
+    __tablename__ = "runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    team_graph_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_graphs.id"), nullable=False, index=True
+    )
+    idea: Mapped[str] = mapped_column(Text, nullable=False)
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)  # pending|running|completed|failed
+    pm_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id"), nullable=True
+    )
+    ship_commit_sha: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ship_tag: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cost_total_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
