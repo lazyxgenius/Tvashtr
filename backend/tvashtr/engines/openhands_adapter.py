@@ -114,6 +114,25 @@ def _snapshot(root: str) -> dict[str, tuple[int, int]]:
     return snap
 
 
+def _read_usage(conversation) -> tuple[int, int, float]:
+    """Post-run token/cost telemetry from OpenHands' own accumulated metrics.
+
+    Verified accessor (openhands-sdk 1.28.1):
+    ``Conversation.conversation_stats.get_combined_metrics()`` ->
+    ``Metrics.accumulated_token_usage`` + ``Metrics.accumulated_cost``.
+    """
+    try:
+        metrics = conversation.conversation_stats.get_combined_metrics()
+        usage = getattr(metrics, "accumulated_token_usage", None)
+        prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+        completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+        cost_usd = float(getattr(metrics, "accumulated_cost", 0.0) or 0.0)
+        return prompt_tokens, completion_tokens, cost_usd
+    except Exception:
+        logger.warning("could not read OpenHands usage telemetry", exc_info=True)
+        return 0, 0, 0.0
+
+
 class OpenHandsAdapter:
     """Drive the OpenHands Software Agent SDK behind Tvashtr's ``EngineAdapter``.
 
@@ -168,6 +187,9 @@ class OpenHandsAdapter:
         before = _snapshot(task.workspace_dir)
         status = "completed"
         error: str | None = None
+        prompt_tokens = 0
+        completion_tokens = 0
+        cost_usd = 0.0
         try:
             conversation = Conversation(
                 agent=agent,
@@ -178,11 +200,16 @@ class OpenHandsAdapter:
             )
             conversation.send_message(task.instruction)
             conversation.run()
+            # Decision 2 (primary path): read OpenHands' own accumulated usage
+            # after the run — NOT a process-global litellm callback, which would
+            # also capture the gateway's direct calls (one shared litellm).
+            prompt_tokens, completion_tokens, cost_usd = _read_usage(conversation)
         except Exception as exc:
             status = "failed"
             error = str(exc)
             logger.exception("OpenHands run failed")
 
+        total_tokens = prompt_tokens + completion_tokens
         after = _snapshot(task.workspace_dir)
         files_changed = sorted(p for p in after if before.get(p) != after[p])
 
@@ -202,4 +229,8 @@ class OpenHandsAdapter:
             events=collected,
             files_changed=files_changed,
             error=error,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cost_usd=cost_usd,
         )

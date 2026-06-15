@@ -50,6 +50,12 @@ class AgentRunResult:
     events: list[EngineEvent]
     files_changed: list[str]
     error: str | None = None
+    # Engine-neutral usage, populated from the engine's own post-run telemetry.
+    # Defaults keep the contract backward-compatible.
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    cost_usd: float = 0.0
 
 
 @runtime_checkable
