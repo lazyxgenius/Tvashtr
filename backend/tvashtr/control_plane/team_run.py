@@ -14,6 +14,7 @@ ship is dedup'd by the ``ship-{run_id}`` git tag, so it happens exactly once.
 module (and app startup) never loads it.
 """
 
+import os
 import uuid
 
 from dbos import DBOS
@@ -27,7 +28,7 @@ from tvashtr.engines.registry import resolve_adapter
 from tvashtr.engines.run_event_sink import make_run_event_sink
 from tvashtr.gateway import CompletionRequest, complete
 from tvashtr.metering import record_agent_cost, record_cost
-from tvashtr.models import AgentNode, CostRecord, Run
+from tvashtr.models import AgentNode, CostRecord, EngineerRunAttempt, Run
 
 
 @DBOS.step()
@@ -90,10 +91,19 @@ def engineer_setup_step(run_id: str) -> str:
 @DBOS.step()
 def engineer_run_step(run_id: str, prd_text: str, workspace: str, eng_model: str) -> dict:
     """The ONE coarse step wrapping the agent run. No commit / no cost write here."""
+    # Attempt log — intentionally NOT idempotent: one row per execution. A
+    # crash-then-resume re-runs this whole step, yielding a second row with a
+    # different pid (the observable proof the agent step re-executed).
+    with session_scope() as session:
+        session.add(EngineerRunAttempt(run_id=run_id, pid=os.getpid()))
+
     instruction = (
         "Read the following PRD and create exactly the file it specifies, with exactly "
-        "the specified contents. Do not add any extra files and do not modify anything "
-        "else.\n\n--- PRD ---\n"
+        "the specified contents. Create it in the current working directory using a "
+        "RELATIVE path — the bare filename only (e.g. 'greeting.txt'); if the PRD shows "
+        "a path with a leading '/' or './', ignore that prefix and create the file "
+        "relative to the current directory. Do not add any extra files and do not "
+        "modify anything else.\n\n--- PRD ---\n"
         f"{prd_text}"
     )
     task = AgentTask(instruction=instruction, workspace_dir=workspace, model=eng_model)

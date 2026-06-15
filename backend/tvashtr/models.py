@@ -222,3 +222,19 @@ class Run(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class EngineerRunAttempt(Base):
+    """One row per *execution* of ``engineer_run_step`` (intentionally NOT
+    idempotent): a crash-then-resume yields two rows with different ``pid``s —
+    observable proof the coarse agent step re-ran in the restarted process
+    (mirrors how the crash-demo records pids in ``spike_hello_events``)."""
+
+    __tablename__ = "engineer_run_attempts"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    run_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    pid: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
