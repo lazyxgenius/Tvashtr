@@ -85,3 +85,42 @@ export const getRunStatus = (runId: string): Promise<RunStatus> =>
   getJSON<RunStatus>(`/api/runs/${runId}`);
 
 export const getHealth = (): Promise<Health> => getJSON<Health>("/health");
+
+// ---- Documents (the PM panel) ----
+
+export interface DocumentVersion {
+  id: string;
+  version_no: number;
+  content: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface DocumentDetail {
+  id: string;
+  title: string;
+  doc_type: string;
+  created_at: string;
+  updated_at: string;
+  versions: DocumentVersion[]; // ascending by version_no
+}
+
+// ---- Run events (the Engineer panel) ----
+
+export interface RunEvent {
+  seq: number;
+  kind: string; // action | observation | message | error
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface RunEventsResponse {
+  run_id: string;
+  events: RunEvent[]; // ascending by seq
+}
+
+export const getDocument = (documentId: string): Promise<DocumentDetail> =>
+  getJSON<DocumentDetail>(`/api/documents/${documentId}`);
+
+export const getRunEvents = (runId: string): Promise<RunEventsResponse> =>
+  getJSON<RunEventsResponse>(`/api/spike/run-events/${runId}`);

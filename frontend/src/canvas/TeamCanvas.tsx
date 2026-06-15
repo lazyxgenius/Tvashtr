@@ -18,12 +18,14 @@ import { CanvasEmpty } from "./CanvasEmpty";
 
 const nodeTypes = { agentNode: AgentNodeCard };
 
-/** Gently fit the view once whenever a new team graph loads (bounded, no loop). */
+/** Gently fit the view (bounded, no loop) on a new graph or a panel open/close,
+ *  so both nodes stay visible as the canvas resizes beside the side panel. */
 function FitView({ trigger }: { trigger: string | null }) {
   const rf = useReactFlow();
   useEffect(() => {
     if (!trigger) return;
-    const t = setTimeout(() => rf.fitView({ padding: 0.5, duration: 320 }), 60);
+    // ~80ms lets the flex layout (and React Flow's resize observer) settle first.
+    const t = setTimeout(() => rf.fitView({ padding: 0.5, duration: 320 }), 80);
     return () => clearTimeout(t);
   }, [trigger, rf]);
   return null;
@@ -33,10 +35,14 @@ export function TeamCanvas({
   graph,
   run,
   workflowStatus,
+  panelOpen = false,
+  onSelectNode,
 }: {
   graph: GraphData | null;
   run: RunRow | null;
   workflowStatus: string | null;
+  panelOpen?: boolean;
+  onSelectNode?: (role: string | null) => void;
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
 
@@ -109,13 +115,23 @@ export function TeamCanvas({
         maxZoom={1.75}
         nodesConnectable={false}
         elementsSelectable
+        onNodeClick={(_event, node) =>
+          onSelectNode?.((node.data as unknown as AgentNodeData).role_name)
+        }
+        onPaneClick={() => onSelectNode?.(null)}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} />
-        <FitView trigger={graph?.run_id ?? null} />
+        <FitView trigger={graph ? `${graph.run_id}:${panelOpen ? "p" : "f"}` : null} />
         {graph && <Controls showInteractive={false} />}
         {graph && (
-          <MiniMap pannable zoomable nodeStrokeWidth={0} nodeColor={() => "var(--stone-400)"} />
+          <MiniMap
+            pannable
+            zoomable
+            nodeStrokeWidth={0}
+            nodeBorderRadius={3}
+            nodeColor={() => "var(--stone-400)"}
+          />
         )}
       </ReactFlow>
       {!graph && <CanvasEmpty />}

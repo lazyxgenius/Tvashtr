@@ -1,0 +1,262 @@
+/* ============================================================
+   Tvashtr — the inspection side panel (PM spec + engineer feed).
+   Push layout: a fixed-width paper panel splits the canvas so the
+   selected node stays reachable. Token-driven, calm bounded motion.
+   ============================================================ */
+
+.tv-panel {
+  width: 400px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-card);
+  border-left: var(--border-width) solid var(--border-hairline);
+  box-shadow: var(--shadow-md);
+  animation: tv-panel-in var(--dur-slow) var(--ease-standard);
+}
+@keyframes tv-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tv-panel {
+    animation: none;
+  }
+}
+
+.tv-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex: none;
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom: var(--border-width) solid var(--border-hairline);
+}
+.tv-panel__title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: var(--fs-h4);
+  letter-spacing: var(--tracking-snug);
+  line-height: var(--lh-snug);
+  color: var(--text-primary);
+}
+.tv-panel__subtitle {
+  margin-top: 2px;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.tv-panel__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  color: var(--ink-600);
+  background: transparent;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+.tv-panel__close:hover {
+  background: var(--panel-300);
+  color: var(--ink-900);
+}
+.tv-panel__close:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.tv-panel__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Each view owns its own scroll region (so the feed can auto-scroll). */
+.tv-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+
+.tv-panel-note {
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+  line-height: var(--lh-relaxed);
+  padding: var(--space-2) 0;
+}
+
+/* ---- PRD view ---- */
+.tv-prd__title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: var(--fs-h3);
+  letter-spacing: var(--tracking-snug);
+  line-height: var(--lh-snug);
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+.tv-prd__meta {
+  margin-top: var(--space-1);
+  font-size: var(--fs-micro);
+  color: var(--text-tertiary);
+}
+.tv-prd__versions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+}
+.tv-prd__version {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 6px 10px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  color: var(--ink-600);
+  background: var(--panel-300);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+.tv-prd__version:hover {
+  background: var(--panel-400);
+}
+.tv-prd__version--active {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.tv-prd__version:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.tv-prd__version-no {
+  font-family: var(--font-code);
+}
+.tv-prd__divider {
+  height: 1px;
+  background: var(--border-faint);
+  margin: var(--space-4) 0;
+}
+.tv-prd__content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: var(--measure-read);
+  font-family: var(--font-body);
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--text-primary);
+}
+
+/* ---- Event feed ---- */
+.tv-feed__note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: var(--border-width) solid var(--border-faint);
+  font-size: var(--fs-micro);
+  line-height: var(--lh-normal);
+  color: var(--text-tertiary);
+}
+.tv-feed__note svg {
+  flex: none;
+  margin-top: 1px;
+}
+.tv-feed {
+  display: flex;
+  flex-direction: column;
+}
+.tv-feed__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: var(--border-width) solid var(--border-faint);
+}
+.tv-feed__row:last-child {
+  border-bottom: none;
+}
+.tv-feed__main {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.tv-feed__lead {
+  flex: none;
+  font-family: var(--font-code);
+  font-size: var(--fs-micro);
+  color: var(--text-secondary);
+}
+.tv-feed__detail {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-primary);
+}
+.tv-feed__time {
+  flex: none;
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* ---- Badge vocabulary (ported from the DS Badge component) ---- */
+.tv-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 4px 9px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  white-space: nowrap;
+  border-radius: var(--radius-pill);
+  border: var(--border-width) solid transparent;
+}
+.tv-badge--neutral {
+  background: var(--panel-300);
+  color: var(--ink-600);
+  border-color: var(--border-hairline);
+}
+.tv-badge--accent {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.tv-badge--outline {
+  background: transparent;
+  color: var(--ink-600);
+  border-color: var(--border-strong);
+}
+.tv-badge--danger {
+  background: var(--red-100);
+  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
+}

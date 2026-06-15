@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { TeamCanvas } from "./canvas/TeamCanvas";
 import { BackendDot } from "./components/BackendDot";
 import { RunBanner } from "./components/RunBanner";
+import { SidePanel } from "./panel/SidePanel";
 import {
   type CostRow,
   type GraphData,
@@ -21,6 +22,7 @@ export default function App() {
   const [costs, setCosts] = useState<CostRow[]>([]);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<string | null>(null);
 
   const terminal = isRunTerminal(run, workflowStatus);
   const inFlight = runId !== null && !terminal;
@@ -33,6 +35,7 @@ export default function App() {
     setRun(null);
     setWorkflowStatus(null);
     setCosts([]);
+    setSelectedRole(null);
     try {
       const id = await startRun();
       const g = await getGraph(id);
@@ -121,8 +124,25 @@ export default function App() {
         )}
       </div>
 
-      <main className="relative min-h-0 flex-1">
-        <TeamCanvas graph={graph} run={run} workflowStatus={workflowStatus} />
+      <main className="flex min-h-0 flex-1">
+        <div className="relative min-w-0 flex-1">
+          <TeamCanvas
+            graph={graph}
+            run={run}
+            workflowStatus={workflowStatus}
+            panelOpen={selectedRole !== null}
+            onSelectNode={setSelectedRole}
+          />
+        </div>
+        {selectedRole && (
+          <SidePanel
+            selectedRole={selectedRole}
+            runId={runId}
+            run={run}
+            workflowStatus={workflowStatus}
+            onClose={() => setSelectedRole(null)}
+          />
+        )}
       </main>
     </>
   );

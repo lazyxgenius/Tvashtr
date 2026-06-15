@@ -16,6 +16,7 @@
 @import "./design-system/tokens/spacing.css";
 @import "./design-system/tokens/base.css";
 @import "./canvas.css";
+@import "./panel.css";
 
 /* Map DS semantic tokens into Tailwind v4 so we get on-brand utilities
    (bg-page, text-secondary, border-hairline, text-accent, font-display, …).
@@ -133,9 +134,9 @@ body,
 }
 .tv-pill--done {
   background: var(--sage-100);
-  color: #4f6038;
+  color: color-mix(in srgb, var(--sage-500) 62%, var(--ink-900));
 }
 .tv-pill--failed {
   background: var(--red-100);
-  color: #8e3a2e;
+  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
 }
