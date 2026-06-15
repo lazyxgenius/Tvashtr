@@ -4,8 +4,8 @@ A canvas for composing and running teams of AI agents that take a product idea t
 working software. The heart of the architecture is a deterministic **Control
 Plane** built on a durable workflow engine.
 
-This repository is at **Phase 0 / P0.3 — the walking skeleton's first agent**. On
-top of the P0.1 durable-execution spine (a FastAPI backend running **DBOS
+This repository is at **Phase 0 / P0.4 — the 2-node run, proven resumable** (the
+milestone-M0 exit criterion). On top of the P0.1 durable-execution spine (a FastAPI backend running **DBOS
 Transact** in-process over Postgres, proven by a 3-step workflow that survives a
 deliberate `kill -9` mid-run and completes after restart **without re-executing
 finished steps**), it adds three provider/engine-agnostic commodities behind clean
@@ -20,11 +20,12 @@ boundaries:
   **OpenHands** Software Agent SDK — an agent that actually touches a filesystem,
   with its actions/observations streamed into a persisted `RunEvent` log.
 
-Two proofs tie it together: a durable `generate_doc` workflow makes one real,
-metered LLM call and writes the output as an immutable document version (surviving
-a mid-run crash without double-charging or duplicating); and `make agent-smoke`
-runs a real OpenHands agent in a throwaway local workspace to create a file. (The
-2-node agent graph and the canvas come in later steps.)
+P0.4 assembles these into the first multi-node team: one durable workflow runs a
+**PM node** (a metered gateway completion that writes a versioned PRD) then an
+**Engineer node** (the OpenHands agent) that ships the feature into a local git
+repo as one idempotent, tagged commit. `make skeleton-run` proves the happy path;
+`make skeleton-crash` proves it survives a `kill -9` *during the agent run* and
+still ships **exactly once** — the milestone-M0 exit. (A minimal UI comes next.)
 
 ## Prerequisites
 
@@ -72,6 +73,8 @@ make crash-demo             # starts the workflow, kill -9 mid-run, restarts, as
 | `test`         | Run backend tests (needs `db-up` + `migrate` first)       |
 | `smoke`        | Live gateway smoke — one real LLM call (skips without key) |
 | `agent-smoke`  | Live OpenHands agent run in a local workspace (skips w/o key) |
+| `skeleton-run` | Live 2-node run: PM → Engineer ships a file (skips w/o key) |
+| `skeleton-crash` | M0 exit: 2-node run survives `kill -9` mid agent-run (skips w/o key) |
 | `crash-demo`   | Run the crash-resume proof (exits non-zero on failure)    |
 | `lint` / `fmt` | ruff check + format check / autofix                       |
 
@@ -162,6 +165,32 @@ task (`create hello.txt`) and prints the resolved status, the captured event kin
 | ------------------------------------ | --------------------------------------- |
 | `GET /api/spike/run-events/{run_id}` | the persisted, ordered events for a run |
 
+## The 2-node run (P0.4)
+
+`run_team` (in `control_plane/team_run.py`) is one durable DBOS workflow started
+with `DBOS.workflow_id == run_id`, so every write keys its idempotency on the run
+id. It reads its two nodes from authored graph rows (`team_graphs` / `agent_nodes`
+/ `edges`) and runs them: a **PM** completion node (cheap model, via the gateway →
+a versioned PRD `Document`) then an **Engineer** agent node (capable model, via the
+OpenHands adapter) that implements the PRD in a fresh local git repo and **ships it
+as one commit tagged `ship-{run_id}`**. Both nodes are metered (`{run_id}:pm-llm`
+and `{run_id}:agent-cost`, the latter from the agent's own post-run telemetry).
+
+Crash-safety (the M0 exit): the agent run is **one coarse `@DBOS.step`** — DBOS
+re-runs the whole step on recovery rather than checkpointing inside the agent loop,
+and the *outcome* is made idempotent (the ship dedups on the git tag; the PRD/cost
+writes dedup on their keys). So a crash mid-agent re-runs the agent in the restarted
+process yet ships exactly once.
+
+| Target            | What it proves                                                   |
+| ----------------- | --------------------------------------------------------------- |
+| `make skeleton-run`   | Happy path: idea → PM PRD → Engineer ships the pinned file; the run reaches SUCCESS with both cost rows and the committed file. |
+| `make skeleton-crash` | **M0 exit:** `kill -9` mid agent-run → DBOS recovers → the agent step re-executes in a new process (two distinct pids) yet there is exactly one `ship-{run_id}` tag/commit, one PRD version, and one agent-cost row. |
+
+Endpoints: `POST /api/runs` `{idea?}` → `{run_id}`; `GET /api/runs/{run_id}` → DBOS
+status + the run row + its cost rows. Both targets are opt-in and skip cleanly
+without `OPENROUTER_API_KEY`.
+
 ## Layout
 
 ```
@@ -171,11 +200,12 @@ backend/            FastAPI + DBOS + SQLAlchemy/Alembic (Python package `tvashtr
     documents/      versioned-document service (Document + DocumentVersion)
     engines/        EngineAdapter contract + OpenHands adapter + run-event sink
     metering.py     persist a gateway result as an idempotent CostRecord
-    control_plane/  durable DBOS workflows (hello_durable, doc_writer)
+    control_plane/  durable DBOS workflows (hello_durable, doc_writer, team_run)
+                    + pure helpers: teams (graph builder), shipping (idempotent git ship)
   alembic/          migrations (owns app tables only)
   tests/            pytest integration + unit tests
 frontend/           Vite + React + TS + Tailwind stub (health indicator)
-scripts/            crash_resume_demo.sh, smoke_gateway.py, smoke_agent.py
+scripts/            crash + skeleton demos, smoke_gateway.py, smoke_agent.py, skeleton_run.py
 docker-compose.yml  Postgres 16 (host port 5433)
 Makefile            developer entrypoints
 ```
