@@ -56,3 +56,51 @@ def record_cost(
             raise
         session.refresh(record)
         return record
+
+
+def record_agent_cost(
+    *,
+    workflow_id: str | None,
+    idempotency_key: str,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    total_tokens: int,
+    cost_usd: float,
+) -> CostRecord:
+    """Persist one CostRecord for an agent invocation from engine-neutral usage
+    numbers — idempotent on ``idempotency_key``.
+
+    An agent run has no fallback notion, so ``model_requested == model_used ==
+    model``. Same insert-or-return shape as ``record_cost``.
+    """
+    with session_scope() as session:
+        existing = session.execute(
+            select(CostRecord).where(CostRecord.idempotency_key == idempotency_key)
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
+
+        record = CostRecord(
+            workflow_id=workflow_id,
+            idempotency_key=idempotency_key,
+            model_requested=model,
+            model_used=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cost_usd=Decimal(str(cost_usd)),
+        )
+        session.add(record)
+        try:
+            session.flush()
+        except IntegrityError:
+            session.rollback()
+            won = session.execute(
+                select(CostRecord).where(CostRecord.idempotency_key == idempotency_key)
+            ).scalar_one_or_none()
+            if won is not None:
+                return won
+            raise
+        session.refresh(record)
+        return record
