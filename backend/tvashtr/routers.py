@@ -18,7 +18,7 @@ from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.team_run import run_team
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.documents.service import get_document_with_versions, list_documents
-from tvashtr.models import CostRecord, Document, DocumentVersion, Run, RunEvent
+from tvashtr.models import AgentNode, CostRecord, Document, DocumentVersion, Edge, Run, RunEvent
 
 router = APIRouter()
 
@@ -235,3 +235,50 @@ def get_run(run_id: str) -> dict:
         "run": run_dict,
         "costs": costs,
     }
+
+
+@router.get("/api/runs/{run_id}/graph")
+def get_run_graph(run_id: str) -> dict:
+    """Read-only team graph (nodes + edges) for a run — what the canvas draws."""
+    with db.session_scope() as session:
+        run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
+        if run is None:
+            raise HTTPException(status_code=404, detail="run not found")
+
+        nodes = (
+            session.execute(select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id))
+            .scalars()
+            .all()
+        )
+        edges = (
+            session.execute(select(Edge).where(Edge.team_graph_id == run.team_graph_id))
+            .scalars()
+            .all()
+        )
+        # Deterministic left-to-right order (PM at x=0 before Engineer at x=240).
+        nodes = sorted(nodes, key=lambda n: (n.position.get("x", 0), str(n.id)))
+
+        return {
+            "run_id": run_id,
+            "team_graph_id": str(run.team_graph_id),
+            "nodes": [
+                {
+                    "id": str(n.id),
+                    "role_name": n.role_name,
+                    "kind": n.kind,
+                    "model": n.model,
+                    "engine": n.engine,
+                    "position": n.position,
+                }
+                for n in nodes
+            ],
+            "edges": [
+                {
+                    "id": str(e.id),
+                    "source_node_id": str(e.source_node_id),
+                    "target_node_id": str(e.target_node_id),
+                    "edge_type": e.edge_type,
+                }
+                for e in edges
+            ],
+        }
