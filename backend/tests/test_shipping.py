@@ -59,3 +59,30 @@ def test_init_workspace_repo_is_idempotent(tmp_path):
     init_workspace_repo(str(ws))
     init_workspace_repo(str(ws))  # second call is a no-op, no error
     assert (ws / ".git").is_dir()
+
+
+def test_idempotent_ship_recovers_commit_made_without_tag(tmp_path):
+    """Crash window: the ship commit exists but the process died before tagging.
+
+    On resume, ``idempotent_ship`` must re-tag HEAD (the dangling ship commit) and
+    return ``created=False`` — NOT raise 'nothing to ship'.
+    """
+    ws = tmp_path / "ws-recover"
+    ws.mkdir()
+    init_workspace_repo(str(ws))
+    (ws / "greeting.txt").write_text("Shipped\n")
+    run_id = "run-recover"
+
+    # Simulate the crash window: commit WITHOUT creating the tag.
+    subprocess.run(["git", "-C", str(ws), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(ws), "commit", "-q", "-m", f"Ship: {run_id}"], check=True)
+    head = subprocess.run(
+        ["git", "-C", str(ws), "rev-parse", "HEAD"], capture_output=True, text=True
+    ).stdout.strip()
+
+    result = idempotent_ship(str(ws), run_id)  # must not raise
+
+    assert result["created"] is False
+    assert result["sha"] == head
+    assert result["tag"] == f"ship-{run_id}"
+    assert _tags(ws) == [f"ship-{run_id}"]

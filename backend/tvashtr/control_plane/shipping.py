@@ -49,6 +49,14 @@ def idempotent_ship(workspace_dir: str, run_id: str) -> dict:
     _git(workspace_dir, "add", "-A")
     # `git diff --cached --quiet` exits 0 when there is NOTHING staged.
     if _git(workspace_dir, "diff", "--cached", "--quiet", check=False).returncode == 0:
+        # Crash window: the process may have died *between* commit and tag. If HEAD
+        # is already this run's ship commit, recover by re-tagging it (idempotent);
+        # only raise if HEAD is genuinely not a ship commit (nothing was produced).
+        head_subject = _git(workspace_dir, "log", "-1", "--format=%s", check=False)
+        if head_subject.returncode == 0 and head_subject.stdout.strip() == f"Ship: {run_id}":
+            _git(workspace_dir, "tag", tag)
+            sha = _git(workspace_dir, "rev-parse", "HEAD").stdout.strip()
+            return {"sha": sha, "tag": tag, "created": False}
         raise RuntimeError(
             f"nothing to ship for run {run_id}: no staged changes in {workspace_dir}"
         )
