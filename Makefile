@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test smoke crash-demo lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke crash-demo lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -47,6 +47,9 @@ test: ## Run backend tests (requires db-up + migrate first)
 
 smoke: ## Live gateway smoke — one real LLM call (needs OPENROUTER_API_KEY; skips cleanly otherwise)
 	cd backend && uv run python ../scripts/smoke_gateway.py
+
+agent-smoke: ## Live OpenHands agent smoke — trivial task in a local workspace (needs key; skips otherwise)
+	cd backend && uv run python ../scripts/smoke_agent.py
 
 crash-demo: ## Prove durable resume across a kill -9
 	./scripts/crash_resume_demo.sh

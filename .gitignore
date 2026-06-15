@@ -29,5 +29,8 @@ frontend/dist/
 .vscode/
 *.swp
 
+# ---- Agent workspaces (P0.3, local-unsandboxed) ----
+.tvashtr_workspaces/
+
 # ---- Logs / tmp ----
 *.log

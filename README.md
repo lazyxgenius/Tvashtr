@@ -4,23 +4,27 @@ A canvas for composing and running teams of AI agents that take a product idea t
 working software. The heart of the architecture is a deterministic **Control
 Plane** built on a durable workflow engine.
 
-This repository is at **Phase 0 / P0.2 — durable spine + model gateway + document
-layer**. On top of the P0.1 durable-execution spine (a FastAPI backend running
-**DBOS Transact** in-process over Postgres, proven by a 3-step workflow that
-survives a deliberate `kill -9` mid-run and completes after restart **without
-re-executing finished steps**) it adds two provider-agnostic commodities behind
-clean boundaries:
+This repository is at **Phase 0 / P0.3 — the walking skeleton's first agent**. On
+top of the P0.1 durable-execution spine (a FastAPI backend running **DBOS
+Transact** in-process over Postgres, proven by a 3-step workflow that survives a
+deliberate `kill -9` mid-run and completes after restart **without re-executing
+finished steps**), it adds three provider/engine-agnostic commodities behind clean
+boundaries:
 
 - a **Model Gateway** — the single metering chokepoint — that wraps **LiteLLM** to
   route a completion to *any* `provider/model` (defaulting to **OpenRouter** with
-  an ordered fallback list) and records token usage + cost; and
+  an ordered fallback list) and records token usage + cost;
 - a **versioned Document layer**: a `Document` is an ordered chain of immutable
-  `DocumentVersion`s.
+  `DocumentVersion`s; and
+- an **`EngineAdapter`** boundary with its first implementation over the
+  **OpenHands** Software Agent SDK — an agent that actually touches a filesystem,
+  with its actions/observations streamed into a persisted `RunEvent` log.
 
-A durable `generate_doc` workflow proves both at once — it makes one real, metered
-LLM call and writes the output as version 1 of a document, and survives a mid-run
-crash **without** double-charging the cost or duplicating the version. (Agent runs
-and the canvas come in later steps.)
+Two proofs tie it together: a durable `generate_doc` workflow makes one real,
+metered LLM call and writes the output as an immutable document version (surviving
+a mid-run crash without double-charging or duplicating); and `make agent-smoke`
+runs a real OpenHands agent in a throwaway local workspace to create a file. (The
+2-node agent graph and the canvas come in later steps.)
 
 ## Prerequisites
 
@@ -36,9 +40,10 @@ and the canvas come in later steps.)
 cp .env.example .env        # local config (gitignored)
 make setup                  # uv sync (backend) + npm install (frontend)
 make db-up                  # start Postgres on :5433, wait until healthy
-make migrate                # create app tables (spike + cost_records + documents)
-make test                   # backend tests (gateway, idempotency, durable) -> green
+make migrate                # create app tables (spike, costs, documents, run_events)
+make test                   # backend tests (gateway, idempotency, contract, durable)
 make smoke                  # optional: one live LLM call (needs OPENROUTER_API_KEY)
+make agent-smoke            # optional: a real OpenHands agent run (needs a key)
 ```
 
 Run the app (two terminals):
@@ -66,6 +71,7 @@ make crash-demo             # starts the workflow, kill -9 mid-run, restarts, as
 | `frontend`     | Run the Vite dev server on :5173                          |
 | `test`         | Run backend tests (needs `db-up` + `migrate` first)       |
 | `smoke`        | Live gateway smoke — one real LLM call (skips without key) |
+| `agent-smoke`  | Live OpenHands agent run in a local workspace (skips w/o key) |
 | `crash-demo`   | Run the crash-resume proof (exits non-zero on failure)    |
 | `lint` / `fmt` | ruff check + format check / autofix                       |
 
@@ -127,6 +133,35 @@ key it skips cleanly, so the test suite never depends on a paid endpoint.
 | `GET  /api/documents/{id}`          | a document + its ordered, immutable versions             |
 | `GET  /api/costs?workflow_id=`      | cost rows (all, or filtered by workflow)                 |
 
+## Engine adapter & agent runs (P0.3)
+
+`EngineAdapter` (in `tvashtr/engines/base.py`) is the uniform, **engine-neutral**
+contract the Control Plane uses to drive *any* coding-agent engine: `name` plus
+`run(task, on_event) -> AgentRunResult`, exchanging only Tvashtr-owned `AgentTask`
+/ `AgentRunResult` / `EngineEvent` types. The interface is the durable asset;
+**OpenHands** is just the first engine plugged into it (`OpenHandsAdapter`, the
+only module importing `openhands.*`). A second engine (e.g. the Claude Agent SDK)
+can be added as adapter #2 without touching any caller.
+
+During a run the adapter normalizes the engine's native events into ordered
+`EngineEvent`s (kinds `action` / `observation` / `message` / `error`), streams
+them live via `on_event`, and the run-event **sink** persists each to `run_events`
+— **insert-or-ignore on `(run_id, seq)`**, so an at-least-once re-emit never
+duplicates a row (the same convention as P0.2's metering).
+
+> **⚠️ Local-unsandboxed.** The agent runs against a throwaway directory under
+> `.tvashtr_workspaces/` (gitignored); its shell/file tools execute **as your user
+> on the real filesystem, with no isolation**. Dev / trusted-tasks only — Docker
+> isolation (via the OpenHands Agent Server) is a planned later step.
+
+`make agent-smoke` (needs a provider key) runs a real OpenHands agent on a trivial
+task (`create hello.txt`) and prints the resolved status, the captured event kinds,
+`files_changed`, and the produced file's contents. It skips cleanly without a key.
+
+| Method & path                        | What it does                            |
+| ------------------------------------ | --------------------------------------- |
+| `GET /api/spike/run-events/{run_id}` | the persisted, ordered events for a run |
+
 ## Layout
 
 ```
@@ -134,12 +169,13 @@ backend/            FastAPI + DBOS + SQLAlchemy/Alembic (Python package `tvashtr
   tvashtr/          app code: config, db, models, main, routers (FastAPI)
     gateway/        the Model Gateway — the only module importing LiteLLM
     documents/      versioned-document service (Document + DocumentVersion)
+    engines/        EngineAdapter contract + OpenHands adapter + run-event sink
     metering.py     persist a gateway result as an idempotent CostRecord
     control_plane/  durable DBOS workflows (hello_durable, doc_writer)
   alembic/          migrations (owns app tables only)
   tests/            pytest integration + unit tests
 frontend/           Vite + React + TS + Tailwind stub (health indicator)
-scripts/            crash_resume_demo.sh + assertion helper, smoke_gateway.py
+scripts/            crash_resume_demo.sh, smoke_gateway.py, smoke_agent.py
 docker-compose.yml  Postgres 16 (host port 5433)
 Makefile            developer entrypoints
 ```
@@ -157,6 +193,14 @@ Makefile            developer entrypoints
   as token counts *and* computed USD, so the data stays meaningful even when a
   free-tier call legitimately costs `0.0`.
 - **Idempotent writes.** A *completed* DBOS step is exactly-once, but a crash
-  *mid-step* re-runs it — so `CostRecord` and `DocumentVersion` writes derive a
-  deterministic key from the workflow id and insert-or-return, making them safe
-  under at-least-once retries.
+  *mid-step* re-runs it — so `CostRecord`, `DocumentVersion`, and `RunEvent`
+  writes derive a deterministic key and insert-or-return, making them safe under
+  at-least-once retries.
+- **Engine boundary.** Only `tvashtr/engines/openhands_adapter.py` imports
+  `openhands.*`; the Control Plane depends solely on the `EngineAdapter` protocol
+  + Tvashtr engine types. The agent's *internal* LLM calls go through the SDK's own
+  LiteLLM (configured from our `Settings`), not `gateway.complete()` — the gateway
+  remains the path for *direct* completions.
+- **⚠️ Local-unsandboxed agent mode (P0.3).** Agent shell/file tools execute as
+  your user on the real filesystem, confined only to a throwaway
+  `.tvashtr_workspaces/` dir. Dev-only; Docker isolation is planned.

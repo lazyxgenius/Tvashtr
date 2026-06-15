@@ -15,7 +15,7 @@ from sqlalchemy import select
 from tvashtr import db
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.documents.service import get_document_with_versions, list_documents
-from tvashtr.models import CostRecord, Document, DocumentVersion
+from tvashtr.models import CostRecord, Document, DocumentVersion, RunEvent
 
 router = APIRouter()
 
@@ -127,3 +127,28 @@ def get_costs(workflow_id: str | None = None) -> dict:
             stmt = stmt.where(CostRecord.workflow_id == workflow_id)
         rows = session.execute(stmt).scalars().all()
         return {"costs": [_cost_to_dict(r) for r in rows]}
+
+
+@router.get("/api/spike/run-events/{run_id}")
+def get_run_events(run_id: str) -> dict:
+    """Return the persisted, ordered engine events for a run (P0.3)."""
+    with db.session_scope() as session:
+        rows = (
+            session.execute(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)
+            )
+            .scalars()
+            .all()
+        )
+        return {
+            "run_id": run_id,
+            "events": [
+                {
+                    "seq": r.seq,
+                    "kind": r.kind,
+                    "payload": r.payload,
+                    "created_at": r.created_at.isoformat(),
+                }
+                for r in rows
+            ],
+        }
