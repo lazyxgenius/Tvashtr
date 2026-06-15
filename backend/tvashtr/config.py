@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +26,20 @@ class Settings(BaseSettings):
     # hello_durable spike: duration of the durable sleep between step 1 and 2.
     # Overridable via env (HELLO_SLEEP_SECONDS) so tests can shrink it.
     hello_sleep_seconds: float = 10.0
+
+    # Model Gateway (architecture decision D9): a single, provider-agnostic
+    # metering chokepoint over LiteLLM. Model identifiers are free-form
+    # "provider/model" pass-through strings — no enum, the user's choice.
+    # The default routes through OpenRouter (one key reaches Llama/Gemini/GPT/
+    # etc.); on failure the gateway tries ``model_fallbacks`` in order so a
+    # down/ratelimited model transparently fails over.
+    default_model: str = "openrouter/meta-llama/llama-3.1-8b-instruct"
+    model_fallbacks: list[str] = Field(
+        default_factory=lambda: [
+            "openrouter/google/gemini-flash-1.5",
+            "gpt-4o-mini",
+        ]
+    )
 
 
 @lru_cache
