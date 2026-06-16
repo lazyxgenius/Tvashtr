@@ -144,6 +144,9 @@ def test_run_orchestration_reaps_starts_runs_pulls(tmp_path):
     # Container built with the P1.3a knobs; conversation wired to the workspace + a callback.
     assert dw.call_args.kwargs["extra_ports"] is False
     assert dw.call_args.kwargs["platform"] in ("linux/arm64", "linux/amd64")
+    # P1.3b: host_port=None is passed through -> the SDK picks a fresh free port per
+    # container (ephemeral), so crash recovery never races the ~30s host-port release.
+    assert dw.call_args.kwargs["host_port"] is None
     assert conv.call_args.kwargs["workspace"] is ws
     assert len(conv.call_args.kwargs["callbacks"]) == 1
     assert (tmp_path / "greeting.txt").read_text() == "hi"
@@ -153,7 +156,7 @@ def test_run_failure_is_caught_and_reported(tmp_path):
     """A container/agent error becomes status='failed' with the error, not a raise."""
     with (
         patch.object(mod, "reap_agent_containers"),
-        patch.object(mod, "DockerWorkspace", side_effect=RuntimeError("port 8010 not available")),
+        patch.object(mod, "DockerWorkspace", side_effect=RuntimeError("container bring-up failed")),
         patch.object(mod, "LLM"),
         patch.object(mod, "Agent"),
         patch.object(mod, "Tool"),
@@ -164,7 +167,7 @@ def test_run_failure_is_caught_and_reported(tmp_path):
         result = mod.OpenHandsDockerAdapter().run(task)
 
     assert result.status == "failed"
-    assert "port 8010 not available" in (result.error or "")
+    assert "container bring-up failed" in (result.error or "")
     assert result.files_changed == []
 
 

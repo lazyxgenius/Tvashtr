@@ -154,12 +154,13 @@ class OpenHandsDockerAdapter:
         reap_agent_containers()
 
         logger.warning(
-            "OpenHandsDockerAdapter (%s): starting container image=%s port=%s "
-            "platform=%s; host pull-target=%s",
+            "OpenHandsDockerAdapter (%s): starting container image=%s platform=%s "
+            "host_port=%s (None=ephemeral: the SDK picks a fresh free port); "
+            "host pull-target=%s",
             WORKSPACE_MODE,
             settings.agent_server_image,
-            settings.agent_server_host_port,
             platform_str,
+            settings.agent_server_host_port,
             host_dir,
         )
 
@@ -205,6 +206,14 @@ class OpenHandsDockerAdapter:
                 platform=platform_str,
                 extra_ports=False,
             ) as workspace:
+                # Read back the ACTUAL host port the SDK bound. With host_port=None
+                # (ephemeral) the SDK picks a fresh free port at construction, so this
+                # is the only place the real port is known (config now carries None).
+                logger.warning(
+                    "OpenHandsDockerAdapter (%s): container ready on host port=%s",
+                    WORKSPACE_MODE,
+                    workspace.host_port,
+                )
                 # A RemoteWorkspace makes Conversation() return a RemoteConversation
                 # automatically; callbacks stream over the server's WebSocket.
                 conversation = Conversation(

@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke skeleton-run skeleton-run-docker skeleton-crash crash-demo hitl-demo budget-demo lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker crash-demo hitl-demo budget-demo lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -59,6 +59,9 @@ skeleton-run-docker: ## Live CONTAINERIZED run via the Docker sandbox (TVASHTR_A
 
 skeleton-crash: ## Prove the 2-node run resumes across a kill -9 mid agent-run (needs key; skips otherwise)
 	./scripts/skeleton_crash_demo.sh
+
+skeleton-crash-docker: ## Prove crash-resume OVER THE CONTAINER: kill -9 mid-run -> orphan reaped by the boot sweep -> fresh container on a new ephemeral port -> ships exactly once (needs key + Docker + agent-server image; operator-run, P1.3b)
+	./scripts/skeleton_crash_demo_docker.sh
 
 crash-demo: ## Prove durable resume across a kill -9
 	./scripts/crash_resume_demo.sh

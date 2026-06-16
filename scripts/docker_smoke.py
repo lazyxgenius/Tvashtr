@@ -55,6 +55,103 @@ def describe(label, obj) -> None:
         print(f"      (other public attrs: {others})")
 
 
+def reap_lifecycle_phase(settings, platform_str) -> bool:
+    """Ephemeral reap-lifecycle proof (P1.3b) — the one thing the P1.3a smoke never
+    showed: that the ``ancestor=`` reaping filter actually matches a REAL running
+    container, removes it, and a FRESH container then starts cleanly on a DIFFERENT
+    free port with no wait and no collision (the whole point of ephemeral ports —
+    no fixed-port release lag to race). The P1.3a smoke only reaped BEFORE bring-up,
+    so its reap found nothing; this exercises reap against a live container.
+
+    Reaps in a ``finally`` so a container is never left behind, even on an early
+    assertion failure or a mid-bring-up exception. No socket/port-free polling —
+    ephemeral ports remove the need.
+    """
+    from openhands.workspace import DockerWorkspace
+
+    from tvashtr.engines.docker_runtime import (
+        list_agent_containers,
+        reap_agent_containers,
+    )
+
+    print("\n" + "=" * 64)
+    print("[docker-smoke] REAP-LIFECYCLE PHASE (ephemeral) — reap vs a REAL container")
+    print("=" * 64)
+
+    port1 = None
+    ok = False
+    try:
+        # Clean slate so the proof starts from nothing.
+        cleared = reap_agent_containers()
+        print(f"[docker-smoke] reap clean-slate cleared = {cleared}  (expect [] if no leftovers)")
+
+        # (1) Bring up one container as an orphan stand-in (ephemeral host port).
+        print("\n[docker-smoke] (1) bring up an orphan stand-in (host_port=None, ephemeral)…")
+        with DockerWorkspace(
+            server_image=settings.agent_server_image,
+            host_port=None,
+            platform=platform_str,
+            extra_ports=False,
+        ) as ws1:
+            full_id = ws1._container_id or ""  # PrivateAttr: full 64-char docker id
+            port1 = ws1.host_port
+            print(f"[docker-smoke]     up: container_id={full_id[:12]}… host_port={port1}")
+
+            # (2) The ancestor= filter must match the running container. NOTE the
+            # id-width mismatch: `docker run` yields a FULL 64-char id while
+            # list_agent_containers (`docker ps -aq`) yields SHORT 12-char ids — so
+            # match by PREFIX (full.startswith(short)), not equality.
+            listed = list_agent_containers()
+            matched = any(full_id.startswith(short) for short in listed if short)
+            print(f"[docker-smoke] (2) list_agent_containers() = {listed}")
+            print(f"[docker-smoke]     ancestor= filter matches the live container = {matched}")
+            if not matched:
+                raise AssertionError("ancestor= filter did NOT match the running container")
+
+            # (3) Reap -> our container is removed and the list goes empty
+            # (`docker rm -f` is synchronous).
+            reaped = reap_agent_containers()
+            reaped_ours = any(full_id.startswith(short) for short in reaped if short)
+            after = list_agent_containers()
+            print(f"[docker-smoke] (3) reap_agent_containers() removed = {reaped}")
+            print(f"[docker-smoke]     removed OUR container = {reaped_ours}; list now = {after}")
+            if not reaped_ours or after:
+                raise AssertionError("reap did not remove the container / list not empty")
+            # Already removed out from under the context manager — null the id so the
+            # `with` __exit__ (docker stop) is a harmless no-op.
+            ws1._container_id = None
+
+        # (4) A FRESH container comes up cleanly on a DIFFERENT free port — NO wait,
+        # NO collision (a fixed port here would wedge on the ~30s release of port1).
+        print("\n[docker-smoke] (4) bring up a FRESH container (host_port=None)…")
+        with DockerWorkspace(
+            server_image=settings.agent_server_image,
+            host_port=None,
+            platform=platform_str,
+            extra_ports=False,
+        ) as ws2:
+            port2 = ws2.host_port
+            distinct = port2 != port1
+            print(f"[docker-smoke]     up: host_port={port2}  (prev was {port1})")
+            print(
+                f"[docker-smoke]     fresh container got a DIFFERENT free port = {distinct}; "
+                "no wait, no collision"
+            )
+        ok = True
+    except Exception:
+        print("\n[docker-smoke] reap-lifecycle phase FAILED:")
+        traceback.print_exc()
+        ok = False
+    finally:
+        # Belt-and-suspenders: never leave a container behind on any path.
+        leftover = reap_agent_containers()
+        if leftover:
+            print(f"[docker-smoke] finally: reaped leftover container(s) = {leftover}")
+
+    print(f"\n[docker-smoke] reap-lifecycle OK = {ok}")
+    return ok
+
+
 def main() -> int:
     from openhands.workspace import DockerWorkspace
 
@@ -65,9 +162,12 @@ def main() -> int:
     settings = get_settings()
     platform_str = settings.agent_server_platform or _detect_platform()
 
-    print("[docker-smoke] P1.3a container plumbing smoke — NO LLM spend")
+    print("[docker-smoke] P1.3a/b container plumbing smoke — NO LLM spend")
     print(f"[docker-smoke] image     = {settings.agent_server_image}")
-    print(f"[docker-smoke] host_port = {settings.agent_server_host_port}")
+    print(
+        f"[docker-smoke] host_port = {settings.agent_server_host_port}  "
+        "(None = ephemeral; the SDK picks a fresh free port per container)"
+    )
     print(f"[docker-smoke] platform  = {platform_str}")
 
     # Mirror the adapter's reap-before-start against the REAL docker CLI.
@@ -88,7 +188,10 @@ def main() -> int:
             extra_ports=False,
         ) as ws:
             working_dir = ws.working_dir
-            print(f"[docker-smoke] container up. working_dir = {working_dir!r}\n")
+            print(
+                f"[docker-smoke] container up on host port={ws.host_port} (ephemeral). "
+                f"working_dir = {working_dir!r}\n"
+            )
 
             print("[docker-smoke] (1) execute_command('echo hi && pwd'):")
             r1 = ws.execute_command("echo hi && pwd", cwd=working_dir, timeout=30.0)
@@ -129,12 +232,20 @@ def main() -> int:
         traceback.print_exc()
         return 1
 
-    print("\n[docker-smoke] container torn down (context exit).")
+    print("\n[docker-smoke] pull-seam container torn down (context exit).")
+    print(f"[docker-smoke] pull round-trip OK = {ok_pull}")
+
+    # P1.3b: prove the orphan-reap lifecycle against a REAL running container.
+    reap_ok = reap_lifecycle_phase(settings, platform_str)
+
+    print("\n" + "=" * 64)
+    print(f"[docker-smoke] SUMMARY: pull round-trip OK = {ok_pull}; reap-lifecycle OK = {reap_ok}")
     print(
-        "[docker-smoke] DONE. Now confirm no orphan:  "
+        "[docker-smoke] DONE. Confirm no orphan remains:  "
         "docker ps -a | grep agent-server   (expect empty)"
     )
-    return 0 if ok_pull else 1
+    print("=" * 64)
+    return 0 if (ok_pull and reap_ok) else 1
 
 
 if __name__ == "__main__":

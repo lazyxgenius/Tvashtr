@@ -73,10 +73,20 @@ class Settings(BaseSettings):
     # (1.28.1) names its container ``agent-server-<uuid>`` with no per-run
     # name/label hook, so image-based targeting is the per-brief fallback (DQ2).
     agent_server_image: str = "ghcr.io/openhands/agent-server:latest-python"
-    # Fixed host port the agent-server container binds (container:8000 -> host).
-    # Single-operator runs are serial, so a fixed port + orphan-reaping suffices;
-    # dynamic/ephemeral ports for concurrent runs are a named §15 upgrade.
-    agent_server_host_port: int = 8010
+    # Host port the agent-server container binds (container:8000 -> host). Default
+    # ``None`` = EPHEMERAL: the installed DockerWorkspace picks a fresh free port per
+    # container (``find_available_tcp_port``, range 30000-39999). Why not a fixed
+    # port (P1.3b, superseding P1.3a's fixed 8010): Docker Desktop holds the host
+    # port for ~30s AFTER a container is torn down (``docker rm -f`` returns long
+    # before the host-side forwarder releases it), so a FIXED port wedges crash
+    # recovery (the boot sweep reaps the orphan, then the resumed step can't rebind
+    # the still-held port -> ``RuntimeError: Port .. is not available``) and breaks
+    # back-to-back runs. A fresh port per container sidesteps the release lag
+    # entirely. Reaping stays image-based (``ancestor=``), which is port-independent,
+    # so orphans are still found/removed exactly as before — a fresh container just
+    # gets a new port and never waits on the old one's slow release. Kept as an
+    # optional override knob: set an int to pin a port (e.g. for local debugging).
+    agent_server_host_port: int | None = None
     # Docker image platform; ``None`` auto-detects the host arch (arm64 ->
     # ``linux/arm64``) since the installed SDK has no ``detect_platform`` helper.
     agent_server_platform: Literal["linux/amd64", "linux/arm64"] | None = None
