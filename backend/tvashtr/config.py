@@ -43,11 +43,12 @@ class Settings(BaseSettings):
     )
 
     # Cost caps (P1.2 — §13 Risk 3). Per-run dollar budget, enforced in the
-    # Control Plane. Defaults to ``None`` (opt-in: no cap unless the POST /api/runs
-    # body sets one or this is configured) so existing runs / live targets are
-    # unaffected. A run's ``budget_cap_usd`` is seeded from the request body if
-    # present, else from this value.
-    default_run_budget_usd: Decimal | None = None
+    # Control Plane. Safety-by-default: every run is bounded unless explicitly
+    # uncapped. $5 sits far above a normal run (~$0.002 on the 2-node spine) so it
+    # never bites real work, but caps a genuine runaway. A run's ``budget_cap_usd``
+    # is seeded from the POST /api/runs body if present, else from this value;
+    # set this to ``None`` (or post ``budget_cap_usd: null``) to opt a run out.
+    default_run_budget_usd: Decimal | None = Decimal("5.00")
     # Per-call output ceiling the gateway applies when a request omits
     # ``max_tokens`` (static config, like ``model_fallbacks`` — NOT run state, so
     # the gateway stays a pure request->result function). Callers that set their
