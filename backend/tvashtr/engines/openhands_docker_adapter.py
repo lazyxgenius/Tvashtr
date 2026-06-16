@@ -147,8 +147,10 @@ class OpenHandsDockerAdapter:
         host_dir = task.workspace_dir
         os.makedirs(host_dir, exist_ok=True)
 
-        # Reap-before-start (DQ2): clear any orphaned agent-server container (and
-        # free the host port) before starting a fresh one. Image-based, so it
+        # Reap-before-start (DQ2): clear any orphaned agent-server container before
+        # starting a fresh one. Pure orphan hygiene now — under P1.3b part-1 ephemeral
+        # host ports the fresh container binds a NEW port, so reaping no longer frees a
+        # port the new container needs (it only removes leftovers). Image-based, so it
         # reaps all agent-server containers — correct for serial single-operator
         # runs (see docker_runtime).
         reap_agent_containers()
