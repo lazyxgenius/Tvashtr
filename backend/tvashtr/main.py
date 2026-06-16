@@ -3,7 +3,14 @@
 ``DBOS(fastapi=app, ...)`` wires ``DBOS.launch()`` into FastAPI startup. On
 launch, DBOS recovers any PENDING workflows assigned to this executor — that is
 what makes ``hello_durable`` resume after a ``kill -9``.
+
+The ``lifespan`` runs the agent-server orphan sweep (docker sandbox mode only)
+*before* that recovery: DBOS launches on ``lifespan.startup.complete``, which is
+emitted only after the lifespan's startup phase, so the sweep precedes any resumed
+``engineer_run_step`` (P1.3a, DQ2).
 """
+
+from contextlib import asynccontextmanager
 
 from dbos import DBOS, DBOSConfig
 from fastapi import FastAPI
@@ -13,12 +20,26 @@ from sqlalchemy import select
 from tvashtr import db
 from tvashtr.config import get_settings
 from tvashtr.control_plane.hello_durable import hello_durable
+from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
 from tvashtr.models import SpikeHelloEvent
 from tvashtr.routers import router as api_router
 
 settings = get_settings()
 
-app = FastAPI(title="Tvashtr Control Plane", version="0.0.1")
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Reap orphaned agent-server containers (docker sandbox mode only) before DBOS
+    recovers any PENDING run, so a resumed agent step starts on a clean container +
+    a free host port (P1.3a, DQ2). No-op in the default ``local`` mode, and a no-op
+    (warn only) if docker is unavailable — so startup stays ``openhands``-free and
+    robust on any host."""
+    if settings.agent_sandbox_mode == "docker":
+        sweep_orphaned_agent_containers()
+    yield
+
+
+app = FastAPI(title="Tvashtr Control Plane", version="0.0.1", lifespan=_lifespan)
 
 _dbos_config: DBOSConfig = {
     "name": settings.dbos_app_name,

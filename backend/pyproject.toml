@@ -14,6 +14,7 @@ dependencies = [
     "litellm==1.89.0",
     "openhands-sdk==1.28.1",
     "openhands-tools==1.28.1",
+    "openhands-workspace==1.28.1",
 ]
 
 [project.optional-dependencies]

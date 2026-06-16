@@ -20,6 +20,7 @@ import uuid
 from dbos import DBOS
 from sqlalchemy import select, update
 
+from tvashtr.config import get_settings
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
@@ -99,17 +100,29 @@ def engineer_run_step(run_id: str, prd_text: str, workspace: str, eng_model: str
     with session_scope() as session:
         session.add(EngineerRunAttempt(run_id=run_id, pid=os.getpid()))
 
+    # Happy-path correctness instruction (DQ3): a relative path keeps the deliverable
+    # in the working dir so it ships. The security justification is dropped — in
+    # docker mode the container, not the prompt, is the boundary; in local mode this
+    # is plain "land it where the ship can find it" (containment is P1.3's job, not
+    # the prompt's).
     instruction = (
         "Read the following PRD and create exactly the file it specifies, with exactly "
-        "the specified contents. Create it in the current working directory using a "
-        "RELATIVE path — the bare filename only (e.g. 'greeting.txt'); if the PRD shows "
-        "a path with a leading '/' or './', ignore that prefix and create the file "
-        "relative to the current directory. Do not add any extra files and do not "
-        "modify anything else.\n\n--- PRD ---\n"
+        "the specified contents. Write the deliverable into your current working "
+        "directory using a RELATIVE path (the bare filename, e.g. 'greeting.txt') so it "
+        "can be shipped; if the PRD shows a leading '/' or './', treat it as relative to "
+        "your working directory. Do not add any extra files and do not modify anything "
+        "else.\n\n--- PRD ---\n"
         f"{prd_text}"
     )
     task = AgentTask(instruction=instruction, workspace_dir=workspace, model=eng_model)
-    adapter = resolve_adapter("openhands")  # lazy openhands import happens here
+    # Select local vs Docker-sandboxed engine from the configured sandbox mode
+    # (P1.3a, DQ4). Default "local" keeps the proven path; "docker" routes through
+    # the containerized adapter. The EngineAdapter contract + AgentRunResult shape
+    # are identical across modes; reap-before-start lives inside the docker adapter.
+    engine_name = (
+        "openhands-docker" if get_settings().agent_sandbox_mode == "docker" else "openhands"
+    )
+    adapter = resolve_adapter(engine_name)  # lazy openhands import happens here
     result = adapter.run(task, on_event=make_run_event_sink(run_id))
     return {
         "status": result.status,

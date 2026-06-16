@@ -2,8 +2,9 @@
 
 from decimal import Decimal
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -54,6 +55,31 @@ class Settings(BaseSettings):
     # the gateway stays a pure request->result function). Callers that set their
     # own ``max_tokens`` (e.g. the PM's 400) are unaffected.
     default_max_tokens_per_call: int | None = 4096
+
+    # Agent execution sandbox (P1.3 — §13 top safety item: the DEMONSTRATED
+    # write-escape). ``local`` = the in-process local-unsandboxed workspace (P0.3,
+    # the proven default); ``docker`` = the OpenHands Agent Server in a Docker
+    # container (real containment). P1.3a lands the docker path but keeps the
+    # DEFAULT ``local`` — the flip to ``docker`` is P1.3b, after containment +
+    # crash-resume are proven over the container. Override per-process with the env
+    # var ``TVASHTR_AGENT_SANDBOX`` (e.g. ``TVASHTR_AGENT_SANDBOX=docker``).
+    agent_sandbox_mode: Literal["local", "docker"] = Field(
+        default="local",
+        validation_alias=AliasChoices("TVASHTR_AGENT_SANDBOX", "agent_sandbox_mode"),
+    )
+    # The prebuilt OpenHands agent-server image the docker path runs (heavy:
+    # VSCode/VNC baked in — started with extra_ports=False). Orphan-reaping targets
+    # containers from this image (``ancestor=``): the installed DockerWorkspace
+    # (1.28.1) names its container ``agent-server-<uuid>`` with no per-run
+    # name/label hook, so image-based targeting is the per-brief fallback (DQ2).
+    agent_server_image: str = "ghcr.io/openhands/agent-server:latest-python"
+    # Fixed host port the agent-server container binds (container:8000 -> host).
+    # Single-operator runs are serial, so a fixed port + orphan-reaping suffices;
+    # dynamic/ephemeral ports for concurrent runs are a named §15 upgrade.
+    agent_server_host_port: int = 8010
+    # Docker image platform; ``None`` auto-detects the host arch (arm64 ->
+    # ``linux/arm64``) since the installed SDK has no ``detect_platform`` helper.
+    agent_server_platform: Literal["linux/amd64", "linux/arm64"] | None = None
 
 
 @lru_cache
