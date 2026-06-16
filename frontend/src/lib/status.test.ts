@@ -77,6 +77,19 @@ describe("deriveNodeStatus", () => {
     ).toBe("done");
   });
 
+  it("Engineer is STOPPED (not failed, not idle) on an over_budget run", () => {
+    // over_budget returns normally so workflow_status is SUCCESS — must read stopped.
+    const run = mkRun({ status: "over_budget", pm_document_id: "d1", ship_tag: null });
+    expect(deriveNodeStatus("engineer", run, "SUCCESS")).toBe("stopped");
+  });
+
+  it("PM is stopped on over_budget with no doc, but done once it has one", () => {
+    expect(deriveNodeStatus("pm", mkRun({ status: "over_budget" }), "SUCCESS")).toBe("stopped");
+    expect(
+      deriveNodeStatus("pm", mkRun({ status: "over_budget", pm_document_id: "d1" }), "SUCCESS"),
+    ).toBe("done");
+  });
+
   it("a GENUINE failure still reads failed, not stopped", () => {
     // explicit run failure
     expect(
@@ -120,6 +133,12 @@ describe("deriveOverall", () => {
     expect(overall.label).not.toBe("Shipped");
   });
 
+  it("OVER_BUDGET reads 'Over budget', never 'Shipped' (workflow_status is SUCCESS)", () => {
+    const overall = deriveOverall(mkRun({ status: "over_budget" }), "SUCCESS");
+    expect(overall).toEqual({ tone: "failed", label: "Over budget" });
+    expect(overall.label).not.toBe("Shipped");
+  });
+
   it("maps a failed run -> Failed", () => {
     expect(deriveOverall(mkRun({ status: "failed" }), "ERROR")).toEqual({
       tone: "failed",
@@ -147,8 +166,8 @@ describe("deriveOverall", () => {
 });
 
 describe("isRunTerminal", () => {
-  it("treats completed / failed / rejected / cancelled as terminal", () => {
-    for (const status of ["completed", "failed", "rejected", "cancelled"]) {
+  it("treats completed / failed / rejected / cancelled / over_budget as terminal", () => {
+    for (const status of ["completed", "failed", "rejected", "cancelled", "over_budget"]) {
       expect(isRunTerminal(mkRun({ status }), "PENDING")).toBe(true);
     }
   });

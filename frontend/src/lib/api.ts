@@ -32,7 +32,7 @@ export interface RunRow {
   id: string;
   team_graph_id: string;
   idea: string;
-  // pending | running | awaiting_human | completed | failed | rejected | cancelled
+  // pending | running | awaiting_human | completed | failed | rejected | cancelled | over_budget
   status: string;
   pm_document_id: string | null;
   ship_commit_sha: string | null;

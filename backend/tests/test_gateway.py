@@ -71,7 +71,11 @@ def test_complete_falls_back_to_next_model_on_failure(monkeypatch):
     monkeypatch.setattr(gw.litellm, "completion", fake_completion)
     monkeypatch.setattr(gw.litellm, "completion_cost", lambda **kw: 0.0)
     # Deterministic fallback list, independent of real config.
-    monkeypatch.setattr(gw, "get_settings", lambda: SimpleNamespace(model_fallbacks=["second/up"]))
+    monkeypatch.setattr(
+        gw,
+        "get_settings",
+        lambda: SimpleNamespace(model_fallbacks=["second/up"], default_max_tokens_per_call=None),
+    )
 
     request = CompletionRequest(
         model="primary/down",
@@ -85,3 +89,42 @@ def test_complete_falls_back_to_next_model_on_failure(monkeypatch):
     assert result.text == "served by the fallback"
     assert result.model_requested == "primary/down"
     assert result.model_used == "second/up"
+
+
+def test_default_max_tokens_applied_only_when_request_omits_it(monkeypatch):
+    """P1.2 DP-D: the gateway applies ``default_max_tokens_per_call`` when a request
+    omits ``max_tokens``; an explicit caller value is left untouched."""
+    captured: dict = {}
+
+    def fake_completion(*, model, messages, **kwargs):
+        captured.clear()
+        captured["model"] = model
+        captured.update(kwargs)
+        return _canned_response("ok", model)
+
+    monkeypatch.setattr(gw.litellm, "completion", fake_completion)
+    monkeypatch.setattr(gw.litellm, "completion_cost", lambda **kw: 0.0)
+    monkeypatch.setattr(
+        gw,
+        "get_settings",
+        lambda: SimpleNamespace(model_fallbacks=[], default_max_tokens_per_call=1234),
+    )
+
+    # Request omits max_tokens -> the configured default is applied.
+    complete(CompletionRequest(model="m/x", messages=[{"role": "user", "content": "hi"}]))
+    assert captured["max_tokens"] == 1234
+
+    # Caller's explicit max_tokens wins (the default is NOT applied).
+    complete(
+        CompletionRequest(model="m/x", messages=[{"role": "user", "content": "hi"}], max_tokens=400)
+    )
+    assert captured["max_tokens"] == 400
+
+    # With no request value AND no configured default, no max_tokens is sent.
+    monkeypatch.setattr(
+        gw,
+        "get_settings",
+        lambda: SimpleNamespace(model_fallbacks=[], default_max_tokens_per_call=None),
+    )
+    complete(CompletionRequest(model="m/x", messages=[{"role": "user", "content": "hi"}]))
+    assert "max_tokens" not in captured

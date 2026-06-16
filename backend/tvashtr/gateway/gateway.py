@@ -59,12 +59,18 @@ def complete(request: CompletionRequest) -> CompletionResult:
     Raises ``GatewayError`` only if *every* candidate model fails.
     """
     last_error: Exception | None = None
+    # Apply the configured per-call output ceiling when the caller didn't set one
+    # (static config, like the fallback list — NOT run state, so the gateway stays
+    # a pure request->result function).
+    max_tokens = request.max_tokens
+    if max_tokens is None:
+        max_tokens = get_settings().default_max_tokens_per_call
     for model in _ordered_models(request):
         kwargs: dict = {"model": model, "messages": request.messages}
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
-        if request.max_tokens is not None:
-            kwargs["max_tokens"] = request.max_tokens
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
 
         started = time.perf_counter()
         try:

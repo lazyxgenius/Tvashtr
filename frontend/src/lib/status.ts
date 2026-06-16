@@ -7,7 +7,11 @@ export type NodeStatus = "idle" | "running" | "paused" | "done" | "stopped" | "f
 const WORKFLOW_FAILED = new Set(["ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"]);
 const WORKFLOW_TERMINAL = new Set(["SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"]);
 // Terminal run statuses (run.status is authoritative): once here, polling stops.
-const RUN_TERMINAL = new Set(["completed", "failed", "rejected", "cancelled"]);
+const RUN_TERMINAL = new Set(["completed", "failed", "rejected", "cancelled", "over_budget"]);
+// Run terminals that are a muted, concluded "Stopped" (not a red failure) at the
+// node level: a human rejection (rejected), the kill switch (cancelled), or a
+// budget hard-stop (over_budget). Checked before the failed-fold.
+const RUN_STOPPED = new Set(["rejected", "cancelled", "over_budget"]);
 
 /** Stop polling once the run can no longer change. ``awaiting_human`` is NOT
  *  terminal — the gate keeps the run alive while it waits for a human. */
@@ -21,10 +25,10 @@ export function isRunTerminal(run: RunRow | null, workflowStatus: string | null)
  * gate). The Engineer is ``paused`` while the run waits at the PRD gate
  * (``awaiting_human``); the PM is already ``done`` (its document exists).
  *
- * A node that didn't finish because the run was rejected/cancelled is `stopped`
- * (muted, concluded) — checked right after "done" and BEFORE the failed fold, so
- * a `cancelled` run (whose `workflowStatus` is the failed-folding `CANCELLED`)
- * reads `stopped`, not `failed`.
+ * A node that didn't finish because the run was rejected/cancelled/over_budget is
+ * `stopped` (muted, concluded) — checked right after "done" and BEFORE the failed
+ * fold, so a `cancelled` run (whose `workflowStatus` is the failed-folding
+ * `CANCELLED`) reads `stopped`, not `failed`.
  *
  * `workflowStatus` folds a workflow-level ERROR/CANCELLED/MAX into "failed", so a
  * no-key run (where `pm_step` raises and `run.status` lags at "running") still
@@ -41,7 +45,7 @@ export function deriveNodeStatus(
 
   if (role === "pm") {
     if (run.pm_document_id) return "done";
-    if (run.status === "rejected" || run.status === "cancelled") return "stopped";
+    if (RUN_STOPPED.has(run.status)) return "stopped";
     if (failed) return "failed";
     if (run.status === "running") return "running";
     return "idle";
@@ -49,7 +53,7 @@ export function deriveNodeStatus(
 
   // engineer
   if (run.ship_tag) return "done";
-  if (run.status === "rejected" || run.status === "cancelled") return "stopped";
+  if (RUN_STOPPED.has(run.status)) return "stopped";
   if (failed) return "failed";
   if (run.status === "awaiting_human" && run.pm_document_id) return "paused";
   if (run.pm_document_id && run.status === "running") return "running";
@@ -80,6 +84,8 @@ export function deriveOverall(
       return { tone: "failed", label: "Rejected" };
     case "cancelled":
       return { tone: "failed", label: "Cancelled" };
+    case "over_budget":
+      return { tone: "failed", label: "Over budget" };
     case "failed":
       return { tone: "failed", label: "Failed" };
   }

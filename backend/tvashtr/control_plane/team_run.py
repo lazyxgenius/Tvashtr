@@ -18,8 +18,9 @@ import os
 import uuid
 
 from dbos import DBOS
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 
+from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
 from tvashtr.db import session_scope
@@ -28,8 +29,8 @@ from tvashtr.engines.base import AgentTask
 from tvashtr.engines.registry import resolve_adapter
 from tvashtr.engines.run_event_sink import make_run_event_sink
 from tvashtr.gateway import CompletionRequest, complete
-from tvashtr.metering import record_agent_cost, record_cost
-from tvashtr.models import AgentNode, CostRecord, EngineerRunAttempt, Run
+from tvashtr.metering import record_agent_cost, record_cost, running_cost
+from tvashtr.models import AgentNode, EngineerRunAttempt, Run
 
 
 @DBOS.step()
@@ -150,14 +151,14 @@ def ship_step(run_id: str, workspace: str) -> dict:
 
 @DBOS.step()
 def finalize_run_step(run_id: str, status: str = "completed") -> dict:
-    """Mark the run terminal (default ``completed``; ``rejected`` when a human
-    rejects the gate) and total its cost rows (idempotent aggregate)."""
+    """Mark the run terminal and total its cost rows (idempotent aggregate).
+
+    ``status`` defaults to ``completed``; the workflow passes ``rejected`` (human
+    rejected the PRD gate) or ``over_budget`` (human rejected a budget breach).
+    The terminal total reuses the shared ``running_cost`` query — the same one
+    ``budget_check_step`` reads in flight."""
+    total = running_cost(run_id)
     with session_scope() as session:
-        total = session.execute(
-            select(func.coalesce(func.sum(CostRecord.cost_usd), 0)).where(
-                CostRecord.workflow_id == run_id
-            )
-        ).scalar_one()
         session.execute(
             update(Run)
             .where(Run.id == uuid.UUID(run_id))
@@ -170,6 +171,40 @@ def finalize_run_step(run_id: str, status: str = "completed") -> dict:
 def mark_run_failed_step(run_id: str) -> None:
     with session_scope() as session:
         session.execute(update(Run).where(Run.id == uuid.UUID(run_id)).values(status="failed"))
+
+
+def enforce_budget(run_id: str, *, checkpoint: str, description: str) -> bool:
+    """Reactive, between-steps budget enforcement (DP-C). Check accumulated prior
+    spend and gate the *next* step; on a breach, open a high-priority blocker and
+    wait. Call from a **workflow body** — it issues ``wait_at_gate`` (a
+    ``DBOS.recv``), which must run in workflow context, not nested in a step.
+
+    Returns ``True`` if the human **rejected** the breach (the caller must finalize
+    the run ``over_budget`` and stop) and ``False`` to continue — either under
+    budget, or the human approved (which records the override via
+    ``mark_budget_overridden_step`` so the rest of the run is not re-gated:
+    "approve = continue to completion").
+    """
+    check = budget_check_step(run_id)
+    if not check["over"]:
+        return False
+
+    spent, cap = check["spent"], check["cap"]
+    title = f"Over budget: ${spent:.4f} of ${cap:.4f} — approve to continue, reject to stop"
+    gate = wait_at_gate(
+        run_id,
+        topic=f"budget:{run_id}:{checkpoint}",
+        kind="budget_approval",
+        priority="high_blocker",
+        blocking=True,
+        title=title,
+        description=description,
+    )
+    if gate["resolution"] == "rejected":
+        DBOS.logger.info(f"run_team over_budget rejected at {checkpoint} run_id={run_id}")
+        return True
+    mark_budget_overridden_step(run_id)
+    return False
 
 
 @DBOS.workflow()
@@ -204,6 +239,26 @@ def run_team(idea: str) -> dict:
             "cost_total": final["cost_total_usd"],
         }
 
+    # Budget checkpoint 1 (DP-C): before the Engineer runs. Reactive on the PM's
+    # accumulated spend; a breach pauses as a high-priority blocker.
+    if enforce_budget(
+        run_id,
+        checkpoint="pre-engineer",
+        description=(
+            "The run is over budget before the Engineer runs. Approve to continue "
+            "(the rest of the run will not be re-gated), or reject to stop without "
+            "building."
+        ),
+    ):
+        final = finalize_run_step(run_id, status="over_budget")
+        DBOS.logger.info(f"run_team over_budget (pre-engineer) run_id={run_id}")
+        return {
+            "run_id": run_id,
+            "status": "over_budget",
+            "document_id": pm["document_id"],
+            "cost_total": final["cost_total_usd"],
+        }
+
     workspace = engineer_setup_step(run_id)
     engineer = engineer_run_step(run_id, pm["prd_text"], workspace, config["eng_model"])
 
@@ -213,6 +268,27 @@ def run_team(idea: str) -> dict:
         return {"run_id": run_id, "status": "failed", "error": engineer.get("error")}
 
     persist_agent_cost_step(run_id, config["eng_model"], engineer)
+
+    # Budget checkpoint 2 (DP-C): after the agent's spend is recorded, before
+    # shipping. The agent's own LLM loop bills inside one step and can't be
+    # interrupted mid-flight (that's P1.4's proxy), so we catch its spend here.
+    if enforce_budget(
+        run_id,
+        checkpoint="pre-ship",
+        description=(
+            "The agent's run exceeded the budget. Approve to ship the completed "
+            "work, or reject to stop without shipping."
+        ),
+    ):
+        final = finalize_run_step(run_id, status="over_budget")
+        DBOS.logger.info(f"run_team over_budget (pre-ship) run_id={run_id}")
+        return {
+            "run_id": run_id,
+            "status": "over_budget",
+            "document_id": pm["document_id"],
+            "cost_total": final["cost_total_usd"],
+        }
+
     ship = ship_step(run_id, workspace)
     final = finalize_run_step(run_id)
 

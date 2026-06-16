@@ -7,6 +7,7 @@ API to ORM/gateway types.
 
 import os
 import uuid
+from decimal import Decimal
 from typing import Literal
 
 from dbos import DBOS, SetWorkflowID
@@ -15,6 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, update
 
 from tvashtr import db
+from tvashtr.config import get_settings
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.team_run import run_team
 from tvashtr.control_plane.teams import build_two_node_team
@@ -31,7 +33,7 @@ from tvashtr.models import (
 )
 
 # Run statuses that are already terminal: a kill switch must not clobber them.
-_TERMINAL_RUN_STATUSES = ("completed", "failed", "rejected")
+_TERMINAL_RUN_STATUSES = ("completed", "failed", "rejected", "over_budget")
 # Map the resolve API's decision verb to the durable resolution recorded on the task.
 _DECISION_TO_RESOLUTION = {"approve": "approved", "reject": "rejected"}
 
@@ -48,6 +50,9 @@ class StartResponse(BaseModel):
 
 class CreateRunRequest(BaseModel):
     idea: str | None = None
+    # Per-run dollar cap (P1.2). When omitted, falls back to
+    # ``Settings.default_run_budget_usd`` (itself ``None`` = no cap by default).
+    budget_cap_usd: Decimal | None = None
 
 
 class ResolveTaskRequest(BaseModel):
@@ -214,6 +219,11 @@ def create_run(body: CreateRunRequest) -> dict:
     team_graph_id = build_two_node_team()
     run_id = str(uuid.uuid4())
 
+    # Per-run cap: the request body wins, else the configured default (P1.2 DP-A).
+    cap = body.budget_cap_usd
+    if cap is None:
+        cap = get_settings().default_run_budget_usd
+
     with db.session_scope() as session:
         session.add(
             Run(
@@ -222,6 +232,7 @@ def create_run(body: CreateRunRequest) -> dict:
                 idea=idea,
                 workflow_id=run_id,
                 status="running",
+                budget_cap_usd=cap,
             )
         )
 

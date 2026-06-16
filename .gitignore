@@ -34,3 +34,6 @@ frontend/dist/
 
 # ---- Logs / tmp ----
 *.log
+
+# ---- Playwright MCP (browser-gate artifacts: snapshots, screenshots, console logs) ----
+.playwright-mcp/

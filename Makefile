@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke skeleton-run skeleton-crash crash-demo hitl-demo lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke skeleton-run skeleton-crash crash-demo hitl-demo budget-demo lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -62,6 +62,9 @@ crash-demo: ## Prove durable resume across a kill -9
 
 hitl-demo: ## Live HitL gate demo: approve->ship + cancel-at-gate->no-resurrect (needs key; skips otherwise)
 	./scripts/hitl_demo.sh
+
+budget-demo: ## Live budget cap demo: tiny per-run cap -> breach -> auto-approve -> ship (needs key; skips otherwise)
+	./scripts/budget_demo.sh
 
 lint: ## ruff check + format check
 	cd backend && uv run ruff check . && uv run ruff format --check .

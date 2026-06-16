@@ -7,12 +7,30 @@ an at-least-once DBOS step re-run after a crash does not double-count cost.
 
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from tvashtr.db import session_scope
 from tvashtr.gateway import CompletionResult
 from tvashtr.models import CostRecord
+
+
+def running_cost(run_id: str) -> Decimal:
+    """Live running total of a run's metered spend — a query, NOT a stored field.
+
+    ``COALESCE(SUM(cost_records.cost_usd), 0) WHERE workflow_id == run_id``. The
+    single source of a run's accrued cost, shared by ``finalize_run_step`` (the
+    terminal total) and ``budget_check_step`` (the in-flight cap check). The
+    ``Run`` row keeps no running total — ``cost_total_usd`` is written only at
+    finalize, so this query is the one source of truth for accrued spend.
+    """
+    with session_scope() as session:
+        total = session.execute(
+            select(func.coalesce(func.sum(CostRecord.cost_usd), 0)).where(
+                CostRecord.workflow_id == run_id
+            )
+        ).scalar_one()
+    return Decimal(total)
 
 
 def record_cost(

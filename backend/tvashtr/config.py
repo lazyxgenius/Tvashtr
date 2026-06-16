@@ -1,5 +1,6 @@
 """Application settings, loaded from the environment / a gitignored .env file."""
 
+from decimal import Decimal
 from functools import lru_cache
 
 from pydantic import Field
@@ -40,6 +41,18 @@ class Settings(BaseSettings):
             "gpt-4o-mini",
         ]
     )
+
+    # Cost caps (P1.2 — §13 Risk 3). Per-run dollar budget, enforced in the
+    # Control Plane. Defaults to ``None`` (opt-in: no cap unless the POST /api/runs
+    # body sets one or this is configured) so existing runs / live targets are
+    # unaffected. A run's ``budget_cap_usd`` is seeded from the request body if
+    # present, else from this value.
+    default_run_budget_usd: Decimal | None = None
+    # Per-call output ceiling the gateway applies when a request omits
+    # ``max_tokens`` (static config, like ``model_fallbacks`` — NOT run state, so
+    # the gateway stays a pure request->result function). Callers that set their
+    # own ``max_tokens`` (e.g. the PM's 400) are unaffected.
+    default_max_tokens_per_call: int | None = 4096
 
 
 @lru_cache

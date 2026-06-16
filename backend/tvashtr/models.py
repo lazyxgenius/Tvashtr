@@ -19,6 +19,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    false,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -205,9 +206,10 @@ class Run(Base):
     ``status`` is free Text (no enum migration). The documented vocabulary is:
     ``pending`` / ``running`` (in flight) ; ``awaiting_human`` (paused at a
     blocking gate, P1.1a) ; the terminals ``completed`` (shipped), ``failed``
-    (engine error), ``rejected`` (a human rejected a gate — no ship), and
+    (engine error), ``rejected`` (a human rejected a gate — no ship),
     ``cancelled`` (kill switch — ``DBOS.cancel_workflow`` + this status; NOT
-    resurrected by recovery)."""
+    resurrected by recovery), and ``over_budget`` (a human rejected a budget
+    breach at a cap — no ship, P1.2)."""
 
     __tablename__ = "runs"
 
@@ -217,7 +219,7 @@ class Run(Base):
     )
     idea: Mapped[str] = mapped_column(Text, nullable=False)
     workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
-    # pending|running|awaiting_human|completed|failed|rejected|cancelled  (see docstring)
+    # pending|running|awaiting_human|completed|failed|rejected|cancelled|over_budget
     status: Mapped[str] = mapped_column(Text, nullable=False)
     pm_document_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("documents.id"), nullable=True
@@ -225,6 +227,15 @@ class Run(Base):
     ship_commit_sha: Mapped[str | None] = mapped_column(Text, nullable=True)
     ship_tag: Mapped[str | None] = mapped_column(Text, nullable=True)
     cost_total_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    # Per-run dollar cap (P1.2). NULL = no cap (enforcement is opt-in). The live
+    # running total is a query (``metering.running_cost``), NOT a stored field —
+    # ``cost_total_usd`` above stays finalize-only.
+    budget_cap_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    # Set True when a human approves a budget breach ("approve = continue to
+    # completion") so the rest of the run is not re-gated.
+    budget_overridden: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
