@@ -115,7 +115,7 @@ the non-negotiable safety net)
   (WebSocket is the named P1.6 upgrade).
 - **Verify, don't assume.** Check fast-moving SDK facts against the installed
   package (e.g. DBOS against `.venv/.../dbos/`). Trust the disk, not a summary.
-- **Migrations are high-blast-radius.** They are sequential (next is `0007`).
+- **Migrations are high-blast-radius.** They are sequential (next is `0008`).
   Generate them, but **never treat a migration as silently "done"** — list every
   migration prominently in the report's Human-checks section for an eyeball.
 
