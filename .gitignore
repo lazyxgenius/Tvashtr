@@ -37,3 +37,6 @@ frontend/dist/
 
 # ---- Playwright MCP (browser-gate artifacts: snapshots, screenshots, console logs) ----
 .playwright-mcp/
+
+# ---- tvashtr-loop scratch (ephemeral resume state; durable record is §17 + the loop report) ----
+.tvashtr/
