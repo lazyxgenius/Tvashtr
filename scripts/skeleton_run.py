@@ -84,6 +84,19 @@ def main() -> int:
         have_pm_cost = f"{run_id}:pm-llm" in keys
         have_agent_cost = f"{run_id}:agent-cost" in keys
 
+        # Run-event feed (the on_event seam): in docker mode the agent's events ride
+        # back over the Agent Server WebSocket, so a non-zero count is the P1.3a proof
+        # that streaming works over the container — not just the post-run usage read.
+        ev_r = client.get(f"/api/spike/run-events/{run_id}")
+        ev_resp = ev_r.json() if ev_r.status_code == 200 else {}
+        ev_list = ev_resp.get("events", ev_resp) if isinstance(ev_resp, dict) else ev_resp
+        if not isinstance(ev_list, list):
+            ev_list = []
+        ev_kinds: dict[str, int] = {}
+        for e in ev_list:
+            k = e.get("kind", "?") if isinstance(e, dict) else "?"
+            ev_kinds[k] = ev_kinds.get(k, 0) + 1
+
         print("\n================= SKELETON RUN RESULT =================")
         print(f"run_id           = {run_id}")
         print(f"workflow_status  = {final['workflow_status']}")
@@ -102,6 +115,8 @@ def main() -> int:
             )
         print(f"\n--- committed {TARGET_FILE} (via git show {ship_tag}:{TARGET_FILE}) ---")
         print(repr(committed))
+        print("\n--- run events (streamed via on_event) ---")
+        print(f"  count = {len(ev_list)}  kinds = {ev_kinds}")
 
         ok = (
             run.get("status") == "completed"

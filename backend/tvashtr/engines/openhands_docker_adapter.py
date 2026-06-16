@@ -53,6 +53,16 @@ logger = logging.getLogger("tvashtr.engines.openhands_docker")
 
 WORKSPACE_MODE = "docker-sandboxed"
 
+# The OpenHands Agent Server persists its OWN internal state under the container's
+# working dir — the bash tool's event store (``bash_events/``) and the conversation
+# /event log (``conversations/``). Those are server scaffolding, NOT the agent's
+# deliverable, so the DQ1 pull excludes any file under them. Confirmed live in P1.3a:
+# a real run left ``greeting.txt`` alongside BOTH dirs. The in-process local adapter
+# never produces them (it runs the SDK in-process, no agent server), which is the
+# asymmetry this filter exists to close. (If a later SDK / a new tool adds another
+# server store, extend this set — tracked as a §15 refinement.)
+_SERVER_SCAFFOLDING_DIRS = frozenset({"bash_events", "conversations"})
+
 
 def _detect_platform() -> str:
     """Map the host arch to a Docker ``--platform`` string. The installed SDK has
@@ -93,8 +103,13 @@ def _pull_workspace(workspace, host_dir: str) -> list[str]:
     for line in listing.stdout.splitlines():
         # Strip only the leading "./" — preserve any spaces within the filename.
         rel = line[2:] if line.startswith("./") else line
-        if rel:
-            rels.append(rel)
+        if not rel:
+            continue
+        # Drop the agent server's own scaffolding (its top-level dir is server-owned,
+        # not a deliverable) so it is never pulled or shipped into the user's commit.
+        if rel.split("/", 1)[0] in _SERVER_SCAFFOLDING_DIRS:
+            continue
+        rels.append(rel)
 
     pulled: list[str] = []
     for rel in sorted(set(rels)):

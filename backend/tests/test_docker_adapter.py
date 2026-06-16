@@ -48,6 +48,38 @@ def test_pull_workspace_downloads_each_nonhidden_file(tmp_path):
     assert "/workspace/sub/data.txt" in srcs
 
 
+def test_pull_workspace_excludes_server_scaffolding(tmp_path):
+    # The agent server persists bash_events/ + conversations/ under the working dir
+    # (confirmed live in P1.3a). Those are scaffolding, not the deliverable, and must
+    # not be pulled/shipped — the in-process local adapter never creates them.
+    ws = MagicMock()
+    ws.working_dir = "/workspace"
+    ws.execute_command.return_value = MagicMock(
+        stdout=(
+            "./greeting.txt\n"
+            "./bash_events/20260616_BashCommand_abc\n"
+            "./bash_events/20260616_BashOutput_abc\n"
+            "./conversations/sess-1/events.jsonl\n"
+        ),
+        exit_code=0,
+    )
+
+    def fake_download(src, dest):
+        with open(dest, "w") as f:  # _pull_workspace makes the parent dir first
+            f.write("x")
+        return MagicMock(success=True)
+
+    ws.file_download.side_effect = fake_download
+    pulled = mod._pull_workspace(ws, str(tmp_path))
+
+    assert pulled == ["greeting.txt"]
+    assert (tmp_path / "greeting.txt").exists()
+    assert not (tmp_path / "bash_events").exists()
+    assert not (tmp_path / "conversations").exists()
+    # only the deliverable was downloaded — the scaffolding never reached file_download
+    assert ws.file_download.call_count == 1
+
+
 def test_pull_workspace_skips_failed_download(tmp_path):
     ws = MagicMock()
     ws.working_dir = "/workspace"
