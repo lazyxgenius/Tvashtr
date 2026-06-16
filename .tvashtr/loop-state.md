@@ -29,7 +29,7 @@
 | 17 | Browser functional gate (over_budget banner + Stopped node, mocked) | done |
 | 18 | Independent review pass → zero blocking (1 demo-script bug fixed) | done |
 | 19 | Deferred items + doc drafts (§15/§17) | done |
-| 20 | Commit on branch (un-merged) | in-progress |
+| 20 | Commit on branch (un-merged) — de52159 | done |
 
 ## Notes
 - Design is locked (DP-A–D). No one-way-door deviations expected; halt if any arise.
