@@ -30,7 +30,7 @@ from openhands.sdk.event import (
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.terminal import TerminalTool
 
-from tvashtr.config import get_settings
+from tvashtr.config import agent_llm_routing, get_settings
 from tvashtr.engines.base import AgentRunResult, AgentTask, EngineEvent
 
 logger = logging.getLogger("tvashtr.engines.openhands")
@@ -146,10 +146,6 @@ class OpenHandsAdapter:
     def run(self, task: AgentTask, on_event=None) -> AgentRunResult:
         settings = get_settings()
         model = task.model or settings.default_model
-        # Single source of truth for the key: the same OPENROUTER_API_KEY the
-        # gateway/LiteLLM use (exported from .env by the Makefile). No second
-        # config path; the SDK's LiteLLM authenticates the openrouter/* model.
-        api_key = os.environ.get("OPENROUTER_API_KEY")
 
         os.makedirs(task.workspace_dir, exist_ok=True)
         logger.warning(
@@ -178,7 +174,16 @@ class OpenHandsAdapter:
             if on_event is not None:
                 on_event(event)
 
-        llm = LLM(model=model, api_key=api_key, temperature=0.0, usage_id="tvashtr-agent")
+        # P1.4a: route the agent's own LLM through the LiteLLM proxy when enabled (the
+        # physical spend chokepoint). OFF by default -> the EXACT prior direct path (bare
+        # slug + OPENROUTER_API_KEY, no base_url). local mode runs in-process on the host,
+        # so the proxy (when on) is reached at 127.0.0.1. The PM/gateway path is NOT routed
+        # here. ``agent_llm_routing`` owns model/api_key/base_url; we add temperature/usage_id.
+        llm = LLM(
+            **agent_llm_routing(settings, model, "local"),
+            temperature=0.0,
+            usage_id="tvashtr-agent",
+        )
         agent = Agent(
             llm=llm,
             tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],

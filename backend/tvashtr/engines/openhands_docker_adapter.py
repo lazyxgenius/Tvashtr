@@ -35,7 +35,7 @@ from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.terminal import TerminalTool
 from openhands.workspace import DockerWorkspace
 
-from tvashtr.config import get_settings
+from tvashtr.config import agent_llm_routing, get_settings
 from tvashtr.engines.base import AgentRunResult, AgentTask, EngineEvent
 from tvashtr.engines.docker_runtime import reap_agent_containers
 
@@ -134,11 +134,6 @@ class OpenHandsDockerAdapter:
     def run(self, task: AgentTask, on_event=None) -> AgentRunResult:
         settings = get_settings()
         model = task.model or settings.default_model
-        # Same single OPENROUTER_API_KEY as the local path: it travels in the agent
-        # *config* (the SDK serializes the LLM, secrets exposed, to the server which
-        # makes the calls) — NOT the container env. The container needs egress to
-        # OpenRouter (default). Confirmed against the installed SDK.
-        api_key = os.environ.get("OPENROUTER_API_KEY")
         platform_str = settings.agent_server_platform or _detect_platform()
 
         # ``task.workspace_dir`` is the HOST dir (created + git-init'd by
@@ -187,7 +182,20 @@ class OpenHandsDockerAdapter:
             if on_event is not None:
                 on_event(event)
 
-        llm = LLM(model=model, api_key=api_key, temperature=0.0, usage_id="tvashtr-agent")
+        # P1.4a: route the agent's own LLM through the LiteLLM proxy when enabled. OFF by
+        # default -> the EXACT prior direct path (bare slug + OPENROUTER_API_KEY). The LLM
+        # config (incl. whichever api_key — master key when on, OPENROUTER_API_KEY when off)
+        # is serialized into the agent and the calls are made by the agent-server INSIDE the
+        # container — NOT the container env. So the container needs egress to its target: the
+        # proxy when on, OpenRouter when off. docker mode reaches the proxy at
+        # host.docker.internal (agent_llm_base_url("docker")) because the agent-server
+        # container runs on Docker's DEFAULT BRIDGE (started ad-hoc by DockerWorkspace), NOT
+        # the compose network — the #1 reachability risk, proven by `make proxy-smoke`.
+        llm = LLM(
+            **agent_llm_routing(settings, model, "docker"),
+            temperature=0.0,
+            usage_id="tvashtr-agent",
+        )
         agent = Agent(
             llm=llm,
             tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],

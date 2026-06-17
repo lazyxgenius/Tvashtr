@@ -1,5 +1,6 @@
 """Application settings, loaded from the environment / a gitignored .env file."""
 
+import os
 from decimal import Decimal
 from functools import lru_cache
 from typing import Literal
@@ -94,6 +95,61 @@ class Settings(BaseSettings):
     # Docker image platform; ``None`` auto-detects the host arch (arm64 ->
     # ``linux/arm64``) since the installed SDK has no ``detect_platform`` helper.
     agent_server_platform: Literal["linux/amd64", "linux/arm64"] | None = None
+
+    # LiteLLM proxy (P1.4a — the agent-internal spend chokepoint; the per-key budget
+    # cutoff is P1.4b). **OPT-IN.** When OFF (the default) the agent's LLM is built
+    # EXACTLY as before (direct OpenRouter), so the offline suite + no-key demos are
+    # byte-for-byte unaffected. When ON, the OpenHands agent's own LLM calls route
+    # through the proxy (a docker-compose sibling to Postgres) — the physical endpoint
+    # all that traffic flows through. The PM/gateway path is NOT routed here in 4a.
+    litellm_proxy_enabled: bool = False
+    # Host port the proxy publishes (LiteLLM default 4000; Postgres is on 5433, no clash).
+    litellm_proxy_port: int = 4000
+    # The host the agent reaches the proxy at, chosen by sandbox mode (see
+    # ``agent_llm_base_url``): docker mode runs the agent INSIDE an ad-hoc container on
+    # Docker's default bridge (started by ``DockerWorkspace``, NOT on the compose
+    # network), so it reaches the host-published proxy port via ``host.docker.internal``;
+    # local mode runs in-process on the host, so ``127.0.0.1``.
+    litellm_proxy_host_local: str = "127.0.0.1"
+    litellm_proxy_host_docker: str = "host.docker.internal"
+    # The proxy master key (env ``LITELLM_MASTER_KEY``); the agent presents it as its
+    # api_key when the proxy is on. ``None`` when unset (proxy off / not configured).
+    litellm_master_key: str | None = None
+
+    def agent_llm_base_url(self, sandbox_mode: str) -> str:
+        """The proxy base URL the agent's LLM points at, chosen by THIS run's sandbox
+        mode. ``docker`` -> ``host.docker.internal`` (the agent-server container is on
+        Docker's default bridge, not the compose network, so it reaches the host-published
+        proxy port via the Docker-Desktop host alias); anything else (``local``) ->
+        ``127.0.0.1`` (the agent runs in-process on the host)."""
+        host = (
+            self.litellm_proxy_host_docker
+            if sandbox_mode == "docker"
+            else self.litellm_proxy_host_local
+        )
+        return f"http://{host}:{self.litellm_proxy_port}"
+
+
+def agent_llm_routing(settings: Settings, model: str, sandbox_mode: str) -> dict:
+    """Resolve the agent LLM's routing kwargs (model / api_key [/ base_url]).
+
+    Proxy ON  -> route through the LiteLLM proxy: model ``litellm_proxy/<slug>`` (the
+                 litellm client convention that targets a proxy endpoint), the master
+                 key, and ``base_url`` = the mode-aware proxy URL.
+    Proxy OFF -> today's EXACT direct path: the bare slug + ``OPENROUTER_API_KEY`` and NO
+                 ``base_url`` — byte-for-byte unchanged so offline/no-key behavior is
+                 unaffected.
+
+    The adapter adds ``temperature``/``usage_id``; this owns only the routing kwargs, so
+    both adapters share one verified decision (kept here, openhands-free, so it is unit-
+    testable without spinning an agent and the import boundary is untouched)."""
+    if settings.litellm_proxy_enabled:
+        return {
+            "model": f"litellm_proxy/{model}",
+            "api_key": settings.litellm_master_key,
+            "base_url": settings.agent_llm_base_url(sandbox_mode),
+        }
+    return {"model": model, "api_key": os.environ.get("OPENROUTER_API_KEY")}
 
 
 @lru_cache

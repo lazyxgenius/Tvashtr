@@ -19,5 +19,79 @@ services:
       timeout: 3s
       retries: 30
 
+  # P1.4a: create the separate `litellm` logical database the proxy uses, if absent.
+  # The litellm-database image runs Prisma migrations on boot to create its TABLES, but
+  # the DATABASE itself must pre-exist — and our pgdata volume predates this service, so a
+  # first-init script in /docker-entrypoint-initdb.d would never run. This one-shot is
+  # idempotent and volume-state-independent: it creates `litellm` only when missing, then
+  # exits. The app/tests keep using `tvashtr`; no collision.
+  litellm-db-init:
+    image: postgres:16
+    container_name: tvashtr-litellm-db-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-tvashtr}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-tvashtr}
+    command:
+      # Race/retry-safe: try createdb (ignore "already exists"), then ASSERT the db is
+      # present (the assert is the exit status). A genuine createdb failure that leaves the
+      # db missing -> non-zero -> correctly blocks the proxy; a benign duplicate -> the
+      # assert still passes. Idempotent on every up.
+      - sh
+      - -c
+      - createdb litellm 2>/dev/null; psql -tc "SELECT 1 FROM pg_database WHERE datname='litellm'" | grep -q 1
+    restart: "no"
+
+  # P1.4a: the LiteLLM proxy — the physical chokepoint the OpenHands agent's own LLM
+  # calls flow through when TVASHTR's litellm_proxy_enabled is on (4a wires + reachability;
+  # the per-key budget cutoff is 4b). Image PINNED by multi-arch digest (NOT a moving tag)
+  # for reproducible runs; the `-database` variant auto-runs its Prisma migrations on boot.
+  litellm:
+    image: ghcr.io/berriai/litellm-database:main-stable@sha256:0e8dfd691ceeb660dc43165bb6205ea92921b2cf80f08f4bfd2efd237c23b938
+    container_name: tvashtr-litellm
+    depends_on:
+      postgres:
+        condition: service_healthy
+      litellm-db-init:
+        condition: service_completed_successfully
+    environment:
+      # Admin/auth key + the agent's api_key when the proxy is on. Local-dev default
+      # mirrors POSTGRES_PASSWORD above; OVERRIDE via .env (LITELLM_MASTER_KEY) for
+      # anything non-local. Surfaced in the report's Human-checks.
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-tvashtr-local-dev}
+      # Same Postgres instance, separate `litellm` database (in-network host:port = 5432,
+      # not the host-published 5433). The proxy creates its own tables here on boot.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tvashtr}:${POSTGRES_PASSWORD:-tvashtr}@postgres:5432/litellm
+      # Provider keys passed through from .env (absent -> those routes 401 if ever called;
+      # never exercised on the offline/no-key path).
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    # Host 4000 -> container 4000 (LiteLLM default; no clash — Postgres is on 5433). Bound on
+    # ALL interfaces (not 127.0.0.1) ON PURPOSE: the docker-mode agent reaches this published
+    # port from its ad-hoc container via host.docker.internal:4000 (the #1 reachability risk
+    # proven by `make proxy-smoke`), and Docker-Desktop's host gateway needs a non-loopback
+    # binding to forward there. PROTECTION is the master key — set a strong LITELLM_MASTER_KEY
+    # (don't ship the local-dev default beyond your machine); same posture as Postgres' 5433.
+    # (Tightening to a loopback binding if host.docker.internal proves to reach it is a §15
+    # hardening, deferred — it is Docker-Desktop-version-dependent.)
+    ports:
+      - "4000:4000"
+    healthcheck:
+      # Documented liveness endpoint (unauthenticated). Exec form (python is on the image's
+      # PATH) avoids shell-quoting and a curl dependency the slim image may lack.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=3).status==200 else 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 60s
+
 volumes:
   tvashtr_pgdata:

@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker containment-smoke containment-demo crash-demo hitl-demo budget-demo lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker containment-smoke containment-demo crash-demo hitl-demo budget-demo lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -19,16 +19,23 @@ setup: ## Install backend (uv) and frontend (npm) dependencies
 	cd backend && uv sync --extra dev
 	cd frontend && npm install
 
-db-up: ## Start Postgres and wait until healthy
+db-up: ## Start Postgres + the LiteLLM proxy and wait until healthy (postgres hard-gates tests; the proxy warns-not-fails so an offline run is never wedged)
 	docker compose up -d
 	@echo "waiting for postgres to be ready..."
 	@for i in $$(seq 1 30); do \
 		if docker compose exec -T postgres pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) >/dev/null 2>&1; then \
-			echo "postgres ready"; exit 0; \
+			echo "postgres ready"; break; \
 		fi; \
+		if [ $$i -eq 30 ]; then echo "postgres did not become ready in time" >&2; exit 1; fi; \
 		sleep 1; \
+	done
+	@echo "waiting for the litellm proxy to be healthy (P1.4a)..."
+	@for i in $$(seq 1 60); do \
+		health=$$(docker inspect -f '{{.State.Health.Status}}' tvashtr-litellm 2>/dev/null || echo missing); \
+		if [ "$$health" = "healthy" ]; then echo "litellm proxy healthy"; exit 0; fi; \
+		sleep 2; \
 	done; \
-	echo "postgres did not become ready in time" >&2; exit 1
+	echo "WARNING: litellm proxy not healthy yet — postgres is up so tests can run. See 'docker compose logs litellm'; 'make proxy-smoke' asserts it." >&2
 
 db-down: ## Stop Postgres (keeps the named volume)
 	docker compose down
@@ -50,6 +57,9 @@ smoke: ## Live gateway smoke — one real LLM call (needs OPENROUTER_API_KEY; sk
 
 agent-smoke: ## Live OpenHands agent smoke — trivial task in a local workspace (needs key; skips otherwise)
 	cd backend && uv run python ../scripts/smoke_agent.py
+
+proxy-smoke: ## Live LiteLLM-proxy plumbing smoke (P1.4a): host->proxy + container->host.docker.internal + 1 cheap completion if keyed (operator-run; needs the proxy up + Docker; skips cleanly otherwise)
+	cd backend && uv run python ../scripts/proxy_smoke.py
 
 skeleton-run: ## Live 2-node skeleton run, LOCAL sandbox: PM -> Engineer ships a file (needs key; skips otherwise)
 	cd backend && TVASHTR_AGENT_SANDBOX=local TVASHTR_AUTO_APPROVE_GATES=1 uv run python ../scripts/skeleton_run.py
