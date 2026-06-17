@@ -36,16 +36,27 @@ class EngineEvent:
 class AgentTask:
     """A unit of work handed to an engine: an instruction plus the local working
     directory the agent may touch. ``model`` is an optional override; when None
-    the adapter uses Tvashtr's configured default."""
+    the adapter uses Tvashtr's configured default.
+
+    ``llm_api_key`` (P1.4b) is an optional per-run credential threaded into the agent's
+    LLM as its api_key — the per-run LiteLLM **virtual key** (minted with a ``max_budget``)
+    when the proxy is on, so the proxy enforces the run's budget mid-call. ``None`` (the
+    default) ⇒ the adapter builds the LLM exactly as before (proxy master key, or
+    ``OPENROUTER_API_KEY`` when the proxy is off)."""
 
     instruction: str
     workspace_dir: str
     model: str | None = None
+    llm_api_key: str | None = None
 
 
 @dataclass(frozen=True)
 class AgentRunResult:
-    status: Literal["completed", "failed"]
+    # ``over_budget`` (P1.4b): the run was cut off mid-call by the proxy enforcing the
+    # per-run virtual key's budget — distinct from a generic ``failed`` (the adapter
+    # classifies the proxy's budget error). The Control Plane finalizes such a run
+    # ``over_budget`` (no ship), reusing P1.2's terminal status.
+    status: Literal["completed", "failed", "over_budget"]
     summary: str
     events: list[EngineEvent]
     files_changed: list[str]

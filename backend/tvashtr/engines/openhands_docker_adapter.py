@@ -44,6 +44,7 @@ from tvashtr.engines.docker_runtime import reap_agent_containers
 # duplicated; the local adapter's own ``run()`` is untouched.
 from tvashtr.engines.openhands_adapter import (
     _MAX_ITERATIONS,
+    _is_budget_error,
     _kind_of,
     _payload_of,
     _read_usage,
@@ -191,8 +192,13 @@ class OpenHandsDockerAdapter:
         # host.docker.internal (agent_llm_base_url("docker")) because the agent-server
         # container runs on Docker's DEFAULT BRIDGE (started ad-hoc by DockerWorkspace), NOT
         # the compose network — the #1 reachability risk, proven by `make proxy-smoke`.
+        # P1.4b: ``task.llm_api_key`` (the per-run virtual key, minted with a max_budget) is
+        # threaded in as the agent's api_key so the proxy cuts the agent off mid-call at the
+        # run's budget. It is serialized into the agent-server INSIDE the container along with
+        # the rest of the LLM config (the container reaches the proxy at host.docker.internal).
+        # None (proxy off / no key) -> byte-for-byte as 4a.
         llm = LLM(
-            **agent_llm_routing(settings, model, "docker"),
+            **agent_llm_routing(settings, model, "docker", api_key_override=task.llm_api_key),
             temperature=0.0,
             usage_id="tvashtr-agent",
         )
@@ -207,6 +213,7 @@ class OpenHandsDockerAdapter:
         completion_tokens = 0
         cost_usd = 0.0
         files_changed: list[str] = []
+        conversation = None
         try:
             # Constructing DockerWorkspace starts the container (pull/run/health);
             # __exit__ tears it down (docker stop; the image is run with --rm).
@@ -240,12 +247,25 @@ class OpenHandsDockerAdapter:
                 # DQ1: pull the agent's files to the host before teardown.
                 files_changed = _pull_workspace(workspace, host_dir)
         except Exception as exc:
-            status = "failed"
+            # P1.4b: classify the proxy's mid-call budget cutoff as ``over_budget`` (else a
+            # generic ``failed``). Best-effort partial-usage read on the cutoff path (Task 0.5);
+            # in docker mode the container is torn down as the ``with`` exits, so the remote
+            # conversation may no longer report metrics — _read_usage then cleanly yields 0s
+            # (the proxy's server-side budget is the authoritative cutoff regardless).
+            status = "over_budget" if _is_budget_error(exc) else "failed"
             error = str(exc)
-            logger.exception("OpenHandsDockerAdapter run failed")
+            if status == "over_budget" and conversation is not None:
+                prompt_tokens, completion_tokens, cost_usd = _read_usage(conversation)
+            logger.exception(
+                "OpenHandsDockerAdapter run cut off over budget"
+                if status == "over_budget"
+                else "OpenHandsDockerAdapter run failed"
+            )
 
         total_tokens = prompt_tokens + completion_tokens
-        if any(e.kind == "error" for e in collected):
+        # Only the success path is downgraded by error events; never clobber a classified
+        # ``failed``/``over_budget`` from the except block (P1.4b: preserve the cutoff status).
+        if status == "completed" and any(e.kind == "error" for e in collected):
             status = "failed"
 
         n_action = sum(1 for e in collected if e.kind == "action")

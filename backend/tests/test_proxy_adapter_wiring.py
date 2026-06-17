@@ -26,9 +26,9 @@ def _fake_conversation():
     return convo
 
 
-def _run_local(settings, tmp_path):
+def _run_local(settings, tmp_path, llm_api_key=None):
     """Drive the LOCAL adapter to the LLM construction with everything mocked; return the
-    kwargs LLM() was called with."""
+    kwargs LLM() was called with. ``llm_api_key`` (P1.4b) rides into the task."""
     with (
         patch.object(local_mod, "get_settings", return_value=settings),
         patch.object(local_mod, "LLM") as LLM,
@@ -38,12 +38,17 @@ def _run_local(settings, tmp_path):
         patch.object(local_mod, "FileEditorTool"),
         patch.object(local_mod, "Conversation", return_value=_fake_conversation()),
     ):
-        task = AgentTask(instruction="x", workspace_dir=str(tmp_path), model="openrouter/m")
+        task = AgentTask(
+            instruction="x",
+            workspace_dir=str(tmp_path),
+            model="openrouter/m",
+            llm_api_key=llm_api_key,
+        )
         local_mod.OpenHandsAdapter().run(task)
     return LLM.call_args.kwargs
 
 
-def _run_docker(settings, tmp_path):
+def _run_docker(settings, tmp_path, llm_api_key=None):
     """Drive the DOCKER adapter just past the LLM construction (DockerWorkspace raises
     immediately after, so no container is needed); return the LLM() kwargs."""
     with (
@@ -56,7 +61,12 @@ def _run_docker(settings, tmp_path):
         patch.object(docker_mod, "TerminalTool"),
         patch.object(docker_mod, "FileEditorTool"),
     ):
-        task = AgentTask(instruction="x", workspace_dir=str(tmp_path), model="openrouter/m")
+        task = AgentTask(
+            instruction="x",
+            workspace_dir=str(tmp_path),
+            model="openrouter/m",
+            llm_api_key=llm_api_key,
+        )
         docker_mod.OpenHandsDockerAdapter().run(task)
     return LLM.call_args.kwargs
 
@@ -118,3 +128,90 @@ def test_docker_on_routes_through_proxy_at_host_docker_internal(tmp_path, monkey
         "temperature": 0.0,
         "usage_id": "tvashtr-agent",
     }
+
+
+# --- P1.4b: thread the per-run key + classify the proxy's budget cutoff ---
+
+
+def test_adapters_thread_the_per_run_key_as_the_agent_api_key(tmp_path, monkeypatch):
+    # When the proxy is ON and the task carries a per-run virtual key, BOTH adapters use that
+    # key as the agent's api_key (not the master key) so the proxy enforces the run's budget.
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    settings = Settings(_env_file=None, litellm_proxy_enabled=True, litellm_master_key="sk-master")
+    for runner in (_run_local, _run_docker):
+        kwargs = runner(settings, tmp_path, llm_api_key="sk-run-vkey")
+        assert kwargs["api_key"] == "sk-run-vkey"
+        assert kwargs["model"] == "litellm_proxy/openrouter/m"
+
+
+class _FakeProxyRateLimitError(Exception):
+    """Stand-in for what the agent's client raises on the proxy budget cutoff — CAPTURED LIVE:
+    the client wraps the proxy's 429 as litellm.RateLimitError, message-identical to this."""
+
+    def __init__(self):
+        super().__init__(
+            "litellm.RateLimitError: RateLimitError: Litellm_proxyException - "
+            "Budget has been exceeded! Current cost: 3.15e-06, Max budget: 1e-09"
+        )
+
+
+def test_is_budget_error_true_on_the_captured_signature():
+    assert local_mod._is_budget_error(_FakeProxyRateLimitError()) is True
+
+
+def test_is_budget_error_true_on_message_variants():
+    for msg in (
+        "ExceededBudget: Key over 30m budget. Spend=$0.10, Limit=$0.05",
+        "Litellm_proxyException - type: budget_exceeded",
+        "User=u1 over budget. Spend=1.0, Budget=0.5",
+    ):
+        assert local_mod._is_budget_error(Exception(msg)) is True
+
+
+def test_is_budget_error_true_on_raw_server_type_name():
+    # Belt-and-suspenders: the server-side type, should a client ever surface it directly.
+    class BudgetExceededError(Exception):
+        pass
+
+    assert local_mod._is_budget_error(BudgetExceededError("anything")) is True
+
+
+def test_is_budget_error_false_on_generic_and_real_ratelimit():
+    # A real failure / network error / genuine rate-limit must NEVER be misclassified.
+    assert local_mod._is_budget_error(RuntimeError("boom")) is False
+    assert local_mod._is_budget_error(ConnectionError("connection refused")) is False
+    assert (
+        local_mod._is_budget_error(Exception("RateLimitError: rate limit exceeded, retry")) is False
+    )
+
+
+def _run_local_result(settings, tmp_path, *, run_side_effect):
+    """Drive the LOCAL adapter to completion with conversation.run() raising; return the
+    AgentRunResult (to assert the classified status)."""
+    convo = _fake_conversation()
+    convo.run.side_effect = run_side_effect
+    with (
+        patch.object(local_mod, "get_settings", return_value=settings),
+        patch.object(local_mod, "LLM"),
+        patch.object(local_mod, "Agent"),
+        patch.object(local_mod, "Tool"),
+        patch.object(local_mod, "TerminalTool"),
+        patch.object(local_mod, "FileEditorTool"),
+        patch.object(local_mod, "Conversation", return_value=convo),
+    ):
+        task = AgentTask(instruction="x", workspace_dir=str(tmp_path), model="openrouter/m")
+        return local_mod.OpenHandsAdapter().run(task)
+
+
+def test_adapter_classifies_budget_cutoff_as_over_budget(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    settings = Settings(_env_file=None, litellm_proxy_enabled=False)
+    result = _run_local_result(settings, tmp_path, run_side_effect=_FakeProxyRateLimitError())
+    assert result.status == "over_budget"
+
+
+def test_adapter_classifies_generic_error_as_failed(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    settings = Settings(_env_file=None, litellm_proxy_enabled=False)
+    result = _run_local_result(settings, tmp_path, run_side_effect=RuntimeError("boom"))
+    assert result.status == "failed"

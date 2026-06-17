@@ -23,6 +23,7 @@ from sqlalchemy import select, update
 from tvashtr.config import get_settings
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.gates import wait_at_gate
+from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
 from tvashtr.db import session_scope
 from tvashtr.documents.service import create_document_with_initial_version
@@ -91,9 +92,74 @@ def engineer_setup_step(run_id: str) -> str:
     return workspace
 
 
+# P1.4b: per-run virtual-key lifecycle constants.
+# TTL on the minted key — the crash-robust floor (no teardown step can be skipped by a crash;
+# orphan keys self-clean). 30m comfortably outlives a single engineer run.
+_VKEY_TTL = "30m"
+# A tiny positive floor for the key's max_budget so a run that passed the pre-engineer gate
+# (spent <= cap, so remaining >= 0) always mints a USABLE key the agent can at least start with
+# — never a zero/negative budget that would reject call #1 before the run even begins.
+_VKEY_MIN_BUDGET_USD = 1e-6
+
+
 @DBOS.step()
-def engineer_run_step(run_id: str, prd_text: str, workspace: str, eng_model: str) -> dict:
-    """The ONE coarse step wrapping the agent run. No commit / no cost write here."""
+def mint_vkey_step(run_id: str) -> str | None:
+    """Mint a per-run LiteLLM virtual key whose ``max_budget`` is the run's REMAINING budget,
+    so the proxy cuts the agent off **mid-call** at the cap (P1.4b). Returns the key value, or
+    ``None`` when the proxy is off (then the agent uses ``OPENROUTER_API_KEY`` exactly as today).
+
+    Budget = ``cap − running_cost(run_id)`` at mint time (after the PM has run, so the PM's
+    spend is already counted) — one per-run cap enforced from two angles (this proxy cutoff
+    mid-step + P1.2's between-steps gate), no double-count. Two uncapped-key guards: a run a
+    human already approved over budget (``budget_overridden``), or one with no cap
+    (``budget_cap_usd is None``), mints with **no** ``max_budget``.
+
+    Idempotency is provided by DBOS step-output checkpointing — a completed step replays its
+    recorded key on resume (no re-mint). The narrow in-step crash window (key minted on the
+    proxy but the output not yet recorded → a resume re-mints, orphaning the first key)
+    self-cleans via the key TTL — the same accepted class as the ship commit/tag window."""
+    settings = get_settings()
+    if not settings.litellm_proxy_enabled:
+        return None
+    with session_scope() as session:
+        run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
+        cap = run.budget_cap_usd
+        overridden = run.budget_overridden
+    if overridden or cap is None:
+        max_budget: float | None = None  # uncapped key (human-approved breach, or no cap)
+    else:
+        remaining = float(cap) - float(running_cost(run_id))
+        max_budget = max(remaining, _VKEY_MIN_BUDGET_USD)
+    result = mint_virtual_key(max_budget=max_budget, duration=_VKEY_TTL)
+    key = result.get("key")
+    if not key:
+        # Fail CLOSED: a mint that returned no usable key would otherwise fall back to the
+        # master key in ``agent_llm_routing`` -> an UNCAPPED run. For a budget-enforcement
+        # step, refuse rather than run unbudgeted. (Not reachable against the pinned proxy —
+        # a 200 from /key/generate always carries "key" — this is defense-in-depth.)
+        raise RuntimeError("proxy /key/generate returned no 'key'; refusing to run unbudgeted")
+    return key
+
+
+@DBOS.step()
+def delete_vkey_step(run_id: str, key: str | None) -> None:
+    """Best-effort immediate invalidation of the per-run key right after the agent runs. A
+    no-op when ``key is None`` (proxy off). Never raises — the key's TTL backstops a skipped
+    or failed delete, so this adds no correctness dependency (P1.4b Q5)."""
+    if key is None:
+        return
+    delete_virtual_key(key)
+
+
+@DBOS.step()
+def engineer_run_step(
+    run_id: str, prd_text: str, workspace: str, eng_model: str, vkey: str | None
+) -> dict:
+    """The ONE coarse step wrapping the agent run. No commit / no cost write here.
+
+    ``vkey`` (P1.4b) is the per-run virtual key (or None when the proxy is off); it rides into
+    the agent's LLM as its api_key via ``AgentTask.llm_api_key``. The returned ``status`` may
+    now be ``"over_budget"`` (the proxy cut the agent off mid-call) — passed through unchanged."""
     # Attempt log — intentionally NOT idempotent: one row per execution. A
     # crash-then-resume re-runs this whole step, yielding a second row with a
     # different pid (the observable proof the agent step re-executed).
@@ -114,7 +180,9 @@ def engineer_run_step(run_id: str, prd_text: str, workspace: str, eng_model: str
         "else.\n\n--- PRD ---\n"
         f"{prd_text}"
     )
-    task = AgentTask(instruction=instruction, workspace_dir=workspace, model=eng_model)
+    task = AgentTask(
+        instruction=instruction, workspace_dir=workspace, model=eng_model, llm_api_key=vkey
+    )
     # Select local vs Docker-sandboxed engine from the configured sandbox mode
     # (P1.3a, DQ4). Default "local" keeps the proven path; "docker" routes through
     # the containerized adapter. The EngineAdapter contract + AgentRunResult shape
@@ -273,7 +341,30 @@ def run_team(idea: str) -> dict:
         }
 
     workspace = engineer_setup_step(run_id)
-    engineer = engineer_run_step(run_id, pm["prd_text"], workspace, config["eng_model"])
+    # P1.4b: mint the per-run virtual key (proxy on) right before the engineer, AFTER the
+    # pre-engineer gate so `remaining > 0` is guaranteed unless the run is uncapped/overridden.
+    # The agent runs under that key; the proxy cuts it off mid-call if it blows the budget.
+    vkey = mint_vkey_step(run_id)
+    engineer = engineer_run_step(run_id, pm["prd_text"], workspace, config["eng_model"], vkey)
+    # Best-effort immediate invalidation of the live credential (the key TTL backstops a
+    # skipped/failed delete, so a crash here breaks nothing).
+    delete_vkey_step(run_id, vkey)
+
+    # P1.4b: the proxy cut the agent off MID-CALL at the per-run key budget. Record whatever
+    # partial spend the cut-off conversation carried (best-effort, idempotent) so the ledger
+    # reflects it, then finalize over_budget — no ship. P1.2's between-steps gate never fires
+    # on this path (the proxy cutoff returns first), so the two angles never double-count.
+    if engineer["status"] == "over_budget":
+        if engineer["total_tokens"] or engineer["cost_usd"]:
+            persist_agent_cost_step(run_id, config["eng_model"], engineer)
+        final = finalize_run_step(run_id, status="over_budget")
+        DBOS.logger.info(f"run_team over_budget (proxy mid-loop cutoff) run_id={run_id}")
+        return {
+            "run_id": run_id,
+            "status": "over_budget",
+            "document_id": pm["document_id"],
+            "cost_total": final["cost_total_usd"],
+        }
 
     if engineer["status"] != "completed":
         mark_run_failed_step(run_id)

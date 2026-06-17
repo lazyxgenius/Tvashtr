@@ -10,7 +10,10 @@ from tvashtr.config import Settings, agent_llm_routing
 
 def test_proxy_disabled_by_default(monkeypatch):
     # OPT-IN: off unless explicitly enabled, so offline/no-key behavior is unchanged.
+    # Clear BOTH proxy env vars: `make test` exports the operator's .env (which may enable the
+    # proxy + set a master key for live runs), so this default-assertion must isolate from it.
     monkeypatch.delenv("LITELLM_PROXY_ENABLED", raising=False)
+    monkeypatch.delenv("LITELLM_MASTER_KEY", raising=False)
     s = Settings(_env_file=None)
     assert s.litellm_proxy_enabled is False
     assert s.litellm_proxy_port == 4000
@@ -68,6 +71,37 @@ def test_routing_on_docker_uses_host_docker_internal():
     assert kwargs["model"] == "litellm_proxy/openrouter/x"
     assert kwargs["api_key"] == "sk-master"
     assert kwargs["base_url"] == "http://host.docker.internal:4000"
+
+
+# --- P1.4b: per-run virtual key threaded via api_key_override ---
+
+
+def test_routing_on_uses_api_key_override_as_the_agent_key():
+    # Proxy ON + a per-run virtual key -> the OVERRIDE is the agent's api_key (not the master
+    # key); the master key stays the admin/mint credential. base_url + slug unchanged.
+    s = Settings(_env_file=None, litellm_proxy_enabled=True, litellm_master_key="sk-master")
+    kwargs = agent_llm_routing(s, "openrouter/x", "docker", api_key_override="sk-run-vkey")
+    assert kwargs == {
+        "model": "litellm_proxy/openrouter/x",
+        "api_key": "sk-run-vkey",
+        "base_url": "http://host.docker.internal:4000",
+    }
+
+
+def test_routing_on_without_override_falls_back_to_master_key():
+    # No per-run key minted -> the master key authenticates (a proxy-ON run still works).
+    s = Settings(_env_file=None, litellm_proxy_enabled=True, litellm_master_key="sk-master")
+    kwargs = agent_llm_routing(s, "openrouter/x", "local", api_key_override=None)
+    assert kwargs["api_key"] == "sk-master"
+
+
+def test_routing_off_ignores_api_key_override(monkeypatch):
+    # Proxy OFF: byte-for-byte the direct path regardless of any override passed.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    s = Settings(_env_file=None, litellm_proxy_enabled=False)
+    kwargs = agent_llm_routing(s, "openrouter/x", "docker", api_key_override="sk-run-vkey")
+    assert kwargs == {"model": "openrouter/x", "api_key": "sk-or-test"}
+    assert "base_url" not in kwargs
 
 
 def test_litellm_master_key_from_env(monkeypatch):

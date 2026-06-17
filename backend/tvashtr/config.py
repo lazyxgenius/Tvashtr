@@ -130,15 +130,27 @@ class Settings(BaseSettings):
         return f"http://{host}:{self.litellm_proxy_port}"
 
 
-def agent_llm_routing(settings: Settings, model: str, sandbox_mode: str) -> dict:
+def agent_llm_routing(
+    settings: Settings,
+    model: str,
+    sandbox_mode: str,
+    api_key_override: str | None = None,
+) -> dict:
     """Resolve the agent LLM's routing kwargs (model / api_key [/ base_url]).
 
     Proxy ON  -> route through the LiteLLM proxy: model ``litellm_proxy/<slug>`` (the
-                 litellm client convention that targets a proxy endpoint), the master
-                 key, and ``base_url`` = the mode-aware proxy URL.
+                 litellm client convention that targets a proxy endpoint), ``base_url`` =
+                 the mode-aware proxy URL, and an api_key that is the **per-run virtual key**
+                 (``api_key_override``) when one was minted, else the master key.
     Proxy OFF -> today's EXACT direct path: the bare slug + ``OPENROUTER_API_KEY`` and NO
                  ``base_url`` — byte-for-byte unchanged so offline/no-key behavior is
-                 unaffected.
+                 unaffected (``api_key_override`` is ignored when the proxy is off).
+
+    Why two keys (P1.4b): the **master key** stays the *admin* credential (it authenticates
+    minting/deleting keys); the per-run **virtual key** — minted with a ``max_budget`` — is
+    the agent's api_key, so the proxy enforces the run's remaining budget *mid-call*. When no
+    per-run key was minted (``api_key_override is None``, e.g. proxy on but mint returned
+    nothing), fall back to the master key so a proxy-ON run still authenticates.
 
     The adapter adds ``temperature``/``usage_id``; this owns only the routing kwargs, so
     both adapters share one verified decision (kept here, openhands-free, so it is unit-
@@ -146,7 +158,7 @@ def agent_llm_routing(settings: Settings, model: str, sandbox_mode: str) -> dict
     if settings.litellm_proxy_enabled:
         return {
             "model": f"litellm_proxy/{model}",
-            "api_key": settings.litellm_master_key,
+            "api_key": api_key_override or settings.litellm_master_key,
             "base_url": settings.agent_llm_base_url(sandbox_mode),
         }
     return {"model": model, "api_key": os.environ.get("OPENROUTER_API_KEY")}

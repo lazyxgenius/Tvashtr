@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker containment-smoke containment-demo crash-demo hitl-demo budget-demo lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -87,6 +87,9 @@ hitl-demo: ## Live HitL gate demo: approve->ship + cancel-at-gate->no-resurrect 
 
 budget-demo: ## Live budget cap demo: tiny per-run cap -> breach -> auto-approve -> ship (needs key; skips otherwise)
 	./scripts/budget_demo.sh
+
+proxy-budget-demo: ## Live P1.4b mid-loop cutoff: proxy ON + docker + tiny cap -> per-run virtual key -> proxy errors mid-call -> over_budget, no ship, no budget_approval task (needs key + LITELLM_MASTER_KEY + Docker + the proxy up; operator-run)
+	./scripts/proxy_budget_demo.sh
 
 lint: ## ruff check + format check
 	cd backend && uv run ruff check . && uv run ruff format --check .

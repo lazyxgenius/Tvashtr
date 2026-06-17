@@ -133,6 +133,40 @@ def _read_usage(conversation) -> tuple[int, int, float]:
         return 0, 0, 0.0
 
 
+# P1.4b: substrings that identify the LiteLLM proxy's **per-key budget cutoff** in an
+# exception's message. Pinned to litellm 1.89.0 and CAPTURED LIVE against the pinned proxy
+# image: the proxy raises ``BudgetExceededError`` server-side (HTTP 429) and the agent's
+# client litellm WRAPS that 429 as ``RateLimitError`` — so the exception *type* is NOT a
+# reliable signal (it is ``RateLimitError``, not ``BudgetExceededError``). The budget
+# *message* survives the wrap intact:
+#   "litellm.RateLimitError: ... Litellm_proxyException - Budget has been exceeded! Current
+#    cost: 3.15e-06, Max budget: 1e-09"
+# These cover every litellm 1.89.0 budget message (key / multi-window / user / team / org /
+# tag) plus the proxy error ``type`` field. Match is case-insensitive on ``str(exc)``.
+_BUDGET_ERROR_SIGNATURES = (
+    "budget has been exceeded",  # BudgetExceededError default (the per-key path) — CAPTURED LIVE
+    "exceededbudget",  # "ExceededBudget: Key over <window> budget. ..." (multi-window/user/team)
+    "exceeded budget",  # spacing variant
+    "budget_exceeded",  # ProxyErrorTypes.budget_exceeded — the proxy error `type` in the body
+    "over budget",  # "User=.. over budget. Spend=.." variants
+)
+
+
+def _is_budget_error(exc: Exception) -> bool:
+    """True ONLY for the proxy's per-run budget cutoff (P1.4b); False for every other
+    failure (so a real error is never misclassified as ``over_budget``).
+
+    Matches the budget **message** substring on ``str(exc)`` (robust to the client wrapping
+    the proxy's 429 as ``RateLimitError`` / ``APIError`` / etc. — confirmed live), NOT the
+    status code alone (a generic 429 rate-limit must stay ``failed``). Deliberately does NOT
+    import ``litellm`` — keeps the gateway's litellm monopoly + the import-boundary intact."""
+    text = str(exc).lower()
+    if any(sig in text for sig in _BUDGET_ERROR_SIGNATURES):
+        return True
+    # Belt-and-suspenders: the raw server-side type, should a future client ever surface it.
+    return type(exc).__name__ == "BudgetExceededError"
+
+
 class OpenHandsAdapter:
     """Drive the OpenHands Software Agent SDK behind Tvashtr's ``EngineAdapter``.
 
@@ -179,8 +213,11 @@ class OpenHandsAdapter:
         # slug + OPENROUTER_API_KEY, no base_url). local mode runs in-process on the host,
         # so the proxy (when on) is reached at 127.0.0.1. The PM/gateway path is NOT routed
         # here. ``agent_llm_routing`` owns model/api_key/base_url; we add temperature/usage_id.
+        # P1.4b: ``task.llm_api_key`` is the per-run virtual key (minted with a max_budget) —
+        # threaded in as the agent's api_key so the proxy cuts it off mid-call at the budget;
+        # None (proxy off / no key) -> byte-for-byte as 4a.
         llm = LLM(
-            **agent_llm_routing(settings, model, "local"),
+            **agent_llm_routing(settings, model, "local", api_key_override=task.llm_api_key),
             temperature=0.0,
             usage_id="tvashtr-agent",
         )
@@ -195,6 +232,7 @@ class OpenHandsAdapter:
         prompt_tokens = 0
         completion_tokens = 0
         cost_usd = 0.0
+        conversation = None
         try:
             conversation = Conversation(
                 agent=agent,
@@ -210,15 +248,27 @@ class OpenHandsAdapter:
             # also capture the gateway's direct calls (one shared litellm).
             prompt_tokens, completion_tokens, cost_usd = _read_usage(conversation)
         except Exception as exc:
-            status = "failed"
+            # P1.4b: classify the proxy's mid-call budget cutoff as ``over_budget`` (else a
+            # generic ``failed``). On the cutoff path, best-effort read whatever partial usage
+            # accrued before the proxy cut it off (Task 0.5) so the run's ledger reflects it;
+            # _read_usage is defensive (returns 0s if the conversation has none / isn't ready).
+            status = "over_budget" if _is_budget_error(exc) else "failed"
             error = str(exc)
-            logger.exception("OpenHands run failed")
+            if status == "over_budget" and conversation is not None:
+                prompt_tokens, completion_tokens, cost_usd = _read_usage(conversation)
+            logger.exception(
+                "OpenHands run cut off over budget"
+                if status == "over_budget"
+                else "OpenHands run failed"
+            )
 
         total_tokens = prompt_tokens + completion_tokens
         after = _snapshot(task.workspace_dir)
         files_changed = sorted(p for p in after if before.get(p) != after[p])
 
-        if any(e.kind == "error" for e in collected):
+        # Only the success path is downgraded by error events; never clobber a classified
+        # ``failed``/``over_budget`` from the except block (P1.4b: preserve the cutoff status).
+        if status == "completed" and any(e.kind == "error" for e in collected):
             status = "failed"
 
         n_action = sum(1 for e in collected if e.kind == "action")
