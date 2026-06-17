@@ -51,8 +51,8 @@ smoke: ## Live gateway smoke — one real LLM call (needs OPENROUTER_API_KEY; sk
 agent-smoke: ## Live OpenHands agent smoke — trivial task in a local workspace (needs key; skips otherwise)
 	cd backend && uv run python ../scripts/smoke_agent.py
 
-skeleton-run: ## Live 2-node skeleton run: PM -> Engineer ships a file (needs key; skips otherwise)
-	cd backend && TVASHTR_AUTO_APPROVE_GATES=1 uv run python ../scripts/skeleton_run.py
+skeleton-run: ## Live 2-node skeleton run, LOCAL sandbox: PM -> Engineer ships a file (needs key; skips otherwise)
+	cd backend && TVASHTR_AGENT_SANDBOX=local TVASHTR_AUTO_APPROVE_GATES=1 uv run python ../scripts/skeleton_run.py
 
 skeleton-run-docker: ## Live CONTAINERIZED run via the Docker sandbox (TVASHTR_AGENT_SANDBOX=docker; needs key + Docker + agent-server image; operator-run, P1.3a)
 	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 uv run python ../scripts/skeleton_run.py

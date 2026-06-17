@@ -35,6 +35,9 @@ fi
 # on a human. Exported -> inherited by both uvicorn processes; the workflow reads
 # it inside a recorded step, so the gate decision replays identically post-crash.
 export TVASHTR_AUTO_APPROVE_GATES="${TVASHTR_AUTO_APPROVE_GATES:-1}"
+# P1.3b part 3: the global default is now docker. This is the LOCAL crash proof
+# (the docker counterpart is scripts/skeleton_crash_demo_docker.sh), so pin local.
+export TVASHTR_AGENT_SANDBOX=local
 
 if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
   echo "[skeleton-crash] OPENROUTER_API_KEY not set — skipping. (Not a failure.)"

@@ -57,14 +57,18 @@ class Settings(BaseSettings):
     default_max_tokens_per_call: int | None = 4096
 
     # Agent execution sandbox (P1.3 — §13 top safety item: the DEMONSTRATED
-    # write-escape). ``local`` = the in-process local-unsandboxed workspace (P0.3,
-    # the proven default); ``docker`` = the OpenHands Agent Server in a Docker
-    # container (real containment). P1.3a lands the docker path but keeps the
-    # DEFAULT ``local`` — the flip to ``docker`` is P1.3b, after containment +
-    # crash-resume are proven over the container. Override per-process with the env
-    # var ``TVASHTR_AGENT_SANDBOX`` (e.g. ``TVASHTR_AGENT_SANDBOX=docker``).
+    # write-escape, now PROVEN CONTAINED). ``docker`` = the OpenHands Agent Server in
+    # a Docker container (real containment: least-privilege + the --rm no-bind-mount
+    # boundary, proven in P1.3b part 2); ``local`` = the in-process unsandboxed
+    # workspace (P0.3 — fast, no isolation). DEFAULT is ``docker`` (P1.3b part 3,
+    # safety-by-default like default_run_budget_usd): the product's default run is
+    # contained, and *forgetting* to set the mode lands on the SAFE path. The fast
+    # dev/test agent targets (skeleton-run, skeleton-crash, hitl-demo, budget-demo)
+    # opt out explicitly with ``TVASHTR_AGENT_SANDBOX=local`` — they test
+    # orchestration, not containment. Override per-process with the env var, e.g.
+    # ``TVASHTR_AGENT_SANDBOX=local``.
     agent_sandbox_mode: Literal["local", "docker"] = Field(
-        default="local",
+        default="docker",
         validation_alias=AliasChoices("TVASHTR_AGENT_SANDBOX", "agent_sandbox_mode"),
     )
     # The prebuilt OpenHands agent-server image the docker path runs (heavy:

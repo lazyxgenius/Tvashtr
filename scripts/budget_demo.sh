@@ -45,6 +45,8 @@ fi
 # This demo wants gates auto-approved (the PRD gate AND the budget gate), so the
 # breach resolves itself and the run ships without a human.
 export TVASHTR_AUTO_APPROVE_GATES=1
+# P1.3b part 3: default is docker; this budget demo tests orchestration, not containment.
+export TVASHTR_AGENT_SANDBOX=local
 
 if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
   echo "[budget-demo] OPENROUTER_API_KEY not set — skipping. (Not a failure.)"

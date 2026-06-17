@@ -39,6 +39,8 @@ fi
 # This demo exercises the REAL gate — make sure auto-approve is OFF even if the
 # caller's environment set it (skeleton-run/-crash turn it on; we must not).
 unset TVASHTR_AUTO_APPROVE_GATES || true
+# P1.3b part 3: default is docker; this orchestration demo doesn't need containment.
+export TVASHTR_AGENT_SANDBOX=local
 
 if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
   echo "[hitl-demo] OPENROUTER_API_KEY not set — skipping. (Not a failure.)"
