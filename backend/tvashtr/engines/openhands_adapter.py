@@ -152,18 +152,46 @@ _BUDGET_ERROR_SIGNATURES = (
 )
 
 
-def _is_budget_error(exc: Exception) -> bool:
-    """True ONLY for the proxy's per-run budget cutoff (P1.4b); False for every other
-    failure (so a real error is never misclassified as ``over_budget``).
+def _text_has_budget_signature(text: str) -> bool:
+    """True if any LiteLLM proxy budget-cutoff signature appears in ``text`` (case-insensitive).
+    The single substring test, factored out so it can be run against ANY error surface — the
+    exception string (local mode) AND the docker-mode ConversationErrorEvent detail."""
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(sig in lowered for sig in _BUDGET_ERROR_SIGNATURES)
 
-    Matches the budget **message** substring on ``str(exc)`` (robust to the client wrapping
-    the proxy's 429 as ``RateLimitError`` / ``APIError`` / etc. — confirmed live), NOT the
-    status code alone (a generic 429 rate-limit must stay ``failed``). Deliberately does NOT
-    import ``litellm`` — keeps the gateway's litellm monopoly + the import-boundary intact."""
-    text = str(exc).lower()
-    if any(sig in text for sig in _BUDGET_ERROR_SIGNATURES):
+
+def _exception_chain_text(exc: BaseException) -> str:
+    """``str()`` of ``exc`` plus its ``__cause__`` / ``__context__`` chain (deduped, bounded).
+    Defensive: in some wrappings the budget message is on a nested cause rather than the top
+    exception. Cycle-safe and capped so a pathological chain can't spin."""
+    parts: list[str] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen and len(parts) < 20:
+        seen.add(id(current))
+        try:
+            parts.append(str(current))
+        except Exception:
+            parts.append("")  # a pathological __str__ must never make classification raise
+        current = current.__cause__ or current.__context__
+    return "\n".join(parts)
+
+
+def _is_budget_error(exc: Exception) -> bool:
+    """True ONLY for the proxy's per-run budget cutoff (P1.4b); False for every other failure.
+
+    Matches the budget MESSAGE substring across the exception's full cause chain (robust to the
+    client wrapping the proxy 429 as RateLimitError / APIError / etc.), NOT the status code
+    alone (a generic 429 rate-limit must stay ``failed``). Deliberately does NOT import
+    ``litellm`` — preserves the gateway's litellm monopoly + the import-boundary.
+
+    NOTE: in DOCKER mode the budget message is stripped from this exception by the SDK's remote
+    layer (it becomes "Remote conversation ended with error"); the docker adapter additionally
+    classifies on the ConversationErrorEvent detail via ``_text_has_budget_signature``."""
+    if _text_has_budget_signature(_exception_chain_text(exc)):
         return True
-    # Belt-and-suspenders: the raw server-side type, should a future client ever surface it.
     return type(exc).__name__ == "BudgetExceededError"
 
 

@@ -31,6 +31,7 @@ import time
 from itertools import count
 
 from openhands.sdk import LLM, Agent, Conversation, Tool
+from openhands.sdk.event.conversation_error import ConversationErrorEvent
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.terminal import TerminalTool
 from openhands.workspace import DockerWorkspace
@@ -48,6 +49,7 @@ from tvashtr.engines.openhands_adapter import (
     _kind_of,
     _payload_of,
     _read_usage,
+    _text_has_budget_signature,
 )
 
 logger = logging.getLogger("tvashtr.engines.openhands_docker")
@@ -165,8 +167,19 @@ class OpenHandsDockerAdapter:
         seq = count()
         collected: list[EngineEvent] = []
         lock = threading.Lock()
+        # Docker-mode budget signal lives in the ConversationErrorEvent.detail (see _on_oh_event
+        # + the except block): the SDK genericizes the raised exception so it is the only
+        # host-side carrier of the proxy's "Budget has been exceeded!" message.
+        error_event_texts: list[str] = []
 
         def _on_oh_event(oh_event) -> None:
+            if isinstance(oh_event, ConversationErrorEvent):
+                # In docker mode the SDK genericizes the raised exception to "Remote conversation
+                # ended with error" (a race in RemoteConversation._get_last_error_detail); the
+                # proxy's budget message reaches the host ONLY here, in this event's detail.
+                # Capture it for classify BEFORE the _kind_of early-return drops the event.
+                with lock:
+                    error_event_texts.append(f"{oh_event.code}: {oh_event.detail}")
             # Mirrors OpenHandsAdapter's collector; reuses the shared mapping
             # helpers so the engine-neutral event shape is identical across modes.
             kind = _kind_of(oh_event)
@@ -248,18 +261,28 @@ class OpenHandsDockerAdapter:
                 files_changed = _pull_workspace(workspace, host_dir)
         except Exception as exc:
             # P1.4b: classify the proxy's mid-call budget cutoff as ``over_budget`` (else a
-            # generic ``failed``). Best-effort partial-usage read on the cutoff path (Task 0.5);
-            # in docker mode the container is torn down as the ``with`` exits, so the remote
-            # conversation may no longer report metrics — _read_usage then cleanly yields 0s
-            # (the proxy's server-side budget is the authoritative cutoff regardless).
-            status = "over_budget" if _is_budget_error(exc) else "failed"
+            # generic ``failed``). In DOCKER mode the SDK strips the budget message from the
+            # raised exception (it becomes "Remote conversation ended with error"); the signal
+            # survives ONLY in a ConversationErrorEvent.detail captured above — so classify on
+            # the exception (chain) OR any captured error event.
+            budget_hit = _is_budget_error(exc) or any(
+                _text_has_budget_signature(t) for t in error_event_texts
+            )
+            status = "over_budget" if budget_hit else "failed"
             error = str(exc)
+            # Best-effort partial-usage read on the cutoff path (Task 0.5); in docker mode the
+            # container is torn down as the ``with`` exits, so the remote conversation may no
+            # longer report metrics — _read_usage then cleanly yields 0s (the proxy's server-side
+            # budget is the authoritative cutoff regardless).
             if status == "over_budget" and conversation is not None:
                 prompt_tokens, completion_tokens, cost_usd = _read_usage(conversation)
+            # Self-diagnosing: log the FULL surface we classified on, so any future miss is
+            # debuggable from this log alone (this very bug required a container-log spelunk).
             logger.exception(
-                "OpenHandsDockerAdapter run cut off over budget"
-                if status == "over_budget"
-                else "OpenHandsDockerAdapter run failed"
+                "OpenHandsDockerAdapter run %s (exc=%r; error_events=%r)",
+                "cut off over budget" if status == "over_budget" else "failed",
+                str(exc),
+                error_event_texts,
             )
 
         total_tokens = prompt_tokens + completion_tokens

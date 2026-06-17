@@ -10,6 +10,8 @@ top) — legitimately, like test_docker_adapter — keeping the openhands-free p
 
 from unittest.mock import MagicMock, patch
 
+from openhands.sdk.event.conversation_error import ConversationErrorEvent
+
 from tvashtr.config import Settings
 from tvashtr.engines import openhands_adapter as local_mod
 from tvashtr.engines import openhands_docker_adapter as docker_mod
@@ -214,4 +216,118 @@ def test_adapter_classifies_generic_error_as_failed(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
     settings = Settings(_env_file=None, litellm_proxy_enabled=False)
     result = _run_local_result(settings, tmp_path, run_side_effect=RuntimeError("boom"))
+    assert result.status == "failed"
+
+
+# --- P1.4b FIX: docker-mode classification via the ConversationErrorEvent ---
+# In docker mode the SDK genericizes the raised exception to "Remote conversation ended with
+# error"; the proxy budget message reaches the host only in a ConversationErrorEvent.detail.
+
+
+def test_text_has_budget_signature_matches_event_detail():
+    # The docker ConversationErrorEvent detail (code: detail) carries the budget message.
+    detail = (
+        "LLMRateLimitError: litellm.RateLimitError: Litellm_proxyException - "
+        "Budget has been exceeded! Current cost: 0.00133455, Max budget: 0.001"
+    )
+    assert local_mod._text_has_budget_signature(detail) is True
+
+
+def test_text_has_budget_signature_false_on_generic():
+    assert (
+        local_mod._text_has_budget_signature(
+            "Conversation run failed for id=x: Remote conversation ended with error"
+        )
+        is False
+    )
+    assert local_mod._text_has_budget_signature("") is False
+
+
+def test_is_budget_error_finds_signature_in_cause_chain():
+    # Top-level message is generic; the budget signal is on __cause__ (belt-and-suspenders).
+    inner = Exception("Litellm_proxyException - Budget has been exceeded! ...")
+    outer = RuntimeError("Conversation run failed: Remote conversation ended with error")
+    outer.__cause__ = inner
+    assert local_mod._is_budget_error(outer) is True
+
+
+def test_is_budget_error_false_when_chain_has_no_budget():
+    inner = ConnectionError("connection refused")
+    outer = RuntimeError("Remote conversation ended with error")
+    outer.__cause__ = inner
+    assert local_mod._is_budget_error(outer) is False
+
+
+def _budget_error_event() -> ConversationErrorEvent:
+    # Real ConversationErrorEvent via model_construct (bypasses base-Event validation); it only
+    # needs to be an instance with .code/.detail for the isinstance check + the capture.
+    return ConversationErrorEvent.model_construct(
+        code="LLMRateLimitError",
+        detail=(
+            "litellm.RateLimitError: Litellm_proxyException - "
+            "Budget has been exceeded! Current cost: 0.00133455, Max budget: 0.001"
+        ),
+    )
+
+
+_GENERIC_REMOTE_EXC = RuntimeError(
+    "Conversation run failed for id=x: Remote conversation ended with error"
+)
+
+
+def _run_docker_result(tmp_path, *, feed_events, raise_exc):
+    """Drive OpenHandsDockerAdapter.run() with DockerWorkspace + Conversation mocked: run()
+    feeds the given events through the captured callback (exactly as the WS would) THEN raises
+    ``raise_exc``. Returns the AgentRunResult so the classified status can be asserted."""
+    settings = Settings(_env_file=None, litellm_proxy_enabled=False)
+
+    def _make_conversation(*args, callbacks=None, **kwargs):
+        convo = MagicMock()
+        metrics = MagicMock(accumulated_cost=0.0)
+        metrics.accumulated_token_usage = MagicMock(prompt_tokens=0, completion_tokens=0)
+        convo.conversation_stats.get_combined_metrics.return_value = metrics
+
+        def _run():
+            for ev in feed_events:
+                for cb in callbacks or []:
+                    cb(ev)
+            raise raise_exc
+
+        convo.run.side_effect = _run
+        convo.send_message.return_value = None
+        return convo
+
+    # A context-manager mock that does NOT suppress the raised exception (__exit__ -> False),
+    # so the adapter's except block runs (where classification happens).
+    workspace_cm = MagicMock()
+    workspace_cm.__enter__.return_value = workspace_cm
+    workspace_cm.__exit__.return_value = False
+
+    with (
+        patch.object(docker_mod, "get_settings", return_value=settings),
+        patch.object(docker_mod, "reap_agent_containers"),
+        patch.object(docker_mod, "DockerWorkspace", return_value=workspace_cm),
+        patch.object(docker_mod, "LLM"),
+        patch.object(docker_mod, "Agent"),
+        patch.object(docker_mod, "Tool"),
+        patch.object(docker_mod, "TerminalTool"),
+        patch.object(docker_mod, "FileEditorTool"),
+        patch.object(docker_mod, "Conversation", side_effect=_make_conversation),
+    ):
+        task = AgentTask(instruction="x", workspace_dir=str(tmp_path), model="openrouter/m")
+        return docker_mod.OpenHandsDockerAdapter().run(task)
+
+
+def test_docker_classifies_budget_cutoff_via_error_event(tmp_path):
+    # THE regression guard: a ConversationErrorEvent carries the budget message, but the raised
+    # exception is GENERIC (the SDK stripped it) -> still over_budget via the event detail.
+    result = _run_docker_result(
+        tmp_path, feed_events=[_budget_error_event()], raise_exc=_GENERIC_REMOTE_EXC
+    )
+    assert result.status == "over_budget"
+
+
+def test_docker_generic_error_without_budget_event_is_failed(tmp_path):
+    # Negative: the same generic raise but NO budget signal anywhere -> failed (not misclassified).
+    result = _run_docker_result(tmp_path, feed_events=[], raise_exc=_GENERIC_REMOTE_EXC)
     assert result.status == "failed"
