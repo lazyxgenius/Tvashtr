@@ -82,10 +82,6 @@ attempt_count() {
   psql_c -At -c "select count(*) from engineer_run_attempts where run_id='$RUN_ID'" \
     | tr -d '[:space:]'
 }
-event_count() {
-  curl -sf "$BASE/api/spike/run-events/$RUN_ID" \
-    | "$VENV_PY" -c 'import sys,json;print(len(json.load(sys.stdin)["events"]))' 2>/dev/null || echo 0
-}
 
 start_uvicorn() {
   LAST_LOG="$1"
@@ -135,56 +131,61 @@ WS="$BACKEND/.tvashtr_workspaces/$RUN_ID"
 echo "started run_id = $RUN_ID"
 
 hr
-echo "STEP E: wait until the Engineer's 2nd iteration has begun (engineer_run_attempts == 2)"
+echo "STEP E: wait until the Engineer's 2nd iteration has begun (engineer_run_attempts >= 2)"
 hr
-# 2 attempt rows ⟺ iteration 1 finished, the Reviewer returned changes_requested (a real
-# loop-back), and iteration 2 is now building — i.e. we are genuinely MID-CYCLE, not merely
-# in a last build. (timeout 300s: PM + Engineer-1 + Reviewer-1 + Engineer-2 start.)
+# >= 2 attempt rows ⟺ iteration 1 finished, the Reviewer returned changes_requested (a real
+# loop-back), and iteration 2 (or a later iteration) is now building — i.e. we are genuinely
+# MID-CYCLE, not merely in a last build. One row is inserted at the START of each
+# engineer_run_step (committed before the long agent call), so the row count is a reliable
+# mid-cycle signal. The poll uses sleep 0.3 (was 1) so detection — and thus the immediate kill
+# below — tends to land while iteration 2 is still in flight rather than after it loops to 3.
+# (1000 x 0.3 = ~300s of polling budget: PM + Engineer-1 + Reviewer-1 + Engineer-2 start.)
 ATTEMPTS=0
-for _ in $(seq 1 300); do
+for _ in $(seq 1 1000); do
   ATTEMPTS="$(attempt_count || echo 0)"
   if [[ "${ATTEMPTS:-0}" -ge 2 ]]; then break; fi
-  sleep 1
+  sleep 0.3
 done
 if [[ "${ATTEMPTS:-0}" -lt 2 ]]; then
   echo "ERROR: engineer_run_attempts never reached 2 — the loop did not cycle into iteration 2" >&2
   tail -n 25 "$LOG1" >&2
   exit 1
 fi
-echo "engineer_run_attempts == $ATTEMPTS  =>  iteration 2 has begun after one real loop-back"
-
-# Best-effort tightening: wait until iteration 2's agent emits a fresh run_event, so the
-# kill lands while the agent call is genuinely in flight (not just the attempt row inserted).
-EVENTS_AT_DETECT="$(event_count)"
-for _ in $(seq 1 60); do
-  EVENTS_NOW="$(event_count)"
-  if [[ "${EVENTS_NOW:-0}" -gt "${EVENTS_AT_DETECT:-0}" ]]; then
-    echo "iteration-2 agent is mid-call (run_events $EVENTS_AT_DETECT -> $EVENTS_NOW)"
-    break
-  fi
-  sleep 1
-done
+echo "engineer_run_attempts == $ATTEMPTS  =>  iteration $ATTEMPTS has begun after $((ATTEMPTS - 1)) real loop-back(s) — genuinely mid-cycle"
 
 hr
-echo "STEP F: state at crash (expect: exactly 2 attempts both pid=$OLD_PID, NO ship tag, run not completed)"
+echo "STEP F: kill -9 process 1 mid-cycle, then assert the FROZEN crash-state (race-free)"
 hr
-ATTEMPT_COUNT_AT_CRASH="$(attempt_count)"
-DISTINCT_PIDS_AT_CRASH="$(psql_c -At -c "select distinct pid from engineer_run_attempts where run_id='$RUN_ID'" | tr -d '[:space:]')"
-SHIP_AT_CRASH="$(git -C "$WS" tag --list "ship-$RUN_ID" 2>/dev/null || true)"
-RUN_STATUS_AT_CRASH="$(psql_c -At -c "select status from runs where workflow_id='$RUN_ID'" | tr -d '[:space:]')"
-echo "  attempts=$ATTEMPT_COUNT_AT_CRASH  distinct_pids=$DISTINCT_PIDS_AT_CRASH  ship_tag='${SHIP_AT_CRASH:-<none>}'  run.status=$RUN_STATUS_AT_CRASH"
-[[ "$ATTEMPT_COUNT_AT_CRASH" == "2" ]] || { echo "ERROR: expected exactly 2 attempts at crash, got $ATTEMPT_COUNT_AT_CRASH" >&2; exit 1; }
-[[ "$DISTINCT_PIDS_AT_CRASH" == "$OLD_PID" ]] || { echo "ERROR: pre-crash attempts not all pid=$OLD_PID (distinct=$DISTINCT_PIDS_AT_CRASH)" >&2; exit 1; }
-[[ -z "$SHIP_AT_CRASH" ]] || { echo "ERROR: already shipped before crash" >&2; exit 1; }
-[[ "$RUN_STATUS_AT_CRASH" != "completed" ]] || { echo "ERROR: run already completed before crash" >&2; exit 1; }
-
-hr
-echo "STEP G: kill -9 process 1 mid Engineer-iteration-2 agent-run"
-hr
+# Kill FIRST, before reading any state. The original harness read the crash-state BETWEEN
+# detection and the kill, so the still-running loop could finish iteration 2 and start
+# iteration 3, racing the attempt count upward (the observed `got 3` abort). Here we kill the
+# instant we are mid-cycle, wait for the process to die, THEN read: with process 1 dead and
+# process 2 not yet started, the DB + workspace are frozen, so the assertions below cannot race.
+echo "killed mid-cycle at engineer_run_attempts=$ATTEMPTS"
 kill -9 "$OLD_PID"
 while kill -0 "$OLD_PID" 2>/dev/null; do sleep 0.2; done
 CURRENT_PID=""
 echo ">>> killed uvicorn process 1 (PID $OLD_PID) <<<"
+
+# Read the now-stable state ONCE (nothing is running that can advance it).
+ATTEMPT_COUNT_AT_CRASH="$(attempt_count)"
+DISTINCT_PIDS_AT_CRASH="$(psql_c -At -c "select distinct pid from engineer_run_attempts where run_id='$RUN_ID'" | tr -d '[:space:]')"
+SHIP_AT_CRASH="$(git -C "$WS" tag --list "ship-$RUN_ID" 2>/dev/null || true)"
+RUN_STATUS_AT_CRASH="$(psql_c -At -c "select status from runs where workflow_id='$RUN_ID'" | tr -d '[:space:]')"
+echo "  frozen state: attempts=$ATTEMPT_COUNT_AT_CRASH  distinct_pids=$DISTINCT_PIDS_AT_CRASH  ship_tag='${SHIP_AT_CRASH:-<none>}'  run.status=$RUN_STATUS_AT_CRASH"
+# Fail-closed: a genuine mid-cycle crash means >= 2 attempts (>= 1 real loop-back), all from the
+# original process, nothing shipped, and the run NOT terminal. If the loop outran detection and
+# shipped/finished before the kill, these abort non-zero — never a vacuous PASS.
+[[ "${ATTEMPT_COUNT_AT_CRASH:-0}" -ge 2 ]] || { echo "ERROR: expected >= 2 engineer attempts at crash (>= 1 real loop-back), got $ATTEMPT_COUNT_AT_CRASH" >&2; exit 1; }
+[[ "$DISTINCT_PIDS_AT_CRASH" == "$OLD_PID" ]] || { echo "ERROR: pre-crash attempts not all pid=$OLD_PID (distinct=$DISTINCT_PIDS_AT_CRASH)" >&2; exit 1; }
+[[ -z "$SHIP_AT_CRASH" ]] || { echo "ERROR: already shipped before the kill — the loop outran detection" >&2; exit 1; }
+case "$RUN_STATUS_AT_CRASH" in
+  completed|failed|rejected|over_budget|cancelled)
+    echo "ERROR: run reached terminal status '$RUN_STATUS_AT_CRASH' before the kill — the loop outran detection; failing closed" >&2
+    exit 1
+    ;;
+esac
+echo "  frozen crash-state OK: mid-cycle (>= 1 loop-back), all attempts pid=$OLD_PID, nothing shipped, run not terminal"
 
 hr
 echo "STEP H: restart uvicorn (process 2) — DBOS recovers the in-flight run_team"
