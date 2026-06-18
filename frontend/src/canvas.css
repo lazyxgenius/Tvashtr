@@ -187,6 +187,62 @@
   stroke-width: 2;
 }
 
+/* ---- The loop-back "rework" edge (Reviewer -> Engineer) ----
+   A calm downward dashed arc in a muted "rework" tone — the accent mixed toward
+   neutral, deliberately NOT the success-sage of the forward edges. Static: no
+   marching ants, no animation (nothing for reduced-motion to suppress). It bows
+   below the row via the nodes' bottom handles, clear of the forward edges. The
+   var lives on .react-flow so it also reaches the generated arrowhead marker. */
+.react-flow {
+  --rework-stroke: color-mix(in srgb, var(--accent) 55%, var(--border-strong));
+}
+.react-flow__edge.rf-edge--rework .react-flow__edge-path {
+  stroke: var(--rework-stroke);
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+/* the small centered "changes requested" chip on the arc — muted coral, calm */
+.rf-edge-rework__label {
+  position: absolute;
+  padding: 2px 9px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--coral-700);
+  background: color-mix(in srgb, var(--coral-100) 65%, var(--surface-card));
+  border: var(--border-width) solid var(--accent-tint-border);
+  border-radius: var(--radius-pill);
+  pointer-events: none;
+}
+
+/* ---- Iteration badge: shown on a node once it has looped (round >= 2) ----
+   A small neutral chip in the StatusPill vocabulary, pushed to the head's right
+   edge by the head's existing flex. */
+.rf-node__round {
+  margin-left: auto;
+  flex: none;
+  align-self: flex-start;
+  padding: 2px 8px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--ink-600);
+  background: var(--panel-300);
+  border: var(--border-width) solid var(--border-strong);
+  border-radius: var(--radius-pill);
+}
+
+/* ---- Loop-back handles: on every node for genericity, used only by the rework
+   edge — kept invisible (the arc + arrowhead + label carry the meaning; the
+   forward flow keeps the visible left/right handles). ---- */
+.react-flow__handle.rf-node__loop-handle {
+  opacity: 0;
+}
+
 /* ---- Controls: paper buttons, hairline borders, ink icons, coral hover ---- */
 .react-flow__controls {
   box-shadow: var(--shadow-sm);

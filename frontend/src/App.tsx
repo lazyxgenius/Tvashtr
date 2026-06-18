@@ -59,12 +59,17 @@ export default function App() {
   const pull = useCallback(async () => {
     if (!runId) return;
     try {
-      const [s, t] = await Promise.all([getRunStatus(runId), getRunTasks(runId)]);
+      const [s, t, g] = await Promise.all([
+        getRunStatus(runId),
+        getRunTasks(runId),
+        getGraph(runId),
+      ]);
       if (!mountedRef.current) return;
       setRun(s.run);
       setWorkflowStatus(s.workflow_status);
       setCosts(s.costs);
       setTasks(t.tasks);
+      setGraph(g); // re-fetch the graph each poll so per-node status/iteration go live
     } catch {
       /* transient — keep the last snapshot and retry next tick */
     }
@@ -216,6 +221,7 @@ export default function App() {
         {selectedRole && (
           <SidePanel
             selectedRole={selectedRole}
+            iteration={graph?.nodes.find((n) => n.role_name === selectedRole)?.iteration ?? 0}
             runId={runId}
             run={run}
             workflowStatus={workflowStatus}

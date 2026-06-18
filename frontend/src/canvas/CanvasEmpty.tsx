@@ -6,7 +6,7 @@ export function CanvasEmpty() {
       <div className="rf-empty__title">Nothing on the loom yet</div>
       <p className="rf-empty__sub">
         Start the run and the team appears — a product manager drafts the spec, an engineer
-        ships it.
+        builds it, and a reviewer sends it back until it's right.
       </p>
     </div>
   );

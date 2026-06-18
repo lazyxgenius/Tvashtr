@@ -19,86 +19,63 @@ function mkRun(over: Partial<RunRow> = {}): RunRow {
   };
 }
 
-describe("deriveNodeStatus", () => {
-  it("is idle for both roles when there is no run", () => {
-    expect(deriveNodeStatus("pm", null, null)).toBe("idle");
-    expect(deriveNodeStatus("engineer", null, null)).toBe("idle");
-  });
-
-  it("PM is done once its document exists", () => {
-    expect(deriveNodeStatus("pm", mkRun({ pm_document_id: "d1" }), "PENDING")).toBe("done");
-  });
-
-  it("PM is running while working, idle before, failed on error", () => {
-    expect(deriveNodeStatus("pm", mkRun({ status: "running" }), "PENDING")).toBe("running");
-    expect(deriveNodeStatus("pm", mkRun({ status: "pending" }), "ENQUEUED")).toBe("idle");
-    expect(deriveNodeStatus("pm", mkRun({ status: "failed" }), "ERROR")).toBe("failed");
-  });
-
-  it("Engineer is PAUSED while the run awaits human approval (PM already done)", () => {
-    const run = mkRun({ status: "awaiting_human", pm_document_id: "d1" });
-    expect(deriveNodeStatus("engineer", run, "PENDING")).toBe("paused");
-  });
-
-  it("Engineer is running once the PM doc exists and the run is running", () => {
-    const run = mkRun({ status: "running", pm_document_id: "d1" });
-    expect(deriveNodeStatus("engineer", run, "PENDING")).toBe("running");
-  });
-
-  it("Engineer is done once shipped", () => {
-    const run = mkRun({ status: "completed", pm_document_id: "d1", ship_tag: "ship-r1" });
-    expect(deriveNodeStatus("engineer", run, "SUCCESS")).toBe("done");
-  });
-
-  it("Engineer folds a workflow-level CANCELLED/ERROR into failed", () => {
-    expect(deriveNodeStatus("engineer", mkRun({ pm_document_id: "d1" }), "CANCELLED")).toBe(
+describe("deriveNodeStatus (thin read of backend truth)", () => {
+  it("passes backend running/done/failed/stopped straight through", () => {
+    expect(deriveNodeStatus("running", mkRun({ status: "running" }), "PENDING", false)).toBe(
+      "running",
+    );
+    expect(deriveNodeStatus("done", mkRun({ status: "running" }), "PENDING", false)).toBe("done");
+    expect(deriveNodeStatus("failed", mkRun({ status: "running" }), "PENDING", false)).toBe(
       "failed",
+    );
+    expect(deriveNodeStatus("stopped", mkRun({ status: "running" }), "PENDING", false)).toBe(
+      "stopped",
     );
   });
 
-  it("Engineer is idle before the PM hands off", () => {
-    expect(deriveNodeStatus("engineer", mkRun({ status: "running" }), "PENDING")).toBe("idle");
+  it("a done node STAYS done even when the run later fails (done is sticky)", () => {
+    expect(deriveNodeStatus("done", mkRun({ status: "failed" }), "ERROR", false)).toBe("done");
   });
 
-  it("Engineer is STOPPED (not Waiting) on a rejected run", () => {
-    const run = mkRun({ status: "rejected", pm_document_id: "d1", ship_tag: null });
-    expect(deriveNodeStatus("engineer", run, "SUCCESS")).toBe("stopped");
+  it("folds a stale running node to failed on a failed workflow/run", () => {
+    // a no-key run can leave a node "running" while the workflow ERROR'd.
+    expect(deriveNodeStatus("running", mkRun({ status: "running" }), "CANCELLED", false)).toBe(
+      "failed",
+    );
+    expect(deriveNodeStatus("running", mkRun({ status: "failed" }), "ERROR", false)).toBe("failed");
   });
 
-  it("Engineer is STOPPED (not failed) on a cancelled run", () => {
-    const run = mkRun({ status: "cancelled", pm_document_id: "d1" });
-    expect(deriveNodeStatus("engineer", run, "CANCELLED")).toBe("stopped");
+  it("folds a stale running node to stopped on a rejected/cancelled/over_budget run", () => {
+    // these return normally (workflow SUCCESS) but must read stopped, not running.
+    for (const status of ["rejected", "cancelled", "over_budget"]) {
+      expect(deriveNodeStatus("running", mkRun({ status }), "SUCCESS", false)).toBe("stopped");
+    }
   });
 
-  it("PM is stopped on a cancelled run with no document, but done once it has one", () => {
-    expect(deriveNodeStatus("pm", mkRun({ status: "cancelled" }), "CANCELLED")).toBe("stopped");
-    expect(
-      deriveNodeStatus("pm", mkRun({ status: "cancelled", pm_document_id: "d1" }), "CANCELLED"),
-    ).toBe("done");
+  it("idle + awaiting_human + a done predecessor -> paused (blocked at the gate)", () => {
+    expect(deriveNodeStatus("idle", mkRun({ status: "awaiting_human" }), "PENDING", true)).toBe(
+      "paused",
+    );
   });
 
-  it("Engineer is STOPPED (not failed, not idle) on an over_budget run", () => {
-    // over_budget returns normally so workflow_status is SUCCESS — must read stopped.
-    const run = mkRun({ status: "over_budget", pm_document_id: "d1", ship_tag: null });
-    expect(deriveNodeStatus("engineer", run, "SUCCESS")).toBe("stopped");
+  it("idle + awaiting_human but NO done predecessor -> idle (not yet this node's turn)", () => {
+    expect(deriveNodeStatus("idle", mkRun({ status: "awaiting_human" }), "PENDING", false)).toBe(
+      "idle",
+    );
   });
 
-  it("PM is stopped on over_budget with no doc, but done once it has one", () => {
-    expect(deriveNodeStatus("pm", mkRun({ status: "over_budget" }), "SUCCESS")).toBe("stopped");
-    expect(
-      deriveNodeStatus("pm", mkRun({ status: "over_budget", pm_document_id: "d1" }), "SUCCESS"),
-    ).toBe("done");
+  it("idle + rejected/cancelled/over_budget -> stopped", () => {
+    for (const status of ["rejected", "cancelled", "over_budget"]) {
+      expect(deriveNodeStatus("idle", mkRun({ status }), "SUCCESS", false)).toBe("stopped");
+    }
   });
 
-  it("a GENUINE failure still reads failed, not stopped", () => {
-    // explicit run failure
-    expect(
-      deriveNodeStatus("engineer", mkRun({ status: "failed", pm_document_id: "d1" }), "ERROR"),
-    ).toBe("failed");
-    // workflow CANCELLED while run.status lags at "running" -> still failed
-    expect(
-      deriveNodeStatus("engineer", mkRun({ status: "running", pm_document_id: "d1" }), "CANCELLED"),
-    ).toBe("failed");
+  it("idle on a plain running run -> idle", () => {
+    expect(deriveNodeStatus("idle", mkRun({ status: "running" }), "PENDING", false)).toBe("idle");
+  });
+
+  it("idle with no run -> idle", () => {
+    expect(deriveNodeStatus("idle", null, null, false)).toBe("idle");
   });
 });
 

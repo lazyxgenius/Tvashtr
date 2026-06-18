@@ -12,6 +12,9 @@ export interface GraphNode {
   model: string;
   engine: string | null;
   position: NodePosition;
+  // P1.5a: the node's live per-invocation state (backend owns this now).
+  status: string; // idle | running | done | failed | stopped
+  iteration: number; // 1-based count of this node's runs; 0 before it is reached
 }
 
 export interface GraphEdge {
@@ -19,6 +22,9 @@ export interface GraphEdge {
   source_node_id: string;
   target_node_id: string;
   edge_type: string;
+  // P1.5a: edge routing condition — null = unconditional; the Reviewer->Engineer
+  // loop-back carries {"when":"changes_requested"}.
+  conditions: { when: string } | null;
 }
 
 export interface GraphData {
@@ -69,10 +75,12 @@ async function getJSON<T>(url: string): Promise<T> {
 }
 
 export async function startRun(): Promise<string> {
+  // The UI drives the 3-node cyclic review-loop team (PM -> Engineer <-> Reviewer);
+  // the 2-node team stays CLI-only (skeleton-run/crash POST no shape -> two_node).
   const res = await fetch("/api/runs", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: "{}",
+    body: JSON.stringify({ team_shape: "review_loop" }),
   });
   if (!res.ok) throw new Error(`POST /api/runs -> ${res.status}`);
   const data = (await res.json()) as { run_id: string };

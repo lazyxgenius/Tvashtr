@@ -4,7 +4,7 @@ import type { RunRow } from "./api";
 
 export type NodeStatus = "idle" | "running" | "paused" | "done" | "stopped" | "failed";
 
-const WORKFLOW_FAILED = new Set(["ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"]);
+export const WORKFLOW_FAILED = new Set(["ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"]);
 const WORKFLOW_TERMINAL = new Set(["SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"]);
 // Terminal run statuses (run.status is authoritative): once here, polling stops.
 const RUN_TERMINAL = new Set(["completed", "failed", "rejected", "cancelled", "over_budget"]);
@@ -21,42 +21,45 @@ export function isRunTerminal(run: RunRow | null, workflowStatus: string | null)
 }
 
 /**
- * Per-node status — the centralized derivation (P0.5a status table + the P1.1
- * gate). The Engineer is ``paused`` while the run waits at the PRD gate
- * (``awaiting_human``); the PM is already ``done`` (its document exists).
+ * Per-node status — now a **thin read of backend truth** (P1.5a). The executor
+ * owns a real per-node `AgentInvocation`, so the graph endpoint hands us each
+ * node's live `backendStatus` (`idle|running|done|failed|stopped`); this function
+ * is the small overlay on top of it, not the old run-level archaeology:
  *
- * A node that didn't finish because the run was rejected/cancelled/over_budget is
- * `stopped` (muted, concluded) — checked right after "done" and BEFORE the failed
- * fold, so a `cancelled` run (whose `workflowStatus` is the failed-folding
- * `CANCELLED`) reads `stopped`, not `failed`.
+ *  - `done`/`failed`/`stopped` from the backend pass straight through. `done` is
+ *    sticky: a node that completed stays done even if the run later fails.
+ *  - For `running`/`idle` we let a terminal run/workflow override a stale in-flight
+ *    invocation: a no-key run can leave the PM `running` while the workflow ERROR'd,
+ *    so a failed run/workflow folds to `failed`, and a rejected/cancelled/over_budget
+ *    run folds to `stopped` (muted, concluded — checked before the failed fold).
+ *  - `idle` is the only place inference remains: a node not yet reached reads
+ *    `paused` when the run is blocked at a gate AND its predecessor is done (the
+ *    PRD gate pauses the Engineer, never the not-yet-relevant Reviewer).
  *
- * `workflowStatus` folds a workflow-level ERROR/CANCELLED/MAX into "failed", so a
- * no-key run (where `pm_step` raises and `run.status` lags at "running") still
- * degrades gracefully to failed instead of spinning forever — that genuine
- * failure stays `failed` (its `run.status` is not rejected/cancelled).
+ * `predecessorDone` is computed in the canvas from the topology + raw backend
+ * statuses (an incoming edge from a `done` node). `isRunTerminal` + `deriveOverall`
+ * stay run-level and unchanged.
  */
 export function deriveNodeStatus(
-  role: string,
+  backendStatus: string,
   run: RunRow | null,
   workflowStatus: string | null,
+  predecessorDone: boolean,
 ): NodeStatus {
-  if (!run) return "idle";
-  const failed = run.status === "failed" || WORKFLOW_FAILED.has(workflowStatus ?? "");
+  // A node that completed stays done regardless of what happens downstream.
+  if (backendStatus === "done") return "done";
+  if (backendStatus === "failed") return "failed";
+  if (backendStatus === "stopped") return "stopped";
 
-  if (role === "pm") {
-    if (run.pm_document_id) return "done";
-    if (RUN_STOPPED.has(run.status)) return "stopped";
-    if (failed) return "failed";
-    if (run.status === "running") return "running";
-    return "idle";
-  }
-
-  // engineer
-  if (run.ship_tag) return "done";
-  if (RUN_STOPPED.has(run.status)) return "stopped";
+  // backendStatus is "running" or "idle": let a terminal run/workflow override a
+  // stale in-flight invocation.
+  const failed = run?.status === "failed" || WORKFLOW_FAILED.has(workflowStatus ?? "");
+  if (run && RUN_STOPPED.has(run.status)) return "stopped"; // rejected/cancelled/over_budget
   if (failed) return "failed";
-  if (run.status === "awaiting_human" && run.pm_document_id) return "paused";
-  if (run.pm_document_id && run.status === "running") return "running";
+  if (backendStatus === "running") return "running";
+
+  // idle: not reached yet — the only place inference remains.
+  if (run?.status === "awaiting_human" && predecessorDone) return "paused"; // blocked at a gate
   return "idle";
 }
 
