@@ -188,7 +188,7 @@ def test_cap_exhaustion_escalates_then_approve_ships_as_is(client, monkeypatch, 
         escalation = session.execute(
             select(HumanTask).where(
                 HumanTask.run_id == run_id,
-                HumanTask.topic == f"gate:{run_id}:review-escalation",
+                HumanTask.kind == "review_escalation",
             )
         ).scalar_one()
 
@@ -235,7 +235,7 @@ def test_cap_exhaustion_reject_finalizes_rejected_without_shipping(client, monke
 
     # Approve the PRD gate so the loop runs, then reject the escalation that the cap raises
     # after Engineer x3 (the stubbed Engineer is instant, so the escalation opens promptly).
-    _resolve_gate_when_pending(client, run_id, kind="gate_approval", decision="approve")
+    _resolve_gate_when_pending(client, run_id, kind="prd_approval", decision="approve")
     reject = _resolve_gate_when_pending(client, run_id, kind="review_escalation", decision="reject")
     assert reject["resolution"] == "rejected"
 
@@ -250,7 +250,7 @@ def test_cap_exhaustion_reject_finalizes_rejected_without_shipping(client, monke
         escalation = session.execute(
             select(HumanTask).where(
                 HumanTask.run_id == run_id,
-                HumanTask.topic == f"gate:{run_id}:review-escalation",
+                HumanTask.kind == "review_escalation",
             )
         ).scalar_one()
 

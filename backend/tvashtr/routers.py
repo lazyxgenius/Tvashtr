@@ -328,6 +328,10 @@ def get_run_graph(run_id: str) -> dict:
                     "model": n.model,
                     "engine": n.engine,
                     "position": n.position,
+                    # P1.5b: gate/terminal node metadata (gate_kind/title/description or
+                    # terminal_kind), so the canvas (prompt 2) can render gate + terminal
+                    # nodes; NULL for completion/agent nodes.
+                    "config": n.config,
                     "status": (
                         latest_by_node[str(n.id)].status if str(n.id) in latest_by_node else "idle"
                     ),
@@ -411,6 +415,35 @@ def resolve_task(run_id: str, task_id: int, body: ResolveTaskRequest) -> dict:
         "resolution": resolution,
         "signaled": True,
     }
+
+
+@router.post("/api/runs/{run_id}/tasks/{task_id}/acknowledge")
+def acknowledge_task(run_id: str, task_id: int) -> dict:
+    """Acknowledge (dismiss) a non-blocking, topic-less ``low_nudge`` task — the drawer's
+    Low/nudges side (P1.5b, e.g. the 80%-of-cap ``budget_threshold`` nudge).
+
+    Unlike a gate task, **nothing waits** on a nudge, so this marks it resolved DIRECTLY
+    (NO ``DBOS.send``). 404 if no such task for the run; 409 if the task is a gate (it is
+    ``blocking`` OR carries a ``topic`` — those must go through ``/resolve``, which signals
+    the workflow); 409 if already resolved."""
+    with db.session_scope() as session:
+        task = session.execute(
+            select(HumanTask).where(HumanTask.id == task_id, HumanTask.run_id == run_id)
+        ).scalar_one_or_none()
+        if task is None:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.blocking or task.topic is not None:
+            raise HTTPException(
+                status_code=409, detail="gate task: resolve via /resolve, not /acknowledge"
+            )
+        if task.status != "pending":
+            raise HTTPException(status_code=409, detail=f"task already {task.status}")
+        session.execute(
+            update(HumanTask)
+            .where(HumanTask.id == task_id)
+            .values(status="resolved", resolution="acknowledged", resolved_at=func.now())
+        )
+    return {"run_id": run_id, "task_id": task_id, "resolution": "acknowledged"}
 
 
 @router.post("/api/runs/{run_id}/cancel")

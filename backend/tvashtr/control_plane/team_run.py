@@ -1,27 +1,34 @@
-"""The generic graph executor: PM phase -> cyclic build/review sub-walk -> ship,
-all in one durable DBOS workflow (P1.5a).
+"""The uniform graph executor: one durable DBOS workflow walks the authored team
+graph node-by-node until it reaches a terminal node (P1.5b).
 
 ``run_team`` is started with ``DBOS.workflow_id == run_id == str(runs.id)`` (the
 endpoint uses ``SetWorkflowID``), so every side-effecting write keys its
 idempotency on ``run_id``. The nodes/edges are read from the team-graph rows (the
-team is *authored*, not hardcoded), and the executor WALKS them: after the fixed
-PM phase + PRD gate + pre-engineer budget checkpoint, :func:`run_review_loop`
-follows edge conditions around the Engineer<->Reviewer cycle until a node emits an
-outcome that matches no out-edge (-> ship) or the loop cap raises an escalation.
-The same code runs both the 2-node team (Engineer has no out-edge -> ship after
-one build) and the 3-node review-loop team. The PM phase + gates + budget
-checkpoints + ship stay fixed pre/post phases (folding into the uniform walk is
-5b, when gates become graph entities).
+team is *authored*, not hardcoded) and :func:`run_graph` WALKS them: it starts at
+the graph's source node and, after each node, follows :func:`next_node` to the next
+— until a ``terminal`` node ends the run (ship-and-finalize, or stop). There are
+**no special-cased PM/PRD/budget/ship/finalize phases**: the PM, the PRD gate, the
+review-escalation, and ship/finalize are all just nodes the walk visits
+(``completion`` / ``agent`` / ``gate`` / ``terminal``). The same code runs the
+2-node team (PM -> prd_gate -> Engineer -> ship) and the 3-node review-loop team
+(adding the Engineer<->Reviewer cycle + the cap's escalation gate). **Budget is the
+one cross-cutting policy, not a node:** :func:`apply_budget_hook` runs after every
+spend-bearing node (a between-steps cap check that opens a ``budget_approval``
+blocker on a breach), plus an 80%-of-cap ``low_nudge`` producer.
 
-Crash-durability (Decision 1, now per-iteration): each Engineer iteration is its
-own coarse ``engineer_run_step`` — no checkpointing inside OpenHands' loop. The
-``while`` loop replays cleanly because DBOS keys every step's recorded output by
+Crash-durability (Decision 1, per-iteration): each Engineer iteration is its own
+coarse ``engineer_run_step`` — no checkpointing inside OpenHands' loop. The walk
+replays cleanly because DBOS keys every step's recorded output by
 ``(workflow_id, call-order function_id)``: on resume completed steps replay their
-recorded outputs in call order, so the data-dependent loop re-issues the identical
-step sequence (its control flow is driven by recorded outputs — the reviewer
-verdict + the forced-harness decision are BOTH recorded inside
-``reviewer_decide_step``). The ship is dedup'd by the ``ship-{run_id}`` git tag, so
-it happens exactly once. (The mid-loop crash proof is the 3rd P1.5a prompt.)
+recorded outputs in call order, so the data-dependent walk re-issues the identical
+step sequence. Every routing decision reads a recorded step output (a gate
+resolution, a reviewer verdict, an engineer status, a budget verdict), and the
+workflow-local bookkeeping (``current`` / ``iters_by_node`` / ``workspace`` /
+``prd_text`` / ``reviewer_feedback`` / ``pm_document_id``) is recomputed
+deterministically from those — so the walk is identical across a crash. The ship is
+dedup'd by the ``ship-{run_id}`` git tag, so it happens exactly once. (The P1.5a
+mid-loop crash proof + the cap tests are the regression that keeps the rewritten
+walk honest.)
 
 ``openhands.*`` is imported only lazily inside the steps that need it, so this
 module (and app startup) never loads it.
@@ -37,6 +44,7 @@ from sqlalchemy import select, update
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
+from tvashtr.control_plane.budget_nudge import maybe_emit_budget_nudge_step
 from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
@@ -54,14 +62,14 @@ from tvashtr.models import AgentNode, Edge, EngineerRunAttempt, Run
 @DBOS.step()
 def load_graph_step(run_id: str) -> dict:
     """Load the run's team graph as a picklable dict the executor walks: every node
-    (``id``/``role_name``/``kind``/``model``, ids as ``str``) + every edge
-    (``source``/``target`` as ``str``, ``edge_type``, ``conditions``), plus the PM
-    node id and the **subgraph entry** — the agent node the PM's ``work`` edge
-    targets, where the cyclic build/review sub-walk begins.
+    (``id``/``role_name``/``kind``/``model``/``config``, ids as ``str``) + every edge
+    (``source``/``target`` as ``str``, ``edge_type``, ``conditions``), plus the
+    **start node** — the unique node that is not the ``target`` of any edge (the graph
+    root, where the walk begins; in both hardcoded teams that is the PM).
 
-    Generic, not role-hardcoded: the PM is the source of the single ``work`` edge
-    and the entry is its target, so the 2-node and 3-node teams both resolve with
-    the same code (the Supervisor's future graphs will too)."""
+    Generic, not role-hardcoded: the start derives from the topology (no incoming
+    edge), so the 2-node and 3-node teams — and the Supervisor's future graphs — all
+    resolve with the same code."""
     with session_scope() as session:
         run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
         nodes = (
@@ -76,7 +84,14 @@ def load_graph_step(run_id: str) -> dict:
         )
 
     nodes_out = [
-        {"id": str(n.id), "role_name": n.role_name, "kind": n.kind, "model": n.model} for n in nodes
+        {
+            "id": str(n.id),
+            "role_name": n.role_name,
+            "kind": n.kind,
+            "model": n.model,
+            "config": n.config,
+        }
+        for n in nodes
     ]
     edges_out = [
         {
@@ -87,33 +102,62 @@ def load_graph_step(run_id: str) -> dict:
         }
         for e in edges
     ]
-    work_edge = next(e for e in edges_out if e["edge_type"] == "work")
+    # The start node is the unique node with no incoming edge (the root). sorted()[0]
+    # is deterministic; the hardcoded builders always produce exactly one such node.
+    target_ids = {e["target"] for e in edges_out}
+    roots = sorted(n["id"] for n in nodes_out if n["id"] not in target_ids)
     return {
         "nodes": nodes_out,
         "edges": edges_out,
-        "pm_node_id": work_edge["source"],
-        "entry_node_id": work_edge["target"],
+        "start_node_id": roots[0] if roots else None,
     }
 
 
 def next_node(edges: list[dict], source_id: str, outcome: str | None) -> str | None:
     """Pure routing: among ``edges`` leaving ``source_id``, follow the matching one.
 
-    If ``outcome`` is not None and some edge's ``conditions == {"when": outcome}``,
-    return that edge's target; else return the unconditional edge's target
-    (``conditions is None``); else ``None`` (the sub-walk ends here -> ship).
+    ``escalation`` edges are EXCLUDED from both searches — they are reached only via
+    the cap helper (:func:`escalation_target`), never by normal outcome routing. Of
+    the remaining out-edges: if ``outcome`` is not None and some edge's ``conditions``
+    has ``{"when": outcome}`` (a subset match — the loop-back edge also carries a
+    ``loop_limit`` key, so we match the ``when`` field, not the whole dict), return
+    that edge's target; else the unconditional edge's target (``conditions is None``);
+    else ``None`` (no matching out-edge here).
 
     Importable + unit-tested. ``edges`` are the ``load_graph_step`` dicts
-    (``source``/``target``/``conditions``)."""
-    out_edges = [e for e in edges if e["source"] == source_id]
+    (``source``/``target``/``edge_type``/``conditions``)."""
+    out_edges = [e for e in edges if e["source"] == source_id and e["edge_type"] != "escalation"]
     if outcome is not None:
         for edge in out_edges:
-            if edge["conditions"] == {"when": outcome}:
+            conditions = edge["conditions"]
+            if conditions is not None and conditions.get("when") == outcome:
                 return edge["target"]
     for edge in out_edges:
         if edge["conditions"] is None:
             return edge["target"]
     return None
+
+
+def escalation_target(edges: list[dict], source_id: str) -> str | None:
+    """The ``target`` of the unique ``edge_type == "escalation"`` edge out of
+    ``source_id`` (the cap-exhaustion route out of an agent node), else ``None``.
+    Pure + importable."""
+    for edge in edges:
+        if edge["source"] == source_id and edge["edge_type"] == "escalation":
+            return edge["target"]
+    return None
+
+
+def loop_limit_for(edges: list[dict], node_id: str, default: int) -> int:
+    """The ``loop_limit`` carried by the loop-back edge whose ``target == node_id``
+    (the cap on how many times the walk re-enters that agent node), else ``default``
+    (the Settings fallback when no loop-back carries one — e.g. the 2-node team).
+    Pure + importable."""
+    for edge in edges:
+        conditions = edge["conditions"]
+        if edge["target"] == node_id and conditions is not None and "loop_limit" in conditions:
+            return conditions["loop_limit"]
+    return default
 
 
 @DBOS.step()
@@ -454,90 +498,132 @@ def mark_run_failed_step(run_id: str) -> None:
         session.execute(update(Run).where(Run.id == uuid.UUID(run_id)).values(status="failed"))
 
 
-def enforce_budget(run_id: str, *, checkpoint: str, description: str) -> bool:
-    """Reactive, between-steps budget enforcement (DP-C). Check accumulated prior
-    spend and gate the *next* step; on a breach, open a high-priority blocker and
-    wait. Call from a **workflow body** — it issues ``wait_at_gate`` (a
-    ``DBOS.recv``), which must run in workflow context, not nested in a step.
+def apply_budget_hook(run_id: str, *, node_id: str, iteration: int) -> bool:
+    """Budget as cross-cutting POLICY (P1.5b) — the between-spend-steps hook the walk
+    applies after every spend-bearing node, replacing P1.5a's two hand-placed
+    ``enforce_budget`` checkpoints (strictly safer: it fires after EVERY spend, not at
+    two fixed points, and subsumes them). Call from a **workflow body** — it issues
+    ``wait_at_gate`` (a ``DBOS.recv``), which must run in workflow context, not nested
+    in a step.
 
-    Returns ``True`` if the human **rejected** the breach (the caller must finalize
-    the run ``over_budget`` and stop) and ``False`` to continue — either under
-    budget, or the human approved (which records the override via
-    ``mark_budget_overridden_step`` so the rest of the run is not re-gated:
-    "approve = continue to completion").
-    """
+    On a breach it opens a high-priority ``budget_approval`` drawer blocker keyed to
+    THIS node + iteration (so repeated checks never collide on ``(run_id, topic)``) and
+    waits. Returns ``True`` if the human **rejected** (the caller finalizes
+    ``over_budget`` and stops); ``False`` to continue — under budget, or the human
+    approved (recording the override via ``mark_budget_overridden_step`` so the rest of
+    the run is not re-gated). On the non-reject paths it also runs the 80%-of-cap
+    ``low_nudge`` producer (a no-op unless spend is within [80%, cap])."""
     check = budget_check_step(run_id)
-    if not check["over"]:
-        return False
-
-    spent, cap = check["spent"], check["cap"]
-    title = f"Over budget: ${spent:.4f} of ${cap:.4f} — approve to continue, reject to stop"
-    gate = wait_at_gate(
-        run_id,
-        topic=f"budget:{run_id}:{checkpoint}",
-        kind="budget_approval",
-        priority="high_blocker",
-        blocking=True,
-        title=title,
-        description=description,
-    )
-    if gate["resolution"] == "rejected":
-        DBOS.logger.info(f"run_team over_budget rejected at {checkpoint} run_id={run_id}")
-        return True
-    mark_budget_overridden_step(run_id)
+    if check["over"]:
+        spent, cap = check["spent"], check["cap"]
+        gate = wait_at_gate(
+            run_id,
+            topic=f"budget:{run_id}:{node_id}:{iteration}",
+            kind="budget_approval",
+            priority="high_blocker",
+            blocking=True,
+            title=f"Over budget: ${spent:.4f} of ${cap:.4f} — approve to continue, reject to stop",
+            description=(
+                "The run is over its budget cap. Approve to continue (the rest of the "
+                "run will not be re-gated), or reject to stop without shipping."
+            ),
+        )
+        if gate["resolution"] == "rejected":
+            DBOS.logger.info(
+                f"run_team over_budget rejected at node {node_id} iter {iteration} run_id={run_id}"
+            )
+            return True
+        mark_budget_overridden_step(run_id)
+    # After the over-check (whether under budget or approved-over): the informational
+    # 80%-of-cap nudge (its own no-op guards handle no-cap / under-80% / already-over).
+    maybe_emit_budget_nudge_step(run_id)
     return False
 
 
-def run_review_loop(run_id: str, graph: dict, workspace: str, prd_text: str) -> dict:
-    """Walk the cyclic build/review subgraph from the entry (agent) node, following edge
-    conditions until a node emits an outcome that matches no out-edge (-> ``approved``, ship)
-    or the per-node loop cap raises a review-escalation blocker (D4 enforced termination).
+def _finalize_over_budget(run_id: str, document_id: str | None) -> dict:
+    """Finalize a run that breached its budget and was stopped (a human rejected the
+    breach, or the proxy cut the agent off mid-call): mark ``over_budget``, no ship.
+    Returns ``run_graph``'s result dict."""
+    final = finalize_run_step(run_id, status="over_budget")
+    DBOS.logger.info(f"run_team over_budget run_id={run_id}")
+    return {
+        "run_id": run_id,
+        "status": "over_budget",
+        "document_id": document_id,
+        "cost_total": final["cost_total_usd"],
+    }
 
-    A **workflow-body helper** (NOT a ``@DBOS.step``) — like ``enforce_budget`` it issues
-    ``wait_at_gate`` (a ``DBOS.recv``) and calls steps, which must run in workflow context.
-    Returns ``{"outcome": ...}``: one of ``approved`` / ``over_budget`` / ``failed`` (also
-    carries ``error``) / ``escalation_rejected``.
 
-    Crash-resume determinism: every branch reads a recorded step output (the reviewer
-    verdict, the engineer status, the escalation resolution), so on resume the loop replays
-    the identical walk; ``iters_by_node`` / ``current`` / ``reviewer_feedback`` are pure
-    workflow-local state recomputed from those recorded outputs."""
-    max_iters = get_settings().max_review_iterations
+def run_graph(run_id: str, graph: dict, idea: str) -> dict:
+    """The uniform graph walk (P1.5b) — replaces P1.5a's ``run_review_loop`` AND
+    ``run_team``'s fixed pre/post phases. Walk from ``graph["start_node_id"]`` following
+    :func:`next_node` until a ``terminal`` node ends the run (or an engine error /
+    over_budget / escalation-reject short-circuits to a finalize). Dispatch per node ``kind``:
+    ``completion`` (the start node is the PM/author; any other completion is the Reviewer),
+    ``agent`` (the Engineer, with the loop cap), ``gate`` (pause for a human, route on
+    approve/reject), ``terminal`` (ship+finalize ``completed``, or stop+finalize ``rejected``).
+
+    A **workflow-body helper** (NOT a ``@DBOS.step``) — like the old ``run_review_loop`` it
+    issues ``wait_at_gate`` (a ``DBOS.recv``) and calls steps, which must run in workflow
+    context. Returns the fully-finalized result dict ``run_team`` hands back, in every case.
+
+    Crash-resume determinism: every routing decision reads a recorded step output (a gate
+    resolution / a reviewer verdict / an engineer status / a budget verdict); the
+    workflow-local state (``current`` / ``iters_by_node`` / ``workspace`` / ``prd_text`` /
+    ``reviewer_feedback`` / ``pm_document_id``) is recomputed deterministically from those, so
+    the walk replays identically on resume."""
     nodes_by_id = {n["id"]: n for n in graph["nodes"]}
     edges = graph["edges"]
-    current = graph["entry_node_id"]
+    start_id = graph["start_node_id"]
+    current: str | None = start_id
     iters_by_node: dict[str, int] = {}
+    workspace: str | None = None  # lazily created at the first agent node
+    prd_text: str = ""
     reviewer_feedback: str | None = None
+    pm_document_id: str | None = None
 
     while current is not None:
         node = nodes_by_id[current]
-        n = iters_by_node.get(current, 0) + 1
-        iters_by_node[current] = n
+        kind = node["kind"]
 
-        if node["kind"] == "agent":
-            if n > max_iters:
-                # Loop-cap guard BEFORE an over-limit Engineer iteration (enforced
-                # termination): raise a high-priority blocker instead of looping again.
-                escalation = wait_at_gate(
-                    run_id,
-                    topic=f"gate:{run_id}:review-escalation",
-                    kind="review_escalation",
-                    priority="high_blocker",
-                    blocking=True,
-                    title=(
-                        f"Couldn't satisfy the spec in {max_iters} review rounds — "
-                        "ship the last build as-is, or stop"
-                    ),
-                    description=(
-                        "The Engineer and Reviewer did not converge within the "
-                        f"{max_iters}-round cap. Approve to ship the last completed build "
-                        "as-is, or reject to stop the run without shipping."
-                    ),
-                )
-                if escalation["resolution"] == "rejected":
-                    return {"outcome": "escalation_rejected"}
-                return {"outcome": "approved"}  # ship the last good build as-is
+        if kind == "completion":
+            n = iters_by_node.get(current, 0) + 1
+            iters_by_node[current] = n
+            open_invocation_step(run_id, current, n)
+            if current == start_id:
+                # The PM/author. Structural dispatch by start-node identity (NOT a role_name
+                # check); a richer ``completion_kind`` discriminator is the P1.8 Supervisor
+                # generalization.
+                pm = pm_step(run_id, idea, node["model"])
+                prd_text = pm["prd_text"]
+                pm_document_id = pm["document_id"]
+                close_invocation_step(run_id, current, n, "done", "prd_written")
+                outcome: str | None = None
+            else:
+                # The Reviewer (workspace is set — an agent always ran before any reviewer).
+                verdict = reviewer_decide_step(run_id, node["model"], n, prd_text, workspace)
+                close_invocation_step(run_id, current, n, "done", verdict["outcome"])
+                reviewer_feedback = verdict["reasons"]
+                outcome = verdict["outcome"]
+            if apply_budget_hook(run_id, node_id=current, iteration=n):
+                return _finalize_over_budget(run_id, pm_document_id)
+            current = next_node(edges, current, outcome)
 
+        elif kind == "agent":
+            n = iters_by_node.get(current, 0) + 1
+            iters_by_node[current] = n
+            limit = loop_limit_for(edges, current, get_settings().max_review_iterations)
+            if n > limit:
+                # Cap-guard (enforced termination, same semantics as 5a's ``if n > max_iters``):
+                # do NOT run an over-limit agent iteration — route to the escalation gate node,
+                # which pauses + routes (ship-as-is / stop). No invocation row for the capped n.
+                current = escalation_target(edges, current)
+                continue
+            if workspace is None:
+                # Set up the workspace ONCE, at the first agent node — the Engineer reworks the
+                # prior round's files in place across iterations (DBOS step-replay won't recreate
+                # it on resume).
+                workspace = engineer_setup_step(run_id)
             open_invocation_step(run_id, current, n)
             # Per-iteration virtual key: each mint reflects the THEN-current remaining budget,
             # so the proxy enforces the run cap across the whole loop (P1.4b composes).
@@ -549,156 +635,106 @@ def run_review_loop(run_id: str, graph: dict, workspace: str, prd_text: str) -> 
 
             if engineer["status"] == "over_budget":
                 # The proxy cut the agent off mid-call. Record whatever partial spend the
-                # cut-off conversation carried (best-effort, idempotent), then stop the walk.
+                # cut-off conversation carried (best-effort, idempotent), then stop.
                 if engineer["total_tokens"] or engineer["cost_usd"]:
                     persist_agent_cost_step(run_id, node["model"], engineer, n)
                 close_invocation_step(run_id, current, n, "stopped", "over_budget")
-                return {"outcome": "over_budget"}
+                return _finalize_over_budget(run_id, pm_document_id)
             if engineer["status"] != "completed":
                 close_invocation_step(run_id, current, n, "failed", None)
-                return {"outcome": "failed", "error": engineer.get("error")}
+                mark_run_failed_step(run_id)
+                DBOS.logger.error(f"run_team failed run_id={run_id}: {engineer.get('error')}")
+                return {
+                    "run_id": run_id,
+                    "status": "failed",
+                    "document_id": pm_document_id,
+                    "error": engineer.get("error"),
+                }
 
             persist_agent_cost_step(run_id, node["model"], engineer, n)
             close_invocation_step(run_id, current, n, "done", "built")
-            # Unconditional out-edge -> the Reviewer (or None for the 2-node team -> ship).
+            if apply_budget_hook(run_id, node_id=current, iteration=n):
+                return _finalize_over_budget(run_id, pm_document_id)
             current = next_node(edges, current, outcome=None)
 
-        elif node["kind"] == "completion":
-            # The Reviewer (the PM ran in the fixed PM phase, not inside this walk).
-            open_invocation_step(run_id, current, n)
-            verdict = reviewer_decide_step(run_id, node["model"], n, prd_text, workspace)
-            close_invocation_step(run_id, current, n, "done", verdict["outcome"])
-            reviewer_feedback = verdict["reasons"]
-            current = next_node(edges, current, outcome=verdict["outcome"])
-            if current is None:
-                return {"outcome": "approved"}  # "approved" matches no loop-back edge -> ship
+        elif kind == "gate":
+            # A human-approval checkpoint node: pause on the durable recv, then route on the
+            # resolution (the node-id-scoped topic keeps concurrent gates collision-free).
+            open_invocation_step(run_id, current, 1)
+            cfg = node["config"] or {}
+            gate = wait_at_gate(
+                run_id,
+                topic=f"gate:{run_id}:{current}",
+                kind=cfg.get("gate_kind", "gate_approval"),
+                priority="high_blocker",
+                blocking=True,
+                title=cfg["title"],
+                description=cfg["description"],
+            )
+            close_invocation_step(run_id, current, 1, "done", gate["resolution"])
+            current = next_node(edges, current, gate["resolution"])
+
+        elif kind == "terminal":
+            # The walk's endpoint: ship-and-finalize ``completed``, or stop-and-finalize
+            # ``rejected``. Either way the run is finalized here and the walk ends.
+            open_invocation_step(run_id, current, 1)
+            cfg = node["config"] or {}
+            if cfg.get("terminal_kind") == "ship":
+                ship = ship_step(run_id, workspace)
+                final = finalize_run_step(run_id, status="completed")
+                close_invocation_step(run_id, current, 1, "done", "shipped")
+                DBOS.logger.info(
+                    f"run_team done run_id={run_id} ship_sha={ship['sha']} tag={ship['tag']}"
+                )
+                return {
+                    "run_id": run_id,
+                    "status": "completed",
+                    "document_id": pm_document_id,
+                    "ship_sha": ship["sha"],
+                    "ship_tag": ship["tag"],
+                    "cost_total": final["cost_total_usd"],
+                }
+            final = finalize_run_step(run_id, status="rejected")
+            close_invocation_step(run_id, current, 1, "done", "stopped")
+            DBOS.logger.info(f"run_team stopped at terminal run_id={run_id}")
+            return {
+                "run_id": run_id,
+                "status": "rejected",
+                "document_id": pm_document_id,
+                "cost_total": final["cost_total_usd"],
+            }
 
         else:
-            return {"outcome": "approved"}  # defensive: an unknown kind ends the walk
+            # Defensive: an unknown node kind ends the walk safely as a clear failure (never
+            # loop forever). Unreachable with the hardcoded builders.
+            mark_run_failed_step(run_id)
+            DBOS.logger.error(f"run_team unknown node kind {kind!r} at {current} run_id={run_id}")
+            return {
+                "run_id": run_id,
+                "status": "failed",
+                "document_id": pm_document_id,
+                "error": f"unknown node kind {kind!r}",
+            }
 
-    return {"outcome": "approved"}
+    # Defensive: the walk fell off the end without reaching a terminal (a malformed graph —
+    # an outcome that matched no out-edge). Don't silently "succeed"; finalize failed.
+    mark_run_failed_step(run_id)
+    DBOS.logger.error(f"run_team walked off the end with no terminal node run_id={run_id}")
+    return {
+        "run_id": run_id,
+        "status": "failed",
+        "document_id": pm_document_id,
+        "error": "walk ended with no terminal node",
+    }
 
 
 @DBOS.workflow()
 def run_team(idea: str) -> dict:
+    """The durable run: load the authored team graph, then walk it. No special-cased
+    PM/PRD/budget/ship/finalize phases and no outcome-routing — :func:`run_graph` visits
+    every node uniformly (PM, gates, Engineer/Reviewer, the between-spend budget hook, the
+    terminal) and returns the fully-finalized result dict."""
     run_id = DBOS.workflow_id
     DBOS.logger.info(f"run_team start run_id={run_id} idea={idea!r}")
-
     graph = load_graph_step(run_id)
-    nodes_by_id = {n["id"]: n for n in graph["nodes"]}
-    pm_node_id = graph["pm_node_id"]
-    pm_model = nodes_by_id[pm_node_id]["model"]
-
-    # ---- PM phase (unchanged behavior; now wrapped in a per-node invocation) ----
-    open_invocation_step(run_id, pm_node_id, 1)
-    pm = pm_step(run_id, idea, pm_model)
-    close_invocation_step(run_id, pm_node_id, 1, "done", "prd_written")
-
-    # HitL gate (P1.1a): pause for human PRD approval before the Engineer builds.
-    # Inlined at a fixed position here; first-class graph-placed gates are P1.5b.
-    gate = wait_at_gate(
-        run_id,
-        topic=f"gate:{run_id}:prd-approval",
-        kind="gate_approval",
-        priority="high_blocker",
-        blocking=True,
-        title="Approve the PRD before the Engineer builds",
-        description=(
-            f"The PM wrote PRD document {pm['document_id']}. Approve to let the "
-            "Engineer build and ship it; reject to stop the run without shipping."
-        ),
-    )
-    if gate["resolution"] == "rejected":
-        final = finalize_run_step(run_id, status="rejected")
-        DBOS.logger.info(f"run_team rejected at PRD gate run_id={run_id}")
-        return {
-            "run_id": run_id,
-            "status": "rejected",
-            "document_id": pm["document_id"],
-            "cost_total": final["cost_total_usd"],
-        }
-
-    # Budget checkpoint 1 (DP-C): before the Engineer runs. Reactive on the PM's
-    # accumulated spend; a breach pauses as a high-priority blocker.
-    if enforce_budget(
-        run_id,
-        checkpoint="pre-engineer",
-        description=(
-            "The run is over budget before the Engineer runs. Approve to continue "
-            "(the rest of the run will not be re-gated), or reject to stop without "
-            "building."
-        ),
-    ):
-        final = finalize_run_step(run_id, status="over_budget")
-        DBOS.logger.info(f"run_team over_budget (pre-engineer) run_id={run_id}")
-        return {
-            "run_id": run_id,
-            "status": "over_budget",
-            "document_id": pm["document_id"],
-            "cost_total": final["cost_total_usd"],
-        }
-
-    # Set up the workspace ONCE before the loop — the Engineer reworks the prior round's
-    # files in place across iterations (incremental rework is the loop's value). DBOS
-    # step-replay means it is not re-created on resume.
-    workspace = engineer_setup_step(run_id)
-
-    # ---- the generic cyclic build/review sub-walk (the executor leap) ----
-    loop = run_review_loop(run_id, graph, workspace, pm["prd_text"])
-    if loop["outcome"] == "over_budget":
-        # The partial agent cost (if any) was already recorded inside the loop; just finalize.
-        final = finalize_run_step(run_id, status="over_budget")
-        DBOS.logger.info(f"run_team over_budget (proxy mid-loop cutoff) run_id={run_id}")
-        return {
-            "run_id": run_id,
-            "status": "over_budget",
-            "document_id": pm["document_id"],
-            "cost_total": final["cost_total_usd"],
-        }
-    if loop["outcome"] == "failed":
-        mark_run_failed_step(run_id)
-        DBOS.logger.error(f"run_team failed run_id={run_id}: {loop.get('error')}")
-        return {"run_id": run_id, "status": "failed", "error": loop.get("error")}
-    if loop["outcome"] == "escalation_rejected":
-        final = finalize_run_step(run_id, status="rejected")
-        DBOS.logger.info(f"run_team review-escalation rejected run_id={run_id}")
-        return {
-            "run_id": run_id,
-            "status": "rejected",
-            "document_id": pm["document_id"],
-            "cost_total": final["cost_total_usd"],
-        }
-    # outcome == "approved" (a happy approve, or an escalation-approve = ship the last build).
-
-    # Budget checkpoint 2 (DP-C): after the agent's spend is recorded, before
-    # shipping. The agent's own LLM loop bills inside one step and can't be
-    # interrupted mid-flight (that's P1.4's proxy), so we catch its spend here.
-    if enforce_budget(
-        run_id,
-        checkpoint="pre-ship",
-        description=(
-            "The agent's run exceeded the budget. Approve to ship the completed "
-            "work, or reject to stop without shipping."
-        ),
-    ):
-        final = finalize_run_step(run_id, status="over_budget")
-        DBOS.logger.info(f"run_team over_budget (pre-ship) run_id={run_id}")
-        return {
-            "run_id": run_id,
-            "status": "over_budget",
-            "document_id": pm["document_id"],
-            "cost_total": final["cost_total_usd"],
-        }
-
-    ship = ship_step(run_id, workspace)
-    final = finalize_run_step(run_id)
-
-    DBOS.logger.info(f"run_team done run_id={run_id} ship_sha={ship['sha']} tag={ship['tag']}")
-    return {
-        "run_id": run_id,
-        "status": "completed",
-        "document_id": pm["document_id"],
-        "ship_sha": ship["sha"],
-        "ship_tag": ship["tag"],
-        "cost_total": final["cost_total_usd"],
-    }
+    return run_graph(run_id, graph, idea)

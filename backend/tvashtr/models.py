@@ -159,7 +159,11 @@ class TeamGraph(Base):
 
 class AgentNode(Base):
     """One node in a team graph. ``kind`` discriminates a direct-LLM
-    ``completion`` node (PM) from an ``agent`` node backed by an ``engine``."""
+    ``completion`` node (PM/Reviewer) from an ``agent`` node backed by an
+    ``engine``, a human-approval ``gate``, and a walk-ending ``terminal``
+    (ship/stop). Gate + terminal nodes carry no ``model``/``engine`` (NULL) and a
+    ``config`` jsonb (gate: ``gate_kind``/``title``/``description``; terminal:
+    ``terminal_kind``) — P1.5b's uniform graph walk (migration ``0009``)."""
 
     __tablename__ = "agent_nodes"
 
@@ -168,10 +172,15 @@ class AgentNode(Base):
         ForeignKey("team_graphs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     role_name: Mapped[str] = mapped_column(Text, nullable=False)
-    kind: Mapped[str] = mapped_column(Text, nullable=False)  # "completion" | "agent"
-    model: Mapped[str] = mapped_column(Text, nullable=False)
+    # "completion" | "agent" | "gate" | "terminal" (P1.5b grew the vocabulary).
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    # NULL for gate/terminal nodes (no LLM/engine); set for completion/agent nodes (P1.5b).
+    model: Mapped[str | None] = mapped_column(Text, nullable=True)
     engine: Mapped[str | None] = mapped_column(Text, nullable=True)  # "openhands" | NULL
     position: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # Node-kind metadata (P1.5b): gate -> {gate_kind, title, description};
+    # terminal -> {terminal_kind: "ship"|"stop"}; NULL for completion/agent nodes.
+    config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

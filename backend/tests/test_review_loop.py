@@ -28,7 +28,7 @@ from sqlalchemy import func, select
 
 from tvashtr.control_plane import team_run
 from tvashtr.control_plane.shipping import init_workspace_repo
-from tvashtr.control_plane.teams import build_review_loop_team
+from tvashtr.control_plane.teams import build_review_loop_team, build_two_node_team
 from tvashtr.db import session_scope
 from tvashtr.models import AgentInvocation, AgentNode, CostRecord, EngineerRunAttempt, Run
 
@@ -129,6 +129,9 @@ def test_review_loop_cycles_once_then_ships(client, monkeypatch, tmp_path):
 
         eng_invs = _invocations(by_role["engineer"].id)
         rev_invs = _invocations(by_role["reviewer"].id)
+        pm_invs = _invocations(by_role["pm"].id)
+        prd_gate_invs = _invocations(by_role["prd_gate"].id)
+        ship_invs = _invocations(by_role["ship"].id)
         n_attempts = session.execute(
             select(func.count())
             .select_from(EngineerRunAttempt)
@@ -156,3 +159,103 @@ def test_review_loop_cycles_once_then_ships(client, monkeypatch, tmp_path):
     # Reviewer invocations: [changes_requested, approved] — exactly one loop-back.
     assert [i.iteration for i in rev_invs] == [1, 2]
     assert [i.outcome for i in rev_invs] == ["changes_requested", "approved"]
+
+    # The walk visited the PM (prd_written), the PRD gate (approved), and ended at the
+    # ship terminal (shipped) — the uniform walk, no special-cased phases (P1.5b).
+    assert [(i.iteration, i.outcome) for i in pm_invs] == [(1, "prd_written")]
+    assert [(i.iteration, i.outcome) for i in prd_gate_invs] == [(1, "approved")]
+    assert [(i.iteration, i.outcome) for i in ship_invs] == [(1, "shipped")]
+
+
+def test_two_node_walk_ships_through_gate_and_terminal(client, monkeypatch, tmp_path):
+    """The 2-node team as a uniform walk: PM -> prd_gate(approve) -> Engineer(1) ->
+    ship-terminal -> completed, with exactly one ``agent-cost:1`` row. Same offline harness
+    (real ``run_team``, agent + PM stubbed, the PRD gate auto-approved)."""
+    monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    init_workspace_repo(str(workspace))
+
+    def _fake_pm_step(run_id, idea, pm_model):
+        return {"document_id": str(uuid.uuid4()), "prd_text": f"PRD: {idea}"}
+
+    def _fake_engineer_setup_step(run_id):
+        return str(workspace)
+
+    def _fake_engineer_run_step(
+        run_id, prd_text, workspace_dir, eng_model, vkey, iteration, reviewer_feedback
+    ):
+        with session_scope() as session:
+            session.add(EngineerRunAttempt(run_id=run_id, pid=os.getpid()))
+        (Path(workspace_dir) / "greeting.txt").write_text(f"build {iteration}\n")
+        return {
+            "status": "completed",
+            "files_changed": ["greeting.txt"],
+            "error": None,
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+            "cost_usd": 0.0,
+        }
+
+    monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
+    monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
+    monkeypatch.setattr(team_run, "engineer_run_step", _fake_engineer_run_step)
+
+    team_graph_id = build_two_node_team()
+    run_id = str(uuid.uuid4())
+    with session_scope() as session:
+        session.add(
+            Run(
+                id=uuid.UUID(run_id),
+                team_graph_id=uuid.UUID(team_graph_id),
+                idea="build greeting.txt",
+                workflow_id=run_id,
+                status="running",
+            )
+        )
+    with SetWorkflowID(run_id):
+        handle = DBOS.start_workflow(team_run.run_team, "build greeting.txt")
+    result = handle.get_result()
+
+    assert result["status"] == "completed"
+
+    with session_scope() as session:
+        run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one()
+        nodes = (
+            session.execute(select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id))
+            .scalars()
+            .all()
+        )
+        by_role = {n.role_name: n for n in nodes}
+
+        def _invs(node_id):
+            return (
+                session.execute(
+                    select(AgentInvocation)
+                    .where(AgentInvocation.run_id == run_id, AgentInvocation.node_id == node_id)
+                    .order_by(AgentInvocation.iteration)
+                )
+                .scalars()
+                .all()
+            )
+
+        pm_invs = _invs(by_role["pm"].id)
+        gate_invs = _invs(by_role["prd_gate"].id)
+        eng_invs = _invs(by_role["engineer"].id)
+        ship_invs = _invs(by_role["ship"].id)
+        n_agent_cost = session.execute(
+            select(func.count())
+            .select_from(CostRecord)
+            .where(CostRecord.idempotency_key.like(f"{run_id}:agent-cost:%"))
+        ).scalar_one()
+
+    assert run.status == "completed"
+    assert run.ship_tag == f"ship-{run_id}"
+    # The Engineer ran exactly once -> one agent-cost row (no loop-back in the 2-node team).
+    assert n_agent_cost == 1
+    assert [(i.iteration, i.outcome) for i in pm_invs] == [(1, "prd_written")]
+    assert [(i.iteration, i.outcome) for i in gate_invs] == [(1, "approved")]
+    assert [(i.iteration, i.outcome) for i in eng_invs] == [(1, "built")]
+    assert [(i.iteration, i.outcome) for i in ship_invs] == [(1, "shipped")]

@@ -17,7 +17,7 @@ from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select
 
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
-from tvashtr.control_plane.team_run import enforce_budget, finalize_run_step
+from tvashtr.control_plane.team_run import apply_budget_hook, finalize_run_step
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.db import session_scope
 from tvashtr.metering import record_agent_cost, running_cost
@@ -25,16 +25,14 @@ from tvashtr.models import Run
 
 
 @DBOS.workflow()
-def budget_probe_workflow(checkpoint: str) -> dict:
-    """Mirror ``run_team``'s between-steps budget enforcement, WITHOUT LLM/agent:
-    check + (on breach) gate; reject -> finalize ``over_budget``, approve ->
-    continue. Returns the branch taken so the test can assert it."""
+def budget_probe_workflow(node_id: str) -> dict:
+    """Mirror ``run_team``'s between-spend budget hook (P1.5b), WITHOUT LLM/agent:
+    ``apply_budget_hook`` does the check + (on breach) the gate; reject -> finalize
+    ``over_budget``, approve -> continue. Returns the branch taken so the test can
+    assert it. (``node_id`` stands in for the spend-bearing node the hook fires after —
+    it scopes the gate topic ``budget:{run_id}:{node_id}:1``.)"""
     run_id = DBOS.workflow_id
-    rejected = enforce_budget(
-        run_id,
-        checkpoint=checkpoint,
-        description="probe budget breach for the offline budget tests",
-    )
+    rejected = apply_budget_hook(run_id, node_id=node_id, iteration=1)
     if rejected:
         finalize_run_step(run_id, status="over_budget")
         return {"status": "over_budget"}
@@ -190,7 +188,7 @@ def test_breach_reject_finalizes_over_budget(client):
     _wait_until(lambda: _run_field(run_id, "status") == "awaiting_human")
     task = _pending_budget_task(client, run_id)
     assert task["priority"] == "high_blocker"
-    assert task["topic"] == f"budget:{run_id}:pre-ship"
+    assert task["topic"] == f"budget:{run_id}:pre-ship:1"
 
     # Reject via the real resolve endpoint (a pure DBOS.send signal).
     resp = client.post(
@@ -215,7 +213,7 @@ def test_breach_approve_continues_and_records_override(client):
 
     _wait_until(lambda: _run_field(run_id, "status") == "awaiting_human")
     task = _pending_budget_task(client, run_id)
-    assert task["topic"] == f"budget:{run_id}:pre-engineer"
+    assert task["topic"] == f"budget:{run_id}:pre-engineer:1"
 
     resp = client.post(
         f"/api/runs/{run_id}/tasks/{task['id']}/resolve",
@@ -234,7 +232,8 @@ def test_breach_approve_continues_and_records_override(client):
 
 
 def test_under_budget_continues_without_a_gate(client):
-    """No breach -> enforce_budget returns False and opens no task."""
+    """No breach -> apply_budget_hook returns False and opens no task (and the 80% nudge,
+    well under threshold here, stays silent too)."""
     run_id = _make_run(cap=Decimal("1.00"))
     _add_cost(run_id, Decimal("0.01"), key=f"{run_id}:cheap")
 

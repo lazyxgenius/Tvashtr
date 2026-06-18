@@ -1,8 +1,9 @@
 """GET /api/runs/{run_id}/graph — offline (no LLM, no openhands, no workflow).
 
-Seeds a team graph (build_two_node_team only inserts rows) + a Run row, then
-asserts the read-only graph shape the canvas renders. No API key, no workflow
-start, no openhands import.
+Seeds a team graph (the ``build_*`` helpers only insert rows) + a Run row, then
+asserts the read-only graph shape the canvas renders — now including the P1.5b
+gate/terminal nodes + their ``config``, and the edge ``conditions`` (incl. the
+loop-back ``loop_limit`` and the ``escalation`` edge). No key, no workflow start.
 """
 
 import uuid
@@ -12,8 +13,7 @@ from tvashtr.db import session_scope
 from tvashtr.models import AgentInvocation, Run
 
 
-def _seed_run() -> str:
-    team_graph_id = build_two_node_team()
+def _seed(team_graph_id: str) -> str:
     run_id = str(uuid.uuid4())
     with session_scope() as session:
         session.add(
@@ -28,26 +28,26 @@ def _seed_run() -> str:
     return run_id
 
 
-def test_graph_endpoint_returns_two_nodes_and_one_work_edge(client):
-    run_id = _seed_run()
+def test_graph_endpoint_two_node_includes_gate_terminal_and_config(client):
+    run_id = _seed(build_two_node_team())
     body = client.get(f"/api/runs/{run_id}/graph").json()
 
     assert body["run_id"] == run_id
-    assert body["team_graph_id"]
-
-    nodes = body["nodes"]
-    assert [n["role_name"] for n in nodes] == ["pm", "engineer"]  # PM-first, deterministic
-    by_role = {n["role_name"]: n for n in nodes}
-    assert by_role["pm"]["kind"] == "completion" and by_role["pm"]["engine"] is None
-    assert by_role["pm"]["position"] == {"x": 0, "y": 0}
-    assert by_role["engineer"]["kind"] == "agent" and by_role["engineer"]["engine"] == "openhands"
-    assert by_role["engineer"]["position"] == {"x": 240, "y": 0}
-
-    edges = body["edges"]
-    assert len(edges) == 1
-    assert edges[0]["edge_type"] == "work"
-    assert edges[0]["source_node_id"] == by_role["pm"]["id"]
-    assert edges[0]["target_node_id"] == by_role["engineer"]["id"]
+    nodes = {n["role_name"]: n for n in body["nodes"]}
+    assert set(nodes) == {"pm", "prd_gate", "engineer", "ship", "stop"}
+    # completion/agent nodes: config is null; gate/terminal nodes carry config.
+    assert nodes["pm"]["kind"] == "completion" and nodes["pm"]["config"] is None
+    assert nodes["engineer"]["kind"] == "agent" and nodes["engineer"]["config"] is None
+    assert nodes["prd_gate"]["kind"] == "gate"
+    assert nodes["prd_gate"]["config"]["gate_kind"] == "prd_approval"
+    assert nodes["ship"]["kind"] == "terminal"
+    assert nodes["ship"]["config"] == {"terminal_kind": "ship"}
+    assert nodes["stop"]["config"] == {"terminal_kind": "stop"}
+    # All nodes carry the additive idle/0 status before any run.
+    assert all(n["status"] == "idle" and n["iteration"] == 0 for n in body["nodes"])
+    # 4 edges, each exposing conditions (present, possibly null).
+    assert len(body["edges"]) == 4
+    assert all("conditions" in e for e in body["edges"])
 
 
 def test_graph_endpoint_404_for_unknown_run(client):
@@ -55,51 +55,50 @@ def test_graph_endpoint_404_for_unknown_run(client):
     assert resp.status_code == 404
 
 
-def _seed_review_loop_run() -> str:
-    team_graph_id = build_review_loop_team()
-    run_id = str(uuid.uuid4())
-    with session_scope() as session:
-        session.add(
-            Run(
-                id=uuid.UUID(run_id),
-                team_graph_id=uuid.UUID(team_graph_id),
-                idea="seed idea",
-                workflow_id=run_id,
-                status="running",
-            )
-        )
-    return run_id
-
-
-def test_graph_endpoint_review_loop_additive_status_iteration_and_conditions(client):
-    run_id = _seed_review_loop_run()
+def test_graph_endpoint_review_loop_gates_terminals_loopback_and_escalation(client):
+    run_id = _seed(build_review_loop_team())
     body = client.get(f"/api/runs/{run_id}/graph").json()
 
-    # PM-first deterministic order (x=0, 260, 520).
-    nodes = body["nodes"]
-    assert [n["role_name"] for n in nodes] == ["pm", "engineer", "reviewer"]
-    for n in nodes:
-        # Existing fields intact …
-        assert {"id", "role_name", "kind", "model", "engine", "position"} <= set(n)
-        # … plus the additive per-node status/iteration (default idle/0 before any run).
-        assert n["status"] == "idle"
-        assert n["iteration"] == 0
+    nodes = {n["role_name"]: n for n in body["nodes"]}
+    assert set(nodes) == {
+        "pm",
+        "prd_gate",
+        "engineer",
+        "reviewer",
+        "escalation_gate",
+        "ship",
+        "stop",
+    }
+    # Gate + terminal nodes expose their config for the canvas (prompt 2) to render.
+    assert nodes["prd_gate"]["config"]["gate_kind"] == "prd_approval"
+    assert nodes["escalation_gate"]["config"]["gate_kind"] == "review_escalation"
+    assert nodes["ship"]["config"] == {"terminal_kind": "ship"}
+    assert nodes["stop"]["config"] == {"terminal_kind": "stop"}
+    for n in body["nodes"]:
+        assert {"id", "role_name", "kind", "model", "engine", "position", "config"} <= set(n)
 
-    by_role = {n["role_name"]: n for n in nodes}
     edges = body["edges"]
-    assert len(edges) == 3
-    # The loop-back edge carries the additive conditions; existing fields intact.
-    loopback = [e for e in edges if e["conditions"] == {"when": "changes_requested"}]
+    assert len(edges) == 9
+    eng_id, rev_id = nodes["engineer"]["id"], nodes["reviewer"]["id"]
+    # The loop-back edge carries the cap as loop_limit.
+    loopback = [
+        e
+        for e in edges
+        if e["source_node_id"] == rev_id
+        and (e["conditions"] or {}).get("when") == "changes_requested"
+    ]
     assert len(loopback) == 1
-    assert loopback[0]["source_node_id"] == by_role["reviewer"]["id"]
-    assert loopback[0]["target_node_id"] == by_role["engineer"]["id"]
-    assert {"id", "source_node_id", "target_node_id", "edge_type"} <= set(loopback[0])
-    # The two unconditional edges expose conditions == None (present, null).
-    assert len([e for e in edges if e["conditions"] is None]) == 2
+    assert "loop_limit" in loopback[0]["conditions"]
+    assert loopback[0]["target_node_id"] == eng_id
+    # The escalation edge_type out of the agent is present.
+    escalation = [e for e in edges if e["edge_type"] == "escalation"]
+    assert len(escalation) == 1
+    assert escalation[0]["source_node_id"] == eng_id
+    assert escalation[0]["target_node_id"] == nodes["escalation_gate"]["id"]
 
 
 def test_graph_endpoint_node_status_reflects_latest_invocation(client):
-    run_id = _seed_review_loop_run()
+    run_id = _seed(build_review_loop_team())
     eng = next(
         n
         for n in client.get(f"/api/runs/{run_id}/graph").json()["nodes"]
