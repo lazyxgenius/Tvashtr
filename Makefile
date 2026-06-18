@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -69,6 +69,9 @@ skeleton-run-docker: ## Live CONTAINERIZED run via the Docker sandbox (TVASHTR_A
 
 skeleton-crash: ## Prove the 2-node run resumes across a kill -9 mid agent-run (needs key; skips otherwise)
 	./scripts/skeleton_crash_demo.sh
+
+loop-run: ## Live 3-node review-loop run, LOCAL sandbox + forced revisions: prove the Engineer<->Reviewer cycle genuinely ran (Engineer x2, one loop-back, ships once). Needs key; skips otherwise (P1.5a)
+	cd backend && TVASHTR_AGENT_SANDBOX=local TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FORCE_REVISIONS=1 uv run python ../scripts/loop_run.py
 
 skeleton-crash-docker: ## Prove crash-resume OVER THE CONTAINER: kill -9 mid-run -> orphan reaped by the boot sweep -> fresh container on a new ephemeral port -> ships exactly once (needs key + Docker + agent-server image; operator-run, P1.3b)
 	./scripts/skeleton_crash_demo_docker.sh

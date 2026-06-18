@@ -193,6 +193,12 @@ class Edge(Base):
         ForeignKey("agent_nodes.id", ondelete="CASCADE"), nullable=False
     )
     edge_type: Mapped[str] = mapped_column(Text, nullable=False)
+    # Outgoing-edge routing condition (P1.5a). NULL = unconditional. A conditional
+    # edge carries ``{"when": <outcome-label>}`` matched against the source node's
+    # emitted outcome by the pure ``next_node`` router — this is what makes the
+    # Reviewer->Engineer loop-back edge (``{"when": "changes_requested"}``) fire only
+    # on that verdict, while an unconditional edge always follows.
+    conditions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -258,6 +264,41 @@ class EngineerRunAttempt(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class AgentInvocation(Base):
+    """Per-node-execution **live state** (P1.5a): one row per ``(run, node, iteration)``
+    as the executor walks the graph. ``status`` ∈ ``running|done|failed|stopped``;
+    ``outcome`` is the emitted label (``built`` / a reviewer verdict / ``over_budget``),
+    NULL until the node exits. ``iteration`` is the 1-based count of THIS node's
+    executions in the run (PM always 1; Engineer/Reviewer increment per loop round).
+
+    Idempotent on ``(run_id, node_id, iteration)`` — insert-on-enter, update-on-exit —
+    so a crash-resume *updates* the existing row, never appends. This is the canvas's
+    per-node status source (the backend now owns per-node truth). Deliberately distinct
+    from :class:`EngineerRunAttempt`, which stays NON-idempotent (it exists to prove
+    re-execution via distinct pids — a different job).
+    """
+
+    __tablename__ = "agent_invocations"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id", "node_id", "iteration", name="uq_agent_invocations_run_node_iter"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    run_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    node_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_nodes.id", ondelete="CASCADE"), nullable=False
+    )
+    iteration: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)  # running|done|failed|stopped
+    outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class HumanTask(Base):

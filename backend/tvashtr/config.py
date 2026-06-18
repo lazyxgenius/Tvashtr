@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     # own ``max_tokens`` (e.g. the PM's 400) are unaffected.
     default_max_tokens_per_call: int | None = 4096
 
+    # The review-loop safety cap (P1.5a — D4 enforced termination). The cyclic
+    # Engineer<->Reviewer sub-walk runs at most this many Engineer iterations; on
+    # exhaustion the executor does NOT loop again but raises a high-priority
+    # ``review_escalation`` blocker (ship-as-is / stop). The forced-revisions proof
+    # uses N=1 (one loop-back, 2 Engineer iterations) so it never trips this cap.
+    # Env-overridable in the usual style (env ``MAX_REVIEW_ITERATIONS``).
+    max_review_iterations: int = 3
+
     # Agent execution sandbox (P1.3 — §13 top safety item: the DEMONSTRATED
     # write-escape, now PROVEN CONTAINED). ``docker`` = the OpenHands Agent Server in
     # a Docker container (real containment: least-privilege + the --rm no-bind-mount

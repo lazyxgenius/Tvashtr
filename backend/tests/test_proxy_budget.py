@@ -204,7 +204,7 @@ def _over_budget_route_probe(total_tokens: int, cost_usd: float) -> dict:
         "cost_usd": cost_usd,
     }
     if engineer["total_tokens"] or engineer["cost_usd"]:
-        persist_agent_cost_step(run_id, "test/model", engineer)
+        persist_agent_cost_step(run_id, "test/model", engineer, 1)
     finalize_run_step(run_id, status="over_budget")
     return {"status": "over_budget"}
 

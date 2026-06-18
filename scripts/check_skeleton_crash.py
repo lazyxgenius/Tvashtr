@@ -111,7 +111,10 @@ def main() -> None:
         n_agent = session.execute(
             select(func.count())
             .select_from(CostRecord)
-            .where(CostRecord.idempotency_key == f"{run_id}:agent-cost")
+            # P1.5a: the agent-cost key gained an :iteration suffix; the 2-node Engineer
+            # runs once -> exactly one ``{run_id}:agent-cost:1`` row (count semantics
+            # unchanged). ``run_id`` is a UUID, so it carries no SQL LIKE wildcards.
+            .where(CostRecord.idempotency_key.like(f"{run_id}:agent-cost:%"))
         ).scalar_one()
         n_pm = session.execute(
             select(func.count())

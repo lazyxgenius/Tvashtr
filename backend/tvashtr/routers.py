@@ -19,9 +19,10 @@ from tvashtr import db
 from tvashtr.config import get_settings
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.team_run import run_team
-from tvashtr.control_plane.teams import build_two_node_team
+from tvashtr.control_plane.teams import build_review_loop_team, build_two_node_team
 from tvashtr.documents.service import get_document_with_versions, list_documents
 from tvashtr.models import (
+    AgentInvocation,
     AgentNode,
     CostRecord,
     Document,
@@ -53,6 +54,11 @@ class CreateRunRequest(BaseModel):
     # Per-run dollar cap (P1.2). When omitted, falls back to
     # ``Settings.default_run_budget_usd`` (itself ``None`` = no cap by default).
     budget_cap_usd: Decimal | None = None
+    # Which hardcoded team the run builds (P1.5a). Default ``two_node`` keeps
+    # skeleton-run/skeleton-crash (which POST neither field) byte-for-byte unchanged;
+    # ``review_loop`` builds the 3-node PM -> Engineer <-> Reviewer cyclic team that
+    # ``make loop-run`` (and, next prompt, the UI) requests.
+    team_shape: Literal["two_node", "review_loop"] = "two_node"
 
 
 class ResolveTaskRequest(BaseModel):
@@ -213,10 +219,14 @@ def _run_to_dict(run: Run) -> dict:
 
 @router.post("/api/runs")
 def create_run(body: CreateRunRequest) -> dict:
-    """Build a fresh 2-node team, create the run row, and start ``run_team`` with
-    an explicit workflow id == run_id, so ``DBOS.workflow_id`` keys every write."""
+    """Build the requested team (default the 2-node team; ``review_loop`` the 3-node
+    cyclic team), create the run row, and start ``run_team`` with an explicit workflow
+    id == run_id, so ``DBOS.workflow_id`` keys every write."""
     idea = body.idea or DEFAULT_IDEA
-    team_graph_id = build_two_node_team()
+    if body.team_shape == "review_loop":
+        team_graph_id = build_review_loop_team()
+    else:
+        team_graph_id = build_two_node_team()
     run_id = str(uuid.uuid4())
 
     # Per-run cap: the request body wins, else the configured default (P1.2 DP-A).
@@ -270,7 +280,13 @@ def get_run(run_id: str) -> dict:
 
 @router.get("/api/runs/{run_id}/graph")
 def get_run_graph(run_id: str) -> dict:
-    """Read-only team graph (nodes + edges) for a run — what the canvas draws."""
+    """Read-only team graph (nodes + edges) for a run — what the canvas draws.
+
+    Additive P1.5a fields (existing field names/shapes unchanged — the current
+    frontend ignores unknown keys): each node carries its live ``status`` +
+    ``iteration`` from its latest ``AgentInvocation`` (the backend now owns per-node
+    truth; default ``"idle"``/``0`` when the executor has not reached it), and each
+    edge carries its routing ``conditions``."""
     with db.session_scope() as session:
         run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
         if run is None:
@@ -286,7 +302,19 @@ def get_run_graph(run_id: str) -> dict:
             .scalars()
             .all()
         )
-        # Deterministic left-to-right order (PM at x=0 before Engineer at x=240).
+        invocations = (
+            session.execute(select(AgentInvocation).where(AgentInvocation.run_id == run_id))
+            .scalars()
+            .all()
+        )
+        # The node's live state = its latest invocation (max iteration for that node).
+        latest_by_node: dict[str, AgentInvocation] = {}
+        for inv in invocations:
+            key = str(inv.node_id)
+            if key not in latest_by_node or inv.iteration > latest_by_node[key].iteration:
+                latest_by_node[key] = inv
+
+        # Deterministic left-to-right order (PM at x=0 before Engineer/Reviewer).
         nodes = sorted(nodes, key=lambda n: (n.position.get("x", 0), str(n.id)))
 
         return {
@@ -300,6 +328,12 @@ def get_run_graph(run_id: str) -> dict:
                     "model": n.model,
                     "engine": n.engine,
                     "position": n.position,
+                    "status": (
+                        latest_by_node[str(n.id)].status if str(n.id) in latest_by_node else "idle"
+                    ),
+                    "iteration": (
+                        latest_by_node[str(n.id)].iteration if str(n.id) in latest_by_node else 0
+                    ),
                 }
                 for n in nodes
             ],
@@ -309,6 +343,7 @@ def get_run_graph(run_id: str) -> dict:
                     "source_node_id": str(e.source_node_id),
                     "target_node_id": str(e.target_node_id),
                     "edge_type": e.edge_type,
+                    "conditions": e.conditions,
                 }
                 for e in edges
             ],

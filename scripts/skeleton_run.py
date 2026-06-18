@@ -82,7 +82,9 @@ def main() -> int:
 
         keys = {c["idempotency_key"] for c in costs}
         have_pm_cost = f"{run_id}:pm-llm" in keys
-        have_agent_cost = f"{run_id}:agent-cost" in keys
+        # P1.5a: the agent-cost key gained an :iteration suffix (the 2-node Engineer runs
+        # once -> ``{run_id}:agent-cost:1``); match the prefix, count semantics unchanged.
+        have_agent_cost = any(k.startswith(f"{run_id}:agent-cost:") for k in keys)
 
         # Run-event feed (the on_event seam): in docker mode the agent's events ride
         # back over the Agent Server WebSocket, so a non-zero count is the P1.3a proof

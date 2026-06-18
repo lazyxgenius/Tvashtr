@@ -6,6 +6,7 @@ without pulling its heavy SDK at import time: `openhands.*` is imported only whe
 `make skeleton-run`/`make agent-smoke`, never in the offline suite).
 """
 
+import subprocess
 import sys
 
 import pytest
@@ -55,3 +56,27 @@ def test_importing_team_run_does_not_import_openhands():
     # test_docker_adapter, which legitimately imports openhands for its mocked-
     # workspace tests — keeping THIS purity file openhands-free.)
     _assert_no_openhands("tvashtr.control_plane.team_run")
+
+
+def test_importing_invocations_does_not_import_openhands():
+    # The per-node run-state module (P1.5a) is control-plane-only (dbos/sqlalchemy/
+    # tvashtr.{db,models}); it must never pull openhands.* at import.
+    _assert_no_openhands("tvashtr.control_plane.invocations")
+
+
+def test_importing_main_does_not_import_openhands():
+    # App startup (``import tvashtr.main``) must stay openhands-free (the P1.3a hard
+    # rail). Checked in a CLEAN SUBPROCESS — re-importing main in-process would re-run
+    # ``DBOS(fastapi=app, ...)`` and disturb the session's DBOS singleton, and other
+    # tests legitimately import openhands, so the in-process sys.modules is polluted.
+    code = (
+        "import sys, tvashtr.main; "
+        "leaked = [m for m in sys.modules if m == 'openhands' or m.startswith('openhands.')]; "
+        "assert not leaked, leaked; "
+        "print('OK')"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert result.returncode == 0, (
+        f"import tvashtr.main failed or leaked openhands:\n{result.stderr}"
+    )
+    assert "OK" in result.stdout
