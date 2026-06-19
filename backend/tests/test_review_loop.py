@@ -4,8 +4,9 @@ Mirrors ``test_gates.py``'s offline-workflow approach but for the full executor:
 drives the REAL ``run_team`` over the 3-node ``review_loop`` team with
 
   * the Reviewer in **forced mode** (``TVASHTR_FORCE_REVISIONS=1`` -> ``changes_requested``
-    round 1, then ``approved``) — the real ``reviewer_decide_step`` runs (no LLM in
-    forced mode), so the loop's control flow is genuinely exercised;
+    round 1, then ``approved``) — the real ``reviewer_agent_run_step`` runs but its forced
+    short-circuit returns the verdict with NO agent run / NO LLM, so the loop's control flow is
+    genuinely exercised;
   * the PRD gate **auto-approved** (``TVASHTR_AUTO_APPROVE_GATES=1``);
   * the **agent stubbed** by monkeypatching the two openhands-touching steps
     (``engineer_setup_step`` lazily imports ``make_local_workspace``; ``engineer_run_step``

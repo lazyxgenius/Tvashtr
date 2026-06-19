@@ -72,7 +72,11 @@ def test_build_review_loop_team_places_loop_escalation_gate_and_terminals():
     }
     assert by_role["pm"].kind == "completion"
     assert by_role["engineer"].kind == "agent" and by_role["engineer"].engine == "openhands"
-    assert by_role["reviewer"].kind == "completion" and by_role["reviewer"].engine is None
+    # P1.5c: the Engineer carries a self-documenting agent_kind, and the Reviewer is now a full
+    # agent node (kind="agent", engine="openhands", config.agent_kind="reviewer").
+    assert by_role["engineer"].config == {"agent_kind": "engineer"}
+    assert by_role["reviewer"].kind == "agent" and by_role["reviewer"].engine == "openhands"
+    assert by_role["reviewer"].config == {"agent_kind": "reviewer"}
     assert by_role["prd_gate"].kind == "gate"
     assert by_role["prd_gate"].config["gate_kind"] == "prd_approval"
     assert by_role["escalation_gate"].kind == "gate"

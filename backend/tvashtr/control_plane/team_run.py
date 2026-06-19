@@ -34,8 +34,9 @@ walk honest.)
 module (and app startup) never loads it.
 """
 
+import json
+import logging
 import os
-import re
 import uuid
 from pathlib import Path
 
@@ -57,6 +58,8 @@ from tvashtr.engines.run_event_sink import make_run_event_sink
 from tvashtr.gateway import CompletionRequest, complete
 from tvashtr.metering import record_agent_cost, record_cost, running_cost
 from tvashtr.models import AgentNode, Edge, EngineerRunAttempt, Run
+
+logger = logging.getLogger("tvashtr.control_plane.team_run")
 
 
 @DBOS.step()
@@ -193,13 +196,30 @@ def pm_step(run_id: str, idea: str, pm_model: str) -> dict:
     return {"document_id": str(document.id), "prd_text": result.text}
 
 
+# P1.5c: keep review/test byproducts out of the shipped commit. ``idempotent_ship`` does
+# ``git add -A``, so anything matching this workspace ``.gitignore`` is excluded from the ship:
+# the Reviewer's ``REVIEW_VERDICT.json`` sidecar (also harvested+removed) and any stray
+# ``__pycache__``/``*.pyc`` (the Reviewer runs tests with ``python -B`` so it writes none, but
+# this is the belt-and-suspenders for any byproduct either agent leaves behind).
+_WORKSPACE_GITIGNORE = "__pycache__/\n*.pyc\nREVIEW_VERDICT.json\n"
+
+
+def _write_workspace_gitignore(workspace: str) -> None:
+    """Write a ``.gitignore`` so review/test byproducts never reach the shipped commit
+    (``idempotent_ship`` does ``git add -A``). Pure (stdlib), unit-testable."""
+    (Path(workspace) / ".gitignore").write_text(_WORKSPACE_GITIGNORE, encoding="utf-8")
+
+
 @DBOS.step()
 def engineer_setup_step(run_id: str) -> str:
-    """Create a fresh local workspace and git-init it (repo-local identity)."""
+    """Create a fresh local workspace, git-init it (repo-local identity), and write the
+    workspace ``.gitignore`` (P1.5c) — all once, at the first agent node (DBOS step-replay
+    won't re-run it on resume)."""
     from tvashtr.engines.openhands_adapter import make_local_workspace  # lazy (openhands)
 
     workspace = make_local_workspace(run_id)
     init_workspace_repo(workspace)
+    _write_workspace_gitignore(workspace)
     return workspace
 
 
@@ -355,110 +375,210 @@ def persist_agent_cost_step(run_id: str, eng_model: str, usage: dict, iteration:
     )
 
 
-# P1.5a Reviewer constants.
-# Cap the deliverable text passed into a single Reviewer completion (real mode only): the
-# loop's current deliverables are small, and a hard char budget keeps the review a cheap
-# one-shot. Multi-file repos the reviewer must *explore* are the agent-reviewer upgrade
-# (§15), not this prompt.
-_REVIEW_MAX_CHARS = 12000
-# Forced-revisions harness flag — read inside the recorded reviewer step (like
+@DBOS.step()
+def persist_reviewer_cost_step(
+    run_id: str, reviewer_model: str, usage: dict, iteration: int
+) -> None:
+    """Write one CostRecord for THIS Reviewer iteration, idempotent on the per-iteration key
+    ``{run_id}:reviewer-agent-cost:{iteration}`` (P1.5c). Deliberately a DISTINCT namespace from
+    the Engineer's ``{run_id}:agent-cost:{iteration}`` so the Engineer's key stays byte-for-byte
+    and the ``…:agent-cost:%`` checkers (skeleton-crash / loop-run) keep counting only Engineer
+    spend. Only called on a real (non-zero-usage) review — the forced/offline path writes no row."""
+    record_agent_cost(
+        workflow_id=run_id,
+        idempotency_key=f"{run_id}:reviewer-agent-cost:{iteration}",
+        model=reviewer_model,
+        prompt_tokens=usage["prompt_tokens"],
+        completion_tokens=usage["completion_tokens"],
+        total_tokens=usage["total_tokens"],
+        cost_usd=usage["cost_usd"],
+    )
+
+
+# Forced-revisions harness flag — read FIRST inside the recorded reviewer step (like
 # gate_auto_resolution_step reads TVASHTR_AUTO_APPROVE_GATES) so a crash-resume replays the
-# same verdicts regardless of the restarted process's environment. Never set in production.
+# same verdicts regardless of the restarted process's environment. Never set in production. It
+# MUST short-circuit BEFORE any adapter is resolved — that is what keeps loop-run/loop-crash/
+# skeleton-* (and the offline workflow tests) LLM-free and ``team_run`` openhands-free at import.
 _FORCE_REVISIONS_ENV = "TVASHTR_FORCE_REVISIONS"
+# Defensive bound on the reasons string carried back to the Engineer (and stored), so one
+# round's verdict file can't balloon the next instruction.
+_REVIEW_MAX_REASONS = 2000
 
 
-def _read_workspace_deliverable(workspace: str) -> str:
-    """Read the non-hidden files under ``workspace`` into one labelled string for the
-    Reviewer (stdlib only; skips ``.git`` and any hidden file/dir; total capped at
-    ``_REVIEW_MAX_CHARS``). ``workspace`` is the local path string from
-    ``make_local_workspace`` (5a runs the loop in local mode)."""
-    root = Path(workspace)
-    parts: list[str] = []
-    budget = _REVIEW_MAX_CHARS
-    for path in sorted(root.rglob("*")):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(root)
-        if any(segment.startswith(".") for segment in rel.parts):
-            continue  # skip .git/ and any hidden file/dir
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        chunk = f"\n--- {rel} ---\n{text}"
-        parts.append(chunk[:budget])
-        budget -= len(chunk)
-        if budget <= 0:
-            break
-    return "".join(parts).strip() or "(the workspace contains no readable deliverable files)"
+def _build_review_instruction(prd_text: str, idea: str) -> str:
+    """Build the agent-Reviewer's instruction (pure; unit-tested). Tells the Reviewer agent, in
+    order, to inspect the engineer's build in its working dir, RUN THE TESTS with exactly
+    ``python -B -m unittest``, decide ``approved`` ONLY IF the tests pass AND the build fulfills
+    the original idea + the PRD (else ``changes_requested``), and write the verdict to the bare
+    file ``REVIEW_VERDICT.json`` — reviewing, not editing."""
+    return (
+        "You are the Reviewer on a software team. The engineer's build is in your current "
+        "working directory. Review it — do NOT improve it.\n\n"
+        "Do these steps in order:\n"
+        "1. Inspect the files in your current working directory (the engineer's build).\n"
+        "2. Run the test suite with EXACTLY this command (the -B is required — do not write "
+        "bytecode):\n"
+        "       python -B -m unittest\n"
+        "3. Decide the verdict:\n"
+        '   - "approved" ONLY IF the tests pass AND the deliverable fulfills the ORIGINAL '
+        "IDEA and the PRD below.\n"
+        '   - "changes_requested" otherwise (any test fails, a required behavior or file from '
+        "the idea/PRD is missing, or it otherwise falls short).\n"
+        "4. Write a file named EXACTLY REVIEW_VERDICT.json in your current working directory "
+        "(the bare filename), containing EXACTLY this JSON and nothing else:\n"
+        '       {"verdict": "approved" | "changes_requested", "reasons": "<1-3 short, '
+        'specific, actionable sentences>"}\n\n'
+        "STRICT RULES:\n"
+        "- You are REVIEWING, not editing. Do NOT modify, create, or delete ANY file except "
+        "REVIEW_VERDICT.json.\n"
+        '- Base "approved" on the tests actually passing and the spec actually being met — do '
+        "not approve on assumption.\n\n"
+        f"--- ORIGINAL IDEA ---\n{idea}\n\n--- PRD ---\n{prd_text}"
+    )
 
 
-def _parse_verdict(text: str) -> dict:
-    """Parse the Reviewer's reply into ``{"outcome", "reasons"}`` defensively: an
-    unambiguous ``changes_requested`` verdict -> that (carrying the reply as the reasons the
-    Engineer gets next round); anything else (incl. an unparseable reply) defaults to
-    ``approved`` — the loop cap is the safety net, so a malformed reply ships rather than
-    spinning. Real-mode review *quality* is P1.5c's concern; this just needs to be correct +
-    parseable."""
-    match = re.search(r"verdict\s*:?\s*(approved|changes[ _]requested)", text, re.IGNORECASE)
-    if match:
-        verdict = match.group(1).lower().replace(" ", "_")
-    elif re.search(r"changes[ _]requested", text, re.IGNORECASE):
-        verdict = "changes_requested"
+def _harvest_verdict(workspace: str) -> dict:
+    """Read ``{workspace}/REVIEW_VERDICT.json``, parse defensively into ``{"outcome":
+    "approved"|"changes_requested", "reasons": str|None}``, and REMOVE the file so it never
+    ships and never seeds the next iteration. Pure (stdlib) + unit-tested.
+
+    Safe-default toward MORE review: a missing / malformed / unrecognized verdict ⇒
+    ``changes_requested`` (never a silent ``approved``); the escalation cap is the stop, so
+    this can't spin. In docker mode ``_pull_workspace`` carried the file home; in local mode
+    the Reviewer wrote it straight into ``workspace``."""
+    path = Path(workspace) / "REVIEW_VERDICT.json"
+    if not path.exists():
+        logger.info("reviewer verdict: no REVIEW_VERDICT.json -> changes_requested (safe default)")
+        return {
+            "outcome": "changes_requested",
+            "reasons": "(no REVIEW_VERDICT.json produced — defaulting to changes_requested)",
+        }
+    raw_text = ""
+    try:
+        raw_text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        pass
+    # Always remove the file (best-effort) so it neither ships nor seeds the next iteration.
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+    safe_default = {
+        "outcome": "changes_requested",
+        "reasons": "(unparseable REVIEW_VERDICT.json — defaulting to changes_requested)",
+    }
+    try:
+        raw = json.loads(raw_text)
+    except (json.JSONDecodeError, ValueError):
+        # Lightweight text fallback for a non-JSON reply.
+        low = raw_text.lower()
+        if "approved" in low and "changes" not in low:
+            result = {"outcome": "approved", "reasons": None}
+        else:
+            snippet = raw_text.strip()[:_REVIEW_MAX_REASONS]
+            result = {"outcome": "changes_requested", "reasons": snippet or safe_default["reasons"]}
     else:
-        verdict = "approved"
-    if verdict == "changes_requested":
-        return {"outcome": "changes_requested", "reasons": text.strip()[:_REVIEW_MAX_CHARS]}
-    return {"outcome": "approved", "reasons": None}
+        if not isinstance(raw, dict):
+            # Valid JSON but not an object (e.g. a bare number or the bare string "approved").
+            # Crucially a bare "approved" must NOT approve — fail toward more review, clearly.
+            result = {
+                "outcome": "changes_requested",
+                "reasons": "(REVIEW_VERDICT.json was not a JSON object — changes_requested)",
+            }
+        else:
+            verdict = str(raw.get("verdict", "")).strip().lower().replace(" ", "_")
+            if verdict == "approved":
+                result = {"outcome": "approved", "reasons": None}
+            elif verdict == "changes_requested":
+                reasons_raw = raw.get("reasons")
+                reasons = (
+                    str(reasons_raw)[:_REVIEW_MAX_REASONS] if reasons_raw else "(no reasons given)"
+                )
+                result = {"outcome": "changes_requested", "reasons": reasons}
+            else:
+                result = dict(safe_default)
+    logger.info("reviewer verdict harvested: outcome=%s", result["outcome"])
+    return result
 
 
 @DBOS.step()
-def reviewer_decide_step(
-    run_id: str, reviewer_model: str, iteration: int, prd_text: str, workspace: str
+def reviewer_agent_run_step(
+    run_id: str,
+    reviewer_model: str,
+    iteration: int,
+    prd_text: str,
+    idea: str,
+    workspace: str,
+    vkey: str | None,
 ) -> dict:
-    """The Reviewer — a recorded completion step that judges the Engineer's deliverable
-    against the PRD and emits ``{"outcome": "approved"|"changes_requested", "reasons":
-    str|None}``. Recorded, so a crash-resume replays the SAME verdict (the loop's control
-    flow depends on it). Two modes:
+    """The agent-Reviewer (replaces the old completion ``reviewer_decide_step``): runs in the
+    sandbox behind the unchanged ``EngineAdapter`` (like the Engineer), tests the build, judges
+    it against the idea + PRD, and emits its verdict as the ``REVIEW_VERDICT.json`` sidecar this
+    step harvests. Recorded, so a crash-resume replays the SAME verdict (the loop's control flow
+    depends on it). Returns ``{"status", "outcome", "reasons", "error"?, **usage}``.
 
-    * **Forced harness** (``TVASHTR_FORCE_REVISIONS=N``, read inside this step): return
-      ``changes_requested`` while the reviewer iteration ``n <= N``, else ``approved`` — NO
-      LLM call, NO cost. This is how 5a proves the cycle genuinely runs deterministically (a
-      real Reviewer would approve the trivial deliverable round 1 -> a vacuous proof).
-    * **Real mode** (no env): read the deliverable from the workspace, ask the Reviewer to
-      judge it against the PRD and reply with a parseable ``VERDICT:`` line, meter the call
-      (key ``{run_id}:reviewer-llm:{iteration}``), parse defensively. Real review quality is
-      P1.5c's concern, not this prompt's — just correct + parseable."""
+    * **Forced harness** (``TVASHTR_FORCE_REVISIONS=N``, read FIRST): return ``changes_requested``
+      while ``iteration <= N`` else ``approved`` — NO adapter resolution, NO agent run, NO cost
+      (this keeps loop-run/loop-crash/the offline tests LLM-free, and is why ``team_run`` stays
+      openhands-free at import).
+    * **Real mode** (no env): build the review instruction, run the agent in the SAME workspace
+      the Engineer used (so it sees the build — docker seeding pushes it into the container),
+      then harvest the verdict. A non-``completed`` run hands its terminal status up unchanged
+      (symmetric with the Engineer)."""
     forced = os.environ.get(_FORCE_REVISIONS_ENV, "").strip()
     if forced:
         try:
             forced_n = int(forced)
         except ValueError:
             forced_n = 0
-        if iteration <= forced_n:
-            return {
-                "outcome": "changes_requested",
-                "reasons": f"<forced revision: round {iteration} of {forced_n}>",
-            }
-        return {"outcome": "approved", "reasons": None}
+        changes = iteration <= forced_n
+        return {
+            "status": "completed",
+            "outcome": "changes_requested" if changes else "approved",
+            "reasons": f"<forced revision: round {iteration} of {forced_n}>" if changes else None,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "cost_usd": 0.0,
+        }
 
-    deliverable = _read_workspace_deliverable(workspace)
-    prompt = (
-        "You are the Reviewer on a software team. Judge the engineer's deliverable below "
-        "against the PRD. Reply with EXACTLY one line — 'VERDICT: approved' if the "
-        "deliverable satisfies the PRD, or 'VERDICT: changes_requested' if it does not — "
-        "then 1-3 short sentences of specific, actionable reasons the engineer can act on.\n\n"
-        f"--- PRD ---\n{prd_text}\n\n--- DELIVERABLE ---\n{deliverable}"
-    )
-    request = CompletionRequest(
+    task = AgentTask(
+        instruction=_build_review_instruction(prd_text, idea),
+        workspace_dir=workspace,
         model=reviewer_model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-        max_tokens=400,
+        llm_api_key=vkey,
     )
-    result = complete(request)
-    record_cost(result, workflow_id=run_id, idempotency_key=f"{run_id}:reviewer-llm:{iteration}")
-    return _parse_verdict(result.text)
+    # Same engine selection the Engineer uses (the adapter is engine-neutral — it just runs the
+    # AgentTask's instruction in its workspace; "reviewer" vs "engineer" is not its concern).
+    engine_name = (
+        "openhands-docker" if get_settings().agent_sandbox_mode == "docker" else "openhands"
+    )
+    adapter = resolve_adapter(engine_name)  # lazy openhands import happens here
+    result = adapter.run(task, on_event=make_run_event_sink(run_id))
+    usage = {
+        "prompt_tokens": result.prompt_tokens,
+        "completion_tokens": result.completion_tokens,
+        "total_tokens": result.total_tokens,
+        "cost_usd": result.cost_usd,
+    }
+    if result.status != "completed":
+        # Hand the terminal status up; the workflow body finalizes (symmetric with the Engineer).
+        return {
+            "status": result.status,
+            "outcome": None,
+            "reasons": None,
+            "error": result.error,
+            **usage,
+        }
+    verdict = _harvest_verdict(workspace)
+    return {
+        "status": "completed",
+        "outcome": verdict["outcome"],
+        "reasons": verdict["reasons"],
+        **usage,
+    }
 
 
 @DBOS.step()
@@ -587,6 +707,8 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
         kind = node["kind"]
 
         if kind == "completion":
+            # The only completion node is the start node (the PM/author). The Reviewer is now an
+            # agent (P1.5c), so a non-start completion shouldn't occur with the hardcoded builders.
             n = iters_by_node.get(current, 0) + 1
             iters_by_node[current] = n
             open_invocation_step(run_id, current, n)
@@ -598,64 +720,119 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 prd_text = pm["prd_text"]
                 pm_document_id = pm["document_id"]
                 close_invocation_step(run_id, current, n, "done", "prd_written")
-                outcome: str | None = None
+                if apply_budget_hook(run_id, node_id=current, iteration=n):
+                    return _finalize_over_budget(run_id, pm_document_id)
+                current = next_node(edges, current, outcome=None)
             else:
-                # The Reviewer (workspace is set — an agent always ran before any reviewer).
-                verdict = reviewer_decide_step(run_id, node["model"], n, prd_text, workspace)
-                close_invocation_step(run_id, current, n, "done", verdict["outcome"])
-                reviewer_feedback = verdict["reasons"]
-                outcome = verdict["outcome"]
-            if apply_budget_hook(run_id, node_id=current, iteration=n):
-                return _finalize_over_budget(run_id, pm_document_id)
-            current = next_node(edges, current, outcome)
+                # Defensive: a non-start completion node is unexpected (the PM is the only one).
+                # Fail clearly rather than route on a stale outcome — never silently loop/ship.
+                close_invocation_step(run_id, current, n, "failed", None)
+                mark_run_failed_step(run_id)
+                DBOS.logger.error(
+                    f"run_team unexpected non-start completion node {current} run_id={run_id}"
+                )
+                return {
+                    "run_id": run_id,
+                    "status": "failed",
+                    "document_id": pm_document_id,
+                    "error": f"unexpected non-start completion node {current} (PM is the only one)",
+                }
 
         elif kind == "agent":
             n = iters_by_node.get(current, 0) + 1
             iters_by_node[current] = n
-            limit = loop_limit_for(edges, current, get_settings().max_review_iterations)
-            if n > limit:
-                # Cap-guard (enforced termination, same semantics as 5a's ``if n > max_iters``):
-                # do NOT run an over-limit agent iteration — route to the escalation gate node,
-                # which pauses + routes (ship-as-is / stop). No invocation row for the capped n.
-                current = escalation_target(edges, current)
-                continue
+            # Cap-guard, GATED on having an escalation edge: only the Engineer has an
+            # ``edge_type="escalation"`` out-edge, so only the Engineer participates in the loop
+            # cap. The Reviewer (no escalation edge) and the 2-node Engineer (likewise) skip it —
+            # behavior-preserving for the Engineer in both teams (the 2-node Engineer's ``n`` was
+            # never ``> limit`` anyway). Same enforced-termination semantics as 5a's
+            # ``if n > max_iters``: do NOT run an over-limit iteration — route to the escalation
+            # gate (no invocation row for the capped n).
+            esc = escalation_target(edges, current)
+            if esc is not None:
+                limit = loop_limit_for(edges, current, get_settings().max_review_iterations)
+                if n > limit:
+                    current = esc
+                    continue
             if workspace is None:
                 # Set up the workspace ONCE, at the first agent node — the Engineer reworks the
                 # prior round's files in place across iterations (DBOS step-replay won't recreate
-                # it on resume).
+                # it on resume). The Reviewer reuses this SAME workspace, so it sees the build.
                 workspace = engineer_setup_step(run_id)
             open_invocation_step(run_id, current, n)
             # Per-iteration virtual key: each mint reflects the THEN-current remaining budget,
             # so the proxy enforces the run cap across the whole loop (P1.4b composes).
             vkey = mint_vkey_step(run_id)
-            engineer = engineer_run_step(
-                run_id, prd_text, workspace, node["model"], vkey, n, reviewer_feedback
-            )
-            delete_vkey_step(run_id, vkey)
+            # Dispatch on the node's ``agent_kind`` (``"engineer"`` / ``"reviewer"`` / ``None`` ->
+            # engineer). The two agents share the workspace/open/mint scaffold but differ in the
+            # run-step, the cost key, and the success handling — kept as two explicit paths
+            # (correctness + readability over DRY; the Engineer path's logic is unchanged).
+            agent_kind = (node.get("config") or {}).get("agent_kind")
+            if agent_kind == "reviewer":
+                verdict = reviewer_agent_run_step(
+                    run_id, node["model"], n, prd_text, idea, workspace, vkey
+                )
+                delete_vkey_step(run_id, vkey)
 
-            if engineer["status"] == "over_budget":
-                # The proxy cut the agent off mid-call. Record whatever partial spend the
-                # cut-off conversation carried (best-effort, idempotent), then stop.
-                if engineer["total_tokens"] or engineer["cost_usd"]:
-                    persist_agent_cost_step(run_id, node["model"], engineer, n)
-                close_invocation_step(run_id, current, n, "stopped", "over_budget")
-                return _finalize_over_budget(run_id, pm_document_id)
-            if engineer["status"] != "completed":
-                close_invocation_step(run_id, current, n, "failed", None)
-                mark_run_failed_step(run_id)
-                DBOS.logger.error(f"run_team failed run_id={run_id}: {engineer.get('error')}")
-                return {
-                    "run_id": run_id,
-                    "status": "failed",
-                    "document_id": pm_document_id,
-                    "error": engineer.get("error"),
-                }
+                if verdict["status"] == "over_budget":
+                    # Proxy cut the agent off mid-call. Record partial spend (best-effort), stop.
+                    if verdict["total_tokens"] or verdict["cost_usd"]:
+                        persist_reviewer_cost_step(run_id, node["model"], verdict, n)
+                    close_invocation_step(run_id, current, n, "stopped", "over_budget")
+                    return _finalize_over_budget(run_id, pm_document_id)
+                if verdict["status"] != "completed":
+                    close_invocation_step(run_id, current, n, "failed", None)
+                    mark_run_failed_step(run_id)
+                    DBOS.logger.error(
+                        f"run_team reviewer failed run_id={run_id}: {verdict.get('error')}"
+                    )
+                    return {
+                        "run_id": run_id,
+                        "status": "failed",
+                        "document_id": pm_document_id,
+                        "error": verdict.get("error"),
+                    }
 
-            persist_agent_cost_step(run_id, node["model"], engineer, n)
-            close_invocation_step(run_id, current, n, "done", "built")
-            if apply_budget_hook(run_id, node_id=current, iteration=n):
-                return _finalize_over_budget(run_id, pm_document_id)
-            current = next_node(edges, current, outcome=None)
+                # completed: meter the reviewer ONLY if it actually spent (forced mode is 0 -> no
+                # cost row, so the ``:agent-cost:%`` counts stay engineer-only), then route on the
+                # verdict (its ``changes_requested`` follows the loop-back; ``approved`` -> ship).
+                if verdict["total_tokens"] or verdict["cost_usd"]:
+                    persist_reviewer_cost_step(run_id, node["model"], verdict, n)
+                close_invocation_step(run_id, current, n, "done", verdict["outcome"])
+                reviewer_feedback = verdict["reasons"]
+                if apply_budget_hook(run_id, node_id=current, iteration=n):
+                    return _finalize_over_budget(run_id, pm_document_id)
+                current = next_node(edges, current, verdict["outcome"])
+            else:
+                # The Engineer path — logic unchanged from P1.5b.
+                engineer = engineer_run_step(
+                    run_id, prd_text, workspace, node["model"], vkey, n, reviewer_feedback
+                )
+                delete_vkey_step(run_id, vkey)
+
+                if engineer["status"] == "over_budget":
+                    # The proxy cut the agent off mid-call. Record whatever partial spend the
+                    # cut-off conversation carried (best-effort, idempotent), then stop.
+                    if engineer["total_tokens"] or engineer["cost_usd"]:
+                        persist_agent_cost_step(run_id, node["model"], engineer, n)
+                    close_invocation_step(run_id, current, n, "stopped", "over_budget")
+                    return _finalize_over_budget(run_id, pm_document_id)
+                if engineer["status"] != "completed":
+                    close_invocation_step(run_id, current, n, "failed", None)
+                    mark_run_failed_step(run_id)
+                    DBOS.logger.error(f"run_team failed run_id={run_id}: {engineer.get('error')}")
+                    return {
+                        "run_id": run_id,
+                        "status": "failed",
+                        "document_id": pm_document_id,
+                        "error": engineer.get("error"),
+                    }
+
+                persist_agent_cost_step(run_id, node["model"], engineer, n)
+                close_invocation_step(run_id, current, n, "done", "built")
+                if apply_budget_hook(run_id, node_id=current, iteration=n):
+                    return _finalize_over_budget(run_id, pm_document_id)
+                current = next_node(edges, current, outcome=None)
 
         elif kind == "gate":
             # A human-approval checkpoint node: pause on the durable recv, then route on the

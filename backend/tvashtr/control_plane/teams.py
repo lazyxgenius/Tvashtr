@@ -182,14 +182,23 @@ def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
             model=engineer_model(),
             engine="openhands",
             position={"x": 520, "y": 0},
+            # Self-documenting dispatch discriminator (P1.5c). The executor treats
+            # ``"engineer"`` and ``None`` identically, so behavior is unchanged — this
+            # only makes the agent branch's intent explicit alongside the reviewer.
+            config={"agent_kind": "engineer"},
         )
         reviewer = AgentNode(
             team_graph_id=graph.id,
             role_name="reviewer",
-            kind="completion",
+            # P1.5c: the Reviewer is now a full agent — it runs the deliverable's tests in
+            # the sandbox (behind the unchanged EngineAdapter, like the Engineer) and judges
+            # the build against the idea + PRD, emitting REVIEW_VERDICT.json the Control
+            # Plane harvests. The executor dispatches on ``config.agent_kind``.
+            kind="agent",
+            engine="openhands",
             model=reviewer_model(),
-            engine=None,
             position={"x": 780, "y": 0},
+            config={"agent_kind": "reviewer"},
         )
         escalation_gate = AgentNode(
             team_graph_id=graph.id,

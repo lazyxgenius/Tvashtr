@@ -74,6 +74,11 @@ def test_graph_endpoint_review_loop_gates_terminals_loopback_and_escalation(clie
     assert nodes["escalation_gate"]["config"]["gate_kind"] == "review_escalation"
     assert nodes["ship"]["config"] == {"terminal_kind": "ship"}
     assert nodes["stop"]["config"] == {"terminal_kind": "stop"}
+    # P1.5c: the Reviewer is now an agent node carrying agent_kind=reviewer (the canvas reads
+    # this through the graph endpoint), and the Engineer carries agent_kind=engineer.
+    assert nodes["reviewer"]["kind"] == "agent" and nodes["reviewer"]["engine"] == "openhands"
+    assert nodes["reviewer"]["config"] == {"agent_kind": "reviewer"}
+    assert nodes["engineer"]["config"] == {"agent_kind": "engineer"}
     for n in body["nodes"]:
         assert {"id", "role_name", "kind", "model", "engine", "position", "config"} <= set(n)
 
