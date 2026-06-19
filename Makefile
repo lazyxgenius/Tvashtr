@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -75,6 +75,12 @@ loop-run: ## Live 3-node review-loop run, LOCAL sandbox + forced revisions: prov
 
 loop-crash: ## Prove the review LOOP resumes MID-CYCLE across a kill -9 mid Engineer-iteration-2 (FORCE_REVISIONS=2 -> Engineer x3) and keeps cycling -> ships exactly once (needs key; skips otherwise, P1.5a)
 	./scripts/loop_crash_demo.sh
+
+seeding-smoke: ## Prove docker-mode loop seeding (P1.5c, NO LLM): push the host workspace into a fresh container (flat + nested + the revise-then-pull round-trip); host<->container sync proven. Needs Docker + agent-server image; operator-run
+	cd backend && uv run python ../scripts/seeding_smoke.py
+
+loop-run-docker: ## Live 3-node review-loop run, DOCKER sandbox + forced revisions: the Engineer<->Reviewer cycle ships once on the containerized substrate (iter-2 seeded from the host). Needs key + Docker + agent-server image; operator-run (P1.5c)
+	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FORCE_REVISIONS=1 uv run python ../scripts/loop_run.py
 
 skeleton-crash-docker: ## Prove crash-resume OVER THE CONTAINER: kill -9 mid-run -> orphan reaped by the boot sweep -> fresh container on a new ephemeral port -> ships exactly once (needs key + Docker + agent-server image; operator-run, P1.3b)
 	./scripts/skeleton_crash_demo_docker.sh

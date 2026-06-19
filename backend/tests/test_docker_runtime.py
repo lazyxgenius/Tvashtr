@@ -10,6 +10,7 @@ import subprocess
 from unittest.mock import patch
 
 from tvashtr.engines import docker_runtime
+from tvashtr.engines.docker_runtime import enumerate_push_files
 
 _RUN = "tvashtr.engines.docker_runtime.subprocess.run"
 
@@ -72,3 +73,25 @@ def test_sweep_swallows_unexpected_errors(monkeypatch):
     monkeypatch.setattr(docker_runtime, "reap_agent_containers", _boom)
     # The boot sweep must never propagate (it runs at app startup).
     docker_runtime.sweep_orphaned_agent_containers()
+
+
+# --- P1.5c: enumerate_push_files (pure host-side walk; no Docker, openhands-free) ---------
+
+
+def test_enumerate_push_files_skips_hidden_and_scaffolding(tmp_path):
+    (tmp_path / "greeting.txt").write_text("hi")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("x")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "config").write_text("[core]")
+    (tmp_path / ".hidden").write_text("secret")
+    (tmp_path / "bash_events").mkdir()  # top-level server scaffolding
+    (tmp_path / "bash_events" / "ev.json").write_text("{}")
+    assert enumerate_push_files(str(tmp_path)) == ["greeting.txt", "src/app.py"]
+
+
+def test_enumerate_push_files_empty_on_git_only(tmp_path):
+    # The iteration-1 case: a freshly git-init'd workspace has only .git -> nothing to push.
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main")
+    assert enumerate_push_files(str(tmp_path)) == []

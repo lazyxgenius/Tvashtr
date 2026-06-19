@@ -26,6 +26,7 @@ reaped on the next boot / next run.
 import logging
 import os
 import platform
+import shlex
 import threading
 import time
 from itertools import count
@@ -38,7 +39,7 @@ from openhands.workspace import DockerWorkspace
 
 from tvashtr.config import agent_llm_routing, get_settings
 from tvashtr.engines.base import AgentRunResult, AgentTask, EngineEvent
-from tvashtr.engines.docker_runtime import reap_agent_containers
+from tvashtr.engines.docker_runtime import enumerate_push_files, reap_agent_containers
 
 # Engine-neutral helpers shared with the local adapter (single source of truth for
 # the OpenHands-event -> EngineEvent mapping + the post-run usage read). Reused, not
@@ -125,6 +126,47 @@ def _pull_workspace(workspace, host_dir: str) -> list[str]:
         else:
             logger.warning("file_download failed for %s: %s", rel, getattr(result, "error", None))
     return pulled
+
+
+def _push_workspace(workspace, host_dir: str) -> list[str]:
+    """Seed the container's working dir from the host BEFORE the agent runs — the
+    mirror of :func:`_pull_workspace` (P1.5c). The cyclic loop reworks the prior
+    round's deliverable in place (Q4), but in docker mode each iteration gets a FRESH
+    EMPTY container (reaped per ``run()``), so iteration > 1 would start blank and lose
+    iteration N-1's work. This pushes the host workspace (the stable cross-iteration
+    source of truth — the pull writes it at the end of each iteration) into the new
+    container so the agent resumes on the prior round's files.
+
+    Stateless host->container sync: enumerate the host's non-hidden deliverable files
+    (``enumerate_push_files``) and ``file_upload`` each to ``{working_dir}/{rel}``,
+    mkdir -p'ing nested container dirs first (``file_upload`` may not create parents).
+    Iteration 1's host is freshly git-init'd (only ``.git``) -> enumerates to ``[]`` ->
+    a no-op, so NO iteration-number plumbing is needed (the host's contents drive it).
+    ``file_upload(source_path, destination_path)`` takes the HOST path first, the
+    CONTAINER path second (confirmed against the installed SDK), and returns the same
+    ``FileOperationResult`` (``.success`` / ``.error``) as the pull's ``file_download``.
+    Returns the relative paths pushed (for the log)."""
+    working_dir = workspace.working_dir
+    rels = enumerate_push_files(host_dir)
+    if not rels:
+        return []
+    pushed: list[str] = []
+    base = working_dir.rstrip("/")
+    for rel in rels:
+        src = os.path.join(host_dir, rel)
+        dest = f"{base}/{rel}"
+        parent = dest.rsplit("/", 1)[0]
+        if parent and parent != base:
+            # Ensure the nested container dir exists before the upload.
+            workspace.execute_command(
+                f"mkdir -p {shlex.quote(parent)}", cwd=working_dir, timeout=30.0
+            )
+        result = workspace.file_upload(src, dest)  # (host source, container dest)
+        if getattr(result, "success", False):
+            pushed.append(rel)
+        else:
+            logger.warning("file_upload failed for %s: %s", rel, getattr(result, "error", None))
+    return pushed
 
 
 class OpenHandsDockerAdapter:
@@ -244,6 +286,19 @@ class OpenHandsDockerAdapter:
                     WORKSPACE_MODE,
                     workspace.host_port,
                 )
+                # P1.5c loop-seeding: push the host workspace into the fresh container
+                # so a docker-mode iteration > 1 resumes on iteration N-1's files (the
+                # mirror of the pull-at-end). Iteration 1's host holds only .git ->
+                # enumerates to [] -> a clean no-op (no log for the common case).
+                seeded = _push_workspace(workspace, host_dir)
+                if seeded:
+                    logger.warning(
+                        "OpenHandsDockerAdapter (%s): seeded %d file(s) from the host into the "
+                        "new container (loop rework continuity): %s",
+                        WORKSPACE_MODE,
+                        len(seeded),
+                        seeded,
+                    )
                 # A RemoteWorkspace makes Conversation() return a RemoteConversation
                 # automatically; callbacks stream over the server's WebSocket.
                 conversation = Conversation(

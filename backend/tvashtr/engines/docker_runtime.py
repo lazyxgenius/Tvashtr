@@ -23,6 +23,7 @@ serial; per-run isolation is a named upgrade if concurrency ever lands.
 """
 
 import logging
+import os
 import subprocess
 
 from tvashtr.config import get_settings
@@ -102,3 +103,36 @@ def sweep_orphaned_agent_containers() -> None:
         logger.info("agent-server boot sweep complete (reaped=%d)", len(reaped))
     except Exception:  # never let the sweep block app startup
         logger.warning("agent-server boot sweep failed; continuing", exc_info=True)
+
+
+# --- P1.5c: docker-mode loop seeding (the host-side enumeration for the push) ------------
+
+# Mirrors the docker adapter's ``_SERVER_SCAFFOLDING_DIRS`` (kept as a small local copy
+# to avoid a circular import — the adapter imports THIS module, not vice-versa). Defensive:
+# the pull already keeps these top-level server stores off the host, so in practice the host
+# never contains them; excluding them on the push too preserves exact pull/push symmetry.
+_PUSH_SCAFFOLDING_DIRS = frozenset({"bash_events", "conversations"})
+
+
+def enumerate_push_files(host_dir: str) -> list[str]:
+    """Relative paths of the host workspace's non-hidden DELIVERABLE files — what the
+    docker adapter seeds into a fresh iteration container (P1.5c). The host-side
+    (``os.walk``) mirror of the pull's container-side ``find . -type f -not -path
+    '*/.*'``: skip any path with a hidden segment (``.git`` / dotfiles, at any depth)
+    AND any file under a TOP-LEVEL server-scaffolding dir (matches the pull's top-level
+    exclusion). Sorted + deterministic. ``openhands``-free, so it is unit-tested here."""
+    root = host_dir.rstrip("/")
+    rels: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        # At the workspace root only, drop the server-scaffolding top-level dirs
+        # (mirrors the pull's top-level-only exclusion).
+        if dirpath == root:
+            dirnames[:] = [d for d in dirnames if d not in _PUSH_SCAFFOLDING_DIRS]
+        # Everywhere, drop hidden dirs so os.walk never descends into them (the '*/.*' rule).
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for name in filenames:
+            if name.startswith("."):
+                continue
+            rel = os.path.relpath(os.path.join(dirpath, name), root)
+            rels.append(rel)
+    return sorted(rels)
