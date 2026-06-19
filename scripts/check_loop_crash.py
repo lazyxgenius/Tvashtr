@@ -110,10 +110,13 @@ def main() -> None:
 
     # --- feature present ---
     content = _git(ws, "show", f"{tag}:{TARGET_FILE}").stdout
-    if content.strip() != REQUIRED_LINE:
-        fail(f"committed {TARGET_FILE} {content.strip()!r} != {REQUIRED_LINE!r}")
+    # Substring, not byte-exact: a forced-revision round may cosmetically edit the deliverable;
+    # this target proves durability/resume (byte-exact content is skeleton-crash's proof).
+    if REQUIRED_LINE not in content:
+        fail(f"committed {TARGET_FILE} {content.strip()!r} does not contain {REQUIRED_LINE!r}")
     else:
-        ok(f"committed {TARGET_FILE} matches required line")
+        ok(f"committed {TARGET_FILE} contains required line "
+           "(tolerating a forced-revision cosmetic edit)")
 
     # --- the loop ran + resumed correctly, and per-iteration metering held across the crash ---
     with session_scope() as session:

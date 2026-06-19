@@ -189,10 +189,14 @@ def main() -> int:
         committed = subprocess.run(
             ["git", "-C", str(ws), "show", f"{tag}:{TARGET_FILE}"], capture_output=True, text=True
         ).stdout
-        if committed.strip() == REQUIRED_LINE:
-            ok(f"committed {TARGET_FILE} matches required line")
+        # Substring, not byte-exact: a forced-revision round may cosmetically edit the deliverable;
+        # this target proves the cycle RAN (byte-exact content is skeleton-run's proof).
+        if REQUIRED_LINE in committed:
+            ok(f"committed {TARGET_FILE} contains required line "
+               "(tolerating a forced-revision cosmetic edit)")
         else:
-            fail(f"committed {TARGET_FILE} {committed.strip()!r} != {REQUIRED_LINE!r}")
+            fail(f"committed {TARGET_FILE} {committed.strip()!r} "
+                 f"does not contain {REQUIRED_LINE!r}")
 
         print(f"  (info) pm_document_id = {pm_doc_id}")
         print("=================================================")
