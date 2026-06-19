@@ -183,20 +183,12 @@ body,
 }
 
 /* ============================================================
-   Tasks-for-Human — the gate's attention strip.
-   A full-width band under the toolbar so a blocker is always
-   visible without a node click. Coral, calm: a soft wash, a
-   left accent bar, an editorial serif title — no alarm-red,
-   one bounded entrance.
+   Tasks-for-Human cards (.tv-task) — reused by the left-docked
+   drawer (.tv-drawer, below). Coral, calm: a soft card, a left
+   accent bar, an editorial serif title — no alarm-red, one
+   bounded entrance. (The old full-width .tv-tasks band is retired
+   in P1.5b; the drawer replaces it.)
    ============================================================ */
-.tv-tasks {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-6);
-  background: color-mix(in srgb, var(--coral-100) 32%, var(--surface-page));
-  border-bottom: var(--border-width) solid var(--accent-tint-border);
-}
 .tv-task {
   position: relative;
   display: flex;
@@ -275,4 +267,108 @@ body,
   flex: none;
   align-items: center;
   gap: var(--space-3);
+}
+
+/* The blocker body is a button when it links to a gate node — reset the button chrome
+   but keep the .tv-task__body flex-column layout. */
+.tv-task__body--link {
+  appearance: none;
+  padding: 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.tv-task__body--link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+.tv-task__link-hint {
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  color: var(--text-link);
+}
+.tv-task__body--link:hover .tv-task__link-hint {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Nudge card — calmer than a blocker: a neutral left-bar instead of the coral alarm bar,
+   a hairline border. Reads as informational, not blocking. */
+.tv-task--nudge {
+  border-color: var(--border-hairline);
+}
+.tv-task--nudge::before {
+  background: var(--border-strong);
+}
+
+/* ============================================================
+   Tasks-for-Human DRAWER — a left-docked inbox (J4) replacing the
+   retired full-width strip. High/blockers above, Low/nudges below.
+   The left-dock parallel of the right inspect panel (.tv-panel).
+   ============================================================ */
+.tv-drawer {
+  width: 380px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-card);
+  border-right: var(--border-width) solid var(--border-hairline);
+  box-shadow: var(--shadow-md);
+  animation: tv-drawer-in var(--dur-slow) var(--ease-standard);
+}
+@keyframes tv-drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tv-drawer {
+    animation: none;
+  }
+}
+.tv-drawer__head {
+  flex: none;
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom: var(--border-width) solid var(--border-hairline);
+}
+.tv-drawer__title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: var(--fs-h4);
+  letter-spacing: var(--tracking-snug);
+  line-height: var(--lh-snug);
+  color: var(--text-primary);
+}
+.tv-drawer__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5);
+}
+.tv-drawer__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.tv-drawer__section-label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
 }

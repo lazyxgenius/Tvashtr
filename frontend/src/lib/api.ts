@@ -5,13 +5,29 @@ export interface NodePosition {
   y: number;
 }
 
+// P1.5b: a node's jsonb `config`. Gate nodes carry gate metadata, terminal nodes a
+// terminal_kind; completion/agent nodes carry null. Kept permissive (config is jsonb) —
+// narrow at the use site by `node.kind === "gate" | "terminal"`, not by discriminating
+// on config itself.
+export interface GateConfig {
+  gate_kind: string;
+  title: string;
+  description: string;
+}
+export interface TerminalConfig {
+  terminal_kind: "ship" | "stop";
+}
+export type NodeConfig = GateConfig | TerminalConfig | Record<string, unknown>;
+
 export interface GraphNode {
   id: string;
   role_name: string;
-  kind: string;
+  kind: string; // completion | agent | gate | terminal
   model: string;
   engine: string | null;
   position: NodePosition;
+  // P1.5b: gate/terminal node metadata (null for completion/agent).
+  config: NodeConfig | null;
   // P1.5a: the node's live per-invocation state (backend owns this now).
   status: string; // idle | running | done | failed | stopped
   iteration: number; // 1-based count of this node's runs; 0 before it is reached
@@ -150,6 +166,23 @@ export async function resolveTask(
   });
   if (!res.ok) throw new Error(`POST resolve ${taskId} -> ${res.status}`);
   return (await res.json()) as ResolveResponse;
+}
+
+interface AcknowledgeResponse {
+  run_id: string;
+  task_id: number;
+  resolution: string;
+}
+
+// Dismiss the topic-less, non-blocking `low_nudge` (e.g. the budget threshold). Marks it
+// resolved directly server-side (no DBOS.send) — gate blockers go through `resolveTask`.
+export async function acknowledgeTask(runId: string, taskId: number): Promise<AcknowledgeResponse> {
+  const res = await fetch(`/api/runs/${runId}/tasks/${taskId}/acknowledge`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`POST acknowledge ${taskId} -> ${res.status}`);
+  return (await res.json()) as AcknowledgeResponse;
 }
 
 export async function cancelRun(runId: string): Promise<CancelResponse> {

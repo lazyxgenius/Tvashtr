@@ -236,10 +236,11 @@
   border-radius: var(--radius-pill);
 }
 
-/* ---- Loop-back handles: on every node for genericity, used only by the rework
-   edge — kept invisible (the arc + arrowhead + label carry the meaning; the
-   forward flow keeps the visible left/right handles). ---- */
-.react-flow__handle.rf-node__loop-handle {
+/* ---- Hidden handles: every node carries a source + target on all four sides for
+   generic geometry routing; the top + bottom anchors are kept invisible (the
+   arc/arrowhead carries the meaning; the forward flow keeps the visible left/right
+   dots). The loop-back arc uses the bottom pair. ---- */
+.react-flow__handle.rf-node__hidden-handle {
   opacity: 0;
 }
 
@@ -310,4 +311,161 @@
   font-size: var(--fs-body-sm);
   color: var(--text-secondary);
   line-height: var(--lh-relaxed);
+}
+
+/* ============================================================
+   P1.5b — first-class gate (checkpoint) + terminal (endpoint) nodes,
+   and the branch edges. Additive: existing .rf-node--* / .rf-edge--*
+   are untouched. Calm: the awaiting gate is static (no pulse).
+   ============================================================ */
+
+/* ---- Gate: a compact "checkpoint" token — a pill silhouette, distinct from the
+   square agent cards. State (idle/awaiting/approved/stopped) drives the color. ---- */
+.rf-gate {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 156px;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-ui);
+  background: var(--surface-card);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color var(--dur-base) var(--ease-standard),
+    background var(--dur-base) var(--ease-standard),
+    box-shadow var(--dur-base) var(--ease-standard);
+}
+.rf-gate__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  color: var(--ink-700);
+}
+.rf-gate__text {
+  min-width: 0;
+}
+.rf-gate__label {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-snug);
+  line-height: 1.2;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rf-gate__state {
+  margin-top: 1px;
+  font-size: var(--fs-micro);
+  color: var(--text-secondary);
+}
+/* awaiting = blocked at this gate: the calm coral tint + coral ring, deliberately with
+   NO pulse (the design is static here — distinct from the running/old-paused node). */
+.rf-gate--awaiting {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--coral-100) 50%, var(--surface-card));
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.rf-gate--awaiting .rf-gate__glyph,
+.rf-gate--awaiting .rf-gate__state {
+  color: var(--coral-700);
+}
+/* approved = sage, mirroring the done node */
+.rf-gate--approved {
+  border-color: var(--sage-500);
+  background: color-mix(in srgb, var(--sage-100) 55%, var(--surface-card));
+}
+.rf-gate--approved .rf-gate__glyph {
+  color: color-mix(in srgb, var(--sage-500) 70%, var(--ink-900));
+}
+/* stopped (rejected/cancelled) = the muted neutral, mirroring the stopped node */
+.rf-gate--stopped {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--panel-300) 50%, var(--surface-card));
+}
+.rf-gate--stopped .rf-gate__glyph,
+.rf-gate--stopped .rf-gate__state {
+  color: var(--ink-600);
+}
+
+/* ---- Terminal: a compact "endpoint" token — glyph over a one-line label, narrower
+   than both the cards and the gate pill. Faint + dashed until the walk reaches it. ---- */
+.rf-terminal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  width: 88px;
+  padding: var(--space-3);
+  font-family: var(--font-ui);
+  background: var(--surface-card);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color var(--dur-base) var(--ease-standard),
+    background var(--dur-base) var(--ease-standard);
+}
+.rf-terminal__glyph {
+  display: inline-flex;
+  color: var(--ink-600);
+}
+.rf-terminal__label {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-snug);
+  line-height: 1;
+  color: var(--text-secondary);
+}
+/* not reached yet → a faint dashed outline */
+.rf-terminal--idle {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  opacity: 0.75;
+}
+/* ship reached → sage "Shipped" */
+.rf-terminal--shipped {
+  border-color: var(--sage-500);
+  background: color-mix(in srgb, var(--sage-100) 55%, var(--surface-card));
+}
+.rf-terminal--shipped .rf-terminal__glyph,
+.rf-terminal--shipped .rf-terminal__label {
+  color: color-mix(in srgb, var(--sage-500) 66%, var(--ink-900));
+}
+/* stop reached → muted "Stopped" */
+.rf-terminal--stopped {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--panel-300) 50%, var(--surface-card));
+}
+.rf-terminal--stopped .rf-terminal__glyph,
+.rf-terminal--stopped .rf-terminal__label {
+  color: var(--ink-600);
+}
+
+/* selection ring for the checkpoint/endpoint tokens (also the card→node focus
+   highlight) — a coral focus ring so a linked blocker draws the eye when framed. */
+.react-flow__node.selected .rf-gate,
+.react-flow__node.selected .rf-terminal {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* ---- Branch edges (reject → stop terminal; escalation → escalation gate) ----
+   A muted, calm dashed branch in a neutral tone — deliberately NOT the success-sage
+   of the forward edges, and distinct from the coral "rework" arc. Static. ---- */
+.react-flow {
+  --branch-stroke: color-mix(in srgb, var(--border-strong) 65%, var(--ink-500));
+}
+.react-flow__edge.rf-edge--reject .react-flow__edge-path,
+.react-flow__edge.rf-edge--escalation .react-flow__edge-path {
+  stroke: var(--branch-stroke);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
 }

@@ -1,8 +1,10 @@
 // The single source of truth for status derived from a GET /api/runs payload.
 
-import type { RunRow } from "./api";
+import type { HumanTask, RunRow } from "./api";
 
-export type NodeStatus = "idle" | "running" | "paused" | "done" | "stopped" | "failed";
+// No "paused": after P1.5b the paused state lives on the gate node (its own GateState),
+// never on an agent/completion node — `deriveNodeStatus` no longer infers it.
+export type NodeStatus = "idle" | "running" | "done" | "stopped" | "failed";
 
 export const WORKFLOW_FAILED = new Set(["ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"]);
 const WORKFLOW_TERMINAL = new Set(["SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"]);
@@ -21,10 +23,10 @@ export function isRunTerminal(run: RunRow | null, workflowStatus: string | null)
 }
 
 /**
- * Per-node status — now a **thin read of backend truth** (P1.5a). The executor
- * owns a real per-node `AgentInvocation`, so the graph endpoint hands us each
- * node's live `backendStatus` (`idle|running|done|failed|stopped`); this function
- * is the small overlay on top of it, not the old run-level archaeology:
+ * Per-node status for an **agent/completion** node — a **thin read of backend truth**
+ * (P1.5a). The executor owns a real per-node `AgentInvocation`, so the graph endpoint
+ * hands us each node's live `backendStatus` (`idle|running|done|failed|stopped`); this
+ * function is the small overlay on top of it:
  *
  *  - `done`/`failed`/`stopped` from the backend pass straight through. `done` is
  *    sticky: a node that completed stays done even if the run later fails.
@@ -32,19 +34,16 @@ export function isRunTerminal(run: RunRow | null, workflowStatus: string | null)
  *    invocation: a no-key run can leave the PM `running` while the workflow ERROR'd,
  *    so a failed run/workflow folds to `failed`, and a rejected/cancelled/over_budget
  *    run folds to `stopped` (muted, concluded — checked before the failed fold).
- *  - `idle` is the only place inference remains: a node not yet reached reads
- *    `paused` when the run is blocked at a gate AND its predecessor is done (the
- *    PRD gate pauses the Engineer, never the not-yet-relevant Reviewer).
+ *  - `idle` is just `idle`. **No more paused inference** (P1.5b): the paused state now
+ *    lives on the gate node (`deriveGateState`), so the Engineer reads plain "Waiting"
+ *    while the PRD gate awaits — agent/completion nodes never read paused.
  *
- * `predecessorDone` is computed in the canvas from the topology + raw backend
- * statuses (an incoming edge from a `done` node). `isRunTerminal` + `deriveOverall`
- * stay run-level and unchanged.
+ * `isRunTerminal` + `deriveOverall` stay run-level and unchanged.
  */
 export function deriveNodeStatus(
   backendStatus: string,
   run: RunRow | null,
   workflowStatus: string | null,
-  predecessorDone: boolean,
 ): NodeStatus {
   // A node that completed stays done regardless of what happens downstream.
   if (backendStatus === "done") return "done";
@@ -58,9 +57,45 @@ export function deriveNodeStatus(
   if (failed) return "failed";
   if (backendStatus === "running") return "running";
 
-  // idle: not reached yet — the only place inference remains.
-  if (run?.status === "awaiting_human" && predecessorDone) return "paused"; // blocked at a gate
-  return "idle";
+  return "idle"; // not reached yet (the gate node, not this node, carries any pause)
+}
+
+/**
+ * Gate-node display state. The paused state lives here (one source of truth for "where
+ * is the run paused"). The graph payload exposes the node's invocation `status` but NOT
+ * its `outcome`, so a resolved gate reads `done` for BOTH approve and reject — the
+ * approve-vs-reject distinction must come from the gate's matching **task**.
+ *
+ * The gate↔task link is the one backend convention we couple to: the gate task's topic
+ * is exactly `gate:{run_id}:{node_id}`. Build/compare the full string here (and in the
+ * drawer's `split(":")[2]`); do not scatter ad-hoc topic parsing elsewhere.
+ */
+export type GateState = "idle" | "awaiting" | "approved" | "stopped";
+export function deriveGateState(
+  nodeId: string,
+  runId: string,
+  tasks: HumanTask[],
+  run: RunRow | null,
+  workflowStatus: string | null,
+): GateState {
+  const task = tasks.find((t) => t.topic === `gate:${runId}:${nodeId}`);
+  if (!task) return "idle"; // gate not reached yet
+  if (task.status === "pending") {
+    // Normally run.status === "awaiting_human"; if the run somehow already concluded
+    // (e.g. a cancel race), the gate reads concluded-muted, not coral-awaiting.
+    return isRunTerminal(run, workflowStatus) ? "stopped" : "awaiting";
+  }
+  return task.resolution === "approved" ? "approved" : "stopped"; // rejected | cancelled → stopped
+}
+
+/**
+ * Terminal-node display state, from the node's own backend `status` (a terminal closes
+ * `done` once reached — ship → shipped, stop → stopped).
+ */
+export type TerminalState = "idle" | "shipped" | "stopped";
+export function deriveTerminalState(terminalKind: string, backendStatus: string): TerminalState {
+  if (backendStatus !== "done") return "idle"; // not reached
+  return terminalKind === "ship" ? "shipped" : "stopped";
 }
 
 export type OverallTone = "idle" | "running" | "paused" | "done" | "failed";

@@ -4,9 +4,10 @@ import { TeamCanvas } from "./canvas/TeamCanvas";
 import { BackendDot } from "./components/BackendDot";
 import { CancelRunButton } from "./components/CancelRunButton";
 import { RunBanner } from "./components/RunBanner";
-import { TasksForHuman } from "./components/TasksForHuman";
+import { TasksDrawer } from "./components/TasksDrawer";
 import { SidePanel } from "./panel/SidePanel";
 import {
+  acknowledgeTask,
   cancelRun,
   type CostRow,
   type GraphData,
@@ -32,15 +33,19 @@ export default function App() {
   const [acting, setActing] = useState(false);
   const [error, setError] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
 
   const terminal = isRunTerminal(run, workflowStatus);
   const inFlight = runId !== null && !terminal;
-  // Tasks acted on this run — suppress them so the strip can't briefly resurrect
+  // Tasks acted on this run — suppress them so a drawer card can't briefly resurrect
   // on the immediate re-poll (which can catch the backend a beat before the task
-  // is marked resolved). A full-width band flashing back = a canvas flicker.
+  // is marked resolved).
   const resolvedIdsRef = useRef<Set<number>>(new Set());
-  const pendingTasks = tasks.filter(
+  const pendingBlockers = tasks.filter(
     (t) => t.status === "pending" && t.blocking && !resolvedIdsRef.current.has(t.id),
+  );
+  const pendingNudges = tasks.filter(
+    (t) => t.status === "pending" && !t.blocking && !resolvedIdsRef.current.has(t.id),
   );
 
   const mountedRef = useRef(true);
@@ -86,6 +91,7 @@ export default function App() {
     setTasks([]);
     resolvedIdsRef.current = new Set(); // a new run starts with a clean slate
     setSelectedRole(null);
+    setFocusNodeId(null);
     try {
       const id = await startRun();
       const g = await getGraph(id);
@@ -118,7 +124,16 @@ export default function App() {
       if (!runId) return;
       setActing(true);
       resolvedIdsRef.current.add(taskId); // suppress so the re-poll can't resurrect it
-      setTasks((ts) => ts.filter((t) => t.id !== taskId)); // optimistic: clear the card
+      // Optimistic: MARK resolved in place (don't remove). The drawer card drops off
+      // (status !== "pending"), and the matching gate node flips straight to its resolved
+      // color (approved → sage / rejected → muted) with no remove→idle blink.
+      setTasks((ts) =>
+        ts.map((t) =>
+          t.id === taskId
+            ? { ...t, status: "resolved", resolution: decision === "approve" ? "approved" : "rejected" }
+            : t,
+        ),
+      );
       try {
         await resolveTask(runId, taskId, decision);
       } catch {
@@ -131,17 +146,42 @@ export default function App() {
     [runId, pull],
   );
 
+  const handleAcknowledge = useCallback(
+    async (taskId: number) => {
+      if (!runId) return;
+      setActing(true);
+      resolvedIdsRef.current.add(taskId);
+      // Same no-flicker optimistic update for a dismissed nudge.
+      setTasks((ts) =>
+        ts.map((t) =>
+          t.id === taskId ? { ...t, status: "resolved", resolution: "acknowledged" } : t,
+        ),
+      );
+      try {
+        await acknowledgeTask(runId, taskId);
+      } catch {
+        /* the next pull reconciles */
+      } finally {
+        setActing(false);
+      }
+      void pull();
+    },
+    [runId, pull],
+  );
+
   const handleCancel = useCallback(async () => {
     if (!runId) return;
     setActing(true);
-    // Suppress every still-pending task before clearing, so the immediate re-poll
-    // can't flash the strip back before the backend closes them.
-    setTasks((ts) => {
-      for (const t of ts) {
-        if (t.status === "pending" && t.blocking) resolvedIdsRef.current.add(t.id);
-      }
-      return [];
-    });
+    // Cancel closes EVERY pending task server-side (blockers AND the nudge) with
+    // resolution "cancelled" — mark them all resolved in place (same no-flicker reasoning),
+    // suppressing each so the immediate re-poll can't flash a card back.
+    setTasks((ts) =>
+      ts.map((t) => {
+        if (t.status !== "pending") return t;
+        resolvedIdsRef.current.add(t.id);
+        return { ...t, status: "resolved", resolution: "cancelled" };
+      }),
+    );
     try {
       await cancelRun(runId);
     } catch {
@@ -202,18 +242,22 @@ export default function App() {
         )}
       </div>
 
-      <TasksForHuman
-        tasks={pendingTasks}
-        onResolve={(taskId, decision) => void handleResolve(taskId, decision)}
-        busy={acting}
-      />
-
       <main className="flex min-h-0 flex-1">
+        <TasksDrawer
+          blockers={pendingBlockers}
+          nudges={pendingNudges}
+          onResolve={(taskId, decision) => void handleResolve(taskId, decision)}
+          onAcknowledge={(taskId) => void handleAcknowledge(taskId)}
+          onFocusNode={setFocusNodeId}
+          busy={acting}
+        />
         <div className="relative min-w-0 flex-1">
           <TeamCanvas
             graph={graph}
             run={run}
             workflowStatus={workflowStatus}
+            tasks={tasks}
+            focusNodeId={focusNodeId}
             panelOpen={selectedRole !== null}
             onSelectNode={setSelectedRole}
           />

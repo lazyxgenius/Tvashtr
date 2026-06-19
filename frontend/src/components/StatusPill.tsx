@@ -5,7 +5,6 @@ import type { NodeStatus } from "../lib/status";
 const LABELS: Record<NodeStatus, string> = {
   idle: "Waiting",
   running: "Working…",
-  paused: "Awaiting approval",
   done: "Done",
   stopped: "Stopped",
   failed: "Failed",
