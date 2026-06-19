@@ -40,3 +40,6 @@ frontend/dist/
 
 # ---- tvashtr-loop scratch (ephemeral resume state; durable record is §17 + the loop report) ----
 .tvashtr/
+
+# stray root-level screenshots (visual-acceptance artifacts)
+/*.png
