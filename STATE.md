@@ -38,12 +38,18 @@ no available LLM can drive the OpenHands agent loop within free-tier quota. Find
   - `gemini-2.0-flash`, `gemini-2.0-flash-lite` — daily-cap EXHAUSTED.
   - `gemini-2.5-flash-lite` — daily HEADROOM but TOO WEAK: returns empty `choices=[]`
     (completion_tokens=0) → OpenHands `ConversationRunError: Response choices is less than 1`.
+  - `gemini-2.5-flash` POST-RESET (waited out the Pacific-midnight reset; probe → HTTP 200,
+    fresh quota) — still FAILED, now on **503 ServiceUnavailable** ("high demand"): 9× 503 vs
+    1× 429, no files written. Google DEPRIORITIZES free-tier requests under load, exhausting
+    OpenHands' retry budget on the Engineer's first step → build never starts. So even with
+    quota, the FREE tier is throttled below what the agent loop needs.
 - `OPENROUTER_API_KEY` — credits exhausted (the original blocker); free `gpt-oss-20b:free`
   too weak for tool-use (only survives the small PM call).
-- Three distinct LLM strategies tried (2.0-flash, 2.5-flash, 2.5-flash-lite); per CLI-RULES
-  §4.6/§5 the loop is NOT spun further — this is an operator credential decision (D9 / HANDOVER
-  options A–D): a PAID/topped-up Gemini key (raises the 20/day cap so 2.5-flash can run the
-  loop), a Groq free key (strong tool-use), a few $ of OpenRouter credit, or local Ollama.
+- FOUR distinct LLM strategies tried (2.0-flash, 2.5-flash, 2.5-flash-lite, 2.5-flash post-
+  reset); per CLI-RULES §4.6/§5 the loop is NOT spun further — this is an operator credential
+  decision (D9 / HANDOVER options A–D): a PAID Gemini key (paid tier removes BOTH the 20/day cap
+  AND the free-tier 503 throttle), a Groq free key (strong tool-use), a few $ of OpenRouter
+  credit, or local Ollama.
 - `.env TVASHTR_AGENT_MODEL` is set to `gemini/gemini-2.5-flash` (the proven-capable slug) so
   the operator's retry uses it once quota/billing is available. Then: `make loop-feature-docker`.
 
