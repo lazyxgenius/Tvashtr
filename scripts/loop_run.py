@@ -23,19 +23,31 @@ Skips cleanly without a key. Exits non-zero unless every assertion holds.
 Run via ``make loop-run``.
 """
 
+import logging
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
-from uuid import UUID
 
 POLL_TIMEOUT_S = 600
 TARGET_FILE = os.environ.get("TVASHTR_SKELETON_FILE", "greeting.txt")
 REQUIRED_LINE = os.environ.get(
     "TVASHTR_SKELETON_LINE", "Shipped by the Tvashtr PM->Engineer team"
 )
-_WORKSPACE_ROOT = Path(__file__).resolve().parents[1] / "backend" / ".tvashtr_workspaces"
+
+# P1.5c capstone (``make loop-feature-docker``): when set, drive the REAL multi-file feature
+# (config.TASK_LIST_IDEA) with a REAL Engineer + the REAL agent-Reviewer (NO forced revisions),
+# and assert the capstone shape (the cycle genuinely ran + a verdict was harvested), tolerating
+# either ship-on-green or cycle-on-red — both are valid capstone proof. Default off → the
+# forced-revisions proof (loop-run / loop-run-docker) is byte-for-byte unchanged.
+FEATURE_MODE = os.environ.get("TVASHTR_FEATURE_RUN") == "1"
+# A real Engineer build + the agent-Reviewer running the build's tests in a fresh per-iteration
+# container (plus possible loop-backs) is far slower than the stubbed forced loop → a roomier cap.
+FEATURE_TIMEOUT_S = int(os.environ.get("TVASHTR_FEATURE_TIMEOUT_S", "1800"))
+_WORKSPACE_ROOT = (
+    Path(__file__).resolve().parents[1] / "backend" / ".tvashtr_workspaces"
+)
 _TERMINAL_WF = {"SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
 _TERMINAL_RUN = {"completed", "failed", "over_budget", "rejected", "cancelled"}
 
@@ -52,6 +64,179 @@ def ok(msg: str) -> None:
     print(f"  [ok]   {msg}")
 
 
+def _run_feature_mode(client) -> int:
+    """P1.5c capstone: drive the REAL task-list feature with a REAL Engineer + the REAL
+    agent-Reviewer (no forced revisions), then assert the capstone shape and surface the
+    ``REVIEW_VERDICT.json`` harvest. Tolerates ship-on-green OR cycle-on-red (both valid)."""
+    from sqlalchemy import func, select
+
+    from tvashtr.config import TASK_LIST_IDEA
+    from tvashtr.db import session_scope
+    from tvashtr.models import AgentInvocation, AgentNode, CostRecord, Run
+
+    sandbox = os.environ.get("TVASHTR_AGENT_SANDBOX", "docker")
+    model = os.environ.get("TVASHTR_AGENT_MODEL", "(default)")
+    run_id = client.post(
+        "/api/runs", json={"team_shape": "review_loop", "idea": TASK_LIST_IDEA}
+    ).json()["run_id"]
+    print(f"[loop-feature] started review_loop run_id={run_id}")
+    print(f"[loop-feature] sandbox={sandbox}  agent_model={model}")
+    print("[loop-feature] idea = the stdlib task-list CLI (real multi-file feature)")
+    print(
+        "[loop-feature] polling (PM -> real Engineer build -> agent-Reviewer runs the build's "
+        "unittest suite -> verdict)…"
+    )
+
+    final = None
+    deadline = time.time() + FEATURE_TIMEOUT_S
+    while time.time() < deadline:
+        body = client.get(f"/api/runs/{run_id}").json()
+        wf = body["workflow_status"]
+        run_status = (body.get("run") or {}).get("status")
+        print(f"  workflow={wf}  run={run_status}")
+        if wf in _TERMINAL_WF or run_status in _TERMINAL_RUN:
+            final = body
+            break
+        time.sleep(5)
+
+    if final is None:
+        print(
+            f"[loop-feature] FAILED: run did not finish within {FEATURE_TIMEOUT_S}s",
+            file=sys.stderr,
+        )
+        return 1
+
+    run = final.get("run") or {}
+    ws = _WORKSPACE_ROOT / run_id
+    tag = f"ship-{run_id}"
+
+    with session_scope() as session:
+        run_row = session.execute(
+            select(Run).where(Run.workflow_id == run_id)
+        ).scalar_one_or_none()
+        nodes = (
+            session.execute(
+                select(AgentNode).where(
+                    AgentNode.team_graph_id == run_row.team_graph_id
+                )
+            )
+            .scalars()
+            .all()
+            if run_row is not None
+            else []
+        )
+        by_role = {n.role_name: n for n in nodes}
+
+        def _invocations(node_id):
+            return (
+                session.execute(
+                    select(AgentInvocation)
+                    .where(
+                        AgentInvocation.run_id == run_id,
+                        AgentInvocation.node_id == node_id,
+                    )
+                    .order_by(AgentInvocation.iteration)
+                )
+                .scalars()
+                .all()
+            )
+
+        eng_invs = _invocations(by_role["engineer"].id) if "engineer" in by_role else []
+        rev_invs = _invocations(by_role["reviewer"].id) if "reviewer" in by_role else []
+        eng_iters = [i.iteration for i in eng_invs]
+        rev_rounds = [(i.iteration, i.outcome) for i in rev_invs]
+        n_agent_cost = session.execute(
+            select(func.count())
+            .select_from(CostRecord)
+            .where(CostRecord.idempotency_key.like(f"{run_id}:agent-cost:%"))
+        ).scalar_one()
+        n_rev_cost = session.execute(
+            select(func.count())
+            .select_from(CostRecord)
+            .where(CostRecord.idempotency_key.like(f"{run_id}:reviewer-agent-cost:%"))
+        ).scalar_one()
+
+    print("\n=============== FEATURE LOOP PROOF (capstone) ===============")
+    print(f"run_id           = {run_id}")
+    print(f"workflow_status  = {final['workflow_status']}")
+    print(f"run.status       = {run.get('status')}")
+    print(f"ship_tag         = {run.get('ship_tag')}")
+    print(f"engineer_iters   = {eng_iters}")
+    print(f"reviewer_rounds  = {rev_rounds}  (iteration, harvested_outcome)")
+    print(f"agent_cost_rows  = {n_agent_cost} engineer / {n_rev_cost} reviewer")
+    print("assertions:")
+
+    # --- the real Engineer ran at least once ---
+    if eng_iters and eng_iters[0] == 1:
+        ok(f"Engineer ran (iterations {eng_iters})")
+    else:
+        fail(f"Engineer did not run (iterations {eng_iters})")
+
+    # --- the agent-Reviewer ran and a verdict was HARVESTED (outcome set by _harvest_verdict) ---
+    valid_outcomes = {"approved", "changes_requested"}
+    harvested = [r for r in rev_rounds if r[1] in valid_outcomes]
+    if harvested:
+        for it, outcome in harvested:
+            print(
+                f"  [HARVEST] REVIEW_VERDICT.json harvested + removed: reviewer round {it} "
+                f"-> outcome={outcome}"
+            )
+        ok(
+            f"agent-Reviewer produced + Control Plane harvested {len(harvested)} verdict(s)"
+        )
+    else:
+        fail(f"no harvested reviewer verdict (rounds={rev_rounds})")
+
+    # --- it was a REAL agent run (not the forced/stubbed path): real per-iteration cost rows ---
+    if n_agent_cost >= 1:
+        ok(
+            f"{n_agent_cost} real Engineer agent-cost row(s) (a genuine LLM build, not stubbed)"
+        )
+    else:
+        fail("no Engineer agent-cost rows — the Engineer did not make a real agent run")
+
+    # --- terminal outcome: shipped-on-green OR cycled (both valid capstone proof) ---
+    status = run.get("status")
+    if status == "completed":
+        tags = subprocess.run(
+            ["git", "-C", str(ws), "tag", "--list", tag], capture_output=True, text=True
+        ).stdout.split()
+        if tags == [tag]:
+            ok(f"SHIPPED on green: run completed + exactly one git tag {tag}")
+            shipped = subprocess.run(
+                ["git", "-C", str(ws), "show", f"{tag}"], capture_output=True, text=True
+            ).stdout
+            print(
+                f"  (info) ship commit:\n    {shipped.splitlines()[0] if shipped else '(none)'}"
+            )
+        else:
+            fail(f"run completed but ship tag absent/duplicated: {tags}")
+    elif status in {"blocked", "running"} and any(
+        o == "changes_requested" for _, o in rev_rounds
+    ):
+        ok(
+            f"CYCLED on red: Reviewer requested changes (status={status}) — the loop looped "
+            "(valid capstone proof: a real failing-test verdict drove a rework)"
+        )
+    elif status == "failed":
+        fail(
+            "run FAILED (status=failed) — not a valid capstone outcome; check the PM/Engineer"
+        )
+    else:
+        # An escalation (review cap reached) is also a valid 'the loop cycled' proof.
+        ok(f"terminal run.status={status!r} (loop reached a terminal/escalation state)")
+
+    print("============================================================")
+    if _failed:
+        print("\nFEATURE-LOOP CAPSTONE PROOF FAILED")
+        return 1
+    print(
+        "\nALL FEATURE-LOOP CAPSTONE ASSERTIONS PASSED "
+        "(real Engineer build + agent-Reviewer verdict harvested; shipped-or-cycled)"
+    )
+    return 0
+
+
 def main() -> int:
     if not os.environ.get("OPENROUTER_API_KEY"):
         print(
@@ -65,13 +250,30 @@ def main() -> int:
     from fastapi.testclient import TestClient
 
     from tvashtr.db import session_scope
-    from tvashtr.models import AgentInvocation, AgentNode, CostRecord, EngineerRunAttempt, Run
+    from tvashtr.models import (
+        AgentInvocation,
+        AgentNode,
+        CostRecord,
+        EngineerRunAttempt,
+        Run,
+    )
     from tvashtr.main import app
 
+    # P1.5c capstone surfaces the agent-Reviewer's verdict-harvest log line (§4.3a evidence).
+    if FEATURE_MODE:
+        logging.basicConfig(level=logging.INFO)
+        logging.getLogger("tvashtr.control_plane.team_run").setLevel(logging.INFO)
+
     with TestClient(app) as client:
-        run_id = client.post("/api/runs", json={"team_shape": "review_loop"}).json()["run_id"]
+        if FEATURE_MODE:
+            return _run_feature_mode(client)
+        run_id = client.post("/api/runs", json={"team_shape": "review_loop"}).json()[
+            "run_id"
+        ]
         print(f"[loop-run] started review_loop run_id={run_id}")
-        print("[loop-run] polling (PM, then a forced Engineer<->Reviewer cycle — be patient)…")
+        print(
+            "[loop-run] polling (PM, then a forced Engineer<->Reviewer cycle — be patient)…"
+        )
 
         final = None
         deadline = time.time() + POLL_TIMEOUT_S
@@ -86,7 +288,10 @@ def main() -> int:
             time.sleep(4)
 
         if final is None:
-            print(f"[loop-run] FAILED: run did not finish within {POLL_TIMEOUT_S}s", file=sys.stderr)
+            print(
+                f"[loop-run] FAILED: run did not finish within {POLL_TIMEOUT_S}s",
+                file=sys.stderr,
+            )
             return 1
 
         run = final.get("run") or {}
@@ -106,7 +311,9 @@ def main() -> int:
             ).scalar_one_or_none()
             nodes = (
                 session.execute(
-                    select(AgentNode).where(AgentNode.team_graph_id == run_row.team_graph_id)
+                    select(AgentNode).where(
+                        AgentNode.team_graph_id == run_row.team_graph_id
+                    )
                 )
                 .scalars()
                 .all()
@@ -129,8 +336,12 @@ def main() -> int:
                     .all()
                 )
 
-            eng_invs = _invocations(by_role["engineer"].id) if "engineer" in by_role else []
-            rev_invs = _invocations(by_role["reviewer"].id) if "reviewer" in by_role else []
+            eng_invs = (
+                _invocations(by_role["engineer"].id) if "engineer" in by_role else []
+            )
+            rev_invs = (
+                _invocations(by_role["reviewer"].id) if "reviewer" in by_role else []
+            )
 
             n_attempts = session.execute(
                 select(func.count())
@@ -155,10 +366,14 @@ def main() -> int:
         rev_iters = [i.iteration for i in rev_invs]
         rev_outcomes = [i.outcome for i in rev_invs]
         if rev_iters == [1, 2] and rev_outcomes == ["changes_requested", "approved"]:
-            ok(f"Reviewer invocations {rev_iters} outcomes {rev_outcomes} (one loop-back)")
+            ok(
+                f"Reviewer invocations {rev_iters} outcomes {rev_outcomes} (one loop-back)"
+            )
         else:
-            fail(f"Reviewer invocations {rev_iters} outcomes {rev_outcomes} "
-                 "!= [1, 2] / [changes_requested, approved]")
+            fail(
+                f"Reviewer invocations {rev_iters} outcomes {rev_outcomes} "
+                "!= [1, 2] / [changes_requested, approved]"
+            )
 
         # --- the agent step re-executed twice (distinct EngineerRunAttempt rows) ---
         if n_attempts == 2:
@@ -187,24 +402,32 @@ def main() -> int:
             fail(f"expected exactly one {tag} tag, got {tags}")
 
         committed = subprocess.run(
-            ["git", "-C", str(ws), "show", f"{tag}:{TARGET_FILE}"], capture_output=True, text=True
+            ["git", "-C", str(ws), "show", f"{tag}:{TARGET_FILE}"],
+            capture_output=True,
+            text=True,
         ).stdout
         # Substring, not byte-exact: a forced-revision round may cosmetically edit the deliverable;
         # this target proves the cycle RAN (byte-exact content is skeleton-run's proof).
         if REQUIRED_LINE in committed:
-            ok(f"committed {TARGET_FILE} contains required line "
-               "(tolerating a forced-revision cosmetic edit)")
+            ok(
+                f"committed {TARGET_FILE} contains required line "
+                "(tolerating a forced-revision cosmetic edit)"
+            )
         else:
-            fail(f"committed {TARGET_FILE} {committed.strip()!r} "
-                 f"does not contain {REQUIRED_LINE!r}")
+            fail(
+                f"committed {TARGET_FILE} {committed.strip()!r} "
+                f"does not contain {REQUIRED_LINE!r}"
+            )
 
         print(f"  (info) pm_document_id = {pm_doc_id}")
         print("=================================================")
         if _failed:
             print("\nLOOP-RAN PROOF FAILED")
             return 1
-        print("\nALL LOOP-RAN ASSERTIONS PASSED "
-              "(Engineer x2, Reviewer x2 [changes_requested, approved], one loop-back, ship once)")
+        print(
+            "\nALL LOOP-RAN ASSERTIONS PASSED "
+            "(Engineer x2, Reviewer x2 [changes_requested, approved], one loop-back, ship once)"
+        )
         return 0
 
 

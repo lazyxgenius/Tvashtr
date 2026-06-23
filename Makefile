@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -81,6 +81,9 @@ seeding-smoke: ## Prove docker-mode loop seeding (P1.5c, NO LLM): push the host 
 
 loop-run-docker: ## Live 3-node review-loop run, DOCKER sandbox + forced revisions: the Engineer<->Reviewer cycle ships once on the containerized substrate (iter-2 seeded from the host). Needs key + Docker + agent-server image; operator-run (P1.5c)
 	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FORCE_REVISIONS=1 uv run python ../scripts/loop_run.py
+
+loop-feature-docker: ## P1.5c CAPSTONE: the REAL stdlib task-list feature, DOCKER sandbox, REAL Engineer build + REAL agent-Reviewer (runs the build's unittest suite, emits REVIEW_VERDICT.json, Control Plane harvests it) — ships on green or cycles on red. Uses the Gemini agent model from .env (TVASHTR_AGENT_MODEL). Needs the Gemini key + Docker + agent-server image; operator-run.
+	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FEATURE_RUN=1 uv run python ../scripts/loop_run.py
 
 skeleton-crash-docker: ## Prove crash-resume OVER THE CONTAINER: kill -9 mid-run -> orphan reaped by the boot sweep -> fresh container on a new ephemeral port -> ships exactly once (needs key + Docker + agent-server image; operator-run, P1.3b)
 	./scripts/skeleton_crash_demo_docker.sh

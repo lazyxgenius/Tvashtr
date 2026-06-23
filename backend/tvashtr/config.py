@@ -8,6 +8,44 @@ from typing import Literal
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# P1.5c capstone idea (env-overridable via ``TVASHTR_TASK_IDEA``). The real, non-trivial
+# multi-file feature the M1 capstone proves: a stdlib-only Python task-list CLI. Seeded into
+# ``Run.idea`` (the canonical-idea seat — no migration) for ``make loop-feature-docker``,
+# exactly as ``DEFAULT_IDEA`` (the greeting.txt skeleton) is for ``make loop-run``. The
+# overdue check is pinned as a PURE function of ``(due_date, reference_date)`` — no
+# ``datetime.now()`` — so the build's OWN unittest suite (which the agent-Reviewer runs via
+# ``python -B -m unittest`` to judge it) is time-stable, not clock-flaky. The brief REQUIRES a
+# unittest suite so the Reviewer's discover-and-run command finds real tests to gate ``approved``.
+TASK_LIST_IDEA = os.environ.get(
+    "TVASHTR_TASK_IDEA",
+    "Build a small command-line task-list application in a single directory using ONLY the "
+    "Python 3 standard library (no third-party packages, no network calls, no external "
+    "services).\n"
+    "\n"
+    "Functional requirements:\n"
+    "- Add a task with a title, a priority (exactly one of: high, medium, low), and an "
+    "optional due date given as an ISO 'YYYY-MM-DD' string.\n"
+    "- List tasks, with support for sorting by priority (high before medium before low) and "
+    "filtering by status (pending or done).\n"
+    "- Complete a task (mark it done) by its id.\n"
+    "- Delete a task by its id.\n"
+    "- Overdue check: expose a PURE function with the EXACT signature "
+    "`overdue_check(due_date: str, reference_date: str) -> bool` that returns True if and only "
+    "if due_date is strictly before reference_date (both ISO 'YYYY-MM-DD' strings). It MUST NOT "
+    "call datetime.now(), date.today(), or otherwise read the system clock — the reference date "
+    "is always passed in, so the result is deterministic and the tests are time-stable.\n"
+    "\n"
+    "Engineering requirements:\n"
+    "- Standard library only; prefer pure functions for the task operations and the sort/filter "
+    "logic so they are directly unit-testable.\n"
+    "- Include a unittest test suite in files named test_*.py that the command "
+    "`python -B -m unittest` discovers and runs, covering add, list, complete, delete, the "
+    "priority sort, the status filter, and overdue_check — including the boundary case where "
+    "due_date == reference_date (which must return False).\n"
+    "- Keep it small and self-contained; argparse is fine for the CLI, but no heavier "
+    "argument-parsing framework is needed.",
+)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(

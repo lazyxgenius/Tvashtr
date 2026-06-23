@@ -76,6 +76,15 @@ DEFAULT_IDEA = os.environ.get(
 )
 
 
+def resolve_run_idea(body_idea: str | None) -> str:
+    """The canonical ``Run.idea`` seeding rule (pure, unit-tested): an explicit idea from the
+    request body wins; otherwise fall back to the pinned ``DEFAULT_IDEA`` skeleton. The
+    capstone feature run (``make loop-feature-docker``) POSTs ``config.TASK_LIST_IDEA`` as
+    ``body_idea``, so the same one rule seeds either the skeleton or the real feature into
+    ``Run.idea`` — no migration (``Run.idea`` is already the canonical-idea seat)."""
+    return body_idea or DEFAULT_IDEA
+
+
 def _cost_to_dict(row: CostRecord) -> dict:
     return {
         "id": row.id,
@@ -222,7 +231,7 @@ def create_run(body: CreateRunRequest) -> dict:
     """Build the requested team (default the 2-node team; ``review_loop`` the 3-node
     cyclic team), create the run row, and start ``run_team`` with an explicit workflow
     id == run_id, so ``DBOS.workflow_id`` keys every write."""
-    idea = body.idea or DEFAULT_IDEA
+    idea = resolve_run_idea(body.idea)
     if body.team_shape == "review_loop":
         team_graph_id = build_review_loop_team()
     else:
