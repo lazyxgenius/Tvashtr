@@ -251,6 +251,13 @@ class Run(Base):
     budget_overridden: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=false(), default=False
     )
+    # Team A/B attributability pairing (P1.5c §14.2). ``pair_id`` ties the two runs of one
+    # A/B comparison together (two runs with the same ``pair_id`` are the A/B); ``pair_label``
+    # is the config side ("A"/"B"). Both NULL for an ordinary standalone run. Indexed so the
+    # §14.3 comparison view can fetch a pair by ``pair_id``. The pairing is the only durable
+    # state the A/B instrument adds — there is no separate pair entity in v1.
+    pair_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    pair_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

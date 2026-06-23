@@ -61,6 +61,16 @@ class CreateRunRequest(BaseModel):
     team_shape: Literal["two_node", "review_loop"] = "two_node"
 
 
+class ABRunRequest(BaseModel):
+    """The team A/B launch (P1.5c §14.2): ONE idea through the two v1 configs. The configs
+    are fixed in v1 (A=``two_node`` / B=``review_loop``), so the body carries only the shared
+    inputs — the idea (same seeding rule as a single run) and an optional budget cap applied
+    identically to both sides (a fair comparison). Arbitrary-config A/B is Phase-2."""
+
+    idea: str | None = None
+    budget_cap_usd: Decimal | None = None
+
+
 class ResolveTaskRequest(BaseModel):
     decision: Literal["approve", "reject"]
     note: str | None = None
@@ -221,6 +231,11 @@ def _run_to_dict(run: Run) -> dict:
         "ship_commit_sha": run.ship_commit_sha,
         "ship_tag": run.ship_tag,
         "cost_total_usd": float(run.cost_total_usd) if run.cost_total_usd is not None else None,
+        # A/B pairing (P1.5c §14.2): additive, NULL for an ordinary standalone run. Two runs
+        # sharing ``pair_id`` are the A/B; ``pair_label`` is the config side. The §14.3
+        # comparison view + the FE read these (existing keys/shapes unchanged).
+        "pair_id": str(run.pair_id) if run.pair_id else None,
+        "pair_label": run.pair_label,
         "created_at": run.created_at.isoformat(),
         "updated_at": run.updated_at.isoformat(),
     }
@@ -259,6 +274,54 @@ def create_run(body: CreateRunRequest) -> dict:
         DBOS.start_workflow(run_team, idea)
 
     return {"run_id": run_id}
+
+
+# The two fixed v1 A/B configs (§14.2), in launch order: A = the no-review ``two_node`` team,
+# B = the ``review_loop`` team (the agent-Reviewer). The delta between them IS the §1 question
+# — does adding the review gate change what ships, or is it theatre? Each maps to the existing
+# hardcoded builder; arbitrary-config A/B is Phase-2 composability, not v1.
+_AB_CONFIGS: tuple[tuple[str, str], ...] = (("A", "two_node"), ("B", "review_loop"))
+_TEAM_BUILDERS = {"two_node": build_two_node_team, "review_loop": build_review_loop_team}
+
+
+@router.post("/api/ab-runs")
+def create_ab_runs(body: ABRunRequest) -> dict:
+    """Launch an A/B pair: ONE idea through TWO team configs that share a ``pair_id``, so the
+    §14.3 comparison view can attribute the measurable delta (the team A/B "which config ships
+    better" instrument, §14). Each side is an ordinary run — its own team graph, its own DBOS
+    workflow keyed on its run_id (exactly like :func:`create_run`) — with the SAME idea and the
+    SAME budget cap on both (a fair comparison); the only added state is the shared ``pair_id``
+    + the ``pair_label`` ("A"/"B"). No executor change: this just seeds two runs and starts two
+    standard ``run_team`` workflows."""
+    idea = resolve_run_idea(body.idea)
+    # Same cap-resolution as a single run (P1.2 DP-A), applied identically to both sides.
+    cap = body.budget_cap_usd
+    if cap is None:
+        cap = get_settings().default_run_budget_usd
+    pair_id = uuid.uuid4()
+
+    runs: list[dict] = []
+    for label, team_shape in _AB_CONFIGS:
+        team_graph_id = _TEAM_BUILDERS[team_shape]()
+        run_id = str(uuid.uuid4())
+        with db.session_scope() as session:
+            session.add(
+                Run(
+                    id=uuid.UUID(run_id),
+                    team_graph_id=uuid.UUID(team_graph_id),
+                    idea=idea,
+                    workflow_id=run_id,
+                    status="running",
+                    budget_cap_usd=cap,
+                    pair_id=pair_id,
+                    pair_label=label,
+                )
+            )
+        with SetWorkflowID(run_id):
+            DBOS.start_workflow(run_team, idea)
+        runs.append({"run_id": run_id, "pair_label": label, "team_shape": team_shape})
+
+    return {"pair_id": str(pair_id), "runs": runs}
 
 
 @router.get("/api/runs/{run_id}")
