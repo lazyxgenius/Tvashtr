@@ -104,6 +104,54 @@ def test_routing_off_ignores_api_key_override(monkeypatch):
     assert "base_url" not in kwargs
 
 
+# --- Step 0 (P1.5c): provider-agnostic direct-path api_key (D9) ---
+
+
+def test_routing_off_gemini_uses_gemini_key(monkeypatch):
+    # Proxy OFF + a ``gemini/`` slug -> the api_key comes from GEMINI_API_KEY (Google AI
+    # Studio), not OPENROUTER_API_KEY. The slug passes through untransformed and there is no
+    # base_url (litellm's gemini/ provider auths via ?key=).
+    monkeypatch.setenv("GEMINI_API_KEY", "AQ.gemini-test")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    s = Settings(_env_file=None, litellm_proxy_enabled=False)
+    kwargs = agent_llm_routing(s, "gemini/gemini-2.0-flash", "docker")
+    assert kwargs == {"model": "gemini/gemini-2.0-flash", "api_key": "AQ.gemini-test"}
+    assert "base_url" not in kwargs
+
+
+def test_routing_off_non_gemini_still_uses_openrouter_key(monkeypatch):
+    # The fallback is unchanged: any non-gemini slug keeps resolving OPENROUTER_API_KEY even
+    # when a GEMINI_API_KEY is present — the existing OpenRouter path is byte-for-byte intact.
+    monkeypatch.setenv("GEMINI_API_KEY", "AQ.gemini-test")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    s = Settings(_env_file=None, litellm_proxy_enabled=False)
+    kwargs = agent_llm_routing(s, "openrouter/openai/gpt-4o-mini", "local")
+    assert kwargs == {"model": "openrouter/openai/gpt-4o-mini", "api_key": "sk-or-test"}
+
+
+def test_routing_on_gemini_ignores_provider_key_and_uses_proxy(monkeypatch):
+    # Proxy ON wins over provider resolution: even a gemini/ slug routes through the proxy
+    # (litellm_proxy/ transform + the proxy creds), so the direct per-provider key is NOT used.
+    monkeypatch.setenv("GEMINI_API_KEY", "AQ.gemini-test")
+    s = Settings(_env_file=None, litellm_proxy_enabled=True, litellm_master_key="sk-master")
+    kwargs = agent_llm_routing(s, "gemini/gemini-2.0-flash", "local")
+    assert kwargs["model"] == "litellm_proxy/gemini/gemini-2.0-flash"
+    assert kwargs["api_key"] == "sk-master"
+    assert kwargs["base_url"] == "http://127.0.0.1:4000"
+
+
+def test_direct_agent_api_key_is_a_pure_function_of_the_slug(monkeypatch):
+    # The resolver is a pure slug->key function (no settings needed), so both adapters share it.
+    from tvashtr.config import _direct_agent_api_key
+
+    monkeypatch.setenv("GEMINI_API_KEY", "AQ.g")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or")
+    assert _direct_agent_api_key("gemini/gemini-2.0-flash") == "AQ.g"
+    assert _direct_agent_api_key("gemini/anything") == "AQ.g"
+    assert _direct_agent_api_key("openrouter/x") == "sk-or"
+    assert _direct_agent_api_key("gpt-4o-mini") == "sk-or"
+
+
 def test_litellm_master_key_from_env(monkeypatch):
     monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-from-env")
     s = Settings(_env_file=None)

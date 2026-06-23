@@ -138,6 +138,27 @@ class Settings(BaseSettings):
         return f"http://{host}:{self.litellm_proxy_port}"
 
 
+def _direct_agent_api_key(model: str) -> str | None:
+    """Resolve the agent LLM's api_key on the PROXY-OFF direct path, per provider
+    (D9 provider-agnostic gateway). The provider is read from the model slug's
+    leading ``provider/`` segment:
+
+    - ``gemini/<model>`` (Google AI Studio) -> ``GEMINI_API_KEY``. The key is passed
+      straight to litellm's ``gemini/`` provider, which authenticates via the
+      ``?key=``/``x-goog-api-key`` query — the same auth the operator's ``AQ.``-prefixed
+      AI-Studio key answers 200 to (the prefix is a newer AI-Studio key format, NOT an
+      OAuth/Vertex token).
+    - everything else -> ``OPENROUTER_API_KEY``, byte-for-byte the prior single-source
+      behavior so the existing OpenRouter path (and the offline suite) is unchanged.
+
+    This keeps key selection a pure function of the model slug, here in the openhands-free
+    config module so both adapters share one unit-testable decision.
+    """
+    if model.startswith("gemini/"):
+        return os.environ.get("GEMINI_API_KEY")
+    return os.environ.get("OPENROUTER_API_KEY")
+
+
 def agent_llm_routing(
     settings: Settings,
     model: str,
@@ -150,9 +171,11 @@ def agent_llm_routing(
                  litellm client convention that targets a proxy endpoint), ``base_url`` =
                  the mode-aware proxy URL, and an api_key that is the **per-run virtual key**
                  (``api_key_override``) when one was minted, else the master key.
-    Proxy OFF -> today's EXACT direct path: the bare slug + ``OPENROUTER_API_KEY`` and NO
-                 ``base_url`` — byte-for-byte unchanged so offline/no-key behavior is
-                 unaffected (``api_key_override`` is ignored when the proxy is off).
+    Proxy OFF -> the direct path: the bare slug + a **per-provider** api_key
+                 (``_direct_agent_api_key``: ``gemini/`` -> ``GEMINI_API_KEY``, else
+                 ``OPENROUTER_API_KEY``) and NO ``base_url``. Byte-for-byte unchanged for the
+                 existing OpenRouter path so offline/no-key behavior is unaffected
+                 (``api_key_override`` is ignored when the proxy is off).
 
     Why two keys (P1.4b): the **master key** stays the *admin* credential (it authenticates
     minting/deleting keys); the per-run **virtual key** — minted with a ``max_budget`` — is
@@ -169,7 +192,7 @@ def agent_llm_routing(
             "api_key": api_key_override or settings.litellm_master_key,
             "base_url": settings.agent_llm_base_url(sandbox_mode),
         }
-    return {"model": model, "api_key": os.environ.get("OPENROUTER_API_KEY")}
+    return {"model": model, "api_key": _direct_agent_api_key(model)}
 
 
 @lru_cache
