@@ -161,13 +161,19 @@ def test_direct_agent_api_key_is_a_pure_function_of_the_slug(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or")
     assert _direct_agent_api_key("gemini/gemini-2.0-flash") == "AQ.g"
     assert _direct_agent_api_key("gemini/anything") == "AQ.g"
+    monkeypatch.setenv("NVIDIA_BUILD_API_KEY", "nvapi_g")
+    monkeypatch.delenv("NVIDIA_NIM_API_KEY", raising=False)
     assert _direct_agent_api_key("groq/llama-3.3-70b-versatile") == "gsk_g"
+    assert _direct_agent_api_key("nvidia_nim/meta/llama-3.3-70b-instruct") == "nvapi_g"
     assert _direct_agent_api_key("openrouter/x") == "sk-or"
     assert _direct_agent_api_key("gpt-4o-mini") == "sk-or"
-    # GROQ_API_KEY is the standard-name fallback when GROQ_CLOUD_API_KEY is absent.
+    # GROQ_API_KEY / NVIDIA_NIM_API_KEY are the standard-name fallbacks when repo names are absent.
     monkeypatch.delenv("GROQ_CLOUD_API_KEY", raising=False)
     monkeypatch.setenv("GROQ_API_KEY", "gsk_std")
     assert _direct_agent_api_key("groq/x") == "gsk_std"
+    monkeypatch.delenv("NVIDIA_BUILD_API_KEY", raising=False)
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "nvapi_std")
+    assert _direct_agent_api_key("nvidia_nim/x") == "nvapi_std"
 
 
 def test_litellm_master_key_from_env(monkeypatch):

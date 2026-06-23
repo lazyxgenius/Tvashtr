@@ -44,8 +44,11 @@ WORKSPACE_MODE = "local-unsandboxed"
 _WORKSPACE_ROOT = Path(__file__).resolve().parents[2] / ".tvashtr_workspaces"
 
 # Cap the agent loop — a trivial task needs very few iterations; this is a
-# runaway backstop for the unsandboxed mode.
-_MAX_ITERATIONS = 20
+# runaway backstop for the unsandboxed mode. Env-overridable (``TVASHTR_AGENT_MAX_ITERATIONS``)
+# because a real MULTI-FILE build + a review-loop REWORK round legitimately needs more steps
+# than the skeleton's trivial file-write (P1.5c capstone: 20 was too few for the rework round
+# and tripped ``MaxIterationsReached``). Default 20 keeps the skeleton/smoke targets unchanged.
+_MAX_ITERATIONS = int(os.environ.get("TVASHTR_AGENT_MAX_ITERATIONS", "20"))
 
 
 def make_local_workspace(run_id: str) -> str:

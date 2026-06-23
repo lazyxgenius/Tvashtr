@@ -83,7 +83,7 @@ loop-run-docker: ## Live 3-node review-loop run, DOCKER sandbox + forced revisio
 	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FORCE_REVISIONS=1 uv run python ../scripts/loop_run.py
 
 loop-feature-docker: ## P1.5c CAPSTONE: the REAL stdlib task-list feature, DOCKER sandbox, REAL Engineer build + REAL agent-Reviewer (runs the build's unittest suite, emits REVIEW_VERDICT.json, Control Plane harvests it) — ships on green or cycles on red. Uses the Gemini agent model from .env (TVASHTR_AGENT_MODEL). Needs the Gemini key + Docker + agent-server image; operator-run.
-	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FEATURE_RUN=1 uv run python ../scripts/loop_run.py
+	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FEATURE_RUN=1 TVASHTR_AGENT_MAX_ITERATIONS=40 uv run python ../scripts/loop_run.py
 
 skeleton-crash-docker: ## Prove crash-resume OVER THE CONTAINER: kill -9 mid-run -> orphan reaped by the boot sweep -> fresh container on a new ephemeral port -> ships exactly once (needs key + Docker + agent-server image; operator-run, P1.3b)
 	./scripts/skeleton_crash_demo_docker.sh

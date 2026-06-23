@@ -189,6 +189,8 @@ def _direct_agent_api_key(model: str) -> str | None:
     - ``groq/<model>`` (Groq, OpenAI-compatible, strong free-tier tool-use) -> the key under
       ``GROQ_CLOUD_API_KEY`` (this repo's .env name) or the litellm-standard ``GROQ_API_KEY``.
       We pass it explicitly so the env-var name is decoupled from litellm's default lookup.
+    - ``nvidia_nim/<model>`` (NVIDIA NIM, OpenAI-compatible) -> the key under
+      ``NVIDIA_BUILD_API_KEY`` (this repo's .env name), else ``NVIDIA_NIM_API_KEY`` (litellm std).
     - everything else -> ``OPENROUTER_API_KEY``, byte-for-byte the prior single-source
       behavior so the existing OpenRouter path (and the offline suite) is unchanged.
 
@@ -199,6 +201,12 @@ def _direct_agent_api_key(model: str) -> str | None:
         return os.environ.get("GEMINI_API_KEY")
     if model.startswith("groq/"):
         return os.environ.get("GROQ_CLOUD_API_KEY") or os.environ.get("GROQ_API_KEY")
+    if model.startswith("nvidia_nim/"):
+        # NVIDIA NIM (integrate.api.nvidia.com, OpenAI-compatible). Strong instruct models with
+        # CLEAN OpenAI tool_calls + large context + a generous free tier — the combination Groq's
+        # free tier lacked (TPM) and Gemini's free tier lacked (quota/throttle). The operator's
+        # key lives under NVIDIA_BUILD_API_KEY (litellm would otherwise read NVIDIA_NIM_API_KEY).
+        return os.environ.get("NVIDIA_BUILD_API_KEY") or os.environ.get("NVIDIA_NIM_API_KEY")
     return os.environ.get("OPENROUTER_API_KEY")
 
 
@@ -216,7 +224,8 @@ def agent_llm_routing(
                  (``api_key_override``) when one was minted, else the master key.
     Proxy OFF -> the direct path: the bare slug + a **per-provider** api_key
                  (``_direct_agent_api_key``: ``gemini/`` -> ``GEMINI_API_KEY``, ``groq/`` ->
-                 ``GROQ_CLOUD_API_KEY``, else ``OPENROUTER_API_KEY``) and NO ``base_url``.
+                 ``GROQ_CLOUD_API_KEY``, ``nvidia_nim/`` -> ``NVIDIA_BUILD_API_KEY``, else
+                 ``OPENROUTER_API_KEY``) and NO ``base_url``.
                  Byte-for-byte unchanged for the
                  existing OpenRouter path so offline/no-key behavior is unaffected
                  (``api_key_override`` is ignored when the proxy is off).
