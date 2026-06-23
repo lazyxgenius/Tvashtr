@@ -140,16 +140,34 @@ def test_routing_on_gemini_ignores_provider_key_and_uses_proxy(monkeypatch):
     assert kwargs["base_url"] == "http://127.0.0.1:4000"
 
 
+def test_routing_off_groq_uses_groq_cloud_key(monkeypatch):
+    # Proxy OFF + a ``groq/`` slug -> the api_key comes from GROQ_CLOUD_API_KEY (this repo's
+    # .env name), not OPENROUTER_API_KEY. Slug passes through untransformed; no base_url.
+    monkeypatch.setenv("GROQ_CLOUD_API_KEY", "gsk_test")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    s = Settings(_env_file=None, litellm_proxy_enabled=False)
+    kwargs = agent_llm_routing(s, "groq/llama-3.3-70b-versatile", "docker")
+    assert kwargs == {"model": "groq/llama-3.3-70b-versatile", "api_key": "gsk_test"}
+    assert "base_url" not in kwargs
+
+
 def test_direct_agent_api_key_is_a_pure_function_of_the_slug(monkeypatch):
     # The resolver is a pure slug->key function (no settings needed), so both adapters share it.
     from tvashtr.config import _direct_agent_api_key
 
     monkeypatch.setenv("GEMINI_API_KEY", "AQ.g")
+    monkeypatch.setenv("GROQ_CLOUD_API_KEY", "gsk_g")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or")
     assert _direct_agent_api_key("gemini/gemini-2.0-flash") == "AQ.g"
     assert _direct_agent_api_key("gemini/anything") == "AQ.g"
+    assert _direct_agent_api_key("groq/llama-3.3-70b-versatile") == "gsk_g"
     assert _direct_agent_api_key("openrouter/x") == "sk-or"
     assert _direct_agent_api_key("gpt-4o-mini") == "sk-or"
+    # GROQ_API_KEY is the standard-name fallback when GROQ_CLOUD_API_KEY is absent.
+    monkeypatch.delenv("GROQ_CLOUD_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_std")
+    assert _direct_agent_api_key("groq/x") == "gsk_std"
 
 
 def test_litellm_master_key_from_env(monkeypatch):

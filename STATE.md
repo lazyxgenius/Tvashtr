@@ -43,18 +43,36 @@ no available LLM can drive the OpenHands agent loop within free-tier quota. Find
     1× 429, no files written. Google DEPRIORITIZES free-tier requests under load, exhausting
     OpenHands' retry budget on the Engineer's first step → build never starts. So even with
     quota, the FREE tier is throttled below what the agent loop needs.
+- `GROQ_CLOUD_API_KEY` (operator ADDED mid-session — HANDOVER option A) — key VALID (200), and
+  `groq/` routing wired (`_direct_agent_api_key`). But Groq's FREE tier can't drive OpenHands
+  either: OpenHands packs ~38k-token requests, while free-tier **TPM caps are 6k–12k**:
+  - `groq/openai/gpt-oss-120b` (clean tool-calls, strong) — TPM 8000 → HARD-REJECTS the 38k
+    request (`Request too large ... Limit 8000, Requested 38042`). Same for qwen3-32b (6k),
+    gpt-oss-20b (8k).
+  - `groq/llama-3.3-70b-versatile` (TPM 12k, the only one Groq lets BURST past TPM) — fails
+    Groq's server-side tool parser: `tool_use_failed` (`<function=…>` llama-format BadRequest,
+    non-retryable) → immediate fail.
+  - → Groq free tier is TPM-bound (clean models) or tool-format-bound (llama). Groq **Dev Tier
+    (PAID)** raises TPM and would let `gpt-oss-120b` (clean format) run.
 - `OPENROUTER_API_KEY` — credits exhausted (the original blocker); free `gpt-oss-20b:free`
   too weak for tool-use (only survives the small PM call).
-- FOUR distinct LLM strategies tried (2.0-flash, 2.5-flash, 2.5-flash-lite, 2.5-flash post-
-  reset); per CLI-RULES §4.6/§5 the loop is NOT spun further — this is an operator credential
-  decision (D9 / HANDOVER options A–D): a PAID Gemini key (paid tier removes BOTH the 20/day cap
-  AND the free-tier 503 throttle), a Groq free key (strong tool-use), a few $ of OpenRouter
-  credit, or local Ollama.
+- SIX distinct provider/model strategies tried (gemini 2.0-flash / 2.5-flash / 2.5-flash-lite /
+  2.5-flash-post-reset; groq gpt-oss-120b / llama-3.3-70b). Root cause is common: **free LLM
+  tiers cannot sustain OpenHands' large-context (~38k-token) agentic loop** — Gemini is
+  quota+throttle-bound, Groq is TPM/tool-format-bound. Per CLI-RULES §4.6/§5 the loop is NOT
+  spun further — this needs a **PAID tier** (the D9 / HANDOVER decision). Ranked for the operator:
+  1. **PAID Gemini key → `gemini/gemini-2.5-flash`** — SUREST: this model already drove
+     `make agent-smoke` end-to-end; paid tier removes its only blockers (20/day cap + 503 throttle).
+  2. **Groq Dev Tier (paid) → `groq/openai/gpt-oss-120b`** — clean tool-calls + strong; only the
+     free TPM cap blocks it. (`.env` already carries the Groq key.)
+  3. A few $ of **OpenRouter** credit → the existing `openrouter/` slugs; or local **Ollama**.
+  `.env TVASHTR_AGENT_MODEL` is set to `gemini/gemini-2.5-flash` (the proven-capable model) so a
+  paid-Gemini retry is a one-liner: `make loop-feature-docker`. (Switch the slug for the Groq path.)
 - `.env TVASHTR_AGENT_MODEL` is set to `gemini/gemini-2.5-flash` (the proven-capable slug) so
   the operator's retry uses it once quota/billing is available. Then: `make loop-feature-docker`.
 
 ## Test Count
-159 tests passing — 2026-06-23 (148 baseline + 4 routing + 7 task-idea)
+160 tests passing — 2026-06-23 (148 baseline + 4 gemini-routing + 7 task-idea + 1 groq-routing)
 
 ## Deviations from PROJECTPLAN.md
 - Agent model is Gemini 2.5-flash, not 2.0-flash (CLI-RULES Step 0 invited "the correct

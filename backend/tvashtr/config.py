@@ -186,6 +186,9 @@ def _direct_agent_api_key(model: str) -> str | None:
       ``?key=``/``x-goog-api-key`` query — the same auth the operator's ``AQ.``-prefixed
       AI-Studio key answers 200 to (the prefix is a newer AI-Studio key format, NOT an
       OAuth/Vertex token).
+    - ``groq/<model>`` (Groq, OpenAI-compatible, strong free-tier tool-use) -> the key under
+      ``GROQ_CLOUD_API_KEY`` (this repo's .env name) or the litellm-standard ``GROQ_API_KEY``.
+      We pass it explicitly so the env-var name is decoupled from litellm's default lookup.
     - everything else -> ``OPENROUTER_API_KEY``, byte-for-byte the prior single-source
       behavior so the existing OpenRouter path (and the offline suite) is unchanged.
 
@@ -194,6 +197,8 @@ def _direct_agent_api_key(model: str) -> str | None:
     """
     if model.startswith("gemini/"):
         return os.environ.get("GEMINI_API_KEY")
+    if model.startswith("groq/"):
+        return os.environ.get("GROQ_CLOUD_API_KEY") or os.environ.get("GROQ_API_KEY")
     return os.environ.get("OPENROUTER_API_KEY")
 
 
@@ -210,8 +215,9 @@ def agent_llm_routing(
                  the mode-aware proxy URL, and an api_key that is the **per-run virtual key**
                  (``api_key_override``) when one was minted, else the master key.
     Proxy OFF -> the direct path: the bare slug + a **per-provider** api_key
-                 (``_direct_agent_api_key``: ``gemini/`` -> ``GEMINI_API_KEY``, else
-                 ``OPENROUTER_API_KEY``) and NO ``base_url``. Byte-for-byte unchanged for the
+                 (``_direct_agent_api_key``: ``gemini/`` -> ``GEMINI_API_KEY``, ``groq/`` ->
+                 ``GROQ_CLOUD_API_KEY``, else ``OPENROUTER_API_KEY``) and NO ``base_url``.
+                 Byte-for-byte unchanged for the
                  existing OpenRouter path so offline/no-key behavior is unaffected
                  (``api_key_override`` is ignored when the proxy is off).
 
