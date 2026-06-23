@@ -260,3 +260,98 @@ def test_two_node_walk_ships_through_gate_and_terminal(client, monkeypatch, tmp_
     assert [(i.iteration, i.outcome) for i in gate_invs] == [(1, "approved")]
     assert [(i.iteration, i.outcome) for i in eng_invs] == [(1, "built")]
     assert [(i.iteration, i.outcome) for i in ship_invs] == [(1, "shipped")]
+
+
+def test_review_loop_persists_verdict_reasons_into_outcome_detail(client, monkeypatch, tmp_path):
+    """(P1.5c §14.3-prep) The Reviewer's per-round verdict REASONS land in
+    ``AgentInvocation.outcome_detail`` — proven through the REAL executor on the
+    forced-revision path. The round-1 ``changes_requested`` close persists its
+    ``verdict["reasons"]`` (the forced-revision marker); the final ``approved`` round
+    leaves it NULL (reasons is None on approve). Every OTHER node's close (PM, Engineer,
+    gates, terminal) omits the new param, so its ``outcome_detail`` stays NULL — the
+    default-None backward-compat path, exercised end-to-end through ``run_team``.
+
+    Same offline harness as ``test_review_loop_cycles_once_then_ships`` (real ``run_team``,
+    Reviewer in forced mode, PRD gate auto-approved, agent + PM stubbed — no LLM/openhands)."""
+    monkeypatch.setenv("TVASHTR_FORCE_REVISIONS", "1")
+    monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    init_workspace_repo(str(workspace))
+
+    def _fake_pm_step(run_id, idea, pm_model):
+        return {"document_id": str(uuid.uuid4()), "prd_text": f"PRD: {idea}"}
+
+    def _fake_engineer_setup_step(run_id):
+        return str(workspace)
+
+    def _fake_engineer_run_step(
+        run_id, prd_text, workspace_dir, eng_model, vkey, iteration, reviewer_feedback
+    ):
+        with session_scope() as session:
+            session.add(EngineerRunAttempt(run_id=run_id, pid=os.getpid()))
+        (Path(workspace_dir) / "greeting.txt").write_text(f"build {iteration}\n")
+        return {
+            "status": "completed",
+            "files_changed": ["greeting.txt"],
+            "error": None,
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+            "cost_usd": 0.0,
+        }
+
+    monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
+    monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
+    monkeypatch.setattr(team_run, "engineer_run_step", _fake_engineer_run_step)
+
+    run_id = _make_review_loop_run()
+    with SetWorkflowID(run_id):
+        handle = DBOS.start_workflow(team_run.run_team, "build greeting.txt")
+    result = handle.get_result()
+
+    assert result["status"] == "completed"
+
+    with session_scope() as session:
+        run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one()
+        nodes = (
+            session.execute(select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id))
+            .scalars()
+            .all()
+        )
+        by_role = {n.role_name: n for n in nodes}
+
+        def _invocations(node_id):
+            return (
+                session.execute(
+                    select(AgentInvocation)
+                    .where(
+                        AgentInvocation.run_id == run_id,
+                        AgentInvocation.node_id == node_id,
+                    )
+                    .order_by(AgentInvocation.iteration)
+                )
+                .scalars()
+                .all()
+            )
+
+        rev_invs = _invocations(by_role["reviewer"].id)
+        eng_invs = _invocations(by_role["engineer"].id)
+        pm_invs = _invocations(by_role["pm"].id)
+        prd_gate_invs = _invocations(by_role["prd_gate"].id)
+        ship_invs = _invocations(by_role["ship"].id)
+
+    # The seam: the Reviewer's round-1 changes_requested close persisted its reasons; the
+    # final approved round left outcome_detail NULL (verdict["reasons"] is None on approve).
+    assert [i.outcome for i in rev_invs] == ["changes_requested", "approved"]
+    assert rev_invs[0].outcome_detail is not None
+    assert "forced revision" in rev_invs[0].outcome_detail
+    assert rev_invs[1].outcome_detail is None
+
+    # Every OTHER close-site omits the new param -> NULL (the default-None compat path,
+    # proven through the real executor, not just the unit call).
+    assert all(i.outcome_detail is None for i in eng_invs)
+    assert all(i.outcome_detail is None for i in pm_invs)
+    assert all(i.outcome_detail is None for i in prd_gate_invs)
+    assert all(i.outcome_detail is None for i in ship_invs)

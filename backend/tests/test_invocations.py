@@ -85,6 +85,34 @@ def test_close_updates_status_outcome_ended_at_and_is_noop_safe(client):
     assert _count(run_id, node_id, 1) == 1
 
 
+def test_close_persists_outcome_detail_when_supplied(client):
+    # (P1.5c §14.3-prep) Supplying outcome_detail persists it alongside status/outcome —
+    # this is how the Reviewer's successful-verdict close carries verdict["reasons"].
+    run_id, node_id = _seed_node()
+    open_invocation_step(run_id, node_id, 1)
+
+    close_invocation_step(
+        run_id, node_id, 1, "done", "changes_requested", outcome_detail="missing edge-case test"
+    )
+    row = _row(run_id, node_id, 1)
+    assert row.status == "done"
+    assert row.outcome == "changes_requested"
+    assert row.outcome_detail == "missing edge-case test"
+
+
+def test_close_leaves_outcome_detail_null_by_default(client):
+    # The DEFAULT call (no outcome_detail) leaves the column NULL — the load-bearing
+    # backward-compat for the other 10 close_invocation_step call-sites (PM, Engineer,
+    # gates, terminals, the reviewer's degenerate closes), unchanged by this seam.
+    run_id, node_id = _seed_node()
+    open_invocation_step(run_id, node_id, 1)
+
+    close_invocation_step(run_id, node_id, 1, "done", "built")
+    row = _row(run_id, node_id, 1)
+    assert row.outcome == "built"
+    assert row.outcome_detail is None
+
+
 def test_distinct_iterations_are_distinct_rows(client):
     run_id, node_id = _seed_node()
 

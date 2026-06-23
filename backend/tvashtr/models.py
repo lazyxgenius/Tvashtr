@@ -311,6 +311,11 @@ class AgentInvocation(Base):
     iteration: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)  # running|done|failed|stopped
     outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Free-text detail behind the ``outcome`` label (P1.5c §14.3-prep, migration ``0011``).
+    # NULL until/unless a close-site supplies it; only the Reviewer's successful-verdict
+    # close populates it today, with ``verdict["reasons"]``. The §14.3 comparison view reads
+    # this to tell the "what the review caught" story.
+    outcome_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

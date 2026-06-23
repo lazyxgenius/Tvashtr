@@ -798,7 +798,14 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # verdict (its ``changes_requested`` follows the loop-back; ``approved`` -> ship).
                 if verdict["total_tokens"] or verdict["cost_usd"]:
                     persist_reviewer_cost_step(run_id, node["model"], verdict, n)
-                close_invocation_step(run_id, current, n, "done", verdict["outcome"])
+                close_invocation_step(
+                    run_id,
+                    current,
+                    n,
+                    "done",
+                    verdict["outcome"],
+                    outcome_detail=verdict["reasons"],
+                )
                 reviewer_feedback = verdict["reasons"]
                 if apply_budget_hook(run_id, node_id=current, iteration=n):
                     return _finalize_over_budget(run_id, pm_document_id)

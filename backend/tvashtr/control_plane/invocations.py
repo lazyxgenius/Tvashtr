@@ -71,13 +71,23 @@ def open_invocation_step(run_id: str, node_id: str, iteration: int) -> int:
 
 @DBOS.step()
 def close_invocation_step(
-    run_id: str, node_id: str, iteration: int, status: str, outcome: str | None
+    run_id: str,
+    node_id: str,
+    iteration: int,
+    status: str,
+    outcome: str | None,
+    outcome_detail: str | None = None,
 ) -> None:
-    """Idempotently close an invocation: set ``status`` / ``outcome`` / ``ended_at``
-    on the matching ``(run_id, node_id, iteration)`` row.
+    """Idempotently close an invocation: set ``status`` / ``outcome`` /
+    ``outcome_detail`` / ``ended_at`` on the matching ``(run_id, node_id, iteration)`` row.
 
     A no-op-safe update — re-running it (or running it for a triple that was never
-    opened, defensively) writes the same values, never appends a row."""
+    opened, defensively) writes the same values, never appends a row.
+
+    ``outcome_detail`` (P1.5c §14.3-prep) is the free-text detail behind the ``outcome``
+    label; it defaults to ``None``, so every call-site that omits it writes NULL exactly
+    as before. Only the Reviewer's successful-verdict close supplies it today (the
+    verdict reasons)."""
     with session_scope() as session:
         session.execute(
             update(AgentInvocation)
@@ -86,5 +96,10 @@ def close_invocation_step(
                 AgentInvocation.node_id == uuid.UUID(node_id),
                 AgentInvocation.iteration == iteration,
             )
-            .values(status=status, outcome=outcome, ended_at=func.now())
+            .values(
+                status=status,
+                outcome=outcome,
+                outcome_detail=outcome_detail,
+                ended_at=func.now(),
+            )
         )
