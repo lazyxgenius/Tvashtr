@@ -260,3 +260,48 @@
   background: var(--red-100);
   color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
 }
+
+/* ---- Reviewer verdict history (P1.5c §14.1) ---- */
+/* A tight, calm list of per-round verdicts. Tones reuse the established pill token
+   patterns (sage = approved, coral = changes requested, panel = neutral); no ad-hoc hex,
+   no animation. */
+.tv-verdicts {
+  list-style: none;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.tv-verdict {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-sm);
+}
+.tv-verdict__round {
+  flex: none;
+  font-family: var(--font-code);
+  font-size: var(--fs-micro);
+  color: var(--text-tertiary);
+}
+.tv-verdict__label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+}
+.tv-verdict--approved {
+  background: var(--sage-100);
+  color: color-mix(in srgb, var(--sage-500) 62%, var(--ink-900));
+}
+.tv-verdict--changes {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.tv-verdict--neutral {
+  background: var(--panel-300);
+  color: var(--ink-600);
+}

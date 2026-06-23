@@ -265,7 +265,7 @@ export default function App() {
         {selectedRole && (
           <SidePanel
             selectedRole={selectedRole}
-            iteration={graph?.nodes.find((n) => n.role_name === selectedRole)?.iteration ?? 0}
+            invocations={graph?.nodes.find((n) => n.role_name === selectedRole)?.invocations ?? []}
             runId={runId}
             run={run}
             workflowStatus={workflowStatus}

@@ -318,10 +318,16 @@ def get_run_graph(run_id: str) -> dict:
         )
         # The node's live state = its latest invocation (max iteration for that node).
         latest_by_node: dict[str, AgentInvocation] = {}
+        # The node's full per-round history, ascending by iteration — the verdict-view
+        # (P1.5c §14.1) reads this to surface the Reviewer's round-by-round outcomes.
+        invs_by_node: dict[str, list[AgentInvocation]] = {}
         for inv in invocations:
             key = str(inv.node_id)
             if key not in latest_by_node or inv.iteration > latest_by_node[key].iteration:
                 latest_by_node[key] = inv
+            invs_by_node.setdefault(key, []).append(inv)
+        for invs in invs_by_node.values():
+            invs.sort(key=lambda i: i.iteration)
 
         # Deterministic left-to-right order (PM at x=0 before Engineer/Reviewer).
         nodes = sorted(nodes, key=lambda n: (n.position.get("x", 0), str(n.id)))
@@ -347,6 +353,21 @@ def get_run_graph(run_id: str) -> dict:
                     "iteration": (
                         latest_by_node[str(n.id)].iteration if str(n.id) in latest_by_node else 0
                     ),
+                    # P1.5c (§14.1): the node's per-round invocation history, ascending by
+                    # iteration — additive read of the already-persisted rows ([] before the
+                    # node is reached). The Reviewer panel renders each round's `outcome`
+                    # (approved / changes_requested) from this; `status`/`iteration` above
+                    # (the latest values) are unchanged.
+                    "invocations": [
+                        {
+                            "iteration": inv.iteration,
+                            "status": inv.status,
+                            "outcome": inv.outcome,
+                            "started_at": inv.started_at.isoformat(),
+                            "ended_at": inv.ended_at.isoformat() if inv.ended_at else None,
+                        }
+                        for inv in invs_by_node.get(str(n.id), [])
+                    ],
                 }
                 for n in nodes
             ],

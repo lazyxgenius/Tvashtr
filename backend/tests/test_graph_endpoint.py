@@ -45,6 +45,8 @@ def test_graph_endpoint_two_node_includes_gate_terminal_and_config(client):
     assert nodes["stop"]["config"] == {"terminal_kind": "stop"}
     # All nodes carry the additive idle/0 status before any run.
     assert all(n["status"] == "idle" and n["iteration"] == 0 for n in body["nodes"])
+    # P1.5c: every node carries an `invocations` list; un-reached nodes -> [] (no rows yet).
+    assert all(n["invocations"] == [] for n in body["nodes"])
     # 4 edges, each exposing conditions (present, possibly null).
     assert len(body["edges"]) == 4
     assert all("conditions" in e for e in body["edges"])
@@ -138,3 +140,51 @@ def test_graph_endpoint_node_status_reflects_latest_invocation(client):
     )
     assert eng2["status"] == "running"
     assert eng2["iteration"] == 2
+
+
+def test_graph_endpoint_node_invocations_are_ordered_per_round_history(client):
+    """P1.5c (§14.1): each node carries an `invocations` list, ascending by iteration,
+    each row exposing the persisted `outcome` — the read surface the verdict view renders.
+    """
+    run_id = _seed(build_review_loop_team())
+    rev = next(
+        n
+        for n in client.get(f"/api/runs/{run_id}/graph").json()["nodes"]
+        if n["role_name"] == "reviewer"
+    )
+    # Two reviewer rounds with DISTINCT outcomes, inserted OUT OF ORDER (round 2 first) to
+    # prove the endpoint sorts ascending by iteration rather than echoing insertion order.
+    with session_scope() as session:
+        session.add(
+            AgentInvocation(
+                run_id=run_id,
+                node_id=uuid.UUID(rev["id"]),
+                iteration=2,
+                status="done",
+                outcome="approved",
+            )
+        )
+        session.add(
+            AgentInvocation(
+                run_id=run_id,
+                node_id=uuid.UUID(rev["id"]),
+                iteration=1,
+                status="done",
+                outcome="changes_requested",
+            )
+        )
+
+    body = client.get(f"/api/runs/{run_id}/graph").json()
+    nodes = {n["role_name"]: n for n in body["nodes"]}
+    # Every node dict carries an `invocations` list (additive, present on all nodes).
+    assert all("invocations" in n for n in body["nodes"])
+
+    rounds = nodes["reviewer"]["invocations"]
+    assert [r["iteration"] for r in rounds] == [1, 2]  # ascending, regardless of insert order
+    assert [r["outcome"] for r in rounds] == ["changes_requested", "approved"]
+    # Each row carries the full shape the FE type expects.
+    assert set(rounds[0]) == {"iteration", "status", "outcome", "started_at", "ended_at"}
+    assert rounds[0]["status"] == "done" and rounds[0]["started_at"] is not None
+
+    # A node the executor never reached (the engineer here) -> empty history.
+    assert nodes["engineer"]["invocations"] == []

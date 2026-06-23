@@ -19,6 +19,16 @@ export interface TerminalConfig {
 }
 export type NodeConfig = GateConfig | TerminalConfig | Record<string, unknown>;
 
+// P1.5c (§14.1): one persisted AgentInvocation row — a single round of a node's
+// execution. The Reviewer panel renders the per-round verdict history from these.
+export interface NodeInvocation {
+  iteration: number;
+  status: string; // running | done | failed | stopped
+  outcome: string | null; // reviewer: approved | changes_requested ; engineer: built ; …
+  started_at: string;
+  ended_at: string | null;
+}
+
 export interface GraphNode {
   id: string;
   role_name: string;
@@ -31,6 +41,8 @@ export interface GraphNode {
   // P1.5a: the node's live per-invocation state (backend owns this now).
   status: string; // idle | running | done | failed | stopped
   iteration: number; // 1-based count of this node's runs; 0 before it is reached
+  // P1.5c: the node's full per-round history, ascending by iteration ([] before reached).
+  invocations: NodeInvocation[];
 }
 
 export interface GraphEdge {

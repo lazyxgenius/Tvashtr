@@ -1,8 +1,8 @@
 import { type ReactNode } from "react";
 import { X } from "lucide-react";
 
-import type { RunRow } from "../lib/api";
-import { WORKFLOW_FAILED } from "../lib/status";
+import type { NodeInvocation, RunRow } from "../lib/api";
+import { reviewerVerdictLabel, WORKFLOW_FAILED } from "../lib/status";
 import { EventFeed } from "./EventFeed";
 import { PrdView } from "./PrdView";
 
@@ -20,20 +20,35 @@ function pmEmptyHint(
 }
 
 /**
- * The minimal reviewer view (P1.5a prompt 2): a short DS-voiced explanation of the
- * reviewer's role + its current round once it has looped.
- * NOTE: the per-round verdicts (approved / changes-requested + reasons) land in
- * P1.5a prompt 3, when the backend exposes `AgentInvocation.outcome`. This prompt
- * shows status + round only.
+ * The reviewer view (P1.5c §14.1): the role explanation plus the per-round verdict
+ * history, read from the reviewer node's persisted `AgentInvocation.outcome` rows
+ * ("Round 1 — Changes requested", "Round 2 — Approved"). `rounds` is the reviewer
+ * node's invocations, ascending by iteration ([] before the reviewer is reached).
+ * Only the verdict LABEL is surfaced today; the reasons ("why B sent it back") need a
+ * new column and arrive with the §14.2 A/B work.
  */
-function ReviewerView({ iteration }: { iteration: number }) {
+function ReviewerView({ rounds }: { rounds: NodeInvocation[] }) {
   return (
     <div className="tv-scroll">
       <p className="tv-panel-note">
         The reviewer reads the engineer's work against the spec, then either approves it or sends it
         back for another round of changes.
       </p>
-      {iteration >= 2 && <p className="tv-panel-note">Currently on round {iteration}.</p>}
+      {rounds.length === 0 ? (
+        <p className="tv-panel-note">No review yet.</p>
+      ) : (
+        <ol className="tv-verdicts">
+          {rounds.map((r) => {
+            const v = reviewerVerdictLabel(r.outcome);
+            return (
+              <li key={r.iteration} className={`tv-verdict tv-verdict--${v.tone}`}>
+                <span className="tv-verdict__round">Round {r.iteration}</span>
+                <span className="tv-verdict__label">{v.label}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </div>
   );
 }
@@ -48,19 +63,19 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
  * The right-hand inspection panel. Rendered only when a node is selected; it
  * splits the canvas (push layout) so the clicked node stays reachable. Switches
  * body on role: PM → the spec + versions; Engineer → the run-event feed; Reviewer
- * → the minimal role view. The selected node's `iteration` is threaded in as a
- * scalar (not the graph) so the panel stays run-level.
+ * → the per-round verdict history. The selected node's `invocations` are threaded in
+ * as a slice (not the whole graph) so the panel stays graph-free.
  */
 export function SidePanel({
   selectedRole,
-  iteration = 0,
+  invocations = [],
   runId,
   run,
   workflowStatus,
   onClose,
 }: {
   selectedRole: string;
-  iteration?: number;
+  invocations?: NodeInvocation[];
   runId: string | null;
   run: RunRow | null;
   workflowStatus: string | null;
@@ -77,7 +92,7 @@ export function SidePanel({
       />
     );
   } else if (selectedRole === "reviewer") {
-    body = <ReviewerView iteration={iteration} />;
+    body = <ReviewerView rounds={invocations} />;
   } else {
     body = <EventFeed runId={runId} run={run} workflowStatus={workflowStatus} />;
   }

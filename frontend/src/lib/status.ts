@@ -98,6 +98,20 @@ export function deriveTerminalState(terminalKind: string, backendStatus: string)
   return terminalKind === "ship" ? "shipped" : "stopped";
 }
 
+/**
+ * Map a persisted reviewer `AgentInvocation.outcome` to its display label + tone for the
+ * per-round verdict view (P1.5c §14.1). Pure and total: `approved` reads positive (sage),
+ * `changes_requested` reads attention (coral), anything else (a non-reviewer outcome, or a
+ * still-open `null` round) reads neutral. Only the LABEL is surfaced today — the reasons
+ * ("why B sent it back") need a new column and arrive with the §14.2 A/B work.
+ */
+export type VerdictTone = "approved" | "changes" | "neutral";
+export function reviewerVerdictLabel(outcome: string | null): { label: string; tone: VerdictTone } {
+  if (outcome === "approved") return { label: "Approved", tone: "approved" };
+  if (outcome === "changes_requested") return { label: "Changes requested", tone: "changes" };
+  return { label: outcome ?? "—", tone: "neutral" };
+}
+
 export type OverallTone = "idle" | "running" | "paused" | "done" | "failed";
 
 /**

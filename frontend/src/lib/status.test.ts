@@ -7,6 +7,7 @@ import {
   deriveOverall,
   deriveTerminalState,
   isRunTerminal,
+  reviewerVerdictLabel,
 } from "./status";
 
 function mkRun(over: Partial<RunRow> = {}): RunRow {
@@ -202,6 +203,28 @@ describe("deriveOverall", () => {
       tone: "failed",
       label: "Failed",
     });
+  });
+});
+
+describe("reviewerVerdictLabel (per-round verdict view, P1.5c)", () => {
+  it("maps approved -> Approved / approved tone", () => {
+    expect(reviewerVerdictLabel("approved")).toEqual({ label: "Approved", tone: "approved" });
+  });
+
+  it("maps changes_requested -> Changes requested / changes tone", () => {
+    expect(reviewerVerdictLabel("changes_requested")).toEqual({
+      label: "Changes requested",
+      tone: "changes",
+    });
+  });
+
+  it("an unknown (non-reviewer) outcome reads neutral, echoing the raw label", () => {
+    // e.g. an engineer 'built' row, were it ever routed here — never crashes.
+    expect(reviewerVerdictLabel("built")).toEqual({ label: "built", tone: "neutral" });
+  });
+
+  it("a still-open round (null outcome) reads neutral with an em-dash", () => {
+    expect(reviewerVerdictLabel(null)).toEqual({ label: "—", tone: "neutral" });
   });
 });
 
