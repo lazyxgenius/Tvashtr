@@ -1,0 +1,80 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(make *)",
+      "Bash(uv run *)",
+      "Bash(uv sync *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(docker compose *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git branch *)",
+      "Bash(git status)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git stash *)"
+    ],
+    "deny": [
+      "Bash(git push *)",
+      "Bash(git push --force*)",
+      "Bash(git reset --hard*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat /Users/adimac/Desktop/Tvashtr/STATE.md 2>/dev/null || echo 'No STATE.md yet - read prompts/CLI-RULES.md section 7.'"
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'POST-COMPACTION REMINDER: re-read prompts/CLI-RULES.md section 3 (invariants) and section 7 (milestones). Current STATE.md below:'; cat /Users/adimac/Desktop/Tvashtr/STATE.md 2>/dev/null"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "rate_limit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"PAUSED_RATE_LIMIT $(date '+%Y-%m-%d %H:%M'): resume with 'claude --continue'\" >> /Users/adimac/Desktop/Tvashtr/STATE.md"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-migrations.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-no-push.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
