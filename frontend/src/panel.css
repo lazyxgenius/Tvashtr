@@ -166,6 +166,139 @@
   color: var(--text-primary);
 }
 
+/* ---- PRD live-steering editor (P1.7b) ---- */
+/* The "live" tag on the latest version chip — the spec the agents re-source next round. */
+.tv-prd__live {
+  padding: 1px 6px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--coral-700);
+  background: var(--coral-100);
+  border-radius: var(--radius-pill);
+}
+.tv-prd__version--active .tv-prd__live {
+  background: var(--surface-card);
+}
+
+.tv-prd__editwrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: var(--measure-read);
+}
+/* The steering framing — calm, explanatory; always "next round", never "now". */
+.tv-prd__steer {
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+  color: var(--text-secondary);
+}
+
+/* The editable surface — a soft card the human types the spec into. */
+.tv-prd__editor .ProseMirror {
+  min-height: 180px;
+  padding: var(--space-4);
+  font-family: var(--font-body);
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--text-primary);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  transition: box-shadow var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+.tv-prd__editor .ProseMirror:focus {
+  outline: none;
+  border-color: var(--coral-200);
+  box-shadow: var(--shadow-focus);
+}
+.tv-prd__editor .ProseMirror p {
+  margin: 0 0 var(--space-3);
+}
+.tv-prd__editor .ProseMirror p:last-child {
+  margin-bottom: 0;
+}
+.tv-prd__editor .ProseMirror h1,
+.tv-prd__editor .ProseMirror h2,
+.tv-prd__editor .ProseMirror h3 {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  letter-spacing: var(--tracking-snug);
+  line-height: var(--lh-snug);
+  color: var(--text-primary);
+  margin: var(--space-4) 0 var(--space-2);
+}
+.tv-prd__editor .ProseMirror h1 {
+  font-size: var(--fs-h4);
+}
+.tv-prd__editor .ProseMirror h2,
+.tv-prd__editor .ProseMirror h3 {
+  font-size: var(--fs-body);
+}
+.tv-prd__editor .ProseMirror ul,
+.tv-prd__editor .ProseMirror ol {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-5);
+}
+.tv-prd__editor .ProseMirror li {
+  margin: 2px 0;
+}
+.tv-prd__editor .ProseMirror code {
+  font-family: var(--font-code);
+  font-size: 0.92em;
+  padding: 1px 4px;
+  background: var(--panel-300);
+  border-radius: var(--radius-sm);
+}
+.tv-prd__editor .ProseMirror pre {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-code);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+  color: var(--text-primary);
+  background: var(--panel-300);
+  border: var(--border-width) solid var(--border-faint);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+.tv-prd__editor .ProseMirror pre code {
+  padding: 0;
+  background: none;
+}
+
+/* The Save row — explicit, dirty-aware; a quiet "saved v{N}" / "unsaved" line beside it. */
+.tv-prd__editbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.tv-prd__dirty {
+  font-size: var(--fs-caption);
+  color: var(--text-tertiary);
+}
+.tv-prd__saved {
+  font-size: var(--fs-caption);
+  color: color-mix(in srgb, var(--sage-500) 62%, var(--ink-900));
+}
+.tv-prd__saveerr {
+  font-size: var(--fs-caption);
+  color: var(--danger);
+}
+
+/* The "you're browsing an older version" note above a read-only past version. */
+.tv-prd__viewing {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+  color: var(--text-secondary);
+}
+
 /* ---- Event feed ---- */
 .tv-feed__note {
   display: flex;

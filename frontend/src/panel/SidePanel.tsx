@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { X } from "lucide-react";
 
 import type { NodeInvocation, RunRow } from "../lib/api";
-import { reviewerVerdictLabel, WORKFLOW_FAILED } from "../lib/status";
+import { isPrdEditable, reviewerVerdictLabel, WORKFLOW_FAILED } from "../lib/status";
 import { EventFeed } from "./EventFeed";
 import { PrdView } from "./PrdView";
 
@@ -88,10 +88,13 @@ export function SidePanel({
 
   let body: ReactNode;
   if (selectedRole === "pm") {
+    // The PRD is live-editable only while the run is in-flight (P1.7b steering) — derived here
+    // from the run/workflow status this panel already holds, so App.tsx needs no change.
     body = (
       <PrdView
         documentId={run?.pm_document_id ?? null}
         emptyHint={pmEmptyHint(runId, run, workflowStatus)}
+        editable={isPrdEditable(run?.status ?? null, workflowStatus)}
       />
     );
   } else if (selectedRole === "reviewer") {

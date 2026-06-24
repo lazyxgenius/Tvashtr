@@ -6,6 +6,7 @@ import {
   deriveNodeStatus,
   deriveOverall,
   deriveTerminalState,
+  isPrdEditable,
   isRunTerminal,
   reviewerVerdictLabel,
 } from "./status";
@@ -225,6 +226,40 @@ describe("reviewerVerdictLabel (per-round verdict view, P1.5c)", () => {
 
   it("a still-open round (null outcome) reads neutral with an em-dash", () => {
     expect(reviewerVerdictLabel(null)).toEqual({ label: "—", tone: "neutral" });
+  });
+});
+
+describe("isPrdEditable (the live-steering gate, P1.7b)", () => {
+  it("is editable while the run is in-flight (running / awaiting_human)", () => {
+    expect(isPrdEditable("running", "PENDING")).toBe(true);
+    // the PRD gate is THE moment to steer — awaiting_human must be editable.
+    expect(isPrdEditable("awaiting_human", "PENDING")).toBe(true);
+    expect(isPrdEditable("pending", "PENDING")).toBe(true);
+  });
+
+  it("is NOT editable once the run is terminal (the spec is now history)", () => {
+    for (const status of ["completed", "failed", "rejected", "cancelled", "over_budget"]) {
+      expect(isPrdEditable(status, "PENDING")).toBe(false);
+    }
+  });
+
+  it("is NOT editable when the workflow is terminal even if run.status lags at running", () => {
+    expect(isPrdEditable("running", "SUCCESS")).toBe(false);
+    expect(isPrdEditable("running", "ERROR")).toBe(false);
+    expect(isPrdEditable("running", "CANCELLED")).toBe(false);
+  });
+
+  it("is NOT editable with no run (null) — nothing to steer", () => {
+    expect(isPrdEditable(null, null)).toBe(false);
+    expect(isPrdEditable(null, "PENDING")).toBe(false);
+  });
+
+  it("mirrors isRunTerminal: editable iff the run is non-terminal and present", () => {
+    // the steering gate and the poll-stop read the SAME terminal sets — they never drift.
+    expect(isPrdEditable("running", "PENDING")).toBe(!isRunTerminal(mkRun({ status: "running" }), "PENDING"));
+    expect(isPrdEditable("completed", "SUCCESS")).toBe(
+      !isRunTerminal(mkRun({ status: "completed" }), "SUCCESS"),
+    );
   });
 });
 

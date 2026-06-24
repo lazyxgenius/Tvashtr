@@ -1,0 +1,4 @@
+# Playwright (live steering E2E) artifacts — generated per run, never committed.
+test-results/
+playwright-report/
+playwright/.cache/

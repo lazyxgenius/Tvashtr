@@ -30,6 +30,21 @@ export function isRunTerminal(run: RunRow | null, workflowStatus: string | null)
 }
 
 /**
+ * Is the run's PRD live-editable right now (P1.7b steering)? True iff the run is **in-flight**
+ * — a real run that has NOT reached a terminal state — so a human edit can still reach the
+ * agents on their next node read (J3). Reuses the SAME terminal sets the poll-stop uses, so
+ * "can I steer this?" and "can this still change?" never drift apart. No run (`null`) → false
+ * (nothing to steer); any run-terminal or workflow-terminal → false (the spec is now history).
+ * `awaiting_human` is deliberately editable: the PRD gate is the canonical moment to steer.
+ */
+export function isPrdEditable(runStatus: string | null, workflowStatus: string | null): boolean {
+  if (runStatus === null) return false;
+  if (RUN_TERMINAL.has(runStatus)) return false;
+  if (workflowStatus !== null && WORKFLOW_TERMINAL.has(workflowStatus)) return false;
+  return true;
+}
+
+/**
  * Per-node status for an **agent/completion** node — a **thin read of backend truth**
  * (P1.5a). The executor owns a real per-node `AgentInvocation`, so the graph endpoint
  * hands us each node's live `backendStatus` (`idle|running|done|failed|stopped`); this

@@ -289,5 +289,29 @@ export interface RunEventsResponse {
 export const getDocument = (documentId: string): Promise<DocumentDetail> =>
   getJSON<DocumentDetail>(`/api/documents/${documentId}`);
 
+// P1.7b live steering: append a human edit as a NEW version (the server stamps
+// created_by="human" + a fresh idempotency key per POST, so every Save is a new version the
+// running agents re-source on their next node entry). The response is a PARTIAL shape (no
+// version `id`, no `created_by`) — refetch via `getDocument` after a save to refresh the panel.
+export interface AddedDocumentVersion {
+  document_id: string;
+  version_no: number;
+  content: string;
+  created_at: string;
+}
+
+export async function addDocumentVersion(
+  documentId: string,
+  content: string,
+): Promise<AddedDocumentVersion> {
+  const res = await fetch(`/api/documents/${documentId}/versions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  if (!res.ok) throw new Error(`POST /api/documents/${documentId}/versions -> ${res.status}`);
+  return (await res.json()) as AddedDocumentVersion;
+}
+
 export const getRunEvents = (runId: string): Promise<RunEventsResponse> =>
   getJSON<RunEventsResponse>(`/api/spike/run-events/${runId}`);
