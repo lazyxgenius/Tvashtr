@@ -24,8 +24,8 @@ function pmEmptyHint(
  * history, read from the reviewer node's persisted `AgentInvocation.outcome` rows
  * ("Round 1 — Changes requested", "Round 2 — Approved"). `rounds` is the reviewer
  * node's invocations, ascending by iteration ([] before the reviewer is reached).
- * Only the verdict LABEL is surfaced today; the reasons ("why B sent it back") need a
- * new column and arrive with the §14.2 A/B work.
+ * §14.3 surfaces the persisted reasons (`outcome_detail`) under each `changes_requested`
+ * round, so "what the review caught" is legible — NULL on an approved round (no line).
  */
 function ReviewerView({ rounds }: { rounds: NodeInvocation[] }) {
   return (
@@ -42,8 +42,11 @@ function ReviewerView({ rounds }: { rounds: NodeInvocation[] }) {
             const v = reviewerVerdictLabel(r.outcome);
             return (
               <li key={r.iteration} className={`tv-verdict tv-verdict--${v.tone}`}>
-                <span className="tv-verdict__round">Round {r.iteration}</span>
-                <span className="tv-verdict__label">{v.label}</span>
+                <div className="tv-verdict__line">
+                  <span className="tv-verdict__round">Round {r.iteration}</span>
+                  <span className="tv-verdict__label">{v.label}</span>
+                </div>
+                {r.outcome_detail && <p className="tv-verdict__reasons">{r.outcome_detail}</p>}
               </li>
             );
           })}

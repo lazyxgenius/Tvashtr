@@ -324,6 +324,99 @@ def create_ab_runs(body: ABRunRequest) -> dict:
     return {"pair_id": str(pair_id), "runs": runs}
 
 
+@router.get("/api/ab-runs/{pair_id}")
+def get_ab_comparison(pair_id: str) -> dict:
+    """Read an A/B pair back for the §14.3 comparison view: given the ``pair_id`` from
+    :func:`create_ab_runs`, return one ``side`` per run sharing it — terminal status, what
+    shipped, cost, the idea, and (for the ``review_loop`` side) the Reviewer's per-round
+    verdict labels + the persisted REASONS (``outcome_detail``). The measurable A-vs-B delta
+    the operator reads is derived FE-side from these facts (terminal outcome + review effort +
+    cost) — deliberately NOT from the ship sha: two separate runs always ship distinct commits,
+    so a sha compare can't answer "did the review change what shipped".
+
+    READ-only — no migration, no executor change; it just reflects the pairing + the already-
+    persisted invocation rows. **Tolerates a ``<2``-run pair** (the §15 caveat: the A/B launch
+    is not atomic, and a side can also fail at runtime, so a ``pair_id`` may carry one row):
+    returns whatever rows share the ``pair_id``; 404 ONLY when *zero* rows do."""
+    try:
+        pid = uuid.UUID(pair_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid pair id") from exc
+
+    with db.session_scope() as session:
+        runs = (
+            session.execute(select(Run).where(Run.pair_id == pid).order_by(Run.pair_label))
+            .scalars()
+            .all()
+        )
+        if not runs:
+            raise HTTPException(status_code=404, detail="pair not found")
+
+        sides: list[dict] = []
+        for run in runs:
+            # Find the run's reviewer node from its OWN graph (the A/two_node side has none).
+            # team_shape is DERIVED from this — not read off pair_label — so the shape can't
+            # disagree with the actual graph the run drove.
+            reviewer_node = session.execute(
+                select(AgentNode).where(
+                    AgentNode.team_graph_id == run.team_graph_id,
+                    AgentNode.role_name == "reviewer",
+                )
+            ).scalar_one_or_none()
+
+            review_rounds: list[dict] = []
+            if reviewer_node is not None:
+                rounds = (
+                    session.execute(
+                        select(AgentInvocation)
+                        .where(
+                            AgentInvocation.run_id == run.workflow_id,
+                            AgentInvocation.node_id == reviewer_node.id,
+                        )
+                        .order_by(AgentInvocation.iteration)
+                    )
+                    .scalars()
+                    .all()
+                )
+                review_rounds = [
+                    {
+                        "iteration": inv.iteration,
+                        "outcome": inv.outcome,
+                        "outcome_detail": inv.outcome_detail,
+                    }
+                    for inv in rounds
+                ]
+
+            sides.append(
+                {
+                    "pair_label": run.pair_label,
+                    "team_shape": "review_loop" if reviewer_node is not None else "two_node",
+                    "run_id": str(run.id),
+                    # workflow_id == str(run.id); carried only to look up the DBOS workflow
+                    # status AFTER the ORM session closes (the get_run/cancel_run separation).
+                    "workflow_id": run.workflow_id,
+                    "status": run.status,
+                    "ship_tag": run.ship_tag,
+                    "ship_commit_sha": run.ship_commit_sha,
+                    "cost_total_usd": (
+                        float(run.cost_total_usd) if run.cost_total_usd is not None else None
+                    ),
+                    "idea": run.idea,
+                    "review_rounds": review_rounds,
+                }
+            )
+
+    # The live workflow status is read outside the ORM session (matches get_run): pop the temp
+    # workflow_id and replace it with the DBOS status (else "NOT_FOUND" — e.g. a seeded row).
+    for side in sides:
+        ws = DBOS.get_workflow_status(side.pop("workflow_id"))
+        side["workflow_status"] = ws.status if ws is not None else "NOT_FOUND"
+
+    # Echo the canonical UUID form (str(pid)), matching what POST /api/ab-runs returns — not the
+    # raw path string, which could be a non-canonical-but-valid spelling.
+    return {"pair_id": str(pid), "sides": sides}
+
+
 @router.get("/api/runs/{run_id}")
 def get_run(run_id: str) -> dict:
     """Return the DBOS workflow status, the run row, and the run's cost rows."""
@@ -420,12 +513,15 @@ def get_run_graph(run_id: str) -> dict:
                     # iteration — additive read of the already-persisted rows ([] before the
                     # node is reached). The Reviewer panel renders each round's `outcome`
                     # (approved / changes_requested) from this; `status`/`iteration` above
-                    # (the latest values) are unchanged.
+                    # (the latest values) are unchanged. §14.3 adds `outcome_detail` (the
+                    # verdict REASONS persisted on a `changes_requested` close, NULL otherwise)
+                    # so the Reviewer panel can show "what the review caught" under each round.
                     "invocations": [
                         {
                             "iteration": inv.iteration,
                             "status": inv.status,
                             "outcome": inv.outcome,
+                            "outcome_detail": inv.outcome_detail,
                             "started_at": inv.started_at.isoformat(),
                             "ended_at": inv.ended_at.isoformat() if inv.ended_at else None,
                         }

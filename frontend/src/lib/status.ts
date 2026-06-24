@@ -7,9 +7,16 @@ import type { HumanTask, RunRow } from "./api";
 export type NodeStatus = "idle" | "running" | "done" | "stopped" | "failed";
 
 export const WORKFLOW_FAILED = new Set(["ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"]);
-const WORKFLOW_TERMINAL = new Set(["SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"]);
+// Exported so the A/B comparison module (§14.3) derives a side's terminality from the SAME
+// sets the single-run poll-stop uses — one source of truth for "can this still change?".
+export const WORKFLOW_TERMINAL = new Set([
+  "SUCCESS",
+  "ERROR",
+  "CANCELLED",
+  "MAX_RECOVERY_ATTEMPTS_EXCEEDED",
+]);
 // Terminal run statuses (run.status is authoritative): once here, polling stops.
-const RUN_TERMINAL = new Set(["completed", "failed", "rejected", "cancelled", "over_budget"]);
+export const RUN_TERMINAL = new Set(["completed", "failed", "rejected", "cancelled", "over_budget"]);
 // Run terminals that are a muted, concluded "Stopped" (not a red failure) at the
 // node level: a human rejection (rejected), the kill switch (cancelled), or a
 // budget hard-stop (over_budget). Checked before the failed-fold.

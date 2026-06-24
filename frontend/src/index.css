@@ -17,6 +17,7 @@
 @import "./design-system/tokens/base.css";
 @import "./canvas.css";
 @import "./panel.css";
+@import "./abcompare.css";
 
 /* Map DS semantic tokens into Tailwind v4 so we get on-brand utilities
    (bg-page, text-secondary, border-hairline, text-accent, font-display, …).
@@ -180,6 +181,46 @@ body,
   background: var(--panel-400);
   color: var(--ink-600);
   border-color: var(--border-strong);
+}
+
+/* Segmented control — the "Single run | A/B compare" view toggle (§14.3). */
+.tv-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--panel-300);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-pill);
+}
+.tv-seg__btn {
+  appearance: none;
+  height: 30px;
+  padding: 0 var(--space-4);
+  font-family: var(--font-ui);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  background: transparent;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+.tv-seg__btn:hover:not(.tv-seg__btn--active) {
+  color: var(--text-primary);
+}
+.tv-seg__btn--active {
+  color: var(--coral-700);
+  background: var(--surface-card);
+  border-color: var(--coral-200);
+}
+.tv-seg__btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 /* ============================================================

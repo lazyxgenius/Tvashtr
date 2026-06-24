@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { TeamCanvas } from "./canvas/TeamCanvas";
+import { ABCompare } from "./components/ABCompare";
 import { BackendDot } from "./components/BackendDot";
 import { CancelRunButton } from "./components/CancelRunButton";
 import { RunBanner } from "./components/RunBanner";
@@ -34,6 +35,9 @@ export default function App() {
   const [error, setError] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+  // The view mode (§14.3): the existing single-run canvas, or the A/B comparison. Plain state,
+  // no router — the single-run state/poll stay alive underneath so switching back is lossless.
+  const [mode, setMode] = useState<"single" | "ab">("single");
 
   const terminal = isRunTerminal(run, workflowStatus);
   const inFlight = runId !== null && !terminal;
@@ -230,47 +234,81 @@ export default function App() {
         className="flex flex-wrap items-center gap-4 px-6 py-3"
         style={{ borderBottom: "1px solid var(--border-hairline)" }}
       >
-        <button className="tv-btn" onClick={() => void handleStart()} disabled={starting || inFlight}>
-          {buttonLabel}
-        </button>
-        {inFlight && <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />}
-        <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
-        {error && (
-          <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
-            Couldn't start the run — is the backend running?
-          </span>
+        <div className="tv-seg" role="group" aria-label="View mode">
+          <button
+            type="button"
+            aria-pressed={mode === "single"}
+            className={`tv-seg__btn${mode === "single" ? " tv-seg__btn--active" : ""}`}
+            onClick={() => setMode("single")}
+          >
+            Single run
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === "ab"}
+            className={`tv-seg__btn${mode === "ab" ? " tv-seg__btn--active" : ""}`}
+            onClick={() => setMode("ab")}
+          >
+            A/B compare
+          </button>
+        </div>
+        {mode === "single" && (
+          <>
+            <button
+              className="tv-btn"
+              onClick={() => void handleStart()}
+              disabled={starting || inFlight}
+            >
+              {buttonLabel}
+            </button>
+            {inFlight && <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />}
+            <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
+            {error && (
+              <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
+                Couldn't start the run — is the backend running?
+              </span>
+            )}
+          </>
         )}
       </div>
 
       <main className="flex min-h-0 flex-1">
-        <TasksDrawer
-          blockers={pendingBlockers}
-          nudges={pendingNudges}
-          onResolve={(taskId, decision) => void handleResolve(taskId, decision)}
-          onAcknowledge={(taskId) => void handleAcknowledge(taskId)}
-          onFocusNode={setFocusNodeId}
-          busy={acting}
-        />
-        <div className="relative min-w-0 flex-1">
-          <TeamCanvas
-            graph={graph}
-            run={run}
-            workflowStatus={workflowStatus}
-            tasks={tasks}
-            focusNodeId={focusNodeId}
-            panelOpen={selectedRole !== null}
-            onSelectNode={setSelectedRole}
-          />
-        </div>
-        {selectedRole && (
-          <SidePanel
-            selectedRole={selectedRole}
-            invocations={graph?.nodes.find((n) => n.role_name === selectedRole)?.invocations ?? []}
-            runId={runId}
-            run={run}
-            workflowStatus={workflowStatus}
-            onClose={() => setSelectedRole(null)}
-          />
+        {mode === "single" ? (
+          <>
+            <TasksDrawer
+              blockers={pendingBlockers}
+              nudges={pendingNudges}
+              onResolve={(taskId, decision) => void handleResolve(taskId, decision)}
+              onAcknowledge={(taskId) => void handleAcknowledge(taskId)}
+              onFocusNode={setFocusNodeId}
+              busy={acting}
+            />
+            <div className="relative min-w-0 flex-1">
+              <TeamCanvas
+                graph={graph}
+                run={run}
+                workflowStatus={workflowStatus}
+                tasks={tasks}
+                focusNodeId={focusNodeId}
+                panelOpen={selectedRole !== null}
+                onSelectNode={setSelectedRole}
+              />
+            </div>
+            {selectedRole && (
+              <SidePanel
+                selectedRole={selectedRole}
+                invocations={
+                  graph?.nodes.find((n) => n.role_name === selectedRole)?.invocations ?? []
+                }
+                runId={runId}
+                run={run}
+                workflowStatus={workflowStatus}
+                onClose={() => setSelectedRole(null)}
+              />
+            )}
+          </>
+        ) : (
+          <ABCompare />
         )}
       </main>
     </>

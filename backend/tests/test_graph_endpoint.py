@@ -171,6 +171,7 @@ def test_graph_endpoint_node_invocations_are_ordered_per_round_history(client):
                 iteration=1,
                 status="done",
                 outcome="changes_requested",
+                outcome_detail="missing tests for the edge case",
             )
         )
 
@@ -182,8 +183,18 @@ def test_graph_endpoint_node_invocations_are_ordered_per_round_history(client):
     rounds = nodes["reviewer"]["invocations"]
     assert [r["iteration"] for r in rounds] == [1, 2]  # ascending, regardless of insert order
     assert [r["outcome"] for r in rounds] == ["changes_requested", "approved"]
-    # Each row carries the full shape the FE type expects.
-    assert set(rounds[0]) == {"iteration", "status", "outcome", "started_at", "ended_at"}
+    # Each row carries the full shape the FE type expects — incl. §14.3's `outcome_detail`
+    # (the persisted verdict REASONS): present on the changes_requested round, NULL on approved.
+    assert set(rounds[0]) == {
+        "iteration",
+        "status",
+        "outcome",
+        "outcome_detail",
+        "started_at",
+        "ended_at",
+    }
+    assert rounds[0]["outcome_detail"] == "missing tests for the edge case"
+    assert rounds[1]["outcome_detail"] is None
     assert rounds[0]["status"] == "done" and rounds[0]["started_at"] is not None
 
     # A node the executor never reached (the engineer here) -> empty history.

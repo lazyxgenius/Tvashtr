@@ -275,12 +275,18 @@
 }
 .tv-verdict {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
+  flex-direction: column;
+  gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
   border: var(--border-width) solid transparent;
   border-radius: var(--radius-sm);
+}
+/* The round label + verdict on one line; §14.3 reasons (when present) stack beneath. */
+.tv-verdict__line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 .tv-verdict__round {
   flex: none;
@@ -304,4 +310,14 @@
 .tv-verdict--neutral {
   background: var(--panel-300);
   color: var(--ink-600);
+}
+/* §14.3: the persisted verdict reasons under a changes_requested round — muted, readable,
+   wraps multi-line; no ad-hoc hex, no animation. */
+.tv-verdict__reasons {
+  margin: 0;
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
