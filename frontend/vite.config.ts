@@ -18,5 +18,12 @@ export default defineConfig({
   // default `*.spec.ts` glob doesn't try to execute the live E2E as a unit test.
   test: {
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // jsdom globally — the pure-fn tests don't touch the DOM, so a global jsdom env is
+    // harmless for them and spares the RTL/component tests a per-file docblock. `globals`
+    // registers jest-dom matchers + RTL's auto-cleanup without per-file boilerplate (the
+    // existing explicit `from "vitest"` imports keep working — globals is additive).
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["src/test/setup.ts"],
   },
 });
