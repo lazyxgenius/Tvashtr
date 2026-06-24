@@ -1,27 +1,78 @@
 # Tvashtr — Autonomous Execution State
 
 ## Current Milestone
-P1.7a — **live-document steering, the BACKEND seam** (J3: "the document, not agent memory, is the
-source of truth; a human edit propagates to the relevant agents on their next read"). READ + a
-recorded re-read step only: a `POST /api/documents/{id}/versions` save-edit endpoint, and the
-executor re-sources the PRD at EVERY agent-node entry via a recorded `@DBOS.step`
-(`read_latest_prd_step`), replacing the PM's once-captured `prd_text` snapshot. NO frontend
-(that's P1.7b), NO migration (head stays 0011), NO executor-contract change. — **DONE,
-offline-green, adversarially reviewed (0 blocking / 0 major), READY_TO_MERGE.**
+P1.7b — **live PRD steering, the FRONTEND half** (the human-usable surface for the P1.7a J3 seam).
+In the PM panel, while a run is in-flight, the LATEST PRD version renders in a **TipTap
+(ProseMirror) markdown editor**; a human edit, saved explicitly, POSTs the full markdown to the
+existing `POST /api/documents/{id}/versions` (a new `created_by:"human"` version) — the running
+agents re-source it on their next node entry (J3, already wired in P1.7a). Editing is gated on the
+run being in-flight (`isPrdEditable`); a terminal run / any older version is read-only. Proven by a
+LIVE Playwright E2E that edits the PRD at the gate through the real editor and asserts the shipped
+deliverable reflects the human's edit. FRONTEND-ONLY, NO migration (head stays 0011). — **DONE,
+all gates green incl. the live J3 E2E, READY_TO_MERGE.**
 
 ## Last Completed Step
-P1.7a (live-document steering backend) — 2026-06-24 — branch: feat/p1.7a-steering-backend —
-make test 177 GREEN (+6), lint clean, alembic head 0011 (NO migration), import tvashtr.main
-openhands-free, test_registry green, keystone steering test passes + its mutation-revert FAILS
-(non-vacuity proven), adversarial multi-agent review 0 blocking / 0 major. READY_TO_MERGE.
+P1.7b (live PRD steering editor) — 2026-06-24 — branch: feat/p1ring-editor — sha ebe1d69 —
+FE build clean, vitest 76 (was 67: +4 round-trip-stability, +5 isPrdEditable), make test 177
+(backend untouched), make lint clean, alembic head 0011 (NO migration), AND `make steering-e2e`
+GREEN: the live J3 chain edits the PRD at the gate through the real TipTap editor and ships the
+human's SENTINEL line. READY_TO_MERGE.
 
 ## In Progress
-None — P1.7a is implemented, offline-green, adversarially reviewed (0 blocking / 0 major), AND the
-LIVE composition gate is now GREEN (2026-06-24): `make loop-run` ships exactly once and `make
-loop-crash` resumes mid-cycle and ships exactly once — the live proof that the recorded
-`read_latest_prd_step` re-source composes with crash-resume. Awaiting operator FF-merge of
-feat/p1.7a-steering-backend. NEXT: P1.7b (the TipTap editor + lock-aware UI + the live visual
-smoke), and/or P1.8 Supervisor-first onboarding.
+None — P1.7b is implemented and all gates are green including the live J3 E2E. Awaiting operator
+FF-merge of feat/p1ring-editor. (P1.7a feat/p1.7a-steering-backend is also still awaiting its
+FF-merge; P1.7b was built on `main`, which already has P1.7a merged @ 4f5cf04.) NEXT: the FE-infra
+step (ESLint + Prettier + RTL, a whole-codebase sweep as its own /goal), and/or P1.8 Supervisor.
+
+## P1.7b — live PRD steering editor (FRONTEND) — shipped + live-green (2026-06-24)
+- **As-built (FE-only, additive):**
+  - `frontend/src/lib/prdEditor.ts` — the ONE TipTap config (`PRD_EDITOR_EXTENSIONS`: StarterKit +
+    tiptap-markdown, `bulletListMarker:"-"`, `html:false`, `link:false`) shared by the editor AND
+    the round-trip test, so the test guards exactly what users type. `getMarkdown(editor)` +
+    `roundTripMarkdown(md)` helpers. tiptap-markdown@0.9.0 ships no types → a local
+    `declare module "@tiptap/core" { interface Storage { markdown … } }` augmentation (no `any`).
+  - `frontend/src/lib/api.ts` — `addDocumentVersion(documentId, content)` (POST a new version,
+    mirrors the existing fetch helpers); `AddedDocumentVersion` partial-response type.
+  - `frontend/src/lib/status.ts` — `isPrdEditable(runStatus, workflowStatus)`: editable iff the run
+    is present AND non-terminal, reusing `RUN_TERMINAL`/`WORKFLOW_TERMINAL` (one source of truth
+    with the poll-stop). `awaiting_human` is deliberately editable (the gate is the moment to steer).
+  - `frontend/src/panel/PrdView.tsx` — `editable` mode: the latest version in a TipTap editor with a
+    **dirty-aware, explicit (no-autosave) Save** → `addDocumentVersion` → `getDocument` refetch →
+    select the new latest → "Saved v{N} — the agents read it on their next round." A "live" tag marks
+    the latest version; older versions / terminal runs stay the read-only plain-text render.
+  - `frontend/src/panel/SidePanel.tsx` — derives `editable` from the run/workflow status it already
+    holds (NO App.tsx change). Token-only additive CSS in `panel.css`.
+- **Deps (React-19-compatible):** `@tiptap/react@3.27.1`, `@tiptap/starter-kit`, `@tiptap/pm`,
+  `tiptap-markdown@0.9.0`; dev: `@playwright/test@1.61.1`, `jsdom@25` (round-trip test env).
+- **Tests:** vitest 67 → **76**. New `prdEditor.test.ts` (jsdom): a representative PRD (`#` heading
+  + `-` bullets + a fenced ```text block carrying the deliverable line) is **byte-stable** through a
+  no-op load→save, the fence + exact line survive verbatim (non-vacuous), and it's a fixed point.
+  New `isPrdEditable` block in `status.test.ts` (in-flight→true, every terminal/null→false).
+  `vite.config.ts` scopes vitest to `src/` so the Playwright `e2e/*.spec.ts` isn't run as a unit test.
+- **`make steering-e2e` PROOF (live J3, real NIM agent, real PRD gate):** run_id=113568cf-…;
+  paused at the PRD gate → the TipTap editor rendered the PM PRD → typed a SENTINEL PRD → Saved (a
+  new `human` version) → approved the PRD gate AND the review-escalation gate → run completed,
+  ship_tag=ship-113568cf-…; 3 EngineerRunAttempt rows (the real Reviewer cycled, then ship-as-is on
+  escalation). **Shipped `greeting.txt` = `Steered by a human mid-run via Tvashtr 1782304575897`
+  (the SENTINEL), NOT DEFAULT_IDEA's `Shipped by the Tvashtr PM->Engineer team`.** "1 passed (7.1m)".
+- **Two root-causes found + fixed while debugging the E2E to green (neither a P1.7b code bug):**
+  1. **Empty editor → the PM produced a 0-length PRD.** The PM/gateway model was `DEFAULT_MODEL=
+     openrouter/openai/gpt-oss-20b:free` — a **reasoning** model that intermittently spends its
+     entire `max_tokens=400` budget on hidden reasoning and returns empty `content` (the gateway
+     returns empty as success, no error/fallback). The editor was correctly rendering empty content.
+     **Remediation (config-only, gitignored `.env`, mirrors the P1.7a agent-model swap; NO code):**
+     `DEFAULT_MODEL=openai/gpt-4o-mini` (non-reasoning, reliable, `OPENAI_API_KEY` present, gateway
+     routes it via litellm's env convention). Probed: gpt-oss-20b empties intermittently on the PM
+     prompt; gpt-4o-mini returns a clean PRD every time.
+  2. **UI "Approve" never resolved the gate (E2E only).** `getByRole("button",{name:"Approve"})`
+     matched TWO buttons — the action button AND the blocker CARD (itself a `<button>` whose
+     accessible name contains the description "…Approve to let the Engineer build…"); `.first()`
+     clicked the card (which only frames the node), never resolving. Fixed in the spec with
+     `{ name:"Approve", exact:true }`. (A pure test-harness fix; the product Approve button is fine.)
+- **OPERATOR NOTE:** the working PM/completion model is now `DEFAULT_MODEL=openai/gpt-4o-mini` in
+  `.env` (gitignored). `openrouter/openai/gpt-oss-20b:free` is left unused for the PM because, as a
+  reasoning model with a 400-token cap, it intermittently returns empty content → an empty PRD. The
+  agent model is unchanged (`TVASHTR_AGENT_MODEL=nvidia_nim/meta/llama-3.3-70b-instruct`).
 
 ## Live composition gate (P1.7a) — root-caused + GREEN (2026-06-24)
 - **Symptom:** `make loop-run` / `make loop-crash` died with the Engineer's agent run `status=failed`
@@ -143,10 +194,27 @@ None.
   collides with an agent write. The lock lands when an agent re-writes a doc the human also edits.)
 
 ## Test Count
-177 offline tests passing — 2026-06-24 (171 baseline + 6 new test_live_prd_steering.py; the 3
-updated run_team suites stay in the count). ruff clean. (Frontend untouched — vitest unchanged.)
+177 offline backend tests passing — 2026-06-24 (unchanged in P1.7b — the backend was not touched).
+ruff clean. **Frontend vitest: 76 passing** (was 67: +4 prdEditor round-trip-stability, +5
+isPrdEditable). FE `npm run build` (tsc strict + vite) clean; no new `eslint-disable`, no `any`-escape.
 
 ## READY_TO_MERGE
+READY_TO_MERGE: branch=feat/p1ring-editor, sha=ebe1d69, backend tests=177 passing, frontend
+  vitest=76 passing (was 67). P1.7b live PRD steering editor (FRONTEND-ONLY). Gates all green:
+  `make test` 177 passed; `make lint` clean (75 files); FE `npm run build` clean (tsc strict + vite,
+  no new eslint-disable / no any-escape); FE `npm test` 76 passed incl. the round-trip-stability test
+  (byte-stable no-op load→save; fence + deliverable line verbatim) AND the isPrdEditable test;
+  `make steering-e2e` GREEN — the live J3 chain (run 113568cf-…) edits the PRD at the gate through
+  the real TipTap editor, Saves a `human` version, approves the PRD + escalation gates, ships, and
+  the committed greeting.txt == the human's SENTINEL (`Steered by a human mid-run via Tvashtr …`),
+  NOT DEFAULT_IDEA's line. INVARIANTS: `git diff --name-only main` over control_plane/, models.py,
+  engines/, gateway/, documents/, routers.py's existing endpoints, alembic/versions/ is EMPTY;
+  alembic head still 0011 (NO migration). Two debugging remediations were config/test-only (no
+  product code): `.env` `DEFAULT_MODEL=openai/gpt-4o-mini` (the prior reasoning model emptied the
+  PRD) and the E2E spec's `Approve`-button exact-match. Deviation: `vite.config.ts` now scopes
+  vitest to `src/` so the Playwright spec isn't collected as a unit test.
+
+## READY_TO_MERGE (prior — P1.7a, still awaiting its own FF-merge)
 READY_TO_MERGE: branch=feat/p1.7a-steering-backend, sha=5c19828, tests=177 passing
   (make test 177 GREEN [171 baseline + 6 new test_live_prd_steering.py]; make lint clean; alembic
   head 0011 — NO migration, nothing under alembic/versions/; git diff --name-only main over the
