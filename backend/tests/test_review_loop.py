@@ -24,6 +24,7 @@ import os
 import uuid
 from pathlib import Path
 
+from conftest import seed_pm_prd
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import func, select
 
@@ -63,7 +64,7 @@ def test_review_loop_cycles_once_then_ships(client, monkeypatch, tmp_path):
     engineer_calls: list[tuple[int, str | None]] = []
 
     def _fake_pm_step(run_id, idea, pm_model):
-        return {"document_id": str(uuid.uuid4()), "prd_text": f"PRD: {idea}"}
+        return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
@@ -179,7 +180,7 @@ def test_two_node_walk_ships_through_gate_and_terminal(client, monkeypatch, tmp_
     init_workspace_repo(str(workspace))
 
     def _fake_pm_step(run_id, idea, pm_model):
-        return {"document_id": str(uuid.uuid4()), "prd_text": f"PRD: {idea}"}
+        return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
@@ -281,7 +282,7 @@ def test_review_loop_persists_verdict_reasons_into_outcome_detail(client, monkey
     init_workspace_repo(str(workspace))
 
     def _fake_pm_step(run_id, idea, pm_model):
-        return {"document_id": str(uuid.uuid4()), "prd_text": f"PRD: {idea}"}
+        return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
         return str(workspace)

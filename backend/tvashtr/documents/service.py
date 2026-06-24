@@ -132,6 +132,21 @@ def add_version(
         return version
 
 
+def get_latest_version(document_id: uuid.UUID) -> DocumentVersion | None:
+    """Return the document's most recent version (the row with the max ``version_no``), or
+    ``None`` if the document has no versions yet. Its own transaction, like the other helpers.
+
+    The live-document re-source (P1.7a) reads through here: the latest version IS the current
+    PRD, so a human edit (a freshly-appended version) is what the next agent read picks up."""
+    with session_scope() as session:
+        return session.execute(
+            select(DocumentVersion)
+            .where(DocumentVersion.document_id == document_id)
+            .order_by(DocumentVersion.version_no.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+
 def get_document_with_versions(document_id: uuid.UUID) -> Document | None:
     """Return a document with its versions eagerly loaded in version order."""
     with session_scope() as session:

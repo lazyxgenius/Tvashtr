@@ -24,8 +24,10 @@ recorded outputs in call order, so the data-dependent walk re-issues the identic
 step sequence. Every routing decision reads a recorded step output (a gate
 resolution, a reviewer verdict, an engineer status, a budget verdict), and the
 workflow-local bookkeeping (``current`` / ``iters_by_node`` / ``workspace`` /
-``prd_text`` / ``reviewer_feedback`` / ``pm_document_id``) is recomputed
-deterministically from those — so the walk is identical across a crash. The ship is
+``reviewer_feedback`` / ``pm_document_id``) is recomputed deterministically from
+those, and the live PRD is re-read at each agent node via the recorded
+``read_latest_prd_step`` (its version is checkpointed, so the resume reads the
+same one) — so the walk is identical across a crash. The ship is
 dedup'd by the ``ship-{run_id}`` git tag, so it happens exactly once. (The P1.5a
 mid-loop crash proof + the cap tests are the regression that keeps the rewritten
 walk honest.)
@@ -51,7 +53,7 @@ from tvashtr.control_plane.invocations import close_invocation_step, open_invoca
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
 from tvashtr.db import session_scope
-from tvashtr.documents.service import create_document_with_initial_version
+from tvashtr.documents.service import create_document_with_initial_version, get_latest_version
 from tvashtr.engines.base import AgentTask
 from tvashtr.engines.registry import resolve_adapter
 from tvashtr.engines.run_event_sink import make_run_event_sink
@@ -194,6 +196,34 @@ def pm_step(run_id: str, idea: str, pm_model: str) -> dict:
             update(Run).where(Run.id == uuid.UUID(run_id)).values(pm_document_id=document.id)
         )
     return {"document_id": str(document.id), "prd_text": result.text}
+
+
+@DBOS.step()
+def read_latest_prd_step(run_id: str) -> str:
+    """Re-source the LIVE PRD at an agent-node entry (P1.7a live-document steering): read the
+    run's ``pm_document_id``, then the LATEST ``DocumentVersion``'s content. A human edit (a new
+    version via ``POST /api/documents/{id}/versions``) therefore reaches the Engineer/Reviewer on
+    their NEXT read — the document, not the PM's once-captured snapshot, is the source of truth
+    (J3). Replaces the dead ``prd_text`` snapshot the walk used to thread.
+
+    It MUST be a recorded ``@DBOS.step``: its returned content is checkpointed on first execution
+    and replayed VERBATIM on a crash-resume, so the resumed walk reads the SAME PRD version the
+    original execution saw — even if the human edited the PRD again after the crash. (A bare,
+    non-step read would re-query the live table on replay and could pick up a newer edit -> a
+    non-deterministic resume. That is the whole reason this is a step, not a plain function.)
+
+    The PM always writes v1 before any agent node, so this resolves. A missing ``pm_document_id``
+    or a document with no versions is an unexpected invariant violation -> raise a clear error
+    (never silently build the agent instruction from an empty PRD)."""
+    with session_scope() as session:
+        run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
+        document_id = run.pm_document_id
+    if document_id is None:
+        raise RuntimeError(f"read_latest_prd_step: run {run_id} has no pm_document_id")
+    latest = get_latest_version(document_id)
+    if latest is None:
+        raise RuntimeError(f"read_latest_prd_step: document {document_id} has no versions")
+    return latest.content
 
 
 # P1.5c: keep review/test byproducts out of the shipped commit. ``idempotent_ship`` does
@@ -689,16 +719,16 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
 
     Crash-resume determinism: every routing decision reads a recorded step output (a gate
     resolution / a reviewer verdict / an engineer status / a budget verdict); the
-    workflow-local state (``current`` / ``iters_by_node`` / ``workspace`` / ``prd_text`` /
-    ``reviewer_feedback`` / ``pm_document_id``) is recomputed deterministically from those, so
-    the walk replays identically on resume."""
+    workflow-local state (``current`` / ``iters_by_node`` / ``workspace`` /
+    ``reviewer_feedback`` / ``pm_document_id``) is recomputed deterministically from those, and
+    the live PRD is re-read at each agent node via the recorded ``read_latest_prd_step`` (P1.7a),
+    so the walk replays identically on resume."""
     nodes_by_id = {n["id"]: n for n in graph["nodes"]}
     edges = graph["edges"]
     start_id = graph["start_node_id"]
     current: str | None = start_id
     iters_by_node: dict[str, int] = {}
     workspace: str | None = None  # lazily created at the first agent node
-    prd_text: str = ""
     reviewer_feedback: str | None = None
     pm_document_id: str | None = None
 
@@ -717,7 +747,6 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # check); a richer ``completion_kind`` discriminator is the P1.8 Supervisor
                 # generalization.
                 pm = pm_step(run_id, idea, node["model"])
-                prd_text = pm["prd_text"]
                 pm_document_id = pm["document_id"]
                 close_invocation_step(run_id, current, n, "done", "prd_written")
                 if apply_budget_hook(run_id, node_id=current, iteration=n):
@@ -763,6 +792,12 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # Per-iteration virtual key: each mint reflects the THEN-current remaining budget,
             # so the proxy enforces the run cap across the whole loop (P1.4b composes).
             vkey = mint_vkey_step(run_id)
+            # P1.7a: re-source the PRD LIVE at every agent-node entry (every iteration) via a
+            # recorded step, so a human edit to the PRD propagates to the Engineer/Reviewer on
+            # THIS read (the document, not the PM's once-captured snapshot, is the source of
+            # truth). The ``idea`` stays the immutable anchor — still threaded as a snapshot;
+            # only the PRD becomes live.
+            live_prd = read_latest_prd_step(run_id)
             # Dispatch on the node's ``agent_kind`` (``"engineer"`` / ``"reviewer"`` / ``None`` ->
             # engineer). The two agents share the workspace/open/mint scaffold but differ in the
             # run-step, the cost key, and the success handling — kept as two explicit paths
@@ -770,7 +805,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             agent_kind = (node.get("config") or {}).get("agent_kind")
             if agent_kind == "reviewer":
                 verdict = reviewer_agent_run_step(
-                    run_id, node["model"], n, prd_text, idea, workspace, vkey
+                    run_id, node["model"], n, live_prd, idea, workspace, vkey
                 )
                 delete_vkey_step(run_id, vkey)
 
@@ -813,7 +848,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             else:
                 # The Engineer path — logic unchanged from P1.5b.
                 engineer = engineer_run_step(
-                    run_id, prd_text, workspace, node["model"], vkey, n, reviewer_feedback
+                    run_id, live_prd, workspace, node["model"], vkey, n, reviewer_feedback
                 )
                 delete_vkey_step(run_id, vkey)
 

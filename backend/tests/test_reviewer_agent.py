@@ -13,6 +13,7 @@ usage), and the verdict routing — without resolving any adapter, so ``test_reg
 import uuid
 from pathlib import Path
 
+from conftest import seed_pm_prd
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import func, select
 
@@ -46,7 +47,7 @@ def _stub_agent(monkeypatch, workspace: Path) -> None:
     is imported); the Engineer writes the deliverable so a ship has something to commit."""
 
     def _fake_pm_step(run_id, idea, pm_model):
-        return {"document_id": str(uuid.uuid4()), "prd_text": f"PRD: {idea}"}
+        return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
         return str(workspace)

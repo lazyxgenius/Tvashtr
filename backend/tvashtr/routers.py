@@ -20,7 +20,7 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.team_run import run_team
 from tvashtr.control_plane.teams import build_review_loop_team, build_two_node_team
-from tvashtr.documents.service import get_document_with_versions, list_documents
+from tvashtr.documents.service import add_version, get_document_with_versions, list_documents
 from tvashtr.models import (
     AgentInvocation,
     AgentNode,
@@ -74,6 +74,13 @@ class ABRunRequest(BaseModel):
 class ResolveTaskRequest(BaseModel):
     decision: Literal["approve", "reject"]
     note: str | None = None
+
+
+class AddDocumentVersionRequest(BaseModel):
+    """A human edit to a document (P1.7a live-document steering): the new full content,
+    appended as the next version that the running agents pick up on their next read."""
+
+    content: str
 
 
 # Pinned, deterministically-checkable deliverable (env-overridable). Keeping the
@@ -183,6 +190,37 @@ def get_document(document_id: str) -> dict:
     payload = _document_meta(doc)
     payload["versions"] = [_version_to_dict(v) for v in doc.versions]
     return payload
+
+
+@router.post("/api/documents/{document_id}/versions")
+def add_document_version(document_id: str, body: AddDocumentVersionRequest) -> dict:
+    """Append a human-edited version to an existing document (P1.7a live-document steering):
+    the saved edit becomes a fresh ``DocumentVersion`` that the running agents re-source on
+    their next read (the document, not agent memory, is the source of truth — J3).
+
+    Mirrors ``GET /api/documents/{id}``: 400 on a malformed id, 404 if the document doesn't
+    exist. A fresh ``idempotency_key`` per request -> every POST is a NEW version (no dedup
+    across distinct human saves). Returns the new version row."""
+    try:
+        doc_uuid = uuid.UUID(document_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid document id") from exc
+
+    if get_document_with_versions(doc_uuid) is None:
+        raise HTTPException(status_code=404, detail="document not found")
+
+    version = add_version(
+        doc_uuid,
+        body.content,
+        created_by="human",
+        idempotency_key=f"human-edit:{doc_uuid}:{uuid.uuid4().hex}",
+    )
+    return {
+        "document_id": str(version.document_id),
+        "version_no": version.version_no,
+        "content": version.content,
+        "created_at": version.created_at.isoformat(),
+    }
 
 
 @router.get("/api/costs")
