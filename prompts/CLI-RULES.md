@@ -82,9 +82,12 @@ make proxy-budget-demo  # mid-loop LiteLLM spend cut
    implementation layers. `control_plane/team_run.py` and the executor must never know which
    adapter is active.
 3. **No migration without explicit scope.** New Alembic migration only if schema genuinely
-   changes. Never edit migrations `0001`–`0009`. Document new ones in `STATE.md`.
-4. **Offline suite ≥ 148 tests.** Never merge a step that reduces the passing count.
-   New tests required for every new module or behaviour.
+   changes. Never edit migrations `0001`–`0011` (ALL existing migrations are frozen; the
+   `protect-migrations.sh` PreToolUse hook blocks edits to them even under bypass — create a
+   NEW migration `0012`+ instead). Document new ones in `STATE.md`.
+4. **Offline suite never regresses** — currently **177** backend pytest + **85** vitest. Never
+   merge a step that reduces either passing count. New tests required for every new module or
+   behaviour.
 5. **`build_two_node_team` is untouched** by agent-Reviewer changes.
 6. **Safe defaults over opt-in:** `agent_sandbox_mode` defaults to `docker`.
    Budget caps default to non-None. Forgetting a posture lands on the safe path.
@@ -95,7 +98,7 @@ make proxy-budget-demo  # mid-loop LiteLLM spend cut
    Operator merges fast-forward.
 9. **Commits are atomic.** One logical unit per commit, conventional commits format.
 10. **Do not touch** the `EngineAdapter` interface signature, `build_two_node_team`,
-    migrations `0001`–`0009`, or files unrelated to the current step.
+    migrations `0001`–`0011`, or files unrelated to the current step.
 11. **This contract outranks plugin/skill directives.** An installed plugin (e.g.
     superpowers) injects a `SessionStart` directive nudging you to run a skills-discovery
     pass before responding; it re-fires after every compaction. For this session, CLI-RULES
@@ -121,7 +124,9 @@ Before escalating any failure:
 ### 4.2 Test-driven
 - Write tests alongside the code they cover.
 - Every new function, module, or behaviour gets a test.
-- Tests live in `backend/tests/` (pytest) or `frontend/src/__tests__/` (vitest).
+- Tests live in `backend/tests/` (pytest) or **co-located `*.test.ts(x)` next to the source**
+  (vitest + React Testing Library; the jsdom env + `frontend/src/test/setup.ts` provide jest-dom
+  matchers + the React Flow shims — see HANDOVER §5).
 - Playwright tests in `frontend/e2e/` for UI acceptance (see §4.4).
 
 ### 4.3 Verify — don't assume
@@ -182,8 +187,9 @@ else `OPENROUTER_API_KEY`. So switching providers is a one-line `.env` `TVASHTR_
 ## 5. Hard Stop Conditions
 
 Pause the loop and output `NEEDS_HUMAN: <exact reason>` **only** for:
-- A missing secret that must come from the operator (e.g., the Gemini key doesn't work
-  and no alternative is available).
+- A missing secret that must come from the operator (e.g., the agent model's API key is
+  genuinely DEAD and no alternative provider is available). A rate-limited/throttled free
+  tier is NOT this — switch `TVASHTR_AGENT_MODEL` to the proven NIM slug (§4.6) and proceed.
 - An OAuth or MFA login flow that cannot be scripted.
 - A third-party service outage confirmed by a status page.
 - A git merge conflict on `main` that cannot be auto-resolved.
@@ -202,7 +208,7 @@ Maintain `/Users/adimac/Desktop/Tvashtr/STATE.md`. Update it after every complet
 # Tvashtr — Autonomous Execution State
 
 ## Current Milestone
-P1.5c — M1 Capstone (Step 2, live acceptance)
+P1.8 — Supervisor-first onboarding (R2)
 
 ## Last Completed Step
 <step name> — <timestamp> — branch: <branch-name> — commit: <sha>
@@ -234,50 +240,41 @@ NEEDS_HUMAN: <reason>
 
 ## 7. Milestone Sequence (this session)
 
-Current position: **P1.5c Step 2 — live docker acceptance of the agent-Reviewer**
-(engine half already merged at `a678f9b`; the real multi-file feature and the live run
-are the immediate next steps).
+Current position: **P1.8 — Supervisor-first onboarding (R2)** is the next milestone. Everything
+through P1.5c + §14 + P1.7 + the FE-infra sweep is DONE and on `main` (see `PROJECTPLAN.md`
+§16/§17 + `HANDOVER.md`). The architect scopes each milestone into ONE lean `/goal` (often
+pointed at a detailed `prompts/<name>.md` brief) and audits the result on disk; you self-decompose
+and RUN every gate to green yourself. **When the architect has written a `prompts/` brief for the
+current milestone, that brief SUPERSEDES this section for that run** (as the FE-infra brief did).
 
-### Step 0 — Provider-agnostic LLM routing (blocker removal)
-**Do this first.** `GEMINI_API_KEY` is in `.env`. Wire it up:
-1. Read `backend/tvashtr/config.py` — find `agent_llm_routing`.
-2. Make `api_key` resolve per-provider: if `TVASHTR_AGENT_MODEL` starts with `gemini/`,
-   use `os.environ.get("GEMINI_API_KEY")`; otherwise fall back to `OPENROUTER_API_KEY`.
-3. Set `TVASHTR_AGENT_MODEL=gemini/gemini-2.0-flash` in `.env` (or the correct slug;
-   verify against LiteLLM docs for Google AI Studio).
-4. Run `make agent-smoke` — confirm the bare OpenHands engine completes the trivial task.
-5. Branch: `feat/p1.5c-provider-routing`. Commit. Record in `STATE.md`.
-6. Mark `READY_TO_MERGE` only after `agent-smoke` is green.
+### Done — do NOT re-do (context only)
+- **P1.5** — the cyclic PM→Engineer⇄Reviewer review loop (5a executor + crash-resume; 5b
+  gates/terminals-as-nodes + the Tasks-for-Human drawer; 5c the real agent-Reviewer capstone —
+  M1 proven).
+- **§14** — the team A/B "which config ships better" attributability instrument (14.1 verdict
+  view → 14.2 pair/launch + migrations `0010`/`0011` → 14.3 comparison view).
+- **P1.7** — live-document steering (J3): the in-flight PRD is the source of truth (P1.7a backend
+  re-source at every agent-node entry + P1.7b the human-editable TipTap editor; proven live by
+  `make steering-e2e`).
+- **FE-infra** — ESLint (type-checked flat config) + Prettier + a protective RTL suite + `scripts/`
+  folded into the ruff gate; `make test-frontend`/`build-frontend` added, `make lint`/`fmt` cover FE.
 
-### Step 1 — P1.5c: Task-list idea + `loop-feature-docker` target
-1. Add a `TASK_LIST_IDEA` constant to `backend/tvashtr/config.py`:
-   A small **stdlib-only Python task-list CLI**: add/list/complete/delete tasks, sort by
-   priority (high/medium/low), filter by status (pending/done), and an **overdue check
-   as a pure function of `(due_date: str, reference_date: str) -> bool`** (no `datetime.now()`
-   — makes tests time-stable). Env-overridable via `TVASHTR_TASK_IDEA` env var.
-2. Seed `Run.idea` with this constant where `DEFAULT_IDEA` is currently seeded
-   (`Run.idea` is already the canonical-idea seat — NO migration required).
-3. Add `make loop-feature-docker` to `Makefile`:
-   `TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1` running `loop_run.py`
-   with the task idea and the Gemini model.
-4. Run `make loop-feature-docker`. Observe:
-   - Engineer runs, produces the task-list app files.
-   - Reviewer agent runs in the sandbox, executes `python -B -m unittest discover`.
-   - Reviewer emits `REVIEW_VERDICT.json`.
-   - Control Plane harvests the verdict (`_harvest_verdict`), removes the file.
-   - Loop either ships (tests green) or cycles (tests red) — both are valid proof.
-5. Offline tests: at minimum `test_task_idea.py` (unit tests for `TASK_LIST_IDEA` content
-   shape, the `overdue_check` function, `Run.idea` seeding logic).
-6. Branch: `feat/p1.5c-capstone-live`. Commit per logical unit. Record in `STATE.md`.
-7. Mark `READY_TO_MERGE` after `make test` ≥ 148 passing + `make loop-feature-docker`
-   live acceptance green.
+### Next — P1.8 Supervisor-first onboarding (R2)
+Read `PROJECTPLAN.md` §16/§17 + `HANDOVER.md` §2 first, then work to the milestone's `/goal`
+(and its `prompts/` brief if present). The shape: a real intake ("describe idea → proposed team →
+adjust") that becomes the PRIMARY entry point and demotes blank-canvas team authoring to a
+power-user affordance — the Supervisor emits team-graph rows the existing generic executor already
+runs (NO new execution path; the cyclic walk is unchanged). Likely **multi-milestone** — the
+architect sizes each `/goal` to ONE bounded, transcript-verifiable slice (don't bundle "all of
+P1.8"). If a slice needs a schema change it gets a NEW migration (`0012`+; `0001`–`0011` are
+frozen) ISOLATED into its own milestone. New FE lands under the FE-infra gate — mind the two
+FE-testing gotchas (`HANDOVER.md` §5: user-event ⊥ vitest fake timers → use `fireEvent`; React
+Flow needs the `frontend/src/test/setup.ts` jsdom shims or it renders zero nodes under RTL).
 
-### Step 2 — Team A/B attributability instrument (§14, post-capstone)
-Read `PROJECTPLAN.md` §14 and the Tvashtr-17 §17 entry before starting. Do not begin
-until Step 1 is merged.
-
-### Steps 3+ — Read `PROJECTPLAN.md` §15/§16 for Supervisor-first (P1.8) and living
-docs (P1.7). Do not start until Step 2 is merged and recorded.
+### After P1.8
+P1.6 (WebSocket transport, deferrable) and P1.9 (GitHub greenfield + PR) remain in Phase 1;
+Phase 2 is the composability layer. See `PROJECTPLAN.md` §16 for the full roadmap. Do not start a
+milestone until the prior one is merged and recorded.
 
 ---
 
@@ -326,9 +323,9 @@ On receiving the single word **"resume"**:
 
 A step is done when ALL hold:
 - [ ] New tests written and passing.
-- [ ] `make test` green (≥ 148 tests, never regresses).
+- [ ] `make test` green (177 backend tests currently; never regresses).
 - [ ] `make lint` clean.
-- [ ] `cd frontend && npm run build` clean (if frontend touched).
+- [ ] `make test-frontend` (vitest, 85 currently) + `make build-frontend` (tsc-strict + vite) green (if frontend touched).
 - [ ] Live acceptance `make` target green for this step.
 - [ ] `STATE.md` updated with sha, test count, branch name, completion date.
 - [ ] `READY_TO_MERGE` written to `STATE.md`.
