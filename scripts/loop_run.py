@@ -32,9 +32,7 @@ from pathlib import Path
 
 POLL_TIMEOUT_S = 600
 TARGET_FILE = os.environ.get("TVASHTR_SKELETON_FILE", "greeting.txt")
-REQUIRED_LINE = os.environ.get(
-    "TVASHTR_SKELETON_LINE", "Shipped by the Tvashtr PM->Engineer team"
-)
+REQUIRED_LINE = os.environ.get("TVASHTR_SKELETON_LINE", "Shipped by the Tvashtr PM->Engineer team")
 
 # P1.5c capstone (``make loop-feature-docker``): when set, drive the REAL multi-file feature
 # (config.TASK_LIST_IDEA) with a REAL Engineer + the REAL agent-Reviewer (NO forced revisions),
@@ -45,9 +43,7 @@ FEATURE_MODE = os.environ.get("TVASHTR_FEATURE_RUN") == "1"
 # A real Engineer build + the agent-Reviewer running the build's tests in a fresh per-iteration
 # container (plus possible loop-backs) is far slower than the stubbed forced loop → a roomier cap.
 FEATURE_TIMEOUT_S = int(os.environ.get("TVASHTR_FEATURE_TIMEOUT_S", "1800"))
-_WORKSPACE_ROOT = (
-    Path(__file__).resolve().parents[1] / "backend" / ".tvashtr_workspaces"
-)
+_WORKSPACE_ROOT = Path(__file__).resolve().parents[1] / "backend" / ".tvashtr_workspaces"
 _TERMINAL_WF = {"SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
 _TERMINAL_RUN = {"completed", "failed", "over_budget", "rejected", "cancelled"}
 
@@ -111,14 +107,10 @@ def _run_feature_mode(client) -> int:
     tag = f"ship-{run_id}"
 
     with session_scope() as session:
-        run_row = session.execute(
-            select(Run).where(Run.workflow_id == run_id)
-        ).scalar_one_or_none()
+        run_row = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
         nodes = (
             session.execute(
-                select(AgentNode).where(
-                    AgentNode.team_graph_id == run_row.team_graph_id
-                )
+                select(AgentNode).where(AgentNode.team_graph_id == run_row.team_graph_id)
             )
             .scalars()
             .all()
@@ -181,17 +173,13 @@ def _run_feature_mode(client) -> int:
                 f"  [HARVEST] REVIEW_VERDICT.json harvested + removed: reviewer round {it} "
                 f"-> outcome={outcome}"
             )
-        ok(
-            f"agent-Reviewer produced + Control Plane harvested {len(harvested)} verdict(s)"
-        )
+        ok(f"agent-Reviewer produced + Control Plane harvested {len(harvested)} verdict(s)")
     else:
         fail(f"no harvested reviewer verdict (rounds={rev_rounds})")
 
     # --- it was a REAL agent run (not the forced/stubbed path): real per-iteration cost rows ---
     if n_agent_cost >= 1:
-        ok(
-            f"{n_agent_cost} real Engineer agent-cost row(s) (a genuine LLM build, not stubbed)"
-        )
+        ok(f"{n_agent_cost} real Engineer agent-cost row(s) (a genuine LLM build, not stubbed)")
     else:
         fail("no Engineer agent-cost rows — the Engineer did not make a real agent run")
 
@@ -206,22 +194,16 @@ def _run_feature_mode(client) -> int:
             shipped = subprocess.run(
                 ["git", "-C", str(ws), "show", f"{tag}"], capture_output=True, text=True
             ).stdout
-            print(
-                f"  (info) ship commit:\n    {shipped.splitlines()[0] if shipped else '(none)'}"
-            )
+            print(f"  (info) ship commit:\n    {shipped.splitlines()[0] if shipped else '(none)'}")
         else:
             fail(f"run completed but ship tag absent/duplicated: {tags}")
-    elif status in {"blocked", "running"} and any(
-        o == "changes_requested" for _, o in rev_rounds
-    ):
+    elif status in {"blocked", "running"} and any(o == "changes_requested" for _, o in rev_rounds):
         ok(
             f"CYCLED on red: Reviewer requested changes (status={status}) — the loop looped "
             "(valid capstone proof: a real failing-test verdict drove a rework)"
         )
     elif status == "failed":
-        fail(
-            "run FAILED (status=failed) — not a valid capstone outcome; check the PM/Engineer"
-        )
+        fail("run FAILED (status=failed) — not a valid capstone outcome; check the PM/Engineer")
     else:
         # An escalation (review cap reached) is also a valid 'the loop cycled' proof.
         ok(f"terminal run.status={status!r} (loop reached a terminal/escalation state)")
@@ -246,10 +228,11 @@ def main() -> int:
         )
         return 0
 
-    from sqlalchemy import func, select
     from fastapi.testclient import TestClient
+    from sqlalchemy import func, select
 
     from tvashtr.db import session_scope
+    from tvashtr.main import app
     from tvashtr.models import (
         AgentInvocation,
         AgentNode,
@@ -257,7 +240,6 @@ def main() -> int:
         EngineerRunAttempt,
         Run,
     )
-    from tvashtr.main import app
 
     # P1.5c capstone surfaces the agent-Reviewer's verdict-harvest log line (§4.3a evidence).
     if FEATURE_MODE:
@@ -267,13 +249,9 @@ def main() -> int:
     with TestClient(app) as client:
         if FEATURE_MODE:
             return _run_feature_mode(client)
-        run_id = client.post("/api/runs", json={"team_shape": "review_loop"}).json()[
-            "run_id"
-        ]
+        run_id = client.post("/api/runs", json={"team_shape": "review_loop"}).json()["run_id"]
         print(f"[loop-run] started review_loop run_id={run_id}")
-        print(
-            "[loop-run] polling (PM, then a forced Engineer<->Reviewer cycle — be patient)…"
-        )
+        print("[loop-run] polling (PM, then a forced Engineer<->Reviewer cycle — be patient)…")
 
         final = None
         deadline = time.time() + POLL_TIMEOUT_S
@@ -311,9 +289,7 @@ def main() -> int:
             ).scalar_one_or_none()
             nodes = (
                 session.execute(
-                    select(AgentNode).where(
-                        AgentNode.team_graph_id == run_row.team_graph_id
-                    )
+                    select(AgentNode).where(AgentNode.team_graph_id == run_row.team_graph_id)
                 )
                 .scalars()
                 .all()
@@ -336,12 +312,8 @@ def main() -> int:
                     .all()
                 )
 
-            eng_invs = (
-                _invocations(by_role["engineer"].id) if "engineer" in by_role else []
-            )
-            rev_invs = (
-                _invocations(by_role["reviewer"].id) if "reviewer" in by_role else []
-            )
+            eng_invs = _invocations(by_role["engineer"].id) if "engineer" in by_role else []
+            rev_invs = _invocations(by_role["reviewer"].id) if "reviewer" in by_role else []
 
             n_attempts = session.execute(
                 select(func.count())
@@ -366,9 +338,7 @@ def main() -> int:
         rev_iters = [i.iteration for i in rev_invs]
         rev_outcomes = [i.outcome for i in rev_invs]
         if rev_iters == [1, 2] and rev_outcomes == ["changes_requested", "approved"]:
-            ok(
-                f"Reviewer invocations {rev_iters} outcomes {rev_outcomes} (one loop-back)"
-            )
+            ok(f"Reviewer invocations {rev_iters} outcomes {rev_outcomes} (one loop-back)")
         else:
             fail(
                 f"Reviewer invocations {rev_iters} outcomes {rev_outcomes} "
@@ -415,8 +385,7 @@ def main() -> int:
             )
         else:
             fail(
-                f"committed {TARGET_FILE} {committed.strip()!r} "
-                f"does not contain {REQUIRED_LINE!r}"
+                f"committed {TARGET_FILE} {committed.strip()!r} does not contain {REQUIRED_LINE!r}"
             )
 
         print(f"  (info) pm_document_id = {pm_doc_id}")

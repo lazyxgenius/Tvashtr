@@ -20,9 +20,7 @@ from pathlib import Path
 
 POLL_TIMEOUT_S = 360
 TARGET_FILE = os.environ.get("TVASHTR_SKELETON_FILE", "greeting.txt")
-REQUIRED_LINE = os.environ.get(
-    "TVASHTR_SKELETON_LINE", "Shipped by the Tvashtr PM->Engineer team"
-)
+REQUIRED_LINE = os.environ.get("TVASHTR_SKELETON_LINE", "Shipped by the Tvashtr PM->Engineer team")
 _WORKSPACE_ROOT = Path(__file__).resolve().parents[1] / "backend" / ".tvashtr_workspaces"
 _TERMINAL_WF = {"SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
 
@@ -57,7 +55,10 @@ def main() -> int:
             time.sleep(4)
 
         if final is None:
-            print(f"[skeleton-run] FAILED: run did not finish within {POLL_TIMEOUT_S}s", file=sys.stderr)
+            print(
+                f"[skeleton-run] FAILED: run did not finish within {POLL_TIMEOUT_S}s",
+                file=sys.stderr,
+            )
             return 1
 
         run = final.get("run") or {}

@@ -66,7 +66,9 @@ def main() -> int:
     Path(host_in, ".secret").write_text("nope\n")
     expect = enumerate_push_files(host_in)
     print(f"[seeding-smoke] host workspace = {host_in}")
-    print(f"[seeding-smoke] enumerate_push_files = {expect}  (expect ['greeting.txt', 'src/app.py'])")
+    print(
+        f"[seeding-smoke] enumerate_push_files = {expect}  (expect ['greeting.txt', 'src/app.py'])"
+    )
 
     host_out = tempfile.mkdtemp(prefix="tvashtr-seed-out-")
     ok = False
@@ -107,9 +109,7 @@ def main() -> int:
             pulled = _pull_workspace(ws, host_out)
             host_greeting = Path(host_out, "greeting.txt")
             content = host_greeting.read_text() if host_greeting.exists() else ""
-            round_trip_ok = (
-                "round-1 greeting" in content and "round-2 revision" in content
-            )
+            round_trip_ok = "round-1 greeting" in content and "round-2 revision" in content
             print(f"      pulled = {pulled}")
             print(f"      host greeting now = {content!r}")
             print(f"      revision-of-seeded-content survived = {round_trip_ok}")

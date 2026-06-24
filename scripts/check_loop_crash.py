@@ -115,14 +115,14 @@ def main() -> None:
     if REQUIRED_LINE not in content:
         fail(f"committed {TARGET_FILE} {content.strip()!r} does not contain {REQUIRED_LINE!r}")
     else:
-        ok(f"committed {TARGET_FILE} contains required line "
-           "(tolerating a forced-revision cosmetic edit)")
+        ok(
+            f"committed {TARGET_FILE} contains required line "
+            "(tolerating a forced-revision cosmetic edit)"
+        )
 
     # --- the loop ran + resumed correctly, and per-iteration metering held across the crash ---
     with session_scope() as session:
-        run_row = session.execute(
-            select(Run).where(Run.workflow_id == run_id)
-        ).scalar_one_or_none()
+        run_row = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
         nodes = (
             session.execute(
                 select(AgentNode).where(AgentNode.team_graph_id == run_row.team_graph_id)
@@ -180,8 +180,10 @@ def main() -> None:
     if eng_iters == EXPECTED_ENGINEER_ITERS and eng_statuses == ["done", "done", "done"]:
         ok(f"Engineer invocations {eng_iters} all done (one row per iteration, no crash dup)")
     else:
-        fail(f"Engineer invocations {eng_iters} statuses {eng_statuses} "
-             f"!= {EXPECTED_ENGINEER_ITERS} / all done")
+        fail(
+            f"Engineer invocations {eng_iters} statuses {eng_statuses} "
+            f"!= {EXPECTED_ENGINEER_ITERS} / all done"
+        )
 
     # --- Reviewer ran 3 times: two loop-backs then approved (the cycle kept cycling) ---
     rev_iters = [i.iteration for i in rev_invs]
@@ -189,8 +191,10 @@ def main() -> None:
     if rev_iters == EXPECTED_ENGINEER_ITERS and rev_outcomes == EXPECTED_REVIEWER_OUTCOMES:
         ok(f"Reviewer invocations {rev_iters} outcomes {rev_outcomes} (two loop-backs, then ship)")
     else:
-        fail(f"Reviewer invocations {rev_iters} outcomes {rev_outcomes} "
-             f"!= {EXPECTED_ENGINEER_ITERS} / {EXPECTED_REVIEWER_OUTCOMES}")
+        fail(
+            f"Reviewer invocations {rev_iters} outcomes {rev_outcomes} "
+            f"!= {EXPECTED_ENGINEER_ITERS} / {EXPECTED_REVIEWER_OUTCOMES}"
+        )
 
     # --- per-iteration metering held across the crash ---
     if n_agent == NO_CRASH_ENGINEER_ITERATIONS:

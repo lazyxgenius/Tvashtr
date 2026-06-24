@@ -82,7 +82,11 @@ def main() -> None:
         ok(f"exactly one git tag {tag}")
 
     ship_commits = [
-        ln for ln in _git(ws, "log", "--all", "--grep", f"Ship: {run_id}", "--oneline").stdout.splitlines() if ln.strip()
+        ln
+        for ln in _git(
+            ws, "log", "--all", "--grep", f"Ship: {run_id}", "--oneline"
+        ).stdout.splitlines()
+        if ln.strip()
     ]
     if len(ship_commits) != 1:
         fail(f"expected exactly one 'Ship: {run_id}' commit, got {len(ship_commits)}")

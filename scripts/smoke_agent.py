@@ -12,7 +12,6 @@ Run via ``make agent-smoke``.
 """
 
 import os
-import sys
 from pathlib import Path
 from uuid import uuid4
 

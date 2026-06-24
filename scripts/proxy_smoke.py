@@ -29,7 +29,7 @@ LIVENESS_PATH = "/health/liveliness"
 # reachability failure on this (the #1-risk) step.
 _CONTAINER_GET = (
     "for py in python3 python; do command -v $py >/dev/null 2>&1 && "
-    "$py -c \"import urllib.request; "
+    '$py -c "import urllib.request; '
     "r=urllib.request.urlopen('http://host.docker.internal:{port}{path}', timeout=5); "
     "print('STATUS', r.status)\" && exit 0; done; echo NO_PYTHON; exit 1"
 )
