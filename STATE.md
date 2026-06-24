@@ -1,28 +1,151 @@
 # Tvashtr — Autonomous Execution State
 
 ## Current Milestone
-P1.7b — **live PRD steering, the FRONTEND half** (the human-usable surface for the P1.7a J3 seam).
-In the PM panel, while a run is in-flight, the LATEST PRD version renders in a **TipTap
-(ProseMirror) markdown editor**; a human edit, saved explicitly, POSTs the full markdown to the
-existing `POST /api/documents/{id}/versions` (a new `created_by:"human"` version) — the running
-agents re-source it on their next node entry (J3, already wired in P1.7a). Editing is gated on the
-run being in-flight (`isPrdEditable`); a terminal run / any older version is read-only. Proven by a
-LIVE Playwright E2E that edits the PRD at the gate through the real editor and asserts the shipped
-deliverable reflects the human's edit. FRONTEND-ONLY, NO migration (head stays 0011). — **DONE,
-all gates green incl. the live J3 E2E, READY_TO_MERGE.**
+FE-infra — **a frontend quality gate to match the backend bar**: ESLint (type-checked) +
+Prettier wired + enforced, the whole `frontend/` reformatted, a genuinely-protective RTL suite,
+all folded into `make` targets — **and** `scripts/` folded into the ruff gate. Architect brief:
+`prompts/fe-infra-eslint-prettier-rtl.md` (SUPERSEDES CLI-RULES §7 for this run). FE + Makefile +
+scripts/ ONLY; NO backend change; NO migration (head stays 0011). Fully offline-verifiable. —
+**DONE, all gates green, READY_TO_MERGE.**
 
 ## Last Completed Step
-P1.7b (live PRD steering editor) — 2026-06-24 — branch: feat/p1ring-editor — sha ebe1d69 —
-FE build clean, vitest 76 (was 67: +4 round-trip-stability, +5 isPrdEditable), make test 177
-(backend untouched), make lint clean, alembic head 0011 (NO migration), AND `make steering-e2e`
-GREEN: the live J3 chain edits the PRD at the gate through the real TipTap editor and ships the
-human's SENTINEL line. READY_TO_MERGE.
+FE-infra (eslint type-checked + prettier + RTL + scripts→ruff) — 2026-06-24 — branch:
+feat/fe-infra-eslint-prettier-rtl — sha 0a102cb — backend `make test` 177 (untouched), `make lint`
+clean (backend+scripts ruff + FE eslint `--max-warnings 0` + prettier `--check`), frontend vitest
+**85** (was 76: +9 RTL), `make build-frontend` clean (tsc strict + vite), alembic head 0011 (NO
+migration), keystone RTL non-vacuity DEMONSTRATED (mutation RED → restore GREEN). READY_TO_MERGE.
 
 ## In Progress
-None — P1.7b is implemented and all gates are green including the live J3 E2E. Awaiting operator
-FF-merge of feat/p1ring-editor. (P1.7a feat/p1.7a-steering-backend is also still awaiting its
-FF-merge; P1.7b was built on `main`, which already has P1.7a merged @ 4f5cf04.) NEXT: the FE-infra
-step (ESLint + Prettier + RTL, a whole-codebase sweep as its own /goal), and/or P1.8 Supervisor.
+None — FE-infra is implemented and all gates are green. Awaiting operator FF-merge of
+feat/fe-infra-eslint-prettier-rtl. (The P1.7a/P1.7b branches also still await their FF-merges;
+this branch was cut from `main`.) NEXT: **P1.8 — Supervisor-first onboarding** (PROJECTPLAN §16).
+
+## FE-infra — eslint + prettier + RTL + scripts→ruff (2026-06-24) — shipped, all gates green
+
+### Lint/format stack (as-built)
+- `frontend/eslint.config.js` — flat config: `@eslint/js` recommended + typescript-eslint
+  **recommendedTypeChecked** (`projectService` over `src/**` + `e2e/**`) + react-hooks
+  (rules-of-hooks + exhaustive-deps = **error**) + react-refresh (only-export-components = warn)
+  + `eslint-config-prettier` **last** + `linterOptions.reportUnusedDisableDirectives = error`.
+  Root `*.config.{ts,js}` drop to the non-type-checked tier (`disableTypeChecked` + `tseslint.parser`
+  + `no-undef: off` for the node-context configs). Installed: ESLint 10, typescript-eslint 8,
+  eslint-plugin-react-hooks **7** (only the 2 brief-mandated rules enabled — NOT v7's new
+  compiler-era rules) — react-refresh 0.5, eslint-config-prettier 10, prettier 3.
+- `frontend/prettier.config.js` — Prettier-3 defaults + `printWidth: 100`; `.prettierignore`
+  (dist, node_modules, package-lock.json, coverage, test-results, playwright-report).
+- npm scripts: `lint` (`eslint . --max-warnings 0`), `lint:fix`, `format` (`prettier --write .`),
+  `format:check`. `tsconfig.json` now `include: ["src","e2e"]` + a `@types/node` devDep, so the
+  type-checked tier AND build-tsc both cover the Playwright spec. Separate runners (NO
+  eslint-plugin-prettier): ESLint owns correctness, Prettier owns formatting.
+
+### ESLint findings fixed (8 — all real, FIXED in code, never silenced)
+The new type-checked tier surfaced 8 genuine async-safety / dead-code issues:
+1–4. `@typescript-eslint/no-misused-promises` — wrapped async fns passed where a void return is
+   expected in `() => void f()`: TeamCanvas `FitView`/`FocusNode` `setTimeout(rf.fitView)`,
+   BackendDot's `setInterval(check)` health poll, PrdView's `onSave={handleSave}` prop.
+5. `no-useless-assignment` (TeamCanvas) — dropped the dead `let className = ""` initializer
+   (every branch assigns) → `let className: string;`.
+6. `@typescript-eslint/no-unnecessary-type-assertion` (TeamCanvas onNodeClick) — `node.data` is
+   already `AgentNodeData` (the nodes are `Node<AgentNodeData>`); removed `as unknown as AgentNodeData`.
+7. `@typescript-eslint/no-base-to-string` (events.ts `asString`) — only stringifies primitives
+   now (number/boolean/bigint); objects never occur in the persisted scalar payloads, so it stays
+   total + never-throwing without Object's base toString.
+8. `no-undef` (`process` in playwright.config.ts) — disabled core `no-undef` for the TS config
+   tier (TS handles unknown identifiers; mirrors typescript-eslint's eslint-recommended).
+All behavior-preserving. (1 self-introduced finding in the new test/setup code — `require-await`,
+`await-thenable`, `no-base-to-string`, 2× `no-unnecessary-type-assertion` — was also fixed, not
+silenced, before commit.)
+
+### Disposition of EVERY pre-existing `eslint-disable` (there is exactly ONE)
+- `frontend/src/canvas/TeamCanvas.tsx` — `react-hooks/exhaustive-deps` on the topology-rebuild
+  effect. **KEPT, narrowed + reasoned.** It suppresses a LIVE finding: the effect deliberately
+  deps only on `graph.run_id`, omitting run/workflowStatus/tasks so the per-poll graph refetch
+  doesn't rebuild nodes and reset dragged positions (the very next effect refreshes their state in
+  place). Single-rule, single-line, now carries a `-- reason:` description. With
+  `reportUnusedDisableDirectives = error` it is proven still-live (ESLint clean ⇒ it suppresses a
+  real finding). NO blanket / file-level / multi-rule disables anywhere; NONE removed-as-dead
+  (only one disable existed in the whole frontend, and it is live).
+
+### scripts/ into the ruff gate (ruff SAFE-autofix + format ONLY — NO logic edits)
+`make lint` now runs `ruff check . ../scripts` + `ruff format --check . ../scripts`. The 5
+pre-existing findings, fixed behavior-preservingly (control flow untouched on these live drivers):
+- `smoke_agent.py` — removed unused `import sys` (F401, ruff safe-fix; verified `sys` not
+  referenced anywhere in the file).
+- `loop_run.py` — sorted the function-local sqlalchemy/fastapi/tvashtr imports (I001, ruff
+  safe-fix) + ruff-format reflow (collapsed previously-narrower-wrapped lines to width 100).
+- `check_skeleton_crash.py`, `seeding_smoke.py`, `skeleton_run.py` — three `E501` long lines, all
+  resolved by **`ruff format` wrapping** the `print()` / comprehension across lines; the
+  strings/expressions are **byte-identical** (no edit to message text or logic).
+- `check_loop_crash.py`, `proxy_smoke.py` — ruff-format whitespace reflow only.
+After: `ruff check ../scripts` = "All checks passed!", `ruff format --check ../scripts` = clean.
+
+### Make wiring
+`make lint` (backend+scripts ruff check+format-check, then FE `npm run lint` + `npm run
+format:check`), `make fmt` (the autofix twin), NEW `make test-frontend` (vitest, no DB — kept
+separate from `make test` which needs Postgres), NEW `make build-frontend` (tsc --noEmit + vite).
+`.PHONY` updated; the stale `loop-feature-docker` `##` help fixed (Gemini → NIM
+`nvidia_nim/meta/llama-3.3-70b-instruct`).
+
+### RTL suite (vitest 76 → 85, +9; jsdom env + `src/test/setup.ts`)
+`vite.config.ts` test block: `environment:"jsdom"`, `globals:true`, `setupFiles:["src/test/setup.ts"]`
+(jest-dom matchers + the React Flow jsdom shims: ResizeObserver / DOMMatrixReadOnly / box metrics).
+RTL via `user-event` where interaction is the subject:
+- **KEYSTONE** `App.test.tsx` — real `<App/>` under `<StrictMode>`, stubbed control-plane fetch,
+  fake-timer poll: proves (a) the polled graph/run reaches the canvas (banner "Shipped" + a "Done"
+  node) and (b) polling **STOPS** at terminal (no further `GET /api/runs/{id}`). **Non-vacuity
+  DEMONSTRATED**: reverting the App mount-effect `mountedRef.current = true` → keystone RED ("Unable
+  to find … Shipped"); restored → GREEN; App.tsx byte-identical to HEAD.
+- `App.test.tsx` A/B toggle — single-run ↔ A/B mounts the comparison surface and restores the
+  single-run tree losslessly (state-only).
+- `TeamCanvas.test.tsx` — derived node/gate/terminal status reaches the DOM; **exactly one** rework
+  arc (`.rf-edge--rework`), the `rejected` edge stays its own category (guards the P1.5b "any
+  conditional edge → rework" bug).
+- `TasksDrawer.test.tsx` — empty inbox → renders null; High (Needs your approval) above Low (Heads
+  up); Approve/Reject → `onResolve(id, decision)`, Dismiss → `onAcknowledge(id)`, gate body →
+  `onFocusNode`.
+- `SidePanel.test.tsx` — Reviewer per-round verdicts in iteration order; reasons under
+  `changes_requested` only, never under `approved`.
+
+### Acceptance evidence (all green — 2026-06-24)
+- `make test` → **177 passed, 1 warning in 7.25s** (backend untouched).
+- `make lint` → exit 0: backend+scripts ruff "All checks passed!" + "87 files already formatted";
+  FE eslint `--max-warnings 0` (no findings); FE prettier "All matched files use Prettier code style!".
+- `make test-frontend` → **85 passed** (8 files; was 76 → +9 RTL).
+- `make build-frontend` → exit 0 (tsc --noEmit strict + vite build).
+- Keystone non-vacuity: mutation → keystone **RED**, restore → keystone **GREEN** (App.tsx back to
+  byte-identical with HEAD).
+- `git diff main HEAD --stat` → 41 files, ALL under `frontend/**`, `Makefile`, `scripts/**`;
+  `git diff main HEAD --name-only` over `backend/tvashtr/**` + `backend/alembic/**` is **EMPTY**.
+  (`prompts/CLI-RULES.md` appears only in the working-tree `git diff main` — it is the operator's
+  pre-existing UNCOMMITTED edit, never staged/committed by this step.)
+- `alembic heads` → **0011_invocation_outcome_detail (head)** — NO migration.
+
+### Deviations / decisions (two-way-door, logged)
+- **Keystone start-click uses `fireEvent`, not `user-event`** — `user-event` deadlocks against
+  vitest fake timers (probed + confirmed: it hangs to test-timeout), and the keystone must drive
+  virtual time for the 1800ms poll. `user-event` IS used everywhere interaction is the subject
+  (A/B toggle, TasksDrawer). The keystone's click is an incidental trigger.
+- **`e2e/` folded into `tsconfig.json` `include` + `@types/node` devDep** — required so the
+  type-checked tier (`projectService`) lints the Playwright spec at the no-floating-promises tier
+  per the brief. Consequence: build-tsc also type-checks e2e (a hardening; build stays green).
+- **Prettier CSS reflow lowercases hex** (`#FDFCFA`→`#fdfcfa`) in the tracked design-system tokens —
+  render-identical (CSS hex is case-insensitive); part of the render-neutral reformat.
+- **`frontend/src/design-system/` IS tracked frontend CSS** (NOT the operator's untracked root
+  "Design System/" folder) → in Prettier scope, reformatted.
+- Pre-existing, NOT changed by this step: `make help` displays "Makefile" as the target name
+  because `include .env` adds a 2nd entry to `MAKEFILE_LIST` (grep prefixes the filename) — out of
+  scope; the help recipe was left untouched. New targets carry `## ` help + are in `.PHONY`.
+
+### READY_TO_MERGE
+READY_TO_MERGE: branch=feat/fe-infra-eslint-prettier-rtl, sha=0a102cb, backend_tests=177,
+frontend_tests=85 (was 76, +9 RTL). FE-infra: ESLint (type-checked) + Prettier + a protective RTL
+suite + `scripts/` into the ruff gate. Gates: `make test` 177 passed; `make lint` clean
+(backend+scripts ruff + FE eslint `--max-warnings 0` + prettier `--check`); `make test-frontend` 85
+passed; `make build-frontend` clean (tsc strict + vite); keystone mutation RED → restore GREEN;
+`git diff main HEAD` only under `frontend/**`, `Makefile`, `scripts/**` (nothing under
+`backend/tvashtr/**` or `backend/alembic/**`); alembic head 0011 (NO migration). Fully
+offline-verifiable — no operator visual smoke required. (Branch ref verified via `git rev-parse
+--abbrev-ref HEAD` = `feat/fe-infra-eslint-prettier-rtl`; the /goal text's "fea-infra-…" was a typo.)
 
 ## P1.7b — live PRD steering editor (FRONTEND) — shipped + live-green (2026-06-24)
 - **As-built (FE-only, additive):**
@@ -127,6 +250,15 @@ step (ESLint + Prettier + RTL, a whole-codebase sweep as its own /goal), and/or 
   model change is gitignored).
 
 ## Completed Steps (append-only, newest last)
+- [x] FE-infra — frontend quality gate: ESLint flat config (type-checked tier, projectService
+  over src+e2e) + react-hooks/react-refresh + eslint-config-prettier; Prettier-3 @ printWidth 100
+  (whole-`frontend/` render-neutral reformat); 8 real eslint findings fixed in code (async-safety
+  / dead-code), the lone pre-existing exhaustive-deps disable narrowed+reasoned; RTL suite +9
+  (vitest 76→85) with the App StrictMode poll-lifecycle keystone (mutation-proven); `scripts/`
+  folded into the ruff gate (safe-autofix + format, no logic edits); `make lint`/`fmt` extended +
+  NEW `make test-frontend`/`build-frontend`; loop-feature-docker help Gemini→NIM. FE + Makefile +
+  scripts/ ONLY, NO backend, NO migration (head 0011). — feat/fe-infra-eslint-prettier-rtl @
+  0a102cb — 2026-06-24
 - [x] P1.7a — live-document steering (backend seam): documents/service.py `get_latest_version`;
   routers.py `POST /api/documents/{id}/versions` (body {content}; 400 bad uuid / 404 missing;
   fresh idempotency key per request -> each save is a NEW version; returns {document_id,
@@ -194,9 +326,12 @@ None.
   collides with an agent write. The lock lands when an agent re-writes a doc the human also edits.)
 
 ## Test Count
-177 offline backend tests passing — 2026-06-24 (unchanged in P1.7b — the backend was not touched).
-ruff clean. **Frontend vitest: 76 passing** (was 67: +4 prdEditor round-trip-stability, +5
-isPrdEditable). FE `npm run build` (tsc strict + vite) clean; no new `eslint-disable`, no `any`-escape.
+177 offline backend tests passing — 2026-06-24 (unchanged in FE-infra — the backend was not
+touched). `make lint` clean (backend+scripts ruff + FE eslint `--max-warnings 0` + prettier
+`--check`). **Frontend vitest: 85 passing** (was 76: +9 RTL — keystone App poll-lifecycle, A/B
+toggle, TeamCanvas status+rework-edge, TasksDrawer, SidePanel reviewer). FE `make build-frontend`
+(tsc strict + vite) clean. Exactly ONE `eslint-disable` in the frontend (TeamCanvas exhaustive-deps,
+narrowed + reasoned, live). alembic head 0011 (NO migration).
 
 ## READY_TO_MERGE
 READY_TO_MERGE: branch=feat/p1ring-editor, sha=ebe1d69, backend tests=177 passing, frontend
