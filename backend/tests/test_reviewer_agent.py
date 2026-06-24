@@ -1,13 +1,16 @@
 """The agent-Reviewer's real-mode classify/route — offline workflow tests (NO LLM, NO agent,
-NO openhands, NO Docker) for P1.5c.
+NO openhands, NO Docker) for P1.5c, updated for P1.8a.
 
-Mirrors ``test_review_loop.py``'s harness — the REAL ``run_team`` over the 3-node
-``review_loop`` team with ``pm_step`` / ``engineer_setup_step`` / ``engineer_run_step`` stubbed
-— but **without** ``TVASHTR_FORCE_REVISIONS`` and with the agent-Reviewer step itself stubbed
-(``monkeypatch.setattr(team_run, "reviewer_agent_run_step", fake)``) to return canned verdict
-dicts. This exercises the workflow body's reviewer dispatch — the classify (over_budget / failed
-/ completed), the **distinct ``{run_id}:reviewer-agent-cost:{n}`` metering** (gated on non-zero
-usage), and the verdict routing — without resolving any adapter, so ``test_registry`` stays green.
+Mirrors ``test_review_loop.py``'s harness — the REAL ``run_team`` over the 3-node ``review_loop``
+team with the openhands-touching steps stubbed — but exercises the workflow body's handling of an
+outcome-EMITTING node returning canned verdict dicts (over_budget / failed / completed). P1.8a
+merged the role-specific engineer/reviewer steps into ONE ``agent_run_step``, so a single stub
+branches on ``emits_outcome``: the reviewer-style node delegates to a per-test ``reviewer``
+callback; the engineer-style worker writes the deliverable. The cost step likewise merged — a
+real (non-forced) review now meters under the SAME ``{run_id}:agent-cost:{node_id}:{iteration}``
+key as the engineer (the ``{node_id}`` keeps the two from colliding), so these tests assert the
+per-node cost rows rather than the retired ``reviewer-agent-cost:`` namespace. No adapter is
+resolved, so ``test_registry`` stays green.
 """
 
 import uuid
@@ -15,7 +18,7 @@ from pathlib import Path
 
 from conftest import seed_pm_prd
 from dbos import DBOS, SetWorkflowID
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from tvashtr.control_plane import team_run
 from tvashtr.control_plane.shipping import init_workspace_repo
@@ -42,24 +45,37 @@ def _make_review_loop_run() -> str:
     return run_id
 
 
-def _stub_agent(monkeypatch, workspace: Path) -> None:
-    """Stub the three openhands-touching steps exactly like ``test_review_loop`` (so no openhands
-    is imported); the Engineer writes the deliverable so a ship has something to commit."""
+def _stub_agent(monkeypatch, workspace: Path, reviewer) -> None:
+    """Stub ``pm_step`` + ``engineer_setup_step`` + the ONE generic ``agent_run_step`` (P1.8a) so
+    no openhands is imported. The engineer-style worker (``emits_outcome`` False) writes the
+    deliverable so a ship has something to commit; the reviewer-style node (``emits_outcome`` True)
+    delegates to the per-test ``reviewer(iteration)`` callback returning a canned verdict dict."""
 
-    def _fake_pm_step(run_id, idea, pm_model):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt):
         return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
-    def _fake_engineer_run_step(
-        run_id, prd_text, workspace_dir, eng_model, vkey, iteration, reviewer_feedback
+    def _fake_agent_run_step(
+        run_id,
+        node_prompt,
+        model,
+        iteration,
+        idea,
+        prd_text,
+        workspace_dir,
+        vkey,
+        reviewer_feedback,
+        emits_outcome,
     ):
+        if emits_outcome:
+            return reviewer(iteration)
         (Path(workspace_dir) / "greeting.txt").write_text(f"build {iteration}\n")
         return {
             "status": "completed",
-            "files_changed": ["greeting.txt"],
-            "error": None,
+            "outcome": None,
+            "reasons": None,
             "prompt_tokens": 10,
             "completion_tokens": 5,
             "total_tokens": 15,
@@ -68,7 +84,7 @@ def _stub_agent(monkeypatch, workspace: Path) -> None:
 
     monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
-    monkeypatch.setattr(team_run, "engineer_run_step", _fake_engineer_run_step)
+    monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 
 
 def _by_role(session, team_graph_id) -> dict:
@@ -92,11 +108,13 @@ def _invocations(session, run_id, node_id):
     )
 
 
-def _reviewer_cost_keys(session, run_id) -> list[str]:
-    return list(
+def _node_cost_keys(session, run_id, node_id) -> list[str]:
+    """The merged per-node agent-cost keys for a given node (P1.8a):
+    ``{run_id}:agent-cost:{node_id}:{iteration}``."""
+    return sorted(
         session.execute(
             select(CostRecord.idempotency_key).where(
-                CostRecord.idempotency_key.like(f"{run_id}:reviewer-agent-cost:%")
+                CostRecord.idempotency_key.like(f"{run_id}:agent-cost:{node_id}:%")
             )
         )
         .scalars()
@@ -107,16 +125,16 @@ def _reviewer_cost_keys(session, run_id) -> list[str]:
 def test_reviewer_real_mode_cycles_meters_and_ships(client, monkeypatch, tmp_path):
     """Real-mode (stubbed) Reviewer returns changes_requested then approved with non-zero usage:
     the loop cycles once, ships, the reviewer invocations record [changes_requested, approved],
-    and a DISTINCT ``{run_id}:reviewer-agent-cost:{n}`` row is written per real review."""
+    and a per-NODE ``{run_id}:agent-cost:{reviewer_node}:{n}`` row is written per real review —
+    distinct from the engineer's per-node rows (the merge keys them apart by node_id)."""
     monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
     monkeypatch.delenv("TVASHTR_FORCE_REVISIONS", raising=False)
 
     workspace = tmp_path / "ws"
     workspace.mkdir()
     init_workspace_repo(str(workspace))
-    _stub_agent(monkeypatch, workspace)
 
-    def _fake_reviewer(run_id, reviewer_model, iteration, prd_text, idea, workspace_dir, vkey):
+    def _reviewer(iteration):
         if iteration == 1:
             return {
                 "status": "completed",
@@ -126,7 +144,7 @@ def test_reviewer_real_mode_cycles_meters_and_ships(client, monkeypatch, tmp_pat
             }
         return {"status": "completed", "outcome": "approved", "reasons": None, **_USAGE}
 
-    monkeypatch.setattr(team_run, "reviewer_agent_run_step", _fake_reviewer)
+    _stub_agent(monkeypatch, workspace, _reviewer)
 
     run_id = _make_review_loop_run()
     with SetWorkflowID(run_id):
@@ -140,12 +158,8 @@ def test_reviewer_real_mode_cycles_meters_and_ships(client, monkeypatch, tmp_pat
         by_role = _by_role(session, run.team_graph_id)
         rev_invs = _invocations(session, run_id, by_role["reviewer"].id)
         eng_invs = _invocations(session, run_id, by_role["engineer"].id)
-        rev_cost_keys = _reviewer_cost_keys(session, run_id)
-        n_eng_cost = session.execute(
-            select(func.count())
-            .select_from(CostRecord)
-            .where(CostRecord.idempotency_key.like(f"{run_id}:agent-cost:%"))
-        ).scalar_one()
+        rev_cost_keys = _node_cost_keys(session, run_id, by_role["reviewer"].id)
+        eng_cost_keys = _node_cost_keys(session, run_id, by_role["engineer"].id)
 
     assert run.status == "completed"
     assert run.ship_tag == f"ship-{run_id}"
@@ -155,27 +169,32 @@ def test_reviewer_real_mode_cycles_meters_and_ships(client, monkeypatch, tmp_pat
         (1, "changes_requested"),
         (2, "approved"),
     ]
-    # Reviewer metered on a DISTINCT key, per real review; the Engineer's agent-cost is untouched.
-    assert sorted(rev_cost_keys) == [
-        f"{run_id}:reviewer-agent-cost:1",
-        f"{run_id}:reviewer-agent-cost:2",
+    # The real review metered per round on the reviewer's OWN per-node key — and the engineer's
+    # per-node rows are separate (the merged key's {node_id} keeps the iter-1 rows from colliding).
+    rev_id = by_role["reviewer"].id
+    eng_id = by_role["engineer"].id
+    assert rev_cost_keys == [
+        f"{run_id}:agent-cost:{rev_id}:1",
+        f"{run_id}:agent-cost:{rev_id}:2",
     ]
-    assert n_eng_cost == 2  # engineer-only namespace stays clean
+    assert eng_cost_keys == [
+        f"{run_id}:agent-cost:{eng_id}:1",
+        f"{run_id}:agent-cost:{eng_id}:2",
+    ]
 
 
 def test_reviewer_real_mode_over_budget_finalizes_without_shipping(client, monkeypatch, tmp_path):
     """A Reviewer that returns over_budget on iteration 1: the run finalizes ``over_budget`` with
     no ship, the reviewer invocation is ``stopped``/``over_budget``, and the partial cost is
-    metered on the reviewer key (best-effort)."""
+    metered on the reviewer's per-node key (best-effort)."""
     monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
     monkeypatch.delenv("TVASHTR_FORCE_REVISIONS", raising=False)
 
     workspace = tmp_path / "ws"
     workspace.mkdir()
     init_workspace_repo(str(workspace))
-    _stub_agent(monkeypatch, workspace)
 
-    def _fake_reviewer(run_id, reviewer_model, iteration, prd_text, idea, workspace_dir, vkey):
+    def _reviewer(iteration):
         return {
             "status": "over_budget",
             "outcome": None,
@@ -187,7 +206,7 @@ def test_reviewer_real_mode_over_budget_finalizes_without_shipping(client, monke
             "cost_usd": 0.002,
         }
 
-    monkeypatch.setattr(team_run, "reviewer_agent_run_step", _fake_reviewer)
+    _stub_agent(monkeypatch, workspace, _reviewer)
 
     run_id = _make_review_loop_run()
     with SetWorkflowID(run_id):
@@ -200,12 +219,12 @@ def test_reviewer_real_mode_over_budget_finalizes_without_shipping(client, monke
         run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one()
         by_role = _by_role(session, run.team_graph_id)
         rev_invs = _invocations(session, run_id, by_role["reviewer"].id)
-        rev_cost_keys = _reviewer_cost_keys(session, run_id)
+        rev_cost_keys = _node_cost_keys(session, run_id, by_role["reviewer"].id)
 
     assert run.status == "over_budget"
     assert run.ship_tag is None
     assert [(i.iteration, i.status, i.outcome) for i in rev_invs] == [(1, "stopped", "over_budget")]
-    assert rev_cost_keys == [f"{run_id}:reviewer-agent-cost:1"]
+    assert rev_cost_keys == [f"{run_id}:agent-cost:{by_role['reviewer'].id}:1"]
 
 
 def test_reviewer_real_mode_failed_finalizes_failed(client, monkeypatch, tmp_path):
@@ -217,9 +236,8 @@ def test_reviewer_real_mode_failed_finalizes_failed(client, monkeypatch, tmp_pat
     workspace = tmp_path / "ws"
     workspace.mkdir()
     init_workspace_repo(str(workspace))
-    _stub_agent(monkeypatch, workspace)
 
-    def _fake_reviewer(run_id, reviewer_model, iteration, prd_text, idea, workspace_dir, vkey):
+    def _reviewer(iteration):
         return {
             "status": "failed",
             "outcome": None,
@@ -231,7 +249,7 @@ def test_reviewer_real_mode_failed_finalizes_failed(client, monkeypatch, tmp_pat
             "cost_usd": 0.0,
         }
 
-    monkeypatch.setattr(team_run, "reviewer_agent_run_step", _fake_reviewer)
+    _stub_agent(monkeypatch, workspace, _reviewer)
 
     run_id = _make_review_loop_run()
     with SetWorkflowID(run_id):
@@ -244,7 +262,7 @@ def test_reviewer_real_mode_failed_finalizes_failed(client, monkeypatch, tmp_pat
         run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one()
         by_role = _by_role(session, run.team_graph_id)
         rev_invs = _invocations(session, run_id, by_role["reviewer"].id)
-        rev_cost_keys = _reviewer_cost_keys(session, run_id)
+        rev_cost_keys = _node_cost_keys(session, run_id, by_role["reviewer"].id)
 
     assert run.status == "failed"
     assert run.ship_tag is None

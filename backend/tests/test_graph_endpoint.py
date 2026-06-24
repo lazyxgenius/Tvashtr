@@ -87,16 +87,12 @@ def test_graph_endpoint_review_loop_gates_terminals_loopback_and_escalation(clie
     edges = body["edges"]
     assert len(edges) == 9
     eng_id, rev_id = nodes["engineer"]["id"], nodes["reviewer"]["id"]
-    # The loop-back edge carries the cap as loop_limit.
-    loopback = [
-        e
-        for e in edges
-        if e["source_node_id"] == rev_id
-        and (e["conditions"] or {}).get("when") == "changes_requested"
-    ]
+    # The loop-back edge: Reviewer -> Engineer carrying the cap as loop_limit. P1.8a dropped its
+    # "when" (it's now the catch-all out of the Reviewer), so find it by topology, not by label.
+    loopback = [e for e in edges if e["source_node_id"] == rev_id and e["target_node_id"] == eng_id]
     assert len(loopback) == 1
     assert "loop_limit" in loopback[0]["conditions"]
-    assert loopback[0]["target_node_id"] == eng_id
+    assert "when" not in loopback[0]["conditions"]
     # The escalation edge_type out of the agent is present.
     escalation = [e for e in edges if e["edge_type"] == "escalation"]
     assert len(escalation) == 1

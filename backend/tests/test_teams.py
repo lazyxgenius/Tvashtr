@@ -37,6 +37,12 @@ def test_build_two_node_team_places_gate_and_terminals():
     assert set(by_role) == {"pm", "prd_gate", "engineer", "ship", "stop"}
     assert by_role["pm"].kind == "completion" and by_role["pm"].engine is None
     assert by_role["pm"].model is not None
+    # P1.8a: completion/agent nodes carry their behavior in ``prompt`` (run generically); gate +
+    # terminal nodes have none.
+    assert by_role["pm"].prompt and "mini-PRD" in by_role["pm"].prompt
+    assert by_role["engineer"].prompt and "RELATIVE path" in by_role["engineer"].prompt
+    assert by_role["prd_gate"].prompt is None
+    assert by_role["ship"].prompt is None
     assert by_role["engineer"].kind == "agent" and by_role["engineer"].engine == "openhands"
     # Gate + terminal nodes carry NO model/engine and a config.
     prd_gate, ship, stop = by_role["prd_gate"], by_role["ship"], by_role["stop"]
@@ -77,6 +83,12 @@ def test_build_review_loop_team_places_loop_escalation_gate_and_terminals():
     assert by_role["engineer"].config == {"agent_kind": "engineer"}
     assert by_role["reviewer"].kind == "agent" and by_role["reviewer"].engine == "openhands"
     assert by_role["reviewer"].config == {"agent_kind": "reviewer"}
+    # P1.8a: every completion/agent node carries its behavior in ``prompt``; the Reviewer's pins
+    # the exact test command + sidecar so _harvest_verdict + the smokes keep working.
+    assert by_role["pm"].prompt and "mini-PRD" in by_role["pm"].prompt
+    assert by_role["engineer"].prompt and "RELATIVE path" in by_role["engineer"].prompt
+    assert by_role["reviewer"].prompt and "python -B -m unittest" in by_role["reviewer"].prompt
+    assert "REVIEW_VERDICT.json" in by_role["reviewer"].prompt
     assert by_role["prd_gate"].kind == "gate"
     assert by_role["prd_gate"].config["gate_kind"] == "prd_approval"
     assert by_role["escalation_gate"].kind == "gate"
@@ -87,17 +99,14 @@ def test_build_review_loop_team_places_loop_escalation_gate_and_terminals():
     assert len(edges) == 9
     eng, rev = by_role["engineer"].id, by_role["reviewer"].id
 
-    # The loop-back: Reviewer -> Engineer, conditional on changes_requested, carrying loop_limit.
-    loopback = [
-        e
-        for e in edges
-        if e.source_node_id == rev
-        and e.target_node_id == eng
-        and (e.conditions or {}).get("when") == "changes_requested"
-    ]
+    # The loop-back: Reviewer -> Engineer, the CATCH-ALL carrying only loop_limit (P1.8a dropped
+    # the "when" so a missing/garbled verdict still loops; next_node's extended fallthrough routes
+    # it). Found by topology (source==rev, target==eng), NOT by a "when" label anymore.
+    loopback = [e for e in edges if e.source_node_id == rev and e.target_node_id == eng]
     assert len(loopback) == 1
     assert loopback[0].edge_type == "review"
-    assert loopback[0].conditions == {"when": "changes_requested", "loop_limit": cap}
+    assert loopback[0].conditions == {"loop_limit": cap}
+    assert "when" not in loopback[0].conditions
 
     # Reviewer -> ship on approved.
     rev_approve = [

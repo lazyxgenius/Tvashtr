@@ -73,23 +73,37 @@ def _stub_agent(monkeypatch, workspace: Path) -> list[tuple[int, str | None]]:
     can assert how many times the Engineer ran (the cap proof)."""
     engineer_calls: list[tuple[int, str | None]] = []
 
-    def _fake_pm_step(run_id, idea, pm_model):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt):
         return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
-    def _fake_engineer_run_step(
-        run_id, prd_text, workspace_dir, eng_model, vkey, iteration, reviewer_feedback
+    def _fake_agent_run_step(
+        run_id,
+        node_prompt,
+        model,
+        iteration,
+        idea,
+        prd_text,
+        workspace_dir,
+        vkey,
+        reviewer_feedback,
+        emits_outcome,
     ):
+        # P1.8a unified agent step: the reviewer-style node runs the REAL forced harness
+        # (TVASHTR_FORCE_REVISIONS over the cap drives the escalation); the worker records each
+        # call (the cap proof) + the attempt row + writes the deliverable.
+        if emits_outcome:
+            return team_run._forced_review_outcome(iteration)
         engineer_calls.append((iteration, reviewer_feedback))
         with session_scope() as session:
             session.add(EngineerRunAttempt(run_id=run_id, pid=os.getpid()))
         (Path(workspace_dir) / "greeting.txt").write_text(f"build {iteration}\n")
         return {
             "status": "completed",
-            "files_changed": ["greeting.txt"],
-            "error": None,
+            "outcome": None,
+            "reasons": None,
             "prompt_tokens": 10,
             "completion_tokens": 5,
             "total_tokens": 15,
@@ -98,7 +112,7 @@ def _stub_agent(monkeypatch, workspace: Path) -> list[tuple[int, str | None]]:
 
     monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
-    monkeypatch.setattr(team_run, "engineer_run_step", _fake_engineer_run_step)
+    monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
     return engineer_calls
 
 

@@ -204,7 +204,9 @@ def _over_budget_route_probe(total_tokens: int, cost_usd: float) -> dict:
         "cost_usd": cost_usd,
     }
     if engineer["total_tokens"] or engineer["cost_usd"]:
-        persist_agent_cost_step(run_id, "test/model", engineer, 1)
+        # P1.8a: persist_agent_cost_step gained a node_id (the per-node cost key
+        # {run_id}:agent-cost:{node_id}:{iteration}); the probe passes a stand-in node id.
+        persist_agent_cost_step(run_id, "node-probe", "test/model", engineer, 1)
     finalize_run_step(run_id, status="over_budget")
     return {"status": "over_budget"}
 

@@ -7,10 +7,10 @@ the workspace ``.gitignore`` writer, and the review-instruction builder. Importi
 import json
 
 from tvashtr.control_plane.team_run import (
-    _build_review_instruction,
     _harvest_verdict,
     _write_workspace_gitignore,
 )
+from tvashtr.control_plane.teams import REVIEWER_PROMPT
 
 _VERDICT_FILE = "REVIEW_VERDICT.json"
 
@@ -91,11 +91,18 @@ def test_write_workspace_gitignore(tmp_path):
     assert "REVIEW_VERDICT.json" in content
 
 
-def test_build_review_instruction_contains_idea_prd_command_and_rules():
-    instruction = _build_review_instruction("PRD: build a calculator", "a calculator app")
-    assert "a calculator app" in instruction
-    assert "PRD: build a calculator" in instruction
-    assert "python -B -m unittest" in instruction
-    assert "REVIEW_VERDICT.json" in instruction
+def test_reviewer_prompt_template_contains_command_filename_and_rules():
+    # P1.8a: the Reviewer's review mechanics moved OUT of team_run.py (the deleted
+    # ``_build_review_instruction``) and INTO the node's ``prompt`` (teams.REVIEWER_PROMPT); the
+    # executor appends the idea + PRD at run time. The template MUST still pin the exact test
+    # command, the exact sidecar filename, the verdict label vocabulary, and the do-not-edit
+    # clause — ``_harvest_verdict`` + the views + the smoke assertions all depend on these.
+    assert "python -B -m unittest" in REVIEWER_PROMPT
+    assert "REVIEW_VERDICT.json" in REVIEWER_PROMPT
+    assert "approved" in REVIEWER_PROMPT
+    assert "changes_requested" in REVIEWER_PROMPT
     # The do-not-edit clause is present (reviewing, not editing).
-    assert "Do NOT modify" in instruction
+    assert "Do NOT modify" in REVIEWER_PROMPT
+    # The idea/PRD are NOT baked into the template — the executor appends them uniformly now.
+    assert "--- PRD ---" not in REVIEWER_PROMPT
+    assert "--- ORIGINAL IDEA ---" not in REVIEWER_PROMPT

@@ -63,26 +63,39 @@ def test_review_loop_cycles_once_then_ships(client, monkeypatch, tmp_path):
 
     engineer_calls: list[tuple[int, str | None]] = []
 
-    def _fake_pm_step(run_id, idea, pm_model):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt):
         return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
-    def _fake_engineer_run_step(
-        run_id, prd_text, workspace_dir, eng_model, vkey, iteration, reviewer_feedback
+    def _fake_agent_run_step(
+        run_id,
+        node_prompt,
+        model,
+        iteration,
+        idea,
+        prd_text,
+        workspace_dir,
+        vkey,
+        reviewer_feedback,
+        emits_outcome,
     ):
-        # Record the call (proves iteration + that the revision round got feedback) and
-        # the non-idempotent attempt row (proves the agent step "ran"), then write the
-        # deliverable so ship_step has something to commit.
+        # P1.8a: ONE generic agent step. The reviewer-style node (emits_outcome=True) routes
+        # through the REAL forced harness so TVASHTR_FORCE_REVISIONS still drives the loop; the
+        # engineer-style worker (emits_outcome=False) records its call (proves iteration + that
+        # the revision round got feedback) + the non-idempotent attempt row (proves the step
+        # "ran") + writes the deliverable so ship_step has something to commit.
+        if emits_outcome:
+            return team_run._forced_review_outcome(iteration)
         engineer_calls.append((iteration, reviewer_feedback))
         with session_scope() as session:
             session.add(EngineerRunAttempt(run_id=run_id, pid=os.getpid()))
         (Path(workspace_dir) / "greeting.txt").write_text(f"build {iteration}\n")
         return {
             "status": "completed",
-            "files_changed": ["greeting.txt"],
-            "error": None,
+            "outcome": None,
+            "reasons": None,
             "prompt_tokens": 10,
             "completion_tokens": 5,
             "total_tokens": 15,
@@ -91,7 +104,7 @@ def test_review_loop_cycles_once_then_ships(client, monkeypatch, tmp_path):
 
     monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
-    monkeypatch.setattr(team_run, "engineer_run_step", _fake_engineer_run_step)
+    monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 
     run_id = _make_review_loop_run()
     with SetWorkflowID(run_id):
@@ -179,22 +192,35 @@ def test_two_node_walk_ships_through_gate_and_terminal(client, monkeypatch, tmp_
     workspace.mkdir()
     init_workspace_repo(str(workspace))
 
-    def _fake_pm_step(run_id, idea, pm_model):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt):
         return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
-    def _fake_engineer_run_step(
-        run_id, prd_text, workspace_dir, eng_model, vkey, iteration, reviewer_feedback
+    def _fake_agent_run_step(
+        run_id,
+        node_prompt,
+        model,
+        iteration,
+        idea,
+        prd_text,
+        workspace_dir,
+        vkey,
+        reviewer_feedback,
+        emits_outcome,
     ):
+        # P1.8a unified agent step: a reviewer-style node runs the real forced harness; a worker
+        # writes the deliverable + the non-idempotent attempt row.
+        if emits_outcome:
+            return team_run._forced_review_outcome(iteration)
         with session_scope() as session:
             session.add(EngineerRunAttempt(run_id=run_id, pid=os.getpid()))
         (Path(workspace_dir) / "greeting.txt").write_text(f"build {iteration}\n")
         return {
             "status": "completed",
-            "files_changed": ["greeting.txt"],
-            "error": None,
+            "outcome": None,
+            "reasons": None,
             "prompt_tokens": 10,
             "completion_tokens": 5,
             "total_tokens": 15,
@@ -203,7 +229,7 @@ def test_two_node_walk_ships_through_gate_and_terminal(client, monkeypatch, tmp_
 
     monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
-    monkeypatch.setattr(team_run, "engineer_run_step", _fake_engineer_run_step)
+    monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 
     team_graph_id = build_two_node_team()
     run_id = str(uuid.uuid4())
@@ -281,22 +307,35 @@ def test_review_loop_persists_verdict_reasons_into_outcome_detail(client, monkey
     workspace.mkdir()
     init_workspace_repo(str(workspace))
 
-    def _fake_pm_step(run_id, idea, pm_model):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt):
         return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
-    def _fake_engineer_run_step(
-        run_id, prd_text, workspace_dir, eng_model, vkey, iteration, reviewer_feedback
+    def _fake_agent_run_step(
+        run_id,
+        node_prompt,
+        model,
+        iteration,
+        idea,
+        prd_text,
+        workspace_dir,
+        vkey,
+        reviewer_feedback,
+        emits_outcome,
     ):
+        # P1.8a unified agent step: a reviewer-style node runs the real forced harness; a worker
+        # writes the deliverable + the non-idempotent attempt row.
+        if emits_outcome:
+            return team_run._forced_review_outcome(iteration)
         with session_scope() as session:
             session.add(EngineerRunAttempt(run_id=run_id, pid=os.getpid()))
         (Path(workspace_dir) / "greeting.txt").write_text(f"build {iteration}\n")
         return {
             "status": "completed",
-            "files_changed": ["greeting.txt"],
-            "error": None,
+            "outcome": None,
+            "reasons": None,
             "prompt_tokens": 10,
             "completion_tokens": 5,
             "total_tokens": 15,
@@ -305,7 +344,7 @@ def test_review_loop_persists_verdict_reasons_into_outcome_detail(client, monkey
 
     monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
-    monkeypatch.setattr(team_run, "engineer_run_step", _fake_engineer_run_step)
+    monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 
     run_id = _make_review_loop_run()
     with SetWorkflowID(run_id):

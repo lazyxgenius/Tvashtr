@@ -140,7 +140,7 @@ def test_mid_run_prd_edit_reaches_the_revision_engineer(client, monkeypatch, tmp
     # Each Engineer call's (iteration, prd_text-it-received) — the observable of the re-source.
     engineer_prds: list[tuple[int, str]] = []
 
-    def _fake_pm_step(run_id, idea, pm_model):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt):
         # Real document write (minus the LLM) so read_latest_prd_step resolves to a real version.
         doc = create_document_with_initial_version(
             "Mini-PRD", "prd", f"PRD v1 for: {idea}", "agent:pm", f"{run_id}:pm-prd-v1"
@@ -154,9 +154,24 @@ def test_mid_run_prd_edit_reaches_the_revision_engineer(client, monkeypatch, tmp
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
-    def _fake_engineer_run_step(
-        run_id, prd_text, workspace_dir, eng_model, vkey, iteration, reviewer_feedback
+    def _fake_agent_run_step(
+        run_id,
+        node_prompt,
+        model,
+        iteration,
+        idea,
+        prd_text,
+        workspace_dir,
+        vkey,
+        reviewer_feedback,
+        emits_outcome,
     ):
+        # P1.8a: ONE generic agent step. The reviewer-style node runs the real forced harness; the
+        # engineer-style worker records the PRD IT RECEIVED (``prd_text`` — the observable of the
+        # live re-source), writes the attempt row + deliverable, and — between round 1 and the
+        # revision round — a human edits the PRD so the round-2 worker must re-source the NEW one.
+        if emits_outcome:
+            return team_run._forced_review_outcome(iteration)
         engineer_prds.append((iteration, prd_text))
         with session_scope() as session:
             session.add(EngineerRunAttempt(run_id=run_id, pid=os.getpid()))
@@ -172,8 +187,8 @@ def test_mid_run_prd_edit_reaches_the_revision_engineer(client, monkeypatch, tmp
         (Path(workspace_dir) / "greeting.txt").write_text(f"build {iteration}\n")
         return {
             "status": "completed",
-            "files_changed": ["greeting.txt"],
-            "error": None,
+            "outcome": None,
+            "reasons": None,
             "prompt_tokens": 10,
             "completion_tokens": 5,
             "total_tokens": 15,
@@ -182,7 +197,7 @@ def test_mid_run_prd_edit_reaches_the_revision_engineer(client, monkeypatch, tmp
 
     monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
-    monkeypatch.setattr(team_run, "engineer_run_step", _fake_engineer_run_step)
+    monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 
     run_id = _make_review_loop_run()
     with SetWorkflowID(run_id):
