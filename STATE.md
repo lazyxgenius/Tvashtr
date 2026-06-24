@@ -16,11 +16,64 @@ openhands-free, test_registry green, keystone steering test passes + its mutatio
 (non-vacuity proven), adversarial multi-agent review 0 blocking / 0 major. READY_TO_MERGE.
 
 ## In Progress
-None — P1.7a is implemented, offline-green, and adversarially reviewed (0 blocking / 0 major).
-Awaiting operator FF-merge of feat/p1.7a-steering-backend + the operator's live gate (loop-crash /
-loop-run / skeleton-crash / skeleton-run must stay green — the live proof the live re-source
-composes with crash-resume; needs a live LLM, off the offline path). NEXT: P1.7b (the TipTap
-editor + lock-aware UI + the live visual smoke), and/or P1.8 Supervisor-first onboarding.
+None — P1.7a is implemented, offline-green, adversarially reviewed (0 blocking / 0 major), AND the
+LIVE composition gate is now GREEN (2026-06-24): `make loop-run` ships exactly once and `make
+loop-crash` resumes mid-cycle and ships exactly once — the live proof that the recorded
+`read_latest_prd_step` re-source composes with crash-resume. Awaiting operator FF-merge of
+feat/p1.7a-steering-backend. NEXT: P1.7b (the TipTap editor + lock-aware UI + the live visual
+smoke), and/or P1.8 Supervisor-first onboarding.
+
+## Live composition gate (P1.7a) — root-caused + GREEN (2026-06-24)
+- **Symptom:** `make loop-run` / `make loop-crash` died with the Engineer's agent run `status=failed`
+  (0 cost rows for the failed iteration). Decoded DBOS errors / the live run surfaced two distinct
+  things, only ONE of which was the live blocker:
+  1. A batch of stale boot-recovered `run_team` rows erroring `read_latest_prd_step: run <id> has no
+     pm_document_id` — these are PENDING partial runs (killed before `pm_step` committed) that DBOS
+     resurrected on boot; terminal ERROR now, harmless. NOT the live blocker. (No PENDING/ENQUEUED
+     remained at diagnosis time — the §4.5 stale-parked-runs snag was already clear.)
+  2. **The real blocker:** the Engineer's OpenHands agent run intermittently crashed with
+     `ConversationRunError: Object of type TextContent is not JSON serializable`.
+- **Root cause (NOT a P1.7a bug, NOT an auth/quota block):** the agent LLM was
+  `nvidia_nim/qwen/qwen3-next-80b-a3b-instruct`. The NIM endpoint is HEALTHY (GET /v1/models → HTTP
+  200, key valid, model present) but (a) brutally slow on chat completions (~13–26s for a 2-token
+  reply; NVCF serverless cold-start) and (b) qwen3's response shape intermittently (~40% on real
+  Engineer prompts) trips an OpenHands/litellm `TextContent` json-serialization flake. Proof it is
+  NOT P1.7a and NOT generic: `make agent-smoke` — which touches ZERO P1.7a code — fails identically,
+  and the agent path was historically GREEN with OpenRouter (P1.5a loop-run) and Gemini (capstone).
+  The litellm `nvidia_nim` chat transform is trivial param-mapping, so the trigger is the qwen3 model
+  itself, not the provider. (The constant `Cost calculation failed: This model isn't mapped yet …
+  nvidia_nim` warning — cost=$0 — is the unmapped-price model, also harmless, and explains part of the
+  "0 cost rows" signature; the missing rows on a FAILED iteration are because the agent errored before
+  usage was read.)
+- **Remediation (config-only, reversible, honors the operator's NIM provider; changes NO P1.7a
+  behavior, NO loop assertion, NO harness):** switched `TVASHTR_AGENT_MODEL` in `.env` (gitignored)
+  from `nvidia_nim/qwen/qwen3-next-80b-a3b-instruct` →
+  **`nvidia_nim/meta/llama-3.3-70b-instruct`** — same NIM provider/key, a standard non-reasoning
+  tool-use model (NIM latency ~1.4s/call) that litellm's nvidia_nim path supports cleanly. No code
+  touched: `team_run.py` / `routers.py` / `documents/service.py` are byte-identical to 5c19828;
+  `config.agent_llm_routing` already resolves `nvidia_nim/` → `NVIDIA_BUILD_API_KEY`.
+- **OPERATOR NOTE:** the working agent model is now `nvidia_nim/meta/llama-3.3-70b-instruct` in `.env`.
+  qwen3-next-80b is left UNUSED because it intermittently breaks the OpenHands agent run (above). If
+  you want qwen3 specifically, it needs a different route (e.g. the OpenAI-compatible `openai/` provider
+  + NIM base_url) or an SDK/litellm fix — not a key change. Groq/Cerebras/OpenAI keys are also present
+  as faster alternatives if desired.
+- **loop-run PROOF (ship once):** run_id=2f080e81-…; workflow=SUCCESS, run.status=completed,
+  ship_tag=ship-2f080e81-…; Engineer invocations [1,2]; Reviewer [1,2] = [changes_requested, approved]
+  (one loop-back); 2 EngineerRunAttempt rows; 2 per-iteration agent-cost CostRecords; one ship tag;
+  committed greeting.txt contains the required line; pm_document_id=8047ef7a-… (the live re-source
+  resolved). → "ALL LOOP-RAN ASSERTIONS PASSED". (1 re-roll: the prior qwen3 attempt failed at the
+  Engineer agent run — the model swap fixed it.)
+- **loop-crash PROOF (ship once, 0 re-rolls):** run_id=5912a671-…; DBOS recovered to SUCCESS;
+  Reviewer [1,2,3] = [changes_requested, changes_requested, approved] (two loop-backs then ship);
+  3 per-iteration agent-cost CostRecords; one pm-llm CostRecord; one ship tag + one ship commit;
+  mid-loop re-execution: 4 EngineerRunAttempt rows span pid 31712 (pre-crash) → 32033 (restarted) —
+  the in-flight iteration re-ran while completed iterations replayed (exactly-once-per-iteration),
+  so the loop resumed mid-cycle and kept cycling to a single ship. → "ALL LOOP CRASH-RESUME
+  ASSERTIONS PASSED / LOOP MID-CYCLE CRASH-RESUME PASSED". Passed on the FIRST attempt.
+- **Re-green after the live gate:** `make test` → 177 passed (8.08s); `make lint` → clean (75 files);
+  alembic head still `0011_invocation_outcome_detail` (NO migration); P1.7a code byte-identical to
+  5c19828; git tree shows only the architect-owned PROJECTPLAN.md / HANDOVER.md modified (the `.env`
+  model change is gitignored).
 
 ## Completed Steps (append-only, newest last)
 - [x] P1.7a — live-document steering (backend seam): documents/service.py `get_latest_version`;
@@ -100,6 +153,10 @@ READY_TO_MERGE: branch=feat/p1.7a-steering-backend, sha=5c19828, tests=177 passi
   do-not-touch list [engines/*, docker_runtime.py, shipping.py, registry.py, teams.py, migrations
   0001-0011, frontend/] is EMPTY; pm_step byte-identical; import tvashtr.main openhands-free;
   test_registry green; the keystone steering test passes AND its mutation-revert FAILs [non-vacuity];
-  endpoint payload sample echoed; no new dep; no frontend). Operator's remaining gate = the LIVE
-  composition proof (make loop-crash / loop-run / skeleton-crash / skeleton-run stay green — the
-  live re-source composes with crash-resume), which needs a live LLM and is off the offline path.
+  endpoint payload sample echoed; no new dep; no frontend). LIVE composition gate now GREEN
+  (2026-06-24): `make loop-run` ships exactly once (run_id 2f080e81-…) + `make loop-crash` resumes
+  mid-cycle and ships exactly once (run_id 5912a671-…, passed first attempt) — see the "Live
+  composition gate (P1.7a)" section above for the full per-assertion proof and the
+  qwen3→`nvidia_nim/meta/llama-3.3-70b-instruct` agent-model remediation in `.env` (config-only,
+  gitignored, no code/assertion/harness change). make test 177 passing + make lint clean re-confirmed
+  AFTER the live gate; alembic head still 0011; P1.7a code byte-identical to 5c19828.
