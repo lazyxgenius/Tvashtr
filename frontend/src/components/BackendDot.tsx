@@ -17,7 +17,7 @@ export function BackendDot() {
       }
     };
     void check();
-    const id = setInterval(check, 5000);
+    const id = setInterval(() => void check(), 5000);
     return () => {
       active = false;
       clearInterval(id);

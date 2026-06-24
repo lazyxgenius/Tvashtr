@@ -15,8 +15,13 @@ const DETAIL_CAP = 140;
 
 function asString(value: unknown): string {
   if (typeof value === "string") return value;
-  if (value == null) return "";
-  return String(value);
+  // Only stringify primitives — an object has no useful default stringification
+  // ("[object Object]"), and the persisted payload values are always scalars anyway. This
+  // keeps `asString` total + never-throwing without leaning on Object's base toString.
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return "";
 }
 
 /** First non-empty, trimmed line of a (possibly multi-line) value. */

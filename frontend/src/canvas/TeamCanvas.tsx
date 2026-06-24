@@ -78,7 +78,7 @@ function FitView({ trigger }: { trigger: string | null }) {
   useEffect(() => {
     if (!trigger) return;
     // ~80ms lets the flex layout (and React Flow's resize observer) settle first.
-    const t = setTimeout(() => rf.fitView({ padding: 0.5, duration: 320 }), 80);
+    const t = setTimeout(() => void rf.fitView({ padding: 0.5, duration: 320 }), 80);
     return () => clearTimeout(t);
   }, [trigger, rf]);
   return null;
@@ -91,7 +91,7 @@ function FocusNode({ focusNodeId }: { focusNodeId?: string | null }) {
   useEffect(() => {
     if (!focusNodeId) return;
     const t = setTimeout(
-      () => rf.fitView({ nodes: [{ id: focusNodeId }], duration: 400, maxZoom: 1.2 }),
+      () => void rf.fitView({ nodes: [{ id: focusNodeId }], duration: 400, maxZoom: 1.2 }),
       60,
     );
     return () => clearTimeout(t);
@@ -133,9 +133,8 @@ export function TeamCanvas({
         data: nodeData(n, run, workflowStatus, tasks, graph.run_id),
       })),
     );
-    // Status/state are refreshed in place by the effect below; rebuild only on a new
-    // topology (run/workflowStatus/tasks intentionally excluded from the deps).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Status/state are refreshed in place by the effect below; rebuild only on a new topology.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reason: rebuild ONLY when the topology (graph.run_id) changes; run/workflowStatus/tasks are intentionally omitted so the per-poll graph refetch doesn't rebuild the nodes and reset dragged positions — the effect just below refreshes their state in place.
   }, [graph?.run_id, setNodes]);
 
   // Refresh each node's state on every poll, preserving dragged positions + selection —
@@ -192,7 +191,7 @@ export function TeamCanvas({
         posById[e.source_node_id],
         posById[e.target_node_id],
       );
-      let className = "";
+      let className: string; // assigned in every branch below
       let markerEnd;
       if (e.conditions?.when === "rejected") {
         // a muted, calm branch to a stop terminal
@@ -238,8 +237,9 @@ export function TeamCanvas({
         elementsSelectable
         onNodeClick={(_event, node) => {
           // Only inspectable roles open the side panel; gate/terminal nodes have no role
-          // panel (the React Flow selection ring still works for any node).
-          const data = node.data as unknown as AgentNodeData;
+          // panel (the React Flow selection ring still works for any node). `node.data` is
+          // already typed `AgentNodeData` (the nodes are `Node<AgentNodeData>`), so no cast.
+          const data = node.data;
           if (data.kind === "agent" || data.kind === "completion") onSelectNode?.(data.role_name);
         }}
         onPaneClick={() => onSelectNode?.(null)}

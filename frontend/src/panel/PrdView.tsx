@@ -139,7 +139,7 @@ export function PrdView({
       ) : showEditor ? (
         <PrdEditor
           markdown={selected.content}
-          onSave={handleSave}
+          onSave={(markdown) => void handleSave(markdown)}
           saving={saving}
           savedNote={savedNote}
           saveError={saveError}
