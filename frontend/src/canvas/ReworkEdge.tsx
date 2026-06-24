@@ -1,4 +1,10 @@
-import { BaseEdge, EdgeLabelRenderer, type EdgeProps, getBezierPath, Position } from "@xyflow/react";
+import {
+  BaseEdge,
+  EdgeLabelRenderer,
+  type EdgeProps,
+  getBezierPath,
+  Position,
+} from "@xyflow/react";
 
 /**
  * The Reviewer -> Engineer loop-back ("rework") edge: a calm downward dashed arc

@@ -78,7 +78,10 @@ describe("isSideShipped", () => {
 
 describe("abSideStatus", () => {
   it("completed → Shipped/done", () => {
-    expect(abSideStatus(mkSide({ status: "completed" }))).toEqual({ label: "Shipped", tone: "done" });
+    expect(abSideStatus(mkSide({ status: "completed" }))).toEqual({
+      label: "Shipped",
+      tone: "done",
+    });
   });
   it("awaiting_human → Awaiting approval/paused", () => {
     expect(abSideStatus(mkSide({ status: "awaiting_human" }))).toEqual({
@@ -87,7 +90,10 @@ describe("abSideStatus", () => {
     });
   });
   it("rejected → Rejected/failed", () => {
-    expect(abSideStatus(mkSide({ status: "rejected" }))).toEqual({ label: "Rejected", tone: "failed" });
+    expect(abSideStatus(mkSide({ status: "rejected" }))).toEqual({
+      label: "Rejected",
+      tone: "failed",
+    });
   });
   it("cancelled → Cancelled/failed", () => {
     expect(abSideStatus(mkSide({ status: "cancelled" }))).toEqual({

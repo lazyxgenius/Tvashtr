@@ -134,7 +134,11 @@ export default function App() {
       setTasks((ts) =>
         ts.map((t) =>
           t.id === taskId
-            ? { ...t, status: "resolved", resolution: decision === "approve" ? "approved" : "rejected" }
+            ? {
+                ...t,
+                status: "resolved",
+                resolution: decision === "approve" ? "approved" : "rejected",
+              }
             : t,
         ),
       );

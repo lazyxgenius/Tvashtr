@@ -13,9 +13,11 @@ function pmEmptyHint(
   run: RunRow | null,
   workflowStatus: string | null,
 ): string {
-  if (!runId || !run) return "No spec yet. Start a run and the product manager drafts the first one.";
+  if (!runId || !run)
+    return "No spec yet. Start a run and the product manager drafts the first one.";
   const failed = run.status === "failed" || WORKFLOW_FAILED.has(workflowStatus ?? "");
-  if (failed && !run.pm_document_id) return "The product manager didn't finish the spec for this run.";
+  if (failed && !run.pm_document_id)
+    return "The product manager didn't finish the spec for this run.";
   return "The product manager is drafting the spec…";
 }
 

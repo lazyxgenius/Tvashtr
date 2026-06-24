@@ -6,56 +6,53 @@
 
 :root {
   /* ---- Spacing (4px grid) ---- */
-  --space-0:   0;
-  --space-1:   4px;
-  --space-2:   8px;
-  --space-3:   12px;
-  --space-4:   16px;
-  --space-5:   20px;
-  --space-6:   24px;
-  --space-7:   32px;
-  --space-8:   40px;
-  --space-9:   48px;
-  --space-10:  64px;
-  --space-11:  80px;
-  --space-12:  96px;
-  --space-13:  128px;
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+  --space-11: 80px;
+  --space-12: 96px;
+  --space-13: 128px;
 
   /* ---- Reading / layout widths ---- */
-  --measure-form:    640px;   /* forms */
-  --measure-read:    720px;   /* prose */
-  --measure-wide:    1080px;  /* app content */
-  --measure-page:    1280px;  /* max page */
+  --measure-form: 640px; /* forms */
+  --measure-read: 720px; /* prose */
+  --measure-wide: 1080px; /* app content */
+  --measure-page: 1280px; /* max page */
 
   /* ---- Radii ---- */
-  --radius-xs:   4px;
-  --radius-sm:   6px;   /* buttons */
-  --radius-md:   8px;   /* inputs */
-  --radius-lg:   12px;  /* cards / panels */
-  --radius-xl:   16px;  /* large surfaces */
-  --radius-2xl:  24px;
+  --radius-xs: 4px;
+  --radius-sm: 6px; /* buttons */
+  --radius-md: 8px; /* inputs */
+  --radius-lg: 12px; /* cards / panels */
+  --radius-xl: 16px; /* large surfaces */
+  --radius-2xl: 24px;
   --radius-pill: 999px;
 
   /* ---- Borders ---- */
-  --border-width:   1px;
+  --border-width: 1px;
   --border-width-2: 1.5px;
-  --border:         var(--border-width) solid var(--border-hairline);
+  --border: var(--border-width) solid var(--border-hairline);
 
   /* ---- Shadows — very soft, warm-tinted, used rarely ---- */
   --shadow-xs: 0 1px 2px rgba(20, 20, 19, 0.04);
-  --shadow-sm: 0 1px 2px rgba(20, 20, 19, 0.05),
-               0 1px 1px rgba(20, 20, 19, 0.03);
-  --shadow-md: 0 4px 14px rgba(20, 20, 19, 0.07),
-               0 1px 3px rgba(20, 20, 19, 0.04);
-  --shadow-lg: 0 14px 36px rgba(20, 20, 19, 0.10),
-               0 4px 10px rgba(20, 20, 19, 0.05);
+  --shadow-sm: 0 1px 2px rgba(20, 20, 19, 0.05), 0 1px 1px rgba(20, 20, 19, 0.03);
+  --shadow-md: 0 4px 14px rgba(20, 20, 19, 0.07), 0 1px 3px rgba(20, 20, 19, 0.04);
+  --shadow-lg: 0 14px 36px rgba(20, 20, 19, 0.1), 0 4px 10px rgba(20, 20, 19, 0.05);
   --shadow-focus: 0 0 0 3px var(--focus-ring);
 
   /* ---- Motion — calm, no bounce ---- */
   --ease-standard: cubic-bezier(0.32, 0.08, 0.24, 1); /* @kind other */
-  --ease-out:      cubic-bezier(0.16, 0.84, 0.44, 1); /* @kind other */
-  --dur-fast:   120ms; /* @kind other */
-  --dur-base:   200ms; /* @kind other */
-  --dur-slow:   320ms; /* @kind other */
+  --ease-out: cubic-bezier(0.16, 0.84, 0.44, 1); /* @kind other */
+  --dur-fast: 120ms; /* @kind other */
+  --dur-base: 200ms; /* @kind other */
+  --dur-slow: 320ms; /* @kind other */
   --transition: var(--dur-base) var(--ease-standard); /* @kind other */
 }

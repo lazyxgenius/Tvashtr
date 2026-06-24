@@ -208,7 +208,8 @@
   background: var(--surface-card);
   border: var(--border-width) solid var(--border-hairline);
   border-radius: var(--radius-md);
-  transition: box-shadow var(--dur-fast) var(--ease-standard),
+  transition:
+    box-shadow var(--dur-fast) var(--ease-standard),
     border-color var(--dur-fast) var(--ease-standard);
 }
 .tv-prd__editor .ProseMirror:focus {

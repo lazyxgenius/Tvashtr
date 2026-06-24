@@ -27,9 +27,12 @@ const PRD = [
   "```",
 ].join("\n");
 
-const FENCED_BLOCK = ["```text", "greeting.txt", "Shipped by the Tvashtr PM->Engineer team", "```"].join(
-  "\n",
-);
+const FENCED_BLOCK = [
+  "```text",
+  "greeting.txt",
+  "Shipped by the Tvashtr PM->Engineer team",
+  "```",
+].join("\n");
 const DELIVERABLE_LINE = "Shipped by the Tvashtr PM->Engineer team";
 
 describe("roundTripMarkdown — the editor's load→save is a faithful no-op", () => {

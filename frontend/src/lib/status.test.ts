@@ -116,7 +116,11 @@ describe("deriveGateState (the gate node owns the pause)", () => {
   });
 
   it("a resolved approved task -> approved", () => {
-    const t = mkTask({ topic: `gate:${RUN_ID}:${NODE}`, status: "resolved", resolution: "approved" });
+    const t = mkTask({
+      topic: `gate:${RUN_ID}:${NODE}`,
+      status: "resolved",
+      resolution: "approved",
+    });
     expect(deriveGateState(NODE, RUN_ID, [t], mkRun(), "PENDING")).toBe("approved");
   });
 
@@ -256,7 +260,9 @@ describe("isPrdEditable (the live-steering gate, P1.7b)", () => {
 
   it("mirrors isRunTerminal: editable iff the run is non-terminal and present", () => {
     // the steering gate and the poll-stop read the SAME terminal sets — they never drift.
-    expect(isPrdEditable("running", "PENDING")).toBe(!isRunTerminal(mkRun({ status: "running" }), "PENDING"));
+    expect(isPrdEditable("running", "PENDING")).toBe(
+      !isRunTerminal(mkRun({ status: "running" }), "PENDING"),
+    );
     expect(isPrdEditable("completed", "SUCCESS")).toBe(
       !isRunTerminal(mkRun({ status: "completed" }), "SUCCESS"),
     );

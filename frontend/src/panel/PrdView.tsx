@@ -93,11 +93,24 @@ export function PrdView({
 
   const onDirty = useCallback(() => setSavedNote(null), []);
 
-  if (!documentId) return <div className="tv-scroll"><p className="tv-panel-note">{emptyHint}</p></div>;
+  if (!documentId)
+    return (
+      <div className="tv-scroll">
+        <p className="tv-panel-note">{emptyHint}</p>
+      </div>
+    );
   if (state === "idle" || state === "loading")
-    return <div className="tv-scroll"><p className="tv-panel-note">Loading the spec…</p></div>;
+    return (
+      <div className="tv-scroll">
+        <p className="tv-panel-note">Loading the spec…</p>
+      </div>
+    );
   if (state === "error" || !doc)
-    return <div className="tv-scroll"><p className="tv-panel-note">Couldn't load the spec.</p></div>;
+    return (
+      <div className="tv-scroll">
+        <p className="tv-panel-note">Couldn't load the spec.</p>
+      </div>
+    );
 
   const latest = doc.versions.at(-1) ?? null;
   const selected = doc.versions.find((v) => v.id === selectedId) ?? latest;

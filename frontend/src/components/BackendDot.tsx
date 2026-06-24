@@ -24,8 +24,7 @@ export function BackendDot() {
     };
   }, []);
 
-  const color =
-    ok === null ? "var(--stone-400)" : ok ? "var(--sage-500)" : "var(--red-500)";
+  const color = ok === null ? "var(--stone-400)" : ok ? "var(--sage-500)" : "var(--red-500)";
   const label =
     ok === null ? "Checking backend…" : ok ? "Backend connected" : "Backend unreachable";
 

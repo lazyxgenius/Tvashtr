@@ -91,7 +91,8 @@ export function abHeadline(sides: ABSide[]): { headline: string; tone: ABHeadlin
       };
     }
     return {
-      headline: "Both shipped. The review gate ran but didn't change the outcome — no measurable delta.",
+      headline:
+        "Both shipped. The review gate ran but didn't change the outcome — no measurable delta.",
       tone: "no-delta",
     };
   }

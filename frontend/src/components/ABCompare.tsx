@@ -154,7 +154,9 @@ export function ABCompare() {
           review gate's effect on what ships is legible.
         </p>
         {error && (
-          <span className="tv-ab__error">Couldn't start the comparison — is the backend running?</span>
+          <span className="tv-ab__error">
+            Couldn't start the comparison — is the backend running?
+          </span>
         )}
       </div>
 

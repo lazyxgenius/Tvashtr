@@ -5,8 +5,8 @@ export function CanvasEmpty() {
       <img src="/mark-coral.png" alt="" className="rf-empty__mark" />
       <div className="rf-empty__title">Nothing on the loom yet</div>
       <p className="rf-empty__sub">
-        Start the run and the team appears — a product manager drafts the spec, an engineer
-        builds it, and a reviewer sends it back until it's right.
+        Start the run and the team appears — a product manager drafts the spec, an engineer builds
+        it, and a reviewer sends it back until it's right.
       </p>
     </div>
   );

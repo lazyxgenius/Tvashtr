@@ -84,12 +84,24 @@ export function summarizeEvent(kind: string, payload: Record<string, unknown>): 
     }
     case "error": {
       const err = asString(p.error);
-      return { tone: "danger", label: "error", lead: "", detail: cap(firstLine(err) || err), full: err };
+      return {
+        tone: "danger",
+        label: "error",
+        lead: "",
+        detail: cap(firstLine(err) || err),
+        full: err,
+      };
     }
     default: {
       // Unknown kind, or the defensive { unparsed, error } shape.
       const fallback = asString(p.error) || asString(p.text) || asString(p.observation);
-      return { tone: "neutral", label: kind || "event", lead: "", detail: cap(firstLine(fallback)), full: fallback };
+      return {
+        tone: "neutral",
+        label: kind || "event",
+        lead: "",
+        detail: cap(firstLine(fallback)),
+        full: fallback,
+      };
     }
   }
 }

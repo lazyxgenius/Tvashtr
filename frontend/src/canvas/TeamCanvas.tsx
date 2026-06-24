@@ -12,7 +12,14 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 
-import type { GraphData, GraphNode, HumanTask, NodePosition, RunRow, TerminalConfig } from "../lib/api";
+import type {
+  GraphData,
+  GraphNode,
+  HumanTask,
+  NodePosition,
+  RunRow,
+  TerminalConfig,
+} from "../lib/api";
 import { deriveGateState, deriveNodeStatus, deriveTerminalState } from "../lib/status";
 import { AgentNodeCard, type AgentNodeData } from "./AgentNodeCard";
 import { CanvasEmpty } from "./CanvasEmpty";
@@ -32,7 +39,10 @@ function rawStatusById(graph: GraphData): Record<string, string> {
 /** Pick the source/target handles for an edge by geometry, so any branch routes cleanly:
  *  horizontal backbone → right→left (today's look); a downward branch → bottom→top; a
  *  leftward branch → left→right. Pure; generalizes to any future Supervisor graph. */
-function pickHandles(s: NodePosition, t: NodePosition): { sourceHandle: string; targetHandle: string } {
+function pickHandles(
+  s: NodePosition,
+  t: NodePosition,
+): { sourceHandle: string; targetHandle: string } {
   const dx = t.x - s.x;
   const dy = t.y - s.y;
   if (Math.abs(dx) >= Math.abs(dy)) {
@@ -63,7 +73,8 @@ function nodeData(
     config: n.config,
     iteration: n.iteration,
     status: deriveNodeStatus(n.status, run, workflowStatus),
-    gateState: n.kind === "gate" ? deriveGateState(n.id, runId, tasks, run, workflowStatus) : undefined,
+    gateState:
+      n.kind === "gate" ? deriveGateState(n.id, runId, tasks, run, workflowStatus) : undefined,
     terminalState:
       n.kind === "terminal"
         ? deriveTerminalState((n.config as TerminalConfig)?.terminal_kind ?? "stop", n.status)
@@ -196,16 +207,27 @@ export function TeamCanvas({
       if (e.conditions?.when === "rejected") {
         // a muted, calm branch to a stop terminal
         className = "rf-edge--reject";
-        markerEnd = { type: MarkerType.ArrowClosed, color: "var(--branch-stroke)", width: 14, height: 14 };
+        markerEnd = {
+          type: MarkerType.ArrowClosed,
+          color: "var(--branch-stroke)",
+          width: 14,
+          height: 14,
+        };
       } else if (e.edge_type === "escalation") {
         // the cap-exhaustion route to the escalation gate
         className = "rf-edge--escalation";
-        markerEnd = { type: MarkerType.ArrowClosed, color: "var(--branch-stroke)", width: 14, height: 14 };
+        markerEnd = {
+          type: MarkerType.ArrowClosed,
+          color: "var(--branch-stroke)",
+          width: 14,
+          height: 14,
+        };
       } else {
         // forward (unconditional, or the `approved` branch) — styled from adjacent statuses
         const s = raw[e.source_node_id];
         const t = raw[e.target_node_id];
-        className = t === "running" ? "rf-edge--flow" : s === "done" && t === "done" ? "rf-edge--done" : "";
+        className =
+          t === "running" ? "rf-edge--flow" : s === "done" && t === "done" ? "rf-edge--done" : "";
       }
       return {
         id: e.id,

@@ -16,7 +16,13 @@ export const WORKFLOW_TERMINAL = new Set([
   "MAX_RECOVERY_ATTEMPTS_EXCEEDED",
 ]);
 // Terminal run statuses (run.status is authoritative): once here, polling stops.
-export const RUN_TERMINAL = new Set(["completed", "failed", "rejected", "cancelled", "over_budget"]);
+export const RUN_TERMINAL = new Set([
+  "completed",
+  "failed",
+  "rejected",
+  "cancelled",
+  "over_budget",
+]);
 // Run terminals that are a muted, concluded "Stopped" (not a red failure) at the
 // node level: a human rejection (rejected), the kill switch (cancelled), or a
 // budget hard-stop (over_budget). Checked before the failed-fold.

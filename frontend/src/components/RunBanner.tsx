@@ -50,7 +50,10 @@ export function RunBanner({
         costs.length > 0 && <Item label="cost" value={`$${totalFromRows.toFixed(4)}`} />
       )}
       {run?.ship_tag && (
-        <Item label="ship" value={run.ship_commit_sha ? run.ship_commit_sha.slice(0, 9) : run.ship_tag} />
+        <Item
+          label="ship"
+          value={run.ship_commit_sha ? run.ship_commit_sha.slice(0, 9) : run.ship_tag}
+        />
       )}
     </div>
   );
