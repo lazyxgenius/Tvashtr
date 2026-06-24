@@ -16,8 +16,8 @@ one cross-cutting policy, not a node:** :func:`apply_budget_hook` runs after eve
 spend-bearing node (a between-steps cap check that opens a ``budget_approval``
 blocker on a breach), plus an 80%-of-cap ``low_nudge`` producer.
 
-Crash-durability (Decision 1, per-iteration): each Engineer iteration is its own
-coarse ``engineer_run_step`` — no checkpointing inside OpenHands' loop. The walk
+Crash-durability (Decision 1, per-iteration): each agent iteration is its own
+coarse ``agent_run_step`` — no checkpointing inside OpenHands' loop. The walk
 replays cleanly because DBOS keys every step's recorded output by
 ``(workflow_id, call-order function_id)``: on resume completed steps replay their
 recorded outputs in call order, so the data-dependent walk re-issues the identical
@@ -94,6 +94,10 @@ def load_graph_step(run_id: str) -> dict:
             "role_name": n.role_name,
             "kind": n.kind,
             "model": n.model,
+            # P1.8a: the node's behavior instruction. ``run_graph`` runs this GENERICALLY (the
+            # completion/agent path appends the idea/PRD/revision context), retiring fixed-function
+            # role dispatch. NULL for gate/terminal nodes (no LLM).
+            "prompt": n.prompt,
             "config": n.config,
         }
         for n in nodes
@@ -126,7 +130,10 @@ def next_node(edges: list[dict], source_id: str, outcome: str | None) -> str | N
     the remaining out-edges: if ``outcome`` is not None and some edge's ``conditions``
     has ``{"when": outcome}`` (a subset match — the loop-back edge also carries a
     ``loop_limit`` key, so we match the ``when`` field, not the whole dict), return
-    that edge's target; else the unconditional edge's target (``conditions is None``);
+    that edge's target; else the CATCH-ALL out-edge's target — an edge with no routing
+    label, i.e. ``conditions is None`` OR a conditions dict with no ``"when"`` key
+    (P1.8a: the reviewer loop-back is now ``{"loop_limit": N}`` with no ``"when"``, so a
+    missing / garbled / unmatched verdict falls through to it and the loop still cycles);
     else ``None`` (no matching out-edge here).
 
     Importable + unit-tested. ``edges`` are the ``load_graph_step`` dicts
@@ -138,7 +145,8 @@ def next_node(edges: list[dict], source_id: str, outcome: str | None) -> str | N
             if conditions is not None and conditions.get("when") == outcome:
                 return edge["target"]
     for edge in out_edges:
-        if edge["conditions"] is None:
+        conditions = edge["conditions"]
+        if conditions is None or "when" not in conditions:
             return edge["target"]
     return None
 
@@ -165,16 +173,36 @@ def loop_limit_for(edges: list[dict], node_id: str, default: int) -> int:
     return default
 
 
-@DBOS.step()
-def pm_step(run_id: str, idea: str, pm_model: str) -> dict:
-    """PM node: a direct, metered gateway completion -> a versioned PRD document."""
-    prompt = (
-        "You are the PM on a software team. Write a concise mini-PRD (3-5 sentences) "
-        "for the feature request below. You MUST restate, verbatim, the exact file path "
-        "and the exact required file contents (each clearly labelled on its own line), "
-        "plus one sentence of context for the engineer.\n\n"
-        f"Feature request:\n{idea}"
+def node_emits_outcome(edges: list[dict], node_id: str) -> bool:
+    """True iff some non-escalation out-edge of ``node_id`` carries a conditional ``"when"`` —
+    i.e. the user wired this node to BRANCH the walk on a routing label (a "reviewer-style" node
+    that produces a verdict). A node with only an unconditional / catch-all out-edge (an
+    "engineer-style" worker) returns False.
+
+    This is the role-agnostic discriminator (P1.8a) that REPLACES the
+    ``config.agent_kind == "reviewer"`` dispatch: a node's role in the loop is a fact about the
+    authored topology, not a hardcoded capability flag. With the current builders the Reviewer
+    (a ``{when: approved}`` out-edge) → True, while the Engineer (only ``→ reviewer``
+    unconditional + the ``→ escalation_gate`` escalation edge) and the 2-node Engineer → False.
+    Pure + importable (no DBOS, no DB) so it stays unit-testable."""
+    return any(
+        e["source"] == node_id
+        and e["edge_type"] != "escalation"
+        and e["conditions"] is not None
+        and "when" in e["conditions"]
+        for e in edges
     )
+
+
+@DBOS.step()
+def pm_step(run_id: str, idea: str, pm_model: str, pm_prompt: str) -> dict:
+    """PM node: a direct, metered gateway completion -> a versioned PRD document.
+
+    P1.8a: the static behavior is the node's ``pm_prompt`` (seeded by the builder, moved off this
+    step); the executor appends the run's idea. Everything else is unchanged — this still writes
+    the versioned PRD document and sets ``Run.pm_document_id`` (the start-node-writes-the-PRD
+    convention stays structural, dispatched by ``current == start_id``, not by role)."""
+    prompt = pm_prompt + f"\n\nFeature request:\n{idea}"
     request = CompletionRequest(
         model=pm_model,
         messages=[{"role": "user", "content": prompt}],
@@ -313,111 +341,21 @@ def delete_vkey_step(run_id: str, key: str | None) -> None:
 
 
 @DBOS.step()
-def engineer_run_step(
-    run_id: str,
-    prd_text: str,
-    workspace: str,
-    eng_model: str,
-    vkey: str | None,
-    iteration: int,
-    reviewer_feedback: str | None,
-) -> dict:
-    """The ONE coarse step wrapping the agent run. No commit / no cost write here.
-
-    ``vkey`` (P1.4b) is the per-run virtual key (or None when the proxy is off); it rides into
-    the agent's LLM as its api_key via ``AgentTask.llm_api_key``. The returned ``status`` may
-    now be ``"over_budget"`` (the proxy cut the agent off mid-call) — passed through unchanged.
-
-    ``iteration``/``reviewer_feedback`` (P1.5a): on a revision round (``iteration > 1`` with
-    feedback) the Reviewer's requested changes are appended to the instruction with a
-    revise-in-place directive — the prior round's work is already in ``workspace`` (set up once
-    before the loop, so the Engineer reworks incrementally). The ``AgentTask`` contract is
-    UNCHANGED: the iteration/feedback ride INSIDE the instruction string, not as new fields."""
-    # Attempt log — intentionally NOT idempotent: one row per execution. A
-    # crash-then-resume re-runs this whole step, yielding a second row with a
-    # different pid (the observable proof the agent step re-executed).
-    with session_scope() as session:
-        session.add(EngineerRunAttempt(run_id=run_id, pid=os.getpid()))
-
-    # Happy-path correctness instruction (DQ3): a relative path keeps the deliverable
-    # in the working dir so it ships. The security justification is dropped — in
-    # docker mode the container, not the prompt, is the boundary; in local mode this
-    # is plain "land it where the ship can find it" (containment is P1.3's job, not
-    # the prompt's).
-    instruction = (
-        "Read the following PRD and create exactly the file it specifies, with exactly "
-        "the specified contents. Write the deliverable into your current working "
-        "directory using a RELATIVE path (the bare filename, e.g. 'greeting.txt') so it "
-        "can be shipped; if the PRD shows a leading '/' or './', treat it as relative to "
-        "your working directory. Do not add any extra files and do not modify anything "
-        "else.\n\n--- PRD ---\n"
-        f"{prd_text}"
-    )
-    # P1.5a revision round: carry the Reviewer's feedback + a revise-in-place directive
-    # so the Engineer reworks the prior round's files (already in the workspace) rather
-    # than starting over. iteration==1 (the first build) is byte-for-byte the old path.
-    if iteration > 1 and reviewer_feedback:
-        instruction += (
-            f"\n\n--- REVISION REQUESTED (round {iteration}) ---\n"
-            "The Reviewer reviewed your previous attempt and requested these changes:\n"
-            f"{reviewer_feedback}\n"
-            "Your prior work is in your current working directory — revise it IN PLACE to "
-            "address this feedback. Do not start over and do not delete unrelated files."
-        )
-    task = AgentTask(
-        instruction=instruction, workspace_dir=workspace, model=eng_model, llm_api_key=vkey
-    )
-    # Select local vs Docker-sandboxed engine from the configured sandbox mode
-    # (P1.3a, DQ4). Default "local" keeps the proven path; "docker" routes through
-    # the containerized adapter. The EngineAdapter contract + AgentRunResult shape
-    # are identical across modes; reap-before-start lives inside the docker adapter.
-    engine_name = (
-        "openhands-docker" if get_settings().agent_sandbox_mode == "docker" else "openhands"
-    )
-    adapter = resolve_adapter(engine_name)  # lazy openhands import happens here
-    result = adapter.run(task, on_event=make_run_event_sink(run_id))
-    return {
-        "status": result.status,
-        "files_changed": result.files_changed,
-        "error": result.error,
-        "prompt_tokens": result.prompt_tokens,
-        "completion_tokens": result.completion_tokens,
-        "total_tokens": result.total_tokens,
-        "cost_usd": result.cost_usd,
-    }
-
-
-@DBOS.step()
-def persist_agent_cost_step(run_id: str, eng_model: str, usage: dict, iteration: int) -> None:
-    """Write one CostRecord for THIS Engineer iteration, idempotent on the per-iteration
-    key ``{run_id}:agent-cost:{iteration}``. The Engineer now runs up to
-    ``max_review_iterations`` times, so the key MUST carry the iteration — a once-per-run
-    key would collide across rounds and under-count the spend. (The 2-node path runs the
-    Engineer once -> a single ``{run_id}:agent-cost:1`` row.)"""
-    record_agent_cost(
-        workflow_id=run_id,
-        idempotency_key=f"{run_id}:agent-cost:{iteration}",
-        model=eng_model,
-        prompt_tokens=usage["prompt_tokens"],
-        completion_tokens=usage["completion_tokens"],
-        total_tokens=usage["total_tokens"],
-        cost_usd=usage["cost_usd"],
-    )
-
-
-@DBOS.step()
-def persist_reviewer_cost_step(
-    run_id: str, reviewer_model: str, usage: dict, iteration: int
+def persist_agent_cost_step(
+    run_id: str, node_id: str, model: str | None, usage: dict, iteration: int
 ) -> None:
-    """Write one CostRecord for THIS Reviewer iteration, idempotent on the per-iteration key
-    ``{run_id}:reviewer-agent-cost:{iteration}`` (P1.5c). Deliberately a DISTINCT namespace from
-    the Engineer's ``{run_id}:agent-cost:{iteration}`` so the Engineer's key stays byte-for-byte
-    and the ``…:agent-cost:%`` checkers (skeleton-crash / loop-run) keep counting only Engineer
-    spend. Only called on a real (non-zero-usage) review — the forced/offline path writes no row."""
+    """Write one CostRecord for THIS agent-node iteration (P1.8a — merges the old engineer +
+    reviewer cost steps into one). Idempotent on the per-node-per-iteration key
+    ``{run_id}:agent-cost:{node_id}:{iteration}``. The ``{node_id}`` prevents the
+    Engineer-iter-1 / Reviewer-iter-1 collision a single ``{run_id}:agent-cost:{iteration}`` key
+    would cause once a real (non-forced) Reviewer ALSO meters; the ``LIKE '{run_id}:agent-cost:%'``
+    prefix checkers keep passing (a longer key still matches the prefix), and the forced Reviewer
+    writes zero usage → no row, so the ``agent-cost:%`` counts stay Engineer-only (skeleton 1,
+    loop-run-forced 2, loop-crash-forced 3 — unchanged)."""
     record_agent_cost(
         workflow_id=run_id,
-        idempotency_key=f"{run_id}:reviewer-agent-cost:{iteration}",
-        model=reviewer_model,
+        idempotency_key=f"{run_id}:agent-cost:{node_id}:{iteration}",
+        model=model,
         prompt_tokens=usage["prompt_tokens"],
         completion_tokens=usage["completion_tokens"],
         total_tokens=usage["total_tokens"],
@@ -425,7 +363,7 @@ def persist_reviewer_cost_step(
     )
 
 
-# Forced-revisions harness flag — read FIRST inside the recorded reviewer step (like
+# Forced-revisions harness flag — read FIRST inside the recorded agent step (like
 # gate_auto_resolution_step reads TVASHTR_AUTO_APPROVE_GATES) so a crash-resume replays the
 # same verdicts regardless of the restarted process's environment. Never set in production. It
 # MUST short-circuit BEFORE any adapter is resolved — that is what keeps loop-run/loop-crash/
@@ -436,36 +374,31 @@ _FORCE_REVISIONS_ENV = "TVASHTR_FORCE_REVISIONS"
 _REVIEW_MAX_REASONS = 2000
 
 
-def _build_review_instruction(prd_text: str, idea: str) -> str:
-    """Build the agent-Reviewer's instruction (pure; unit-tested). Tells the Reviewer agent, in
-    order, to inspect the engineer's build in its working dir, RUN THE TESTS with exactly
-    ``python -B -m unittest``, decide ``approved`` ONLY IF the tests pass AND the build fulfills
-    the original idea + the PRD (else ``changes_requested``), and write the verdict to the bare
-    file ``REVIEW_VERDICT.json`` — reviewing, not editing."""
-    return (
-        "You are the Reviewer on a software team. The engineer's build is in your current "
-        "working directory. Review it — do NOT improve it.\n\n"
-        "Do these steps in order:\n"
-        "1. Inspect the files in your current working directory (the engineer's build).\n"
-        "2. Run the test suite with EXACTLY this command (the -B is required — do not write "
-        "bytecode):\n"
-        "       python -B -m unittest\n"
-        "3. Decide the verdict:\n"
-        '   - "approved" ONLY IF the tests pass AND the deliverable fulfills the ORIGINAL '
-        "IDEA and the PRD below.\n"
-        '   - "changes_requested" otherwise (any test fails, a required behavior or file from '
-        "the idea/PRD is missing, or it otherwise falls short).\n"
-        "4. Write a file named EXACTLY REVIEW_VERDICT.json in your current working directory "
-        "(the bare filename), containing EXACTLY this JSON and nothing else:\n"
-        '       {"verdict": "approved" | "changes_requested", "reasons": "<1-3 short, '
-        'specific, actionable sentences>"}\n\n'
-        "STRICT RULES:\n"
-        "- You are REVIEWING, not editing. Do NOT modify, create, or delete ANY file except "
-        "REVIEW_VERDICT.json.\n"
-        '- Base "approved" on the tests actually passing and the spec actually being met — do '
-        "not approve on assumption.\n\n"
-        f"--- ORIGINAL IDEA ---\n{idea}\n\n--- PRD ---\n{prd_text}"
-    )
+def _forced_review_outcome(iteration: int) -> dict | None:
+    """The forced-revisions harness, factored out of the agent step as a pure + importable helper
+    (P1.8a) so it stays directly unit-testable and the offline workflow tests can drive the loop
+    through the SAME logic the live smokes use. Returns the forced verdict dict when
+    ``TVASHTR_FORCE_REVISIONS=N`` is set — ``changes_requested`` while ``iteration <= N`` else
+    ``approved``, with **zero usage** — else ``None`` (run the real adapter). The caller only
+    consults this for an outcome-emitting node, so a worker never short-circuits. Behavior is
+    byte-for-byte the pre-P1.8a inline harness; only its location changed."""
+    forced = os.environ.get(_FORCE_REVISIONS_ENV, "").strip()
+    if not forced:
+        return None
+    try:
+        forced_n = int(forced)
+    except ValueError:
+        forced_n = 0
+    changes = iteration <= forced_n
+    return {
+        "status": "completed",
+        "outcome": "changes_requested" if changes else "approved",
+        "reasons": f"<forced revision: round {iteration} of {forced_n}>" if changes else None,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cost_usd": 0.0,
+    }
 
 
 def _harvest_verdict(workspace: str) -> dict:
@@ -534,54 +467,74 @@ def _harvest_verdict(workspace: str) -> dict:
 
 
 @DBOS.step()
-def reviewer_agent_run_step(
+def agent_run_step(
     run_id: str,
-    reviewer_model: str,
+    node_prompt: str,
+    model: str | None,
     iteration: int,
-    prd_text: str,
     idea: str,
+    prd_text: str,
     workspace: str,
     vkey: str | None,
+    reviewer_feedback: str | None,
+    emits_outcome: bool,
 ) -> dict:
-    """The agent-Reviewer (replaces the old completion ``reviewer_decide_step``): runs in the
-    sandbox behind the unchanged ``EngineAdapter`` (like the Engineer), tests the build, judges
-    it against the idea + PRD, and emits its verdict as the ``REVIEW_VERDICT.json`` sidecar this
-    step harvests. Recorded, so a crash-resume replays the SAME verdict (the loop's control flow
-    depends on it). Returns ``{"status", "outcome", "reasons", "error"?, **usage}``.
+    """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
+    ``reviewer_agent_run_step``. Runs the node's ``node_prompt`` (its behavior, seeded by the
+    builder) against the sandboxed adapter behind the unchanged ``EngineAdapter``/``AgentTask``
+    contract, with the idea + live PRD (+ a revision block on a rework round) appended UNIFORMLY.
 
-    * **Forced harness** (``TVASHTR_FORCE_REVISIONS=N``, read FIRST): return ``changes_requested``
-      while ``iteration <= N`` else ``approved`` — NO adapter resolution, NO agent run, NO cost
-      (this keeps loop-run/loop-crash/the offline tests LLM-free, and is why ``team_run`` stays
-      openhands-free at import).
-    * **Real mode** (no env): build the review instruction, run the agent in the SAME workspace
-      the Engineer used (so it sees the build — docker seeding pushes it into the container),
-      then harvest the verdict. A non-``completed`` run hands its terminal status up unchanged
-      (symmetric with the Engineer)."""
-    forced = os.environ.get(_FORCE_REVISIONS_ENV, "").strip()
-    if forced:
-        try:
-            forced_n = int(forced)
-        except ValueError:
-            forced_n = 0
-        changes = iteration <= forced_n
-        return {
-            "status": "completed",
-            "outcome": "changes_requested" if changes else "approved",
-            "reasons": f"<forced revision: round {iteration} of {forced_n}>" if changes else None,
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-            "cost_usd": 0.0,
-        }
+    ``emits_outcome`` (from :func:`node_emits_outcome` — a fact about the authored topology, NOT a
+    role flag) decides the only two role-agnostic differences:
+
+    * **Forced harness FIRST** (preserved exactly, via :func:`_forced_review_outcome`): when
+      ``TVASHTR_FORCE_REVISIONS`` is set AND ``emits_outcome`` → return the forced verdict with
+      **zero usage, no adapter resolved, no attempt row**. This keeps loop-run/loop-crash/
+      skeleton-* (and the offline tests) LLM-free and ``team_run`` openhands-free at import. A
+      non-branching worker (``emits_outcome`` False — the Engineer) never short-circuits, so it
+      always runs the real adapter, exactly as before.
+    * **Verdict harvest at the end**: if ``emits_outcome`` → ``_harvest_verdict(workspace)`` →
+      ``(outcome, reasons)``; else ``(None, None)`` (a worker neither harvests nor writes a
+      sidecar; its close label stays ``"built"``).
+
+    ``vkey`` (P1.4b) rides into the agent's LLM as its api_key; the returned ``status`` may be
+    ``"over_budget"`` (the proxy cut the agent off mid-call), passed through unchanged. Returns
+    ``{"status", "outcome", "reasons", "error"?, **usage}``."""
+    if emits_outcome:
+        forced = _forced_review_outcome(iteration)
+        if forced is not None:
+            return forced
+
+    # Attempt log — written ONLY when the real adapter runs (after the forced short-circuit), so
+    # the forced Reviewer adds no row and the crash demo's engineer_run_attempts trigger stays
+    # Engineer-only. Intentionally NOT idempotent: one row per execution, distinct pid on a
+    # crash-then-resume (the observable proof the agent step re-executed).
+    with session_scope() as session:
+        session.add(EngineerRunAttempt(run_id=run_id, pid=os.getpid()))
+
+    # The idea + live PRD are appended to EVERY agent node uniformly; the node's ``prompt`` carries
+    # the role-specific behavior/mechanics (moved off this step into the builder, P1.8a). On a
+    # rework round (``iteration > 1`` with feedback) the Reviewer's requested changes + a
+    # revise-in-place directive follow, so the worker reworks the prior round's files (already in
+    # ``workspace``) rather than starting over. iteration==1 carries no revision block. (The
+    # Engineer now also sees the idea — a benign superset of before; the deliverable is unchanged.)
+    context = f"\n\n--- ORIGINAL IDEA ---\n{idea}\n\n--- PRD ---\n{prd_text}"
+    if iteration > 1 and reviewer_feedback:
+        context += (
+            f"\n\n--- REVISION REQUESTED (round {iteration}) ---\n"
+            "The Reviewer reviewed your previous attempt and requested these changes:\n"
+            f"{reviewer_feedback}\n"
+            "Your prior work is in your current working directory — revise it IN PLACE to "
+            "address this feedback. Do not start over and do not delete unrelated files."
+        )
+    instruction = node_prompt + context
 
     task = AgentTask(
-        instruction=_build_review_instruction(prd_text, idea),
-        workspace_dir=workspace,
-        model=reviewer_model,
-        llm_api_key=vkey,
+        instruction=instruction, workspace_dir=workspace, model=model, llm_api_key=vkey
     )
-    # Same engine selection the Engineer uses (the adapter is engine-neutral — it just runs the
-    # AgentTask's instruction in its workspace; "reviewer" vs "engineer" is not its concern).
+    # Select local vs Docker-sandboxed engine from the configured sandbox mode (P1.3a). The
+    # EngineAdapter contract + AgentRunResult shape are identical across modes; the adapter is
+    # role-neutral — it just runs the AgentTask's instruction in its workspace.
     engine_name = (
         "openhands-docker" if get_settings().agent_sandbox_mode == "docker" else "openhands"
     )
@@ -594,7 +547,7 @@ def reviewer_agent_run_step(
         "cost_usd": result.cost_usd,
     }
     if result.status != "completed":
-        # Hand the terminal status up; the workflow body finalizes (symmetric with the Engineer).
+        # Hand the terminal status up; the workflow body finalizes.
         return {
             "status": result.status,
             "outcome": None,
@@ -602,13 +555,13 @@ def reviewer_agent_run_step(
             "error": result.error,
             **usage,
         }
-    verdict = _harvest_verdict(workspace)
-    return {
-        "status": "completed",
-        "outcome": verdict["outcome"],
-        "reasons": verdict["reasons"],
-        **usage,
-    }
+    if emits_outcome:
+        verdict = _harvest_verdict(workspace)
+        label, reasons = verdict["outcome"], verdict["reasons"]
+    else:
+        # A non-branching worker neither harvests nor produces a sidecar.
+        label, reasons = None, None
+    return {"status": "completed", "outcome": label, "reasons": reasons, **usage}
 
 
 @DBOS.step()
@@ -745,8 +698,9 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             if current == start_id:
                 # The PM/author. Structural dispatch by start-node identity (NOT a role_name
                 # check); a richer ``completion_kind`` discriminator is the P1.8 Supervisor
-                # generalization.
-                pm = pm_step(run_id, idea, node["model"])
+                # generalization. P1.8a: the PM's behavior rides ``node["prompt"]`` (the executor
+                # appends the idea), retiring the hardcoded PM instruction.
+                pm = pm_step(run_id, idea, node["model"], node["prompt"])
                 pm_document_id = pm["document_id"]
                 close_invocation_step(run_id, current, n, "done", "prd_written")
                 if apply_budget_hook(run_id, node_id=current, iteration=n):
@@ -784,97 +738,75 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     current = esc
                     continue
             if workspace is None:
-                # Set up the workspace ONCE, at the first agent node — the Engineer reworks the
-                # prior round's files in place across iterations (DBOS step-replay won't recreate
-                # it on resume). The Reviewer reuses this SAME workspace, so it sees the build.
+                # Set up the workspace ONCE, at the first agent node — a worker reworks the prior
+                # round's files in place across iterations (DBOS step-replay won't recreate it on
+                # resume). A reviewer-style node reuses this SAME workspace, so it sees the build.
                 workspace = engineer_setup_step(run_id)
             open_invocation_step(run_id, current, n)
             # Per-iteration virtual key: each mint reflects the THEN-current remaining budget,
             # so the proxy enforces the run cap across the whole loop (P1.4b composes).
             vkey = mint_vkey_step(run_id)
             # P1.7a: re-source the PRD LIVE at every agent-node entry (every iteration) via a
-            # recorded step, so a human edit to the PRD propagates to the Engineer/Reviewer on
-            # THIS read (the document, not the PM's once-captured snapshot, is the source of
-            # truth). The ``idea`` stays the immutable anchor — still threaded as a snapshot;
-            # only the PRD becomes live.
+            # recorded step, so a human edit to the PRD propagates to the agent on THIS read (the
+            # document, not the PM's once-captured snapshot, is the source of truth). The ``idea``
+            # stays the immutable anchor — still threaded as a snapshot; only the PRD becomes live.
             live_prd = read_latest_prd_step(run_id)
-            # Dispatch on the node's ``agent_kind`` (``"engineer"`` / ``"reviewer"`` / ``None`` ->
-            # engineer). The two agents share the workspace/open/mint scaffold but differ in the
-            # run-step, the cost key, and the success handling — kept as two explicit paths
-            # (correctness + readability over DRY; the Engineer path's logic is unchanged).
-            agent_kind = (node.get("config") or {}).get("agent_kind")
-            if agent_kind == "reviewer":
-                verdict = reviewer_agent_run_step(
-                    run_id, node["model"], n, live_prd, idea, workspace, vkey
+            # P1.8a: ONE generic agent path — no ``config.agent_kind`` dispatch. Whether this node
+            # branches the walk on a routing label is a fact about the AUTHORED TOPOLOGY
+            # (:func:`node_emits_outcome` — does it have a conditional out-edge?), not a hardcoded
+            # role. ``agent_run_step`` runs ``node["prompt"]`` generically; it harvests a verdict
+            # iff ``emits`` (else outcome is None → the close label stays ``"built"``).
+            emits = node_emits_outcome(edges, current)
+            result = agent_run_step(
+                run_id,
+                node["prompt"],
+                node["model"],
+                n,
+                idea,
+                live_prd,
+                workspace,
+                vkey,
+                reviewer_feedback,
+                emits,
+            )
+            delete_vkey_step(run_id, vkey)
+
+            if result["status"] == "over_budget":
+                # The proxy cut the agent off mid-call. Record whatever partial spend the cut-off
+                # conversation carried (best-effort, idempotent on the per-node key), then stop.
+                if result["total_tokens"] or result["cost_usd"]:
+                    persist_agent_cost_step(run_id, current, node["model"], result, n)
+                close_invocation_step(run_id, current, n, "stopped", "over_budget")
+                return _finalize_over_budget(run_id, pm_document_id)
+            if result["status"] != "completed":
+                close_invocation_step(run_id, current, n, "failed", None)
+                mark_run_failed_step(run_id)
+                DBOS.logger.error(
+                    f"run_team agent node failed run_id={run_id}: {result.get('error')}"
                 )
-                delete_vkey_step(run_id, vkey)
+                return {
+                    "run_id": run_id,
+                    "status": "failed",
+                    "document_id": pm_document_id,
+                    "error": result.get("error"),
+                }
 
-                if verdict["status"] == "over_budget":
-                    # Proxy cut the agent off mid-call. Record partial spend (best-effort), stop.
-                    if verdict["total_tokens"] or verdict["cost_usd"]:
-                        persist_reviewer_cost_step(run_id, node["model"], verdict, n)
-                    close_invocation_step(run_id, current, n, "stopped", "over_budget")
-                    return _finalize_over_budget(run_id, pm_document_id)
-                if verdict["status"] != "completed":
-                    close_invocation_step(run_id, current, n, "failed", None)
-                    mark_run_failed_step(run_id)
-                    DBOS.logger.error(
-                        f"run_team reviewer failed run_id={run_id}: {verdict.get('error')}"
-                    )
-                    return {
-                        "run_id": run_id,
-                        "status": "failed",
-                        "document_id": pm_document_id,
-                        "error": verdict.get("error"),
-                    }
-
-                # completed: meter the reviewer ONLY if it actually spent (forced mode is 0 -> no
-                # cost row, so the ``:agent-cost:%`` counts stay engineer-only), then route on the
-                # verdict (its ``changes_requested`` follows the loop-back; ``approved`` -> ship).
-                if verdict["total_tokens"] or verdict["cost_usd"]:
-                    persist_reviewer_cost_step(run_id, node["model"], verdict, n)
-                close_invocation_step(
-                    run_id,
-                    current,
-                    n,
-                    "done",
-                    verdict["outcome"],
-                    outcome_detail=verdict["reasons"],
-                )
-                reviewer_feedback = verdict["reasons"]
-                if apply_budget_hook(run_id, node_id=current, iteration=n):
-                    return _finalize_over_budget(run_id, pm_document_id)
-                current = next_node(edges, current, verdict["outcome"])
-            else:
-                # The Engineer path — logic unchanged from P1.5b.
-                engineer = engineer_run_step(
-                    run_id, live_prd, workspace, node["model"], vkey, n, reviewer_feedback
-                )
-                delete_vkey_step(run_id, vkey)
-
-                if engineer["status"] == "over_budget":
-                    # The proxy cut the agent off mid-call. Record whatever partial spend the
-                    # cut-off conversation carried (best-effort, idempotent), then stop.
-                    if engineer["total_tokens"] or engineer["cost_usd"]:
-                        persist_agent_cost_step(run_id, node["model"], engineer, n)
-                    close_invocation_step(run_id, current, n, "stopped", "over_budget")
-                    return _finalize_over_budget(run_id, pm_document_id)
-                if engineer["status"] != "completed":
-                    close_invocation_step(run_id, current, n, "failed", None)
-                    mark_run_failed_step(run_id)
-                    DBOS.logger.error(f"run_team failed run_id={run_id}: {engineer.get('error')}")
-                    return {
-                        "run_id": run_id,
-                        "status": "failed",
-                        "document_id": pm_document_id,
-                        "error": engineer.get("error"),
-                    }
-
-                persist_agent_cost_step(run_id, node["model"], engineer, n)
-                close_invocation_step(run_id, current, n, "done", "built")
-                if apply_budget_hook(run_id, node_id=current, iteration=n):
-                    return _finalize_over_budget(run_id, pm_document_id)
-                current = next_node(edges, current, outcome=None)
+            # Meter ONLY if the node actually spent — a forced/zero-usage reviewer writes no row,
+            # so the ``:agent-cost:%`` counts stay engineer-only. The per-node key
+            # (``…:agent-cost:{node_id}:{iteration}``) keeps the engineer's and a real reviewer's
+            # iter-1 rows from colliding while preserving the prefix the checkers count.
+            if result["total_tokens"] or result["cost_usd"]:
+                persist_agent_cost_step(run_id, current, node["model"], result, n)
+            label = result["outcome"]  # None for a non-branching (engineer-style) node
+            close_invocation_step(
+                run_id, current, n, "done", label or "built", outcome_detail=result["reasons"]
+            )
+            # Thread the verdict's reasons into the next agent's revision context (None for a
+            # worker → the next round carries no revision block).
+            reviewer_feedback = result["reasons"]
+            if apply_budget_hook(run_id, node_id=current, iteration=n):
+                return _finalize_over_budget(run_id, pm_document_id)
+            current = next_node(edges, current, label)
 
         elif kind == "gate":
             # A human-approval checkpoint node: pause on the durable recv, then route on the
