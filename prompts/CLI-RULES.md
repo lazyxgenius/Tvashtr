@@ -27,7 +27,7 @@ with existing patterns and record it in `STATE.md` (see §6).
   Type-check: `cd frontend && npx tsc --noEmit`. Build: `cd frontend && npm run build`.
 - **LLM routing:** LiteLLM proxy (LITELLM_PROXY_ENABLED=0 currently) + OpenRouter (default provider).
   Agent execution: OpenHands SDK.
-- **Migrations:** `cd backend && uv run alembic upgrade head`. Current head: `0009`.
+- **Migrations:** `cd backend && uv run alembic upgrade head`. Current head: `0011`.
 - **Lint:** `cd backend && uv run ruff check . && uv run ruff format --check .`
 - **Format fix:** `cd backend && uv run ruff format . && uv run ruff check --fix .`
 - **DB up:** `make db-up`
@@ -35,9 +35,12 @@ with existing patterns and record it in `STATE.md` (see §6).
 
 **Available credentials (already in `.env`):**
 - `OPENROUTER_API_KEY` — exhausted credits (402 on high-token calls like OpenHands)
-- `GEMINI_API_KEY` — present and available; **use this for the agent LLM** (Google AI Studio,
-  strong tool-use, generous free tier). This is the resolved answer to the D9 LLM-provider
-  decision from HANDOVER.md.
+- `GEMINI_API_KEY` — present, but **not** the agent model: its free tier hit a 20/day cap +
+  503 throttling under OpenHands' ~38k-token loop (auth was fine — quota/throttle was the wall).
+- `NVIDIA_BUILD_API_KEY` — the **proven** agent path. The OpenHands agent model is
+  `nvidia_nim/meta/llama-3.3-70b-instruct`, set via `.env` `TVASHTR_AGENT_MODEL` (same NIM
+  provider/key; ~1.4s/call; clean OpenAI tool_calls + generous limits). This is the resolved
+  D9 LLM-provider answer (supersedes the earlier Gemini note).
 - `OPENAI_API_KEY` — present; use if Gemini has issues.
 - `LITELLM_MASTER_KEY` — local dev key for the proxy.
 
@@ -45,7 +48,7 @@ with existing patterns and record it in `STATE.md` (see §6).
 ```
 make db-up              # Postgres + LiteLLM proxy (docker compose)
 make migrate            # Alembic head
-make test               # full offline suite (148 tests currently)
+make test               # full offline suite (177 tests currently)
 make lint               # ruff check + format check
 make fmt                # ruff autofix + format
 make loop-run           # live 3-node review loop, LOCAL sandbox + forced revisions
@@ -154,22 +157,25 @@ leftover PENDING runs from prior sessions are resurrecting and holding non-daemo
 threads. Fix: `docker compose down -v && make db-up && make migrate` then re-run. This
 is a known issue (§15 deferred), not a bug in your changes.
 
-### 4.6 LLM routing for agent runs
-The `agent_llm_routing` function in `backend/tvashtr/config.py` currently hardcodes
-`api_key=os.environ.get("OPENROUTER_API_KEY")`. For the Gemini path:
-- The LiteLLM model string for Google AI Studio is `gemini/gemini-1.5-flash` or
-  `gemini/gemini-2.0-flash` (check what's in the LiteLLM docs for your key format).
-- Set `TVASHTR_AGENT_MODEL=gemini/gemini-2.0-flash` in `.env` (or the correct slug;
-  verify against LiteLLM docs).
-- Resolve `api_key` from `GEMINI_API_KEY` when the model string starts with `gemini/`.
-- **Key-format caveat:** the `GEMINI_API_KEY` in `.env` starts with `AQ.` — standard
-  Google AI Studio keys start with `AIza`. The `AQ.` prefix is likely a short-lived
-  OAuth / Vertex token, NOT an AI Studio key. If `make agent-smoke` fails with a 401/auth
-  error, the LiteLLM `gemini/` provider (AI Studio) is the wrong route — it may need the
-  `vertex_ai/` provider with project + location, or a freshly-minted `AIza...` AI Studio
-  key. Do NOT burn 3 fix attempts here; if auth fails on the key itself, this is a
-  `NEEDS_HUMAN` (a valid credential the operator must supply), not a code bug.
-- Test with `make agent-smoke` before anything else.
+### 4.6 LLM routing for agent runs (RESOLVED — NIM is the proven agent path)
+`agent_llm_routing` in `backend/tvashtr/config.py` already resolves the agent's api_key
+per provider (the D9 provider-agnostic routing landed Tvashtr-18): `gemini/`→`GEMINI_API_KEY`,
+`groq/`→`GROQ_CLOUD_API_KEY|GROQ_API_KEY`, `nvidia_nim/`→`NVIDIA_BUILD_API_KEY|NVIDIA_NIM_API_KEY`,
+else `OPENROUTER_API_KEY`. So switching providers is a one-line `.env` `TVASHTR_AGENT_MODEL` swap.
+- **Proven agent model:** `nvidia_nim/meta/llama-3.3-70b-instruct` (NIM, `NVIDIA_BUILD_API_KEY`
+  in `.env`; ~1.4s/call; clean OpenAI tool_calls, large context, generous limits — it ships the
+  live loop). Use this for any live agent target.
+- The free tiers explored and rejected were **quota/throttle**-limited, NOT auth-broken: Gemini
+  free (20/day + 503s) and Groq free (TPM 6k–12k vs the loop's ~38k-token requests). `agent-smoke`
+  authenticated fine on each — the wall was rate limits, not the key. (This corrects the earlier
+  "the `GEMINI_API_KEY` `AQ.` prefix won't authenticate" caveat, which was wrong.)
+- `nvidia_nim/qwen/qwen3-next-80b-a3b-instruct` is PARKED — an intermittent ~40%
+  `ConversationRunError: ... TextContent is not JSON serializable` (a slow-NVCF-serverless
+  response-shape/serialization flake in the OpenHands/litellm path), NOT auth/quota; needs an
+  SDK fix, not a key change.
+- A genuinely-dead credential the operator must replace is still `NEEDS_HUMAN`; a rate-limited
+  free tier is not — switch `TVASHTR_AGENT_MODEL` to the NIM slug and proceed.
+- Test with `make agent-smoke` before any live agent run.
 
 ---
 
