@@ -20,6 +20,54 @@ from tvashtr.models import AgentNode, Edge, TeamGraph
 # default; same single OPENROUTER_API_KEY, different slug (matches agent-smoke).
 DEFAULT_ENGINEER_MODEL = "openrouter/openai/gpt-4o-mini"
 
+# P1.8a: the per-node behavior text, seeded onto ``AgentNode.prompt`` and run GENERICALLY by the
+# executor (which appends the run's idea / live PRD / revision context). This is the static
+# role behavior MOVED off ``team_run.py`` — the executor no longer hardcodes any of it, and a
+# node's role in the loop is decided by the authored topology (its out-edges), not these strings.
+# Kept byte-faithful to the pre-P1.8a instructions (minus the idea/PRD tails the executor appends):
+# combined with the executor's append, the PM and Reviewer instructions are identical to before;
+# the Engineer additionally sees the ORIGINAL IDEA (a benign superset — the deliverable is the
+# same). The Reviewer text MUST keep the ``python -B -m unittest`` command, the
+# ``REVIEW_VERDICT.json`` sidecar name, and the ``approved``/``changes_requested`` label
+# vocabulary verbatim — ``_harvest_verdict``, the §14.1 view, the A/B view, and the smoke
+# assertions all depend on them.
+PM_PROMPT = (
+    "You are the PM on a software team. Write a concise mini-PRD (3-5 sentences) "
+    "for the feature request below. You MUST restate, verbatim, the exact file path "
+    "and the exact required file contents (each clearly labelled on its own line), "
+    "plus one sentence of context for the engineer."
+)
+ENGINEER_PROMPT = (
+    "Read the PRD below and create exactly the file it specifies, with exactly the "
+    "specified contents. Write the deliverable into your current working directory using "
+    "a RELATIVE path (the bare filename, e.g. 'greeting.txt') so it can be shipped; if the "
+    "PRD shows a leading '/' or './', treat it as relative to your working directory. Do not "
+    "add any extra files and do not modify anything else."
+)
+REVIEWER_PROMPT = (
+    "You are the Reviewer on a software team. The engineer's build is in your current "
+    "working directory. Review it — do NOT improve it.\n\n"
+    "Do these steps in order:\n"
+    "1. Inspect the files in your current working directory (the engineer's build).\n"
+    "2. Run the test suite with EXACTLY this command (the -B is required — do not write "
+    "bytecode):\n"
+    "       python -B -m unittest\n"
+    "3. Decide the verdict:\n"
+    '   - "approved" ONLY IF the tests pass AND the deliverable fulfills the ORIGINAL '
+    "IDEA and the PRD below.\n"
+    '   - "changes_requested" otherwise (any test fails, a required behavior or file from '
+    "the idea/PRD is missing, or it otherwise falls short).\n"
+    "4. Write a file named EXACTLY REVIEW_VERDICT.json in your current working directory "
+    "(the bare filename), containing EXACTLY this JSON and nothing else:\n"
+    '       {"verdict": "approved" | "changes_requested", "reasons": "<1-3 short, '
+    'specific, actionable sentences>"}\n\n'
+    "STRICT RULES:\n"
+    "- You are REVIEWING, not editing. Do NOT modify, create, or delete ANY file except "
+    "REVIEW_VERDICT.json.\n"
+    '- Base "approved" on the tests actually passing and the spec actually being met — do '
+    "not approve on assumption."
+)
+
 # The PRD-approval gate node's config — identical in both teams (the human-approval
 # checkpoint the walk pauses at before the Engineer builds).
 _PRD_GATE_CONFIG = {
@@ -64,6 +112,7 @@ def build_two_node_team(name: str = "PM -> Engineer") -> str:
             kind="completion",
             model=settings.default_model,
             engine=None,
+            prompt=PM_PROMPT,
             position={"x": 0, "y": 0},
         )
         prd_gate = AgentNode(
@@ -81,6 +130,7 @@ def build_two_node_team(name: str = "PM -> Engineer") -> str:
             kind="agent",
             model=engineer_model(),
             engine="openhands",
+            prompt=ENGINEER_PROMPT,
             position={"x": 520, "y": 0},
         )
         ship = AgentNode(
@@ -164,6 +214,7 @@ def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
             kind="completion",
             model=settings.default_model,
             engine=None,
+            prompt=PM_PROMPT,
             position={"x": 0, "y": 0},
         )
         prd_gate = AgentNode(
@@ -181,22 +232,27 @@ def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
             kind="agent",
             model=engineer_model(),
             engine="openhands",
+            prompt=ENGINEER_PROMPT,
             position={"x": 520, "y": 0},
-            # Self-documenting dispatch discriminator (P1.5c). The executor treats
-            # ``"engineer"`` and ``None`` identically, so behavior is unchanged — this
-            # only makes the agent branch's intent explicit alongside the reviewer.
+            # P1.8a: the executor no longer reads ``agent_kind`` — a node's loop role is derived
+            # from its out-edges (:func:`node_emits_outcome`). ``agent_kind`` is LEFT as-is (the FE
+            # may still read ``config``); removing it is a deferred P1.8b cleanup. The
+            # behavior the executor runs now comes from ``prompt`` (ENGINEER_PROMPT) above.
             config={"agent_kind": "engineer"},
         )
         reviewer = AgentNode(
             team_graph_id=graph.id,
             role_name="reviewer",
-            # P1.5c: the Reviewer is now a full agent — it runs the deliverable's tests in
-            # the sandbox (behind the unchanged EngineAdapter, like the Engineer) and judges
-            # the build against the idea + PRD, emitting REVIEW_VERDICT.json the Control
-            # Plane harvests. The executor dispatches on ``config.agent_kind``.
+            # P1.5c: the Reviewer is a full agent — it runs the deliverable's tests in the sandbox
+            # (behind the unchanged EngineAdapter, like the Engineer) and judges the build against
+            # the idea + PRD, emitting REVIEW_VERDICT.json the Control Plane harvests. P1.8a: the
+            # executor runs its ``prompt`` (REVIEWER_PROMPT) generically and treats it as an
+            # outcome-emitting node because it has a conditional out-edge (``{when: approved}``) —
+            # NOT because of ``agent_kind`` (left as-is for the FE; the executor ignores it).
             kind="agent",
             engine="openhands",
             model=reviewer_model(),
+            prompt=REVIEWER_PROMPT,
             position={"x": 780, "y": 0},
             config={"agent_kind": "reviewer"},
         )
@@ -274,13 +330,18 @@ def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
                     edge_type="review",
                     conditions=None,
                 ),
-                # Reviewer -> Engineer: the loop-back, carrying the cap as loop_limit.
+                # Reviewer -> Engineer: the loop-back, carrying the cap as loop_limit. P1.8a: NO
+                # ``"when"`` — combined with ``next_node``'s extended fallthrough this is the
+                # CATCH-ALL out of the Reviewer (``Reviewer -> ship {when: approved}`` fires on
+                # approve; EVERYTHING ELSE — changes_requested, or a missing/garbled verdict —
+                # falls through here and the loop cycles). ``loop_limit_for`` still finds it
+                # (it matches on the ``loop_limit`` key, "when"-agnostic).
                 Edge(
                     team_graph_id=graph.id,
                     source_node_id=reviewer.id,
                     target_node_id=engineer.id,
                     edge_type="review",
-                    conditions={"when": "changes_requested", "loop_limit": max_iters},
+                    conditions={"loop_limit": max_iters},
                 ),
                 # Reviewer -> ship (approved).
                 Edge(
