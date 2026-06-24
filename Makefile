@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -52,6 +52,12 @@ frontend: ## Run the Vite dev server
 test: ## Run backend tests (requires db-up + migrate first)
 	cd backend && uv run pytest
 
+test-frontend: ## Run the frontend vitest suite (jsdom; no DB — kept separate from `make test`, which needs Postgres)
+	cd frontend && npm test
+
+build-frontend: ## Frontend build gate: tsc --noEmit (strict types) + vite build
+	cd frontend && npm run build
+
 smoke: ## Live gateway smoke — one real LLM call (needs OPENROUTER_API_KEY; skips cleanly otherwise)
 	cd backend && uv run python ../scripts/smoke_gateway.py
 
@@ -82,7 +88,7 @@ seeding-smoke: ## Prove docker-mode loop seeding (P1.5c, NO LLM): push the host 
 loop-run-docker: ## Live 3-node review-loop run, DOCKER sandbox + forced revisions: the Engineer<->Reviewer cycle ships once on the containerized substrate (iter-2 seeded from the host). Needs key + Docker + agent-server image; operator-run (P1.5c)
 	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FORCE_REVISIONS=1 uv run python ../scripts/loop_run.py
 
-loop-feature-docker: ## P1.5c CAPSTONE: the REAL stdlib task-list feature, DOCKER sandbox, REAL Engineer build + REAL agent-Reviewer (runs the build's unittest suite, emits REVIEW_VERDICT.json, Control Plane harvests it) — ships on green or cycles on red. Uses the Gemini agent model from .env (TVASHTR_AGENT_MODEL). Needs the Gemini key + Docker + agent-server image; operator-run.
+loop-feature-docker: ## P1.5c CAPSTONE: the REAL stdlib task-list feature, DOCKER sandbox, REAL Engineer build + REAL agent-Reviewer (runs the build's unittest suite, emits REVIEW_VERDICT.json, Control Plane harvests it) — ships on green or cycles on red. Uses the NIM agent model from .env (TVASHTR_AGENT_MODEL=nvidia_nim/meta/llama-3.3-70b-instruct). Needs NVIDIA_BUILD_API_KEY + Docker + agent-server image; operator-run.
 	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FEATURE_RUN=1 TVASHTR_AGENT_MAX_ITERATIONS=40 uv run python ../scripts/loop_run.py
 
 skeleton-crash-docker: ## Prove crash-resume OVER THE CONTAINER: kill -9 mid-run -> orphan reaped by the boot sweep -> fresh container on a new ephemeral port -> ships exactly once (needs key + Docker + agent-server image; operator-run, P1.3b)
@@ -109,8 +115,12 @@ budget-demo: ## Live budget cap demo: tiny per-run cap -> breach -> auto-approve
 proxy-budget-demo: ## Live P1.4b mid-loop cutoff: proxy ON + docker + tiny cap -> per-run virtual key -> proxy errors mid-call -> over_budget, no ship, no budget_approval task (needs key + LITELLM_MASTER_KEY + Docker + the proxy up; operator-run)
 	./scripts/proxy_budget_demo.sh
 
-lint: ## ruff check + format check
-	cd backend && uv run ruff check . && uv run ruff format --check .
+lint: ## Whole-repo lint gate: backend+scripts ruff (check + format-check) + frontend eslint (--max-warnings 0) + prettier --check. No DB needed.
+	cd backend && uv run ruff check . ../scripts && uv run ruff format --check . ../scripts
+	cd frontend && npm run lint
+	cd frontend && npm run format:check
 
-fmt: ## ruff autofix + format
-	cd backend && uv run ruff format . && uv run ruff check --fix .
+fmt: ## Autofix twin of lint: backend+scripts ruff format+fix + frontend eslint --fix + prettier --write
+	cd backend && uv run ruff format . ../scripts && uv run ruff check --fix . ../scripts
+	cd frontend && npm run lint:fix
+	cd frontend && npm run format
