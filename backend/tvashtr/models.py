@@ -174,6 +174,12 @@ class AgentNode(Base):
     role_name: Mapped[str] = mapped_column(Text, nullable=False)
     # "completion" | "agent" | "gate" | "terminal" (P1.5b grew the vocabulary).
     kind: Mapped[str] = mapped_column(Text, nullable=False)
+    # The node's behavior instruction (P1.8a, migration ``0012``): the static role text the
+    # executor runs GENERICALLY (the executor appends the idea/PRD/revision context at run time).
+    # Set for completion/agent nodes by the builders; NULL for gate/terminal nodes (no LLM) and on
+    # any pre-0012 row. This RETIRES fixed-function role dispatch — ``run_graph`` runs
+    # ``node.prompt`` instead of branching on ``role_name``/``config.agent_kind``.
+    prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     # NULL for gate/terminal nodes (no LLM/engine); set for completion/agent nodes (P1.5b).
     model: Mapped[str | None] = mapped_column(Text, nullable=True)
     engine: Mapped[str | None] = mapped_column(Text, nullable=True)  # "openhands" | NULL
