@@ -1,6 +1,7 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
   ClipboardCheck,
+  DraftingCompass,
   type LucideIcon,
   OctagonX,
   PackageCheck,
@@ -29,22 +30,31 @@ export type AgentNodeData = {
 
 const ROLE_TITLE: Record<string, string> = {
   pm: "Product manager",
+  architect: "Architect",
   engineer: "Engineer",
   reviewer: "Reviewer",
 };
 const ROLE_BLURB: Record<string, string> = {
   pm: "Drafts the spec",
+  architect: "Adds the technical design",
   engineer: "Writes & ships it",
   reviewer: "Checks the work against the spec",
 };
 const ROLE_ICON: Record<string, LucideIcon> = {
   pm: PenLine,
+  architect: DraftingCompass,
   engineer: Terminal,
   reviewer: ClipboardCheck,
 };
 
 function prettyEngine(engine: string): string {
   return engine === "openhands" ? "OpenHands" : engine;
+}
+
+// P1.8c: a node's capability rides its `kind` — `completion` is a Thinker (a direct LLM call),
+// `agent` is a Worker (a sandboxed engine run). Shown on the card so a capability flip RE-LABELS it.
+function capabilityLabel(kind: string): string {
+  return kind === "completion" ? "Thinker" : "Worker";
 }
 
 /** One handle scheme for EVERY node kind: a source + a target on all four sides, so the
@@ -82,7 +92,11 @@ function AgentCard({ data: d }: { data: AgentNodeData }) {
   const Icon = ROLE_ICON[d.role_name] ?? Terminal;
   const title = ROLE_TITLE[d.role_name] ?? d.role_name;
   const blurb = ROLE_BLURB[d.role_name] ?? d.kind;
-  const meta = d.engine ? `${blurb} · ${prettyEngine(d.engine)}` : blurb;
+  // The capability (Thinker/Worker) labels the node, alongside the engine (workers carry it). A
+  // capability flip changes `d.kind`, which re-labels the card here.
+  const metaParts = [blurb, capabilityLabel(d.kind)];
+  if (d.engine) metaParts.push(prettyEngine(d.engine));
+  const meta = metaParts.join(" · ");
 
   return (
     <div className={`rf-node rf-node--${d.status}`}>

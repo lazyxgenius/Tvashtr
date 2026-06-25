@@ -348,6 +348,14 @@ export default function App() {
   }, [teamGraph]);
 
   const selectedTeamNode = teamGraph?.nodes.find((n) => n.role_name === selectedRole) ?? null;
+  // P1.8c: the team's start node is the one NOT targeted by any edge (same rule as the backend).
+  // The panel locks its capability toggle to "thinker" (it writes the spec the rest of the team reads).
+  const startNodeId = teamGraph
+    ? (() => {
+        const targets = new Set(teamGraph.edges.map((e) => e.target_node_id));
+        return teamGraph.nodes.find((n) => !targets.has(n.id))?.id ?? null;
+      })()
+    : null;
 
   return (
     <>
@@ -478,6 +486,7 @@ export default function App() {
                     key={selectedRole}
                     teamId={currentTeamId}
                     node={selectedTeamNode}
+                    isStartNode={selectedTeamNode?.id === startNodeId}
                     onSaved={() => loadTeam(currentTeamId)}
                     onClose={() => setSelectedRole(null)}
                   />

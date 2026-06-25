@@ -222,6 +222,11 @@ body,
   outline: none;
   box-shadow: var(--shadow-focus);
 }
+/* Locked segmented control (e.g. the start node's capability is pinned to "thinker"). */
+.tv-seg__btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
 
 /* ============================================================
    Tasks-for-Human cards (.tv-task) — reused by the left-docked

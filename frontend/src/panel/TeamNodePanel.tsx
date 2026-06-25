@@ -1,14 +1,23 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 
-import { MODEL_PRESETS, type TeamGraphNode, updateTeamNode } from "../lib/api";
+import { type Capability, MODEL_PRESETS, type TeamGraphNode, updateTeamNode } from "../lib/api";
 
 // Friendly titles for the seeded template roles; any other role falls back to its raw name.
 const ROLE_TITLES: Record<string, string> = {
   pm: "Product manager",
+  architect: "Architect",
   engineer: "Engineer",
   reviewer: "Reviewer",
 };
+
+// A node's capability rides the `kind` column: a `completion` node is a thinker, an `agent` is a
+// worker. (Gate/terminal nodes never reach this panel — the canvas only opens it for agent/completion.)
+const capabilityOf = (node: TeamGraphNode | null): Capability =>
+  node?.kind === "completion" ? "thinker" : "worker";
+
+const START_LOCK_TOOLTIP =
+  "The first node scopes the work — it writes the spec the rest of the team reads.";
 
 /**
  * The team-authoring editor (P1.8b): the right-hand panel shown when an **agent** node
@@ -27,31 +36,48 @@ const ROLE_TITLES: Record<string, string> = {
 export function TeamNodePanel({
   teamId,
   node,
+  isStartNode,
   onSaved,
   onClose,
 }: {
   teamId: string;
   node: TeamGraphNode | null;
+  isStartNode: boolean;
   onSaved: () => void | Promise<void>;
   onClose: () => void;
 }) {
   const [prompt, setPrompt] = useState(node?.prompt ?? "");
   const [model, setModel] = useState(node?.model ?? "");
+  // P1.8c: the node's capability (thinker = completion / worker = agent) is now authorable. Seed it
+  // from the node's kind; reset-on-select is the parent `key={selectedRole}` remount.
+  const initialCapability = capabilityOf(node);
+  const [capability, setCapability] = useState<Capability>(initialCapability);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const title = node ? (ROLE_TITLES[node.role_name] ?? node.role_name) : "Node";
 
-  const dirty = node !== null && (prompt !== (node.prompt ?? "") || model !== (node.model ?? ""));
+  // Flipping the capability alone enables Save (it's an authorable field like prompt/model).
+  const dirty =
+    node !== null &&
+    (prompt !== (node.prompt ?? "") ||
+      model !== (node.model ?? "") ||
+      capability !== initialCapability);
   const canSave = dirty && !saving && prompt.trim().length > 0 && model.trim().length > 0;
+
+  const pickCapability = (next: Capability) => {
+    if (isStartNode) return; // the start node is locked to "thinker" (the backend 409 is the real guard)
+    setCapability(next);
+    setSaved(false);
+  };
 
   const handleSave = async () => {
     if (!node || !canSave) return;
     setSaving(true);
     setSaveError(false);
     try {
-      await updateTeamNode(teamId, node.id, prompt, model);
+      await updateTeamNode(teamId, node.id, prompt, model, capability);
       setSaved(true);
       await onSaved();
     } catch {
@@ -88,6 +114,44 @@ export function TeamNodePanel({
           </div>
         ) : (
           <div className="tv-scroll tv-node-edit">
+            <div className="tv-field">
+              <span className="tv-field__label">Capability</span>
+              <div
+                className="tv-seg"
+                role="group"
+                aria-label="Capability"
+                title={isStartNode ? START_LOCK_TOOLTIP : undefined}
+              >
+                <button
+                  type="button"
+                  aria-pressed={capability === "thinker"}
+                  disabled={isStartNode || saving}
+                  className={`tv-seg__btn${capability === "thinker" ? " tv-seg__btn--active" : ""}`}
+                  onClick={() => pickCapability("thinker")}
+                  title={isStartNode ? START_LOCK_TOOLTIP : undefined}
+                >
+                  Thinker
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={capability === "worker"}
+                  disabled={isStartNode || saving}
+                  className={`tv-seg__btn${capability === "worker" ? " tv-seg__btn--active" : ""}`}
+                  onClick={() => pickCapability("worker")}
+                  title={isStartNode ? START_LOCK_TOOLTIP : undefined}
+                >
+                  Worker
+                </button>
+              </div>
+              <span className="tv-field__hint">
+                {isStartNode
+                  ? START_LOCK_TOOLTIP
+                  : capability === "thinker"
+                    ? "Thinker — one direct LLM call; writes the shared spec."
+                    : "Worker — runs in a sandbox; can read & write files."}
+              </span>
+            </div>
+
             <label className="tv-field">
               <span className="tv-field__label">Prompt</span>
               <span className="tv-field__hint">

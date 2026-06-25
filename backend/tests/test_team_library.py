@@ -99,19 +99,24 @@ def _stub_launch(monkeypatch):
 # --- Seam 1: the template catalog ---------------------------------------------------------------
 
 
-def test_list_templates_exposes_the_two_starter_presets():
-    """The curated library is the two code-resident builders, in order, in the picker's wire shape
-    ({template, name, description}). (Mutation: a missing/renamed key would break the picker.)"""
+def test_list_templates_exposes_the_starter_presets():
+    """The curated library is the code-resident builders, in order, in the picker's wire shape
+    ({template, name, description}). P1.8c adds ``thinker_chain`` (PM → Architect → Engineer).
+    (Mutation: a missing/renamed key would break the picker.)"""
     templates = list_templates()
     keys = [t["template"] for t in templates]
-    assert keys == ["two_node", "review_loop"]
+    assert keys == ["two_node", "review_loop", "thinker_chain"]
     for t in templates:
         assert t["name"] and t["description"]  # the picker shows both
 
 
 def test_list_templates_endpoint(client):
     body = client.get("/api/templates").json()
-    assert [t["template"] for t in body["templates"]] == ["two_node", "review_loop"]
+    assert [t["template"] for t in body["templates"]] == [
+        "two_node",
+        "review_loop",
+        "thinker_chain",
+    ]
 
 
 def test_create_team_from_template_unknown_key_raises():

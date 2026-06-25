@@ -100,13 +100,17 @@ class AddDocumentVersionRequest(BaseModel):
 
 
 class UpdateTeamNodeRequest(BaseModel):
-    """A human edit to a persistent-team agent node (P1.8b authoring): its ``prompt`` (the node's
-    whole identity/behavior) and ``model``. ONLY these two fields are editable this slice —
-    topology, capability (``kind``), and the control primitives (gate/terminal) are later slices /
-    not editable. Both are sent on every Save (the FE is dirty-aware but posts the full values)."""
+    """A human edit to a persistent-team agent node: its ``prompt`` (the node's whole
+    identity/behavior), its ``model``, and (P1.8c) optionally its ``capability`` — ``"thinker"``
+    (a direct LLM completion, like the PM) or ``"worker"`` (an engine-backed sandboxed run, like
+    the Engineer). ``prompt``/``model`` are sent on every Save (the FE is dirty-aware but posts the
+    full values). ``capability`` is OPTIONAL — omitted leaves ``kind``/``engine`` unchanged
+    (back-compat with the prior ``{prompt, model}`` saves). Topology + the control primitives
+    (gate/terminal) remain non-editable (later slices)."""
 
     prompt: str
     model: str
+    capability: Literal["thinker", "worker"] | None = None
 
 
 class CreateTeamRequest(BaseModel):
@@ -643,6 +647,33 @@ def get_run_graph(run_id: str) -> dict:
 # ---- The team library (P1.8b): first-class, multiple persistent teams + a template library ----
 
 
+def _capability_to_columns(capability: str) -> tuple[str, str | None]:
+    """Map the user-facing capability vocabulary to the ``(kind, engine)`` columns (P1.8c): a
+    ``"thinker"`` is a direct-LLM ``completion`` node with no engine; a ``"worker"`` is an
+    ``agent`` node backed by ``openhands``. The executor dispatches on ``kind`` and ignores
+    ``engine``, but the data model + the canvas convention require ``engine`` honest — workers carry
+    ``openhands``, thinkers ``null``, matching the builders. Pure + unit-tested."""
+    return ("completion", None) if capability == "thinker" else ("agent", "openhands")
+
+
+def _team_root_node_id(session, graph_id: uuid.UUID) -> uuid.UUID | None:
+    """The team's root node — the unique node NOT targeted by any of the team's edges — within
+    ``session``, else ``None`` (mirrors ``load_graph_step``'s start-node rule exactly). Used to lock
+    the start node to a thinker (it writes the spec the rest of the team reads), P1.8c."""
+    node_ids = (
+        session.execute(select(AgentNode.id).where(AgentNode.team_graph_id == graph_id))
+        .scalars()
+        .all()
+    )
+    target_ids = set(
+        session.execute(select(Edge.target_node_id).where(Edge.team_graph_id == graph_id))
+        .scalars()
+        .all()
+    )
+    roots = sorted((nid for nid in node_ids if nid not in target_ids), key=str)
+    return roots[0] if roots else None
+
+
 def _require_library_team(session, team_id: str) -> TeamGraph:
     """Resolve a library ``TeamGraph`` by id within ``session`` or raise: 400 on a malformed id,
     404 if the id is unknown OR not a library team — so a run-snapshot clone / A-B graph / smoke
@@ -711,11 +742,14 @@ def get_team_graph(team_id: str) -> dict:
 
 @router.patch("/api/teams/{team_id}/nodes/{node_id}")
 def update_team_node(team_id: str, node_id: str, body: UpdateTeamNodeRequest) -> dict:
-    """Persist an edited library-team node's ``prompt`` + ``model`` (ONLY those two fields this
-    slice). Validates the node belongs to ``team_id`` AND that ``team_id`` is a library team, and
-    REJECTS gate/terminal nodes (control primitives). 400 on a malformed id; 404 if the team is not
-    a library team or the node is not one of its nodes; 409 if the node is a gate/terminal. Returns
-    the updated node."""
+    """Persist an edited library-team node's ``prompt`` + ``model``, and (P1.8c) optionally its
+    ``capability`` (``"thinker"`` -> ``kind=completion``/``engine=null``; ``"worker"`` ->
+    ``kind=agent``/``engine=openhands``). Validates the node belongs to ``team_id`` AND that
+    ``team_id`` is a library team, and REJECTS gate/terminal nodes (control primitives). 400 on a
+    malformed id; 404 if the team is not a library team or the node is not one of its nodes; 409 if
+    the node is a gate/terminal, OR if ``capability="worker"`` is asked of the ROOT node (the first
+    node scopes the work — it must stay a thinker, the one executor invariant). Returns the updated
+    node."""
     try:
         nid = uuid.UUID(node_id)
     except ValueError as exc:
@@ -730,6 +764,17 @@ def update_team_node(team_id: str, node_id: str, body: UpdateTeamNodeRequest) ->
                 status_code=409,
                 detail="gate/terminal nodes are control primitives — no prompt/model to edit",
             )
+        # P1.8c: an optional capability flip (thinker <-> worker) is a paired kind+engine write.
+        # The ONLY invariant the executor needs is that the root stays a thinker (it writes the
+        # shared spec the rest of the team reads); making the root a worker would leave no spec for
+        # ``read_latest_prd_step`` to read. Holistic graph validity is the M2 topology slice.
+        if body.capability is not None:
+            if body.capability == "worker" and node.id == _team_root_node_id(session, graph.id):
+                raise HTTPException(
+                    status_code=409,
+                    detail="the first node scopes the work — it must stay a thinker",
+                )
+            node.kind, node.engine = _capability_to_columns(body.capability)
         node.prompt = body.prompt
         node.model = body.model
         session.flush()

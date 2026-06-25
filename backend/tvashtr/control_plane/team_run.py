@@ -53,7 +53,11 @@ from tvashtr.control_plane.invocations import close_invocation_step, open_invoca
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
 from tvashtr.db import session_scope
-from tvashtr.documents.service import create_document_with_initial_version, get_latest_version
+from tvashtr.documents.service import (
+    add_version,
+    create_document_with_initial_version,
+    get_latest_version,
+)
 from tvashtr.engines.base import AgentTask
 from tvashtr.engines.registry import resolve_adapter
 from tvashtr.engines.run_event_sink import make_run_event_sink
@@ -252,6 +256,59 @@ def read_latest_prd_step(run_id: str) -> str:
     if latest is None:
         raise RuntimeError(f"read_latest_prd_step: document {document_id} has no versions")
     return latest.content
+
+
+@DBOS.step()
+def thinker_refine_step(
+    run_id: str,
+    idea: str,
+    model: str,
+    prompt: str,
+    node_id: str,
+    iteration: int,
+    current_spec: str,
+    spec_document_id: str,
+) -> dict:
+    """A LATER thinker node (P1.8c): a metered gateway completion that REFINES the run's single
+    shared spec document and appends a new version.
+
+    The pivot's last fixed-function residue was that a completion node was valid ONLY as the start
+    node (the PM). This is the additive twin of :func:`pm_step` for any thinker AFTER the root: it
+    reads the current spec (passed in from the recorded :func:`read_latest_prd_step`, so the input
+    is deterministic on resume), runs the node's ``prompt`` over ``idea`` + ``current_spec``, and
+    appends the produced full spec as the next ``DocumentVersion`` of the SAME document
+    (``spec_document_id == Run.pm_document_id``). So a thinker is now composable ANYWHERE.
+
+    Same call shape + return shape as ``pm_step``. Idempotent on the per-node-per-iteration keys
+    (``…:thinker-llm:{node_id}:{iteration}`` for the cost row, ``…:spec:{node_id}:{iteration}`` for
+    the version), so a crash-resume re-reads the same recorded spec and re-appends the same version
+    exactly once. ``pm_step`` stays byte-identical (its ``pm-llm`` / ``pm-prd-v1`` keys unchanged),
+    so the single-thinker templates and their checkers are untouched."""
+    prompt_full = (
+        prompt
+        + f"\n\nFeature request:\n{idea}"
+        + (
+            "\n\n--- CURRENT SPEC (this is the spec so far — produce the COMPLETE updated spec, "
+            f"preserving everything still needed) ---\n{current_spec}"
+        )
+    )
+    request = CompletionRequest(
+        model=model,
+        messages=[{"role": "user", "content": prompt_full}],
+        temperature=0.3,
+        max_tokens=400,
+    )
+    result = complete(request)
+    record_cost(
+        result, workflow_id=run_id, idempotency_key=f"{run_id}:thinker-llm:{node_id}:{iteration}"
+    )
+    add_version(
+        uuid.UUID(spec_document_id),
+        result.text,
+        created_by="agent:thinker",
+        idempotency_key=f"{run_id}:spec:{node_id}:{iteration}",
+    )
+    return {"document_id": spec_document_id, "prd_text": result.text}
 
 
 # P1.5c: keep review/test byproducts out of the shipped commit. ``idempotent_ship`` does
@@ -662,7 +719,8 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
     ``run_team``'s fixed pre/post phases. Walk from ``graph["start_node_id"]`` following
     :func:`next_node` until a ``terminal`` node ends the run (or an engine error /
     over_budget / escalation-reject short-circuits to a finalize). Dispatch per node ``kind``:
-    ``completion`` (the start node is the PM/author; any other completion is the Reviewer),
+    ``completion`` (a "thinker" — the FIRST writes the shared spec from the idea via ``pm_step``;
+    a LATER one refines it via ``thinker_refine_step``; composable anywhere, P1.8c),
     ``agent`` (the Engineer, with the loop cap), ``gate`` (pause for a human, route on
     approve/reject), ``terminal`` (ship+finalize ``completed``, or stop+finalize ``rejected``).
 
@@ -690,36 +748,39 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
         kind = node["kind"]
 
         if kind == "completion":
-            # The only completion node is the start node (the PM/author). The Reviewer is now an
-            # agent (P1.5c), so a non-start completion shouldn't occur with the hardcoded builders.
+            # P1.8c: a "thinker" node — composable ANYWHERE, not start-node-only. It writes/refines
+            # the run's single shared spec document. The FIRST thinker (no spec yet) creates it from
+            # the idea; a LATER thinker reads the current spec and appends a refined version. This
+            # retires the pivot's last fixed-function residue (the old non-start-completion fail).
+            # Dispatch on whether the spec exists yet (``pm_document_id``) — recomputed
+            # deterministically from recorded step outputs as the walk replays, so it is crash-safe.
             n = iters_by_node.get(current, 0) + 1
             iters_by_node[current] = n
             open_invocation_step(run_id, current, n)
-            if current == start_id:
-                # The PM/author. Structural dispatch by start-node identity (NOT a role_name
-                # check); a richer ``completion_kind`` discriminator is the P1.8 Supervisor
-                # generalization. P1.8a: the PM's behavior rides ``node["prompt"]`` (the executor
-                # appends the idea), retiring the hardcoded PM instruction.
-                pm = pm_step(run_id, idea, node["model"], node["prompt"])
-                pm_document_id = pm["document_id"]
-                close_invocation_step(run_id, current, n, "done", "prd_written")
-                if apply_budget_hook(run_id, node_id=current, iteration=n):
-                    return _finalize_over_budget(run_id, pm_document_id)
-                current = next_node(edges, current, outcome=None)
+            if pm_document_id is None:
+                # The FIRST thinker (the root): create the spec doc from the idea. Byte-identical to
+                # the old PM path — same ``pm_step``, same ``pm-llm`` / ``pm-prd-v1`` keys, so the
+                # single-thinker templates + their checkers are untouched.
+                result = pm_step(run_id, idea, node["model"], node["prompt"])
             else:
-                # Defensive: a non-start completion node is unexpected (the PM is the only one).
-                # Fail clearly rather than route on a stale outcome — never silently loop/ship.
-                close_invocation_step(run_id, current, n, "failed", None)
-                mark_run_failed_step(run_id)
-                DBOS.logger.error(
-                    f"run_team unexpected non-start completion node {current} run_id={run_id}"
+                # A LATER thinker: read the current spec (recorded -> deterministic on resume),
+                # refine it, append a new version. A thinker is now composable ANYWHERE.
+                current_spec = read_latest_prd_step(run_id)
+                result = thinker_refine_step(
+                    run_id,
+                    idea,
+                    node["model"],
+                    node["prompt"],
+                    current,
+                    n,
+                    current_spec,
+                    pm_document_id,
                 )
-                return {
-                    "run_id": run_id,
-                    "status": "failed",
-                    "document_id": pm_document_id,
-                    "error": f"unexpected non-start completion node {current} (PM is the only one)",
-                }
+            pm_document_id = result["document_id"]
+            close_invocation_step(run_id, current, n, "done", "prd_written")
+            if apply_budget_hook(run_id, node_id=current, iteration=n):
+                return _finalize_over_budget(run_id, pm_document_id)
+            current = next_node(edges, current, outcome=None)
 
         elif kind == "agent":
             n = iters_by_node.get(current, 0) + 1

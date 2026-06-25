@@ -74,6 +74,20 @@ REVIEWER_PROMPT = (
     "not approve on assumption."
 )
 
+# P1.8c: the Architect — a SECOND thinker (kind ``completion``), composable after the root because
+# the executor now generalizes the completion branch. It REFINES the PM's spec in place (the
+# executor reads the current spec, runs this prompt, appends a new version). The instruction MUST
+# restate the PM's content verbatim (so the exact file path + required contents survive into the
+# spec the Engineer reads) and APPEND a technical-design section — exercising a real non-start
+# thinker on the ``thinker_chain`` template.
+ARCHITECT_PROMPT = (
+    "You are the software architect on the team. The current spec (the PM's mini-PRD) is provided "
+    "below. Produce the COMPLETE updated spec: restate the PM's content VERBATIM — especially the "
+    "exact file path and the exact required file contents — and APPEND a short '## Technical "
+    "design' section (2-4 sentences) covering the approach and any implementation detail the "
+    "engineer needs. Output the full updated spec and nothing else."
+)
+
 # The PRD-approval gate node's config — identical in both teams (the human-approval
 # checkpoint the walk pauses at before the Engineer builds).
 _PRD_GATE_CONFIG = {
@@ -385,6 +399,129 @@ def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
         return str(graph.id)
 
 
+def build_thinker_chain_team(name: str = "PM -> Architect -> Engineer") -> str:
+    """Insert the linear PM -> Architect -> Engineer team as a uniform walk; return its id (P1.8c).
+
+    Two THINKERS shape the spec before the build: the PM (the root completion) drafts the mini-PRD,
+    then the Architect (a SECOND completion — the non-start thinker this milestone unblocks) reads
+    that spec and appends a technical-design section in place. Topology (the walk the generic
+    executor traces): PM (completion) -> Architect (completion) -> prd_gate (gate; approve ->
+    Engineer, reject -> stop) -> Engineer (agent) builds -> ship (terminal; commit + finalize
+    ``completed``). Linear — NO review loop / escalation (review is already proven by
+    :func:`build_review_loop_team`; this template isolates the non-start thinker). Same
+    hardcoded-builder / generic-executor split as the others."""
+    settings = get_settings()
+    with session_scope() as session:
+        graph = TeamGraph(name=name)
+        session.add(graph)
+        session.flush()
+
+        pm = AgentNode(
+            team_graph_id=graph.id,
+            role_name="pm",
+            kind="completion",
+            model=settings.default_model,
+            engine=None,
+            prompt=PM_PROMPT,
+            position={"x": 0, "y": 0},
+        )
+        architect = AgentNode(
+            team_graph_id=graph.id,
+            role_name="architect",
+            kind="completion",
+            model=settings.default_model,
+            engine=None,
+            prompt=ARCHITECT_PROMPT,
+            position={"x": 260, "y": 0},
+        )
+        prd_gate = AgentNode(
+            team_graph_id=graph.id,
+            role_name="prd_gate",
+            kind="gate",
+            model=None,
+            engine=None,
+            position={"x": 520, "y": 0},
+            config=_PRD_GATE_CONFIG,
+        )
+        engineer = AgentNode(
+            team_graph_id=graph.id,
+            role_name="engineer",
+            kind="agent",
+            model=engineer_model(),
+            engine="openhands",
+            prompt=ENGINEER_PROMPT,
+            position={"x": 780, "y": 0},
+            # P1.8a parity: the executor derives the loop role from the topology, not from
+            # ``agent_kind``; this is left for the FE (which reads ``config``), as in the others.
+            config={"agent_kind": "engineer"},
+        )
+        ship = AgentNode(
+            team_graph_id=graph.id,
+            role_name="ship",
+            kind="terminal",
+            model=None,
+            engine=None,
+            position={"x": 1040, "y": 0},
+            config={"terminal_kind": "ship"},
+        )
+        stop = AgentNode(
+            team_graph_id=graph.id,
+            role_name="stop",
+            kind="terminal",
+            model=None,
+            engine=None,
+            position={"x": 520, "y": 160},
+            config={"terminal_kind": "stop"},
+        )
+        session.add_all([pm, architect, prd_gate, engineer, ship, stop])
+        session.flush()
+
+        session.add_all(
+            [
+                # PM -> Architect (unconditional): the first thinker hands the spec to the second.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=pm.id,
+                    target_node_id=architect.id,
+                    edge_type="work",
+                    conditions=None,
+                ),
+                # Architect -> prd_gate (unconditional): the refined spec goes to the human gate.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=architect.id,
+                    target_node_id=prd_gate.id,
+                    edge_type="work",
+                    conditions=None,
+                ),
+                # prd_gate -> Engineer (approved) / -> stop (rejected).
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=prd_gate.id,
+                    target_node_id=engineer.id,
+                    edge_type="work",
+                    conditions={"when": "approved"},
+                ),
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=prd_gate.id,
+                    target_node_id=stop.id,
+                    edge_type="work",
+                    conditions={"when": "rejected"},
+                ),
+                # Engineer -> ship (unconditional): build once, then ship.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=engineer.id,
+                    target_node_id=ship.id,
+                    edge_type="work",
+                    conditions=None,
+                ),
+            ]
+        )
+        return str(graph.id)
+
+
 def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
     """Deep-clone a team graph into a NEW run-scoped ``TeamGraph`` and return its id — the
     clone-on-launch snapshot (P1.8b): fresh node ids, every edge remapped onto the cloned node
@@ -467,6 +604,13 @@ _TEMPLATE_CATALOG: tuple[TeamTemplate, ...] = (
         "Adds a Reviewer that runs the tests and loops back for fixes until it passes "
         "(or the cap trips).",
         build_review_loop_team,
+    ),
+    TeamTemplate(
+        "thinker_chain",
+        "PM → Architect → Engineer",
+        "Two thinkers shape the spec — a PM drafts it and an Architect adds the technical design — "
+        "then an Engineer builds and ships it.",
+        build_thinker_chain_team,
     ),
 )
 _TEMPLATES_BY_KEY: dict[str, TeamTemplate] = {t.key: t for t in _TEMPLATE_CATALOG}

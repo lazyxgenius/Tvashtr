@@ -211,18 +211,27 @@ export async function deleteTeam(teamId: string): Promise<void> {
 export const getTeamGraph = (teamId: string): Promise<TeamGraphData> =>
   getJSON<TeamGraphData>(`/api/teams/${teamId}/graph`);
 
-// Persist an edited library-team node's prompt + model (the only two editable fields this slice).
-// Returns the updated node; the caller refetches the team to refresh the canvas.
+// A node's authorable capability (P1.8c): a "thinker" is a direct-LLM completion (like the PM); a
+// "worker" is an engine-backed sandboxed run (like the Engineer). Maps server-side to kind+engine.
+export type Capability = "thinker" | "worker";
+
+// Persist an edited library-team node's prompt + model, and (P1.8c) optionally its capability. The
+// `capability` is included in the PATCH body ONLY when provided, so existing 4-arg call sites still
+// post `{prompt, model}` unchanged (back-compat). Returns the updated node; the caller refetches the
+// team to refresh the canvas.
 export async function updateTeamNode(
   teamId: string,
   nodeId: string,
   prompt: string,
   model: string,
+  capability?: Capability,
 ): Promise<TeamGraphNode> {
+  const body: { prompt: string; model: string; capability?: Capability } = { prompt, model };
+  if (capability !== undefined) body.capability = capability;
   const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ prompt, model }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`PATCH /api/teams/${teamId}/nodes/${nodeId} -> ${res.status}`);
   return (await res.json()) as TeamGraphNode;

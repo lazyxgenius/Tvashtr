@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -114,6 +114,12 @@ team-edit-e2e: ## Live P1.8b authoring E2E: open the persistent team in the UI, 
 
 team-library-e2e: ## Live P1.8b team-library E2E: "+ New team" from a template, edit its Engineer node's PROMPT (+ model) to a unique SENTINEL, Save, "Run this team" (clone-on-launch), and assert the shipped greeting.txt reflects the AUTHORED prompt (not the template default). Auto-approve gates + forced reviewer-approve. Real NIM agent + Vite dev server + headless Playwright; needs NVIDIA_BUILD_API_KEY, skips otherwise.
 	./scripts/team_library_e2e.sh
+
+thinker-chain-e2e: ## Live P1.8c thinker-chain E2E (API-driven): instantiate the thinker_chain team (PM → Architect → Engineer), run it (LOCAL sandbox, auto-approve gates), and assert it ships once AND the spec document has 2 versions — the structural proof the non-start Architect thinker genuinely refined the spec. Real models (thinkers on DEFAULT_MODEL, Engineer on TVASHTR_AGENT_MODEL); needs NVIDIA_BUILD_API_KEY, skips otherwise.
+	./scripts/thinker_chain_e2e.sh
+
+capability-edit-e2e: ## Live P1.8c capability-authoring E2E: "+ New team" from the thinker_chain template, click the Architect node, flip the Capability toggle thinker→worker, Save, and assert the flip PERSISTED (kind=agent/engine=openhands), the canvas RE-LABELS it as a Worker, and the PM (start node) toggle is LOCKED. Vite dev server + headless Playwright; needs NVIDIA_BUILD_API_KEY, skips otherwise.
+	./scripts/capability_edit_e2e.sh
 
 budget-demo: ## Live budget cap demo: tiny per-run cap -> breach -> auto-approve -> ship (needs key; skips otherwise)
 	./scripts/budget_demo.sh
