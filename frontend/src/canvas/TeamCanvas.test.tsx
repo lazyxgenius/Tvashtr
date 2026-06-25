@@ -5,8 +5,9 @@ import type { GraphData, GraphEdge, GraphNode, HumanTask, RunRow } from "../lib/
 import { TeamCanvas } from "./TeamCanvas";
 
 // Brief §2.3.2: the status pipeline (deriveNodeStatus / deriveGateState / deriveTerminalState)
-// actually reaches the rendered node/gate/terminal, AND — the latent P1.5b bug — ONLY the
-// `when === "changes_requested"` edge renders as the ReworkEdge (not "any conditional edge").
+// actually reaches the rendered node/gate/terminal, AND — P1.8a retopologized the loop-back to
+// the no-`when` catch-all `{loop_limit: N}` — ONLY that `loop_limit` loop-back renders as the
+// ReworkEdge (a different conditional edge, e.g. the gate's `rejected` route, must NOT).
 
 const RUN_ID = "rc";
 
@@ -87,12 +88,13 @@ const graph: GraphData = {
   ],
   edges: [
     edge({ id: "e-fwd", source_node_id: "n-eng", target_node_id: "n-rev" }),
-    // the ONLY rework edge — the calm dashed loop-back
+    // the ONLY rework edge — the calm dashed loop-back, carrying the real seeded signature
+    // (P1.8a: the no-`when` catch-all `{loop_limit: N}`, NOT `{when: "changes_requested"}`)
     edge({
       id: "e-rework",
       source_node_id: "n-rev",
       target_node_id: "n-eng",
-      conditions: { when: "changes_requested" },
+      conditions: { loop_limit: 3 },
     }),
     // a DIFFERENT conditional edge — must NOT become a rework arc (the guarded bug)
     edge({
@@ -133,15 +135,15 @@ describe("TeamCanvas — derived status reaches the DOM", () => {
   });
 });
 
-describe("TeamCanvas — ONLY changes_requested renders as the rework edge", () => {
+describe("TeamCanvas — ONLY the loop_limit loop-back renders as the rework edge", () => {
   it("styles exactly one rework arc and never promotes another conditional edge to rework", () => {
     const { container } = render(
       <TeamCanvas graph={graph} run={mkRun()} workflowStatus="PENDING" tasks={[gateTask]} />,
     );
-    // exactly ONE rework edge (the changes_requested loop-back)
+    // exactly ONE rework edge (the `loop_limit` loop-back — its real seeded signature)
     expect(container.querySelectorAll(".react-flow__edge.rf-edge--rework")).toHaveLength(1);
-    // the rejected edge is its OWN category, NOT a rework arc (the latent "any conditional edge
-    // -> rework" bug would make this two rework edges)
+    // the rejected edge is its OWN category, NOT a rework arc (proving a different conditional
+    // edge isn't promoted to rework — the guarded "any conditional edge -> rework" bug)
     expect(container.querySelectorAll(".react-flow__edge.rf-edge--reject")).toHaveLength(1);
     // the rework label renders, once
     expect(screen.getAllByText("changes requested")).toHaveLength(1);

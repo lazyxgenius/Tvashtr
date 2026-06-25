@@ -177,9 +177,12 @@ export function TeamCanvas({
     for (const n of graph.nodes) posById[n.id] = n.position;
 
     return graph.edges.map((e) => {
-      // 1. The Reviewer -> Engineer loop-back ("changes requested") → the calm dashed arc,
-      //    off the bottom handles. This is the ONLY edge that uses ReworkEdge.
-      if (e.conditions?.when === "changes_requested") {
+      // 1. The Reviewer -> Engineer loop-back → the calm dashed arc, off the bottom handles.
+      //    This is the ONLY edge that uses ReworkEdge. P1.8a retopologized the loop-back to
+      //    the no-`when` catch-all `{loop_limit: N}`, so we identify it by that key — the same
+      //    unique signal the backend's `loop_limit_for` reads — NOT the stale
+      //    `when === "changes_requested"`, which now matches no seeded edge.
+      if (e.conditions?.loop_limit != null) {
         return {
           id: e.id,
           source: e.source_node_id,

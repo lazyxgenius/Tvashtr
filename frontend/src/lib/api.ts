@@ -57,9 +57,11 @@ export interface GraphEdge {
   source_node_id: string;
   target_node_id: string;
   edge_type: string;
-  // P1.5a: edge routing condition — null = unconditional; the Reviewer->Engineer
-  // loop-back carries {"when":"changes_requested"}.
-  conditions: { when: string } | null;
+  // P1.5a: edge routing condition — null = unconditional. A `{when}` keys a branch
+  // (e.g. the gate's `rejected` route). P1.8a retopologized the Reviewer->Engineer
+  // loop-back to the no-`when` catch-all `{loop_limit: N}` (the review-loop cap; the
+  // same key the backend's `loop_limit_for` reads).
+  conditions: { when?: string; loop_limit?: number } | null;
 }
 
 export interface GraphData {
