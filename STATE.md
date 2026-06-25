@@ -1,149 +1,153 @@
 # Tvashtr — Autonomous Execution State
 
 ## Current Milestone
-P1.8c — the generic thinker + capability authoring (brief: `prompts/p1.8c-thinker-capability.md`).
-Make a completion ("thinker") node composable ANYWHERE (not start-node-only); make a node's
-capability (thinker ↔ worker) an editable authoring field with the start-node-must-be-a-thinker
-invariant; ship a `thinker_chain` library template (PM → Architect → Engineer). **NO migration —
-alembic head stays 0013.** — **DONE, all gates green incl. both live e2e + the 4 regression smokes,
-READY_TO_MERGE.**
+P1.8d — Topology editing (author your own wiring) (brief: `prompts/p1.8d-topology-editing.md`).
+Turn the read-only canvas fully editable: add / delete / rewire nodes and edges, with **live holistic
+graph-validity** gating runs (a server-authoritative `create_run` guard + the FE mirror), node
+**positions persist**, a **node palette** + **edge-role authoring** + the per-worker **emit-contract**,
+and a **Blank team** seed. **NO migration — alembic head stays 0013; the executor `team_run.py` is
+UNTOUCHED (empty diff); the `teams.py` builders are byte-intact.** — **DONE, all gates green incl. the
+new `topology-e2e` + the 4 regression smokes + both existing e2e, READY_TO_MERGE.**
 
 ## Last Completed Step
-P1.8c — 2026-06-25 — branch: feat/p1.8c-thinker-capability — `make test` **209** (was 202),
-`make lint` clean, `make test-frontend` **95** (was 93), `make build-frontend` clean, alembic head
-**0013** (NO migration), live `make thinker-chain-e2e` + `make capability-edit-e2e` GREEN, the 4
-regression smokes (skeleton-run/skeleton-crash/loop-run/loop-crash) GREEN on the NIM agent model.
-READY_TO_MERGE.
+P1.8d — 2026-06-25 — branch: feat/p1.8d-topology-editing — `make test` **232** (was 209), `make lint`
+clean, `make test-frontend` **110** (was 95), `make build-frontend` clean, alembic head **0013** (NO
+migration), `team_run.py` diff vs main **EMPTY**, live `make topology-e2e` GREEN (authored a graph from
+a blank team → ran via UI → shipped; invalid graph blocked in UI + `create_run` 422), the 4 regression
+smokes + `thinker-chain-e2e` + `capability-edit-e2e` GREEN on the NIM agent model. READY_TO_MERGE.
 
 ## In Progress
-None — P1.8c is implemented and every gate is green. Awaiting operator FF-merge of
-feat/p1.8c-thinker-capability (and the operator re-eyeball of the new Capability toggle / Architect
-card, the visual gate). NEXT P1.8 slices (HANDOVER §4): canvas topology editing (`nodesConnectable`
-ON / node+edge CRUD), then mid-run node-prompt re-read.
+None — P1.8d is implemented and every gate is green. Awaiting operator FF-merge of
+feat/p1.8d-topology-editing (and the operator re-eyeball of the new palette / edge-role editor / Run
+validity surface — the visual gate). NEXT slices (HANDOVER §4): the per-node work-brief (Option A), then
+mid-run node-prompt re-read (M3) → "converse with a node".
 
 ## As-built (backend)
-- `control_plane/team_run.py` — generalized the `run_graph` **completion branch** to a first-vs-later
-  dispatch on `pm_document_id` (NO start-node special-case, NO non-start fail — the pivot's last
-  fixed-function residue is gone). The FIRST thinker (root) still runs **`pm_step` byte-identical**
-  (same signature/body + `pm-llm`/`pm-prd-v1` keys); a LATER thinker runs a NEW purely-additive
-  `@DBOS.step thinker_refine_step` (reads the current spec via the recorded `read_latest_prd_step`,
-  refines it, appends a `DocumentVersion` `created_by="agent:thinker"`, idempotent on
-  `…:thinker-llm:{node}:{n}` + `…:spec:{node}:{n}`). Crash-safe: `is_first = pm_document_id is None`
-  recomputes deterministically on replay. `agent_run_step`, `read_latest_prd_step`,
-  `engineer_setup_step`, the engine adapters — UNCHANGED.
-- `routers.py` — `UpdateTeamNodeRequest` gains optional `capability: Literal["thinker","worker"] |
-  None` (omitted = unchanged, back-compat). Pure `_capability_to_columns` (thinker→(completion,None);
-  worker→(agent,openhands)). `_team_root_node_id` (the node not targeted by any edge — mirrors
-  `load_graph_step`). In `update_team_node`, after the gate/terminal 409, a capability flip is a
-  paired kind+engine write, with a **409 if `worker` is asked of the ROOT** ("the first node scopes
-  the work — it must stay a thinker"). A/B endpoints + `_AB_CONFIGS` + `_TEAM_BUILDERS` UNCHANGED.
-- `control_plane/teams.py` — ADDED `ARCHITECT_PROMPT` (a thinker that restates the PM's spec verbatim
-  + appends a `## Technical design` section) + `build_thinker_chain_team` (PM→Architect→prd_gate→
-  Engineer→ship/stop, linear, no review loop) + the `thinker_chain` catalog entry. `clone_team_graph`,
-  `build_two_node_team`, `build_review_loop_team`, `seed_library_if_empty` BYTE-INTACT (the diff is
-  ADDITIONS-ONLY — 0 removed lines).
+- `control_plane/graph_validity.py` (NEW) — the PURE `validate_graph(nodes, edges) -> {errors,
+  warnings, runnable}` gate. BLOCKs only un-runnable graphs (not exactly one root; a non-thinker root;
+  a reachable node with no valid route for an outcome it emits; a dead-end; an unbounded loop; a
+  bounded rework loop with no escalation exit), WARNs an orphan. **Reuses the executor's own
+  `next_node` / `escalation_target`** (imported from `team_run`, which is otherwise untouched) so the
+  verdict can never drift from how the walk actually routes. Plus `graph_dicts(session, graph_id)` — the
+  DB loader into the dict shape the validator consumes (used by the guard, the validate endpoint, the
+  tests).
+- `routers.py` — node/edge **CRUD** + position persistence + the validity verdict, all team-scoped and
+  `_require_library_team`-guarded (a run snapshot / A-B graph is never CRUD-able). `POST/DELETE
+  …/nodes`, `POST/DELETE …/edges`, `POST …/positions`, `GET …/validate`. `CreateNodeRequest` maps the
+  canvas vocabulary (thinker/worker/gate/terminal + an optional PM/Architect/Engineer/Reviewer preset
+  seeded from the byte-intact `teams.py` prompt constants) onto the columns; `CreateEdgeRequest`'s
+  `role` maps to `(edge_type, conditions)` (forward→null; branch→`{when}`; loop_back→`{loop_limit}`;
+  escalation→`edge_type="escalation"`). `create_team` gains the `template == "blank"` sentinel. **The
+  run-start guard:** `create_run` re-validates the authored graph BEFORE cloning and **refuses an
+  invalid graph with a 422** carrying the structured errors. A/B endpoints + `_AB_CONFIGS` /
+  `_TEAM_BUILDERS` UNCHANGED (diff-verified).
+- `control_plane/teams.py` — ADDED `create_blank_team(name)` (the minimal valid skeleton: one root
+  thinker → a Ship terminal, 2 nodes/1 edge — never a 0-node canvas the gate would reject). The diff is
+  **ADDITIONS-ONLY (45/0)** — `build_two_node_team`/`build_review_loop_team`/`build_thinker_chain_team`/
+  `clone_team_graph`/`seed_library_if_empty`/`create_team_from_template`/`_TEMPLATE_CATALOG`/
+  `list_templates` BYTE-INTACT.
+- `control_plane/team_run.py` — **UNTOUCHED** (`git diff main -- …/team_run.py` is EMPTY). The
+  graph-driven executor already runs any rows it is given; authoring needs zero executor change.
+- **NO migration** — `agent_nodes.position` (JSONB) holds layout; edges use the existing columns.
+  Alembic head **0013**; `backend/alembic/versions/` diff vs main is empty.
 
 ## As-built (frontend)
-- `lib/api.ts` — `Capability` type; `updateTeamNode(teamId,nodeId,prompt,model,capability?)` includes
-  `capability` in the PATCH body ONLY when provided (existing 4-arg call sites unchanged).
-- `panel/TeamNodePanel.tsx` — a **Capability** segmented control (Thinker | Worker) above Prompt; new
-  `isStartNode` prop locks it to Thinker (disabled + tooltip) — defense-in-depth on the backend 409.
-  Capability is in the dirty check (flipping it alone enables Save) and posted on Save. Caption under
-  the control. Added `architect → "Architect"` title.
-- `App.tsx` — computes the start node (not targeted by any edge) from `teamGraph.edges`, passes
-  `isStartNode={selectedTeamNode?.id === startNodeId}`.
-- `canvas/AgentNodeCard.tsx` — Architect role (title/blurb/`DraftingCompass` icon); the meta line now
-  carries the capability label (Thinker/Worker) so a flip RE-LABELS the card. Token-driven; one
-  `index.css` rule for the locked toggle (`.tv-seg__btn:disabled`).
+- `lib/topology.ts` (NEW, pure) — `edgeRoleOptions` (offer only what the source supports),
+  `closesLoop`/`reachableFrom`, `branchLabelsOf`, `escalationTargets`, `validityFlags`,
+  `emitContract`/`applyEmitContract`, `withLayout`/`nextDropPosition`. `lib/api.ts` — the CRUD/validity
+  client + types.
+- `canvas/TeamCanvas.tsx` — an **editable mode**: `nodesConnectable` ON; `onConnect` opens the inline
+  edge-role editor; `onNodesDelete`/`onEdgesDelete` → the delete endpoints; `onNodeDragStop` persists
+  position; the rebuild keys on the node-id SET (so add/delete rebuild, a drag doesn't reset). Validity
+  flags red-ring offending nodes/edges + dim orphans. The run view is unchanged.
+- `canvas/NodePalette.tsx` (NEW) — the on-canvas tray: 4 blank primitives (thinker/worker/gate/Ship/
+  Stop) + 4 role presets (PM/Architect/Engineer/Reviewer). `canvas/EdgeRoleEditor.tsx` (NEW) — the
+  plain-language role editor (Then → / If approved/rejected → / When it outputs … → / a bounded Rework
+  loop that ALSO authors its escalation exit — termination provable).
+- `panel/TeamNodePanel.tsx` — a branch worker shows the **emit-contract** derived live from its edges +
+  a one-click "write this into the prompt" (the Tvashtr-26 anti-drift mechanism). `App.tsx` wires the
+  CRUD handlers + the validity state; **Run greys out** with a per-issue list when not runnable;
+  authoring selection is by NODE ID (duplicate role names are now possible). `components/TeamsRail.tsx` —
+  a **Blank team** option in the New-team picker. CSS in `canvas.css`/`index.css`/`panel.css`.
 
 ## Tests (mutation-real)
-- `backend/tests/test_thinker_chain.py` (NEW, keystone): REAL `run_team` over `thinker_chain`, faking
-  only `complete` + the worker; asserts the spec doc has **exactly 2 versions** (PM v1 + the non-start
-  Architect's v2), the worker read the REFINED spec (both markers), `completed` + one ship tag, both
-  thinkers `done/prd_written`. **Mutation proven in-transcript:** restoring the non-start-completion
-  `else`-fail → RED (`FAILED test_thinker_chain_runs_the_non_start_thinker_and_ships`); restored
-  byte-identical → GREEN (`1 passed`).
-- `backend/tests/test_capability_edit.py` (NEW, +6): `_capability_to_columns` mapping; non-root
-  thinker↔worker flip persists (re-read the row); worker-on-root → 409 (row unchanged); thinker-on-root
-  allowed; capability omitted leaves kind/engine unchanged (back-compat); flip + prompt/model in one
-  PATCH.
-- `backend/tests/test_team_library.py` — the 2 catalog assertions updated to include `thinker_chain`.
-- `frontend/src/panel/TeamNodePanel.test.tsx` (+2): the toggle renders + seeds from kind; flipping it
-  alone enables Save + PATCHes the new capability; `isStartNode` disables/locks the toggle.
+- `backend/tests/test_graph_validity.py` (NEW, +13) — each BLOCK code (no_root / multiple_roots /
+  root_not_thinker / no_exit+dead_end / gate_no_branch / unbounded_loop / loop_no_exit) + the orphan
+  WARN, each on a focused hand-built graph; the valid minimal + review-loop shapes; and the integration
+  proof that all three code templates + the blank skeleton validate CLEAN.
+- `backend/tests/test_topology_crud.py` (NEW, +10) — create (worker preset seeds ENGINEER_PROMPT; blank
+  thinker empty prompt; gate/terminal config; terminal needs terminal_kind → 400); the four edge roles
+  round-trip to the exact `(edge_type, conditions)`; off-team endpoint 404; delete-node cascades edges;
+  delete edge; positions persist (re-read the row); library-guard (unknown/non-library → 404); and the
+  run-start guard refuses an invalid graph with a 422.
+- `frontend/src/lib/topology.test.ts` (NEW, +14) — the pure authoring helpers.
+- `frontend/src/App.test.tsx` — added the `/validate` route to the fetch stub; the authoring keystone
+  now targets the node card (not the new palette chip of the same label).
 
-## Live targets (NEW)
-- `make thinker-chain-e2e` (`scripts/thinker_chain_e2e.sh` + `scripts/thinker_chain_check.py`,
-  in-process TestClient): real models, instantiate `thinker_chain`, run it, assert ships once + spec
-  has 2 versions.
-- `make capability-edit-e2e` (`scripts/capability_edit_e2e.sh` + `frontend/e2e/capability-edit.spec.ts`,
-  Playwright): open a fresh `thinker_chain` team, flip the Architect thinker→worker, Save, assert the
-  flip persists (kind=agent/engine=openhands), the canvas re-labels it Worker, and the PM toggle is
-  locked.
+## Live targets
+- `make topology-e2e` (NEW — `scripts/topology_e2e.sh` + `frontend/e2e/topology.spec.ts`, Vite +
+  headless Playwright): from a **blank team**, author root thinker → Engineer → Ship (palette adds the
+  worker; edges via the same team-edge CRUD the connect-gesture calls), **Run through the UI → it
+  ships** (real NIM); PLUS an invalid graph (an unconnected node) greys out Run with the reason AND
+  `create_run` is refused 422.
 
 ## Acceptance evidence (all green — 2026-06-25)
-- `make test` → **209 passed** (was 202; +7 = 1 keystone + 6 capability). Keystone mutation RED→GREEN
-  demonstrated in-transcript.
+- `make test` → **232 passed** (was 209; +23 = 13 validity + 10 CRUD).
 - `make lint` → clean (backend+scripts ruff check+format + FE eslint `--max-warnings 0` + prettier).
-- `make test-frontend` → **95 passed** (was 93; +2 TeamNodePanel toggle/start-lock).
+- `make test-frontend` → **110 passed** (was 95; +15).
 - `make build-frontend` → clean (tsc --noEmit strict + vite).
-- `make thinker-chain-e2e` → **GREEN** (real models): run_id f99665cc-…; `completed`; ship tag
-  `ship-f99665cc-…`; spec **versions=2 authors=['agent:pm','agent:thinker']` (the non-start Architect
-  refined it).
-- `make capability-edit-e2e` → **GREEN** (`1 passed`): flip persisted (kind=agent/engine=openhands),
-  canvas re-labelled Worker, PM toggle locked.
-- Regression smokes (TVASHTR_AGENT_MODEL=nvidia_nim/meta/llama-3.3-70b-instruct), single-thinker path:
-  - `make skeleton-run` → GREEN: completed, shipped once, committed file matches, **pm-llm cost row
-    present**, agent-cost present.
-  - `make skeleton-crash` → GREEN: one ship tag/commit, one PRD version (held across crash), one
-    agent-cost, **one pm-llm CostRecord**.
-  - `make loop-run` → GREEN: Engineer [1,2], Reviewer [changes_requested, approved] (one loop-back),
-    one ship tag.
-  - `make loop-crash` → GREEN: mid-iteration-2 resume (attempt pids [90206,90206,91130,91130]),
-    Engineer×3, Reviewer [cr,cr,approved], ship once.
-- Byte-intact (disk-verified): `git diff main -- teams.py` is ADDITIONS-ONLY (0 removed lines →
-  `clone_team_graph`/`build_two_node_team`/`build_review_loop_team`/`seed_library_if_empty`
-  byte-intact); `pm_step` byte-identical incl. `pm-llm`/`pm-prd-v1`; `agent_run_step` /
-  `read_latest_prd_step` / `engineer_setup_step` / `engines/*` / `shipping.py` / `models.py`
-  UNCHANGED; routers A/B endpoints + `_AB_CONFIGS` + `_TEAM_BUILDERS` UNCHANGED.
-- `git diff --stat main` over `backend/alembic/versions/` is **EMPTY** — NO migration; `alembic heads`
-  = **0013_team_graph_is_library**. (The `protect-migrations.sh` freeze needs no bump this slice.)
-
-## Known M1 limitation (for the architect → PROJECTPLAN §15)
-On the FIXED templates a capability flip can produce a **nonsensical-but-runnable** graph (e.g.
-flipping `review_loop`'s Reviewer to a thinker routes via the loop-back catch-all; flipping a node's
-capability without updating its prompt is a prompt/capability mismatch). EXPECTED — the only invariant
-the executor needs this slice (**the root is a thinker**) is enforced. Holistic graph-validity (a
-thinker must run before any worker on every path; capability/prompt coherence) arrives with the M2
-topology-editing slice. No broader validity added here (scope).
+- `make topology-e2e` → **GREEN** (2 passed): invalid graph → Run disabled + `create_run` 422; authored
+  thinker→Engineer→Ship from a blank team → ran via UI → **SHIPPED** (run 1cbdfe38…, ship_tag
+  ship-1cbdfe38…).
+- `make skeleton-run` → GREEN (completed, committed file matches, pm-llm + agent-cost present).
+- `make skeleton-crash` → GREEN (recovered to SUCCESS; one ship/commit, one PRD version, one pm-llm).
+- `make loop-run` → GREEN (Engineer [1,2], Reviewer [changes_requested, approved], one loop-back, ship).
+- `make loop-crash` → GREEN (resumed mid-iteration-2; Engineer×3, Reviewer [cr,cr,approved], ship once).
+- `make capability-edit-e2e` → GREEN (flip persists + re-labels + PM locked — no FE regression).
+- `make thinker-chain-e2e` → GREEN (non-start Architect refined the spec; shipped once; 2 versions).
+- Invariants (disk + git verified): `git diff main -- …/team_run.py` **EMPTY**; `backend/alembic/
+  versions/` diff vs main empty (alembic head **0013**, NO migration); `teams.py` diff **45/0**
+  (builders byte-intact); A/B endpoints + `_AB_CONFIGS`/`_TEAM_BUILDERS` UNCHANGED (no diff hits).
 
 ## Deviations / decisions (two-way-door, logged)
-- **The panel posts `capability` on every Save** (like prompt/model), not only when the toggle moved.
-  The backend write is idempotent (re-writing the same kind/engine is a no-op) and the start node
-  always posts "thinker" (allowed). Consequence: the existing `TeamNodePanel.test.tsx` body assertion
-  was updated to include `capability` — expected (T10 extends that test).
-- **`thinker-chain-e2e` is an in-process TestClient checker** (mirrors `skeleton_run.py`), not a
-  separate-backend Playwright run — it is API-only (no UI), so a separate backend/Vite is unnecessary;
-  the `.sh` is the self-contained db-up+migrate+checker wrapper the brief asked for.
-- **`capability-edit-e2e` keeps the `NVIDIA_BUILD_API_KEY` skip guard** (mirrors its siblings) even
-  though it runs no agent — so it skips cleanly in a keyless CI, consistent with the other e2e.
+- **`topology-e2e` authors the graph's edges through the team-edge CRUD endpoints (via Playwright's
+  `request`) rather than a literal drag-to-connect gesture**, while the node-add IS driven through the
+  canvas palette and the Run IS driven through the UI. Rationale: drag-to-connect on React Flow is flaky
+  under headless Playwright; the connect/role/loop LOGIC is proven in `topology.test.ts`, and the
+  CRUD endpoints the gesture calls are the same ones the e2e exercises. The e2e still proves the headline
+  outcome end-to-end (author from a blank team → run → ship) + the invalid-graph UX + the server guard.
+- **Authoring node-selection is by NODE ID** (not role name) — a topology-edited team can carry duplicate
+  role names (two blank thinkers). The run view keeps its role-based selection.
+- **The blank-team root thinker carries an empty prompt** ("blank primitive"); the e2e authors a PM
+  prompt onto it before running (a blank prompt is structurally valid but writes no useful spec).
+
+## Deferred (for the architect → PROJECTPLAN §15)
+- **Gate/terminal config editing beyond drop-time** (rename a gate / flip a terminal post-drop) — the
+  immediate follow-on; out of scope this slice.
+- **User-authored custom presets** ("save your own") — Phase-4.
+- **Thinker-as-router** (a thinker emitting a routing label) — needs a NEW executor harvest path for
+  completion output; real executor work outside this wiring slice.
+- The cosmetic `REVIEW_VERDICT.json` → `OUTCOME.json` rename (byte-intact discipline — the emit-contract
+  templates the existing `REVIEW_VERDICT.json` contract).
 
 ## Blocked
 None.
 
 ## Test Count
-**209** offline backend pytest (was 202) + **95** vitest (was 93). `make lint` clean. alembic head
+**232** offline backend pytest (was 209) + **110** vitest (was 95). `make lint` clean. alembic head
 **0013** (NO migration).
 
 ## READY_TO_MERGE
-READY_TO_MERGE: branch=feat/p1.8c-thinker-capability, sha=<this commit — echoed in the loop report>,
-backend tests=209 passing, frontend vitest=95 passing. P1.8c — the generic thinker (a completion node
-composable anywhere) + capability (thinker↔worker) authoring + the `thinker_chain` template. Gates:
-`make test` 209; `make lint` clean; `make test-frontend` 95; `make build-frontend` clean;
-`make thinker-chain-e2e` GREEN (ships once + spec 2 versions, real models); `make capability-edit-e2e`
-GREEN (flip persists + re-labels + PM locked); the 4 regression smokes (skeleton-run/skeleton-crash/
-loop-run/loop-crash) GREEN on NIM. Keystone mutation RED→GREEN demonstrated. Byte-intact: teams.py
-additions-only (clone/builders/seed unchanged), pm_step byte-identical (pm-llm/pm-prd-v1 keys),
-agent_run_step / read_latest_prd_step / engines / shipping / models.py UNCHANGED, A/B endpoints
-UNCHANGED. NO migration — alembic head 0013. Architect-owned PROJECTPLAN.md / HANDOVER.md /
-prompts/p1.8c-thinker-capability.md left for the architect's own doc closeout (not staged/committed
-by this step).
+READY_TO_MERGE: branch=feat/p1.8d-topology-editing, sha=<this commit — echoed in the loop report>,
+backend tests=232 passing, frontend vitest=110 passing. P1.8d — topology editing (author your own
+wiring): node/edge CRUD + a pure `validate_graph` + a run-start 422 guard + a Blank-team seed
+(backend, NO migration, `team_run.py` empty diff, `teams.py` additions-only); `nodesConnectable` ON +
+a node palette + plain-language edge-role authoring (incl. the bounded rework loop with its escalation
+exit) + the per-worker emit-contract + a live validity surface that greys out Run (frontend). Gates:
+`make test` 232; `make lint` clean; `make test-frontend` 110; `make build-frontend` clean; `make
+topology-e2e` GREEN (authored a blank team → ran via UI → shipped; invalid graph blocked in UI +
+`create_run` 422, real NIM); the 4 regression smokes (skeleton-run/skeleton-crash/loop-run/loop-crash)
+GREEN on NIM; `capability-edit-e2e` + `thinker-chain-e2e` GREEN. Invariants: `team_run.py` UNTOUCHED
+(empty diff), NO migration (alembic head 0013), `teams.py` builders byte-intact (additions-only 45/0),
+A/B endpoints UNCHANGED. Architect-owned PROJECTPLAN.md / HANDOVER.md / prompts/*.md left for the
+architect's own doc closeout (not staged/committed by this step).

@@ -237,6 +237,96 @@ export async function updateTeamNode(
   return (await res.json()) as TeamGraphNode;
 }
 
+// ---- Topology editing (P1.8d): node/edge CRUD + position persistence + the validity verdict ----
+
+// The canvas vocabulary the palette drops + the four edge roles the inline editor offers. Each maps
+// server-side onto the (kind, engine) / (edge_type, conditions) the executor routes on.
+export type NodeKind = "thinker" | "worker" | "gate" | "terminal";
+export type EdgeRole = "forward" | "branch" | "loop_back" | "escalation";
+export type RolePreset = "pm" | "architect" | "engineer" | "reviewer";
+
+export interface CreateNodeBody {
+  node_kind: NodeKind;
+  preset?: RolePreset; // thinker/worker only — pre-fills the prompt from the teams.py constants
+  prompt?: string;
+  model?: string;
+  position?: NodePosition;
+  title?: string; // gate
+  description?: string; // gate
+  terminal_kind?: "ship" | "stop"; // terminal (required)
+}
+
+// One holistic-validity finding (mirrors the backend `validate_graph` shape exactly). `node_id` /
+// `edge_id` point at the offending element so the canvas can red-flag it; the `message` is shown.
+export interface ValidityIssue {
+  code: string;
+  message: string;
+  node_id: string | null;
+  edge_id: string | null;
+}
+export interface GraphValidity {
+  errors: ValidityIssue[];
+  warnings: ValidityIssue[];
+  runnable: boolean;
+}
+
+export async function createTeamNode(teamId: string, body: CreateNodeBody): Promise<TeamGraphNode> {
+  const res = await fetch(`/api/teams/${teamId}/nodes`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`POST /api/teams/${teamId}/nodes -> ${res.status}`);
+  return (await res.json()) as TeamGraphNode;
+}
+
+export async function deleteTeamNode(teamId: string, nodeId: string): Promise<void> {
+  const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE node ${nodeId} -> ${res.status}`);
+}
+
+export interface CreateEdgeBody {
+  source_node_id: string;
+  target_node_id: string;
+  role: EdgeRole;
+  label?: string; // branch
+  loop_limit?: number; // loop_back (defaults to 3 server-side)
+}
+
+export async function createTeamEdge(teamId: string, body: CreateEdgeBody): Promise<GraphEdge> {
+  const res = await fetch(`/api/teams/${teamId}/edges`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`POST /api/teams/${teamId}/edges -> ${res.status}`);
+  return (await res.json()) as GraphEdge;
+}
+
+export async function deleteTeamEdge(teamId: string, edgeId: string): Promise<void> {
+  const res = await fetch(`/api/teams/${teamId}/edges/${edgeId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE edge ${edgeId} -> ${res.status}`);
+}
+
+// Batch-persist canvas layout after a drag settles ({node_id: {x, y}}). Best-effort — off-team ids
+// are ignored server-side, so a stale id never fails the whole save.
+export async function saveTeamPositions(
+  teamId: string,
+  positions: Record<string, NodePosition>,
+): Promise<void> {
+  const res = await fetch(`/api/teams/${teamId}/positions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ positions }),
+  });
+  if (!res.ok) throw new Error(`POST /api/teams/${teamId}/positions -> ${res.status}`);
+}
+
+// The holistic-validity verdict for a team — the SAME `validate_graph` the create_run guard refuses
+// an invalid launch with, so the canvas's Run-disabled UX never disagrees with the server.
+export const getTeamValidity = (teamId: string): Promise<GraphValidity> =>
+  getJSON<GraphValidity>(`/api/teams/${teamId}/validate`);
+
 export const getRunStatus = (runId: string): Promise<RunStatus> =>
   getJSON<RunStatus>(`/api/runs/${runId}`);
 

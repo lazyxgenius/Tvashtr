@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 
-import { type Capability, MODEL_PRESETS, type TeamGraphNode, updateTeamNode } from "../lib/api";
+import {
+  type Capability,
+  type GraphEdge,
+  MODEL_PRESETS,
+  type TeamGraphNode,
+  updateTeamNode,
+} from "../lib/api";
+import { applyEmitContract, emitContract } from "../lib/topology";
 
 // Friendly titles for the seeded template roles; any other role falls back to its raw name.
 const ROLE_TITLES: Record<string, string> = {
@@ -36,12 +43,14 @@ const START_LOCK_TOOLTIP =
 export function TeamNodePanel({
   teamId,
   node,
+  edges = [],
   isStartNode,
   onSaved,
   onClose,
 }: {
   teamId: string;
   node: TeamGraphNode | null;
+  edges?: GraphEdge[];
   isStartNode: boolean;
   onSaved: () => void | Promise<void>;
   onClose: () => void;
@@ -57,6 +66,16 @@ export function TeamNodePanel({
   const [saved, setSaved] = useState(false);
 
   const title = node ? (ROLE_TITLES[node.role_name] ?? node.role_name) : "Node";
+
+  // P1.8d anti-drift: a branch worker (a worker with verdict-labelled out-edges) shows the
+  // emit-contract derived LIVE from its edges, plus a one-click "write into the prompt" so the
+  // prompt's verdict-file instruction can never silently fall out of sync with the wiring.
+  const contract = node && node.kind === "agent" ? emitContract(node.id, edges) : null;
+  const writeContract = () => {
+    if (!contract) return;
+    setPrompt((p) => applyEmitContract(p, contract.promptBlock));
+    setSaved(false);
+  };
 
   // Flipping the capability alone enables Save (it's an authorable field like prompt/model).
   const dirty =
@@ -168,6 +187,19 @@ export function TeamNodePanel({
                 }}
               />
             </label>
+
+            {contract && (
+              <div className="tv-contract">
+                <span className="tv-field__label">Output contract</span>
+                <p className="tv-contract__summary">{contract.summary}</p>
+                <button type="button" className="tv-btn tv-btn--sm" onClick={writeContract}>
+                  Write this into the prompt
+                </button>
+                <span className="tv-field__hint">
+                  Keeps the prompt’s verdict-file instruction in sync with the edges you wired.
+                </span>
+              </div>
+            )}
 
             <label className="tv-field">
               <span className="tv-field__label">Model</span>

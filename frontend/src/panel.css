@@ -781,3 +781,19 @@
   outline: none;
   box-shadow: var(--shadow-focus);
 }
+
+/* The branch-worker emit-contract block in the node panel (P1.8d anti-drift). */
+.tv-contract {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--surface-page);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+.tv-contract__summary {
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--text-primary);
+}

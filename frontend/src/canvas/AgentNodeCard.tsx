@@ -26,7 +26,17 @@ export type AgentNodeData = {
   config: NodeConfig | null;
   gateState?: GateState; // set by the canvas for kind === "gate"
   terminalState?: TerminalState; // set by the canvas for kind === "terminal"
+  // P1.8d authoring flags: a blocking validity issue on this node (red ring + tooltip), or an
+  // orphan warning (the walk never reaches it — dimmed, but still runnable).
+  errorMessage?: string;
+  isOrphan?: boolean;
 };
+
+/** The authoring overlay classes for a node (P1.8d): a red ring for a blocking issue, a dim for an
+ *  orphan warning. Empty in the run view (no flags set). */
+function flagClasses(d: AgentNodeData): string {
+  return `${d.errorMessage ? " tv-node--invalid" : ""}${d.isOrphan ? " tv-node--orphan" : ""}`;
+}
 
 const ROLE_TITLE: Record<string, string> = {
   pm: "Product manager",
@@ -99,7 +109,7 @@ function AgentCard({ data: d }: { data: AgentNodeData }) {
   const meta = metaParts.join(" · ");
 
   return (
-    <div className={`rf-node rf-node--${d.status}`}>
+    <div className={`rf-node rf-node--${d.status}${flagClasses(d)}`} title={d.errorMessage}>
       <NodeHandles />
       <div className="rf-node__head">
         <span className="rf-node__glyph">
@@ -143,7 +153,10 @@ function GateCard({ data: d }: { data: AgentNodeData }) {
   const state = d.gateState ?? "idle";
   const label = gateLabel(cfg.gate_kind ?? d.role_name);
   return (
-    <div className={`rf-gate rf-gate--${state}`} title={cfg.title || label}>
+    <div
+      className={`rf-gate rf-gate--${state}${flagClasses(d)}`}
+      title={d.errorMessage || cfg.title || label}
+    >
       <NodeHandles />
       <span className="rf-gate__glyph">
         <ShieldCheck size={16} strokeWidth={1.7} />
@@ -167,7 +180,10 @@ function TerminalCard({ data: d }: { data: AgentNodeData }) {
   const Icon = kind === "ship" ? PackageCheck : OctagonX;
   const label = kind === "ship" ? (reached ? "Shipped" : "Ship") : reached ? "Stopped" : "Stop";
   return (
-    <div className={`rf-terminal rf-terminal--${kind} rf-terminal--${state}`}>
+    <div
+      className={`rf-terminal rf-terminal--${kind} rf-terminal--${state}${flagClasses(d)}`}
+      title={d.errorMessage}
+    >
       <NodeHandles />
       <span className="rf-terminal__glyph">
         <Icon size={16} strokeWidth={1.7} />

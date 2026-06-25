@@ -469,3 +469,158 @@
   stroke-width: 2;
   stroke-dasharray: 5 4;
 }
+
+/* ---- Topology editing (P1.8d): palette, edge-role editor, validity flags ---- */
+
+/* The on-canvas palette tray — drop new nodes onto the open team (distinct from the left rail). */
+.tv-palette {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 220px;
+  padding: var(--space-3);
+  background: color-mix(in srgb, var(--surface-card) 92%, transparent);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(4px);
+}
+.tv-palette__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.tv-palette__label {
+  width: 100%;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+}
+.tv-palette__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 28px;
+  padding: 0 var(--space-2);
+  font-size: var(--fs-caption);
+  color: var(--text-primary);
+  background: var(--surface-page);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.tv-palette__chip:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.tv-palette__chip--preset {
+  border-style: dashed;
+}
+.tv-palette__chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The inline edge-role editor shown when the user draws a connection. */
+.tv-edge-editor {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 8;
+  transform: translate(-50%, -50%);
+  width: min(360px, 90%);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg, var(--shadow-sm));
+}
+.tv-edge-editor__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+.tv-edge-editor__head button {
+  display: inline-flex;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.tv-edge-editor__opts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.tv-edge-editor__opt {
+  width: 100%;
+  justify-content: flex-start;
+}
+.tv-edge-editor__row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.tv-edge-editor__input {
+  flex: 1;
+  height: 30px;
+  padding: 0 var(--space-2);
+  font-size: var(--fs-caption);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+.tv-edge-editor__loop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.tv-edge-editor__field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.tv-edge-editor__field input,
+.tv-edge-editor__field select {
+  height: 30px;
+  padding: 0 var(--space-2);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+.tv-edge-editor__note {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.tv-edge-editor__warn {
+  font-size: var(--fs-caption);
+  color: var(--danger);
+}
+
+/* Validity flags on the canvas nodes/edges. */
+.rf-node.tv-node--invalid,
+.rf-gate.tv-node--invalid,
+.rf-terminal.tv-node--invalid {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 40%, transparent);
+}
+.rf-node.tv-node--orphan,
+.rf-gate.tv-node--orphan,
+.rf-terminal.tv-node--orphan {
+  opacity: 0.5;
+  border-style: dashed;
+}
+.react-flow__edge.rf-edge--invalid .react-flow__edge-path {
+  stroke: var(--danger);
+  stroke-dasharray: 4 3;
+}

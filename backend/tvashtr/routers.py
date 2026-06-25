@@ -14,20 +14,27 @@ from dbos import DBOS, SetWorkflowID
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select, update
-from sqlalchemy.exc import NoResultFound
 
 from tvashtr import db
 from tvashtr.config import get_settings
 from tvashtr.control_plane.doc_writer import generate_doc
+from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
 from tvashtr.control_plane.team_run import run_team
 from tvashtr.control_plane.teams import (
+    ARCHITECT_PROMPT,
+    ENGINEER_PROMPT,
+    PM_PROMPT,
+    REVIEWER_PROMPT,
     build_review_loop_team,
     build_two_node_team,
     clone_team_graph,
+    create_blank_team,
     create_team_from_template,
+    engineer_model,
     get_team_summary,
     list_library_teams,
     list_templates,
+    reviewer_model,
     seed_library_if_empty,
 )
 from tvashtr.documents.service import add_version, get_document_with_versions, list_documents
@@ -116,10 +123,56 @@ class UpdateTeamNodeRequest(BaseModel):
 class CreateTeamRequest(BaseModel):
     """Create a library team from a starter template (P1.8b team library): the ``template`` key
     (one of ``GET /api/templates``) + a user-chosen ``name``. The team is materialized from the
-    code-resident builder and flipped to a library team — a drop-and-edit preset."""
+    code-resident builder and flipped to a library team — a drop-and-edit preset. P1.8d: the
+    sentinel ``template == "blank"`` seeds the minimal valid skeleton (root thinker → Ship) instead
+    of a catalog builder — a from-scratch starting point the user wires up."""
 
     template: str
     name: str
+
+
+class CreateNodeRequest(BaseModel):
+    """Add a node to a library team's canvas (P1.8d topology editing). ``node_kind`` is the canvas
+    vocabulary the palette offers: ``thinker`` (a ``completion`` node) / ``worker`` (an ``agent``
+    node, ``openhands`` engine) — the P1.8c capability pair — plus the control primitives ``gate``
+    and ``terminal``. ``preset`` (optional, thinker/worker only) seeds a pre-filled-but-editable
+    role node from the ``teams.py`` prompt constants (PM / Architect / Engineer / Reviewer); without
+    it a blank primitive is dropped (empty ``prompt``). ``terminal_kind`` is REQUIRED for a terminal
+    (ship vs stop is a real choice); ``title``/``description`` configure a gate. ``position`` is the
+    canvas drop point (defaults to the origin, then auto-layout/drag persists real coords)."""
+
+    node_kind: Literal["thinker", "worker", "gate", "terminal"]
+    preset: Literal["pm", "architect", "engineer", "reviewer"] | None = None
+    prompt: str | None = None
+    model: str | None = None
+    position: dict | None = None
+    title: str | None = None
+    description: str | None = None
+    terminal_kind: Literal["ship", "stop"] | None = None
+
+
+class CreateEdgeRequest(BaseModel):
+    """Wire two nodes on a library team's canvas (P1.8d). ``role`` is the plain-language edge role
+    the canvas authoring offers — it maps server-side to the ``(edge_type, conditions)`` the
+    executor routes on (the four roles verified in ``team_run``): ``forward`` → unconditional
+    (``conditions: null``); ``branch`` → ``{"when": label}`` (a gate's approved/rejected, or a
+    worker's verdict label — ``label`` REQUIRED); ``loop_back`` → ``{"loop_limit": N}`` (the bounded
+    catch-all rework edge — ``loop_limit`` defaults to 3); ``escalation`` → ``edge_type=
+    "escalation"`` (the cap-exhaustion exit out of a looping worker)."""
+
+    source_node_id: str
+    target_node_id: str
+    role: Literal["forward", "branch", "loop_back", "escalation"]
+    label: str | None = None
+    loop_limit: int | None = None
+
+
+class PositionsRequest(BaseModel):
+    """Persist canvas layout after a drag (P1.8d): a ``{node_id: {"x": .., "y": ..}}`` map. Batch —
+    one round-trip after a drag settles. Unknown / off-team node ids are ignored (best-effort
+    layout, never a hard error)."""
+
+    positions: dict[str, dict]
 
 
 # Pinned, deterministically-checkable deliverable (env-overridable). Keeping the
@@ -362,9 +415,24 @@ def create_run(body: CreateRunRequest) -> dict:
         # run THAT, so the user's edited prompts/models drive the run. The run owns the immutable
         # clone — editing the authored team afterward can't perturb this in-flight run.
         try:
-            team_graph_id = clone_team_graph(body.team_graph_id)
-        except (ValueError, NoResultFound) as exc:
+            gid = uuid.UUID(body.team_graph_id)
+        except ValueError as exc:
             raise HTTPException(status_code=400, detail="unknown team_graph_id") from exc
+        # Run-start validity guard (P1.8d): the source authored graph is server-authoritatively
+        # re-validated — a broken graph is REFUSED with its structured errors, so you can't launch
+        # an un-runnable team even via the API (the FE greys Run on the same verdict). Validated
+        # before cloning so a rejected launch leaves no orphan snapshot.
+        with db.session_scope() as session:
+            if session.get(TeamGraph, gid) is None:
+                raise HTTPException(status_code=400, detail="unknown team_graph_id")
+            nodes, edges = graph_dicts(session, gid)
+        verdict = validate_graph(nodes, edges)
+        if not verdict["runnable"]:
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "team graph is not runnable", "errors": verdict["errors"]},
+            )
+        team_graph_id = clone_team_graph(body.team_graph_id)
     elif body.team_shape == "review_loop":
         team_graph_id = build_review_loop_team()
     else:
@@ -707,9 +775,12 @@ def get_teams() -> dict:
 
 @router.post("/api/teams")
 def create_team(body: CreateTeamRequest) -> dict:
-    """Create a new library team from a starter template (drop-and-edit). 400 on an unknown
-    ``template`` key. Returns the new team's summary; the FE then loads its graph + makes it
-    current."""
+    """Create a new library team — from a starter template (drop-and-edit), or, when
+    ``template == "blank"`` (P1.8d), from the minimal valid skeleton (root thinker → Ship) the user
+    wires up from scratch. 400 on an unknown ``template`` key. Returns the new team's summary; the
+    FE then loads its graph + makes it current."""
+    if body.template == "blank":
+        return get_team_summary(create_blank_team(body.name))
     try:
         team_graph_id = create_team_from_template(body.template, body.name)
     except KeyError as exc:
@@ -791,6 +862,215 @@ def delete_team(team_id: str) -> dict:
         graph = _require_library_team(session, team_id)
         session.delete(graph)
     return {"team_graph_id": team_id, "deleted": True}
+
+
+# ---- Topology editing (P1.8d): node/edge CRUD + position persistence + the validity verdict ----
+
+# The pre-filled role presets the canvas palette drops (thinker/worker only) — seeded from the
+# byte-intact ``teams.py`` prompt constants. Node-granularity drop-and-edit (the team-granularity
+# version shipped as the P1.8b rail picker); the §13-S2 anti-dead-zone answer at node level.
+_NODE_PRESETS: dict[str, dict] = {
+    "pm": {"node_kind": "thinker", "role_name": "pm", "prompt": PM_PROMPT},
+    "architect": {"node_kind": "thinker", "role_name": "architect", "prompt": ARCHITECT_PROMPT},
+    "engineer": {"node_kind": "worker", "role_name": "engineer", "prompt": ENGINEER_PROMPT},
+    "reviewer": {"node_kind": "worker", "role_name": "reviewer", "prompt": REVIEWER_PROMPT},
+}
+
+# The four edge roles (FE plain-language) -> the executor's ``(edge_type, conditions)`` — the exact
+# shapes ``team_run``'s routers distinguish (forward = catch-all, branch = ``{when}``, loop-back =
+# the bounded ``{loop_limit}`` catch-all, escalation = the cap-exhaustion exit).
+_DEFAULT_LOOP_LIMIT = 3
+
+
+def _build_node(graph_id: uuid.UUID, body: CreateNodeRequest) -> AgentNode:
+    """Construct (unpersisted) the ``AgentNode`` for a create-node request — map the canvas
+    vocabulary (thinker/worker/gate/terminal + an optional role preset) onto the columns. A
+    thinker -> ``completion``/no engine; a worker -> ``agent``/``openhands`` (the P1.8c capability
+    pair). Raises 400 on a malformed request (a preset that contradicts ``node_kind``; a terminal
+    with no ``terminal_kind``)."""
+    position = body.position or {}
+    preset = None
+    if body.preset is not None:
+        preset = _NODE_PRESETS.get(body.preset)
+        if preset is None or preset["node_kind"] != body.node_kind:
+            raise HTTPException(status_code=400, detail="preset does not match node_kind")
+
+    if body.node_kind == "thinker":
+        return AgentNode(
+            team_graph_id=graph_id,
+            role_name=preset["role_name"] if preset else "thinker",
+            kind="completion",
+            model=body.model or get_settings().default_model,
+            engine=None,
+            prompt=preset["prompt"] if preset else (body.prompt if body.prompt is not None else ""),
+            position=position,
+        )
+    if body.node_kind == "worker":
+        default_model = reviewer_model() if body.preset == "reviewer" else engineer_model()
+        return AgentNode(
+            team_graph_id=graph_id,
+            role_name=preset["role_name"] if preset else "worker",
+            kind="agent",
+            model=body.model or default_model,
+            engine="openhands",
+            prompt=preset["prompt"] if preset else (body.prompt if body.prompt is not None else ""),
+            position=position,
+        )
+    if body.node_kind == "gate":
+        return AgentNode(
+            team_graph_id=graph_id,
+            role_name="gate",
+            kind="gate",
+            model=None,
+            engine=None,
+            prompt=None,
+            position=position,
+            config={
+                "gate_kind": "approval",
+                "title": body.title or "Approve before continuing?",
+                "description": body.description or "Approve to continue; reject to stop the run.",
+            },
+        )
+    # terminal
+    if body.terminal_kind is None:
+        raise HTTPException(status_code=400, detail="terminal_kind is required for a terminal node")
+    return AgentNode(
+        team_graph_id=graph_id,
+        role_name=body.terminal_kind,
+        kind="terminal",
+        model=None,
+        engine=None,
+        prompt=None,
+        position=position,
+        config={"terminal_kind": body.terminal_kind},
+    )
+
+
+def _edge_columns(body: CreateEdgeRequest) -> tuple[str, dict | None]:
+    """Map an edge ``role`` to ``(edge_type, conditions)``. 400 if a branch carries no label."""
+    if body.role == "forward":
+        return "work", None
+    if body.role == "branch":
+        if not body.label:
+            raise HTTPException(status_code=400, detail="a branch edge requires a label")
+        return "work", {"when": body.label}
+    if body.role == "loop_back":
+        return "work", {"loop_limit": body.loop_limit or _DEFAULT_LOOP_LIMIT}
+    return "escalation", None
+
+
+@router.post("/api/teams/{team_id}/nodes")
+def create_team_node(team_id: str, body: CreateNodeRequest) -> dict:
+    """Add a node to a library team's canvas (P1.8d). 400 on a malformed id / request; 404 if
+    ``team_id`` is not a library team (a run snapshot / A-B graph is never editable). Returns the
+    created node in the canvas shape."""
+    with db.session_scope() as session:
+        graph = _require_library_team(session, team_id)
+        node = _build_node(graph.id, body)
+        session.add(node)
+        session.flush()
+        return _node_base_dict(node)
+
+
+@router.delete("/api/teams/{team_id}/nodes/{node_id}")
+def delete_team_node(team_id: str, node_id: str) -> dict:
+    """Delete a library-team node; its edges cascade (FK ``ondelete=CASCADE``). 400 on a malformed
+    id; 404 if the team is not a library team or the node is not one of its nodes. Safe: runs use
+    immutable clone snapshots, so deleting a library node never touches a past run's rows."""
+    try:
+        nid = uuid.UUID(node_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid node id") from exc
+    with db.session_scope() as session:
+        graph = _require_library_team(session, team_id)
+        node = session.execute(select(AgentNode).where(AgentNode.id == nid)).scalar_one_or_none()
+        if node is None or node.team_graph_id != graph.id:
+            raise HTTPException(status_code=404, detail="node not found in the team")
+        session.delete(node)
+    return {"node_id": node_id, "deleted": True}
+
+
+@router.post("/api/teams/{team_id}/edges")
+def create_team_edge(team_id: str, body: CreateEdgeRequest) -> dict:
+    """Wire two of a library team's nodes (P1.8d). The ``role`` maps to ``(edge_type, conditions)``
+    (:func:`_edge_columns`). 400 on a malformed id / a label-less branch; 404 if the team is not a
+    library team OR either endpoint is not one of its nodes. Returns the created edge."""
+    try:
+        source = uuid.UUID(body.source_node_id)
+        target = uuid.UUID(body.target_node_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid node id") from exc
+    edge_type, conditions = _edge_columns(body)
+    with db.session_scope() as session:
+        graph = _require_library_team(session, team_id)
+        on_team = set(
+            session.execute(
+                select(AgentNode.id).where(AgentNode.team_graph_id == graph.id)
+            ).scalars()
+        )
+        if source not in on_team or target not in on_team:
+            raise HTTPException(status_code=404, detail="edge endpoint not in the team")
+        edge = Edge(
+            team_graph_id=graph.id,
+            source_node_id=source,
+            target_node_id=target,
+            edge_type=edge_type,
+            conditions=conditions,
+        )
+        session.add(edge)
+        session.flush()
+        return _edge_to_dict(edge)
+
+
+@router.delete("/api/teams/{team_id}/edges/{edge_id}")
+def delete_team_edge(team_id: str, edge_id: str) -> dict:
+    """Delete a library-team edge. 400 on a malformed id; 404 if the team is not a library team or
+    the edge is not one of its edges."""
+    try:
+        eid = uuid.UUID(edge_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid edge id") from exc
+    with db.session_scope() as session:
+        graph = _require_library_team(session, team_id)
+        edge = session.execute(select(Edge).where(Edge.id == eid)).scalar_one_or_none()
+        if edge is None or edge.team_graph_id != graph.id:
+            raise HTTPException(status_code=404, detail="edge not found in the team")
+        session.delete(edge)
+    return {"edge_id": edge_id, "deleted": True}
+
+
+@router.post("/api/teams/{team_id}/positions")
+def update_team_positions(team_id: str, body: PositionsRequest) -> dict:
+    """Persist canvas layout after a drag (P1.8d): a ``{node_id: {x, y}}`` batch. 400 on a malformed
+    id; 404 if the team is not a library team. Off-team / malformed entries are ignored (layout is
+    best-effort, never a hard error). Returns the ids actually updated."""
+    with db.session_scope() as session:
+        graph = _require_library_team(session, team_id)
+        by_id = {
+            str(n.id): n
+            for n in session.execute(
+                select(AgentNode).where(AgentNode.team_graph_id == graph.id)
+            ).scalars()
+        }
+        updated: list[str] = []
+        for nid, pos in body.positions.items():
+            node = by_id.get(nid)
+            if node is not None and isinstance(pos, dict) and "x" in pos and "y" in pos:
+                node.position = {"x": pos["x"], "y": pos["y"]}
+                updated.append(nid)
+    return {"updated": updated}
+
+
+@router.get("/api/teams/{team_id}/validate")
+def validate_team(team_id: str) -> dict:
+    """The holistic graph-validity verdict for a library team (P1.8d) — the SAME pure
+    :func:`validate_graph` the ``create_run`` guard refuses an invalid launch with, so the canvas's
+    Run-disabled UX never disagrees with the server. 400 on a malformed id; 404 if not a library
+    team. Returns ``{errors, warnings, runnable}``."""
+    with db.session_scope() as session:
+        graph = _require_library_team(session, team_id)
+        nodes, edges = graph_dicts(session, graph.id)
+    return validate_graph(nodes, edges)
 
 
 def _humantask_to_dict(task: HumanTask) -> dict:

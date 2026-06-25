@@ -678,6 +678,51 @@ def create_team_from_template(template_key: str, name: str) -> str:
     return team_graph_id
 
 
+def create_blank_team(name: str) -> str:
+    """Materialize the MINIMAL valid skeleton — one root thinker → a Ship terminal (2 nodes, 1
+    forward edge) — as a NEW library team and return its id (P1.8d topology editing). NEVER a
+    0-node canvas (which ``validate_graph`` itself rejects): a blank team is the smallest graph that
+    already passes validity, so the user starts from something runnable and reshapes it. The root
+    thinker carries an empty editable prompt (the user fills it). A NEW function — the byte-intact
+    builders are untouched; the run-start guard + the canvas validity both accept this skeleton."""
+    settings = get_settings()
+    with session_scope() as session:
+        graph = TeamGraph(name=name, is_library=True)
+        session.add(graph)
+        session.flush()
+
+        thinker = AgentNode(
+            team_graph_id=graph.id,
+            role_name="thinker",
+            kind="completion",
+            model=settings.default_model,
+            engine=None,
+            prompt="",
+            position={"x": 0, "y": 0},
+        )
+        ship = AgentNode(
+            team_graph_id=graph.id,
+            role_name="ship",
+            kind="terminal",
+            model=None,
+            engine=None,
+            position={"x": 320, "y": 0},
+            config={"terminal_kind": "ship"},
+        )
+        session.add_all([thinker, ship])
+        session.flush()
+        session.add(
+            Edge(
+                team_graph_id=graph.id,
+                source_node_id=thinker.id,
+                target_node_id=ship.id,
+                edge_type="work",
+                conditions=None,
+            )
+        )
+        return str(graph.id)
+
+
 def seed_library_if_empty() -> None:
     """Ensure the library is never empty (the §13 S2 anti-dead-zone posture): if zero library teams
     exist, create one from the ``review_loop`` template named ``"My team"`` — so a fresh DB (or a

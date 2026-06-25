@@ -70,8 +70,23 @@ export function TeamsRail({
 
       {picking && (
         <div className="tv-rail__picker" aria-label="New team from a template">
-          <div className="tv-rail__picker-label">Start from a template</div>
+          <div className="tv-rail__picker-label">Start from a template, or from scratch</div>
           <ul className="tv-rail__templates">
+            {/* P1.8d: a blank team seeds the minimal valid skeleton (root thinker → Ship) the user
+                then wires up with the canvas palette + edge drawing. */}
+            <li key="blank">
+              <button
+                type="button"
+                className={`tv-rail__template${template === "blank" ? " tv-rail__template--active" : ""}`}
+                onClick={() => setTemplate("blank")}
+                aria-pressed={template === "blank"}
+              >
+                <span className="tv-rail__template-name">Blank team</span>
+                <span className="tv-rail__template-desc">
+                  Start from a single thinker → Ship and author your own wiring.
+                </span>
+              </button>
+            </li>
             {templates.map((t) => {
               const chosen = template === t.template;
               return (

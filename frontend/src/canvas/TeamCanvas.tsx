@@ -1,7 +1,8 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Background,
   BackgroundVariant,
+  type Connection,
   Controls,
   type Edge,
   MarkerType,
@@ -13,20 +14,32 @@ import {
 } from "@xyflow/react";
 
 import type {
+  CreateNodeBody,
   GraphData,
   GraphNode,
+  GraphValidity,
   HumanTask,
   NodePosition,
   RunRow,
+  TeamGraphNode,
   TerminalConfig,
 } from "../lib/api";
 import { deriveGateState, deriveNodeStatus, deriveTerminalState } from "../lib/status";
+import { closesLoop, type ValidityFlags, validityFlags } from "../lib/topology";
 import { AgentNodeCard, type AgentNodeData } from "./AgentNodeCard";
 import { CanvasEmpty } from "./CanvasEmpty";
+import { type EdgeConfirm, EdgeRoleEditor, type PendingConnect } from "./EdgeRoleEditor";
+import { NodePalette } from "./NodePalette";
 import { ReworkEdge } from "./ReworkEdge";
 
 const nodeTypes = { agentNode: AgentNodeCard };
 const edgeTypes = { rework: ReworkEdge };
+
+const EMPTY_FLAGS: ValidityFlags = {
+  nodeErrors: new Map(),
+  edgeErrors: new Map(),
+  orphans: new Set(),
+};
 
 /** Raw backend status per node id (idle|running|done|failed|stopped) — the source for the
  *  forward-edge styling (the class derives from a pair of adjacent raw statuses). */
@@ -38,7 +51,7 @@ function rawStatusById(graph: GraphData): Record<string, string> {
 
 /** Pick the source/target handles for an edge by geometry, so any branch routes cleanly:
  *  horizontal backbone → right→left (today's look); a downward branch → bottom→top; a
- *  leftward branch → left→right. Pure; generalizes to any future Supervisor graph. */
+ *  leftward branch → left→right. Pure; generalizes to any authored graph. */
 function pickHandles(
   s: NodePosition,
   t: NodePosition,
@@ -57,13 +70,14 @@ function pickHandles(
 
 /** The canvas node `data` for one graph node: the thin agent/completion status overlay, plus
  *  the gate's task-derived state and the terminal's reached-state, threaded for the card to
- *  render by `kind`. (`config` carries the gate/terminal metadata.) */
+ *  render by `kind`, plus (P1.8d) any validity flag on the node. */
 function nodeData(
   n: GraphNode,
   run: RunRow | null,
   workflowStatus: string | null,
   tasks: HumanTask[],
   runId: string,
+  flags: ValidityFlags,
 ): AgentNodeData {
   return {
     role_name: n.role_name,
@@ -79,6 +93,8 @@ function nodeData(
       n.kind === "terminal"
         ? deriveTerminalState((n.config as TerminalConfig)?.terminal_kind ?? "stop", n.status)
         : undefined,
+    errorMessage: flags.nodeErrors.get(n.id),
+    isOrphan: flags.orphans.has(n.id),
   };
 }
 
@@ -88,15 +104,13 @@ function FitView({ trigger }: { trigger: string | null }) {
   const rf = useReactFlow();
   useEffect(() => {
     if (!trigger) return;
-    // ~80ms lets the flex layout (and React Flow's resize observer) settle first.
     const t = setTimeout(() => void rf.fitView({ padding: 0.5, duration: 320 }), 80);
     return () => clearTimeout(t);
   }, [trigger, rf]);
   return null;
 }
 
-/** Frame a single node when the drawer links a blocker card to its paused gate node. The
- *  selection ring is set in the parent (controlled nodes); this only does the camera move. */
+/** Frame a single node when the drawer links a blocker card to its paused gate node. */
 function FocusNode({ focusNodeId }: { focusNodeId?: string | null }) {
   const rf = useReactFlow();
   useEffect(() => {
@@ -118,6 +132,17 @@ export function TeamCanvas({
   focusNodeId = null,
   panelOpen = false,
   onSelectNode,
+  // P1.8d topology editing — supplied only in the authoring view.
+  editable = false,
+  teamNodes = [],
+  validity = null,
+  onAddNode,
+  onCreateEdge,
+  onDeleteNodes,
+  onDeleteEdges,
+  onMoveNode,
+  onSelectNodeId,
+  busy = false,
 }: {
   graph: GraphData | null;
   run: RunRow | null;
@@ -126,11 +151,37 @@ export function TeamCanvas({
   focusNodeId?: string | null;
   panelOpen?: boolean;
   onSelectNode?: (role: string | null) => void;
+  editable?: boolean;
+  teamNodes?: TeamGraphNode[];
+  validity?: GraphValidity | null;
+  busy?: boolean;
+  onAddNode?: (body: CreateNodeBody) => void;
+  onCreateEdge?: (c: EdgeConfirm, source: string, target: string) => void;
+  onDeleteNodes?: (ids: string[]) => void;
+  onDeleteEdges?: (ids: string[]) => void;
+  onMoveNode?: (id: string, position: NodePosition) => void;
+  onSelectNodeId?: (id: string | null) => void;
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
+  const [pending, setPending] = useState<PendingConnect | null>(null);
 
-  // (Re)build nodes only when the TOPOLOGY changes (a new run) — keyed on run_id so the
-  // per-poll graph refetch doesn't rebuild (which would reset dragged positions).
+  const flags = useMemo(
+    () => (editable ? validityFlags(validity) : EMPTY_FLAGS),
+    [editable, validity],
+  );
+
+  // (Re)build nodes when the TOPOLOGY changes. In the run view that's keyed on run_id (so the
+  // per-poll graph refetch doesn't reset dragged positions); in the authoring view it's keyed on
+  // the node-id SET (so an add/delete rebuilds, while a drag — which doesn't change the set — keeps
+  // its position until persisted).
+  const topoKey = graph
+    ? editable
+      ? `${graph.team_graph_id}:${graph.nodes
+          .map((n) => n.id)
+          .sort()
+          .join(",")}`
+      : graph.run_id
+    : null;
   useEffect(() => {
     if (!graph) {
       setNodes([]);
@@ -141,34 +192,49 @@ export function TeamCanvas({
         id: n.id,
         type: "agentNode",
         position: n.position,
-        data: nodeData(n, run, workflowStatus, tasks, graph.run_id),
+        data: nodeData(n, run, workflowStatus, tasks, graph.run_id, flags),
       })),
     );
-    // Status/state are refreshed in place by the effect below; rebuild only on a new topology.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reason: rebuild ONLY when the topology (graph.run_id) changes; run/workflowStatus/tasks are intentionally omitted so the per-poll graph refetch doesn't rebuild the nodes and reset dragged positions — the effect just below refreshes their state in place.
-  }, [graph?.run_id, setNodes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reason: rebuild ONLY when the topology (topoKey) changes; run/workflowStatus/tasks/flags refresh in place below so the per-poll refetch + a drag don't rebuild and reset positions.
+  }, [topoKey, setNodes]);
 
-  // Refresh each node's state on every poll, preserving dragged positions + selection —
-  // match graph.nodes by id and replace `data` in place. `tasks` is a dep so a gate flips
-  // state (awaiting → approved/stopped) the moment its task changes.
+  // Refresh each node's state (+ validity flags) on every poll/edit, preserving dragged positions.
   useEffect(() => {
     if (!graph) return;
     const byId = new Map(graph.nodes.map((n) => [n.id, n]));
     setNodes((nds) =>
       nds.map((nd) => {
         const n = byId.get(nd.id);
-        return n ? { ...nd, data: nodeData(n, run, workflowStatus, tasks, graph.run_id) } : nd;
+        return n
+          ? { ...nd, data: nodeData(n, run, workflowStatus, tasks, graph.run_id, flags) }
+          : nd;
       }),
     );
-  }, [graph, run, workflowStatus, tasks, setNodes]);
+  }, [graph, run, workflowStatus, tasks, flags, setNodes]);
 
-  // Card → node link: draw the selection ring on the focused gate node (controlled nodes,
-  // so selection is set here; the camera move lives in <FocusNode>). Keyed on focusNodeId
-  // only, so it doesn't fight a user's canvas click-selection on every poll.
   useEffect(() => {
     if (!focusNodeId) return;
     setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === focusNodeId })));
   }, [focusNodeId, setNodes]);
+
+  const handleConnect = useCallback(
+    (c: Connection) => {
+      if (!editable || !graph || !c.source || !c.target) return;
+      if (c.source === c.target) return;
+      const src = graph.nodes.find((n) => n.id === c.source);
+      const tgt = graph.nodes.find((n) => n.id === c.target);
+      if (!src || !tgt) return;
+      setPending({
+        source: c.source,
+        target: c.target,
+        sourceKind: src.kind,
+        sourceLabel: src.role_name,
+        targetLabel: tgt.role_name,
+        closesLoop: closesLoop(graph.edges, c.source, c.target),
+      });
+    },
+    [editable, graph],
+  );
 
   const edges: Edge[] = useMemo(() => {
     if (!graph) return [];
@@ -177,11 +243,8 @@ export function TeamCanvas({
     for (const n of graph.nodes) posById[n.id] = n.position;
 
     return graph.edges.map((e) => {
-      // 1. The Reviewer -> Engineer loop-back → the calm dashed arc, off the bottom handles.
-      //    This is the ONLY edge that uses ReworkEdge. P1.8a retopologized the loop-back to
-      //    the no-`when` catch-all `{loop_limit: N}`, so we identify it by that key — the same
-      //    unique signal the backend's `loop_limit_for` reads — NOT the stale
-      //    `when === "changes_requested"`, which now matches no seeded edge.
+      const invalid = flags.edgeErrors.has(e.id) ? " rf-edge--invalid" : "";
+      // 1. The bounded loop-back (`{loop_limit: N}`, no `when`) → the calm dashed arc.
       if (e.conditions?.loop_limit != null) {
         return {
           id: e.id,
@@ -190,7 +253,7 @@ export function TeamCanvas({
           sourceHandle: "s-bottom",
           targetHandle: "t-bottom",
           type: "rework",
-          className: "rf-edge--rework",
+          className: `rf-edge--rework${invalid}`,
           markerEnd: {
             type: MarkerType.ArrowClosed,
             color: "var(--rework-stroke)",
@@ -205,10 +268,9 @@ export function TeamCanvas({
         posById[e.source_node_id],
         posById[e.target_node_id],
       );
-      let className: string; // assigned in every branch below
+      let className: string;
       let markerEnd;
       if (e.conditions?.when === "rejected") {
-        // a muted, calm branch to a stop terminal
         className = "rf-edge--reject";
         markerEnd = {
           type: MarkerType.ArrowClosed,
@@ -217,7 +279,6 @@ export function TeamCanvas({
           height: 14,
         };
       } else if (e.edge_type === "escalation") {
-        // the cap-exhaustion route to the escalation gate
         className = "rf-edge--escalation";
         markerEnd = {
           type: MarkerType.ArrowClosed,
@@ -226,7 +287,6 @@ export function TeamCanvas({
           height: 14,
         };
       } else {
-        // forward (unconditional, or the `approved` branch) — styled from adjacent statuses
         const s = raw[e.source_node_id];
         const t = raw[e.target_node_id];
         className =
@@ -239,12 +299,12 @@ export function TeamCanvas({
         sourceHandle,
         targetHandle,
         type: "default",
-        className,
+        className: `${className}${invalid}`.trim(),
         markerEnd,
         animated: false,
       };
     });
-  }, [graph]);
+  }, [graph, flags]);
 
   return (
     <div className="relative h-full w-full">
@@ -258,16 +318,36 @@ export function TeamCanvas({
         fitViewOptions={{ padding: 0.5 }}
         minZoom={0.4}
         maxZoom={1.75}
-        nodesConnectable={false}
+        nodesConnectable={editable}
+        nodesDraggable={editable || undefined}
         elementsSelectable
+        deleteKeyCode={editable ? ["Backspace", "Delete"] : null}
+        onConnect={editable ? handleConnect : undefined}
+        onNodesDelete={
+          editable && onDeleteNodes
+            ? (deleted) => onDeleteNodes(deleted.map((n) => n.id))
+            : undefined
+        }
+        onEdgesDelete={
+          editable && onDeleteEdges
+            ? (deleted) => onDeleteEdges(deleted.map((e) => e.id))
+            : undefined
+        }
+        onNodeDragStop={
+          editable && onMoveNode ? (_e, node) => onMoveNode(node.id, node.position) : undefined
+        }
         onNodeClick={(_event, node) => {
-          // Only inspectable roles open the side panel; gate/terminal nodes have no role
-          // panel (the React Flow selection ring still works for any node). `node.data` is
-          // already typed `AgentNodeData` (the nodes are `Node<AgentNodeData>`), so no cast.
           const data = node.data;
-          if (data.kind === "agent" || data.kind === "completion") onSelectNode?.(data.role_name);
+          if (data.kind === "agent" || data.kind === "completion") {
+            if (editable) onSelectNodeId?.(node.id);
+            else onSelectNode?.(data.role_name);
+          }
         }}
-        onPaneClick={() => onSelectNode?.(null)}
+        onPaneClick={() => {
+          if (editable) onSelectNodeId?.(null);
+          else onSelectNode?.(null);
+          setPending(null);
+        }}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} />
@@ -284,6 +364,19 @@ export function TeamCanvas({
           />
         )}
       </ReactFlow>
+      {editable && onAddNode && <NodePalette onAdd={onAddNode} disabled={busy} />}
+      {editable && pending && onCreateEdge && (
+        <EdgeRoleEditor
+          pending={pending}
+          nodes={teamNodes}
+          edges={graph?.edges ?? []}
+          onConfirm={(c) => {
+            onCreateEdge(c, pending.source, pending.target);
+            setPending(null);
+          }}
+          onCancel={() => setPending(null)}
+        />
+      )}
       {!graph && <CanvasEmpty />}
     </div>
   );

@@ -14,23 +14,34 @@ import {
   cancelRun,
   type CostRow,
   createTeam,
+  type CreateNodeBody,
+  createTeamEdge,
+  createTeamNode,
   deleteTeam,
+  deleteTeamEdge,
+  deleteTeamNode,
   type GraphData,
+  type GraphValidity,
   getGraph,
   getRunStatus,
   getRunTasks,
   getTeamGraph,
   getTeams,
+  getTeamValidity,
   getTemplates,
   type HumanTask,
+  type NodePosition,
   resolveTask,
   type RunRow,
   runTeam,
+  saveTeamPositions,
   type TaskDecision,
   type TeamGraphData,
   type TeamSummary,
   type Template,
 } from "./lib/api";
+import type { EdgeConfirm } from "./canvas/EdgeRoleEditor";
+import { nextDropPosition, withLayout } from "./lib/topology";
 import { isRunTerminal } from "./lib/status";
 
 export default function App() {
@@ -49,10 +60,17 @@ export default function App() {
   const [teamGraph, setTeamGraph] = useState<TeamGraphData | null>(null);
   const [teamError, setTeamError] = useState(false);
   const [teamBusy, setTeamBusy] = useState(false);
+  // P1.8d: the current team's holistic-validity verdict (refetched after every topology edit). Run
+  // is gated on `validity.runnable`; the offending nodes/edges are flagged on the canvas.
+  const [validity, setValidity] = useState<GraphValidity | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
   const [starting, setStarting] = useState(false);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
+  // P1.8d: authoring selection is by NODE ID (a topology-edited team can carry duplicate role names,
+  // e.g. two blank thinkers), distinct from the run view's role-based `selectedRole`.
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   // The view mode (§14.3): the existing single-run canvas, or the A/B comparison. Plain state,
   // no router — the single-run state/poll stay alive underneath so switching back is lossless.
@@ -101,19 +119,119 @@ export default function App() {
     }
   }, []);
 
-  // Load one team's graph onto the canvas. Tolerant in the same way as `loadTeams`.
+  // Load one team's graph onto the canvas + its validity verdict. Tolerant like `loadTeams`.
   const loadTeam = useCallback(async (teamId: string) => {
     try {
-      const t = await getTeamGraph(teamId);
+      const [t, v] = await Promise.all([getTeamGraph(teamId), getTeamValidity(teamId)]);
       if (!mountedRef.current) return;
       if (Array.isArray(t?.nodes)) {
         setTeamGraph(t);
+        setValidity(v);
         setTeamError(false);
       }
     } catch {
       if (mountedRef.current) setTeamError(true);
     }
   }, []);
+
+  // ---- Topology editing (P1.8d): node/edge CRUD + drag-persist, each followed by a team reload
+  // (graph + validity) so the canvas + the Run gate reflect the edit. ----
+
+  const handleAddNode = useCallback(
+    async (body: CreateNodeBody) => {
+      if (!currentTeamId || !teamGraph) return;
+      setEditBusy(true);
+      try {
+        await createTeamNode(currentTeamId, {
+          ...body,
+          position: nextDropPosition(teamGraph.nodes),
+        });
+        await loadTeam(currentTeamId);
+      } catch {
+        if (mountedRef.current) setTeamError(true);
+      } finally {
+        if (mountedRef.current) setEditBusy(false);
+      }
+    },
+    [currentTeamId, teamGraph, loadTeam],
+  );
+
+  // A drawn edge S → T, with its role chosen in the inline editor. A bounded rework loop ALSO
+  // creates its escalation exit (the re-entered node T → a chosen gate/Stop) — termination provable.
+  const handleCreateEdge = useCallback(
+    async (c: EdgeConfirm, source: string, target: string) => {
+      if (!currentTeamId) return;
+      setEditBusy(true);
+      try {
+        await createTeamEdge(currentTeamId, {
+          source_node_id: source,
+          target_node_id: target,
+          role: c.role,
+          label: c.label,
+          loop_limit: c.loopLimit,
+        });
+        if (c.role === "loop_back" && c.escalationTargetId) {
+          await createTeamEdge(currentTeamId, {
+            source_node_id: target,
+            target_node_id: c.escalationTargetId,
+            role: "escalation",
+          });
+        }
+        await loadTeam(currentTeamId);
+      } catch {
+        if (mountedRef.current) setTeamError(true);
+      } finally {
+        if (mountedRef.current) setEditBusy(false);
+      }
+    },
+    [currentTeamId, loadTeam],
+  );
+
+  const handleDeleteNodes = useCallback(
+    async (ids: string[]) => {
+      if (!currentTeamId || ids.length === 0) return;
+      setEditBusy(true);
+      try {
+        for (const id of ids) await deleteTeamNode(currentTeamId, id);
+        if (selectedNodeId && ids.includes(selectedNodeId)) setSelectedNodeId(null);
+        await loadTeam(currentTeamId);
+      } catch {
+        if (mountedRef.current) setTeamError(true);
+      } finally {
+        if (mountedRef.current) setEditBusy(false);
+      }
+    },
+    [currentTeamId, loadTeam, selectedNodeId],
+  );
+
+  const handleDeleteEdges = useCallback(
+    async (ids: string[]) => {
+      if (!currentTeamId || ids.length === 0) return;
+      setEditBusy(true);
+      try {
+        for (const id of ids) await deleteTeamEdge(currentTeamId, id);
+        await loadTeam(currentTeamId);
+      } catch {
+        if (mountedRef.current) setTeamError(true);
+      } finally {
+        if (mountedRef.current) setEditBusy(false);
+      }
+    },
+    [currentTeamId, loadTeam],
+  );
+
+  // Persist a node's dragged position (best-effort, no reload — validity is layout-independent).
+  // Mirror it into local state so the canvas stays consistent without a refetch/snap.
+  const handleMoveNode = useCallback(
+    (id: string, position: NodePosition) => {
+      if (!currentTeamId) return;
+      setTeamGraph((tg) =>
+        tg ? { ...tg, nodes: tg.nodes.map((n) => (n.id === id ? { ...n, position } : n)) } : tg,
+      );
+      void saveTeamPositions(currentTeamId, { [id]: position }).catch(() => {});
+    },
+    [currentTeamId],
+  );
 
   useEffect(() => {
     void loadTeams();
@@ -155,6 +273,7 @@ export default function App() {
     setTasks([]);
     resolvedIdsRef.current = new Set();
     setSelectedRole(null);
+    setSelectedNodeId(null);
     setFocusNodeId(null);
   }, []);
 
@@ -190,6 +309,7 @@ export default function App() {
   // node panel (it was editing the previous team's node).
   const handleSelectTeam = useCallback((teamId: string) => {
     setSelectedRole(null);
+    setSelectedNodeId(null);
     setCurrentTeamId(teamId);
   }, []);
 
@@ -202,6 +322,7 @@ export default function App() {
         const created = await createTeam(template, name);
         if (!mountedRef.current) return;
         setSelectedRole(null);
+        setSelectedNodeId(null);
         setCurrentTeamId(created.team_graph_id); // the effect loads its graph
         await loadTeams(); // the new team appears in the rail (keeps currentTeamId via the ?? guard)
       } catch {
@@ -226,6 +347,7 @@ export default function App() {
         setTeams(remaining);
         if (teamId === currentTeamId) {
           setSelectedRole(null);
+          setSelectedNodeId(null);
           setCurrentTeamId(remaining[0]?.team_graph_id ?? null);
         }
       } catch {
@@ -333,11 +455,16 @@ export default function App() {
   // canvas keys its topology on `run_id`, so we hand it the stable team_graph_id there.
   const teamAsGraph: GraphData | null = useMemo(() => {
     if (!teamGraph) return null;
+    // P1.8d auto-layout fallback: nodes carrying no real position (an empty {} — pre-0012 rows)
+    // get a deterministic layered layout so nothing stacks at (0,0); authored/dragged coords pass
+    // through untouched (and a drag persists real coords back).
+    const layout = withLayout(teamGraph.nodes, teamGraph.edges);
     return {
       run_id: teamGraph.team_graph_id,
       team_graph_id: teamGraph.team_graph_id,
       nodes: teamGraph.nodes.map((n) => ({
         ...n,
+        position: layout[n.id] ?? n.position,
         model: n.model ?? "",
         status: "idle",
         iteration: 0,
@@ -347,7 +474,8 @@ export default function App() {
     };
   }, [teamGraph]);
 
-  const selectedTeamNode = teamGraph?.nodes.find((n) => n.role_name === selectedRole) ?? null;
+  // P1.8d: the authoring panel selects by node id (duplicate role names are possible now).
+  const selectedTeamNode = teamGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null;
   // P1.8c: the team's start node is the one NOT targeted by any edge (same rule as the backend).
   // The panel locks its capability toggle to "thinker" (it writes the spec the rest of the team reads).
   const startNodeId = teamGraph
@@ -356,6 +484,10 @@ export default function App() {
         return teamGraph.nodes.find((n) => !targets.has(n.id))?.id ?? null;
       })()
     : null;
+  // The Run gate (P1.8d): an authored team with validity errors can't launch (the server agrees —
+  // create_run 422s). Default-enabled until the first verdict arrives (avoids a flash-disabled Run).
+  const teamRunnable = validity === null || validity.runnable;
+  const validityErrors = validity?.errors ?? [];
 
   return (
     <>
@@ -411,7 +543,8 @@ export default function App() {
               <button
                 className="tv-btn"
                 onClick={() => void handleRunTeam()}
-                disabled={starting || currentTeamId === null}
+                disabled={starting || currentTeamId === null || !teamRunnable}
+                title={teamRunnable ? undefined : "Fix the team before running (see the issues)."}
               >
                 {starting ? "Starting…" : "Run this team"}
               </button>
@@ -426,10 +559,24 @@ export default function App() {
                 <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
               </>
             )}
-            {authoring && (
+            {authoring && teamRunnable && (
               <span style={{ fontSize: "var(--fs-caption)", color: "var(--text-secondary)" }}>
-                Click an agent node to edit its prompt + model, then run.
+                Drag from a node’s edge to wire it; drop nodes from the palette; click a node to
+                edit.
               </span>
+            )}
+            {authoring && !teamRunnable && (
+              <div className="tv-validity" role="status">
+                <span className="tv-validity__lead">Can’t run yet:</span>
+                <ul className="tv-validity__list">
+                  {validityErrors.slice(0, 4).map((issue, i) => (
+                    <li key={`${issue.code}:${issue.node_id ?? issue.edge_id ?? i}`}>
+                      {issue.message}
+                    </li>
+                  ))}
+                  {validityErrors.length > 4 && <li>…and {validityErrors.length - 4} more.</li>}
+                </ul>
+              </div>
             )}
             {error && (
               <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
@@ -475,34 +622,45 @@ export default function App() {
                 workflowStatus={workflowStatus}
                 tasks={authoring ? [] : tasks}
                 focusNodeId={focusNodeId}
-                panelOpen={selectedRole !== null}
+                panelOpen={authoring ? selectedNodeId !== null : selectedRole !== null}
                 onSelectNode={setSelectedRole}
+                editable={authoring}
+                teamNodes={teamGraph?.nodes ?? []}
+                validity={validity}
+                onAddNode={(body) => void handleAddNode(body)}
+                onCreateEdge={(c, source, target) => void handleCreateEdge(c, source, target)}
+                onDeleteNodes={(ids) => void handleDeleteNodes(ids)}
+                onDeleteEdges={(ids) => void handleDeleteEdges(ids)}
+                onMoveNode={handleMoveNode}
+                onSelectNodeId={setSelectedNodeId}
+                busy={editBusy}
               />
             </div>
-            {selectedRole &&
-              (authoring ? (
+            {authoring
+              ? selectedNodeId &&
                 currentTeamId && (
                   <TeamNodePanel
-                    key={selectedRole}
+                    key={selectedNodeId}
                     teamId={currentTeamId}
                     node={selectedTeamNode}
+                    edges={teamGraph?.edges ?? []}
                     isStartNode={selectedTeamNode?.id === startNodeId}
                     onSaved={() => loadTeam(currentTeamId)}
-                    onClose={() => setSelectedRole(null)}
+                    onClose={() => setSelectedNodeId(null)}
                   />
                 )
-              ) : (
-                <SidePanel
-                  selectedRole={selectedRole}
-                  invocations={
-                    graph?.nodes.find((n) => n.role_name === selectedRole)?.invocations ?? []
-                  }
-                  runId={runId}
-                  run={run}
-                  workflowStatus={workflowStatus}
-                  onClose={() => setSelectedRole(null)}
-                />
-              ))}
+              : selectedRole && (
+                  <SidePanel
+                    selectedRole={selectedRole}
+                    invocations={
+                      graph?.nodes.find((n) => n.role_name === selectedRole)?.invocations ?? []
+                    }
+                    runId={runId}
+                    run={run}
+                    workflowStatus={workflowStatus}
+                    onClose={() => setSelectedRole(null)}
+                  />
+                )}
           </>
         ) : (
           <ABCompare />

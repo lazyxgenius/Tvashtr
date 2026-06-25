@@ -175,6 +175,9 @@ beforeEach(() => {
       );
     // The current team's authored graph (matched BEFORE the generic run-graph `/graph` below).
     if (url === "/api/teams/team-1/graph") return Promise.resolve(jsonOk(teamGraph()));
+    // P1.8d: the team's holistic-validity verdict — a clean, runnable team.
+    if (url.endsWith("/validate"))
+      return Promise.resolve(jsonOk({ errors: [], warnings: [], runnable: true }));
     if (url === "/api/runs" && method === "POST")
       return Promise.resolve(jsonOk({ run_id: RUN_ID }));
     if (url.endsWith("/graph")) return Promise.resolve(jsonOk(graphFor(phase)));
@@ -286,15 +289,20 @@ describe("App — persistent team authoring (P1.8b)", () => {
       </StrictMode>,
     );
 
-    // The canvas opens to the persistent team (no run): the agent + gate nodes render.
-    const engineerCard = await screen.findByText("Engineer");
+    // The canvas opens to the persistent team (no run): the agent + gate nodes render. ("Product
+    // manager" is unique to the node card — the palette uses the short "PM" — so it's the safe wait.)
+    await screen.findByText("Product manager");
     expect(screen.getByText("Product manager")).toBeInTheDocument();
     // No editable panel before a node is selected.
     expect(screen.queryByLabelText("Engineer editor")).toBeNull();
 
-    // Click the ENGINEER agent node -> the editable panel opens with its prompt + a model field.
-    const engineerNode = engineerCard.closest(".react-flow__node");
-    expect(engineerNode).not.toBeNull();
+    // Click the ENGINEER agent NODE (not the palette preset chip of the same label) -> the editable
+    // panel opens with its prompt + a model field.
+    const engineerNode = screen
+      .getAllByText("Engineer")
+      .map((el) => el.closest(".react-flow__node"))
+      .find((el): el is Element => el !== null);
+    expect(engineerNode).toBeTruthy();
     fireEvent.click(engineerNode as Element);
 
     const panel = await screen.findByLabelText("Engineer editor");
