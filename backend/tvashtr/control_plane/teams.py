@@ -11,10 +11,23 @@ authored"; the builders stay hardcoded (the Supervisor swaps them in P1.8).
 """
 
 import os
+import uuid
+from copy import deepcopy
+
+from sqlalchemy import select
 
 from tvashtr.config import get_settings
 from tvashtr.db import session_scope
 from tvashtr.models import AgentNode, Edge, TeamGraph
+
+# The single, persistent, user-authored team (P1.8b). ONE get-or-create'd ``TeamGraph`` the canvas
+# opens to and edits across sessions — NOT created/discarded per run (each run deep-clones it into
+# a fresh run-scoped snapshot, :func:`clone_team_graph`). ``team_graphs`` has no idempotency column
+# and this slice adds NO migration, so the singleton is keyed by this RESERVED name; the per-run
+# clones ("… (run snapshot)") and the legacy builder graphs ("PM -> …") carry different names, so
+# the name uniquely picks out the authored team. (A later slice — multiple teams + a template
+# library — replaces the singleton-by-name with a first-class identity.)
+PERSISTENT_TEAM_NAME = "My team"
 
 # The Engineer needs a stronger instruction-follower than the cheap completion
 # default; same single OPENROUTER_API_KEY, different slug (matches agent-smoke).
@@ -377,3 +390,80 @@ def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
             ]
         )
         return str(graph.id)
+
+
+def get_or_create_persistent_team() -> str:
+    """Return the id of the SINGLE persistent authored team (P1.8b), seeding it once from the
+    review-loop template if it does not exist yet. Idempotent: the same team id on every call, so
+    the canvas re-opens the same editable team across sessions and a run never rebuilds it.
+
+    Keyed by :data:`PERSISTENT_TEAM_NAME` (no idempotency column / no migration this slice). Two
+    concurrent first-callers could race to seed two rows; the deterministic ``created_at, id``
+    order then pins every later call to the same (oldest) one — acceptable for the single-user
+    canvas, and superseded when the multi-team library lands."""
+    with session_scope() as session:
+        existing = session.execute(
+            select(TeamGraph)
+            .where(TeamGraph.name == PERSISTENT_TEAM_NAME)
+            .order_by(TeamGraph.created_at, TeamGraph.id)
+            .limit(1)
+        ).scalar_one_or_none()
+        if existing is not None:
+            return str(existing.id)
+    # Seed once from the review-loop topology under the reserved name. Reuses the builder
+    # unchanged — this just calls it with the persistent name (the builder's behavior, the rows
+    # it seeds, and the legacy default-name path are all untouched).
+    return build_review_loop_team(name=PERSISTENT_TEAM_NAME)
+
+
+def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
+    """Deep-clone a team graph into a NEW run-scoped ``TeamGraph`` and return its id — the
+    clone-on-launch snapshot (P1.8b): fresh node ids, every edge remapped onto the cloned node
+    ids, and ``position``/``config``/``prompt``/``model``/``engine``/``conditions`` copied
+    faithfully. The clone is the run's IMMUTABLE snapshot — editing the authored team afterward
+    never perturbs an in-flight run. Pure DB (no LLM, no workflow); openhands-free at import."""
+    src_id = uuid.UUID(source_team_graph_id)
+    with session_scope() as session:
+        source = session.execute(select(TeamGraph).where(TeamGraph.id == src_id)).scalar_one()
+        nodes = (
+            session.execute(select(AgentNode).where(AgentNode.team_graph_id == src_id))
+            .scalars()
+            .all()
+        )
+        edges = session.execute(select(Edge).where(Edge.team_graph_id == src_id)).scalars().all()
+
+        # Distinct name so the clone never collides with PERSISTENT_TEAM_NAME (which would corrupt
+        # the get-or-create lookup) and is legible as a run snapshot in the team list.
+        clone = TeamGraph(name=name or f"{source.name} (run snapshot)")
+        session.add(clone)
+        session.flush()
+
+        id_map: dict[uuid.UUID, uuid.UUID] = {}
+        for n in nodes:
+            new_node = AgentNode(
+                team_graph_id=clone.id,
+                role_name=n.role_name,
+                kind=n.kind,
+                model=n.model,
+                engine=n.engine,
+                prompt=n.prompt,
+                position=deepcopy(n.position),
+                config=deepcopy(n.config),
+            )
+            session.add(new_node)
+            session.flush()
+            id_map[n.id] = new_node.id
+
+        session.add_all(
+            [
+                Edge(
+                    team_graph_id=clone.id,
+                    source_node_id=id_map[e.source_node_id],
+                    target_node_id=id_map[e.target_node_id],
+                    edge_type=e.edge_type,
+                    conditions=deepcopy(e.conditions),
+                )
+                for e in edges
+            ]
+        )
+        return str(clone.id)

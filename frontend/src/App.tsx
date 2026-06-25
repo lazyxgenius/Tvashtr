@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { TeamCanvas } from "./canvas/TeamCanvas";
 import { ABCompare } from "./components/ABCompare";
@@ -7,6 +7,7 @@ import { CancelRunButton } from "./components/CancelRunButton";
 import { RunBanner } from "./components/RunBanner";
 import { TasksDrawer } from "./components/TasksDrawer";
 import { SidePanel } from "./panel/SidePanel";
+import { TeamNodePanel } from "./panel/TeamNodePanel";
 import {
   acknowledgeTask,
   cancelRun,
@@ -15,11 +16,13 @@ import {
   getGraph,
   getRunStatus,
   getRunTasks,
+  getTeamGraph,
   type HumanTask,
   resolveTask,
   type RunRow,
-  startRun,
+  runTeam,
   type TaskDecision,
+  type TeamGraphData,
 } from "./lib/api";
 import { isRunTerminal } from "./lib/status";
 
@@ -30,6 +33,10 @@ export default function App() {
   const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);
   const [costs, setCosts] = useState<CostRow[]>([]);
   const [tasks, setTasks] = useState<HumanTask[]>([]);
+  // The persistent authored team (P1.8b): fetched once on open and after each node-edit Save. The
+  // canvas renders it while no run is active (the authoring view); "Run this team" clones+launches.
+  const [teamGraph, setTeamGraph] = useState<TeamGraphData | null>(null);
+  const [teamError, setTeamError] = useState(false);
   const [starting, setStarting] = useState(false);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState(false);
@@ -39,6 +46,9 @@ export default function App() {
   // no router — the single-run state/poll stay alive underneath so switching back is lossless.
   const [mode, setMode] = useState<"single" | "ab">("single");
 
+  // Authoring vs run: with no active run the canvas shows the persistent team; once a run launches
+  // the existing live run view takes over (graph/run/tasks polled as before).
+  const authoring = runId === null;
   const terminal = isRunTerminal(run, workflowStatus);
   const inFlight = runId !== null && !terminal;
   // Tasks acted on this run — suppress them so a drawer card can't briefly resurrect
@@ -63,6 +73,25 @@ export default function App() {
     };
   }, []);
 
+  // Load the persistent authored team (the canvas's default view). Tolerant: a transient failure
+  // shows a hint and keeps the last team; a malformed body is ignored (the canvas stays empty).
+  const loadTeam = useCallback(async () => {
+    try {
+      const t = await getTeamGraph();
+      if (!mountedRef.current) return;
+      if (Array.isArray(t?.nodes)) {
+        setTeamGraph(t);
+        setTeamError(false);
+      }
+    } catch {
+      if (mountedRef.current) setTeamError(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadTeam();
+  }, [loadTeam]);
+
   // One fetch of the run snapshot + its Tasks-for-Human. Shared by the poll loop
   // and the optimistic re-poll after an approve / reject / cancel.
   const pull = useCallback(async () => {
@@ -84,20 +113,28 @@ export default function App() {
     }
   }, [runId]);
 
-  const handleStart = useCallback(async () => {
-    setStarting(true);
-    setError(false);
+  // Reset the run-scoped state to a clean slate (a fresh launch, or returning to authoring).
+  const resetRunState = useCallback(() => {
     setRunId(null);
     setGraph(null);
     setRun(null);
     setWorkflowStatus(null);
     setCosts([]);
     setTasks([]);
-    resolvedIdsRef.current = new Set(); // a new run starts with a clean slate
+    resolvedIdsRef.current = new Set();
     setSelectedRole(null);
     setFocusNodeId(null);
+  }, []);
+
+  // "Run this team": clone the authored team into a fresh run-scoped snapshot and launch it; the
+  // existing live run view then takes over (same poll surface as before).
+  const handleRunTeam = useCallback(async () => {
+    if (!teamGraph) return;
+    setStarting(true);
+    setError(false);
+    resetRunState();
     try {
-      const id = await startRun();
+      const id = await runTeam(teamGraph.team_graph_id);
       const g = await getGraph(id);
       setGraph(g);
       setRunId(id);
@@ -106,7 +143,15 @@ export default function App() {
     } finally {
       setStarting(false);
     }
-  }, []);
+  }, [teamGraph, resetRunState]);
+
+  // Return to the authoring view (after a run finishes) to edit the team and run again. Refetches
+  // the team so any edits made elsewhere are reflected.
+  const handleEditTeam = useCallback(() => {
+    resetRunState();
+    setError(false);
+    void loadTeam();
+  }, [resetRunState, loadTeam]);
 
   // Poll the run + tasks while active and not terminal; stop once terminal.
   useEffect(() => {
@@ -200,13 +245,25 @@ export default function App() {
     void pull();
   }, [runId, pull]);
 
-  const buttonLabel = starting
-    ? "Starting…"
-    : inFlight
-      ? "Running…"
-      : runId
-        ? "Start another run"
-        : "Start the run";
+  // The persistent team rendered in the canvas's GraphData shape (no run → every node idle). The
+  // canvas keys its topology on `run_id`, so we hand it the stable team_graph_id there.
+  const teamAsGraph: GraphData | null = useMemo(() => {
+    if (!teamGraph) return null;
+    return {
+      run_id: teamGraph.team_graph_id,
+      team_graph_id: teamGraph.team_graph_id,
+      nodes: teamGraph.nodes.map((n) => ({
+        ...n,
+        model: n.model ?? "",
+        status: "idle",
+        iteration: 0,
+        invocations: [],
+      })),
+      edges: teamGraph.edges,
+    };
+  }, [teamGraph]);
+
+  const selectedTeamNode = teamGraph?.nodes.find((n) => n.role_name === selectedRole) ?? null;
 
   return (
     <>
@@ -258,18 +315,38 @@ export default function App() {
         </div>
         {mode === "single" && (
           <>
-            <button
-              className="tv-btn"
-              onClick={() => void handleStart()}
-              disabled={starting || inFlight}
-            >
-              {buttonLabel}
-            </button>
-            {inFlight && <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />}
-            <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
+            {authoring ? (
+              <button
+                className="tv-btn"
+                onClick={() => void handleRunTeam()}
+                disabled={starting || teamGraph === null}
+              >
+                {starting ? "Starting…" : "Run this team"}
+              </button>
+            ) : (
+              <>
+                <button className="tv-btn" onClick={handleEditTeam} disabled={inFlight}>
+                  {inFlight ? "Running…" : "Edit this team"}
+                </button>
+                {inFlight && (
+                  <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />
+                )}
+                <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
+              </>
+            )}
+            {authoring && (
+              <span style={{ fontSize: "var(--fs-caption)", color: "var(--text-secondary)" }}>
+                Click an agent node to edit its prompt + model, then run.
+              </span>
+            )}
             {error && (
               <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
                 Couldn't start the run — is the backend running?
+              </span>
+            )}
+            {teamError && authoring && (
+              <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
+                Couldn't load your team — is the backend running?
               </span>
             )}
           </>
@@ -279,37 +356,47 @@ export default function App() {
       <main className="flex min-h-0 flex-1">
         {mode === "single" ? (
           <>
-            <TasksDrawer
-              blockers={pendingBlockers}
-              nudges={pendingNudges}
-              onResolve={(taskId, decision) => void handleResolve(taskId, decision)}
-              onAcknowledge={(taskId) => void handleAcknowledge(taskId)}
-              onFocusNode={setFocusNodeId}
-              busy={acting}
-            />
+            {!authoring && (
+              <TasksDrawer
+                blockers={pendingBlockers}
+                nudges={pendingNudges}
+                onResolve={(taskId, decision) => void handleResolve(taskId, decision)}
+                onAcknowledge={(taskId) => void handleAcknowledge(taskId)}
+                onFocusNode={setFocusNodeId}
+                busy={acting}
+              />
+            )}
             <div className="relative min-w-0 flex-1">
               <TeamCanvas
-                graph={graph}
+                graph={authoring ? teamAsGraph : graph}
                 run={run}
                 workflowStatus={workflowStatus}
-                tasks={tasks}
+                tasks={authoring ? [] : tasks}
                 focusNodeId={focusNodeId}
                 panelOpen={selectedRole !== null}
                 onSelectNode={setSelectedRole}
               />
             </div>
-            {selectedRole && (
-              <SidePanel
-                selectedRole={selectedRole}
-                invocations={
-                  graph?.nodes.find((n) => n.role_name === selectedRole)?.invocations ?? []
-                }
-                runId={runId}
-                run={run}
-                workflowStatus={workflowStatus}
-                onClose={() => setSelectedRole(null)}
-              />
-            )}
+            {selectedRole &&
+              (authoring ? (
+                <TeamNodePanel
+                  key={selectedRole}
+                  node={selectedTeamNode}
+                  onSaved={loadTeam}
+                  onClose={() => setSelectedRole(null)}
+                />
+              ) : (
+                <SidePanel
+                  selectedRole={selectedRole}
+                  invocations={
+                    graph?.nodes.find((n) => n.role_name === selectedRole)?.invocations ?? []
+                  }
+                  runId={runId}
+                  run={run}
+                  workflowStatus={workflowStatus}
+                  onClose={() => setSelectedRole(null)}
+                />
+              ))}
           </>
         ) : (
           <ABCompare />

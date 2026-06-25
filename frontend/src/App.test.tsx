@@ -1,10 +1,17 @@
 import { StrictMode } from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
-import type { GraphData, GraphNode, RunRow, RunStatus } from "./lib/api";
+import type {
+  GraphData,
+  GraphNode,
+  RunRow,
+  RunStatus,
+  TeamGraphData,
+  TeamGraphNode,
+} from "./lib/api";
 
 // The KEYSTONE (brief §2.3.1): render the REAL <App/> under <StrictMode>, stub the whole
 // control-plane fetch surface, and drive the poll with fake timers. It proves the two things
@@ -15,7 +22,7 @@ import type { GraphData, GraphNode, RunRow, RunStatus } from "./lib/api";
 //
 // The start-click here uses fireEvent (not user-event): user-event deadlocks against vitest's
 // fake timers, and this test must drive virtual time for the poll. The realistic user-event
-// sequence is exercised where interaction IS the subject (the A/B toggle below, TasksDrawer).
+// sequence is exercised where interaction IS the subject (the A/B toggle below, team authoring).
 
 const RUN_ID = "run-keystone-1";
 
@@ -35,12 +42,53 @@ function gnode(over: Partial<GraphNode> & Pick<GraphNode, "id" | "role_name" | "
   return {
     model: "test-model",
     engine: "openhands",
+    prompt: null,
     position: { x: 0, y: 0 },
     config: null,
     status: "idle",
     iteration: 0,
     invocations: [],
     ...over,
+  };
+}
+
+function tnode(
+  over: Partial<TeamGraphNode> & Pick<TeamGraphNode, "id" | "role_name" | "kind">,
+): TeamGraphNode {
+  return {
+    model: "openai/gpt-4o-mini",
+    engine: null,
+    prompt: "default behavior",
+    position: { x: 0, y: 0 },
+    config: null,
+    ...over,
+  };
+}
+
+// The persistent authored team the canvas opens to (P1.8b): two agent nodes + a gate control node.
+function teamGraph(): TeamGraphData {
+  return {
+    team_graph_id: "team-1",
+    nodes: [
+      tnode({ id: "tn-pm", role_name: "pm", kind: "completion", prompt: "PM behavior" }),
+      tnode({
+        id: "tn-eng",
+        role_name: "engineer",
+        kind: "agent",
+        engine: "openhands",
+        prompt: "ENGINEER behavior — edit me",
+      }),
+      tnode({
+        id: "tn-gate",
+        role_name: "prd_gate",
+        kind: "gate",
+        model: null,
+        prompt: null,
+        position: { x: 220, y: 0 },
+        config: { gate_kind: "prd_approval", title: "Approve the PRD", description: "Approve." },
+      }),
+    ],
+    edges: [],
   };
 }
 
@@ -103,6 +151,7 @@ beforeEach(() => {
     const url = urlOf(input);
     const method = init?.method ?? "GET";
     if (url === "/health") return Promise.resolve(jsonOk({ status: "ok", db: "ok" }));
+    if (url === "/api/team/graph") return Promise.resolve(jsonOk(teamGraph()));
     if (url === "/api/runs" && method === "POST")
       return Promise.resolve(jsonOk({ run_id: RUN_ID }));
     if (url.endsWith("/graph")) return Promise.resolve(jsonOk(graphFor(phase)));
@@ -135,10 +184,15 @@ describe("App — poll lifecycle (keystone)", () => {
       </StrictMode>,
     );
 
-    // Start the run: POST /api/runs -> getGraph -> the poll effect arms. (Sync act for the
-    // click; the async advance just below flushes the handleStart fetch microtasks.)
+    // Let the persistent team load so "Run this team" is enabled (the launch needs its id).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Run the team: POST /api/runs -> getGraph -> the poll effect arms. (Sync act for the click;
+    // the async advance just below flushes the handleRunTeam fetch microtasks.)
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Start the run" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run this team" }));
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -186,17 +240,57 @@ describe("App — single-run <-> A/B mode toggle (state-only)", () => {
     );
 
     // Single-run surface is up; the A/B surface is not.
-    expect(screen.getByRole("button", { name: "Start the run" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Run this team" })).toBeInTheDocument();
     expect(screen.queryByText(/One idea, two team configs/)).toBeNull();
 
     // Toggle to A/B compare: the comparison surface mounts; the single-run controls are replaced.
     await user.click(screen.getByRole("button", { name: "A/B compare" }));
     expect(screen.getByText(/One idea, two team configs/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start the run" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run this team" })).toBeNull();
 
     // Toggle back: the single-run tree returns (lossless — the underlying state was preserved).
     await user.click(screen.getByRole("button", { name: "Single run" }));
-    expect(screen.getByRole("button", { name: "Start the run" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run this team" })).toBeInTheDocument();
     expect(screen.queryByText(/One idea, two team configs/)).toBeNull();
+  });
+});
+
+describe("App — persistent team authoring (P1.8b)", () => {
+  it("renders the persistent team and opens the editable panel for an agent node only", async () => {
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+
+    // The canvas opens to the persistent team (no run): the agent + gate nodes render.
+    const engineerCard = await screen.findByText("Engineer");
+    expect(screen.getByText("Product manager")).toBeInTheDocument();
+    // No editable panel before a node is selected.
+    expect(screen.queryByLabelText("Engineer editor")).toBeNull();
+
+    // Click the ENGINEER agent node -> the editable panel opens with its prompt + a model field.
+    const engineerNode = engineerCard.closest(".react-flow__node");
+    expect(engineerNode).not.toBeNull();
+    fireEvent.click(engineerNode as Element);
+
+    const panel = await screen.findByLabelText("Engineer editor");
+    const promptBox = within(panel).getByRole<HTMLTextAreaElement>("textbox", { name: /prompt/i });
+    expect(promptBox.value).toContain("ENGINEER behavior");
+    // The model field carries the node's model.
+    expect(within(panel).getByRole<HTMLInputElement>("combobox").value).toBe("openai/gpt-4o-mini");
+
+    // Close the panel back to a CLEAN state, then click a GATE node: control primitives aren't
+    // editable, so NO editable panel opens (not even a stale one). Asserting from the closed state
+    // distinguishes "the gate opened nothing" from "an earlier agent panel lingered".
+    fireEvent.click(within(panel).getByRole("button", { name: "Close panel" }));
+    await waitFor(() => expect(screen.queryByLabelText("Engineer editor")).toBeNull());
+
+    const gateNode = screen.getByText("PRD approval").closest(".react-flow__node");
+    fireEvent.click(gateNode as Element);
+    // No editable surface of any kind appears for the gate (no panel aside, no prompt textbox).
+    expect(screen.queryByRole("textbox", { name: /prompt/i })).toBeNull();
+    expect(screen.queryByLabelText("PRD approval editor")).toBeNull();
+    expect(screen.queryByLabelText("prd_gate editor")).toBeNull();
   });
 });

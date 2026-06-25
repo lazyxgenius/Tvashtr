@@ -83,6 +83,11 @@ def test_graph_endpoint_review_loop_gates_terminals_loopback_and_escalation(clie
     assert nodes["engineer"]["config"] == {"agent_kind": "engineer"}
     for n in body["nodes"]:
         assert {"id", "role_name", "kind", "model", "engine", "position", "config"} <= set(n)
+    # P1.8b: the run-graph node dict now ADDITIVELY carries `prompt` too (agents seed it; the
+    # gate/terminal control primitives carry null) — the same field the team-graph read exposes.
+    assert all("prompt" in n for n in body["nodes"])
+    assert nodes["engineer"]["prompt"] and nodes["reviewer"]["prompt"] and nodes["pm"]["prompt"]
+    assert nodes["prd_gate"]["prompt"] is None and nodes["ship"]["prompt"] is None
 
     edges = body["edges"]
     assert len(edges) == 9

@@ -14,12 +14,18 @@ from dbos import DBOS, SetWorkflowID
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import NoResultFound
 
 from tvashtr import db
 from tvashtr.config import get_settings
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.team_run import run_team
-from tvashtr.control_plane.teams import build_review_loop_team, build_two_node_team
+from tvashtr.control_plane.teams import (
+    build_review_loop_team,
+    build_two_node_team,
+    clone_team_graph,
+    get_or_create_persistent_team,
+)
 from tvashtr.documents.service import add_version, get_document_with_versions, list_documents
 from tvashtr.models import (
     AgentInvocation,
@@ -57,8 +63,13 @@ class CreateRunRequest(BaseModel):
     # Which hardcoded team the run builds (P1.5a). Default ``two_node`` keeps
     # skeleton-run/skeleton-crash (which POST neither field) byte-for-byte unchanged;
     # ``review_loop`` builds the 3-node PM -> Engineer <-> Reviewer cyclic team that
-    # ``make loop-run`` (and, next prompt, the UI) requests.
+    # ``make loop-run`` requests.
     team_shape: Literal["two_node", "review_loop"] = "two_node"
+    # Clone-on-launch (P1.8b): when set to the persistent authored team's id, the run is launched
+    # on a fresh deep-clone of THAT team (the user's edited prompts/models), not a throwaway
+    # builder graph — so the run is driven by what the user authored. When omitted (the legacy
+    # smokes + the A/B path), the ``team_shape`` branch above is taken byte-for-byte unchanged.
+    team_graph_id: str | None = None
 
 
 class ABRunRequest(BaseModel):
@@ -81,6 +92,16 @@ class AddDocumentVersionRequest(BaseModel):
     appended as the next version that the running agents pick up on their next read."""
 
     content: str
+
+
+class UpdateTeamNodeRequest(BaseModel):
+    """A human edit to a persistent-team agent node (P1.8b authoring): its ``prompt`` (the node's
+    whole identity/behavior) and ``model``. ONLY these two fields are editable this slice —
+    topology, capability (``kind``), and the control primitives (gate/terminal) are later slices /
+    not editable. Both are sent on every Save (the FE is dirty-aware but posts the full values)."""
+
+    prompt: str
+    model: str
 
 
 # Pinned, deterministically-checkable deliverable (env-overridable). Keeping the
@@ -124,6 +145,39 @@ def _document_meta(doc: Document) -> dict:
         "doc_type": doc.doc_type,
         "created_at": doc.created_at.isoformat(),
         "updated_at": doc.updated_at.isoformat(),
+    }
+
+
+def _node_base_dict(n: AgentNode) -> dict:
+    """The canvas-facing node fields shared by the run-graph read and the team-graph read
+    (P1.8b): identity (``id``/``role_name``/``kind``), the editable ``prompt`` + ``model``, the
+    ``engine``, the layout ``position``, and the gate/terminal ``config`` (NULL for
+    completion/agent). ``prompt`` is NEW on the run endpoint too — additive; the canvas ignores
+    unknown keys. The run-graph endpoint extends this with live ``status``/``iteration``/
+    ``invocations``; the team-graph endpoint returns it as-is (the authored team is not running)."""
+    return {
+        "id": str(n.id),
+        "role_name": n.role_name,
+        "kind": n.kind,
+        "model": n.model,
+        "engine": n.engine,
+        # P1.8b: the node's behavior text — its whole identity in the prompt-driven model. NULL for
+        # gate/terminal nodes (control primitives, no LLM). The side panel edits this for agents.
+        "prompt": n.prompt,
+        "position": n.position,
+        "config": n.config,
+    }
+
+
+def _edge_to_dict(e: Edge) -> dict:
+    """One graph edge in the canvas's shape (shared by both graph reads): endpoints + the
+    routing ``edge_type``/``conditions`` (NULL = unconditional)."""
+    return {
+        "id": str(e.id),
+        "source_node_id": str(e.source_node_id),
+        "target_node_id": str(e.target_node_id),
+        "edge_type": e.edge_type,
+        "conditions": e.conditions,
     }
 
 
@@ -285,7 +339,15 @@ def create_run(body: CreateRunRequest) -> dict:
     cyclic team), create the run row, and start ``run_team`` with an explicit workflow
     id == run_id, so ``DBOS.workflow_id`` keys every write."""
     idea = resolve_run_idea(body.idea)
-    if body.team_shape == "review_loop":
+    if body.team_graph_id is not None:
+        # Clone-on-launch (P1.8b): deep-clone the authored team into a fresh run-scoped snapshot and
+        # run THAT, so the user's edited prompts/models drive the run. The run owns the immutable
+        # clone — editing the authored team afterward can't perturb this in-flight run.
+        try:
+            team_graph_id = clone_team_graph(body.team_graph_id)
+        except (ValueError, NoResultFound) as exc:
+            raise HTTPException(status_code=400, detail="unknown team_graph_id") from exc
+    elif body.team_shape == "review_loop":
         team_graph_id = build_review_loop_team()
     else:
         team_graph_id = build_two_node_team()
@@ -531,16 +593,10 @@ def get_run_graph(run_id: str) -> dict:
             "team_graph_id": str(run.team_graph_id),
             "nodes": [
                 {
-                    "id": str(n.id),
-                    "role_name": n.role_name,
-                    "kind": n.kind,
-                    "model": n.model,
-                    "engine": n.engine,
-                    "position": n.position,
-                    # P1.5b: gate/terminal node metadata (gate_kind/title/description or
-                    # terminal_kind), so the canvas (prompt 2) can render gate + terminal
-                    # nodes; NULL for completion/agent nodes.
-                    "config": n.config,
+                    # Shared canvas fields (now incl. the additive P1.8b ``prompt``)...
+                    **_node_base_dict(n),
+                    # ...plus the run-only live state: each node's ``status`` + ``iteration`` from
+                    # its latest ``AgentInvocation`` (default ``"idle"``/``0`` until reached).
                     "status": (
                         latest_by_node[str(n.id)].status if str(n.id) in latest_by_node else "idle"
                     ),
@@ -550,10 +606,8 @@ def get_run_graph(run_id: str) -> dict:
                     # P1.5c (§14.1): the node's per-round invocation history, ascending by
                     # iteration — additive read of the already-persisted rows ([] before the
                     # node is reached). The Reviewer panel renders each round's `outcome`
-                    # (approved / changes_requested) from this; `status`/`iteration` above
-                    # (the latest values) are unchanged. §14.3 adds `outcome_detail` (the
-                    # verdict REASONS persisted on a `changes_requested` close, NULL otherwise)
-                    # so the Reviewer panel can show "what the review caught" under each round.
+                    # (approved / changes_requested); §14.3's `outcome_detail` carries the verdict
+                    # REASONS (NULL unless a `changes_requested` close supplied them).
                     "invocations": [
                         {
                             "iteration": inv.iteration,
@@ -568,17 +622,63 @@ def get_run_graph(run_id: str) -> dict:
                 }
                 for n in nodes
             ],
-            "edges": [
-                {
-                    "id": str(e.id),
-                    "source_node_id": str(e.source_node_id),
-                    "target_node_id": str(e.target_node_id),
-                    "edge_type": e.edge_type,
-                    "conditions": e.conditions,
-                }
-                for e in edges
-            ],
+            "edges": [_edge_to_dict(e) for e in edges],
         }
+
+
+# ---- The persistent authored team (P1.8b: the first authoring vertical) ----
+
+
+@router.get("/api/team/graph")
+def get_team_graph() -> dict:
+    """The single persistent authored team's nodes + edges, in the canvas's node/edge shape and
+    INCLUDING each node's editable ``prompt`` — but with NO run state (no ``status``/``iteration``/
+    ``invocations``: the authored team is not running). Get-or-creates the team on first open
+    (seeded from the review-loop template) so the canvas always has a team to render and edit.
+    Shares the node/edge serialization with ``GET /api/runs/{run_id}/graph``."""
+    team_graph_id = get_or_create_persistent_team()
+    tgid = uuid.UUID(team_graph_id)
+    with db.session_scope() as session:
+        nodes = (
+            session.execute(select(AgentNode).where(AgentNode.team_graph_id == tgid))
+            .scalars()
+            .all()
+        )
+        edges = session.execute(select(Edge).where(Edge.team_graph_id == tgid)).scalars().all()
+        # Deterministic left-to-right order (PM at x=0 first), matching the run-graph read.
+        nodes = sorted(nodes, key=lambda n: (n.position.get("x", 0), str(n.id)))
+        return {
+            "team_graph_id": team_graph_id,
+            "nodes": [_node_base_dict(n) for n in nodes],
+            "edges": [_edge_to_dict(e) for e in edges],
+        }
+
+
+@router.patch("/api/team/nodes/{node_id}")
+def update_team_node(node_id: str, body: UpdateTeamNodeRequest) -> dict:
+    """Persist an edited persistent-team node's ``prompt`` + ``model`` (ONLY those two fields this
+    slice). Validates the node belongs to the persistent team and REJECTS gate/terminal nodes
+    (control primitives — they carry no prompt/model). 400 on a malformed id; 404 if the node is
+    not a node of the persistent team; 409 if it is a gate/terminal. Returns the updated node."""
+    try:
+        nid = uuid.UUID(node_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid node id") from exc
+
+    persistent_team_id = uuid.UUID(get_or_create_persistent_team())
+    with db.session_scope() as session:
+        node = session.execute(select(AgentNode).where(AgentNode.id == nid)).scalar_one_or_none()
+        if node is None or node.team_graph_id != persistent_team_id:
+            raise HTTPException(status_code=404, detail="node not found in the persistent team")
+        if node.kind in ("gate", "terminal"):
+            raise HTTPException(
+                status_code=409,
+                detail="gate/terminal nodes are control primitives — no prompt/model to edit",
+            )
+        node.prompt = body.prompt
+        node.model = body.model
+        session.flush()
+        return _node_base_dict(node)
 
 
 def _humantask_to_dict(task: HumanTask) -> dict:

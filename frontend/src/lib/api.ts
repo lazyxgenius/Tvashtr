@@ -38,6 +38,10 @@ export interface GraphNode {
   kind: string; // completion | agent | gate | terminal
   model: string;
   engine: string | null;
+  // P1.8b: the node's behavior text — its whole identity in the prompt-driven model. Null for
+  // gate/terminal nodes (control primitives, no LLM). Additive on this run endpoint; the editable
+  // copy lives on the team-graph read.
+  prompt: string | null;
   position: NodePosition;
   // P1.5b: gate/terminal node metadata (null for completion/agent).
   config: NodeConfig | null;
@@ -105,13 +109,15 @@ async function getJSON<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function startRun(): Promise<string> {
-  // The UI drives the 3-node cyclic review-loop team (PM -> Engineer <-> Reviewer);
-  // the 2-node team stays CLI-only (skeleton-run/crash POST no shape -> two_node).
+// Clone-on-launch (P1.8b): "Run this team" launches a run on a fresh deep-clone of the persistent
+// authored team (the user's edited prompts/models), not a throwaway builder graph. The backend
+// clones the team, seeds the run, and starts the workflow — the existing live run view then takes
+// over via the returned run_id (the same poll surface as before).
+export async function runTeam(teamGraphId: string): Promise<string> {
   const res = await fetch("/api/runs", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ team_shape: "review_loop" }),
+    body: JSON.stringify({ team_graph_id: teamGraphId }),
   });
   if (!res.ok) throw new Error(`POST /api/runs -> ${res.status}`);
   const data = (await res.json()) as { run_id: string };
@@ -120,6 +126,55 @@ export async function startRun(): Promise<string> {
 
 export const getGraph = (runId: string): Promise<GraphData> =>
   getJSON<GraphData>(`/api/runs/${runId}/graph`);
+
+// ---- The persistent authored team (P1.8b: render + edit on the canvas) ----
+
+// One node of the persistent team — the canvas/edit shape (the team is NOT running, so no live
+// status/iteration/invocations). `prompt`/`model` are the two editable fields this slice.
+export interface TeamGraphNode {
+  id: string;
+  role_name: string;
+  kind: string; // completion | agent | gate | terminal
+  model: string | null; // null for gate/terminal control primitives
+  engine: string | null;
+  prompt: string | null; // null for gate/terminal control primitives
+  position: NodePosition;
+  config: NodeConfig | null;
+}
+
+export interface TeamGraphData {
+  team_graph_id: string;
+  nodes: TeamGraphNode[];
+  edges: GraphEdge[];
+}
+
+// A TINY static list of proven, in-repo model slugs offered as datalist quick-picks under the
+// free-text model field — NOT a maintained registry. The field accepts any provider/model string.
+export const MODEL_PRESETS = [
+  "openai/gpt-4o-mini",
+  "nvidia_nim/meta/llama-3.3-70b-instruct",
+  "openrouter/openai/gpt-4o-mini",
+  "openrouter/meta-llama/llama-3.1-8b-instruct",
+  "openrouter/google/gemini-flash-1.5",
+] as const;
+
+export const getTeamGraph = (): Promise<TeamGraphData> => getJSON<TeamGraphData>("/api/team/graph");
+
+// Persist an edited persistent-team node's prompt + model (the only two editable fields this
+// slice). Returns the updated node; the caller refetches the team to refresh the canvas.
+export async function updateTeamNode(
+  nodeId: string,
+  prompt: string,
+  model: string,
+): Promise<TeamGraphNode> {
+  const res = await fetch(`/api/team/nodes/${nodeId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt, model }),
+  });
+  if (!res.ok) throw new Error(`PATCH /api/team/nodes/${nodeId} -> ${res.status}`);
+  return (await res.json()) as TeamGraphNode;
+}
 
 export const getRunStatus = (runId: string): Promise<RunStatus> =>
   getJSON<RunStatus>(`/api/runs/${runId}`);
@@ -155,7 +210,7 @@ export interface ABComparison {
 }
 
 // Launch an A/B pair on the default idea (empty body → the cheap pinned skeleton). Returns the
-// pair_id the comparison view then polls. Mirrors `startRun`'s POST shape.
+// pair_id the comparison view then polls. Mirrors the single-run launch POST shape.
 export async function startABRuns(): Promise<string> {
   const res = await fetch("/api/ab-runs", {
     method: "POST",

@@ -31,11 +31,15 @@ test("J3 live steering: a human rewrites the PRD at the gate through the real Ti
 
   await page.goto("/");
 
-  // 1. Start a review_loop run via the UI control; capture its run_id from the POST response.
+  // 1. Launch the persistent team via the UI control (P1.8b: the canvas opens to the editable team
+  //    and "Run this team" clones+launches it — a review_loop, so it still pauses at the PRD gate).
+  //    Wait for the team to load so the control is enabled; capture run_id from the POST response.
   const startResp = page.waitForResponse(
     (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Start the run" }).click();
+  const runControl = page.getByRole("button", { name: "Run this team" });
+  await expect(runControl).toBeEnabled({ timeout: 30_000 });
+  await runControl.click();
   const runId = ((await (await startResp).json()) as { run_id: string }).run_id;
   expect(runId, "the Start control returns a run_id").toBeTruthy();
   console.log(`[steering-e2e] run_id = ${runId}`);

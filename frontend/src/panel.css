@@ -300,6 +300,64 @@
   color: var(--text-secondary);
 }
 
+/* ---- Team-node authoring editor (P1.8b) ---- */
+/* The prompt + model fields shown when an agent node is selected on the persistent team canvas.
+   Token-driven, calm; mirrors the PRD editor's soft-card surface. */
+.tv-node-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.tv-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.tv-field__label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.tv-field__hint {
+  font-size: var(--fs-micro);
+  line-height: var(--lh-normal);
+  color: var(--text-tertiary);
+}
+.tv-node-prompt,
+.tv-node-model {
+  margin-top: var(--space-2);
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--text-primary);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  transition:
+    box-shadow var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+.tv-node-prompt {
+  resize: vertical;
+  min-height: 200px;
+  font-family: var(--font-code);
+  font-size: var(--fs-caption);
+}
+.tv-node-model {
+  font-family: var(--font-code);
+}
+.tv-node-prompt:focus,
+.tv-node-model:focus {
+  outline: none;
+  border-color: var(--coral-200);
+  box-shadow: var(--shadow-focus);
+}
+
 /* ---- Event feed ---- */
 .tv-feed__note {
   display: flex;

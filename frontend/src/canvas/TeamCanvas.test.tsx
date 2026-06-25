@@ -14,6 +14,7 @@ function gnode(over: Partial<GraphNode> & Pick<GraphNode, "id" | "role_name" | "
   return {
     model: "test-model",
     engine: "openhands",
+    prompt: null,
     position: { x: 0, y: 0 },
     config: null,
     status: "idle",
