@@ -6,23 +6,30 @@ import { BackendDot } from "./components/BackendDot";
 import { CancelRunButton } from "./components/CancelRunButton";
 import { RunBanner } from "./components/RunBanner";
 import { TasksDrawer } from "./components/TasksDrawer";
+import { TeamsRail } from "./components/TeamsRail";
 import { SidePanel } from "./panel/SidePanel";
 import { TeamNodePanel } from "./panel/TeamNodePanel";
 import {
   acknowledgeTask,
   cancelRun,
   type CostRow,
+  createTeam,
+  deleteTeam,
   type GraphData,
   getGraph,
   getRunStatus,
   getRunTasks,
   getTeamGraph,
+  getTeams,
+  getTemplates,
   type HumanTask,
   resolveTask,
   type RunRow,
   runTeam,
   type TaskDecision,
   type TeamGraphData,
+  type TeamSummary,
+  type Template,
 } from "./lib/api";
 import { isRunTerminal } from "./lib/status";
 
@@ -33,10 +40,15 @@ export default function App() {
   const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);
   const [costs, setCosts] = useState<CostRow[]>([]);
   const [tasks, setTasks] = useState<HumanTask[]>([]);
-  // The persistent authored team (P1.8b): fetched once on open and after each node-edit Save. The
-  // canvas renders it while no run is active (the authoring view); "Run this team" clones+launches.
+  // The team library (P1.8b): the user's library teams (the rail) + the starter templates (the
+  // picker), the currently-open team, and that team's graph (rendered on the canvas while no run is
+  // active). `teams`/`currentTeamId` PERSIST across a run — only run-scoped state resets.
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
   const [teamGraph, setTeamGraph] = useState<TeamGraphData | null>(null);
   const [teamError, setTeamError] = useState(false);
+  const [teamBusy, setTeamBusy] = useState(false);
   const [starting, setStarting] = useState(false);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState(false);
@@ -73,11 +85,26 @@ export default function App() {
     };
   }, []);
 
-  // Load the persistent authored team (the canvas's default view). Tolerant: a transient failure
-  // shows a hint and keeps the last team; a malformed body is ignored (the canvas stays empty).
-  const loadTeam = useCallback(async () => {
+  // Load the library teams (the rail) + the starter templates (the picker). On first load, pick the
+  // first team as current. Tolerant: a transient failure shows a hint and keeps the last list.
+  const loadTeams = useCallback(async () => {
     try {
-      const t = await getTeamGraph();
+      const [list, tmpls] = await Promise.all([getTeams(), getTemplates()]);
+      if (!mountedRef.current) return;
+      setTeams(list);
+      setTemplates(tmpls);
+      // Server-seeded non-empty, so list[0] exists; keep the current selection if one is set.
+      setCurrentTeamId((cur) => cur ?? list[0]?.team_graph_id ?? null);
+      setTeamError(false);
+    } catch {
+      if (mountedRef.current) setTeamError(true);
+    }
+  }, []);
+
+  // Load one team's graph onto the canvas. Tolerant in the same way as `loadTeams`.
+  const loadTeam = useCallback(async (teamId: string) => {
+    try {
+      const t = await getTeamGraph(teamId);
       if (!mountedRef.current) return;
       if (Array.isArray(t?.nodes)) {
         setTeamGraph(t);
@@ -89,8 +116,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void loadTeam();
-  }, [loadTeam]);
+    void loadTeams();
+  }, [loadTeams]);
+
+  // Whenever the current team changes (mount-pick, select, create, delete-fallback), load its graph.
+  useEffect(() => {
+    if (currentTeamId) void loadTeam(currentTeamId);
+  }, [currentTeamId, loadTeam]);
 
   // One fetch of the run snapshot + its Tasks-for-Human. Shared by the poll loop
   // and the optimistic re-poll after an approve / reject / cancel.
@@ -126,15 +158,16 @@ export default function App() {
     setFocusNodeId(null);
   }, []);
 
-  // "Run this team": clone the authored team into a fresh run-scoped snapshot and launch it; the
-  // existing live run view then takes over (same poll surface as before).
+  // "Run this team": clone the CURRENT team into a fresh run-scoped snapshot and launch it; the
+  // existing live run view then takes over (same poll surface as before). `teams`/`currentTeamId`
+  // survive `resetRunState`, so returning to authoring lands back on the same team.
   const handleRunTeam = useCallback(async () => {
-    if (!teamGraph) return;
+    if (!currentTeamId) return;
     setStarting(true);
     setError(false);
     resetRunState();
     try {
-      const id = await runTeam(teamGraph.team_graph_id);
+      const id = await runTeam(currentTeamId);
       const g = await getGraph(id);
       setGraph(g);
       setRunId(id);
@@ -143,15 +176,66 @@ export default function App() {
     } finally {
       setStarting(false);
     }
-  }, [teamGraph, resetRunState]);
+  }, [currentTeamId, resetRunState]);
 
-  // Return to the authoring view (after a run finishes) to edit the team and run again. Refetches
-  // the team so any edits made elsewhere are reflected.
+  // Return to the authoring view (after a run finishes) to edit the current team and run again.
+  // Refetches its graph so any edits made elsewhere are reflected.
   const handleEditTeam = useCallback(() => {
     resetRunState();
     setError(false);
-    void loadTeam();
-  }, [resetRunState, loadTeam]);
+    if (currentTeamId) void loadTeam(currentTeamId);
+  }, [resetRunState, loadTeam, currentTeamId]);
+
+  // Select a team in the rail: make it current (the effect loads its graph) and close any open
+  // node panel (it was editing the previous team's node).
+  const handleSelectTeam = useCallback((teamId: string) => {
+    setSelectedRole(null);
+    setCurrentTeamId(teamId);
+  }, []);
+
+  // "+ New team": create a library team from a template, make it current, and refresh the rail.
+  const handleCreateTeam = useCallback(
+    async (template: string, name: string) => {
+      setTeamBusy(true);
+      setTeamError(false);
+      try {
+        const created = await createTeam(template, name);
+        if (!mountedRef.current) return;
+        setSelectedRole(null);
+        setCurrentTeamId(created.team_graph_id); // the effect loads its graph
+        await loadTeams(); // the new team appears in the rail (keeps currentTeamId via the ?? guard)
+      } catch {
+        if (mountedRef.current) setTeamError(true);
+      } finally {
+        if (mountedRef.current) setTeamBusy(false);
+      }
+    },
+    [loadTeams],
+  );
+
+  // Delete a library team. The server re-seeds if it was the last, so the rail is never empty; if
+  // the deleted team was current, fall back to the first remaining team.
+  const handleDeleteTeam = useCallback(
+    async (teamId: string) => {
+      setTeamBusy(true);
+      setTeamError(false);
+      try {
+        await deleteTeam(teamId);
+        const remaining = await getTeams(); // re-seeds server-side if this was the last team
+        if (!mountedRef.current) return;
+        setTeams(remaining);
+        if (teamId === currentTeamId) {
+          setSelectedRole(null);
+          setCurrentTeamId(remaining[0]?.team_graph_id ?? null);
+        }
+      } catch {
+        if (mountedRef.current) setTeamError(true);
+      } finally {
+        if (mountedRef.current) setTeamBusy(false);
+      }
+    },
+    [currentTeamId],
+  );
 
   // Poll the run + tasks while active and not terminal; stop once terminal.
   useEffect(() => {
@@ -319,7 +403,7 @@ export default function App() {
               <button
                 className="tv-btn"
                 onClick={() => void handleRunTeam()}
-                disabled={starting || teamGraph === null}
+                disabled={starting || currentTeamId === null}
               >
                 {starting ? "Starting…" : "Run this team"}
               </button>
@@ -356,7 +440,17 @@ export default function App() {
       <main className="flex min-h-0 flex-1">
         {mode === "single" ? (
           <>
-            {!authoring && (
+            {authoring ? (
+              <TeamsRail
+                teams={teams}
+                currentTeamId={currentTeamId}
+                templates={templates}
+                onSelect={handleSelectTeam}
+                onCreate={(template, name) => void handleCreateTeam(template, name)}
+                onDelete={(teamId) => void handleDeleteTeam(teamId)}
+                busy={teamBusy}
+              />
+            ) : (
               <TasksDrawer
                 blockers={pendingBlockers}
                 nudges={pendingNudges}
@@ -379,12 +473,15 @@ export default function App() {
             </div>
             {selectedRole &&
               (authoring ? (
-                <TeamNodePanel
-                  key={selectedRole}
-                  node={selectedTeamNode}
-                  onSaved={loadTeam}
-                  onClose={() => setSelectedRole(null)}
-                />
+                currentTeamId && (
+                  <TeamNodePanel
+                    key={selectedRole}
+                    teamId={currentTeamId}
+                    node={selectedTeamNode}
+                    onSaved={() => loadTeam(currentTeamId)}
+                    onClose={() => setSelectedRole(null)}
+                  />
+                )
               ) : (
                 <SidePanel
                   selectedRole={selectedRole}

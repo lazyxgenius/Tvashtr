@@ -50,7 +50,7 @@ describe("TeamNodePanel — edit prompt + model, dirty-aware Save", () => {
   it("shows prompt + model, gates Save on dirty, and PATCHes the node-update endpoint", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn().mockResolvedValue(undefined);
-    render(<TeamNodePanel node={node()} onSaved={onSaved} onClose={() => {}} />);
+    render(<TeamNodePanel teamId="team-1" node={node()} onSaved={onSaved} onClose={() => {}} />);
 
     const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", { name: /prompt/i });
     const model = screen.getByRole<HTMLInputElement>("combobox");
@@ -72,7 +72,7 @@ describe("TeamNodePanel — edit prompt + model, dirty-aware Save", () => {
     // The Save PATCHed the node-update endpoint with the edited prompt + the model.
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [calledUrl, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
-    expect(urlOf(calledUrl)).toBe("/api/team/nodes/n-eng");
+    expect(urlOf(calledUrl)).toBe("/api/teams/team-1/nodes/n-eng");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body as string)).toEqual({
       prompt: "Write greeting.txt = SENTINEL",
@@ -83,7 +83,7 @@ describe("TeamNodePanel — edit prompt + model, dirty-aware Save", () => {
   });
 
   it("does not render an editable surface for a null node", () => {
-    render(<TeamNodePanel node={null} onSaved={() => {}} onClose={() => {}} />);
+    render(<TeamNodePanel teamId="team-1" node={null} onSaved={() => {}} onClose={() => {}} />);
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.getByText(/isn.t editable/i)).toBeInTheDocument();
   });

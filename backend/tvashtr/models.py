@@ -152,6 +152,13 @@ class TeamGraph(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    # First-class library-team identity (P1.8b team library, migration ``0013``). ``True`` rows are
+    # the user's managed shelf of authored teams — the team list is ``WHERE is_library``. The
+    # builders + ``clone_team_graph`` never set it, so it defaults ``False`` → run-snapshot clones,
+    # A/B graphs, and smoke graphs are automatically non-library and can NEVER pollute the list.
+    is_library: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

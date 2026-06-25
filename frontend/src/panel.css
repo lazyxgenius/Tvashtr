@@ -513,3 +513,271 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ============================================================
+   Team library rail (P1.8b) — the docked LEFT shelf of the user's
+   teams in the authoring view. Token-driven; mirrors the drawer/panel
+   surfaces (paper card, hairline border, calm hover). No ad-hoc hex.
+   ============================================================ */
+.tv-rail {
+  width: 264px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-card);
+  border-right: var(--border-width) solid var(--border-hairline);
+  box-shadow: var(--shadow-md);
+}
+.tv-rail__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex: none;
+  padding: var(--space-5) var(--space-4) var(--space-3);
+  border-bottom: var(--border-width) solid var(--border-hairline);
+}
+.tv-rail__title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: var(--fs-h4);
+  letter-spacing: var(--tracking-snug);
+  color: var(--text-primary);
+}
+.tv-rail__new {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--coral-700);
+  background: var(--coral-100);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+.tv-rail__new:hover {
+  background: var(--coral-200);
+}
+.tv-rail__new:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.tv-rail__new:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The inline template picker (calm, no modal): the preset choices + a name + Create/Cancel. */
+.tv-rail__picker {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--panel-300);
+  border-bottom: var(--border-width) solid var(--border-hairline);
+}
+.tv-rail__picker-label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.tv-rail__templates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.tv-rail__template {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-3);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard);
+}
+.tv-rail__template:hover {
+  border-color: var(--border-strong);
+}
+.tv-rail__template:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.tv-rail__template--active {
+  border-color: var(--coral-200);
+  box-shadow: var(--shadow-focus);
+}
+.tv-rail__template-name {
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+.tv-rail__template-desc {
+  font-size: var(--fs-micro);
+  line-height: var(--lh-normal);
+  color: var(--text-tertiary);
+}
+.tv-rail__name {
+  margin-top: var(--space-1);
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: var(--fs-body-sm);
+  color: var(--text-primary);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  transition:
+    box-shadow var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+.tv-rail__name:focus {
+  outline: none;
+  border-color: var(--coral-200);
+  box-shadow: var(--shadow-focus);
+}
+.tv-rail__picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The teams list — one selectable row per team, the current one highlighted, a quiet delete. */
+.tv-rail__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.tv-rail__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-md);
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+.tv-rail__item:hover {
+  background: var(--panel-300);
+}
+.tv-rail__item--active {
+  background: var(--coral-100);
+  border-color: var(--coral-200);
+}
+.tv-rail__select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: var(--space-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.tv-rail__select:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-md);
+}
+.tv-rail__name-text {
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv-rail__count {
+  font-family: var(--font-code);
+  font-size: var(--fs-micro);
+  color: var(--text-tertiary);
+}
+.tv-rail__delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  margin-right: 6px;
+  color: var(--ink-600);
+  background: transparent;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+.tv-rail__delete:hover {
+  background: var(--red-100);
+  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
+}
+.tv-rail__delete:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.tv-rail__confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) 0 var(--space-2);
+}
+.tv-rail__confirm-q {
+  font-size: var(--fs-micro);
+  color: var(--text-secondary);
+}
+.tv-rail__confirm-yes,
+.tv-rail__confirm-no {
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: var(--border-width) solid transparent;
+  cursor: pointer;
+  background: transparent;
+}
+.tv-rail__confirm-yes {
+  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
+  background: var(--red-100);
+}
+.tv-rail__confirm-no {
+  color: var(--ink-600);
+  border-color: var(--border-strong);
+}
+.tv-rail__confirm-yes:focus-visible,
+.tv-rail__confirm-no:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}

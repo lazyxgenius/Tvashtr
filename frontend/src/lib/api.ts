@@ -129,9 +129,9 @@ export async function runTeam(teamGraphId: string): Promise<string> {
 export const getGraph = (runId: string): Promise<GraphData> =>
   getJSON<GraphData>(`/api/runs/${runId}/graph`);
 
-// ---- The persistent authored team (P1.8b: render + edit on the canvas) ----
+// ---- The team library (P1.8b: multiple persistent teams + a drop-and-edit template library) ----
 
-// One node of the persistent team — the canvas/edit shape (the team is NOT running, so no live
+// One node of a library team — the canvas/edit shape (the team is NOT running, so no live
 // status/iteration/invocations). `prompt`/`model` are the two editable fields this slice.
 export interface TeamGraphNode {
   id: string;
@@ -150,6 +150,22 @@ export interface TeamGraphData {
   edges: GraphEdge[];
 }
 
+// One row in the teams rail — a library team summary (the rail lists these; the canvas loads the
+// selected one's full graph separately via `getTeamGraph`).
+export interface TeamSummary {
+  team_graph_id: string;
+  name: string;
+  created_at: string;
+  node_count: number;
+}
+
+// One starter preset in the New-team picker (the curated, code-resident template library).
+export interface Template {
+  template: string; // the stable key passed to createTeam
+  name: string;
+  description: string;
+}
+
 // A TINY static list of proven, in-repo model slugs offered as datalist quick-picks under the
 // free-text model field — NOT a maintained registry. The field accepts any provider/model string.
 export const MODEL_PRESETS = [
@@ -160,21 +176,55 @@ export const MODEL_PRESETS = [
   "openrouter/google/gemini-flash-1.5",
 ] as const;
 
-export const getTeamGraph = (): Promise<TeamGraphData> => getJSON<TeamGraphData>("/api/team/graph");
+// The user's library teams (the rail). Seeded server-side so it is never empty.
+export async function getTeams(): Promise<TeamSummary[]> {
+  const data = await getJSON<{ teams: TeamSummary[] }>("/api/teams");
+  return data.teams;
+}
 
-// Persist an edited persistent-team node's prompt + model (the only two editable fields this
-// slice). Returns the updated node; the caller refetches the team to refresh the canvas.
+// The curated starter templates the New-team picker offers (the FE renders from this list).
+export async function getTemplates(): Promise<Template[]> {
+  const data = await getJSON<{ templates: Template[] }>("/api/templates");
+  return data.templates;
+}
+
+// Create a new library team from a starter template (drop-and-edit). Returns the new team's
+// summary; the caller makes it current + loads its graph.
+export async function createTeam(template: string, name: string): Promise<TeamSummary> {
+  const res = await fetch("/api/teams", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ template, name }),
+  });
+  if (!res.ok) throw new Error(`POST /api/teams -> ${res.status}`);
+  return (await res.json()) as TeamSummary;
+}
+
+// Delete a library team. The backend cascades its nodes/edges; runs are unaffected (they point at
+// immutable clone snapshots, never the library team).
+export async function deleteTeam(teamId: string): Promise<void> {
+  const res = await fetch(`/api/teams/${teamId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /api/teams/${teamId} -> ${res.status}`);
+}
+
+// One library team's nodes + edges (the canvas/edit shape, no run state).
+export const getTeamGraph = (teamId: string): Promise<TeamGraphData> =>
+  getJSON<TeamGraphData>(`/api/teams/${teamId}/graph`);
+
+// Persist an edited library-team node's prompt + model (the only two editable fields this slice).
+// Returns the updated node; the caller refetches the team to refresh the canvas.
 export async function updateTeamNode(
+  teamId: string,
   nodeId: string,
   prompt: string,
   model: string,
 ): Promise<TeamGraphNode> {
-  const res = await fetch(`/api/team/nodes/${nodeId}`, {
+  const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ prompt, model }),
   });
-  if (!res.ok) throw new Error(`PATCH /api/team/nodes/${nodeId} -> ${res.status}`);
+  if (!res.ok) throw new Error(`PATCH /api/teams/${teamId}/nodes/${nodeId} -> ${res.status}`);
   return (await res.json()) as TeamGraphNode;
 }
 

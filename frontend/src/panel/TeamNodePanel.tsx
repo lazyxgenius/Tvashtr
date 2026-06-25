@@ -25,10 +25,12 @@ const ROLE_TITLES: Record<string, string> = {
  * match, so the panel reads clean).
  */
 export function TeamNodePanel({
+  teamId,
   node,
   onSaved,
   onClose,
 }: {
+  teamId: string;
   node: TeamGraphNode | null;
   onSaved: () => void | Promise<void>;
   onClose: () => void;
@@ -49,7 +51,7 @@ export function TeamNodePanel({
     setSaving(true);
     setSaveError(false);
     try {
-      await updateTeamNode(node.id, prompt, model);
+      await updateTeamNode(teamId, node.id, prompt, model);
       setSaved(true);
       await onSaved();
     } catch {

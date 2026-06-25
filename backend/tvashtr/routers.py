@@ -24,7 +24,11 @@ from tvashtr.control_plane.teams import (
     build_review_loop_team,
     build_two_node_team,
     clone_team_graph,
-    get_or_create_persistent_team,
+    create_team_from_template,
+    get_team_summary,
+    list_library_teams,
+    list_templates,
+    seed_library_if_empty,
 )
 from tvashtr.documents.service import add_version, get_document_with_versions, list_documents
 from tvashtr.models import (
@@ -37,6 +41,7 @@ from tvashtr.models import (
     HumanTask,
     Run,
     RunEvent,
+    TeamGraph,
 )
 
 # Run statuses that are already terminal: a kill switch must not clobber them.
@@ -102,6 +107,15 @@ class UpdateTeamNodeRequest(BaseModel):
 
     prompt: str
     model: str
+
+
+class CreateTeamRequest(BaseModel):
+    """Create a library team from a starter template (P1.8b team library): the ``template`` key
+    (one of ``GET /api/templates``) + a user-chosen ``name``. The team is materialized from the
+    code-resident builder and flipped to a library team — a drop-and-edit preset."""
+
+    template: str
+    name: str
 
 
 # Pinned, deterministically-checkable deliverable (env-overridable). Keeping the
@@ -626,50 +640,91 @@ def get_run_graph(run_id: str) -> dict:
         }
 
 
-# ---- The persistent authored team (P1.8b: the first authoring vertical) ----
+# ---- The team library (P1.8b): first-class, multiple persistent teams + a template library ----
 
 
-@router.get("/api/team/graph")
-def get_team_graph() -> dict:
-    """The single persistent authored team's nodes + edges, in the canvas's node/edge shape and
-    INCLUDING each node's editable ``prompt`` — but with NO run state (no ``status``/``iteration``/
-    ``invocations``: the authored team is not running). Get-or-creates the team on first open
-    (seeded from the review-loop template) so the canvas always has a team to render and edit.
-    Shares the node/edge serialization with ``GET /api/runs/{run_id}/graph``."""
-    team_graph_id = get_or_create_persistent_team()
-    tgid = uuid.UUID(team_graph_id)
+def _require_library_team(session, team_id: str) -> TeamGraph:
+    """Resolve a library ``TeamGraph`` by id within ``session`` or raise: 400 on a malformed id,
+    404 if the id is unknown OR not a library team — so a run-snapshot clone / A-B graph / smoke
+    graph (``is_library = false``) is never readable, editable, or deletable via the team API."""
+    try:
+        tid = uuid.UUID(team_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid team id") from exc
+    graph = session.execute(select(TeamGraph).where(TeamGraph.id == tid)).scalar_one_or_none()
+    if graph is None or not graph.is_library:
+        raise HTTPException(status_code=404, detail="library team not found")
+    return graph
+
+
+@router.get("/api/templates")
+def get_templates() -> dict:
+    """The curated starter templates the New-team picker offers (``{template, name, description}``);
+    the FE renders the picker from this, never a hardcoded list."""
+    return {"templates": list_templates()}
+
+
+@router.get("/api/teams")
+def get_teams() -> dict:
+    """The user's library teams as summaries (id / name / created_at / node_count), oldest first.
+    Seeds one team if the library is empty so the list is NEVER empty (the canvas
+    always has a team — the §13 S2 anti-dead-zone posture). Library teams ONLY: run-snapshot clones,
+    A/B graphs, and smoke graphs (``is_library = false``) never appear."""
+    seed_library_if_empty()
+    return {"teams": list_library_teams()}
+
+
+@router.post("/api/teams")
+def create_team(body: CreateTeamRequest) -> dict:
+    """Create a new library team from a starter template (drop-and-edit). 400 on an unknown
+    ``template`` key. Returns the new team's summary; the FE then loads its graph + makes it
+    current."""
+    try:
+        team_graph_id = create_team_from_template(body.template, body.name)
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail="unknown template") from exc
+    return get_team_summary(team_graph_id)
+
+
+@router.get("/api/teams/{team_id}/graph")
+def get_team_graph(team_id: str) -> dict:
+    """A library team's nodes + edges in the canvas's node/edge shape and INCLUDING each node's
+    editable ``prompt`` — but with NO run state (the authored team is not running). 400 on a
+    malformed id; 404 if the id is not a library team. Shares the node/edge serialization with
+    ``GET /api/runs/{run_id}/graph`` (``_node_base_dict`` / ``_edge_to_dict``)."""
     with db.session_scope() as session:
+        graph = _require_library_team(session, team_id)
         nodes = (
-            session.execute(select(AgentNode).where(AgentNode.team_graph_id == tgid))
+            session.execute(select(AgentNode).where(AgentNode.team_graph_id == graph.id))
             .scalars()
             .all()
         )
-        edges = session.execute(select(Edge).where(Edge.team_graph_id == tgid)).scalars().all()
+        edges = session.execute(select(Edge).where(Edge.team_graph_id == graph.id)).scalars().all()
         # Deterministic left-to-right order (PM at x=0 first), matching the run-graph read.
         nodes = sorted(nodes, key=lambda n: (n.position.get("x", 0), str(n.id)))
         return {
-            "team_graph_id": team_graph_id,
+            "team_graph_id": str(graph.id),
             "nodes": [_node_base_dict(n) for n in nodes],
             "edges": [_edge_to_dict(e) for e in edges],
         }
 
 
-@router.patch("/api/team/nodes/{node_id}")
-def update_team_node(node_id: str, body: UpdateTeamNodeRequest) -> dict:
-    """Persist an edited persistent-team node's ``prompt`` + ``model`` (ONLY those two fields this
-    slice). Validates the node belongs to the persistent team and REJECTS gate/terminal nodes
-    (control primitives — they carry no prompt/model). 400 on a malformed id; 404 if the node is
-    not a node of the persistent team; 409 if it is a gate/terminal. Returns the updated node."""
+@router.patch("/api/teams/{team_id}/nodes/{node_id}")
+def update_team_node(team_id: str, node_id: str, body: UpdateTeamNodeRequest) -> dict:
+    """Persist an edited library-team node's ``prompt`` + ``model`` (ONLY those two fields this
+    slice). Validates the node belongs to ``team_id`` AND that ``team_id`` is a library team, and
+    REJECTS gate/terminal nodes (control primitives). 400 on a malformed id; 404 if the team is not
+    a library team or the node is not one of its nodes; 409 if the node is a gate/terminal. Returns
+    the updated node."""
     try:
         nid = uuid.UUID(node_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid node id") from exc
-
-    persistent_team_id = uuid.UUID(get_or_create_persistent_team())
     with db.session_scope() as session:
+        graph = _require_library_team(session, team_id)
         node = session.execute(select(AgentNode).where(AgentNode.id == nid)).scalar_one_or_none()
-        if node is None or node.team_graph_id != persistent_team_id:
-            raise HTTPException(status_code=404, detail="node not found in the persistent team")
+        if node is None or node.team_graph_id != graph.id:
+            raise HTTPException(status_code=404, detail="node not found in the team")
         if node.kind in ("gate", "terminal"):
             raise HTTPException(
                 status_code=409,
@@ -679,6 +734,18 @@ def update_team_node(node_id: str, body: UpdateTeamNodeRequest) -> dict:
         node.model = body.model
         session.flush()
         return _node_base_dict(node)
+
+
+@router.delete("/api/teams/{team_id}")
+def delete_team(team_id: str) -> dict:
+    """Delete a library team (the FK cascade drops its nodes/edges). 400 on a malformed id; 404 if
+    the id is not a library team (so a run-snapshot clone / A-B graph cannot be deleted here). Safe:
+    a ``Run`` points at its immutable clone snapshot, never at a library team, so no run is
+    orphaned."""
+    with db.session_scope() as session:
+        graph = _require_library_team(session, team_id)
+        session.delete(graph)
+    return {"team_graph_id": team_id, "deleted": True}
 
 
 def _humantask_to_dict(task: HumanTask) -> dict:

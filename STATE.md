@@ -1,24 +1,117 @@
 # Tvashtr — Autonomous Execution State
 
 ## Current Milestone
-FE-infra — **a frontend quality gate to match the backend bar**: ESLint (type-checked) +
-Prettier wired + enforced, the whole `frontend/` reformatted, a genuinely-protective RTL suite,
-all folded into `make` targets — **and** `scripts/` folded into the ruff gate. Architect brief:
-`prompts/fe-infra-eslint-prettier-rtl.md` (SUPERSEDES CLI-RULES §7 for this run). FE + Makefile +
-scripts/ ONLY; NO backend change; NO migration (head stays 0011). Fully offline-verifiable. —
-**DONE, all gates green, READY_TO_MERGE.**
+P1.8b — **the team library / multiple persistent teams** (the prompt-driven rebuild's next
+authoring FE slice). Replace the singleton-by-name persistent team with first-class, multiple
+library teams + a drop-and-edit template library: a left teams rail, a New-team template picker,
+per-team edit (the existing prompt/model node panel) + run (the existing clone-on-launch) + delete.
+Backend (`is_library` discriminator + multi-team data layer + endpoints) AND the FE ship together.
+Architect brief: `prompts/p1.8b-team-library.md` (SUPERSEDES CLI-RULES §7 for this run). Migration
+`0013` (additive `team_graphs.is_library`). — **DONE, all gates green incl. live e2e, READY_TO_MERGE.**
 
 ## Last Completed Step
-FE-infra (eslint type-checked + prettier + RTL + scripts→ruff) — 2026-06-24 — branch:
-feat/fe-infra-eslint-prettier-rtl — sha 0a102cb — backend `make test` 177 (untouched), `make lint`
-clean (backend+scripts ruff + FE eslint `--max-warnings 0` + prettier `--check`), frontend vitest
-**85** (was 76: +9 RTL), `make build-frontend` clean (tsc strict + vite), alembic head 0011 (NO
-migration), keystone RTL non-vacuity DEMONSTRATED (mutation RED → restore GREEN). READY_TO_MERGE.
+P1.8b team library — 2026-06-25 — branch: feat/p1.8b-team-library — `make test` **202** (was 190),
+`make lint` clean, `make test-frontend` **93** (was 88), `make build-frontend` clean, alembic head
+**0013**, freeze hook bumped to `0001-0013`, live `make team-library-e2e` GREEN (real NIM agent:
+create-from-template → edit Engineer → run → shipped the authored SENTINEL). Byte-intact invariants
+verified on disk (team_run.py EMPTY diff; builders + clone + A/B + create_run unchanged).
+READY_TO_MERGE.
 
 ## In Progress
-None — FE-infra is implemented and all gates are green. Awaiting operator FF-merge of
-feat/fe-infra-eslint-prettier-rtl. (The P1.7a/P1.7b branches also still await their FF-merges;
-this branch was cut from `main`.) NEXT: **P1.8 — Supervisor-first onboarding** (PROJECTPLAN §16).
+None — P1.8b team library is implemented and all gates are green. Awaiting operator FF-merge of
+feat/p1.8b-team-library (and the operator re-eyeball of the new rail/picker, the visual gate). NEXT
+P1.8b slices (per the brief / HANDOVER §4): capability(`kind`) editing, canvas topology editing
+(`nodesConnectable` ON), and mid-run prompt re-read.
+
+## P1.8b — team library (2026-06-25) — shipped, all gates green incl. live e2e
+
+### As-built (backend)
+- `models.py` — `TeamGraph.is_library` (Boolean NOT NULL, `server_default false()`); ONLY new column.
+- Migration `0013_team_graph_is_library` — additive `is_library` + the data step `UPDATE team_graphs
+  SET is_library = true WHERE name = 'My team'` (promotes the P1.8b-1 singleton; no-op if absent).
+  Clean `0012`→`0013`, head `0013`; no frozen migration touched.
+- `teams.py` — RETIRED `get_or_create_persistent_team` + `PERSISTENT_TEAM_NAME`. ADDED a `TeamTemplate`
+  catalog (`two_node` / `review_loop` → the byte-intact builders) + `list_templates`,
+  `create_team_from_template` (build-then-flip: untouched builder → set name + `is_library=True`),
+  `list_library_teams`, `get_team_summary`, `seed_library_if_empty` (never-empty posture). The
+  builders + `clone_team_graph` are BYTE-IDENTICAL.
+- `routers.py` — RETIRED `/api/team/graph` + `/api/team/nodes/{id}`. ADDED `GET /api/templates`,
+  `GET /api/teams` (seeds-if-empty; library teams only), `POST /api/teams` (400 unknown template),
+  `GET /api/teams/{id}/graph`, `PATCH /api/teams/{id}/nodes/{id}`, `DELETE /api/teams/{id}` — all via
+  `_require_library_team` (400 bad uuid / 404 non-library, so snapshots/A-B/smoke graphs are never
+  read/edited/deleted) + the existing 409 gate/terminal guard. `create_run`/clone-on-launch + the A/B
+  surface (`create_ab_runs`, `get_ab_comparison`, `_AB_CONFIGS`, `_TEAM_BUILDERS`) are BYTE-IDENTICAL.
+
+### As-built (frontend)
+- `api.ts` — re-scoped `getTeamGraph(teamId)` → `GET /api/teams/{id}/graph`, `updateTeamNode(teamId,
+  nodeId, …)` → `PATCH /api/teams/{teamId}/nodes/{nodeId}`; `runTeam` UNCHANGED. ADDED `getTeams`,
+  `getTemplates`, `createTeam`, `deleteTeam` + `TeamSummary`/`Template` types.
+- `App.tsx` — `teams`/`templates`/`currentTeamId` state (persist across a run; `resetRunState` does
+  NOT clear them); a `currentTeamId` effect loads its graph; `handleSelectTeam`/`handleCreateTeam`/
+  `handleDeleteTeam` (delete-current falls back to a remaining team; server re-seeds so never empty);
+  authoring left slot renders `<TeamsRail>` (run slot stays `TasksDrawer`); `currentTeamId` threaded
+  into `TeamNodePanel`.
+- `components/TeamsRail.tsx` (NEW) — the teams shelf: list + highlight current, `+ New team` inline
+  template picker (no modal), per-row delete with an inline confirm. Token-driven CSS in `panel.css`
+  (reuses `tv-btn`/`tv-field`; no ad-hoc hex). `TeamNodePanel.tsx` takes a `teamId` prop.
+
+### Tests (mutation-real)
+- Backend `test_team_library.py` (replaces `test_persistent_team.py`): catalog, `is_library`
+  default-false on builders/clones + true on create-from-template, the `0013` promote data step,
+  list-only-library + seed-if-empty, POST (400 unknown), graph read (404 non-library / 400 bad id),
+  PATCH persist + 400/404/409 guards, DELETE cascade + 404 non-library, clone-on-launch leaves the
+  library team untouched (snapshot non-library), legacy + A/B paths build non-library graphs.
+- FE `TeamsRail.test.tsx` (NEW, +5): render+highlight, select, the picker create flow (+ default
+  template), the delete confirm. `App.test.tsx`/`TeamNodePanel.test.tsx` updated for the new surface.
+
+### Acceptance evidence (all green — 2026-06-25)
+- `make test` → **202 passed** (was 190).
+- `make lint` → clean (backend+scripts ruff + FE eslint `--max-warnings 0` + prettier `--check`).
+- `make test-frontend` → **93 passed** (was 88; +5 TeamsRail).
+- `make build-frontend` → clean (tsc --noEmit strict + vite).
+- `make team-library-e2e` → **GREEN** (live, real NIM agent): "+ New team" from the review_loop
+  template → edit the Engineer's PROMPT to a unique SENTINEL + set the model → "Run this team"
+  (clone-on-launch) → shipped `greeting.txt` == the SENTINEL, NOT DEFAULT_IDEA's line. "1 passed".
+- Byte-intact (disk-verified): `git diff main -- backend/tvashtr/control_plane/team_run.py` EMPTY;
+  `build_two_node_team` / `build_review_loop_team` / `clone_team_graph` / `create_run` /
+  `create_ab_runs` / `get_ab_comparison` / `_AB_CONFIGS` / `_TEAM_BUILDERS` all BYTE-INTACT (extracted
+  + compared vs `main`). `models.py` adds ONLY `is_library`.
+- `alembic heads` → **0013_team_graph_is_library (head)**; the only new versions file is `0013_*`;
+  `protect-migrations.sh` regex now `^00(0[1-9]|1[0-3])_` (freezes `0001`–`0013`; functionally blocks
+  editing `0013`, exit 2).
+- Independent review (separate agent, read-only): **0 blocking findings**; 3 non-blocking nits (all
+  logged as deferred/cosmetic below).
+
+### Deviations / decisions (two-way-door, logged)
+- **`create_team_from_template` returns the id (`-> str`, per the brief); the router builds the
+  summary via `get_team_summary`** — keeps the helper signature as specified and reuses the shared
+  `_team_summary` for both list + create.
+- **No programmatic alembic up/down round-trip test** — the repo has no such harness (prior
+  round-trips were manual live checks). The `0013` effects are tested via the column's default-false
+  behavior + the literal promote SQL; the upgrade is exercised by `make migrate`, the downgrade is a
+  plain `drop_column`.
+- **Team-switch shows the previous team's graph until the new one loads** (a transient render, not a
+  stale-state bug — `selectedRole` is cleared so no stale panel opens). Cosmetic; left as-is.
+
+### Deferred items (for the architect to fold into PROJECTPLAN §15)
+- **Stale comment in `clone_team_graph`** still references the removed `PERSISTENT_TEAM_NAME` /
+  get-or-create lookup. KEPT because the brief requires `clone_team_graph` byte-identical (proven);
+  the real reason the clone stays out of the list is now `is_library = false`. *Trigger:* the next
+  `teams.py` touch — refresh the comment.
+- **Rename a team is DEFERRED** (brief D2): a team is named at creation, so never "Untitled".
+  *Trigger:* when users want to relabel an existing team.
+- **App-level lifecycle test gap** (optional): create/delete/select are covered by `TeamsRail` unit
+  tests + the backend endpoint tests + the live e2e, but not wired at the `<App/>` level. *Trigger:*
+  if the App-level handler wiring regresses.
+
+### READY_TO_MERGE
+READY_TO_MERGE: branch=feat/p1.8b-team-library, sha=<this commit — echoed in the loop report>,
+backend tests=202 passing, frontend vitest=93 passing. P1.8b team library (first-class multiple
+persistent teams + a drop-and-edit template library). Gates: `make test` 202; `make lint` clean;
+`make test-frontend` 93; `make build-frontend` clean; `make team-library-e2e` GREEN (live NIM).
+Byte-intact: team_run.py EMPTY diff; builders + clone + A/B + create_run unchanged; models.py adds
+only `is_library`. alembic head 0013; freeze hook reads `1[0-3]`. Architect-owned PROJECTPLAN.md /
+HANDOVER.md left modified-but-unstaged (the architect applies their own doc edits).
 
 ## FE-infra — eslint + prettier + RTL + scripts→ruff (2026-06-24) — shipped, all gates green
 

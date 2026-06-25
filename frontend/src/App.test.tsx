@@ -151,7 +151,30 @@ beforeEach(() => {
     const url = urlOf(input);
     const method = init?.method ?? "GET";
     if (url === "/health") return Promise.resolve(jsonOk({ status: "ok", db: "ok" }));
-    if (url === "/api/team/graph") return Promise.resolve(jsonOk(teamGraph()));
+    if (url === "/api/teams")
+      return Promise.resolve(
+        jsonOk({
+          teams: [
+            {
+              team_graph_id: "team-1",
+              name: "My team",
+              created_at: "2026-01-01T00:00:00Z",
+              node_count: 3,
+            },
+          ],
+        }),
+      );
+    if (url === "/api/templates")
+      return Promise.resolve(
+        jsonOk({
+          templates: [
+            { template: "review_loop", name: "PM → Engineer ↔ Reviewer", description: "reviews" },
+            { template: "two_node", name: "PM → Engineer", description: "no review" },
+          ],
+        }),
+      );
+    // The current team's authored graph (matched BEFORE the generic run-graph `/graph` below).
+    if (url === "/api/teams/team-1/graph") return Promise.resolve(jsonOk(teamGraph()));
     if (url === "/api/runs" && method === "POST")
       return Promise.resolve(jsonOk({ run_id: RUN_ID }));
     if (url.endsWith("/graph")) return Promise.resolve(jsonOk(graphFor(phase)));

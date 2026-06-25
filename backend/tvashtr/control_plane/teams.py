@@ -12,22 +12,15 @@ authored"; the builders stay hardcoded (the Supervisor swaps them in P1.8).
 
 import os
 import uuid
+from collections.abc import Callable
 from copy import deepcopy
+from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from tvashtr.config import get_settings
 from tvashtr.db import session_scope
 from tvashtr.models import AgentNode, Edge, TeamGraph
-
-# The single, persistent, user-authored team (P1.8b). ONE get-or-create'd ``TeamGraph`` the canvas
-# opens to and edits across sessions — NOT created/discarded per run (each run deep-clones it into
-# a fresh run-scoped snapshot, :func:`clone_team_graph`). ``team_graphs`` has no idempotency column
-# and this slice adds NO migration, so the singleton is keyed by this RESERVED name; the per-run
-# clones ("… (run snapshot)") and the legacy builder graphs ("PM -> …") carry different names, so
-# the name uniquely picks out the authored team. (A later slice — multiple teams + a template
-# library — replaces the singleton-by-name with a first-class identity.)
-PERSISTENT_TEAM_NAME = "My team"
 
 # The Engineer needs a stronger instruction-follower than the cheap completion
 # default; same single OPENROUTER_API_KEY, different slug (matches agent-smoke).
@@ -392,30 +385,6 @@ def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
         return str(graph.id)
 
 
-def get_or_create_persistent_team() -> str:
-    """Return the id of the SINGLE persistent authored team (P1.8b), seeding it once from the
-    review-loop template if it does not exist yet. Idempotent: the same team id on every call, so
-    the canvas re-opens the same editable team across sessions and a run never rebuilds it.
-
-    Keyed by :data:`PERSISTENT_TEAM_NAME` (no idempotency column / no migration this slice). Two
-    concurrent first-callers could race to seed two rows; the deterministic ``created_at, id``
-    order then pins every later call to the same (oldest) one — acceptable for the single-user
-    canvas, and superseded when the multi-team library lands."""
-    with session_scope() as session:
-        existing = session.execute(
-            select(TeamGraph)
-            .where(TeamGraph.name == PERSISTENT_TEAM_NAME)
-            .order_by(TeamGraph.created_at, TeamGraph.id)
-            .limit(1)
-        ).scalar_one_or_none()
-        if existing is not None:
-            return str(existing.id)
-    # Seed once from the review-loop topology under the reserved name. Reuses the builder
-    # unchanged — this just calls it with the persistent name (the builder's behavior, the rows
-    # it seeds, and the legacy default-name path are all untouched).
-    return build_review_loop_team(name=PERSISTENT_TEAM_NAME)
-
-
 def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
     """Deep-clone a team graph into a NEW run-scoped ``TeamGraph`` and return its id — the
     clone-on-launch snapshot (P1.8b): fresh node ids, every edge remapped onto the cloned node
@@ -467,3 +436,111 @@ def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
             ]
         )
         return str(clone.id)
+
+
+# ---- The team library (P1.8b): first-class, multiple persistent teams from curated templates ----
+
+
+@dataclass(frozen=True)
+class TeamTemplate:
+    """One curated starter template: a stable ``key``, its display ``name``/``description``, and the
+    byte-intact builder that materializes it. The ``teams.py`` builders ARE the library the user
+    drops from — code, not rows; user-authored/shareable templates are the Phase-4 marketplace."""
+
+    key: str
+    name: str
+    description: str
+    builder: Callable[..., str]
+
+
+# Ordered catalog the New-team picker reads (the FE renders from this, never a hardcoded list).
+_TEMPLATE_CATALOG: tuple[TeamTemplate, ...] = (
+    TeamTemplate(
+        "two_node",
+        "PM → Engineer",
+        "A PM writes the spec; an Engineer builds and ships it. No review step.",
+        build_two_node_team,
+    ),
+    TeamTemplate(
+        "review_loop",
+        "PM → Engineer ↔ Reviewer",
+        "Adds a Reviewer that runs the tests and loops back for fixes until it passes "
+        "(or the cap trips).",
+        build_review_loop_team,
+    ),
+)
+_TEMPLATES_BY_KEY: dict[str, TeamTemplate] = {t.key: t for t in _TEMPLATE_CATALOG}
+
+
+def list_templates() -> list[dict]:
+    """The starter templates as ``{template, name, description}`` (what the picker reads)."""
+    return [
+        {"template": t.key, "name": t.name, "description": t.description} for t in _TEMPLATE_CATALOG
+    ]
+
+
+def _team_summary(session, graph: TeamGraph) -> dict:
+    """One library team as a list/summary row: identity + its node count (for the teams rail)."""
+    node_count = session.execute(
+        select(func.count()).select_from(AgentNode).where(AgentNode.team_graph_id == graph.id)
+    ).scalar_one()
+    return {
+        "team_graph_id": str(graph.id),
+        "name": graph.name,
+        "created_at": graph.created_at.isoformat(),
+        "node_count": node_count,
+    }
+
+
+def list_library_teams() -> list[dict]:
+    """The user's managed shelf — the ``is_library = true`` teams, ordered ``(created_at, id)``,
+    each as a summary. Library teams ONLY: run-snapshot clones, A/B graphs, and smoke graphs default
+    ``is_library = false`` so they never appear here."""
+    with session_scope() as session:
+        graphs = (
+            session.execute(
+                select(TeamGraph)
+                .where(TeamGraph.is_library.is_(True))
+                .order_by(TeamGraph.created_at, TeamGraph.id)
+            )
+            .scalars()
+            .all()
+        )
+        return [_team_summary(session, g) for g in graphs]
+
+
+def get_team_summary(team_graph_id: str) -> dict:
+    """The summary for a single team by id (used right after create to echo the new team back)."""
+    with session_scope() as session:
+        graph = session.execute(
+            select(TeamGraph).where(TeamGraph.id == uuid.UUID(team_graph_id))
+        ).scalar_one()
+        return _team_summary(session, graph)
+
+
+def create_team_from_template(template_key: str, name: str) -> str:
+    """Materialize a starter template into a NEW library team and return its id. Calls the
+    byte-intact builder, then sets the user's ``name`` and flips ``is_library = True`` (build-then-
+    flip — the builder is untouched). Raises ``KeyError`` on an unknown template key (the router
+    maps it to 400)."""
+    template = _TEMPLATES_BY_KEY[template_key]
+    team_graph_id = template.builder()
+    with session_scope() as session:
+        graph = session.execute(
+            select(TeamGraph).where(TeamGraph.id == uuid.UUID(team_graph_id))
+        ).scalar_one()
+        graph.name = name
+        graph.is_library = True
+    return team_graph_id
+
+
+def seed_library_if_empty() -> None:
+    """Ensure the library is never empty (the §13 S2 anti-dead-zone posture): if zero library teams
+    exist, create one from the ``review_loop`` template named ``"My team"`` — so a fresh DB (or a
+    deleted-last-team) still lands ≥1 team for the canvas to open to."""
+    with session_scope() as session:
+        count = session.execute(
+            select(func.count()).select_from(TeamGraph).where(TeamGraph.is_library.is_(True))
+        ).scalar_one()
+    if count == 0:
+        create_team_from_template("review_loop", "My team")

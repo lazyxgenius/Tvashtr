@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -111,6 +111,9 @@ steering-e2e: ## Live J3 steering E2E (P1.7b): start a review_loop in the UI, re
 
 team-edit-e2e: ## Live P1.8b authoring E2E: open the persistent team in the UI, edit the Engineer node's PROMPT (+ model) so the deliverable carries a unique SENTINEL, Save, "Run this team" (clone-on-launch), and assert the shipped greeting.txt reflects the AUTHORED prompt (not the template default). Auto-approve gates + forced reviewer-approve. Real NIM agent + Vite dev server + headless Playwright; needs NVIDIA_BUILD_API_KEY, skips otherwise.
 	./scripts/team_edit_e2e.sh
+
+team-library-e2e: ## Live P1.8b team-library E2E: "+ New team" from a template, edit its Engineer node's PROMPT (+ model) to a unique SENTINEL, Save, "Run this team" (clone-on-launch), and assert the shipped greeting.txt reflects the AUTHORED prompt (not the template default). Auto-approve gates + forced reviewer-approve. Real NIM agent + Vite dev server + headless Playwright; needs NVIDIA_BUILD_API_KEY, skips otherwise.
+	./scripts/team_library_e2e.sh
 
 budget-demo: ## Live budget cap demo: tiny per-run cap -> breach -> auto-approve -> ship (needs key; skips otherwise)
 	./scripts/budget_demo.sh
