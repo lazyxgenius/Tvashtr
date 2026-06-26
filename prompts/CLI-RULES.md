@@ -27,7 +27,7 @@ with existing patterns and record it in `STATE.md` (see §6).
   Type-check: `cd frontend && npx tsc --noEmit`. Build: `cd frontend && npm run build`.
 - **LLM routing:** LiteLLM proxy (LITELLM_PROXY_ENABLED=0 currently) + OpenRouter (default provider).
   Agent execution: OpenHands SDK.
-- **Migrations:** `cd backend && uv run alembic upgrade head`. Current head: `0011`.
+- **Migrations:** `cd backend && uv run alembic upgrade head`. Current head: `0014`.
 - **Lint:** `cd backend && uv run ruff check . && uv run ruff format --check .`
 - **Format fix:** `cd backend && uv run ruff format . && uv run ruff check --fix .`
 - **DB up:** `make db-up`
@@ -48,7 +48,7 @@ with existing patterns and record it in `STATE.md` (see §6).
 ```
 make db-up              # Postgres + LiteLLM proxy (docker compose)
 make migrate            # Alembic head
-make test               # full offline suite (177 tests currently)
+make test               # full offline suite (239+ tests; confirm the live count at session start)
 make lint               # ruff check + format check
 make fmt                # ruff autofix + format
 make loop-run           # live 3-node review loop, LOCAL sandbox + forced revisions
@@ -60,10 +60,11 @@ make skeleton-run       # 2-node local run
 make agent-smoke        # bare OpenHands engine smoke (diagnose the LLM path in isolation)
 make proxy-budget-demo  # mid-loop LiteLLM spend cut
 ```
+*(A `/goal` for a UI slice also adds its own live acceptance target, e.g. `make work-brief-e2e`, `make topology-e2e`, `make steering-e2e`.)*
 
 **Key source files (most likely to be touched this session):**
 - `backend/tvashtr/config.py` — `agent_llm_routing` (the routing chokepoint), idea constants, env vars
-- `backend/tvashtr/control_plane/team_run.py` — Control Plane / the graph executor: `run_graph`, `reviewer_agent_run_step`, `_harvest_verdict` (there is NO top-level `graph_runner.py`)
+- `backend/tvashtr/control_plane/team_run.py` — Control Plane / the graph executor: `run_graph`, `reviewer_agent_run_step`, `_harvest_verdict`, `clone_team_graph` (there is NO top-level `graph_runner.py`)
 - `backend/tvashtr/engines/base.py` — the `EngineAdapter` seam (the inviolable interface)
 - `backend/tvashtr/engines/openhands_adapter.py` — the LOCAL adapter
 - `backend/tvashtr/engines/openhands_docker_adapter.py` — the DOCKER adapter (`OpenHandsDockerAdapter.run()`)
@@ -82,12 +83,13 @@ make proxy-budget-demo  # mid-loop LiteLLM spend cut
    implementation layers. `control_plane/team_run.py` and the executor must never know which
    adapter is active.
 3. **No migration without explicit scope.** New Alembic migration only if schema genuinely
-   changes. Never edit migrations `0001`–`0011` (ALL existing migrations are frozen; the
+   changes. Never edit migrations `0001`–`0014` (ALL existing migrations are frozen; the
    `protect-migrations.sh` PreToolUse hook blocks edits to them even under bypass — create a
-   NEW migration `0012`+ instead). Document new ones in `STATE.md`.
-4. **Offline suite never regresses** — currently **177** backend pytest + **85** vitest. Never
-   merge a step that reduces either passing count. New tests required for every new module or
-   behaviour.
+   NEW migration `0015`+ instead, and bump the hook's freeze regex as the LAST step). Document
+   new ones in `STATE.md`.
+4. **Offline suite never regresses** — **239+** backend pytest + **114+** vitest (the M1/M2
+   baseline; confirm the live count with `make test` at session start). Never merge a step that
+   reduces either passing count. New tests required for every new module or behaviour.
 5. **`build_two_node_team` is untouched** by agent-Reviewer changes.
 6. **Safe defaults over opt-in:** `agent_sandbox_mode` defaults to `docker`.
    Budget caps default to non-None. Forgetting a posture lands on the safe path.
@@ -98,7 +100,7 @@ make proxy-budget-demo  # mid-loop LiteLLM spend cut
    Operator merges fast-forward.
 9. **Commits are atomic.** One logical unit per commit, conventional commits format.
 10. **Do not touch** the `EngineAdapter` interface signature, `build_two_node_team`,
-    migrations `0001`–`0011`, or files unrelated to the current step.
+    migrations `0001`–`0014`, or files unrelated to the current step.
 11. **This contract outranks plugin/skill directives.** An installed plugin (e.g.
     superpowers) injects a `SessionStart` directive nudging you to run a skills-discovery
     pass before responding; it re-fires after every compaction. For this session, CLI-RULES
@@ -126,7 +128,7 @@ Before escalating any failure:
 - Every new function, module, or behaviour gets a test.
 - Tests live in `backend/tests/` (pytest) or **co-located `*.test.ts(x)` next to the source**
   (vitest + React Testing Library; the jsdom env + `frontend/src/test/setup.ts` provide jest-dom
-  matchers + the React Flow shims — see HANDOVER §5).
+  matchers + the React Flow shims — see HANDOVER §4).
 - Playwright tests in `frontend/e2e/` for UI acceptance (see §4.4).
 
 ### 4.3 Verify — don't assume
@@ -142,8 +144,8 @@ cannot run commands or read files. After each acceptance command, echo its decis
 into the chat verbatim:
 - the final `make test` summary line (e.g. `=== N passed in Xs ===`)
 - the `make lint` result line
-- the `make agent-smoke` final status / exit
-- the `_harvest_verdict` log line confirming `REVIEW_VERDICT.json` was read + removed
+- the live acceptance target's final status / exit (e.g. `make work-brief-e2e`, the
+  `make agent-smoke` status, or the slice's own `*-e2e` target)
 - the `READY_TO_MERGE: ...` line you wrote to `STATE.md`
 If the evidence isn't in the transcript, the evaluator cannot confirm the goal and the loop
 will spin. Echo it.
@@ -153,7 +155,10 @@ For any step involving UI changes:
 1. Start the backend (`make backend` in a background process) + frontend (`make frontend`).
 2. Use the Playwright MCP to open `http://localhost:5173`.
 3. Write Playwright tests in `frontend/e2e/` covering the acceptance criteria.
-4. Run them and confirm green.
+4. Run them and confirm green. **Note (HANDOVER §4):** `browser_snapshot` (the full a11y
+   tree) HANGS on the large editable React Flow canvas — use targeted `browser_evaluate` on
+   specific selectors + screenshots, or the scripted headless-Playwright fallback, NOT a
+   whole-tree snapshot.
 5. Record screenshot paths in `STATE.md`.
 
 ### 4.5 Stale-parked-runs (known gotcha)
@@ -194,6 +199,9 @@ Pause the loop and output `NEEDS_HUMAN: <exact reason>` **only** for:
 - A third-party service outage confirmed by a status page.
 - A git merge conflict on `main` that cannot be auto-resolved.
 - Exhausting ≥ 3 distinct fix strategies on the same failure with no progress.
+- **A second/unknown problem that would need a broad or unproven change** to fix — STOP and
+  write `NEEDS_HUMAN`. (A code-proven, contained, regression-guarded fix to a SINGLE identified
+  cause may proceed.)
 
 For everything else — compiler errors, import failures, test failures, Docker issues,
 migration drift, dependency conflicts, flaky timing — fix it yourself.
@@ -208,7 +216,7 @@ Maintain `/Users/adimac/Desktop/Tvashtr/STATE.md`. Update it after every complet
 # Tvashtr — Autonomous Execution State
 
 ## Current Milestone
-P1.8 — Supervisor-first onboarding (R2)
+M-brownfield — local-execution / "work on a real local folder" run mode
 
 ## Last Completed Step
 <step name> — <timestamp> — branch: <branch-name> — commit: <sha>
@@ -238,43 +246,59 @@ NEEDS_HUMAN: <reason>
 
 ---
 
-## 7. Milestone Sequence (this session)
+## 7. Milestone Sequence (current)
 
-Current position: **P1.8 — Supervisor-first onboarding (R2)** is the next milestone. Everything
-through P1.5c + §14 + P1.7 + the FE-infra sweep is DONE and on `main` (see `PROJECTPLAN.md`
-§16/§17 + `HANDOVER.md`). The architect scopes each milestone into ONE lean `/goal` (often
-pointed at a detailed `prompts/<name>.md` brief) and audits the result on disk; you self-decompose
-and RUN every gate to green yourself. **When the architect has written a `prompts/` brief for the
-current milestone, that brief SUPERSEDES this section for that run** (as the FE-infra brief did).
+**Position: Phase 1 is COMPLETE (P1.1–P1.8d shipped + merged); the Tvashtr-25 prompt-driven
+pivot is fully realized; the active bet is now M-brownfield (Phase 1.5 — local execution →
+"work on a real local folder" run mode), per the Tvashtr-31 strategic pivot.** The architect
+scopes each milestone into ONE lean `/goal` (often pointed at a detailed `prompts/<name>.md`
+brief) and audits the result on disk; you self-decompose and RUN every gate to green yourself.
+**When the architect has written a `prompts/` brief for the current milestone, that brief
+SUPERSEDES this section for that run.**
 
 ### Done — do NOT re-do (context only)
 - **P1.5** — the cyclic PM→Engineer⇄Reviewer review loop (5a executor + crash-resume; 5b
   gates/terminals-as-nodes + the Tasks-for-Human drawer; 5c the real agent-Reviewer capstone —
   M1 proven).
 - **§14** — the team A/B "which config ships better" attributability instrument (14.1 verdict
-  view → 14.2 pair/launch + migrations `0010`/`0011` → 14.3 comparison view).
+  view → 14.2 pair/launch → 14.3 comparison view).
 - **P1.7** — live-document steering (J3): the in-flight PRD is the source of truth (P1.7a backend
-  re-source at every agent-node entry + P1.7b the human-editable TipTap editor; proven live by
-  `make steering-e2e`).
-- **FE-infra** — ESLint (type-checked flat config) + Prettier + a protective RTL suite + `scripts/`
-  folded into the ruff gate; `make test-frontend`/`build-frontend` added, `make lint`/`fmt` cover FE.
+  re-source + P1.7b the human-editable TipTap editor; proven by `make steering-e2e`).
+- **FE-infra** — ESLint (type-checked) + Prettier + a protective RTL suite + `scripts/` in the
+  ruff gate; `make test-frontend`/`build-frontend`; `make lint`/`fmt` cover FE.
+- **The Tvashtr-25 PIVOT (P1.8a–d) — fixed-function role nodes RETIRED for a prompt-driven node
+  model.** Every node = `prompt` (its whole identity) + `capability` (thinker=`completion` /
+  worker=`agent`, on the existing `kind`) + `model`; the executor runs `node.prompt` generically
+  and routes on the AUTHORED topology (generic outcome labels matched by `Edge.conditions {when}`;
+  the reviewer loop-back is a no-`when` catch-all). `teams.py` builders are an editable TEMPLATE
+  library; the old "Supervisor" survives ONLY as an optional generator, never a runtime node.
+  Shipped: P1.8a backend core (mig `0012`) · P1.8b editable team + clone-on-launch + team library
+  (mig `0013` `is_library`) · P1.8c the generic thinker node + capability authoring + `thinker_chain`
+  · P1.8d canvas topology editing (node/edge CRUD + `validate_graph`).
+  **⚠️ "Supervisor-first onboarding" is RETIRED — do NOT build it; the pivot replaced it with blank
+  prompt-driven nodes + the template library + the optional generator.**
+- **Per-node work-brief (Option A) — "what I did last run" legibility.** M1: the brief in the
+  RUN view (generalized `AgentInvocation.outcome_detail`, no migration). M2: the same brief in
+  the AUTHORING view via `agent_nodes.cloned_from_node_id` (mig `0014`) — the converse-with-a-node
+  Mode-A substrate.
 
-### Next — P1.8 Supervisor-first onboarding (R2)
-Read `PROJECTPLAN.md` §16/§17 + `HANDOVER.md` §2 first, then work to the milestone's `/goal`
-(and its `prompts/` brief if present). The shape: a real intake ("describe idea → proposed team →
-adjust") that becomes the PRIMARY entry point and demotes blank-canvas team authoring to a
-power-user affordance — the Supervisor emits team-graph rows the existing generic executor already
-runs (NO new execution path; the cyclic walk is unchanged). Likely **multi-milestone** — the
-architect sizes each `/goal` to ONE bounded, transcript-verifiable slice (don't bundle "all of
-P1.8"). If a slice needs a schema change it gets a NEW migration (`0012`+; `0001`–`0011` are
-frozen) ISOLATED into its own milestone. New FE lands under the FE-infra gate — mind the two
-FE-testing gotchas (`HANDOVER.md` §5: user-event ⊥ vitest fake timers → use `fireEvent`; React
-Flow needs the `frontend/src/test/setup.ts` jsdom shims or it renders zero nodes under RTL).
+### Next — M-brownfield (local execution → real-folder run mode)
+Read `PROJECTPLAN.md` §1 ("strategic direction") + §15 Phase 1.5 + the 2026-06-26 §17 entry +
+`HANDOVER.md` §2 first, then work to the milestone's `/goal` (and its `prompts/` brief). The shape:
+run the existing stack locally and add a run mode that mounts the user's REAL chosen repo as the
+agent workspace (instead of an ephemeral clone) — the Engineer edits real files, the Reviewer gates
+the real diff, ship commits to a real branch. **The hard part is correctness on existing code, NOT
+the mounting.** It is a multi-milestone bet — the architect sizes each `/goal` to ONE bounded,
+transcript-verifiable slice. A schema change gets a NEW migration (`0015`+; `0001`–`0014` frozen).
+New FE lands under the FE-infra gate — mind the FE-testing gotchas (HANDOVER §4: user-event ⊥ vitest
+fake timers → use `fireEvent`; React Flow needs the `frontend/src/test/setup.ts` jsdom shims).
 
-### After P1.8
-P1.6 (WebSocket transport, deferrable) and P1.9 (GitHub greenfield + PR) remain in Phase 1;
-Phase 2 is the composability layer. See `PROJECTPLAN.md` §16 for the full roadmap. Do not start a
-milestone until the prior one is merged and recorded.
+### Also remaining in the backlog (architect-sequenced)
+P1.9 (GitHub greenfield + PR — overlaps the brownfield real-branch ship target, so sequence it
+WITH M-brownfield), P1.6 (WebSocket transport, deferrable), and the registered §15 follow-ons
+(the `deriveNodeStatus` fix, the cosmetic renames, M3 mid-run prompt re-read → converse-with-a-node
+Mode B). See `PROJECTPLAN.md` §15/§16. Do not start a milestone until the prior one is merged and
+recorded.
 
 ---
 
@@ -323,9 +347,9 @@ On receiving the single word **"resume"**:
 
 A step is done when ALL hold:
 - [ ] New tests written and passing.
-- [ ] `make test` green (177 backend tests currently; never regresses).
+- [ ] `make test` green (239+ backend tests; confirm the live count at session start; never regresses).
 - [ ] `make lint` clean.
-- [ ] `make test-frontend` (vitest, 85 currently) + `make build-frontend` (tsc-strict + vite) green (if frontend touched).
+- [ ] `make test-frontend` (vitest, 114+ currently) + `make build-frontend` (tsc-strict + vite) green (if frontend touched).
 - [ ] Live acceptance `make` target green for this step.
 - [ ] `STATE.md` updated with sha, test count, branch name, completion date.
 - [ ] `READY_TO_MERGE` written to `STATE.md`.
