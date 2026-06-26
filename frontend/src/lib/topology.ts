@@ -194,7 +194,12 @@ export function withLayout(
   while (queue.length) {
     const [id, d] = queue.shift()!;
     for (const nxt of out.get(id) ?? []) {
-      if (!depth.has(nxt) || depth.get(nxt)! < d + 1) {
+      // Relax to the LONGER path (deeper column), but cap depth at the node count. A longest *simple*
+      // path spans at most N nodes (depth ≤ N-1), so `d + 1 < nodes.length` never blocks a legitimate
+      // acyclic relaxation — it ONLY stops the unbounded depth growth a CYCLE (a `loop_limit`
+      // loop-back, e.g. engineer⇄reviewer) would otherwise drive, which spun this BFS forever and
+      // pegged the main thread (the P1.8d-fix1 hang on any cyclic team).
+      if (d + 1 < nodes.length && (!depth.has(nxt) || depth.get(nxt)! < d + 1)) {
         depth.set(nxt, d + 1);
         queue.push([nxt, d + 1]);
       }

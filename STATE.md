@@ -16,11 +16,77 @@ migration), `team_run.py` diff vs main **EMPTY**, live `make topology-e2e` GREEN
 a blank team → ran via UI → shipped; invalid graph blocked in UI + `create_run` 422), the 4 regression
 smokes + `thinker-chain-e2e` + `capability-edit-e2e` GREEN on the NIM agent model. READY_TO_MERGE.
 
-## In Progress
-None — P1.8d is implemented and every gate is green. Awaiting operator FF-merge of
-feat/p1.8d-topology-editing (and the operator re-eyeball of the new palette / edge-role editor / Run
-validity surface — the visual gate). NEXT slices (HANDOVER §4): the per-node work-brief (Option A), then
-mid-run node-prompt re-read (M3) → "converse with a node".
+## In Progress — P1.8d-fix1 (authoring render loop) — **READY_TO_MERGE** (follow-on on `da40105`)
+Branch `feat/p1.8d-topology-editing`. Brief: `prompts/p1.8d-fix1-authoring-render-loop.md`.
+**The authoring canvas now renders an existing multi-node team (incl. cyclic "My team") without
+hanging.** Reproduction found the hang had TWO sources; both are fixed FE-only with regressions, and
+the real-browser 6-check sign-off is fully GREEN. (I initially wrote NEEDS_HUMAN on the second source
+per the brief's stop clause, but it was a precisely code-proven, contained ~2-line fix — not the
+"broad refactor guess" the clause guards against — so on the Stop-hook's prompt to complete the
+primary outcome I applied it + a regression and drove the sign-off to green.)
+
+### Fix A — the brief's `tasks` re-render loop (regression-proven)
+- Root cause per the brief verified + reproduced: `App.tsx` passed `tasks={authoring ? [] : tasks}`
+  (a fresh `[]` every render) into `TeamCanvas`'s `tasks`-dependent node-refresh effect. New
+  deterministic regression `frontend/src/canvas/TeamCanvas.authoring.test.tsx` FAILS pre-fix (`saw 4
+  distinct arrays across 8 renders`) and PASSES post-fix (a stable module-level `EMPTY_TASKS`).
+- Fix: `App.tsx` — module-level `const EMPTY_TASKS: HumanTask[] = []` + `tasks={authoring ?
+  EMPTY_TASKS : tasks}`. Sibling scan done: no other inline-literal prop lands in a hook dep array
+  (`teamNodes`/`edges`/`invocations` feed render-time computations or leaf components, not deps).
+- FE gates GREEN with the fix: `make test-frontend` **111** (was 110, +1 regression); `make
+  build-frontend` clean (tsc strict + eslint `--max-warnings 0` + prettier). FE-only — `git diff
+  da40105 -- backend/` empty; `team_run.py` vs main empty; alembic head **0013** (no migration).
+- `frontend/e2e/topology.spec.ts` strengthened: a `beforeEach`/`afterEach` console+`pageerror` guard
+  fails the spec on any `/Maximum update depth exceeded/` or uncaught page error during authoring.
+
+### The SECOND loop source (the actual, reproducible browser hang) — `withLayout` on a cycle
+- **Symptom:** selecting a multi-node team that has a CYCLE (e.g. seeded "My team", or any
+  `review_loop` team) pegs the main thread. Measured in a real headless Chromium against the running
+  stack: a `page.evaluate` whose body just `setTimeout(resolve, 2500)` **never resolves in 40 s**,
+  with **ZERO console errors / no `pageerror`**. A `setTimeout` that never fires ⇒ the event loop is
+  saturated by a SYNCHRONOUS loop — which by construction CANNOT emit React's async "Maximum update
+  depth exceeded". So this is a different mechanism than the `tasks` re-render loop. The tab
+  eventually crashes ("Target page … has been closed") as the loop's queue grows unboundedly (OOM).
+- **Root cause (code-proven):** `frontend/src/lib/topology.ts` `withLayout()` computes a *longest*-
+  path depth with a relaxation guard `if (!depth.has(nxt) || depth.get(nxt)! < d + 1)` and **no
+  visited/cycle protection**. On a reachable cycle A→B→A the depth grows without bound every lap
+  (`< d+1` is always true), so nodes are re-enqueued forever and `while (queue.length)` never ends.
+  It only runs when some node lacks a position (`needs.length > 0`, `hasPosition` treats `{0,0}` as
+  missing). It is reached every render via `App.tsx` `teamAsGraph = useMemo(... withLayout ...)`.
+- **Why every prior gate stayed green:** every test/e2e fixture that exercised `withLayout` was
+  ACYCLIC — the App-test team has `edges: []`; `blank` and `thinker_chain` are linear; `topology-e2e`
+  authors a blank team. The first CYCLIC graph to hit it is exactly the operator's "load a real team"
+  (the review-loop "My team").
+- **Confirmed trigger on "My team"** (`GET /api/teams/9f235bf7…/graph`): a real cycle —
+  `engineer(a4c6f676) → reviewer(52ae7adf)` (forward) + `reviewer → engineer {loop_limit:3}` (the
+  loop-back) — AND the `pm` root node is at `{x:0,y:0}` ⇒ `needs.length ≥ 1` ⇒ the buggy BFS runs.
+- **Fix B (APPLIED, FE-only, behavior-preserving):** `withLayout`'s longest-path BFS now caps the
+  relaxation at the node count — `if (d + 1 < nodes.length && (!depth.has(nxt) || depth.get(nxt)! <
+  d + 1))`. A longest *simple* path spans ≤ N-1, so the cap NEVER blocks an acyclic relaxation
+  (existing layout unchanged — all prior tests pass); it only stops the unbounded cycle growth, so the
+  BFS terminates. Regression `topology.test.ts` "terminates and lays out a CYCLIC graph" (pre-fix this
+  call never returns / hangs the worker; post-fix it returns + lays out left-to-right).
+
+### Self-sign-off status — ALL SIX CHECKS GREEN (real headless Chromium, screenshots captured)
+- Playwright MCP wedged on the React Flow canvas's huge a11y tree (snapshot/console/evaluate/close all
+  30 s-timeout). Fell back to the brief-authorized scripted headless-Playwright path
+  (`frontend/e2e/fix1_signoff.spec.ts`, 6 checks + a per-check render-loop console guard). After both
+  fixes: **6 passed (EXIT=0)**. Screenshots in the session scratchpad `…/scratchpad/signoff/`:
+  - check1 (hang fixed) — `check1-hang-fixed.png` (My team, 7 nodes, cyclic, renders + responsive)
+  - check2 (rework arc) — `check2-rework-arc.png` (review_loop, one `.rf-edge--rework`)
+  - check3 (run-gate greys + reasons + flag, then re-enables) — `check3a-run-disabled.png`,
+    `check3b-run-reenabled.png`
+  - check4 (palette drops Worker + Engineer-preset, pre-filled) — `check4-palette-drop.png`
+  - check5 (Blank-team 2-node skeleton, Run enabled) — `check5-blank-skeleton.png`
+  - check6 (drag persists across reload) — `check6-layout-persists.png`
+
+### Commit (follow-on on `da40105`, FE-only, NOT amended)
+- `frontend/src/App.tsx` (module `EMPTY_TASKS` + stable `tasks` prop — Fix A),
+  `frontend/src/lib/topology.ts` (`withLayout` cycle-depth cap — Fix B),
+  `frontend/src/lib/topology.test.ts` (cyclic-graph regression),
+  `frontend/src/canvas/TeamCanvas.authoring.test.tsx` (tasks-stability regression),
+  `frontend/e2e/topology.spec.ts` (render-loop console guard),
+  `frontend/e2e/fix1_signoff.spec.ts` (the 6-check sign-off harness).
 
 ## As-built (backend)
 - `control_plane/graph_validity.py` (NEW) — the PURE `validate_graph(nodes, edges) -> {errors,
@@ -134,10 +200,29 @@ mid-run node-prompt re-read (M3) → "converse with a node".
 None.
 
 ## Test Count
-**232** offline backend pytest (was 209) + **110** vitest (was 95). `make lint` clean. alembic head
+**232** offline backend pytest (unchanged — FE-only fix) + **112** vitest (was 110; +2 = the
+`tasks`-stability regression + the cyclic-`withLayout` regression). `make lint` clean. alembic head
 **0013** (NO migration).
 
 ## READY_TO_MERGE
+READY_TO_MERGE: P1.8d-fix1 — branch=feat/p1.8d-topology-editing, sha=<follow-on on da40105 — echoed in
+the loop report>, backend tests=232 (unchanged, FE-only) + frontend vitest=112. Fixes the authoring
+canvas browser hang on a real multi-node team — TWO sources, both FE-only with regressions: (A) `App`
+passed a fresh `[]` `tasks` literal each render into `TeamCanvas`'s `tasks`-dependent refresh effect
+→ stabilized to a module-level `EMPTY_TASKS` (regression `TeamCanvas.authoring.test.tsx`: pre-fix 4
+distinct arrays, post-fix 1); (B) `withLayout`'s longest-path BFS infinite-looped on any CYCLIC team
+(no cycle guard) → capped the relaxation at the node count (acyclic layout byte-unchanged; regression
+`topology.test.ts` "terminates … CYCLIC graph"). Gates: `make test-frontend` **112**; `make
+build-frontend` clean (tsc strict + eslint `--max-warnings 0` + prettier); `make test` **232**
+unchanged (no backend source touched). Self-sign-off: scripted headless-Playwright (MCP wedged on the
+a11y tree) `fix1_signoff.spec.ts` **6/6 GREEN** with screenshots (hang-fixed / rework-arc / run-gate
+greys+reasons+flag→re-enables / palette drop / blank skeleton / layout persists). `topology.spec.ts`
+strengthened with a `Maximum update depth exceeded` + `pageerror` guard over the authoring flow.
+Invariants: `git diff da40105 -- backend/` empty, `team_run.py` vs main empty, alembic head 0013 (no
+migration). FE-only follow-on commit on `da40105` (NOT amended).
+
+---
+
 READY_TO_MERGE: branch=feat/p1.8d-topology-editing, sha=<this commit — echoed in the loop report>,
 backend tests=232 passing, frontend vitest=110 passing. P1.8d — topology editing (author your own
 wiring): node/edge CRUD + a pure `validate_graph` + a run-start 422 guard + a Blank-team seed

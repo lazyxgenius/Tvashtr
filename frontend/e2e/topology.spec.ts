@@ -36,6 +36,34 @@ const runStatusOf = async (
   ((await (await request.get(`/api/runs/${runId}`)).json()) as { run: { status: string } | null })
     .run?.status;
 
+// P1.8d-fix1: the authoring canvas once hung the tab with an infinite render loop ("Maximum update
+// depth exceeded") the moment a multi-node team was selected. Capture the real browser's console
+// errors + uncaught page exceptions for the whole authoring flow and fail the spec if the render-loop
+// class ever fires — so a regression that reintroduces an inline `[]`/unstable prop in a hook dep
+// array can never ship green again.
+let consoleErrors: string[] = [];
+let pageErrors: string[] = [];
+
+test.beforeEach(({ page }) => {
+  consoleErrors = [];
+  pageErrors = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+  page.on("pageerror", (err) => {
+    pageErrors.push(err.message);
+  });
+});
+
+test.afterEach(() => {
+  const loop = [...consoleErrors, ...pageErrors].filter((t) =>
+    /Maximum update depth exceeded/i.test(t),
+  );
+  expect(loop, `authoring triggered a render loop:\n${loop.join("\n")}`).toEqual([]);
+  // Any uncaught exception during the authoring flow is also a hard fail (the hang surfaced as one).
+  expect(pageErrors, `uncaught page error during authoring:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
 async function newBlankTeam(page: import("@playwright/test").Page, name: string): Promise<string> {
   const createResp = page.waitForResponse(
     (r) => r.url().endsWith("/api/teams") && r.request().method() === "POST",

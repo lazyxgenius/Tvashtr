@@ -142,6 +142,33 @@ describe("withLayout + nextDropPosition", () => {
     expect(Number.isFinite(pos["a"].x)).toBe(true);
   });
 
+  // P1.8d-fix1 (second loop source): a CYCLIC team (a `loop_limit` loop-back — the review-loop's
+  // engineer⇄reviewer) must not spin the longest-path BFS forever. Pre-fix this call never RETURNED
+  // (an unbounded depth around the cycle pegged the main thread); this test would hang. The cycle-
+  // depth cap makes it terminate and still lay out left-to-right from the root.
+  it("terminates and lays out a CYCLIC graph (a loop-back never spins the layout forever)", () => {
+    const nodes = [
+      node("pm", "completion", { x: 0, y: 0 }), // root, no position → forces the BFS to run
+      node("eng", "agent", { x: 0, y: 0 }),
+      node("rev", "agent", { x: 0, y: 0 }),
+      node("ship", "terminal", { x: 0, y: 0 }),
+    ];
+    const edges = [
+      edge("e1", "pm", "eng"),
+      edge("e2", "eng", "rev"),
+      edge("e3", "rev", "eng"), // the loop-back — forms the engineer⇄reviewer cycle
+      edge("e4", "rev", "ship"),
+    ];
+    const pos = withLayout(nodes, edges); // must RETURN (no infinite loop) — the regression
+    for (const n of nodes) {
+      expect(Number.isFinite(pos[n.id].x)).toBe(true);
+      expect(Number.isFinite(pos[n.id].y)).toBe(true);
+    }
+    // the layering still advances left-to-right from the root.
+    expect(pos["pm"].x).toBe(0);
+    expect(pos["eng"].x).toBeGreaterThan(pos["pm"].x);
+  });
+
   it("drops a new node to the right of the rightmost", () => {
     const nodes = [node("a", "completion", { x: 0, y: 0 }), node("b", "agent", { x: 300, y: 0 })];
     expect(nextDropPosition(nodes)).toEqual({ x: 560, y: 0 });

@@ -44,6 +44,12 @@ import type { EdgeConfirm } from "./canvas/EdgeRoleEditor";
 import { nextDropPosition, withLayout } from "./lib/topology";
 import { isRunTerminal } from "./lib/status";
 
+// P1.8d-fix1: a STABLE empty task list for the authoring view. A fresh `[]` literal at the call site
+// is a new reference every render, and TeamCanvas's node-refresh effect depends on `tasks` — so an
+// inline `[]` re-fires that effect on every render, which (with React Flow's async re-measure +
+// fitView) closes into an infinite render loop. One module-level constant kills the loop's fuel.
+const EMPTY_TASKS: HumanTask[] = [];
+
 export default function App() {
   const [runId, setRunId] = useState<string | null>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
@@ -620,7 +626,7 @@ export default function App() {
                 graph={authoring ? teamAsGraph : graph}
                 run={run}
                 workflowStatus={workflowStatus}
-                tasks={authoring ? [] : tasks}
+                tasks={authoring ? EMPTY_TASKS : tasks}
                 focusNodeId={focusNodeId}
                 panelOpen={authoring ? selectedNodeId !== null : selectedRole !== null}
                 onSelectNode={setSelectedRole}
