@@ -194,6 +194,15 @@ class AgentNode(Base):
     # Node-kind metadata (P1.5b): gate -> {gate_kind, title, description};
     # terminal -> {terminal_kind: "ship"|"stop"}; NULL for completion/agent nodes.
     config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Back-reference to the ORIGIN authored node this node was cloned from (M2, migration ``0014``).
+    # A run executes against a clone-on-launch snapshot (``clone_team_graph``); this links each
+    # clone node to the authored node it came from, so the authoring graph endpoint can read "what
+    # did THIS authored node do last run" (correct even for duplicate-named nodes). A PLAIN Uuid
+    # value, deliberately NOT a ``ForeignKey``: authored nodes are deletable/re-addable (P1.8d
+    # topology editing), so an FK's cascade/SET-NULL coupling between the immutable snapshot and the
+    # mutable authored graph is unwanted — a dangling value simply matches nothing. NULL on every
+    # authored/builder node (not clones); set by ``clone_team_graph`` on each clone node.
+    cloned_from_node_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -318,8 +327,10 @@ class AgentInvocation(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     run_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    # ``index=True`` (M2, migration ``0014``): the authoring "last run" read joins
+    # ``agent_invocations.node_id`` -> ``agent_nodes.id``; this FK column was unindexed before.
     node_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agent_nodes.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("agent_nodes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     iteration: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)  # running|done|failed|stopped

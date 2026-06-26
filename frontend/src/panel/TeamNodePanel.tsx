@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 
+import { LastRun } from "../components/LastRun";
 import {
   type Capability,
   type GraphEdge,
@@ -239,6 +240,27 @@ export function TeamNodePanel({
                 <span className="tv-prd__saved">Saved — this drives the next run you launch.</span>
               ) : null}
               {saveError && <span className="tv-prd__saveerr">Couldn’t save — try again.</span>}
+            </div>
+
+            {/* M2: read-only "Last run" brief of what THIS authored node did the last time it
+                actually executed (across the team's runs). Historical -> NOT part of the dirty
+                check, untouched by Save. */}
+            <div className="tv-node-lastrun" aria-label="Last run">
+              <div className="tv-lastrun__head">Last run</div>
+              {node.last_run ? (
+                <LastRun
+                  rounds={[
+                    {
+                      iteration: node.last_run.iteration,
+                      outcome: node.last_run.outcome,
+                      outcome_detail: node.last_run.outcome_detail,
+                    },
+                  ]}
+                  provenance={{ startedAt: node.last_run.started_at, runId: node.last_run.run_id }}
+                />
+              ) : (
+                <p className="tv-panel-note">No runs yet.</p>
+              )}
             </div>
           </div>
         )}

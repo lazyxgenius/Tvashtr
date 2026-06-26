@@ -470,6 +470,20 @@
   letter-spacing: 0.06em;
 }
 
+/* Authoring panel (M2): the read-only "Last run" brief below the editable fields — a separated block
+   at the end of the node form (the run-view's bounded ``tv-lastrun`` doesn't suit the form scroll). */
+.tv-node-lastrun {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: var(--border-width) solid var(--panel-300);
+}
+/* The muted "ran 2h ago" provenance tag under the authoring brief (M2). */
+.tv-lastrun__when {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-micro);
+  color: var(--text-tertiary);
+}
+
 /* ---- Reviewer verdict history (P1.5c §14.1) ---- */
 /* A tight, calm list of per-round verdicts. Tones reuse the established pill token
    patterns (sage = approved, coral = changes requested, panel = neutral); no ad-hoc hex,

@@ -788,12 +788,54 @@ def create_team(body: CreateTeamRequest) -> dict:
     return get_team_summary(team_graph_id)
 
 
+def _latest_invocation_by_origin(
+    session, origin_node_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, dict]:
+    """M2: map each AUTHORED node id -> its "last run" brief — the latest invocation across ALL
+    clones of it (the run-snapshot ``agent_nodes`` rows that carry ``cloned_from_node_id``), as
+    ``{outcome, outcome_detail, run_id, iteration, started_at}``. ONE ``DISTINCT ON`` read joins
+    ``agent_invocations`` -> the clone node -> the origin id, ordered ``started_at DESC`` so the
+    FIRST row per origin is the most recent execution (survives a later run that skipped the node).
+    A node that never ran is simply absent from the map (-> ``last_run = None`` upstream)."""
+    if not origin_node_ids:
+        return {}
+    rows = session.execute(
+        select(
+            AgentNode.cloned_from_node_id,
+            AgentInvocation.outcome,
+            AgentInvocation.outcome_detail,
+            AgentInvocation.run_id,
+            AgentInvocation.iteration,
+            AgentInvocation.started_at,
+        )
+        .select_from(AgentInvocation)
+        .join(AgentNode, AgentInvocation.node_id == AgentNode.id)
+        .where(AgentNode.cloned_from_node_id.in_(origin_node_ids))
+        .distinct(AgentNode.cloned_from_node_id)
+        .order_by(AgentNode.cloned_from_node_id, AgentInvocation.started_at.desc())
+    ).all()
+    return {
+        origin_id: {
+            "outcome": outcome,
+            "outcome_detail": outcome_detail,
+            "run_id": run_id,
+            "iteration": iteration,
+            "started_at": started_at.isoformat(),
+        }
+        for origin_id, outcome, outcome_detail, run_id, iteration, started_at in rows
+    }
+
+
 @router.get("/api/teams/{team_id}/graph")
 def get_team_graph(team_id: str) -> dict:
     """A library team's nodes + edges in the canvas's node/edge shape and INCLUDING each node's
     editable ``prompt`` — but with NO run state (the authored team is not running). 400 on a
     malformed id; 404 if the id is not a library team. Shares the node/edge serialization with
-    ``GET /api/runs/{run_id}/graph`` (``_node_base_dict`` / ``_edge_to_dict``)."""
+    ``GET /api/runs/{run_id}/graph`` (``_node_base_dict`` / ``_edge_to_dict``).
+
+    M2: each node also carries a ``last_run`` brief — the latest invocation of any CLONE of that
+    authored node, across all the team's runs (or ``None`` if it never ran). This is the AUTHORING
+    endpoint ONLY; the run-view endpoint ``get_run_graph`` is unchanged."""
     with db.session_scope() as session:
         graph = _require_library_team(session, team_id)
         nodes = (
@@ -804,9 +846,12 @@ def get_team_graph(team_id: str) -> dict:
         edges = session.execute(select(Edge).where(Edge.team_graph_id == graph.id)).scalars().all()
         # Deterministic left-to-right order (PM at x=0 first), matching the run-graph read.
         nodes = sorted(nodes, key=lambda n: (n.position.get("x", 0), str(n.id)))
+        last_run_by_origin = _latest_invocation_by_origin(session, [n.id for n in nodes])
         return {
             "team_graph_id": str(graph.id),
-            "nodes": [_node_base_dict(n) for n in nodes],
+            "nodes": [
+                {**_node_base_dict(n), "last_run": last_run_by_origin.get(n.id)} for n in nodes
+            ],
             "edges": [_edge_to_dict(e) for e in edges],
         }
 

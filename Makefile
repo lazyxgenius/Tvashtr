@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -126,6 +126,9 @@ topology-e2e: ## Live P1.8d topology-editing E2E: from a BLANK team author root 
 
 work-brief-e2e: ## Live per-node work-brief E2E (Option A): (1) API-driven — a REAL review_loop on NIM with forced revisions, then assert the THINKER (PM) AND WORKER (Engineer) latest outcome_detail are non-NULL well-formed briefs (populated for MORE than the Reviewer) while the Reviewer's stays its verdict reasons; (2) scripted headless Playwright — drive a real run, click the thinker then the Engineer node in the run view, assert each panel shows its "Last run" brief, capture 2 screenshots. Real NIM agent + Vite dev server; needs NVIDIA_BUILD_API_KEY, skips otherwise.
 	./scripts/work_brief_e2e.sh
+
+authoring-brief-e2e: ## Live M2 authoring-brief E2E: create a review_loop team, Run it, return to the AUTHORING view, click the PM (thinker) node, and assert its node panel's "Last run" section shows "Drafted the spec from the idea." + a relative-time provenance tag (the cloned_from_node_id linkage + authoring read + view-switch re-fetch). Captures a screenshot. Real NIM agent + Vite dev server; needs NVIDIA_BUILD_API_KEY, skips otherwise.
+	./scripts/authoring_brief_e2e.sh
 
 budget-demo: ## Live budget cap demo: tiny per-run cap -> breach -> auto-approve -> ship (needs key; skips otherwise)
 	./scripts/budget_demo.sh

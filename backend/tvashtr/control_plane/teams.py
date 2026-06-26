@@ -555,6 +555,9 @@ def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
                 prompt=n.prompt,
                 position=deepcopy(n.position),
                 config=deepcopy(n.config),
+                # M2: link the clone back to its origin authored node so the authoring endpoint can
+                # read "what did THIS authored node do last run" — correct even for duplicates.
+                cloned_from_node_id=n.id,
             )
             session.add(new_node)
             session.flush()

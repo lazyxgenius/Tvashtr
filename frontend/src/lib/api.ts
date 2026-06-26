@@ -142,6 +142,15 @@ export interface TeamGraphNode {
   prompt: string | null; // null for gate/terminal control primitives
   position: NodePosition;
   config: NodeConfig | null;
+  // M2: the authoring "last run" brief — the latest invocation of any CLONE of this authored node,
+  // across all the team's runs (null if it never ran). Read-only; the run-view endpoint has none.
+  last_run?: {
+    outcome: string | null;
+    outcome_detail: string | null;
+    run_id: string;
+    iteration: number;
+    started_at: string;
+  } | null;
 }
 
 export interface TeamGraphData {

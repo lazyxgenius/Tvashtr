@@ -1,8 +1,10 @@
 import { type ReactNode } from "react";
 import { X } from "lucide-react";
 
-import type { GraphNode, NodeInvocation, RunRow } from "../lib/api";
-import { isPrdEditable, reviewerVerdictLabel, WORKFLOW_FAILED } from "../lib/status";
+import { LastRun } from "../components/LastRun";
+import type { GraphNode, RunRow } from "../lib/api";
+import { isPrdEditable, WORKFLOW_FAILED } from "../lib/status";
+import { titleCase } from "../lib/text";
 import { EventFeed } from "./EventFeed";
 import { PrdView } from "./PrdView";
 
@@ -30,59 +32,8 @@ const ROLE_TITLES: Record<string, { title: string; subtitle: string }> = {
   reviewer: { title: "Reviewer", subtitle: "How it judged the work" },
 };
 
-/** Humanize a raw role/outcome token (`changes_requested` -> "Changes requested"). */
-function titleCase(raw: string): string {
-  const spaced = raw.replace(/[_-]+/g, " ").trim();
-  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : raw;
-}
-
 function nodeTitle(node: GraphNode): { title: string; subtitle: string } {
   return ROLE_TITLES[node.role_name] ?? { title: titleCase(node.role_name), subtitle: "Details" };
-}
-
-// Humanized labels for the per-round "Last run" outcomes. The reviewer outcomes (approved /
-// changes_requested) MUST match `reviewerVerdictLabel`'s text so the §14.1 verdict view is byte-
-// unchanged; the rest cover thinker/worker outcomes. Fallback = title-case the raw token.
-const OUTCOME_LABELS: Record<string, string> = {
-  prd_written: "Wrote the spec",
-  built: "Built",
-  approved: "Approved",
-  changes_requested: "Changes requested",
-  over_budget: "Over budget",
-};
-
-function outcomeLabel(outcome: string | null): string {
-  if (outcome === null) return "—";
-  return OUTCOME_LABELS[outcome] ?? titleCase(outcome);
-}
-
-/**
- * The generalized "Last run" section (Option A): a per-round list of the node's invocations, each
- * "Round {iteration} — {humanized outcome}" with the `outcome_detail` brief beneath when present.
- * Works for ANY agent/thinker node. The tone reuses `reviewerVerdictLabel`, and the reviewer
- * outcome labels match it too, so the Reviewer's `tv-verdict--*` styling + the §14.1 per-round
- * verdict history render byte-identical to before — now just one node kind among many.
- */
-function LastRun({ rounds }: { rounds: NodeInvocation[] }) {
-  if (rounds.length === 0) {
-    return <p className="tv-panel-note">No run yet.</p>;
-  }
-  return (
-    <ol className="tv-verdicts">
-      {rounds.map((r) => {
-        const tone = reviewerVerdictLabel(r.outcome).tone;
-        return (
-          <li key={r.iteration} className={`tv-verdict tv-verdict--${tone}`}>
-            <div className="tv-verdict__line">
-              <span className="tv-verdict__round">Round {r.iteration}</span>
-              <span className="tv-verdict__label">{outcomeLabel(r.outcome)}</span>
-            </div>
-            {r.outcome_detail && <p className="tv-verdict__reasons">{r.outcome_detail}</p>}
-          </li>
-        );
-      })}
-    </ol>
-  );
 }
 
 /**
@@ -93,6 +44,9 @@ function LastRun({ rounds }: { rounds: NodeInvocation[] }) {
  * Reviewer) shows the step-by-step feed. Gates/terminals never open this panel (the canvas only
  * selects agent/completion nodes). The whole `GraphNode` is passed in — the panel reads its
  * `invocations` (already in the run-graph payload) so it stays a thin render of backend truth.
+ *
+ * M2: the per-round "Last run" rendering moved to the shared `components/LastRun`; the run view
+ * passes NO `provenance`, so the render is byte-identical (the authoring panel passes provenance).
  */
 export function SidePanel({
   node,

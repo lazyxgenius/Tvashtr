@@ -170,3 +170,73 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
     expect(screen.getByText(/isn.t editable/i)).toBeInTheDocument();
   });
 });
+
+describe("TeamNodePanel — authoring 'Last run' brief (M2)", () => {
+  it("renders the last_run brief + a relative-time provenance tag below the editable fields", () => {
+    const withRun = node({
+      last_run: {
+        outcome: "built",
+        outcome_detail: "Built the feature — changed 2 file(s): a.py, b.py",
+        run_id: "r1",
+        iteration: 1,
+        started_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      },
+    });
+    const { container } = render(
+      <TeamNodePanel
+        teamId="t1"
+        node={withRun}
+        isStartNode={false}
+        onSaved={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(
+      screen.getByText("Built the feature — changed 2 file(s): a.py, b.py"),
+    ).toBeInTheDocument();
+    expect(container.querySelector(".tv-lastrun__when")?.textContent).toContain("ran 3h ago");
+    expect(screen.queryByText("No runs yet.")).toBeNull();
+  });
+
+  it("renders 'No runs yet.' when the node has never run (last_run null)", () => {
+    render(
+      <TeamNodePanel
+        teamId="t1"
+        node={node({ last_run: null })}
+        isStartNode={false}
+        onSaved={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText("No runs yet.")).toBeInTheDocument();
+  });
+
+  it("the brief is read-only — editing the prompt marks the form dirty but never alters the brief", async () => {
+    const user = userEvent.setup();
+    const withRun = node({
+      kind: "completion",
+      engine: null,
+      last_run: {
+        outcome: "prd_written",
+        outcome_detail: "Drafted the spec from the idea.",
+        run_id: "r1",
+        iteration: 1,
+        started_at: new Date(Date.now() - 60 * 1000).toISOString(),
+      },
+    });
+    render(
+      <TeamNodePanel
+        teamId="t1"
+        node={withRun}
+        isStartNode={false}
+        onSaved={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await user.type(screen.getByRole("textbox", { name: /prompt/i }), " more");
+    // The form reads dirty (the brief is NOT part of the dirty check)...
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    // ...yet the read-only historical brief is untouched, still rendered.
+    expect(screen.getByText("Drafted the spec from the idea.")).toBeInTheDocument();
+  });
+});
