@@ -1,14 +1,15 @@
 import { type ReactNode } from "react";
 import { X } from "lucide-react";
 
-import type { NodeInvocation, RunRow } from "../lib/api";
+import type { GraphNode, NodeInvocation, RunRow } from "../lib/api";
 import { isPrdEditable, reviewerVerdictLabel, WORKFLOW_FAILED } from "../lib/status";
 import { EventFeed } from "./EventFeed";
 import { PrdView } from "./PrdView";
 
-/** The PM's placeholder copy when there is no document yet — derived from run-level
- *  signals directly (this panel stays run-level; it never receives the graph). */
-function pmEmptyHint(
+/** The thinker's placeholder copy when there is no spec document yet — derived from run-level
+ *  signals directly (this panel stays run-level; it never receives the graph's documents). The
+ *  copy is generic enough for any thinker (every thinker refines the SAME shared spec). */
+function specEmptyHint(
   runId: string | null,
   run: RunRow | null,
   workflowStatus: string | null,
@@ -21,87 +22,107 @@ function pmEmptyHint(
   return "The product manager is drafting the spec…";
 }
 
-/**
- * The reviewer view (P1.5c §14.1): the role explanation plus the per-round verdict
- * history, read from the reviewer node's persisted `AgentInvocation.outcome` rows
- * ("Round 1 — Changes requested", "Round 2 — Approved"). `rounds` is the reviewer
- * node's invocations, ascending by iteration ([] before the reviewer is reached).
- * §14.3 surfaces the persisted reasons (`outcome_detail`) under each `changes_requested`
- * round, so "what the review caught" is legible — NULL on an approved round (no line).
- */
-function ReviewerView({ rounds }: { rounds: NodeInvocation[] }) {
-  return (
-    <div className="tv-scroll">
-      <p className="tv-panel-note">
-        The reviewer reads the engineer's work against the spec, then either approves it or sends it
-        back for another round of changes.
-      </p>
-      {rounds.length === 0 ? (
-        <p className="tv-panel-note">No review yet.</p>
-      ) : (
-        <ol className="tv-verdicts">
-          {rounds.map((r) => {
-            const v = reviewerVerdictLabel(r.outcome);
-            return (
-              <li key={r.iteration} className={`tv-verdict tv-verdict--${v.tone}`}>
-                <div className="tv-verdict__line">
-                  <span className="tv-verdict__round">Round {r.iteration}</span>
-                  <span className="tv-verdict__label">{v.label}</span>
-                </div>
-                {r.outcome_detail && <p className="tv-verdict__reasons">{r.outcome_detail}</p>}
-              </li>
-            );
-          })}
-        </ol>
-      )}
-    </div>
-  );
-}
-
-const TITLES: Record<string, { title: string; subtitle: string }> = {
+// Nice titles for the seeded roles; a custom/authored node falls back to a title-cased role name
+// (a topology-edited team can name a node anything — e.g. "architect").
+const ROLE_TITLES: Record<string, { title: string; subtitle: string }> = {
   pm: { title: "Product manager", subtitle: "The spec it wrote" },
   engineer: { title: "Engineer", subtitle: "What it did, step by step" },
   reviewer: { title: "Reviewer", subtitle: "How it judged the work" },
 };
 
+/** Humanize a raw role/outcome token (`changes_requested` -> "Changes requested"). */
+function titleCase(raw: string): string {
+  const spaced = raw.replace(/[_-]+/g, " ").trim();
+  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : raw;
+}
+
+function nodeTitle(node: GraphNode): { title: string; subtitle: string } {
+  return ROLE_TITLES[node.role_name] ?? { title: titleCase(node.role_name), subtitle: "Details" };
+}
+
+// Humanized labels for the per-round "Last run" outcomes. The reviewer outcomes (approved /
+// changes_requested) MUST match `reviewerVerdictLabel`'s text so the §14.1 verdict view is byte-
+// unchanged; the rest cover thinker/worker outcomes. Fallback = title-case the raw token.
+const OUTCOME_LABELS: Record<string, string> = {
+  prd_written: "Wrote the spec",
+  built: "Built",
+  approved: "Approved",
+  changes_requested: "Changes requested",
+  over_budget: "Over budget",
+};
+
+function outcomeLabel(outcome: string | null): string {
+  if (outcome === null) return "—";
+  return OUTCOME_LABELS[outcome] ?? titleCase(outcome);
+}
+
 /**
- * The right-hand inspection panel. Rendered only when a node is selected; it
- * splits the canvas (push layout) so the clicked node stays reachable. Switches
- * body on role: PM → the spec + versions; Engineer → the run-event feed; Reviewer
- * → the per-round verdict history. The selected node's `invocations` are threaded in
- * as a slice (not the whole graph) so the panel stays graph-free.
+ * The generalized "Last run" section (Option A): a per-round list of the node's invocations, each
+ * "Round {iteration} — {humanized outcome}" with the `outcome_detail` brief beneath when present.
+ * Works for ANY agent/thinker node. The tone reuses `reviewerVerdictLabel`, and the reviewer
+ * outcome labels match it too, so the Reviewer's `tv-verdict--*` styling + the §14.1 per-round
+ * verdict history render byte-identical to before — now just one node kind among many.
+ */
+function LastRun({ rounds }: { rounds: NodeInvocation[] }) {
+  if (rounds.length === 0) {
+    return <p className="tv-panel-note">No run yet.</p>;
+  }
+  return (
+    <ol className="tv-verdicts">
+      {rounds.map((r) => {
+        const tone = reviewerVerdictLabel(r.outcome).tone;
+        return (
+          <li key={r.iteration} className={`tv-verdict tv-verdict--${tone}`}>
+            <div className="tv-verdict__line">
+              <span className="tv-verdict__round">Round {r.iteration}</span>
+              <span className="tv-verdict__label">{outcomeLabel(r.outcome)}</span>
+            </div>
+            {r.outcome_detail && <p className="tv-verdict__reasons">{r.outcome_detail}</p>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/**
+ * The right-hand run-view inspection panel. Selected by NODE ID (Option A), it switches the body on
+ * the node's `kind`, not a hardcoded role: every agent/thinker node gets a uniform "Last run" brief
+ * (its per-round `outcome_detail`) atop a kind-specific body — a thinker (`completion`) shows the
+ * shared spec (`PrdView`, live-editable while in-flight, P1.7b); a worker (`agent`, incl. the
+ * Reviewer) shows the step-by-step feed. Gates/terminals never open this panel (the canvas only
+ * selects agent/completion nodes). The whole `GraphNode` is passed in — the panel reads its
+ * `invocations` (already in the run-graph payload) so it stays a thin render of backend truth.
  */
 export function SidePanel({
-  selectedRole,
-  invocations = [],
+  node,
   runId,
   run,
   workflowStatus,
   onClose,
 }: {
-  selectedRole: string;
-  invocations?: NodeInvocation[];
+  node: GraphNode;
   runId: string | null;
   run: RunRow | null;
   workflowStatus: string | null;
   onClose: () => void;
 }) {
-  const { title, subtitle } = TITLES[selectedRole] ?? { title: selectedRole, subtitle: "Details" };
+  const { title, subtitle } = nodeTitle(node);
 
+  // The kind-specific body beneath the brief. A thinker refines the SAME shared spec (every thinker
+  // writes versions of `run.pm_document_id`), so `PrdView` is correct for ANY thinker, not just the
+  // PM; editability is run-status-based (P1.7b), never role-based.
   let body: ReactNode;
-  if (selectedRole === "pm") {
-    // The PRD is live-editable only while the run is in-flight (P1.7b steering) — derived here
-    // from the run/workflow status this panel already holds, so App.tsx needs no change.
+  if (node.kind === "completion") {
     body = (
       <PrdView
         documentId={run?.pm_document_id ?? null}
-        emptyHint={pmEmptyHint(runId, run, workflowStatus)}
+        emptyHint={specEmptyHint(runId, run, workflowStatus)}
         editable={isPrdEditable(run?.status ?? null, workflowStatus)}
       />
     );
-  } else if (selectedRole === "reviewer") {
-    body = <ReviewerView rounds={invocations} />;
   } else {
+    // kind === "agent" (worker, incl. the Reviewer): the agent's action/observation feed.
     body = <EventFeed runId={runId} run={run} workflowStatus={workflowStatus} />;
   }
 
@@ -123,7 +144,13 @@ export function SidePanel({
         </button>
       </header>
 
-      <div className="tv-panel__body">{body}</div>
+      <div className="tv-panel__body">
+        <section className="tv-lastrun" aria-label="Last run">
+          <div className="tv-lastrun__head">Last run</div>
+          <LastRun rounds={node.invocations} />
+        </section>
+        {body}
+      </div>
     </aside>
   );
 }

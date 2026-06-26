@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { GraphData, GraphEdge, GraphNode, HumanTask, RunRow } from "../lib/api";
@@ -147,5 +147,48 @@ describe("TeamCanvas — ONLY the loop_limit loop-back renders as the rework edg
     expect(container.querySelectorAll(".react-flow__edge.rf-edge--reject")).toHaveLength(1);
     // the rework label renders, once
     expect(screen.getAllByText("changes requested")).toHaveLength(1);
+  });
+});
+
+describe("TeamCanvas — run-view selection is by node id, not role_name (Option A)", () => {
+  it("selects two same-role nodes independently by their unique node id", () => {
+    const picks: (string | null)[] = [];
+    const twins: GraphData = {
+      run_id: RUN_ID,
+      team_graph_id: "g1",
+      nodes: [
+        gnode({
+          id: "n-think-a",
+          role_name: "thinker",
+          kind: "completion",
+          position: { x: 0, y: 0 },
+        }),
+        gnode({
+          id: "n-think-b",
+          role_name: "thinker",
+          kind: "completion",
+          position: { x: 260, y: 0 },
+        }),
+      ],
+      edges: [edge({ id: "e-ab", source_node_id: "n-think-a", target_node_id: "n-think-b" })],
+    };
+    const { container } = render(
+      <TeamCanvas
+        graph={twins}
+        run={mkRun()}
+        workflowStatus="PENDING"
+        tasks={[]}
+        onSelectNode={(id) => picks.push(id)}
+      />,
+    );
+    const nodeA = container.querySelector('[data-id="n-think-a"]');
+    const nodeB = container.querySelector('[data-id="n-think-b"]');
+    expect(nodeA).not.toBeNull();
+    expect(nodeB).not.toBeNull();
+    fireEvent.click(nodeA as HTMLElement);
+    fireEvent.click(nodeB as HTMLElement);
+    // Each same-role node selects by its OWN id — the bug this fixes: selecting by `role_name`
+    // would push "thinker" for BOTH, so the second thinker would show the first's data.
+    expect(picks).toEqual(["n-think-a", "n-think-b"]);
   });
 });

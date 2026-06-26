@@ -73,9 +73,11 @@ export default function App() {
   const [starting, setStarting] = useState(false);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<string | null>(null);
-  // P1.8d: authoring selection is by NODE ID (a topology-edited team can carry duplicate role names,
-  // e.g. two blank thinkers), distinct from the run view's role-based `selectedRole`.
+  // Run-view selection is by NODE ID (Option A): a topology-edited team can carry duplicate role
+  // names (e.g. two blank thinkers), so the run panel keys on the unique node id — the run-view twin
+  // of the authoring `selectedNodeId` below.
+  const [selectedRunNodeId, setSelectedRunNodeId] = useState<string | null>(null);
+  // P1.8d: authoring selection is by NODE ID too (duplicate role names possible after topology edits).
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   // The view mode (§14.3): the existing single-run canvas, or the A/B comparison. Plain state,
@@ -278,7 +280,7 @@ export default function App() {
     setCosts([]);
     setTasks([]);
     resolvedIdsRef.current = new Set();
-    setSelectedRole(null);
+    setSelectedRunNodeId(null);
     setSelectedNodeId(null);
     setFocusNodeId(null);
   }, []);
@@ -314,7 +316,7 @@ export default function App() {
   // Select a team in the rail: make it current (the effect loads its graph) and close any open
   // node panel (it was editing the previous team's node).
   const handleSelectTeam = useCallback((teamId: string) => {
-    setSelectedRole(null);
+    setSelectedRunNodeId(null);
     setSelectedNodeId(null);
     setCurrentTeamId(teamId);
   }, []);
@@ -327,7 +329,7 @@ export default function App() {
       try {
         const created = await createTeam(template, name);
         if (!mountedRef.current) return;
-        setSelectedRole(null);
+        setSelectedRunNodeId(null);
         setSelectedNodeId(null);
         setCurrentTeamId(created.team_graph_id); // the effect loads its graph
         await loadTeams(); // the new team appears in the rail (keeps currentTeamId via the ?? guard)
@@ -352,7 +354,7 @@ export default function App() {
         if (!mountedRef.current) return;
         setTeams(remaining);
         if (teamId === currentTeamId) {
-          setSelectedRole(null);
+          setSelectedRunNodeId(null);
           setSelectedNodeId(null);
           setCurrentTeamId(remaining[0]?.team_graph_id ?? null);
         }
@@ -482,6 +484,8 @@ export default function App() {
 
   // P1.8d: the authoring panel selects by node id (duplicate role names are possible now).
   const selectedTeamNode = teamGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null;
+  // The run-view selected node (Option A): found by id so two same-role nodes select independently.
+  const selectedRunNode = graph?.nodes.find((n) => n.id === selectedRunNodeId) ?? null;
   // P1.8c: the team's start node is the one NOT targeted by any edge (same rule as the backend).
   // The panel locks its capability toggle to "thinker" (it writes the spec the rest of the team reads).
   const startNodeId = teamGraph
@@ -628,8 +632,8 @@ export default function App() {
                 workflowStatus={workflowStatus}
                 tasks={authoring ? EMPTY_TASKS : tasks}
                 focusNodeId={focusNodeId}
-                panelOpen={authoring ? selectedNodeId !== null : selectedRole !== null}
-                onSelectNode={setSelectedRole}
+                panelOpen={authoring ? selectedNodeId !== null : selectedRunNodeId !== null}
+                onSelectNode={setSelectedRunNodeId}
                 editable={authoring}
                 teamNodes={teamGraph?.nodes ?? []}
                 validity={validity}
@@ -655,16 +659,13 @@ export default function App() {
                     onClose={() => setSelectedNodeId(null)}
                   />
                 )
-              : selectedRole && (
+              : selectedRunNode && (
                   <SidePanel
-                    selectedRole={selectedRole}
-                    invocations={
-                      graph?.nodes.find((n) => n.role_name === selectedRole)?.invocations ?? []
-                    }
+                    node={selectedRunNode}
                     runId={runId}
                     run={run}
                     workflowStatus={workflowStatus}
-                    onClose={() => setSelectedRole(null)}
+                    onClose={() => setSelectedRunNodeId(null)}
                   />
                 )}
           </>

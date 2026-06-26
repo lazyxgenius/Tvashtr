@@ -150,7 +150,7 @@ export function TeamCanvas({
   tasks?: HumanTask[];
   focusNodeId?: string | null;
   panelOpen?: boolean;
-  onSelectNode?: (role: string | null) => void;
+  onSelectNode?: (nodeId: string | null) => void;
   editable?: boolean;
   teamNodes?: TeamGraphNode[];
   validity?: GraphValidity | null;
@@ -340,7 +340,7 @@ export function TeamCanvas({
           const data = node.data;
           if (data.kind === "agent" || data.kind === "completion") {
             if (editable) onSelectNodeId?.(node.id);
-            else onSelectNode?.(data.role_name);
+            else onSelectNode?.(node.id);
           }
         }}
         onPaneClick={() => {

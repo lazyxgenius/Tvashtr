@@ -453,6 +453,23 @@
   color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
 }
 
+/* ---- Per-node "Last run" brief (Option A) — a bounded section above the kind-specific body.
+   Sits at the top of the panel body (a thinker's PRD / a worker's feed scrolls beneath it). ---- */
+.tv-lastrun {
+  flex: none;
+  max-height: 42%;
+  overflow-y: auto;
+  padding: var(--space-5) var(--space-5) 0;
+}
+.tv-lastrun__head {
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 /* ---- Reviewer verdict history (P1.5c §14.1) ---- */
 /* A tight, calm list of per-round verdicts. Tones reuse the established pill token
    patterns (sage = approved, coral = changes requested, panel = neutral); no ad-hoc hex,

@@ -523,6 +523,38 @@ def _harvest_verdict(workspace: str) -> dict:
     return result
 
 
+# ---- Per-node work-brief (Option A) — the deterministic, NO-LLM "what I did last run" line ----
+# Generalizes the reviewer-only ``outcome_detail`` to every thinker/worker node: each writes a short
+# human-readable brief at close. Pure + unit-tested; no spec-text extraction, no extra LLM call (a
+# worker's ``files_changed`` is already computed by the adapter). The EMITTING worker (the Reviewer)
+# is untouched — its ``outcome_detail`` stays the verdict reasons (see the agent close site).
+
+# How many changed-file names a worker's brief lists before eliding the remainder.
+_WORK_BRIEF_FILE_CAP = 5
+
+
+def _thinker_brief(is_first: bool, version: int) -> str:
+    """The 'last run' brief for a thinker (``completion``) node. The first/root thinker drafts the
+    shared spec from the idea; a later thinker refined it — the spec's version equals the thinker's
+    contribution order (an honest, deterministic line; no spec-text extraction)."""
+    if is_first:
+        return "Drafted the spec from the idea."
+    return f"Refined the spec (version {version})."
+
+
+def _worker_brief(files_changed: list[str]) -> str:
+    """The 'last run' brief for a NON-emitting worker (``agent``) node — built from the files it
+    changed (capped at the first ``_WORK_BRIEF_FILE_CAP``, then ``+N more``). An emitting worker
+    (the Reviewer) does NOT use this; its ``outcome_detail`` stays the verdict reasons."""
+    if not files_changed:
+        return "Ran but changed no files."
+    k = len(files_changed)
+    listed = ", ".join(files_changed[:_WORK_BRIEF_FILE_CAP])
+    if k > _WORK_BRIEF_FILE_CAP:
+        listed += f", +{k - _WORK_BRIEF_FILE_CAP} more"
+    return f"Built the feature — changed {k} file(s): {listed}"
+
+
 @DBOS.step()
 def agent_run_step(
     run_id: str,
@@ -556,7 +588,9 @@ def agent_run_step(
 
     ``vkey`` (P1.4b) rides into the agent's LLM as its api_key; the returned ``status`` may be
     ``"over_budget"`` (the proxy cut the agent off mid-call), passed through unchanged. Returns
-    ``{"status", "outcome", "reasons", "error"?, **usage}``."""
+    ``{"status", "outcome", "reasons", "files_changed", "error"?, **usage}`` — ``files_changed``
+    (the adapter's already-computed change set) is threaded up for the per-node work-brief
+    (Option A); a worker's NON-emitting close composes its brief from it."""
     if emits_outcome:
         forced = _forced_review_outcome(iteration)
         if forced is not None:
@@ -609,6 +643,7 @@ def agent_run_step(
             "status": result.status,
             "outcome": None,
             "reasons": None,
+            "files_changed": result.files_changed,
             "error": result.error,
             **usage,
         }
@@ -618,7 +653,13 @@ def agent_run_step(
     else:
         # A non-branching worker neither harvests nor produces a sidecar.
         label, reasons = None, None
-    return {"status": "completed", "outcome": label, "reasons": reasons, **usage}
+    return {
+        "status": "completed",
+        "outcome": label,
+        "reasons": reasons,
+        "files_changed": result.files_changed,
+        **usage,
+    }
 
 
 @DBOS.step()
@@ -757,7 +798,10 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             n = iters_by_node.get(current, 0) + 1
             iters_by_node[current] = n
             open_invocation_step(run_id, current, n)
-            if pm_document_id is None:
+            # Capture first-vs-later BEFORE ``pm_document_id`` is reassigned below — it drives both
+            # the dispatch AND the per-node work-brief written at close (Option A).
+            is_first_thinker = pm_document_id is None
+            if is_first_thinker:
                 # The FIRST thinker (the root): create the spec doc from the idea. Byte-identical to
                 # the old PM path — same ``pm_step``, same ``pm-llm`` / ``pm-prd-v1`` keys, so the
                 # single-thinker templates + their checkers are untouched.
@@ -777,7 +821,14 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     pm_document_id,
                 )
             pm_document_id = result["document_id"]
-            close_invocation_step(run_id, current, n, "done", "prd_written")
+            close_invocation_step(
+                run_id,
+                current,
+                n,
+                "done",
+                "prd_written",
+                outcome_detail=_thinker_brief(is_first_thinker, n),
+            )
             if apply_budget_hook(run_id, node_id=current, iteration=n):
                 return _finalize_over_budget(run_id, pm_document_id)
             current = next_node(edges, current, outcome=None)
@@ -859,8 +910,13 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             if result["total_tokens"] or result["cost_usd"]:
                 persist_agent_cost_step(run_id, current, node["model"], result, n)
             label = result["outcome"]  # None for a non-branching (engineer-style) node
+            # Per-node work-brief (Option A): an EMITTING worker (the Reviewer) keeps its verdict
+            # reasons as ``outcome_detail`` (byte-stable — §14.1 ReviewerView + §14.3 A/B read it);
+            # a NON-emitting worker (the Engineer) gets a deterministic files-changed brief instead
+            # of NULL. ``emits`` is the same authored-topology fact handed to ``agent_run_step``.
+            detail = result["reasons"] if emits else _worker_brief(result.get("files_changed", []))
             close_invocation_step(
-                run_id, current, n, "done", label or "built", outcome_detail=result["reasons"]
+                run_id, current, n, "done", label or "built", outcome_detail=detail
             )
             # Thread the verdict's reasons into the next agent's revision context (None for a
             # worker → the next round carries no revision block).

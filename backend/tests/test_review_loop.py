@@ -294,8 +294,9 @@ def test_review_loop_persists_verdict_reasons_into_outcome_detail(client, monkey
     ``AgentInvocation.outcome_detail`` — proven through the REAL executor on the
     forced-revision path. The round-1 ``changes_requested`` close persists its
     ``verdict["reasons"]`` (the forced-revision marker); the final ``approved`` round
-    leaves it NULL (reasons is None on approve). Every OTHER node's close (PM, Engineer,
-    gates, terminal) omits the new param, so its ``outcome_detail`` stays NULL — the
+    leaves it NULL (reasons is None on approve). The PM (first thinker) and Engineer
+    (non-emitting worker) now write a deterministic work-brief (Option A); the gates +
+    terminal still omit the param, so their ``outcome_detail`` stays NULL — the
     default-None backward-compat path, exercised end-to-end through ``run_team``.
 
     Same offline harness as ``test_review_loop_cycles_once_then_ships`` (real ``run_team``,
@@ -389,9 +390,11 @@ def test_review_loop_persists_verdict_reasons_into_outcome_detail(client, monkey
     assert "forced revision" in rev_invs[0].outcome_detail
     assert rev_invs[1].outcome_detail is None
 
-    # Every OTHER close-site omits the new param -> NULL (the default-None compat path,
-    # proven through the real executor, not just the unit call).
-    assert all(i.outcome_detail is None for i in eng_invs)
-    assert all(i.outcome_detail is None for i in pm_invs)
+    # Option A (this milestone): the PM (first thinker) and Engineer (non-emitting worker) closes
+    # now write a deterministic work-brief into outcome_detail (NULL before). The faked worker
+    # reports no files_changed, so the Engineer's brief is the no-files line; the PM's is the
+    # first-thinker line. The gates + terminal still omit the param -> NULL (the byte-compat proof).
+    assert all(i.outcome_detail == "Ran but changed no files." for i in eng_invs)
+    assert all(i.outcome_detail == "Drafted the spec from the idea." for i in pm_invs)
     assert all(i.outcome_detail is None for i in prd_gate_invs)
     assert all(i.outcome_detail is None for i in ship_invs)
