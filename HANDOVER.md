@@ -1,107 +1,68 @@
-# Tvashtr — Handover (Tvashtr-32 → Tvashtr-33)
+# HANDOVER — for Tvashtr-34
 
-> Structured continuity snapshot for the next architect chat. Read this, then the named
-> `PROJECTPLAN.md` sections, then trace the relevant code on disk before designing anything.
-> **The §17 decision log + §15 deferred register in `PROJECTPLAN.md` are the durable source of
-> truth; this file is the fast-start.**
+> Read this, then the named `PROJECTPLAN.md` sections, then `prompts/CLI-RULES.md`, **before** doing anything. Trace the relevant code on disk before designing.
 
 ---
 
-## 0. You are Tvashtr-33. First moves.
+## Where we are (one breath)
 
-1. Read this file fully.
-2. Read `PROJECTPLAN.md`: the header banner, §1 + "strategic direction", §13 S3/S4, §15 Phase 1.5 + the deferred register (esp. the new **"Brownfield / real-repo run mode"** group), §16, and the **2026-06-27 (Tvashtr-32) §17 entry** (the six decisions D1–D6 + the Slice 1 & 2 as-builts).
-3. Read `prompts/CLI-RULES.md` (the Claude Code operating contract you write `/goal`s against).
-4. Then pick up at **Slice 3** (§3 below). Don't design until you've read the above and traced the relevant code.
+M-brownfield's **exit bar is CLEARED for rung 1**: a composed PM → Engineer ⇄ Reviewer team ships a **correct, reviewer-approved** change into a real-shaped repo, on an isolated `git worktree` branch, with the user's working tree untouched — proven live by `make brownfield-loop-check`. Slices 1 (backend run mode), 2 (launch-panel UI), and 3 (the brownfield review-loop) are all SHIPPED + merged. The brownfield run mode is end-to-end.
 
----
+**The exit-bar proof is *probabilistic*, and that's the most important open thing.** It passes on rolls where the review loop converges without a feature-dropping rework. Two real limitations surfaced (registered §15) — see "Findings" below.
 
-## 1. Where we are (state)
+## Current state (verified on disk, plumbing)
+- **`main` @ `758e9b5`** (Slice 3 code). The branch `feat/brownfield-review-loop` was merged **by code-commit SHA** (`git merge --ff-only 758e9b5`), not by branch tip — the tip + its parent were STATE.md-scratch commits (one a since-reversed `NEEDS_HUMAN`) deliberately kept off `main`. Then force-deleted.
+- **alembic head `0015`**; migration-freeze regex covers `0001`–`0015`; **no migration in Slice 3**.
+- **262 backend pytest** / **144 vitest** passing; ruff + eslint + prettier clean.
+- Untracked (architect-authored, to commit at this closeout): `prompts/brownfield-3-review-loop.md` (the Slice-3 brief).
 
-- **`main` @ `8f22592`** — the Slice 2 docs commit, on top of `5a99fc9` (Slice 2 code), on `6530ddb` (Slice 1 closeout), on `5f65904` (M2). Linear, clean, nothing pushed.
-- **alembic head `0015`** (`0015_run_brownfield_target`). Migration freeze covers `0001`–`0015` (the `protect-migrations.sh` hook regex is `^00(0[1-9]|1[0-5])_`).
-- **Test floors: 260 backend pytest / 144 vitest** (was 239/126 at the start of Tvashtr-32). `make lint` clean (ruff + prettier; scripts/ + FE under the gate).
-- **Session Tvashtr-32 shipped both backend + frontend of the brownfield run mode** (M-brownfield Slices 1 & 2), each disk-audited + FF-merged by the operator.
+## What's done (M-brownfield)
+- **Slice 1** — `runs.repo_path`-discriminated brownfield backend: isolated `git worktree` mount (D1), branch-only ship `tvashtr/<run_id>` + mig `0015` (D2), git-aware host↔container sync (D3), invisible repo-grounding (D6). Gate: `make brownfield-check` (two_node). `main` @ `6530ddb`.
+- **Slice 2** — the launch panel (D5 + the D4 hint), frontend-only: "Run this team" opens a popover (idea box + "work on a local repo" toggle → typed path + base-branch dropdown via `POST /api/repo/inspect` + a dismissible large-repo worker-model hint). `main` @ `8f22592`.
+- **Slice 3** — the **§15 worker-gating split** + the **brownfield review-loop exit-bar proof**. `main` @ `758e9b5`. Full as-built in the **2026-06-27 (Tvashtr-33) §17 entry**. In brief:
+  - **The split:** `build_repo_grounding` (in `control_plane/worktree.py`) now returns **orientation only** (header + a neutral "working in an existing repository named `<repo>`; files ALREADY PRESENT" line + manifests + structure + conventions); a new module-level repo-agnostic **`WORKER_PROTOCOL`** constant holds the action directives (edit-in-place / `str_replace` / don't `create` / real MODULE / run-tests-and-fix). `agent_run_step` appends orientation to every brownfield agent node and `WORKER_PROTOCOL` **only when `grounding is not None AND not emits_outcome`** (workers only; reviewers gate, thinkers get neither). Greenfield byte-for-byte.
+  - **The one template touch:** `REVIEWER_PROMPT` (in `teams.py`) generalized to prefer `python -m pytest -q`, falling back to the literal `python -B -m unittest` (kept — `test_teams.py` + the fallback depend on it). Forced by D5 (same team graph both modes; the shipped reviewer must review real pytest repos).
+  - **The live gate:** `scripts/brownfield_loop_check.py` + `make brownfield-loop-check` — a real docker+NIM `review_loop` on a rung-1 hermetic `shop` package (two interdependent modules, `pyproject.toml`, `AGENTS.md`, unittest tests covering the edited module); adds `bulk_discount` to `shop/discounts.py`. PASS = a **9-way conjunction** incl. an **independent behavioral check** (imports the new fn from the branch tip + asserts it *computes* correctly — the real correctness backstop, not the reviewer's judgment) + tests-green-on-branch + reviewer-final-outcome-`approved`-not-escalation + HEAD-untouched.
 
-**One housekeeping item for the operator (not yet done):** the **docs-closeout commit** — `PROJECTPLAN.md` (the Tvashtr-32 edits) + the two untracked briefs (`prompts/brownfield-1-backend-run-mode.md`, `prompts/brownfield-2-launch-panel.md`) are on disk but uncommitted. The command is in §7 below. (They don't affect anything; the agent leaves living docs untracked by design.)
+## Immediate next steps (Tvashtr-34) — pick ONE, decide from the vision
+1. **The review-loop reliability fix (rework-drops-edit)** — *recommended first.* It bears directly on the correctness thesis the whole bet rests on, and it's what makes the exit-bar proof probabilistic. Trace the revision flow first: `agent_run_step`'s "REVISION REQUESTED" append (it tells the engineer "your prior work is in your working directory — revise IN PLACE") + how the worktree state carries across iterations on a brownfield run. Hypothesis: the engineer (70b) sometimes regenerates from scratch on a changes_requested round and loses the prior edit — could be model-adherence (D4 lever) OR machinery (the revision context / workspace not faithfully carrying the prior edit forward). **Diagnose on disk before prescribing.**
+2. **Rung 2 — a real (small) OSS repo, operator-run** — the graduated ladder's next rung, where the correctness-on-existing-code thesis is genuinely stress-tested and **D4's model-choice reality bites** (the proven 70b is unlikely to hold; be ready to *recommend, not enforce* a stronger worker/reviewer model). This is operator-run + manual (a real external repo breaks the hermeticity the automated gate needs). Needs a design decision: which repo, what feature, how to run it without a hermetic harness.
 
----
+Surface ONE design question, paired with its concrete UX consequence, get sign-off, then scope the `/goal` (or the operator-run procedure for rung 2).
 
-## 2. What's done (this session — M-brownfield Slices 1 & 2, both merged)
+## Findings registered (§15 Brownfield group)
+1. **The 70b reviewer rubber-stamps tests-green** (approves without verifying the change satisfies the idea/PRD). The exit-bar driver's *independent behavioral check* is the real correctness gate today. → D4 "recommend a stronger reviewer model" lever, or a stronger reviewer prompt/grounding nudge.
+2. **Rework rounds can drop a landed edit** *(the most correctness-relevant open item)* — likely at least partly **machinery** (revision-context / worktree carry-forward), NOT purely model. The proximate cause of the proof's fragility. Investigate the revision flow before assuming a stronger model fixes it.
 
-The active bet is **local execution → brownfield**: Tvashtr runs locally and ships a *reviewed* feature into the user's **real existing repo** (the cheapest version on the current stack — NOT a native re-platform, NOT local-LLMs-as-a-pillar). The six design decisions (D1–D6) are fully recorded in the §17 Tvashtr-32 entry. Built so far:
+## Key decisions + rationale (carry forward)
+- **D1–D6** (the M-brownfield design) — the **2026-06-27 (Tvashtr-32) §17 entry**. Load-bearing: **D5** (the team graph is identical greenfield/brownfield — `repo_path` lives on the `Run`, not the team; so there is NO separate brownfield template — brownfield rides on appended context only) and **D6** (repo-grounding is invisible appended context, not a canvas node). **D4** (recommend, don't enforce — never automate away the human's model/template/repo judgment).
+- **The worker/reviewer discriminator is topology-derived:** `node_emits_outcome(edges, node_id)` — a node with a `{when}` out-edge emits a verdict (reviewer); catch-all/escalation-only = worker. The executor already threads this as `emits_outcome`. (Tvashtr-25 pivot: a node's role IS its authored topology, not a hardcoded `role_name`.)
+- **The brownfield exit bar proves the *machinery + review semantics*; the 41–87% correctness-at-difficulty thesis is the graduated ladder** (rung 1 automated/hermetic; rung 2+ manual/real). Don't conflate "the gate passed" with "the thesis is settled."
 
-- **Slice 1 — backend run mode (`6530ddb`).** `runs.repo_path IS NULL` ⇒ greenfield (legacy, byte-intact); non-NULL ⇒ brownfield. Migration `0015` (3 nullable cols: `repo_path`/`base_ref`/`ship_branch`); a new openhands-free `control_plane/worktree.py` (`repo_inspect`, idempotent `add_worktree` cutting `git worktree add -b tvashtr/<run_id>`, `build_repo_grounding`); `team_run.py` brownfield threading (greenfield call sites byte-intact); additive `AgentTask.workspace_mode`; `enumerate_push_files_git` + mode-branched docker push/pull; `POST /api/repo/inspect` + `create_run` `repo_path`/`base_ref` (422-validated); `make brownfield-check` (the live real-repo proof). **D6 grew an as-built:** the grounding now also carries a repo-agnostic **worker-protocol** (edit-in-place / land in the real module / run-tests-and-fix) — the correctness lever that made the live gate pass.
-- **Slice 2 — launch-panel UI (`5a99fc9`, frontend-only).** Clicking "Run this team" opens `LaunchPanel.tsx` (idea textarea + "work on a local repo" toggle → typed path + `inspectRepo`-on-blur → base-branch `<select>` + a dismissible large-repo worker-model hint naming the team's `agent`-kind nodes by `role_name`); `runTeam(id, opts?)` (greenfield no-opts posts `{team_graph_id}` byte-for-byte); `RunBanner` shows the brownfield branch. `LARGE_REPO_FILE_THRESHOLD = 300`.
+## Standing operator directives (INHERIT these — they're how this project runs)
+- **Architect/planner ONLY.** ALL implementation (product code, throwaway/diagnostic scripts, build/Makefile/config) goes through Claude Code. The ONLY architect-direct edits: `PROJECTPLAN.md`, `HANDOVER.md`, `prompts/*.md`, and trivial doc/comment/typo fixes. When tempted to write code, write a `/goal` instead. **No "diagnostics are architect-direct" carve-out** — diagnosing yourself (reading code/logs/git) is your job; the *fix* is a `/goal`.
+- **The disk audit is the real control point.** Never trust Claude Code's self-report over the files. After a run: diff changed files against **pre-images copied to a distinct path** (e.g. `/tmp/pre/` — copy BEFORE pulling current versions, or basename-collision overwrites the pre-image); confirm tests are **mutation-real** (read the bodies — they must fail on the pre-fix code); verify git state from **`.git` plumbing** (no git CLI in the MCP — read `.git/refs/heads/<branch>`, `.git/logs/refs/heads/<branch>`); **scrutinize every deviation** (especially a stop-condition override — read the actual change, don't rubber-stamp the self-justification).
+- **The CLI `/goal` loop.** Write ONE lean `/goal` scoped to a **bounded milestone** (bigger than one prompt, but one coherent, single-transcript-verifiable thing — NOT unbounded). Claude Code self-decomposes + **runs every check to green itself** (incl. `make test`, lint, AND live smoke/e2e targets — never hand the operator commands to run; never defer a live target to a human gate). A detailed brief may live in `prompts/*.md` (the `/goal` points at it).
+- **The launch package — COMPLETE copyable text, EVERY time.** Three clearly-labeled blocks: (1) the shell launch command (`cd … && claude --dangerously-skip-permissions`), (2) the FULL init prompt verbatim, (3) the FULL `/goal` verbatim. **Never** "same as before," never refer back, never tell the operator to retrieve text from a file. The brief MAY be referenced from `prompts/`, but the init-prompt + `/goal` are ALWAYS reproduced inline.
+- **Bug-fix `/goals`:** require a failing regression that *proves* the bug, confirmed failing on current code, before any fix.
+- **Stop conditions in the `/goal`:** distinguish "a second/unknown problem needing a broad/unproven change → STOP + write `NEEDS_HUMAN` to `STATE.md`" from "a code-proven, contained, regression-guarded/clean-roll fix → may proceed." A hard turn cap. (Slice 3 validated this: Claude Code over-stopped, the Stop hook pushed back, it diagnosed + clean-rolled — legitimately.)
+- **Merge handoff — ALL commands every time:** `cd` to root, `git checkout main`, the exact `git merge --ff-only <ref>`, the verify line (state the expected tip sha), what to do if FF fails (stop = divergence), and the branch cleanup. Never just "FF-merge it."
+- **Visual/manual sign-off, when you ask for it, must be a concrete NUMBERED click-by-click script** (which team by its rail name, which node by its VISIBLE label, the exact action, explicit PASS/FAIL). Default to Claude Code's Playwright self-sign-off with screenshots. (Note: Playwright's full-tree a11y snapshot chokes on the React Flow canvas — use targeted `browser_evaluate` + screenshots.)
+- **Guardrails survive bypass:** `--dangerously-skip-permissions` makes allow/deny rules inert; only **PreToolUse hooks** survive — the no-push hook (`.claude/hooks/protect-no-push.sh`) and the migration-freeze hook (`protect-migrations.sh`). The agent never pushes; the operator FF-merges; branch-per-step; the agent commits only its own changed paths (leave `prompts/*.md` + the living docs untracked from its side). Ideally run containerized (host is a MacBook Air).
+- **Design calls:** ONE question at a time, decided **from the vision (§1 + the Tvashtr-25 pivot), never from effort-minimization**; **don't present option menus** for vision calls (decide); **pair every decision with its concrete user-facing UX consequence** (what the user sees/does on the canvas/UI), every time. If the operator asks "are you deciding from the vision and not shying from work?" — that's the calibration signal.
+- **Living docs:** `PROJECTPLAN.md` (source of truth — scope/architecture/roadmap, the §15 deferred register, the **append-only §17 decision log**) + `HANDOVER.md`. Deferred items go to §15 immediately. Update at the end of each step + before handover. `STATE.md` is the agent's running log (you read it, don't maintain it).
+- **Communication style:** the operator is **terse** — "proceed"/"go"/"merged"/"done" = ratification + forward motion; **"By the way"** = wants a short answer. **Procedures one step at a time** (give step 1, wait for the report, then step 2). **Analogies help.** Always hand over **copyable artifacts** — never make the operator scroll back or reconstruct.
 
----
+## Gotchas / environment
+- **Proven agent model:** `nvidia_nim/meta/llama-3.3-70b-instruct` (via `.env` `TVASHTR_AGENT_MODEL`; the live Make targets set it). `DEFAULT_MODEL` (completion/PM) MUST be a **non-reasoning** instruct model (`openai/gpt-4o-mini`) — a reasoning model there silently returns empty PRD content. `qwen3-next-80b` is PARKED (intermittent `TextContent is not JSON serializable` crash). There is **no proven stronger agent model wired** (OpenRouter exhausted) — so "swap to a stronger model" is an operator-provision decision, NOT something to hunt for under bypass.
+- **NIM live targets are flaky** (throttles, "Remote conversation got stuck") — a throttle is a **retry on a clean roll**, not a `NEEDS_HUMAN`. `loop-feature-docker` hit this in Slice 3 (the §B5 fallback was used).
+- **All git command blocks to the operator must be comment-free** (zsh runs inline `#` as a command in non-interactive mode).
+- **`repo_path IS NULL`** is the canonical greenfield/brownfield discriminator; the worktree mount is always isolated (never in-place).
+- **PROJECTPLAN.md** is large; line 6 is a long single-line banner. Read pattern: `copy_file_user_to_claude` → `grep -nE '^#{1,3} '` for the header index → `sed -n 'X,Yp'` for targeted reads → `edit_file` with **unique multi-line anchors** (dryRun first). §17 appends: anchor on the unique closing line of the prior entry + the `---` + `## 18. Glossary`.
+- **The merge-by-SHA pattern:** if Claude Code commits STATE.md on the branch (it did in Slice 3), the branch tip won't be the code commit. Merge the **code SHA** (the one in the `READY_TO_MERGE` line) with `--ff-only`, then `git branch -D` (force, since the STATE.md commits aren't on main).
 
-## 3. Immediate next step — Slice 3 (the M-brownfield exit-bar proof)
+## Open questions
+- None blocking. The strategic open question for the *project* (not this slice): the standing Wizard-of-Oz demand probe (≥1 non-founder validating willingness to pay) is permanently deferred until a real feature-shipping Tvashtr exists — rung 1 is cleared, but the operator's build-first stance holds until the ladder proves correctness at real difficulty.
 
-The run mode is built end-to-end, but the **exit bar is not yet cleared**: M-brownfield's definition is *a non-trivial feature, on a real existing repo, produces a correct **reviewed** change*. Two things remain, and they're entangled:
-
-1. **The §15 worker-gating carry-forward (do this FIRST — it's a correctness prerequisite).** The D6 grounding's worker-protocol block ("implement by editing in place…") is currently appended to **all** `agent`-kind nodes via `agent_run_step`, **including reviewer-style nodes**. A brownfield review_loop would therefore hand a reviewer worker-implementer instructions — risking the reviewer *implementing* instead of *gating* (corrupting the review semantics). This path is **untested** (Slice 1's gate used `two_node`, no reviewer). **Before** the first brownfield review_loop run, gate the worker-protocol block to worker (non-reviewer) nodes — split it from the always-safe orientation block (conventions + structure + transparency line, which is fine for every node). *Design question to resolve:* how to tell a "worker" from a "reviewer" node at the `agent_run_step` seam — likely via `node_emits_outcome` / the verdict-harvest signal (a reviewer emits an outcome; a pure worker doesn't), but trace it on disk first.
-2. **The brownfield review_loop run + the graduated real-repo ladder.** Prove a `review_loop` team (PM → Engineer ⇄ Reviewer → ship) ships a correct, reviewed change into a **real but tractable** repo first (per D4's graduated ladder — repo difficulty dominates success), then progressively harder repos. This is where the *correctness on existing code* bar (the 41–87%-vs-~80% question) actually gets answered. Decide: extend `make brownfield-check` (or a new live target) to drive a real review_loop run, and pick the first real test repo (a small real OSS repo, or a purpose-built one) + a scoped feature.
-
-**Scope Slice 3 as ONE bounded `/goal`** (likely: the worker-gating fix + a brownfield review_loop live target on a tractable repo, with the worker/reviewer split proven). It's backend-side; the FE is done. Mind that this is the slice where the model-choice reality (D4) bites — be ready to recommend (not enforce) a stronger worker model if `llama-3.3-70b` underperforms on a real repo, and confirm whether the review_loop's reviewer should also run on a capable model.
-
-Also on the horizon (not Slice 3 unless you choose): **P1.9** (push/PR — promote the local branch ship to a real GitHub PR; overlaps the brownfield ship target), the **selective git-diff pull** (becomes relevant the moment a real repo run is slow), and the broader §15 register.
-
----
-
-## 4. FE-testing gotchas (referenced by CLI-RULES + the init prompts as "HANDOVER §4")
-
-- **`user-event` ⊥ vitest fake timers** → use `fireEvent` in RTL tests (the launch-panel tests do this).
-- **React Flow needs the jsdom shims** in `frontend/src/test/setup.ts` (ResizeObserver, matchMedia, etc.) — they're already wired; co-located `*.test.tsx` pick them up.
-- **Playwright's full a11y snapshot (`browser_snapshot`) HANGS on the large editable React Flow canvas** → use targeted `browser_evaluate` on specific selectors + screenshots, or the scripted headless-Playwright fallback, NEVER a whole-tree snapshot. (The `launch-panel-e2e` proof does targeted evaluate + per-check screenshots.)
-- **The architect can't read `/tmp`** — Claude Code's e2e screenshots land in `/tmp/...`, outside the architect's allowed dirs (project root only). So for a **visible** slice, the operator's eyeball (or a glance at the screenshots) is the real UI gate — give a detailed numbered visual script when you need it.
-
----
-
-## 5. Key decisions + rationale (carry-forward; full text in §17)
-
-- **D1–D6** (Tvashtr-32 §17): worktree mount / branch-only local ship + `0015` cols / git-aware sync / recommend-don't-enforce correctness / unified launch panel / invisible grounding. Each was decided **from the vision, one at a time, paired with its UX consequence** — the standing method.
-- **The brownfield thesis:** *the hard part is correctness on existing code, not the mounting.* Slice 1's live gate confirmed it (the agent half-failed on a trivial task until the grounding worker-protocol was added). Slice 3 is where this thesis gets its real test.
-- **Greenfield is sacred:** every brownfield path is additive + gated on `repo_path`/`grounding`/`workspace_mode`; proven byte-intact by the full suite + the greenfield smokes. Keep it that way.
-
----
-
-## 6. Standing operator directives (inherit these — they are permanent)
-
-- **Claude is ARCHITECT/PLANNER only.** ALL implementation (product code, throwaway/diagnostic scripts, build/Makefile/config) goes through Claude Code via a `/goal`. The only architect-direct edits: the two living docs, `prompts/*.md`, and trivial doc/comment/typo fixes. When tempted to write code, write a `/goal`.
-- **The disk audit is the real control point.** Never trust Claude Code's self-report over disk. Diff "untouched" claims against a pre-image (copy the pre-image to a DISTINCT path like `/tmp/pre/` first — basename collision overwrites otherwise). Confirm tests are mutation-real (read the bodies). Scrutinize every deviation yourself — don't rubber-stamp the agent's self-justification.
-- **Every Claude Code handoff = the COMPLETE copyable launch package, EVERY time:** (1) the shell launch command (with `--dangerously-skip-permissions`), (2) the FULL init prompt verbatim, (3) the FULL `/goal` verbatim. NEVER "same as before", never point them at a file to retrieve the init/goal text. The brief MAY live in `prompts/*.md` (the `/goal` references it), but the init + `/goal` are always reproduced inline.
-- **Scope each `/goal` to ONE bounded milestone** whose completion is verifiable in a single transcript. Claude Code runs ALL verification itself (tests + lint + live targets) and debugs to green before `READY_TO_MERGE` — never hand the operator commands to run, never defer a live target to a "human gate". Tell it to echo each evidence line into the chat (CLI-RULES §4.3a).
-- **Merge handoff = ALL commands, every time** (`cd`, `git checkout main`, `git merge --ff-only <branch>`, the verify `git log --oneline -N` + expected tip sha, the FF-fail instruction, optional `git branch -d`).
-- **Visual/manual sign-off = a DETAILED, NUMBERED, click-by-click script** naming elements by visible label, with explicit pass/fail — never an abstract checklist. (Prefer Claude Code's Playwright self-sign-off + screenshots; the operator's eyeball is the optional-glance backstop, mandatory for visible slices since the architect can't read `/tmp`.)
-- **Make design decisions from the vision, one at a time, each paired with its concrete UX consequence** (what the user sees/does on the canvas/UI). Don't present option menus for vision calls — decide; reserve "present both" for genuine strategic-direction calls. If the operator asks "are you deciding from the vision and not shying from work?", that's the calibration signal.
-- **Build-first stance:** no demand validation until a real feature-shipping Tvashtr exists (M-brownfield). The Wizard-of-Oz demand probe is permanently deferred until then.
-- **Execution = the CLI `/goal` loop under bypass** (`--dangerously-skip-permissions`). Surface the bypass caveat: allow/deny rules go inert; only PreToolUse hooks survive (the no-push + migration-freeze guards ARE hooks, so they hold). Containerize if handy (host is a MacBook Air). The built-in `/goal` already gives within-slice autonomy; **don't build a custom chaining loop** — the audit + FF-merge seam between slices is the load-bearing control point, not something to automate away.
-- **Comms:** the operator is terse. "proceed"/"go"/"merged"/"done" = ratification + forward motion. "By the way" = wants a short answer. Give multi-step procedures ONE step at a time. Analogies help. Always hand over copyable artifacts — never make them scroll back or reconstruct.
-- **Git state reconstruction (no git CLI in the MCP):** read `.git/refs/heads/<branch>` for SHAs, `.git/logs/refs/heads/<branch>` for the reflog (create→commit chain + parent → confirms FF-ability + nothing pushed). Loose refs only (no packed-refs here).
-- **PROJECTPLAN editing:** ~84KB file; line 6 is a long single-line banner (unavoidable cost). Pattern: `copy_file_user_to_claude` → `grep -nE '^#{1,3} '` for the header index → `sed -n` targeted reads → `Filesystem:edit_file` with unique multi-line anchors (`dryRun:true` first). §17 is **append-only**.
-- **Proven agent path:** `nvidia_nim/meta/llama-3.3-70b-instruct` (NIM, `NVIDIA_BUILD_API_KEY` in `.env`; ~1.4s/call). It's FLAKY on the live loop (the `loop-run-docker` + `brownfield-check` "passed on retry/clean roll" pattern) — a retry, not a code defect. `qwen3-next-80b` is PARKED (the `TextContent is not JSON serializable` SDK flake). `DEFAULT_MODEL` must be a non-reasoning instruct model.
-
----
-
-## 7. The docs-closeout commit (operator runs this when ready)
-
-Commits the Tvashtr-32 `PROJECTPLAN.md` edits + both untracked briefs together. (`HANDOVER.md` is also modified — include it.)
-
-```
-cd /Users/adimac/Desktop/Tvashtr
-git add PROJECTPLAN.md HANDOVER.md prompts/brownfield-1-backend-run-mode.md prompts/brownfield-2-launch-panel.md
-git commit -m "docs(tvashtr-32): M-brownfield Slices 1+2 as-built (PROJECTPLAN §15/§16/§17 + HANDOVER) + the slice briefs"
-git log --oneline -1
-```
-
-(Optional; doesn't block Slice 3. If you'd rather batch it into Slice 3's closeout, that's fine too.)
-
----
-
-## 8. Gotchas not already above
-
-- **The worker-gating carry-forward is a correctness landmine for Slice 3** — don't run a brownfield reviewer until the worker-protocol is gated off reviewer nodes (§3.1). It's the first thing.
-- **Stale parked runs** (known §15): if `loop-run`/`loop-crash` hang at interpreter shutdown after printing assertions, leftover PENDING runs are resurrecting — `docker compose down -v && make db-up && make migrate`, then re-run.
-- **All git command blocks to the operator must be comment-free** — zsh runs inline `#` as a command in non-interactive mode.
-- **`make` live targets needing docker+NIM** can be flaky (NIM); a confirmed outage/dead-credential is `NEEDS_HUMAN`, a throttle/retry is not.
+## First message for the next chat
+> You are Tvashtr-34. Read `HANDOVER.md` and the named `PROJECTPLAN.md` sections at the project root first (the header banner, §1 + "strategic direction", §13 S3/S4, §15 Phase 1.5 + the deferred register esp. the Brownfield group, §16, and the 2026-06-27 Tvashtr-32 **and** Tvashtr-33 §17 entries); then read `prompts/CLI-RULES.md`. Don't start work until you've read them. Pick up at the M-brownfield post-rung-1 step — decide ONE design question (from the vision, paired with its UX consequence): either (a) the review-loop **rework-drops-edit** reliability fix (diagnose the revision flow on disk first — possibly machinery, not just model), or (b) **rung 2** = a real OSS repo (operator-run, where D4's model-choice reality bites). Recommend which to take first.
