@@ -1,76 +1,115 @@
 # Tvashtr — Autonomous Execution State
 
 ## Current Milestone
-Option A, Milestone 2 — the authoring-panel "Last run" brief + the `cloned_from_node_id` linkage.
-Brief: `prompts/m2-authoring-brief-linkage.md`.
+M-brownfield (Phase 1.5) — local execution / "work on a real local folder" run mode.
+**Slice 1** (the BACKEND run mode). Brief: `prompts/brownfield-1-backend-run-mode.md`.
 
 ## Last Completed Step
-M2 authoring-brief linkage — 2026-06-26 — branch: `feat/m2-authoring-brief-linkage` — sha `5f65904` —
-ALL gates + the full regression chain GREEN. READY_TO_MERGE.
+M-brownfield Slice 1 — 2026-06-27 — branch: `feat/brownfield-backend-run-mode` — sha `cd56bcc` —
+ALL acceptance gates GREEN (incl. the live `make brownfield-check` on real docker+NIM). READY_TO_MERGE.
 
 ## In Progress
-None — milestone complete, committed, all gates + regression GREEN.
+None — Slice 1 complete, committed, all gates GREEN. Slice 2 (the launch UI) is a SEPARATE later
+`/goal` — NO frontend was touched this slice.
 
 ## Completed Steps (append-only, newest last)
-- [x] Backend: `AgentNode.cloned_from_node_id` (plain Uuid, nullable, indexed — NO FK) + `index=True`
-  on `AgentInvocation.node_id`; migration **`0014`** (column + both indexes; real downgrade); ORM↔DB
-  drift-free (`alembic check`), downgrade→upgrade round-trip verified.
-- [x] `clone_team_graph` sets `cloned_from_node_id=n.id` on every clone node (one added line).
-- [x] `GET /api/teams/{id}/graph` attaches `last_run` per node via ONE `DISTINCT ON (cloned_from_node_id)
-  … ORDER BY started_at DESC` read (the new `_latest_invocation_by_origin` helper). Run-view endpoint
-  + A/B + builders byte-intact.
-- [x] Backend tests (mutation-real): `test_authoring_brief.py` — keystone (links clone invocations to
-  authored PM/Engineer nodes; never-run node → None) + decision-b (latest-across-runs + survives a
-  later run that skipped a node). RED-on-mutation shown (revert clone set → all `last_run` None).
-- [x] FE: shared `components/LastRun.tsx` (rounds-based + optional `provenance` → relative-time tag),
-  `lib/time.ts` `formatRelativeTime`, `lib/text.ts` `titleCase`, `api.ts` `last_run` type,
-  `TeamNodePanel` read-only "Last run" section (not in the dirty-check), `SidePanel` re-uses the
-  shared `LastRun` (no provenance → byte-identical; `SidePanel.test.tsx` unchanged). `App.tsx`
-  needed no change — `handleEditTeam` already re-fetches the authoring graph on return-to-authoring.
-- [x] FE tests: `LastRun.test.tsx`, `lib/time.test.ts`, `TeamNodePanel.test.tsx` (+3).
-- [x] `make authoring-brief-e2e` + `scripts/authoring_brief_e2e.sh` + `frontend/e2e/authoring-brief.spec.ts`.
-- [x] Bumped `.claude/hooks/protect-migrations.sh` freeze regex → `^00(0[1-9]|1[0-4])_` (0001–0014).
+- [x] **Migration `0015_run_brownfield_target`** — nullable Text `runs.repo_path` / `base_ref` /
+  `ship_branch` (down_revision `0014`; no FK/index, per-run read-by-id) + `models.py::Run` cols.
+  `alembic upgrade head` → head **`0015`**.
+- [x] **`control_plane/worktree.py`** (NEW, openhands-free, stdlib/subprocess only):
+  `repo_inspect(path)` (discriminated `{is_git,…}`/`{is_git:False,error}`); `add_worktree(repo, ws,
+  run_id, base_ref)` — idempotent worktree on `tvashtr/<run_id>` cut from `base_ref`, resume no-op
+  if `.git` exists, reuses an existing branch; `build_repo_grounding(ws, basename)` (D6: conventions
+  file pick+priority+~6 KB truncation + depth-capped structure outline + manifests + a transparency
+  line + a procedural EDIT-in-place / land-in-the-real-module / run-tests-and-fix steer).
+- [x] **`team_run.py` brownfield threading (greenfield call sites byte-for-byte unchanged):**
+  `load_graph_step` surfaces `repo_path`/`base_ref`; `engineer_setup_step` reads them off the Run row
+  and branches (brownfield → `add_worktree` + records `ship_branch`, NO workspace `.gitignore`;
+  greenfield → exactly as before); `brownfield_grounding_step` (recorded `@DBOS.step`) computes the
+  block once; `grounding` threaded into `agent_run_step` ONLY when non-None (greenfield omits the
+  kwarg → existing offline suite passes UNTOUCHED); `agent_run_step` sets `workspace_mode`; `ship_step`
+  surfaces `ship_branch`; the completed-terminal result dict surfaces `ship_branch`.
+- [x] **`engines/base.py`** — `AgentTask.workspace_mode: Literal["greenfield","brownfield"] =
+  "greenfield"` (additive + defaulted, exactly like `llm_api_key`).
+- [x] **`engines/docker_runtime.py`** — `enumerate_push_files_git` = `git ls-files -c -o
+  --exclude-standard -z` (tracked + untracked-not-ignored, incl. tracked dotfiles; excludes `.git`,
+  honors `.gitignore`). Greenfield `enumerate_push_files` UNTOUCHED.
+- [x] **`engines/openhands_docker_adapter.py`** — `_push_workspace`/`_pull_workspace` take a `mode`
+  (default `"greenfield"` → byte-identical); brownfield push via `enumerate_push_files_git`, brownfield
+  pull `find . -type f -not -path './.git/*'` (keeps dotfiles, drops `.git/` + the scaffolding dirs).
+  `run()` threads `task.workspace_mode`.
+- [x] **`routers.py`** — `POST /api/repo/inspect` (always-200 discriminated result); `CreateRunRequest`
+  += `repo_path`/`base_ref` with 422 validation (non-git / unknown `base_ref`) + `base_ref` default to
+  the repo's current branch + recording on the Run; greenfield create byte-for-byte unchanged;
+  `_run_to_dict` additively surfaces `repo_path`/`base_ref`/`ship_branch`.
+- [x] **`make brownfield-check` + `scripts/brownfield_check.py`** — the live real-repo gate.
+- [x] Tests (TDD): `test_worktree.py` (9: repo_inspect, add_worktree create+resume, build_repo_grounding
+  pick/priority/truncate/none + edit-in-place steer), `test_brownfield_executor.py` (1: REAL run_team
+  on a fixture repo, worktree+grounding+workspace_mode+ship-to-branch, original HEAD untouched —
+  adapter+PM faked, no docker/NIM), `test_brownfield_router.py` (6: inspect 200, create 422 paths,
+  base_ref default + column recording + payload, greenfield NULL columns), `test_docker_runtime.py`
+  (+1: `enumerate_push_files_git`), `test_docker_adapter.py` (+2: brownfield push uses git enum / pull
+  keeps dotfiles & drops .git+scaffolding).
+- [x] **`protect-migrations.sh`** freeze regex `^00(0[1-9]|1[0-4])_` → `^00(0[1-9]|1[0-5])_` (LAST
+  step; verified: `0015`/`0014` blocked, `0016` allowed, hook still parses).
 
-## Gate results (this branch)
-- `make migrate` — head **`0014`**; `alembic check` drift-free; downgrade→upgrade round-trip clean.
-- `make test` — **241 passed** (was 239; +2 M2 keystone/decision-b), mutation-real RED-on-revert shown.
-- `make lint` — clean (backend+scripts ruff + FE eslint + prettier).
-- `make test-frontend` — **126 passed** (was 114; +12: LastRun 3, time 6, TeamNodePanel +3).
-- `make build-frontend` — clean (tsc strict + vite).
-- `make authoring-brief-e2e` — **GREEN on NIM**: ran review_loop, returned to authoring, clicked the
-  PM node → panel shows "Drafted the spec from the idea." + a relative-time tag; screenshot at
-  `/tmp/tvashtr_authoring_brief_shots/authoring-pm-last-run.png`.
-- Invariants: `git diff main -- team_run.py` EMPTY; `engines/*` byte-intact; `teams.py` = only the
-  `clone_team_graph` line; `routers.py` confined to `get_team_graph` + the helper; exactly one new
-  `0014`, frozen `0001`–`0013` untouched.
+## Gate results (this branch) — every decisive line echoed into the /goal transcript
+- `make migrate` — head **`0015_run_brownfield_target`**.
+- `make test` — **`260 passed, 1 warning`** (241 session-start baseline + 19 new; never regressed;
+  the full pre-existing suite passes UNTOUCHED = the greenfield-byte-intactness proof at unit level).
+- `make lint` — **`All checks passed!`** (ruff check+format) + eslint `--max-warnings 0` + **`All
+  matched files use Prettier code style!`**.
+- `make seeding-smoke` — **`seeding round-trip OK = True`** (greenfield docker push/pull byte-intact).
+- `make skeleton-run` — all checks True (greenfield LOCAL ship).
+- `make loop-run` — **`ALL LOOP-RAN ASSERTIONS PASSED`** (greenfield LOCAL review loop; Engineer x2,
+  Reviewer x2, one loop-back, ship once).
+- `make loop-run-docker` — all assertions `[ok]` (greenfield DOCKER review loop; my mode-branched
+  seeding defaults to greenfield → unchanged). [Flaked twice with DIFFERENT agent symptoms, passed
+  clean on retry with no code change — confirmed agent/container flakiness, not a regression.]
+- `make brownfield-check` — **`[brownfield-check] PASS`**: real docker+NIM two_node run landed
+  `subtract` on branch `tvashtr/<run_id>` in a throwaway fixture repo, the fixture's own `pytest` is
+  GREEN on that branch (`1 passed`), the user's ORIGINAL `main` HEAD is UNCHANGED, and the Run row
+  carries `repo_path`/`base_ref`/`ship_branch`. [Needed grounding iteration + a retry — see below.]
 
 ## Test Count
-241 backend pytest + 126 vitest passing — 2026-06-26.
+260 backend pytest passing — 2026-06-27 (was 241). No frontend touched this slice (no vitest delta).
 
-## Deviations from PROJECTPLAN.md / the brief
-- The brief's API sketch had `LastRun` take a single `outcome`/`outcomeDetail`; M1's actual run-view
-  `LastRun` renders a per-round LIST (`rounds: NodeInvocation[]`). I extracted it AS-IS (rounds-based
-  + optional `provenance`) so the run-view render is byte-identical (`SidePanel.test.tsx` unchanged);
-  the authoring view passes its single `last_run` as a one-element rounds list. `titleCase` moved to
-  `lib/text.ts` (shared by `SidePanel`'s `nodeTitle` + `LastRun`).
-- The e2e creates a fresh `review_loop` team via "+ New team" rather than the literal seeded "My team"
-  (deterministic regardless of prior DB state; same template, identical proof).
-- Fixed a latent M1 lint miss: `scripts/work_brief_check.py` had E501s (the M1 process linted before
-  that script existed). Wrapped/shortened the long lines (no behavior change; the e2e exit code is
-  unchanged). Committed separately. (Real paths used: `control_plane/{team_run,teams}.py`, per disk.)
-
-## Regression gates (NIM, live, on a clean dev DB)
-- `skeleton-run` ✓, `skeleton-crash` ✓ (attempt 1), `loop-run` ✓, `loop-crash` ✓ (attempt 1),
-  `thinker-chain-e2e` ✓, `capability-edit-e2e` ✓, `topology-e2e` ✓, `work-brief-e2e` ✓ →
-  `ALL_REGRESSION_GREEN`. (A first `skeleton-crash` run hit the documented §4.5 stale-parked-runs
-  recovery-stall hang from this session's accumulated PENDING workflows — NOT an M2 regression [my
-  diff doesn't touch crash-resume]; cleared by a `docker compose down -v` dev-DB reset, then green.)
+## Deviations from PROJECTPLAN.md / the brief (and §15 items registered)
+- **`engineer_setup_step` reads `repo_path`/`base_ref` INSIDE the step** (the brief offered "read
+  inside OR pass in — your call"). Chosen so the GREENFIELD call site (`engineer_setup_step(run_id)`)
+  stays byte-for-byte unchanged → the ~9 existing executor-test fakes that stub a 1-arg
+  `engineer_setup_step` pass UNTOUCHED (the strongest greenfield-intactness proof). Costs one benign
+  extra SELECT on the greenfield path (invisible to behavior; those tests mock the step anyway).
+- **`grounding` is passed to `agent_run_step` only when non-None** (brownfield), so the greenfield
+  `agent_run_step` call is byte-identical and every existing greenfield test runs untouched. The
+  brief's "greenfield passes None → nothing appended" is honored by EFFECT.
+- **D6 grounding wording was iterated to clear the live gate.** First live `brownfield-check` runs
+  exposed the real "correctness on existing code" problem (the brief's whole point): the NIM agent
+  (a) `create`d an existing file (the OpenHands editor refuses → no change → "nothing to ship"), then
+  (b) edited only the test, then (c) left a file with a missing import. The fix was a GENERAL, non-
+  fixture-specific grounding steer (EDIT in place not `create`; land the code in the real MODULE not
+  only a test; run the repo's tests and fix fallout before finishing) — NOT a weakening of the check.
+  The check's assertions are unchanged. The agent is FLAKY (it succeeded fully on a later roll), so the
+  gate needed a retry — the same live-agent flakiness `loop-run-docker` shows. The cause was the model
+  (an editor `str_replace` "old_str did not appear verbatim" failure — proven NOT a plumbing bug: the
+  pull correctly returned what was in the container, and the offline executor test proves the worktree→
+  ship pipeline deterministically).
+- **§15 (registered, NOT built this slice — per the brief):** (1) an **allow-list / validation on
+  `repo_path`** (today any local git path is accepted); (2) **selective (git-diff-based) pull** —
+  brownfield currently pulls all container files except `.git/`+scaffolding and relies on the host-side
+  `git add -A` honoring the repo `.gitignore` as the real filter (deletions are NOT synced; the
+  enumeration is factored so a diff-based pull can replace it later); (3) a **nicer branch name** than
+  `tvashtr/<run_id>`; (4) **push / PR** (that is P1.9, sequenced WITH brownfield); (5) a **brownfield
+  review_loop** run (the Reviewer gating the real diff) — same machinery as greenfield M1, a manual
+  follow-up, not this automated gate. A brownfield run against a repo WITHOUT a `.gitignore` can pull
+  back `__pycache__` byproducts (a real user repo gitignores them); fold into the selective-pull item.
 
 ## Open Questions
-None blocking.
+None blocking. Slice 2 (launch UI) is the next `/goal`.
 
-READY_TO_MERGE: branch=feat/m2-authoring-brief-linkage, tip=5f65904 (feat) on 567a3d0 (chore),
-tests=241 backend + 126 vitest passing, alembic head 0014 (exactly one new migration; freeze bumped
-to 0001-0014), make authoring-brief-e2e GREEN on NIM (screenshot saved), the 4 smokes + thinker-chain
-/ capability / topology / work-brief e2e GREEN, git diff main -- backend/tvashtr/control_plane/team_run.py
-EMPTY + engines/* byte-intact + teams.py one-line change + run-view/A-B endpoints + builders byte-intact.
+READY_TO_MERGE: branch=feat/brownfield-backend-run-mode, sha=cd56bcc, tests=260 backend passing,
+alembic head 0015 (exactly one new migration; freeze regex bumped to 0001-0015), `make brownfield-check`
+PASS on real docker+NIM, the greenfield smokes (seeding-smoke / skeleton-run / loop-run / loop-run-docker)
+all GREEN, the full pre-existing backend suite passes UNTOUCHED (greenfield byte-intactness), `make lint`
+clean. team_run.py stays openhands-free at import; the EngineAdapter seam extended ONLY additively
+(`AgentTask.workspace_mode`, defaulted like `llm_api_key`); migrations 0001–0014 untouched.
