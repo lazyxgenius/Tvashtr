@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check brownfield-loop-check seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -93,6 +93,9 @@ loop-feature-docker: ## P1.5c CAPSTONE: the REAL stdlib task-list feature, DOCKE
 
 brownfield-check: ## M-brownfield Slice 1 LIVE gate: a REAL docker+NIM two_node run lands a correct change on branch tvashtr/<run_id> in a throwaway fixture repo (calculator.py gains subtract, the fixture's own pytest is GREEN on that branch), the user's original HEAD is UNTOUCHED, and the Run row carries repo_path/base_ref/ship_branch. Agent = nvidia_nim/meta/llama-3.3-70b-instruct. Needs NVIDIA_BUILD_API_KEY + Docker + agent-server image; skips cleanly otherwise; operator-run.
 	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_AGENT_MODEL=nvidia_nim/meta/llama-3.3-70b-instruct TVASHTR_AGENT_MAX_ITERATIONS=40 uv run python ../scripts/brownfield_check.py
+
+brownfield-loop-check: ## M-brownfield Slice 3 EXIT-BAR gate: a REAL docker+NIM review_loop (PM -> Engineer <-> Reviewer) ships a CORRECT, reviewer-APPROVED change into a rung-1 real-shaped repo (a `shop` package the driver builds) — bulk_discount added to an EXISTING module, the repo's tests GREEN on branch tvashtr/<run_id>, the user's HEAD UNTOUCHED, and the reviewer's FINAL outcome is "approved" (not an escalation auto-approve). Agent = nvidia_nim/meta/llama-3.3-70b-instruct. Needs NVIDIA_BUILD_API_KEY + Docker + agent-server image; skips cleanly otherwise; operator-run.
+	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_AGENT_MODEL=nvidia_nim/meta/llama-3.3-70b-instruct TVASHTR_AGENT_MAX_ITERATIONS=40 uv run python ../scripts/brownfield_loop_check.py
 
 skeleton-crash-docker: ## Prove crash-resume OVER THE CONTAINER: kill -9 mid-run -> orphan reaped by the boot sweep -> fresh container on a new ephemeral port -> ships exactly once (needs key + Docker + agent-server image; operator-run, P1.3b)
 	./scripts/skeleton_crash_demo_docker.sh

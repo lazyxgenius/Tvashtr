@@ -55,8 +55,10 @@ REVIEWER_PROMPT = (
     "working directory. Review it — do NOT improve it.\n\n"
     "Do these steps in order:\n"
     "1. Inspect the files in your current working directory (the engineer's build).\n"
-    "2. Run the test suite with EXACTLY this command (the -B is required — do not write "
-    "bytecode):\n"
+    "2. Run the repository's tests. PREFER pytest:\n"
+    "       python -m pytest -q\n"
+    "   If pytest is unavailable or collects no tests, fall back to EXACTLY this command "
+    "(the -B is required — do not write bytecode):\n"
     "       python -B -m unittest\n"
     "3. Decide the verdict:\n"
     '   - "approved" ONLY IF the tests pass AND the deliverable fulfills the ORIGINAL '

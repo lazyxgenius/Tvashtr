@@ -52,7 +52,7 @@ from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
-from tvashtr.control_plane.worktree import add_worktree, build_repo_grounding
+from tvashtr.control_plane.worktree import WORKER_PROTOCOL, add_worktree, build_repo_grounding
 from tvashtr.db import session_scope
 from tvashtr.documents.service import (
     add_version,
@@ -664,8 +664,18 @@ def agent_run_step(
     # brownfield run (computed once via ``brownfield_grounding_step``), so it doubles as the
     # brownfield discriminator for the adapter's workspace-sync mode below. Greenfield → None →
     # nothing appended and ``workspace_mode="greenfield"`` → the adapter's byte-for-byte prior path.
+    #
+    # Slice 3 — the §15 worker-gating split: ``grounding`` is now ORIENTATION ONLY (safe for every
+    # node). The action directives (``WORKER_PROTOCOL`` — edit-in-place / run-tests-and-fix) are
+    # appended ONLY to a non-emitting WORKER (``not emits_outcome``), so a Reviewer-style node
+    # (``emits_outcome`` True) gets orientation but is NEVER handed implement-the-change steps —
+    # it must GATE, not implement. A thinker never reaches this step. (For two_node, the Engineer
+    # is a worker → orientation + protocol = the same directives as before, just reassembled, so
+    # ``brownfield-check`` is unchanged.)
     if grounding:
         context += f"\n\n{grounding}"
+        if not emits_outcome:
+            context += f"\n\n{WORKER_PROTOCOL}"
     instruction = node_prompt + context
 
     task = AgentTask(

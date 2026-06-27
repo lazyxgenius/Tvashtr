@@ -8,6 +8,7 @@ transparency line). These are the openhands-free substrate the brownfield execut
 import subprocess
 
 from tvashtr.control_plane.worktree import (
+    WORKER_PROTOCOL,
     add_worktree,
     branch_name_for,
     build_repo_grounding,
@@ -126,10 +127,25 @@ def test_build_repo_grounding_picks_conventions_structure_and_transparency(tmp_p
     assert "tests/" in grounding
     # The conventions file CONTENT is embedded.
     assert "Always run the tests before committing." in grounding
-    # D6 correctness steer: the agent is told to EDIT existing files in place, not `create` them
-    # (the observed brownfield-check failure: a greenfield "create" mindset shipped no change).
-    assert "EDIT" in grounding
-    assert "`create`" in grounding
+    # Slice 3 worker-gating split: ORIENTATION carries a neutral situational line (safe for a
+    # reviewer too) — NO implement/edit verb.
+    assert "existing repository named `repo`" in grounding
+    assert "ALREADY PRESENT" in grounding
+    # The ACTION directives now live ONLY in WORKER_PROTOCOL — they must NOT leak into orientation
+    # (else a reviewer node would be told to implement the change).
+    assert "str_replace" not in grounding
+    assert "RUN the repository's existing tests" not in grounding
+    assert "`create`" not in grounding
+
+
+def test_worker_protocol_carries_the_action_directives(tmp_path):
+    # The worker-only protocol (appended to non-emitting workers in agent_run_step) carries the
+    # implement-the-change directives that drove the Slice-1 correctness fix.
+    assert "str_replace" in WORKER_PROTOCOL
+    assert "do NOT" in WORKER_PROTOCOL
+    assert "real source MODULE" in WORKER_PROTOCOL
+    assert "RUN" in WORKER_PROTOCOL
+    assert "smallest change" in WORKER_PROTOCOL
 
 
 def test_build_repo_grounding_conventions_priority(tmp_path):

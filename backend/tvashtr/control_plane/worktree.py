@@ -150,14 +150,38 @@ def _structure_outline(files: list[str]) -> str:
     return "\n".join(entries)
 
 
-def build_repo_grounding(workspace: str, repo_basename: str) -> str:
-    """D6: build the brownfield repo-grounding block appended to the agent instruction.
+# M-brownfield Slice 3 — the §15 worker-gating split. The brownfield repo-grounding is now TWO
+# blocks: an always-safe ORIENTATION block (this builder — conventions + structure + transparency,
+# appended to EVERY brownfield agent node) and the worker-only WORKER_PROTOCOL below (the action
+# directives, appended by ``agent_run_step`` ONLY to a non-emitting WORKER node). The split is
+# a Reviewer-style node (which must GATE, not implement) is never handed implement-the-change
+# instructions — the correctness prerequisite for the brownfield review_loop. A plain module-level
+# string (no openhands import), so ``team_run`` can import it and stay openhands-free at import.
+WORKER_PROTOCOL = (
+    "--- HOW TO MAKE THE CHANGE ---\n"
+    "Implement the request by EDITING the relevant existing source file(s) IN PLACE — first `view` "
+    "a file to see its EXACT current contents, then apply a precise `str_replace` or `insert`; do "
+    "NOT use `create` on a file that already exists. Put the requested code in the real source "
+    "MODULE (the implementation itself), not only in a test, and keep every file COMPLETE and "
+    "runnable (include ALL needed imports — never leave a file in a broken/partial state). After "
+    "editing, RUN the repository's existing tests (e.g. `python -m pytest -q`, or `python -m "
+    "unittest`) and FIX any failure you introduced before you finish. Make the smallest "
+    "change that satisfies the request, match the repo's existing conventions, and do not "
+    "restructure unrelated code."
+)
 
-    (1) the repo's conventions file if present (first of ``AGENTS.md`` / ``CLAUDE.md`` /
-    ``.cursorrules`` / ``CONTRIBUTING.md``, truncated to ~6 KB); (2) a depth-capped directory
-    outline folded from ``git ls-files`` + the names of any top-level manifest files (NO other file
-    contents); and a one-line transparency note. Pure (stdlib + git), openhands-free, unit-tested.
-    ``workspace`` is the worktree (a real work tree, so ``git ls-files`` resolves)."""
+
+def build_repo_grounding(workspace: str, repo_basename: str) -> str:
+    """D6: build the brownfield repo-grounding ORIENTATION block appended to EVERY brownfield agent
+    node (worker AND reviewer). Slice 3 split: this is orientation ONLY — the action directives now
+    live in :data:`WORKER_PROTOCOL`, appended separately to workers only.
+
+    (1) a neutral situational line (no implement/edit verb — safe for a reviewer); (2) the repo's
+    conventions file if present (first of ``AGENTS.md`` / ``CLAUDE.md`` / ``.cursorrules`` /
+    ``CONTRIBUTING.md``, truncated to ~6 KB); (3) a depth-capped directory outline folded from
+    ``git ls-files`` + the names of any top-level manifest files (NO other file contents); and the
+    transparency header. Pure (stdlib + git), openhands-free, unit-tested. ``workspace`` is the
+    worktree (a real work tree, so ``git ls-files`` resolves)."""
     ws = Path(workspace)
 
     conventions_name: str | None = None
@@ -182,23 +206,12 @@ def build_repo_grounding(workspace: str, repo_basename: str) -> str:
     conv_note = f"{conventions_name} found" if conventions_name else "none"
     lines = [
         f"--- REPO GROUNDING ({repo_basename}; conventions: {conv_note}) ---",
-        # D6 / the correctness-on-existing-code bar. Three observed failure modes on a trivial
-        # brownfield task drove this wording: (1) the agent `create`d an existing file (the editor
-        # refuses → no change); (2) it edited only a test, not the real module; (3) it left a file
-        # broken (missing import). The robust, GENERAL fix is to make the agent EDIT in place, land
-        # the code in the real module, AND self-verify by running the repo's tests + fixing fallout.
+        # Slice 3: ORIENTATION ONLY — a neutral situational line with NO implement/edit verb, so it
+        # is safe for a reviewer node too. The action directives (edit-in-place / run-tests-and-fix)
+        # moved to ``WORKER_PROTOCOL``, which ``agent_run_step`` appends to workers ONLY.
         (
-            "You are modifying an EXISTING repository: its files are ALREADY PRESENT in your "
-            "working directory. Implement the request by EDITING the relevant existing source "
-            "file(s) IN PLACE — first `view` a file to see its EXACT current contents, then apply "
-            "a precise `str_replace` or `insert`; do NOT use `create` on a file that already "
-            "exists. Put the requested code in the real source MODULE (the implementation itself), "
-            "not only in a test, and keep every file COMPLETE and runnable (include ALL needed "
-            "imports — never leave a file in a broken/partial state). After editing, RUN the "
-            "repository's existing tests (e.g. `python -m pytest -q`, or `python -m unittest`) and "
-            "FIX any failure you introduced before you finish. Make the smallest change that "
-            "satisfies the request, match the repo's existing conventions, and do not restructure "
-            "unrelated code."
+            f"You are working in an existing repository named `{repo_basename}`; its files are "
+            "ALREADY PRESENT in your working directory."
         ),
     ]
     if manifests:
