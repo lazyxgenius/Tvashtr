@@ -331,3 +331,90 @@ def test_docker_generic_error_without_budget_event_is_failed(tmp_path):
     # Negative: the same generic raise but NO budget signal anywhere -> failed (not misclassified).
     result = _run_docker_result(tmp_path, feed_events=[], raise_exc=_GENERIC_REMOTE_EXC)
     assert result.status == "failed"
+
+
+# --- Slice 4 (Item A): the LOCAL adapter's workspace-read-only mirror of the docker scoped pull ---
+
+
+def test_local_adapter_emitting_node_is_workspace_read_only(tmp_path, monkeypatch):
+    """An outcome-emitting (reviewer) node running the REAL local adapter is workspace-READ-ONLY:
+    even when the agent CLOBBERS the deliverable (drops ``subtract``) and drops a stray file while
+    "reviewing", the adapter restores the worktree so ONLY ``REVIEW_VERDICT.json`` persists — the
+    in-process mirror of the docker scoped pull. ``pull_paths=None`` (a worker) leaves it untouched.
+    """
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    deliverable = tmp_path / "calculator.py"
+    original = "def add(a, b):\n    return a + b\n\n\ndef subtract(a, b):\n    return a - b\n"
+    deliverable.write_text(original, encoding="utf-8")
+
+    convo = _fake_conversation()
+
+    def _agent_edits(*a, **k):
+        # The reviewer touches the deliverable (drops subtract), drops a stray, writes its verdict.
+        deliverable.write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+        (tmp_path / "scratch.tmp").write_text("junk", encoding="utf-8")
+        (tmp_path / "REVIEW_VERDICT.json").write_text(
+            '{"verdict": "approved", "reasons": "ok"}', encoding="utf-8"
+        )
+
+    convo.run.side_effect = _agent_edits
+
+    with (
+        patch.object(
+            local_mod,
+            "get_settings",
+            return_value=Settings(_env_file=None, litellm_proxy_enabled=False),
+        ),
+        patch.object(local_mod, "LLM"),
+        patch.object(local_mod, "Agent"),
+        patch.object(local_mod, "Tool"),
+        patch.object(local_mod, "TerminalTool"),
+        patch.object(local_mod, "FileEditorTool"),
+        patch.object(local_mod, "Conversation", return_value=convo),
+    ):
+        task = AgentTask(
+            instruction="review it",
+            workspace_dir=str(tmp_path),
+            model="openrouter/m",
+            pull_paths=("REVIEW_VERDICT.json",),
+        )
+        result = local_mod.OpenHandsAdapter().run(task)
+
+    # The deliverable is restored (clobber undone), the stray is gone, only the sidecar persists.
+    assert deliverable.read_text() == original
+    assert "def subtract" in deliverable.read_text()
+    assert not (tmp_path / "scratch.tmp").exists()
+    assert (tmp_path / "REVIEW_VERDICT.json").exists()
+    # Only the verdict sidecar is reported as changed (the engine-neutral files_changed).
+    assert result.files_changed == ["REVIEW_VERDICT.json"]
+
+
+def test_local_adapter_worker_none_pull_paths_keeps_edits(tmp_path, monkeypatch):
+    """The default (pull_paths=None — a worker) does NO restore: the agent's edits persist in place,
+    byte-for-byte the prior behavior. Guards the common worker path against the mirror."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    convo = _fake_conversation()
+
+    def _agent_edits(*a, **k):
+        (tmp_path / "greeting.txt").write_text("hello", encoding="utf-8")
+
+    convo.run.side_effect = _agent_edits
+
+    with (
+        patch.object(
+            local_mod,
+            "get_settings",
+            return_value=Settings(_env_file=None, litellm_proxy_enabled=False),
+        ),
+        patch.object(local_mod, "LLM"),
+        patch.object(local_mod, "Agent"),
+        patch.object(local_mod, "Tool"),
+        patch.object(local_mod, "TerminalTool"),
+        patch.object(local_mod, "FileEditorTool"),
+        patch.object(local_mod, "Conversation", return_value=convo),
+    ):
+        task = AgentTask(instruction="build", workspace_dir=str(tmp_path), model="openrouter/m")
+        result = local_mod.OpenHandsAdapter().run(task)
+
+    assert (tmp_path / "greeting.txt").read_text() == "hello"  # the worker's edit survives
+    assert result.files_changed == ["greeting.txt"]

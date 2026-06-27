@@ -82,7 +82,12 @@ def _detect_platform() -> str:
     return "linux/amd64"
 
 
-def _pull_workspace(workspace, host_dir: str, mode: str = "greenfield") -> list[str]:
+def _pull_workspace(
+    workspace,
+    host_dir: str,
+    mode: str = "greenfield",
+    pull_paths: tuple[str, ...] | None = None,
+) -> list[str]:
     """DQ1 pull-at-end (no bind-mount): copy the agent's produced files out of the
     container's working dir onto the host, preserving relative paths.
 
@@ -99,35 +104,47 @@ def _pull_workspace(workspace, host_dir: str, mode: str = "greenfield") -> list[
     dotfiles (a real repo's edited ``.github/`` / config must come back) and excludes only ``.git/``
     — relying on the host-side ``git add -A`` (which honors the repo's ``.gitignore``) as the real
     filter. BOTH modes still drop the server scaffolding (``bash_events/`` / ``conversations/``).
-    """
+
+    ``pull_paths`` (M-brownfield Slice 4) makes the pull WORKSPACE-READ-ONLY for an outcome-emitting
+    (reviewer) node: when set, the adapter does NOT enumerate the container at all — it pulls ONLY
+    these exact relative paths (the verdict sidecar) and nothing else, so the node's other container
+    edits NEVER reach the shippable host worktree (they can't clobber the worker's correct edit).
+    ``None`` (the default) ⇒ the full enumerate-and-pull above, byte-identical for greenfield and
+    for a worker node. The adapter is told WHICH files to sync (a directive), never the role."""
     working_dir = workspace.working_dir
-    # Greenfield: non-hidden files only (mirrors the local adapter's _snapshot). Brownfield: include
-    # dotfiles, exclude only the (non-existent-in-container, but defensive) .git tree. `cwd` makes
-    # the paths relative to the working dir.
-    find_cmd = (
-        "find . -type f -not -path './.git/*'"
-        if mode == "brownfield"
-        else "find . -type f -not -path '*/.*'"
-    )
-    listing = workspace.execute_command(find_cmd, cwd=working_dir, timeout=30.0)
-    if getattr(listing, "exit_code", 0) != 0:
-        # Surface an enumeration failure HERE (caught by run() -> status="failed")
-        # rather than silently pulling nothing and dying later at "nothing to ship".
-        raise RuntimeError(
-            f"container workspace enumeration failed "
-            f"(exit={getattr(listing, 'exit_code', '?')}): {getattr(listing, 'stderr', '')!r}"
+    if pull_paths is not None:
+        # Scoped pull (Slice 4): pull ONLY the listed paths — no `find`, no enumeration. A listed
+        # path absent from the container simply fails its download and is skipped (warned), like
+        # the per-file behavior below. ``mode`` is irrelevant here (the list IS the filter).
+        rels: list[str] = list(pull_paths)
+    else:
+        # Greenfield: non-hidden files only (mirrors the local adapter's _snapshot). Brownfield:
+        # include dotfiles, exclude only the (non-existent-in-container, but defensive) .git tree.
+        # `cwd` makes the paths relative to the working dir.
+        find_cmd = (
+            "find . -type f -not -path './.git/*'"
+            if mode == "brownfield"
+            else "find . -type f -not -path '*/.*'"
         )
-    rels: list[str] = []
-    for line in listing.stdout.splitlines():
-        # Strip only the leading "./" — preserve any spaces within the filename.
-        rel = line[2:] if line.startswith("./") else line
-        if not rel:
-            continue
-        # Drop the agent server's own scaffolding (its top-level dir is server-owned,
-        # not a deliverable) so it is never pulled or shipped into the user's commit.
-        if rel.split("/", 1)[0] in _SERVER_SCAFFOLDING_DIRS:
-            continue
-        rels.append(rel)
+        listing = workspace.execute_command(find_cmd, cwd=working_dir, timeout=30.0)
+        if getattr(listing, "exit_code", 0) != 0:
+            # Surface an enumeration failure HERE (caught by run() -> status="failed")
+            # rather than silently pulling nothing and dying later at "nothing to ship".
+            raise RuntimeError(
+                f"container workspace enumeration failed "
+                f"(exit={getattr(listing, 'exit_code', '?')}): {getattr(listing, 'stderr', '')!r}"
+            )
+        rels = []
+        for line in listing.stdout.splitlines():
+            # Strip only the leading "./" — preserve any spaces within the filename.
+            rel = line[2:] if line.startswith("./") else line
+            if not rel:
+                continue
+            # Drop the agent server's own scaffolding (its top-level dir is server-owned,
+            # not a deliverable) so it is never pulled or shipped into the user's commit.
+            if rel.split("/", 1)[0] in _SERVER_SCAFFOLDING_DIRS:
+                continue
+            rels.append(rel)
 
     pulled: list[str] = []
     for rel in sorted(set(rels)):
@@ -331,8 +348,12 @@ class OpenHandsDockerAdapter:
                 conversation.run()
                 # Decision 2 path, identical accessor over the remote conversation.
                 prompt_tokens, completion_tokens, cost_usd = _read_usage(conversation)
-                # DQ1: pull the agent's files to the host before teardown.
-                files_changed = _pull_workspace(workspace, host_dir, task.workspace_mode)
+                # DQ1: pull the agent's files to the host before teardown. ``task.pull_paths``
+                # (Slice 4) scopes this to a fixed list for an emitting (reviewer) node — its
+                # workspace edits then never mutate the shippable host worktree (None ⇒ full pull).
+                files_changed = _pull_workspace(
+                    workspace, host_dir, task.workspace_mode, task.pull_paths
+                )
         except Exception as exc:
             # P1.4b: classify the proxy's mid-call budget cutoff as ``over_budget`` (else a
             # generic ``failed``). In DOCKER mode the SDK strips the budget message from the

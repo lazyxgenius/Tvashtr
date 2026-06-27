@@ -50,13 +50,24 @@ class AgentTask:
     git-aware sync for a real-repo worktree (push the repo's tracked + untracked-not-ignored files
     incl. tracked dotfiles; pull everything except ``.git/`` + the server scaffolding). It is an
     ADDITIVE, defaulted field — exactly the established way ``llm_api_key`` extended this contract,
-    NOT a breaking interface change; the Control Plane never learns which adapter is active."""
+    NOT a breaking interface change; the Control Plane never learns which adapter is active.
+
+    ``pull_paths`` (M-brownfield Slice 4) scopes the END-of-run sync back to the host to a FIXED
+    list of relative paths. ``None`` (the default) ⇒ the adapter pulls EVERYTHING (today's behavior,
+    byte-identical for greenfield AND for a worker node). A set tuple ⇒ the adapter writes back ONLY
+    those exact paths and nothing else, so the node's other workspace edits NEVER mutate the
+    shippable host worktree. The Control Plane uses this to make an outcome-emitting (reviewer) node
+    workspace-READ-ONLY — it passes ``("REVIEW_VERDICT.json",)`` so only the verdict sidecar is
+    harvested and a reviewer can never clobber the worker's correct edit. It is an ADDITIVE,
+    defaulted field in the SAME spirit as ``workspace_mode``/``llm_api_key``: the adapter learns a
+    SYNC DIRECTIVE (which files to pull), NEVER the node's role — the seam stays role-neutral."""
 
     instruction: str
     workspace_dir: str
     model: str | None = None
     llm_api_key: str | None = None
     workspace_mode: Literal["greenfield", "brownfield"] = "greenfield"
+    pull_paths: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)

@@ -684,6 +684,13 @@ def agent_run_step(
         model=model,
         llm_api_key=vkey,
         workspace_mode="brownfield" if grounding is not None else "greenfield",
+        # Slice 4 (Item A): an outcome-emitting (reviewer) node is workspace-READ-ONLY — scope its
+        # end-of-run pull to the verdict sidecar so its container edits NEVER mutate the shippable
+        # host worktree (it must GATE, not implement; "Reviewer gates, never implements" now holds
+        # at the WORKSPACE, not just the prompt). A worker (``not emits_outcome``) leaves this None
+        # ⇒ the full pull, byte-identical to before. ``_harvest_verdict(workspace)`` still reads the
+        # sidecar the scoped pull carried home. The adapter learns a sync directive, not "reviewer".
+        pull_paths=("REVIEW_VERDICT.json",) if emits_outcome else None,
     )
     # Select local vs Docker-sandboxed engine from the configured sandbox mode (P1.3a). The
     # EngineAdapter contract + AgentRunResult shape are identical across modes; the adapter is

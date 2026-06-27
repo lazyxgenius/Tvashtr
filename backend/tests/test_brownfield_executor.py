@@ -156,28 +156,48 @@ class _ReviewLoopFakeAdapter:
     instruction keyed by worker-vs-reviewer — branching on a stable substring of the node's prompt
     (a reviewer task's instruction starts with REVIEWER_PROMPT's "You are the Reviewer"; the
     engineer worker does not). The worker EDITS the existing module; the reviewer writes an
-    ``approved`` ``REVIEW_VERDICT.json`` (so ``_harvest_verdict`` routes the walk to ship)."""
+    ``approved`` ``REVIEW_VERDICT.json`` (so ``_harvest_verdict`` routes the walk to ship).
+
+    ``clobber`` (Slice 4, Item A) makes the reviewer ALSO try to overwrite the deliverable (drop
+    ``subtract``) while "reviewing" — simulating the real bug where a reviewer's container edits get
+    pulled back and clobber the worker's correct edit. To faithfully simulate the REAL adapter's
+    pull, the fake writes that deliverable mutation to the host ONLY IF the task did NOT scope the
+    pull (``getattr(task, "pull_paths", None) is None``): when the executor scopes the emitting
+    node's pull to ``("REVIEW_VERDICT.json",)``, a verdict-only pull discards the mutation, so the
+    fake skips it. The verdict sidecar is written ALWAYS (the one path a reviewer may produce)."""
 
     name = "openhands-docker"
 
-    def __init__(self, captured):
+    def __init__(self, captured, clobber=False):
         self._captured = captured
+        self._clobber = clobber
 
     def run(self, task, on_event=None):
         ws = Path(task.workspace_dir)
         if "You are the Reviewer" in task.instruction:
             self._captured["reviewer_instruction"] = task.instruction
             self._captured["reviewer_mode"] = task.workspace_mode
+            self._captured["reviewer_pull_paths"] = getattr(task, "pull_paths", None)
+            # A reviewer is ALLOWED exactly one host artifact: its verdict sidecar.
             (ws / "REVIEW_VERDICT.json").write_text(
                 '{"verdict": "approved", "reasons": "tests pass; subtract present"}',
                 encoding="utf-8",
             )
+            # Slice 4: a misbehaving reviewer touches the deliverable too. The REAL adapter's pull
+            # decides whether that reaches the host — a scoped (verdict-only) pull discards it; an
+            # unscoped pull (pull_paths is None) clobbers the worker's edit. Simulate exactly that.
+            if self._clobber and getattr(task, "pull_paths", None) is None:
+                (ws / "calculator.py").write_text(
+                    "def add(a, b):\n    return a + b\n",
+                    encoding="utf-8",  # subtract DROPPED
+                )
             return AgentRunResult(
                 status="completed", summary="reviewed", events=[], files_changed=[]
             )
         # the worker (Engineer): edit the EXISTING module in place.
         self._captured["worker_instruction"] = task.instruction
         self._captured["worker_mode"] = task.workspace_mode
+        self._captured["worker_pull_paths"] = getattr(task, "pull_paths", None)
         mod = ws / "calculator.py"
         mod.write_text(
             mod.read_text() + "\n\ndef subtract(a, b):\n    return a - b\n", encoding="utf-8"
@@ -249,6 +269,75 @@ def test_brownfield_review_loop_worker_gets_protocol_reviewer_does_not_offline(
         assert "approved" in outcomes  # the reviewer genuinely approved
         tip_calc = _git(fixture, "show", f"tvashtr/{run_id}:calculator.py").stdout
         assert "def subtract" in tip_calc and "def add" in tip_calc
+        # the user's tree is untouched.
+        assert _git(fixture, "rev-parse", "main").stdout.strip() == original_head
+        assert _git(fixture, "symbolic-ref", "--short", "HEAD").stdout.strip() == "main"
+    finally:
+        subprocess.run(
+            ["git", "-C", str(fixture), "worktree", "remove", "--force", str(workspace)],
+            capture_output=True,
+            text=True,
+        )
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def test_brownfield_review_loop_reviewer_cannot_clobber_worker_edit_offline(
+    client, monkeypatch, tmp_path
+):
+    """Item A (Slice 4) — an outcome-emitting (reviewer) node is workspace-READ-ONLY: even when the
+    reviewer touches the deliverable while "reviewing", its mutation must NEVER reach the shippable
+    host worktree (only ``REVIEW_VERDICT.json`` is harvested). The fake reviewer here APPROVES but
+    ALSO tries to drop ``subtract``; the branch that ships must still carry the worker's correct
+    edit. The fix is proven two ways: the executor scoped the emitting node's pull to the verdict
+    sidecar (``pull_paths=("REVIEW_VERDICT.json",)``) while the worker's pull stayed unscoped
+    (``None``), AND the shipped tip retains ``subtract``.
+
+    PRE-FIX (``agent_run_step`` sets no ``pull_paths``): ``getattr`` yields ``None`` for the
+    emitting node → the fake writes the clobber → the shipped tip LOSES ``subtract`` → FAILS."""
+    monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
+    fixture = _init_review_fixture(tmp_path / "repo")
+    original_head = _git(fixture, "rev-parse", "HEAD").stdout.strip()
+
+    captured: dict = {}
+    monkeypatch.setattr(team_run, "pm_step", lambda run_id, idea, m, p: seed_pm_prd(run_id, idea))
+    monkeypatch.setattr(
+        team_run, "resolve_adapter", lambda name: _ReviewLoopFakeAdapter(captured, clobber=True)
+    )
+
+    run_id = str(uuid.uuid4())
+    team_graph_id = build_review_loop_team()
+    idea = "Add a subtract(a, b) function to calculator.py."
+    with session_scope() as session:
+        session.add(
+            Run(
+                id=uuid.UUID(run_id),
+                team_graph_id=uuid.UUID(team_graph_id),
+                idea=idea,
+                workflow_id=run_id,
+                status="running",
+                repo_path=str(fixture),
+                base_ref="main",
+            )
+        )
+
+    workspace = _WORKSPACE_ROOT / run_id
+    try:
+        with SetWorkflowID(run_id):
+            handle = DBOS.start_workflow(team_run.run_team, idea)
+        result = handle.get_result()
+        assert result["status"] == "completed"
+        assert result["ship_branch"] == f"tvashtr/{run_id}"
+
+        # THE FIX: the emitting (reviewer) node's pull was scoped to the verdict sidecar; the
+        # worker's pull stayed unscoped. The adapter learned a SYNC directive, never "reviewer".
+        assert captured["reviewer_pull_paths"] == ("REVIEW_VERDICT.json",)
+        assert captured["worker_pull_paths"] is None
+
+        # The shipped branch carries the worker's correct edit — the reviewer's clobber never
+        # reached the host worktree (only the verdict sidecar is harvested from an emitting node).
+        tip_calc = _git(fixture, "show", f"tvashtr/{run_id}:calculator.py").stdout
+        assert "def subtract" in tip_calc
+        assert "def add" in tip_calc
         # the user's tree is untouched.
         assert _git(fixture, "rev-parse", "main").stdout.strip() == original_head
         assert _git(fixture, "symbolic-ref", "--short", "HEAD").stdout.strip() == "main"

@@ -229,6 +229,60 @@ def test_pull_workspace_brownfield_keeps_dotfiles_drops_git_and_scaffolding(tmp_
     assert "conversations/y" not in pulled
 
 
+def test_pull_workspace_scoped_pull_paths_downloads_only_listed(tmp_path):
+    # M-brownfield Slice 4: an outcome-emitting (reviewer) node is workspace-READ-ONLY — its
+    # container edits must never mutate the shippable host worktree. agent_run_step passes
+    # ``pull_paths=("REVIEW_VERDICT.json",)`` so the adapter pulls ONLY the verdict sidecar and
+    # NEVER the container's other files (which would clobber the worker's correct host edit). The
+    # adapter learns a SYNC directive (which files), not "reviewer" — the seam stays role-neutral.
+    import os
+
+    ws = MagicMock()
+    ws.working_dir = "/workspace"
+
+    def fake_download(src, dest):
+        os.makedirs(os.path.dirname(dest) or str(tmp_path), exist_ok=True)
+        with open(dest, "w") as f:  # _pull_workspace makes the parent dir first
+            f.write("x")
+        return MagicMock(success=True)
+
+    ws.file_download.side_effect = fake_download
+    pulled = mod._pull_workspace(
+        ws, str(tmp_path), "brownfield", pull_paths=("REVIEW_VERDICT.json",)
+    )
+
+    # ONLY the verdict sidecar came home.
+    assert pulled == ["REVIEW_VERDICT.json"]
+    assert (tmp_path / "REVIEW_VERDICT.json").exists()
+    assert ws.file_download.call_count == 1
+    srcs = {c.args[0] for c in ws.file_download.call_args_list}
+    assert srcs == {"/workspace/REVIEW_VERDICT.json"}
+    # The scoped pull does NOT enumerate the container (no `find`) — the clobber-prevention is
+    # structural (pull only the listed files), not a post-hoc filter over an enumeration.
+    ws.execute_command.assert_not_called()
+
+
+def test_pull_workspace_none_pull_paths_is_unchanged_full_pull(tmp_path):
+    # The default (pull_paths=None — a worker / greenfield) is byte-for-byte the prior behavior:
+    # enumerate via `find` and pull every (mode-appropriate) file. Guards the common path.
+    ws = MagicMock()
+    ws.working_dir = "/workspace"
+    ws.execute_command.return_value = MagicMock(
+        stdout="./greeting.txt\n./sub/data.txt\n", exit_code=0
+    )
+
+    def fake_download(src, dest):
+        with open(dest, "w") as f:
+            f.write("x")
+        return MagicMock(success=True)
+
+    ws.file_download.side_effect = fake_download
+    pulled = mod._pull_workspace(ws, str(tmp_path), "greenfield", pull_paths=None)
+
+    assert pulled == ["greeting.txt", "sub/data.txt"]
+    ws.execute_command.assert_called_once()  # the enumeration still runs on the default path
+
+
 def test_registry_resolves_docker_adapter():
     # Asserted here (not in the openhands-free purity file test_registry.py): only
     # *resolving* pulls openhands, never importing the registry/control plane.

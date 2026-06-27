@@ -117,6 +117,70 @@ def _snapshot(root: str) -> dict[str, tuple[int, int]]:
     return snap
 
 
+def _content_snapshot(root: str) -> dict[str, bytes]:
+    """relpath -> raw bytes for every file under ``root`` EXCEPT the ``.git`` tree.
+
+    The pre-run capture used to RESTORE the worktree after a workspace-READ-ONLY (outcome-emitting /
+    reviewer) node runs in-process in local mode — the local-adapter mirror of the docker adapter's
+    scoped ``pull_paths``. Local mode edits the worktree in place (there is no container to pull
+    from), so "pull only the verdict sidecar" is enforced here by snapshot-then-restore. Captures
+    dotfiles (a reviewer might touch ``.eslintrc``) but never descends ``.git``."""
+    snap: dict[str, bytes] = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d != ".git"]
+        for filename in filenames:
+            full = os.path.join(dirpath, filename)
+            try:
+                with open(full, "rb") as fh:
+                    snap[os.path.relpath(full, root)] = fh.read()
+            except OSError:
+                pass
+    return snap
+
+
+def _restore_except(root: str, snapshot: dict[str, bytes], keep: tuple[str, ...]) -> list[str]:
+    """Restore ``root`` to ``snapshot`` for every path NOT in ``keep`` — undo a workspace-read-only
+    node's in-place edits so its round never mutates the shippable worktree (the local mirror of
+    the docker scoped pull). The ``keep`` paths (the verdict sidecar) are left exactly as the agent
+    wrote them. Returns the ``keep`` paths present after the restore — the effective files_changed.
+
+    An agent-CREATED file (absent from ``snapshot``, not in ``keep``) is removed; an agent-MODIFIED
+    file is rewritten to its snapshot bytes; an agent-DELETED file (in ``snapshot``, now missing,
+    not in ``keep``) is recreated. ``.git`` is never walked or touched."""
+    keep_set = set(keep)
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d != ".git"]
+        for filename in filenames:
+            full = os.path.join(dirpath, filename)
+            rel = os.path.relpath(full, root)
+            if rel in keep_set:
+                continue
+            try:
+                if rel not in snapshot:
+                    os.remove(full)  # agent-created -> drop it
+                    continue
+                with open(full, "rb") as fh:
+                    current = fh.read()
+                if current != snapshot[rel]:
+                    with open(full, "wb") as fh:
+                        fh.write(snapshot[rel])  # agent-modified -> revert
+            except OSError:
+                pass
+    # Recreate agent-deleted files (in the snapshot, now missing), excluding the kept paths.
+    for rel, data in snapshot.items():
+        if rel in keep_set:
+            continue
+        full = os.path.join(root, rel)
+        if not os.path.exists(full):
+            try:
+                os.makedirs(os.path.dirname(full) or root, exist_ok=True)
+                with open(full, "wb") as fh:
+                    fh.write(data)
+            except OSError:
+                pass
+    return sorted(p for p in keep if os.path.exists(os.path.join(root, p)))
+
+
 def _read_usage(conversation) -> tuple[int, int, float]:
     """Post-run token/cost telemetry from OpenHands' own accumulated metrics.
 
@@ -258,6 +322,13 @@ class OpenHandsAdapter:
         )
 
         before = _snapshot(task.workspace_dir)
+        # Slice 4: for a workspace-READ-ONLY (outcome-emitting / reviewer) node, capture file
+        # CONTENT so we can restore the worktree after the in-process run — the local mirror of the
+        # docker adapter's scoped ``pull_paths``. None (a worker / greenfield) ⇒ no capture/restore:
+        # byte-for-byte the prior path (no extra cost on the common worker path).
+        content_before = (
+            _content_snapshot(task.workspace_dir) if task.pull_paths is not None else None
+        )
         status = "completed"
         error: str | None = None
         prompt_tokens = 0
@@ -296,6 +367,10 @@ class OpenHandsAdapter:
         total_tokens = prompt_tokens + completion_tokens
         after = _snapshot(task.workspace_dir)
         files_changed = sorted(p for p in after if before.get(p) != after[p])
+        # Slice 4: an emitting node's in-place edits must NOT mutate the shippable worktree —
+        # restore everything except the allowed ``pull_paths`` (the sidecar) and report only those.
+        if task.pull_paths is not None and content_before is not None:
+            files_changed = _restore_except(task.workspace_dir, content_before, task.pull_paths)
 
         # Only the success path is downgraded by error events; never clobber a classified
         # ``failed``/``over_budget`` from the except block (P1.4b: preserve the cutoff status).

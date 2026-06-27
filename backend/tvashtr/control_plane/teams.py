@@ -36,7 +36,8 @@ DEFAULT_ENGINEER_MODEL = "openrouter/openai/gpt-4o-mini"
 # same). The Reviewer text MUST keep the ``python -B -m unittest`` command, the
 # ``REVIEW_VERDICT.json`` sidecar name, and the ``approved``/``changes_requested`` label
 # vocabulary verbatim — ``_harvest_verdict``, the §14.1 view, the A/B view, and the smoke
-# assertions all depend on them.
+# assertions all depend on them. Slice 4 (Item C) ADDED a literal-safe procedural step 3 (state the
+# required behavior + how you verified it before the verdict) — additive, all literals preserved.
 PM_PROMPT = (
     "You are the PM on a software team. Write a concise mini-PRD (3-5 sentences) "
     "for the feature request below. You MUST restate, verbatim, the exact file path "
@@ -60,12 +61,16 @@ REVIEWER_PROMPT = (
     "   If pytest is unavailable or collects no tests, fall back to EXACTLY this command "
     "(the -B is required — do not write bytecode):\n"
     "       python -B -m unittest\n"
-    "3. Decide the verdict:\n"
+    "3. Before deciding, state in ONE sentence the single concrete behavior the ORIGINAL IDEA "
+    "and the PRD below require, then state in ONE sentence HOW you verified the build actually "
+    "exhibits that behavior — cite the specific test or command output you observed, not an "
+    "assumption.\n"
+    "4. Decide the verdict:\n"
     '   - "approved" ONLY IF the tests pass AND the deliverable fulfills the ORIGINAL '
     "IDEA and the PRD below.\n"
     '   - "changes_requested" otherwise (any test fails, a required behavior or file from '
     "the idea/PRD is missing, or it otherwise falls short).\n"
-    "4. Write a file named EXACTLY REVIEW_VERDICT.json in your current working directory "
+    "5. Write a file named EXACTLY REVIEW_VERDICT.json in your current working directory "
     "(the bare filename), containing EXACTLY this JSON and nothing else:\n"
     '       {"verdict": "approved" | "changes_requested", "reasons": "<1-3 short, '
     'specific, actionable sentences>"}\n\n'
