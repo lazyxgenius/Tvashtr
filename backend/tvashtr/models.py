@@ -263,6 +263,14 @@ class Run(Base):
     )
     ship_commit_sha: Mapped[str | None] = mapped_column(Text, nullable=True)
     ship_tag: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # M-brownfield Slice 1 (migration ``0015``): the brownfield run-mode target. ``repo_path``
+    # NULL ⇒ greenfield (the legacy ephemeral workspace, untouched); non-NULL ⇒ the run worked on
+    # an isolated ``git worktree`` of the user's real repo. ``base_ref`` is the branch/commit the
+    # worktree was cut from; ``ship_branch`` is the real branch ``tvashtr/<run_id>`` the change
+    # landed on (recorded at worktree setup, surfaced on the run payload). All NULL for greenfield.
+    repo_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    base_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ship_branch: Mapped[str | None] = mapped_column(Text, nullable=True)
     cost_total_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
     # Per-run dollar cap (P1.2). NULL = no cap (enforcement is opt-in). The live
     # running total is a query (``metering.running_cost``), NOT a stored field —

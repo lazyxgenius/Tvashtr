@@ -37,6 +37,7 @@ from tvashtr.control_plane.teams import (
     reviewer_model,
     seed_library_if_empty,
 )
+from tvashtr.control_plane.worktree import repo_inspect
 from tvashtr.documents.service import add_version, get_document_with_versions, list_documents
 from tvashtr.models import (
     AgentInvocation,
@@ -82,6 +83,21 @@ class CreateRunRequest(BaseModel):
     # builder graph — so the run is driven by what the user authored. When omitted (the legacy
     # smokes + the A/B path), the ``team_shape`` branch above is taken byte-for-byte unchanged.
     team_graph_id: str | None = None
+    # M-brownfield Slice 1: the "work on a real local folder" run mode. ``repo_path`` is the user's
+    # real local git repo; when set, the run works on an isolated ``git worktree`` of it and ships
+    # to a real branch ``tvashtr/<run_id>``. ``base_ref`` is the branch the worktree is cut from
+    # (defaulted to the repo's current branch when omitted). BOTH omitted (every legacy caller) ⇒
+    # the greenfield create is byte-for-byte unchanged.
+    repo_path: str | None = None
+    base_ref: str | None = None
+
+
+class RepoInspectRequest(BaseModel):
+    """``POST /api/repo/inspect`` body (M-brownfield Slice 1, D5): a candidate local repo path to
+    discriminate before a brownfield launch. Slice 2's launch UI calls this to render the repo's
+    branches inline; here it only needs to EXIST + return the discriminated result."""
+
+    path: str
 
 
 class ABRunRequest(BaseModel):
@@ -393,6 +409,11 @@ def _run_to_dict(run: Run) -> dict:
         "pm_document_id": str(run.pm_document_id) if run.pm_document_id else None,
         "ship_commit_sha": run.ship_commit_sha,
         "ship_tag": run.ship_tag,
+        # M-brownfield: the brownfield target + the real branch the change landed on (all NULL for a
+        # greenfield run) — so a later FE/banner can show "shipped to tvashtr/<run_id> in <repo>".
+        "repo_path": run.repo_path,
+        "base_ref": run.base_ref,
+        "ship_branch": run.ship_branch,
         "cost_total_usd": float(run.cost_total_usd) if run.cost_total_usd is not None else None,
         # A/B pairing (P1.5c §14.2): additive, NULL for an ordinary standalone run. Two runs
         # sharing ``pair_id`` are the A/B; ``pair_label`` is the config side. The §14.3
@@ -404,12 +425,54 @@ def _run_to_dict(run: Run) -> dict:
     }
 
 
+@router.post("/api/repo/inspect")
+def inspect_repo(body: RepoInspectRequest) -> dict:
+    """M-brownfield Slice 1 (D5): discriminate a candidate local repo for a brownfield launch.
+    Returns ``repo_inspect``'s **discriminated result** (``{is_git: True, current_branch, branches,
+    tracked_file_count}`` or ``{is_git: False, error}``) with a 200 in BOTH cases — a non-repo is a
+    renderable result the FE shows inline, NOT an exception."""
+    return repo_inspect(body.path)
+
+
 @router.post("/api/runs")
 def create_run(body: CreateRunRequest) -> dict:
     """Build the requested team (default the 2-node team; ``review_loop`` the 3-node
     cyclic team), create the run row, and start ``run_team`` with an explicit workflow
-    id == run_id, so ``DBOS.workflow_id`` keys every write."""
+    id == run_id, so ``DBOS.workflow_id`` keys every write.
+
+    M-brownfield Slice 1: when ``repo_path`` is set, the run is a BROWNFIELD run — the path is
+    validated (422 on a non-git path or an unknown ``base_ref``), ``base_ref`` defaults to the
+    repo's current branch, and both are recorded on the Run row (the executor then cuts a worktree
+    + ships to ``tvashtr/<run_id>``). When ``repo_path`` is None the create is byte-for-byte the
+    prior greenfield path."""
     idea = resolve_run_idea(body.idea)
+
+    # Validate the brownfield target FIRST (before any team graph is built), so a rejected launch
+    # leaves no orphan team/run — mirroring the clone-on-launch validation discipline below.
+    repo_path = body.repo_path
+    base_ref = body.base_ref
+    if repo_path is not None:
+        info = repo_inspect(repo_path)
+        if not info["is_git"]:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "repo_path is not a git repository",
+                    "path": repo_path,
+                    "error": info.get("error"),
+                },
+            )
+        if base_ref is not None and base_ref not in info["branches"]:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "base_ref is not a known branch in repo_path",
+                    "base_ref": base_ref,
+                    "branches": info["branches"],
+                },
+            )
+        if base_ref is None:
+            base_ref = info["current_branch"]
     if body.team_graph_id is not None:
         # Clone-on-launch (P1.8b): deep-clone the authored team into a fresh run-scoped snapshot and
         # run THAT, so the user's edited prompts/models drive the run. The run owns the immutable
@@ -453,6 +516,9 @@ def create_run(body: CreateRunRequest) -> dict:
                 workflow_id=run_id,
                 status="running",
                 budget_cap_usd=cap,
+                # M-brownfield: both None for a greenfield run ⇒ identical column defaults.
+                repo_path=repo_path,
+                base_ref=base_ref,
             )
         )
 

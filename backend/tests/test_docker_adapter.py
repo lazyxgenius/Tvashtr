@@ -181,6 +181,54 @@ def test_pull_workspace_raises_on_find_failure(tmp_path):
         mod._pull_workspace(ws, str(tmp_path))
 
 
+def test_push_workspace_brownfield_uses_git_enumeration(tmp_path):
+    # Brownfield seeding pushes the repo's git-tracked + untracked-not-ignored files (incl. a
+    # tracked dotfile) — NOT the greenfield non-hidden walk. Assert the mode selects the git
+    # enumeration and the dotfile is uploaded into the container.
+    ws = MagicMock()
+    ws.working_dir = "/workspace"
+    ws.file_upload.return_value = MagicMock(success=True)
+    with (
+        patch.object(mod, "enumerate_push_files_git", return_value=[".eslintrc", "src/a.py"]) as g,
+        patch.object(mod, "enumerate_push_files") as green,
+    ):
+        pushed = mod._push_workspace(ws, str(tmp_path), "brownfield")
+    g.assert_called_once_with(str(tmp_path))
+    green.assert_not_called()  # the greenfield walk is bypassed
+    assert pushed == [".eslintrc", "src/a.py"]
+    dests = {c.args[1] for c in ws.file_upload.call_args_list}
+    assert "/workspace/.eslintrc" in dests  # the tracked dotfile reaches the container
+
+
+def test_pull_workspace_brownfield_keeps_dotfiles_drops_git_and_scaffolding(tmp_path):
+    # Brownfield pull excludes ONLY .git/ (via the find pattern) + the server scaffolding, so an
+    # agent-edited dotfile comes home — the greenfield '*/.*' (all-hidden) exclusion would lose it.
+    ws = MagicMock()
+    ws.working_dir = "/workspace"
+    ws.execute_command.return_value = MagicMock(
+        stdout="./.eslintrc\n./src/app.py\n./bash_events/x\n./conversations/y\n", exit_code=0
+    )
+
+    def fake_download(src, dest):
+        import os
+
+        os.makedirs(os.path.dirname(dest) or str(tmp_path), exist_ok=True)
+        with open(dest, "w") as f:
+            f.write("x")
+        return MagicMock(success=True)
+
+    ws.file_download.side_effect = fake_download
+    pulled = mod._pull_workspace(ws, str(tmp_path), "brownfield")
+
+    # The brownfield find command was issued (excludes only .git/, keeps dotfiles).
+    assert ws.execute_command.call_args.args[0] == "find . -type f -not -path './.git/*'"
+    # The dotfile is KEPT; the scaffolding is still dropped.
+    assert ".eslintrc" in pulled
+    assert "src/app.py" in pulled
+    assert "bash_events/x" not in pulled
+    assert "conversations/y" not in pulled
+
+
 def test_registry_resolves_docker_adapter():
     # Asserted here (not in the openhands-free purity file test_registry.py): only
     # *resolving* pulls openhands, never importing the registry/control plane.

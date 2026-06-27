@@ -42,12 +42,21 @@ class AgentTask:
     LLM as its api_key — the per-run LiteLLM **virtual key** (minted with a ``max_budget``)
     when the proxy is on, so the proxy enforces the run's budget mid-call. ``None`` (the
     default) ⇒ the adapter builds the LLM exactly as before (proxy master key, or
-    ``OPENROUTER_API_KEY`` when the proxy is off)."""
+    ``OPENROUTER_API_KEY`` when the proxy is off).
+
+    ``workspace_mode`` (M-brownfield Slice 1) selects how the docker adapter syncs the host
+    ``workspace_dir`` ↔ the container. ``"greenfield"`` (the default) ⇒ byte-for-byte the prior
+    behavior (the ephemeral workspace; non-hidden deliverable files only). ``"brownfield"`` ⇒ the
+    git-aware sync for a real-repo worktree (push the repo's tracked + untracked-not-ignored files
+    incl. tracked dotfiles; pull everything except ``.git/`` + the server scaffolding). It is an
+    ADDITIVE, defaulted field — exactly the established way ``llm_api_key`` extended this contract,
+    NOT a breaking interface change; the Control Plane never learns which adapter is active."""
 
     instruction: str
     workspace_dir: str
     model: str | None = None
     llm_api_key: str | None = None
+    workspace_mode: Literal["greenfield", "brownfield"] = "greenfield"
 
 
 @dataclass(frozen=True)

@@ -10,7 +10,7 @@ import subprocess
 from unittest.mock import patch
 
 from tvashtr.engines import docker_runtime
-from tvashtr.engines.docker_runtime import enumerate_push_files
+from tvashtr.engines.docker_runtime import enumerate_push_files, enumerate_push_files_git
 
 _RUN = "tvashtr.engines.docker_runtime.subprocess.run"
 
@@ -95,3 +95,45 @@ def test_enumerate_push_files_empty_on_git_only(tmp_path):
     (tmp_path / ".git").mkdir()
     (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main")
     assert enumerate_push_files(str(tmp_path)) == []
+
+
+# --- M-brownfield: enumerate_push_files_git (git-aware; tracked dotfiles in, ignored junk out) ----
+
+
+def _git(repo, *args):
+    return subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+    )
+
+
+def test_enumerate_push_files_git_includes_tracked_dotfiles_excludes_ignored(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t.local")
+    _git(repo, "config", "user.name", "t")
+    (repo / ".eslintrc").write_text("{}\n")  # a TRACKED dotfile — must reach the container
+    (repo / "src").mkdir()
+    (repo / "src" / "a.py").write_text("x\n")  # tracked nested
+    (repo / ".gitignore").write_text("node_modules/\nbuild/\n")
+    (repo / "node_modules").mkdir()
+    (repo / "node_modules" / "junk.js").write_text("j\n")  # tracked? no — about to be ignored
+    _git(repo, "add", ".eslintrc", "src/a.py", ".gitignore")
+    _git(repo, "commit", "-qm", "init")
+    (repo / "new.txt").write_text("new\n")  # UNTRACKED, not ignored
+    (repo / "build").mkdir()
+    (repo / "build" / "out.o").write_text("o\n")  # untracked + ignored
+
+    rels = enumerate_push_files_git(str(repo))
+
+    # tracked (incl. the dotfile) + untracked-not-ignored are present
+    assert ".eslintrc" in rels
+    assert "src/a.py" in rels
+    assert ".gitignore" in rels
+    assert "new.txt" in rels
+    # ignored dirs (tracked-never, untracked-ignored) + .git are absent
+    assert not any(r.startswith("node_modules/") for r in rels)
+    assert not any(r.startswith("build/") for r in rels)
+    assert not any(r.startswith(".git/") for r in rels)
+    # deterministic + deduped
+    assert rels == sorted(set(rels))

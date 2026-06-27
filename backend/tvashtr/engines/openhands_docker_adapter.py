@@ -39,7 +39,11 @@ from openhands.workspace import DockerWorkspace
 
 from tvashtr.config import agent_llm_routing, get_settings
 from tvashtr.engines.base import AgentRunResult, AgentTask, EngineEvent
-from tvashtr.engines.docker_runtime import enumerate_push_files, reap_agent_containers
+from tvashtr.engines.docker_runtime import (
+    enumerate_push_files,
+    enumerate_push_files_git,
+    reap_agent_containers,
+)
 
 # Engine-neutral helpers shared with the local adapter (single source of truth for
 # the OpenHands-event -> EngineEvent mapping + the post-run usage read). Reused, not
@@ -78,7 +82,7 @@ def _detect_platform() -> str:
     return "linux/amd64"
 
 
-def _pull_workspace(workspace, host_dir: str) -> list[str]:
+def _pull_workspace(workspace, host_dir: str, mode: str = "greenfield") -> list[str]:
     """DQ1 pull-at-end (no bind-mount): copy the agent's produced files out of the
     container's working dir onto the host, preserving relative paths.
 
@@ -89,13 +93,23 @@ def _pull_workspace(workspace, host_dir: str) -> list[str]:
     ``file_download`` each into ``host_dir``. Returns the relative paths pulled —
     the engine-neutral ``files_changed``; the host-side ``idempotent_ship`` then
     commits ``host_dir`` exactly as in the local path.
+
+    ``mode`` (M-brownfield Slice 1) selects the enumeration: ``"greenfield"`` excludes EVERY hidden
+    path at any depth (``'*/.*'`` — the prior behavior, byte-identical); ``"brownfield"`` keeps
+    dotfiles (a real repo's edited ``.github/`` / config must come back) and excludes only ``.git/``
+    — relying on the host-side ``git add -A`` (which honors the repo's ``.gitignore``) as the real
+    filter. BOTH modes still drop the server scaffolding (``bash_events/`` / ``conversations/``).
     """
     working_dir = workspace.working_dir
-    # Non-hidden files only (mirrors the local adapter's _snapshot, which skips
-    # dotfiles/dirs). `cwd` makes the paths relative to the working dir.
-    listing = workspace.execute_command(
-        "find . -type f -not -path '*/.*'", cwd=working_dir, timeout=30.0
+    # Greenfield: non-hidden files only (mirrors the local adapter's _snapshot). Brownfield: include
+    # dotfiles, exclude only the (non-existent-in-container, but defensive) .git tree. `cwd` makes
+    # the paths relative to the working dir.
+    find_cmd = (
+        "find . -type f -not -path './.git/*'"
+        if mode == "brownfield"
+        else "find . -type f -not -path '*/.*'"
     )
+    listing = workspace.execute_command(find_cmd, cwd=working_dir, timeout=30.0)
     if getattr(listing, "exit_code", 0) != 0:
         # Surface an enumeration failure HERE (caught by run() -> status="failed")
         # rather than silently pulling nothing and dying later at "nothing to ship".
@@ -128,7 +142,7 @@ def _pull_workspace(workspace, host_dir: str) -> list[str]:
     return pulled
 
 
-def _push_workspace(workspace, host_dir: str) -> list[str]:
+def _push_workspace(workspace, host_dir: str, mode: str = "greenfield") -> list[str]:
     """Seed the container's working dir from the host BEFORE the agent runs — the
     mirror of :func:`_pull_workspace` (P1.5c). The cyclic loop reworks the prior
     round's deliverable in place (Q4), but in docker mode each iteration gets a FRESH
@@ -137,17 +151,22 @@ def _push_workspace(workspace, host_dir: str) -> list[str]:
     source of truth — the pull writes it at the end of each iteration) into the new
     container so the agent resumes on the prior round's files.
 
-    Stateless host->container sync: enumerate the host's non-hidden deliverable files
-    (``enumerate_push_files``) and ``file_upload`` each to ``{working_dir}/{rel}``,
-    mkdir -p'ing nested container dirs first (``file_upload`` may not create parents).
-    Iteration 1's host is freshly git-init'd (only ``.git``) -> enumerates to ``[]`` ->
-    a no-op, so NO iteration-number plumbing is needed (the host's contents drive it).
-    ``file_upload(source_path, destination_path)`` takes the HOST path first, the
-    CONTAINER path second (confirmed against the installed SDK), and returns the same
-    ``FileOperationResult`` (``.success`` / ``.error``) as the pull's ``file_download``.
-    Returns the relative paths pushed (for the log)."""
+    Stateless host->container sync: enumerate the host's deliverable files and ``file_upload`` each
+    to ``{working_dir}/{rel}``, mkdir -p'ing nested container dirs first (``file_upload`` may not
+    create parents). ``mode`` (M-brownfield Slice 1) selects the enumeration: ``"greenfield"`` →
+    ``enumerate_push_files`` (non-hidden deliverables — the prior behavior, byte-identical; the
+    fresh-git-init'd iteration-1 host holds only ``.git`` → ``[]`` → a no-op). ``"brownfield"``
+    → ``enumerate_push_files_git`` (the real repo's tracked + untracked-not-ignored files, incl.
+    tracked dotfiles, honoring ``.gitignore``) so the container sees the real repo, not a stripped
+    copy. ``file_upload(source_path, destination_path)`` takes the HOST path first, the CONTAINER
+    path second (confirmed against the installed SDK). Returns the relative paths pushed (for the
+    log)."""
     working_dir = workspace.working_dir
-    rels = enumerate_push_files(host_dir)
+    rels = (
+        enumerate_push_files_git(host_dir)
+        if mode == "brownfield"
+        else enumerate_push_files(host_dir)
+    )
     if not rels:
         return []
     pushed: list[str] = []
@@ -290,7 +309,7 @@ class OpenHandsDockerAdapter:
                 # so a docker-mode iteration > 1 resumes on iteration N-1's files (the
                 # mirror of the pull-at-end). Iteration 1's host holds only .git ->
                 # enumerates to [] -> a clean no-op (no log for the common case).
-                seeded = _push_workspace(workspace, host_dir)
+                seeded = _push_workspace(workspace, host_dir, task.workspace_mode)
                 if seeded:
                     logger.warning(
                         "OpenHandsDockerAdapter (%s): seeded %d file(s) from the host into the "
@@ -313,7 +332,7 @@ class OpenHandsDockerAdapter:
                 # Decision 2 path, identical accessor over the remote conversation.
                 prompt_tokens, completion_tokens, cost_usd = _read_usage(conversation)
                 # DQ1: pull the agent's files to the host before teardown.
-                files_changed = _pull_workspace(workspace, host_dir)
+                files_changed = _pull_workspace(workspace, host_dir, task.workspace_mode)
         except Exception as exc:
             # P1.4b: classify the proxy's mid-call budget cutoff as ``over_budget`` (else a
             # generic ``failed``). In DOCKER mode the SDK strips the budget message from the

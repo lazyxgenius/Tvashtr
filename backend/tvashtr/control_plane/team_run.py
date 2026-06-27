@@ -52,6 +52,7 @@ from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
+from tvashtr.control_plane.worktree import add_worktree, build_repo_grounding
 from tvashtr.db import session_scope
 from tvashtr.documents.service import (
     add_version,
@@ -81,6 +82,10 @@ def load_graph_step(run_id: str) -> dict:
     resolve with the same code."""
     with session_scope() as session:
         run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
+        # M-brownfield: surface the run's brownfield target off the SAME Run row (no extra query).
+        # ``repo_path is None`` ⇒ greenfield (the legacy path); non-NULL ⇒ brownfield.
+        repo_path = run.repo_path
+        base_ref = run.base_ref
         nodes = (
             session.execute(select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id))
             .scalars()
@@ -123,6 +128,10 @@ def load_graph_step(run_id: str) -> dict:
         "nodes": nodes_out,
         "edges": edges_out,
         "start_node_id": roots[0] if roots else None,
+        # M-brownfield: the run's brownfield target (both NULL for a greenfield run). Recorded in
+        # this step's output so the walk reads the SAME value deterministically on resume.
+        "repo_path": repo_path,
+        "base_ref": base_ref,
     }
 
 
@@ -327,15 +336,46 @@ def _write_workspace_gitignore(workspace: str) -> None:
 
 @DBOS.step()
 def engineer_setup_step(run_id: str) -> str:
-    """Create a fresh local workspace, git-init it (repo-local identity), and write the
-    workspace ``.gitignore`` (P1.5c) — all once, at the first agent node (DBOS step-replay
-    won't re-run it on resume)."""
+    """Set up the workspace ONCE, at the first agent node (DBOS step-replay won't re-run it on
+    resume). Two additive branches gated on the Run's ``repo_path`` (read here off the immutable,
+    create-time Run row — so the GREENFIELD call site stays byte-for-byte unchanged and the read
+    replays deterministically: the whole recorded step is skipped on resume, its workspace output
+    replayed):
+
+    * **Greenfield** (``repo_path is None`` — EXACTLY as before): a fresh empty local workspace,
+      git-init'd with repo-local identity, plus the workspace ``.gitignore`` (P1.5c).
+    * **Brownfield** (M-brownfield Slice 1): an isolated ``git worktree`` of the user's real repo on
+      branch ``tvashtr/<run_id>`` cut from ``base_ref`` (the user's working tree is never touched;
+      the branch lands in the user's repo via the shared object store). The branch is recorded on
+      the Run as ``ship_branch``. No workspace ``.gitignore`` is written (the real repo has its
+      own, and ``idempotent_ship``'s ``git add -A`` honors it — D2/D3)."""
     from tvashtr.engines.openhands_adapter import make_local_workspace  # lazy (openhands)
 
+    with session_scope() as session:
+        run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
+        repo_path = run.repo_path
+        base_ref = run.base_ref
+
     workspace = make_local_workspace(run_id)
+    if repo_path is not None:
+        branch = add_worktree(repo_path, workspace, run_id, base_ref)
+        with session_scope() as session:
+            session.execute(
+                update(Run).where(Run.id == uuid.UUID(run_id)).values(ship_branch=branch)
+            )
+        return workspace
     init_workspace_repo(workspace)
     _write_workspace_gitignore(workspace)
     return workspace
+
+
+@DBOS.step()
+def brownfield_grounding_step(run_id: str, workspace: str, repo_basename: str) -> str:
+    """Compute the D6 repo-grounding block for a brownfield run, ONCE, right after the worktree is
+    set up. A recorded ``@DBOS.step`` so the block is checkpointed and replayed VERBATIM on resume
+    (deterministic instruction across a crash). Greenfield never calls it. The pure builder
+    (``worktree.build_repo_grounding``) keeps it openhands-free + unit-tested."""
+    return build_repo_grounding(workspace, repo_basename)
 
 
 # P1.4b: per-run virtual-key lifecycle constants.
@@ -567,6 +607,7 @@ def agent_run_step(
     vkey: str | None,
     reviewer_feedback: str | None,
     emits_outcome: bool,
+    grounding: str | None = None,
 ) -> dict:
     """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
     ``reviewer_agent_run_step``. Runs the node's ``node_prompt`` (its behavior, seeded by the
@@ -618,10 +659,21 @@ def agent_run_step(
             "Your prior work is in your current working directory — revise it IN PLACE to "
             "address this feedback. Do not start over and do not delete unrelated files."
         )
+    # M-brownfield (D6): for a brownfield run, the repo-grounding block is appended AFTER the
+    # idea+PRD(+revision), the same uniform-append shape. ``grounding`` is non-None ONLY for a
+    # brownfield run (computed once via ``brownfield_grounding_step``), so it doubles as the
+    # brownfield discriminator for the adapter's workspace-sync mode below. Greenfield → None →
+    # nothing appended and ``workspace_mode="greenfield"`` → the adapter's byte-for-byte prior path.
+    if grounding:
+        context += f"\n\n{grounding}"
     instruction = node_prompt + context
 
     task = AgentTask(
-        instruction=instruction, workspace_dir=workspace, model=model, llm_api_key=vkey
+        instruction=instruction,
+        workspace_dir=workspace,
+        model=model,
+        llm_api_key=vkey,
+        workspace_mode="brownfield" if grounding is not None else "greenfield",
     )
     # Select local vs Docker-sandboxed engine from the configured sandbox mode (P1.3a). The
     # EngineAdapter contract + AgentRunResult shape are identical across modes; the adapter is
@@ -664,14 +716,21 @@ def agent_run_step(
 
 @DBOS.step()
 def ship_step(run_id: str, workspace: str) -> dict:
-    """Idempotently ship the agent's work; record the sha/tag on the run."""
+    """Idempotently ship the agent's work; record the sha/tag on the run. ``idempotent_ship`` is
+    mount-agnostic — for a brownfield run ``workspace`` is the worktree whose HEAD IS
+    ``tvashtr/<run_id>``, so the commit + tag land on that real branch in the user's repo (D2). The
+    run's ``ship_branch`` (set at worktree setup; NULL for greenfield) is surfaced in the returned
+    dict so the run result/banner can show the produced branch."""
     ship = idempotent_ship(workspace, run_id)
     with session_scope() as session:
+        run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
+        ship_branch = run.ship_branch
         session.execute(
             update(Run)
             .where(Run.id == uuid.UUID(run_id))
             .values(ship_commit_sha=ship["sha"], ship_tag=ship["tag"])
         )
+    ship["ship_branch"] = ship_branch
     return ship
 
 
@@ -783,6 +842,15 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
     workspace: str | None = None  # lazily created at the first agent node
     reviewer_feedback: str | None = None
     pm_document_id: str | None = None
+    # M-brownfield: ``repo_path is None`` ⇒ greenfield (everything below is the legacy path,
+    # untouched); non-NULL ⇒ brownfield (an isolated worktree of the user's real repo + an appended
+    # repo-grounding block). ``grounding`` is computed ONCE at the first agent node (recorded →
+    # deterministic on resume) and threaded into each agent call; greenfield keeps it None.
+    # ``base_ref`` is read by engineer_setup_step off the Run row, so it is unused here.
+    repo_path: str | None = graph.get("repo_path")
+    brownfield = repo_path is not None
+    repo_basename = os.path.basename(repo_path.rstrip("/")) if brownfield else ""
+    grounding: str | None = None
 
     while current is not None:
         node = nodes_by_id[current]
@@ -853,7 +921,14 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # Set up the workspace ONCE, at the first agent node — a worker reworks the prior
                 # round's files in place across iterations (DBOS step-replay won't recreate it on
                 # resume). A reviewer-style node reuses this SAME workspace, so it sees the build.
+                # Brownfield: a worktree of the real repo; greenfield: the empty local workspace.
+                # (engineer_setup_step reads the Run's repo_path itself, so this call site is
+                # byte-for-byte the prior greenfield call — the existing suite exercises it intact.)
                 workspace = engineer_setup_step(run_id)
+                if brownfield:
+                    # D6: compute the repo-grounding block ONCE off the freshly-set-up worktree
+                    # (before the agent edits it), recorded → replayed verbatim on resume.
+                    grounding = brownfield_grounding_step(run_id, workspace, repo_basename)
             open_invocation_step(run_id, current, n)
             # Per-iteration virtual key: each mint reflects the THEN-current remaining budget,
             # so the proxy enforces the run cap across the whole loop (P1.4b composes).
@@ -869,6 +944,9 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # role. ``agent_run_step`` runs ``node["prompt"]`` generically; it harvests a verdict
             # iff ``emits`` (else outcome is None → the close label stays ``"built"``).
             emits = node_emits_outcome(edges, current)
+            # M-brownfield: thread the repo-grounding block into the brownfield agent call.
+            # Greenfield (``grounding is None``) omits the kwarg entirely, so this is byte-for-byte
+            # the prior greenfield call — the existing offline suite drives that path UNCHANGED.
             result = agent_run_step(
                 run_id,
                 node["prompt"],
@@ -880,6 +958,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 vkey,
                 reviewer_feedback,
                 emits,
+                **({"grounding": grounding} if grounding is not None else {}),
             )
             delete_vkey_step(run_id, vkey)
 
@@ -960,6 +1039,8 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     "document_id": pm_document_id,
                     "ship_sha": ship["sha"],
                     "ship_tag": ship["tag"],
+                    # M-brownfield: the real branch the change landed on (None for greenfield).
+                    "ship_branch": ship.get("ship_branch"),
                     "cost_total": final["cost_total_usd"],
                 }
             final = finalize_run_step(run_id, status="rejected")

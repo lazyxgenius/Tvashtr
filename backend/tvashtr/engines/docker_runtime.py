@@ -136,3 +136,30 @@ def enumerate_push_files(host_dir: str) -> list[str]:
             rel = os.path.relpath(os.path.join(dirpath, name), root)
             rels.append(rel)
     return sorted(rels)
+
+
+def enumerate_push_files_git(host_dir: str) -> list[str]:
+    """BROWNFIELD seed enumeration (M-brownfield Slice 1): the relative paths the docker adapter
+    seeds into a fresh iteration container for a real-repo worktree. Unlike the greenfield
+    :func:`enumerate_push_files` (non-hidden deliverable files only), this is **git-aware** —
+    ``git -C host_dir ls-files -c -o --exclude-standard``: the repo's TRACKED files (``-c``,
+    including tracked dotfiles like ``.github/`` / ``.eslintrc`` a real repo needs) PLUS the agent's
+    UNTRACKED-not-ignored files (``-o --exclude-standard``, honoring the repo's own ``.gitignore``),
+    and never ``.git`` itself. So a real repo's config reaches the container while ignored junk does
+    not. ``-z`` (NUL-delimited) is robust to paths with spaces/newlines (no octal-quoting).
+    ``openhands``-free (subprocess only), so it is unit-tested here against a temp repo.
+
+    The greenfield :func:`enumerate_push_files` is left UNTOUCHED — this is a separate, additive
+    enumeration the adapter selects on ``task.workspace_mode``."""
+    root = host_dir.rstrip("/")
+    proc = subprocess.run(
+        ["git", "-C", root, "ls-files", "-c", "-o", "--exclude-standard", "-z"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=_DOCKER_TIMEOUT_S,
+    )
+    rels = [r for r in proc.stdout.split("\0") if r]
+    # ``-c -o`` lists a tracked file once + an untracked file once (disjoint), but dedup + sort for
+    # a deterministic, collision-free push order.
+    return sorted(set(rels))
