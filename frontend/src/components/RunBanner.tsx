@@ -49,11 +49,17 @@ export function RunBanner({
       ) : (
         costs.length > 0 && <Item label="cost" value={`$${totalFromRows.toFixed(4)}`} />
       )}
-      {run?.ship_tag && (
-        <Item
-          label="ship"
-          value={run.ship_commit_sha ? run.ship_commit_sha.slice(0, 9) : run.ship_tag}
-        />
+      {run?.ship_branch ? (
+        // M-brownfield: a brownfield run landed on a real branch in the user's repo — surface it
+        // (the branch IS the deliverable; the redundant ship tag is omitted for this run).
+        <Item label="branch" value={run.ship_branch} />
+      ) : (
+        run?.ship_tag && (
+          <Item
+            label="ship"
+            value={run.ship_commit_sha ? run.ship_commit_sha.slice(0, 9) : run.ship_tag}
+          />
+        )
       )}
     </div>
   );

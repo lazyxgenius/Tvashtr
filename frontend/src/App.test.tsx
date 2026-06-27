@@ -215,13 +215,29 @@ describe("App — poll lifecycle (keystone)", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
 
-    // Run the team: POST /api/runs -> getGraph -> the poll effect arms. (Sync act for the click;
-    // the async advance just below flushes the handleRunTeam fetch microtasks.)
+    // Run the team: "Run this team" now OPENS the launch panel (Slice 2); the panel's Run fires the
+    // greenfield launch -> POST /api/runs -> getGraph -> the poll effect arms. (Sync acts for the
+    // clicks; the async advance flushes the handleLaunch fetch microtasks.)
     act(() => {
       fireEvent.click(screen.getByRole("button", { name: "Run this team" }));
     });
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Greenfield launch posts ONLY { team_graph_id } — byte-for-byte the prior behavior (the brief's
+    // hard contract: empty idea + toggle off ⇒ the server default idea, the API smokes untouched).
+    const postCall = fetchMock.mock.calls.find(
+      (c) =>
+        urlOf(c[0] as RequestInfo | URL) === "/api/runs" &&
+        (c[1] as RequestInit | undefined)?.method === "POST",
+    );
+    expect(postCall).toBeTruthy();
+    expect(JSON.parse((postCall![1] as RequestInit).body as string)).toEqual({
+      team_graph_id: "team-1",
     });
 
     // The canvas left the empty landing state (a graph is mounted).

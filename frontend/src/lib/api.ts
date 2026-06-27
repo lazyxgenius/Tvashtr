@@ -80,6 +80,12 @@ export interface RunRow {
   pm_document_id: string | null;
   ship_commit_sha: string | null;
   ship_tag: string | null;
+  // M-brownfield: the brownfield run target — all null for a greenfield run. The backend
+  // `_run_to_dict` already returns these three; declaring them here is what lets the polling FE
+  // (and the run banner) read them. Optional so existing greenfield fixtures stay valid.
+  repo_path?: string | null;
+  base_ref?: string | null;
+  ship_branch?: string | null;
   cost_total_usd: number | null;
   created_at: string;
   updated_at: string;
@@ -111,19 +117,62 @@ async function getJSON<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+// The launch options the launch panel collects (M-brownfield Slice 2). All optional: an `idea`
+// (the feature request — empty ⇒ the server default), and a brownfield run target (`repo_path` +
+// `base_ref`). Each field is included in the POST body ONLY when set, so a no-opts call is
+// byte-for-byte the prior greenfield launch.
+export interface RunTeamOptions {
+  idea?: string;
+  repo_path?: string;
+  base_ref?: string;
+}
+
 // Clone-on-launch (P1.8b): "Run this team" launches a run on a fresh deep-clone of the persistent
 // authored team (the user's edited prompts/models), not a throwaway builder graph. The backend
 // clones the team, seeds the run, and starts the workflow — the existing live run view then takes
 // over via the returned run_id (the same poll surface as before).
-export async function runTeam(teamGraphId: string): Promise<string> {
+//
+// M-brownfield Slice 2: `opts` carries the launch panel's idea + optional brownfield target. Each
+// field is added to the body ONLY when non-empty, so `runTeam(id)` (or `runTeam(id, {})`) posts
+// exactly `{ team_graph_id }` — the greenfield launch is byte-for-byte unchanged.
+export async function runTeam(teamGraphId: string, opts: RunTeamOptions = {}): Promise<string> {
+  const body: { team_graph_id: string; idea?: string; repo_path?: string; base_ref?: string } = {
+    team_graph_id: teamGraphId,
+  };
+  if (opts.idea) body.idea = opts.idea;
+  if (opts.repo_path) body.repo_path = opts.repo_path;
+  if (opts.base_ref) body.base_ref = opts.base_ref;
   const res = await fetch("/api/runs", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ team_graph_id: teamGraphId }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`POST /api/runs -> ${res.status}`);
   const data = (await res.json()) as { run_id: string };
   return data.run_id;
+}
+
+// M-brownfield Slice 2: the discriminated result of `POST /api/repo/inspect` (the backend returns a
+// 200 in BOTH cases — never an exception — so the FE renders it inline). `is_git: true` carries the
+// branch list + the current branch (the default base) + the tracked-file count (drives the
+// large-repo model hint); `is_git: false` carries a human-readable `error`.
+export type RepoInspect =
+  | {
+      is_git: true;
+      current_branch: string | null;
+      branches: string[];
+      tracked_file_count: number;
+    }
+  | { is_git: false; error: string };
+
+export async function inspectRepo(path: string): Promise<RepoInspect> {
+  const res = await fetch("/api/repo/inspect", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!res.ok) throw new Error(`POST /api/repo/inspect -> ${res.status}`);
+  return (await res.json()) as RepoInspect;
 }
 
 export const getGraph = (runId: string): Promise<GraphData> =>
@@ -184,6 +233,11 @@ export const MODEL_PRESETS = [
   "openrouter/meta-llama/llama-3.1-8b-instruct",
   "openrouter/google/gemini-flash-1.5",
 ] as const;
+
+// M-brownfield Slice 2 (D4): above this many tracked files the launch panel surfaces a dismissible
+// "consider a stronger worker model" advisory. A recommendation, never enforced. (Lives here, a
+// non-component module, so the component file exports only components — Fast Refresh stays happy.)
+export const LARGE_REPO_FILE_THRESHOLD = 300;
 
 // The user's library teams (the rail). Seeded server-side so it is never empty.
 export async function getTeams(): Promise<TeamSummary[]> {

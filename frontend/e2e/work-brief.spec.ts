@@ -52,6 +52,8 @@ test("work-brief: the run-view panel surfaces each node's 'Last run' brief (thin
     (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
   );
   await page.getByRole("button", { name: "Run this team" }).click();
+  // Slice 2: "Run this team" opens the launch panel; its Run fires the (greenfield) launch.
+  await page.getByRole("button", { name: "Run", exact: true }).click();
   const runId = ((await (await startResp).json()) as { run_id: string }).run_id;
   expect(runId, "Run-this-team returns a run_id").toBeTruthy();
   console.log(`[work-brief-e2e] run_id = ${runId}`);

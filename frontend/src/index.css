@@ -445,3 +445,92 @@ body,
   list-style: none;
   color: var(--text-secondary);
 }
+
+/* The launch panel (M-brownfield Slice 2): a quiet hairline popover anchored under "Run this team".
+   Reuses the .tv-card surface + the .tv-field / .tv-seg / .tv-validity vocabulary; only the popover
+   positioning, the field inputs, and the large-repo advisory get launch-specific rules. No heavy
+   modal chrome — the canvas stays the star. */
+.tv-launch {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  z-index: 40;
+  width: 360px;
+  max-width: calc(100vw - var(--space-6));
+  max-height: 72vh;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+.tv-launch__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+.tv-launch__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+.tv-launch__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.tv-launch__input {
+  width: 100%;
+  font-family: var(--font-code);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+  color: var(--text-primary);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  transition:
+    box-shadow var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+.tv-launch__input:focus {
+  outline: none;
+  border-color: var(--coral-200);
+  box-shadow: var(--shadow-focus);
+}
+.tv-launch__textarea {
+  resize: vertical;
+  min-height: 64px;
+  font-family: var(--font-body);
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-relaxed);
+}
+.tv-launch__select {
+  cursor: pointer;
+}
+.tv-launch__note {
+  font-size: var(--fs-caption);
+  color: var(--text-tertiary);
+}
+.tv-launch__hint {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--accent-tint);
+  border: var(--border-width) solid color-mix(in srgb, var(--accent) 22%, transparent);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+  color: var(--text-secondary);
+}
+.tv-launch__dismiss {
+  align-self: flex-start;
+}
+.tv-launch__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}

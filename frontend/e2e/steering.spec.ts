@@ -40,6 +40,8 @@ test("J3 live steering: a human rewrites the PRD at the gate through the real Ti
   const runControl = page.getByRole("button", { name: "Run this team" });
   await expect(runControl).toBeEnabled({ timeout: 30_000 });
   await runControl.click();
+  // Slice 2: "Run this team" opens the launch panel; its Run fires the (greenfield) launch.
+  await page.getByRole("button", { name: "Run", exact: true }).click();
   const runId = ((await (await startResp).json()) as { run_id: string }).run_id;
   expect(runId, "the Start control returns a run_id").toBeTruthy();
   console.log(`[steering-e2e] run_id = ${runId}`);

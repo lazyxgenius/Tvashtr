@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -132,6 +132,9 @@ work-brief-e2e: ## Live per-node work-brief E2E (Option A): (1) API-driven — a
 
 authoring-brief-e2e: ## Live M2 authoring-brief E2E: create a review_loop team, Run it, return to the AUTHORING view, click the PM (thinker) node, and assert its node panel's "Last run" section shows "Drafted the spec from the idea." + a relative-time provenance tag (the cloned_from_node_id linkage + authoring read + view-switch re-fetch). Captures a screenshot. Real NIM agent + Vite dev server; needs NVIDIA_BUILD_API_KEY, skips otherwise.
 	./scripts/authoring_brief_e2e.sh
+
+launch-panel-e2e: ## Live M-brownfield Slice 2 launch-panel E2E: open the app, click "Run this team" (assert the launch panel OPENS), flip "work on a local repo", type a REAL fixture git repo path (assert the base-branch dropdown populates from the live POST /api/repo/inspect round-trip), and confirm the greenfield path still launches ({ team_graph_id } only). A screenshot per check. NO agent run — needs NO NVIDIA key; just Postgres + a real backend + Vite + Playwright.
+	./scripts/launch_panel_e2e.sh
 
 budget-demo: ## Live budget cap demo: tiny per-run cap -> breach -> auto-approve -> ship (needs key; skips otherwise)
 	./scripts/budget_demo.sh

@@ -73,6 +73,8 @@ test("P1.8b team library: create a team from a template, edit its Engineer node,
     (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
   );
   await page.getByRole("button", { name: "Run this team" }).click();
+  // Slice 2: "Run this team" opens the launch panel; its Run fires the (greenfield) launch.
+  await page.getByRole("button", { name: "Run", exact: true }).click();
   const runId = ((await (await startResp).json()) as { run_id: string }).run_id;
   expect(runId, "the Run-this-team control returns a run_id").toBeTruthy();
   console.log(`[team-library-e2e] run_id = ${runId}`);

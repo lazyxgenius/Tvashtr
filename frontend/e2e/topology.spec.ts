@@ -164,6 +164,8 @@ test("P1.8d: author root thinker → Engineer → Ship from a blank team, Run it
     (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
   );
   await runBtn.click();
+  // Slice 2: "Run this team" opens the launch panel; its Run fires the (greenfield) launch.
+  await page.getByRole("button", { name: "Run", exact: true }).click();
   const runId = ((await (await runResp).json()) as { run_id: string }).run_id;
   expect(runId, "the UI launches the authored team").toBeTruthy();
   console.log(`[topology-e2e] launched run ${runId} — polling for the ship…`);

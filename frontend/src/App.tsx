@@ -4,6 +4,7 @@ import { TeamCanvas } from "./canvas/TeamCanvas";
 import { ABCompare } from "./components/ABCompare";
 import { BackendDot } from "./components/BackendDot";
 import { CancelRunButton } from "./components/CancelRunButton";
+import { LaunchPanel } from "./components/LaunchPanel";
 import { RunBanner } from "./components/RunBanner";
 import { TasksDrawer } from "./components/TasksDrawer";
 import { TeamsRail } from "./components/TeamsRail";
@@ -34,6 +35,7 @@ import {
   resolveTask,
   type RunRow,
   runTeam,
+  type RunTeamOptions,
   saveTeamPositions,
   type TaskDecision,
   type TeamGraphData,
@@ -71,6 +73,9 @@ export default function App() {
   const [validity, setValidity] = useState<GraphValidity | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [starting, setStarting] = useState(false);
+  // M-brownfield Slice 2: "Run this team" opens the launch panel (it no longer fires the run
+  // directly); the panel's Run calls `handleLaunch` with the assembled options.
+  const [launchOpen, setLaunchOpen] = useState(false);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState(false);
   // Run-view selection is by NODE ID (Option A): a topology-edited team can carry duplicate role
@@ -285,25 +290,31 @@ export default function App() {
     setFocusNodeId(null);
   }, []);
 
-  // "Run this team": clone the CURRENT team into a fresh run-scoped snapshot and launch it; the
-  // existing live run view then takes over (same poll surface as before). `teams`/`currentTeamId`
-  // survive `resetRunState`, so returning to authoring lands back on the same team.
-  const handleRunTeam = useCallback(async () => {
-    if (!currentTeamId) return;
-    setStarting(true);
-    setError(false);
-    resetRunState();
-    try {
-      const id = await runTeam(currentTeamId);
-      const g = await getGraph(id);
-      setGraph(g);
-      setRunId(id);
-    } catch {
-      setError(true);
-    } finally {
-      setStarting(false);
-    }
-  }, [currentTeamId, resetRunState]);
+  // The launch (M-brownfield Slice 2): clone the CURRENT team into a fresh run-scoped snapshot and
+  // launch it with the panel's options (idea + optional brownfield repo target); the existing live
+  // run view then takes over (same poll surface as before). `teams`/`currentTeamId` survive
+  // `resetRunState`, so returning to authoring lands back on the same team. A no-field `opts` posts
+  // exactly `{ team_graph_id }` — the greenfield launch is byte-for-byte unchanged.
+  const handleLaunch = useCallback(
+    async (opts: RunTeamOptions) => {
+      if (!currentTeamId) return;
+      setLaunchOpen(false);
+      setStarting(true);
+      setError(false);
+      resetRunState();
+      try {
+        const id = await runTeam(currentTeamId, opts);
+        const g = await getGraph(id);
+        setGraph(g);
+        setRunId(id);
+      } catch {
+        setError(true);
+      } finally {
+        setStarting(false);
+      }
+    },
+    [currentTeamId, resetRunState],
+  );
 
   // Return to the authoring view (after a run finishes) to edit the current team and run again.
   // Refetches its graph so any edits made elsewhere are reflected.
@@ -550,14 +561,24 @@ export default function App() {
         {mode === "single" && (
           <>
             {authoring ? (
-              <button
-                className="tv-btn"
-                onClick={() => void handleRunTeam()}
-                disabled={starting || currentTeamId === null || !teamRunnable}
-                title={teamRunnable ? undefined : "Fix the team before running (see the issues)."}
-              >
-                {starting ? "Starting…" : "Run this team"}
-              </button>
+              <span style={{ position: "relative", display: "inline-flex" }}>
+                <button
+                  className="tv-btn"
+                  onClick={() => setLaunchOpen(true)}
+                  disabled={starting || currentTeamId === null || !teamRunnable}
+                  title={teamRunnable ? undefined : "Fix the team before running (see the issues)."}
+                >
+                  {starting ? "Starting…" : "Run this team"}
+                </button>
+                {launchOpen && currentTeamId !== null && (
+                  <LaunchPanel
+                    teamNodes={teamGraph?.nodes ?? []}
+                    starting={starting}
+                    onLaunch={(opts) => void handleLaunch(opts)}
+                    onClose={() => setLaunchOpen(false)}
+                  />
+                )}
+              </span>
             ) : (
               <>
                 <button className="tv-btn" onClick={handleEditTeam} disabled={inFlight}>
