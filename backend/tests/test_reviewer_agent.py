@@ -16,7 +16,7 @@ resolved, so ``test_registry`` stays green.
 import uuid
 from pathlib import Path
 
-from conftest import seed_pm_prd
+from conftest import auth_user_id, seed_pm_prd
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select
 
@@ -37,6 +37,7 @@ def _make_review_loop_run() -> str:
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea="build greeting.txt",
                 workflow_id=run_id,
                 status="running",

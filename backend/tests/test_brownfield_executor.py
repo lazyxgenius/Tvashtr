@@ -15,7 +15,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from conftest import seed_pm_prd
+from conftest import auth_user_id, seed_pm_prd
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select
 
@@ -83,6 +83,7 @@ def test_brownfield_run_lands_on_real_branch_offline(client, monkeypatch, tmp_pa
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea="Add a subtract(a, b) function to calculator.py.",
                 workflow_id=run_id,
                 status="running",
@@ -232,6 +233,7 @@ def test_brownfield_review_loop_worker_gets_protocol_reviewer_does_not_offline(
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea=idea,
                 workflow_id=run_id,
                 status="running",
@@ -316,6 +318,7 @@ def test_brownfield_review_loop_reviewer_cannot_clobber_worker_edit_offline(
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea=idea,
                 workflow_id=run_id,
                 status="running",

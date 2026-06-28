@@ -22,7 +22,7 @@ import os
 import uuid
 from pathlib import Path
 
-from conftest import seed_pm_prd
+from conftest import auth_user_id, seed_pm_prd
 from dbos import DBOS, SetWorkflowID
 
 from tvashtr.control_plane import team_run
@@ -90,6 +90,7 @@ def _run_clone(library_id: str) -> tuple[str, str]:
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(clone_id),
+                owner_id=auth_user_id(),
                 idea="build greeting.txt",
                 workflow_id=run_id,
                 status="running",

@@ -12,6 +12,7 @@ migration/executor coupling: the endpoint just reflects already-persisted rows.
 import uuid
 from decimal import Decimal
 
+from conftest import auth_user_id
 from sqlalchemy import select
 
 from tvashtr.control_plane.teams import build_review_loop_team, build_two_node_team
@@ -39,6 +40,7 @@ def _seed_run(
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea=idea,
                 workflow_id=run_id,
                 status=status,

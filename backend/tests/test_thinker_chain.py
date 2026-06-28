@@ -16,6 +16,7 @@ import os
 import uuid
 from pathlib import Path
 
+from conftest import auth_user_id
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import func, select
 
@@ -56,6 +57,7 @@ def _make_thinker_chain_run() -> str:
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea="build greeting.txt",
                 workflow_id=run_id,
                 status="running",

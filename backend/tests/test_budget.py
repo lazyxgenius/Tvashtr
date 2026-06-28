@@ -13,6 +13,7 @@ import time
 import uuid
 from decimal import Decimal
 
+from conftest import auth_user_id
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select
 
@@ -52,6 +53,7 @@ def _make_run(*, cap: Decimal | None = None, overridden: bool = False) -> str:
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea="budget probe",
                 workflow_id=run_id,
                 status="running",

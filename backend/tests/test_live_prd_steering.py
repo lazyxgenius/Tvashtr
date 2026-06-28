@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 from uuid import uuid4
 
+from conftest import auth_user_id
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select, update
 
@@ -74,6 +75,7 @@ def test_read_latest_prd_step_returns_latest_version(client):
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea="build greeting.txt",
                 workflow_id=run_id,
                 status="running",
@@ -113,6 +115,7 @@ def _make_review_loop_run() -> str:
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea="build greeting.txt",
                 workflow_id=run_id,
                 status="running",

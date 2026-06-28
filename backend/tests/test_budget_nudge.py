@@ -14,6 +14,8 @@ import sys
 import uuid
 from decimal import Decimal
 
+from conftest import auth_user_id
+
 from tvashtr.control_plane.budget_nudge import maybe_emit_budget_nudge_step
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.db import session_scope
@@ -29,6 +31,7 @@ def _make_run(*, cap: Decimal | None) -> str:
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea="nudge probe",
                 workflow_id=run_id,
                 status="running",

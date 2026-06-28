@@ -12,6 +12,7 @@ import time
 import uuid
 
 import pytest
+from conftest import auth_user_id
 from dbos import DBOS, SetWorkflowID
 from dbos._error import DBOSAwaitedWorkflowCancelledError
 from sqlalchemy import select
@@ -50,6 +51,7 @@ def _make_run() -> str:
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea="gate probe",
                 workflow_id=run_id,
                 status="running",

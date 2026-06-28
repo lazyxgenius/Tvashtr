@@ -24,7 +24,7 @@ import os
 import uuid
 from pathlib import Path
 
-from conftest import seed_pm_prd
+from conftest import auth_user_id, seed_pm_prd
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import func, select
 
@@ -43,6 +43,7 @@ def _make_review_loop_run() -> str:
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea="build greeting.txt",
                 workflow_id=run_id,
                 status="running",
@@ -238,6 +239,7 @@ def test_two_node_walk_ships_through_gate_and_terminal(client, monkeypatch, tmp_
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea="build greeting.txt",
                 workflow_id=run_id,
                 status="running",

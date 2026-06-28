@@ -8,6 +8,8 @@ loop-back ``loop_limit`` and the ``escalation`` edge). No key, no workflow start
 
 import uuid
 
+from conftest import auth_user_id
+
 from tvashtr.control_plane.teams import build_review_loop_team, build_two_node_team
 from tvashtr.db import session_scope
 from tvashtr.models import AgentInvocation, Run
@@ -20,6 +22,7 @@ def _seed(team_graph_id: str) -> str:
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
                 idea="seed idea",
                 workflow_id=run_id,
                 status="running",
