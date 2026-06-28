@@ -6837,6 +6837,7 @@ source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "bcrypt" },
+    { name = "cryptography" },
     { name = "dbos" },
     { name = "fastapi" },
     { name = "itsdangerous" },
@@ -6861,6 +6862,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.14" },
     { name = "bcrypt", specifier = ">=4" },
+    { name = "cryptography", specifier = ">=43" },
     { name = "dbos", specifier = "==2.23.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28" },

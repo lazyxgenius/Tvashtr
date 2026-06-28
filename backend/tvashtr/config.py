@@ -172,6 +172,19 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("TVASHTR_SESSION_SECRET", "session_secret"),
     )
 
+    # M-accounts Slice B: the Fernet key that encrypts BYOK provider keys at rest in
+    # ``provider_credentials`` (see ``control_plane.credentials``). A real 44-char urlsafe-base64
+    # ``Fernet.generate_key()`` value is hardcoded as the dev default so the offline suite + local dev
+    # work with no extra env. PRODUCTION MUST override ``TVASHTR_SECRET_KEY`` with its OWN generated
+    # key, and the key MUST be STABLE — the stored secrets are only decryptable with the SAME key, so
+    # rotating it strands every saved credential (re-enter them after a rotation). Distinct from
+    # ``session_secret`` (which only signs the login cookie); a leak of one does not compromise the
+    # other.
+    secret_key: str = Field(
+        default="TzxdlCpD6FYWPsjw6h7e3sYQw6EvjI-cmvJI2KQE7ho=",
+        validation_alias=AliasChoices("TVASHTR_SECRET_KEY", "secret_key"),
+    )
+
     def agent_llm_base_url(self, sandbox_mode: str) -> str:
         """The proxy base URL the agent's LLM points at, chosen by THIS run's sandbox
         mode. ``docker`` -> ``host.docker.internal`` (the agent-server container is on
