@@ -2,14 +2,28 @@ import { useState } from "react";
 
 import { ApiError, type AuthUser, login, register } from "../lib/api";
 
+// The login screen's mode — shared with the landing CTAs (M-accounts Slice B) so "Create your own
+// team" opens it pre-set to register.
+export type AuthMode = "login" | "register";
+
 /**
- * The login / register screen (M-accounts Slice A). The whole app sits behind this; on success it
+ * The login / register screen (M-accounts Slice A; Slice B added the landing entry). On success it
  * calls back with the authenticated identity. Email + password with a Log in / Register toggle and
  * inline errors for 401 (bad credentials), 409 (email taken), and 422 (validation). Plain button
  * onClick handlers (no raw <form> submit — avoids a full-page reload). Reuses the DS .tv-* vocabulary.
+ * `initialMode` lets the landing's "Create your own team" CTA open it in register mode; `onBack`
+ * (optional) returns to the landing page.
  */
-export function LoginScreen({ onAuthed }: { onAuthed: (user: AuthUser) => void }) {
-  const [mode, setMode] = useState<"login" | "register">("login");
+export function LoginScreen({
+  onAuthed,
+  initialMode = "login",
+  onBack,
+}: {
+  onAuthed: (user: AuthUser) => void;
+  initialMode?: AuthMode;
+  onBack?: () => void;
+}) {
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +126,12 @@ export function LoginScreen({ onAuthed }: { onAuthed: (user: AuthUser) => void }
         >
           {busy ? "…" : mode === "login" ? "Sign in" : "Create account"}
         </button>
+
+        {onBack && (
+          <button type="button" className="tv-btn tv-btn--link tv-auth__back" onClick={onBack}>
+            ← Back
+          </button>
+        )}
       </div>
     </div>
   );

@@ -174,6 +174,59 @@ export async function logout(): Promise<void> {
   if (!res.ok) throw new ApiError(res.status, `POST /api/auth/logout -> ${res.status}`);
 }
 
+// ---- Provider credentials (M-accounts Slice B: the account's BYOK keys) ----
+
+// One configured provider as the dashboard shows it — `provider · •••• last4`. The secret is NEVER
+// returned by the server, so it is not on this shape.
+export interface ProviderCredential {
+  provider: string;
+  key_last4: string;
+  created_at: string;
+}
+
+// The account's configured providers (oldest first). Empty for a fresh account.
+export async function listProviders(): Promise<ProviderCredential[]> {
+  const data = await getJSON<{ providers: ProviderCredential[] }>("/api/providers");
+  return data.providers;
+}
+
+// Add (or REPLACE) the account's key for a provider. Returns `{provider, key_last4}` — never the
+// secret (the plaintext is sent once, then only the last 4 are ever shown).
+export async function addProvider(
+  provider: string,
+  apiKey: string,
+): Promise<{ provider: string; key_last4: string }> {
+  const res = await fetch("/api/providers", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ provider, api_key: apiKey }),
+  });
+  if (!res.ok) throw new ApiError(res.status, `POST /api/providers -> ${res.status}`);
+  return (await res.json()) as { provider: string; key_last4: string };
+}
+
+// Remove the account's key for a provider (204, idempotent).
+export async function removeProvider(provider: string): Promise<void> {
+  const res = await fetch(`/api/providers/${encodeURIComponent(provider)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /api/providers/${provider} -> ${res.status}`);
+}
+
+// ---- The account's runs (the dashboard's "previous runs" list) ----
+
+export interface RunSummary {
+  run_id: string;
+  idea: string;
+  status: string;
+  created_at: string;
+  repo_path: string | null;
+}
+
+// The account's runs, newest first (owner-scoped server-side). Empty for a fresh account.
+export async function listRuns(): Promise<RunSummary[]> {
+  const data = await getJSON<{ runs: RunSummary[] }>("/api/runs");
+  return data.runs;
+}
+
 async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
   // M-accounts Slice A: a 401 on any GET poll means the session expired — surface it to the gate.
