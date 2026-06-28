@@ -1,103 +1,103 @@
 # Tvashtr — Autonomous Execution State
 
 ## Current Milestone
-M-brownfield (Phase 1.5) — local execution / "work on a real local folder" run mode.
-**Slice 5 — brownfield WORKER installs declared deps before concluding tests fail** (rung-2 prep:
-real repos with real third-party deps, e.g. `trade_mcp`: pandas/numpy/mcp). Backend Control-Plane
-worker-protocol string only; NO migration; alembic head `0015`.
+M-accounts → BYOK (the production model layer). **Slice A — "the app requires login"** (identity
+vertical): minimal email/password auth + login enforcement + the login UI + the operator seed.
+NIM-independent (no live-LLM gate). Slice B (ownership columns + per-owner key resolution +
+`provider_credentials`) and Slice C (the BYOK shelf + picker) are SEPARATE later slices — NOT built here.
 
 ## Last Completed Step
-M-brownfield Slice 4 — branch `feat/brownfield-review-gate` — FF-merged to `main` @ `4dcb5b4`
-(reviewer workspace-read-only `pull_paths` + D4 confirmed). 267 backend / 144 vitest.
+M-accounts Slice A — branch `feat/m-accounts-auth` — committed @ `748abaf` (cut from `main` @ `0b0b230`).
+READY_TO_MERGE recorded below; nothing in progress — awaiting operator FF-merge.
 
 ## In Progress
-Slice 5 — COMMITTED on branch `feat/brownfield-worker-dep-install` (cut from `main` @ `4dcb5b4`)
-at sha `8a6faee`. READY_TO_MERGE recorded below; nothing in progress — awaiting operator FF-merge.
-- DONE: reproduce-first RED proven; `WORKER_PROTOCOL` enriched; tests extended; `make test` 268;
-  `make lint` clean; committed (the 3 code paths only, sha `8a6faee`).
-- LIVE GATES DEFERRED TO RUNG 2 (intentional, documented — see Deviations / notes): the two live
-  gates (`brownfield-check`, `brownfield-loop-check`) were NOT run for this commit. NIM is in a 13h+
-  degraded window AND the change is additive + dormant in the deps-free gate fixtures, so the live
-  gates give no behavioral signal on it. Real validation runs for real at rung 2 on `trade_mcp`.
+Nothing — Slice A is COMMITTED (`748abaf`) and all gates are green. Awaiting operator audit + FF-merge.
 
-## The change (Slice 5)
-A CONDITIONAL dependency-install directive appended to the `WORKER_PROTOCOL` constant in
-`backend/tvashtr/control_plane/worktree.py` (the worker-only action block). It fires ONLY when
-running the repo's tests fails because the project's OWN declared deps are not importable (e.g. a
-`ModuleNotFoundError`): install the project first (Python example — `pip install -e .`, or
-`pip install -e '.[dev]'` for a declared dev/test extra, or `pip install -r requirements.txt`),
-THEN re-run the tests before concluding they fail. Conditional, not always-install: a
-dependency-free repo (and the rung-1 `shop` fixture) is a no-op.
+## The change (Slice A)
+The whole app sits behind a minimal email/password login. Opening the FE shows a login/register screen;
+after logging in you land on the exact canvas that exists today, unchanged. A seeded operator account
+(`operator@tvashtr.local` / `tvashtr-dev`, dev defaults) logs in immediately. A logged-in run resolves
+its model key EXACTLY as today (the global `.env` path via `_direct_agent_api_key`, untouched).
 
-Why: `WORKER_PROTOCOL` told the worker to run the repo's EXISTING tests + fix regressions, but never
-to install the project's declared third-party deps — so a real repo whose tests import
-pandas/numpy/mcp would `ModuleNotFoundError` on the first test run and the worker would wrongly
-conclude "tests fail" without ever installing. This unblocks the rung-2 real-repo ladder.
+What landed (the 22 committed paths):
+- **Backend identity:** `User` ORM model (`models.py`) + NEW migration `0016_users` (chains off
+  `0015_run_brownfield_target`; additive `users` table, unique email). `session_secret` added to
+  `config.Settings` (env `TVASHTR_SESSION_SECRET`, dev default) — `_direct_agent_api_key` /
+  `agent_llm_routing` BYTE-IDENTICAL.
+- **`backend/tvashtr/auth.py` (new, openhands-free):** bcrypt `hash_password`/`verify_password`; an
+  itsdangerous-signed `tv_session` cookie (HttpOnly, SameSite=lax, Secure=False for local dev — prod
+  must flip Secure + a real secret; 14-day max age); `get_current_user` dependency (401 on
+  absent/tampered/expired/unknown); `auth_router` (`/api/auth` register/login/logout/me).
+- **Enforcement (`main.py`):** `auth_router` included with NO dep; the product `api_router` gated by
+  `dependencies=[Depends(get_current_user)]` (covers every `routers.py` endpoint in one line); the two
+  inline spike endpoints gated too; `/health` stays open.
+- **Seed (`seed.py` + `make seed`):** idempotent operator-account creator from
+  `TVASHTR_SEED_EMAIL`/`TVASHTR_SEED_PASSWORD` (dev defaults). Slice-B key-import extension point marked.
+- **Frontend login gate:** `api.ts` gains `getMe/login/register/logout` + `ApiError` + a
+  `setUnauthorizedHandler` 401 seam (inside `getJSON` + `getMe`); `AuthGate` (getMe on mount →
+  loading/authed/unauthed, registers the 401 seam, onLogout); `LoginScreen` (email/password + a Log
+  in/Register toggle + inline 401/409/422 errors, DS-styled); `main.tsx` renders `<AuthGate/>`;
+  `App.tsx` minimal diff = optional `{user,onLogout}` props + a top-bar logout control (rest byte-identical).
+- **Live gate:** `scripts/auth_e2e.sh` (mirrors `launch_panel_e2e.sh` + seeds before Playwright; no
+  NVIDIA key) + `frontend/e2e/auth.spec.ts` (4 checks, a screenshot each) + `make auth-e2e`.
+- **Freeze hook:** `.claude/hooks/protect-migrations.sh` regex bumped `1[0-5]`→`1[0-6]` (0001-0016) — LAST step.
 
 ## Invariants held (checkable on disk)
-- The directive lives ONLY inside `WORKER_PROTOCOL`. `agent_run_step` appends it only when
-  `grounding is not None AND not emits_outcome` (gating UNCHANGED — `team_run.py` not in the diff)
-  ⇒ automatically worker-only + brownfield-only. A reviewer (emits_outcome) gets orientation only;
-  greenfield (grounding None) appends nothing ⇒ byte-for-byte unchanged.
-- `build_repo_grounding`'s ORIENTATION block does NOT contain the install directive (the both-ways
-  split, asserted in tests). No install verb leaks to a review node.
-- NOT touched: `teams.py` prompts (ENGINEER/PM/REVIEWER/ARCHITECT), `build_two_node_team`, the engine
-  adapters, the Slice-4 `pull_paths` mechanism. NO migration (head `0015`). `team_run.py` stays
-  openhands-free at import.
-- Diff = exactly 3 paths: `worktree.py` (+9/-1), `test_worktree.py` (+32), `test_brownfield_executor.py` (+4).
+- `_direct_agent_api_key` + `agent_llm_routing` in `config.py` BYTE-IDENTICAL (only `session_secret`
+  added to `Settings`). Model-key resolution unchanged.
+- `control_plane/team_run.py`, `engines/*.py`, `control_plane/teams.py`, `build_two_node_team` — ZERO
+  diff (not in the commit).
+- Migrations `0001`–`0015` byte-intact; only `0016_users` added. Head `0016_users`.
+- `App.tsx` diff limited to the optional `{user,onLogout}` props + the logout control; everything else
+  byte-identical. `App.test.tsx` unchanged (props optional → `<App />` still valid).
+- New runtime deps = only `bcrypt` + `itsdangerous` (declared in `pyproject.toml`, pinned via `uv.lock`:
+  bcrypt 5.0.0, itsdangerous 2.2.0). `team_run.py` stays openhands-free at import; no-push hook intact.
 
-## Reproduce-first (FAIL pre-edit → GREEN post-edit)
-`test_worktree.py::test_worker_protocol_carries_the_action_directives` — the new presence assertion
-FAILED on current code first:
-  `>  assert "pip install" in WORKER_PROTOCOL`
-  `E  assert 'pip install' in "--- HOW TO MAKE THE CHANGE ---\n...do not restructure unrelated code."`
-  `FAILED tests/test_worktree.py::test_worker_protocol_carries_the_action_directives`
-THEN the `WORKER_PROTOCOL` edit greened it. Plus a dedicated both-ways test
-`test_worker_protocol_carries_conditional_dependency_install_orientation_does_not` (present in
-protocol, conditional on `ModuleNotFoundError`, with `pip install -e .`/`requirements.txt`; ABSENT
-from `build_repo_grounding`), the orientation test's absence assertions, and the executor split test
-extended (install directive IN worker instruction, NOT in reviewer instruction).
+## Tests — mutation-real
+- The shared `client` fixture (conftest) is now AUTHENTICATED (registers a uuid account → carries the
+  `tv_session` cookie) — the single point that keeps all ~108 existing endpoint tests green under
+  enforcement, zero per-file churn. New `unauth_client` (bare `TestClient`, empty jar — no second DBOS
+  launch) for the unauthenticated surface. New `test_auth.py` (17 tests): register 200/409/422 (+ email
+  normalize + cookie HttpOnly/SameSite), login 200/401, logout clears the session (→ me 401), me 401/200,
+  tampered + valid-signature-unknown-user rejected, GET /api/teams 401-without/200-with (the
+  reproduce-first analog), /health open, spike endpoints gated, hash/verify + cookie sign/read/expire units.
 
 ## Gate results (this branch) — decisive lines echoed into the /goal transcript
-- Reproduce-first — presence assertion FAILED pre-edit (line pasted above), GREEN post-edit.
-- `make test` — **`268 passed, 1 warning in 10.63s`** (267 floor + 1 new dedicated both-ways test;
-  never below 267).
-- `make lint` — **`All checks passed!`** (ruff) + eslint `--max-warnings 0` (no errors) + prettier
-  `All matched files use Prettier code style!`. Exit 0.
-- `make brownfield-check` — DEFERRED TO RUNG 2 (NOT run for this commit; see Deviations / notes).
-- `make brownfield-loop-check` — DEFERRED TO RUNG 2 (NOT run for this commit; the rung-1 9-way
-  conjunction; the `shop` fixture has no third-party deps so the conditional directive is a no-op =
-  happy path unchanged; deferral rationale in Deviations / notes).
+- `make migrate` head — **`0016_users (head)`**.
+- `make seed` ×2 — **`created: operator account operator@tvashtr.local`** then
+  **`exists — no-op: operator@tvashtr.local already has an account`** (idempotent).
+- `make test` — **`285 passed, 1 warning in 12.92s`** (268 floor + 17 new auth tests; never below 268).
+- `make lint` — ruff **`All checks passed!`** + eslint `--max-warnings 0` (exit 0) + prettier
+  **`All matched files use Prettier code style!`**.
+- `make test-frontend` — **`Tests  151 passed (151)`** (144 floor + 7 new) ; `make build-frontend` —
+  **`✓ built in 1.19s`** (tsc-strict + vite).
+- `make auth-e2e` — **`AUTH E2E PASSED`** (`1 passed (2.1s)`) — CHECK 1 login-required, CHECK 2
+  register→canvas, CHECK 3 logout→login, CHECK 4 seeded-login→canvas; 4 screenshots in
+  `/tmp/tvashtr_auth_shots/`.
+- Freeze hook verified post-bump: `0016`/`0015` BLOCKED (exit 2), `0017` ALLOWED (exit 0).
 
 ## Test Count
-**268 backend pytest** (267 floor + 1 new) + 144 vitest (unchanged — no FE edits) — re-confirmed
-2026-06-28 (`268 passed, 1 warning in 11.02s`).
+**285 backend pytest** (268 floor + 17 new) + **151 vitest** (144 floor + 7 new) — 2026-06-28.
 
 ## Deviations / notes
-- **LIVE GATES DEFERRED TO RUNG 2 (deviation=live-gates-deferred-to-rung2).** This commit (`8a6faee`)
-  was validated OFFLINE ONLY — `make brownfield-check` / `make brownfield-loop-check` were
-  intentionally NOT run. Rationale: (a) NIM is in a 13h+ degraded window; (b) the change is additive
-  + DORMANT in the deps-free gate fixtures (shop/calculator declare no third-party deps, so the
-  conditional dep-install directive never fires) ⇒ the live gates give NO behavioral signal on this
-  change; (c) offline tests are green AND mutation-real (reproduce-first RED→GREEN proven); (d) three
-  prior live attempts this milestone confirmed the plumbing correct + the change dormant (infra
-  flake, not a regression). Real validation is deferred to rung 2, where the directive runs for real
-  on a real OSS repo with real deps (`trade_mcp`: pandas/numpy/mcp).
-- Live gates NIM-flaky right now (recorded `brownfield-agent-grounding` gotcha). Observed this
-  session: completes-without-editing; `str_replace` "No replacement was performed" (the 70b's old_str
-  didn't byte-match → it edited only the test → missing import); occasional "run completed=False"
-  (stuck). PROVEN not my change: attempt 3 of `brownfield-check` landed `subtract present = True`
-  through the enriched protocol; the calculator/`shop` fixtures import no third-party deps so the new
-  directive is dormant (no `ModuleNotFoundError`). Resolved by retry on a clean roll per the brief.
-- OpenHands' agent already ships native dependency-handling guidance ("look for dependency files →
-  install all at once → only install individual packages if none found"); the new directive
-  reinforces it for the test-run step rather than conflicting.
+- **Authenticated `client` fixture in place of a parallel `auth_client` (deviation=auth-fixture-in-place).**
+  The brief described adding a shared authenticated-TestClient fixture and threading it through every
+  endpoint test. Implemented by UPGRADING the existing session-scoped `client` fixture to register +
+  carry the cookie — the same single-point outcome with a far smaller diff (no edit to ~40 test files;
+  `client` is the ONLY TestClient fixture and every endpoint test already takes it). Added `unauth_client`
+  for the unauthenticated-surface tests. No behavioral compromise; documented here per CLI-RULES §6.
+- `read_session_cookie(value, max_age=...)` carries an optional `max_age` seam (defaulted to the real
+  14-day window) so cookie EXPIRY is unit-testable without time travel — the documented public signature
+  `read_session_cookie(value)` is preserved.
+- No live-LLM gate in this slice (NIM-independent) — ran clean, no flake to absorb.
 
 ## Open Questions
-None blocking. Rung-2 (D4) stronger-reviewer-model choice remains the architect's call (Slice-4 finding).
+None blocking. Slice B (ownership columns + per-owner key resolution + `provider_credentials`, NO `.env`
+fallback) and Slice C (the BYOK shelf + per-node picker) are the architect's next slices.
 
 ## Suggested next step
-Rung 2 — the brownfield review loop on a real OSS repo with real deps (`trade_mcp`), operator-run,
-now that the worker can install declared deps before testing.
+Slice B — ownership (`runs.owner_id` / `teams.owner_id` / `provider_credentials.owner_id`) + per-owner
+key resolution (swap `_direct_agent_api_key` to DB-first, NO `.env` fallback) + extend the seed to import
+the operator's `.env` keys as their credentials.
 
-READY_TO_MERGE: branch=feat/brownfield-worker-dep-install, sha=8a6faee, tests=268, deviation=live-gates-deferred-to-rung2
+READY_TO_MERGE: branch=feat/m-accounts-auth, sha=748abaf, tests=285 backend / 151 vitest
