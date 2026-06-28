@@ -8,15 +8,17 @@ API to ORM/gateway types.
 import os
 import uuid
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
 from dbos import DBOS, SetWorkflowID
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select, update
 
 from tvashtr import db
+from tvashtr.auth import UserOut, get_current_user
 from tvashtr.config import get_settings
+from tvashtr.control_plane.credentials import encrypt_secret, provider_for_model
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
 from tvashtr.control_plane.team_run import run_team
@@ -47,6 +49,7 @@ from tvashtr.models import (
     DocumentVersion,
     Edge,
     HumanTask,
+    ProviderCredential,
     Run,
     RunEvent,
     TeamGraph,
@@ -776,6 +779,132 @@ def get_run_graph(run_id: str) -> dict:
             ],
             "edges": [_edge_to_dict(e) for e in edges],
         }
+
+
+# ---- Provider credentials (M-accounts Slice B): the account's BYOK keys, encrypted at rest ----
+
+
+class AddProviderRequest(BaseModel):
+    """``POST /api/providers`` body: a provider slug (e.g. ``openrouter``) + the plaintext key. The
+    server lower-cases/trims the slug, encrypts the key (Fernet), and upserts on ``(owner,
+    provider)`` — adding the same provider again REPLACES the stored key. The secret is never
+    returned."""
+
+    provider: str
+    api_key: str
+
+
+def _provider_to_dict(cred: ProviderCredential) -> dict:
+    """A provider credential as the dashboard shows it — ``provider · •••• last4`` — NEVER the
+    secret (``secret_encrypted`` is decrypted only at run time, in the executor)."""
+    return {
+        "provider": cred.provider,
+        "key_last4": cred.key_last4,
+        "created_at": cred.created_at.isoformat(),
+    }
+
+
+@router.get("/api/providers")
+def list_providers(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """The current account's configured providers (``provider`` + ``•••• last4`` + ``created_at``),
+    oldest first. The encrypted secret is NEVER returned."""
+    with db.session_scope() as session:
+        rows = (
+            session.execute(
+                select(ProviderCredential)
+                .where(ProviderCredential.owner_id == uuid.UUID(current_user.id))
+                .order_by(ProviderCredential.created_at, ProviderCredential.provider)
+            )
+            .scalars()
+            .all()
+        )
+        return {"providers": [_provider_to_dict(r) for r in rows]}
+
+
+@router.post("/api/providers")
+def add_provider(
+    body: AddProviderRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Add (or REPLACE) the current account's key for a provider. Lower-cases/trims the slug,
+    encrypts the key, and upserts on ``(owner, provider)``. 422 on an empty provider/key. Returns
+    ``{provider, key_last4}`` — never the secret."""
+    provider = provider_for_model(body.provider)  # leading-slug + lower/trim — the canonical form
+    api_key = body.api_key.strip()
+    if not provider:
+        raise HTTPException(status_code=422, detail="A provider is required.")
+    if not api_key:
+        raise HTTPException(status_code=422, detail="An API key is required.")
+    owner_id = uuid.UUID(current_user.id)
+    last4 = api_key[-4:]
+    secret = encrypt_secret(api_key)
+    with db.session_scope() as session:
+        existing = session.execute(
+            select(ProviderCredential).where(
+                ProviderCredential.owner_id == owner_id,
+                ProviderCredential.provider == provider,
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            existing.secret_encrypted = secret
+            existing.key_last4 = last4
+        else:
+            session.add(
+                ProviderCredential(
+                    owner_id=owner_id,
+                    provider=provider,
+                    secret_encrypted=secret,
+                    key_last4=last4,
+                )
+            )
+    return {"provider": provider, "key_last4": last4}
+
+
+@router.delete("/api/providers/{provider}", status_code=204)
+def delete_provider(
+    provider: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> Response:
+    """Remove the current account's key for ``provider`` (204, idempotent — deleting an absent
+    provider still 204s; a run needing it is then refused at the next launch)."""
+    canonical = provider_for_model(provider)
+    with db.session_scope() as session:
+        cred = session.execute(
+            select(ProviderCredential).where(
+                ProviderCredential.owner_id == uuid.UUID(current_user.id),
+                ProviderCredential.provider == canonical,
+            )
+        ).scalar_one_or_none()
+        if cred is not None:
+            session.delete(cred)
+    return Response(status_code=204)
+
+
+def _run_summary(run: Run) -> dict:
+    """A run as the dashboard's 'previous runs' list shows it (no costs/graph — loaded on open)."""
+    return {
+        "run_id": str(run.id),
+        "idea": run.idea,
+        "status": run.status,
+        "created_at": run.created_at.isoformat(),
+        "repo_path": run.repo_path,
+    }
+
+
+@router.get("/api/runs")
+def list_runs(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """The current account's runs as summaries (newest first) — the dashboard's 'previous runs'.
+    Owner-scoped: only ``runs.owner_id == current_user`` rows; A-B / snapshot runs the user launched
+    are theirs too (all created with their owner_id)."""
+    with db.session_scope() as session:
+        rows = (
+            session.execute(
+                select(Run)
+                .where(Run.owner_id == uuid.UUID(current_user.id))
+                .order_by(Run.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        return {"runs": [_run_summary(r) for r in rows]}
 
 
 # ---- The team library (P1.8b): first-class, multiple persistent teams + a template library ----
