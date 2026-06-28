@@ -264,11 +264,11 @@ class Run(Base):
     )
     # M-accounts Slice B (migration ``0017``): the account that owns this run. Set by ``create_run``
     # for EVERY run-creating path (UI = the current user; live scripts + offline fixtures = the
-    # seeded operator) — there is no owner-less run by construction. Nullable at the DB level only so
-    # the additive migration applies to a DB with pre-existing rows + a pre-seed window; the executor
-    # HARD-ERRORS if it ever loads a run with ``owner_id`` NULL (never a silent ``.env`` fallback).
-    # Per-owner key resolution reads this to resolve THIS owner's provider key. DB-level NOT NULL is a
-    # later hardening once all rows are backfilled.
+    # seeded operator) — there is no owner-less run by construction. Nullable at the DB level only
+    # so the additive migration applies to a DB with pre-existing rows + a pre-seed window; the
+    # executor HARD-ERRORS if it ever loads a run with ``owner_id`` NULL (never a silent ``.env``
+    # fallback). Per-owner key resolution reads this to resolve THIS owner's key. DB-level NOT NULL
+    # is a later hardening once all rows are backfilled.
     owner_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id"), nullable=True, index=True
     )
@@ -431,9 +431,9 @@ class ProviderCredential(Base):
     """One account's BYOK provider key, encrypted at rest (M-accounts Slice B, migration ``0017``).
 
     ``provider`` is the canonical leading-slug segment of a model id (e.g. ``openrouter`` from
-    ``openrouter/openai/gpt-4o-mini``, ``nvidia_nim`` from ``nvidia_nim/meta/llama-3.3-70b-instruct``)
-    — the SAME mapping the resolver + the gateway's litellm provider detection use, so one key serves
-    both the completion (gateway) and agent (adapter) paths. ``secret_encrypted`` is the Fernet
+    ``openrouter/openai/gpt-4o-mini``; ``nvidia_nim`` from ``nvidia_nim/meta/llama-…``) — the SAME
+    mapping the resolver + the gateway's litellm provider detection use, so one key serves both the
+    completion (gateway) and agent (adapter) paths. ``secret_encrypted`` is the Fernet
     ciphertext (ASCII) of the plaintext key — decrypted only at run time (see
     :mod:`tvashtr.control_plane.credentials`); the plaintext is NEVER stored or returned by any
     endpoint. ``key_last4`` is the display-only tail (``provider · •••• last4``). Unique
@@ -447,9 +447,7 @@ class ProviderCredential(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    owner_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id"), nullable=False, index=True
-    )
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     provider: Mapped[str] = mapped_column(Text, nullable=False)
     secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     key_last4: Mapped[str] = mapped_column(Text, nullable=False)

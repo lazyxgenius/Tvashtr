@@ -48,6 +48,7 @@ from sqlalchemy import select, update
 from tvashtr.config import get_settings
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.budget_nudge import maybe_emit_budget_nudge_step
+from tvashtr.control_plane.credentials import resolve_owner_api_key
 from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
@@ -69,6 +70,28 @@ from tvashtr.models import AgentNode, Edge, EngineerRunAttempt, Run
 logger = logging.getLogger("tvashtr.control_plane.team_run")
 
 
+def _owner_api_key(run_id: str, model: str) -> str:
+    """Resolve the run owner's provider key for ``model`` (M-accounts Slice B — BYOK, NO ``.env``
+    fallback). Read INSIDE the spend-bearing step (``pm_step`` / ``thinker_refine_step`` /
+    ``agent_run_step``) rather than threaded as a step parameter — so the many tests that
+    monkeypatch those whole steps keep their existing signatures — and used transiently: the
+    plaintext key is NEVER returned, so it is never persisted in a DBOS step-output checkpoint. The
+    run is always owned (``create_run`` sets ``owner_id``; ``load_graph_step`` hard-asserts it), so
+    ``owner_id`` is non-None here; ``resolve_owner_api_key`` raises ``NoCredentialError`` only if
+    the owner lacks the provider key — unreachable past the launch pre-flight, a clean run-failure
+    if it somehow occurs."""
+    with session_scope() as session:
+        owner_id = session.execute(
+            select(Run.owner_id).where(Run.id == uuid.UUID(run_id))
+        ).scalar_one()
+    if owner_id is None:
+        raise RuntimeError(
+            f"run {run_id} has no owner_id — cannot resolve a per-owner provider key (no .env "
+            "fallback). Every run must be owned by construction."
+        )
+    return resolve_owner_api_key(owner_id, model)
+
+
 @DBOS.step()
 def load_graph_step(run_id: str) -> dict:
     """Load the run's team graph as a picklable dict the executor walks: every node
@@ -82,6 +105,14 @@ def load_graph_step(run_id: str) -> dict:
     resolve with the same code."""
     with session_scope() as session:
         run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
+        # M-accounts Slice B: every run is OWNED by construction (create_run sets owner_id on every
+        # path — UI = the user, scripts/tests = the seeded operator). Hard-error if a run somehow
+        # loads with a NULL owner — NEVER proceed to resolve keys (there is no .env fallback). This
+        # assert is defense-in-depth: the application makes the NULL case unreachable.
+        if run.owner_id is None:
+            raise RuntimeError(
+                f"run {run_id} has no owner_id — refusing to execute (no owner-less run)"
+            )
         # M-brownfield: surface the run's brownfield target off the SAME Run row (no extra query).
         # ``repo_path is None`` ⇒ greenfield (the legacy path); non-NULL ⇒ brownfield.
         repo_path = run.repo_path
@@ -221,6 +252,8 @@ def pm_step(run_id: str, idea: str, pm_model: str, pm_prompt: str) -> dict:
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
         max_tokens=400,
+        # M-accounts Slice B: resolve THIS run owner's key for the PM's model (BYOK, no .env).
+        api_key=_owner_api_key(run_id, pm_model),
     )
     result = complete(request)
     record_cost(result, workflow_id=run_id, idempotency_key=f"{run_id}:pm-llm")
@@ -306,6 +339,8 @@ def thinker_refine_step(
         messages=[{"role": "user", "content": prompt_full}],
         temperature=0.3,
         max_tokens=400,
+        # M-accounts Slice B: this thinker resolves the owner's key for ITS model (BYOK, no .env).
+        api_key=_owner_api_key(run_id, model),
     )
     result = complete(request)
     record_cost(
@@ -678,11 +713,21 @@ def agent_run_step(
             context += f"\n\n{WORKER_PROTOCOL}"
     instruction = node_prompt + context
 
+    # M-accounts Slice B: the agent's api_key. Proxy-OFF (BYOK) ⇒ the run owner's per-owner key for
+    # this node's model (resolved here, never returned/checkpointed). Proxy-ON ⇒ the minted per-run
+    # virtual key (``vkey``) exactly as before (the proxy holds upstream keys; budget enforced
+    # mid-call). Resolved AFTER the forced short-circuit so the offline forced harness never
+    # resolves a key. ``model`` is set on every agent node by the builders; default-model guards.
+    if get_settings().litellm_proxy_enabled:
+        agent_api_key = vkey
+    else:
+        agent_api_key = _owner_api_key(run_id, model or get_settings().default_model)
+
     task = AgentTask(
         instruction=instruction,
         workspace_dir=workspace,
         model=model,
-        llm_api_key=vkey,
+        llm_api_key=agent_api_key,
         workspace_mode="brownfield" if grounding is not None else "greenfield",
         # Slice 4 (Item A): an outcome-emitting (reviewer) node is workspace-READ-ONLY — scope its
         # end-of-run pull to the verdict sidecar so its container edits NEVER mutate the shippable
