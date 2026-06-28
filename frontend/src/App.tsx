@@ -12,6 +12,7 @@ import { SidePanel } from "./panel/SidePanel";
 import { TeamNodePanel } from "./panel/TeamNodePanel";
 import {
   acknowledgeTask,
+  type AuthUser,
   cancelRun,
   type CostRow,
   createTeam,
@@ -52,7 +53,14 @@ import { isRunTerminal } from "./lib/status";
 // fitView) closes into an infinite render loop. One module-level constant kills the loop's fuel.
 const EMPTY_TASKS: HumanTask[] = [];
 
-export default function App() {
+// M-accounts Slice A: optional props so AuthGate can thread the logged-in identity + a logout
+// handler into the top bar. Both optional → existing tests/usage that render <App /> are unchanged.
+interface AppProps {
+  user?: AuthUser | null;
+  onLogout?: () => void;
+}
+
+export default function App({ user, onLogout }: AppProps = {}) {
   const [runId, setRunId] = useState<string | null>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [run, setRun] = useState<RunRow | null>(null);
@@ -533,7 +541,19 @@ export default function App() {
             the living canvas
           </span>
         </div>
-        <BackendDot />
+        <div className="flex items-center gap-3">
+          {user && (
+            <span style={{ fontSize: "var(--fs-caption)", color: "var(--text-secondary)" }}>
+              {user.email}
+            </span>
+          )}
+          {onLogout && (
+            <button type="button" className="tv-btn tv-btn--ghost tv-btn--sm" onClick={onLogout}>
+              Log out
+            </button>
+          )}
+          <BackendDot />
+        </div>
       </header>
 
       <div

@@ -111,8 +111,73 @@ export interface Health {
   db: string;
 }
 
+// ---- Auth (M-accounts Slice A) ----
+
+// The minimal identity the auth endpoints return + the FE carries while logged in.
+export interface AuthUser {
+  id: string;
+  email: string;
+}
+
+// An error that preserves the HTTP status so the login screen can branch on 401 / 409 / 422.
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+// A single 401 seam: AuthGate registers a handler here; the GET helpers below invoke it when the
+// server rejects an absent/expired session, so a mid-session expiry drops the whole app back to the
+// login screen on the next poll. Set to null on unmount.
+let unauthorizedHandler: (() => void) | null = null;
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
+// On 401 the session is gone → notify the gate and resolve null (so AuthGate shows the login
+// screen); any other non-OK status is a real error and throws.
+export async function getMe(): Promise<AuthUser | null> {
+  const res = await fetch("/api/auth/me");
+  if (res.status === 401) {
+    unauthorizedHandler?.();
+    return null;
+  }
+  if (!res.ok) throw new ApiError(res.status, `GET /api/auth/me -> ${res.status}`);
+  return (await res.json()) as AuthUser;
+}
+
+async function postAuth(
+  path: string,
+  body: { email: string; password: string },
+): Promise<AuthUser> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new ApiError(res.status, `POST ${path} -> ${res.status}`);
+  return (await res.json()) as AuthUser;
+}
+
+export const login = (email: string, password: string): Promise<AuthUser> =>
+  postAuth("/api/auth/login", { email, password });
+
+export const register = (email: string, password: string): Promise<AuthUser> =>
+  postAuth("/api/auth/register", { email, password });
+
+export async function logout(): Promise<void> {
+  const res = await fetch("/api/auth/logout", { method: "POST" });
+  if (!res.ok) throw new ApiError(res.status, `POST /api/auth/logout -> ${res.status}`);
+}
+
 async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
+  // M-accounts Slice A: a 401 on any GET poll means the session expired — surface it to the gate.
+  if (res.status === 401) unauthorizedHandler?.();
   if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
   return (await res.json()) as T;
 }

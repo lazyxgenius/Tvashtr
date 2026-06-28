@@ -11,6 +11,8 @@ dependencies = [
     "alembic>=1.14",
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.6",
+    "bcrypt>=4",
+    "itsdangerous>=2",
     "litellm==1.89.0",
     "openhands-sdk==1.28.1",
     "openhands-tools==1.28.1",

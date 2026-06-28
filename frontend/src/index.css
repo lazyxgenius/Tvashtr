@@ -534,3 +534,57 @@ body,
   gap: var(--space-3);
   margin-top: var(--space-1);
 }
+
+/* ============================================================
+   The login / register gate (M-accounts Slice A): a centered
+   card on the DS paper. Reuses .tv-card / .tv-field / .tv-seg /
+   .tv-launch__input / .tv-btn; only the centering + the brand,
+   lede, and error get auth-specific rules.
+   ============================================================ */
+.tv-auth {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+.tv-auth__loading {
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+}
+.tv-auth__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 360px;
+  padding: var(--space-6);
+  box-shadow: var(--shadow-md);
+}
+.tv-auth__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.tv-auth__title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: var(--fs-h3);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.tv-auth__lede {
+  margin: 0;
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+}
+.tv-auth__error {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--red-100);
+  color: color-mix(in srgb, var(--danger) 72%, var(--ink-900));
+  font-size: var(--fs-caption);
+}
+.tv-auth__submit {
+  margin-top: var(--space-1);
+}

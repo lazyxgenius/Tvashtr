@@ -13,11 +13,12 @@ emitted only after the lifespan's startup phase, so the sweep precedes any resum
 from contextlib import asynccontextmanager
 
 from dbos import DBOS, DBOSConfig
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from tvashtr import db
+from tvashtr.auth import auth_router, get_current_user
 from tvashtr.config import get_settings
 from tvashtr.control_plane.hello_durable import hello_durable
 from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
@@ -48,8 +49,13 @@ _dbos_config: DBOSConfig = {
 }
 DBOS(fastapi=app, config=_dbos_config)
 
-# P0.2 gateway + document-layer endpoints (generate-doc, documents, costs).
-app.include_router(api_router)
+# M-accounts Slice A: auth endpoints (register/login/logout/me) — NO login dependency (these are
+# how you obtain a session). Everything else under /api requires a logged-in user.
+app.include_router(auth_router)
+# P0.2 gateway + document-layer endpoints (generate-doc, documents, costs). M-accounts Slice A: the
+# whole product surface now requires a session — one router-level dependency gates EVERY endpoint in
+# routers.py. /api/auth/* (above) and /health (below) stay open.
+app.include_router(api_router, dependencies=[Depends(get_current_user)])
 
 
 class HealthResponse(BaseModel):
@@ -70,14 +76,18 @@ def health() -> HealthResponse:
         return HealthResponse(status="degraded", db="down")
 
 
-@app.post("/api/spike/hello-durable", response_model=StartResponse)
+@app.post(
+    "/api/spike/hello-durable",
+    response_model=StartResponse,
+    dependencies=[Depends(get_current_user)],
+)
 def start_hello_durable() -> StartResponse:
     """Start hello_durable in the background; return its workflow id."""
     handle = DBOS.start_workflow(hello_durable, "demo", get_settings().hello_sleep_seconds)
     return StartResponse(workflow_id=handle.workflow_id)
 
 
-@app.get("/api/spike/hello-durable/{workflow_id}")
+@app.get("/api/spike/hello-durable/{workflow_id}", dependencies=[Depends(get_current_user)])
 def get_hello_durable(workflow_id: str) -> dict:
     """Return the DBOS workflow status plus recorded events for this workflow."""
     status = DBOS.get_workflow_status(workflow_id)

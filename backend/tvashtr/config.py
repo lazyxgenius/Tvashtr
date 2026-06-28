@@ -162,6 +162,16 @@ class Settings(BaseSettings):
     # api_key when the proxy is on. ``None`` when unset (proxy off / not configured).
     litellm_master_key: str | None = None
 
+    # M-accounts Slice A: the secret that signs the ``tv_session`` login cookie (itsdangerous,
+    # see ``auth.py``). A dev default keeps the offline suite + local dev working with no extra
+    # env; PRODUCTION MUST override ``TVASHTR_SESSION_SECRET`` with a real random secret (and the
+    # cookie must be marked ``Secure`` over https). Adding this field does NOT touch
+    # ``_direct_agent_api_key`` / ``agent_llm_routing`` below — model-key resolution is unchanged.
+    session_secret: str = Field(
+        default="dev-insecure-session-secret-change-me",
+        validation_alias=AliasChoices("TVASHTR_SESSION_SECRET", "session_secret"),
+    )
+
     def agent_llm_base_url(self, sandbox_mode: str) -> str:
         """The proxy base URL the agent's LLM points at, chosen by THIS run's sandbox
         mode. ``docker`` -> ``host.docker.internal`` (the agent-server container is on

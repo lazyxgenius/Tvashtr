@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tvashtr PreToolUse(Edit|Write) guard.
-# Blocks edits to frozen Alembic migrations 0001-0015 (matched by filename, any directory).
+# Blocks edits to frozen Alembic migrations 0001-0016 (matched by filename, any directory).
 # Invoked as:  bash .claude/hooks/protect-migrations.sh   (no execute bit needed)
 # Uses python3 (guaranteed present in this project) instead of jq.
 
@@ -13,8 +13,8 @@ except Exception:
 
 BASENAME="$(basename -- "$FILE_PATH" 2>/dev/null)"
 
-if [[ "$BASENAME" =~ ^00(0[1-9]|1[0-5])_.*\.py$ ]]; then
-  echo "Blocked: '$BASENAME' is a frozen migration (0001-0015). Per CLI-RULES section 3, create a NEW migration instead of editing this one." >&2
+if [[ "$BASENAME" =~ ^00(0[1-9]|1[0-6])_.*\.py$ ]]; then
+  echo "Blocked: '$BASENAME' is a frozen migration (0001-0016). Per CLI-RULES section 3, create a NEW migration instead of editing this one." >&2
   exit 2
 fi
 

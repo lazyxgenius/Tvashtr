@@ -388,3 +388,22 @@ class HumanTask(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class User(Base):
+    """A registered account — minimal email/password identity (M-accounts Slice A, migration
+    ``0016``). ``email`` is stored NORMALIZED (lower-cased + trimmed) and is unique on the stored
+    value; ``password_hash`` is a bcrypt hash (see :mod:`tvashtr.auth`). This slice is identity +
+    login enforcement ONLY — ownership columns (``runs``/``teams``/``provider_credentials``
+    ``owner_id``) and per-user model-key resolution are LATER slices; nothing here changes how a
+    run resolves its model key today."""
+
+    __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("email", name="uq_users_email"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

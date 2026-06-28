@@ -24,8 +24,27 @@ from tvashtr.models import Run  # noqa: E402
 
 @pytest.fixture(scope="session")
 def client():
+    # M-accounts Slice A: every /api/* route now requires a tv_session cookie. Registering a unique
+    # account here makes this shared client AUTHENTICATED — the single point that keeps the whole
+    # existing endpoint suite green under login enforcement (every endpoint test takes `client`). A
+    # fresh uuid email per session never collides with prior data, so the suite is re-runnable.
     with TestClient(app) as test_client:
+        email = f"conftest-{uuid.uuid4().hex}@tvashtr.local"
+        resp = test_client.post(
+            "/api/auth/register", json={"email": email, "password": "conftest-password"}
+        )
+        assert resp.status_code == 200, f"auth fixture setup failed: {resp.status_code} {resp.text}"
         yield test_client
+
+
+@pytest.fixture
+def unauth_client(client):
+    """A fresh, UNauthenticated client (empty cookie jar) for the auth-surface tests. A bare
+    ``TestClient(app)`` — NOT a ``with`` block — so it never re-runs the lifespan (DBOS is launched
+    exactly once by the session ``client`` it depends on); it shares that already-launched app."""
+    plain = TestClient(app)
+    plain.cookies.clear()
+    return plain
 
 
 def seed_pm_prd(run_id: str, idea: str) -> dict:
