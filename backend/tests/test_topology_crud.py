@@ -6,6 +6,7 @@ persistence, not the response echo); each edge role is asserted to round-trip to
 
 import uuid
 
+from conftest import auth_user_id
 from sqlalchemy import select
 
 from tvashtr.control_plane.teams import ENGINEER_PROMPT, clone_team_graph, create_team_from_template
@@ -201,7 +202,7 @@ def test_crud_is_library_guarded(client):
         == 404
     )
 
-    library = create_team_from_template("two_node", "Guard source")
+    library = create_team_from_template("two_node", "Guard source", auth_user_id())
     snapshot = clone_team_graph(library)  # is_library = False
     assert (
         client.post(f"/api/teams/{snapshot}/nodes", json={"node_kind": "thinker"}).status_code

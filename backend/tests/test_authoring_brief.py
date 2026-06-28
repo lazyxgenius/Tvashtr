@@ -116,7 +116,7 @@ def test_authoring_last_run_links_clone_invocations_to_authored_nodes(
     init_workspace_repo(str(workspace))
     _full_run_fakes(monkeypatch, workspace)
 
-    library_id = create_team_from_template("review_loop", "m2-keystone")
+    library_id = create_team_from_template("review_loop", "m2-keystone", auth_user_id())
     clone_id, run_id = _run_clone(library_id)
     with SetWorkflowID(run_id):
         handle = DBOS.start_workflow(team_run.run_team, "build greeting.txt")
@@ -156,7 +156,7 @@ def test_authoring_last_run_is_latest_across_runs_and_survives_a_skip(
 ):
     monkeypatch.setenv("TVASHTR_FORCE_REVISIONS", "1")
     monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
-    library_id = create_team_from_template("review_loop", "m2-decision-b")
+    library_id = create_team_from_template("review_loop", "m2-decision-b", auth_user_id())
 
     # --- Run 1: a FULL real run -> PM + Engineer (+ Reviewer) invocations on clone1. ---
     ws1 = tmp_path / "ws1"

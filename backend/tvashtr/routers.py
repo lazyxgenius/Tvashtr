@@ -437,8 +437,41 @@ def inspect_repo(body: RepoInspectRequest) -> dict:
     return repo_inspect(body.path)
 
 
+def _require_owned_run(session, run_id: str, owner_id: uuid.UUID) -> Run:
+    """Load the run by ``workflow_id`` and 404 unless it is owned by ``owner_id`` (M-accounts Slice
+    B: blocks cross-account uuid-guessing). 404 (not 403) so existence isn't even probeable."""
+    run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
+    if run is None or run.owner_id != owner_id:
+        raise HTTPException(status_code=404, detail="run not found")
+    return run
+
+
+def _missing_provider_credentials(owner_id: uuid.UUID, team_graph_id: str) -> list[str]:
+    """The distinct providers across the team's node models that ``owner_id`` has NO credential for
+    (M-accounts Slice B launch pre-flight). Empty ⇒ the owner can run every node; non-empty ⇒ refuse
+    the launch (422). gate/terminal nodes carry no model and are skipped."""
+    with db.session_scope() as session:
+        models = session.execute(
+            select(AgentNode.model).where(AgentNode.team_graph_id == uuid.UUID(team_graph_id))
+        ).scalars()
+        needed = {provider_for_model(m) for m in models if m}
+        if not needed:
+            return []
+        have = set(
+            session.execute(
+                select(ProviderCredential.provider).where(
+                    ProviderCredential.owner_id == owner_id,
+                    ProviderCredential.provider.in_(needed),
+                )
+            ).scalars()
+        )
+    return sorted(needed - have)
+
+
 @router.post("/api/runs")
-def create_run(body: CreateRunRequest) -> dict:
+def create_run(
+    body: CreateRunRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
     """Build the requested team (default the 2-node team; ``review_loop`` the 3-node
     cyclic team), create the run row, and start ``run_team`` with an explicit workflow
     id == run_id, so ``DBOS.workflow_id`` keys every write.
@@ -489,8 +522,11 @@ def create_run(body: CreateRunRequest) -> dict:
         # an un-runnable team even via the API (the FE greys Run on the same verdict). Validated
         # before cloning so a rejected launch leaves no orphan snapshot.
         with db.session_scope() as session:
-            if session.get(TeamGraph, gid) is None:
-                raise HTTPException(status_code=400, detail="unknown team_graph_id")
+            source = session.get(TeamGraph, gid)
+            # M-accounts Slice B: the source authored team must be OWNED by the current user — you
+            # can't launch (or even probe) another account's team (404, not 400, on a foreign id).
+            if source is None or source.owner_id != uuid.UUID(current_user.id):
+                raise HTTPException(status_code=404, detail="unknown team_graph_id")
             nodes, edges = graph_dicts(session, gid)
         verdict = validate_graph(nodes, edges)
         if not verdict["runnable"]:
@@ -503,6 +539,22 @@ def create_run(body: CreateRunRequest) -> dict:
         team_graph_id = build_review_loop_team()
     else:
         team_graph_id = build_two_node_team()
+
+    # M-accounts Slice B launch pre-flight: the owner must have a provider key for EVERY distinct
+    # provider the team's node models use, else refuse (422) BEFORE the workflow starts — mirroring
+    # the brownfield validate-before-launch discipline (a keyless account can't run; the seeded
+    # operator with imported keys passes). On the clone path this checks the clone (== the source's
+    # models); a 422 leaves only a harmless non-library orphan clone, never a started run.
+    missing = _missing_provider_credentials(uuid.UUID(current_user.id), team_graph_id)
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "you have no API key for: " + ", ".join(missing),
+                "missing_providers": missing,
+            },
+        )
+
     run_id = str(uuid.uuid4())
 
     # Per-run cap: the request body wins, else the configured default (P1.2 DP-A).
@@ -515,6 +567,9 @@ def create_run(body: CreateRunRequest) -> dict:
             Run(
                 id=uuid.UUID(run_id),
                 team_graph_id=uuid.UUID(team_graph_id),
+                # M-accounts Slice B: the run is OWNED by construction (the current user) — the
+                # executor resolves THIS owner's keys; there is no owner-less run.
+                owner_id=uuid.UUID(current_user.id),
                 idea=idea,
                 workflow_id=run_id,
                 status="running",
@@ -540,7 +595,9 @@ _TEAM_BUILDERS = {"two_node": build_two_node_team, "review_loop": build_review_l
 
 
 @router.post("/api/ab-runs")
-def create_ab_runs(body: ABRunRequest) -> dict:
+def create_ab_runs(
+    body: ABRunRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
     """Launch an A/B pair: ONE idea through TWO team configs that share a ``pair_id``, so the
     §14.3 comparison view can attribute the measurable delta (the team A/B "which config ships
     better" instrument, §14). Each side is an ordinary run — its own team graph, its own DBOS
@@ -555,15 +612,28 @@ def create_ab_runs(body: ABRunRequest) -> dict:
         cap = get_settings().default_run_budget_usd
     pair_id = uuid.uuid4()
 
+    owner_id = uuid.UUID(current_user.id)
     runs: list[dict] = []
     for label, team_shape in _AB_CONFIGS:
         team_graph_id = _TEAM_BUILDERS[team_shape]()
+        # M-accounts Slice B: same launch pre-flight as a single run, per side — refuse before any
+        # run starts if the owner lacks a provider key the config needs (422).
+        missing = _missing_provider_credentials(owner_id, team_graph_id)
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "you have no API key for: " + ", ".join(missing),
+                    "missing_providers": missing,
+                },
+            )
         run_id = str(uuid.uuid4())
         with db.session_scope() as session:
             session.add(
                 Run(
                     id=uuid.UUID(run_id),
                     team_graph_id=uuid.UUID(team_graph_id),
+                    owner_id=owner_id,  # M-accounts Slice B: both A/B runs owned by the launcher.
                     idea=idea,
                     workflow_id=run_id,
                     status="running",
@@ -580,7 +650,9 @@ def create_ab_runs(body: ABRunRequest) -> dict:
 
 
 @router.get("/api/ab-runs/{pair_id}")
-def get_ab_comparison(pair_id: str) -> dict:
+def get_ab_comparison(
+    pair_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
     """Read an A/B pair back for the §14.3 comparison view: given the ``pair_id`` from
     :func:`create_ab_runs`, return one ``side`` per run sharing it — terminal status, what
     shipped, cost, the idea, and (for the ``review_loop`` side) the Reviewer's per-round
@@ -604,7 +676,10 @@ def get_ab_comparison(pair_id: str) -> dict:
             .scalars()
             .all()
         )
-        if not runs:
+        # M-accounts Slice B: owner-scoped — 404 unless the pair exists AND every run in it belongs
+        # to the current user (both A/B runs are owned by the launcher; no cross-account read).
+        owner_id = uuid.UUID(current_user.id)
+        if not runs or any(r.owner_id != owner_id for r in runs):
             raise HTTPException(status_code=404, detail="pair not found")
 
         sides: list[dict] = []
@@ -673,13 +748,14 @@ def get_ab_comparison(pair_id: str) -> dict:
 
 
 @router.get("/api/runs/{run_id}")
-def get_run(run_id: str) -> dict:
-    """Return the DBOS workflow status, the run row, and the run's cost rows."""
+def get_run(run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """Return the DBOS workflow status, the run row, and the run's cost rows. M-accounts Slice B:
+    owner-scoped — 404 unless the run belongs to the current user (no cross-account guessing)."""
     status = DBOS.get_workflow_status(run_id)
     workflow_status = status.status if status is not None else "NOT_FOUND"
 
     with db.session_scope() as session:
-        run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
+        run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
         cost_rows = (
             session.execute(
                 select(CostRecord).where(CostRecord.workflow_id == run_id).order_by(CostRecord.id)
@@ -688,7 +764,7 @@ def get_run(run_id: str) -> dict:
             .all()
         )
         costs = [_cost_to_dict(r) for r in cost_rows]
-        run_dict = _run_to_dict(run) if run is not None else None
+        run_dict = _run_to_dict(run)
 
     return {
         "run_id": run_id,
@@ -699,8 +775,9 @@ def get_run(run_id: str) -> dict:
 
 
 @router.get("/api/runs/{run_id}/graph")
-def get_run_graph(run_id: str) -> dict:
-    """Read-only team graph (nodes + edges) for a run — what the canvas draws.
+def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """Read-only team graph (nodes + edges) for a run — what the canvas draws. M-accounts Slice B:
+    owner-scoped (404 unless the run belongs to the current user).
 
     Additive P1.5a fields (existing field names/shapes unchanged — the current
     frontend ignores unknown keys): each node carries its live ``status`` +
@@ -708,9 +785,7 @@ def get_run_graph(run_id: str) -> dict:
     truth; default ``"idle"``/``0`` when the executor has not reached it), and each
     edge carries its routing ``conditions``."""
     with db.session_scope() as session:
-        run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
-        if run is None:
-            raise HTTPException(status_code=404, detail="run not found")
+        run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
 
         nodes = (
             session.execute(select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id))
@@ -937,16 +1012,18 @@ def _team_root_node_id(session, graph_id: uuid.UUID) -> uuid.UUID | None:
     return roots[0] if roots else None
 
 
-def _require_library_team(session, team_id: str) -> TeamGraph:
-    """Resolve a library ``TeamGraph`` by id within ``session`` or raise: 400 on a malformed id,
-    404 if the id is unknown OR not a library team — so a run-snapshot clone / A-B graph / smoke
-    graph (``is_library = false``) is never readable, editable, or deletable via the team API."""
+def _require_library_team(session, team_id: str, owner_id: uuid.UUID) -> TeamGraph:
+    """Resolve a library ``TeamGraph`` by id within ``session`` or raise: 400 on a malformed id, 404
+    if the id is unknown, not a library team, OR not owned by ``owner_id`` (M-accounts Slice B) — so
+    a run-snapshot clone / A-B graph / smoke graph (``is_library = false``) AND another account's
+    library team are never readable, editable, or deletable via the team API. This is the single
+    owner-scope chokepoint every team-edit endpoint hangs off."""
     try:
         tid = uuid.UUID(team_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid team id") from exc
     graph = session.execute(select(TeamGraph).where(TeamGraph.id == tid)).scalar_one_or_none()
-    if graph is None or not graph.is_library:
+    if graph is None or not graph.is_library or graph.owner_id != owner_id:
         raise HTTPException(status_code=404, detail="library team not found")
     return graph
 
@@ -959,25 +1036,30 @@ def get_templates() -> dict:
 
 
 @router.get("/api/teams")
-def get_teams() -> dict:
-    """The user's library teams as summaries (id / name / created_at / node_count), oldest first.
-    Seeds one team if the library is empty so the list is NEVER empty (the canvas
-    always has a team — the §13 S2 anti-dead-zone posture). Library teams ONLY: run-snapshot clones,
-    A/B graphs, and smoke graphs (``is_library = false``) never appear."""
-    seed_library_if_empty()
-    return {"teams": list_library_teams()}
+def get_teams(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """The CURRENT account's library teams as summaries (id / name / created_at / node_count),
+    oldest first (M-accounts Slice B: per-owner). Seeds one team if THIS account's library is empty
+    so a fresh account still lands ≥1 team (the §13 S2 anti-dead-zone posture, per-owner). Library
+    teams ONLY + owner-scoped: run-snapshot clones / A-B / smoke graphs and other accounts' teams
+    never appear."""
+    owner_id = uuid.UUID(current_user.id)
+    seed_library_if_empty(owner_id)
+    return {"teams": list_library_teams(owner_id)}
 
 
 @router.post("/api/teams")
-def create_team(body: CreateTeamRequest) -> dict:
-    """Create a new library team — from a starter template (drop-and-edit), or, when
-    ``template == "blank"`` (P1.8d), from the minimal valid skeleton (root thinker → Ship) the user
-    wires up from scratch. 400 on an unknown ``template`` key. Returns the new team's summary; the
-    FE then loads its graph + makes it current."""
+def create_team(
+    body: CreateTeamRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Create a new library team OWNED by the current account — from a starter template
+    (drop-and-edit), or, when ``template == "blank"`` (P1.8d), from the minimal valid skeleton (root
+    thinker → Ship) the user wires up from scratch. 400 on an unknown ``template`` key. Returns the
+    new team's summary; the FE then loads its graph + makes it current."""
+    owner_id = uuid.UUID(current_user.id)
     if body.template == "blank":
-        return get_team_summary(create_blank_team(body.name))
+        return get_team_summary(create_blank_team(body.name, owner_id))
     try:
-        team_graph_id = create_team_from_template(body.template, body.name)
+        team_graph_id = create_team_from_template(body.template, body.name, owner_id)
     except KeyError as exc:
         raise HTTPException(status_code=400, detail="unknown template") from exc
     return get_team_summary(team_graph_id)
@@ -1022,7 +1104,9 @@ def _latest_invocation_by_origin(
 
 
 @router.get("/api/teams/{team_id}/graph")
-def get_team_graph(team_id: str) -> dict:
+def get_team_graph(
+    team_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
     """A library team's nodes + edges in the canvas's node/edge shape and INCLUDING each node's
     editable ``prompt`` — but with NO run state (the authored team is not running). 400 on a
     malformed id; 404 if the id is not a library team. Shares the node/edge serialization with
@@ -1032,7 +1116,7 @@ def get_team_graph(team_id: str) -> dict:
     authored node, across all the team's runs (or ``None`` if it never ran). This is the AUTHORING
     endpoint ONLY; the run-view endpoint ``get_run_graph`` is unchanged."""
     with db.session_scope() as session:
-        graph = _require_library_team(session, team_id)
+        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
         nodes = (
             session.execute(select(AgentNode).where(AgentNode.team_graph_id == graph.id))
             .scalars()
@@ -1052,7 +1136,12 @@ def get_team_graph(team_id: str) -> dict:
 
 
 @router.patch("/api/teams/{team_id}/nodes/{node_id}")
-def update_team_node(team_id: str, node_id: str, body: UpdateTeamNodeRequest) -> dict:
+def update_team_node(
+    team_id: str,
+    node_id: str,
+    body: UpdateTeamNodeRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
     """Persist an edited library-team node's ``prompt`` + ``model``, and (P1.8c) optionally its
     ``capability`` (``"thinker"`` -> ``kind=completion``/``engine=null``; ``"worker"`` ->
     ``kind=agent``/``engine=openhands``). Validates the node belongs to ``team_id`` AND that
@@ -1066,7 +1155,7 @@ def update_team_node(team_id: str, node_id: str, body: UpdateTeamNodeRequest) ->
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid node id") from exc
     with db.session_scope() as session:
-        graph = _require_library_team(session, team_id)
+        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
         node = session.execute(select(AgentNode).where(AgentNode.id == nid)).scalar_one_or_none()
         if node is None or node.team_graph_id != graph.id:
             raise HTTPException(status_code=404, detail="node not found in the team")
@@ -1093,13 +1182,13 @@ def update_team_node(team_id: str, node_id: str, body: UpdateTeamNodeRequest) ->
 
 
 @router.delete("/api/teams/{team_id}")
-def delete_team(team_id: str) -> dict:
+def delete_team(team_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
     """Delete a library team (the FK cascade drops its nodes/edges). 400 on a malformed id; 404 if
     the id is not a library team (so a run-snapshot clone / A-B graph cannot be deleted here). Safe:
     a ``Run`` points at its immutable clone snapshot, never at a library team, so no run is
     orphaned."""
     with db.session_scope() as session:
-        graph = _require_library_team(session, team_id)
+        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
         session.delete(graph)
     return {"team_graph_id": team_id, "deleted": True}
 
@@ -1200,12 +1289,16 @@ def _edge_columns(body: CreateEdgeRequest) -> tuple[str, dict | None]:
 
 
 @router.post("/api/teams/{team_id}/nodes")
-def create_team_node(team_id: str, body: CreateNodeRequest) -> dict:
+def create_team_node(
+    team_id: str,
+    body: CreateNodeRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
     """Add a node to a library team's canvas (P1.8d). 400 on a malformed id / request; 404 if
     ``team_id`` is not a library team (a run snapshot / A-B graph is never editable). Returns the
     created node in the canvas shape."""
     with db.session_scope() as session:
-        graph = _require_library_team(session, team_id)
+        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
         node = _build_node(graph.id, body)
         session.add(node)
         session.flush()
@@ -1213,7 +1306,9 @@ def create_team_node(team_id: str, body: CreateNodeRequest) -> dict:
 
 
 @router.delete("/api/teams/{team_id}/nodes/{node_id}")
-def delete_team_node(team_id: str, node_id: str) -> dict:
+def delete_team_node(
+    team_id: str, node_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
     """Delete a library-team node; its edges cascade (FK ``ondelete=CASCADE``). 400 on a malformed
     id; 404 if the team is not a library team or the node is not one of its nodes. Safe: runs use
     immutable clone snapshots, so deleting a library node never touches a past run's rows."""
@@ -1222,7 +1317,7 @@ def delete_team_node(team_id: str, node_id: str) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid node id") from exc
     with db.session_scope() as session:
-        graph = _require_library_team(session, team_id)
+        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
         node = session.execute(select(AgentNode).where(AgentNode.id == nid)).scalar_one_or_none()
         if node is None or node.team_graph_id != graph.id:
             raise HTTPException(status_code=404, detail="node not found in the team")
@@ -1231,7 +1326,11 @@ def delete_team_node(team_id: str, node_id: str) -> dict:
 
 
 @router.post("/api/teams/{team_id}/edges")
-def create_team_edge(team_id: str, body: CreateEdgeRequest) -> dict:
+def create_team_edge(
+    team_id: str,
+    body: CreateEdgeRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
     """Wire two of a library team's nodes (P1.8d). The ``role`` maps to ``(edge_type, conditions)``
     (:func:`_edge_columns`). 400 on a malformed id / a label-less branch; 404 if the team is not a
     library team OR either endpoint is not one of its nodes. Returns the created edge."""
@@ -1242,7 +1341,7 @@ def create_team_edge(team_id: str, body: CreateEdgeRequest) -> dict:
         raise HTTPException(status_code=400, detail="invalid node id") from exc
     edge_type, conditions = _edge_columns(body)
     with db.session_scope() as session:
-        graph = _require_library_team(session, team_id)
+        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
         on_team = set(
             session.execute(
                 select(AgentNode.id).where(AgentNode.team_graph_id == graph.id)
@@ -1263,7 +1362,9 @@ def create_team_edge(team_id: str, body: CreateEdgeRequest) -> dict:
 
 
 @router.delete("/api/teams/{team_id}/edges/{edge_id}")
-def delete_team_edge(team_id: str, edge_id: str) -> dict:
+def delete_team_edge(
+    team_id: str, edge_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
     """Delete a library-team edge. 400 on a malformed id; 404 if the team is not a library team or
     the edge is not one of its edges."""
     try:
@@ -1271,7 +1372,7 @@ def delete_team_edge(team_id: str, edge_id: str) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid edge id") from exc
     with db.session_scope() as session:
-        graph = _require_library_team(session, team_id)
+        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
         edge = session.execute(select(Edge).where(Edge.id == eid)).scalar_one_or_none()
         if edge is None or edge.team_graph_id != graph.id:
             raise HTTPException(status_code=404, detail="edge not found in the team")
@@ -1280,12 +1381,16 @@ def delete_team_edge(team_id: str, edge_id: str) -> dict:
 
 
 @router.post("/api/teams/{team_id}/positions")
-def update_team_positions(team_id: str, body: PositionsRequest) -> dict:
+def update_team_positions(
+    team_id: str,
+    body: PositionsRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
     """Persist canvas layout after a drag (P1.8d): a ``{node_id: {x, y}}`` batch. 400 on a malformed
     id; 404 if the team is not a library team. Off-team / malformed entries are ignored (layout is
     best-effort, never a hard error). Returns the ids actually updated."""
     with db.session_scope() as session:
-        graph = _require_library_team(session, team_id)
+        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
         by_id = {
             str(n.id): n
             for n in session.execute(
@@ -1302,13 +1407,15 @@ def update_team_positions(team_id: str, body: PositionsRequest) -> dict:
 
 
 @router.get("/api/teams/{team_id}/validate")
-def validate_team(team_id: str) -> dict:
+def validate_team(
+    team_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
     """The holistic graph-validity verdict for a library team (P1.8d) — the SAME pure
     :func:`validate_graph` the ``create_run`` guard refuses an invalid launch with, so the canvas's
     Run-disabled UX never disagrees with the server. 400 on a malformed id; 404 if not a library
     team. Returns ``{errors, warnings, runnable}``."""
     with db.session_scope() as session:
-        graph = _require_library_team(session, team_id)
+        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
         nodes, edges = graph_dicts(session, graph.id)
     return validate_graph(nodes, edges)
 
@@ -1332,9 +1439,11 @@ def _humantask_to_dict(task: HumanTask) -> dict:
 
 
 @router.get("/api/runs/{run_id}/tasks")
-def get_run_tasks(run_id: str) -> dict:
-    """Tasks-for-Human items for a run, oldest first (what the P1.1b panel draws)."""
+def get_run_tasks(run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """Tasks-for-Human items for a run, oldest first (what the P1.1b panel draws). M-accounts Slice
+    B: owner-scoped (404 unless the run belongs to the current user)."""
     with db.session_scope() as session:
+        _require_owned_run(session, run_id, uuid.UUID(current_user.id))
         rows = (
             session.execute(
                 select(HumanTask).where(HumanTask.run_id == run_id).order_by(HumanTask.id)
@@ -1346,14 +1455,21 @@ def get_run_tasks(run_id: str) -> dict:
 
 
 @router.post("/api/runs/{run_id}/tasks/{task_id}/resolve")
-def resolve_task(run_id: str, task_id: int, body: ResolveTaskRequest) -> dict:
-    """Resolve a pending gate task by **signaling** the waiting workflow.
+def resolve_task(
+    run_id: str,
+    task_id: int,
+    body: ResolveTaskRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """Resolve a pending gate task by **signaling** the waiting workflow. M-accounts Slice B:
+    owner-scoped (404 unless the run belongs to the current user).
 
     This endpoint is a pure signal: it validates the task is pending and calls
     ``DBOS.send``. The workflow's ``close_gate_step`` is the single writer that
     marks the ``HumanTask`` resolved, so the table can't disagree with the run.
     """
     with db.session_scope() as session:
+        _require_owned_run(session, run_id, uuid.UUID(current_user.id))
         task = session.execute(
             select(HumanTask).where(HumanTask.id == task_id, HumanTask.run_id == run_id)
         ).scalar_one_or_none()
@@ -1377,15 +1493,19 @@ def resolve_task(run_id: str, task_id: int, body: ResolveTaskRequest) -> dict:
 
 
 @router.post("/api/runs/{run_id}/tasks/{task_id}/acknowledge")
-def acknowledge_task(run_id: str, task_id: int) -> dict:
+def acknowledge_task(
+    run_id: str, task_id: int, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
     """Acknowledge (dismiss) a non-blocking, topic-less ``low_nudge`` task — the drawer's
-    Low/nudges side (P1.5b, e.g. the 80%-of-cap ``budget_threshold`` nudge).
+    Low/nudges side (P1.5b, e.g. the 80%-of-cap ``budget_threshold`` nudge). M-accounts Slice B:
+    owner-scoped (404 unless the run belongs to the current user).
 
     Unlike a gate task, **nothing waits** on a nudge, so this marks it resolved DIRECTLY
     (NO ``DBOS.send``). 404 if no such task for the run; 409 if the task is a gate (it is
     ``blocking`` OR carries a ``topic`` — those must go through ``/resolve``, which signals
     the workflow); 409 if already resolved."""
     with db.session_scope() as session:
+        _require_owned_run(session, run_id, uuid.UUID(current_user.id))
         task = session.execute(
             select(HumanTask).where(HumanTask.id == task_id, HumanTask.run_id == run_id)
         ).scalar_one_or_none()
@@ -1406,8 +1526,9 @@ def acknowledge_task(run_id: str, task_id: int) -> dict:
 
 
 @router.post("/api/runs/{run_id}/cancel")
-def cancel_run(run_id: str) -> dict:
-    """Kill switch: cancel the run's workflow and mark the run ``cancelled``.
+def cancel_run(run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """Kill switch: cancel the run's workflow and mark the run ``cancelled``. M-accounts Slice B:
+    owner-scoped (404 unless the run belongs to the current user).
 
     ``DBOS.cancel_workflow`` flips the workflow to ``CANCELLED`` (so recovery's
     PENDING-only scan never resurrects it, and its next step/recv boundary aborts)
@@ -1420,8 +1541,8 @@ def cancel_run(run_id: str) -> dict:
     """
     blocked = (*_TERMINAL_RUN_STATUSES, "cancelled")
     with db.session_scope() as session:
-        run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
-        already_terminal = run is not None and run.status in blocked
+        run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
+        already_terminal = run.status in blocked
 
     if not already_terminal:
         DBOS.cancel_workflow(run_id)

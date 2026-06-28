@@ -118,6 +118,32 @@ def test_runs_list_is_owner_scoped_and_newest_first():
     assert set(runs[0]) == {"run_id", "idea", "status", "created_at", "repo_path"}
 
 
+def test_create_run_refused_when_owner_lacks_a_provider_credential():
+    """Reproduce-first §5b: an owned run whose owner has NO credential for a node's provider is
+    REFUSED at create_run (422 with ``missing_providers``) BEFORE any workflow starts. On
+    pre-Slice-B code there was no pre-flight (and no owner), so the keyless run would PROCEED + fall
+    back to .env; now it is refused — proving the launch gate, not just added code."""
+    c, _ = _fresh_account()  # a brand-new account with ZERO provider credentials
+    resp = c.post("/api/runs", json={})  # default two_node → needs openrouter/openai keys it lacks
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["missing_providers"]  # names the providers the account has no key for
+
+
+def test_create_run_allowed_once_the_owner_adds_the_keys(monkeypatch):
+    """The converse: the SAME fresh account, after adding keys for every needed provider, passes the
+    pre-flight and the run is created (workflow start stubbed so no team executes offline)."""
+    from tvashtr import routers
+
+    monkeypatch.setattr(routers.DBOS, "start_workflow", lambda *a, **k: None)
+    c, _ = _fresh_account()
+    for provider in ("openrouter", "openai", "nvidia_nim"):
+        c.post("/api/providers", json={"provider": provider, "api_key": f"sk-{provider}-key"})
+    resp = c.post("/api/runs", json={})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["run_id"]
+
+
 def test_providers_and_runs_require_auth(unauth_client):
     assert unauth_client.get("/api/providers").status_code == 401
     assert unauth_client.get("/api/runs").status_code == 401

@@ -9,6 +9,7 @@ templates + smokes keep running). Each block/warn code has at least one focused 
 
 import uuid
 
+from conftest import auth_user_id
 from sqlalchemy import select
 
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
@@ -203,7 +204,7 @@ def test_all_code_templates_and_blank_validate_clean(client):
     for builder in (build_two_node_team, build_review_loop_team, build_thinker_chain_team):
         result = _validate_team(uuid.UUID(builder()))
         assert result["runnable"] and not result["errors"], (builder.__name__, result)
-    blank = _validate_team(uuid.UUID(create_blank_team("blank validity probe")))
+    blank = _validate_team(uuid.UUID(create_blank_team("blank validity probe", auth_user_id())))
     assert blank["runnable"] and not blank["errors"], blank
 
 

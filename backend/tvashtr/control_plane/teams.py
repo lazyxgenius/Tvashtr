@@ -646,15 +646,16 @@ def _team_summary(session, graph: TeamGraph) -> dict:
     }
 
 
-def list_library_teams() -> list[dict]:
-    """The user's managed shelf — the ``is_library = true`` teams, ordered ``(created_at, id)``,
-    each as a summary. Library teams ONLY: run-snapshot clones, A/B graphs, and smoke graphs default
-    ``is_library = false`` so they never appear here."""
+def list_library_teams(owner_id: uuid.UUID) -> list[dict]:
+    """The OWNER's managed shelf — their ``is_library = true`` teams, ordered ``(created_at, id)``,
+    each as a summary (M-accounts Slice B: owner-scoped). Library teams ONLY: run-snapshot clones,
+    A/B graphs, and smoke graphs default ``is_library = false`` (``owner_id`` NULL) so they never
+    appear here; and another account's library teams are filtered out by ``owner_id``."""
     with session_scope() as session:
         graphs = (
             session.execute(
                 select(TeamGraph)
-                .where(TeamGraph.is_library.is_(True))
+                .where(TeamGraph.is_library.is_(True), TeamGraph.owner_id == owner_id)
                 .order_by(TeamGraph.created_at, TeamGraph.id)
             )
             .scalars()
@@ -672,11 +673,11 @@ def get_team_summary(team_graph_id: str) -> dict:
         return _team_summary(session, graph)
 
 
-def create_team_from_template(template_key: str, name: str) -> str:
-    """Materialize a starter template into a NEW library team and return its id. Calls the
-    byte-intact builder, then sets the user's ``name`` and flips ``is_library = True`` (build-then-
-    flip — the builder is untouched). Raises ``KeyError`` on an unknown template key (the router
-    maps it to 400)."""
+def create_team_from_template(template_key: str, name: str, owner_id: uuid.UUID) -> str:
+    """Materialize a starter template into a NEW library team OWNED by ``owner_id``; return its id
+    (M-accounts Slice B). Calls the byte-intact builder, then sets the user's ``name``, flips
+    ``is_library = True``, and stamps ``owner_id`` (build-then-flip — the builder is untouched).
+    Raises ``KeyError`` on an unknown template key (the router maps it to 400)."""
     template = _TEMPLATES_BY_KEY[template_key]
     team_graph_id = template.builder()
     with session_scope() as session:
@@ -685,10 +686,11 @@ def create_team_from_template(template_key: str, name: str) -> str:
         ).scalar_one()
         graph.name = name
         graph.is_library = True
+        graph.owner_id = owner_id
     return team_graph_id
 
 
-def create_blank_team(name: str) -> str:
+def create_blank_team(name: str, owner_id: uuid.UUID) -> str:
     """Materialize the MINIMAL valid skeleton — one root thinker → a Ship terminal (2 nodes, 1
     forward edge) — as a NEW library team and return its id (P1.8d topology editing). NEVER a
     0-node canvas (which ``validate_graph`` itself rejects): a blank team is the smallest graph that
@@ -697,7 +699,7 @@ def create_blank_team(name: str) -> str:
     builders are untouched; the run-start guard + the canvas validity both accept this skeleton."""
     settings = get_settings()
     with session_scope() as session:
-        graph = TeamGraph(name=name, is_library=True)
+        graph = TeamGraph(name=name, is_library=True, owner_id=owner_id)
         session.add(graph)
         session.flush()
 
@@ -733,13 +735,16 @@ def create_blank_team(name: str) -> str:
         return str(graph.id)
 
 
-def seed_library_if_empty() -> None:
-    """Ensure the library is never empty (the §13 S2 anti-dead-zone posture): if zero library teams
-    exist, create one from the ``review_loop`` template named ``"My team"`` — so a fresh DB (or a
-    deleted-last-team) still lands ≥1 team for the canvas to open to."""
+def seed_library_if_empty(owner_id: uuid.UUID) -> None:
+    """Ensure the OWNER's library is never empty (M-accounts Slice B: per-account anti-dead-zone,
+    §13 S2): if the owner has zero library teams, create one from the ``review_loop`` template named
+    ``"My team"`` — so a fresh account (or one whose last team was deleted) still lands ≥1 team for
+    the canvas to open to."""
     with session_scope() as session:
         count = session.execute(
-            select(func.count()).select_from(TeamGraph).where(TeamGraph.is_library.is_(True))
+            select(func.count())
+            .select_from(TeamGraph)
+            .where(TeamGraph.is_library.is_(True), TeamGraph.owner_id == owner_id)
         ).scalar_one()
     if count == 0:
-        create_team_from_template("review_loop", "My team")
+        create_team_from_template("review_loop", "My team", owner_id)

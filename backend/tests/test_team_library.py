@@ -12,6 +12,7 @@ gate, a delete reaching a snapshot)."""
 
 import uuid
 
+from conftest import auth_user_id
 from dbos._context import get_local_dbos_context
 from sqlalchemy import func, select, text
 
@@ -55,7 +56,7 @@ def _is_library(team_graph_id: str) -> bool:
 
 
 def _library_ids() -> set[str]:
-    return {t["team_graph_id"] for t in list_library_teams()}
+    return {t["team_graph_id"] for t in list_library_teams(auth_user_id())}
 
 
 def _edge_role_topology(team_graph_id: str) -> set[tuple]:
@@ -122,7 +123,7 @@ def test_list_templates_endpoint(client):
 def test_create_team_from_template_unknown_key_raises():
     """An unknown template key is a KeyError (the router maps it to 400)."""
     try:
-        create_team_from_template("does_not_exist", "X")
+        create_team_from_template("does_not_exist", "X", uuid.uuid4())
         raise AssertionError("expected KeyError for an unknown template key")
     except KeyError:
         pass
@@ -146,7 +147,7 @@ def test_create_team_from_template_flips_is_library_true():
     """``create_team_from_template`` builds via the untouched builder then flips the flag + sets the
     name — so it IS a library team (mutation: if the flip regressed, this row would be non-library
     and invisible to the list)."""
-    tid = create_team_from_template("review_loop", "Authored shelf team")
+    tid = create_team_from_template("review_loop", "Authored shelf team", auth_user_id())
     assert _is_library(tid) is True
     with session_scope() as session:
         graph = session.execute(
@@ -186,7 +187,7 @@ def test_get_teams_seeds_when_empty_and_is_idempotent(client):
             session.execute(select(TeamGraph).where(TeamGraph.is_library.is_(True))).scalars().all()
         ):
             session.delete(g)
-    assert list_library_teams() == []
+    assert list_library_teams(auth_user_id()) == []
 
     teams = client.get("/api/teams").json()["teams"]
     assert len(teams) == 1
@@ -203,7 +204,7 @@ def test_get_teams_seeds_when_empty_and_is_idempotent(client):
 def test_get_teams_lists_only_library_teams(client):
     """A created library team appears; a builder graph (non-library) and a clone snapshot (non-
     library) do NOT — proving the list is filtered to ``is_library``."""
-    lib_id = create_team_from_template("two_node", "Visible team")
+    lib_id = create_team_from_template("two_node", "Visible team", auth_user_id())
     builder_id = build_review_loop_team()  # non-library
     clone_id = clone_team_graph(builder_id)  # non-library snapshot
 
@@ -243,7 +244,7 @@ def test_post_create_team_unknown_template_400(client):
 
 
 def test_get_team_graph_exposes_prompt_and_carries_no_run_state(client):
-    tid = create_team_from_template("review_loop", "Graph read")
+    tid = create_team_from_template("review_loop", "Graph read", auth_user_id())
     body = client.get(f"/api/teams/{tid}/graph").json()
     assert body["team_graph_id"] == tid
 
@@ -277,7 +278,7 @@ def test_get_team_graph_404_non_library_and_400_bad_id(client):
 
 
 def test_patch_team_node_persists_prompt_and_model(client):
-    tid = create_team_from_template("review_loop", "Editable")
+    tid = create_team_from_template("review_loop", "Editable", auth_user_id())
     eng = next(
         n
         for n in client.get(f"/api/teams/{tid}/graph").json()["nodes"]
@@ -304,7 +305,7 @@ def test_patch_team_node_persists_prompt_and_model(client):
 
 
 def test_patch_team_node_rejects_gate_and_terminal_409(client):
-    tid = create_team_from_template("review_loop", "Guards")
+    tid = create_team_from_template("review_loop", "Guards", auth_user_id())
     nodes = client.get(f"/api/teams/{tid}/graph").json()["nodes"]
     for role in ("prd_gate", "escalation_gate", "ship", "stop"):
         node = next(n for n in nodes if n["role_name"] == role)
@@ -318,8 +319,8 @@ def test_patch_team_node_rejects_gate_and_terminal_409(client):
 
 
 def test_patch_team_node_404_for_foreign_node_and_non_library_team_and_400_bad_id(client):
-    team_a = create_team_from_template("review_loop", "Team A")
-    team_b = create_team_from_template("two_node", "Team B")
+    team_a = create_team_from_template("review_loop", "Team A", auth_user_id())
+    team_b = create_team_from_template("two_node", "Team B", auth_user_id())
     eng_a = next(
         n
         for n in client.get(f"/api/teams/{team_a}/graph").json()["nodes"]
@@ -371,7 +372,7 @@ def test_patch_team_node_404_for_foreign_node_and_non_library_team_and_400_bad_i
 
 
 def test_delete_library_team_cascades_nodes_and_edges(client):
-    tid = create_team_from_template("review_loop", "Deletable")
+    tid = create_team_from_template("review_loop", "Deletable", auth_user_id())
     assert _is_library(tid) is True
 
     resp = client.delete(f"/api/teams/{tid}")
@@ -411,7 +412,7 @@ def test_delete_404_for_non_library_or_bad_id_and_leaves_it(client):
 
 
 def test_clone_is_faithful_remapped_ids_non_library_and_source_untouched():
-    tid = create_team_from_template("review_loop", "To clone")
+    tid = create_team_from_template("review_loop", "To clone", auth_user_id())
     # Author an edit so the clone has a distinctive value to copy faithfully.
     sentinel = f"authored {uuid.uuid4().hex}"
     with session_scope() as session:
@@ -469,7 +470,7 @@ def test_clone_is_faithful_remapped_ids_non_library_and_source_untouched():
 
 def test_create_run_clones_library_team_and_leaves_it_untouched(client, monkeypatch):
     launches = _stub_launch(monkeypatch)
-    tid = create_team_from_template("review_loop", "Run me")
+    tid = create_team_from_template("review_loop", "Run me", auth_user_id())
     before_ids = {n.id for n in _nodes(tid).values()}
 
     resp = client.post("/api/runs", json={"team_graph_id": tid})
@@ -522,7 +523,7 @@ def test_create_run_legacy_and_ab_paths_build_non_library_graphs(client, monkeyp
 
 def test_seed_library_if_empty_is_a_noop_when_nonempty():
     """When the library already has a team, ``seed_library_if_empty`` adds nothing."""
-    create_team_from_template("two_node", "Already here")
-    before = len(list_library_teams())
-    seed_library_if_empty()
-    assert len(list_library_teams()) == before
+    create_team_from_template("two_node", "Already here", auth_user_id())
+    before = len(list_library_teams(auth_user_id()))
+    seed_library_if_empty(auth_user_id())
+    assert len(list_library_teams(auth_user_id())) == before
