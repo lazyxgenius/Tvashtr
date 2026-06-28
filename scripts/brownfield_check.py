@@ -67,6 +67,7 @@ def main() -> int:
         return 0
 
     from fastapi.testclient import TestClient
+    from operator_session import login_operator
 
     from tvashtr.main import app
 
@@ -84,6 +85,7 @@ def main() -> int:
         )
 
         with TestClient(app) as client:
+            login_operator(client)  # M-accounts: own runs as the operator
             # 1. Inspect the fixture (the discriminated read the Slice-2 UI will use).
             insp = client.post("/api/repo/inspect", json={"path": str(repo)})
             assert insp.status_code == 200, insp.text

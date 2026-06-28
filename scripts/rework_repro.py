@@ -125,6 +125,7 @@ def main() -> int:
         return 0
 
     from fastapi.testclient import TestClient
+    from operator_session import login_operator
 
     from tvashtr.main import app
 
@@ -145,6 +146,7 @@ def main() -> int:
         )
 
         with TestClient(app) as client:
+            login_operator(client)  # M-accounts: own runs as the operator
             resp = client.post(
                 "/api/runs",
                 json={

@@ -52,10 +52,12 @@ def main() -> int:
         return 0
 
     from fastapi.testclient import TestClient
+    from operator_session import login_operator
 
     from tvashtr.main import app
 
     with TestClient(app) as client:
+        login_operator(client)  # M-accounts: own runs as the operator
         # 1. Create a review_loop library team, then launch a run on a clone of it
         #    (clone-on-launch), exactly as "Run this team" does in the UI.
         name = f"work-brief-e2e-{int(time.time())}"

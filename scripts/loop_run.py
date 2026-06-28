@@ -229,6 +229,7 @@ def main() -> int:
         return 0
 
     from fastapi.testclient import TestClient
+    from operator_session import login_operator
     from sqlalchemy import func, select
 
     from tvashtr.db import session_scope
@@ -247,6 +248,7 @@ def main() -> int:
         logging.getLogger("tvashtr.control_plane.team_run").setLevel(logging.INFO)
 
     with TestClient(app) as client:
+        login_operator(client)  # M-accounts: own runs as the operator
         if FEATURE_MODE:
             return _run_feature_mode(client)
         run_id = client.post("/api/runs", json={"team_shape": "review_loop"}).json()["run_id"]

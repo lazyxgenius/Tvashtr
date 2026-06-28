@@ -34,10 +34,12 @@ def main() -> int:
         return 0
 
     from fastapi.testclient import TestClient
+    from operator_session import login_operator
 
     from tvashtr.main import app
 
     with TestClient(app) as client:
+        login_operator(client)  # M-accounts: own runs as the operator
         run_id = client.post("/api/runs", json={}).json()["run_id"]
         print(f"[skeleton-run] started run_id={run_id}")
         print("[skeleton-run] polling (PM completion, then a live OpenHands agent — be patient)…")

@@ -131,6 +131,7 @@ def main() -> int:
         return 0
 
     from fastapi.testclient import TestClient
+    from operator_session import login_operator
 
     from tvashtr.main import app
 
@@ -146,6 +147,7 @@ def main() -> int:
         print(f"[brownfield-loop-check] rung-1 shop repo at {repo} on '{current_branch}'")
 
         with TestClient(app) as client:
+            login_operator(client)  # M-accounts: own runs as the operator
             insp = client.post("/api/repo/inspect", json={"path": str(repo)})
             assert insp.status_code == 200, insp.text
             info = insp.json()
