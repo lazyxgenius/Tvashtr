@@ -136,6 +136,10 @@ def test_build_repo_grounding_picks_conventions_structure_and_transparency(tmp_p
     assert "str_replace" not in grounding
     assert "RUN the repository's existing tests" not in grounding
     assert "`create`" not in grounding
+    # The rung-2 dependency-install directive is a WORKER action too — it must stay out of the
+    # orientation block (both-ways split: present in WORKER_PROTOCOL, absent here).
+    assert "pip install" not in grounding
+    assert "ModuleNotFoundError" not in grounding
 
 
 def test_worker_protocol_carries_the_action_directives(tmp_path):
@@ -146,6 +150,34 @@ def test_worker_protocol_carries_the_action_directives(tmp_path):
     assert "real source MODULE" in WORKER_PROTOCOL
     assert "RUN" in WORKER_PROTOCOL
     assert "smallest change" in WORKER_PROTOCOL
+    # Rung-2 prep: a CONDITIONAL dependency-install directive — fire an install only when a declared
+    # dependency is not importable (a `ModuleNotFoundError`) before concluding the tests fail, so a
+    # real repo with real third-party deps (pandas/numpy/mcp) can be tested. Worker-only; its
+    # absence from the orientation block is asserted below — the both-ways split.
+    assert "pip install" in WORKER_PROTOCOL
+    assert "ModuleNotFoundError" in WORKER_PROTOCOL
+
+
+def test_worker_protocol_carries_conditional_dependency_install_orientation_does_not(tmp_path):
+    """Rung-2 prep (real repos with real third-party deps like pandas/numpy/mcp): the WORKER gets a
+    CONDITIONAL dependency-install directive — install the project's declared deps and re-run ONLY
+    when a declared dependency fails to import (a ``ModuleNotFoundError``), before concluding the
+    tests fail. The both-ways split: it lives in ``WORKER_PROTOCOL`` (a worker action) and NEVER in
+    the orientation block ``build_repo_grounding`` feeds every node (a reviewer must gate, never
+    install/build)."""
+    # Present in the worker protocol, CONDITIONAL (gated on an un-importable dependency, NOT an
+    # always-install), with the Python install commands as the concrete repo-agnostic example.
+    assert "pip install" in WORKER_PROTOCOL
+    assert "ModuleNotFoundError" in WORKER_PROTOCOL  # the trigger — not "always install"
+    assert "pip install -e ." in WORKER_PROTOCOL
+    assert "requirements.txt" in WORKER_PROTOCOL
+
+    # Absent from the orientation block: a dependency-free repo's grounding is unaffected, and a
+    # reviewer node — which only ever receives orientation — is never told to install/build.
+    repo = _init_repo(tmp_path / "repo", files={"pyproject.toml": "[project]\nname='x'\n"})
+    grounding = build_repo_grounding(str(repo), "repo")
+    assert "pip install" not in grounding
+    assert "ModuleNotFoundError" not in grounding
 
 
 def test_build_repo_grounding_conventions_priority(tmp_path):

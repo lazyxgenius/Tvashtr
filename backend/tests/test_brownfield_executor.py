@@ -256,6 +256,10 @@ def test_brownfield_review_loop_worker_gets_protocol_reviewer_does_not_offline(
         assert "REPO GROUNDING" in captured["reviewer_instruction"]
         assert "str_replace" in captured["worker_instruction"]
         assert "str_replace" not in captured["reviewer_instruction"]
+        # The rung-2 conditional dependency-install directive rides with the WORKER_PROTOCOL too:
+        # present in the worker's instruction, absent from the reviewer's (it must gate, not build).
+        assert "pip install" in captured["worker_instruction"]
+        assert "pip install" not in captured["reviewer_instruction"]
 
         # The reviewer GATED + APPROVED (an AgentInvocation outcome of "approved"), and the run
         # shipped the worker's edit to the real branch.
