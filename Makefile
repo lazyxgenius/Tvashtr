@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check brownfield-loop-check seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e seed lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check brownfield-loop-check seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e model-picker-e2e seed lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -147,6 +147,9 @@ auth-e2e: ## Live M-accounts Slice A auth E2E: the whole app sits behind login �
 
 accounts-e2e: ## Live M-accounts Slice B accounts E2E: the full account journey — logged-out→landing (no canvas/create-team), register→empty dashboard, add a provider key (•••• last4), open a team→canvas, back→dashboard. Seeds the operator first. A screenshot per step. NO agent run — needs NO NVIDIA key; just Postgres + a real backend + Vite + Playwright.
 	./scripts/accounts_e2e.sh
+
+model-picker-e2e: ## Live M-accounts Slice C model-picker E2E: register a FRESH account, self-seed dummy encrypted provider creds via the API (.env-FREE), open a team → click the Engineer node (the Provider select lists the seeded providers + the Model field), inline-add a provider (appears in the panel + the dashboard), open the Reviewer (the same-model hint shows) + the PM thinker (absent). NO agent run / NO real LLM — needs NO provider keys; just Postgres + a real backend + Vite + Playwright.
+	./scripts/model_picker_e2e.sh
 
 budget-demo: ## Live budget cap demo: tiny per-run cap -> breach -> auto-approve -> ship (needs key; skips otherwise)
 	./scripts/budget_demo.sh
