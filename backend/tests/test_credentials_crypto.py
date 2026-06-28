@@ -1,8 +1,8 @@
 """Unit tests for the Fernet crypto helper (M-accounts Slice B).
 
 Pure (no DB): a round-trip recovers the plaintext, ciphertext is not the plaintext + varies per call
-(Fernet's random IV), and a wrong key cannot decrypt — so a rotated/mismatched ``TVASHTR_SECRET_KEY``
-fails LOUD rather than returning a garbage plaintext that would auth as the wrong account.
+(Fernet's random IV), and a wrong key cannot decrypt — so a rotated/mismatched
+``TVASHTR_SECRET_KEY`` fails LOUD rather than returning a garbage plaintext that would auth wrong.
 """
 
 import pytest

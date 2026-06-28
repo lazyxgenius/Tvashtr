@@ -1,103 +1,112 @@
 # Tvashtr — Autonomous Execution State
 
 ## Current Milestone
-M-accounts → BYOK (the production model layer). **Slice A — "the app requires login"** (identity
-vertical): minimal email/password auth + login enforcement + the login UI + the operator seed.
-NIM-independent (no live-LLM gate). Slice B (ownership columns + per-owner key resolution +
-`provider_credentials`) and Slice C (the BYOK shelf + picker) are SEPARATE later slices — NOT built here.
+M-accounts → BYOK. **Slice B — ownership + per-owner key resolution + the dashboard** — account-based,
+`.env`-free provider keys. Branch `feat/m-accounts-slice-b` cut from `main` @ `f78e3dd` (the Slice-A
+docs-closeout commit, which contains all of `748abaf`; FF-safe). Slice A (auth + login enforcement)
+shipped + merged. **COMPLETE — all gates green; READY_TO_MERGE below.**
 
 ## Last Completed Step
-M-accounts Slice A — branch `feat/m-accounts-auth` — committed @ `748abaf` (cut from `main` @ `0b0b230`).
-READY_TO_MERGE recorded below; nothing in progress — awaiting operator FF-merge.
+M-accounts Slice B — branch `feat/m-accounts-slice-b` — 14 atomic commits (`099db88` … the freeze-hook
+bump). Awaiting operator audit + FF-merge.
 
 ## In Progress
-Nothing — Slice A is COMMITTED (`748abaf`) and all gates are green. Awaiting operator audit + FF-merge.
+Nothing — Slice B is COMMITTED and all gates are green. Awaiting operator audit + FF-merge.
 
-## The change (Slice A)
-The whole app sits behind a minimal email/password login. Opening the FE shows a login/register screen;
-after logging in you land on the exact canvas that exists today, unchanged. A seeded operator account
-(`operator@tvashtr.local` / `tvashtr-dev`, dev defaults) logs in immediately. A logged-in run resolves
-its model key EXACTLY as today (the global `.env` path via `_direct_agent_api_key`, untouched).
+## The change (Slice B)
+Tvashtr becomes fully account-based + `.env`-free for provider keys. Logged-out → a LANDING page
+(pitch + CTAs; no canvas/team data). Login → a DASHBOARD (the authed default): the account's teams,
+previous runs, and providers (`provider · •••• last4`) with add/remove; a fresh account lands with a
+seeded starter team but empty providers/runs. Open a team → the canvas (`App`) with a
+back-to-dashboard control. Every run is OWNED by construction (`runs.owner_id` always set — UI = the
+user, scripts/tests = the seeded operator); the executor hard-errors on a NULL owner (no `.env`
+fallback). Per-owner key resolution from the encrypted DB replaces `.env` on BOTH the completion
+(gateway) and agent (adapter) paths; an owner lacking a key for a node's provider is refused at launch
+(422). The seed imports the `.env` provider keys ONCE into the operator's encrypted
+`provider_credentials` + backfills the operator's owner-less runs/library-teams; afterward nothing
+reads `.env` provider keys at run time.
 
-What landed (the 22 committed paths):
-- **Backend identity:** `User` ORM model (`models.py`) + NEW migration `0016_users` (chains off
-  `0015_run_brownfield_target`; additive `users` table, unique email). `session_secret` added to
-  `config.Settings` (env `TVASHTR_SESSION_SECRET`, dev default) — `_direct_agent_api_key` /
-  `agent_llm_routing` BYTE-IDENTICAL.
-- **`backend/tvashtr/auth.py` (new, openhands-free):** bcrypt `hash_password`/`verify_password`; an
-  itsdangerous-signed `tv_session` cookie (HttpOnly, SameSite=lax, Secure=False for local dev — prod
-  must flip Secure + a real secret; 14-day max age); `get_current_user` dependency (401 on
-  absent/tampered/expired/unknown); `auth_router` (`/api/auth` register/login/logout/me).
-- **Enforcement (`main.py`):** `auth_router` included with NO dep; the product `api_router` gated by
-  `dependencies=[Depends(get_current_user)]` (covers every `routers.py` endpoint in one line); the two
-  inline spike endpoints gated too; `/health` stays open.
-- **Seed (`seed.py` + `make seed`):** idempotent operator-account creator from
-  `TVASHTR_SEED_EMAIL`/`TVASHTR_SEED_PASSWORD` (dev defaults). Slice-B key-import extension point marked.
-- **Frontend login gate:** `api.ts` gains `getMe/login/register/logout` + `ApiError` + a
-  `setUnauthorizedHandler` 401 seam (inside `getJSON` + `getMe`); `AuthGate` (getMe on mount →
-  loading/authed/unauthed, registers the 401 seam, onLogout); `LoginScreen` (email/password + a Log
-  in/Register toggle + inline 401/409/422 errors, DS-styled); `main.tsx` renders `<AuthGate/>`;
-  `App.tsx` minimal diff = optional `{user,onLogout}` props + a top-bar logout control (rest byte-identical).
-- **Live gate:** `scripts/auth_e2e.sh` (mirrors `launch_panel_e2e.sh` + seeds before Playwright; no
-  NVIDIA key) + `frontend/e2e/auth.spec.ts` (4 checks, a screenshot each) + `make auth-e2e`.
-- **Freeze hook:** `.claude/hooks/protect-migrations.sh` regex bumped `1[0-5]`→`1[0-6]` (0001-0016) — LAST step.
+## What landed (14 atomic commits, branch `feat/m-accounts-slice-b`)
+1. `099db88` — migration `0017` (nullable `runs.owner_id`/`team_graphs.owner_id` FKs +
+   `provider_credentials` table, unique `(owner_id, provider)`) + ORM models.
+2. `47e69b1` — crypto: `cryptography`/Fernet `encrypt_secret`/`decrypt_secret` + stable
+   `TVASHTR_SECRET_KEY` (44-char dev default) in `control_plane/credentials.py`.
+3. `6673cf3` — per-owner resolver `resolve_owner_api_key` + `provider_for_model` + `NoCredentialError`
+   (NO `.env` fallback) — **reproduce-first §5a**.
+4. `ccd5969` — both-path swap: gateway `CompletionRequest.api_key` + `complete()` forward; agent
+   `agent_llm_routing` proxy-OFF uses the threaded override + RAISES if None; `_direct_agent_api_key`
+   DELETED. proxy-ON byte-unchanged.
+5. `bb2292b` — executor threads the owner key per node (`pm_step`/`thinker_refine_step`/
+   `agent_run_step` resolve inside the step from `run_id`, never returned → not checkpointed;
+   `load_graph_step` hard-asserts `owner_id`) — **reproduce-first §5c**.
+6. `60a8d2c` — harness: every offline `Run(` insert owned by the `client` user (`auth_user_id()`) +
+   seeded dummy creds in conftest. No owner-less run remains (AST-verified).
+7. `b4cede9` — provider endpoints (GET/POST/DELETE `/api/providers`, secret never returned) +
+   `GET /api/runs`.
+8. `989872a` — owner-scoping (create_run/ab-runs owner + pre-flight 422; get_run/graph/tasks, cancel,
+   resolve/ack, ab-comparison owner-checked; teams.py per-owner; `_require_library_team` owner-check)
+   — **reproduce-first §5b**.
+9. `650e283` — seed imports `.env` keys once + backfills owners (idempotent).
+10. `836c990` — live scripts own their runs as the operator (`scripts/operator_session.py`).
+11. `9290fe8` — FE landing page + dashboard + provider/runs api fns + DS CSS (no wiring).
+12. `308a992` — FE wiring: AuthGate router (landing → login → dashboard → canvas) + App
+    `teamId`/back-control.
+13. `2d3e9a5` — accounts e2e (`make accounts-e2e` + `frontend/e2e/accounts.spec.ts`) + auth.spec update.
+14. (the branch HEAD) — freeze hook bumped `1[0-6]`→`1[0-7]` (0001–0017) + this STATE closeout +
+    the `test_credentials_crypto.py` docstring reflow (a stray lint fix from commit 3's pass that had
+    never been re-staged onto its commit-2 file — folded in here so the branch is lint-clean as
+    committed).
+
+## Key design decisions (this slice)
+- **owner_id resolved INSIDE each spend-bearing step** (not a new step param) so the many
+  `monkeypatch.setattr(team_run, "pm_step"/"agent_run_step", fake)` tests keep their signatures; the
+  plaintext key is used transiently and never returned (never in a DBOS checkpoint).
+- **Test owner = the conftest `client` user** (`auth_user_id()`), seeded dummy creds; every direct
+  `Run(` insert + the teams.py library-fn callers thread it, so owner-checked endpoints + the
+  LLM-mocked resolver pass offline.
+- Pre-flight 422 runs after the team graph is determined (a clone-path 422 leaves only a harmless
+  non-library orphan clone — never a started run).
 
 ## Invariants held (checkable on disk)
-- `_direct_agent_api_key` + `agent_llm_routing` in `config.py` BYTE-IDENTICAL (only `session_secret`
-  added to `Settings`). Model-key resolution unchanged.
-- `control_plane/team_run.py`, `engines/*.py`, `control_plane/teams.py`, `build_two_node_team` — ZERO
-  diff (not in the commit).
-- Migrations `0001`–`0015` byte-intact; only `0016_users` added. Head `0016_users`.
-- `App.tsx` diff limited to the optional `{user,onLogout}` props + the logout control; everything else
-  byte-identical. `App.test.tsx` unchanged (props optional → `<App />` still valid).
-- New runtime deps = only `bcrypt` + `itsdangerous` (declared in `pyproject.toml`, pinned via `uv.lock`:
-  bcrypt 5.0.0, itsdangerous 2.2.0). `team_run.py` stays openhands-free at import; no-push hook intact.
+- Migrations `0001`–`0016` byte-intact; only `0017` added (chains off `0016`); freeze hook now
+  `0001`–`0017` (0017/0016 BLOCKED exit 2, 0018 ALLOWED exit 0).
+- `team_run.py` openhands-free at import (verified). `EngineAdapter` seam + signature unchanged — the
+  owner key threads the EXISTING `AgentTask.llm_api_key`. `build_two_node_team`/`build_review_loop_team`/
+  `clone_team_graph` untouched (the builders; `create_team_from_template`/`create_blank_team` wrap them
+  + stamp owner_id). proxy-ON `agent_llm_routing` branch byte-identical.
+- Greenfield + brownfield run mechanics byte-intact except the key-resolution swap.
+- New runtime dep = only `cryptography` (pinned via `uv.lock`).
 
-## Tests — mutation-real
-- The shared `client` fixture (conftest) is now AUTHENTICATED (registers a uuid account → carries the
-  `tv_session` cookie) — the single point that keeps all ~108 existing endpoint tests green under
-  enforcement, zero per-file churn. New `unauth_client` (bare `TestClient`, empty jar — no second DBOS
-  launch) for the unauthenticated surface. New `test_auth.py` (17 tests): register 200/409/422 (+ email
-  normalize + cookie HttpOnly/SameSite), login 200/401, logout clears the session (→ me 401), me 401/200,
-  tampered + valid-signature-unknown-user rejected, GET /api/teams 401-without/200-with (the
-  reproduce-first analog), /health open, spike endpoints gated, hash/verify + cookie sign/read/expire units.
-
-## Gate results (this branch) — decisive lines echoed into the /goal transcript
-- `make migrate` head — **`0016_users (head)`**.
-- `make seed` ×2 — **`created: operator account operator@tvashtr.local`** then
-  **`exists — no-op: operator@tvashtr.local already has an account`** (idempotent).
-- `make test` — **`285 passed, 1 warning in 12.92s`** (268 floor + 17 new auth tests; never below 268).
+## Gate results — decisive lines echoed into the /goal transcript
+- `make migrate` head — **`0017_ownership_and_credentials (head)`**.
+- `make seed` ×2 — **`operator@tvashtr.local (created); imported 5 provider key(s); backfilled 0 run(s)
+  + 0 library team(s)`** then **`(exists); imported 5 … backfilled 0 + 0`** (idempotent).
+- `make test` — **`309 passed, 1 warning in 14.54s`** (285 floor + 24 new: crypto, resolver, both-path,
+  owned-run executor §5c, providers/runs, owner-checks, pre-flight 422 §5b, seed import+backfill,
+  resolver §5a).
 - `make lint` — ruff **`All checks passed!`** + eslint `--max-warnings 0` (exit 0) + prettier
   **`All matched files use Prettier code style!`**.
-- `make test-frontend` — **`Tests  151 passed (151)`** (144 floor + 7 new) ; `make build-frontend` —
-  **`✓ built in 1.19s`** (tsc-strict + vite).
-- `make auth-e2e` — **`AUTH E2E PASSED`** (`1 passed (2.1s)`) — CHECK 1 login-required, CHECK 2
-  register→canvas, CHECK 3 logout→login, CHECK 4 seeded-login→canvas; 4 screenshots in
-  `/tmp/tvashtr_auth_shots/`.
-- Freeze hook verified post-bump: `0016`/`0015` BLOCKED (exit 2), `0017` ALLOWED (exit 0).
+- `make test-frontend` — **`Tests 159 passed (159)`** (151 floor + 8: landing 2, dashboard 5, AuthGate +1)
+  ; `make build-frontend` — **`✓ built in 1.18s`** (tsc-strict + vite).
+- `make accounts-e2e` — **`ACCOUNTS E2E PASSED`** (`1 passed`): landing (no canvas/create-team) →
+  register → empty dashboard → add a provider key (•••• last4) → open a team → canvas → back.
+  Screenshots in `/tmp/tvashtr_accounts_shots/` (step1-landing, step2-empty-dashboard,
+  step3-provider-added, step4-canvas). `make auth-e2e` also PASS (updated to landing/dashboard).
+- **NOT a gate (NIM-blocked, skipped):** `loop-feature-docker`, `brownfield-check` — the live real-key
+  path is the operator's manual post-merge check (§9): migrate → seed → delete `.env` provider keys →
+  log in → dashboard shows the seeded providers → open a team → run resolves the DB keys with NO `.env`.
 
 ## Test Count
-**285 backend pytest** (268 floor + 17 new) + **151 vitest** (144 floor + 7 new) — 2026-06-28.
+**309 backend pytest** (285 floor + 24 new) + **159 vitest** (151 floor + 8 new) — 2026-06-28.
 
 ## Deviations / notes
-- **Authenticated `client` fixture in place of a parallel `auth_client` (deviation=auth-fixture-in-place).**
-  The brief described adding a shared authenticated-TestClient fixture and threading it through every
-  endpoint test. Implemented by UPGRADING the existing session-scoped `client` fixture to register +
-  carry the cookie — the same single-point outcome with a far smaller diff (no edit to ~40 test files;
-  `client` is the ONLY TestClient fixture and every endpoint test already takes it). Added `unauth_client`
-  for the unauthenticated-surface tests. No behavioral compromise; documented here per CLI-RULES §6.
-- `read_session_cookie(value, max_age=...)` carries an optional `max_age` seam (defaulted to the real
-  14-day window) so cookie EXPIRY is unit-testable without time travel — the documented public signature
-  `read_session_cookie(value)` is preserved.
-- No live-LLM gate in this slice (NIM-independent) — ran clean, no flake to absorb.
+- A stale-PENDING NIM `run_team` workflow from a prior session resurrected on DBOS launch and polluted
+  the suite — reset with `docker compose down -v && make db-up && make migrate` (CLI-RULES §4.5).
+- `/api/costs` left un-owner-scoped (only a non-Run `generate_doc` workflow hits it in tests; it is a
+  debug surface, not a run-scoped read the brief enumerated).
 
 ## Open Questions
-None blocking. Slice B (ownership columns + per-owner key resolution + `provider_credentials`, NO `.env`
-fallback) and Slice C (the BYOK shelf + per-node picker) are the architect's next slices.
+None blocking. NEXT slice (the architect's): the per-node MODEL PICKER inside the canvas + the BYOK +
+LiteLLM-proxy reconciliation + the DB-level `NOT NULL` hardening on `runs.owner_id` — all deferred.
 
-## Suggested next step
-Slice B — ownership (`runs.owner_id` / `teams.owner_id` / `provider_credentials.owner_id`) + per-owner
-key resolution (swap `_direct_agent_api_key` to DB-first, NO `.env` fallback) + extend the seed to import
-the operator's `.env` keys as their credentials.
-
-READY_TO_MERGE: branch=feat/m-accounts-auth, sha=748abaf, tests=285 backend / 151 vitest
+READY_TO_MERGE: branch=feat/m-accounts-slice-b, sha=<branch HEAD — the freeze/closeout commit>, tests=309 backend / 159 vitest
