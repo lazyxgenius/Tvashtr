@@ -1,15 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 
 import { LastRun } from "../components/LastRun";
 import {
+  addProvider,
   type Capability,
   type GraphEdge,
-  MODEL_PRESETS,
+  listProviders,
+  presetsForProvider,
+  type ProviderCredential,
+  providerOf,
   type TeamGraphNode,
   updateTeamNode,
 } from "../lib/api";
 import { applyEmitContract, emitContract } from "../lib/topology";
+
+// The sentinel Provider-select value that reveals the inline "add a provider" form.
+const ADD_PROVIDER = "__add_provider__";
 
 // Friendly titles for the seeded template roles; any other role falls back to its raw name.
 const ROLE_TITLES: Record<string, string> = {
@@ -45,6 +52,7 @@ export function TeamNodePanel({
   teamId,
   node,
   edges = [],
+  nodes = [],
   isStartNode,
   onSaved,
   onClose,
@@ -52,12 +60,36 @@ export function TeamNodePanel({
   teamId: string;
   node: TeamGraphNode | null;
   edges?: GraphEdge[];
+  nodes?: TeamGraphNode[];
   isStartNode: boolean;
   onSaved: () => void | Promise<void>;
   onClose: () => void;
 }) {
   const [prompt, setPrompt] = useState(node?.prompt ?? "");
   const [model, setModel] = useState(node?.model ?? "");
+  // M-accounts Slice C: the per-node model picker is provider-gated by the account's configured
+  // providers. The panel remounts per node (parent `key`), so a local fetch-on-mount is self-contained.
+  const [providers, setProviders] = useState<ProviderCredential[]>([]);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addProviderSlug, setAddProviderSlug] = useState("");
+  const [addKey, setAddKey] = useState("");
+  const [addBusy, setAddBusy] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [hintDismissed, setHintDismissed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    listProviders()
+      .then((p) => {
+        if (!cancelled) setProviders(Array.isArray(p) ? p : []);
+      })
+      .catch(() => {
+        /* providers stay empty → the picker still works on the node's own provider */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // P1.8c: the node's capability (thinker = completion / worker = agent) is now authorable. Seed it
   // from the node's kind; reset-on-select is the parent `key={selectedRole}` remount.
   const initialCapability = capabilityOf(node);
@@ -106,6 +138,75 @@ export function TeamNodePanel({
       setSaving(false);
     }
   };
+
+  // ---- M-accounts Slice C: the provider-gated model picker (UI over the SINGLE node.model string) ----
+  const currentProvider = model.trim() ? providerOf(model) : "";
+  // The select offers the account's configured providers, plus the node's CURRENT provider even if
+  // unconfigured (so the select reflects the actual model), plus the inline-add affordance.
+  const providerOptions = Array.from(
+    new Set([...providers.map((p) => p.provider), ...(currentProvider ? [currentProvider] : [])]),
+  ).sort();
+  const quickPicks = presetsForProvider(currentProvider);
+
+  const onProviderChange = (value: string) => {
+    if (value === ADD_PROVIDER) {
+      setAddOpen(true);
+      return;
+    }
+    // Rewrite the leading segment: jump to that provider's first quick-pick, else a bare prefix.
+    setModel(presetsForProvider(value)[0] ?? `${value}/`);
+    setSaved(false);
+  };
+
+  const handleInlineAdd = async () => {
+    const slug = providerOf(addProviderSlug);
+    const key = addKey.trim();
+    if (!slug || !key) {
+      setAddError("Enter a provider and an API key.");
+      return;
+    }
+    setAddBusy(true);
+    setAddError(null);
+    try {
+      await addProvider(slug, key); // the SAME endpoint + table the dashboard uses
+      const refreshed = await listProviders();
+      setProviders(refreshed);
+      onProviderChange(slug); // select the just-added provider
+      setAddOpen(false);
+      setAddProviderSlug("");
+      setAddKey("");
+    } catch {
+      setAddError("Couldn’t save that key — is the backend running?");
+    } finally {
+      setAddBusy(false);
+    }
+  };
+
+  // ---- The per-node recommendation hint (registry-free same-model detection; never blocks Save) ----
+  // A GATING worker = an agent node with a verdict/branch contract (a reviewer). The workers it
+  // reviews / sends rework to are the OTHER endpoints of edges touching it (the review edge in, the
+  // loop-back out). Compared against the LIVE edited `model`, so the hint clears the moment they differ.
+  const connectedWorkerIds = new Set<string>();
+  if (node && node.kind === "agent" && contract) {
+    for (const e of edges) {
+      if (e.target_node_id === node.id) connectedWorkerIds.add(e.source_node_id);
+      if (e.source_node_id === node.id) connectedWorkerIds.add(e.target_node_id);
+    }
+  }
+  const sameModelSibling =
+    node && node.kind === "agent" && contract && model.trim()
+      ? (nodes.find(
+          (n) =>
+            n.id !== node.id &&
+            n.kind === "agent" &&
+            connectedWorkerIds.has(n.id) &&
+            (n.model ?? "") === model,
+        ) ?? null)
+      : null;
+  const showHint = sameModelSibling !== null && !hintDismissed;
+  const siblingTitle = sameModelSibling
+    ? (ROLE_TITLES[sameModelSibling.role_name] ?? sameModelSibling.role_name)
+    : "";
 
   return (
     <aside className="tv-panel" aria-label={`${title} editor`}>
@@ -202,15 +303,73 @@ export function TeamNodePanel({
               </div>
             )}
 
-            <label className="tv-field">
+            <div className="tv-field">
               <span className="tv-field__label">Model</span>
               <span className="tv-field__hint">
-                Free text — pick a proven preset or type any provider/model slug.
+                Pick a provider you’ve configured, then a model — add a key inline if it’s missing.
               </span>
+
+              <select
+                className="tv-launch__select"
+                aria-label="Provider"
+                value={currentProvider}
+                onChange={(e) => onProviderChange(e.target.value)}
+              >
+                {currentProvider === "" && <option value="">Choose a provider…</option>}
+                {providerOptions.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+                <option value={ADD_PROVIDER}>+ Add a provider…</option>
+              </select>
+
+              {addOpen && (
+                <div className="tv-node-addprov">
+                  <input
+                    className="tv-launch__input"
+                    aria-label="New provider"
+                    placeholder="provider (e.g. openrouter)"
+                    value={addProviderSlug}
+                    onChange={(e) => setAddProviderSlug(e.target.value)}
+                  />
+                  <input
+                    className="tv-launch__input"
+                    type="password"
+                    aria-label="New provider API key"
+                    placeholder="paste API key"
+                    value={addKey}
+                    onChange={(e) => setAddKey(e.target.value)}
+                  />
+                  <div className="tv-node-addprov__actions">
+                    <button
+                      type="button"
+                      className="tv-btn tv-btn--sm"
+                      disabled={addBusy}
+                      onClick={() => void handleInlineAdd()}
+                    >
+                      Add
+                    </button>
+                    <button
+                      type="button"
+                      className="tv-btn tv-btn--link tv-btn--sm"
+                      onClick={() => {
+                        setAddOpen(false);
+                        setAddError(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {addError && <span className="tv-prd__saveerr">{addError}</span>}
+                </div>
+              )}
+
               <input
                 className="tv-node-model"
                 type="text"
                 list="tv-model-presets"
+                aria-label="Model"
                 value={model}
                 spellCheck={false}
                 onChange={(e) => {
@@ -219,11 +378,28 @@ export function TeamNodePanel({
                 }}
               />
               <datalist id="tv-model-presets">
-                {MODEL_PRESETS.map((m) => (
+                {quickPicks.map((m) => (
                   <option key={m} value={m} />
                 ))}
               </datalist>
-            </label>
+
+              {showHint && (
+                <div className="tv-node-hint" role="status">
+                  <span className="tv-node-hint__text">
+                    {title} and {siblingTitle} both run <code>{model}</code>. Reviews are stronger
+                    when the reviewer runs a more capable model than the worker it checks.
+                  </span>
+                  <button
+                    type="button"
+                    className="tv-btn tv-btn--link tv-btn--sm"
+                    onClick={() => setHintDismissed(true)}
+                    aria-label="Dismiss recommendation"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div className="tv-prd__editbar">
               <button

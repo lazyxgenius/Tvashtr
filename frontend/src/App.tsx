@@ -710,6 +710,7 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
                     teamId={currentTeamId}
                     node={selectedTeamNode}
                     edges={teamGraph?.edges ?? []}
+                    nodes={teamGraph?.nodes ?? []}
                     isStartNode={selectedTeamNode?.id === startNodeId}
                     onSaved={() => loadTeam(currentTeamId)}
                     onClose={() => setSelectedNodeId(null)}

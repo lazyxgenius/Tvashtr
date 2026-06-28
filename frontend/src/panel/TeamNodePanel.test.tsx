@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { TeamGraphNode } from "../lib/api";
+import type { GraphEdge, TeamGraphNode } from "../lib/api";
 import { TeamNodePanel } from "./TeamNodePanel";
 
 // P1.8b/P1.8c: the team-authoring editor — the capability toggle (Thinker/Worker) + prompt + model
@@ -30,16 +30,46 @@ function urlOf(input: RequestInfo | URL): string {
   return input.url;
 }
 
+const jsonOk = (body: unknown): Response =>
+  ({ ok: true, status: 200, json: () => Promise.resolve(body) }) as unknown as Response;
+
+// The PATCH call among all fetches (the panel also GETs /api/providers on mount + may POST a key).
+function patchCall() {
+  return fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === "PATCH") as
+    | [RequestInfo | URL, RequestInit]
+    | undefined;
+}
+
 let fetchMock: ReturnType<typeof vi.fn>;
+let providersState: { provider: string; key_last4: string; created_at: string }[];
 
 beforeEach(() => {
-  fetchMock = vi.fn(() =>
-    Promise.resolve({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(node({ prompt: "edited" })),
-    } as unknown as Response),
-  );
+  // M-accounts Slice C: the panel fetches /api/providers on mount + can POST a key inline, so the
+  // stub is URL-aware + stateful — GET returns the live list, POST appends + echoes last4, PATCH (the
+  // node-update) echoes the node. Anything else (e.g. updateTeamNode's response) echoes the node too.
+  providersState = [
+    { provider: "openai", key_last4: "1111", created_at: "x" },
+    { provider: "nvidia_nim", key_last4: "2222", created_at: "x" },
+  ];
+  fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = urlOf(input);
+    const method = init?.method ?? "GET";
+    if (url === "/api/providers" && method === "GET") {
+      return Promise.resolve(jsonOk({ providers: providersState }));
+    }
+    if (url === "/api/providers" && method === "POST") {
+      const { provider, api_key } = JSON.parse(init!.body as string) as {
+        provider: string;
+        api_key: string;
+      };
+      const last4 = api_key.slice(-4);
+      if (!providersState.some((p) => p.provider === provider)) {
+        providersState.push({ provider, key_last4: last4, created_at: "x" });
+      }
+      return Promise.resolve(jsonOk({ provider, key_last4: last4 }));
+    }
+    return Promise.resolve(jsonOk(node({ prompt: "edited" })));
+  });
   vi.stubGlobal("fetch", fetchMock);
 });
 
@@ -62,7 +92,7 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
     );
 
     const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", { name: /prompt/i });
-    const model = screen.getByRole<HTMLInputElement>("combobox");
+    const model = screen.getByRole<HTMLInputElement>("combobox", { name: "Model" });
     expect(prompt.value).toBe("Original engineer prompt");
     expect(model.value).toBe("openai/gpt-4o-mini");
 
@@ -76,7 +106,7 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
     // Dirty-aware, no autosave: Save is disabled until a field actually changes.
     const save = screen.getByRole("button", { name: "Save" });
     expect(save).toBeDisabled();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(patchCall()).toBeUndefined(); // no node-update PATCH before a real edit
 
     await user.clear(prompt);
     await user.type(prompt, "Write greeting.txt = SENTINEL");
@@ -87,8 +117,8 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
 
     // The Save PATCHed the node-update endpoint with the edited prompt + model + the (unchanged)
     // capability — the panel posts the full values (the FE is dirty-aware but sends all of them).
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [calledUrl, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    const [calledUrl, init] = patchCall()!;
     expect(urlOf(calledUrl)).toBe("/api/teams/team-1/nodes/n-eng");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body as string)).toEqual({
@@ -122,8 +152,8 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
     expect(save).toBeEnabled();
 
     await user.click(save);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    const [, init] = patchCall()!;
     expect(JSON.parse(init.body as string)).toEqual({
       prompt: "Original engineer prompt",
       model: "openai/gpt-4o-mini",
@@ -238,5 +268,180 @@ describe("TeamNodePanel — authoring 'Last run' brief (M2)", () => {
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     // ...yet the read-only historical brief is untouched, still rendered.
     expect(screen.getByText("Drafted the spec from the idea.")).toBeInTheDocument();
+  });
+});
+
+// ---- M-accounts Slice C: the provider-gated picker + the recommendation hint ----
+
+function reviewer(model: string): TeamGraphNode {
+  return { ...node({ id: "n-rev", role_name: "reviewer", model }) };
+}
+function engineer(model: string): TeamGraphNode {
+  return { ...node({ id: "n-eng", role_name: "engineer", model }) };
+}
+// A review_loop-shaped wiring so emitContract(reviewer) is a verdict/branch worker (gating), while
+// engineer (only an unconditional out-edge) is NOT gating.
+const REVIEW_EDGES: GraphEdge[] = [
+  {
+    id: "e1",
+    source_node_id: "n-eng",
+    target_node_id: "n-rev",
+    edge_type: "review",
+    conditions: null,
+  },
+  {
+    id: "e2",
+    source_node_id: "n-rev",
+    target_node_id: "n-eng",
+    edge_type: "review",
+    conditions: { loop_limit: 3 },
+  },
+  {
+    id: "e3",
+    source_node_id: "n-rev",
+    target_node_id: "n-ship",
+    edge_type: "review",
+    conditions: { when: "approved" },
+  },
+];
+
+describe("TeamNodePanel — provider-gated model picker (Slice C)", () => {
+  it("lists the account's providers, scopes the model to one, and composes node.model on Save", async () => {
+    const user = userEvent.setup();
+    render(
+      <TeamNodePanel
+        teamId="t1"
+        node={engineer("openai/gpt-4o-mini")}
+        isStartNode={false}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        onClose={() => {}}
+      />,
+    );
+    // The Provider select is populated from listProviders (openai + nvidia_nim) and reflects the node.
+    const provider = await screen.findByRole<HTMLSelectElement>("combobox", { name: "Provider" });
+    await waitFor(() => expect(provider).toHaveValue("openai"));
+    expect(screen.getByRole("option", { name: "nvidia_nim" })).toBeInTheDocument();
+
+    // Switching the provider rewrites node.model's leading segment to that provider's quick-pick.
+    await user.selectOptions(provider, "nvidia_nim");
+    const model = screen.getByRole<HTMLInputElement>("combobox", { name: "Model" });
+    expect(model.value).toBe("nvidia_nim/meta/llama-3.3-70b-instruct");
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    const saved = JSON.parse(patchCall()![1].body as string) as { model: string };
+    expect(saved.model).toBe("nvidia_nim/meta/llama-3.3-70b-instruct");
+  });
+
+  it("inline 'Add a provider' reuses addProvider, refetches, and selects the new provider", async () => {
+    const user = userEvent.setup();
+    render(
+      <TeamNodePanel
+        teamId="t1"
+        node={engineer("openai/gpt-4o-mini")}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    const provider = await screen.findByRole<HTMLSelectElement>("combobox", { name: "Provider" });
+    await waitFor(() => expect(provider).toHaveValue("openai"));
+    // groq is NOT configured yet.
+    expect(screen.queryByRole("option", { name: "groq" })).toBeNull();
+
+    await user.selectOptions(provider, "__add_provider__");
+    await user.type(screen.getByLabelText("New provider"), "groq");
+    await user.type(screen.getByLabelText("New provider API key"), "gsk-dummy-9999");
+    await user.click(screen.getByRole("button", { name: "Add" }));
+
+    // It POSTed via addProvider, refetched, and the new provider is now in the select + selected.
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          (c) =>
+            urlOf(c[0] as RequestInfo | URL) === "/api/providers" &&
+            (c[1] as RequestInit | undefined)?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+    expect(await screen.findByRole("option", { name: "groq" })).toBeInTheDocument();
+    await waitFor(() => expect(provider).toHaveValue("groq"));
+  });
+});
+
+describe("TeamNodePanel — recommendation hint (Slice C, the discriminating pair)", () => {
+  const HINT = /Reviews are stronger when the reviewer runs a more capable model/i;
+
+  it("fires for a reviewer sharing the worker's model AND is absent when they differ", async () => {
+    // PRESENT: reviewer + engineer both run the SAME model.
+    const same = render(
+      <TeamNodePanel
+        teamId="t1"
+        node={reviewer("openai/gpt-4o-mini")}
+        edges={REVIEW_EDGES}
+        nodes={[reviewer("openai/gpt-4o-mini"), engineer("openai/gpt-4o-mini")]}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect(await screen.findByText(HINT)).toBeInTheDocument();
+    same.unmount();
+
+    // ABSENT: a DIFFERENT model on the engineer → no shared-model sibling → no hint (an always-on
+    // hint would fail here; an always-off hint would fail above).
+    render(
+      <TeamNodePanel
+        teamId="t1"
+        node={reviewer("openai/gpt-4o-mini")}
+        edges={REVIEW_EDGES}
+        nodes={[reviewer("openai/gpt-4o-mini"), engineer("nvidia_nim/meta/llama-3.3-70b-instruct")]}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByText(HINT)).toBeNull();
+  });
+
+  it("is absent on a thinker (non-gating), dismiss hides it, and it never blocks Save", async () => {
+    const user = userEvent.setup();
+    // A thinker (kind completion) never shows the hint even with a same-model sibling.
+    const t = render(
+      <TeamNodePanel
+        teamId="t1"
+        node={node({
+          id: "n-pm",
+          role_name: "pm",
+          kind: "completion",
+          engine: null,
+          model: "openai/gpt-4o-mini",
+        })}
+        edges={REVIEW_EDGES}
+        nodes={[engineer("openai/gpt-4o-mini")]}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByText(HINT)).toBeNull();
+    t.unmount();
+
+    render(
+      <TeamNodePanel
+        teamId="t1"
+        node={reviewer("openai/gpt-4o-mini")}
+        edges={REVIEW_EDGES}
+        nodes={[reviewer("openai/gpt-4o-mini"), engineer("openai/gpt-4o-mini")]}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect(await screen.findByText(HINT)).toBeInTheDocument();
+    // Save is NOT blocked by the hint (Save is gated only by dirty + non-empty model — it's clean here).
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled(); // disabled because not dirty, not because of the hint
+    await user.click(screen.getByRole("button", { name: "Dismiss recommendation" }));
+    expect(screen.queryByText(HINT)).toBeNull();
   });
 });

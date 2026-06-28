@@ -324,8 +324,10 @@ describe("App — persistent team authoring (P1.8b)", () => {
     const panel = await screen.findByLabelText("Engineer editor");
     const promptBox = within(panel).getByRole<HTMLTextAreaElement>("textbox", { name: /prompt/i });
     expect(promptBox.value).toContain("ENGINEER behavior");
-    // The model field carries the node's model.
-    expect(within(panel).getByRole<HTMLInputElement>("combobox").value).toBe("openai/gpt-4o-mini");
+    // The model field carries the node's model (the panel now also has a Provider select combobox).
+    expect(within(panel).getByRole<HTMLInputElement>("combobox", { name: "Model" }).value).toBe(
+      "openai/gpt-4o-mini",
+    );
 
     // Close the panel back to a CLEAN state, then click a GATE node: control primitives aren't
     // editable, so NO editable panel opens (not even a stale one). Asserting from the closed state
