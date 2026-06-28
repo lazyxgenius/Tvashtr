@@ -59,6 +59,39 @@ def test_complete_maps_usage_cost_and_model(monkeypatch):
     assert result.latency_ms >= 0.0
 
 
+def test_complete_passes_byok_api_key_when_set(monkeypatch):
+    # M-accounts Slice B: when the request carries a per-owner api_key, the gateway forwards it to
+    # litellm.completion (the BYOK completion path), so the run resolves from the owner's key.
+    captured = {}
+
+    def fake_completion(*, model, messages, **kwargs):
+        captured["api_key"] = kwargs.get("api_key", "<<absent>>")
+        return _canned_response("ok", model)
+
+    monkeypatch.setattr(gw.litellm, "completion", fake_completion)
+    monkeypatch.setattr(gw.litellm, "completion_cost", lambda **kw: 0.0)
+    complete(
+        CompletionRequest(
+            model="openrouter/x", messages=[{"role": "user", "content": "hi"}], api_key="owner-key"
+        )
+    )
+    assert captured["api_key"] == "owner-key"
+
+
+def test_complete_omits_api_key_when_none(monkeypatch):
+    # A non-run caller (api_key=None) lets litellm resolve the key its own way — kwarg omitted.
+    captured = {}
+
+    def fake_completion(*, model, messages, **kwargs):
+        captured["has_api_key"] = "api_key" in kwargs
+        return _canned_response("ok", model)
+
+    monkeypatch.setattr(gw.litellm, "completion", fake_completion)
+    monkeypatch.setattr(gw.litellm, "completion_cost", lambda **kw: 0.0)
+    complete(CompletionRequest(model="openrouter/x", messages=[{"role": "user", "content": "hi"}]))
+    assert captured["has_api_key"] is False
+
+
 def test_complete_falls_back_to_next_model_on_failure(monkeypatch):
     calls: list[str] = []
 

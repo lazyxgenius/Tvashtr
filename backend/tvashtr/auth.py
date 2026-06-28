@@ -7,9 +7,9 @@ One openhands-free module holding the whole identity surface for this slice:
 * the ``get_current_user`` FastAPI dependency that gates the product surface, and
 * the ``/api/auth`` router (register / login / logout / me).
 
-This slice is identity + login enforcement ONLY. Model-key resolution is unchanged — a logged-in
-run still resolves its key via ``config._direct_agent_api_key`` / the global ``.env`` path.
-Ownership columns + per-user keys are LATER slices.
+This slice is identity + login enforcement ONLY. (M-accounts Slice B then made model-key resolution
+per-owner — a run resolves its owner's encrypted ``provider_credentials`` key, no ``.env`` fallback;
+see :mod:`tvashtr.control_plane.credentials`.)
 """
 
 import uuid

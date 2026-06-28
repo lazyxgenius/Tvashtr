@@ -71,6 +71,11 @@ def complete(request: CompletionRequest) -> CompletionResult:
             kwargs["temperature"] = request.temperature
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
+        # M-accounts Slice B: pass the per-owner provider key (BYOK) when the caller set one, so the
+        # completion path resolves from the run owner's encrypted credential, not ``.env``. ``None``
+        # ⇒ litellm's own env lookup (non-run callers only — the executor always sets it on a run).
+        if request.api_key is not None:
+            kwargs["api_key"] = request.api_key
 
         started = time.perf_counter()
         try:

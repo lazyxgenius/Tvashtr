@@ -128,7 +128,10 @@ def test_run_orchestration_reaps_starts_runs_pulls(tmp_path):
         patch.object(mod, "TerminalTool"),
         patch.object(mod, "FileEditorTool"),
     ):
-        task = AgentTask(instruction="do it", workspace_dir=str(tmp_path), model="m")
+        # proxy-OFF ⇒ the executor always threads a per-owner key (M-accounts Slice B).
+        task = AgentTask(
+            instruction="do it", workspace_dir=str(tmp_path), model="m", llm_api_key="byok-key"
+        )
         result = mod.OpenHandsDockerAdapter().run(task)
 
     # Identical AgentRunResult shape as the local path.
@@ -163,7 +166,9 @@ def test_run_failure_is_caught_and_reported(tmp_path):
         patch.object(mod, "TerminalTool"),
         patch.object(mod, "FileEditorTool"),
     ):
-        task = AgentTask(instruction="x", workspace_dir=str(tmp_path), model="m")
+        task = AgentTask(
+            instruction="x", workspace_dir=str(tmp_path), model="m", llm_api_key="byok-key"
+        )
         result = mod.OpenHandsDockerAdapter().run(task)
 
     assert result.status == "failed"

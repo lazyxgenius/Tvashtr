@@ -73,29 +73,30 @@ def _run_docker(settings, tmp_path, llm_api_key=None):
     return LLM.call_args.kwargs
 
 
-# --- flag OFF: the EXACT prior direct construction (the brief's core assertion) ---
+# --- flag OFF: the BYOK direct path — the per-owner key the executor threaded, NOT .env ---
 
 
-def test_local_off_builds_exact_direct_llm(tmp_path, monkeypatch):
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+def test_local_off_builds_direct_llm_with_the_threaded_owner_key(tmp_path, monkeypatch):
+    # M-accounts Slice B: proxy OFF builds the LLM with the per-owner key the executor threaded
+    # (AgentTask.llm_api_key), bare slug + no base_url. An .env OPENROUTER_API_KEY is IGNORED.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-env-ignored")
     settings = Settings(_env_file=None, litellm_proxy_enabled=False)
-    kwargs = _run_local(settings, tmp_path)
-    # Byte-for-byte the prior call: bare slug + OPENROUTER_API_KEY, no base_url.
+    kwargs = _run_local(settings, tmp_path, llm_api_key="byok-key")
     assert kwargs == {
         "model": "openrouter/m",
-        "api_key": "sk-or-test",
+        "api_key": "byok-key",
         "temperature": 0.0,
         "usage_id": "tvashtr-agent",
     }
 
 
-def test_docker_off_builds_exact_direct_llm(tmp_path, monkeypatch):
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+def test_docker_off_builds_direct_llm_with_the_threaded_owner_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-env-ignored")
     settings = Settings(_env_file=None, litellm_proxy_enabled=False)
-    kwargs = _run_docker(settings, tmp_path)
+    kwargs = _run_docker(settings, tmp_path, llm_api_key="byok-key")
     assert kwargs == {
         "model": "openrouter/m",
-        "api_key": "sk-or-test",
+        "api_key": "byok-key",
         "temperature": 0.0,
         "usage_id": "tvashtr-agent",
     }
@@ -201,7 +202,13 @@ def _run_local_result(settings, tmp_path, *, run_side_effect):
         patch.object(local_mod, "FileEditorTool"),
         patch.object(local_mod, "Conversation", return_value=convo),
     ):
-        task = AgentTask(instruction="x", workspace_dir=str(tmp_path), model="openrouter/m")
+        # proxy-OFF ⇒ the executor always threads a per-owner key (M-accounts Slice B).
+        task = AgentTask(
+            instruction="x",
+            workspace_dir=str(tmp_path),
+            model="openrouter/m",
+            llm_api_key="byok-key",
+        )
         return local_mod.OpenHandsAdapter().run(task)
 
 
@@ -314,7 +321,13 @@ def _run_docker_result(tmp_path, *, feed_events, raise_exc):
         patch.object(docker_mod, "FileEditorTool"),
         patch.object(docker_mod, "Conversation", side_effect=_make_conversation),
     ):
-        task = AgentTask(instruction="x", workspace_dir=str(tmp_path), model="openrouter/m")
+        # proxy-OFF ⇒ the executor always threads a per-owner key (M-accounts Slice B).
+        task = AgentTask(
+            instruction="x",
+            workspace_dir=str(tmp_path),
+            model="openrouter/m",
+            llm_api_key="byok-key",
+        )
         return docker_mod.OpenHandsDockerAdapter().run(task)
 
 
@@ -376,6 +389,7 @@ def test_local_adapter_emitting_node_is_workspace_read_only(tmp_path, monkeypatc
             instruction="review it",
             workspace_dir=str(tmp_path),
             model="openrouter/m",
+            llm_api_key="byok-key",
             pull_paths=("REVIEW_VERDICT.json",),
         )
         result = local_mod.OpenHandsAdapter().run(task)
@@ -413,7 +427,12 @@ def test_local_adapter_worker_none_pull_paths_keeps_edits(tmp_path, monkeypatch)
         patch.object(local_mod, "FileEditorTool"),
         patch.object(local_mod, "Conversation", return_value=convo),
     ):
-        task = AgentTask(instruction="build", workspace_dir=str(tmp_path), model="openrouter/m")
+        task = AgentTask(
+            instruction="build",
+            workspace_dir=str(tmp_path),
+            model="openrouter/m",
+            llm_api_key="byok-key",
+        )
         result = local_mod.OpenHandsAdapter().run(task)
 
     assert (tmp_path / "greeting.txt").read_text() == "hello"  # the worker's edit survives

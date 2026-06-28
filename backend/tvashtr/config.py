@@ -165,8 +165,8 @@ class Settings(BaseSettings):
     # M-accounts Slice A: the secret that signs the ``tv_session`` login cookie (itsdangerous,
     # see ``auth.py``). A dev default keeps the offline suite + local dev working with no extra
     # env; PRODUCTION MUST override ``TVASHTR_SESSION_SECRET`` with a real random secret (and the
-    # cookie must be marked ``Secure`` over https). Adding this field does NOT touch
-    # ``_direct_agent_api_key`` / ``agent_llm_routing`` below — model-key resolution is unchanged.
+    # cookie must be marked ``Secure`` over https). Distinct from ``secret_key`` below (which
+    # encrypts BYOK provider keys) — a leak of one does not compromise the other.
     session_secret: str = Field(
         default="dev-insecure-session-secret-change-me",
         validation_alias=AliasChoices("TVASHTR_SESSION_SECRET", "session_secret"),
@@ -174,12 +174,12 @@ class Settings(BaseSettings):
 
     # M-accounts Slice B: the Fernet key that encrypts BYOK provider keys at rest in
     # ``provider_credentials`` (see ``control_plane.credentials``). A real 44-char urlsafe-base64
-    # ``Fernet.generate_key()`` value is hardcoded as the dev default so the offline suite + local dev
-    # work with no extra env. PRODUCTION MUST override ``TVASHTR_SECRET_KEY`` with its OWN generated
-    # key, and the key MUST be STABLE — the stored secrets are only decryptable with the SAME key, so
-    # rotating it strands every saved credential (re-enter them after a rotation). Distinct from
-    # ``session_secret`` (which only signs the login cookie); a leak of one does not compromise the
-    # other.
+    # ``Fernet.generate_key()`` value is hardcoded as the dev default so the offline suite + local
+    # dev work with no extra env. PRODUCTION MUST override ``TVASHTR_SECRET_KEY`` with its OWN
+    # generated key, and the key MUST be STABLE — the stored secrets are only decryptable with the
+    # SAME key, so rotating it strands every saved credential (re-enter them after a rotation).
+    # Distinct from ``session_secret`` (which only signs the login cookie); a leak of one does not
+    # compromise the other.
     secret_key: str = Field(
         default="TzxdlCpD6FYWPsjw6h7e3sYQw6EvjI-cmvJI2KQE7ho=",
         validation_alias=AliasChoices("TVASHTR_SECRET_KEY", "secret_key"),
@@ -199,40 +199,6 @@ class Settings(BaseSettings):
         return f"http://{host}:{self.litellm_proxy_port}"
 
 
-def _direct_agent_api_key(model: str) -> str | None:
-    """Resolve the agent LLM's api_key on the PROXY-OFF direct path, per provider
-    (D9 provider-agnostic gateway). The provider is read from the model slug's
-    leading ``provider/`` segment:
-
-    - ``gemini/<model>`` (Google AI Studio) -> ``GEMINI_API_KEY``. The key is passed
-      straight to litellm's ``gemini/`` provider, which authenticates via the
-      ``?key=``/``x-goog-api-key`` query — the same auth the operator's ``AQ.``-prefixed
-      AI-Studio key answers 200 to (the prefix is a newer AI-Studio key format, NOT an
-      OAuth/Vertex token).
-    - ``groq/<model>`` (Groq, OpenAI-compatible, strong free-tier tool-use) -> the key under
-      ``GROQ_CLOUD_API_KEY`` (this repo's .env name) or the litellm-standard ``GROQ_API_KEY``.
-      We pass it explicitly so the env-var name is decoupled from litellm's default lookup.
-    - ``nvidia_nim/<model>`` (NVIDIA NIM, OpenAI-compatible) -> the key under
-      ``NVIDIA_BUILD_API_KEY`` (this repo's .env name), else ``NVIDIA_NIM_API_KEY`` (litellm std).
-    - everything else -> ``OPENROUTER_API_KEY``, byte-for-byte the prior single-source
-      behavior so the existing OpenRouter path (and the offline suite) is unchanged.
-
-    This keeps key selection a pure function of the model slug, here in the openhands-free
-    config module so both adapters share one unit-testable decision.
-    """
-    if model.startswith("gemini/"):
-        return os.environ.get("GEMINI_API_KEY")
-    if model.startswith("groq/"):
-        return os.environ.get("GROQ_CLOUD_API_KEY") or os.environ.get("GROQ_API_KEY")
-    if model.startswith("nvidia_nim/"):
-        # NVIDIA NIM (integrate.api.nvidia.com, OpenAI-compatible). Strong instruct models with
-        # CLEAN OpenAI tool_calls + large context + a generous free tier — the combination Groq's
-        # free tier lacked (TPM) and Gemini's free tier lacked (quota/throttle). The operator's
-        # key lives under NVIDIA_BUILD_API_KEY (litellm would otherwise read NVIDIA_NIM_API_KEY).
-        return os.environ.get("NVIDIA_BUILD_API_KEY") or os.environ.get("NVIDIA_NIM_API_KEY")
-    return os.environ.get("OPENROUTER_API_KEY")
-
-
 def agent_llm_routing(
     settings: Settings,
     model: str,
@@ -244,20 +210,23 @@ def agent_llm_routing(
     Proxy ON  -> route through the LiteLLM proxy: model ``litellm_proxy/<slug>`` (the
                  litellm client convention that targets a proxy endpoint), ``base_url`` =
                  the mode-aware proxy URL, and an api_key that is the **per-run virtual key**
-                 (``api_key_override``) when one was minted, else the master key.
-    Proxy OFF -> the direct path: the bare slug + a **per-provider** api_key
-                 (``_direct_agent_api_key``: ``gemini/`` -> ``GEMINI_API_KEY``, ``groq/`` ->
-                 ``GROQ_CLOUD_API_KEY``, ``nvidia_nim/`` -> ``NVIDIA_BUILD_API_KEY``, else
-                 ``OPENROUTER_API_KEY``) and NO ``base_url``.
-                 Byte-for-byte unchanged for the
-                 existing OpenRouter path so offline/no-key behavior is unaffected
-                 (``api_key_override`` is ignored when the proxy is off).
+                 (``api_key_override``) when one was minted, else the master key. UNCHANGED by
+                 M-accounts Slice B — BYOK is the proxy-OFF path; the proxy holds upstream keys in
+                 its own config.
+    Proxy OFF -> the BYOK direct path (M-accounts Slice B): the bare slug + the **per-owner** key
+                 the executor resolved from the run owner's encrypted ``provider_credentials`` and
+                 threaded in as ``api_key_override`` — and NO ``base_url``. This REPLACES the prior
+                 ``.env`` per-provider lookup: there is **no** ``.env`` fallback. A run reaches here
+                 only after the launch pre-flight confirmed the owner has a key for every node's
+                 provider, so ``api_key_override`` is always set; if it is somehow ``None``, REFUSE
+                 (raise) rather than silently fall back to an ``.env`` key (which would leak the
+                 operator's key/spend to a keyless account).
 
-    Why two keys (P1.4b): the **master key** stays the *admin* credential (it authenticates
-    minting/deleting keys); the per-run **virtual key** — minted with a ``max_budget`` — is
-    the agent's api_key, so the proxy enforces the run's remaining budget *mid-call*. When no
-    per-run key was minted (``api_key_override is None``, e.g. proxy on but mint returned
-    nothing), fall back to the master key so a proxy-ON run still authenticates.
+    Why two keys on the proxy path (P1.4b): the **master key** stays the *admin* credential (it
+    authenticates minting/deleting keys); the per-run **virtual key** — minted with a ``max_budget``
+    — is the agent's api_key, so the proxy enforces the run's remaining budget *mid-call*. When no
+    per-run key was minted (``api_key_override is None``, e.g. proxy on but mint returned nothing),
+    fall back to the master key so a proxy-ON run still authenticates.
 
     The adapter adds ``temperature``/``usage_id``; this owns only the routing kwargs, so
     both adapters share one verified decision (kept here, openhands-free, so it is unit-
@@ -268,7 +237,14 @@ def agent_llm_routing(
             "api_key": api_key_override or settings.litellm_master_key,
             "base_url": settings.agent_llm_base_url(sandbox_mode),
         }
-    return {"model": model, "api_key": _direct_agent_api_key(model)}
+    if api_key_override is None:
+        # Proxy OFF + no per-owner key threaded: refuse rather than fall back to ``.env``. The
+        # pre-flight makes this unreachable on a real run; it is the defense-in-depth hard wall.
+        raise ValueError(
+            "proxy-OFF agent routing requires a per-owner api_key (BYOK); none was provided "
+            "(the run owner must have a provider_credentials key for this model's provider)"
+        )
+    return {"model": model, "api_key": api_key_override}
 
 
 @lru_cache

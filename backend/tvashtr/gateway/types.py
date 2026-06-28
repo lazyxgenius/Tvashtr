@@ -13,12 +13,19 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class CompletionRequest:
     """A provider-agnostic completion request. ``model`` is a free-form
-    ``provider/model`` pass-through string (no enum)."""
+    ``provider/model`` pass-through string (no enum).
+
+    ``api_key`` (M-accounts Slice B) is the per-owner provider key the run executor resolved from
+    the owner's encrypted ``provider_credentials`` and threads in, so the completion (gateway) path
+    is BYOK + ``.env``-free exactly like the agent path. ``None`` (the default) ⇒ the gateway lets
+    litellm resolve the key the legacy way (its provider env lookup) — used only by non-run callers
+    (e.g. the ``generate_doc`` spike); on the run path the executor ALWAYS sets it."""
 
     model: str
     messages: list[dict[str, str]]
     temperature: float | None = None
     max_tokens: int | None = None
+    api_key: str | None = None
 
 
 @dataclass(frozen=True)

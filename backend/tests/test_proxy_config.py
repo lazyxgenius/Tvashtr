@@ -5,6 +5,8 @@ import-boundary purity (test_registry) is unaffected. Settings are constructed w
 ``_env_file=None`` so a real local .env can't perturb the assertions.
 """
 
+import pytest
+
 from tvashtr.config import Settings, agent_llm_routing
 
 
@@ -42,13 +44,16 @@ def test_base_url_honors_port_and_host_overrides():
     assert s.agent_llm_base_url("local") == "http://0.0.0.0:4100"
 
 
-def test_routing_off_is_the_exact_direct_path(monkeypatch):
-    # Proxy OFF: the bare slug + OPENROUTER_API_KEY and NO base_url — byte-for-byte the
-    # prior construction. The `litellm_proxy/` transform is NOT applied (mode irrelevant).
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+def test_routing_off_uses_the_threaded_owner_key(monkeypatch):
+    # Proxy OFF (BYOK direct path, M-accounts Slice B): the bare slug + the per-owner key the
+    # executor threaded as api_key_override, and NO base_url. The `litellm_proxy/` transform is NOT
+    # applied (mode irrelevant). An .env OPENROUTER_API_KEY is IGNORED — there is no .env fallback.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-env-should-not-be-used")
     s = Settings(_env_file=None, litellm_proxy_enabled=False)
-    kwargs = agent_llm_routing(s, "openrouter/openai/gpt-4o-mini", "docker")
-    assert kwargs == {"model": "openrouter/openai/gpt-4o-mini", "api_key": "sk-or-test"}
+    kwargs = agent_llm_routing(
+        s, "openrouter/openai/gpt-4o-mini", "docker", api_key_override="byok"
+    )
+    assert kwargs == {"model": "openrouter/openai/gpt-4o-mini", "api_key": "byok"}
     assert "base_url" not in kwargs
 
 
@@ -95,38 +100,29 @@ def test_routing_on_without_override_falls_back_to_master_key():
     assert kwargs["api_key"] == "sk-master"
 
 
-def test_routing_off_ignores_api_key_override(monkeypatch):
-    # Proxy OFF: byte-for-byte the direct path regardless of any override passed.
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+def test_routing_off_without_override_raises(monkeypatch):
+    # Proxy OFF + NO per-owner key threaded: refuse rather than fall back to .env (a keyless run
+    # must not leak the operator's key/spend). The pre-flight makes this unreachable on a real run.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-env-should-not-be-used")
     s = Settings(_env_file=None, litellm_proxy_enabled=False)
-    kwargs = agent_llm_routing(s, "openrouter/x", "docker", api_key_override="sk-run-vkey")
-    assert kwargs == {"model": "openrouter/x", "api_key": "sk-or-test"}
-    assert "base_url" not in kwargs
+    with pytest.raises(ValueError, match="per-owner api_key"):
+        agent_llm_routing(s, "openrouter/x", "docker", api_key_override=None)
 
 
-# --- Step 0 (P1.5c): provider-agnostic direct-path api_key (D9) ---
+# --- M-accounts Slice B: proxy-OFF is the BYOK direct path (the .env per-provider lookup is gone) -
 
 
-def test_routing_off_gemini_uses_gemini_key(monkeypatch):
-    # Proxy OFF + a ``gemini/`` slug -> the api_key comes from GEMINI_API_KEY (Google AI
-    # Studio), not OPENROUTER_API_KEY. The slug passes through untransformed and there is no
-    # base_url (litellm's gemini/ provider auths via ?key=).
-    monkeypatch.setenv("GEMINI_API_KEY", "AQ.gemini-test")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+def test_routing_off_uses_override_for_any_provider_slug(monkeypatch):
+    # The provider slug no longer selects an .env var (the pre-Slice-B per-provider lookup is GONE):
+    # proxy OFF returns the threaded per-owner key verbatim for ANY slug. The owner's stored
+    # provider_credentials are what differ per provider now, resolved upstream by the executor.
+    monkeypatch.setenv("GEMINI_API_KEY", "AQ.env-ignored")
+    monkeypatch.setenv("NVIDIA_BUILD_API_KEY", "nvapi-env-ignored")
     s = Settings(_env_file=None, litellm_proxy_enabled=False)
-    kwargs = agent_llm_routing(s, "gemini/gemini-2.0-flash", "docker")
-    assert kwargs == {"model": "gemini/gemini-2.0-flash", "api_key": "AQ.gemini-test"}
-    assert "base_url" not in kwargs
-
-
-def test_routing_off_non_gemini_still_uses_openrouter_key(monkeypatch):
-    # The fallback is unchanged: any non-gemini slug keeps resolving OPENROUTER_API_KEY even
-    # when a GEMINI_API_KEY is present — the existing OpenRouter path is byte-for-byte intact.
-    monkeypatch.setenv("GEMINI_API_KEY", "AQ.gemini-test")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
-    s = Settings(_env_file=None, litellm_proxy_enabled=False)
-    kwargs = agent_llm_routing(s, "openrouter/openai/gpt-4o-mini", "local")
-    assert kwargs == {"model": "openrouter/openai/gpt-4o-mini", "api_key": "sk-or-test"}
+    for slug in ("gemini/gemini-2.0-flash", "nvidia_nim/meta/llama-3.3-70b-instruct", "groq/x"):
+        kwargs = agent_llm_routing(s, slug, "local", api_key_override="owner-key")
+        assert kwargs == {"model": slug, "api_key": "owner-key"}
+        assert "base_url" not in kwargs
 
 
 def test_routing_on_gemini_ignores_provider_key_and_uses_proxy(monkeypatch):
@@ -138,42 +134,6 @@ def test_routing_on_gemini_ignores_provider_key_and_uses_proxy(monkeypatch):
     assert kwargs["model"] == "litellm_proxy/gemini/gemini-2.0-flash"
     assert kwargs["api_key"] == "sk-master"
     assert kwargs["base_url"] == "http://127.0.0.1:4000"
-
-
-def test_routing_off_groq_uses_groq_cloud_key(monkeypatch):
-    # Proxy OFF + a ``groq/`` slug -> the api_key comes from GROQ_CLOUD_API_KEY (this repo's
-    # .env name), not OPENROUTER_API_KEY. Slug passes through untransformed; no base_url.
-    monkeypatch.setenv("GROQ_CLOUD_API_KEY", "gsk_test")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
-    s = Settings(_env_file=None, litellm_proxy_enabled=False)
-    kwargs = agent_llm_routing(s, "groq/llama-3.3-70b-versatile", "docker")
-    assert kwargs == {"model": "groq/llama-3.3-70b-versatile", "api_key": "gsk_test"}
-    assert "base_url" not in kwargs
-
-
-def test_direct_agent_api_key_is_a_pure_function_of_the_slug(monkeypatch):
-    # The resolver is a pure slug->key function (no settings needed), so both adapters share it.
-    from tvashtr.config import _direct_agent_api_key
-
-    monkeypatch.setenv("GEMINI_API_KEY", "AQ.g")
-    monkeypatch.setenv("GROQ_CLOUD_API_KEY", "gsk_g")
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or")
-    assert _direct_agent_api_key("gemini/gemini-2.0-flash") == "AQ.g"
-    assert _direct_agent_api_key("gemini/anything") == "AQ.g"
-    monkeypatch.setenv("NVIDIA_BUILD_API_KEY", "nvapi_g")
-    monkeypatch.delenv("NVIDIA_NIM_API_KEY", raising=False)
-    assert _direct_agent_api_key("groq/llama-3.3-70b-versatile") == "gsk_g"
-    assert _direct_agent_api_key("nvidia_nim/meta/llama-3.3-70b-instruct") == "nvapi_g"
-    assert _direct_agent_api_key("openrouter/x") == "sk-or"
-    assert _direct_agent_api_key("gpt-4o-mini") == "sk-or"
-    # GROQ_API_KEY / NVIDIA_NIM_API_KEY are the standard-name fallbacks when repo names are absent.
-    monkeypatch.delenv("GROQ_CLOUD_API_KEY", raising=False)
-    monkeypatch.setenv("GROQ_API_KEY", "gsk_std")
-    assert _direct_agent_api_key("groq/x") == "gsk_std"
-    monkeypatch.delenv("NVIDIA_BUILD_API_KEY", raising=False)
-    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "nvapi_std")
-    assert _direct_agent_api_key("nvidia_nim/x") == "nvapi_std"
 
 
 def test_litellm_master_key_from_env(monkeypatch):
