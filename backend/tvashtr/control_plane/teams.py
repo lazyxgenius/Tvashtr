@@ -119,6 +119,35 @@ def reviewer_model() -> str:
     return engineer_model()
 
 
+# M-accounts Slice C: the account-aware node-create default. A STATIC map (NOT a model registry) of
+# provider slug -> a sensible default FULL model slug. Each value MUST be consistent with a
+# ``MODEL_PRESETS`` entry on the FE (``frontend/src/lib/api.ts``) so the picker quick-picks include
+# it. When a newly-dropped node omits an explicit model, ``create_team_node`` defaults it to a
+# provider the OWNER already holds (preference order), else the legacy default. The provider slug is
+# exactly what ``credentials.provider_for_model`` derives.
+PROVIDER_DEFAULT_MODEL: dict[str, str] = {
+    "openrouter": "openrouter/openai/gpt-4o-mini",
+    "nvidia_nim": "nvidia_nim/meta/llama-3.3-70b-instruct",
+    "openai": "openai/gpt-4o-mini",
+    "gemini": "gemini/gemini-2.0-flash",
+    "groq": "groq/llama-3.3-70b-versatile",
+}
+# The deterministic preference order when the account holds several mapped providers: ``openrouter``
+# is the historical default provider (the legacy ``default_model``/``engineer_model`` slugs live
+# there), so it wins first. Any fixed order satisfies the contract.
+_PROVIDER_DEFAULT_ORDER: tuple[str, ...] = ("openrouter", "nvidia_nim", "openai", "gemini", "groq")
+
+
+def account_default_model(held_providers: set[str]) -> str | None:
+    """The default FULL model slug for the FIRST provider (preference order) the account holds a
+    credential for, else ``None`` (the caller uses the legacy default). Pure + unit-tested;
+    no DB, no env, no registry."""
+    for provider in _PROVIDER_DEFAULT_ORDER:
+        if provider in held_providers and provider in PROVIDER_DEFAULT_MODEL:
+            return PROVIDER_DEFAULT_MODEL[provider]
+    return None
+
+
 def build_two_node_team(name: str = "PM -> Engineer") -> str:
     """Insert the 2-node team as a uniform walk and return its team_graph id.
 

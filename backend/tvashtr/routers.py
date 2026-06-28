@@ -27,6 +27,7 @@ from tvashtr.control_plane.teams import (
     ENGINEER_PROMPT,
     PM_PROMPT,
     REVIEWER_PROMPT,
+    account_default_model,
     build_review_loop_team,
     build_two_node_team,
     clone_team_graph,
@@ -1211,13 +1212,22 @@ _NODE_PRESETS: dict[str, dict] = {
 _DEFAULT_LOOP_LIMIT = 3
 
 
-def _build_node(graph_id: uuid.UUID, body: CreateNodeRequest) -> AgentNode:
+def _build_node(
+    graph_id: uuid.UUID, body: CreateNodeRequest, held_providers: set[str] | None = None
+) -> AgentNode:
     """Construct (unpersisted) the ``AgentNode`` for a create-node request — map the canvas
     vocabulary (thinker/worker/gate/terminal + an optional role preset) onto the columns. A
     thinker -> ``completion``/no engine; a worker -> ``agent``/``openhands`` (the P1.8c capability
     pair). Raises 400 on a malformed request (a preset that contradicts ``node_kind``; a terminal
-    with no ``terminal_kind``)."""
+    with no ``terminal_kind``).
+
+    M-accounts Slice C: when ``body.model`` is ABSENT, the model defaults to one whose provider the
+    OWNER already holds (``account_default_model(held_providers)``) — falling back to today's
+    hardcoded default ONLY when the account holds no mapped provider. An explicit ``body.model`` is
+    always preserved. ``held_providers`` defaults ``None`` (treated as empty ⇒ legacy default) so a
+    non-account caller keeps the prior behavior; the model stays mandatory (never blank)."""
     position = body.position or {}
+    held = held_providers or set()
     preset = None
     if body.preset is not None:
         preset = _NODE_PRESETS.get(body.preset)
@@ -1229,18 +1239,18 @@ def _build_node(graph_id: uuid.UUID, body: CreateNodeRequest) -> AgentNode:
             team_graph_id=graph_id,
             role_name=preset["role_name"] if preset else "thinker",
             kind="completion",
-            model=body.model or get_settings().default_model,
+            model=body.model or account_default_model(held) or get_settings().default_model,
             engine=None,
             prompt=preset["prompt"] if preset else (body.prompt if body.prompt is not None else ""),
             position=position,
         )
     if body.node_kind == "worker":
-        default_model = reviewer_model() if body.preset == "reviewer" else engineer_model()
+        legacy_default = reviewer_model() if body.preset == "reviewer" else engineer_model()
         return AgentNode(
             team_graph_id=graph_id,
             role_name=preset["role_name"] if preset else "worker",
             kind="agent",
-            model=body.model or default_model,
+            model=body.model or account_default_model(held) or legacy_default,
             engine="openhands",
             prompt=preset["prompt"] if preset else (body.prompt if body.prompt is not None else ""),
             position=position,
@@ -1297,9 +1307,17 @@ def create_team_node(
     """Add a node to a library team's canvas (P1.8d). 400 on a malformed id / request; 404 if
     ``team_id`` is not a library team (a run snapshot / A-B graph is never editable). Returns the
     created node in the canvas shape."""
+    owner_id = uuid.UUID(current_user.id)
     with db.session_scope() as session:
-        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
-        node = _build_node(graph.id, body)
+        graph = _require_library_team(session, team_id, owner_id)
+        # M-accounts Slice C: the owner's configured providers gate the account-aware create default
+        # (used only when body.model is absent). Same table/owner-scope the dashboard reads.
+        held_providers = set(
+            session.execute(
+                select(ProviderCredential.provider).where(ProviderCredential.owner_id == owner_id)
+            ).scalars()
+        )
+        node = _build_node(graph.id, body, held_providers)
         session.add(node)
         session.flush()
         return _node_base_dict(node)
