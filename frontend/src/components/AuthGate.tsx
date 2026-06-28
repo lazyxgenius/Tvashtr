@@ -2,24 +2,39 @@ import { useEffect, useState } from "react";
 
 import App from "../App";
 import { type AuthUser, getMe, logout, setUnauthorizedHandler } from "../lib/api";
-import { LoginScreen } from "./LoginScreen";
+import { Dashboard } from "./Dashboard";
+import { LandingPage } from "./LandingPage";
+import { type AuthMode, LoginScreen } from "./LoginScreen";
 
 /**
- * The login gate (M-accounts Slice A). On mount it asks the server who we are (`getMe`); until that
- * resolves it shows a minimal placeholder, then renders either the login screen or the real <App/>.
- * It registers the api 401 seam so an expired session mid-use drops the whole app back to login,
- * and threads the logged-in identity + a logout handler into <App/> for the top-bar control.
+ * The auth gate + top-level router (M-accounts). On mount it asks the server who we are (`getMe`).
+ *
+ * - Logged OUT: the LANDING page by default (product pitch + CTAs); a CTA switches to the
+ *   login/register screen (Slice B — the canvas is never the logged-out default).
+ * - Logged IN: the DASHBOARD by default (teams / runs / providers); opening a team routes to the
+ *   canvas (`<App/>`) for that team, with a back-to-dashboard control. (Slice A landed login here on
+ *   the canvas; Slice B inserts the landing page in front and the dashboard behind.)
+ *
+ * It also registers the api 401 seam so an expired session mid-use drops the whole app back to the
+ * landing page, and threads the identity + a logout handler into the authed surfaces.
  */
 export function AuthGate() {
   const [status, setStatus] = useState<"loading" | "authed" | "unauthed">("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
+  // Logged-out sub-view: the landing page by default; a CTA switches to the login screen.
+  const [unauthView, setUnauthView] = useState<"landing" | "login">("landing");
+  const [loginMode, setLoginMode] = useState<AuthMode>("login");
+  // Logged-in sub-view: the dashboard by default; opening a team routes to the canvas for that team.
+  const [openTeamId, setOpenTeamId] = useState<string | null>(null);
 
-  // Register the 401 seam first: a 401 on getMe (below) or any later poll flips us to the login
-  // screen. Cleared on unmount so a stale closure can't fire after this gate is gone.
+  // Register the 401 seam first: a 401 on getMe (below) or any later poll flips us back to the
+  // logged-out landing page. Cleared on unmount so a stale closure can't fire after this gate is gone.
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setUser(null);
       setStatus("unauthed");
+      setUnauthView("landing");
+      setOpenTeamId(null);
     });
     return () => setUnauthorizedHandler(null);
   }, []);
@@ -48,6 +63,7 @@ export function AuthGate() {
   const handleAuthed = (me: AuthUser) => {
     setUser(me);
     setStatus("authed");
+    setOpenTeamId(null); // land on the dashboard
   };
 
   const handleLogout = async () => {
@@ -58,14 +74,41 @@ export function AuthGate() {
     } finally {
       setUser(null);
       setStatus("unauthed");
+      setUnauthView("landing");
+      setOpenTeamId(null);
     }
+  };
+
+  const startAuth = (mode: AuthMode) => {
+    setLoginMode(mode);
+    setUnauthView("login");
   };
 
   if (status === "loading") {
     return <div className="tv-auth tv-auth__loading">Loading…</div>;
   }
   if (status === "unauthed" || !user) {
-    return <LoginScreen onAuthed={handleAuthed} />;
+    if (unauthView === "login") {
+      return (
+        <LoginScreen
+          onAuthed={handleAuthed}
+          initialMode={loginMode}
+          onBack={() => setUnauthView("landing")}
+        />
+      );
+    }
+    return <LandingPage onGetStarted={startAuth} />;
   }
-  return <App user={user} onLogout={() => void handleLogout()} />;
+  // Authed: the dashboard, or the canvas for an opened team.
+  if (openTeamId) {
+    return (
+      <App
+        user={user}
+        onLogout={() => void handleLogout()}
+        teamId={openTeamId}
+        onBackToDashboard={() => setOpenTeamId(null)}
+      />
+    );
+  }
+  return <Dashboard user={user} onLogout={() => void handleLogout()} onOpenTeam={setOpenTeamId} />;
 }

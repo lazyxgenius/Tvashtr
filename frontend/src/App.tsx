@@ -54,13 +54,16 @@ import { isRunTerminal } from "./lib/status";
 const EMPTY_TASKS: HumanTask[] = [];
 
 // M-accounts Slice A: optional props so AuthGate can thread the logged-in identity + a logout
-// handler into the top bar. Both optional → existing tests/usage that render <App /> are unchanged.
+// handler into the top bar. Slice B adds `teamId` (open this dashboard-selected team) + a
+// `onBackToDashboard` control. All optional → existing tests/usage that render <App /> are unchanged.
 interface AppProps {
   user?: AuthUser | null;
   onLogout?: () => void;
+  teamId?: string;
+  onBackToDashboard?: () => void;
 }
 
-export default function App({ user, onLogout }: AppProps = {}) {
+export default function App({ user, onLogout, teamId, onBackToDashboard }: AppProps = {}) {
   const [runId, setRunId] = useState<string | null>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [run, setRun] = useState<RunRow | null>(null);
@@ -72,7 +75,10 @@ export default function App({ user, onLogout }: AppProps = {}) {
   // active). `teams`/`currentTeamId` PERSIST across a run — only run-scoped state resets.
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
+  // M-accounts Slice B: when opened from the dashboard for a specific team, start on THAT team (the
+  // loadTeams `cur ?? list[0]` guard then keeps it); standalone (no teamId) keeps the prior
+  // first-team default.
+  const [currentTeamId, setCurrentTeamId] = useState<string | null>(teamId ?? null);
   const [teamGraph, setTeamGraph] = useState<TeamGraphData | null>(null);
   const [teamError, setTeamError] = useState(false);
   const [teamBusy, setTeamBusy] = useState(false);
@@ -525,6 +531,15 @@ export default function App({ user, onLogout }: AppProps = {}) {
         style={{ borderBottom: "1px solid var(--border-hairline)" }}
       >
         <div className="flex items-center gap-3">
+          {onBackToDashboard && (
+            <button
+              type="button"
+              className="tv-btn tv-btn--ghost tv-btn--sm"
+              onClick={onBackToDashboard}
+            >
+              ← Dashboard
+            </button>
+          )}
           <img src="/mark-coral.png" alt="" style={{ width: 24, height: 24 }} />
           <span
             style={{
