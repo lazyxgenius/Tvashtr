@@ -9,7 +9,7 @@ endif
 POSTGRES_USER ?= tvashtr
 POSTGRES_DB ?= tvashtr
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check brownfield-loop-check seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e seed lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check brownfield-loop-check seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e seed lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -142,8 +142,11 @@ authoring-brief-e2e: ## Live M2 authoring-brief E2E: create a review_loop team, 
 launch-panel-e2e: ## Live M-brownfield Slice 2 launch-panel E2E: open the app, click "Run this team" (assert the launch panel OPENS), flip "work on a local repo", type a REAL fixture git repo path (assert the base-branch dropdown populates from the live POST /api/repo/inspect round-trip), and confirm the greenfield path still launches ({ team_graph_id } only). A screenshot per check. NO agent run — needs NO NVIDIA key; just Postgres + a real backend + Vite + Playwright.
 	./scripts/launch_panel_e2e.sh
 
-auth-e2e: ## Live M-accounts Slice A auth E2E: the whole app sits behind login — unauthenticated→login screen, register a fresh account→canvas, logout→login, seeded-login→canvas. Seeds the operator account first. A screenshot per check. NO agent run — needs NO NVIDIA key; just Postgres + a real backend + Vite + Playwright.
+auth-e2e: ## Live M-accounts Slice A auth E2E: the whole app sits behind login — unauthenticated→landing, register→dashboard, logout→landing, seeded-login→dashboard. Seeds the operator account first. A screenshot per check. NO agent run — needs NO NVIDIA key; just Postgres + a real backend + Vite + Playwright.
 	./scripts/auth_e2e.sh
+
+accounts-e2e: ## Live M-accounts Slice B accounts E2E: the full account journey — logged-out→landing (no canvas/create-team), register→empty dashboard, add a provider key (•••• last4), open a team→canvas, back→dashboard. Seeds the operator first. A screenshot per step. NO agent run — needs NO NVIDIA key; just Postgres + a real backend + Vite + Playwright.
+	./scripts/accounts_e2e.sh
 
 budget-demo: ## Live budget cap demo: tiny per-run cap -> breach -> auto-approve -> ship (needs key; skips otherwise)
 	./scripts/budget_demo.sh
