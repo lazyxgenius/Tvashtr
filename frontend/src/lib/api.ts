@@ -350,7 +350,24 @@ export const MODEL_PRESETS = [
   "openrouter/openai/gpt-4o-mini",
   "openrouter/meta-llama/llama-3.1-8b-instruct",
   "openrouter/google/gemini-flash-1.5",
+  // M-accounts Slice C: gemini + groq quick-picks so the picker covers every provider in the
+  // backend PROVIDER_DEFAULT_MODEL map (teams.py) — keep these two in sync with that map's slugs.
+  "gemini/gemini-2.0-flash",
+  "groq/llama-3.3-70b-versatile",
 ] as const;
+
+// M-accounts Slice C: the ONE provider-canonicalization rule — the leading ``provider/`` slug
+// segment, lower-cased + trimmed. This MUST match the backend ``credentials.provider_for_model``
+// EXACTLY (a parity unit test pins it); the per-node picker derives a model's provider with this.
+export function providerOf(model: string): string {
+  return model.split("/")[0].trim().toLowerCase();
+}
+
+// The MODEL_PRESETS quick-picks scoped to one provider (by the canonical rule) — what the Model
+// field offers once a provider is chosen in the picker.
+export function presetsForProvider(provider: string): string[] {
+  return MODEL_PRESETS.filter((m) => providerOf(m) === provider);
+}
 
 // M-brownfield Slice 2 (D4): above this many tracked files the launch panel surfaces a dismissible
 // "consider a stronger worker model" advisory. A recommendation, never enforced. (Lives here, a

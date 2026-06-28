@@ -1,6 +1,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { inspectRepo, runTeam } from "./api";
+import { inspectRepo, MODEL_PRESETS, presetsForProvider, providerOf, runTeam } from "./api";
+
+describe("providerOf — parity with the backend provider_for_model", () => {
+  // The SAME cases the backend test asserts (tests/test_resolve_owner_key.py): leading slug segment,
+  // lower-cased + trimmed; a bare slug (no "/") is the whole string.
+  it("derives the lower-cased leading slug segment", () => {
+    expect(providerOf("OpenRouter/Foo/Bar")).toBe("openrouter");
+    expect(providerOf("nvidia_nim/meta/llama-3.3-70b-instruct")).toBe("nvidia_nim");
+    expect(providerOf("gpt-4o-mini")).toBe("gpt-4o-mini"); // no slash → the whole slug
+  });
+
+  it("scopes MODEL_PRESETS quick-picks to one provider", () => {
+    const openrouter = presetsForProvider("openrouter");
+    expect(openrouter.length).toBeGreaterThan(0);
+    expect(openrouter.every((m) => providerOf(m) === "openrouter")).toBe(true);
+    // Every preset's provider canonicalizes to itself, and gemini/groq are covered (the map parity).
+    expect(MODEL_PRESETS.some((m) => providerOf(m) === "gemini")).toBe(true);
+    expect(MODEL_PRESETS.some((m) => providerOf(m) === "groq")).toBe(true);
+  });
+});
 
 function jsonOk(body: unknown): Response {
   return { ok: true, status: 200, json: () => Promise.resolve(body) } as unknown as Response;
