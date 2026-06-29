@@ -289,6 +289,14 @@ class Run(Base):
     repo_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     base_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
     ship_branch: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # M-brownfield scoped-mount Slice 1 (migration ``0018``): an OPTIONAL sub-path that scopes a
+    # BROWNFIELD run's agent CONTEXT MAP + FOCUS to one package of the repo (NOT the git mount) — so
+    # the proven agent path can land a change in a large monorepo without overflowing on the
+    # whole-repo structure outline. NULL ⇒ whole repo (byte-for-byte today's grounding). Non-NULL on
+    # a brownfield run ⇒ the grounding outline folds from ``git ls-files <subpath>`` + a worker
+    # directive, while the worktree / ship branch / root manifest line stay repo-ROOT. A greenfield
+    # run (no ``repo_path``) ignores it (stored NULL).
+    subpath: Mapped[str | None] = mapped_column(Text, nullable=True)
     cost_total_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
     # Per-run dollar cap (P1.2). NULL = no cap (enforcement is opt-in). The live
     # running total is a query (``metering.running_cost``), NOT a stored field —
