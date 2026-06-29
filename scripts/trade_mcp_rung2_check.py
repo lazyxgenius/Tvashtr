@@ -50,6 +50,13 @@ from pathlib import Path
 # Baking the default in keeps the committed target a no-op in CI / on other machines.
 _REPO_PATH = os.environ.get("TVASHTR_RUNG2_REPO", "/Users/adimac/Desktop/trade_mcp")
 
+# scoped-mount Slice 1: the optional sub-path the brownfield agent's context map + FOCUS scope to.
+# Default ``core`` — the DEMA target package — so the Engineer's surface is core/'s handful of files
+# (NOT the 264-file monorepo that overflowed the model at rung 2). The INDEPENDENT numeric gate is
+# UNCHANGED: it runs host-side from a verify venv at the repo ROOT (installs .[dev], runs
+# tests/test_indicators.py, computes DEMA), so scoping the AGENT does not affect the gate.
+_SUBPATH = os.environ.get("TVASHTR_RUNG2_SUBPATH", "core")
+
 # A real review loop on a real repo (container dep-install + possible rework rounds) is slow.
 POLL_TIMEOUT_S = int(os.environ.get("TVASHTR_RUNG2_TIMEOUT_S", "2400"))
 _TERMINAL_WF = {"SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
@@ -250,13 +257,19 @@ def main() -> int:  # noqa: C901 — a linear live-proof harness; readability be
                     "idea": _IDEA,
                     "repo_path": str(clone),
                     "base_ref": current_branch,
+                    # scoped-mount Slice 1: scope the agent's context map + FOCUS to <subpath>, so
+                    # the Engineer's surface is core/'s handful of files, not the 264-file monorepo.
+                    "subpath": _SUBPATH,
                 },
             )
             assert resp.status_code == 200, resp.text
             run_id = resp.json()["run_id"]
             workspace = _WORKSPACE_ROOT / run_id
             branch = f"tvashtr/{run_id}"
-            print(f"[brownfield-rung2] started review_loop run_id={run_id} -> branch {branch}")
+            print(
+                f"[brownfield-rung2] started review_loop run_id={run_id} -> branch {branch} "
+                f"(agent scope=subpath '{_SUBPATH}')"
+            )
             print(
                 f"[brownfield-rung2] polling up to {POLL_TIMEOUT_S}s "
                 "(PM, Engineer ⇄ Reviewer, real docker+NIM, container dep-install)…"
@@ -404,6 +417,8 @@ def main() -> int:  # noqa: C901 — a linear live-proof harness; readability be
         print("\n================= RUNG-2 (trade_mcp DEMA) RESULT =================")
         print(f"run_id              = {run_id}")
         print(f"run.status          = {run.get('status')}")
+        print(f"agent scope         = subpath '{_SUBPATH}'   [scoped-mount Slice 1]")
+        print(f"run.subpath         = {run.get('subpath')}   (persisted on the run)")
         print(f"ship_branch         = {run.get('ship_branch')}   (expected {branch})")
         print(f"reviewer outcomes   = {reviewer_outcomes}   [OBSERVATION ONLY — not a gate]")
         print("\nINDEPENDENT GATE (the real pass condition):")

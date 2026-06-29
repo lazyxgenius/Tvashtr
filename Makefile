@@ -12,6 +12,10 @@ POSTGRES_DB ?= tvashtr
 # M-brownfield rung 2: the live-proof target repo (overridable in .env or on the command line). The
 # committed default is the operator's real trade_mcp; absent on CI / other machines -> the driver skips.
 TVASHTR_RUNG2_REPO ?= /Users/adimac/Desktop/trade_mcp
+# scoped-mount Slice 1: the sub-path the brownfield agent's context map + FOCUS scope to (default the
+# DEMA target package `core`, so the Engineer's surface is core/'s handful of files, not 264). The
+# independent numeric gate is unaffected (it runs host-side at the repo ROOT).
+TVASHTR_RUNG2_SUBPATH ?= core
 
 .PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e model-picker-e2e seed lint fmt help
 
@@ -105,7 +109,7 @@ brownfield-loop-check: ## M-brownfield Slice 3 EXIT-BAR gate: a REAL docker+NIM 
 	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_AGENT_MODEL=nvidia_nim/meta/llama-3.3-70b-instruct TVASHTR_AGENT_MAX_ITERATIONS=40 uv run python ../scripts/brownfield_loop_check.py
 
 brownfield-rung2: ## M-brownfield rung 2 LIVE proof: a REAL docker+NIM review_loop ships a DEMA indicator into a FRESH CLONE of the real trade_mcp repo (TVASHTR_RUNG2_REPO; operator repo NEVER touched), gated by an INDEPENDENT numeric check (compute("dema") == 2*EMA-EMA(EMA) within ~1e-8 on a non-constant series, >=2 lengths) + the count tripwire — NOT the 70b reviewer (D4 rubber-stamps). Records PASS or a RUNG-2 FINDING + the shipped indicators.py diff. Agent = nvidia_nim/meta/llama-3.3-70b-instruct. Needs NVIDIA_BUILD_API_KEY + Docker + agent-server image; skips cleanly otherwise; operator-run. NOT in `make test`.
-	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_AGENT_MODEL=nvidia_nim/meta/llama-3.3-70b-instruct TVASHTR_AGENT_MAX_ITERATIONS=40 TVASHTR_RUNG2_REPO=$(TVASHTR_RUNG2_REPO) uv run python ../scripts/trade_mcp_rung2_check.py
+	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_AGENT_MODEL=nvidia_nim/meta/llama-3.3-70b-instruct TVASHTR_AGENT_MAX_ITERATIONS=40 TVASHTR_RUNG2_REPO=$(TVASHTR_RUNG2_REPO) TVASHTR_RUNG2_SUBPATH=$(TVASHTR_RUNG2_SUBPATH) uv run python ../scripts/trade_mcp_rung2_check.py
 
 skeleton-crash-docker: ## Prove crash-resume OVER THE CONTAINER: kill -9 mid-run -> orphan reaped by the boot sweep -> fresh container on a new ephemeral port -> ships exactly once (needs key + Docker + agent-server image; operator-run, P1.3b)
 	./scripts/skeleton_crash_demo_docker.sh
