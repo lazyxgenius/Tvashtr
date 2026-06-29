@@ -69,6 +69,24 @@ def repo_inspect(path: str) -> dict:
     }
 
 
+def subpath_is_tracked_dir(repo_path: str, subpath: str) -> bool:
+    """M-brownfield scoped-mount Slice 1: True iff ``subpath`` names a tracked DIRECTORY in
+    ``repo_path`` — i.e. ``git ls-files`` reports ≥1 tracked file strictly UNDER ``<subpath>/``.
+    Used by ``create_run`` to turn a bad ``subpath`` into a clean 422 (mirrors the ``repo_path``
+    validation). A subpath that names a single tracked FILE (no children) is NOT a directory →
+    False; a non-existent / untracked path → False. Defensive: never raises (a wedged repo / absent
+    git → False → a clean 422), like :func:`repo_inspect`."""
+    sp = subpath.strip().strip("/")
+    if not sp:
+        return False
+    try:
+        res = _git(repo_path, "ls-files", "--", sp, check=False)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    prefix = sp + "/"
+    return any(line.startswith(prefix) for line in res.stdout.splitlines() if line.strip())
+
+
 def branch_name_for(run_id: str) -> str:
     """The deterministic ship branch a brownfield run lands on. Factored so the executor, the
     worktree creation, and the tests share one source of truth (no nicer name than this — §15)."""
@@ -130,19 +148,29 @@ _STRUCTURE_DEPTH = 2
 _STRUCTURE_MAX_ENTRIES = 80
 
 
-def _structure_outline(files: list[str]) -> str:
+def _structure_outline(files: list[str], base: str = "") -> str:
     """A depth-capped directory outline folded from ``git ls-files`` (paths only — NO contents).
-    Lists every directory prefix up to :data:`_STRUCTURE_DEPTH` deep, then the top-level files;
-    sorted + deterministic + capped so a giant repo can't balloon the instruction."""
+    Lists every directory prefix up to :data:`_STRUCTURE_DEPTH` deep, then the (top-level) files;
+    sorted + deterministic + capped so a giant repo can't balloon the instruction.
+
+    ``base`` (a sub-path scope, e.g. ``"core"``) counts depth RELATIVE to that prefix and re-adds
+    the ``base/`` prefix to every entry — so a SCOPED map shows ``base``'s OWN tree (its files +
+    sub-dirs to depth :data:`_STRUCTURE_DEPTH`), not just the single ``base/`` line a root-relative
+    fold would yield for a FLAT package (trade_mcp's ``core/`` is 9 files directly under ``core/``).
+    ``base=""`` (default) is byte-for-byte the whole-repo fold (empty prefix; depth from root)."""
+    prefix = (base.strip("/") + "/") if base.strip("/") else ""
     dirs: set[str] = set()
     top_files: set[str] = set()
     for f in files:
-        parts = f.split("/")
+        rel = f[len(prefix) :] if f.startswith(prefix) else f
+        if not rel:
+            continue
+        parts = rel.split("/")
         if len(parts) == 1:
-            top_files.add(parts[0])
+            top_files.add(prefix + parts[0])
             continue
         for depth in range(1, min(len(parts) - 1, _STRUCTURE_DEPTH) + 1):
-            dirs.add("/".join(parts[:depth]) + "/")
+            dirs.add(prefix + "/".join(parts[:depth]) + "/")
     entries = sorted(dirs) + sorted(top_files)
     if len(entries) > _STRUCTURE_MAX_ENTRIES:
         hidden = len(entries) - _STRUCTURE_MAX_ENTRIES
@@ -178,7 +206,26 @@ WORKER_PROTOCOL = (
 )
 
 
-def build_repo_grounding(workspace: str, repo_basename: str) -> str:
+def worker_focus_directive(subpath: str) -> str:
+    """M-brownfield scoped-mount Slice 1: the per-run worker FOCUS block (A5) — appended AFTER
+    :data:`WORKER_PROTOCOL` to a non-emitting WORKER when a brownfield run is scoped to ``subpath``
+    (the SAME ``grounding is not None and not emits_outcome`` gate as ``WORKER_PROTOCOL``). It tells
+    the worker its change belongs in ``subpath`` and NOT to recurse outside it, while EXPLICITLY
+    permitting root-level dependency-install + test commands (a repo's tests/build live at the ROOT,
+    not inside ``subpath`` — e.g. trade_mcp's ``tests/`` + root ``pyproject.toml``). A reviewer
+    (``emits_outcome``) never gets this — it must GATE, not implement. A plain string template (no
+    openhands import) so ``team_run`` stays openhands-free at import, like ``WORKER_PROTOCOL``."""
+    return (
+        f"--- FOCUS: {subpath} ---\n"
+        f"The change you are asked to make belongs in the `{subpath}` directory of this "
+        "repository — make your edits there and do NOT recursively list or read files outside "
+        f"`{subpath}`. You MAY still run the repository's existing tests and install its declared "
+        "dependencies from the repository ROOT (e.g. `pip install -e '.[dev]'` then `python -m "
+        f"pytest -q`) — those live at the repo root, not inside `{subpath}`."
+    )
+
+
+def build_repo_grounding(workspace: str, repo_basename: str, subpath: str | None = None) -> str:
     """D6: build the brownfield repo-grounding ORIENTATION block appended to EVERY brownfield agent
     node (worker AND reviewer). Slice 3 split: this is orientation ONLY — the action directives now
     live in :data:`WORKER_PROTOCOL`, appended separately to workers only.
@@ -188,7 +235,16 @@ def build_repo_grounding(workspace: str, repo_basename: str) -> str:
     ``CONTRIBUTING.md``, truncated to ~6 KB); (3) a depth-capped directory outline folded from
     ``git ls-files`` + the names of any top-level manifest files (NO other file contents); and the
     transparency header. Pure (stdlib + git), openhands-free, unit-tested. ``workspace`` is the
-    worktree (a real work tree, so ``git ls-files`` resolves)."""
+    worktree (a real work tree, so ``git ls-files`` resolves).
+
+    M-brownfield scoped-mount Slice 1: an OPTIONAL ``subpath`` scopes the agent's CONTEXT MAP to one
+    package. When given (a brownfield run only): the structure outline folds from ``git ls-files
+    <subpath>`` ROOTED at the sub-path (the package's own tree — a handful of entries, not the whole
+    monorepo that overflowed the model at rung 2), and the framing line names the focus directory.
+    The top-level MANIFEST line stays repo-ROOT (the build system the agent installs deps from lives
+    at the root — e.g. trade_mcp's root ``pyproject.toml`` while the target is ``core/``); the
+    conventions file is read from the repo root as before. ``subpath is None`` ⇒ byte-for-byte the
+    whole-repo orientation (today's behavior)."""
     ws = Path(workspace)
 
     conventions_name: str | None = None
@@ -205,21 +261,41 @@ def build_repo_grounding(workspace: str, repo_basename: str) -> str:
                 conventions_text = conventions_text[:_CONVENTIONS_BUDGET] + "\n…(truncated)…"
             break
 
+    # Manifests are ALWAYS folded from the WHOLE repo's tracked top-level files — the manifest hint
+    # stays repo-ROOT even under a sub-path scope (deps install from the root, not from <subpath>).
     tracked = _git(ws, "ls-files", check=False)
     files = [line.strip() for line in tracked.stdout.splitlines() if line.strip()]
-    outline = _structure_outline(files)
     manifests = sorted({f for f in files if "/" not in f and f in _MANIFEST_FILES})
+
+    # The structure outline: whole-repo (``subpath is None`` — byte-for-byte unchanged) OR SCOPED to
+    # the sub-path (folded from ``git ls-files <subpath>``, rooted at the sub-path), so the agent's
+    # map is the package's OWN tree, not the whole monorepo (the rung-2 context overflow).
+    if subpath is None:
+        outline = _structure_outline(files)
+    else:
+        scoped = _git(ws, "ls-files", "--", subpath, check=False)
+        scoped_files = [line.strip() for line in scoped.stdout.splitlines() if line.strip()]
+        outline = _structure_outline(scoped_files, base=subpath)
+
+    # Slice 3: ORIENTATION ONLY — a neutral situational line with NO implement/edit verb, so it is
+    # safe for a reviewer node too. The action directives (edit-in-place / run-tests) live in
+    # ``WORKER_PROTOCOL``, appended to workers ONLY. Slice (scoped-mount) 1: when scoped, name the
+    # focus directory; ``subpath is None`` keeps the line byte-for-byte the whole-repo framing.
+    if subpath is None:
+        framing = (
+            f"You are working in an existing repository named `{repo_basename}`; its files are "
+            "ALREADY PRESENT in your working directory."
+        )
+    else:
+        framing = (
+            f"You are working in an existing repository named `{repo_basename}`, focused on its "
+            f"`{subpath}` directory; its files are ALREADY PRESENT in your working directory."
+        )
 
     conv_note = f"{conventions_name} found" if conventions_name else "none"
     lines = [
         f"--- REPO GROUNDING ({repo_basename}; conventions: {conv_note}) ---",
-        # Slice 3: ORIENTATION ONLY — a neutral situational line with NO implement/edit verb, so it
-        # is safe for a reviewer node too. The action directives (edit-in-place / run-tests-and-fix)
-        # moved to ``WORKER_PROTOCOL``, which ``agent_run_step`` appends to workers ONLY.
-        (
-            f"You are working in an existing repository named `{repo_basename}`; its files are "
-            "ALREADY PRESENT in your working directory."
-        ),
+        framing,
     ]
     if manifests:
         lines.append(f"Top-level manifests: {', '.join(manifests)}")

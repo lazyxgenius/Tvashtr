@@ -53,7 +53,12 @@ from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
-from tvashtr.control_plane.worktree import WORKER_PROTOCOL, add_worktree, build_repo_grounding
+from tvashtr.control_plane.worktree import (
+    WORKER_PROTOCOL,
+    add_worktree,
+    build_repo_grounding,
+    worker_focus_directive,
+)
 from tvashtr.db import session_scope
 from tvashtr.documents.service import (
     add_version,
@@ -114,9 +119,12 @@ def load_graph_step(run_id: str) -> dict:
                 f"run {run_id} has no owner_id — refusing to execute (no owner-less run)"
             )
         # M-brownfield: surface the run's brownfield target off the SAME Run row (no extra query).
-        # ``repo_path is None`` ⇒ greenfield (the legacy path); non-NULL ⇒ brownfield.
+        # ``repo_path is None`` ⇒ greenfield (the legacy path); non-NULL ⇒ brownfield. ``subpath``
+        # (scoped-mount Slice 1) is the optional package the brownfield grounding + worker FOCUS
+        # scope to (NULL ⇒ whole repo); read here so the walk threads ONE deterministic value.
         repo_path = run.repo_path
         base_ref = run.base_ref
+        subpath = run.subpath
         nodes = (
             session.execute(select(AgentNode).where(AgentNode.team_graph_id == run.team_graph_id))
             .scalars()
@@ -163,6 +171,9 @@ def load_graph_step(run_id: str) -> dict:
         # this step's output so the walk reads the SAME value deterministically on resume.
         "repo_path": repo_path,
         "base_ref": base_ref,
+        # scoped-mount Slice 1: the optional sub-path scope (NULL ⇒ whole repo). Recorded alongside
+        # so the grounding step + the worker FOCUS directive read ONE replay-stable value.
+        "subpath": subpath,
     }
 
 
@@ -405,12 +416,18 @@ def engineer_setup_step(run_id: str) -> str:
 
 
 @DBOS.step()
-def brownfield_grounding_step(run_id: str, workspace: str, repo_basename: str) -> str:
+def brownfield_grounding_step(
+    run_id: str, workspace: str, repo_basename: str, subpath: str | None = None
+) -> str:
     """Compute the D6 repo-grounding block for a brownfield run, ONCE, right after the worktree is
     set up. A recorded ``@DBOS.step`` so the block is checkpointed and replayed VERBATIM on resume
     (deterministic instruction across a crash). Greenfield never calls it. The pure builder
-    (``worktree.build_repo_grounding``) keeps it openhands-free + unit-tested."""
-    return build_repo_grounding(workspace, repo_basename)
+    (``worktree.build_repo_grounding``) keeps it openhands-free + unit-tested.
+
+    scoped-mount Slice 1: ``subpath`` (the run's persisted scope, read off the recorded graph dict →
+    replay-stable) roots the structure outline at one package; ``None`` ⇒ whole-repo grounding,
+    byte-for-byte unchanged."""
+    return build_repo_grounding(workspace, repo_basename, subpath=subpath)
 
 
 # P1.4b: per-run virtual-key lifecycle constants.
@@ -643,6 +660,7 @@ def agent_run_step(
     reviewer_feedback: str | None,
     emits_outcome: bool,
     grounding: str | None = None,
+    subpath: str | None = None,
 ) -> dict:
     """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
     ``reviewer_agent_run_step``. Runs the node's ``node_prompt`` (its behavior, seeded by the
@@ -711,6 +729,14 @@ def agent_run_step(
         context += f"\n\n{grounding}"
         if not emits_outcome:
             context += f"\n\n{WORKER_PROTOCOL}"
+            # scoped-mount Slice 1: a per-run worker FOCUS directive on the SAME worker-only gate,
+            # appended AFTER ``WORKER_PROTOCOL`` when the brownfield run is scoped to a sub-path —
+            # keep edits in ``<subpath>`` and don't explore outside it (the rung-2 overflow), while
+            # still permitting root-level dep-install/tests. A reviewer (``emits_outcome``),
+            # greenfield (``grounding`` None), and whole-repo brownfield (``subpath`` None) get
+            # nothing extra — byte-for-byte their prior instruction.
+            if subpath:
+                context += f"\n\n{worker_focus_directive(subpath)}"
     instruction = node_prompt + context
 
     # M-accounts Slice B: the agent's api_key. Proxy-OFF (BYOK) ⇒ the run owner's per-owner key for
@@ -912,6 +938,10 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
     repo_path: str | None = graph.get("repo_path")
     brownfield = repo_path is not None
     repo_basename = os.path.basename(repo_path.rstrip("/")) if brownfield else ""
+    # scoped-mount Slice 1: the optional sub-path scope (None ⇒ whole repo; greenfield always None).
+    # Read once from the recorded graph dict (replay-stable) and threaded into the grounding step +
+    # the worker FOCUS directive — it scopes ONLY those two, never the worktree/mount/ship.
+    subpath: str | None = graph.get("subpath")
     grounding: str | None = None
 
     while current is not None:
@@ -990,7 +1020,9 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 if brownfield:
                     # D6: compute the repo-grounding block ONCE off the freshly-set-up worktree
                     # (before the agent edits it), recorded → replayed verbatim on resume.
-                    grounding = brownfield_grounding_step(run_id, workspace, repo_basename)
+                    # scoped-mount Slice 1: ``subpath`` roots the structure outline at one package
+                    # (None ⇒ whole-repo grounding, byte-for-byte unchanged).
+                    grounding = brownfield_grounding_step(run_id, workspace, repo_basename, subpath)
             open_invocation_step(run_id, current, n)
             # Per-iteration virtual key: each mint reflects the THEN-current remaining budget,
             # so the proxy enforces the run cap across the whole loop (P1.4b composes).
@@ -1006,9 +1038,16 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # role. ``agent_run_step`` runs ``node["prompt"]`` generically; it harvests a verdict
             # iff ``emits`` (else outcome is None → the close label stays ``"built"``).
             emits = node_emits_outcome(edges, current)
-            # M-brownfield: thread the repo-grounding block into the brownfield agent call.
-            # Greenfield (``grounding is None``) omits the kwarg entirely, so this is byte-for-byte
-            # the prior greenfield call — the existing offline suite drives that path UNCHANGED.
+            # M-brownfield: thread the repo-grounding block (+ scoped-mount Slice 1's sub-path) into
+            # the brownfield agent call. Greenfield (``grounding is None``) omits BOTH kwargs, so
+            # this is byte-for-byte the prior greenfield call — the existing offline suite drives
+            # that path UNCHANGED; whole-repo brownfield (``subpath`` None) omits ``subpath`` →
+            # byte-for-byte the prior brownfield call (only a scoped run appends the FOCUS block).
+            brownfield_kwargs: dict = {}
+            if grounding is not None:
+                brownfield_kwargs["grounding"] = grounding
+                if subpath:
+                    brownfield_kwargs["subpath"] = subpath
             result = agent_run_step(
                 run_id,
                 node["prompt"],
@@ -1020,7 +1059,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 vkey,
                 reviewer_feedback,
                 emits,
-                **({"grounding": grounding} if grounding is not None else {}),
+                **brownfield_kwargs,
             )
             delete_vkey_step(run_id, vkey)
 

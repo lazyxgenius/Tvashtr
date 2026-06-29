@@ -13,6 +13,8 @@ from tvashtr.control_plane.worktree import (
     branch_name_for,
     build_repo_grounding,
     repo_inspect,
+    subpath_is_tracked_dir,
+    worker_focus_directive,
 )
 
 
@@ -206,3 +208,95 @@ def test_build_repo_grounding_no_conventions_file(tmp_path):
     repo = _init_repo(tmp_path / "repo", files={"main.py": "print('x')\n"})
     grounding = build_repo_grounding(str(repo), "repo")
     assert "conventions: none" in grounding
+
+
+# ---- scoped-mount Slice 1: build_repo_grounding(subpath=...) ------------------------------------
+
+
+def test_build_repo_grounding_scoped_roots_outline_at_subpath_keeps_manifest_root(tmp_path):
+    """The scoped grounding (A4): given ``subpath``, the structure outline is ROOTED at that package
+    (its own tree — a handful of entries, the trade_mcp ``core/`` shape) and EXCLUDES the unrelated
+    top-level dirs that overflowed the model at rung 2; the framing names the focus; the top-level
+    MANIFEST line stays repo-ROOT (deps install from the root, not from the sub-path)."""
+    repo = _init_repo(
+        tmp_path / "repo",
+        files={
+            "pyproject.toml": "[project]\nname='x'\n",  # root manifest — must stay repo-ROOT
+            "pkg/__init__.py": "\n",
+            "pkg/indicators.py": "def x():\n    pass\n",
+            "pkg/sub/helper.py": "y = 1\n",
+            "web/app/page.tsx": "export default 1\n",  # unrelated top-level dir (the overflow)
+            "servers/cache/main.py": "z = 2\n",  # another unrelated top-level dir
+            "CLAUDE.md": "conventions.\n",
+        },
+    )
+    grounding = build_repo_grounding(str(repo), "repo", subpath="pkg")
+
+    # The framing line NAMES the focus directory (still no implement/edit verb — reviewer-safe).
+    assert "focused on its `pkg` directory" in grounding
+    assert "ALREADY PRESENT" in grounding
+    # The outline is ROOTED at pkg/ — it shows pkg's OWN tree (its files + its sub-dir), prefixed.
+    assert "pkg/indicators.py" in grounding
+    assert "pkg/__init__.py" in grounding
+    assert "pkg/sub/" in grounding
+    # ...and NOT the unrelated top-level dirs (this is the whole point — bound the agent's surface).
+    assert "web/" not in grounding
+    assert "servers/" not in grounding
+    # The top-level manifest line stays repo-ROOT (the build system the agent installs deps from).
+    assert "Top-level manifests: pyproject.toml" in grounding
+    # Conventions are still read from the repo root.
+    assert "conventions: CLAUDE.md found" in grounding
+
+
+def test_build_repo_grounding_subpath_none_is_byte_for_byte_whole_repo(tmp_path):
+    """The invariant (D): ``subpath=None`` is byte-for-byte the 2-arg whole-repo grounding — the
+    greenfield/whole-repo path appends NO new text."""
+    repo = _init_repo(
+        tmp_path / "repo",
+        files={
+            "pyproject.toml": "[project]\nname='x'\n",
+            "pkg/indicators.py": "def x():\n    pass\n",
+            "web/app/page.tsx": "1\n",
+            "AGENTS.md": "rules\n",
+        },
+    )
+    assert build_repo_grounding(str(repo), "repo", subpath=None) == build_repo_grounding(
+        str(repo), "repo"
+    )
+    # And the whole-repo outline DOES list the top-level dirs the scoped one excludes (contrast).
+    whole = build_repo_grounding(str(repo), "repo")
+    assert "web/" in whole and "pkg/" in whole
+    assert "focused on its" not in whole  # the whole-repo framing names no focus
+
+
+def test_worker_focus_directive_names_subpath_and_permits_root_tests():
+    """The per-run worker FOCUS block (A5): names the focus, forbids recursing outside it, but STILL
+    permits root-level dependency-install + test commands (trade_mcp's tests + pyproject are at the
+    ROOT, not inside the sub-path)."""
+    block = worker_focus_directive("core")
+    assert "--- FOCUS: core ---" in block
+    assert "belongs in the `core` directory" in block
+    assert "do NOT recursively" in block
+    # The escape hatch: root-level deps/tests are explicitly allowed (so the worker can run them).
+    assert "from the repository ROOT" in block
+    assert "pip install -e '.[dev]'" in block
+    assert "python -m pytest -q" in block
+
+
+def test_subpath_is_tracked_dir_discriminates_dir_file_and_missing(tmp_path):
+    """The create_run validation (A2): a tracked DIRECTORY (≥1 file strictly under it) → True; a
+    single tracked FILE, a non-existent path, or a non-git path → False (never raises)."""
+    repo = _init_repo(
+        tmp_path / "repo",
+        files={"pkg/a.py": "x\n", "pkg/sub/b.py": "y\n", "top.py": "z\n"},
+    )
+    assert subpath_is_tracked_dir(str(repo), "pkg") is True
+    assert subpath_is_tracked_dir(str(repo), "pkg/sub") is True
+    assert subpath_is_tracked_dir(str(repo), "pkg/") is True  # trailing slash normalized
+    # A tracked FILE is NOT a directory; a non-existent path is not tracked.
+    assert subpath_is_tracked_dir(str(repo), "pkg/a.py") is False
+    assert subpath_is_tracked_dir(str(repo), "top.py") is False
+    assert subpath_is_tracked_dir(str(repo), "nope") is False
+    assert subpath_is_tracked_dir(str(repo), "") is False
+    # A non-git / missing path → False (defensive, like repo_inspect — never raises).
+    assert subpath_is_tracked_dir(str(tmp_path / "missing"), "pkg") is False

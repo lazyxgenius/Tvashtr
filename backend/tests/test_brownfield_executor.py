@@ -169,9 +169,12 @@ class _ReviewLoopFakeAdapter:
 
     name = "openhands-docker"
 
-    def __init__(self, captured, clobber=False):
+    def __init__(self, captured, clobber=False, module_rel="calculator.py"):
         self._captured = captured
         self._clobber = clobber
+        # The editable module's path RELATIVE to the worktree — defaults to the root
+        # ``calculator.py`` (the existing tests); a scoped-mount test points it under a sub-path.
+        self._module_rel = module_rel
 
     def run(self, task, on_event=None):
         ws = Path(task.workspace_dir)
@@ -188,7 +191,7 @@ class _ReviewLoopFakeAdapter:
             # decides whether that reaches the host — a scoped (verdict-only) pull discards it; an
             # unscoped pull (pull_paths is None) clobbers the worker's edit. Simulate exactly that.
             if self._clobber and getattr(task, "pull_paths", None) is None:
-                (ws / "calculator.py").write_text(
+                (ws / self._module_rel).write_text(
                     "def add(a, b):\n    return a + b\n",
                     encoding="utf-8",  # subtract DROPPED
                 )
@@ -199,12 +202,12 @@ class _ReviewLoopFakeAdapter:
         self._captured["worker_instruction"] = task.instruction
         self._captured["worker_mode"] = task.workspace_mode
         self._captured["worker_pull_paths"] = getattr(task, "pull_paths", None)
-        mod = ws / "calculator.py"
+        mod = ws / self._module_rel
         mod.write_text(
             mod.read_text() + "\n\ndef subtract(a, b):\n    return a - b\n", encoding="utf-8"
         )
         return AgentRunResult(
-            status="completed", summary="built", events=[], files_changed=["calculator.py"]
+            status="completed", summary="built", events=[], files_changed=[self._module_rel]
         )
 
 
@@ -262,6 +265,10 @@ def test_brownfield_review_loop_worker_gets_protocol_reviewer_does_not_offline(
         # present in the worker's instruction, absent from the reviewer's (it must gate, not build).
         assert "pip install" in captured["worker_instruction"]
         assert "pip install" not in captured["reviewer_instruction"]
+        # scoped-mount Slice 1: this run has NO subpath → the per-run FOCUS directive is appended to
+        # NOBODY (byte-for-byte the whole-repo brownfield instruction).
+        assert "--- FOCUS" not in captured["worker_instruction"]
+        assert "--- FOCUS" not in captured["reviewer_instruction"]
 
         # The reviewer GATED + APPROVED (an AgentInvocation outcome of "approved"), and the run
         # shipped the worker's edit to the real branch.
@@ -346,6 +353,106 @@ def test_brownfield_review_loop_reviewer_cannot_clobber_worker_edit_offline(
         assert "def subtract" in tip_calc
         assert "def add" in tip_calc
         # the user's tree is untouched.
+        assert _git(fixture, "rev-parse", "main").stdout.strip() == original_head
+        assert _git(fixture, "symbolic-ref", "--short", "HEAD").stdout.strip() == "main"
+    finally:
+        subprocess.run(
+            ["git", "-C", str(fixture), "worktree", "remove", "--force", str(workspace)],
+            capture_output=True,
+            text=True,
+        )
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def _init_subpath_fixture(path):
+    """A fixture whose editable module lives UNDER ``pkg/`` PLUS an unrelated top-level dir + a root
+    manifest — so a scoped (``subpath="pkg"``) run's worker edits within ``pkg`` and its grounding +
+    FOCUS scope to ``pkg`` while the manifest line stays repo-ROOT."""
+    path.mkdir(parents=True, exist_ok=True)
+    _git(path, "init", "-q", "-b", "main")
+    _git(path, "config", "user.email", "t@t.local")
+    _git(path, "config", "user.name", "tester")
+    (path / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
+    (path / "pkg").mkdir()
+    (path / "pkg" / "calc.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+    (path / "other").mkdir()
+    (path / "other" / "unrelated.py").write_text("X = 1\n", encoding="utf-8")
+    (path / "CLAUDE.md").write_text("Keep functions tiny.\n", encoding="utf-8")
+    _git(path, "add", "-A")
+    _git(path, "commit", "-qm", "init")
+    return path
+
+
+def test_brownfield_subpath_appends_worker_focus_reviewer_excluded_offline(
+    client, monkeypatch, tmp_path
+):
+    """scoped-mount Slice 1, end to end over a REAL ``run_team`` on the ``review_loop`` team against
+    a real throwaway repo SCOPED to ``pkg`` (PM stubbed, the adapter faked per-node): the WORKER's
+    instruction carries the per-run FOCUS directive (names ``pkg``, forbids recursing outside it,
+    still permits root-level tests), the REVIEWER's does NOT (it must gate, not implement), the
+    scoped ORIENTATION (on BOTH nodes) names the focus + roots the outline at ``pkg`` (the unrelated
+    top-level dir is excluded), and the run STILL ships the worker's edit to ``tvashtr/<run_id>`` —
+    the worktree/mount/ship are UNCHANGED; ``subpath`` scopes ONLY the grounding map + the FOCUS."""
+    monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
+    fixture = _init_subpath_fixture(tmp_path / "repo")
+    original_head = _git(fixture, "rev-parse", "HEAD").stdout.strip()
+
+    captured: dict = {}
+    monkeypatch.setattr(team_run, "pm_step", lambda run_id, idea, m, p: seed_pm_prd(run_id, idea))
+    monkeypatch.setattr(
+        team_run,
+        "resolve_adapter",
+        lambda name: _ReviewLoopFakeAdapter(captured, module_rel="pkg/calc.py"),
+    )
+
+    run_id = str(uuid.uuid4())
+    team_graph_id = build_review_loop_team()
+    idea = "Add a subtract(a, b) function to the calc module."
+    with session_scope() as session:
+        session.add(
+            Run(
+                id=uuid.UUID(run_id),
+                team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=auth_user_id(),
+                idea=idea,
+                workflow_id=run_id,
+                status="running",
+                repo_path=str(fixture),
+                base_ref="main",
+                subpath="pkg",  # scoped-mount Slice 1: scope the agent to pkg/
+            )
+        )
+
+    workspace = _WORKSPACE_ROOT / run_id
+    try:
+        with SetWorkflowID(run_id):
+            handle = DBOS.start_workflow(team_run.run_team, idea)
+        result = handle.get_result()
+        assert result["status"] == "completed"
+        assert result["ship_branch"] == f"tvashtr/{run_id}"
+
+        wi = captured["worker_instruction"]
+        ri = captured["reviewer_instruction"]
+        # THE FOCUS SPLIT: the per-run FOCUS directive is on the WORKER, never the reviewer.
+        assert "--- FOCUS: pkg ---" in wi
+        assert "belongs in the `pkg` directory" in wi
+        assert "do NOT recursively" in wi
+        assert "from the repository ROOT" in wi  # still permits root-level tests/deps
+        assert "--- FOCUS" not in ri
+        assert "do NOT recursively" not in ri
+        # The scoped ORIENTATION (BOTH nodes): names the focus + roots the outline at pkg; the
+        # unrelated top-level dir is NOT in the agent's map (the bounded surface — the rung-2 fix).
+        assert "focused on its `pkg` directory" in wi
+        assert "focused on its `pkg` directory" in ri
+        assert "pkg/calc.py" in wi
+        assert "other/" not in wi
+        # The manifest line stays repo-ROOT even under the scope.
+        assert "Top-level manifests: pyproject.toml" in wi
+
+        # The run STILL ships the worker's edit to the real branch WITHIN pkg (the mount is
+        # whole-repo — subpath scopes only grounding/FOCUS, never the worktree/ship).
+        tip_calc = _git(fixture, "show", f"tvashtr/{run_id}:pkg/calc.py").stdout
+        assert "def subtract" in tip_calc and "def add" in tip_calc
         assert _git(fixture, "rev-parse", "main").stdout.strip() == original_head
         assert _git(fixture, "symbolic-ref", "--short", "HEAD").stdout.strip() == "main"
     finally:
