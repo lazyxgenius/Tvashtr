@@ -85,6 +85,8 @@ def test_local_off_builds_direct_llm_with_the_threaded_owner_key(tmp_path, monke
     assert kwargs == {
         "model": "openrouter/m",
         "api_key": "byok-key",
+        "num_retries": 8,
+        "retry_max_wait": 120,
         "temperature": 0.0,
         "usage_id": "tvashtr-agent",
     }
@@ -97,6 +99,8 @@ def test_docker_off_builds_direct_llm_with_the_threaded_owner_key(tmp_path, monk
     assert kwargs == {
         "model": "openrouter/m",
         "api_key": "byok-key",
+        "num_retries": 8,
+        "retry_max_wait": 120,
         "temperature": 0.0,
         "usage_id": "tvashtr-agent",
     }

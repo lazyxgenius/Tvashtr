@@ -118,6 +118,29 @@ class Settings(BaseSettings):
         default="docker",
         validation_alias=AliasChoices("TVASHTR_AGENT_SANDBOX", "agent_sandbox_mode"),
     )
+    # Agent-LLM rate-limit retry envelope (milestone B — BYOK throttle survival).
+    # The OpenHands SDK ``LLM`` retries a provider 429 (``RateLimitError``) with an
+    # exponential back-off; its defaults (``num_retries=5`` x ``retry_max_wait=64s``)
+    # give only a ~3-min wait-out per call, after which the exception crashes the run.
+    # A capable BYOK worker on a low-tier key (free NIM, low-tier paid OpenAI) hits a
+    # per-minute/TPM throttle that can sit longer than that, so the loop dies mid-build.
+    # These widen the envelope ON THE BYOK (proxy-OFF) PATH ONLY (see ``agent_llm_routing``):
+    # 8 retries x a 120s cap ~= a ~10-min worst-case wait-out per call, sized against the
+    # rung-2 harness's 2400s (40-min) poll budget — a mild throttle clears inside the
+    # window; a hard throttle drags to a clean timeout, NOT a crash. ``retry_min_wait`` and
+    # the multiplier keep the SDK defaults. Env-dialable so the envelope re-tunes with no
+    # code change. NOT carried on the proxy-ON path (its only 429 is the budget cutoff —
+    # lengthening it would worsen the registered proxy budget-latency deferral).
+    agent_num_retries: int = Field(
+        default=8,
+        ge=0,
+        validation_alias=AliasChoices("TVASHTR_AGENT_NUM_RETRIES", "agent_num_retries"),
+    )
+    agent_retry_max_wait_s: int = Field(
+        default=120,
+        ge=0,
+        validation_alias=AliasChoices("TVASHTR_AGENT_RETRY_MAX_WAIT", "agent_retry_max_wait_s"),
+    )
     # The prebuilt OpenHands agent-server image the docker path runs (heavy:
     # VSCode/VNC baked in — started with extra_ports=False). Orphan-reaping targets
     # containers from this image (``ancestor=``): the installed DockerWorkspace
@@ -244,7 +267,17 @@ def agent_llm_routing(
             "proxy-OFF agent routing requires a per-owner api_key (BYOK); none was provided "
             "(the run owner must have a provider_credentials key for this model's provider)"
         )
-    return {"model": model, "api_key": api_key_override}
+    # BYOK direct path: carry the widened rate-limit retry envelope (milestone B) so a
+    # throttled low-tier key rides out a busy window instead of crashing the agent loop.
+    # ``num_retries``/``retry_max_wait`` are real OpenHands ``LLM`` fields; they splat into
+    # the constructor and SERIALIZE into the in-container agent-server, so the docker path
+    # inherits them too. The proxy-ON branch above deliberately OMITS them (budget-latency).
+    return {
+        "model": model,
+        "api_key": api_key_override,
+        "num_retries": settings.agent_num_retries,
+        "retry_max_wait": settings.agent_retry_max_wait_s,
+    }
 
 
 @lru_cache

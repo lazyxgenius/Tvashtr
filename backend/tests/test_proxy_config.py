@@ -53,7 +53,13 @@ def test_routing_off_uses_the_threaded_owner_key(monkeypatch):
     kwargs = agent_llm_routing(
         s, "openrouter/openai/gpt-4o-mini", "docker", api_key_override="byok"
     )
-    assert kwargs == {"model": "openrouter/openai/gpt-4o-mini", "api_key": "byok"}
+    # Milestone B: the BYOK dict now also carries the widened rate-limit retry envelope (8 / 120).
+    assert kwargs == {
+        "model": "openrouter/openai/gpt-4o-mini",
+        "api_key": "byok",
+        "num_retries": 8,
+        "retry_max_wait": 120,
+    }
     assert "base_url" not in kwargs
 
 
@@ -121,7 +127,13 @@ def test_routing_off_uses_override_for_any_provider_slug(monkeypatch):
     s = Settings(_env_file=None, litellm_proxy_enabled=False)
     for slug in ("gemini/gemini-2.0-flash", "nvidia_nim/meta/llama-3.3-70b-instruct", "groq/x"):
         kwargs = agent_llm_routing(s, slug, "local", api_key_override="owner-key")
-        assert kwargs == {"model": slug, "api_key": "owner-key"}
+        # Milestone B: + the widened retry envelope (8 / 120) on the BYOK path, for ANY slug.
+        assert kwargs == {
+            "model": slug,
+            "api_key": "owner-key",
+            "num_retries": 8,
+            "retry_max_wait": 120,
+        }
         assert "base_url" not in kwargs
 
 
@@ -146,3 +158,51 @@ def test_litellm_proxy_enabled_from_env(monkeypatch):
     monkeypatch.setenv("LITELLM_PROXY_ENABLED", "1")
     s = Settings(_env_file=None)
     assert s.litellm_proxy_enabled is True
+
+
+# --- Milestone B: the BYOK agent-loop rate-limit retry envelope (proxy-OFF path ONLY) ---
+
+
+def test_byok_branch_carries_the_retry_envelope_both_modes(monkeypatch):
+    # The BYOK (proxy-OFF) branch carries the widened rate-limit retry envelope so a throttled
+    # low-tier key rides out a busy window instead of crashing the loop. Resolved defaults: 8 / 120.
+    # Clear the env dials (`make test` exports the operator's .env) to isolate the defaults.
+    monkeypatch.delenv("TVASHTR_AGENT_NUM_RETRIES", raising=False)
+    monkeypatch.delenv("TVASHTR_AGENT_RETRY_MAX_WAIT", raising=False)
+    s = Settings(_env_file=None, litellm_proxy_enabled=False)
+    for mode in ("local", "docker"):
+        kwargs = agent_llm_routing(s, "nvidia_nim/x", mode, api_key_override="byok")
+        # the EXACT new BYOK shape (local AND docker): bare slug + threaded key + the widened
+        # envelope (8 / 120), no base_url — the authoritative dict-shape guard for the path.
+        assert kwargs == {
+            "model": "nvidia_nim/x",
+            "api_key": "byok",
+            "num_retries": 8,
+            "retry_max_wait": 120,
+        }
+
+
+def test_proxy_on_branch_omits_the_retry_envelope():
+    # The proxy-ON path deliberately OMITS the envelope: its only 429 is the budget cutoff, and
+    # lengthening that retry would worsen the registered proxy budget-latency deferral.
+    s = Settings(_env_file=None, litellm_proxy_enabled=True, litellm_master_key="sk-master")
+    kwargs = agent_llm_routing(s, "openrouter/x", "docker", api_key_override="sk-run-vkey")
+    assert "num_retries" not in kwargs
+    assert "retry_max_wait" not in kwargs
+    # the proxy shape is byte-unchanged (the budget-latency guard).
+    assert kwargs == {
+        "model": "litellm_proxy/openrouter/x",
+        "api_key": "sk-run-vkey",
+        "base_url": "http://host.docker.internal:4000",
+    }
+
+
+def test_env_overrides_retune_the_retry_envelope(monkeypatch):
+    # The envelope is env-dialable (re-tune with no code change): a fresh Settings() reads the env
+    # vars and the routing dict reflects the OVERRIDDEN numbers. monkeypatch resets the env after.
+    monkeypatch.setenv("TVASHTR_AGENT_NUM_RETRIES", "3")
+    monkeypatch.setenv("TVASHTR_AGENT_RETRY_MAX_WAIT", "45")
+    s = Settings(_env_file=None, litellm_proxy_enabled=False)
+    kwargs = agent_llm_routing(s, "nvidia_nim/x", "local", api_key_override="byok")
+    assert kwargs["num_retries"] == 3
+    assert kwargs["retry_max_wait"] == 45
