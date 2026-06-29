@@ -40,7 +40,7 @@ from tvashtr.control_plane.teams import (
     reviewer_model,
     seed_library_if_empty,
 )
-from tvashtr.control_plane.worktree import repo_inspect
+from tvashtr.control_plane.worktree import repo_inspect, subpath_is_tracked_dir
 from tvashtr.documents.service import add_version, get_document_with_versions, list_documents
 from tvashtr.models import (
     AgentInvocation,
@@ -94,6 +94,12 @@ class CreateRunRequest(BaseModel):
     # the greenfield create is byte-for-byte unchanged.
     repo_path: str | None = None
     base_ref: str | None = None
+    # M-brownfield scoped-mount Slice 1: an OPTIONAL sub-path that scopes the brownfield agent's
+    # CONTEXT MAP + FOCUS to one package of the repo (NOT the git mount). When set on a brownfield
+    # run it must name a tracked DIRECTORY in the repo (else 422). NULL / absent ⇒ whole repo; a
+    # greenfield run (no ``repo_path``) ignores it (stored NULL). The picker that supplies it is FE
+    # Slice 2 — here it is an optional API field only.
+    subpath: str | None = None
 
 
 class RepoInspectRequest(BaseModel):
@@ -418,6 +424,9 @@ def _run_to_dict(run: Run) -> dict:
         "repo_path": run.repo_path,
         "base_ref": run.base_ref,
         "ship_branch": run.ship_branch,
+        # scoped-mount Slice 1: the optional sub-path scope (NULL ⇒ whole repo). Surfaced parallel
+        # to the sibling brownfield columns (the FE picker reads it in Slice 2).
+        "subpath": run.subpath,
         "cost_total_usd": float(run.cost_total_usd) if run.cost_total_usd is not None else None,
         # A/B pairing (P1.5c §14.2): additive, NULL for an ordinary standalone run. Two runs
         # sharing ``pair_id`` are the A/B; ``pair_label`` is the config side. The §14.3
@@ -488,6 +497,7 @@ def create_run(
     # leaves no orphan team/run — mirroring the clone-on-launch validation discipline below.
     repo_path = body.repo_path
     base_ref = body.base_ref
+    subpath = body.subpath
     if repo_path is not None:
         info = repo_inspect(repo_path)
         if not info["is_git"]:
@@ -510,6 +520,20 @@ def create_run(
             )
         if base_ref is None:
             base_ref = info["current_branch"]
+        # scoped-mount Slice 1: an optional sub-path scopes the agent's context map + focus. When
+        # present it must name a real tracked DIRECTORY within the repo (else a clean 422, mirroring
+        # the repo_path/base_ref validation). NULL/absent ⇒ whole repo (today's behavior).
+        if subpath is not None and not subpath_is_tracked_dir(repo_path, subpath):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "subpath is not a tracked directory in repo_path",
+                    "subpath": subpath,
+                },
+            )
+    else:
+        # Greenfield (no repo to scope): ignore any supplied sub-path (store NULL).
+        subpath = None
     if body.team_graph_id is not None:
         # Clone-on-launch (P1.8b): deep-clone the authored team into a fresh run-scoped snapshot and
         # run THAT, so the user's edited prompts/models drive the run. The run owns the immutable
@@ -578,6 +602,9 @@ def create_run(
                 # M-brownfield: both None for a greenfield run ⇒ identical column defaults.
                 repo_path=repo_path,
                 base_ref=base_ref,
+                # scoped-mount Slice 1: the optional sub-path scope (None for greenfield /
+                # whole-repo brownfield ⇒ identical column default).
+                subpath=subpath,
             )
         )
 

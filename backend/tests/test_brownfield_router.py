@@ -95,6 +95,7 @@ def test_create_run_brownfield_defaults_base_ref_and_records_columns(client, mon
         assert run.repo_path == str(repo)
         assert run.base_ref == "main"  # defaulted to the repo's current branch
         assert run.ship_branch is None  # not set until the worktree is created at run time
+        assert run.subpath is None  # scoped-mount Slice 1: no subpath passed → whole-repo (NULL)
 
     # The status payload additively surfaces the brownfield target (repo_path/base_ref/ship_branch).
     got = client.get(f"/api/runs/{run_id}").json()["run"]
@@ -113,3 +114,56 @@ def test_create_run_greenfield_records_null_brownfield_columns(client, monkeypat
         assert run.repo_path is None
         assert run.base_ref is None
         assert run.ship_branch is None
+        assert run.subpath is None
+
+
+# ---- scoped-mount Slice 1: the optional subpath on POST /api/runs --------------------------------
+
+
+def _init_repo_with_pkg(path, branch="main"):
+    """Like ``_init_repo`` but with a tracked ``pkg/`` directory (+ a file under it) — the sub-path
+    scoping target. A second commit keeps the helper composable on top of ``_init_repo``."""
+    _init_repo(path, branch=branch)
+    (path / "pkg").mkdir()
+    (path / "pkg" / "mod.py").write_text("def f():\n    return 1\n")
+    for a in (["add", "-A"], ["commit", "-qm", "add pkg"]):
+        subprocess.run(["git", "-C", str(path), *a], check=True, capture_output=True)
+    return path
+
+
+def test_create_run_brownfield_persists_valid_subpath(client, monkeypatch, tmp_path):
+    _stub_launch(monkeypatch)
+    repo = _init_repo_with_pkg(tmp_path / "repo")
+    resp = client.post(
+        "/api/runs", json={"idea": "Add to pkg", "repo_path": str(repo), "subpath": "pkg"}
+    )
+    assert resp.status_code == 200
+    run_id = resp.json()["run_id"]
+    with session_scope() as session:
+        run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
+        assert run.subpath == "pkg"  # persisted on the run row
+        assert run.repo_path == str(repo)
+    # Additively surfaced on the run-detail payload (parallel to repo_path/base_ref/ship_branch).
+    assert client.get(f"/api/runs/{run_id}").json()["run"]["subpath"] == "pkg"
+
+
+def test_create_run_rejects_subpath_that_is_not_a_tracked_dir_422(client, monkeypatch, tmp_path):
+    _stub_launch(monkeypatch)
+    repo = _init_repo_with_pkg(tmp_path / "repo")
+    # A tracked FILE is not a directory, and a non-existent path is not tracked → clean 422 each.
+    for bad in ("pkg/mod.py", "does-not-exist"):
+        resp = client.post("/api/runs", json={"idea": "x", "repo_path": str(repo), "subpath": bad})
+        assert resp.status_code == 422, (bad, resp.text)
+        assert "subpath is not a tracked directory" in str(resp.json()["detail"])
+
+
+def test_create_run_greenfield_ignores_subpath(client, monkeypatch):
+    _stub_launch(monkeypatch)
+    # No repo_path → greenfield → a supplied subpath is IGNORED (stored NULL), never a 422.
+    resp = client.post("/api/runs", json={"idea": "greenfield", "subpath": "pkg"})
+    assert resp.status_code == 200
+    run_id = resp.json()["run_id"]
+    with session_scope() as session:
+        run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
+        assert run.subpath is None
+        assert run.repo_path is None
