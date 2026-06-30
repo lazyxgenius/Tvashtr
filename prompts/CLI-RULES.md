@@ -187,6 +187,46 @@ else `OPENROUTER_API_KEY`. So switching providers is a one-line `.env` `TVASHTR_
   free tier is not — switch `TVASHTR_AGENT_MODEL` to the NIM slug and proceed.
 - Test with `make agent-smoke` before any live agent run.
 
+### 4.7 Final report — emit ONE at the END of every `/goal` (whether or not the goal was met)
+
+Whatever the terminal — `SUCCESS`, a `FINDING`, `NEEDS_HUMAN`, or a hard stop — your LAST
+substantive message MUST be a single, clearly-delimited **FINAL REPORT**: a complete, structured
+account the architect can fully audit WITHOUT re-reading the transcript. Never collapse it to a
+one-line "done"; never bury it mid-output; never pad by restating it on every later blocked turn.
+Use exactly these eight sections, in order:
+
+```
+=== FINAL REPORT ===
+1. OUTCOME — one line: SUCCESS / FINDING / NEEDS_HUMAN / BLOCKED, plus a one-sentence plain-language
+   summary of what actually happened.
+2. WHAT I DID — the concrete work: files created/edited (by path), migrations added, scripts run,
+   the branch + commit shas. For an experiment or config run, state exactly what was changed AND
+   what was reverted.
+3. EVIDENCE — every acceptance / §10 item with its ACTUAL result, decisive line quoted verbatim:
+   the `make test` summary (=== N passed ===), the `make lint` line, the alembic head, each live
+   target's final status line, endpoint payload samples, screenshot paths. Real numbers, never bare
+   "passed".
+4. INVARIANTS — each invariant the `/goal` named + HOW you verified it held (the git/diff/byte check,
+   the empty `git diff main -- <path>`, the untouched-file confirmation). Not "unchanged" — the proof.
+5. DEVIATIONS — anything you did differently from the `/goal` or its brief, with the reason and the
+   evidence it was safe (e.g. a model-slug self-heal, a calibrated threshold). If none: write "none".
+6. INCOMPLETE / BLOCKED (omit only on a clean SUCCESS) — exactly what did NOT complete; the precise
+   cause with the decisive error line; the levers you TRIED and ruled out (and why); the levers that
+   REMAIN — explicitly separating the ones that need a human/resource from the ones you were
+   forbidden by the contract to take.
+7. RECOMMENDATION — your read on the single best next lever for the architect (you implement, you do
+   not decide the product — but surface your assessment plainly).
+8. STATE — git HEAD sha, branch, what is committed vs uncommitted vs reverted, and what remains in
+   the working tree (e.g. "STATE.md only; .env reverted; architect docs untouched").
+=== END REPORT ===
+```
+
+Write this report ONCE, as the genuine close of the run. A recorded `FINDING`/`NEEDS_HUMAN` WITH this
+report IS a complete, valid terminal — not a failure to keep grinding against. If a Stop-hook
+re-prompts you after such a terminal, do NOT re-emit the report or re-argue the case; reply in one
+line ("Held at NEEDS_HUMAN — see FINAL REPORT above.") and stop. The report is the deliverable; the
+repetition is noise.
+
 ---
 
 ## 5. Hard Stop Conditions
