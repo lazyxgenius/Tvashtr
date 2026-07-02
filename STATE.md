@@ -1,74 +1,83 @@
 # Tvashtr — Autonomous Execution State
 
 ## Current Milestone
-Milestone B (Tvashtr-39) — BYOK agent-loop rate-limit robustness (the retry envelope) +
-the brownfield thesis verdict.
+M-frontend (Tvashtr-41) — the premium reskin of the warm cream-paper FE, decomposed F0→F4.
+This slice: **F0 — the extend-token layer + the shared `.tv-*` primitive lift.**
 
-## OUTCOME — offline fix SHIPPED (READY_TO_MERGE) + live thesis run = outcome (c) THROTTLE-FINDING (GOAL MET)
-The config-only BYOK retry-envelope fix is **GREEN + COMMITTED** (`3ad4d9d`) — the merge artifact,
-complete regardless of the live run. The live Kimi thesis run is a CLEAN, VALID **outcome (c)**: the
-widened envelope **demonstrably WORKED** — the loop rode out 8x NIM 429s and got all the way to a
-**REVIEWER `approved`** of a correct, registered DEMA (far past where the Tvashtr-38 runs crashed) —
-but one final SUSTAINED 429 window exhausted even the 8x120s envelope at ~14.5 min and crashed the
-conversation BEFORE the ship step persisted the branch, so the INDEPENDENT numeric gate never ran
-(`shipped a branch: False`). A throttle/quota wall, NOT a model-capability or wiring fault. Per brief
-B §4 this is goal-met; re-run after a NIM quota reset (optionally bump the env knobs) to land the verdict.
+## OUTCOME — F0 SHIPPED (READY_TO_MERGE; clean SUCCESS)
+The design export's premium refinement layer is ported as a NEW token file
+(`frontend/src/design-system/tokens/extend.css`) and the shared primitives in `index.css` are
+lifted to the mockups' premium recipes — CSS/token-only, zero markup/layout/endpoint/migration
+change. All four acceptance gates green; all four invariant proofs empty/clean; Playwright
+self-sign-off captured against the `design/` reference.
 
 ## Last Completed Step
-feat/byok-retry-envelope — 2026-06-29 — branch: feat/byok-retry-envelope — commit: 3ad4d9d
+F0 extend-tokens + primitive lift — 2026-07-02 — branch: feat/f0-tokens-primitives — commit: b43a0d0
 
 ## READY_TO_MERGE
-READY_TO_MERGE: branch=feat/byok-retry-envelope, sha=3ad4d9d, tests=328 backend passing (+4 over the
-324 floor), lint clean, alembic head 0018 (no migration). FE untouched (vitest floor 165 intact).
+READY_TO_MERGE: branch=feat/f0-tokens-primitives, sha=b43a0d0, frontend=165 passing
 
-## The change (config.py ONLY — one chokepoint)
-- Two env-overridable `Settings` fields: `agent_num_retries` (default 8, `TVASHTR_AGENT_NUM_RETRIES`)
-  + `agent_retry_max_wait_s` (default 120, `TVASHTR_AGENT_RETRY_MAX_WAIT`), matching the
-  `agent_sandbox_mode` AliasChoices pattern.
-- Carried as `num_retries` + `retry_max_wait` on the proxy-OFF (BYOK) branch of `agent_llm_routing`
-  ONLY; they splat into the OpenHands `LLM` and SERIALIZE into the in-container agent-server (docker
-  path inherits them). 8 x 120s ~= a ~10-min worst-case wait-out per call, sized vs the rung-2 2400s poll.
-- Proxy-ON branch byte-identical (NO retry keys — protects the budget-429 latency).
-- No dependency, no migration (head stays 0018); `engines/` + `team_run.py` byte-untouched.
+## The change (2 files, FE-only)
+- **NEW `frontend/src/design-system/tokens/extend.css`** — ports the design's `tvashtr-extend.css`:
+  the surface ramp (`--surface-board/-sunk/-overlay`), soft/glass hairlines, premium shadows
+  (`--shadow-node/-hover/-raise/-drawer/-pop`), coral glows (`--glow-running/-soft`), warm washes
+  (`--wash-hero/-board`), layout widths (`--rail-w`/`--drawer-w`), the FULL keyframe library
+  (tv-breathe/flow/draw/fade-up/fade-in/pop-in/**modal-in**/scale-in/node-in/spin/drift/stamp/
+  shimmer/blink/wave/parallax), warm scrollbars, and the global reduced-motion guard.
+  RECONCILED vs base.css: the body background/color/font baseline + `::selection` are NOT
+  re-declared (base.css owns them); extend adds html/body sizing, overscroll, box-sizing only.
+- **`frontend/src/index.css`** — import wired immediately AFTER base.css and BEFORE canvas.css;
+  `@theme inline` bridge gains `--color-board/-sunk/-overlay`; primitives lifted: `.tv-btn`
+  radius-md + shadow-xs→sm hover ramp + the design's putty disabled state (ghost/danger/link
+  variants shadowless, ghost on surface-card); `.tv-card` radius-xl; `.tv-pill` saturated
+  per-status dots (+nowrap); `.tv-launch__input` = the larger putty input (surface-page,
+  radius-lg, space-3 padding, placeholder tone; coral-200 + 3px focus ring kept); `.tv-launch`
+  popover on shadow-pop + tv-pop-in; `.tv-auth__card`/`.tv-landing__hero` on shadow-raise;
+  `.tv-dash__bar` frosted (surface-overlay + backdrop-blur 10px). `.tv-seg` verified already
+  byte-matching the design recipe — untouched.
 
-## Offline hard gate (GREEN + COMMITTED `3ad4d9d`)
-- `make test` -> **328 passed in ~18s** (floor 324 + 4 new). `make lint` -> `All checks passed!` +
-  `All matched files use Prettier code style!`. alembic head still **0018**.
-- New tests: BYOK carries 8/120 (local+docker, exact-shape guard); proxy-ON OMITS both; env override
-  re-tunes; the values land on a real constructed `LLM` (`llm.num_retries==8`, `llm.retry_max_wait==120`).
-  Updated 4 existing M-accounts BYOK-shape tests for the new dict keys (`test_proxy_config` x2,
-  `test_proxy_adapter_wiring` x2) — a contained, code-proven ripple of the new contract.
+## Acceptance evidence (all run to green this session)
+- `make test-frontend` → **Tests  165 passed (165)** (floor 165 — zero re-pointing needed).
+- `make build-frontend` → **✓ built in 1.18s** (tsc-strict + vite clean).
+- `make lint` → **All matched files use Prettier code style!** (ruff + eslint + prettier, exit 0).
+- alembic head (live, from `uv run alembic heads` during stack-up) → **0018_run_subpath (head)**.
+- Playwright self-sign-off (headless chromium 1280×800; targeted `browser_evaluate` + screenshots,
+  NO whole-canvas a11y snapshot): login card+input+button+**live coral focus ring** verified
+  (border coral-200, ring `0 0 0 3px` coral-500@45%); dashboard glass bar (`cream-50@86%` +
+  `blur(10px)`), 16px cards, putty inputs; canvas toolbar seg ("Single run" thumb =
+  surface-card + coral-200 ring + coral-700) + coral primary + card-bg ghosts + a real
+  `tv-pill--idle` (stone-400 dot); all six pill variants exercised against the live stylesheet.
+  Console: only the 2 expected logged-out 401s on `/api/auth/me`; zero errors after login.
+- Screenshots (outside the repo): `/tmp/tvashtr_f0_shots/f0-01-landing.png`,
+  `f0-02-login-focus.png`, `f0-03-dashboard.png`, `f0-04-canvas-toolbar.png`,
+  `f0-05-pill-variants.png` (the last = a transient DOM-only variant strip exercising the real
+  compiled CSS; removed after capture).
 
-## Live thesis run — outcome (c) (the fix helped; the verdict is still throttle-blocked today)
-- **Probe (STEP 1):** `PROBE nvidia_nim/moonshotai/kimi-k2.6 attempt1: OK content='pong' (reasoning_len=0)`
-  — usable; no self-heal needed (the /goal-named `kimi-k2.6` is the live id).
-- **Model verify (STEP 3, run `63aef0d7-…`):** ENGINEER + REVIEWER = `nvidia_nim/moonshotai/kimi-k2.6`,
-  PM = `openai/gpt-4o-mini`, `run.subpath = core` — NO silent 70b fallback.
-- **Run `63aef0d7-ec62-46e9-9aec-e296266ea8d9`:** `run.status=failed`, `shipped a branch: False`,
-  `(no diff on core/indicators.py)`. 8x `Too Many Requests` / 9x `RateLimitError` ridden out; 93
-  indicators.py edits; the in-container code was CORRECT + REGISTERED (`"dema": IndicatorSpec`,
-  `2 * ema1 - ema2`, `ewm(span=length, adjust=False).mean()`); the REVIEWER **`approved`** it once —
-  THEN one sustained 429 -> `ConversationRunError` (`Nvidia_nimException - Error code: 429 - Too Many
-  Requests`) crashed the conversation at ~14.5 min, before the ship step. The numeric gate is
-  `(not run — no branch)`.
-- Same 429 wall as Tvashtr-38, but the fix pushed survival from a 2-edit/5-429 crash to a full
-  Engineer->correct-DEMA->Reviewer-APPROVED cycle. PASS vs gate-ran-FINDING needs a non-throttled
-  window — recommend a re-run after a NIM quota reset (the harness + the fix are ready).
+## Invariants held (proofs run on disk this session)
+- `git diff main -- frontend/src/lib/api.ts` → EMPTY.
+- `git diff main -- frontend/src/design-system/tokens/{colors,fonts,typography,spacing,base}.css` → EMPTY.
+- `git diff --name-only main` → `frontend/src/index.css` only (+ new `frontend/src/design-system/
+  tokens/extend.css`); NOTHING under backend/, no alembic/versions/* — alembic head stays 0018.
+- Nothing under `design/` staged or committed (untracked before and after; commit b43a0d0 touches
+  exactly the 2 FE files). `prompts/*.md`, `PROJECTPLAN.md`, `HANDOVER.md` untouched.
 
-## Invariants held (checkable on disk)
-- `git diff main -- backend/tvashtr/engines/` EMPTY; `… control_plane/team_run.py` EMPTY; `… frontend/` EMPTY.
-- alembic head `0018` (migration freeze not bumped — this slice adds none).
-- proxy-ON branch returns NO retry keys (`test_proxy_config::test_proxy_on_branch_omits_the_retry_envelope`).
-- `build_two_node_team` + the `EngineAdapter` seam untouched.
-- `.env` `TVASHTR_AGENT_MODEL` reverted to `nvidia_nim/meta/llama-3.3-70b-instruct` (gitignored;
-  restored from backup; secret VALUES never echoed). DBOS `PENDING=0` (surgical, no `down -v`).
-- Architect docs (`PROJECTPLAN.md`, `HANDOVER.md`, `prompts/CLI-RULES.md`, `prompts/*.md`) left
-  uncommitted / untouched; only my own paths committed.
+## Deviations from the brief
+- Branched from main tip `4b987ed` (the Tvashtr-40 docs-closeout commit), not `29f8f03` as the
+  ground-truth line said — `4b987ed` was already on main and an FF-merge requires the tip.
+- Radius mapping to DS tokens (the design uses 8–16px raw): buttons → `--radius-md` 8px (the
+  design's own toolbar-button radius), inputs → `--radius-lg` 12px (design 9–11px at height),
+  cards → `--radius-xl` 16px (design 14–16px). No ad-hoc values; radius scales with control size
+  exactly as in the mockups.
+- `--color-board/-sunk/-overlay` bridge vars don't emit to :root yet — Tailwind v4 tree-shakes
+  unused `@theme inline` vars (verified: pre-existing `--color-card`/`--color-accent` behave
+  identically); they materialize the moment F1+ uses them.
+- Dashboard "Previous runs" statuses are plain text meta in the current markup (not `.tv-pill`),
+  so dashboard pill evidence rides on the canvas pill + the variant strip; F2 owns that markup.
 
 ## Test Count
-**328 backend pytest** (+4 over the 324 floor) + **165 vitest** (FE untouched) — 2026-06-29.
+**165 vitest** (floor held; backend untouched this slice — proven by the empty diff, per the brief) — 2026-07-02.
 
 ## Blocked
-None — goal met: the offline gate is green + committed AND a live outcome (c) is recorded with the
-§4.7 FINAL REPORT. The brownfield thesis VERDICT (PASS vs gate-ran-FINDING) remains one re-run away —
-architect: re-run rung-2 with `kimi-k2.6` (scope=core) after a NIM quota reset; the fix + harness are ready.
+None — clean SUCCESS. Next: architect confirms canvas-first vs shell-first, then scopes F1
+(the canvas cluster) per PROJECTPLAN §17 Tvashtr-40; the extend tokens (`--shadow-node`,
+`--glow-running`, `tv-breathe`, `--rail-w/--drawer-w`…) are in place for F1 to consume.
