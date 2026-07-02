@@ -183,6 +183,37 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
     [currentTeamId, teamGraph, loadTeam],
   );
 
+  // F1b: the inline "+" on a node — add the NEXT node downstream. Create the node just to the right
+  // of the source (same y), forward-connect the source to it, then (thinker/worker only) auto-select
+  // it so the existing side panel opens on it. Distinct from `handleAddNode` (the free palette add,
+  // no edge). Reuses the same busy/error shape. The premium drawer replacing the panel is F1c.
+  const handleAddDownstream = useCallback(
+    async (fromId: string, body: CreateNodeBody) => {
+      if (!currentTeamId || !teamGraph) return;
+      const src = teamGraph.nodes.find((n) => n.id === fromId);
+      const position = { x: (src?.position?.x ?? 0) + 300, y: src?.position?.y ?? 0 };
+      setEditBusy(true);
+      try {
+        const created = await createTeamNode(currentTeamId, { ...body, position });
+        await createTeamEdge(currentTeamId, {
+          source_node_id: fromId,
+          target_node_id: created.id,
+          role: "forward",
+        });
+        await loadTeam(currentTeamId);
+        // Thinker/worker → open the existing side panel on the new node (gate/terminal: not selected).
+        if (mountedRef.current && (created.kind === "agent" || created.kind === "completion")) {
+          setSelectedNodeId(created.id);
+        }
+      } catch {
+        if (mountedRef.current) setTeamError(true);
+      } finally {
+        if (mountedRef.current) setEditBusy(false);
+      }
+    },
+    [currentTeamId, teamGraph, loadTeam],
+  );
+
   // A drawn edge S → T, with its role chosen in the inline editor. A bounded rework loop ALSO
   // creates its escalation exit (the re-entered node T → a chosen gate/Stop) — termination provable.
   const handleCreateEdge = useCallback(
@@ -694,6 +725,7 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
                 teamNodes={teamGraph?.nodes ?? []}
                 validity={validity}
                 onAddNode={(body) => void handleAddNode(body)}
+                onAddDownstream={(fromId, body) => void handleAddDownstream(fromId, body)}
                 onCreateEdge={(c, source, target) => void handleCreateEdge(c, source, target)}
                 onDeleteNodes={(ids) => void handleDeleteNodes(ids)}
                 onDeleteEdges={(ids) => void handleDeleteEdges(ids)}

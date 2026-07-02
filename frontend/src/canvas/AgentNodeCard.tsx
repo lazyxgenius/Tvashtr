@@ -1,3 +1,4 @@
+import { useContext } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
   Check,
@@ -8,13 +9,16 @@ import {
   OctagonX,
   PackageCheck,
   PenLine,
+  Plus,
   ShieldCheck,
   Terminal,
+  Trash2,
   X,
   Zap,
 } from "lucide-react";
 
 import { StatusPill } from "../components/StatusPill";
+import { AuthoringContext } from "./authoringContext";
 import type { GateConfig, NodeConfig, TerminalConfig } from "../lib/api";
 import type { GateState, NodeStatus, TerminalState } from "../lib/status";
 
@@ -103,11 +107,52 @@ function NodeHandles() {
   );
 }
 
+/** F1b: the inline hover affordances rendered inside every EDITABLE node — a coral "+" (thinker/
+ *  worker only; opens the downstream kind picker, anchored at the button's on-screen rect) and a
+ *  trash (all kinds; deletes the node). Nothing renders in the run view (`editable` false), so F1a's
+ *  card is byte-identical there. `.nodrag` stops React Flow starting a node drag from the button;
+ *  `stopPropagation` keeps the click off the node-select handler. Reveal-on-hover is pure CSS. */
+function NodeAffordances({ nodeId, kind }: { nodeId: string; kind: string }) {
+  const ctx = useContext(AuthoringContext);
+  if (!ctx.editable) return null;
+  const canAdd = kind === "agent" || kind === "completion";
+  return (
+    <>
+      {canAdd && (
+        <button
+          type="button"
+          className="rf-node__add nodrag nopan"
+          title="Add a downstream node"
+          aria-label="Add a downstream node"
+          onClick={(e) => {
+            e.stopPropagation();
+            ctx.requestAdd?.(nodeId, e.currentTarget.getBoundingClientRect());
+          }}
+        >
+          <Plus size={14} strokeWidth={2.2} />
+        </button>
+      )}
+      <button
+        type="button"
+        className="rf-node__del nodrag nopan"
+        title="Delete node"
+        aria-label="Delete node"
+        onClick={(e) => {
+          e.stopPropagation();
+          ctx.requestDelete?.(nodeId);
+        }}
+      >
+        <Trash2 size={12} strokeWidth={1.8} />
+      </button>
+    </>
+  );
+}
+
 /** The agent/completion team-node: a warm paper card — glyph + title + role caption + optional
  *  "round N" badge in the head, a capability + engine + status-pill row, and a clickable model
  *  footer. The entry node adds a coral left-bar + "Start · entry" eyebrow. Running breathes coral;
  *  done/failed stamp a sage-check / red-× corner badge (all driven by canvas.css). */
-function AgentCard({ data: d }: { data: AgentNodeData }) {
+function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) {
   // The entry node reads as the "spark" (the design's start glyph) regardless of role; every
   // other node keeps its role glyph.
   const roleIcon = ROLE_ICON[d.role_name] ?? Terminal;
@@ -124,6 +169,7 @@ function AgentCard({ data: d }: { data: AgentNodeData }) {
       title={d.errorMessage}
     >
       <NodeHandles />
+      <NodeAffordances nodeId={nodeId} kind={d.kind} />
       {d.isEntry && <span className="rf-node__bar" aria-hidden />}
       <div className="rf-node__head">
         <span className="rf-node__glyph">
@@ -179,7 +225,7 @@ const GATE_STATE_LINE: Record<GateState, string> = {
 /** A checkpoint node — visually distinct from the agent cards: compact, a shield glyph, a
  *  short gate label, and a state line. The state (idle/awaiting/approved/stopped) drives the
  *  color; "awaiting" is calm coral with NO pulse (the design is explicitly static here). */
-function GateCard({ data: d }: { data: AgentNodeData }) {
+function GateCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) {
   const cfg = (d.config ?? {}) as GateConfig;
   const state = d.gateState ?? "idle";
   const label = gateLabel(cfg.gate_kind ?? d.role_name);
@@ -189,6 +235,7 @@ function GateCard({ data: d }: { data: AgentNodeData }) {
       title={d.errorMessage || cfg.title || label}
     >
       <NodeHandles />
+      <NodeAffordances nodeId={nodeId} kind="gate" />
       <span className="rf-gate__glyph">
         <ShieldCheck size={16} strokeWidth={1.7} />
       </span>
@@ -203,7 +250,7 @@ function GateCard({ data: d }: { data: AgentNodeData }) {
 /** An endpoint node — distinct from both the agent cards and the gates: compact, a glyph by
  *  terminal_kind (ship → package, stop → octagon), a one-line label. Reads faint until the
  *  walk reaches it, then sage "Shipped" (ship) / muted "Stopped" (stop). */
-function TerminalCard({ data: d }: { data: AgentNodeData }) {
+function TerminalCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) {
   const cfg = (d.config ?? {}) as TerminalConfig;
   const kind = cfg.terminal_kind === "ship" ? "ship" : "stop";
   const state = d.terminalState ?? "idle";
@@ -216,6 +263,7 @@ function TerminalCard({ data: d }: { data: AgentNodeData }) {
       title={d.errorMessage}
     >
       <NodeHandles />
+      <NodeAffordances nodeId={nodeId} kind="terminal" />
       <span className="rf-terminal__glyph">
         <Icon size={16} strokeWidth={1.7} />
       </span>
@@ -226,9 +274,9 @@ function TerminalCard({ data: d }: { data: AgentNodeData }) {
 
 /** The custom team-node, dispatched by `kind`: gate → checkpoint, terminal → endpoint, and
  *  agent/completion → the paper role card. Every variant carries the same 8-handle scheme. */
-export function AgentNodeCard({ data }: NodeProps) {
+export function AgentNodeCard({ id, data }: NodeProps) {
   const d = data as unknown as AgentNodeData;
-  if (d.kind === "gate") return <GateCard data={d} />;
-  if (d.kind === "terminal") return <TerminalCard data={d} />;
-  return <AgentCard data={d} />;
+  if (d.kind === "gate") return <GateCard nodeId={id} data={d} />;
+  if (d.kind === "terminal") return <TerminalCard nodeId={id} data={d} />;
+  return <AgentCard nodeId={id} data={d} />;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -27,13 +27,16 @@ import type {
 import { deriveGateState, deriveNodeStatus, deriveTerminalState } from "../lib/status";
 import { closesLoop, type ValidityFlags, validityFlags } from "../lib/topology";
 import { AgentNodeCard, type AgentNodeData } from "./AgentNodeCard";
+import { AuthoringContext } from "./authoringContext";
 import { CanvasEmpty } from "./CanvasEmpty";
 import { type EdgeConfirm, EdgeRoleEditor, type PendingConnect } from "./EdgeRoleEditor";
 import { NodePalette } from "./NodePalette";
+import { NodePicker } from "./NodePicker";
 import { ReworkEdge } from "./ReworkEdge";
+import { WorkEdge } from "./WorkEdge";
 
 const nodeTypes = { agentNode: AgentNodeCard };
-const edgeTypes = { rework: ReworkEdge };
+const edgeTypes = { rework: ReworkEdge, work: WorkEdge };
 
 const EMPTY_FLAGS: ValidityFlags = {
   nodeErrors: new Map(),
@@ -152,6 +155,7 @@ export function TeamCanvas({
   teamNodes = [],
   validity = null,
   onAddNode,
+  onAddDownstream,
   onCreateEdge,
   onDeleteNodes,
   onDeleteEdges,
@@ -171,6 +175,7 @@ export function TeamCanvas({
   validity?: GraphValidity | null;
   busy?: boolean;
   onAddNode?: (body: CreateNodeBody) => void;
+  onAddDownstream?: (fromId: string, body: CreateNodeBody) => void;
   onCreateEdge?: (c: EdgeConfirm, source: string, target: string) => void;
   onDeleteNodes?: (ids: string[]) => void;
   onDeleteEdges?: (ids: string[]) => void;
@@ -179,6 +184,9 @@ export function TeamCanvas({
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
   const [pending, setPending] = useState<PendingConnect | null>(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  const [addPicker, setAddPicker] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const flags = useMemo(
     () => (editable ? validityFlags(validity) : EMPTY_FLAGS),
@@ -264,6 +272,15 @@ export function TeamCanvas({
 
     return graph.edges.map((e) => {
       const invalid = flags.edgeErrors.has(e.id) ? " rf-edge--invalid" : "";
+      // F1b: the shared authoring affordance data — the hover-revealed midpoint trash. `editable`
+      // gates it off in the run view; `hovered` is driven by the edge's own transparent hit-path.
+      const authoring = {
+        editable,
+        hovered: hoveredEdgeId === e.id,
+        onHover: (h: boolean) => setHoveredEdgeId(h ? e.id : null),
+        onDelete: () => onDeleteEdges?.([e.id]),
+      };
+
       // 1. The bounded loop-back (`{loop_limit: N}`, no `when`) → the calm dashed arc.
       if (e.conditions?.loop_limit != null) {
         return {
@@ -280,10 +297,12 @@ export function TeamCanvas({
             width: 16,
             height: 16,
           },
+          data: authoring,
         };
       }
 
-      // 2. Every other edge routes by geometry; the class is by category.
+      // 2. Every other edge routes by geometry; the class is by category, rendered through the
+      //    custom WorkEdge (so it carries the midpoint trash + an optional branch label).
       const { sourceHandle, targetHandle } = pickHandles(
         posById[e.source_node_id],
         posById[e.target_node_id],
@@ -318,86 +337,120 @@ export function TeamCanvas({
         target: e.target_node_id,
         sourceHandle,
         targetHandle,
-        type: "default",
+        type: "work",
         className: `${className}${invalid}`.trim(),
         markerEnd,
         animated: false,
+        data: { ...authoring, label: e.conditions?.when },
       };
     });
-  }, [graph, flags]);
+  }, [graph, flags, editable, hoveredEdgeId, onDeleteEdges]);
+
+  // F1b: provided just above <ReactFlow> so the custom node cards (rendered deep in React Flow's
+  // subtree) reach the inline affordance callbacks without threading them through node data (which
+  // would rebuild the node set on every render). `editable` gates the affordances entirely.
+  const authoringValue = useMemo(
+    () => ({
+      editable,
+      requestAdd: (nodeId: string, anchor: DOMRect) => {
+        const rect = containerRef.current?.getBoundingClientRect();
+        setAddPicker({
+          nodeId,
+          x: (rect ? anchor.right - rect.left : anchor.right) + 8,
+          y: rect ? anchor.top - rect.top : anchor.top,
+        });
+      },
+      requestDelete: (nodeId: string) => onDeleteNodes?.([nodeId]),
+    }),
+    [editable, onDeleteNodes],
+  );
 
   return (
-    <div className="relative h-full w-full">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.5 }}
-        minZoom={0.4}
-        maxZoom={1.75}
-        nodesConnectable={editable}
-        nodesDraggable={editable || undefined}
-        elementsSelectable
-        deleteKeyCode={editable ? ["Backspace", "Delete"] : null}
-        onConnect={editable ? handleConnect : undefined}
-        onNodesDelete={
-          editable && onDeleteNodes
-            ? (deleted) => onDeleteNodes(deleted.map((n) => n.id))
-            : undefined
-        }
-        onEdgesDelete={
-          editable && onDeleteEdges
-            ? (deleted) => onDeleteEdges(deleted.map((e) => e.id))
-            : undefined
-        }
-        onNodeDragStop={
-          editable && onMoveNode ? (_e, node) => onMoveNode(node.id, node.position) : undefined
-        }
-        onNodeClick={(_event, node) => {
-          const data = node.data;
-          if (data.kind === "agent" || data.kind === "completion") {
-            if (editable) onSelectNodeId?.(node.id);
-            else onSelectNode?.(node.id);
+    <AuthoringContext.Provider value={authoringValue}>
+      <div className="relative h-full w-full" ref={containerRef}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.5 }}
+          minZoom={0.4}
+          maxZoom={1.75}
+          connectionLineStyle={{ stroke: "var(--accent)", strokeWidth: 2, strokeDasharray: "5 5" }}
+          nodesConnectable={editable}
+          nodesDraggable={editable || undefined}
+          elementsSelectable
+          deleteKeyCode={editable ? ["Backspace", "Delete"] : null}
+          onConnect={editable ? handleConnect : undefined}
+          onNodesDelete={
+            editable && onDeleteNodes
+              ? (deleted) => onDeleteNodes(deleted.map((n) => n.id))
+              : undefined
           }
-        }}
-        onPaneClick={() => {
-          if (editable) onSelectNodeId?.(null);
-          else onSelectNode?.(null);
-          setPending(null);
-        }}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} />
-        <FitView trigger={graph ? `${graph.run_id}:${panelOpen ? "p" : "f"}` : null} />
-        <FocusNode focusNodeId={focusNodeId} />
-        {graph && <Controls showInteractive={false} />}
-        {graph && (
-          <MiniMap
-            pannable
-            zoomable
-            nodeStrokeWidth={0}
-            nodeBorderRadius={3}
-            nodeColor={() => "var(--stone-400)"}
-          />
-        )}
-      </ReactFlow>
-      {editable && onAddNode && <NodePalette onAdd={onAddNode} disabled={busy} />}
-      {editable && pending && onCreateEdge && (
-        <EdgeRoleEditor
-          pending={pending}
-          nodes={teamNodes}
-          edges={graph?.edges ?? []}
-          onConfirm={(c) => {
-            onCreateEdge(c, pending.source, pending.target);
+          onEdgesDelete={
+            editable && onDeleteEdges
+              ? (deleted) => onDeleteEdges(deleted.map((e) => e.id))
+              : undefined
+          }
+          onNodeDragStop={
+            editable && onMoveNode ? (_e, node) => onMoveNode(node.id, node.position) : undefined
+          }
+          onNodeClick={(_event, node) => {
+            const data = node.data;
+            if (data.kind === "agent" || data.kind === "completion") {
+              if (editable) onSelectNodeId?.(node.id);
+              else onSelectNode?.(node.id);
+            }
+          }}
+          onPaneClick={() => {
+            if (editable) onSelectNodeId?.(null);
+            else onSelectNode?.(null);
             setPending(null);
           }}
-          onCancel={() => setPending(null)}
-        />
-      )}
-      {!graph && <CanvasEmpty />}
-    </div>
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={26} size={1.1} />
+          <FitView trigger={graph ? `${graph.run_id}:${panelOpen ? "p" : "f"}` : null} />
+          <FocusNode focusNodeId={focusNodeId} />
+          {graph && <Controls showInteractive={false} />}
+          {graph && (
+            <MiniMap
+              pannable
+              zoomable
+              nodeStrokeWidth={0}
+              nodeBorderRadius={3}
+              nodeColor={() => "var(--stone-400)"}
+            />
+          )}
+        </ReactFlow>
+        {editable && onAddNode && <NodePalette onAdd={onAddNode} disabled={busy} />}
+        {editable && pending && onCreateEdge && (
+          <EdgeRoleEditor
+            pending={pending}
+            nodes={teamNodes}
+            edges={graph?.edges ?? []}
+            onConfirm={(c) => {
+              onCreateEdge(c, pending.source, pending.target);
+              setPending(null);
+            }}
+            onCancel={() => setPending(null)}
+          />
+        )}
+        {!graph && <CanvasEmpty />}
+        {editable && addPicker && onAddDownstream && (
+          <NodePicker
+            x={addPicker.x}
+            y={addPicker.y}
+            onPick={(body) => {
+              onAddDownstream(addPicker.nodeId, body);
+              setAddPicker(null);
+            }}
+            onCancel={() => setAddPicker(null)}
+          />
+        )}
+      </div>
+    </AuthoringContext.Provider>
   );
 }

@@ -7,12 +7,13 @@
    ============================================================ */
 
 .react-flow {
-  background: var(--surface-page);
+  background-color: var(--surface-board);
+  background-image: var(--wash-board);
 }
 
-/* ---- Background dots ---- */
+/* ---- Background dots (the design's warm grid) ---- */
 .react-flow__background-pattern.dots circle {
-  fill: var(--line-400);
+  fill: color-mix(in srgb, var(--line-400) 72%, transparent);
 }
 
 /* ---- Custom node card (F1a: the premium n8n anatomy) ----
@@ -239,15 +240,23 @@
 
 /* ---- Handles: minimal, just anchors for the edge ---- */
 .react-flow__handle {
-  width: 7px;
-  height: 7px;
+  width: 11px;
+  height: 11px;
   min-width: 0;
   min-height: 0;
   background: var(--surface-card);
   border: 1.5px solid var(--border-strong);
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard);
+}
+/* the right-side dot is the drag-to-connect source (the design's crosshair connect dot) */
+.react-flow__handle-right {
+  cursor: crosshair;
 }
 .react-flow__handle:hover {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 /* ---- The work edge ---- */
@@ -258,9 +267,15 @@
     stroke var(--dur-base) var(--ease-standard),
     stroke-width var(--dur-base) var(--ease-standard);
 }
+/* the ACTIVE edge — work flowing into a running node: a coral marching dash gliding forward
+   (React Flow renders ONE path per edge, so we animate that single path's dashoffset with the
+   F0 tv-flow keyframe; the F0 reduced-motion guard in extend.css neutralizes the loop). */
 .react-flow__edge.rf-edge--flow .react-flow__edge-path {
   stroke: var(--accent);
   stroke-width: 2.5;
+  stroke-dasharray: 2 9;
+  stroke-linecap: round;
+  animation: tv-flow 0.7s linear infinite;
 }
 .react-flow__edge.rf-edge--done .react-flow__edge-path {
   stroke: var(--sage-500);
@@ -326,13 +341,13 @@
 /* ---- Controls: paper buttons, hairline borders, ink icons, coral hover ---- */
 .react-flow__controls {
   box-shadow: var(--shadow-sm);
-  border-radius: var(--radius-md);
+  border-radius: 9px;
   overflow: hidden;
   border: var(--border-width) solid var(--border-hairline);
 }
 .react-flow__controls-button {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   background: var(--surface-card);
   border-bottom: var(--border-width) solid var(--border-faint);
   transition:
@@ -353,7 +368,7 @@
 .react-flow__minimap {
   background: var(--surface-card);
   border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-md);
+  border-radius: 10px;
   box-shadow: var(--shadow-sm);
 }
 .react-flow__minimap-mask {
@@ -560,40 +575,81 @@
 
 /* ---- Topology editing (P1.8d): palette, edge-role editor, validity flags ---- */
 
-/* The on-canvas palette tray — drop new nodes onto the open team (distinct from the left rail). */
+/* F1b: the palette relocated to the design's compact top-left "+" that opens an "Add to canvas"
+   popover (was a persistent bottom tray). Trigger + panel reuse the premium card look; the panel's
+   menu (Add primitives incl. Ship + Stop, and Presets) is the same one the inline "+" picker uses. */
 .tv-palette {
   position: absolute;
-  top: var(--space-3);
-  left: var(--space-3);
-  z-index: 6;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  max-width: 220px;
-  padding: var(--space-3);
-  background: color-mix(in srgb, var(--surface-card) 92%, transparent);
+  top: 16px;
+  left: 16px;
+  z-index: 8;
+}
+.tv-palette__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  color: var(--ink-700);
+  background: var(--surface-card);
   border: var(--border-width) solid var(--border-hairline);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  backdrop-filter: blur(4px);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
 }
-.tv-palette__group {
+.tv-palette__trigger:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--coral-200);
+}
+.tv-palette__trigger--open {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.tv-palette__trigger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.tv-palette__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+}
+.tv-palette__panel {
+  position: absolute;
+  top: 50px;
+  left: 0;
+  z-index: 16;
+  width: 236px;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: 12px;
+  box-shadow: var(--shadow-pop);
+  animation: tv-pop-in 0.16s var(--ease-out);
 }
 .tv-palette__label {
-  width: 100%;
   font-size: var(--fs-caption);
-  font-weight: var(--fw-medium);
-  color: var(--text-secondary);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.tv-palette__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
 }
 .tv-palette__chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  height: 28px;
+  gap: var(--space-2);
+  height: 32px;
   padding: 0 var(--space-2);
   font-size: var(--fs-caption);
   color: var(--text-primary);
@@ -618,14 +674,15 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  z-index: 8;
+  z-index: 16;
   transform: translate(-50%, -50%);
   width: min(360px, 90%);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-4);
   background: var(--surface-card);
   border: var(--border-width) solid var(--border-strong);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg, var(--shadow-sm));
+  border-radius: 14px;
+  box-shadow: var(--shadow-pop);
+  animation: tv-pop-in 0.18s var(--ease-out);
 }
 .tv-edge-editor__head {
   display: flex;
@@ -711,4 +768,211 @@
 .react-flow__edge.rf-edge--invalid .react-flow__edge-path {
   stroke: var(--danger);
   stroke-dasharray: 4 3;
+}
+
+/* ============================================================
+   F1b — the drag-to-connect ghost, the inline node/edge hover
+   affordances, and the inline node "+" picker + the retitled
+   edge-role editor. ADDITIVE over F1a's node-card rules. All
+   revealed on hover; nothing renders in the run view.
+   ============================================================ */
+
+/* ---- The drag-to-connect ghost (React Flow's connection preview) ---- */
+.react-flow__connection-path {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 5 5;
+}
+
+/* ---- Node hover affordances: a coral "+" (add a downstream node) + a trash (delete).
+   Hidden until the card is hovered, revealed via the card root's :hover. The buttons live
+   inside the node DOM, so `.nodrag` (on the element) keeps React Flow from dragging off them. ---- */
+.rf-node__add,
+.rf-node__del {
+  position: absolute;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface-card);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+.rf-node__add {
+  right: -34px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border: var(--border-width) solid var(--coral-200);
+  color: var(--accent);
+}
+.rf-node__add:hover {
+  border-color: var(--accent);
+  background: var(--coral-100);
+}
+.rf-node__del {
+  top: -11px;
+  right: -11px;
+  width: 22px;
+  height: 22px;
+  border: var(--border-width) solid var(--border-strong);
+  color: var(--text-secondary);
+}
+.rf-node__del:hover {
+  border-color: var(--red-500);
+  color: var(--red-500);
+}
+/* revealed while hovering the card (any node kind), or on keyboard focus (a11y) */
+.rf-node:hover .rf-node__add,
+.rf-node:hover .rf-node__del,
+.rf-gate:hover .rf-node__del,
+.rf-terminal:hover .rf-node__del,
+.rf-node__add:focus-visible,
+.rf-node__del:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ---- Edge hover affordances: a transparent wide hit-path (drives the hover state), an
+   optional branch-label pill, and a midpoint trash (nudged up when the edge has a label). ---- */
+.rf-edge__hit {
+  stroke: transparent;
+  stroke-width: 22;
+  fill: none;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.rf-edge__label {
+  position: absolute;
+  padding: 2px 9px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--panel-300) 70%, var(--surface-card));
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-pill);
+  pointer-events: none;
+}
+.rf-edge__del {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  pointer-events: all;
+}
+.rf-edge__del:hover {
+  border-color: var(--red-500);
+  color: var(--red-500);
+}
+
+/* ---- The inline node "+" picker (opened from a node's add affordance) ---- */
+.tv-picker__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+}
+.tv-picker {
+  position: absolute;
+  z-index: 16;
+  width: 228px;
+  max-height: 62%;
+  overflow-y: auto;
+  padding: var(--space-2);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: 12px;
+  box-shadow: var(--shadow-pop);
+  animation: tv-pop-in 0.16s var(--ease-out);
+}
+.tv-picker__label {
+  padding: 6px 8px 8px;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.tv-picker__divider {
+  height: var(--border-width);
+  margin: var(--space-1);
+  background: var(--border-faint);
+}
+.tv-picker__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.tv-picker__item:hover {
+  background: var(--panel-300);
+}
+.tv-picker__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  color: var(--ink-600);
+  background: var(--panel-300);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+.tv-picker__text {
+  min-width: 0;
+}
+.tv-picker__name {
+  display: block;
+  font-size: 13px;
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+.tv-picker__desc {
+  display: block;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Edge-role editor: the retitled header + the source→target line ---- */
+.tv-edge-editor__title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--text-primary);
+}
+.tv-edge-editor__pair {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+}
+.tv-edge-editor__pair strong {
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
 }

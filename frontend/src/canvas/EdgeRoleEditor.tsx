@@ -52,13 +52,14 @@ export function EdgeRoleEditor({
   return (
     <div className="tv-edge-editor" role="dialog" aria-label="Choose the connection's role">
       <header className="tv-edge-editor__head">
-        <span>
-          {pending.sourceLabel} → {pending.targetLabel}
-        </span>
+        <span className="tv-edge-editor__title">How do they connect?</span>
         <button type="button" onClick={onCancel} aria-label="Cancel" title="Cancel">
           <X size={15} strokeWidth={1.8} />
         </button>
       </header>
+      <p className="tv-edge-editor__pair">
+        <strong>{pending.sourceLabel}</strong> → <strong>{pending.targetLabel}</strong>
+      </p>
 
       {options.length === 0 ? (
         <p className="tv-edge-editor__note">An ending node has no outgoing step.</p>
