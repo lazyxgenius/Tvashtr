@@ -445,3 +445,102 @@ describe("TeamNodePanel — recommendation hint (Slice C, the discriminating pai
     expect(screen.queryByText(HINT)).toBeNull();
   });
 });
+
+// ---- F1c Decision 4: the read-only gate / terminal author views (the node-update endpoint
+// 409-rejects control primitives, so the drawer SHOWS but never saves — no PATCH may fire) ----
+
+describe("TeamNodePanel — F1c read-only gate / terminal author views (Decision 4)", () => {
+  it("a gate opens a READ-ONLY checkpoint drawer: title + description, NO Save, NO node-update PATCH", async () => {
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({
+          id: "n-gate",
+          role_name: "prd_gate",
+          kind: "gate",
+          model: null,
+          prompt: null,
+          config: {
+            gate_kind: "prd_approval",
+            title: "Approve the PRD",
+            description: "Approve the spec before building.",
+          },
+        })}
+        isStartNode={false}
+        onSaved={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    // The read-only checkpoint copy + the gate's own title/description show…
+    expect(screen.getByText(/A checkpoint pauses the run/i)).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Approve the PRD")).toBeInTheDocument();
+    expect(screen.getByText("Approve the spec before building.")).toBeInTheDocument();
+    // …but there is NO editable surface: no prompt textbox, no Save control.
+    expect(screen.queryByRole("textbox", { name: /prompt/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    // And no node-update PATCH is ever fired from this view (the drawer only shows the control copy).
+    await Promise.resolve();
+    expect(patchCall()).toBeUndefined();
+  });
+
+  it("a terminal opens a READ-ONLY endpoint drawer: a DISABLED Ship/Stop indicator, NO Save/PATCH", async () => {
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({
+          id: "n-ship",
+          role_name: "ship",
+          kind: "terminal",
+          model: null,
+          prompt: null,
+          config: { terminal_kind: "ship" },
+        })}
+        isStartNode={false}
+        onSaved={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    // Ship is the active endpoint; BOTH buttons are DISABLED (a read-only indicator, not a toggle —
+    // persisting ship↔stop is a §15 backend follow-on).
+    const ship = screen.getByRole("button", { name: "Ship it" });
+    const stop = screen.getByRole("button", { name: "Stop" });
+    expect(ship).toBeDisabled();
+    expect(stop).toBeDisabled();
+    expect(ship).toHaveAttribute("aria-pressed", "true");
+    expect(stop).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    await Promise.resolve();
+    expect(patchCall()).toBeUndefined();
+  });
+});
+
+describe("TeamNodePanel — F1c model-field focus flash (Decision 3)", () => {
+  it("flashes the Model field when the model-chip signal (focusModel) is bumped; a normal open (0) does not", async () => {
+    const { container, rerender } = render(
+      <TeamNodePanel
+        teamId="t1"
+        node={engineer("openai/gpt-4o-mini")}
+        isStartNode={false}
+        focusModel={0}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    // Let the provider fetch settle (avoids an act warning), then: a normal open does NOT flash Model.
+    await screen.findByRole("combobox", { name: "Model" });
+    expect(container.querySelector(".tv-field--flash")).toBeNull();
+
+    // A model-chip open bumps the nonce → the Model field flashes (the transient highlight class).
+    rerender(
+      <TeamNodePanel
+        teamId="t1"
+        node={engineer("openai/gpt-4o-mini")}
+        isStartNode={false}
+        focusModel={1}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect(container.querySelector(".tv-field--flash")).not.toBeNull();
+  });
+});

@@ -148,6 +148,35 @@ function NodeAffordances({ nodeId, kind }: { nodeId: string; kind: string }) {
   );
 }
 
+/** F1c: the card's model footer. In AUTHOR mode (context `editable` + an `onOpenModel` handler) it
+ *  is the express lane to the drawer's Model field — clicking it selects the node AND opens the
+ *  config drawer scrolled to + flashing the Model section (`.nodrag .nopan` + `stopPropagation` keep
+ *  the click off React Flow's drag/pan + the node-select handler). In the RUN view it stays the F1a
+ *  inert label (no handler) — byte-identical DOM. `.rf-node__model` (incl. `cursor:pointer`) is
+ *  F1a's canvas.css recipe, untouched. */
+function ModelChip({ nodeId, model }: { nodeId: string; model: string }) {
+  const ctx = useContext(AuthoringContext);
+  const clickable = ctx.editable && !!ctx.onOpenModel;
+  return (
+    <button
+      type="button"
+      className={`rf-node__model${clickable ? " nodrag nopan" : ""}`}
+      title={clickable ? "Set this node’s model" : model}
+      onClick={
+        clickable
+          ? (e) => {
+              e.stopPropagation();
+              ctx.onOpenModel?.(nodeId);
+            }
+          : undefined
+      }
+    >
+      <Cpu size={13} strokeWidth={1.6} />
+      <span className="rf-node__model-text">{model}</span>
+    </button>
+  );
+}
+
 /** The agent/completion team-node: a warm paper card — glyph + title + role caption + optional
  *  "round N" badge in the head, a capability + engine + status-pill row, and a clickable model
  *  footer. The entry node adds a coral left-bar + "Start · entry" eyebrow. Running breathes coral;
@@ -189,11 +218,8 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
         {d.engine && <span className="rf-node__engine">{prettyEngine(d.engine)}</span>}
         <StatusPill status={d.status} />
       </div>
-      {/* The model row: a button, but the picker is F1c — inert / no-op for now. */}
-      <button type="button" className="rf-node__model" title={d.model}>
-        <Cpu size={13} strokeWidth={1.6} />
-        <span className="rf-node__model-text">{d.model}</span>
-      </button>
+      {/* F1c: the model footer opens the drawer's Model field in author mode; inert in the run view. */}
+      <ModelChip nodeId={nodeId} model={d.model} />
       {d.status === "done" && (
         <span className="rf-node__badge rf-node__badge--done" aria-hidden>
           <Check size={12} strokeWidth={3} />

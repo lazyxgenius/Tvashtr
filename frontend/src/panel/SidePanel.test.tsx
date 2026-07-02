@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { GraphNode, NodeInvocation } from "../lib/api";
+import type { GraphNode, NodeInvocation, RunRow } from "../lib/api";
 import { SidePanel } from "./SidePanel";
 
 // Option A: the run-view panel is keyed on the node's KIND (not a hardcoded role) and surfaces a
@@ -107,5 +107,66 @@ describe("SidePanel — generalized 'Last run' brief by node kind (Option A)", (
     // the §14.1 verdict tones still drive the styling (sage = approved, coral = changes)
     expect(container.querySelector(".tv-verdict--changes")).not.toBeNull();
     expect(container.querySelector(".tv-verdict--approved")).not.toBeNull();
+  });
+});
+
+// ---- F1c Decision 2: the run-view subtitle is STATUS-based (from the SAME derived status the node
+// card uses), reading what the node is doing right now — not a role blurb. ----
+
+function runRow(over: Partial<RunRow> = {}): RunRow {
+  return {
+    id: "r1",
+    team_graph_id: "g1",
+    idea: "x",
+    status: "running",
+    pm_document_id: null,
+    ship_commit_sha: null,
+    ship_tag: null,
+    cost_total_usd: null,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    ...over,
+  };
+}
+
+describe("SidePanel — F1c status-based subtitle (Decision 2)", () => {
+  it("maps the node's live run status → the subtitle (Working now / Finished / Not reached yet)", () => {
+    // A running node in an in-flight run → "Working now". runId=null keeps the EventFeed body inert
+    // (no network) — the subtitle is a pure function of node.status + run + workflowStatus.
+    const running = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "running" });
+    const { rerender } = render(
+      <SidePanel
+        node={running}
+        runId={null}
+        run={runRow({ status: "running" })}
+        workflowStatus="PENDING"
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText("Working now")).toBeInTheDocument();
+
+    // A completed node → "Finished" (done is sticky, independent of the run).
+    rerender(
+      <SidePanel
+        node={gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "done" })}
+        runId={null}
+        run={null}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText("Finished")).toBeInTheDocument();
+
+    // An idle / never-reached node → "Not reached yet" (it did not fail — it was simply not reached).
+    rerender(
+      <SidePanel
+        node={gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "idle" })}
+        runId={null}
+        run={null}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText("Not reached yet")).toBeInTheDocument();
   });
 });

@@ -99,6 +99,14 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
   // P1.8d: authoring selection is by NODE ID too (duplicate role names possible after topology edits).
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+  // F1c: the dock⇄pop-up viewing preference — SESSION-STICKY. It survives closing/reselecting a node
+  // and the author↔run switch (it is NOT part of resetRunState); a reload starts docked. NOT persisted
+  // to the backend (no field — the wall).
+  const [panelMode, setPanelMode] = useState<"drawer" | "modal">("drawer");
+  // F1c: the model-chip express lane. A bumping nonce keyed to a node: `handleOpenModel` selects the
+  // node + bumps it, so the author drawer scrolls to + flashes its Model field; a normal card/selection
+  // open (`handleSelectNodeId`) clears it, so only a chip click focuses the Model field.
+  const [modelFocus, setModelFocus] = useState<{ nodeId: string; n: number } | null>(null);
   // The view mode (§14.3): the existing single-run canvas, or the A/B comparison. Plain state,
   // no router — the single-run state/poll stay alive underneath so switching back is lossless.
   const [mode, setMode] = useState<"single" | "ab">("single");
@@ -290,6 +298,26 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
     },
     [currentTeamId],
   );
+
+  // F1c: flip the sticky dock⇄pop-up viewing mode (drawer ⇄ modal).
+  const togglePanelMode = useCallback(() => {
+    setPanelMode((m) => (m === "drawer" ? "modal" : "drawer"));
+  }, []);
+
+  // Author-canvas node selection (a card-body click / the pane-click deselect). Clears any pending
+  // model-focus so a normal open lands at the top of the drawer (prompt first), NOT scrolled to Model.
+  const handleSelectNodeId = useCallback((id: string | null) => {
+    setSelectedNodeId(id);
+    setModelFocus(null);
+  }, []);
+
+  // The node card's model chip was clicked (author mode) — select the node AND bump the focus nonce so
+  // the drawer scrolls to + flashes its Model field. Re-clicking an ALREADY-open node re-bumps → the
+  // drawer re-scrolls (the edge case the brief calls out).
+  const handleOpenModel = useCallback((nodeId: string) => {
+    setSelectedNodeId(nodeId);
+    setModelFocus((prev) => ({ nodeId, n: (prev?.n ?? 0) + 1 }));
+  }, []);
 
   useEffect(() => {
     void loadTeams();
@@ -540,6 +568,9 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
 
   // P1.8d: the authoring panel selects by node id (duplicate role names are possible now).
   const selectedTeamNode = teamGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null;
+  // F1c: 0 for a normal open; the bumping nonce when the model chip opened THIS node (drives the
+  // author drawer's Model-field scroll + flash). Guarded on the id so a stale nonce reads 0.
+  const focusModel = modelFocus?.nodeId === selectedNodeId ? modelFocus.n : 0;
   // The run-view selected node (Option A): found by id so two same-role nodes select independently.
   const selectedRunNode = graph?.nodes.find((n) => n.id === selectedRunNodeId) ?? null;
   // P1.8c: the team's start node is the one NOT targeted by any edge (same rule as the backend).
@@ -730,7 +761,8 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
                 onDeleteNodes={(ids) => void handleDeleteNodes(ids)}
                 onDeleteEdges={(ids) => void handleDeleteEdges(ids)}
                 onMoveNode={handleMoveNode}
-                onSelectNodeId={setSelectedNodeId}
+                onSelectNodeId={handleSelectNodeId}
+                onOpenModel={handleOpenModel}
                 busy={editBusy}
               />
             </div>
@@ -744,8 +776,11 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
                     edges={teamGraph?.edges ?? []}
                     nodes={teamGraph?.nodes ?? []}
                     isStartNode={selectedTeamNode?.id === startNodeId}
+                    panelMode={panelMode}
+                    onTogglePanelMode={togglePanelMode}
+                    focusModel={focusModel}
                     onSaved={() => loadTeam(currentTeamId)}
-                    onClose={() => setSelectedNodeId(null)}
+                    onClose={() => handleSelectNodeId(null)}
                   />
                 )
               : selectedRunNode && (
@@ -754,6 +789,8 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
                     runId={runId}
                     run={run}
                     workflowStatus={workflowStatus}
+                    panelMode={panelMode}
+                    onTogglePanelMode={togglePanelMode}
                     onClose={() => setSelectedRunNodeId(null)}
                   />
                 )}

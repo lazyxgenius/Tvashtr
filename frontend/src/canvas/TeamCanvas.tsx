@@ -161,6 +161,7 @@ export function TeamCanvas({
   onDeleteEdges,
   onMoveNode,
   onSelectNodeId,
+  onOpenModel,
   busy = false,
 }: {
   graph: GraphData | null;
@@ -181,6 +182,7 @@ export function TeamCanvas({
   onDeleteEdges?: (ids: string[]) => void;
   onMoveNode?: (id: string, position: NodePosition) => void;
   onSelectNodeId?: (id: string | null) => void;
+  onOpenModel?: (id: string) => void;
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
   const [pending, setPending] = useState<PendingConnect | null>(null);
@@ -361,8 +363,9 @@ export function TeamCanvas({
         });
       },
       requestDelete: (nodeId: string) => onDeleteNodes?.([nodeId]),
+      onOpenModel,
     }),
-    [editable, onDeleteNodes],
+    [editable, onDeleteNodes, onOpenModel],
   );
 
   return (
@@ -399,10 +402,12 @@ export function TeamCanvas({
           }
           onNodeClick={(_event, node) => {
             const data = node.data;
-            if (data.kind === "agent" || data.kind === "completion") {
-              if (editable) onSelectNodeId?.(node.id);
-              else onSelectNode?.(node.id);
-            }
+            const isAgent = data.kind === "agent" || data.kind === "completion";
+            // Author mode (F1c Decision 4): EVERY kind opens the drawer — agent/completion the editor,
+            // gate/terminal a READ-ONLY view. Run mode is UNCHANGED: only agent/completion select
+            // (gate/terminal stay non-selecting; their approvals live in the left Tasks drawer).
+            if (editable) onSelectNodeId?.(node.id);
+            else if (isAgent) onSelectNode?.(node.id);
           }}
           onPaneClick={() => {
             if (editable) onSelectNodeId?.(null);

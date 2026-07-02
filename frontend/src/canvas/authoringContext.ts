@@ -12,6 +12,10 @@ export interface CanvasAuthoring {
   requestAdd?: (nodeId: string, anchor: DOMRect) => void;
   // The node's trash was clicked — delete this node (wired to the existing onDeleteNodes handler).
   requestDelete?: (nodeId: string) => void;
+  // F1c: the node card's model chip was clicked (AUTHOR mode only) — select the node AND open the
+  // config drawer focused on + briefly highlighting the Model field. Undefined in the run view, so
+  // the chip stays a static, non-clickable label there.
+  onOpenModel?: (nodeId: string) => void;
 }
 
 export const AuthoringContext = createContext<CanvasAuthoring>({ editable: false });

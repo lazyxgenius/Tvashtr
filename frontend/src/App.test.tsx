@@ -298,7 +298,7 @@ describe("App — single-run <-> A/B mode toggle (state-only)", () => {
 });
 
 describe("App — persistent team authoring (P1.8b)", () => {
-  it("renders the persistent team and opens the editable panel for an agent node only", async () => {
+  it("opens the editable panel for an agent node + a READ-ONLY drawer for a gate (F1c Decision 4)", async () => {
     render(
       <StrictMode>
         <App />
@@ -329,17 +329,64 @@ describe("App — persistent team authoring (P1.8b)", () => {
       "openai/gpt-4o-mini",
     );
 
-    // Close the panel back to a CLEAN state, then click a GATE node: control primitives aren't
-    // editable, so NO editable panel opens (not even a stale one). Asserting from the closed state
-    // distinguishes "the gate opened nothing" from "an earlier agent panel lingered".
+    // Close the panel back to a CLEAN state, then click a GATE node. F1c Decision 4: a gate now OPENS
+    // a READ-ONLY checkpoint drawer (not the agent editor) — its title/description shown, but NO prompt
+    // field and NO Save (persisting gate copy is a §15 backend follow-on). Asserting from the closed
+    // state distinguishes "the gate opened its read-only drawer" from "an earlier agent panel lingered".
     fireEvent.click(within(panel).getByRole("button", { name: "Close panel" }));
     await waitFor(() => expect(screen.queryByLabelText("Engineer editor")).toBeNull());
 
     const gateNode = screen.getByText("PRD approval").closest(".react-flow__node");
     fireEvent.click(gateNode as Element);
-    // No editable surface of any kind appears for the gate (no panel aside, no prompt textbox).
-    expect(screen.queryByRole("textbox", { name: /prompt/i })).toBeNull();
-    expect(screen.queryByLabelText("PRD approval editor")).toBeNull();
-    expect(screen.queryByLabelText("prd_gate editor")).toBeNull();
+    // The gate's OWN config title is in the drawer's aria-label — proving the read-only view mounted,
+    // distinct from any agent "…editor".
+    const gatePanel = await screen.findByLabelText("Approve the PRD checkpoint");
+    expect(within(gatePanel).getByText(/A checkpoint pauses the run/i)).toBeInTheDocument();
+    expect(within(gatePanel).queryByRole("textbox", { name: /prompt/i })).toBeNull();
+    expect(within(gatePanel).queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.queryByLabelText("Engineer editor")).toBeNull();
+  });
+});
+
+// ---- F1c Decision 1: the dock⇄pop-up toggle is a SESSION-STICKY viewing preference (App state) ----
+
+describe("App — F1c sticky dock⇄pop-up panelMode (Decision 1)", () => {
+  it("the toggle flips drawer↔modal (scrim appears) and the mode HOLDS across close/reopen + reselect", async () => {
+    const { container } = render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    await screen.findByText("Product manager");
+
+    // Open the Engineer node's drawer — DOCKED (no scrim, a fresh mount starts docked).
+    const engineerNode = screen
+      .getAllByText("Engineer")
+      .map((el) => el.closest(".react-flow__node"))
+      .find((el): el is Element => el !== null);
+    fireEvent.click(engineerNode as Element);
+    await screen.findByLabelText("Engineer editor");
+    expect(container.querySelector(".tv-scrim")).toBeNull();
+
+    // Toggle to pop-up (modal): a click-to-close scrim appears.
+    fireEvent.click(screen.getByRole("button", { name: "Open as a pop-up" }));
+    expect(container.querySelector(".tv-scrim")).not.toBeNull();
+
+    // Close the drawer, then reopen the SAME node → STILL modal (sticky across close/reopen).
+    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
+    await waitFor(() => expect(screen.queryByLabelText("Engineer editor")).toBeNull());
+    fireEvent.click(engineerNode as Element);
+    await screen.findByLabelText("Engineer editor");
+    expect(container.querySelector(".tv-scrim")).not.toBeNull();
+
+    // Select a DIFFERENT node (PM) → STILL modal (sticky across reselect).
+    const pmNode = screen.getByText("Product manager").closest(".react-flow__node");
+    fireEvent.click(pmNode as Element);
+    await screen.findByLabelText("Product manager editor");
+    expect(container.querySelector(".tv-scrim")).not.toBeNull();
+
+    // Dock it back → the scrim is gone (the same session preference, flipped).
+    fireEvent.click(screen.getByRole("button", { name: "Dock to the side" }));
+    expect(container.querySelector(".tv-scrim")).toBeNull();
   });
 });

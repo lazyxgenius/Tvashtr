@@ -4,29 +4,51 @@
    selected node stays reachable. Token-driven, calm bounded motion.
    ============================================================ */
 
+/* F1c — the premium 384px right config drawer (docked). Both the author + run-view panels share this
+   chrome via DrawerShell; `--modal` lifts the same panel into a centered pop-up over a click-to-close
+   scrim (the canvas goes full-width behind). Consumes F0's --drawer-w / --shadow-drawer / --shadow-pop
+   + the tv-pop-in / tv-modal-in / tv-fade-in keyframes (extend.css). */
 .tv-panel {
-  width: 400px;
+  position: relative;
+  z-index: 5;
+  width: var(--drawer-w);
   flex: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: var(--surface-card);
   border-left: var(--border-width) solid var(--border-hairline);
-  box-shadow: var(--shadow-md);
-  animation: tv-panel-in var(--dur-slow) var(--ease-standard);
+  box-shadow: var(--shadow-drawer);
+  animation: tv-pop-in 0.2s var(--ease-out);
 }
-@keyframes tv-panel-in {
-  from {
-    opacity: 0;
-    transform: translateX(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+/* pop-up mode: a centered card over the scrim (fixed → out of the <main> flex flow, so the canvas
+   fills the width behind it). */
+.tv-panel--modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 60;
+  width: min(560px, 92vw);
+  max-height: 86vh;
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  animation: tv-modal-in 0.2s var(--ease-out);
+}
+/* the click-to-close scrim behind the modal — dims the full-width canvas. */
+.tv-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: color-mix(in srgb, var(--ink-900) 30%, transparent);
+  animation: tv-fade-in 0.16s var(--ease-out);
 }
 @media (prefers-reduced-motion: reduce) {
-  .tv-panel {
+  .tv-panel,
+  .tv-panel--modal,
+  .tv-scrim {
     animation: none;
   }
 }
@@ -35,23 +57,82 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-3);
   flex: none;
   padding: var(--space-5) var(--space-5) var(--space-4);
   border-bottom: var(--border-width) solid var(--border-hairline);
 }
+/* F1c: the identity block — a glyph badge + a display-font title, the subtitle beneath. */
+.tv-panel__id {
+  min-width: 0;
+}
+.tv-panel__idrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.tv-panel__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  color: var(--ink-700);
+  background: var(--panel-300);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+}
 .tv-panel__title {
+  min-width: 0;
   font-family: var(--font-display);
   font-weight: var(--fw-display);
   font-size: var(--fs-h4);
   letter-spacing: var(--tracking-snug);
   line-height: var(--lh-snug);
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tv-panel__subtitle {
-  margin-top: 2px;
+  margin-top: 5px;
   font-size: var(--fs-caption);
   color: var(--text-secondary);
+}
+/* F1c: the header controls — the dock⇄pop-up toggle + the close (matched 30px square buttons). */
+.tv-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.tv-panel__ctl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  color: var(--text-secondary);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+.tv-panel__ctl:hover {
+  background: var(--panel-300);
+  color: var(--ink-900);
+  border-color: var(--border-strong);
+}
+.tv-panel__ctl:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 .tv-panel__close {
   display: inline-flex;
@@ -334,7 +415,7 @@
   font-size: var(--fs-body-sm);
   line-height: var(--lh-relaxed);
   color: var(--text-primary);
-  background: var(--surface-card);
+  background: var(--surface-page);
   border: var(--border-width) solid var(--border-hairline);
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
@@ -356,6 +437,91 @@
   outline: none;
   border-color: var(--coral-200);
   box-shadow: var(--shadow-focus);
+}
+
+/* ---- F1c: the provider + model picker row (the Slice-C picker reskinned to the design layout) ----
+   A fixed 130px provider select beside a flex-1 monospace model input, both on the premium field
+   surface. The input keeps `.tv-node-model` (base field recipe + datalist); the row overrides only
+   its flex/margin. */
+.tv-picker {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.tv-picker__provider {
+  flex: none;
+  width: 130px;
+  height: 38px;
+  padding: 0 10px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-caption);
+  color: var(--text-primary);
+  background: var(--surface-page);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    box-shadow var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+.tv-picker__provider:focus {
+  outline: none;
+  border-color: var(--coral-200);
+  box-shadow: var(--shadow-focus);
+}
+.tv-picker__model {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+/* ---- F1c: the model-chip focus flash — a transient coral ring on the Model field when the node
+   card's model chip opens the drawer scrolled to it. Suppressed under reduced motion (F0 guard). ---- */
+.tv-field--flash {
+  border-radius: var(--radius-md);
+  animation: tv-field-flash 1.3s var(--ease-out);
+}
+@keyframes tv-field-flash {
+  from {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral-500) 36%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral-500) 0%, transparent);
+  }
+}
+
+/* ---- F1c: the READ-ONLY gate / terminal config blocks (Decision 4). The node-update endpoint
+   409-rejects control primitives, so the drawer SHOWS the gate's copy / the terminal's endpoint but
+   does not save — persisting ship↔stop + gate copy is a §15 backend follow-on. ---- */
+.tv-readonly-note {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+  color: var(--text-tertiary);
+  background: var(--surface-page);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+}
+.tv-readonly-note__soft {
+  color: var(--text-secondary);
+}
+.tv-readonly-field {
+  margin-top: var(--space-2);
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--text-primary);
+  background: var(--surface-page);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+.tv-readonly-field--multiline {
+  min-height: 80px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* ---- Event feed ---- */

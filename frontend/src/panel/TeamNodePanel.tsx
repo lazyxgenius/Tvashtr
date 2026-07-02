@@ -1,19 +1,22 @@
-import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { LastRun } from "../components/LastRun";
 import {
   addProvider,
   type Capability,
+  type GateConfig,
   type GraphEdge,
   listProviders,
   presetsForProvider,
   type ProviderCredential,
   providerOf,
   type TeamGraphNode,
+  type TerminalConfig,
   updateTeamNode,
 } from "../lib/api";
 import { applyEmitContract, emitContract } from "../lib/topology";
+import { DrawerShell, type PanelMode } from "./DrawerShell";
+import { glyphForNode } from "./nodeGlyph";
 
 // The sentinel Provider-select value that reveals the inline "add a provider" form.
 const ADD_PROVIDER = "__add_provider__";
@@ -27,26 +30,31 @@ const ROLE_TITLES: Record<string, string> = {
 };
 
 // A node's capability rides the `kind` column: a `completion` node is a thinker, an `agent` is a
-// worker. (Gate/terminal nodes never reach this panel — the canvas only opens it for agent/completion.)
+// worker. (Gate/terminal nodes route to the read-only branches below, not this map.)
 const capabilityOf = (node: TeamGraphNode | null): Capability =>
   node?.kind === "completion" ? "thinker" : "worker";
 
 const START_LOCK_TOOLTIP =
   "The first node scopes the work — it writes the spec the rest of the team reads.";
 
+const AGENT_SUBTITLE = "Its prompt is its whole identity — edit, then run";
+
 /**
- * The team-authoring editor (P1.8b): the right-hand panel shown when an **agent** node
- * (`completion`/`agent`) is selected on the persistent team canvas. It edits the node's two
- * authorable fields — its **prompt** (the node's whole identity in the prompt-driven model) and
- * its **model** (free text, with a tiny set of proven presets as datalist quick-picks). Save is
- * explicit and **dirty-aware** (no autosave): it PATCHes the node-update endpoint, then asks the
- * parent to refetch the team. Gate/terminal nodes never reach this panel (the canvas only opens it
- * for agent/completion nodes), so there is no editable surface for the control primitives.
+ * The team-authoring config drawer (F1c reskin of P1.8b/c): the premium right drawer shown when a
+ * node is selected on the persistent team canvas. It branches on `node.kind`:
+ *  - **agent / completion** — the editor: a Capability toggle, the **prompt** (the node's whole
+ *    identity), a branch-worker Output-contract block, the Slice-C provider/model picker (now the
+ *    design's 130px-provider + flex-1-model row), a dirty-aware Save (PATCHes the node-update
+ *    endpoint), and a read-only "Last run" brief.
+ *  - **gate** (F1c Decision 4) — a READ-ONLY checkpoint view (its title + description from
+ *    `node.config`, no Save): the node-update endpoint 409-rejects control primitives, so editing
+ *    gate copy is a backend follow-on (§15).
+ *  - **terminal** (F1c Decision 4) — a READ-ONLY endpoint view (its Ship/Stop state, a DISABLED
+ *    indicator — persisting ship↔stop is a backend follow-on; to switch it, delete + re-drop).
  *
- * Reset-on-select is handled by a `key` on the parent mount (keyed on the selected role, which is
- * unique per node in the seeded team): selecting a different node remounts with fresh state, while
- * a post-save refetch of the SAME node keeps the local edits + the "Saved" note (the values now
- * match, so the panel reads clean).
+ * The drawer⇄modal chrome + the sticky `panelMode` live in the shared `DrawerShell`. The node
+ * card's model chip (author mode) opens this drawer with `focusModel` bumped, scrolling the Model
+ * field into view + flashing it. Reset-on-select is the parent `key={selectedNodeId}` remount.
  */
 export function TeamNodePanel({
   teamId,
@@ -54,6 +62,9 @@ export function TeamNodePanel({
   edges = [],
   nodes = [],
   isStartNode,
+  panelMode = "drawer",
+  onTogglePanelMode,
+  focusModel = 0,
   onSaved,
   onClose,
 }: {
@@ -62,6 +73,9 @@ export function TeamNodePanel({
   edges?: GraphEdge[];
   nodes?: TeamGraphNode[];
   isStartNode: boolean;
+  panelMode?: PanelMode;
+  onTogglePanelMode?: () => void;
+  focusModel?: number;
   onSaved: () => void | Promise<void>;
   onClose: () => void;
 }) {
@@ -77,7 +91,24 @@ export function TeamNodePanel({
   const [addError, setAddError] = useState<string | null>(null);
   const [hintDismissed, setHintDismissed] = useState(false);
 
+  // P1.8c: the node's capability (thinker = completion / worker = agent) is authorable. Seed it from
+  // the node's kind; reset-on-select is the parent `key` remount.
+  const initialCapability = capabilityOf(node);
+  const [capability, setCapability] = useState<Capability>(initialCapability);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  // F1c: the model-chip express lane — a focus signal from the parent (a bumping nonce; 0 = a normal
+  // open). On a bump, scroll the Model field into view + flash a transient coral ring.
+  const modelFieldRef = useRef<HTMLDivElement>(null);
+  const [modelFlash, setModelFlash] = useState(false);
+
+  const isAgent = node?.kind === "agent" || node?.kind === "completion";
+
   useEffect(() => {
+    // Only the agent/completion editor has a provider picker — skip the fetch for gate/terminal.
+    if (!isAgent) return;
     let cancelled = false;
     listProviders()
       .then((p) => {
@@ -89,20 +120,26 @@ export function TeamNodePanel({
     return () => {
       cancelled = true;
     };
-  }, []);
-  // P1.8c: the node's capability (thinker = completion / worker = agent) is now authorable. Seed it
-  // from the node's kind; reset-on-select is the parent `key={selectedRole}` remount.
-  const initialCapability = capabilityOf(node);
-  const [capability, setCapability] = useState<Capability>(initialCapability);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(false);
-  const [saved, setSaved] = useState(false);
+  }, [isAgent]);
 
-  const title = node ? (ROLE_TITLES[node.role_name] ?? node.role_name) : "Node";
+  useEffect(() => {
+    // 0 = a normal open (node-card body / selection): clear any lingering flash so the class toggles
+    // off — a later chip click (nonce bump) then re-adds it and the highlight animation replays.
+    if (!focusModel) {
+      setModelFlash(false);
+      return;
+    }
+    const el = modelFieldRef.current;
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    setModelFlash(true);
+    const t = setTimeout(() => setModelFlash(false), 1300);
+    return () => clearTimeout(t);
+  }, [focusModel]);
 
   // P1.8d anti-drift: a branch worker (a worker with verdict-labelled out-edges) shows the
-  // emit-contract derived LIVE from its edges, plus a one-click "write into the prompt" so the
-  // prompt's verdict-file instruction can never silently fall out of sync with the wiring.
+  // emit-contract derived LIVE from its edges, plus a one-click "write into the prompt".
   const contract = node && node.kind === "agent" ? emitContract(node.id, edges) : null;
   const writeContract = () => {
     if (!contract) return;
@@ -141,8 +178,6 @@ export function TeamNodePanel({
 
   // ---- M-accounts Slice C: the provider-gated model picker (UI over the SINGLE node.model string) ----
   const currentProvider = model.trim() ? providerOf(model) : "";
-  // The select offers the account's configured providers, plus the node's CURRENT provider even if
-  // unconfigured (so the select reflects the actual model), plus the inline-add affordance.
   const providerOptions = Array.from(
     new Set([...providers.map((p) => p.provider), ...(currentProvider ? [currentProvider] : [])]),
   ).sort();
@@ -183,9 +218,6 @@ export function TeamNodePanel({
   };
 
   // ---- The per-node recommendation hint (registry-free same-model detection; never blocks Save) ----
-  // A GATING worker = an agent node with a verdict/branch contract (a reviewer). The workers it
-  // reviews / sends rework to are the OTHER endpoints of edges touching it (the review edge in, the
-  // loop-back out). Compared against the LIVE edited `model`, so the hint clears the moment they differ.
   const connectedWorkerIds = new Set<string>();
   if (node && node.kind === "agent" && contract) {
     for (const e of edges) {
@@ -208,239 +240,339 @@ export function TeamNodePanel({
     ? (ROLE_TITLES[sameModelSibling.role_name] ?? sameModelSibling.role_name)
     : "";
 
-  return (
-    <aside className="tv-panel" aria-label={`${title} editor`}>
-      <header className="tv-panel__head">
-        <div>
-          <div className="tv-panel__title">{title}</div>
-          <div className="tv-panel__subtitle">
-            Its prompt is its whole identity — edit, then run
+  // ---- Empty selection: nothing editable ----
+  if (!node) {
+    return (
+      <DrawerShell
+        glyph={glyphForNode("agent", "")}
+        title="Node"
+        subtitle="Nothing selected"
+        ariaLabel="Node"
+        panelMode={panelMode}
+        onTogglePanelMode={onTogglePanelMode}
+        onClose={onClose}
+      >
+        <div className="tv-scroll">
+          <p className="tv-panel-note">This node isn’t editable.</p>
+        </div>
+      </DrawerShell>
+    );
+  }
+
+  // ---- F1c Decision 4: gate — READ-ONLY checkpoint view (no Save; editing gate copy is a §15
+  //      backend follow-on — the node-update endpoint 409-rejects control primitives). ----
+  if (node.kind === "gate") {
+    const cfg = (node.config ?? {}) as GateConfig;
+    const gateTitle = cfg.title || ROLE_TITLES[node.role_name] || node.role_name;
+    return (
+      <DrawerShell
+        glyph={glyphForNode("gate", node.role_name)}
+        title={gateTitle}
+        subtitle="A human checkpoint"
+        ariaLabel={`${gateTitle} checkpoint`}
+        panelMode={panelMode}
+        onTogglePanelMode={onTogglePanelMode}
+        onClose={onClose}
+      >
+        <div className="tv-scroll tv-node-edit">
+          <p className="tv-readonly-note">
+            A checkpoint pauses the run for a human decision.{" "}
+            <span className="tv-readonly-note__soft">
+              Editing gate copy in the drawer is a planned backend follow-on.
+            </span>
+          </p>
+          <div className="tv-field">
+            <span className="tv-field__label">Title</span>
+            <input
+              className="tv-readonly-field"
+              aria-label="Gate title"
+              value={gateTitle}
+              readOnly
+            />
+          </div>
+          <div className="tv-field">
+            <span className="tv-field__label">Description</span>
+            <div className="tv-readonly-field tv-readonly-field--multiline">
+              {cfg.description || "No description."}
+            </div>
           </div>
         </div>
-        <button
-          type="button"
-          className="tv-panel__close"
-          onClick={onClose}
-          aria-label="Close panel"
-          title="Close"
-        >
-          <X size={18} strokeWidth={1.7} />
-        </button>
-      </header>
+      </DrawerShell>
+    );
+  }
 
-      <div className="tv-panel__body">
-        {!node ? (
-          <div className="tv-scroll">
-            <p className="tv-panel-note">This node isn’t editable.</p>
-          </div>
-        ) : (
-          <div className="tv-scroll tv-node-edit">
-            <div className="tv-field">
-              <span className="tv-field__label">Capability</span>
-              <div
-                className="tv-seg"
-                role="group"
-                aria-label="Capability"
-                title={isStartNode ? START_LOCK_TOOLTIP : undefined}
-              >
-                <button
-                  type="button"
-                  aria-pressed={capability === "thinker"}
-                  disabled={isStartNode || saving}
-                  className={`tv-seg__btn${capability === "thinker" ? " tv-seg__btn--active" : ""}`}
-                  onClick={() => pickCapability("thinker")}
-                  title={isStartNode ? START_LOCK_TOOLTIP : undefined}
-                >
-                  Thinker
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={capability === "worker"}
-                  disabled={isStartNode || saving}
-                  className={`tv-seg__btn${capability === "worker" ? " tv-seg__btn--active" : ""}`}
-                  onClick={() => pickCapability("worker")}
-                  title={isStartNode ? START_LOCK_TOOLTIP : undefined}
-                >
-                  Worker
-                </button>
-              </div>
-              <span className="tv-field__hint">
-                {isStartNode
-                  ? START_LOCK_TOOLTIP
-                  : capability === "thinker"
-                    ? "Thinker — one direct LLM call; writes the shared spec."
-                    : "Worker — runs in a sandbox; can read & write files."}
-              </span>
-            </div>
-
-            <label className="tv-field">
-              <span className="tv-field__label">Prompt</span>
-              <span className="tv-field__hint">
-                The agent’s behavior. The run appends the idea + the live PRD on top of this.
-              </span>
-              <textarea
-                className="tv-node-prompt"
-                value={prompt}
-                rows={14}
-                spellCheck={false}
-                onChange={(e) => {
-                  setPrompt(e.target.value);
-                  setSaved(false);
-                }}
-              />
-            </label>
-
-            {contract && (
-              <div className="tv-contract">
-                <span className="tv-field__label">Output contract</span>
-                <p className="tv-contract__summary">{contract.summary}</p>
-                <button type="button" className="tv-btn tv-btn--sm" onClick={writeContract}>
-                  Write this into the prompt
-                </button>
-                <span className="tv-field__hint">
-                  Keeps the prompt’s verdict-file instruction in sync with the edges you wired.
-                </span>
-              </div>
-            )}
-
-            <div className="tv-field">
-              <span className="tv-field__label">Model</span>
-              <span className="tv-field__hint">
-                Pick a provider you’ve configured, then a model — add a key inline if it’s missing.
-              </span>
-
-              <select
-                className="tv-launch__select"
-                aria-label="Provider"
-                value={currentProvider}
-                onChange={(e) => onProviderChange(e.target.value)}
-              >
-                {currentProvider === "" && <option value="">Choose a provider…</option>}
-                {providerOptions.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-                <option value={ADD_PROVIDER}>+ Add a provider…</option>
-              </select>
-
-              {addOpen && (
-                <div className="tv-node-addprov">
-                  <input
-                    className="tv-launch__input"
-                    aria-label="New provider"
-                    placeholder="provider (e.g. openrouter)"
-                    value={addProviderSlug}
-                    onChange={(e) => setAddProviderSlug(e.target.value)}
-                  />
-                  <input
-                    className="tv-launch__input"
-                    type="password"
-                    aria-label="New provider API key"
-                    placeholder="paste API key"
-                    value={addKey}
-                    onChange={(e) => setAddKey(e.target.value)}
-                  />
-                  <div className="tv-node-addprov__actions">
-                    <button
-                      type="button"
-                      className="tv-btn tv-btn--sm"
-                      disabled={addBusy}
-                      onClick={() => void handleInlineAdd()}
-                    >
-                      Add
-                    </button>
-                    <button
-                      type="button"
-                      className="tv-btn tv-btn--link tv-btn--sm"
-                      onClick={() => {
-                        setAddOpen(false);
-                        setAddError(null);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                  {addError && <span className="tv-prd__saveerr">{addError}</span>}
-                </div>
-              )}
-
-              <input
-                className="tv-node-model"
-                type="text"
-                list="tv-model-presets"
-                aria-label="Model"
-                value={model}
-                spellCheck={false}
-                onChange={(e) => {
-                  setModel(e.target.value);
-                  setSaved(false);
-                }}
-              />
-              <datalist id="tv-model-presets">
-                {quickPicks.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
-
-              {showHint && (
-                <div className="tv-node-hint" role="status">
-                  <span className="tv-node-hint__text">
-                    {title} and {siblingTitle} both run <code>{model}</code>. Reviews are stronger
-                    when the reviewer runs a more capable model than the worker it checks.
-                  </span>
-                  <button
-                    type="button"
-                    className="tv-btn tv-btn--link tv-btn--sm"
-                    onClick={() => setHintDismissed(true)}
-                    aria-label="Dismiss recommendation"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="tv-prd__editbar">
+  // ---- F1c Decision 4: terminal — READ-ONLY endpoint view. Ship/Stop is a DISABLED indicator, not
+  //      a working toggle (persisting ship↔stop is a §15 backend follow-on). ----
+  if (node.kind === "terminal") {
+    const isShip = (node.config as TerminalConfig)?.terminal_kind === "ship";
+    const termTitle = isShip ? "Ship" : "Stop";
+    return (
+      <DrawerShell
+        glyph={glyphForNode("terminal", node.role_name, isShip ? "ship" : "stop")}
+        title={termTitle}
+        subtitle="An endpoint of the flow"
+        ariaLabel={`${termTitle} endpoint`}
+        panelMode={panelMode}
+        onTogglePanelMode={onTogglePanelMode}
+        onClose={onClose}
+      >
+        <div className="tv-scroll tv-node-edit">
+          <p className="tv-readonly-note">
+            This is where the flow ends.{" "}
+            <span className="tv-readonly-note__soft">
+              Changing ship ↔ stop is a planned backend follow-on — to switch it, delete this
+              endpoint and drop the other from the palette.
+            </span>
+          </p>
+          <div className="tv-field">
+            <span className="tv-field__label">Endpoint</span>
+            <div className="tv-seg" role="group" aria-label="Endpoint" aria-disabled="true">
               <button
-                className="tv-btn"
                 type="button"
-                onClick={() => void handleSave()}
-                disabled={!canSave}
+                disabled
+                aria-pressed={isShip}
+                className={`tv-seg__btn${isShip ? " tv-seg__btn--active" : ""}`}
               >
-                {saving ? "Saving…" : "Save"}
+                Ship it
               </button>
-              {dirty ? (
-                <span className="tv-prd__dirty">Unsaved changes</span>
-              ) : saved ? (
-                <span className="tv-prd__saved">Saved — this drives the next run you launch.</span>
-              ) : null}
-              {saveError && <span className="tv-prd__saveerr">Couldn’t save — try again.</span>}
+              <button
+                type="button"
+                disabled
+                aria-pressed={!isShip}
+                className={`tv-seg__btn${!isShip ? " tv-seg__btn--active" : ""}`}
+              >
+                Stop
+              </button>
             </div>
+            <span className="tv-field__hint">
+              {isShip
+                ? "Ship — open a reviewed change on a branch and tag it."
+                : "Stop — end the run here with no change shipped."}
+            </span>
+          </div>
+        </div>
+      </DrawerShell>
+    );
+  }
 
-            {/* M2: read-only "Last run" brief of what THIS authored node did the last time it
-                actually executed (across the team's runs). Historical -> NOT part of the dirty
-                check, untouched by Save. */}
-            <div className="tv-node-lastrun" aria-label="Last run">
-              <div className="tv-lastrun__head">Last run</div>
-              {node.last_run ? (
-                <LastRun
-                  rounds={[
-                    {
-                      iteration: node.last_run.iteration,
-                      outcome: node.last_run.outcome,
-                      outcome_detail: node.last_run.outcome_detail,
-                    },
-                  ]}
-                  provenance={{ startedAt: node.last_run.started_at, runId: node.last_run.run_id }}
-                />
-              ) : (
-                <p className="tv-panel-note">No runs yet.</p>
-              )}
-            </div>
+  // ---- agent / completion: the editor ----
+  const title = ROLE_TITLES[node.role_name] ?? node.role_name;
+  return (
+    <DrawerShell
+      glyph={glyphForNode(node.kind, node.role_name)}
+      title={title}
+      subtitle={AGENT_SUBTITLE}
+      ariaLabel={`${title} editor`}
+      panelMode={panelMode}
+      onTogglePanelMode={onTogglePanelMode}
+      onClose={onClose}
+    >
+      <div className="tv-scroll tv-node-edit">
+        <div className="tv-field">
+          <span className="tv-field__label">Capability</span>
+          <div
+            className="tv-seg"
+            role="group"
+            aria-label="Capability"
+            title={isStartNode ? START_LOCK_TOOLTIP : undefined}
+          >
+            <button
+              type="button"
+              aria-pressed={capability === "thinker"}
+              disabled={isStartNode || saving}
+              className={`tv-seg__btn${capability === "thinker" ? " tv-seg__btn--active" : ""}`}
+              onClick={() => pickCapability("thinker")}
+              title={isStartNode ? START_LOCK_TOOLTIP : undefined}
+            >
+              Thinker
+            </button>
+            <button
+              type="button"
+              aria-pressed={capability === "worker"}
+              disabled={isStartNode || saving}
+              className={`tv-seg__btn${capability === "worker" ? " tv-seg__btn--active" : ""}`}
+              onClick={() => pickCapability("worker")}
+              title={isStartNode ? START_LOCK_TOOLTIP : undefined}
+            >
+              Worker
+            </button>
+          </div>
+          <span className="tv-field__hint">
+            {isStartNode
+              ? START_LOCK_TOOLTIP
+              : capability === "thinker"
+                ? "Thinker — one direct LLM call; writes the shared spec."
+                : "Worker — runs in a sandbox; can read & write files."}
+          </span>
+        </div>
+
+        <label className="tv-field">
+          <span className="tv-field__label">Prompt</span>
+          <span className="tv-field__hint">
+            The agent’s behavior. The run appends the idea + the live PRD on top of this.
+          </span>
+          <textarea
+            className="tv-node-prompt"
+            value={prompt}
+            rows={14}
+            spellCheck={false}
+            onChange={(e) => {
+              setPrompt(e.target.value);
+              setSaved(false);
+            }}
+          />
+        </label>
+
+        {contract && (
+          <div className="tv-contract">
+            <span className="tv-field__label">Output contract</span>
+            <p className="tv-contract__summary">{contract.summary}</p>
+            <button type="button" className="tv-btn tv-btn--sm" onClick={writeContract}>
+              Write this into the prompt
+            </button>
+            <span className="tv-field__hint">
+              Keeps the prompt’s verdict-file instruction in sync with the edges you wired.
+            </span>
           </div>
         )}
+
+        <div className={`tv-field${modelFlash ? " tv-field--flash" : ""}`} ref={modelFieldRef}>
+          <span className="tv-field__label">Model</span>
+          <span className="tv-field__hint">
+            Pick a provider you’ve configured, then a model — add a key inline if it’s missing.
+          </span>
+
+          <div className="tv-picker">
+            <select
+              className="tv-picker__provider"
+              aria-label="Provider"
+              value={currentProvider}
+              onChange={(e) => onProviderChange(e.target.value)}
+            >
+              {currentProvider === "" && <option value="">Choose a provider…</option>}
+              {providerOptions.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+              <option value={ADD_PROVIDER}>+ Add a provider…</option>
+            </select>
+
+            <input
+              className="tv-node-model tv-picker__model"
+              type="text"
+              list="tv-model-presets"
+              aria-label="Model"
+              value={model}
+              spellCheck={false}
+              onChange={(e) => {
+                setModel(e.target.value);
+                setSaved(false);
+              }}
+            />
+            <datalist id="tv-model-presets">
+              {quickPicks.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          </div>
+
+          {addOpen && (
+            <div className="tv-node-addprov">
+              <input
+                className="tv-launch__input"
+                aria-label="New provider"
+                placeholder="provider (e.g. openrouter)"
+                value={addProviderSlug}
+                onChange={(e) => setAddProviderSlug(e.target.value)}
+              />
+              <input
+                className="tv-launch__input"
+                type="password"
+                aria-label="New provider API key"
+                placeholder="paste API key"
+                value={addKey}
+                onChange={(e) => setAddKey(e.target.value)}
+              />
+              <div className="tv-node-addprov__actions">
+                <button
+                  type="button"
+                  className="tv-btn tv-btn--sm"
+                  disabled={addBusy}
+                  onClick={() => void handleInlineAdd()}
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  className="tv-btn tv-btn--link tv-btn--sm"
+                  onClick={() => {
+                    setAddOpen(false);
+                    setAddError(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+              {addError && <span className="tv-prd__saveerr">{addError}</span>}
+            </div>
+          )}
+
+          {showHint && (
+            <div className="tv-node-hint" role="status">
+              <span className="tv-node-hint__text">
+                {title} and {siblingTitle} both run <code>{model}</code>. Reviews are stronger when
+                the reviewer runs a more capable model than the worker it checks.
+              </span>
+              <button
+                type="button"
+                className="tv-btn tv-btn--link tv-btn--sm"
+                onClick={() => setHintDismissed(true)}
+                aria-label="Dismiss recommendation"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="tv-prd__editbar">
+          <button
+            className="tv-btn"
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={!canSave}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+          {dirty ? (
+            <span className="tv-prd__dirty">Unsaved changes</span>
+          ) : saved ? (
+            <span className="tv-prd__saved">Saved — this drives the next run you launch.</span>
+          ) : null}
+          {saveError && <span className="tv-prd__saveerr">Couldn’t save — try again.</span>}
+        </div>
+
+        {/* M2: read-only "Last run" brief of what THIS authored node did the last time it actually
+            executed (across the team's runs). Historical -> NOT part of the dirty check. */}
+        <div className="tv-node-lastrun" aria-label="Last run">
+          <div className="tv-lastrun__head">Last run</div>
+          {node.last_run ? (
+            <LastRun
+              rounds={[
+                {
+                  iteration: node.last_run.iteration,
+                  outcome: node.last_run.outcome,
+                  outcome_detail: node.last_run.outcome_detail,
+                },
+              ]}
+              provenance={{ startedAt: node.last_run.started_at, runId: node.last_run.run_id }}
+            />
+          ) : (
+            <p className="tv-panel-note">No runs yet.</p>
+          )}
+        </div>
       </div>
-    </aside>
+    </DrawerShell>
   );
 }

@@ -1,11 +1,12 @@
 import { type ReactNode } from "react";
-import { X } from "lucide-react";
 
 import { LastRun } from "../components/LastRun";
 import type { GraphNode, RunRow } from "../lib/api";
-import { isPrdEditable, WORKFLOW_FAILED } from "../lib/status";
+import { deriveNodeStatus, isPrdEditable, type NodeStatus, WORKFLOW_FAILED } from "../lib/status";
 import { titleCase } from "../lib/text";
+import { DrawerShell, type PanelMode } from "./DrawerShell";
 import { EventFeed } from "./EventFeed";
+import { glyphForNode } from "./nodeGlyph";
 import { PrdView } from "./PrdView";
 
 /** The thinker's placeholder copy when there is no spec document yet — derived from run-level
@@ -26,42 +27,57 @@ function specEmptyHint(
 
 // Nice titles for the seeded roles; a custom/authored node falls back to a title-cased role name
 // (a topology-edited team can name a node anything — e.g. "architect").
-const ROLE_TITLES: Record<string, { title: string; subtitle: string }> = {
-  pm: { title: "Product manager", subtitle: "The spec it wrote" },
-  engineer: { title: "Engineer", subtitle: "What it did, step by step" },
-  reviewer: { title: "Reviewer", subtitle: "How it judged the work" },
+const ROLE_TITLES: Record<string, string> = {
+  pm: "Product manager",
+  engineer: "Engineer",
+  reviewer: "Reviewer",
 };
 
-function nodeTitle(node: GraphNode): { title: string; subtitle: string } {
-  return ROLE_TITLES[node.role_name] ?? { title: titleCase(node.role_name), subtitle: "Details" };
+function nodeTitle(node: GraphNode): string {
+  return ROLE_TITLES[node.role_name] ?? titleCase(node.role_name);
 }
 
+// F1c Decision 2: the run-view subtitle is STATUS-based (from the SAME derived status the node card
+// uses — `deriveNodeStatus`), not role-based. Reads what the node is doing right now.
+const STATUS_SUBTITLE: Record<NodeStatus, string> = {
+  running: "Working now",
+  done: "Finished",
+  idle: "Not reached yet",
+  failed: "Failed",
+  stopped: "Stopped",
+};
+
 /**
- * The right-hand run-view inspection panel. Selected by NODE ID (Option A), it switches the body on
- * the node's `kind`, not a hardcoded role: every agent/thinker node gets a uniform "Last run" brief
- * (its per-round `outcome_detail`) atop a kind-specific body — a thinker (`completion`) shows the
- * shared spec (`PrdView`, live-editable while in-flight, P1.7b); a worker (`agent`, incl. the
- * Reviewer) shows the step-by-step feed. Gates/terminals never open this panel (the canvas only
- * selects agent/completion nodes). The whole `GraphNode` is passed in — the panel reads its
- * `invocations` (already in the run-graph payload) so it stays a thin render of backend truth.
+ * The right-hand run-view inspection drawer (F1c reskin). Selected by NODE ID (Option A), it keeps
+ * the CAPABILITY-based split (F1c Decision 2 — the Tvashtr-25 pivot retired privileged roles): every
+ * agent/thinker node shows a uniform "Last run" brief atop a kind-specific body — a thinker
+ * (`completion`) shows the shared spec (`PrdView`, live-editable while in-flight, P1.7b); a worker
+ * (`agent`, incl. the Reviewer) shows the step-by-step feed (whose brief IS its verdict history).
+ * Gates/terminals never open this panel in a run (the canvas only selects agent/completion there).
  *
- * M2: the per-round "Last run" rendering moved to the shared `components/LastRun`; the run view
- * passes NO `provenance`, so the render is byte-identical (the authoring panel passes provenance).
+ * The subtitle is STATUS-based (Working now / Finished / Not reached yet / Failed / Stopped); the
+ * drawer⇄modal chrome + the sticky `panelMode` live in the shared `DrawerShell`.
  */
 export function SidePanel({
   node,
   runId,
   run,
   workflowStatus,
+  panelMode = "drawer",
+  onTogglePanelMode,
   onClose,
 }: {
   node: GraphNode;
   runId: string | null;
   run: RunRow | null;
   workflowStatus: string | null;
+  panelMode?: PanelMode;
+  onTogglePanelMode?: () => void;
   onClose: () => void;
 }) {
-  const { title, subtitle } = nodeTitle(node);
+  const title = nodeTitle(node);
+  const status = deriveNodeStatus(node.status, run, workflowStatus);
+  const subtitle = STATUS_SUBTITLE[status] ?? "Inspector";
 
   // The kind-specific body beneath the brief. A thinker refines the SAME shared spec (every thinker
   // writes versions of `run.pm_document_id`), so `PrdView` is correct for ANY thinker, not just the
@@ -81,30 +97,20 @@ export function SidePanel({
   }
 
   return (
-    <aside className="tv-panel" aria-label={`${title} details`}>
-      <header className="tv-panel__head">
-        <div>
-          <div className="tv-panel__title">{title}</div>
-          <div className="tv-panel__subtitle">{subtitle}</div>
-        </div>
-        <button
-          type="button"
-          className="tv-panel__close"
-          onClick={onClose}
-          aria-label="Close panel"
-          title="Close"
-        >
-          <X size={18} strokeWidth={1.7} />
-        </button>
-      </header>
-
-      <div className="tv-panel__body">
-        <section className="tv-lastrun" aria-label="Last run">
-          <div className="tv-lastrun__head">Last run</div>
-          <LastRun rounds={node.invocations} />
-        </section>
-        {body}
-      </div>
-    </aside>
+    <DrawerShell
+      glyph={glyphForNode(node.kind, node.role_name)}
+      title={title}
+      subtitle={subtitle}
+      ariaLabel={`${title} details`}
+      panelMode={panelMode}
+      onTogglePanelMode={onTogglePanelMode}
+      onClose={onClose}
+    >
+      <section className="tv-lastrun" aria-label="Last run">
+        <div className="tv-lastrun__head">Last run</div>
+        <LastRun rounds={node.invocations} />
+      </section>
+      {body}
+    </DrawerShell>
   );
 }
