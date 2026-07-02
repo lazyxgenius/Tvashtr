@@ -1,6 +1,8 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
+  Check,
   ClipboardCheck,
+  Cpu,
   DraftingCompass,
   type LucideIcon,
   OctagonX,
@@ -8,6 +10,8 @@ import {
   PenLine,
   ShieldCheck,
   Terminal,
+  X,
+  Zap,
 } from "lucide-react";
 
 import { StatusPill } from "../components/StatusPill";
@@ -30,6 +34,9 @@ export type AgentNodeData = {
   // orphan warning (the walk never reaches it — dimmed, but still runnable).
   errorMessage?: string;
   isOrphan?: boolean;
+  // F1a: computed by the canvas (not the backend) — true for the graph's entry node(s), i.e. no
+  // forward edge targets it. Renders the coral start-bar + "Start · entry" eyebrow. VISUAL only.
+  isEntry?: boolean;
 };
 
 /** The authoring overlay classes for a node (P1.8d): a red ring for a blocking issue, a dim for an
@@ -96,37 +103,61 @@ function NodeHandles() {
   );
 }
 
-/** The agent/completion team-node: a DS paper card with role, model/engine caption, an ink
- *  glyph, and a calm status indicator. A "round N" badge appears once a node has looped. */
+/** The agent/completion team-node: a warm paper card — glyph + title + role caption + optional
+ *  "round N" badge in the head, a capability + engine + status-pill row, and a clickable model
+ *  footer. The entry node adds a coral left-bar + "Start · entry" eyebrow. Running breathes coral;
+ *  done/failed stamp a sage-check / red-× corner badge (all driven by canvas.css). */
 function AgentCard({ data: d }: { data: AgentNodeData }) {
-  const Icon = ROLE_ICON[d.role_name] ?? Terminal;
+  // The entry node reads as the "spark" (the design's start glyph) regardless of role; every
+  // other node keeps its role glyph.
+  const roleIcon = ROLE_ICON[d.role_name] ?? Terminal;
+  const Icon = d.isEntry ? Zap : roleIcon;
   const title = ROLE_TITLE[d.role_name] ?? d.role_name;
-  const blurb = ROLE_BLURB[d.role_name] ?? d.kind;
-  // The capability (Thinker/Worker) labels the node, alongside the engine (workers carry it). A
-  // capability flip changes `d.kind`, which re-labels the card here.
-  const metaParts = [blurb, capabilityLabel(d.kind)];
-  if (d.engine) metaParts.push(prettyEngine(d.engine));
-  const meta = metaParts.join(" · ");
+  const caption = ROLE_BLURB[d.role_name] ?? d.kind;
+  // The capability (Thinker/Worker) rides `d.kind`; a completion node reads as a Thinker (the DS
+  // "rare secondary" blue tag), an agent as a Worker (coral). A capability flip re-labels it here.
+  const isThinker = d.kind === "completion";
 
   return (
-    <div className={`rf-node rf-node--${d.status}${flagClasses(d)}`} title={d.errorMessage}>
+    <div
+      className={`rf-node rf-node--${d.status}${d.isEntry ? " rf-node--entry" : ""}${flagClasses(d)}`}
+      title={d.errorMessage}
+    >
       <NodeHandles />
+      {d.isEntry && <span className="rf-node__bar" aria-hidden />}
       <div className="rf-node__head">
         <span className="rf-node__glyph">
           <Icon size={17} strokeWidth={1.6} />
         </span>
-        <div>
+        <div className="rf-node__titles">
+          {d.isEntry && <div className="rf-node__eyebrow">Start · entry</div>}
           <div className="rf-node__role">{title}</div>
-          <div className="rf-node__kind">{meta}</div>
+          <div className="rf-node__caption">{caption}</div>
         </div>
         {d.iteration >= 2 && <span className="rf-node__round">round {d.iteration}</span>}
       </div>
-      <div className="rf-node__model" title={d.model}>
-        {d.model}
-      </div>
-      <div className="rf-node__foot">
+      <div className="rf-node__meta">
+        <span className={`rf-node__cap${isThinker ? " rf-node__cap--thinker" : ""}`}>
+          {capabilityLabel(d.kind)}
+        </span>
+        {d.engine && <span className="rf-node__engine">{prettyEngine(d.engine)}</span>}
         <StatusPill status={d.status} />
       </div>
+      {/* The model row: a button, but the picker is F1c — inert / no-op for now. */}
+      <button type="button" className="rf-node__model" title={d.model}>
+        <Cpu size={13} strokeWidth={1.6} />
+        <span className="rf-node__model-text">{d.model}</span>
+      </button>
+      {d.status === "done" && (
+        <span className="rf-node__badge rf-node__badge--done" aria-hidden>
+          <Check size={12} strokeWidth={3} />
+        </span>
+      )}
+      {d.status === "failed" && (
+        <span className="rf-node__badge rf-node__badge--failed" aria-hidden>
+          <X size={11} strokeWidth={3} />
+        </span>
+      )}
     </div>
   );
 }

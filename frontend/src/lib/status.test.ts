@@ -75,10 +75,27 @@ describe("deriveNodeStatus (thin read of backend truth)", () => {
     expect(deriveNodeStatus("idle", mkRun({ status: "awaiting_human" }), "PENDING")).toBe("idle");
   });
 
-  it("idle + rejected/cancelled/over_budget -> stopped", () => {
+  // ---- F1a never-reached fix (reproduce-first regressions) ----
+  // A node the walk NEVER reached is backend "idle". Before the fix, ANY terminal run folded
+  // every idle node to failed/stopped, so unreached downstream nodes wrongly read red/grey on a
+  // failed/cancelled run. After the fix, the run/workflow override applies ONLY to a node
+  // actually IN-FLIGHT (backend "running"); an idle node stays idle. These three FAIL on the
+  // pre-fix code and pass after (the running-fold tests above guard that the fix is scoped to idle).
+  it("idle + rejected/cancelled/over_budget run -> idle (was 'stopped'; never-reached fix)", () => {
     for (const status of ["rejected", "cancelled", "over_budget"]) {
-      expect(deriveNodeStatus("idle", mkRun({ status }), "SUCCESS")).toBe("stopped");
+      expect(deriveNodeStatus("idle", mkRun({ status }), "SUCCESS")).toBe("idle");
     }
+  });
+
+  it("idle + failed run -> idle (was 'failed'; an unreached node is not a failure)", () => {
+    expect(deriveNodeStatus("idle", mkRun({ status: "failed" }), "ERROR")).toBe("idle");
+  });
+
+  it("idle + failed WORKFLOW while run.status lags at running -> idle (never-reached fix)", () => {
+    // the no-key / crash case: the workflow ERROR'd/CANCELLED but run.status still reads
+    // "running"; a node the walk never reached must NOT paint red.
+    expect(deriveNodeStatus("idle", mkRun({ status: "running" }), "ERROR")).toBe("idle");
+    expect(deriveNodeStatus("idle", mkRun({ status: "running" }), "CANCELLED")).toBe("idle");
   });
 
   it("idle on a plain running run -> idle", () => {

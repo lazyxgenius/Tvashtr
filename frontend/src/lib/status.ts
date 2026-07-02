@@ -58,13 +58,16 @@ export function isPrdEditable(runStatus: string | null, workflowStatus: string |
  *
  *  - `done`/`failed`/`stopped` from the backend pass straight through. `done` is
  *    sticky: a node that completed stays done even if the run later fails.
- *  - For `running`/`idle` we let a terminal run/workflow override a stale in-flight
- *    invocation: a no-key run can leave the PM `running` while the workflow ERROR'd,
- *    so a failed run/workflow folds to `failed`, and a rejected/cancelled/over_budget
- *    run folds to `stopped` (muted, concluded — checked before the failed fold).
- *  - `idle` is just `idle`. **No more paused inference** (P1.5b): the paused state now
- *    lives on the gate node (`deriveGateState`), so the Engineer reads plain "Waiting"
- *    while the PRD gate awaits — agent/completion nodes never read paused.
+ *  - Only a node actually IN-FLIGHT (`running`) when the run died folds to the run's
+ *    terminal verdict: a no-key run can leave the PM `running` while the workflow
+ *    ERROR'd, so a failed run/workflow folds to `failed`, and a rejected/cancelled/
+ *    over_budget run folds to `stopped` (muted, concluded — checked before the failed fold).
+ *  - `idle` is just `idle` — a node the walk NEVER reached did not fail, it was simply
+ *    not reached, so it stays `idle` REGARDLESS of a terminal run/workflow (else every
+ *    unreached downstream node would wrongly read red on a failed run). **No paused
+ *    inference** (P1.5b): the paused state lives on the gate node (`deriveGateState`), so
+ *    the Engineer reads plain "Waiting" while the PRD gate awaits — agent/completion nodes
+ *    never read paused.
  *
  * `isRunTerminal` + `deriveOverall` stay run-level and unchanged.
  */
@@ -78,12 +81,14 @@ export function deriveNodeStatus(
   if (backendStatus === "failed") return "failed";
   if (backendStatus === "stopped") return "stopped";
 
-  // backendStatus is "running" or "idle": let a terminal run/workflow override a
-  // stale in-flight invocation.
-  const failed = run?.status === "failed" || WORKFLOW_FAILED.has(workflowStatus ?? "");
-  if (run && RUN_STOPPED.has(run.status)) return "stopped"; // rejected/cancelled/over_budget
-  if (failed) return "failed";
-  if (backendStatus === "running") return "running";
+  // Only a node still IN-FLIGHT ("running") when the run died folds to the run/workflow's
+  // terminal verdict; a never-reached ("idle") node is untouched (it wasn't running, so it
+  // can't have failed/stopped — it was simply never reached).
+  if (backendStatus === "running") {
+    if (run && RUN_STOPPED.has(run.status)) return "stopped"; // rejected/cancelled/over_budget
+    if (run?.status === "failed" || WORKFLOW_FAILED.has(workflowStatus ?? "")) return "failed";
+    return "running";
+  }
 
   return "idle"; // not reached yet (the gate node, not this node, carries any pause)
 }

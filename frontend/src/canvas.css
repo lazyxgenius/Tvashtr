@@ -15,146 +15,226 @@
   fill: var(--line-400);
 }
 
-/* ---- Custom node card ---- */
+/* ---- Custom node card (F1a: the premium n8n anatomy) ----
+   A warm paper card: glyph + titles + round badge in the head, a
+   capability/engine/status-pill meta row, and a clickable model footer.
+   Status tints the border + fill; running breathes coral, done/failed
+   stamp a corner badge. Tokens only — no ad-hoc color. */
 .rf-node {
   position: relative;
   width: 216px;
-  padding: var(--space-4);
+  padding: 13px 15px 12px;
   font-family: var(--font-ui);
   background: var(--surface-card);
-  border: 1.5px solid var(--border-hairline);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
+  border: var(--border-width-2) solid var(--border-hairline);
+  border-radius: 13px;
+  box-shadow: var(--shadow-node);
   transition:
     border-color var(--dur-base) var(--ease-standard),
     box-shadow var(--dur-base) var(--ease-standard),
     background var(--dur-base) var(--ease-standard);
 }
+.rf-node:hover {
+  box-shadow: var(--shadow-node-hover);
+}
 .react-flow__node.selected .rf-node {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
+  box-shadow:
+    0 0 0 3px var(--focus-ring),
+    var(--shadow-node-hover);
+}
+
+/* Entry node: a coral left-bar + rounder left corners + a coral-tinted glyph. */
+.rf-node--entry {
+  border-radius: 18px 13px 13px 18px;
+}
+.rf-node__bar {
+  position: absolute;
+  left: 0;
+  top: 11px;
+  bottom: 11px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+.rf-node__eyebrow {
+  margin-bottom: 1px;
+  font-size: 10px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--coral-700);
 }
 
 .rf-node__head {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-3);
+  gap: 11px;
 }
 .rf-node__glyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   flex: none;
   color: var(--ink-700);
   background: var(--panel-300);
   border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-md);
+  border-radius: 9px;
+}
+.rf-node--entry .rf-node__glyph {
+  color: var(--coral-700);
+  background: var(--coral-100);
+  border-color: var(--coral-200);
+}
+.rf-node__titles {
+  min-width: 0;
+  flex: 1;
 }
 .rf-node__role {
-  font-size: var(--fs-body-sm);
+  font-size: 14px;
   font-weight: var(--fw-semibold);
   letter-spacing: var(--tracking-snug);
+  line-height: 1.2;
   color: var(--text-primary);
-  line-height: 1.25;
 }
-.rf-node__kind {
+.rf-node__caption {
   margin-top: 2px;
-  font-size: var(--fs-micro);
+  font-size: 11.5px;
   color: var(--text-secondary);
 }
+
+/* The capability + engine + status-pill row (the pill moves up out of the old foot,
+   pushed to the right by margin-left:auto). */
+.rf-node__meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 11px;
+}
+.rf-node__meta .tv-pill {
+  margin-left: auto;
+}
+.rf-node__cap {
+  padding: 2px 9px;
+  font-size: 10.5px;
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
+  color: var(--coral-700);
+  background: var(--coral-100);
+  border: var(--border-width) solid var(--coral-200);
+  border-radius: var(--radius-pill);
+}
+/* Thinker capability reads in the DS "rare secondary" blue (reserved for tags). */
+.rf-node__cap--thinker {
+  color: var(--blue-500);
+  background: var(--blue-100);
+  border-color: color-mix(in srgb, var(--blue-500) 22%, transparent);
+}
+.rf-node__engine {
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
+  color: var(--text-secondary);
+  background: var(--surface-page);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-pill);
+}
+
+/* The clickable model footer row: a top hairline, a CPU glyph, mono model text.
+   Inert until F1c wires the picker (renders as a no-op button). */
 .rf-node__model {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 0 0;
+  border: none;
   border-top: var(--border-width) solid var(--border-faint);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  text-align: left;
+}
+.rf-node__model svg {
+  flex: none;
+}
+.rf-node__model-text {
+  min-width: 0;
   font-family: var(--font-code);
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.rf-node__foot {
-  margin-top: var(--space-3);
-}
 
 /* ---- Per-node status (DS calm vocabulary) ---- */
+/* running = actively in-flight: the coral "breathing" ring (the marquee alive beat).
+   The overlay is a pseudo-element so the card DOM stays flat; the F0 reduced-motion
+   guard in extend.css already neutralizes the loop (the local guard below is belt-and-
+   suspenders). */
 .rf-node--running {
-  border-color: var(--accent-tint-border);
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  border-color: var(--coral-200);
 }
-/* one bounded pulse on entering "running" — plays once, never loops */
 .rf-node--running::after {
   content: "";
   position: absolute;
   inset: -1.5px;
   border-radius: inherit;
-  box-shadow: 0 0 0 2px var(--accent);
-  opacity: 0;
   pointer-events: none;
-  animation: rf-pulse-once 1.3s var(--ease-out) 1 forwards;
+  animation: tv-breathe 1.9s ease-in-out infinite;
 }
-@keyframes rf-pulse-once {
-  0% {
-    opacity: 0.45;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.05);
-  }
-}
-/* paused = blocked at a human gate: a soft coral wash + a fuller coral ring than
-   "running", with one bounded pulse when the gate opens (distinct keyframe name
-   so it replays on the running -> paused transition). */
-.rf-node--paused {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--coral-100) 50%, var(--surface-card));
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
-.rf-node--paused::after {
-  content: "";
-  position: absolute;
-  inset: -1.5px;
-  border-radius: inherit;
-  box-shadow: 0 0 0 2px var(--accent);
-  opacity: 0;
-  pointer-events: none;
-  animation: rf-pulse-paused 1.4s var(--ease-out) 1 forwards;
-}
-@keyframes rf-pulse-paused {
-  0% {
-    opacity: 0.5;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.06);
-  }
-}
-/* one-shot pulses only — honor reduced-motion for both node states */
-@media (prefers-reduced-motion: reduce) {
-  .rf-node--running::after,
-  .rf-node--paused::after {
-    animation: none;
-  }
-}
-
 .rf-node--done {
   border-color: var(--sage-500);
-  background: color-mix(in srgb, var(--sage-100) 55%, var(--surface-card));
+  background: color-mix(in srgb, var(--sage-100) 50%, var(--surface-card));
 }
 .rf-node--failed {
   border-color: var(--red-500);
-  background: color-mix(in srgb, var(--red-100) 55%, var(--surface-card));
+  background: color-mix(in srgb, var(--red-100) 50%, var(--surface-card));
 }
 /* stopped = concluded without finishing (run rejected/cancelled): a calm muted
    card — a defined neutral border + a faint neutral wash. Not coral, not red,
-   and NO pulse/animation (it is terminal). */
+   and NO motion (it is terminal). */
 .rf-node--stopped {
   border-color: var(--border-strong);
   background: color-mix(in srgb, var(--panel-300) 50%, var(--surface-card));
+}
+
+/* done / failed corner badge — a stamped circle over the card's top-right corner. */
+.rf-node__badge {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: var(--cream-50);
+  box-shadow: var(--shadow-sm);
+}
+.rf-node__badge--done {
+  background: var(--sage-500);
+  animation: tv-stamp 0.3s var(--ease-out);
+}
+.rf-node__badge--failed {
+  background: var(--red-500);
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Suppress the loops, but keep a STATIC soft coral ring on the running node so it still reads
+     "alive" without motion (parity with the pre-F1a static running ring). */
+  .rf-node--running::after {
+    animation: none;
+    box-shadow: var(--glow-soft);
+  }
+  .rf-node__badge--done {
+    animation: none;
+  }
 }
 
 /* ---- Handles: minimal, just anchors for the edge ---- */
@@ -218,21 +298,20 @@
 }
 
 /* ---- Iteration badge: shown on a node once it has looped (round >= 2) ----
-   A small neutral chip in the StatusPill vocabulary, pushed to the head's right
-   edge by the head's existing flex. */
+   A small coral chip, pushed to the head's right edge by the head's flex. */
 .rf-node__round {
   margin-left: auto;
   flex: none;
   align-self: flex-start;
-  padding: 2px 8px;
+  padding: 2px 7px;
   font-family: var(--font-ui);
-  font-size: var(--fs-micro);
+  font-size: 10.5px;
   font-weight: var(--fw-medium);
-  line-height: 1;
+  line-height: 1.35;
   white-space: nowrap;
-  color: var(--ink-600);
-  background: var(--panel-300);
-  border: var(--border-width) solid var(--border-strong);
+  color: var(--coral-700);
+  background: var(--coral-100);
+  border: var(--border-width) solid var(--coral-200);
   border-radius: var(--radius-pill);
 }
 
@@ -325,14 +404,14 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 11px;
   width: 156px;
-  padding: var(--space-3) var(--space-4);
+  padding: 9px 16px;
   font-family: var(--font-ui);
   background: var(--surface-card);
-  border: 1.5px solid var(--border-strong);
+  border: var(--border-width-2) solid var(--border-strong);
   border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-node);
   transition:
     border-color var(--dur-base) var(--ease-standard),
     background var(--dur-base) var(--ease-standard),
@@ -342,8 +421,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   flex: none;
   color: var(--ink-700);
 }
@@ -351,10 +430,10 @@
   min-width: 0;
 }
 .rf-gate__label {
-  font-size: var(--fs-body-sm);
+  font-size: 13.5px;
   font-weight: var(--fw-semibold);
   letter-spacing: var(--tracking-snug);
-  line-height: 1.2;
+  line-height: 1.15;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -362,15 +441,17 @@
 }
 .rf-gate__state {
   margin-top: 1px;
-  font-size: var(--fs-micro);
+  font-size: 11px;
   color: var(--text-secondary);
 }
 /* awaiting = blocked at this gate: the calm coral tint + coral ring, deliberately with
-   NO pulse (the design is static here — distinct from the running/old-paused node). */
+   NO pulse (the design is static here — distinct from the breathing running node). */
 .rf-gate--awaiting {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--coral-100) 50%, var(--surface-card));
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  background: color-mix(in srgb, var(--coral-100) 55%, var(--surface-card));
+  box-shadow:
+    0 0 0 3px var(--focus-ring),
+    var(--shadow-node);
 }
 .rf-gate--awaiting .rf-gate__glyph,
 .rf-gate--awaiting .rf-gate__state {
@@ -401,48 +482,53 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-1);
+  gap: 6px;
   width: 88px;
-  padding: var(--space-3);
+  padding: 12px 10px;
   font-family: var(--font-ui);
   background: var(--surface-card);
-  border: 1.5px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
+  border: var(--border-width-2) dashed var(--border-strong);
+  border-radius: 13px;
+  box-shadow: var(--shadow-node);
+  opacity: 0.82;
   transition:
     border-color var(--dur-base) var(--ease-standard),
-    background var(--dur-base) var(--ease-standard);
+    background var(--dur-base) var(--ease-standard),
+    opacity var(--dur-base) var(--ease-standard);
 }
 .rf-terminal__glyph {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
   color: var(--ink-600);
 }
 .rf-terminal__label {
-  font-size: var(--fs-micro);
+  font-size: 11.5px;
   font-weight: var(--fw-semibold);
   letter-spacing: var(--tracking-snug);
   line-height: 1;
   color: var(--text-secondary);
 }
-/* not reached yet → a faint dashed outline */
-.rf-terminal--idle {
-  border-style: dashed;
-  border-color: var(--border-strong);
-  opacity: 0.75;
-}
-/* ship reached → sage "Shipped" */
+/* not reached yet → the base faint dashed outline (idle carries no extra rule). */
+/* ship reached → sage "Shipped" (solid, full opacity) */
 .rf-terminal--shipped {
+  border-style: solid;
   border-color: var(--sage-500);
   background: color-mix(in srgb, var(--sage-100) 55%, var(--surface-card));
+  opacity: 1;
 }
 .rf-terminal--shipped .rf-terminal__glyph,
 .rf-terminal--shipped .rf-terminal__label {
   color: color-mix(in srgb, var(--sage-500) 66%, var(--ink-900));
 }
-/* stop reached → muted "Stopped" */
+/* stop reached → muted "Stopped" (solid, full opacity) */
 .rf-terminal--stopped {
+  border-style: solid;
   border-color: var(--border-strong);
   background: color-mix(in srgb, var(--panel-300) 50%, var(--surface-card));
+  opacity: 1;
 }
 .rf-terminal--stopped .rf-terminal__glyph,
 .rf-terminal--stopped .rf-terminal__label {
@@ -454,7 +540,9 @@
 .react-flow__node.selected .rf-gate,
 .react-flow__node.selected .rf-terminal {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow:
+    0 0 0 3px var(--focus-ring),
+    var(--shadow-node);
 }
 
 /* ---- Branch edges (reject → stop terminal; escalation → escalation gate) ----

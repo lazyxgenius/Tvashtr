@@ -68,9 +68,22 @@ function pickHandles(
     : { sourceHandle: "s-top", targetHandle: "t-bottom" };
 }
 
+/** The entry set: a node is an ENTRY iff no FORWARD edge targets it. A forward edge is any edge
+ *  that is NOT a bounded loop-back — the loop-back / rework edge carries `conditions.loop_limit`
+ *  (P1.8a's no-`when` catch-all), so it must NOT disqualify its target (the Engineer stays the
+ *  entry even though the Reviewer loops back to it). Pure FE over the existing graph — no backend
+ *  field, no new payload — feeding `AgentNodeData.isEntry` (the coral start-bar + eyebrow). */
+function entryNodeIds(graph: GraphData): Set<string> {
+  const forwardTargets = new Set<string>();
+  for (const e of graph.edges) {
+    if (e.conditions?.loop_limit == null) forwardTargets.add(e.target_node_id);
+  }
+  return new Set(graph.nodes.filter((n) => !forwardTargets.has(n.id)).map((n) => n.id));
+}
+
 /** The canvas node `data` for one graph node: the thin agent/completion status overlay, plus
  *  the gate's task-derived state and the terminal's reached-state, threaded for the card to
- *  render by `kind`, plus (P1.8d) any validity flag on the node. */
+ *  render by `kind`, plus (P1.8d) any validity flag on the node and (F1a) the entry flag. */
 function nodeData(
   n: GraphNode,
   run: RunRow | null,
@@ -78,6 +91,7 @@ function nodeData(
   tasks: HumanTask[],
   runId: string,
   flags: ValidityFlags,
+  isEntry: boolean,
 ): AgentNodeData {
   return {
     role_name: n.role_name,
@@ -95,6 +109,7 @@ function nodeData(
         : undefined,
     errorMessage: flags.nodeErrors.get(n.id),
     isOrphan: flags.orphans.has(n.id),
+    isEntry,
   };
 }
 
@@ -187,12 +202,13 @@ export function TeamCanvas({
       setNodes([]);
       return;
     }
+    const entry = entryNodeIds(graph);
     setNodes(
       graph.nodes.map((n) => ({
         id: n.id,
         type: "agentNode",
         position: n.position,
-        data: nodeData(n, run, workflowStatus, tasks, graph.run_id, flags),
+        data: nodeData(n, run, workflowStatus, tasks, graph.run_id, flags, entry.has(n.id)),
       })),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reason: rebuild ONLY when the topology (topoKey) changes; run/workflowStatus/tasks/flags refresh in place below so the per-poll refetch + a drag don't rebuild and reset positions.
@@ -202,11 +218,15 @@ export function TeamCanvas({
   useEffect(() => {
     if (!graph) return;
     const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+    const entry = entryNodeIds(graph);
     setNodes((nds) =>
       nds.map((nd) => {
         const n = byId.get(nd.id);
         return n
-          ? { ...nd, data: nodeData(n, run, workflowStatus, tasks, graph.run_id, flags) }
+          ? {
+              ...nd,
+              data: nodeData(n, run, workflowStatus, tasks, graph.run_id, flags, entry.has(n.id)),
+            }
           : nd;
       }),
     );
