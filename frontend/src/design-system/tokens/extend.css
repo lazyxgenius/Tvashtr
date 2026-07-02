@@ -1,0 +1,283 @@
+/* ============================================================
+   Tvashtr — premium refinement layer (M-frontend F0).
+   EXTENDS the design-system tokens (never replaces them). Holds
+   only what cannot live inline: token additions, keyframes, the
+   viewport sizing, scrollbars, reduced-motion guards. Every value
+   resolves to a DS token — no ad-hoc color.
+   base.css already owns the body background/color/font baseline
+   and ::selection — this layer deliberately does not re-declare
+   them.
+   ============================================================ */
+
+:root {
+  /* ---- Refined warm surface ramp (page → board → raised → panel → sunk) ---- */
+  --surface-board: #f6f4ec; /* the canvas field — between page cream and panel putty */
+  --surface-sunk: #efece1; /* inset wells, code blocks */
+  --surface-overlay: color-mix(in srgb, var(--cream-50) 86%, transparent);
+
+  /* ---- Softer hairlines for layered density ---- */
+  --hairline-soft: color-mix(in srgb, var(--line-300) 64%, transparent);
+  --hairline-glass: color-mix(in srgb, var(--ink-900) 7%, transparent);
+
+  /* ---- Warm, premium elevation (soft, never heavy) ---- */
+  --shadow-node: 0 1px 2px rgba(20, 20, 19, 0.04), 0 6px 16px -8px rgba(20, 20, 19, 0.1);
+  --shadow-node-hover: 0 2px 4px rgba(20, 20, 19, 0.05), 0 16px 32px -12px rgba(20, 20, 19, 0.16);
+  --shadow-raise: 0 1px 2px rgba(20, 20, 19, 0.04), 0 10px 30px -12px rgba(20, 20, 19, 0.12);
+  --shadow-drawer: -20px 0 60px -32px rgba(20, 20, 19, 0.26), -1px 0 0 var(--hairline-soft);
+  --shadow-pop: 0 14px 40px -12px rgba(20, 20, 19, 0.22), 0 2px 6px rgba(20, 20, 19, 0.06);
+
+  /* ---- The "alive / running" coral energy ---- */
+  --glow-running:
+    0 0 0 1.5px var(--coral-500), 0 0 0 6px color-mix(in srgb, var(--coral-500) 20%, transparent),
+    0 10px 30px -8px color-mix(in srgb, var(--coral-500) 42%, transparent);
+  --glow-soft: 0 0 0 4px color-mix(in srgb, var(--coral-500) 16%, transparent);
+
+  /* ---- Warm decorative washes (faint — never loud) ---- */
+  --wash-hero: radial-gradient(
+    140% 110% at 50% -20%,
+    color-mix(in srgb, var(--coral-100) 70%, transparent) 0%,
+    color-mix(in srgb, var(--coral-100) 16%, transparent) 34%,
+    transparent 62%
+  );
+  --wash-board:
+    radial-gradient(
+      90% 70% at 78% -8%,
+      color-mix(in srgb, var(--coral-100) 34%, transparent),
+      transparent 56%
+    ),
+    radial-gradient(
+      70% 60% at 8% 108%,
+      color-mix(in srgb, var(--sage-100) 30%, transparent),
+      transparent 60%
+    );
+
+  /* ---- Layout helpers ---- */
+  --rail-w: 264px;
+  --drawer-w: 384px;
+}
+
+/* ---- Viewport sizing (the color/font baseline lives in base.css) ---- */
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+body {
+  overscroll-behavior: none;
+}
+* {
+  box-sizing: border-box;
+}
+
+/* ---- Warm, unobtrusive scrollbars ---- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-400) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--line-400) 80%, transparent);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--stone-400);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+}
+
+/* ============================================================
+   Keyframes — calm, no bounce. All suppressed under reduced motion.
+   ============================================================ */
+
+/* the actively-running node: a soft coral breathing ring (the marquee "alive" beat) */
+@keyframes tv-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1.5px var(--coral-500),
+      0 0 0 5px color-mix(in srgb, var(--coral-500) 16%, transparent),
+      0 8px 24px -8px color-mix(in srgb, var(--coral-500) 36%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1.5px var(--coral-500),
+      0 0 0 9px color-mix(in srgb, var(--coral-500) 8%, transparent),
+      0 12px 30px -8px color-mix(in srgb, var(--coral-500) 30%, transparent);
+  }
+}
+
+/* work flowing along an active edge — a coral dash gliding forward */
+@keyframes tv-flow {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+/* edge draw-in (landing assemble) */
+@keyframes tv-draw {
+  from {
+    stroke-dashoffset: var(--len, 400);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* gentle reveal on scroll / mount */
+@keyframes tv-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes tv-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes tv-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes tv-modal-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+@keyframes tv-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* a node landing on the board (add / assemble) */
+@keyframes tv-node-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes tv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* a slow drift for ambient hero marks */
+@keyframes tv-drift {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* the "done" check stamping in */
+@keyframes tv-stamp {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* skeleton shimmer */
+@keyframes tv-shimmer {
+  to {
+    background-position: 200% 0;
+  }
+}
+
+/* caret blink for the terminal feed */
+@keyframes tv-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* the hero "live team" — a coral wave that travels node to node (staggered by delay) */
+@keyframes tv-wave {
+  0% {
+    box-shadow: var(--shadow-node);
+    border-color: var(--border-hairline);
+  }
+  7% {
+    box-shadow: var(--glow-running);
+    border-color: var(--coral-500);
+  }
+  22% {
+    box-shadow: var(--shadow-node);
+    border-color: var(--border-hairline);
+  }
+  100% {
+    box-shadow: var(--shadow-node);
+    border-color: var(--border-hairline);
+  }
+}
+
+/* hero stage scroll parallax (transform-only — safe to no-op when scroll timelines are unavailable) */
+@keyframes tv-parallax {
+  to {
+    transform: translateY(-34px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+    /* neutralize scroll-driven (animation-timeline) reveals to their end state */
+    animation-timeline: auto !important;
+    animation-range: normal !important;
+  }
+}

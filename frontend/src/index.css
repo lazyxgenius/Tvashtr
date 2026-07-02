@@ -15,6 +15,7 @@
 @import "./design-system/tokens/typography.css";
 @import "./design-system/tokens/spacing.css";
 @import "./design-system/tokens/base.css";
+@import "./design-system/tokens/extend.css";
 @import "./canvas.css";
 @import "./panel.css";
 @import "./abcompare.css";
@@ -26,6 +27,9 @@
   --color-page: var(--surface-page);
   --color-card: var(--surface-card);
   --color-panel: var(--surface-panel);
+  --color-board: var(--surface-board);
+  --color-sunk: var(--surface-sunk);
+  --color-overlay: var(--surface-overlay);
   --color-ink: var(--text-primary);
   --color-secondary: var(--text-secondary);
   --color-tertiary: var(--text-tertiary);
@@ -68,25 +72,32 @@ body,
   color: var(--accent-contrast);
   background: var(--accent);
   border: var(--border-width) solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
   cursor: pointer;
   transition:
     background var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard),
     transform var(--dur-fast) var(--ease-standard);
 }
 .tv-btn:hover:not(:disabled) {
   background: var(--accent-hover);
+  box-shadow: var(--shadow-sm);
 }
 .tv-btn:active:not(:disabled) {
   background: var(--accent-active);
+  box-shadow: var(--shadow-xs);
   transform: translateY(0.5px);
 }
 .tv-btn:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
 }
+/* Not-ready / disabled — the design's solid putty rest state, not a dimmed coral. */
 .tv-btn:disabled {
-  opacity: 0.45;
+  background: var(--panel-400);
+  color: var(--text-tertiary);
+  box-shadow: none;
   cursor: not-allowed;
 }
 .tv-btn--sm {
@@ -96,20 +107,33 @@ body,
 }
 .tv-btn--ghost {
   color: var(--ink-700);
-  background: transparent;
+  background: var(--surface-card);
   border-color: var(--border-strong);
+  box-shadow: none;
 }
 .tv-btn--ghost:hover:not(:disabled) {
   background: var(--panel-300);
+  box-shadow: none;
+}
+.tv-btn--ghost:disabled {
+  background: transparent;
+  color: var(--text-disabled);
+  border-color: var(--border-hairline);
 }
 /* Armed "confirm cancel" — the muted brick danger tone, used sparingly. */
 .tv-btn--danger {
   color: color-mix(in srgb, var(--danger) 72%, var(--ink-900));
   background: transparent;
   border-color: color-mix(in srgb, var(--danger) 45%, var(--border-strong));
+  box-shadow: none;
 }
 .tv-btn--danger:hover:not(:disabled) {
   background: var(--red-100);
+  box-shadow: none;
+}
+.tv-btn--danger:disabled {
+  background: transparent;
+  color: var(--text-disabled);
 }
 /* A quiet inline text button (the "keep running" escape on the confirm step). */
 .tv-btn--link {
@@ -121,6 +145,7 @@ body,
   color: var(--text-secondary);
   background: transparent;
   border: none;
+  box-shadow: none;
   cursor: pointer;
 }
 .tv-btn--link:hover {
@@ -132,7 +157,7 @@ body,
 .tv-card {
   background: var(--surface-card);
   border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
 }
 
 /* A small status pill: dot + sentence-case label, DS Badge vocabulary. */
@@ -144,17 +169,33 @@ body,
   font-size: var(--fs-micro);
   font-weight: var(--fw-medium);
   line-height: 1;
+  white-space: nowrap;
   border-radius: var(--radius-pill);
   border: var(--border-width) solid transparent;
   background: var(--panel-300);
   color: var(--ink-600);
 }
+/* The dot carries the saturated status tone; the label keeps the deeper readable one. */
 .tv-pill__dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: currentColor;
   flex: none;
+}
+.tv-pill--idle .tv-pill__dot,
+.tv-pill--stopped .tv-pill__dot {
+  background: var(--stone-400);
+}
+.tv-pill--running .tv-pill__dot,
+.tv-pill--paused .tv-pill__dot {
+  background: var(--coral-500);
+}
+.tv-pill--done .tv-pill__dot {
+  background: var(--sage-500);
+}
+.tv-pill--failed .tv-pill__dot {
+  background: var(--red-500);
 }
 .tv-pill--idle {
   background: var(--panel-300);
@@ -460,8 +501,9 @@ body,
   max-height: 72vh;
   overflow-y: auto;
   padding: var(--space-4) var(--space-5) var(--space-5);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  animation: tv-pop-in var(--dur-fast) var(--ease-out);
 }
 .tv-launch__head {
   display: flex;
@@ -480,19 +522,23 @@ body,
   flex-direction: column;
   gap: var(--space-4);
 }
+/* The design's larger putty input: a calm page-tone well on the card surface. */
 .tv-launch__input {
   width: 100%;
   font-family: var(--font-code);
   font-size: var(--fs-caption);
   line-height: var(--lh-normal);
   color: var(--text-primary);
-  background: var(--surface-card);
+  background: var(--surface-page);
   border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
   transition:
     box-shadow var(--dur-fast) var(--ease-standard),
     border-color var(--dur-fast) var(--ease-standard);
+}
+.tv-launch__input::placeholder {
+  color: var(--text-placeholder);
 }
 .tv-launch__input:focus {
   outline: none;
@@ -559,7 +605,7 @@ body,
   width: 100%;
   max-width: 360px;
   padding: var(--space-6);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-raise);
 }
 .tv-auth__brand {
   display: flex;
@@ -608,7 +654,7 @@ body,
   width: 100%;
   max-width: 540px;
   padding: var(--space-6);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-raise);
 }
 .tv-landing__brand {
   display: flex;
@@ -656,6 +702,7 @@ body,
   flex: 1;
   min-height: 0;
 }
+/* Frosted-glass app bar — translucent cream over whatever scrolls beneath. */
 .tv-dash__bar {
   display: flex;
   align-items: center;
@@ -663,6 +710,9 @@ body,
   gap: var(--space-4);
   padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--border-hairline);
+  background: var(--surface-overlay);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 .tv-dash__brand {
   display: flex;
