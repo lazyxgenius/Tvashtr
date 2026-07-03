@@ -612,11 +612,6 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
-.tv-palette__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 15;
-}
 .tv-palette__panel {
   position: absolute;
   top: 50px;
@@ -785,8 +780,10 @@
 }
 
 /* ---- Node hover affordances: a coral "+" (add a downstream node) + a trash (delete).
-   Hidden until the card is hovered, revealed via the card root's :hover. The buttons live
-   inside the node DOM, so `.nodrag` (on the element) keeps React Flow from dragging off them. ---- */
+   F-canvas-fidelity-2 Part 1: rendered only while the node is hovered (React state + a 450ms leave
+   grace, in TeamCanvas), NOT via CSS :hover — so they stay clickable while you cross the gap to reach
+   them. The buttons live inside the node DOM, so `.nodrag` keeps React Flow from dragging off them.
+   Visible whenever present (no opacity toggle); a short fade-in eases the appearance. ---- */
 .rf-node__add,
 .rf-node__del {
   position: absolute;
@@ -798,10 +795,8 @@
   background: var(--surface-card);
   box-shadow: var(--shadow-sm);
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
+  animation: tv-affordance-in var(--dur-fast) var(--ease-out);
   transition:
-    opacity var(--dur-fast) var(--ease-standard),
     color var(--dur-fast) var(--ease-standard),
     border-color var(--dur-fast) var(--ease-standard);
 }
@@ -830,15 +825,21 @@
   border-color: var(--red-500);
   color: var(--red-500);
 }
-/* revealed while hovering the card (any node kind), or on keyboard focus (a11y) */
-.rf-node:hover .rf-node__add,
-.rf-node:hover .rf-node__del,
-.rf-gate:hover .rf-node__del,
-.rf-terminal:hover .rf-node__del,
-.rf-node__add:focus-visible,
-.rf-node__del:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
+/* F-canvas-fidelity-2 Part 1: a short fade-in on appearance (render is state-driven now, so there is
+   no CSS opacity toggle). Neutralized under reduced motion. */
+@keyframes tv-affordance-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-node__add,
+  .rf-node__del {
+    animation: none;
+  }
 }
 
 /* ---- Edge hover affordances: a transparent wide hit-path (drives the hover state), an

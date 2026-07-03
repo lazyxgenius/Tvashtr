@@ -68,6 +68,9 @@ describe("TeamCanvas — inline authoring affordances (F1b)", () => {
   it("the node '+' opens the kind picker; picking Worker adds a downstream node from that source", () => {
     const { container, onAddDownstream } = renderEditable();
     const pmNode = container.querySelector('[data-id="n-pm"]') as HTMLElement;
+    // F-canvas-fidelity-2: the node affordances now render on hover (state-driven, not CSS), so hover
+    // the node before reaching for its "+".
+    fireEvent.mouseOver(pmNode);
     fireEvent.click(within(pmNode).getByRole("button", { name: "Add a downstream node" }));
     const picker = screen.getByRole("dialog", { name: "Add a downstream node" });
     fireEvent.click(within(picker).getByText("Worker"));
@@ -78,6 +81,7 @@ describe("TeamCanvas — inline authoring affordances (F1b)", () => {
   it("the node trash deletes exactly that node", () => {
     const { container, onDeleteNodes } = renderEditable();
     const engNode = container.querySelector('[data-id="n-eng"]') as HTMLElement;
+    fireEvent.mouseOver(engNode);
     fireEvent.click(within(engNode).getByRole("button", { name: "Delete node" }));
     expect(onDeleteNodes).toHaveBeenCalledWith(["n-eng"]);
   });

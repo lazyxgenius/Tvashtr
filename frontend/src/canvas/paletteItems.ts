@@ -2,7 +2,7 @@ import {
   ClipboardCheck,
   DraftingCompass,
   OctagonX,
-  PackageCheck,
+  Package,
   PenLine,
   ShieldCheck,
   Sparkles,
@@ -48,7 +48,7 @@ export const PALETTE_PRIMITIVES: PaletteChip[] = [
     label: "Ship",
     title: "An ending that commits & ships",
     body: { node_kind: "terminal", terminal_kind: "ship" },
-    Icon: PackageCheck,
+    Icon: Package,
   },
   {
     label: "Stop",

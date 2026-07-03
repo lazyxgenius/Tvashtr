@@ -3,7 +3,7 @@ import {
   DraftingCompass,
   type LucideIcon,
   OctagonX,
-  PackageCheck,
+  Package,
   PenLine,
   ShieldCheck,
   Terminal,
@@ -22,6 +22,6 @@ const ROLE_ICON: Record<string, LucideIcon> = {
 
 export function glyphForNode(kind: string, roleName: string, terminalKind?: string): LucideIcon {
   if (kind === "gate") return ShieldCheck;
-  if (kind === "terminal") return terminalKind === "ship" ? PackageCheck : OctagonX;
+  if (kind === "terminal") return terminalKind === "ship" ? Package : OctagonX;
   return ROLE_ICON[roleName] ?? Terminal;
 }

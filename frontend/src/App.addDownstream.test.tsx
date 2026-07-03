@@ -143,7 +143,9 @@ describe("App — inline '+' adds a downstream node with a FORWARD edge (F1b)", 
     await screen.findByText("Product manager");
 
     // Click the "+" on the Engineer (worker) node → the inline kind picker opens → pick Worker.
+    // F-canvas-fidelity-2: the affordances now render on hover (state-driven, not CSS), so hover first.
     const engNode = container.querySelector('[data-id="tn-eng"]') as HTMLElement;
+    fireEvent.mouseOver(engNode);
     fireEvent.click(within(engNode).getByRole("button", { name: "Add a downstream node" }));
     const picker = screen.getByRole("dialog", { name: "Add a downstream node" });
     fireEvent.click(within(picker).getByText("Worker"));

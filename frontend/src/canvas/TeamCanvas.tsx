@@ -1,11 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type MouseEvent as ReactMouseEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Background,
   BackgroundVariant,
   type Connection,
   Controls,
   type Edge,
-  MarkerType,
   MiniMap,
   type Node,
   ReactFlow,
@@ -30,6 +36,7 @@ import { AgentNodeCard, type AgentNodeData } from "./AgentNodeCard";
 import { AuthoringContext } from "./authoringContext";
 import { CanvasEmpty } from "./CanvasEmpty";
 import { type EdgeConfirm, EdgeRoleEditor, type PendingConnect } from "./EdgeRoleEditor";
+import { buildEdges } from "./edges";
 import { NodePalette } from "./NodePalette";
 import { NodePicker } from "./NodePicker";
 import { ReworkEdge } from "./ReworkEdge";
@@ -43,33 +50,6 @@ const EMPTY_FLAGS: ValidityFlags = {
   edgeErrors: new Map(),
   orphans: new Set(),
 };
-
-/** Raw backend status per node id (idle|running|done|failed|stopped) — the source for the
- *  forward-edge styling (the class derives from a pair of adjacent raw statuses). */
-function rawStatusById(graph: GraphData): Record<string, string> {
-  const m: Record<string, string> = {};
-  for (const n of graph.nodes) m[n.id] = n.status;
-  return m;
-}
-
-/** Pick the source/target handles for an edge by geometry, so any branch routes cleanly:
- *  horizontal backbone → right→left (today's look); a downward branch → bottom→top; a
- *  leftward branch → left→right. Pure; generalizes to any authored graph. */
-function pickHandles(
-  s: NodePosition,
-  t: NodePosition,
-): { sourceHandle: string; targetHandle: string } {
-  const dx = t.x - s.x;
-  const dy = t.y - s.y;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0
-      ? { sourceHandle: "s-right", targetHandle: "t-left" }
-      : { sourceHandle: "s-left", targetHandle: "t-right" };
-  }
-  return dy >= 0
-    ? { sourceHandle: "s-bottom", targetHandle: "t-top" }
-    : { sourceHandle: "s-top", targetHandle: "t-bottom" };
-}
 
 /** The entry set: a node is an ENTRY iff no FORWARD edge targets it. A forward edge is any edge
  *  that is NOT a bounded loop-back — the loop-back / rework edge carries `conditions.loop_limit`
@@ -187,12 +167,42 @@ export function TeamCanvas({
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
   const [pending, setPending] = useState<PendingConnect | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  // F-canvas-fidelity-2 Part 1: the hover-out grace. A node/edge stays "hovered" for ~450ms after the
+  // mouse leaves, so its +/trash affordances stay rendered + clickable long enough to slide onto them
+  // (they sit in a gap off the card/path). One timer per axis; cleared on unmount + on re-enter.
+  const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
+  const nodeHoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const edgeHoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [addPicker, setAddPicker] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const flags = useMemo(
     () => (editable ? validityFlags(validity) : EMPTY_FLAGS),
     [editable, validity],
+  );
+
+  // Part 1: the hover handlers. Enter sets the id immediately (+ cancels a pending leave); leave
+  // starts the 450ms grace before clearing. Wired only in author mode (see the JSX gate).
+  const handleNodeEnter = useCallback((_e: ReactMouseEvent, node: Node<AgentNodeData>) => {
+    clearTimeout(nodeHoverTimer.current);
+    setHoverNodeId(node.id);
+  }, []);
+  const handleNodeLeave = useCallback(() => {
+    clearTimeout(nodeHoverTimer.current);
+    nodeHoverTimer.current = setTimeout(() => setHoverNodeId(null), 450);
+  }, []);
+  const handleEdgeHover = useCallback((id: string, hovered: boolean) => {
+    clearTimeout(edgeHoverTimer.current);
+    if (hovered) setHoveredEdgeId(id);
+    else edgeHoverTimer.current = setTimeout(() => setHoveredEdgeId(null), 450);
+  }, []);
+  // Clear any pending grace timers on unmount.
+  useEffect(
+    () => () => {
+      clearTimeout(nodeHoverTimer.current);
+      clearTimeout(edgeHoverTimer.current);
+    },
+    [],
   );
 
   // (Re)build nodes when the TOPOLOGY changes. In the run view that's keyed on run_id (so the
@@ -218,10 +228,16 @@ export function TeamCanvas({
         id: n.id,
         type: "agentNode",
         position: n.position,
-        data: nodeData(n, run, workflowStatus, tasks, graph.run_id, flags, entry.has(n.id)),
+        // Seed `hovered` (Part 1) from the CURRENT hover state so an add/delete rebuild doesn't drop
+        // it while the mouse is still on the source node (the hover effect only re-applies on a
+        // hoverNodeId change, which a rebuild doesn't cause).
+        data: {
+          ...nodeData(n, run, workflowStatus, tasks, graph.run_id, flags, entry.has(n.id)),
+          hovered: editable && hoverNodeId === n.id,
+        },
       })),
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reason: rebuild ONLY when the topology (topoKey) changes; run/workflowStatus/tasks/flags refresh in place below so the per-poll refetch + a drag don't rebuild and reset positions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reason: rebuild ONLY when the topology (topoKey) changes; run/workflowStatus/tasks/flags + the hover flag refresh in place below so the per-poll refetch + a drag don't rebuild and reset positions.
   }, [topoKey, setNodes]);
 
   // Refresh each node's state (+ validity flags) on every poll/edit, preserving dragged positions.
@@ -235,12 +251,29 @@ export function TeamCanvas({
         return n
           ? {
               ...nd,
-              data: nodeData(n, run, workflowStatus, tasks, graph.run_id, flags, entry.has(n.id)),
+              // Preserve the transient hover flag (Part 1) across the graph refresh — it is driven by
+              // the hover effect below, not by the graph-derived node data.
+              data: {
+                ...nodeData(n, run, workflowStatus, tasks, graph.run_id, flags, entry.has(n.id)),
+                hovered: nd.data.hovered,
+              },
             }
           : nd;
       }),
     );
   }, [graph, run, workflowStatus, tasks, flags, setNodes]);
+
+  // Part 1: thread the hovered flag into each node's data (author mode only) so the affordances render
+  // from state (`data.hovered`), not CSS `:hover` — they linger through the 450ms grace window. Only
+  // the node whose hover changed re-renders (identity preserved otherwise).
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((nd) => {
+        const h = editable && hoverNodeId === nd.id;
+        return nd.data.hovered === h ? nd : { ...nd, data: { ...nd.data, hovered: h } };
+      }),
+    );
+  }, [hoverNodeId, editable, setNodes]);
 
   useEffect(() => {
     if (!focusNodeId) return;
@@ -266,87 +299,18 @@ export function TeamCanvas({
     [editable, graph],
   );
 
-  const edges: Edge[] = useMemo(() => {
-    if (!graph) return [];
-    const raw = rawStatusById(graph);
-    const posById: Record<string, NodePosition> = {};
-    for (const n of graph.nodes) posById[n.id] = n.position;
-
-    return graph.edges.map((e) => {
-      const invalid = flags.edgeErrors.has(e.id) ? " rf-edge--invalid" : "";
-      // F1b: the shared authoring affordance data — the hover-revealed midpoint trash. `editable`
-      // gates it off in the run view; `hovered` is driven by the edge's own transparent hit-path.
-      const authoring = {
-        editable,
-        hovered: hoveredEdgeId === e.id,
-        onHover: (h: boolean) => setHoveredEdgeId(h ? e.id : null),
-        onDelete: () => onDeleteEdges?.([e.id]),
-      };
-
-      // 1. The bounded loop-back (`{loop_limit: N}`, no `when`) → the calm dashed arc.
-      if (e.conditions?.loop_limit != null) {
-        return {
-          id: e.id,
-          source: e.source_node_id,
-          target: e.target_node_id,
-          sourceHandle: "s-bottom",
-          targetHandle: "t-bottom",
-          type: "rework",
-          className: `rf-edge--rework${invalid}`,
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: "var(--rework-stroke)",
-            width: 16,
-            height: 16,
-          },
-          data: authoring,
-        };
-      }
-
-      // 2. Every other edge routes by geometry; the class is by category, rendered through the
-      //    custom WorkEdge (so it carries the midpoint trash + an optional branch label).
-      const { sourceHandle, targetHandle } = pickHandles(
-        posById[e.source_node_id],
-        posById[e.target_node_id],
-      );
-      let className: string;
-      let markerEnd;
-      if (e.conditions?.when === "rejected") {
-        className = "rf-edge--reject";
-        markerEnd = {
-          type: MarkerType.ArrowClosed,
-          color: "var(--branch-stroke)",
-          width: 14,
-          height: 14,
-        };
-      } else if (e.edge_type === "escalation") {
-        className = "rf-edge--escalation";
-        markerEnd = {
-          type: MarkerType.ArrowClosed,
-          color: "var(--branch-stroke)",
-          width: 14,
-          height: 14,
-        };
-      } else {
-        const s = raw[e.source_node_id];
-        const t = raw[e.target_node_id];
-        className =
-          t === "running" ? "rf-edge--flow" : s === "done" && t === "done" ? "rf-edge--done" : "";
-      }
-      return {
-        id: e.id,
-        source: e.source_node_id,
-        target: e.target_node_id,
-        sourceHandle,
-        targetHandle,
-        type: "work",
-        className: `${className}${invalid}`.trim(),
-        markerEnd,
-        animated: false,
-        data: { ...authoring, label: e.conditions?.when },
-      };
-    });
-  }, [graph, flags, editable, hoveredEdgeId, onDeleteEdges]);
+  // F-canvas-fidelity-2: the edge set is built by the pure `buildEdges` (canvas/edges.ts) — every edge
+  // now ends in a state-colored arrowhead (Part 2). `handleEdgeHover` routes the edge's own hover
+  // through the 450ms leave grace (Part 1), and the trash deletes via the existing handler.
+  const edges: Edge[] = useMemo(
+    () =>
+      graph
+        ? buildEdges(graph, flags, editable, hoveredEdgeId, handleEdgeHover, (id) =>
+            onDeleteEdges?.([id]),
+          )
+        : [],
+    [graph, flags, editable, hoveredEdgeId, handleEdgeHover, onDeleteEdges],
+  );
 
   // F1b: provided just above <ReactFlow> so the custom node cards (rendered deep in React Flow's
   // subtree) reach the inline affordance callbacks without threading them through node data (which
@@ -400,6 +364,8 @@ export function TeamCanvas({
           onNodeDragStop={
             editable && onMoveNode ? (_e, node) => onMoveNode(node.id, node.position) : undefined
           }
+          onNodeMouseEnter={editable ? handleNodeEnter : undefined}
+          onNodeMouseLeave={editable ? handleNodeLeave : undefined}
           onNodeClick={(_event, node) => {
             const data = node.data;
             const isAgent = data.kind === "agent" || data.kind === "completion";

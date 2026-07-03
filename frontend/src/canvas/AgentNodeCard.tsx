@@ -7,7 +7,7 @@ import {
   DraftingCompass,
   type LucideIcon,
   OctagonX,
-  PackageCheck,
+  Package,
   PenLine,
   Plus,
   ShieldCheck,
@@ -41,6 +41,9 @@ export type AgentNodeData = {
   // F1a: computed by the canvas (not the backend) — true for the graph's entry node(s), i.e. no
   // forward edge targets it. Renders the coral start-bar + "Start · entry" eyebrow. VISUAL only.
   isEntry?: boolean;
+  // F-canvas-fidelity-2 Part 1: true when this node is the hover-graced one (author mode) — drives the
+  // +/trash affordance render from state (not CSS :hover), so they linger through the grace. VISUAL only.
+  hovered?: boolean;
 };
 
 /** The authoring overlay classes for a node (P1.8d): a red ring for a blocking issue, a dim for an
@@ -59,7 +62,7 @@ const ROLE_BLURB: Record<string, string> = {
   pm: "Drafts the spec",
   architect: "Adds the technical design",
   engineer: "Writes & ships it",
-  reviewer: "Checks the work against the spec",
+  reviewer: "Checks against the spec",
 };
 const ROLE_ICON: Record<string, LucideIcon> = {
   pm: PenLine,
@@ -107,31 +110,31 @@ function NodeHandles() {
   );
 }
 
-/** F1b: the inline hover affordances rendered inside every EDITABLE node — a coral "+" (thinker/
- *  worker only; opens the downstream kind picker, anchored at the button's on-screen rect) and a
- *  trash (all kinds; deletes the node). Nothing renders in the run view (`editable` false), so F1a's
- *  card is byte-identical there. `.nodrag` stops React Flow starting a node drag from the button;
- *  `stopPropagation` keeps the click off the node-select handler. Reveal-on-hover is pure CSS. */
-function NodeAffordances({ nodeId, kind }: { nodeId: string; kind: string }) {
+/** F1b: the inline hover affordances rendered inside every EDITABLE node — a coral "+" (opens the
+ *  downstream kind picker, anchored at the button's on-screen rect) and a trash (deletes the node).
+ *  Nothing renders in the run view (`editable` false), so F1a's card is byte-identical there. `.nodrag`
+ *  stops React Flow starting a node drag from the button; `stopPropagation` keeps the click off the
+ *  node-select handler.
+ *  F-canvas-fidelity-2: reveal is driven by `hovered` (the canvas hover state + a 450ms leave grace),
+ *  NOT CSS `:hover` — so the buttons stay clickable while you cross the gap to reach them (Part 1). The
+ *  "+" now shows on EVERY node kind (Part 3), not just thinker/worker. */
+function NodeAffordances({ nodeId, hovered }: { nodeId: string; hovered?: boolean }) {
   const ctx = useContext(AuthoringContext);
-  if (!ctx.editable) return null;
-  const canAdd = kind === "agent" || kind === "completion";
+  if (!ctx.editable || !hovered) return null;
   return (
     <>
-      {canAdd && (
-        <button
-          type="button"
-          className="rf-node__add nodrag nopan"
-          title="Add a downstream node"
-          aria-label="Add a downstream node"
-          onClick={(e) => {
-            e.stopPropagation();
-            ctx.requestAdd?.(nodeId, e.currentTarget.getBoundingClientRect());
-          }}
-        >
-          <Plus size={14} strokeWidth={2.2} />
-        </button>
-      )}
+      <button
+        type="button"
+        className="rf-node__add nodrag nopan"
+        title="Add a downstream node"
+        aria-label="Add a downstream node"
+        onClick={(e) => {
+          e.stopPropagation();
+          ctx.requestAdd?.(nodeId, e.currentTarget.getBoundingClientRect());
+        }}
+      >
+        <Plus size={14} strokeWidth={2.2} />
+      </button>
       <button
         type="button"
         className="rf-node__del nodrag nopan"
@@ -198,7 +201,7 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
       title={d.errorMessage}
     >
       <NodeHandles />
-      <NodeAffordances nodeId={nodeId} kind={d.kind} />
+      <NodeAffordances nodeId={nodeId} hovered={d.hovered} />
       {d.isEntry && <span className="rf-node__bar" aria-hidden />}
       <div className="rf-node__head">
         <span className="rf-node__glyph">
@@ -261,7 +264,7 @@ function GateCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) 
       title={d.errorMessage || cfg.title || label}
     >
       <NodeHandles />
-      <NodeAffordances nodeId={nodeId} kind="gate" />
+      <NodeAffordances nodeId={nodeId} hovered={d.hovered} />
       <span className="rf-gate__glyph">
         <ShieldCheck size={16} strokeWidth={1.7} />
       </span>
@@ -281,7 +284,7 @@ function TerminalCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData
   const kind = cfg.terminal_kind === "ship" ? "ship" : "stop";
   const state = d.terminalState ?? "idle";
   const reached = state !== "idle";
-  const Icon = kind === "ship" ? PackageCheck : OctagonX;
+  const Icon = kind === "ship" ? Package : OctagonX;
   const label = kind === "ship" ? (reached ? "Shipped" : "Ship") : reached ? "Stopped" : "Stop";
   return (
     <div
@@ -289,7 +292,7 @@ function TerminalCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData
       title={d.errorMessage}
     >
       <NodeHandles />
-      <NodeAffordances nodeId={nodeId} kind="terminal" />
+      <NodeAffordances nodeId={nodeId} hovered={d.hovered} />
       <span className="rf-terminal__glyph">
         <Icon size={16} strokeWidth={1.7} />
       </span>

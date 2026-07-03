@@ -2,116 +2,124 @@
 
 ## Current Milestone
 M-frontend (Tvashtr-43) — the premium reskin of the warm cream-paper FE, decomposed F0→F4.
-This slice: **Canvas Fidelity Pass 1 — the canvas SCREEN SHELL (header + toolbar + remove the author
-team-rail) + the config DRAWER collision fix**, reconciled to `design/Tvashtr Frontend Overhaul/Canvas.dc.html`.
+This slice: **Canvas Fidelity Pass 2 — the canvas INTERIOR (node/edge hover behavior + arrowheads +
+small node/edge fidelity)**, reconciled to `design/Tvashtr Frontend Overhaul/Canvas.dc.html`.
 
-## OUTCOME — Canvas Fidelity Pass 1 SHIPPED (READY_TO_MERGE; clean SUCCESS)
-The canvas screen SHELL now matches the design. **Part A:** the author-mode "Your teams" left rail is
-GONE — the canvas is full-width while authoring (the team library lives on the Dashboard); the tasks
-drawer still appears during a run. **Part B:** the header's right side is a single **avatar button**
-(the email's initial) opening a **profile menu** (the email + a Log out row → `onLogout`), replacing the
-raw email + Log out text; the green backend dot moved OUT of the header. **Part C:** the toolbar is
-`[back-arrow] [Run this team] [Single | A/B toggle]` (Run BEFORE the toggle) + a right cluster with the
-**spend** (`$0.00` idle) + the green **BackendDot**; the design's non-functional grid icon is omitted and
-the always-on hint line removed (the validity warning kept, compact). **Part D:** the drawer's Model-row
-class collision is fixed — `.tv-picker*` → **`.tv-modelrow*`** in `panel.css` + `TeamNodePanel.tsx` (the
-canvas popover's `.tv-picker` in the frozen `canvas.css` was floating the row out of the drawer); the
-prompt heading is now **"System prompt"** with the design's hint. FRONTEND-ONLY; the backend contract is
-the wall (`api.ts` + `backend/` + `canvas.css` + `Dashboard.tsx` byte-untouched, NO migration, head
-`0018`). All gates green; invariant proofs empty/clean; Playwright self-sign-off captured live; the
-independent review = 0 blocking.
+## OUTCOME — Canvas Fidelity Pass 2 SHIPPED (READY_TO_MERGE; clean SUCCESS)
+The canvas interior now matches the design's node/edge behavior. **Part 1 (headline):** the node +/trash
+affordances (and the edge midpoint trash) no longer vanish the instant the mouse leaves — a **450ms
+hover-out grace** keeps them rendered + clickable, so you can slide onto the "+" (which sits ~10px off
+the card) without it disappearing. Reveal is now driven from React state (`data.hovered`), not CSS
+`:hover`. **Part 2 (headline):** **every edge ends in a state-colored arrowhead** (`MarkerType.ArrowClosed`)
+— a plain forward `work` edge previously had none. Neutral (`--border-strong`) normally, coral while work
+flows, sage when done; branch = muted `--branch-stroke`, rework = coral `--rework-stroke`. **Part 3:** the
+"+" add-downstream shows on **every** node kind (was thinker/worker only). **Part 4:** the top-left palette
+opens on **hover** (click still works), Ship + Stop kept **separate** (flagged). **Part 5:** the Reviewer
+caption is the design's shorter **"Checks against the spec"**; the ship glyph is `Package` (was
+`PackageCheck`) across the card, palette, and drawer header. FRONTEND-ONLY; the backend contract is the
+wall (`api.ts` + `backend/` + `Dashboard.tsx` byte-untouched, NO migration, head `0018`); the Pass 1
+shell/drawer (`App.tsx` / `index.css` / `panel.css`) is byte-unchanged. `canvas.css` was in scope this
+pass. All gates green; invariant proofs empty/clean; Playwright self-sign-off captured live; the
+independent review = 0 blocking (2 non-blocking findings fixed).
 
 ## Last Completed Step
-Canvas Fidelity Pass 1 — 2026-07-03 — branch: feat/canvas-fidelity-1 — commit: (the tip of
-feat/canvas-fidelity-1; exact sha in the FINAL REPORT)
+Canvas Fidelity Pass 2 — 2026-07-03 — branch: feat/canvas-fidelity-2 — commit: (the tip of
+feat/canvas-fidelity-2; exact sha in the FINAL REPORT)
 
 ## READY_TO_MERGE
-READY_TO_MERGE: branch=feat/canvas-fidelity-1, frontend=183 passing, backend=328 passing
+READY_TO_MERGE: branch=feat/canvas-fidelity-2, frontend=190 passing, backend=328 passing
 
-## ⚠️ BASE-BRANCH NOTE (operator merge sequencing — read before merging)
-This branch is based on **`e060eb9` (the F1c tip)**, NOT bare `main` (`e7e0c89`). The brief said "off
-main", but it targets F1c artifacts that do NOT exist on bare main (the drawer's `.tv-picker`, the
-`TeamNodePanel` model picker, the vitest floor 179) — so its true base is the shipped-but-un-merged F1c
-tip (a clean fast-forward exactly one commit above main: `e060eb9^ == e7e0c89 == main`). The WALL vs main
-holds regardless (F1c touched none of `api.ts`/`backend/`/`canvas.css`/`Dashboard.tsx`). **Merge order:
-FF-merge `feat/f1c-config-drawer` FIRST, THEN `feat/canvas-fidelity-1`** (main → F1c → canvas-fidelity-1,
-a clean linear FF). This is a reversible two-way-door choice; flagged loudly in the FINAL REPORT.
+## ⚠️ BASE-BRANCH / MERGE-SEQUENCING NOTE (read before merging)
+The M-frontend canvas work is an UN-MERGED STACK above `main` (`e7e0c89`):
+`main → F1c (e060eb9) → Canvas Fidelity Pass 1 (cfef09b) → Canvas Fidelity Pass 2 (this)`.
+This branch is based on the **Pass 1 tip `cfef09b`**, NOT bare `main` (per the brief). They all
+fast-forward to `main` TOGETHER, in order. **Merge sequence: FF-merge `feat/f1c-config-drawer`, then
+`feat/canvas-fidelity-1`, then `feat/canvas-fidelity-2`** — a clean linear FF chain (each parent is the
+prior tip; verified `git merge-base --is-ancestor main HEAD`). The WALL vs `main` holds across the whole
+stack (none of them touch `api.ts`/`backend/`/`Dashboard.tsx`).
 
 ## Completed Steps (append-only, newest last)
-- [x] F0 — extend-tokens + shared-primitive lift — b43a0d0 (STATE docs f0aabfd) — 2026-07-02
+- [x] F0 — extend-tokens + shared-primitive lift — b43a0d0 — 2026-07-02
 - [x] F1a — canvas node cards + deriveNodeStatus never-reached fix — e861b4c — 2026-07-02
 - [x] F1b — canvas chrome + edges/handles + inline authoring affordances — 937d27d — 2026-07-02
 - [x] F1c — config drawer + dock⇄pop-up toggle + model picker + run-view — e060eb9 (feat/f1c-config-drawer, un-merged) — 2026-07-02
-- [x] Canvas Fidelity Pass 1 — screen shell (header/toolbar/rail) + drawer collision fix — feat/canvas-fidelity-1 — 2026-07-03
+- [x] Canvas Fidelity Pass 1 — screen shell (header/toolbar/rail) + drawer collision fix — cfef09b (feat/canvas-fidelity-1, un-merged) — 2026-07-03
+- [x] Canvas Fidelity Pass 2 — canvas interior (hover grace + arrowheads + fidelity) — feat/canvas-fidelity-2 — 2026-07-03
 
-## The change (8 files, FE-only)
-- **`frontend/src/App.tsx`** — Part A: stopped rendering `<TeamsRail>` (author canvas full-width); the
-  tasks drawer is now `{!authoring && <TasksDrawer/>}`; removed the dead rail imports/state/handlers
-  (`TeamsRail`, `createTeam`/`deleteTeam`/`getTemplates`, `TeamSummary`/`Template`, `teams`/`templates`/
-  `teamBusy`, `handleSelectTeam`/`handleCreateTeam`/`handleDeleteTeam`); slimmed `loadTeams` to seed the
-  default `currentTeamId`. Part B: rewrote the header to the `.tv-topbar` + avatar/profile-menu (new
-  `profileOpen` state); removed the raw email + Log out + `<BackendDot/>` + the header "← Dashboard"
-  button. Part C: rewrote the toolbar to `.tv-toolbar` (back-arrow, Run + play glyph, the extracted
-  `viewToggle` [reachable in author AND A/B mode], right-cluster spend + moved `<BackendDot/>`); removed
-  the hint line; added `spendLabel` (`run?.cost_total_usd ?? Σcosts.cost_usd`, `$0.00` idle) + `avatarInitial`.
-- **`frontend/src/components/BackendDot.tsx`** — the design's bare 8px status dot + tonal halo (sage
-  connected) — the visible label dropped, kept as `title`/`aria-label` (`role="img"`).
-- **`frontend/src/index.css`** — new shell CSS family (append-only): `.tv-topbar`, `.tv-avatar(-wrap)`,
-  `.tv-avatarmenu(__catch/__id/__avatar/__email/__divider/__logout)`, `.tv-toolbar(__back/__right/__spend/
-  __divider)` + a reduced-motion guard. Tokens only. New names verified collision-free.
-- **`frontend/src/panel.css`** — Part D: `.tv-picker*` → `.tv-modelrow*` (the drawer Model row) so it no
-  longer collides with `canvas.css`'s floating `.tv-picker` popover. (canvas.css untouched.)
-- **`frontend/src/panel/TeamNodePanel.tsx`** — Part D: `.tv-picker*` → `.tv-modelrow*` (3 className sites);
-  prompt heading "Prompt" → **"System prompt"** + hint → "Its whole identity. The run appends the idea and
-  the live PRD on top."
-- **`frontend/src/App.test.tsx`** — re-pointed to the new shell; ADD: Part A (no rail while authoring; the
-  tasks drawer renders once a run starts — seeded via a module-level `extraTasks`), Part B (avatar hides
-  email + Log out until clicked; Log out calls `onLogout`), Part C (back-arrow + Run-before-toggle order +
-  `$0.00` + status dot + no hint). All 4 existing describes kept green.
-- **`frontend/src/panel/TeamNodePanel.test.tsx`** — ADD: the Model row is `.tv-modelrow` (never `.tv-picker`),
-  provider select + model input inside `.tv-panel__body`. The Slice-C compose-on-Save test stays green.
+## The change (11 files, FE-only; canvas interior)
+- **`frontend/src/canvas/edges.ts`** (NEW) — the pure edge builder extracted from `TeamCanvas` (moved
+  `rawStatusById` + `pickHandles`): `buildEdges(...)` + `forwardMarker`/`branchMarker`/`reworkMarker`.
+  Part 2: the forward `work` edge now gets a state-colored `ArrowClosed` markerEnd (border-strong / coral
+  flow / sage done); branch + rework markers kept. Every edge ends in an arrowhead.
+- **`frontend/src/canvas/TeamCanvas.tsx`** — Part 1: `hoverNodeId` state + `nodeHoverTimer`/`edgeHoverTimer`
+  refs; `handleNodeEnter`/`handleNodeLeave` (wired to RF `onNodeMouseEnter/Leave`, author-only) + `handleEdgeHover`,
+  each with a 450ms leave grace (cleared on unmount + re-enter); a dedicated effect threads
+  `hovered = editable && hoverNodeId === id` into node data, preserved across the refresh effect AND
+  seeded in the topology-rebuild effect (the review fix). Edges built via `buildEdges`.
+- **`frontend/src/canvas/AgentNodeCard.tsx`** — Part 1: `NodeAffordances` renders the +/trash only when
+  `data.hovered` (state, not CSS); `hovered?: boolean` added to `AgentNodeData`; threaded at all 3 call
+  sites. Part 3: the "+" shows on every kind (dropped the `canAdd = agent||completion` gate). Part 5:
+  `ROLE_BLURB.reviewer` → "Checks against the spec"; ship glyph `PackageCheck` → `Package`.
+- **`frontend/src/canvas.css`** — Part 1: removed the obsolete `.rf-node:hover .rf-node__add/__del` reveal
+  rules (state drives render now); the affordances are visible whenever present + a reduced-motion-guarded
+  `tv-affordance-in` fade-in. Part 4: removed the unused `.tv-palette__backdrop` rule.
+- **`frontend/src/canvas/NodePalette.tsx`** — Part 4: opens on **hover** (onMouseEnter/Leave on `.tv-palette`
+  + a 160ms close-grace bridging the trigger→panel gap); click still toggles; dropped the full-screen
+  backdrop (a descendant, it would defeat mouse-leave-close). Ship + Stop stay separate.
+- **`frontend/src/canvas/paletteItems.ts`** — Part 5: the Ship palette glyph `PackageCheck` → `Package`.
+- **`frontend/src/panel/nodeGlyph.ts`** — Part 5 (review consistency): the drawer header's ship glyph
+  `PackageCheck` → `Package`, so the ship entity reads the same across card / palette / drawer.
+- **Tests:** `edges.test.ts` (NEW — every edge's markerEnd by state), `TeamCanvas.hover.test.tsx` (NEW —
+  hover grace across the 450ms boundary + across a topology rebuild, "+" on gate+terminal, Reviewer
+  caption), and re-pointed `TeamCanvas.affordances.test.tsx` + `App.addDownstream.test.tsx` (hover the
+  node before clicking its now-state-driven "+"/trash).
 - **`STATE.md`** — this file.
 
 ## Acceptance evidence (all run to green this session)
-- `make test` (backend offline) → **328 passed, 1 warning in 15.62s** (floor 328; FE-only, no regression).
-- `make test-frontend` (vitest) → **Tests 183 passed (183)** across 24 files (floor 179 → **183**, +4 new).
+- `make test` (backend offline) → **328 passed, 1 warning in 16.69s** (floor 328; FE-only, no regression).
+- `make test-frontend` (vitest) → **Tests 190 passed (190)** across 26 files (floor 183 → **190**, +7).
 - `make build-frontend` → tsc --noEmit clean + **vite ✓ built in 1.20s**.
 - `make lint` → ruff **All checks passed! 126 files already formatted** + eslint (`--max-warnings 0`) clean
   + prettier **All matched files use Prettier code style!**.
-- Playwright self-sign-off (live stack, seeded operator `operator@tvashtr.local`, real team; targeted
-  `browser_evaluate` + screenshots, NO whole-canvas a11y snapshot): (1) author canvas — full-width, NO
-  `.tv-rail`, `.tv-topbar` avatar "O" (no raw email/Log out in header), `.tv-toolbar` = [Back to dashboard,
-  Run this team, Single run, A/B compare] (Run before toggle) + spend "$0.00" + BackendDot, no hint line;
-  (2) profile menu open — `operator@tvashtr.local` + a Log out row; (3)/(3b) the Engineer author drawer —
-  labels [Capability, "System prompt", Model], the Model row is `.tv-modelrow` INSIDE `.tv-panel__body`
-  (`rowWithinPanelBounds: true`), provider `<select>` + model `<input>` inline, **NO `.tv-picker` anywhere**,
-  no floating box. Compared vs `Canvas.dc.html` — faithful.
-- Screenshots (OUTSIDE the repo): `…/scratchpad/canvas-fidelity-1/cf1-01-author-canvas.png`,
-  `cf1-02-profile-menu.png`, `cf1-03-drawer-inline-modelrow.png`, `cf1-03b-drawer-modelrow.png`.
-- Independent review (fresh subagent over the working-tree diff) → **0 blocking findings** (WALL intact,
-  A/B toggle reachable, spend uses `??`, rename complete, the 4 new tests revert-sensitive).
+- Playwright self-sign-off (live stack, seeded operator, real team; targeted `browser_evaluate` +
+  screenshots): **Part 2** — all 9 edges carry an ArrowClosed markerEnd (`everyEdgeHasArrowhead: true`);
+  distinct arrow colors `--border-strong` / `--branch-stroke` / `--rework-stroke` (coral/sage only in a run,
+  proven by the unit test); RF resolves the `var()` token. **Part 3** — the "+" renders on a gate AND a ship.
+  **Part 1** — hover a node → +/trash render; 160ms after mouse-out they STILL render (`duringGrace: true`);
+  past 450ms they're GONE (`afterGrace: false`). **Part 4** — the palette opens on hover with items
+  [Thinker, Worker, Gate, Ship, Stop, PM, Architect, Engineer, Reviewer] (Ship + Stop separate).
+- Screenshots (OUTSIDE the repo): `…/scratchpad/canvas-fidelity-2/cf2-01-arrowheads.png`,
+  `cf2-02-node-affordances.png`, `cf2-03-palette-hover.png`.
+- Independent review (fresh subagent over the diff) → **0 blocking**; 2 non-blocking fixed (hover dropped
+  on a topology rebuild → now seeded in the rebuild effect + a regression test; `nodeGlyph.ts` ship glyph →
+  `Package`). One by-design note kept: the hover affordances are mouse-only (matches the design's
+  `<sc-if n.hovered>`; the Delete key still deletes a selected node).
 
-## Invariants held (proofs run on disk this session)
-- THE WALL — `git diff main --` EMPTY for: `frontend/src/lib/api.ts`, `backend/`, `frontend/src/canvas.css`,
+## Invariants held (proofs on disk this session)
+- THE WALL — `git diff main --` EMPTY for `frontend/src/lib/api.ts`, `backend/`,
   `frontend/src/components/Dashboard.tsx`. Alembic head **`0018_run_subpath (head)`** (NO migration).
-- DS tokens frozen — `git diff main -- frontend/src/design-system/` EMPTY.
-- Collision sweep (CSS comments stripped) — `panel.css ∩ canvas.css` .tv-* = **EMPTY** (was `{.tv-picker}`).
-  `panel.css ∩ index.css` = EMPTY. `canvas.css ∩ index.css` = `{.tv-pill}` (the pre-existing intentional
-  shared StatusPill primitive; canvas.css frozen — not a regression).
-- My commit stages ONLY the 8 files above — nothing under `backend/`, no `alembic/versions/*`, no `design/`,
-  no `prompts/*.md`, no side-chat `.md` files (untracked, left alone), never `.tvashtr/loop-state.md`.
+- Pass 1 shell/drawer UNCHANGED — `git diff cfef09b -- frontend/src/App.tsx frontend/src/index.css
+  frontend/src/panel.css` EMPTY (this pass is the interior, not the shell/drawer).
+- DS tokens frozen — `git diff main -- frontend/src/design-system/` EMPTY. `canvas.css` was in scope
+  (unfrozen this pass). Tokens only; no ad-hoc hex.
+- My commit stages ONLY the 11 files above + STATE.md — nothing under `backend/`, no migration, no
+  `design/`, no `prompts/*.md`, no side-chat `.md` files (untracked, left alone), no `PROJECTPLAN.md` (the
+  side-chat's ` M`, left alone), never `.tvashtr/loop-state.md`.
 
 ## Deviations from the brief
-- **Base = the F1c tip `e060eb9`, not bare main** (see the BASE-BRANCH NOTE) — the brief is un-executable
-  off bare main (its Part D target + floor 179 are F1c artifacts). Reversible two-way-door; WALL vs main holds.
-- **Playwright ran against the LIVE stack** (make backend + make frontend + the seeded operator), per the
-  brief — functional facts verified via `browser_evaluate`; the aesthetic sign-off stays a human gate.
-- **`BackendDot` restyled to the design's bare dot** (label → tooltip/aria) so it fits the clean toolbar
-  right-cluster — the brief said "move `<BackendDot/>` here" + gave the design's dot recipe.
+- **Edge hover kept the F1b per-edge `onHover` mechanism** (hit-path + portaled-trash handlers) routed
+  through the 450ms grace, rather than RF `onEdgeMouseEnter/Leave` — minimal + lower-risk (the portaled
+  trash is why F1b avoided RF-level edge handlers); the exit fact (450ms grace on edges) is identical.
+  Nodes DO use RF `onNodeMouseEnter/Leave` as the brief specifies.
+- **`nodeGlyph.ts` (a Pass 1/F1c drawer file, outside the interior scope) touched** for the ship-glyph
+  consistency fix surfaced by the review — not a WALL file, and it aligns the ship glyph across surfaces.
+- **Playwright ran against the LIVE stack** (per the brief) — functional facts via `browser_evaluate`; the
+  aesthetic sign-off stays a human gate (esp. the arrowhead size ~14px vs the design's ~7 SVG unit — a
+  visual eyeball; RF's marker unit differs from the design's SVG markerWidth).
 
 ## Test Count
-**183 vitest** (floor 179 → 183; +4 new) · **328 backend pytest** (unchanged, FE-only) — 2026-07-03.
+**190 vitest** (floor 183 → 190; +7 new) · **328 backend pytest** (unchanged, FE-only) — 2026-07-03.
 
 ## Blocked
-None — clean SUCCESS. Next in M-frontend after this + F1c merge: F2 (dashboard), F3 (auth wizard),
-F4 (landing). The revamp is NOT "done" until F4 (operator's all-caps announcement gate).
+None — clean SUCCESS. Next in M-frontend after the canvas stack (F1c + Pass 1 + Pass 2) merges: F2
+(dashboard), F3 (auth wizard), F4 (landing). The revamp is NOT "done" until F4 (operator's all-caps gate).
