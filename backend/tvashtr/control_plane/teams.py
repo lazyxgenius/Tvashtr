@@ -17,10 +17,11 @@ from copy import deepcopy
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import aliased
 
 from tvashtr.config import get_settings
 from tvashtr.db import session_scope
-from tvashtr.models import AgentNode, Edge, TeamGraph
+from tvashtr.models import AgentNode, Edge, Run, TeamGraph
 
 # The Engineer needs a stronger instruction-follower than the cheap completion
 # default; same single OPENROUTER_API_KEY, different slug (matches agent-smoke).
@@ -1087,16 +1088,86 @@ def list_templates() -> list[dict]:
     ]
 
 
-def _team_summary(session, graph: TeamGraph) -> dict:
-    """One library team as a list/summary row: identity + its node count (for the teams rail)."""
+def _run_rollup_by_origin(session, library_team_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    """Map each LIBRARY team id -> ``{"last_run": {...} | None, "spend_usd": float}`` from its runs.
+
+    A run points at an immutable CLONE of a library team (``runs.team_graph_id`` = the clone), whose
+    nodes carry ``cloned_from_node_id`` back to the origin library-team nodes. So a run joins to its
+    library team via clone node -> ``cloned_from_node_id`` -> origin node -> origin team (the SAME
+    link ``_latest_invocation_by_origin`` uses). ``last_run`` = the most recent run (max created_at)
+    across ALL clones of the team; ``spend_usd`` = the SUM of ``runs.cost_total_usd`` (NULL as 0)
+    across them. Batched over all ids at once (NO N+1); a clone has many nodes so the run join fans
+    out, so a ``DISTINCT`` collapses it to one row per (team, run) before aggregating (spend is not
+    multiplied by node count). Owner-isolation rides on the caller passing only that owner's
+    library-team ids. Read-only (SELECTs over runs + agent_nodes)."""
+    rollup: dict[uuid.UUID, dict] = {
+        tid: {"last_run": None, "spend_usd": 0.0} for tid in library_team_ids
+    }
+    if not library_team_ids:
+        return rollup
+
+    clone = aliased(AgentNode)  # a node of the run's cloned (run-snapshot) graph
+    origin = aliased(AgentNode)  # the library-team node it was cloned from
+    # One de-duped row per (library team, run): a clone's nodes all point back to origin nodes in
+    # the same library team, so DISTINCT over the run's columns collapses the fan-out to one row.
+    per_run = (
+        select(
+            origin.team_graph_id.label("team_id"),
+            Run.id.label("run_id"),
+            Run.status.label("status"),
+            Run.created_at.label("created_at"),
+            func.coalesce(Run.cost_total_usd, 0).label("cost"),
+        )
+        .select_from(Run)
+        .join(clone, clone.team_graph_id == Run.team_graph_id)
+        .join(origin, origin.id == clone.cloned_from_node_id)
+        .where(origin.team_graph_id.in_(library_team_ids))
+        .distinct()
+        .subquery()
+    )
+
+    # Latest run per team — Postgres DISTINCT ON (team) with the newest created_at first.
+    for team_id, run_id, status, created_at in session.execute(
+        select(per_run.c.team_id, per_run.c.run_id, per_run.c.status, per_run.c.created_at)
+        .distinct(per_run.c.team_id)
+        .order_by(per_run.c.team_id, per_run.c.created_at.desc())
+    ).all():
+        rollup[team_id]["last_run"] = {
+            "status": status,
+            "at": created_at.isoformat(),
+            "run_id": str(run_id),
+        }
+
+    # Total spend per team — SUM over the de-duped per-run rows (NULL cost already coalesced to 0).
+    for team_id, total in session.execute(
+        select(per_run.c.team_id, func.coalesce(func.sum(per_run.c.cost), 0)).group_by(
+            per_run.c.team_id
+        )
+    ).all():
+        rollup[team_id]["spend_usd"] = float(total)
+
+    return rollup
+
+
+def _team_summary(session, graph: TeamGraph, rollup: dict | None = None) -> dict:
+    """One library team as a list/summary row: identity + node count + its run rollup — ``last_run``
+    (the most recent run's ``{status, at, run_id}``, or ``None`` if never run) + ``spend_usd`` (the
+    total across the team's runs, ``0`` if never run). ``rollup`` is the batched map that
+    :func:`list_library_teams` computes ONCE so the list is not N+1; single-team callers omit it and
+    it is computed for just this team. Read-only."""
     node_count = session.execute(
         select(func.count()).select_from(AgentNode).where(AgentNode.team_graph_id == graph.id)
     ).scalar_one()
+    if rollup is None:
+        rollup = _run_rollup_by_origin(session, [graph.id])
+    run_rollup = rollup.get(graph.id, {"last_run": None, "spend_usd": 0.0})
     return {
         "team_graph_id": str(graph.id),
         "name": graph.name,
         "created_at": graph.created_at.isoformat(),
         "node_count": node_count,
+        "last_run": run_rollup["last_run"],
+        "spend_usd": run_rollup["spend_usd"],
     }
 
 
@@ -1115,7 +1186,8 @@ def list_library_teams(owner_id: uuid.UUID) -> list[dict]:
             .scalars()
             .all()
         )
-        return [_team_summary(session, g) for g in graphs]
+        rollup = _run_rollup_by_origin(session, [g.id for g in graphs])
+        return [_team_summary(session, g, rollup) for g in graphs]
 
 
 def get_team_summary(team_graph_id: str) -> dict:
