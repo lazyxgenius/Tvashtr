@@ -407,9 +407,9 @@ export function TeamNodePanel({
         </div>
 
         <label className="tv-field">
-          <span className="tv-field__label">Prompt</span>
+          <span className="tv-field__label">System prompt</span>
           <span className="tv-field__hint">
-            The agent’s behavior. The run appends the idea + the live PRD on top of this.
+            Its whole identity. The run appends the idea and the live PRD on top.
           </span>
           <textarea
             className="tv-node-prompt"
@@ -442,9 +442,9 @@ export function TeamNodePanel({
             Pick a provider you’ve configured, then a model — add a key inline if it’s missing.
           </span>
 
-          <div className="tv-picker">
+          <div className="tv-modelrow">
             <select
-              className="tv-picker__provider"
+              className="tv-modelrow__provider"
               aria-label="Provider"
               value={currentProvider}
               onChange={(e) => onProviderChange(e.target.value)}
@@ -459,7 +459,7 @@ export function TeamNodePanel({
             </select>
 
             <input
-              className="tv-node-model tv-picker__model"
+              className="tv-node-model tv-modelrow__model"
               type="text"
               list="tv-model-presets"
               aria-label="Model"

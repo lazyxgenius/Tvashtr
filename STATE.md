@@ -2,154 +2,116 @@
 
 ## Current Milestone
 M-frontend (Tvashtr-43) — the premium reskin of the warm cream-paper FE, decomposed F0→F4.
-This slice: **F1c — the canvas cluster, slice 3 (final): the premium config drawer + the dock⇄pop-up
-toggle + the model picker + the run-view.**
+This slice: **Canvas Fidelity Pass 1 — the canvas SCREEN SHELL (header + toolbar + remove the author
+team-rail) + the config DRAWER collision fix**, reconciled to `design/Tvashtr Frontend Overhaul/Canvas.dc.html`.
 
-## OUTCOME — F1c SHIPPED (READY_TO_MERGE; clean SUCCESS)
-Both node side-panels are reskinned into the design's premium **384px right config drawer** (via a
-new shared `DrawerShell`): a header glyph badge + display-font title + subtitle + a **session-STICKY
-dock⇄pop-up toggle** (`panelMode` drawer⇄modal — modal = a centered `min(560px,92vw)` card over a
-click-to-close scrim). The **F1a inert model chip** now opens the author drawer **scrolled to +
-flashing** the Model field (author mode only). The **run-view** keeps its capability split
-(thinker→spec, worker→feed, shared Last-run brief) with a **STATUS-based subtitle** (Working now /
-Finished / Not reached yet / Failed / Stopped). A **gate/terminal** now opens the author drawer
-**READ-ONLY** (no Save — the PATCH endpoint 409-rejects control primitives; ship↔stop + gate-copy
-persistence is a §15 backend follow-on). FRONTEND-ONLY; the backend contract is the wall (api.ts +
-canvas.css byte-untouched, no endpoint, NO migration, head `0018`). All gates green; the invariant
-proofs are empty/clean; Playwright self-sign-off captured live; independent review = 0 blocking.
+## OUTCOME — Canvas Fidelity Pass 1 SHIPPED (READY_TO_MERGE; clean SUCCESS)
+The canvas screen SHELL now matches the design. **Part A:** the author-mode "Your teams" left rail is
+GONE — the canvas is full-width while authoring (the team library lives on the Dashboard); the tasks
+drawer still appears during a run. **Part B:** the header's right side is a single **avatar button**
+(the email's initial) opening a **profile menu** (the email + a Log out row → `onLogout`), replacing the
+raw email + Log out text; the green backend dot moved OUT of the header. **Part C:** the toolbar is
+`[back-arrow] [Run this team] [Single | A/B toggle]` (Run BEFORE the toggle) + a right cluster with the
+**spend** (`$0.00` idle) + the green **BackendDot**; the design's non-functional grid icon is omitted and
+the always-on hint line removed (the validity warning kept, compact). **Part D:** the drawer's Model-row
+class collision is fixed — `.tv-picker*` → **`.tv-modelrow*`** in `panel.css` + `TeamNodePanel.tsx` (the
+canvas popover's `.tv-picker` in the frozen `canvas.css` was floating the row out of the drawer); the
+prompt heading is now **"System prompt"** with the design's hint. FRONTEND-ONLY; the backend contract is
+the wall (`api.ts` + `backend/` + `canvas.css` + `Dashboard.tsx` byte-untouched, NO migration, head
+`0018`). All gates green; invariant proofs empty/clean; Playwright self-sign-off captured live; the
+independent review = 0 blocking.
 
 ## Last Completed Step
-F1c config drawer + dock⇄pop-up toggle + model picker + run-view — 2026-07-02 — branch: feat/f1c-config-drawer — commit: (the tip of feat/f1c-config-drawer; exact sha in the FINAL REPORT)
+Canvas Fidelity Pass 1 — 2026-07-03 — branch: feat/canvas-fidelity-1 — commit: (the tip of
+feat/canvas-fidelity-1; exact sha in the FINAL REPORT)
 
 ## READY_TO_MERGE
-READY_TO_MERGE: branch=feat/f1c-config-drawer, frontend=179 passing, backend=328 passing
+READY_TO_MERGE: branch=feat/canvas-fidelity-1, frontend=183 passing, backend=328 passing
+
+## ⚠️ BASE-BRANCH NOTE (operator merge sequencing — read before merging)
+This branch is based on **`e060eb9` (the F1c tip)**, NOT bare `main` (`e7e0c89`). The brief said "off
+main", but it targets F1c artifacts that do NOT exist on bare main (the drawer's `.tv-picker`, the
+`TeamNodePanel` model picker, the vitest floor 179) — so its true base is the shipped-but-un-merged F1c
+tip (a clean fast-forward exactly one commit above main: `e060eb9^ == e7e0c89 == main`). The WALL vs main
+holds regardless (F1c touched none of `api.ts`/`backend/`/`canvas.css`/`Dashboard.tsx`). **Merge order:
+FF-merge `feat/f1c-config-drawer` FIRST, THEN `feat/canvas-fidelity-1`** (main → F1c → canvas-fidelity-1,
+a clean linear FF). This is a reversible two-way-door choice; flagged loudly in the FINAL REPORT.
 
 ## Completed Steps (append-only, newest last)
 - [x] F0 — extend-tokens + shared-primitive lift — b43a0d0 (STATE docs f0aabfd) — 2026-07-02
 - [x] F1a — canvas node cards + deriveNodeStatus never-reached fix — e861b4c — 2026-07-02
 - [x] F1b — canvas chrome + edges/handles + inline authoring affordances — 937d27d — 2026-07-02
-- [x] F1c — config drawer + dock⇄pop-up toggle + model picker + run-view — feat/f1c-config-drawer — 2026-07-02
+- [x] F1c — config drawer + dock⇄pop-up toggle + model picker + run-view — e060eb9 (feat/f1c-config-drawer, un-merged) — 2026-07-02
+- [x] Canvas Fidelity Pass 1 — screen shell (header/toolbar/rail) + drawer collision fix — feat/canvas-fidelity-1 — 2026-07-03
 
-## The change (14 files, FE-only; 11 modified + 3 new)
-- **`frontend/src/panel/DrawerShell.tsx`** (NEW) — the shared drawer/modal chrome + scrim + header
-  (glyph badge, display-font title, subtitle, the dock⇄pop-up toggle [`Maximize`/"Open as a pop-up"
-  ⇄ `PanelRight`/"Dock to the side"], close). Both panels wrap their body in it, so the toggle/mode
-  logic lives in ONE place. Exports `type PanelMode`.
-- **`frontend/src/panel/nodeGlyph.ts`** (NEW) — `glyphForNode(kind, role, terminalKind)`: the drawer
-  header badge glyph, mirroring the card's icon vocabulary (gate→shield, terminal→package/octagon,
-  agent→role glyph ?? Terminal). A non-component module (Fast Refresh clean).
-- **`frontend/src/panel/TeamNodePanel.tsx`** — wrapped in `DrawerShell`; the Slice-C picker reskinned
-  to the design's **130px provider select + flex-1 mono model input** row; branches on `node.kind` →
-  a READ-ONLY **gate** view (title/description from `config`, no Save) + a READ-ONLY **terminal** view
-  (a DISABLED Ship/Stop indicator); a `focusModel` nonce prop scrolls + flashes the Model field. All
-  hooks unconditional before the kind branches; every accessible name preserved.
-- **`frontend/src/panel/SidePanel.tsx`** — wrapped in `DrawerShell`; a STATUS-based subtitle via the
-  existing `deriveNodeStatus` (`Record<NodeStatus,string>`); the capability body (PrdView/EventFeed) +
-  shared Last-run brief unchanged.
-- **`frontend/src/canvas/AgentNodeCard.tsx`** — a `ModelChip` child: in AUTHOR mode (context
-  `editable` + `onOpenModel`) it calls `onOpenModel(nodeId)` + `stopPropagation` + `.nodrag .nopan`;
-  in the run view it stays F1a's inert label (byte-identical DOM). `.rf-node__model` canvas.css recipe
-  UNTOUCHED.
-- **`frontend/src/canvas/authoringContext.ts`** — added `onOpenModel?(nodeId)` to the context.
-- **`frontend/src/canvas/TeamCanvas.tsx`** — `onNodeClick`: AUTHOR mode selects EVERY kind (gate/
-  terminal → the read-only drawer); RUN mode UNCHANGED (only agent/completion select). Threaded
-  `onOpenModel` into the `AuthoringContext` value.
-- **`frontend/src/App.tsx`** — `panelMode` state + `togglePanelMode` (sticky; NOT in resetRunState);
-  the `modelFocus` nonce + `handleSelectNodeId` (clears it) + `handleOpenModel` (bumps it) + the
-  computed `focusModel`; all threaded to `<TeamNodePanel>` / `<SidePanel>` / `<TeamCanvas>`.
-- **`frontend/src/panel.css`** — the reskin: `.tv-panel` → 384px drawer (`--shadow-drawer`,
-  `tv-pop-in`); `.tv-panel--modal` (`--shadow-pop`, `tv-modal-in`) + `.tv-scrim` (`tv-fade-in`,
-  `color-mix(ink-900 30%)`); the header badge/id/idrow/actions/ctl recipes; the `.tv-picker` provider+
-  model row; the `.tv-field--flash` model-focus ring (+ `@keyframes tv-field-flash`); the
-  `.tv-readonly-*` gate/terminal blocks. `.tv-panel__close` (shared with LaunchPanel) left intact;
-  the dead `tv-panel-in` keyframe removed. Additive, token-only (no ad-hoc hex).
-- **`frontend/src/canvas/AgentNodeCard.modelChip.test.tsx`** (NEW) + re-pointed/added tests in
-  **`App.test.tsx`** (sticky panelMode + the gate read-only re-point), **`panel/SidePanel.test.tsx`**
-  (status subtitle), **`panel/TeamNodePanel.test.tsx`** (read-only gate/terminal no-PATCH + the
-  model-field flash).
+## The change (8 files, FE-only)
+- **`frontend/src/App.tsx`** — Part A: stopped rendering `<TeamsRail>` (author canvas full-width); the
+  tasks drawer is now `{!authoring && <TasksDrawer/>}`; removed the dead rail imports/state/handlers
+  (`TeamsRail`, `createTeam`/`deleteTeam`/`getTemplates`, `TeamSummary`/`Template`, `teams`/`templates`/
+  `teamBusy`, `handleSelectTeam`/`handleCreateTeam`/`handleDeleteTeam`); slimmed `loadTeams` to seed the
+  default `currentTeamId`. Part B: rewrote the header to the `.tv-topbar` + avatar/profile-menu (new
+  `profileOpen` state); removed the raw email + Log out + `<BackendDot/>` + the header "← Dashboard"
+  button. Part C: rewrote the toolbar to `.tv-toolbar` (back-arrow, Run + play glyph, the extracted
+  `viewToggle` [reachable in author AND A/B mode], right-cluster spend + moved `<BackendDot/>`); removed
+  the hint line; added `spendLabel` (`run?.cost_total_usd ?? Σcosts.cost_usd`, `$0.00` idle) + `avatarInitial`.
+- **`frontend/src/components/BackendDot.tsx`** — the design's bare 8px status dot + tonal halo (sage
+  connected) — the visible label dropped, kept as `title`/`aria-label` (`role="img"`).
+- **`frontend/src/index.css`** — new shell CSS family (append-only): `.tv-topbar`, `.tv-avatar(-wrap)`,
+  `.tv-avatarmenu(__catch/__id/__avatar/__email/__divider/__logout)`, `.tv-toolbar(__back/__right/__spend/
+  __divider)` + a reduced-motion guard. Tokens only. New names verified collision-free.
+- **`frontend/src/panel.css`** — Part D: `.tv-picker*` → `.tv-modelrow*` (the drawer Model row) so it no
+  longer collides with `canvas.css`'s floating `.tv-picker` popover. (canvas.css untouched.)
+- **`frontend/src/panel/TeamNodePanel.tsx`** — Part D: `.tv-picker*` → `.tv-modelrow*` (3 className sites);
+  prompt heading "Prompt" → **"System prompt"** + hint → "Its whole identity. The run appends the idea and
+  the live PRD on top."
+- **`frontend/src/App.test.tsx`** — re-pointed to the new shell; ADD: Part A (no rail while authoring; the
+  tasks drawer renders once a run starts — seeded via a module-level `extraTasks`), Part B (avatar hides
+  email + Log out until clicked; Log out calls `onLogout`), Part C (back-arrow + Run-before-toggle order +
+  `$0.00` + status dot + no hint). All 4 existing describes kept green.
+- **`frontend/src/panel/TeamNodePanel.test.tsx`** — ADD: the Model row is `.tv-modelrow` (never `.tv-picker`),
+  provider select + model input inside `.tv-panel__body`. The Slice-C compose-on-Save test stays green.
+- **`STATE.md`** — this file.
 
 ## Acceptance evidence (all run to green this session)
-- `make test-frontend` (vitest) → **Tests  179 passed (179)** (floor 172 → **179**, +7: 2 model-chip
-  + 2 gate/terminal-read-only + 1 model-flash + 1 status-subtitle + 1 sticky-toggle). The protected
-  `TeamCanvas.test`/`.authoring`/`.affordances` + `App.addDownstream` stay green UNCHANGED.
-- `make build-frontend` → **✓ built in ~1.2s** (tsc-strict + vite clean; the >500 kB chunk note is
-  pre-existing).
-- `make lint` → ruff **All checks passed!** + eslint (`--max-warnings 0`) clean + prettier **All
-  matched files use Prettier code style!**.
-- `make test` (backend) → **328 passed, 1 warning in 15.34s** (floor 328; FE-only, no regression).
-- alembic head → **0018_run_subpath (head)** (unchanged; NO migration).
-- **Independent adversarial review** (separate subagent over the diff) → **VERDICT: zero blocking
-  findings** (WALL verified on disk; the nonce logic traced through all 4 scenarios; hooks-order,
-  the read-only no-PATCH paths, stopPropagation, and mutation-real tests all confirmed). One
-  non-blocking flash-replay wart it noted was fixed (the `focusModel=0` branch now clears the flash).
-- **Playwright self-sign-off** (live stack: `make backend` + `make frontend`, dashboard→"My team"
-  [7 nodes: pm/prd_gate/stop/engineer/escalation_gate/reviewer/ship]; targeted `browser_evaluate` +
-  screenshots, NO whole-canvas a11y snapshot). Proven LIVE:
-  - Author drawer (docked) on **Engineer**: width **384px**, `isModal:false`, subtitle "Its prompt is
-    its whole identity — edit, then run", glyph badge present, toggle "Open as a pop-up", the provider
-    field **130px**.
-  - Toggle → **pop-up**: `isModal:true`, a **fixed** scrim (`ink-900 @ 0.3`), the modal **560px,
-    horizontally centered** (left 440 + 280 = 720 = viewport/2), toggle flipped to "Dock to the side".
-  - **Model chip** (Engineer card, author): docked → chip click → the Model field **flashed
-    (`.tv-field--flash`)** + **scrolled into view**, model `nvidia_nim/…`.
-  - **Gate** (PRD approval): read-only drawer, subtitle "A human checkpoint", the checkpoint note +
-    the gate title shown, **no Save, no prompt editor**.
-  - **Ship** (terminal): read-only drawer, subtitle "An endpoint of the flow", **Ship/Stop both
-    DISABLED** (Ship active), no Save.
-  - **Run-view** (launched a run → paused at prd_gate, PM=done, NO NIM/Engineer spend): **PM** node →
-    subtitle **"Finished"** + the spec (`PrdView`, "Mini-PRD"); **Engineer** node → subtitle **"Not
-    reached yet"** + the event feed (the worker split). Run cancelled after (CANCELLED); the dev DB
-    is left with one cancelled run (artifact only).
-- Screenshots (OUTSIDE the repo, in the session scratchpad `.../scratchpad/f1c-screenshots/`):
-  - `f1c-01-drawer-docked-engineer.png` (the docked 384px author drawer + canvas)
-  - `f1c-02-modal-popup-scrim.png` (the centered pop-up over the dimmed scrim)
-  - `f1c-03-model-chip-focus.png` (the drawer focused on + flashing the Model field)
-  - `f1c-04a-gate-readonly.png` (the read-only gate checkpoint drawer)
-  - `f1c-04b-ship-readonly.png` (the read-only Ship endpoint drawer)
-  - `f1c-05-runview-status-subtitle.png` (run-view PM "Finished" + the reskinned spec)
-  - `f1c-05b-runview-not-reached.png` (run-view Engineer "Not reached yet" + the feed)
+- `make test` (backend offline) → **328 passed, 1 warning in 15.62s** (floor 328; FE-only, no regression).
+- `make test-frontend` (vitest) → **Tests 183 passed (183)** across 24 files (floor 179 → **183**, +4 new).
+- `make build-frontend` → tsc --noEmit clean + **vite ✓ built in 1.20s**.
+- `make lint` → ruff **All checks passed! 126 files already formatted** + eslint (`--max-warnings 0`) clean
+  + prettier **All matched files use Prettier code style!**.
+- Playwright self-sign-off (live stack, seeded operator `operator@tvashtr.local`, real team; targeted
+  `browser_evaluate` + screenshots, NO whole-canvas a11y snapshot): (1) author canvas — full-width, NO
+  `.tv-rail`, `.tv-topbar` avatar "O" (no raw email/Log out in header), `.tv-toolbar` = [Back to dashboard,
+  Run this team, Single run, A/B compare] (Run before toggle) + spend "$0.00" + BackendDot, no hint line;
+  (2) profile menu open — `operator@tvashtr.local` + a Log out row; (3)/(3b) the Engineer author drawer —
+  labels [Capability, "System prompt", Model], the Model row is `.tv-modelrow` INSIDE `.tv-panel__body`
+  (`rowWithinPanelBounds: true`), provider `<select>` + model `<input>` inline, **NO `.tv-picker` anywhere**,
+  no floating box. Compared vs `Canvas.dc.html` — faithful.
+- Screenshots (OUTSIDE the repo): `…/scratchpad/canvas-fidelity-1/cf1-01-author-canvas.png`,
+  `cf1-02-profile-menu.png`, `cf1-03-drawer-inline-modelrow.png`, `cf1-03b-drawer-modelrow.png`.
+- Independent review (fresh subagent over the working-tree diff) → **0 blocking findings** (WALL intact,
+  A/B toggle reachable, spend uses `??`, rename complete, the 4 new tests revert-sensitive).
 
 ## Invariants held (proofs run on disk this session)
-- `git diff main -- frontend/src/lib/api.ts` → **EMPTY** (no endpoint/signature change).
-- `git diff main -- backend/` → **EMPTY**; no `alembic/versions/*` added; head stays **0018**.
-- `git diff main -- frontend/src/canvas.css` → **EMPTY** (F1a node + F1b chrome/edge recipes frozen;
-  the reskin is entirely in `panel.css`).
-- `git diff main -- frontend/src/design-system/tokens/` → **EMPTY** (consume F0's extend tokens; no
-  base/extend token file edited — everything needed was already in `extend.css`).
-- The 4 protected canvas/orchestration tests (`TeamCanvas.test`/`.authoring`/`.affordances`,
-  `App.addDownstream`) **not in the diff** and green. (`App.test.tsx`'s gate assertion was legitimately
-  re-pointed for Decision 4 — it now asserts the read-only gate drawer mounts with no Save/prompt.)
-- Nothing under `design/` staged/committed; the operator's `prompts/F1c-config-drawer.md` left
-  untracked (not in my commit).
+- THE WALL — `git diff main --` EMPTY for: `frontend/src/lib/api.ts`, `backend/`, `frontend/src/canvas.css`,
+  `frontend/src/components/Dashboard.tsx`. Alembic head **`0018_run_subpath (head)`** (NO migration).
+- DS tokens frozen — `git diff main -- frontend/src/design-system/` EMPTY.
+- Collision sweep (CSS comments stripped) — `panel.css ∩ canvas.css` .tv-* = **EMPTY** (was `{.tv-picker}`).
+  `panel.css ∩ index.css` = EMPTY. `canvas.css ∩ index.css` = `{.tv-pill}` (the pre-existing intentional
+  shared StatusPill primitive; canvas.css frozen — not a regression).
+- My commit stages ONLY the 8 files above — nothing under `backend/`, no `alembic/versions/*`, no `design/`,
+  no `prompts/*.md`, no side-chat `.md` files (untracked, left alone), never `.tvashtr/loop-state.md`.
 
 ## Deviations from the brief
-- **`PrdView.tsx` / `EventFeed.tsx` / `components/LastRun.tsx` left UNMODIFIED** (the file plan listed
-  them for a drawer-look reskin). Their `.tv-prd*`/`.tv-feed*`/`.tv-verdict*` recipes were already
-  token-driven premium (built to the same DS in P1.5–P1.8) and inherit the new `DrawerShell` chrome —
-  screenshot 5 confirms the run-view reads premium in the 384px drawer, so no recipe change was needed
-  to hit the drawer look. Flagged for the human visual sign-off.
-- **Scrim behaviour = click-to-close** (per Decision 1's explicit spec + the mockup's `onDrawerClose`
-  scrim), NOT "click the dim area → back to docked" (the looser UX-narrative wording). The header
-  **dock toggle** is the "snap back to docked" affordance. Both verified live.
-- **Playwright** started on the **dashboard** (the browser session was already authenticated; login
-  was smoke-tested via curl: `operator@tvashtr.local` → 200). The model-flash still capture briefly
-  slowed the `.tv-field--flash` animation via a temporary injected `<style>` (removed immediately) so
-  the still shows the ring — the real flash is CSS-timed + vitest-proven (a screenshot-only aid,
-  same precedent as F1b's hover-affordance reveal). Dev-DB artifact: one cancelled run added to "My
-  team"'s history (operator-recoverable; no repo/tree effect).
+- **Base = the F1c tip `e060eb9`, not bare main** (see the BASE-BRANCH NOTE) — the brief is un-executable
+  off bare main (its Part D target + floor 179 are F1c artifacts). Reversible two-way-door; WALL vs main holds.
+- **Playwright ran against the LIVE stack** (make backend + make frontend + the seeded operator), per the
+  brief — functional facts verified via `browser_evaluate`; the aesthetic sign-off stays a human gate.
+- **`BackendDot` restyled to the design's bare dot** (label → tooltip/aria) so it fits the clean toolbar
+  right-cluster — the brief said "move `<BackendDot/>` here" + gave the design's dot recipe.
 
 ## Test Count
-**179 vitest** (floor 172 → 179) + **328 backend** (unchanged) — 2026-07-02.
+**183 vitest** (floor 179 → 183; +4 new) · **328 backend pytest** (unchanged, FE-only) — 2026-07-03.
 
 ## Blocked
-None — clean SUCCESS. F1c closes the M-frontend **canvas cluster** (F1a→F1b→F1c). Next in
-M-frontend: **F2** (dashboard), **F3** (auth wizard), **F4** (landing) — the "revamp finished"
-announcement is reserved for when F4 lands.
-
-## Deviations from PROJECTPLAN.md
-None new. F1c realizes the F1c scope recorded in §16/§17 (Tvashtr-41/42). Draft §15/§17 updates for
-the architect are in the end-of-loop FINAL REPORT (PROJECTPLAN/HANDOVER are architect-owned; a
-parallel side-chat shares the working tree, so I did not edit them).
-
-## Open Questions
-None.
+None — clean SUCCESS. Next in M-frontend after this + F1c merge: F2 (dashboard), F3 (auth wizard),
+F4 (landing). The revamp is NOT "done" until F4 (operator's all-caps announcement gate).

@@ -442,13 +442,18 @@
 /* ---- F1c: the provider + model picker row (the Slice-C picker reskinned to the design layout) ----
    A fixed 130px provider select beside a flex-1 monospace model input, both on the premium field
    surface. The input keeps `.tv-node-model` (base field recipe + datalist); the row overrides only
-   its flex/margin. */
-.tv-picker {
+   its flex/margin.
+   F-canvas-fidelity-1 Part D: this row's classes were renamed to the unique `.tv-modelrow*` family.
+   The canvas's floating "add a node" popover (in the frozen canvas.css) already defines an
+   absolutely-positioned, z-indexed rule under the name this row USED to share — so sharing it made the
+   drawer's model row inherit "detach and float" and escape to the bottom of the window. The unique
+   name keeps the provider select + model input INLINE inside the drawer body. */
+.tv-modelrow {
   display: flex;
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
-.tv-picker__provider {
+.tv-modelrow__provider {
   flex: none;
   width: 130px;
   height: 38px;
@@ -464,12 +469,12 @@
     box-shadow var(--dur-fast) var(--ease-standard),
     border-color var(--dur-fast) var(--ease-standard);
 }
-.tv-picker__provider:focus {
+.tv-modelrow__provider:focus {
   outline: none;
   border-color: var(--coral-200);
   box-shadow: var(--shadow-focus);
 }
-.tv-picker__model {
+.tv-modelrow__model {
   flex: 1;
   min-width: 0;
   margin-top: 0;

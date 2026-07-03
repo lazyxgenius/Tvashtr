@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -542,5 +542,41 @@ describe("TeamNodePanel — F1c model-field focus flash (Decision 3)", () => {
       />,
     );
     expect(container.querySelector(".tv-field--flash")).not.toBeNull();
+  });
+});
+
+// ---- F-canvas-fidelity-1 Part D: the Model row is INLINE in the drawer body. F1c named it `.tv-picker`,
+// which canvas.css ALSO owns for the floating "add a node" popover (position:absolute; z-index:16) — so
+// the row detached + floated to the window bottom. The rename to `.tv-modelrow` un-floats it. ----
+
+describe("TeamNodePanel — Model row un-floated, inline in the drawer body (Part D)", () => {
+  it("puts the provider select + model input under .tv-modelrow inside the drawer body — never .tv-picker", async () => {
+    const { container } = render(
+      <TeamNodePanel
+        teamId="t1"
+        node={engineer("openai/gpt-4o-mini")}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    // Let the on-mount providers fetch settle (avoids an act warning).
+    await screen.findByRole("combobox", { name: "Provider" });
+
+    // The row carries the UNIQUE class, NEVER the canvas popover's `.tv-picker` (which would float it).
+    const modelRow = container.querySelector(".tv-modelrow");
+    expect(modelRow).not.toBeNull();
+    expect(container.querySelector(".tv-picker")).toBeNull();
+
+    // The provider <select> AND the model <input> both live inside that row…
+    const provider = within(modelRow as HTMLElement).getByRole("combobox", { name: "Provider" });
+    const model = within(modelRow as HTMLElement).getByRole("combobox", { name: "Model" });
+
+    // …and the row sits INSIDE the drawer body (the same panel container) — not detached elsewhere.
+    const panelBody = container.querySelector(".tv-panel__body");
+    expect(panelBody).not.toBeNull();
+    expect(panelBody).toContainElement(modelRow as HTMLElement);
+    expect(panelBody).toContainElement(provider);
+    expect(panelBody).toContainElement(model);
   });
 });

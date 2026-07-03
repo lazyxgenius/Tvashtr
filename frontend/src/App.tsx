@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, LogOut, Play } from "lucide-react";
 
 import { TeamCanvas } from "./canvas/TeamCanvas";
 import { ABCompare } from "./components/ABCompare";
@@ -7,7 +8,6 @@ import { CancelRunButton } from "./components/CancelRunButton";
 import { LaunchPanel } from "./components/LaunchPanel";
 import { RunBanner } from "./components/RunBanner";
 import { TasksDrawer } from "./components/TasksDrawer";
-import { TeamsRail } from "./components/TeamsRail";
 import { SidePanel } from "./panel/SidePanel";
 import { TeamNodePanel } from "./panel/TeamNodePanel";
 import {
@@ -15,11 +15,9 @@ import {
   type AuthUser,
   cancelRun,
   type CostRow,
-  createTeam,
   type CreateNodeBody,
   createTeamEdge,
   createTeamNode,
-  deleteTeam,
   deleteTeamEdge,
   deleteTeamNode,
   type GraphData,
@@ -30,7 +28,6 @@ import {
   getTeamGraph,
   getTeams,
   getTeamValidity,
-  getTemplates,
   type HumanTask,
   type NodePosition,
   resolveTask,
@@ -40,8 +37,6 @@ import {
   saveTeamPositions,
   type TaskDecision,
   type TeamGraphData,
-  type TeamSummary,
-  type Template,
 } from "./lib/api";
 import type { EdgeConfirm } from "./canvas/EdgeRoleEditor";
 import { nextDropPosition, withLayout } from "./lib/topology";
@@ -70,18 +65,15 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
   const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);
   const [costs, setCosts] = useState<CostRow[]>([]);
   const [tasks, setTasks] = useState<HumanTask[]>([]);
-  // The team library (P1.8b): the user's library teams (the rail) + the starter templates (the
-  // picker), the currently-open team, and that team's graph (rendered on the canvas while no run is
-  // active). `teams`/`currentTeamId` PERSIST across a run — only run-scoped state resets.
-  const [teams, setTeams] = useState<TeamSummary[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
-  // M-accounts Slice B: when opened from the dashboard for a specific team, start on THAT team (the
-  // loadTeams `cur ?? list[0]` guard then keeps it); standalone (no teamId) keeps the prior
-  // first-team default.
+  // The currently-open team + its graph (rendered on the canvas while no run is active).
+  // `currentTeamId` PERSISTS across a run — only run-scoped state resets. Team SELECTION + management
+  // now live on the Dashboard (F-canvas-fidelity-1 Part A removed the author-mode teams rail — "the
+  // team library lives on the Dashboard"); when opened from the dashboard for a specific team, start
+  // on THAT team (the loadTeams `cur ?? list[0]` guard keeps it); a standalone mount defaults to the
+  // first team.
   const [currentTeamId, setCurrentTeamId] = useState<string | null>(teamId ?? null);
   const [teamGraph, setTeamGraph] = useState<TeamGraphData | null>(null);
   const [teamError, setTeamError] = useState(false);
-  const [teamBusy, setTeamBusy] = useState(false);
   // P1.8d: the current team's holistic-validity verdict (refetched after every topology edit). Run
   // is gated on `validity.runnable`; the offending nodes/edges are flagged on the canvas.
   const [validity, setValidity] = useState<GraphValidity | null>(null);
@@ -110,6 +102,8 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
   // The view mode (§14.3): the existing single-run canvas, or the A/B comparison. Plain state,
   // no router — the single-run state/poll stay alive underneath so switching back is lossless.
   const [mode, setMode] = useState<"single" | "ab">("single");
+  // F-canvas-fidelity-1 Part B: the header profile menu (avatar → the email + Log out). Local UI state.
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // Authoring vs run: with no active run the canvas shows the persistent team; once a run launches
   // the existing live run view takes over (graph/run/tasks polled as before).
@@ -138,14 +132,13 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
     };
   }, []);
 
-  // Load the library teams (the rail) + the starter templates (the picker). On first load, pick the
-  // first team as current. Tolerant: a transient failure shows a hint and keeps the last list.
+  // Resolve the default open team when none was passed (a standalone mount / the tests): pick the
+  // first library team. Team management + selection live on the Dashboard now (Part A); this only
+  // seeds `currentTeamId` so the canvas has a team to render. Tolerant: a transient failure hints.
   const loadTeams = useCallback(async () => {
     try {
-      const [list, tmpls] = await Promise.all([getTeams(), getTemplates()]);
+      const list = await getTeams();
       if (!mountedRef.current) return;
-      setTeams(list);
-      setTemplates(tmpls);
       // Server-seeded non-empty, so list[0] exists; keep the current selection if one is set.
       setCurrentTeamId((cur) => cur ?? list[0]?.team_graph_id ?? null);
       setTeamError(false);
@@ -365,7 +358,7 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
 
   // The launch (M-brownfield Slice 2): clone the CURRENT team into a fresh run-scoped snapshot and
   // launch it with the panel's options (idea + optional brownfield repo target); the existing live
-  // run view then takes over (same poll surface as before). `teams`/`currentTeamId` survive
+  // run view then takes over (same poll surface as before). `currentTeamId` survives
   // `resetRunState`, so returning to authoring lands back on the same team. A no-field `opts` posts
   // exactly `{ team_graph_id }` — the greenfield launch is byte-for-byte unchanged.
   const handleLaunch = useCallback(
@@ -396,60 +389,6 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
     setError(false);
     if (currentTeamId) void loadTeam(currentTeamId);
   }, [resetRunState, loadTeam, currentTeamId]);
-
-  // Select a team in the rail: make it current (the effect loads its graph) and close any open
-  // node panel (it was editing the previous team's node).
-  const handleSelectTeam = useCallback((teamId: string) => {
-    setSelectedRunNodeId(null);
-    setSelectedNodeId(null);
-    setCurrentTeamId(teamId);
-  }, []);
-
-  // "+ New team": create a library team from a template, make it current, and refresh the rail.
-  const handleCreateTeam = useCallback(
-    async (template: string, name: string) => {
-      setTeamBusy(true);
-      setTeamError(false);
-      try {
-        const created = await createTeam(template, name);
-        if (!mountedRef.current) return;
-        setSelectedRunNodeId(null);
-        setSelectedNodeId(null);
-        setCurrentTeamId(created.team_graph_id); // the effect loads its graph
-        await loadTeams(); // the new team appears in the rail (keeps currentTeamId via the ?? guard)
-      } catch {
-        if (mountedRef.current) setTeamError(true);
-      } finally {
-        if (mountedRef.current) setTeamBusy(false);
-      }
-    },
-    [loadTeams],
-  );
-
-  // Delete a library team. The server re-seeds if it was the last, so the rail is never empty; if
-  // the deleted team was current, fall back to the first remaining team.
-  const handleDeleteTeam = useCallback(
-    async (teamId: string) => {
-      setTeamBusy(true);
-      setTeamError(false);
-      try {
-        await deleteTeam(teamId);
-        const remaining = await getTeams(); // re-seeds server-side if this was the last team
-        if (!mountedRef.current) return;
-        setTeams(remaining);
-        if (teamId === currentTeamId) {
-          setSelectedRunNodeId(null);
-          setSelectedNodeId(null);
-          setCurrentTeamId(remaining[0]?.team_graph_id ?? null);
-        }
-      } catch {
-        if (mountedRef.current) setTeamError(true);
-      } finally {
-        if (mountedRef.current) setTeamBusy(false);
-      }
-    },
-    [currentTeamId],
-  );
 
   // Poll the run + tasks while active and not terminal; stop once terminal.
   useEffect(() => {
@@ -586,22 +525,39 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
   const teamRunnable = validity === null || validity.runnable;
   const validityErrors = validity?.errors ?? [];
 
+  // F-canvas-fidelity-1 Part C: the toolbar spend chip — the run's total cost (prefer the run's
+  // authoritative total; else sum the polled cost rows), "$0.00" while nothing is running.
+  const runCost = run?.cost_total_usd ?? costs.reduce((sum, c) => sum + c.cost_usd, 0);
+  const spendLabel = `$${runCost.toFixed(2)}`;
+  // Part B: the avatar shows the first letter of the account's email.
+  const avatarInitial = user?.email?.trim().charAt(0).toUpperCase() || "?";
+  // Part C: the Single | A/B view-mode toggle. Rendered next to Run while authoring AND on its own in
+  // A/B mode (so you can switch back); hidden mid-run (the design's run-mode toolbar carries no toggle).
+  const viewToggle = (
+    <div className="tv-seg" role="group" aria-label="View mode">
+      <button
+        type="button"
+        aria-pressed={mode === "single"}
+        className={`tv-seg__btn${mode === "single" ? " tv-seg__btn--active" : ""}`}
+        onClick={() => setMode("single")}
+      >
+        Single run
+      </button>
+      <button
+        type="button"
+        aria-pressed={mode === "ab"}
+        className={`tv-seg__btn${mode === "ab" ? " tv-seg__btn--active" : ""}`}
+        onClick={() => setMode("ab")}
+      >
+        A/B compare
+      </button>
+    </div>
+  );
+
   return (
     <>
-      <header
-        className="flex items-center justify-between gap-4 px-6 py-4"
-        style={{ borderBottom: "1px solid var(--border-hairline)" }}
-      >
+      <header className="tv-topbar">
         <div className="flex items-center gap-3">
-          {onBackToDashboard && (
-            <button
-              type="button"
-              className="tv-btn tv-btn--ghost tv-btn--sm"
-              onClick={onBackToDashboard}
-            >
-              ← Dashboard
-            </button>
-          )}
           <img src="/mark-coral.png" alt="" style={{ width: 24, height: 24 }} />
           <span
             style={{
@@ -618,46 +574,72 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
             the living canvas
           </span>
         </div>
-        <div className="flex items-center gap-3">
-          {user && (
-            <span style={{ fontSize: "var(--fs-caption)", color: "var(--text-secondary)" }}>
-              {user.email}
-            </span>
-          )}
-          {onLogout && (
-            <button type="button" className="tv-btn tv-btn--ghost tv-btn--sm" onClick={onLogout}>
-              Log out
+        {/* Part B: the account avatar → a click-to-open profile menu (the email + Log out), replacing
+            the raw email + Log out text. The green backend dot moved OUT of the header to the toolbar. */}
+        {user && (
+          <div className="tv-avatar-wrap">
+            <button
+              type="button"
+              className="tv-avatar"
+              onClick={() => setProfileOpen((o) => !o)}
+              aria-haspopup="menu"
+              aria-expanded={profileOpen}
+              aria-label="Account"
+              title="Account"
+            >
+              {avatarInitial}
             </button>
-          )}
-          <BackendDot />
-        </div>
+            {profileOpen && (
+              <>
+                <div
+                  className="tv-avatarmenu__catch"
+                  onClick={() => setProfileOpen(false)}
+                  aria-hidden
+                />
+                <div className="tv-avatarmenu" role="menu">
+                  <div className="tv-avatarmenu__id">
+                    <span className="tv-avatarmenu__avatar" aria-hidden>
+                      {avatarInitial}
+                    </span>
+                    <span className="tv-avatarmenu__email" title={user.email}>
+                      {user.email}
+                    </span>
+                  </div>
+                  <div className="tv-avatarmenu__divider" />
+                  <button
+                    type="button"
+                    className="tv-avatarmenu__logout"
+                    role="menuitem"
+                    onClick={() => onLogout?.()}
+                  >
+                    <LogOut size={15} strokeWidth={1.8} />
+                    Log out
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </header>
 
-      <div
-        className="flex flex-wrap items-center gap-4 px-6 py-3"
-        style={{ borderBottom: "1px solid var(--border-hairline)" }}
-      >
-        <div className="tv-seg" role="group" aria-label="View mode">
+      <div className="tv-toolbar">
+        {/* Part C: the back-to-dashboard arrow (replaces the header's "← Dashboard" text button). */}
+        {onBackToDashboard && (
           <button
             type="button"
-            aria-pressed={mode === "single"}
-            className={`tv-seg__btn${mode === "single" ? " tv-seg__btn--active" : ""}`}
-            onClick={() => setMode("single")}
+            className="tv-toolbar__back"
+            onClick={onBackToDashboard}
+            aria-label="Back to dashboard"
+            title="Back to dashboard"
           >
-            Single run
+            <ArrowLeft size={16} strokeWidth={1.8} aria-hidden />
           </button>
-          <button
-            type="button"
-            aria-pressed={mode === "ab"}
-            className={`tv-seg__btn${mode === "ab" ? " tv-seg__btn--active" : ""}`}
-            onClick={() => setMode("ab")}
-          >
-            A/B compare
-          </button>
-        </div>
-        {mode === "single" && (
-          <>
-            {authoring ? (
+        )}
+        {/* Author: Run this team, THEN the Single | A/B toggle (design order). Run mode: Edit + Cancel
+            + the run banner. A/B mode: just the toggle (so you can switch back). */}
+        {mode === "single" ? (
+          authoring ? (
+            <>
               <span style={{ position: "relative", display: "inline-flex" }}>
                 <button
                   className="tv-btn"
@@ -665,6 +647,7 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
                   disabled={starting || currentTeamId === null || !teamRunnable}
                   title={teamRunnable ? undefined : "Fix the team before running (see the issues)."}
                 >
+                  <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden />
                   {starting ? "Starting…" : "Run this team"}
                 </button>
                 {launchOpen && currentTeamId !== null && (
@@ -676,64 +659,64 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
                   />
                 )}
               </span>
-            ) : (
-              <>
-                <button className="tv-btn" onClick={handleEditTeam} disabled={inFlight}>
-                  {inFlight ? "Running…" : "Edit this team"}
-                </button>
-                {inFlight && (
-                  <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />
-                )}
-                <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
-              </>
-            )}
-            {authoring && teamRunnable && (
-              <span style={{ fontSize: "var(--fs-caption)", color: "var(--text-secondary)" }}>
-                Drag from a node’s edge to wire it; drop nodes from the palette; click a node to
-                edit.
-              </span>
-            )}
-            {authoring && !teamRunnable && (
-              <div className="tv-validity" role="status">
-                <span className="tv-validity__lead">Can’t run yet:</span>
-                <ul className="tv-validity__list">
-                  {validityErrors.slice(0, 4).map((issue, i) => (
-                    <li key={`${issue.code}:${issue.node_id ?? issue.edge_id ?? i}`}>
-                      {issue.message}
-                    </li>
-                  ))}
-                  {validityErrors.length > 4 && <li>…and {validityErrors.length - 4} more.</li>}
-                </ul>
-              </div>
-            )}
-            {error && (
-              <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
-                Couldn't start the run — is the backend running?
-              </span>
-            )}
-            {teamError && authoring && (
-              <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
-                Couldn't load your team — is the backend running?
-              </span>
-            )}
-          </>
+              {viewToggle}
+            </>
+          ) : (
+            <>
+              <button className="tv-btn tv-btn--ghost" onClick={handleEditTeam} disabled={inFlight}>
+                {inFlight ? "Running…" : "Edit this team"}
+              </button>
+              {inFlight && (
+                <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />
+              )}
+              <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
+            </>
+          )
+        ) : (
+          viewToggle
         )}
+        {/* The validity warning (why Run is disabled) — kept as the only blocked-launch signal, styled
+            compact so it doesn't fight the clean toolbar. The always-on hint line was removed. */}
+        {mode === "single" && authoring && !teamRunnable && (
+          <div className="tv-validity" role="status">
+            <span className="tv-validity__lead">Can’t run yet:</span>
+            <ul className="tv-validity__list">
+              {validityErrors.slice(0, 4).map((issue, i) => (
+                <li key={`${issue.code}:${issue.node_id ?? issue.edge_id ?? i}`}>
+                  {issue.message}
+                </li>
+              ))}
+              {validityErrors.length > 4 && <li>…and {validityErrors.length - 4} more.</li>}
+            </ul>
+          </div>
+        )}
+        {mode === "single" && error && (
+          <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
+            Couldn't start the run — is the backend running?
+          </span>
+        )}
+        {mode === "single" && authoring && teamError && (
+          <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
+            Couldn't load your team — is the backend running?
+          </span>
+        )}
+        {/* Right cluster: the run spend ($0.00 when idle) + a hairline divider + the green backend dot
+            (moved out of the header). The design's static grid icon is intentionally omitted. */}
+        <div className="tv-toolbar__right">
+          <span className="tv-toolbar__spend" title="Spend this run">
+            {spendLabel}
+          </span>
+          <span className="tv-toolbar__divider" aria-hidden />
+          <BackendDot />
+        </div>
       </div>
 
       <main className="flex min-h-0 flex-1">
         {mode === "single" ? (
           <>
-            {authoring ? (
-              <TeamsRail
-                teams={teams}
-                currentTeamId={currentTeamId}
-                templates={templates}
-                onSelect={handleSelectTeam}
-                onCreate={(template, name) => void handleCreateTeam(template, name)}
-                onDelete={(teamId) => void handleDeleteTeam(teamId)}
-                busy={teamBusy}
-              />
-            ) : (
+            {/* Part A: no author-mode team rail — the canvas is full-width while authoring (the team
+                library lives on the Dashboard). A left panel appears ONLY during a run (the tasks drawer). */}
+            {!authoring && (
               <TasksDrawer
                 blockers={pendingBlockers}
                 nudges={pendingNudges}

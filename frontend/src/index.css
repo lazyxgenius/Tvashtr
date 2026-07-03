@@ -872,3 +872,203 @@ body,
   font-family: var(--font-mono);
   color: var(--text-primary);
 }
+
+/* ============================================================
+   F-canvas-fidelity-1 — the canvas SCREEN SHELL: the header (brand + account avatar/menu) and the
+   toolbar (back-arrow · Run · Single|A/B · spend · status dot). Matches design/Canvas.dc.html's
+   HEADER + TOOLBAR recipes; token-driven, no ad-hoc hex. (The drawer chrome lives in panel.css; the
+   node/edge interior in canvas.css.)
+   ============================================================ */
+
+/* ---- Part B: the header ---- */
+.tv-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex: none;
+  padding: 11px var(--space-5);
+  background: var(--surface-card);
+  border-bottom: var(--border-width) solid var(--border-hairline);
+  position: relative;
+  z-index: 30; /* above the toolbar (20) so the profile menu + its catcher layer over the canvas */
+}
+
+.tv-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+}
+/* the account avatar — the email's initial on a coral chip; opens the profile menu */
+.tv-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  padding: 0;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: var(--fw-medium);
+  color: var(--coral-700);
+  background: var(--coral-100);
+  border: var(--border-width) solid var(--coral-200);
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard);
+}
+.tv-avatar:hover {
+  background: var(--coral-200);
+}
+.tv-avatar:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* the full-screen click-catcher behind the menu (click anywhere to dismiss) */
+.tv-avatarmenu__catch {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+/* the profile menu card — anchored under the avatar, right-aligned */
+.tv-avatarmenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 9px);
+  z-index: 41;
+  width: 236px;
+  padding: 7px;
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: 13px;
+  box-shadow: var(--shadow-pop);
+  animation: tv-pop-in 0.14s var(--ease-out);
+}
+.tv-avatarmenu__id {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 11px 12px;
+}
+.tv-avatarmenu__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--coral-700);
+  background: var(--coral-100);
+  border: var(--border-width) solid var(--coral-200);
+  border-radius: 50%;
+}
+.tv-avatarmenu__email {
+  min-width: 0;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tv-avatarmenu__divider {
+  height: 1px;
+  background: var(--border-hairline);
+  margin: 0 3px 5px;
+}
+.tv-avatarmenu__logout {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 11px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+.tv-avatarmenu__logout:hover {
+  background: var(--panel-300);
+}
+.tv-avatarmenu__logout:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tv-avatarmenu {
+    animation: none;
+  }
+}
+
+/* ---- Part C: the toolbar ---- */
+.tv-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  flex: none;
+  padding: 9px var(--space-5);
+  background: var(--surface-card);
+  border-bottom: var(--border-width) solid var(--border-hairline);
+  position: relative;
+  z-index: 20;
+}
+/* the compact toolbar button height (the design's 36px, vs the global 40px) */
+.tv-toolbar .tv-btn {
+  height: 36px;
+}
+/* the back-to-dashboard arrow — a square ghost button */
+.tv-toolbar__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  color: var(--text-secondary);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+.tv-toolbar__back:hover {
+  background: var(--panel-300);
+  color: var(--ink-900);
+  border-color: var(--border-strong);
+}
+.tv-toolbar__back:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+/* the right cluster: spend + a hairline divider + the backend status dot */
+.tv-toolbar__right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.tv-toolbar__spend {
+  font-family: var(--font-code);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.tv-toolbar__divider {
+  width: 1px;
+  height: 18px;
+  flex: none;
+  background: var(--border-hairline);
+}

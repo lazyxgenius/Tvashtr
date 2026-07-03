@@ -25,20 +25,23 @@ export function BackendDot() {
   }, []);
 
   const color = ok === null ? "var(--stone-400)" : ok ? "var(--sage-500)" : "var(--red-500)";
+  // F-canvas-fidelity-1 Part C: the design's toolbar status dot is a bare 8px dot with a soft tonal
+  // halo (no inline label — the status reads via the tooltip / aria-label). Sage when connected.
+  const ring = ok === null ? "var(--panel-300)" : ok ? "var(--sage-100)" : "var(--red-100)";
   const label =
     ok === null ? "Checking backend…" : ok ? "Backend connected" : "Backend unreachable";
 
   return (
-    <span
-      className="inline-flex items-center gap-2 text-secondary"
-      style={{ fontSize: "var(--fs-caption)" }}
-      title={label}
-    >
+    <span className="inline-flex items-center" title={label} role="img" aria-label={label}>
       <span
-        className="inline-block rounded-full"
-        style={{ width: 8, height: 8, background: color }}
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: color,
+          boxShadow: `0 0 0 3px ${ring}`,
+        }}
       />
-      <span className="hidden sm:inline">{label}</span>
     </span>
   );
 }

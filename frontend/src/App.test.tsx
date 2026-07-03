@@ -7,6 +7,7 @@ import App from "./App";
 import type {
   GraphData,
   GraphNode,
+  HumanTask,
   RunRow,
   RunStatus,
   TeamGraphData,
@@ -144,9 +145,13 @@ function runStatusFor(phase: Phase): RunStatus {
 
 let phase: Phase;
 let fetchMock: ReturnType<typeof vi.fn>;
+// The run's pending tasks the poll returns (default empty → the tasks drawer renders null). A test
+// that needs the drawer to render seeds a pending task here before launching.
+let extraTasks: HumanTask[];
 
 beforeEach(() => {
   phase = "running";
+  extraTasks = [];
   fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = urlOf(input);
     const method = init?.method ?? "GET";
@@ -181,7 +186,8 @@ beforeEach(() => {
     if (url === "/api/runs" && method === "POST")
       return Promise.resolve(jsonOk({ run_id: RUN_ID }));
     if (url.endsWith("/graph")) return Promise.resolve(jsonOk(graphFor(phase)));
-    if (url.endsWith("/tasks")) return Promise.resolve(jsonOk({ run_id: RUN_ID, tasks: [] }));
+    if (url.endsWith("/tasks"))
+      return Promise.resolve(jsonOk({ run_id: RUN_ID, tasks: extraTasks }));
     if (url === `/api/runs/${RUN_ID}`) return Promise.resolve(jsonOk(runStatusFor(phase)));
     return Promise.resolve(jsonOk({}));
   });
@@ -388,5 +394,112 @@ describe("App — F1c sticky dock⇄pop-up panelMode (Decision 1)", () => {
     // Dock it back → the scrim is gone (the same session preference, flipped).
     fireEvent.click(screen.getByRole("button", { name: "Dock to the side" }));
     expect(container.querySelector(".tv-scrim")).toBeNull();
+  });
+});
+
+// ---- F-canvas-fidelity-1: the canvas SCREEN SHELL (Part A rail / Part B header / Part C toolbar) ----
+
+describe("App — F-canvas-fidelity-1 screen shell", () => {
+  it("Part A: NO 'Your teams' rail while authoring; the tasks drawer appears once a run starts", async () => {
+    vi.useFakeTimers();
+    // Seed a pending blocker so the run's tasks drawer has something to show (empty ⇒ it renders null).
+    extraTasks = [
+      {
+        id: 1,
+        run_id: RUN_ID,
+        kind: "gate_approval",
+        priority: "high_blocker",
+        blocking: true,
+        topic: null,
+        title: "Approve the PRD",
+        description: "Approve to let the engineers build.",
+        status: "pending",
+        resolution: null,
+        resolution_note: null,
+        created_at: "2026-01-01T00:00:00Z",
+        resolved_at: null,
+      },
+    ];
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    // Let the persistent team load (enables Run) — the keystone's fake-timer pattern.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Authoring (Run this team present) but the author teams rail is GONE and no tasks drawer yet.
+    expect(screen.getByRole("button", { name: "Run this team" })).toBeInTheDocument();
+    expect(screen.queryByText("Your teams")).toBeNull();
+    expect(screen.queryByText("Tasks for Human")).toBeNull();
+
+    // Launch a run (fireEvent under fake timers, like the keystone) → the run view takes over.
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Run this team" }));
+    });
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    });
+    // Advance past a poll interval so the run's pending task is fetched and delivered to the drawer.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    // Part A keeps the run-mode left panel: the tasks drawer now renders.
+    expect(screen.getByText("Tasks for Human")).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("Part B: the header avatar (email initial) hides the email + Log out until clicked; Log out calls onLogout", async () => {
+    const user = userEvent.setup();
+    const onLogout = vi.fn();
+    render(
+      <StrictMode>
+        <App user={{ id: "u1", email: "ada@studio.dev" }} onLogout={onLogout} />
+      </StrictMode>,
+    );
+    await screen.findByText("Product manager");
+
+    // The account avatar shows the email's initial; the raw email + a Log out control are NOT shown yet
+    // (replacing the old always-visible raw email + Log out text).
+    const avatar = screen.getByRole("button", { name: "Account" });
+    expect(avatar).toHaveTextContent("A");
+    expect(screen.queryByText("ada@studio.dev")).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /log out/i })).toBeNull();
+
+    // Click → the profile menu reveals the email + a Log out control that calls onLogout.
+    await user.click(avatar);
+    expect(screen.getByText("ada@studio.dev")).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: /log out/i }));
+    expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it("Part C: toolbar = back arrow + Run (before the toggle) + always-on spend ($0.00) + status dot, no hint line", async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    render(
+      <StrictMode>
+        <App onBackToDashboard={onBack} />
+      </StrictMode>,
+    );
+    await screen.findByText("Product manager");
+
+    // The back-to-dashboard arrow (replaces the header's "← Dashboard" text button) — wired.
+    const back = screen.getByRole("button", { name: "Back to dashboard" });
+
+    // Run this team comes BEFORE the Single | A/B toggle (design order — the reverse of before).
+    const run = screen.getByRole("button", { name: "Run this team" });
+    const ab = screen.getByRole("button", { name: "A/B compare" });
+    expect(run.compareDocumentPosition(ab) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // The always-on spend ("$0.00" while idle) + the backend status dot; the old drag hint line is GONE.
+    expect(screen.getByText("$0.00")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /backend/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Drag from a node.*edge to wire it/i)).toBeNull();
+
+    await user.click(back);
+    expect(onBack).toHaveBeenCalledTimes(1);
   });
 });
