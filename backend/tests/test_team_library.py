@@ -102,11 +102,12 @@ def _stub_launch(monkeypatch):
 
 def test_list_templates_exposes_the_starter_presets():
     """The curated library is the code-resident builders, in order, in the picker's wire shape
-    ({template, name, description}). P1.8c adds ``thinker_chain`` (PM → Architect → Engineer).
+    ({template, name, description}). F2a: the catalog is the four-template ladder (simple → rich);
+    ``thinker_chain`` was dropped from the picker (its builder is kept for the executor keystone).
     (Mutation: a missing/renamed key would break the picker.)"""
     templates = list_templates()
     keys = [t["template"] for t in templates]
-    assert keys == ["two_node", "review_loop", "thinker_chain"]
+    assert keys == ["two_node", "review_loop", "plan_review", "full_squad"]
     for t in templates:
         assert t["name"] and t["description"]  # the picker shows both
 
@@ -116,7 +117,8 @@ def test_list_templates_endpoint(client):
     assert [t["template"] for t in body["templates"]] == [
         "two_node",
         "review_loop",
-        "thinker_chain",
+        "plan_review",
+        "full_squad",
     ]
 
 

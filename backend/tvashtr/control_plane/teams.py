@@ -106,6 +106,16 @@ _PRD_GATE_CONFIG = {
     ),
 }
 
+# The ship-approval gate node's config (F2a ``full_squad``) — a SECOND human checkpoint in front of
+# the ship terminal: after the review loop converges (or escalation approves), a human approves the
+# actual ship. Handled GENERICALLY by the executor (``wait_at_gate`` → approved/rejected → the
+# matching out-edge), exactly like the PRD + escalation gates; no ``gate_kind`` branch is needed.
+_SHIP_GATE_CONFIG = {
+    "gate_kind": "ship_approval",
+    "title": "Approve the ship?",
+    "description": "Approve to ship the reviewed change; reject to stop without shipping.",
+}
+
 
 def engineer_model() -> str:
     return os.environ.get("TVASHTR_AGENT_MODEL", DEFAULT_ENGINEER_MODEL)
@@ -558,6 +568,413 @@ def build_thinker_chain_team(name: str = "PM -> Architect -> Engineer") -> str:
         return str(graph.id)
 
 
+def build_plan_review_team(name: str = "PM -> Architect -> Engineer <-> Reviewer") -> str:
+    """Insert the plan-and-review team (two thinkers + a review loop) as a uniform walk; return its
+    id (F2a). This is EXACTLY :func:`build_review_loop_team` with an Architect thinker inserted
+    between the PM and the PRD gate — ``pm -> prd_gate`` becomes ``pm -> architect -> prd_gate``:
+    PM (completion) drafts the mini-PRD -> Architect (completion) appends the technical design in
+    place -> prd_gate (gate; approve -> Engineer, reject -> stop) -> Engineer (agent) -> Reviewer
+    (agent). The Reviewer's ``approved`` ships; its catch-all loop-back follows the ``review`` edge
+    (carrying ``loop_limit`` = the cap) to the Engineer; cap-exhaustion leaves the Engineer via the
+    ``escalation`` edge to the escalation gate (ship-as-is on approve / stop on reject). Mirrors the
+    review-loop builder's node fields, gate configs, and edge construction; the generic executor
+    runs it with NO new code (the non-start Architect thinker is already proven by
+    :func:`build_thinker_chain_team`)."""
+    settings = get_settings()
+    max_iters = settings.max_review_iterations
+    with session_scope() as session:
+        graph = TeamGraph(name=name)
+        session.add(graph)
+        session.flush()
+
+        pm = AgentNode(
+            team_graph_id=graph.id,
+            role_name="pm",
+            kind="completion",
+            model=settings.default_model,
+            engine=None,
+            prompt=PM_PROMPT,
+            position={"x": 0, "y": 0},
+        )
+        architect = AgentNode(
+            team_graph_id=graph.id,
+            role_name="architect",
+            kind="completion",
+            model=settings.default_model,
+            engine=None,
+            prompt=ARCHITECT_PROMPT,
+            position={"x": 260, "y": 0},
+        )
+        prd_gate = AgentNode(
+            team_graph_id=graph.id,
+            role_name="prd_gate",
+            kind="gate",
+            model=None,
+            engine=None,
+            position={"x": 520, "y": 0},
+            config=_PRD_GATE_CONFIG,
+        )
+        engineer = AgentNode(
+            team_graph_id=graph.id,
+            role_name="engineer",
+            kind="agent",
+            model=engineer_model(),
+            engine="openhands",
+            prompt=ENGINEER_PROMPT,
+            position={"x": 780, "y": 0},
+            config={"agent_kind": "engineer"},
+        )
+        reviewer = AgentNode(
+            team_graph_id=graph.id,
+            role_name="reviewer",
+            kind="agent",
+            engine="openhands",
+            model=reviewer_model(),
+            prompt=REVIEWER_PROMPT,
+            position={"x": 1040, "y": 0},
+            config={"agent_kind": "reviewer"},
+        )
+        escalation_gate = AgentNode(
+            team_graph_id=graph.id,
+            role_name="escalation_gate",
+            kind="gate",
+            model=None,
+            engine=None,
+            position={"x": 780, "y": 180},
+            config={
+                "gate_kind": "review_escalation",
+                "title": (
+                    f"Couldn't satisfy the spec in {max_iters} review rounds — "
+                    "ship the last build as-is, or stop"
+                ),
+                "description": (
+                    "The Engineer and Reviewer did not converge within the cap. Approve "
+                    "to ship the last completed build as-is, or reject to stop the run "
+                    "without shipping."
+                ),
+            },
+        )
+        ship = AgentNode(
+            team_graph_id=graph.id,
+            role_name="ship",
+            kind="terminal",
+            model=None,
+            engine=None,
+            position={"x": 1300, "y": 0},
+            config={"terminal_kind": "ship"},
+        )
+        stop = AgentNode(
+            team_graph_id=graph.id,
+            role_name="stop",
+            kind="terminal",
+            model=None,
+            engine=None,
+            position={"x": 520, "y": 160},
+            config={"terminal_kind": "stop"},
+        )
+        session.add_all([pm, architect, prd_gate, engineer, reviewer, escalation_gate, ship, stop])
+        session.flush()
+
+        session.add_all(
+            [
+                # PM -> Architect (unconditional): the first thinker hands the spec to the second.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=pm.id,
+                    target_node_id=architect.id,
+                    edge_type="work",
+                    conditions=None,
+                ),
+                # Architect -> prd_gate (unconditional): the refined spec goes to the human gate.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=architect.id,
+                    target_node_id=prd_gate.id,
+                    edge_type="work",
+                    conditions=None,
+                ),
+                # prd_gate -> Engineer (approved) / -> stop (rejected).
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=prd_gate.id,
+                    target_node_id=engineer.id,
+                    edge_type="work",
+                    conditions={"when": "approved"},
+                ),
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=prd_gate.id,
+                    target_node_id=stop.id,
+                    edge_type="work",
+                    conditions={"when": "rejected"},
+                ),
+                # Engineer -> Reviewer (unconditional review edge).
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=engineer.id,
+                    target_node_id=reviewer.id,
+                    edge_type="review",
+                    conditions=None,
+                ),
+                # Reviewer -> Engineer: the loop-back catch-all carrying the cap as loop_limit.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=reviewer.id,
+                    target_node_id=engineer.id,
+                    edge_type="review",
+                    conditions={"loop_limit": max_iters},
+                ),
+                # Reviewer -> ship (approved).
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=reviewer.id,
+                    target_node_id=ship.id,
+                    edge_type="review",
+                    conditions={"when": "approved"},
+                ),
+                # Engineer -> escalation_gate: the cap-exhaustion route out of the agent.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=engineer.id,
+                    target_node_id=escalation_gate.id,
+                    edge_type="escalation",
+                    conditions=None,
+                ),
+                # escalation_gate -> ship (approved) / -> stop (rejected).
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=escalation_gate.id,
+                    target_node_id=ship.id,
+                    edge_type="work",
+                    conditions={"when": "approved"},
+                ),
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=escalation_gate.id,
+                    target_node_id=stop.id,
+                    edge_type="work",
+                    conditions={"when": "rejected"},
+                ),
+            ]
+        )
+        return str(graph.id)
+
+
+def build_full_squad_team(name: str = "Full feature squad") -> str:
+    """Insert the full feature-squad team as a uniform walk; return its id (F2a). EXACTLY
+    :func:`build_plan_review_team` PLUS a ``ship_approval`` gate in front of the ship terminal, so
+    BOTH ship-bound approvals (the Reviewer's and the escalation gate's) pass a SECOND human
+    checkpoint before shipping. Two thinkers (PM + Architect), two workers (Engineer + Reviewer),
+    two human gates (PRD + ship). Mirrors the review-loop builder's node fields / gate configs /
+    edge construction; the ``ship_approval`` gate is handled generically by the executor
+    (``wait_at_gate``) with NO new code."""
+    settings = get_settings()
+    max_iters = settings.max_review_iterations
+    with session_scope() as session:
+        graph = TeamGraph(name=name)
+        session.add(graph)
+        session.flush()
+
+        pm = AgentNode(
+            team_graph_id=graph.id,
+            role_name="pm",
+            kind="completion",
+            model=settings.default_model,
+            engine=None,
+            prompt=PM_PROMPT,
+            position={"x": 0, "y": 0},
+        )
+        architect = AgentNode(
+            team_graph_id=graph.id,
+            role_name="architect",
+            kind="completion",
+            model=settings.default_model,
+            engine=None,
+            prompt=ARCHITECT_PROMPT,
+            position={"x": 260, "y": 0},
+        )
+        prd_gate = AgentNode(
+            team_graph_id=graph.id,
+            role_name="prd_gate",
+            kind="gate",
+            model=None,
+            engine=None,
+            position={"x": 520, "y": 0},
+            config=_PRD_GATE_CONFIG,
+        )
+        engineer = AgentNode(
+            team_graph_id=graph.id,
+            role_name="engineer",
+            kind="agent",
+            model=engineer_model(),
+            engine="openhands",
+            prompt=ENGINEER_PROMPT,
+            position={"x": 780, "y": 0},
+            config={"agent_kind": "engineer"},
+        )
+        reviewer = AgentNode(
+            team_graph_id=graph.id,
+            role_name="reviewer",
+            kind="agent",
+            engine="openhands",
+            model=reviewer_model(),
+            prompt=REVIEWER_PROMPT,
+            position={"x": 1040, "y": 0},
+            config={"agent_kind": "reviewer"},
+        )
+        escalation_gate = AgentNode(
+            team_graph_id=graph.id,
+            role_name="escalation_gate",
+            kind="gate",
+            model=None,
+            engine=None,
+            position={"x": 780, "y": 180},
+            config={
+                "gate_kind": "review_escalation",
+                "title": (
+                    f"Couldn't satisfy the spec in {max_iters} review rounds — "
+                    "ship the last build as-is, or stop"
+                ),
+                "description": (
+                    "The Engineer and Reviewer did not converge within the cap. Approve "
+                    "to ship the last completed build as-is, or reject to stop the run "
+                    "without shipping."
+                ),
+            },
+        )
+        ship_gate = AgentNode(
+            team_graph_id=graph.id,
+            role_name="ship_gate",
+            kind="gate",
+            model=None,
+            engine=None,
+            position={"x": 1300, "y": 0},
+            config=_SHIP_GATE_CONFIG,
+        )
+        ship = AgentNode(
+            team_graph_id=graph.id,
+            role_name="ship",
+            kind="terminal",
+            model=None,
+            engine=None,
+            position={"x": 1560, "y": 0},
+            config={"terminal_kind": "ship"},
+        )
+        stop = AgentNode(
+            team_graph_id=graph.id,
+            role_name="stop",
+            kind="terminal",
+            model=None,
+            engine=None,
+            position={"x": 520, "y": 160},
+            config={"terminal_kind": "stop"},
+        )
+        session.add_all(
+            [pm, architect, prd_gate, engineer, reviewer, escalation_gate, ship_gate, ship, stop]
+        )
+        session.flush()
+
+        session.add_all(
+            [
+                # PM -> Architect (unconditional): the first thinker hands the spec to the second.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=pm.id,
+                    target_node_id=architect.id,
+                    edge_type="work",
+                    conditions=None,
+                ),
+                # Architect -> prd_gate (unconditional): the refined spec goes to the human gate.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=architect.id,
+                    target_node_id=prd_gate.id,
+                    edge_type="work",
+                    conditions=None,
+                ),
+                # prd_gate -> Engineer (approved) / -> stop (rejected).
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=prd_gate.id,
+                    target_node_id=engineer.id,
+                    edge_type="work",
+                    conditions={"when": "approved"},
+                ),
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=prd_gate.id,
+                    target_node_id=stop.id,
+                    edge_type="work",
+                    conditions={"when": "rejected"},
+                ),
+                # Engineer -> Reviewer (unconditional review edge).
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=engineer.id,
+                    target_node_id=reviewer.id,
+                    edge_type="review",
+                    conditions=None,
+                ),
+                # Reviewer -> Engineer: the loop-back catch-all carrying the cap as loop_limit.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=reviewer.id,
+                    target_node_id=engineer.id,
+                    edge_type="review",
+                    conditions={"loop_limit": max_iters},
+                ),
+                # Reviewer -> ship_gate (approved): the reviewed build routes to the ship gate.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=reviewer.id,
+                    target_node_id=ship_gate.id,
+                    edge_type="review",
+                    conditions={"when": "approved"},
+                ),
+                # Engineer -> escalation_gate: the cap-exhaustion route out of the agent.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=engineer.id,
+                    target_node_id=escalation_gate.id,
+                    edge_type="escalation",
+                    conditions=None,
+                ),
+                # escalation_gate -> ship_gate (approved): ship-as-is also passes the ship gate.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=escalation_gate.id,
+                    target_node_id=ship_gate.id,
+                    edge_type="work",
+                    conditions={"when": "approved"},
+                ),
+                # escalation_gate -> stop (rejected).
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=escalation_gate.id,
+                    target_node_id=stop.id,
+                    edge_type="work",
+                    conditions={"when": "rejected"},
+                ),
+                # ship_gate -> ship (approved) / -> stop (rejected): the second human checkpoint.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=ship_gate.id,
+                    target_node_id=ship.id,
+                    edge_type="work",
+                    conditions={"when": "approved"},
+                ),
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=ship_gate.id,
+                    target_node_id=stop.id,
+                    edge_type="work",
+                    conditions={"when": "rejected"},
+                ),
+            ]
+        )
+        return str(graph.id)
+
+
 def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
     """Deep-clone a team graph into a NEW run-scoped ``TeamGraph`` and return its id — the
     clone-on-launch snapshot (P1.8b): fresh node ids, every edge remapped onto the cloned node
@@ -645,11 +1062,19 @@ _TEMPLATE_CATALOG: tuple[TeamTemplate, ...] = (
         build_review_loop_team,
     ),
     TeamTemplate(
-        "thinker_chain",
-        "PM → Architect → Engineer",
-        "Two thinkers shape the spec — a PM drafts it and an Architect adds the technical design — "
-        "then an Engineer builds and ships it.",
-        build_thinker_chain_team,
+        "plan_review",
+        "PM → Architect → Engineer ↔ Reviewer",
+        "Two thinkers plan it — a PM drafts the spec, an Architect adds the technical design — "
+        "then a build-and-review loop ships it once the tests pass (or the cap trips).",
+        build_plan_review_team,
+    ),
+    TeamTemplate(
+        "full_squad",
+        "Full feature squad",
+        "The works — a PM and Architect plan the feature, you approve the plan, an Engineer and "
+        "Reviewer build and test in a loop, then you approve the ship. Two thinkers, two workers, "
+        "two human checkpoints.",
+        build_full_squad_team,
     ),
 )
 _TEMPLATES_BY_KEY: dict[str, TeamTemplate] = {t.key: t for t in _TEMPLATE_CATALOG}

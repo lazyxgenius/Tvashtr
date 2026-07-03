@@ -43,10 +43,10 @@ def test_capability_to_columns_mapping():
 
 
 def test_patch_flips_non_root_thinker_to_worker_and_back(client):
-    """On a thinker_chain team, the Architect is a NON-root completion (thinker). Flipping it to a
+    """On a plan_review team, the Architect is a NON-root completion (thinker). Flipping it to a
     worker is a paired kind+engine write; flipping it back restores completion/null. Re-read each
     time so the persistence is genuine."""
-    tid = create_team_from_template("thinker_chain", "Cap flip", auth_user_id())
+    tid = create_team_from_template("plan_review", "Cap flip", auth_user_id())
     architect = _graph_nodes(client, tid)["architect"]
     assert architect["kind"] == "completion" and architect["engine"] is None  # seeded as a thinker
 
@@ -75,7 +75,7 @@ def test_patch_worker_on_root_is_rejected_409(client):
     """The ROOT node (the PM — not targeted by any edge) must stay a thinker: it writes the spec the
     rest of the team reads, so making it a worker would leave no spec for read_latest_prd_step. The
     endpoint rejects it 409 and the row is unchanged."""
-    tid = create_team_from_template("thinker_chain", "Root lock", auth_user_id())
+    tid = create_team_from_template("plan_review", "Root lock", auth_user_id())
     pm = _graph_nodes(client, tid)["pm"]
     assert pm["kind"] == "completion"
 
@@ -92,7 +92,7 @@ def test_patch_worker_on_root_is_rejected_409(client):
 def test_patch_root_to_thinker_is_allowed_noop(client):
     """Asking the root to be a thinker (its current capability) is allowed — only ``worker`` on the
     root is locked. The PM stays a completion."""
-    tid = create_team_from_template("thinker_chain", "Root stays thinker", auth_user_id())
+    tid = create_team_from_template("plan_review", "Root stays thinker", auth_user_id())
     pm = _graph_nodes(client, tid)["pm"]
     resp = client.patch(
         f"/api/teams/{tid}/nodes/{pm['id']}",
@@ -107,7 +107,7 @@ def test_patch_without_capability_leaves_kind_and_engine_unchanged(client):
     """Back-compat: a ``{prompt, model}`` save with NO ``capability`` leaves kind/engine untouched
     (the prior P1.8b save contract still works). The Engineer stays an agent/openhands worker; only
     its prompt/model change."""
-    tid = create_team_from_template("thinker_chain", "Back compat", auth_user_id())
+    tid = create_team_from_template("plan_review", "Back compat", auth_user_id())
     eng = _graph_nodes(client, tid)["engineer"]
     assert eng["kind"] == "agent" and eng["engine"] == "openhands"
     new_prompt = f"sentinel {uuid.uuid4().hex}"
@@ -126,7 +126,7 @@ def test_patch_without_capability_leaves_kind_and_engine_unchanged(client):
 def test_patch_capability_still_writes_prompt_and_model(client):
     """A capability flip carries the prompt/model write too (the panel posts all fields). Flipping
     the Architect to a worker AND editing its prompt persists both in one PATCH."""
-    tid = create_team_from_template("thinker_chain", "Flip plus edit", auth_user_id())
+    tid = create_team_from_template("plan_review", "Flip plus edit", auth_user_id())
     architect = _graph_nodes(client, tid)["architect"]
     new_prompt = f"worker now {uuid.uuid4().hex}"
     new_model = "nvidia_nim/meta/llama-3.3-70b-instruct"
