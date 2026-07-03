@@ -1,0 +1,888 @@
+/* ============================================================
+   Tvashtr — F4 premium landing page.
+   Rebuilt from design/Tvashtr Frontend Overhaul/Landing.dc.html.
+
+   Scope: LANDING ONLY. Every rule is namespaced under `.tv-lp`
+   so it can never touch the canvas / dashboard / panel surfaces
+   a parallel session owns. Imported from LandingPage.tsx (never
+   from index.css). Every colour/font/shadow/easing resolves to a
+   design-system token — NO ad-hoc hex. All keyframes are reused
+   from design-system/tokens/extend.css (tv-parallax, tv-node-in,
+   tv-draw, tv-wave, tv-flow, tv-drift, tv-fade-up, tv-stamp); the
+   F0 prefers-reduced-motion guard there neutralises the scroll
+   timelines to their static end-state.
+
+   Two scroll-reactive centrepieces:
+   1. the hero stage parallaxes on document scroll
+      (animation-timeline: scroll(root)) with a JS fit-scale so the
+      fixed 470x392 board fits narrow columns;
+   2. the how-it-works nodes assemble on scroll
+      (animation-timeline: view() + a per-node animation-range),
+      deterministic per scroll position.
+   ============================================================ */
+
+.tv-lp {
+  /* This app is a fixed-viewport shell (index.css locks html/body/#root to height:100%), so the
+     DOCUMENT never scrolls and scroll(root)/anonymous view() are inactive. The landing therefore
+     owns its own scroll container — self-contained, so it never disturbs the canvas app's layout
+     (index.css is the wall). The scroll-reactive centrepieces read a `.tv-lp`-scoped named
+     scroll-timeline (hero parallax) + a named view-timeline on the HIW stage (assemble). */
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-timeline-name: --tvlp-scroll;
+  scroll-timeline-axis: block;
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+  background: var(--surface-page);
+  /* coral-300 stand-in (that token doesn't exist in the DS) — a mid coral
+     derived entirely from DS tokens, for the "flowing" hero edges. */
+  --lp-flow: color-mix(in srgb, var(--coral-500) 40%, var(--coral-100));
+}
+.tv-lp__defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+/* ---- NAV (sticky, frosted) ---- */
+.tv-lp__nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--hairline-soft);
+  background: color-mix(in srgb, var(--surface-page) 82%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.tv-lp__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+.tv-lp__wordmark {
+  font-family: var(--font-display);
+  font-size: 21px;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.tv-lp__nav-links {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+.tv-lp__nav-link {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color var(--dur-fast, 0.12s) var(--ease-standard, ease);
+}
+.tv-lp__nav-link:hover {
+  color: var(--text-primary);
+}
+.tv-lp__nav-link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+.tv-lp__nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+  transition:
+    background var(--dur-fast, 0.12s) var(--ease-standard, ease),
+    box-shadow var(--dur-fast, 0.12s) var(--ease-standard, ease);
+}
+.tv-lp__nav-cta:hover {
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-sm);
+}
+.tv-lp__nav-cta:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* ---- HERO ---- */
+.tv-lp__hero {
+  position: relative;
+  overflow: hidden;
+}
+.tv-lp__hero-wash {
+  position: absolute;
+  inset: 0;
+  background: var(--wash-hero);
+  pointer-events: none;
+}
+.tv-lp__hero-mark {
+  position: absolute;
+  right: -150px;
+  top: -120px;
+  width: 520px;
+  height: 520px;
+  opacity: 0.06;
+  pointer-events: none;
+  animation: tv-drift 14s ease-in-out infinite;
+}
+.tv-lp__hero-inner {
+  position: relative;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 78px 28px 64px;
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 54px;
+  align-items: center;
+}
+.tv-lp__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 13px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--coral-200);
+  background: var(--coral-100);
+  margin-bottom: 24px;
+}
+.tv-lp__badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.tv-lp__badge span:last-child {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--coral-700);
+}
+.tv-lp__headline {
+  margin: 0 0 22px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 54px;
+  line-height: 1.07;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+}
+.tv-lp__headline-em {
+  font-style: italic;
+  color: var(--accent);
+}
+.tv-lp__lede {
+  margin: 0 0 30px;
+  max-width: 30em;
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.tv-lp__cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 13px;
+  align-items: center;
+}
+.tv-lp__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 24px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast, 0.12s) var(--ease-standard, ease),
+    box-shadow var(--dur-fast, 0.12s) var(--ease-standard, ease),
+    transform var(--dur-fast, 0.12s) var(--ease-standard, ease);
+}
+.tv-lp__cta:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.tv-lp__cta--primary {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: var(--shadow-sm);
+}
+.tv-lp__cta--primary:hover {
+  background: var(--accent-hover);
+}
+.tv-lp__cta--primary:active {
+  transform: translateY(0.5px);
+}
+.tv-lp__cta--ghost {
+  padding: 0 22px;
+  border-color: var(--border-strong);
+  background: var(--surface-card);
+  color: var(--text-primary);
+}
+.tv-lp__cta--ghost:hover {
+  background: var(--panel-300);
+}
+.tv-lp__cta--lg {
+  height: 50px;
+  padding: 0 28px;
+  border-radius: 12px;
+  font-size: 15.5px;
+}
+.tv-lp__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 30px;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+.tv-lp__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* ---- ALIVE HERO STAGE ---- */
+.tv-lp__hero-stage {
+  position: relative;
+  height: 392px;
+  border-radius: 18px;
+  border: 1px solid var(--hairline-soft);
+  background: var(--surface-board);
+  box-shadow: var(--shadow-raise);
+  overflow: hidden;
+  animation: tv-parallax linear both;
+  animation-timeline: --tvlp-scroll;
+  animation-range: 0 70vh;
+}
+.tv-lp__hero-stage-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 470px;
+  height: 392px;
+  transform-origin: top left;
+}
+.tv-lp__stage-grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--line-400) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  opacity: 0.5;
+}
+.tv-lp__stage-live {
+  position: absolute;
+  top: 13px;
+  left: 15px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-card);
+  border: 1px solid var(--coral-200);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--coral-700);
+}
+.tv-lp__stage-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--coral-100);
+}
+.tv-lp__stage-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.tv-lp__flow-edge {
+  animation: tv-flow 0.9s linear infinite;
+}
+.tv-lp__stage-node {
+  position: absolute;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: var(--surface-card);
+  border: 1.5px solid var(--border-hairline);
+  box-shadow: var(--shadow-node);
+}
+.tv-lp__stage-node--wave {
+  animation: tv-wave 6s ease-in-out infinite;
+}
+.tv-lp__stage-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.tv-lp__stage-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+.tv-lp__stage-glyph--accent {
+  background: var(--coral-100);
+  color: var(--coral-700);
+  border: 1px solid var(--coral-200);
+}
+.tv-lp__stage-glyph--panel {
+  background: var(--panel-300);
+  color: var(--ink-700);
+}
+.tv-lp__stage-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.tv-lp__stage-gate {
+  position: absolute;
+  padding: 8px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-card);
+  border: 1.5px solid var(--coral-500);
+  box-shadow:
+    0 0 0 3px var(--focus-ring),
+    var(--shadow-node);
+}
+.tv-lp__stage-gate-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--coral-700);
+  font-size: 11px;
+  font-weight: 600;
+}
+.tv-lp__stage-ship {
+  position: absolute;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--sage-100) 60%, var(--surface-card));
+  border: 1.5px solid var(--sage-500);
+  box-shadow: var(--shadow-node);
+}
+.tv-lp__stage-ship-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: color-mix(in srgb, var(--sage-500) 66%, var(--ink-900));
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* ---- shared section scaffolding ---- */
+.tv-lp__section {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 40px 28px 30px;
+}
+.tv-lp__eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--coral-700);
+}
+.tv-lp__h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+.tv-lp__reveal {
+  animation: tv-fade-up 0.7s var(--ease-out) both;
+}
+
+/* ---- WEDGE ---- */
+.tv-lp__wedge {
+  max-width: 1100px;
+  padding: 84px 28px 30px;
+}
+.tv-lp__wedge-head {
+  max-width: 760px;
+}
+.tv-lp__wedge-head .tv-lp__eyebrow {
+  display: block;
+  margin-bottom: 14px;
+}
+.tv-lp__wedge-head .tv-lp__h2 {
+  margin: 0 0 20px;
+  font-size: 40px;
+  line-height: 1.12;
+}
+.tv-lp__section-lede {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+.tv-lp__section-lede strong {
+  font-weight: inherit;
+  color: var(--text-primary);
+}
+.tv-lp__compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 44px;
+}
+.tv-lp__compare-card {
+  padding: 26px;
+  border-radius: 16px;
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-card);
+}
+.tv-lp__compare-card--with {
+  border-color: var(--coral-200);
+  background: color-mix(in srgb, var(--coral-100) 45%, var(--surface-card));
+}
+.tv-lp__compare-label {
+  margin-bottom: 12px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.tv-lp__compare-card--with .tv-lp__compare-label {
+  color: var(--coral-700);
+}
+.tv-lp__compare-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14.5px;
+  line-height: 1.9;
+  color: var(--text-secondary);
+}
+.tv-lp__compare-card--with .tv-lp__compare-list {
+  color: var(--text-primary);
+}
+
+/* ---- HOW IT WORKS ---- */
+.tv-lp__how {
+  /* No overflow:hidden here — it would become the nearest scrollport and trap the HIW
+     view-timeline. Horizontal spill of the 1000px board is clipped by `.tv-lp` (overflow-x)
+     and pre-empted by the JS fit-scale; the wash is inset:0 so it never spills. */
+  position: relative;
+  padding: 92px 0;
+}
+.tv-lp__how-wash {
+  position: absolute;
+  inset: 0;
+  background: var(--wash-board);
+  pointer-events: none;
+}
+.tv-lp__how-inner {
+  position: relative;
+  max-width: 1180px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 28px;
+}
+.tv-lp__how-head {
+  text-align: center;
+  margin-bottom: 8px;
+}
+.tv-lp__how-head .tv-lp__h2 {
+  margin: 8px 0 0;
+  font-size: 38px;
+}
+.tv-lp__steps {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 24px 0 30px;
+  flex-wrap: wrap;
+}
+.tv-lp__step {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 16px 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-card);
+}
+.tv-lp__step-num {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-code);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--coral-700);
+  background: var(--coral-100);
+}
+.tv-lp__step-text {
+  text-align: left;
+}
+.tv-lp__step-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.tv-lp__step-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.tv-lp__hiw-stage {
+  position: relative;
+  height: 200px;
+  /* The subject whose view progress (within `.tv-lp`) drives the node/edge assembly. */
+  view-timeline-name: --hiw;
+  view-timeline-axis: block;
+}
+.tv-lp__hiw-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1000px;
+  height: 200px;
+  transform-origin: top left;
+}
+.tv-lp__hiw-edges {
+  position: absolute;
+  inset: 0;
+  width: 1000px;
+  height: 200px;
+  overflow: visible;
+}
+.tv-lp__hiw-edge {
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  animation: tv-draw both linear;
+  animation-timeline: --hiw;
+  animation-range: var(--range, cover 6% cover 40%);
+}
+.tv-lp__hiw-node {
+  position: absolute;
+  animation: tv-node-in both linear;
+  animation-timeline: --hiw;
+  animation-range: var(--range, cover 6% cover 40%);
+}
+.tv-lp__hiw-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  border: 1.5px solid var(--border-hairline);
+  box-shadow: var(--shadow-node);
+}
+.tv-lp__hiw-glyph {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--panel-300);
+  color: var(--ink-700);
+}
+.tv-lp__hiw-text {
+  min-width: 0;
+}
+.tv-lp__hiw-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.tv-lp__hiw-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.tv-lp__hiw-done {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--sage-500);
+  color: var(--cream-50);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  animation: tv-stamp 0.4s var(--ease-out) both;
+}
+
+/* ---- DIFFERENTIATORS ---- */
+.tv-lp__diffs-head {
+  text-align: center;
+  margin-bottom: 42px;
+}
+.tv-lp__diffs-head .tv-lp__h2 {
+  margin: 8px 0 0;
+  font-size: 40px;
+}
+.tv-lp__diff-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+.tv-lp__diff-card {
+  padding: 30px 26px;
+  border-radius: 16px;
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-card);
+}
+.tv-lp__diff-icon {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  align-items: center;
+  justify-content: center;
+  background: var(--coral-100);
+  color: var(--coral-700);
+  border: 1px solid var(--coral-200);
+  margin-bottom: 18px;
+}
+.tv-lp__diff-title {
+  margin: 0 0 9px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.tv-lp__diff-body {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* ---- FOR WHOM ---- */
+.tv-lp__who {
+  padding: 64px 28px 40px;
+}
+.tv-lp__who-grid {
+  display: grid;
+  grid-template-columns: 0.8fr 1fr;
+  gap: 48px;
+  align-items: center;
+}
+.tv-lp__who-intro .tv-lp__eyebrow {
+  display: block;
+  margin-bottom: 14px;
+}
+.tv-lp__who-intro .tv-lp__h2 {
+  margin: 0 0 16px;
+  font-size: 38px;
+  line-height: 1.12;
+}
+.tv-lp__who-intro p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+.tv-lp__who-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.tv-lp__persona {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 20px 22px;
+  border-radius: 14px;
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-card);
+}
+.tv-lp__persona-icon {
+  flex: none;
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-300);
+  color: var(--ink-700);
+}
+.tv-lp__persona-title {
+  margin-bottom: 3px;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.tv-lp__persona-body {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+/* ---- CLOSING CTA ---- */
+.tv-lp__closing {
+  max-width: 1180px;
+  margin: 40px auto 0;
+  padding: 0 28px;
+}
+.tv-lp__closing-panel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid var(--coral-200);
+  background: color-mix(in srgb, var(--coral-100) 50%, var(--surface-card));
+  padding: 72px 40px;
+  text-align: center;
+}
+.tv-lp__closing-mark {
+  position: absolute;
+  left: -90px;
+  bottom: -120px;
+  width: 360px;
+  height: 360px;
+  opacity: 0.08;
+  pointer-events: none;
+}
+.tv-lp__closing-inner {
+  position: relative;
+}
+.tv-lp__closing-h2 {
+  margin: 0 0 16px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 48px;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+.tv-lp__closing-lede {
+  margin: 0 auto 28px;
+  max-width: 34em;
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* ---- FOOTER ---- */
+.tv-lp__footer {
+  max-width: 1180px;
+  margin: 56px auto 0;
+  padding: 48px 28px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--hairline-soft);
+}
+.tv-lp__footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.tv-lp__footer-word {
+  font-family: var(--font-display);
+  font-size: 17px;
+  color: var(--text-primary);
+}
+.tv-lp__footer-tag {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+.tv-lp__footer-note {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+
+/* ============================================================
+   Reduced motion — the F0 global guard already neutralises the
+   scroll timelines + decorative loops. One landing-scoped reset:
+   fully kill the hero-stage parallax so the board rests at its
+   natural position (not the animation's filled end-state).
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .tv-lp__hero-stage {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   Responsive — the design ships desktop-first; stack the
+   two-column blocks and condense the nav on narrow viewports.
+   ============================================================ */
+@media (max-width: 900px) {
+  .tv-lp__hero-inner {
+    grid-template-columns: 1fr;
+    gap: 36px;
+    padding-top: 52px;
+  }
+  .tv-lp__headline {
+    font-size: 44px;
+  }
+  .tv-lp__compare,
+  .tv-lp__diff-grid,
+  .tv-lp__who-grid {
+    grid-template-columns: 1fr;
+  }
+  .tv-lp__nav-links {
+    gap: 18px;
+  }
+  .tv-lp__nav-link--wide {
+    display: none;
+  }
+}
+@media (max-width: 560px) {
+  .tv-lp__headline {
+    font-size: 36px;
+  }
+  .tv-lp__closing-h2 {
+    font-size: 36px;
+  }
+  .tv-lp__nav-link {
+    display: none;
+  }
+  .tv-lp__nav-cta {
+    display: inline-flex;
+  }
+}
