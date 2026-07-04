@@ -73,7 +73,9 @@ def test_brownfield_run_lands_on_real_branch_offline(client, monkeypatch, tmp_pa
     original_head = _git(fixture, "rev-parse", "HEAD").stdout.strip()
 
     captured: dict = {}
-    monkeypatch.setattr(team_run, "pm_step", lambda run_id, idea, m, p: seed_pm_prd(run_id, idea))
+    monkeypatch.setattr(
+        team_run, "pm_step", lambda run_id, idea, m, p, mt: seed_pm_prd(run_id, idea)
+    )
     monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _FakeAdapter(captured))
 
     run_id = str(uuid.uuid4())
@@ -225,7 +227,9 @@ def test_brownfield_review_loop_worker_gets_protocol_reviewer_does_not_offline(
     original_head = _git(fixture, "rev-parse", "HEAD").stdout.strip()
 
     captured: dict = {}
-    monkeypatch.setattr(team_run, "pm_step", lambda run_id, idea, m, p: seed_pm_prd(run_id, idea))
+    monkeypatch.setattr(
+        team_run, "pm_step", lambda run_id, idea, m, p, mt: seed_pm_prd(run_id, idea)
+    )
     monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _ReviewLoopFakeAdapter(captured))
 
     run_id = str(uuid.uuid4())
@@ -312,7 +316,9 @@ def test_brownfield_review_loop_reviewer_cannot_clobber_worker_edit_offline(
     original_head = _git(fixture, "rev-parse", "HEAD").stdout.strip()
 
     captured: dict = {}
-    monkeypatch.setattr(team_run, "pm_step", lambda run_id, idea, m, p: seed_pm_prd(run_id, idea))
+    monkeypatch.setattr(
+        team_run, "pm_step", lambda run_id, idea, m, p, mt: seed_pm_prd(run_id, idea)
+    )
     monkeypatch.setattr(
         team_run, "resolve_adapter", lambda name: _ReviewLoopFakeAdapter(captured, clobber=True)
     )
@@ -398,7 +404,9 @@ def test_brownfield_subpath_appends_worker_focus_reviewer_excluded_offline(
     original_head = _git(fixture, "rev-parse", "HEAD").stdout.strip()
 
     captured: dict = {}
-    monkeypatch.setattr(team_run, "pm_step", lambda run_id, idea, m, p: seed_pm_prd(run_id, idea))
+    monkeypatch.setattr(
+        team_run, "pm_step", lambda run_id, idea, m, p, mt: seed_pm_prd(run_id, idea)
+    )
     monkeypatch.setattr(
         team_run,
         "resolve_adapter",

@@ -374,6 +374,13 @@ class AgentInvocation(Base):
     # close populates it today, with ``verdict["reasons"]``. The §14.3 comparison view reads
     # this to tell the "what the review caught" story.
     outcome_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # M-ctx1 (C2/C4, migration ``0019``): the per-worker-invocation context manifest —
+    # ``{parts: [{name, tokens}], total_tokens, budget, handle_used}`` — recording the compiled
+    # instruction's typed parts + their token sizes, the input-token budget the node was checked
+    # against, and whether the spec was offloaded to ``SPEC.md`` (the C4 doc-handle). Written at a
+    # WORKER (``agent``) node's close only; NULL for thinker/gate/terminal nodes and every pre-0019
+    # row. Additive + nullable — observability for the C2 input-token budget.
+    context_manifest: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

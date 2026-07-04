@@ -92,8 +92,42 @@ class Settings(BaseSettings):
     # Per-call output ceiling the gateway applies when a request omits
     # ``max_tokens`` (static config, like ``model_fallbacks`` — NOT run state, so
     # the gateway stays a pure request->result function). Callers that set their
-    # own ``max_tokens`` (e.g. the PM's 400) are unaffected.
+    # own ``max_tokens`` (e.g. the thinker's ``thinker_max_output_tokens``) are unaffected.
     default_max_tokens_per_call: int | None = 4096
+
+    # M-ctx1 (C3): the thinker (``completion`` node) OUTPUT ceiling — the value the executor
+    # passes as ``CompletionRequest.max_tokens`` for ``pm_step`` (the first/root thinker that DRAFTS
+    # the spec) and ``thinker_refine_step`` (a later thinker that produces the COMPLETE updated
+    # spec). Replaces the two hardcoded ``max_tokens=400`` literals, which silently truncated a
+    # thinker's spec as it grew. 2048 gives a real spec headroom while staying well under the
+    # provider window. Env-overridable (``TVASHTR_THINKER_MAX_OUTPUT_TOKENS``); a per-NODE override
+    # (``config.model_config.thinker_max_output_tokens``) wins over this default when set — see
+    # ``context_compiler.resolve_thinker_max_tokens``.
+    thinker_max_output_tokens: int = Field(
+        default=2048,
+        gt=0,
+        validation_alias=AliasChoices(
+            "TVASHTR_THINKER_MAX_OUTPUT_TOKENS", "thinker_max_output_tokens"
+        ),
+    )
+
+    # M-ctx1 (C2): the per-worker-node INPUT token budget — a pre-call ceiling on the compiled
+    # agent instruction (idea + spec + revision + grounding + …). When the compiled input EXCEEDS
+    # this, the executor does NOT call the agent: it fails that node with a clear terminal reason
+    # naming the fattest part + its token count (a clean pre-call failure, not a mid-agent context
+    # crash). Sized with headroom under a 131072-token model window (~110000) so a genuinely large
+    # accumulated context is caught here rather than by the provider mid-run. Env-overridable
+    # (``TVASHTR_WORKER_CONTEXT_TOKEN_BUDGET``); a per-NODE override
+    # (``config.model_config.worker_context_token_budget``) wins over this default when set — see
+    # ``context_compiler.resolve_context_budget``. Tokens are the documented ``len(text)//4``
+    # heuristic (``context_compiler.estimate_tokens``); no real per-model tokenizer is in the deps.
+    worker_context_token_budget: int = Field(
+        default=110000,
+        gt=0,
+        validation_alias=AliasChoices(
+            "TVASHTR_WORKER_CONTEXT_TOKEN_BUDGET", "worker_context_token_budget"
+        ),
+    )
 
     # The review-loop safety cap (P1.5a — D4 enforced termination). The cyclic
     # Engineer<->Reviewer sub-walk runs at most this many Engineer iterations; on

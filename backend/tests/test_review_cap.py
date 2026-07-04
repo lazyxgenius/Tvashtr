@@ -74,7 +74,7 @@ def _stub_agent(monkeypatch, workspace: Path) -> list[tuple[int, str | None]]:
     can assert how many times the Engineer ran (the cap proof)."""
     engineer_calls: list[tuple[int, str | None]] = []
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens):
         return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
@@ -91,6 +91,7 @@ def _stub_agent(monkeypatch, workspace: Path) -> list[tuple[int, str | None]]:
         vkey,
         reviewer_feedback,
         emits_outcome,
+        budget,
     ):
         # P1.8a unified agent step: the reviewer-style node runs the REAL forced harness
         # (TVASHTR_FORCE_REVISIONS over the cap drives the escalation); the worker records each

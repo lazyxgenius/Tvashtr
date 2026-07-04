@@ -77,9 +77,10 @@ def close_invocation_step(
     status: str,
     outcome: str | None,
     outcome_detail: str | None = None,
+    context_manifest: dict | None = None,
 ) -> None:
-    """Idempotently close an invocation: set ``status`` / ``outcome`` /
-    ``outcome_detail`` / ``ended_at`` on the matching ``(run_id, node_id, iteration)`` row.
+    """Idempotently close an invocation: set ``status`` / ``outcome`` / ``outcome_detail`` /
+    ``context_manifest`` / ``ended_at`` on the matching ``(run_id, node_id, iteration)`` row.
 
     A no-op-safe update — re-running it (or running it for a triple that was never
     opened, defensively) writes the same values, never appends a row.
@@ -87,7 +88,12 @@ def close_invocation_step(
     ``outcome_detail`` (P1.5c §14.3-prep) is the free-text detail behind the ``outcome``
     label; it defaults to ``None``, so every call-site that omits it writes NULL exactly
     as before. Only the Reviewer's successful-verdict close supplies it today (the
-    verdict reasons)."""
+    verdict reasons).
+
+    ``context_manifest`` (M-ctx1 C2/C4, migration ``0019``) is the compiled-context manifest
+    ``{parts, total_tokens, budget, handle_used}`` — supplied ONLY by a WORKER (``agent``) node's
+    close (from ``agent_run_step``'s return); it defaults to ``None`` so thinker/gate/terminal
+    closes write NULL exactly as before."""
     with session_scope() as session:
         session.execute(
             update(AgentInvocation)
@@ -100,6 +106,7 @@ def close_invocation_step(
                 status=status,
                 outcome=outcome,
                 outcome_detail=outcome_detail,
+                context_manifest=context_manifest,
                 ended_at=func.now(),
             )
         )

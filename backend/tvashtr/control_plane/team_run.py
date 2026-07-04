@@ -48,17 +48,18 @@ from sqlalchemy import select, update
 from tvashtr.config import get_settings
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.budget_nudge import maybe_emit_budget_nudge_step
+from tvashtr.control_plane.context_compiler import (
+    SPEC_HANDLE_FILENAME,
+    compile_context,
+    resolve_context_budget,
+    resolve_thinker_max_tokens,
+)
 from tvashtr.control_plane.credentials import resolve_owner_api_key
 from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
-from tvashtr.control_plane.worktree import (
-    WORKER_PROTOCOL,
-    add_worktree,
-    build_repo_grounding,
-    worker_focus_directive,
-)
+from tvashtr.control_plane.worktree import add_worktree, build_repo_grounding
 from tvashtr.db import session_scope
 from tvashtr.documents.service import (
     add_version,
@@ -250,19 +251,24 @@ def node_emits_outcome(edges: list[dict], node_id: str) -> bool:
 
 
 @DBOS.step()
-def pm_step(run_id: str, idea: str, pm_model: str, pm_prompt: str) -> dict:
+def pm_step(run_id: str, idea: str, pm_model: str, pm_prompt: str, max_tokens: int) -> dict:
     """PM node: a direct, metered gateway completion -> a versioned PRD document.
 
     P1.8a: the static behavior is the node's ``pm_prompt`` (seeded by the builder, moved off this
     step); the executor appends the run's idea. Everything else is unchanged — this still writes
     the versioned PRD document and sets ``Run.pm_document_id`` (the start-node-writes-the-PRD
-    convention stays structural, dispatched by ``current == start_id``, not by role)."""
+    convention stays structural, dispatched by ``current == start_id``, not by role).
+
+    M-ctx1 (C3): ``max_tokens`` is the resolved thinker OUTPUT ceiling (setting default or per-node
+    override — :func:`context_compiler.resolve_thinker_max_tokens`), replacing the hardcoded 400
+    that
+    silently truncated the drafted spec as it grew."""
     prompt = pm_prompt + f"\n\nFeature request:\n{idea}"
     request = CompletionRequest(
         model=pm_model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
-        max_tokens=400,
+        max_tokens=max_tokens,
         # M-accounts Slice B: resolve THIS run owner's key for the PM's model (BYOK, no .env).
         api_key=_owner_api_key(run_id, pm_model),
     )
@@ -321,6 +327,7 @@ def thinker_refine_step(
     iteration: int,
     current_spec: str,
     spec_document_id: str,
+    max_tokens: int,
 ) -> dict:
     """A LATER thinker node (P1.8c): a metered gateway completion that REFINES the run's single
     shared spec document and appends a new version.
@@ -349,7 +356,9 @@ def thinker_refine_step(
         model=model,
         messages=[{"role": "user", "content": prompt_full}],
         temperature=0.3,
-        max_tokens=400,
+        # M-ctx1 (C3): resolved thinker OUTPUT ceiling (setting default or per-node override),
+        # replacing the hardcoded 400 — the COMPLETE updated spec is no longer silently truncated.
+        max_tokens=max_tokens,
         # M-accounts Slice B: this thinker resolves the owner's key for ITS model (BYOK, no .env).
         api_key=_owner_api_key(run_id, model),
     )
@@ -371,7 +380,25 @@ def thinker_refine_step(
 # the Reviewer's ``REVIEW_VERDICT.json`` sidecar (also harvested+removed) and any stray
 # ``__pycache__``/``*.pyc`` (the Reviewer runs tests with ``python -B`` so it writes none, but
 # this is the belt-and-suspenders for any byproduct either agent leaves behind).
-_WORKSPACE_GITIGNORE = "__pycache__/\n*.pyc\nREVIEW_VERDICT.json\n"
+# M-ctx1 (C4): ``SPEC.md`` — the large-spec doc-handle — joins the list so a GREENFIELD ship never
+# picks it up (greenfield's ``os.walk`` container seed ignores ``.gitignore``, so the agent still
+# reads it). Brownfield writes no workspace ``.gitignore`` (its git-aware seed WOULD skip an ignored
+# file), so there the harvest-and-remove in ``agent_run_step`` is what keeps it out of the ship.
+_WORKSPACE_GITIGNORE = f"__pycache__/\n*.pyc\nREVIEW_VERDICT.json\n{SPEC_HANDLE_FILENAME}\n"
+
+
+def _write_spec_handle(workspace: str, content: str) -> None:
+    """C4: write the offloaded spec to ``<workspace>/SPEC.md`` (the host workspace the executor
+    owns)
+    so a worker reads ``./SPEC.md`` instead of a large inline spec. Pure (stdlib), unit-testable."""
+    (Path(workspace) / SPEC_HANDLE_FILENAME).write_text(content, encoding="utf-8")
+
+
+def _remove_spec_handle(workspace: str) -> None:
+    """C4: remove ``<workspace>/SPEC.md`` after the agent run so it NEVER reaches the shippable
+    worktree (the terminal ship node comes later, after every agent iteration). Best-effort +
+    idempotent — the same harvest-and-remove discipline as ``_harvest_verdict``'s sidecar unlink."""
+    (Path(workspace) / SPEC_HANDLE_FILENAME).unlink(missing_ok=True)
 
 
 def _write_workspace_gitignore(workspace: str) -> None:
@@ -659,6 +686,7 @@ def agent_run_step(
     vkey: str | None,
     reviewer_feedback: str | None,
     emits_outcome: bool,
+    budget: int,
     grounding: str | None = None,
     subpath: str | None = None,
 ) -> dict:
@@ -666,6 +694,19 @@ def agent_run_step(
     ``reviewer_agent_run_step``. Runs the node's ``node_prompt`` (its behavior, seeded by the
     builder) against the sandboxed adapter behind the unchanged ``EngineAdapter``/``AgentTask``
     contract, with the idea + live PRD (+ a revision block on a rework round) appended UNIFORMLY.
+
+    M-ctx1 (C2/C4): the instruction is assembled by the pure
+    :func:`context_compiler.compile_context` (the moved-out, unit-tested typed-parts assembly —
+    byte-identical on the small path). Two additions ride on it, BEFORE any adapter runs:
+
+    * **C2 input budget** — a compiled input exceeding ``budget`` (the resolved per-node ceiling)
+      FAILS the node PRE-CALL: return status ``"over_context"`` (a non-``completed`` status the
+      workflow body finalizes as ``failed``, exactly like an engine error — NOT a new routable
+      outcome label, NOT a mid-agent context crash) with an ``error`` naming the fattest part + its
+      token count, zero usage, no attempt row, no adapter. The manifest is still returned.
+    * **C4 doc-handle** — when ``compile_context`` offloaded a large spec, write it to
+      ``<workspace>/SPEC.md`` before the run (the agent reads ``./SPEC.md``) and remove it after
+      (so it never ships).
 
     ``emits_outcome`` (from :func:`node_emits_outcome` — a fact about the authored topology, NOT a
     role flag) decides the only two role-agnostic differences:
@@ -682,62 +723,76 @@ def agent_run_step(
 
     ``vkey`` (P1.4b) rides into the agent's LLM as its api_key; the returned ``status`` may be
     ``"over_budget"`` (the proxy cut the agent off mid-call), passed through unchanged. Returns
-    ``{"status", "outcome", "reasons", "files_changed", "error"?, **usage}`` — ``files_changed``
-    (the adapter's already-computed change set) is threaded up for the per-node work-brief
-    (Option A); a worker's NON-emitting close composes its brief from it."""
+    ``{"status", "outcome", "reasons", "files_changed", "context_manifest", "error"?, **usage}`` —
+    ``files_changed`` (the adapter's already-computed change set, with ``SPEC.md`` filtered out) is
+    threaded up for the per-node work-brief (Option A); a worker's NON-emitting close composes its
+    brief from it."""
     if emits_outcome:
         forced = _forced_review_outcome(iteration)
         if forced is not None:
             return forced
 
-    # Attempt log — written ONLY when the real adapter runs (after the forced short-circuit), so
-    # the forced Reviewer adds no row and the crash demo's engineer_run_attempts trigger stays
-    # Engineer-only. Intentionally NOT idempotent: one row per execution, distinct pid on a
-    # crash-then-resume (the observable proof the agent step re-executed).
+    # M-ctx1 (C2/C4): assemble the instruction via the pure compiler (the moved-out typed-parts
+    # assembly — byte-identical on the small path). It preserves the EXACT prior conditional logic:
+    # idea + live PRD always; a revision block on a rework round (``iteration > 1`` + feedback); the
+    # brownfield grounding (D6) when set; the worker-only ``WORKER_PROTOCOL`` + sub-path FOCUS (the
+    # §15 worker-gating split — a reviewer gets orientation but NEVER implement-the-change steps).
+    # Run BEFORE the attempt log + adapter so a pre-call budget breach costs no attempt row + no
+    # agent run.
+    compiled = compile_context(
+        node_prompt=node_prompt,
+        idea=idea,
+        spec=prd_text,
+        iteration=iteration,
+        reviewer_feedback=reviewer_feedback,
+        grounding=grounding,
+        emits_outcome=emits_outcome,
+        subpath=subpath,
+        budget=budget,
+    )
+    manifest = compiled.manifest()
+
+    # C2 input budget: a compiled input over budget FAILS PRE-CALL — no attempt row, no adapter, no
+    # mid-agent context crash. Surface it through the SAME ``status != "completed"`` return shape
+    # the engine-error branch below uses (the workflow body finalizes it ``failed``); the
+    # ``over_context`` status is DISTINCT from the proxy's ``over_budget`` so it routes to the
+    # generic failure, not the budget path, and is NOT a routable edge/outcome label. The reason
+    # NAMES the fattest part + its token count so the failure is self-explaining.
+    if compiled.over_budget:
+        fat = compiled.fattest
+        reason = (
+            f"context {compiled.total_tokens} tok exceeds budget {compiled.budget} — "
+            f"the {fat.name!r} part is {fat.tokens} tok"
+        )
+        logger.warning("agent node over input budget run_id=%s: %s", run_id, reason)
+        return {
+            "status": "over_context",
+            "outcome": None,
+            "reasons": None,
+            "files_changed": [],
+            "error": reason,
+            "context_manifest": manifest,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "cost_usd": 0.0,
+        }
+
+    # Attempt log — written ONLY when the real adapter runs (after the forced short-circuit AND the
+    # pre-call budget check), so a forced Reviewer / a budget-breached node adds no row and the
+    # crash demo's engineer_run_attempts trigger stays Engineer-only. Intentionally NOT idempotent:
+    # one row per execution, distinct pid on a crash-then-resume (observable proof the step
+    # re-executed).
     with session_scope() as session:
         session.add(EngineerRunAttempt(run_id=run_id, pid=os.getpid()))
 
-    # The idea + live PRD are appended to EVERY agent node uniformly; the node's ``prompt`` carries
-    # the role-specific behavior/mechanics (moved off this step into the builder, P1.8a). On a
-    # rework round (``iteration > 1`` with feedback) the Reviewer's requested changes + a
-    # revise-in-place directive follow, so the worker reworks the prior round's files (already in
-    # ``workspace``) rather than starting over. iteration==1 carries no revision block. (The
-    # Engineer now also sees the idea — a benign superset of before; the deliverable is unchanged.)
-    context = f"\n\n--- ORIGINAL IDEA ---\n{idea}\n\n--- PRD ---\n{prd_text}"
-    if iteration > 1 and reviewer_feedback:
-        context += (
-            f"\n\n--- REVISION REQUESTED (round {iteration}) ---\n"
-            "The Reviewer reviewed your previous attempt and requested these changes:\n"
-            f"{reviewer_feedback}\n"
-            "Your prior work is in your current working directory — revise it IN PLACE to "
-            "address this feedback. Do not start over and do not delete unrelated files."
-        )
-    # M-brownfield (D6): for a brownfield run, the repo-grounding block is appended AFTER the
-    # idea+PRD(+revision), the same uniform-append shape. ``grounding`` is non-None ONLY for a
-    # brownfield run (computed once via ``brownfield_grounding_step``), so it doubles as the
-    # brownfield discriminator for the adapter's workspace-sync mode below. Greenfield → None →
-    # nothing appended and ``workspace_mode="greenfield"`` → the adapter's byte-for-byte prior path.
-    #
-    # Slice 3 — the §15 worker-gating split: ``grounding`` is now ORIENTATION ONLY (safe for every
-    # node). The action directives (``WORKER_PROTOCOL`` — edit-in-place / run-tests-and-fix) are
-    # appended ONLY to a non-emitting WORKER (``not emits_outcome``), so a Reviewer-style node
-    # (``emits_outcome`` True) gets orientation but is NEVER handed implement-the-change steps —
-    # it must GATE, not implement. A thinker never reaches this step. (For two_node, the Engineer
-    # is a worker → orientation + protocol = the same directives as before, just reassembled, so
-    # ``brownfield-check`` is unchanged.)
-    if grounding:
-        context += f"\n\n{grounding}"
-        if not emits_outcome:
-            context += f"\n\n{WORKER_PROTOCOL}"
-            # scoped-mount Slice 1: a per-run worker FOCUS directive on the SAME worker-only gate,
-            # appended AFTER ``WORKER_PROTOCOL`` when the brownfield run is scoped to a sub-path —
-            # keep edits in ``<subpath>`` and don't explore outside it (the rung-2 overflow), while
-            # still permitting root-level dep-install/tests. A reviewer (``emits_outcome``),
-            # greenfield (``grounding`` None), and whole-repo brownfield (``subpath`` None) get
-            # nothing extra — byte-for-byte their prior instruction.
-            if subpath:
-                context += f"\n\n{worker_focus_directive(subpath)}"
-    instruction = node_prompt + context
+    instruction = compiled.instruction
+    # C4 doc-handle: when the spec was offloaded, write it to <workspace>/SPEC.md so the worker
+    # reads ``./SPEC.md`` (the docker adapter's push carries the file into the container). Removed
+    # after the run (below) so it NEVER ships — the greenfield ``.gitignore`` is the belt, this the
+    # suspenders.
+    if compiled.handle_used:
+        _write_spec_handle(workspace, compiled.spec_doc)
 
     # M-accounts Slice B: the agent's api_key. Proxy-OFF (BYOK) ⇒ the run owner's per-owner key for
     # this node's model (resolved here, never returned/checkpointed). Proxy-ON ⇒ the minted per-run
@@ -770,21 +825,37 @@ def agent_run_step(
         "openhands-docker" if get_settings().agent_sandbox_mode == "docker" else "openhands"
     )
     adapter = resolve_adapter(engine_name)  # lazy openhands import happens here
-    result = adapter.run(task, on_event=make_run_event_sink(run_id))
+    try:
+        result = adapter.run(task, on_event=make_run_event_sink(run_id))
+    finally:
+        # C4: SPEC.md (if written) must NEVER reach the shippable worktree — remove it right after
+        # the run, whether it succeeded, failed, or raised (the ship node comes later, after every
+        # agent iteration). Byte-for-byte a no-op when the handle didn't fire.
+        if compiled.handle_used:
+            _remove_spec_handle(workspace)
     usage = {
         "prompt_tokens": result.prompt_tokens,
         "completion_tokens": result.completion_tokens,
         "total_tokens": result.total_tokens,
         "cost_usd": result.cost_usd,
     }
+    # C4: SPEC.md is executor scaffolding, not the agent's deliverable — never surface it as a
+    # changed file (docker's brownfield pull enumerates every workspace file, so it would otherwise
+    # appear here + in the work-brief). A no-op when the handle didn't fire (SPEC.md isn't present).
+    files_changed = (
+        [f for f in result.files_changed if f != SPEC_HANDLE_FILENAME]
+        if compiled.handle_used
+        else result.files_changed
+    )
     if result.status != "completed":
         # Hand the terminal status up; the workflow body finalizes.
         return {
             "status": result.status,
             "outcome": None,
             "reasons": None,
-            "files_changed": result.files_changed,
+            "files_changed": files_changed,
             "error": result.error,
+            "context_manifest": manifest,
             **usage,
         }
     if emits_outcome:
@@ -797,7 +868,8 @@ def agent_run_step(
         "status": "completed",
         "outcome": label,
         "reasons": reasons,
-        "files_changed": result.files_changed,
+        "files_changed": files_changed,
+        "context_manifest": manifest,
         **usage,
     }
 
@@ -961,11 +1033,17 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # Capture first-vs-later BEFORE ``pm_document_id`` is reassigned below — it drives both
             # the dispatch AND the per-node work-brief written at close (Option A).
             is_first_thinker = pm_document_id is None
+            # M-ctx1 (C3): resolve the thinker OUTPUT ceiling from the setting + optional per-node
+            # override (``config.model_config.thinker_max_output_tokens``) and thread it into the
+            # step — replacing the hardcoded 400. Resolved in the workflow body off the recorded
+            # graph dict + settings (replay-stable) and passed as a step ARG, so the checkpoint
+            # stays deterministic on resume.
+            thinker_max_tokens = resolve_thinker_max_tokens(get_settings(), node["config"])
             if is_first_thinker:
                 # The FIRST thinker (the root): create the spec doc from the idea. Byte-identical to
                 # the old PM path — same ``pm_step``, same ``pm-llm`` / ``pm-prd-v1`` keys, so the
                 # single-thinker templates + their checkers are untouched.
-                result = pm_step(run_id, idea, node["model"], node["prompt"])
+                result = pm_step(run_id, idea, node["model"], node["prompt"], thinker_max_tokens)
             else:
                 # A LATER thinker: read the current spec (recorded -> deterministic on resume),
                 # refine it, append a new version. A thinker is now composable ANYWHERE.
@@ -979,6 +1057,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     n,
                     current_spec,
                     pm_document_id,
+                    thinker_max_tokens,
                 )
             pm_document_id = result["document_id"]
             close_invocation_step(
@@ -1038,6 +1117,11 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # role. ``agent_run_step`` runs ``node["prompt"]`` generically; it harvests a verdict
             # iff ``emits`` (else outcome is None → the close label stays ``"built"``).
             emits = node_emits_outcome(edges, current)
+            # M-ctx1 (C2): resolve THIS node's INPUT-token budget (setting default + optional
+            # ``config.model_config.worker_context_token_budget`` override) — replay-stable off the
+            # recorded graph dict + settings, passed as a step ARG so ``agent_run_step`` fails a
+            # pre-call breach deterministically on resume.
+            budget = resolve_context_budget(get_settings(), node["config"])
             # M-brownfield: thread the repo-grounding block (+ scoped-mount Slice 1's sub-path) into
             # the brownfield agent call. Greenfield (``grounding is None``) omits BOTH kwargs, so
             # this is byte-for-byte the prior greenfield call — the existing offline suite drives
@@ -1059,6 +1143,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 vkey,
                 reviewer_feedback,
                 emits,
+                budget,
                 **brownfield_kwargs,
             )
             delete_vkey_step(run_id, vkey)
@@ -1068,10 +1153,27 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # conversation carried (best-effort, idempotent on the per-node key), then stop.
                 if result["total_tokens"] or result["cost_usd"]:
                     persist_agent_cost_step(run_id, current, node["model"], result, n)
-                close_invocation_step(run_id, current, n, "stopped", "over_budget")
+                close_invocation_step(
+                    run_id,
+                    current,
+                    n,
+                    "stopped",
+                    "over_budget",
+                    context_manifest=result.get("context_manifest"),
+                )
                 return _finalize_over_budget(run_id, pm_document_id)
             if result["status"] != "completed":
-                close_invocation_step(run_id, current, n, "failed", None)
+                # M-ctx1: an ``over_context`` pre-call budget breach (or any engine error) lands
+                # here → the run finalizes ``failed`` with the self-explaining reason. The manifest
+                # is persisted so the breach's part sizes are queryable off the invocation row.
+                close_invocation_step(
+                    run_id,
+                    current,
+                    n,
+                    "failed",
+                    None,
+                    context_manifest=result.get("context_manifest"),
+                )
                 mark_run_failed_step(run_id)
                 DBOS.logger.error(
                     f"run_team agent node failed run_id={run_id}: {result.get('error')}"
@@ -1096,7 +1198,13 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # of NULL. ``emits`` is the same authored-topology fact handed to ``agent_run_step``.
             detail = result["reasons"] if emits else _worker_brief(result.get("files_changed", []))
             close_invocation_step(
-                run_id, current, n, "done", label or "built", outcome_detail=detail
+                run_id,
+                current,
+                n,
+                "done",
+                label or "built",
+                outcome_detail=detail,
+                context_manifest=result.get("context_manifest"),
             )
             # Thread the verdict's reasons into the next agent's revision context (None for a
             # worker → the next round carries no revision block).

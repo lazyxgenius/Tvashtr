@@ -64,7 +64,7 @@ def test_review_loop_cycles_once_then_ships(client, monkeypatch, tmp_path):
 
     engineer_calls: list[tuple[int, str | None]] = []
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens):
         return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
@@ -81,6 +81,7 @@ def test_review_loop_cycles_once_then_ships(client, monkeypatch, tmp_path):
         vkey,
         reviewer_feedback,
         emits_outcome,
+        budget,
     ):
         # P1.8a: ONE generic agent step. The reviewer-style node (emits_outcome=True) routes
         # through the REAL forced harness so TVASHTR_FORCE_REVISIONS still drives the loop; the
@@ -193,7 +194,7 @@ def test_two_node_walk_ships_through_gate_and_terminal(client, monkeypatch, tmp_
     workspace.mkdir()
     init_workspace_repo(str(workspace))
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens):
         return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
@@ -210,6 +211,7 @@ def test_two_node_walk_ships_through_gate_and_terminal(client, monkeypatch, tmp_
         vkey,
         reviewer_feedback,
         emits_outcome,
+        budget,
     ):
         # P1.8a unified agent step: a reviewer-style node runs the real forced harness; a worker
         # writes the deliverable + the non-idempotent attempt row.
@@ -310,7 +312,7 @@ def test_review_loop_persists_verdict_reasons_into_outcome_detail(client, monkey
     workspace.mkdir()
     init_workspace_repo(str(workspace))
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens):
         return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
@@ -327,6 +329,7 @@ def test_review_loop_persists_verdict_reasons_into_outcome_detail(client, monkey
         vkey,
         reviewer_feedback,
         emits_outcome,
+        budget,
     ):
         # P1.8a unified agent step: a reviewer-style node runs the real forced harness; a worker
         # writes the deliverable + the non-idempotent attempt row.
