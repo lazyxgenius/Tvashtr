@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 
 import { createTeam, getTemplates, type Template } from "../lib/api";
@@ -31,6 +31,14 @@ export function NewTeamDialog({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     getTemplates()
@@ -54,8 +62,10 @@ export function NewTeamDialog({
       const created = await createTeam(selected, name.trim() || "New team");
       onOpenTeam(created.team_graph_id);
     } catch {
-      setError("Couldn't create the team — is the backend running?");
-      setCreating(false);
+      if (mountedRef.current) {
+        setError("Couldn't create the team — is the backend running?");
+        setCreating(false);
+      }
     }
   };
 
