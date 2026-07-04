@@ -110,6 +110,7 @@
    pushed to the right by margin-left:auto). */
 .rf-node__meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 7px;
   margin-top: 11px;

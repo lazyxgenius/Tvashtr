@@ -179,3 +179,41 @@ export function deriveOverall(
   if (WORKFLOW_FAILED.has(workflowStatus ?? "")) return { tone: "failed", label: "Failed" };
   return { tone: "running", label: "Running…" };
 }
+
+/**
+ * Map a team's latest-run status to its dashboard status pill (F2c: "a run is a team that ran").
+ * The teams table shows this pill in each team's row; `null` (never run) reads as a muted
+ * "Not run yet". Human labels; the tone reuses the shared `.tv-pill--*` vocabulary — running=coral,
+ * awaiting=ringed coral, completed=sage, failed=red, over budget=amber, rejected|cancelled=a muted
+ * "Stopped". Derivation lives here (the one status source of truth), never inline in the component.
+ */
+export type RunPillTone =
+  | "idle"
+  | "running"
+  | "paused"
+  | "done"
+  | "failed"
+  | "stopped"
+  | "overbudget";
+
+export function runStatusPill(status: string | null): { tone: RunPillTone; label: string } {
+  if (status === null) return { tone: "idle", label: "Not run yet" };
+  switch (status) {
+    case "running":
+    case "pending":
+      return { tone: "running", label: "Running" };
+    case "awaiting_human":
+      return { tone: "paused", label: "Awaiting you" };
+    case "completed":
+      return { tone: "done", label: "Completed" };
+    case "failed":
+      return { tone: "failed", label: "Failed" };
+    case "over_budget":
+      return { tone: "overbudget", label: "Over budget" };
+    case "rejected":
+    case "cancelled":
+      return { tone: "stopped", label: "Stopped" };
+    default:
+      return { tone: "idle", label: status };
+  }
+}

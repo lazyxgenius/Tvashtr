@@ -228,6 +228,14 @@ body,
   color: var(--ink-600);
   border-color: var(--border-strong);
 }
+/* over_budget = a budget hard-stop: amber, distinct from a red failure or a muted stop (F2c). */
+.tv-pill--overbudget {
+  background: var(--amber-100);
+  color: color-mix(in srgb, var(--amber-500) 66%, var(--ink-900));
+}
+.tv-pill--overbudget .tv-pill__dot {
+  background: var(--amber-500);
+}
 
 /* Segmented control — the "Single run | A/B compare" view toggle (§14.3). */
 .tv-seg {
@@ -695,21 +703,28 @@ body,
   color: var(--text-secondary);
 }
 
-/* ---- Dashboard (M-accounts Slice B) — the post-login default (teams / providers / runs) ---- */
+/* ---- Dashboard (F2c reskin) — the post-login default: greeting + a real stat strip + ONE unified
+   teams table (each team's latest-run status + lifetime spend) + the BYOK provider shelf. Ported
+   from Dashboard.dc.html to the .tv-dash__* convention; token-driven, extends base tokens only. ---- */
 .tv-dash {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  background: var(--surface-page);
 }
-/* Frosted-glass app bar — translucent cream over whatever scrolls beneath. */
+/* Frosted-glass sticky app bar — translucent cream over whatever scrolls beneath. */
 .tv-dash__bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-4) var(--space-6);
-  border-bottom: 1px solid var(--border-hairline);
+  padding: 13px var(--space-6);
+  border-bottom: var(--border-width) solid var(--border-hairline);
   background: var(--surface-overlay);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
@@ -717,27 +732,18 @@ body,
 .tv-dash__brand {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 11px;
 }
 .tv-dash__wordmark {
   font-family: var(--font-display);
-  font-weight: var(--fw-display);
-  font-size: var(--fs-h3);
-  letter-spacing: var(--tracking-tight);
+  font-size: 20px;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
-}
-.tv-dash__eyebrow {
-  font-size: var(--fs-caption);
-  color: var(--text-secondary);
 }
 .tv-dash__bar-right {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-}
-.tv-dash__email {
-  font-size: var(--fs-caption);
-  color: var(--text-secondary);
 }
 .tv-dash__error {
   margin: var(--space-3) var(--space-6) 0;
@@ -747,93 +753,472 @@ body,
   color: color-mix(in srgb, var(--danger) 72%, var(--ink-900));
   font-size: var(--fs-caption);
 }
-.tv-dash__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4);
-  padding: var(--space-6);
-  align-content: start;
+
+/* The centered content column. */
+.tv-dash__main {
+  flex: 1;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 34px var(--space-6) 80px;
 }
-.tv-dash__card {
+
+/* Greeting + the primary New-team action. */
+.tv-dash__greet {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+}
+.tv-dash__hello {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 34px;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.tv-dash__lede {
+  margin: 0;
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+}
+
+/* The stat strip — three real chips (Teams / Active runs / Total spend). */
+.tv-dash__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 30px;
+}
+.tv-dash__stat {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: var(--radius-xl);
+  border: var(--border-width) solid var(--border-hairline);
+  background: var(--surface-card);
+}
+.tv-dash__stat-ic {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: var(--panel-300);
+  color: var(--ink-700);
+}
+.tv-dash__stat-ic--runs {
+  background: var(--coral-100);
+  color: var(--coral-700);
+  border: var(--border-width) solid var(--coral-200);
+}
+.tv-dash__stat-ic--spend {
+  background: var(--sage-100);
+  color: color-mix(in srgb, var(--sage-500) 66%, var(--ink-900));
+}
+.tv-dash__stat-num {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1;
+  color: var(--text-primary);
+}
+.tv-dash__stat-label {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.tv-dash__stack {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5, var(--space-4));
+  gap: 22px;
 }
-.tv-dash__card--wide {
-  grid-column: 1 / -1;
+
+/* A section card (teams table / providers). */
+.tv-dash__panel {
+  border-radius: var(--radius-xl);
+  border: var(--border-width) solid var(--border-hairline);
+  background: var(--surface-card);
+  overflow: hidden;
 }
-.tv-dash__card-head {
+.tv-dash__panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 18px var(--space-6) 14px;
+}
+.tv-dash__panel-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 21px;
+  color: var(--text-primary);
+}
+
+/* The unified teams table (grid) — Team / Nodes / Status / Spend / Created / delete. */
+.tv-dash__thead,
+.tv-dash__trow {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) 64px 148px 92px 116px 40px;
+  gap: 16px;
+  align-items: center;
+}
+.tv-dash__thead {
+  padding: 9px var(--space-6);
+  border-top: var(--border-width) solid var(--border-hairline);
+  border-bottom: var(--border-width) solid var(--border-hairline);
+  background: var(--surface-page);
+}
+.tv-dash__th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.tv-dash__th--num {
+  text-align: right;
+}
+.tv-dash__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tv-dash__trow {
+  position: relative;
+  padding: 14px var(--space-6);
+  border-bottom: var(--border-width) solid var(--border-faint);
+}
+.tv-dash__trow:last-child {
+  border-bottom: none;
+}
+.tv-dash__trow:hover {
+  background: var(--surface-page);
+}
+/* The full-row click surface (opens the team) sits BEHIND the cells; the delete button sits in
+   FRONT — so a row click opens and a delete click deletes, with no nested interactive elements. */
+.tv-dash__trow-open {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.tv-dash__trow-open:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-md);
+}
+.tv-dash__tcell {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  pointer-events: none;
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+}
+.tv-dash__team {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.tv-dash__team-ic {
+  display: flex;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--panel-300);
+  border: var(--border-width) solid var(--border-hairline);
+  color: var(--ink-700);
+}
+.tv-dash__team-name {
+  font-size: 14px;
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv-dash__tcell--num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.tv-dash__tcell--spend {
+  font-family: var(--font-code);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.tv-dash__tcell--created {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.tv-dash__trow-del {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  margin-left: auto;
+  color: var(--ink-600);
+  background: transparent;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+.tv-dash__trow-del:hover {
+  background: var(--red-100);
+  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
+}
+.tv-dash__trow-del:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.tv-dash__empty {
+  margin: 0;
+  padding: var(--space-6);
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+}
+
+/* Providers shelf — the BYOK section (behavior unchanged, reskinned to the mockup). */
+.tv-dash__prov {
+  padding: 20px var(--space-6);
+}
+.tv-dash__prov-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+.tv-dash__prov-lede {
+  max-width: 440px;
+}
+.tv-dash__prov-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: 5px;
+}
+.tv-dash__prov-title h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 19px;
+  color: var(--text-primary);
+}
+.tv-dash__prov-sub {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+.tv-dash__prov-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 320px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.tv-dash__prov-add .tv-launch__input {
+  height: 38px;
+  width: auto;
+  flex: 1;
+  min-width: 150px;
+  max-width: 300px;
+}
+.tv-dash__prov-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 16px 0 0;
+  border-top: var(--border-width) solid var(--border-hairline);
+}
+.tv-dash__prov-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  border-radius: var(--radius-lg);
+  border: var(--border-width) solid var(--border-hairline);
+  background: var(--surface-page);
+  white-space: nowrap;
+}
+.tv-dash__prov-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--sage-500);
+}
+.tv-dash__prov-name {
+  font-size: 13.5px;
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+.tv-dash__prov-last4 {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.tv-dash__prov-remove {
+  display: flex;
+  padding: 2px;
+  margin-left: 2px;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.tv-dash__prov-remove:hover {
+  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
+}
+.tv-dash__prov-empty {
+  margin: 16px 0 0;
+  padding-top: 16px;
+  border-top: var(--border-width) solid var(--border-hairline);
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+}
+
+/* The New-team / delete pop-ups — a centered card over the shared .tv-scrim (dimmed dashboard). */
+.tv-dash__dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 92vw);
+  max-height: 86vh;
+  box-shadow: var(--shadow-pop);
+  animation: tv-modal-in 0.2s var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tv-dash__dialog {
+    animation: none;
+  }
+}
+.tv-dash__dialog-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  flex: none;
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom: var(--border-width) solid var(--border-hairline);
 }
-.tv-dash__card-title {
+.tv-dash__dialog-title {
   margin: 0;
   font-family: var(--font-display);
   font-weight: var(--fw-display);
   font-size: var(--fs-h4);
   color: var(--text-primary);
 }
-.tv-dash__muted,
-.tv-dash__empty {
+.tv-dash__dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5);
+}
+.tv-dash__dialog-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  flex: none;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border-top: var(--border-width) solid var(--border-hairline);
+}
+.tv-dash__dialog-text {
   margin: 0;
   font-size: var(--fs-body-sm);
+  line-height: var(--lh-relaxed);
   color: var(--text-secondary);
 }
-.tv-dash__list {
+.tv-dash__dialog-warn {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--coral-100);
+  color: var(--coral-700);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+}
+
+/* Template cards in the New-team picker. */
+.tv-dash__templates {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-}
-.tv-dash__row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-sm);
-}
-.tv-dash__row--btn {
-  width: 100%;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-}
-.tv-dash__row--btn:hover {
-  border-color: var(--accent);
-  background: var(--accent-tint);
-}
-.tv-dash__row-title {
-  flex: 1;
-  min-width: 0;
-  color: var(--text-primary);
-  font-size: var(--fs-body-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tv-dash__row-meta {
-  font-size: var(--fs-caption);
-  color: var(--text-secondary);
-}
-.tv-dash__remove {
-  padding: 0;
-}
-.tv-dash__add {
-  display: flex;
-  flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-2);
 }
-.tv-dash__add .tv-launch__input {
-  flex: 1;
-  min-width: 120px;
+.tv-dash__template {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-page);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard);
+}
+.tv-dash__template:hover {
+  border-color: var(--border-strong);
+}
+.tv-dash__template--active {
+  border-color: var(--coral-200);
+  box-shadow: var(--shadow-focus);
+}
+.tv-dash__template:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.tv-dash__template-name {
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+.tv-dash__template-desc {
+  font-size: var(--fs-micro);
+  line-height: var(--lh-normal);
+  color: var(--text-tertiary);
 }
 
 /* ---- M-accounts Slice C: the per-node model picker's inline add + the recommendation hint ---- */
@@ -966,6 +1351,14 @@ body,
   background: var(--coral-100);
   border: var(--border-width) solid var(--coral-200);
   border-radius: 50%;
+}
+.tv-avatarmenu__name {
+  font-size: 13.5px;
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tv-avatarmenu__email {
   min-width: 0;

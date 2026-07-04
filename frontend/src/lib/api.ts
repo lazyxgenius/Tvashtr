@@ -333,6 +333,8 @@ export interface TeamSummary {
   name: string;
   created_at: string;
   node_count: number;
+  last_run: { status: string; at: string; run_id: string } | null;
+  spend_usd: number;
 }
 
 // One starter preset in the New-team picker (the curated, code-resident template library).

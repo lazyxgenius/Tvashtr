@@ -1,88 +1,99 @@
 # Tvashtr — Autonomous Execution State
 
 ## Current Milestone
-M-frontend prerequisite — **F2-delete: deleting a team stops its run + removes the team AND its runs**
-(backend-only). Brief: `prompts/F2-delete-teardown.md`. Branch: `feat/f2-delete-teardown` (off `main`
-@ `3949e26`, i.e. after F2b merged).
+M-frontend — **F2c: the dashboard reskin** (frontend-only) — ONE unified teams table with per-team
+status + spend, the New-team template picker, delete-confirm, the stat strip, reskinned providers,
+the canvas status-pill overflow rider, and TeamsRail removal. Brief: `prompts/F2c-dashboard.md`.
+Branch: `feat/f2c-dashboard` (off `main` @ `825adea`, i.e. after F2-delete merged).
 
-## OUTCOME — F2-delete SHIPPED (READY_TO_MERGE; clean SUCCESS)
-`DELETE /api/teams/{team_id}` now FIRST stops any in-flight run of the team, THEN hard-deletes the
-team AND all of its runs — closing the zombie-run bug (a run used to keep executing + spending on its
-immutable clone after its team was deleted). Behavior:
-1. **Enumerate** the team's runs (+ their clone-graph ids) via the EXISTING `cloned_from_node_id`
-   clone→origin link (same join F2b / `_latest_invocation_by_origin` use; a `DISTINCT` collapses the
-   clone's node fan-out to one row per run).
-2. **Stop** every non-terminal run through the **SHARED** `cancel_run_core` — `DBOS.cancel_workflow`
-   + `Run.status="cancelled"` + close its pending `HumanTask`s. This core is EXTRACTED from the old
-   `cancel_run`; the `/cancel` endpoint now delegates to it (one implementation, not two).
-3. **Tear down** each run in FK-safe order: its run-scoped rows (`cost_records` by `workflow_id`;
-   `run_events` / `agent_invocations` / `human_tasks` / `engineer_run_attempts` by `run_id`), the
-   `Run` row, THEN its clone `TeamGraph` (nodes/edges cascade) — Run before its clone so
-   `runs.team_graph_id` (no `ondelete`) never dangles.
-4. **Delete** the library team (its nodes/edges cascade).
-
-Cancels run BEFORE the delete transaction (each in its own txn — no nested `session_scope`, no
-DBOS-in-app-txn race); the deletes are ONE transaction (a failure can't half-delete). Owner-scoped
-throughout (the team is `_require_library_team`-checked; its runs are found only via its own clones).
-Keeps 400-on-malformed-id + 404-on-non-library/non-owned. NO migration (head `0018`), NO frontend.
+## OUTCOME — F2c SHIPPED (READY_TO_MERGE; clean SUCCESS)
+`Dashboard.tsx` is reskinned to `design/Tvashtr Frontend Overhaul/Dashboard.dc.html` with the
+operator's model ("a run is a team that ran"):
+- A greeting header (wordmark + the account avatar/menu), a **real stat strip** — Teams in your
+  library / Active runs (teams whose `last_run` is non-terminal) / Total spend (Σ `spend_usd`).
+- **ONE unified teams table**: Team (row → `onOpenTeam`) · Nodes · **Status** (a `last_run`→pill map:
+  Running / Awaiting you / Completed / Failed / Stopped / Over budget, or a muted **Not run yet**) ·
+  **Spend** (`$` + `spend_usd`) · Created · a row **delete**.
+- The **New-team template picker** (new `NewTeamDialog.tsx`) — a warm centered pop-up over the dimmed
+  dashboard: a name field + a Blank card + one card per `getTemplates()` (the four F2a templates) →
+  `createTeam(key, name)` → `onOpenTeam(new id)` lands on the canvas.
+- The **delete confirm** — names the team, adds "A run is in progress — deleting will stop it." when
+  the latest run is non-terminal → `deleteTeam(id)` → reload `getTeams`.
+- The **providers** section reskinned (behavior unchanged).
+- **RIDER**: `flex-wrap: wrap` on the ONE `.rf-node__meta` rule in `canvas.css` — the worker card's
+  capability + engine + status pill now wrap instead of clipping the pill at the fixed 216px width.
+- The orphaned **`TeamsRail.tsx` + `TeamsRail.test.tsx` deleted** (grep-confirmed nothing imports it).
 
 ## Last Completed Step
-F2-delete — team teardown on DELETE — 2026-07-04 — branch: feat/f2-delete-teardown — commit: (tip;
-exact sha in the FINAL REPORT).
+F2c — dashboard reskin — 2026-07-04 — branch: feat/f2c-dashboard — commit: (tip; exact sha in the
+FINAL REPORT).
 
 ## READY_TO_MERGE
-READY_TO_MERGE: branch=feat/f2-delete-teardown, backend=340 passing
+READY_TO_MERGE: branch=feat/f2c-dashboard, frontend=191 vitest passing
 
-## The change (teams.py + routers.py + 1 new test; backend-only)
-- **`backend/tvashtr/control_plane/teams.py`** (+~99, additive only — the only deletions are the 2 old
-  import lines): `+ from dbos import DBOS`, `+ delete, update` on the sqlalchemy import, `+` the five
-  run-scoped models on the models import; `+ _TERMINAL_RUN_STATUSES` (moved here from routers);
-  `+ cancel_run_core(run_id)` (the shared cancel core); `+ _team_run_teardown_targets(...)` (the
-  clone→origin run enumerator); `+ delete_library_team_and_runs(...)` (the ordered teardown).
-- **`backend/tvashtr/routers.py`** (net −11): `delete_team` now calls `delete_library_team_and_runs`
-  (+ rewritten docstring; the old "no run is orphaned" line was obsolete); `cancel_run` now delegates
-  to `cancel_run_core` (its duplicated inline cancel block removed); `_TERMINAL_RUN_STATUSES` removed
-  (only `cancel_run` used it; now in teams.py).
-- **`backend/tests/test_f2_delete_teardown.py`** (NEW) — 4 tests, runs built via the REAL clone path
-  (`clone_team_graph` + a Run at the clone + a row in EACH of the five run-scoped tables), cancel core
-  spied: reproduce-first (running run → after DELETE the run is cancelled + run + all 5 tables + clone
-  + team all GONE — RED on pre-fix code); completed-run purge (cancel NOT invoked); never-run team;
-  isolation (sibling team + second-owner team intact; ZERO orphans across all 5 tables).
+## The change (frontend-only)
+- **`frontend/src/lib/api.ts`** — ADDITIVE only: `+ last_run: {status, at, run_id} | null` +
+  `+ spend_usd: number` on `TeamSummary`. Diff vs main = EXACTLY those two lines.
+- **`frontend/src/lib/status.ts`** — `+ runStatusPill(status)` (+ `RunPillTone`): the run-status→pill
+  {tone,label} map (extend the single status source of truth, per the hard rail; not inline).
+- **`frontend/src/components/Dashboard.tsx`** — the reskin (stat strip + unified table + avatar menu +
+  reskinned providers; wires the picker + the delete confirm; drops the "Previous runs" section +
+  its `listRuns`/`RunSummary` imports).
+- **`frontend/src/components/NewTeamDialog.tsx`** (NEW) — the template picker pop-up.
+- **`frontend/src/index.css`** — the `.tv-dash__*` reskin recipes (stat strip / unified table / row
+  open-behind-cells + delete-in-front / providers shelf / dialog + template cards), `+
+  .tv-pill--overbudget` (amber), `+ .tv-avatarmenu__name`. Token-driven; base tokens untouched.
+- **`frontend/src/canvas.css`** — the single-line rider (`flex-wrap: wrap` on `.rf-node__meta`).
+- **`frontend/src/components/Dashboard.test.tsx`** — re-pointed to the new DOM + added picker / delete
+  (incl. the in-progress warning) / render (status→pill + spend + stat totals) tests (5 → 8 tests).
+- **Deleted:** `frontend/src/components/TeamsRail.tsx` + `TeamsRail.test.tsx`.
 
 ## Acceptance evidence (all green this session)
-- `make test` → **340 passed, 1 warning in 16.75s** (floor 336 → **340**, +4).
+- `make build-frontend` → `tsc --noEmit` strict clean + `vite build` ✓ (`built in 1.20s`).
+- `make test-frontend` → **191 passed (25 files)**. F2c-start baseline was **193** (26 files); −5
+  (TeamsRail's 5 tests, file 26→25) + 3 net-new Dashboard tests (5 → 8) = **191**.
 - `make lint` → ruff clean + eslint (`--max-warnings 0`) clean + prettier clean.
-- Reproduce-first: the 3 desired-state tests FAILED on pre-fix code (`_run_exists(rid)=True` — the run
-  survived deleting its team), PASS after the fix. The never-run test passed on pre-fix code too
-  (regression guard).
-- Evidence echo (create → run + 5 record types → DELETE → re-query): team A → `team_exists=False`,
-  `run_exists=False`, `clone_exists=False`, all 5 run-scoped counts `0`, cancel-core invoked `True`;
-  sibling team B → team/run/clone present, all 5 counts `1`. DELETE returned `200 {deleted: True}`.
-- Read-only-to-others proof: `git diff main --` EMPTY for `team_run.py` + `graph_validity.py`; nothing
-  under `frontend/` or `backend/alembic/`; alembic head `0018`; the only real `DBOS.cancel_workflow`
-  CALL is `teams.py` (the shared core) — routers.py no longer calls it (delegates).
-- Independent review (fresh subagent over the diff) → (result in the FINAL REPORT).
+- **Playwright self-sign-off on :5173** (operator account, real backend; targeted `browser_evaluate`
+  + screenshots, no whole-tree snapshot). Functional facts verified + a screenshot each (in the
+  session scratchpad, NOT committed):
+  - Dashboard: greeting "Good to see you, Operator.", stat strip **5 teams / 2 active / $2.51**, all
+    five status pills mapped (Completed/Awaiting you/Running/Failed/Not run yet) + spends + providers.
+  - Picker: New team → the dialog with **Blank + the four templates** → pick + Create → lands on the
+    canvas (a review_loop clone rendered).
+  - Delete: row delete → the confirm naming the team ("Delete PRD to prototype?") + the in-progress
+    warning band.
+  - Rider: the canvas Thinker + BOTH Worker nodes with the widest labels (Done / Working… / Over
+    budget) — measured `pillClipped: false` + `metaOverflowsHoriz: false` on every node
+    (`.rf-node__meta` computed `flex-wrap: wrap`).
+- Diffs: `api.ts` = exactly the 2 fields; `canvas.css` = the single `flex-wrap: wrap` line; TeamsRail
+  files deleted; nothing under `backend/`, `frontend/src/design-system/tokens/`, `LandingPage.tsx`, or
+  `landing.css`.
+- Independent review (fresh subagent over the FE diff) → (result in the FINAL REPORT).
 
 ## Invariants held
-- Executor `team_run.py` + `graph_validity.py` EMPTY diff vs `main`; alembic head `0018` (NO
-  migration); nothing under `frontend/` or `backend/alembic/`.
-- Cancel logic is SHARED, not duplicated: `cancel_run` (endpoint) + `delete_library_team_and_runs`
-  both call `cancel_run_core`; only one `DBOS.cancel_workflow(run_id)` call site in the codebase.
-- `cancel_run`'s external behavior preserved (404 non-owned; no-op on already-terminal; else
-  cancel + status + close tasks; same JSON shape).
-- teams.py diff is additive (only the 2 import lines changed); the F2a builders/catalog + the F2b
-  summary path are untouched (the teardown only CALLS the clone→origin linkage pattern).
-- Commit stages ONLY `teams.py` + `routers.py` + `test_f2_delete_teardown.py` + `STATE.md` — no living
-  docs, no `prompts/*.md`, no side-chat files, never `.tvashtr/loop-state.md`.
+- `api.ts` diff vs `main` is EXACTLY the two `TeamSummary` fields — nothing else.
+- `canvas.css` diff is the single `.rf-node__meta` `flex-wrap: wrap` line — no other canvas recipe, no
+  canvas `.tsx`.
+- NO change under `backend/`; NO migration (alembic head stays `0018`).
+- Base design tokens byte-untouched (`git diff main -- frontend/src/design-system/` EMPTY) — the
+  reskin only ADDS `.tv-*` recipes to `index.css` + reuses existing tokens.
+- `LandingPage.tsx` + `landing.css` UNTOUCHED (the parallel session owns them).
+- Commit stages ONLY the 8 frontend paths + `STATE.md` — no living docs, no `prompts/*.md`, no
+  side-chat files, no browser/demo artifacts, never `.tvashtr/loop-state.md`.
 
 ## Deviations from the brief
-None. The brief's expected shape (extract the cancel core; ordered multi-table teardown; no migration)
-held exactly. The two existing delete tests in `test_team_library.py` did NOT need re-pointing (their
-400/404 + cascade expectations are unchanged) — verified still green.
+- `status.ts` extended with `runStatusPill` (the run-status→pill map). The brief said "reuse the
+  existing StatusPill"; StatusPill is typed to the canvas `NodeStatus` vocab (idle/running/done/…),
+  so a literal reuse can't produce the dashboard's labels ("Awaiting you", "Over budget", "Not run
+  yet"). Per the standing hard rail ("`status.ts` is the single source of truth for derived status —
+  extend it there, not in components"), the mapping lives in `status.ts` and the dashboard renders the
+  same `.tv-pill` design vocabulary StatusPill uses. Net: the DS pill is reused; the derivation is
+  centralized. Also added two small additive `.tv-*` recipes to `index.css`: `.tv-pill--overbudget`
+  (amber — a status the base pill set lacked) and `.tv-avatarmenu__name`. Both extend, none edit.
 
 ## Test Count
-**340 backend pytest** (floor 336 → 340; +4) — 2026-07-04. FE untouched.
+**191 vitest** (F2c baseline 193 → 191; −5 TeamsRail + 3 net-new Dashboard tests) — 2026-07-04.
+Backend untouched (340 backend pytest unchanged).
 
 ## Blocked
-None — clean SUCCESS. Next: **F2c** (the FE — delete button + confirm dialog wired to this endpoint,
-plus the `TeamSummary` status/spend render F2b feeds).
+None — clean SUCCESS. Next: **F3** (the auth wizard) per the M-frontend roadmap, then any F4-polish.
