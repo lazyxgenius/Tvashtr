@@ -6,6 +6,18 @@
 //    zero nodes/edges and the canvas-level RTL tests can't see anything. (Adapted from the
 //    @xyflow/react testing guide.)
 import "@testing-library/jest-dom/vitest";
+import { vi } from "vitest";
+
+// React Flow's <MiniMap> can't project node geometry under jsdom: the box-metric shims below satisfy
+// the main canvas, but the minimap's own SVG viewport divides by an element box it never gets a real
+// size for, so it spews `Received NaN` for its `cx/cy/r/x/y` attributes and fires an
+// `update to MiniMap … not wrapped in act(...)` on its ResizeObserver tick. It renders nothing any
+// canvas test asserts on, so stub ONLY that one export to render null; every other @xyflow/react
+// export (ReactFlow, Background, Controls, Handle, …) stays the real implementation.
+vi.mock("@xyflow/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@xyflow/react")>();
+  return { ...actual, MiniMap: () => null };
+});
 
 class ResizeObserverMock {
   private readonly callback: ResizeObserverCallback;
