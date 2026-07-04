@@ -69,6 +69,48 @@
   text-decoration: none;
   color: inherit;
 }
+.tv-lp__brand:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+
+/* Skip-to-content: the first focusable element, hidden until keyboard-focused,
+   then it slides in over the frosted nav. Lets a keyboard/SR user jump the nav
+   straight to <main>. */
+.tv-lp__skip {
+  position: absolute;
+  left: 16px;
+  top: 10px;
+  z-index: 60;
+  padding: 9px 16px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-160%);
+  transition:
+    transform var(--dur-fast, 0.12s) var(--ease-standard, ease),
+    opacity var(--dur-fast, 0.12s) var(--ease-standard, ease);
+}
+.tv-lp__skip:focus,
+.tv-lp__skip:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+/* <main> is a scroll/skip target, not an interactive control — never ring it. */
+.tv-lp__main:focus {
+  outline: none;
+}
 .tv-lp__wordmark {
   font-family: var(--font-display);
   font-size: 21px;
@@ -262,7 +304,9 @@
   margin-top: 30px;
   font-family: var(--font-code);
   font-size: 12.5px;
-  color: var(--text-tertiary);
+  /* --text-tertiary on the cream page is only ~2.1:1 — below WCAG AA. Use the
+     darker secondary token (~5:1) so the trust chips are legible. */
+  color: var(--text-secondary);
 }
 .tv-lp__chip {
   display: inline-flex;
@@ -473,7 +517,8 @@
   margin-bottom: 12px;
   font-family: var(--font-code);
   font-size: 12px;
-  color: var(--text-tertiary);
+  /* AA-legible on cream (secondary ~5:1 vs tertiary ~2.1:1). */
+  color: var(--text-secondary);
 }
 .tv-lp__compare-card--with .tv-lp__compare-label {
   color: var(--coral-700);
@@ -828,22 +873,41 @@
   font-family: var(--font-display);
   font-style: italic;
   font-size: 12.5px;
-  color: var(--text-tertiary);
+  /* AA-legible on cream (secondary ~5:1 vs tertiary ~2.1:1). */
+  color: var(--text-secondary);
 }
 .tv-lp__footer-note {
   font-size: 12.5px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 /* ============================================================
-   Reduced motion — the F0 global guard already neutralises the
-   scroll timelines + decorative loops. One landing-scoped reset:
-   fully kill the hero-stage parallax so the board rests at its
-   natural position (not the animation's filled end-state).
+   Reduced motion — self-contained. Capture showed the shared F0
+   guard does NOT reach these .tv-lp-scoped rules, so neutralise
+   every landing animation here: the hero parallax + the drift /
+   flow / wave decorative loops, the scroll-assembled how-it-works
+   nodes + edges, and the section reveals all rest at a static,
+   fully-legible end state (nothing left mid-fade or mid-draw).
    ============================================================ */
 @media (prefers-reduced-motion: reduce) {
-  .tv-lp__hero-stage {
-    animation: none;
+  .tv-lp__hero-stage,
+  .tv-lp__hero-mark,
+  .tv-lp__flow-edge,
+  .tv-lp__stage-node--wave,
+  .tv-lp__reveal,
+  .tv-lp__hiw-node,
+  .tv-lp__hiw-edge,
+  .tv-lp__hiw-done {
+    animation: none !important;
+  }
+  .tv-lp__reveal,
+  .tv-lp__hiw-node {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .tv-lp__hiw-edge {
+    opacity: 1 !important;
+    stroke-dashoffset: 0 !important;
   }
 }
 
@@ -879,10 +943,22 @@
   .tv-lp__closing-h2 {
     font-size: 36px;
   }
-  .tv-lp__nav-link {
+  /* Fold the in-page anchor links, but KEEP the auth actions reachable —
+     "Sign in" (login) must not disappear on phones, or a returning user is
+     stranded with only "Get started" (register). */
+  .tv-lp__nav-link:not(.tv-lp__nav-signin) {
     display: none;
   }
   .tv-lp__nav-cta {
     display: inline-flex;
+  }
+  .tv-lp__nav-links {
+    gap: 14px;
+  }
+  /* The 1000px "assembles as you scroll" board shrinks to ~4px node text at
+     phone width. Fold it — the readable numbered step summary above carries
+     the how-it-works story on small screens. */
+  .tv-lp__hiw-stage {
+    display: none;
   }
 }

@@ -370,8 +370,12 @@ export function LandingPage({ onGetStarted }: { onGetStarted: (mode: AuthMode) =
     <div className="tv-lp">
       <LandingDefs />
 
+      <a className="tv-lp__skip" href="#main-content">
+        Skip to content
+      </a>
+
       {/* NAV */}
-      <nav className="tv-lp__nav">
+      <nav className="tv-lp__nav" aria-label="Primary">
         <a className="tv-lp__brand" href="#top">
           <img src="/mark-coral.png" alt="" width={26} height={26} />
           <span className="tv-lp__wordmark">Tvashtr</span>
@@ -386,7 +390,11 @@ export function LandingPage({ onGetStarted }: { onGetStarted: (mode: AuthMode) =
           <a className="tv-lp__nav-link tv-lp__nav-link--wide" href="#who">
             Who it&rsquo;s for
           </a>
-          <button type="button" className="tv-lp__nav-link" onClick={() => onGetStarted("login")}>
+          <button
+            type="button"
+            className="tv-lp__nav-link tv-lp__nav-signin"
+            onClick={() => onGetStarted("login")}
+          >
             Sign in
           </button>
           <button type="button" className="tv-lp__nav-cta" onClick={() => onGetStarted("register")}>
@@ -396,318 +404,322 @@ export function LandingPage({ onGetStarted }: { onGetStarted: (mode: AuthMode) =
         </div>
       </nav>
 
-      {/* HERO */}
-      <header className="tv-lp__hero" id="top">
-        <div className="tv-lp__hero-wash" />
-        <img className="tv-lp__hero-mark" src="/mark-coral.png" alt="" width={520} height={520} />
-        <div className="tv-lp__hero-inner">
-          <div className="tv-lp__hero-copy">
-            <div className="tv-lp__badge">
-              <span className="tv-lp__badge-dot" />
-              <span>Compose your own team of AI agents</span>
+      <main className="tv-lp__main" id="main-content" tabIndex={-1}>
+        {/* HERO */}
+        <header className="tv-lp__hero" id="top">
+          <div className="tv-lp__hero-wash" />
+          <img className="tv-lp__hero-mark" src="/mark-coral.png" alt="" width={520} height={520} />
+          <div className="tv-lp__hero-inner">
+            <div className="tv-lp__hero-copy">
+              <div className="tv-lp__badge">
+                <span className="tv-lp__badge-dot" />
+                <span>Compose your own team of AI agents</span>
+              </div>
+              <h1 className="tv-lp__headline">
+                Build the team,
+                <br />
+                not just <span className="tv-lp__headline-em">use</span> one.
+              </h1>
+              <p className="tv-lp__lede">
+                Tvashtr is a visual canvas where you author and run your own team of AI agents —
+                taking an idea, or a feature request against your real repo, all the way to
+                reviewed, shipped code.
+              </p>
+              <div className="tv-lp__cta-row">
+                <button
+                  type="button"
+                  className="tv-lp__cta tv-lp__cta--primary"
+                  onClick={() => onGetStarted("register")}
+                >
+                  Start building
+                  <Icon id="arrow" size={16} stroke={1.9} />
+                </button>
+                <a className="tv-lp__cta tv-lp__cta--ghost" href="#how">
+                  See how it works
+                </a>
+              </div>
+              <div className="tv-lp__chips">
+                {TRUST_CHIPS.map((c) => (
+                  <span className="tv-lp__chip" key={c.label}>
+                    <Icon id={c.icon} size={14} stroke={1.7} />
+                    {c.label}
+                  </span>
+                ))}
+              </div>
             </div>
-            <h1 className="tv-lp__headline">
-              Build the team,
-              <br />
-              not just <span className="tv-lp__headline-em">use</span> one.
-            </h1>
-            <p className="tv-lp__lede">
-              Tvashtr is a visual canvas where you author and run your own team of AI agents —
-              taking an idea, or a feature request against your real repo, all the way to reviewed,
-              shipped code.
-            </p>
-            <div className="tv-lp__cta-row">
-              <button
-                type="button"
-                className="tv-lp__cta tv-lp__cta--primary"
-                onClick={() => onGetStarted("register")}
+
+            {/* ALIVE HERO STAGE */}
+            <div className="tv-lp__hero-stage" ref={hero.ref} style={{ height: 392 * hero.scale }}>
+              <div
+                className="tv-lp__hero-stage-inner"
+                style={{ transform: `translateX(${hero.left}px) scale(${hero.scale})` }}
               >
-                Start building
-                <Icon id="arrow" size={16} stroke={1.9} />
-              </button>
-              <a className="tv-lp__cta tv-lp__cta--ghost" href="#how">
-                See how it works
-              </a>
-            </div>
-            <div className="tv-lp__chips">
-              {TRUST_CHIPS.map((c) => (
-                <span className="tv-lp__chip" key={c.label}>
-                  <Icon id={c.icon} size={14} stroke={1.7} />
-                  {c.label}
-                </span>
-              ))}
+                <div className="tv-lp__stage-grid" />
+                <div className="tv-lp__stage-live">
+                  <span className="tv-lp__stage-live-dot" />
+                  Live · weaving
+                </div>
+                <svg className="tv-lp__stage-edges" viewBox="0 0 470 392">
+                  <path
+                    className="tv-lp__flow-edge"
+                    d="M86 96 C 140 96, 150 150, 200 150"
+                    fill="none"
+                    strokeWidth={2}
+                    strokeDasharray="3 7"
+                    strokeLinecap="round"
+                    style={{ stroke: "var(--lp-flow)" }}
+                  />
+                  <path
+                    d="M86 96 C 140 96, 150 96, 196 96"
+                    fill="none"
+                    strokeWidth={1.6}
+                    style={{ stroke: "var(--border-strong)" }}
+                  />
+                  <path
+                    className="tv-lp__flow-edge"
+                    d="M282 150 C 330 150, 330 96, 372 96"
+                    fill="none"
+                    strokeWidth={2}
+                    strokeDasharray="3 7"
+                    strokeLinecap="round"
+                    style={{ stroke: "var(--lp-flow)" }}
+                  />
+                  <path
+                    d="M282 150 C 330 150, 330 250, 372 250"
+                    fill="none"
+                    strokeWidth={1.6}
+                    style={{ stroke: "var(--border-strong)" }}
+                  />
+                  <path
+                    d="M372 96 C 405 96, 405 280, 250 290"
+                    fill="none"
+                    strokeWidth={1.8}
+                    strokeDasharray="6 5"
+                    style={{
+                      stroke: "color-mix(in srgb, var(--accent) 45%, var(--border-strong))",
+                    }}
+                  />
+                </svg>
+
+                {STAGE_NODES.map((n) => (
+                  <div
+                    key={n.key}
+                    className="tv-lp__stage-node tv-lp__stage-node--wave"
+                    style={{ left: n.x, top: n.y, width: n.w, animationDelay: `${n.delay}s` }}
+                  >
+                    <div className="tv-lp__stage-row">
+                      <span
+                        className={`tv-lp__stage-glyph ${
+                          n.accent ? "tv-lp__stage-glyph--accent" : "tv-lp__stage-glyph--panel"
+                        }`}
+                      >
+                        <Icon id={n.glyph} size={13} stroke={1.6} />
+                      </span>
+                      <span className="tv-lp__stage-name">{n.name}</span>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="tv-lp__stage-gate" style={{ left: 352, top: 78, width: 104 }}>
+                  <div className="tv-lp__stage-gate-row">
+                    <Icon id="shield" size={14} stroke={1.7} />
+                    <span>approve</span>
+                  </div>
+                </div>
+
+                <div className="tv-lp__stage-ship" style={{ left: 40, top: 290, width: 96 }}>
+                  <div className="tv-lp__stage-ship-row">
+                    <Icon id="package" size={14} stroke={1.7} />
+                    <span>Shipped</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
+        </header>
 
-          {/* ALIVE HERO STAGE */}
-          <div className="tv-lp__hero-stage" ref={hero.ref} style={{ height: 392 * hero.scale }}>
-            <div
-              className="tv-lp__hero-stage-inner"
-              style={{ transform: `translateX(${hero.left}px) scale(${hero.scale})` }}
-            >
-              <div className="tv-lp__stage-grid" />
-              <div className="tv-lp__stage-live">
-                <span className="tv-lp__stage-live-dot" />
-                Live · weaving
-              </div>
-              <svg className="tv-lp__stage-edges" viewBox="0 0 470 392">
-                <path
-                  className="tv-lp__flow-edge"
-                  d="M86 96 C 140 96, 150 150, 200 150"
-                  fill="none"
-                  strokeWidth={2}
-                  strokeDasharray="3 7"
-                  strokeLinecap="round"
-                  style={{ stroke: "var(--lp-flow)" }}
-                />
-                <path
-                  d="M86 96 C 140 96, 150 96, 196 96"
-                  fill="none"
-                  strokeWidth={1.6}
-                  style={{ stroke: "var(--border-strong)" }}
-                />
-                <path
-                  className="tv-lp__flow-edge"
-                  d="M282 150 C 330 150, 330 96, 372 96"
-                  fill="none"
-                  strokeWidth={2}
-                  strokeDasharray="3 7"
-                  strokeLinecap="round"
-                  style={{ stroke: "var(--lp-flow)" }}
-                />
-                <path
-                  d="M282 150 C 330 150, 330 250, 372 250"
-                  fill="none"
-                  strokeWidth={1.6}
-                  style={{ stroke: "var(--border-strong)" }}
-                />
-                <path
-                  d="M372 96 C 405 96, 405 280, 250 290"
-                  fill="none"
-                  strokeWidth={1.8}
-                  strokeDasharray="6 5"
-                  style={{ stroke: "color-mix(in srgb, var(--accent) 45%, var(--border-strong))" }}
-                />
-              </svg>
+        {/* WEDGE */}
+        <section className="tv-lp__section tv-lp__wedge" id="why">
+          <div className="tv-lp__wedge-head tv-lp__reveal">
+            <span className="tv-lp__eyebrow">The gap</span>
+            <h2 className="tv-lp__h2">
+              Agent frameworks make you hand-wire everything. Coding agents hide their team.
+            </h2>
+            <p className="tv-lp__section-lede">
+              You either glue together a framework and own every edge of the orchestration, or you
+              hand the whole job to an opaque agent and hope. Tvashtr sits in between:{" "}
+              <strong>composable like a framework, legible like a teammate</strong> — and it works
+              against your real codebase.
+            </p>
+          </div>
+          <div className="tv-lp__compare">
+            <div className="tv-lp__compare-card tv-lp__reveal">
+              <div className="tv-lp__compare-label">// without Tvashtr</div>
+              <ul className="tv-lp__compare-list">
+                <li>Wire orchestration by hand, or trust a black box</li>
+                <li>No view into what each agent actually did</li>
+                <li>Demos on toy repos, not your codebase</li>
+              </ul>
+            </div>
+            <div className="tv-lp__compare-card tv-lp__compare-card--with tv-lp__reveal">
+              <div className="tv-lp__compare-label">// with Tvashtr</div>
+              <ul className="tv-lp__compare-list">
+                <li>Draw the team on a canvas, wire it your way</li>
+                <li>Open any node, read exactly what it did</li>
+                <li>Runs against your real repo, ships a reviewed PR</li>
+              </ul>
+            </div>
+          </div>
+        </section>
 
-              {STAGE_NODES.map((n) => (
-                <div
-                  key={n.key}
-                  className="tv-lp__stage-node tv-lp__stage-node--wave"
-                  style={{ left: n.x, top: n.y, width: n.w, animationDelay: `${n.delay}s` }}
-                >
-                  <div className="tv-lp__stage-row">
-                    <span
-                      className={`tv-lp__stage-glyph ${
-                        n.accent ? "tv-lp__stage-glyph--accent" : "tv-lp__stage-glyph--panel"
-                      }`}
-                    >
-                      <Icon id={n.glyph} size={13} stroke={1.6} />
-                    </span>
-                    <span className="tv-lp__stage-name">{n.name}</span>
+        {/* HOW IT WORKS — scroll-assembling */}
+        <section className="tv-lp__how" id="how">
+          <div className="tv-lp__how-wash" />
+          <div className="tv-lp__how-inner">
+            <div className="tv-lp__how-head">
+              <div className="tv-lp__eyebrow">How it works</div>
+              <h2 className="tv-lp__h2">The team assembles as you scroll.</h2>
+            </div>
+
+            <div className="tv-lp__steps">
+              {STEPS.map((s) => (
+                <div className="tv-lp__step" key={s.num}>
+                  <span className="tv-lp__step-num">{s.num}</span>
+                  <div className="tv-lp__step-text">
+                    <div className="tv-lp__step-title">{s.title}</div>
+                    <div className="tv-lp__step-sub">{s.sub}</div>
                   </div>
                 </div>
               ))}
-
-              <div className="tv-lp__stage-gate" style={{ left: 352, top: 78, width: 104 }}>
-                <div className="tv-lp__stage-gate-row">
-                  <Icon id="shield" size={14} stroke={1.7} />
-                  <span>approve</span>
-                </div>
-              </div>
-
-              <div className="tv-lp__stage-ship" style={{ left: 40, top: 290, width: 96 }}>
-                <div className="tv-lp__stage-ship-row">
-                  <Icon id="package" size={14} stroke={1.7} />
-                  <span>Shipped</span>
-                </div>
-              </div>
             </div>
-          </div>
-        </div>
-      </header>
 
-      {/* WEDGE */}
-      <section className="tv-lp__section tv-lp__wedge" id="why">
-        <div className="tv-lp__wedge-head tv-lp__reveal">
-          <span className="tv-lp__eyebrow">The gap</span>
-          <h2 className="tv-lp__h2">
-            Agent frameworks make you hand-wire everything. Coding agents hide their team.
-          </h2>
-          <p className="tv-lp__section-lede">
-            You either glue together a framework and own every edge of the orchestration, or you
-            hand the whole job to an opaque agent and hope. Tvashtr sits in between:{" "}
-            <strong>composable like a framework, legible like a teammate</strong> — and it works
-            against your real codebase.
-          </p>
-        </div>
-        <div className="tv-lp__compare">
-          <div className="tv-lp__compare-card tv-lp__reveal">
-            <div className="tv-lp__compare-label">// without Tvashtr</div>
-            <ul className="tv-lp__compare-list">
-              <li>Wire orchestration by hand, or trust a black box</li>
-              <li>No view into what each agent actually did</li>
-              <li>Demos on toy repos, not your codebase</li>
-            </ul>
-          </div>
-          <div className="tv-lp__compare-card tv-lp__compare-card--with tv-lp__reveal">
-            <div className="tv-lp__compare-label">// with Tvashtr</div>
-            <ul className="tv-lp__compare-list">
-              <li>Draw the team on a canvas, wire it your way</li>
-              <li>Open any node, read exactly what it did</li>
-              <li>Runs against your real repo, ships a reviewed PR</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      {/* HOW IT WORKS — scroll-assembling */}
-      <section className="tv-lp__how" id="how">
-        <div className="tv-lp__how-wash" />
-        <div className="tv-lp__how-inner">
-          <div className="tv-lp__how-head">
-            <div className="tv-lp__eyebrow">How it works</div>
-            <h2 className="tv-lp__h2">The team assembles as you scroll.</h2>
-          </div>
-
-          <div className="tv-lp__steps">
-            {STEPS.map((s) => (
-              <div className="tv-lp__step" key={s.num}>
-                <span className="tv-lp__step-num">{s.num}</span>
-                <div className="tv-lp__step-text">
-                  <div className="tv-lp__step-title">{s.title}</div>
-                  <div className="tv-lp__step-sub">{s.sub}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="tv-lp__hiw-stage" ref={hiw.ref} style={{ height: 200 * hiw.scale }}>
-            <div
-              className="tv-lp__hiw-inner"
-              style={{ left: hiw.left, transform: `scale(${hiw.scale})` }}
-            >
-              <svg className="tv-lp__hiw-edges" viewBox="0 0 1000 200">
-                {HIW_EDGES.map((e) => (
-                  <path
-                    key={e.d}
-                    className="tv-lp__hiw-edge"
-                    d={e.d}
+            <div className="tv-lp__hiw-stage" ref={hiw.ref} style={{ height: 200 * hiw.scale }}>
+              <div
+                className="tv-lp__hiw-inner"
+                style={{ left: hiw.left, transform: `scale(${hiw.scale})` }}
+              >
+                <svg className="tv-lp__hiw-edges" viewBox="0 0 1000 200">
+                  {HIW_EDGES.map((e) => (
+                    <path
+                      key={e.d}
+                      className="tv-lp__hiw-edge"
+                      d={e.d}
+                      style={
+                        {
+                          stroke: e.last ? "var(--sage-500)" : "var(--border-strong)",
+                          strokeDasharray: String(e.len),
+                          "--len": e.len,
+                          "--range": e.range,
+                        } as CSSVars
+                      }
+                    />
+                  ))}
+                </svg>
+                {HIW_NODES.map((n, i) => (
+                  <div
+                    key={n.id}
+                    className="tv-lp__hiw-node"
                     style={
                       {
-                        stroke: e.last ? "var(--sage-500)" : "var(--border-strong)",
-                        strokeDasharray: String(e.len),
-                        "--len": e.len,
-                        "--range": e.range,
+                        left: n.x,
+                        top: n.y,
+                        width: hiwWidth(n),
+                        "--range": `cover ${5 + i * 10}% cover ${30 + i * 10}%`,
                       } as CSSVars
                     }
-                  />
-                ))}
-              </svg>
-              {HIW_NODES.map((n, i) => (
-                <div
-                  key={n.id}
-                  className="tv-lp__hiw-node"
-                  style={
-                    {
-                      left: n.x,
-                      top: n.y,
-                      width: hiwWidth(n),
-                      "--range": `cover ${5 + i * 10}% cover ${30 + i * 10}%`,
-                    } as CSSVars
-                  }
-                >
-                  <div className="tv-lp__hiw-card" style={hiwCardStyle(n)}>
-                    <span className="tv-lp__hiw-glyph" style={hiwGlyphStyle(n)}>
-                      <Icon id={n.glyph} size={15} stroke={1.6} />
-                    </span>
-                    <div className="tv-lp__hiw-text">
-                      <div className="tv-lp__hiw-label">{n.label}</div>
-                      <div className="tv-lp__hiw-sub">{n.sub}</div>
-                    </div>
-                    {n.kind === "term" && (
-                      <span className="tv-lp__hiw-done">
-                        <Icon id="check" size={11} stroke={3} />
+                  >
+                    <div className="tv-lp__hiw-card" style={hiwCardStyle(n)}>
+                      <span className="tv-lp__hiw-glyph" style={hiwGlyphStyle(n)}>
+                        <Icon id={n.glyph} size={15} stroke={1.6} />
                       </span>
-                    )}
+                      <div className="tv-lp__hiw-text">
+                        <div className="tv-lp__hiw-label">{n.label}</div>
+                        <div className="tv-lp__hiw-sub">{n.sub}</div>
+                      </div>
+                      {n.kind === "term" && (
+                        <span className="tv-lp__hiw-done">
+                          <Icon id="check" size={11} stroke={3} />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* DIFFERENTIATORS */}
+        <section className="tv-lp__section">
+          <div className="tv-lp__diffs-head tv-lp__reveal">
+            <div className="tv-lp__eyebrow">Why Tvashtr</div>
+            <h2 className="tv-lp__h2">Composable. Legible. Steerable.</h2>
+          </div>
+          <div className="tv-lp__diff-grid">
+            {DIFFS.map((d) => (
+              <div className="tv-lp__diff-card tv-lp__reveal" key={d.title}>
+                <span className="tv-lp__diff-icon">
+                  <Icon id={d.icon} size={21} stroke={1.6} />
+                </span>
+                <h3 className="tv-lp__diff-title">{d.title}</h3>
+                <p className="tv-lp__diff-body">{d.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* FOR WHOM */}
+        <section className="tv-lp__section tv-lp__who" id="who">
+          <div className="tv-lp__who-grid">
+            <div className="tv-lp__who-intro tv-lp__reveal">
+              <div className="tv-lp__eyebrow">Who it&rsquo;s for</div>
+              <h2 className="tv-lp__h2">For people who want the team to be theirs.</h2>
+              <p>Power users who think in process — and want to shape it, not inherit it.</p>
+            </div>
+            <div className="tv-lp__who-list">
+              {PERSONAS.map((p) => (
+                <div className="tv-lp__persona tv-lp__reveal" key={p.title}>
+                  <span className="tv-lp__persona-icon">
+                    <Icon id={p.icon} size={20} stroke={1.6} />
+                  </span>
+                  <div>
+                    <div className="tv-lp__persona-title">{p.title}</div>
+                    <div className="tv-lp__persona-body">{p.body}</div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* DIFFERENTIATORS */}
-      <section className="tv-lp__section">
-        <div className="tv-lp__diffs-head tv-lp__reveal">
-          <div className="tv-lp__eyebrow">Why Tvashtr</div>
-          <h2 className="tv-lp__h2">Composable. Legible. Steerable.</h2>
-        </div>
-        <div className="tv-lp__diff-grid">
-          {DIFFS.map((d) => (
-            <div className="tv-lp__diff-card tv-lp__reveal" key={d.title}>
-              <span className="tv-lp__diff-icon">
-                <Icon id={d.icon} size={21} stroke={1.6} />
-              </span>
-              <h3 className="tv-lp__diff-title">{d.title}</h3>
-              <p className="tv-lp__diff-body">{d.body}</p>
+        {/* CLOSING CTA */}
+        <section className="tv-lp__closing">
+          <div className="tv-lp__closing-panel tv-lp__reveal">
+            <img
+              className="tv-lp__closing-mark"
+              src="/mark-coral.png"
+              alt=""
+              width={360}
+              height={360}
+            />
+            <div className="tv-lp__closing-inner">
+              <h2 className="tv-lp__closing-h2">Start weaving.</h2>
+              <p className="tv-lp__closing-lede">
+                Bring your keys, point it at a repo, and compose a team that ships. Nothing here yet
+                — start a thread and it&rsquo;ll appear on the loom.
+              </p>
+              <button
+                type="button"
+                className="tv-lp__cta tv-lp__cta--primary tv-lp__cta--lg"
+                onClick={() => onGetStarted("register")}
+              >
+                Get started
+                <Icon id="arrow" size={16} stroke={1.9} />
+              </button>
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* FOR WHOM */}
-      <section className="tv-lp__section tv-lp__who" id="who">
-        <div className="tv-lp__who-grid">
-          <div className="tv-lp__who-intro tv-lp__reveal">
-            <div className="tv-lp__eyebrow">Who it&rsquo;s for</div>
-            <h2 className="tv-lp__h2">For people who want the team to be theirs.</h2>
-            <p>Power users who think in process — and want to shape it, not inherit it.</p>
           </div>
-          <div className="tv-lp__who-list">
-            {PERSONAS.map((p) => (
-              <div className="tv-lp__persona tv-lp__reveal" key={p.title}>
-                <span className="tv-lp__persona-icon">
-                  <Icon id={p.icon} size={20} stroke={1.6} />
-                </span>
-                <div>
-                  <div className="tv-lp__persona-title">{p.title}</div>
-                  <div className="tv-lp__persona-body">{p.body}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CLOSING CTA */}
-      <section className="tv-lp__closing">
-        <div className="tv-lp__closing-panel tv-lp__reveal">
-          <img
-            className="tv-lp__closing-mark"
-            src="/mark-coral.png"
-            alt=""
-            width={360}
-            height={360}
-          />
-          <div className="tv-lp__closing-inner">
-            <h2 className="tv-lp__closing-h2">Start weaving.</h2>
-            <p className="tv-lp__closing-lede">
-              Bring your keys, point it at a repo, and compose a team that ships. Nothing here yet —
-              start a thread and it&rsquo;ll appear on the loom.
-            </p>
-            <button
-              type="button"
-              className="tv-lp__cta tv-lp__cta--primary tv-lp__cta--lg"
-              onClick={() => onGetStarted("register")}
-            >
-              Get started
-              <Icon id="arrow" size={16} stroke={1.9} />
-            </button>
-          </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
       {/* FOOTER */}
       <footer className="tv-lp__footer">

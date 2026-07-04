@@ -69,4 +69,29 @@ describe("LandingPage", () => {
     expect(screen.getByRole("heading", { name: /build the team/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /start building/i })).toBeInTheDocument();
   });
+
+  it("exposes a <main> landmark reachable via a skip-to-content link, plus a named nav (a11y hardening)", () => {
+    render(<LandingPage onGetStarted={vi.fn()} />);
+    // The page content is wrapped in a <main> landmark...
+    expect(screen.getByRole("main")).toHaveAttribute("id", "main-content");
+    // ...and the skip link points at it (keyboard/SR users jump the nav straight to content).
+    expect(screen.getByRole("link", { name: /skip to content/i })).toHaveAttribute(
+      "href",
+      "#main-content",
+    );
+    // The primary navigation is a *named* landmark, not an anonymous <nav>.
+    expect(screen.getByRole("navigation", { name: /primary/i })).toBeInTheDocument();
+  });
+
+  it("keeps 'Sign in' reachable and flagged to survive the mobile nav fold", () => {
+    const onGetStarted = vi.fn();
+    render(<LandingPage onGetStarted={onGetStarted} />);
+    const signIn = screen.getByRole("button", { name: /^sign in$/i });
+    // `tv-lp__nav-signin` is the hook the <=560px media query keeps visible while the
+    // in-page anchor links fold away — login must never vanish on phones. Assert the hook
+    // so the fix can't silently regress to a plain (foldable) nav link.
+    expect(signIn).toHaveClass("tv-lp__nav-signin");
+    fireEvent.click(signIn);
+    expect(onGetStarted).toHaveBeenLastCalledWith("login");
+  });
 });
