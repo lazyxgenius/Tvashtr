@@ -16,12 +16,23 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 
-from sqlalchemy import func, select
+from dbos import DBOS
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import aliased
 
 from tvashtr.config import get_settings
 from tvashtr.db import session_scope
-from tvashtr.models import AgentNode, Edge, Run, TeamGraph
+from tvashtr.models import (
+    AgentInvocation,
+    AgentNode,
+    CostRecord,
+    Edge,
+    EngineerRunAttempt,
+    HumanTask,
+    Run,
+    RunEvent,
+    TeamGraph,
+)
 
 # The Engineer needs a stronger instruction-follower than the cheap completion
 # default; same single OPENROUTER_API_KEY, different slug (matches agent-smoke).
@@ -1274,3 +1285,89 @@ def seed_library_if_empty(owner_id: uuid.UUID) -> None:
         ).scalar_one()
     if count == 0:
         create_team_from_template("review_loop", "My team", owner_id)
+
+
+# ── F2-delete: stop-a-run + team teardown ───────────────────────────────────────────────────────
+# Run statuses that are already terminal — the cancel core must never clobber one, and a delete
+# never re-cancels one. "cancelled" is appended at the check site so a re-cancel is also a no-op.
+# The canonical home for the set (the /cancel endpoint imports the core, not this constant).
+_TERMINAL_RUN_STATUSES = ("completed", "failed", "rejected", "over_budget")
+
+
+def cancel_run_core(run_id: str) -> None:
+    """The SHARED cancel core — used by ``POST /api/runs/{id}/cancel`` AND team deletion, so both
+    stop a run the SAME way. If the run is not already terminal, ``DBOS.cancel_workflow`` flips its
+    workflow to CANCELLED (recovery's PENDING-only scan never resurrects it; its next step/recv
+    boundary aborts), then ``Run.status`` is set ``cancelled`` directly (the workflow may run no
+    further step to record it) and the run's pending ``HumanTask``s are closed
+    (``resolution="cancelled"``) so a dead run leaves nothing actionable. An already-terminal (or
+    missing) run is left untouched; idempotent — a second call is a no-op. Ownership is the caller's
+    job (both resolve it first). ``DBOS.cancel_workflow`` opens its own txn and runs OUTSIDE any
+    caller-held DB transaction — both keep it that way (no nested app txn), so nothing nests."""
+    blocked = (*_TERMINAL_RUN_STATUSES, "cancelled")
+    with session_scope() as session:
+        run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
+        if run is None or run.status in blocked:
+            return
+    DBOS.cancel_workflow(run_id)
+    with session_scope() as session:
+        session.execute(
+            update(Run)
+            .where(Run.workflow_id == run_id, Run.status.notin_(blocked))
+            .values(status="cancelled")
+        )
+        session.execute(
+            update(HumanTask)
+            .where(HumanTask.run_id == run_id, HumanTask.status == "pending")
+            .values(status="resolved", resolution="cancelled", resolved_at=func.now())
+        )
+
+
+def _team_run_teardown_targets(
+    session, library_team_id: uuid.UUID
+) -> list[tuple[uuid.UUID, uuid.UUID]]:
+    """Every run of a library team, paired with its clone-graph id as
+    ``(run_id, clone_team_graph_id)``. Uses the SAME clone→origin link the summary does: a run's
+    clone node ``cloned_from_node_id`` points back to an origin library-team node. A clone has many
+    nodes, so the join fans out; ``DISTINCT`` collapses it to one row per run."""
+    clone = aliased(AgentNode)  # a node of the run's clone (run-snapshot) graph
+    origin = aliased(AgentNode)  # the library-team node it was cloned from
+    rows = session.execute(
+        select(Run.id, Run.team_graph_id)
+        .select_from(Run)
+        .join(clone, clone.team_graph_id == Run.team_graph_id)
+        .join(origin, origin.id == clone.cloned_from_node_id)
+        .where(origin.team_graph_id == library_team_id)
+        .distinct()
+    ).all()
+    return [(run_id, clone_graph_id) for run_id, clone_graph_id in rows]
+
+
+def delete_library_team_and_runs(library_team_id: uuid.UUID) -> None:
+    """F2-delete: hard-delete a library team AND all of its runs, stopping any in-flight run first,
+    so nothing under a deleted team keeps running, spending, or existing. The caller (the endpoint)
+    already resolved + owner-checked the team. Enumerate the team's runs via the clone→origin link,
+    cancel every non-terminal one via the SHARED cancel core, then in ONE transaction tear each run
+    down in FK-safe order: its run-scoped rows (``cost_records`` by ``workflow_id``;
+    ``run_events`` / ``agent_invocations`` / ``human_tasks`` / ``engineer_run_attempts`` by
+    ``run_id``), the ``Run`` row, THEN its clone ``TeamGraph`` (nodes/edges cascade); finally the
+    library team (nodes/edges cascade). The Run precedes its clone graph so ``runs.team_graph_id``
+    (no ``ondelete``) is never left dangling. One transaction for the deletes ⇒ a failure can't
+    half-delete; the cancels run before it (each in its own txn), so nothing nests."""
+    with session_scope() as session:
+        targets = _team_run_teardown_targets(session, library_team_id)
+
+    for run_id, _clone_graph_id in targets:
+        cancel_run_core(str(run_id))
+
+    with session_scope() as session:
+        for run_id, clone_graph_id in targets:
+            rid = str(run_id)
+            session.execute(delete(CostRecord).where(CostRecord.workflow_id == rid))
+            session.execute(delete(RunEvent).where(RunEvent.run_id == rid))
+            session.execute(delete(AgentInvocation).where(AgentInvocation.run_id == rid))
+            session.execute(delete(HumanTask).where(HumanTask.run_id == rid))
+            session.execute(delete(EngineerRunAttempt).where(EngineerRunAttempt.run_id == rid))
+            session.execute(delete(Run).where(Run.id == run_id))
+            session.execute(delete(TeamGraph).where(TeamGraph.id == clone_graph_id))
+        session.execute(delete(TeamGraph).where(TeamGraph.id == library_team_id))

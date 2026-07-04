@@ -30,9 +30,11 @@ from tvashtr.control_plane.teams import (
     account_default_model,
     build_review_loop_team,
     build_two_node_team,
+    cancel_run_core,
     clone_team_graph,
     create_blank_team,
     create_team_from_template,
+    delete_library_team_and_runs,
     engineer_model,
     get_team_summary,
     list_library_teams,
@@ -56,8 +58,6 @@ from tvashtr.models import (
     TeamGraph,
 )
 
-# Run statuses that are already terminal: a kill switch must not clobber them.
-_TERMINAL_RUN_STATUSES = ("completed", "failed", "rejected", "over_budget")
 # Map the resolve API's decision verb to the durable resolution recorded on the task.
 _DECISION_TO_RESOLUTION = {"approve": "approved", "reject": "rejected"}
 
@@ -1211,13 +1211,21 @@ def update_team_node(
 
 @router.delete("/api/teams/{team_id}")
 def delete_team(team_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
-    """Delete a library team (the FK cascade drops its nodes/edges). 400 on a malformed id; 404 if
-    the id is not a library team (so a run-snapshot clone / A-B graph cannot be deleted here). Safe:
-    a ``Run`` points at its immutable clone snapshot, never at a library team, so no run is
-    orphaned."""
+    """Delete a library team AND tear down every one of its runs. FIRST stops any in-flight run (the
+    shared ``cancel_run_core`` — ``DBOS.cancel_workflow`` + ``Run.status='cancelled'`` + close its
+    pending tasks), THEN hard-deletes each run's run-scoped rows + the ``Run`` + its clone snapshot
+    graph, THEN the library team (its nodes/edges cascade). 400 on a malformed id; 404 if the id is
+    not the current account's library team (a run-snapshot clone / A-B graph / another account's
+    team can't be deleted here). Owner-scoped: only this account's team + its own runs are touched.
+
+    (Previously a no-op that left a ``Run`` executing on its immutable clone — a zombie run that
+    kept spending under a deleted team. Deleting a team now stops + removes its runs, so nothing
+    tied to a deleted team keeps running, spending, or existing.)"""
+    owner_id = uuid.UUID(current_user.id)
     with db.session_scope() as session:
-        graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
-        session.delete(graph)
+        graph = _require_library_team(session, team_id, owner_id)
+        graph_id = graph.id
+    delete_library_team_and_runs(graph_id)
     return {"team_graph_id": team_id, "deleted": True}
 
 
@@ -1575,33 +1583,18 @@ def cancel_run(run_id: str, current_user: Annotated[UserOut, Depends(get_current
     """Kill switch: cancel the run's workflow and mark the run ``cancelled``. M-accounts Slice B:
     owner-scoped (404 unless the run belongs to the current user).
 
-    ``DBOS.cancel_workflow`` flips the workflow to ``CANCELLED`` (so recovery's
-    PENDING-only scan never resurrects it, and its next step/recv boundary aborts)
-    but does NOT interrupt a blocked ``recv``; the workflow may run no further step
-    to record the status, so we set ``Run.status`` here directly, and we close the
-    run's pending gate tasks (``resolution="cancelled"``) so a dead run leaves no
-    actionable task. An **already-terminal** run is left fully untouched — no
-    cancel, no status write — so cancelling a just-completed run can't flip a
-    ``completed`` run's workflow to ``CANCELLED``.
+    The stop logic is the SHARED ``cancel_run_core`` (also used by team deletion, so both stop a run
+    the same way): ``DBOS.cancel_workflow`` flips the workflow to ``CANCELLED`` (recovery's
+    PENDING-only scan never resurrects it, and its next step/recv boundary aborts); the workflow may
+    run no further step to record the status, so ``Run.status`` is set ``cancelled`` directly,
+    and the run's pending gate tasks are closed (``resolution="cancelled"``) so a dead run leaves
+    nothing actionable. An **already-terminal** run is left untouched — cancelling a just-completed
+    run can't flip a ``completed`` run's workflow to ``CANCELLED``.
     """
-    blocked = (*_TERMINAL_RUN_STATUSES, "cancelled")
     with db.session_scope() as session:
-        run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
-        already_terminal = run.status in blocked
+        _require_owned_run(session, run_id, uuid.UUID(current_user.id))
 
-    if not already_terminal:
-        DBOS.cancel_workflow(run_id)
-        with db.session_scope() as session:
-            session.execute(
-                update(Run)
-                .where(Run.workflow_id == run_id, Run.status.notin_(blocked))
-                .values(status="cancelled")
-            )
-            session.execute(
-                update(HumanTask)
-                .where(HumanTask.run_id == run_id, HumanTask.status == "pending")
-                .values(status="resolved", resolution="cancelled", resolved_at=func.now())
-            )
+    cancel_run_core(run_id)
 
     with db.session_scope() as session:
         run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one_or_none()
