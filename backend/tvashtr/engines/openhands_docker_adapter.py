@@ -31,7 +31,7 @@ import threading
 import time
 from itertools import count
 
-from openhands.sdk import LLM, Agent, Conversation, Tool
+from openhands.sdk import LLM, Agent, Conversation, LLMSummarizingCondenser, Tool
 from openhands.sdk.event.conversation_error import ConversationErrorEvent
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.terminal import TerminalTool
@@ -293,9 +293,22 @@ class OpenHandsDockerAdapter:
             temperature=0.0,
             usage_id="tvashtr-agent",
         )
+        # M-ctx0 (C1): give the worker Agent an in-transcript summarizing condenser so a long
+        # real-repo run compacts its own history as it grows instead of overflowing the model
+        # context window and crashing. keep_first=2 pins the compiled instruction (the first
+        # messages) — Tvashtr's durable spec / worktree / verdict artifacts live OUTSIDE the
+        # transcript, so 2 suffices (vs the SDK preset's 4). max_size=80 is the SDK preset default
+        # (openhands.tools.preset): inert under ~80 events so short greenfield/loop runs are
+        # byte-for-byte unchanged, and it fires on a long run before the window overflows. The
+        # condenser reuses the worker's model + key via a model_copy under its OWN usage_id
+        # (mirrors the SDK's settings.build_condenser) so the serialized docker agent never trips
+        # the LLM registry's duplicate-usage_id guard; reset_metrics gives it a fresh meter.
+        condenser_llm = llm.model_copy(update={"usage_id": "tvashtr-condenser"})
+        condenser_llm.reset_metrics()
         agent = Agent(
             llm=llm,
             tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],
+            condenser=LLMSummarizingCondenser(llm=condenser_llm, keep_first=2, max_size=80),
         )
 
         status = "completed"
