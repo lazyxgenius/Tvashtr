@@ -1,7 +1,7 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import "../landing.css";
-import type { AuthMode } from "./LoginScreen";
+import type { AuthMode } from "./AuthWizard";
 
 /* ============================================================
    F4 — the premium logged-out landing, rebuilt from

@@ -4,7 +4,7 @@ import App from "../App";
 import { type AuthUser, getMe, logout, setUnauthorizedHandler } from "../lib/api";
 import { Dashboard } from "./Dashboard";
 import { LandingPage } from "./LandingPage";
-import { type AuthMode, LoginScreen } from "./LoginScreen";
+import { type AuthMode, AuthWizard } from "./AuthWizard";
 
 /**
  * The auth gate + top-level router (M-accounts). On mount it asks the server who we are (`getMe`).
@@ -90,7 +90,7 @@ export function AuthGate() {
   if (status === "unauthed" || !user) {
     if (unauthView === "login") {
       return (
-        <LoginScreen
+        <AuthWizard
           onAuthed={handleAuthed}
           initialMode={loginMode}
           onBack={() => setUnauthView("landing")}

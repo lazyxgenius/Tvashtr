@@ -647,6 +647,422 @@ body,
   padding: 0;
 }
 
+/* ============================================================
+   F3 — the auth wizard (M-frontend, last slice). Replaces the
+   centered login card with a two-panel guided wizard (brand
+   panel + form panel), translated from
+   design/Tvashtr Frontend Overhaul/AuthWizard.dc.html to the
+   .tv-authwiz__* convention (mirrors the .tv-dash__ reskin
+   precedent above). Account step is FIRST; the two onboarding
+   questions (sign-up only) are throwaway. Reuses .tv-btn (submit
+   / continue / enter) and .tv-auth__error; only the panels,
+   cards, progress, and icon-fields get authwiz classes. Tokens
+   only — every literal px is an off-grid dimension from the
+   mockup (same posture as .tv-dash__bar's `padding: 13px …`). */
+.tv-authwiz {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface-page);
+  color: var(--text-primary);
+}
+
+/* ---- Brand panel (left) — loom copy + recap chips ---- */
+.tv-authwiz__brand {
+  position: relative;
+  flex: none;
+  width: 42%;
+  min-width: 360px;
+  overflow: hidden;
+  background: var(--surface-board);
+  border-right: var(--border-width) solid var(--hairline-soft);
+}
+.tv-authwiz__brand-wash {
+  position: absolute;
+  inset: 0;
+  background: var(--wash-hero);
+  pointer-events: none;
+}
+.tv-authwiz__brand-mark {
+  position: absolute;
+  right: -120px;
+  bottom: -130px;
+  opacity: 0.08;
+  animation: tv-drift 16s var(--ease-standard) infinite;
+}
+.tv-authwiz__brand-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  padding: 44px 46px;
+}
+.tv-authwiz__brand-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.tv-authwiz__brand-word {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.tv-authwiz__eyebrow {
+  margin-bottom: var(--space-4);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--coral-700);
+}
+.tv-authwiz__brand-headline {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: 42px;
+  line-height: var(--lh-tight);
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+.tv-authwiz__brand-sub {
+  margin: 0;
+  max-width: 30ch;
+  font-size: var(--fs-body);
+  line-height: var(--lh-relaxed);
+  color: var(--text-secondary);
+}
+.tv-authwiz__recap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+.tv-authwiz__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--coral-200);
+  font-size: 12.5px;
+  font-weight: var(--fw-medium);
+  color: var(--coral-700);
+}
+.tv-authwiz__brand-foot {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+
+/* ---- Form panel (right) ---- */
+.tv-authwiz__panel {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8) var(--space-7);
+  overflow-y: auto;
+}
+.tv-authwiz__form {
+  width: 100%;
+  max-width: 440px;
+}
+
+/* ---- Progress (3 segments; sign-up path, pre-success only) ---- */
+.tv-authwiz__progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-8);
+}
+.tv-authwiz__seg {
+  height: 4px;
+  flex: 1;
+  border-radius: var(--radius-pill);
+  background: var(--panel-400);
+  transition: background var(--dur-base) var(--ease-standard);
+}
+.tv-authwiz__seg--on {
+  background: var(--accent);
+}
+.tv-authwiz__steplabel {
+  margin-left: var(--space-1);
+  font-size: var(--fs-micro);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* ---- Steps ---- */
+.tv-authwiz__step {
+  animation: tv-fade-up var(--dur-slow) var(--ease-out) both;
+}
+.tv-authwiz__h2 {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: var(--fs-h2);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.tv-authwiz__lede {
+  margin: 0 0 var(--space-5);
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+}
+
+/* ---- Account fields (icon inputs) ---- */
+.tv-authwiz__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.tv-authwiz__field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.tv-authwiz__label {
+  font-size: 12.5px;
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+}
+.tv-authwiz__inputwrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.tv-authwiz__inputicon {
+  position: absolute;
+  left: 13px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.tv-authwiz__input {
+  width: 100%;
+  height: 46px;
+  padding: 0 13px 0 38px;
+  border-radius: var(--radius-lg);
+  border: var(--border-width) solid var(--border-hairline);
+  background: var(--surface-card);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-sm);
+  color: var(--text-primary);
+  transition:
+    box-shadow var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+.tv-authwiz__input::placeholder {
+  color: var(--text-placeholder);
+}
+.tv-authwiz__input:focus {
+  outline: none;
+  border-color: var(--coral-200);
+  box-shadow: var(--shadow-focus);
+}
+.tv-authwiz__submit {
+  width: 100%;
+  height: 48px;
+  margin-top: var(--space-1);
+  border-radius: var(--radius-lg);
+  font-size: var(--fs-body);
+}
+.tv-authwiz__account-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+.tv-authwiz__toggle {
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.tv-authwiz__toggle:focus-visible {
+  outline: none;
+  border-radius: var(--radius-xs);
+  box-shadow: var(--shadow-focus);
+}
+.tv-authwiz__toggle-em {
+  color: var(--text-link);
+  font-weight: var(--fw-medium);
+}
+.tv-authwiz__fineprint {
+  margin: var(--space-4) 0 0;
+  font-size: 11.5px;
+  line-height: var(--lh-normal);
+  color: var(--text-tertiary);
+}
+
+/* ---- Option cards (role / building) ---- */
+.tv-authwiz__opts {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.tv-authwiz__opt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  padding: 15px var(--space-4);
+  border-radius: var(--radius-lg);
+  border: var(--border-width-2) solid var(--border-hairline);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard);
+}
+.tv-authwiz__opt:hover {
+  border-color: var(--border-strong);
+}
+.tv-authwiz__opt:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.tv-authwiz__opt--on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--coral-100) 45%, var(--surface-card));
+  box-shadow: var(--shadow-focus);
+}
+.tv-authwiz__opt-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  background: var(--panel-300);
+  color: var(--ink-700);
+}
+.tv-authwiz__opt--on .tv-authwiz__opt-icon {
+  background: var(--coral-100);
+  color: var(--coral-700);
+  box-shadow: inset 0 0 0 1px var(--coral-200);
+}
+.tv-authwiz__opt-text {
+  flex: 1;
+  min-width: 0;
+}
+.tv-authwiz__opt-title {
+  display: block;
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+.tv-authwiz__opt-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.tv-authwiz__opt-check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  border: var(--border-width-2) solid var(--border-strong);
+  color: transparent;
+}
+.tv-authwiz__opt--on .tv-authwiz__opt-check {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-contrast);
+}
+
+/* ---- Role/building nav + Continue ---- */
+.tv-authwiz__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-6);
+}
+.tv-authwiz__nav--end {
+  justify-content: flex-end;
+}
+.tv-authwiz__continue {
+  height: 44px;
+  border-radius: var(--radius-lg);
+}
+
+/* ---- Success ---- */
+.tv-authwiz__success {
+  text-align: center;
+  animation: tv-scale-in var(--dur-slow) var(--ease-out) both;
+}
+.tv-authwiz__success-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  margin-bottom: var(--space-6);
+  border-radius: var(--radius-pill);
+  background: var(--sage-100);
+  color: color-mix(in srgb, var(--sage-500) 66%, var(--ink-900));
+}
+.tv-authwiz__success-h2 {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: var(--fs-h1);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.tv-authwiz__success-sub {
+  margin: 0 0 var(--space-7);
+  font-size: var(--fs-body);
+  line-height: var(--lh-relaxed);
+  color: var(--text-secondary);
+}
+.tv-authwiz__enter {
+  height: 48px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Mobile fold: hide the brand panel ≤720px so the form is usable on a phone. */
+@media (max-width: 720px) {
+  .tv-authwiz__brand {
+    display: none;
+  }
+  .tv-authwiz__panel {
+    padding: var(--space-7) var(--space-5);
+  }
+}
+
+/* Reduced motion: drop the step/success entrances + the drifting mark (belt-and-suspenders over the
+   global extend.css guard). */
+@media (prefers-reduced-motion: reduce) {
+  .tv-authwiz__step,
+  .tv-authwiz__success,
+  .tv-authwiz__brand-mark {
+    animation: none;
+  }
+}
+
 /* ---- Landing page (M-accounts Slice B) — the logged-out hero + CTAs (no canvas) ---- */
 .tv-landing {
   display: flex;
