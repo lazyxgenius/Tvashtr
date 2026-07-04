@@ -17,7 +17,7 @@ TVASHTR_RUNG2_REPO ?= /Users/adimac/Desktop/trade_mcp
 # independent numeric gate is unaffected (it runs host-side at the repo ROOT).
 TVASHTR_RUNG2_SUBPATH ?= core
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e model-picker-e2e seed lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e model-picker-e2e seed lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -74,6 +74,9 @@ smoke: ## Live gateway smoke — one real LLM call (needs OPENROUTER_API_KEY; sk
 
 agent-smoke: ## Live OpenHands agent smoke — trivial task in a local workspace (needs key; skips otherwise)
 	cd backend && uv run python ../scripts/smoke_agent.py
+
+model-bench: ## C9 model bench (M-ctx0): race the worker/reviewer candidates (llama-3.3-70b baseline + Nemotron-3 super/nano + Kimi-K2; override via TVASHTR_BENCH_MODELS) through the LiteLLM→NIM gateway on fixed tasks, scoring task success / tokens / cost / latency / 429s — the reviewer seat scored separately (does it correctly REJECT a deliberately-wrong build, per D4). Emits a flat JSON + a summary table. Skips cleanly without a provider key; `python scripts/model_bench.py --dry-run` proves the harness offline (no NIM). Operator-run.
+	cd backend && uv run python ../scripts/model_bench.py
 
 proxy-smoke: ## Live LiteLLM-proxy plumbing smoke (P1.4a): host->proxy + container->host.docker.internal + 1 cheap completion if keyed (operator-run; needs the proxy up + Docker; skips cleanly otherwise)
 	cd backend && uv run python ../scripts/proxy_smoke.py
