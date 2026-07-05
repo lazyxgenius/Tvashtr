@@ -1,5 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { GraphNode, NodeInvocation, RunRow } from "../lib/api";
 import { SidePanel } from "./SidePanel";
@@ -31,6 +31,8 @@ function inv(over: Partial<NodeInvocation> & Pick<NodeInvocation, "iteration">):
     outcome_detail: null,
     started_at: "2026-01-01T00:00:00Z",
     ended_at: "2026-01-01T00:01:00Z",
+    context_manifest: null,
+    cost: null,
     ...over,
   };
 }
@@ -168,5 +170,97 @@ describe("SidePanel — F1c status-based subtitle (Decision 2)", () => {
       />,
     );
     expect(screen.getByText("Not reached yet")).toBeInTheDocument();
+  });
+});
+
+// ---- M-ledger C6: the run-view panel surfaces each worker round's cost + context-manifest (via the
+// generalized "Last run" brief), and passes the selected node into EventFeed so the feed scopes to
+// it. Re-pointed (not gutted) — the Option A / Decision-2 tests above stand. ----
+describe("SidePanel — C6 per-round ledger + node-scoped feed", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("surfaces a worker round's per-round cost + context-manifest in the 'Last run' brief", () => {
+    const node = gnode({
+      id: "n-eng",
+      role_name: "engineer",
+      kind: "agent",
+      invocations: [
+        inv({
+          iteration: 1,
+          outcome: "built",
+          outcome_detail: "Built it.",
+          cost: {
+            prompt_tokens: 1240,
+            completion_tokens: 320,
+            total_tokens: 1560,
+            cost_usd: 0.0041,
+          },
+          context_manifest: {
+            parts: [
+              { name: "system", tokens: 900 },
+              { name: "spec", tokens: 2100 },
+            ],
+            total_tokens: 3000,
+            budget: 8000,
+            handle_used: true,
+          },
+        }),
+      ],
+    });
+    const { container } = render(
+      <SidePanel node={node} runId={null} run={null} workflowStatus={null} onClose={() => {}} />,
+    );
+    expect(screen.getByText("1,240 in / 320 out · $0.0041")).toBeInTheDocument();
+    expect(container.querySelector(".tv-manifest")).not.toBeNull();
+    expect(screen.getByText("Budget")).toBeInTheDocument();
+    expect(screen.getByText("Spec offloaded to SPEC.md")).toBeInTheDocument();
+  });
+
+  it("passes the selected node into EventFeed → the feed scopes to that node's events only", async () => {
+    const events = [
+      {
+        seq: 1,
+        kind: "action",
+        payload: { thought: "engineer step one" },
+        created_at: "2026-01-01T00:00:00Z",
+        invocation_id: 10,
+        node_id: "n-eng",
+        iteration: 1,
+      },
+      {
+        seq: 1,
+        kind: "action",
+        payload: { thought: "OTHER node step" },
+        created_at: "2026-01-01T00:00:00Z",
+        invocation_id: 20,
+        node_id: "n-other",
+        iteration: 1,
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(
+        () =>
+          Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ run_id: "r1", events }),
+          } as unknown as Response),
+      ),
+    );
+    const node = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "done" });
+    render(
+      <SidePanel
+        node={node}
+        runId="r1"
+        run={runRow({ status: "completed" })}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
+    );
+    // the selected node's step renders under a Round header; the OTHER node's step never does
+    expect(await screen.findByText("engineer step one")).toBeInTheDocument();
+    expect(screen.getByText("Round 1")).toBeInTheDocument();
+    expect(screen.queryByText("OTHER node step")).toBeNull();
   });
 });

@@ -93,7 +93,7 @@ export function SidePanel({
     );
   } else {
     // kind === "agent" (worker, incl. the Reviewer): the agent's action/observation feed.
-    body = <EventFeed runId={runId} run={run} workflowStatus={workflowStatus} />;
+    body = <EventFeed node={node} runId={runId} run={run} workflowStatus={workflowStatus} />;
   }
 
   return (

@@ -19,6 +19,25 @@ export interface TerminalConfig {
 }
 export type NodeConfig = GateConfig | TerminalConfig | Record<string, unknown>;
 
+// M-ledger C6: the per-round context-budget snapshot for a worker round — each context part with
+// its token size, the round total, the budget, and whether the spec was offloaded to a doc handle
+// (SPEC.md). The backend emits `null` for thinker / gate / terminal rounds.
+export interface ContextManifest {
+  parts: { name: string; tokens: number }[];
+  total_tokens: number;
+  budget: number;
+  handle_used: boolean;
+}
+
+// M-ledger C6: the token/$ cost of one invocation. `null` when no cost row is linked (gates /
+// terminals; a zero-usage reviewer round).
+export interface InvocationCost {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+}
+
 // P1.5c (§14.1): one persisted AgentInvocation row — a single round of a node's
 // execution. The Reviewer panel renders the per-round verdict history from these.
 export interface NodeInvocation {
@@ -30,6 +49,11 @@ export interface NodeInvocation {
   outcome_detail: string | null;
   started_at: string;
   ended_at: string | null;
+  // M-ledger C6 (additive): the round's context-budget snapshot (worker rounds) + its token/$ cost.
+  // Both `null` for rounds the backend links no ledger row to (thinker / gate / terminal / a
+  // zero-usage reviewer round).
+  context_manifest: ContextManifest | null;
+  cost: InvocationCost | null;
 }
 
 export interface GraphNode {
@@ -685,6 +709,12 @@ export interface RunEvent {
   kind: string; // action | observation | message | error
   payload: Record<string, unknown>;
   created_at: string;
+  // M-ledger C6 (additive): the invocation this event belongs to, the node that invocation ran on,
+  // and that invocation's round number. All `null` for legacy rows written before the ledger. The
+  // feed scopes by `node_id`, groups by `invocation_id`, and keys rows by `${invocation_id}:${seq}`.
+  invocation_id: number | null;
+  node_id: string | null;
+  iteration: number | null;
 }
 
 export interface RunEventsResponse {

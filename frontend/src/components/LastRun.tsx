@@ -1,6 +1,8 @@
+import type { ContextManifest, InvocationCost } from "../lib/api";
 import { reviewerVerdictLabel } from "../lib/status";
 import { titleCase } from "../lib/text";
 import { formatRelativeTime } from "../lib/time";
+import { ContextManifest as ContextManifestTable } from "../panel/ContextManifest";
 
 /** One round of a node's run history — a structural subset of `NodeInvocation`. The run-view passes
  *  the node's full `invocations`; the authoring view passes a one-element list of the latest run. */
@@ -8,6 +10,11 @@ export interface LastRunRound {
   iteration: number;
   outcome: string | null;
   outcome_detail: string | null;
+  // M-ledger C6 (optional): the round's token/$ cost + context-budget snapshot. The RUN-view passes
+  // the node's `invocations` (which carry both from the /graph contract); the AUTHORING caller
+  // passes NEITHER, so its render stays byte-identical. Present ⇒ a cost line / the manifest table.
+  cost?: InvocationCost | null;
+  context_manifest?: ContextManifest | null;
 }
 
 // Humanized labels for the per-round "Last run" outcomes. The reviewer outcomes (approved /
@@ -24,6 +31,11 @@ const OUTCOME_LABELS: Record<string, string> = {
 function outcomeLabel(outcome: string | null): string {
   if (outcome === null) return "—";
   return OUTCOME_LABELS[outcome] ?? titleCase(outcome);
+}
+
+// M-ledger C6: the one-line per-round cost — e.g. "1,240 in / 320 out · $0.0041".
+function costSummary(cost: InvocationCost): string {
+  return `${cost.prompt_tokens.toLocaleString()} in / ${cost.completion_tokens.toLocaleString()} out · $${cost.cost_usd.toFixed(4)}`;
 }
 
 /**
@@ -59,6 +71,8 @@ export function LastRun({
                 <span className="tv-verdict__label">{outcomeLabel(r.outcome)}</span>
               </div>
               {r.outcome_detail && <p className="tv-verdict__reasons">{r.outcome_detail}</p>}
+              {r.cost && <p className="tv-verdict__cost">{costSummary(r.cost)}</p>}
+              {r.context_manifest && <ContextManifestTable manifest={r.context_manifest} />}
             </li>
           );
         })}

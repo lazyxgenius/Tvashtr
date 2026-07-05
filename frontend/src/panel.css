@@ -716,6 +716,83 @@
   word-break: break-word;
 }
 
+/* ---- Per-round ledger (M-ledger C6) — the token/$ cost line + the worker's context-budget
+   manifest, rendered under a round in the "Last run" brief. Muted + token-driven; mirrors the
+   verdict block's restraint (no ad-hoc hex, no animation). ---- */
+.tv-verdict__cost {
+  margin: 0;
+  font-family: var(--font-code);
+  font-size: var(--fs-micro);
+  color: var(--text-tertiary);
+}
+.tv-manifest {
+  margin-top: var(--space-1);
+}
+.tv-manifest__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-micro);
+}
+.tv-manifest__table th {
+  text-align: left;
+  font-family: var(--font-ui);
+  font-weight: var(--fw-medium);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-bottom: var(--space-1);
+  border-bottom: var(--border-width) solid var(--border-faint);
+}
+.tv-manifest__table th:last-child {
+  text-align: right;
+}
+.tv-manifest__name {
+  color: var(--text-secondary);
+  padding: 2px var(--space-3) 2px 0;
+}
+.tv-manifest__tok {
+  text-align: right;
+  font-family: var(--font-code);
+  color: var(--text-primary);
+  white-space: nowrap;
+  padding: 2px 0;
+}
+.tv-manifest__total .tv-manifest__name,
+.tv-manifest__total .tv-manifest__tok {
+  border-top: var(--border-width) solid var(--border-faint);
+  padding-top: var(--space-1);
+  font-weight: var(--fw-medium);
+}
+.tv-manifest__budget .tv-manifest__name,
+.tv-manifest__budget .tv-manifest__tok {
+  color: var(--text-tertiary);
+}
+.tv-manifest__handle {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-micro);
+  font-style: italic;
+  color: var(--text-tertiary);
+}
+
+/* ---- Round grouping in the event feed (M-ledger C6) — once the backend keeps later rounds, a
+   worker's steps group under a "Round N" header. ---- */
+.tv-feed__round {
+  display: flex;
+  flex-direction: column;
+}
+.tv-feed__round + .tv-feed__round {
+  margin-top: var(--space-3);
+}
+.tv-feed__round-head {
+  font-family: var(--font-code);
+  font-size: var(--fs-micro);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: var(--space-2) 0 var(--space-1);
+  border-bottom: var(--border-width) solid var(--border-faint);
+}
+
 /* ============================================================
    Team library rail (P1.8b) — the docked LEFT shelf of the user's
    teams in the authoring view. Token-driven; mirrors the drawer/panel

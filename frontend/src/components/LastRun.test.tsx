@@ -51,4 +51,49 @@ describe("LastRun (shared) — M2", () => {
     render(<LastRun rounds={[]} />);
     expect(screen.getByText("No run yet.")).toBeInTheDocument();
   });
+
+  // ---- M-ledger C6: a round's optional cost line + context-manifest table. ----
+  it("renders a round's cost line + context-manifest table when present (C6)", () => {
+    render(
+      <LastRun
+        rounds={[
+          {
+            iteration: 1,
+            outcome: "built",
+            outcome_detail: "Built the feature.",
+            cost: {
+              prompt_tokens: 1240,
+              completion_tokens: 320,
+              total_tokens: 1560,
+              cost_usd: 0.0041,
+            },
+            context_manifest: {
+              parts: [
+                { name: "system", tokens: 900 },
+                { name: "spec", tokens: 2100 },
+              ],
+              total_tokens: 3000,
+              budget: 8000,
+              handle_used: true,
+            },
+          },
+        ]}
+      />,
+    );
+    // the one-line cost summary
+    expect(screen.getByText("1,240 in / 320 out · $0.0041")).toBeInTheDocument();
+    // the manifest table (a part + the budget row) and the doc-handle offload note
+    expect(screen.getByText("spec")).toBeInTheDocument();
+    expect(screen.getByText("Budget")).toBeInTheDocument();
+    expect(screen.getByText((8000).toLocaleString())).toBeInTheDocument();
+    expect(screen.getByText("Spec offloaded to SPEC.md")).toBeInTheDocument();
+  });
+
+  it("renders NEITHER cost nor manifest when a round omits them (authoring stays byte-identical) (C6)", () => {
+    const { container } = render(
+      <LastRun rounds={[{ iteration: 1, outcome: "approved", outcome_detail: null }]} />,
+    );
+    expect(container.querySelector(".tv-verdict__cost")).toBeNull();
+    expect(container.querySelector(".tv-manifest")).toBeNull();
+  });
 });

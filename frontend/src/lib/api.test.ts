@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ContextManifest, InvocationCost, NodeInvocation, RunEvent } from "./api";
 import { inspectRepo, MODEL_PRESETS, presetsForProvider, providerOf, runTeam } from "./api";
 
 describe("providerOf — parity with the backend provider_for_model", () => {
@@ -105,5 +106,80 @@ describe("inspectRepo", () => {
     const result = await inspectRepo("/nope");
     expect(result.is_git).toBe(false);
     if (!result.is_git) expect(result.error).toContain("not a git");
+  });
+});
+
+// ---- M-ledger C6 wire contract: the ADDITIVE `/graph` invocation fields + `/spike/run-events`
+// event fields. Constructing the literals is the compile-time type check; the assertions exercise
+// the present + null (thinker/gate/legacy) cases the backend emits. ----
+describe("M-ledger C6 additive types round-trip", () => {
+  it("NodeInvocation carries context_manifest + cost (a worker round and a null gate round)", () => {
+    const manifest: ContextManifest = {
+      parts: [
+        { name: "system", tokens: 900 },
+        { name: "spec", tokens: 2100 },
+      ],
+      total_tokens: 3000,
+      budget: 8000,
+      handle_used: true,
+    };
+    const cost: InvocationCost = {
+      prompt_tokens: 1240,
+      completion_tokens: 320,
+      total_tokens: 1560,
+      cost_usd: 0.0041,
+    };
+    const worker: NodeInvocation = {
+      iteration: 1,
+      status: "done",
+      outcome: "built",
+      outcome_detail: null,
+      started_at: "2026-01-01T00:00:00Z",
+      ended_at: "2026-01-01T00:01:00Z",
+      context_manifest: manifest,
+      cost,
+    };
+    const gate: NodeInvocation = {
+      iteration: 1,
+      status: "done",
+      outcome: null,
+      outcome_detail: null,
+      started_at: "2026-01-01T00:00:00Z",
+      ended_at: null,
+      context_manifest: null,
+      cost: null,
+    };
+    expect(worker.context_manifest?.parts).toHaveLength(2);
+    expect(worker.context_manifest?.handle_used).toBe(true);
+    expect(worker.cost?.total_tokens).toBe(1560);
+    expect(gate.context_manifest).toBeNull();
+    expect(gate.cost).toBeNull();
+  });
+
+  it("RunEvent carries invocation_id + node_id + iteration (a ledger row and a legacy-null row)", () => {
+    const ledger: RunEvent = {
+      seq: 1,
+      kind: "action",
+      payload: { thought: "x" },
+      created_at: "2026-01-01T00:00:00Z",
+      invocation_id: 10,
+      node_id: "n-eng",
+      iteration: 2,
+    };
+    const legacy: RunEvent = {
+      seq: 2,
+      kind: "message",
+      payload: {},
+      created_at: "2026-01-01T00:00:00Z",
+      invocation_id: null,
+      node_id: null,
+      iteration: null,
+    };
+    expect(ledger.invocation_id).toBe(10);
+    expect(ledger.node_id).toBe("n-eng");
+    expect(ledger.iteration).toBe(2);
+    expect(legacy.invocation_id).toBeNull();
+    expect(legacy.node_id).toBeNull();
+    expect(legacy.iteration).toBeNull();
   });
 });
