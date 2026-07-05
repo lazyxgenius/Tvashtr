@@ -74,7 +74,7 @@ def test_brownfield_run_lands_on_real_branch_offline(client, monkeypatch, tmp_pa
 
     captured: dict = {}
     monkeypatch.setattr(
-        team_run, "pm_step", lambda run_id, idea, m, p, mt: seed_pm_prd(run_id, idea)
+        team_run, "pm_step", lambda run_id, idea, m, p, mt, inv=None: seed_pm_prd(run_id, idea)
     )
     monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _FakeAdapter(captured))
 
@@ -228,7 +228,7 @@ def test_brownfield_review_loop_worker_gets_protocol_reviewer_does_not_offline(
 
     captured: dict = {}
     monkeypatch.setattr(
-        team_run, "pm_step", lambda run_id, idea, m, p, mt: seed_pm_prd(run_id, idea)
+        team_run, "pm_step", lambda run_id, idea, m, p, mt, inv=None: seed_pm_prd(run_id, idea)
     )
     monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _ReviewLoopFakeAdapter(captured))
 
@@ -317,7 +317,7 @@ def test_brownfield_review_loop_reviewer_cannot_clobber_worker_edit_offline(
 
     captured: dict = {}
     monkeypatch.setattr(
-        team_run, "pm_step", lambda run_id, idea, m, p, mt: seed_pm_prd(run_id, idea)
+        team_run, "pm_step", lambda run_id, idea, m, p, mt, inv=None: seed_pm_prd(run_id, idea)
     )
     monkeypatch.setattr(
         team_run, "resolve_adapter", lambda name: _ReviewLoopFakeAdapter(captured, clobber=True)
@@ -405,7 +405,7 @@ def test_brownfield_subpath_appends_worker_focus_reviewer_excluded_offline(
 
     captured: dict = {}
     monkeypatch.setattr(
-        team_run, "pm_step", lambda run_id, idea, m, p, mt: seed_pm_prd(run_id, idea)
+        team_run, "pm_step", lambda run_id, idea, m, p, mt, inv=None: seed_pm_prd(run_id, idea)
     )
     monkeypatch.setattr(
         team_run,

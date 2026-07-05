@@ -251,7 +251,14 @@ def node_emits_outcome(edges: list[dict], node_id: str) -> bool:
 
 
 @DBOS.step()
-def pm_step(run_id: str, idea: str, pm_model: str, pm_prompt: str, max_tokens: int) -> dict:
+def pm_step(
+    run_id: str,
+    idea: str,
+    pm_model: str,
+    pm_prompt: str,
+    max_tokens: int,
+    invocation_id: int,
+) -> dict:
     """PM node: a direct, metered gateway completion -> a versioned PRD document.
 
     P1.8a: the static behavior is the node's ``pm_prompt`` (seeded by the builder, moved off this
@@ -273,7 +280,12 @@ def pm_step(run_id: str, idea: str, pm_model: str, pm_prompt: str, max_tokens: i
         api_key=_owner_api_key(run_id, pm_model),
     )
     result = complete(request)
-    record_cost(result, workflow_id=run_id, idempotency_key=f"{run_id}:pm-llm")
+    record_cost(
+        result,
+        workflow_id=run_id,
+        idempotency_key=f"{run_id}:pm-llm",
+        invocation_id=invocation_id,
+    )
 
     document = create_document_with_initial_version(
         title="Mini-PRD",
@@ -328,6 +340,7 @@ def thinker_refine_step(
     current_spec: str,
     spec_document_id: str,
     max_tokens: int,
+    invocation_id: int,
 ) -> dict:
     """A LATER thinker node (P1.8c): a metered gateway completion that REFINES the run's single
     shared spec document and appends a new version.
@@ -364,7 +377,10 @@ def thinker_refine_step(
     )
     result = complete(request)
     record_cost(
-        result, workflow_id=run_id, idempotency_key=f"{run_id}:thinker-llm:{node_id}:{iteration}"
+        result,
+        workflow_id=run_id,
+        idempotency_key=f"{run_id}:thinker-llm:{node_id}:{iteration}",
+        invocation_id=invocation_id,
     )
     add_version(
         uuid.UUID(spec_document_id),
@@ -518,7 +534,12 @@ def delete_vkey_step(run_id: str, key: str | None) -> None:
 
 @DBOS.step()
 def persist_agent_cost_step(
-    run_id: str, node_id: str, model: str | None, usage: dict, iteration: int
+    run_id: str,
+    node_id: str,
+    model: str | None,
+    usage: dict,
+    iteration: int,
+    invocation_id: int,
 ) -> None:
     """Write one CostRecord for THIS agent-node iteration (P1.8a — merges the old engineer +
     reviewer cost steps into one). Idempotent on the per-node-per-iteration key
@@ -536,6 +557,7 @@ def persist_agent_cost_step(
         completion_tokens=usage["completion_tokens"],
         total_tokens=usage["total_tokens"],
         cost_usd=usage["cost_usd"],
+        invocation_id=invocation_id,
     )
 
 
@@ -687,6 +709,7 @@ def agent_run_step(
     reviewer_feedback: str | None,
     emits_outcome: bool,
     budget: int,
+    invocation_id: int,
     grounding: str | None = None,
     subpath: str | None = None,
 ) -> dict:
@@ -826,7 +849,7 @@ def agent_run_step(
     )
     adapter = resolve_adapter(engine_name)  # lazy openhands import happens here
     try:
-        result = adapter.run(task, on_event=make_run_event_sink(run_id))
+        result = adapter.run(task, on_event=make_run_event_sink(run_id, invocation_id))
     finally:
         # C4: SPEC.md (if written) must NEVER reach the shippable worktree — remove it right after
         # the run, whether it succeeded, failed, or raised (the ship node comes later, after every
@@ -1029,7 +1052,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # deterministically from recorded step outputs as the walk replays, so it is crash-safe.
             n = iters_by_node.get(current, 0) + 1
             iters_by_node[current] = n
-            open_invocation_step(run_id, current, n)
+            inv_id = open_invocation_step(run_id, current, n)
             # Capture first-vs-later BEFORE ``pm_document_id`` is reassigned below — it drives both
             # the dispatch AND the per-node work-brief written at close (Option A).
             is_first_thinker = pm_document_id is None
@@ -1043,7 +1066,9 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # The FIRST thinker (the root): create the spec doc from the idea. Byte-identical to
                 # the old PM path — same ``pm_step``, same ``pm-llm`` / ``pm-prd-v1`` keys, so the
                 # single-thinker templates + their checkers are untouched.
-                result = pm_step(run_id, idea, node["model"], node["prompt"], thinker_max_tokens)
+                result = pm_step(
+                    run_id, idea, node["model"], node["prompt"], thinker_max_tokens, inv_id
+                )
             else:
                 # A LATER thinker: read the current spec (recorded -> deterministic on resume),
                 # refine it, append a new version. A thinker is now composable ANYWHERE.
@@ -1058,6 +1083,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     current_spec,
                     pm_document_id,
                     thinker_max_tokens,
+                    inv_id,
                 )
             pm_document_id = result["document_id"]
             close_invocation_step(
@@ -1102,7 +1128,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     # scoped-mount Slice 1: ``subpath`` roots the structure outline at one package
                     # (None ⇒ whole-repo grounding, byte-for-byte unchanged).
                     grounding = brownfield_grounding_step(run_id, workspace, repo_basename, subpath)
-            open_invocation_step(run_id, current, n)
+            inv_id = open_invocation_step(run_id, current, n)
             # Per-iteration virtual key: each mint reflects the THEN-current remaining budget,
             # so the proxy enforces the run cap across the whole loop (P1.4b composes).
             vkey = mint_vkey_step(run_id)
@@ -1144,6 +1170,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 reviewer_feedback,
                 emits,
                 budget,
+                inv_id,
                 **brownfield_kwargs,
             )
             delete_vkey_step(run_id, vkey)
@@ -1152,7 +1179,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # The proxy cut the agent off mid-call. Record whatever partial spend the cut-off
                 # conversation carried (best-effort, idempotent on the per-node key), then stop.
                 if result["total_tokens"] or result["cost_usd"]:
-                    persist_agent_cost_step(run_id, current, node["model"], result, n)
+                    persist_agent_cost_step(run_id, current, node["model"], result, n, inv_id)
                 close_invocation_step(
                     run_id,
                     current,
@@ -1190,7 +1217,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # (``…:agent-cost:{node_id}:{iteration}``) keeps the engineer's and a real reviewer's
             # iter-1 rows from colliding while preserving the prefix the checkers count.
             if result["total_tokens"] or result["cost_usd"]:
-                persist_agent_cost_step(run_id, current, node["model"], result, n)
+                persist_agent_cost_step(run_id, current, node["model"], result, n, inv_id)
             label = result["outcome"]  # None for a non-branching (engineer-style) node
             # Per-node work-brief (Option A): an EMITTING worker (the Reviewer) keeps its verdict
             # reasons as ``outcome_detail`` (byte-stable — §14.1 ReviewerView + §14.3 A/B read it);

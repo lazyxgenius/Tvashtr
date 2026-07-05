@@ -387,25 +387,32 @@ def get_costs(workflow_id: str | None = None) -> dict:
 
 @router.get("/api/spike/run-events/{run_id}")
 def get_run_events(run_id: str) -> dict:
-    """Return the persisted, ordered engine events for a run (P0.3)."""
+    """Return the persisted, ordered engine events for a run (P0.3).
+
+    M-ledger C5: each event additionally carries its ``invocation_id`` (the node-execution it
+    belongs to) plus that invocation's ``node_id`` + ``iteration`` (LEFT-joined off
+    ``agent_invocations`` — all three NULL for a legacy pre-0020 event with no ``invocation_id``).
+    Existing ``seq``/``kind``/``payload``/``created_at`` unchanged."""
     with db.session_scope() as session:
-        rows = (
-            session.execute(
-                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)
-            )
-            .scalars()
-            .all()
-        )
+        rows = session.execute(
+            select(RunEvent, AgentInvocation)
+            .outerjoin(AgentInvocation, RunEvent.invocation_id == AgentInvocation.id)
+            .where(RunEvent.run_id == run_id)
+            .order_by(RunEvent.seq)
+        ).all()
         return {
             "run_id": run_id,
             "events": [
                 {
-                    "seq": r.seq,
-                    "kind": r.kind,
-                    "payload": r.payload,
-                    "created_at": r.created_at.isoformat(),
+                    "seq": ev.seq,
+                    "kind": ev.kind,
+                    "payload": ev.payload,
+                    "created_at": ev.created_at.isoformat(),
+                    "invocation_id": ev.invocation_id,
+                    "node_id": str(inv.node_id) if inv is not None else None,
+                    "iteration": inv.iteration if inv is not None else None,
                 }
-                for r in rows
+                for ev, inv in rows
             ],
         }
 
@@ -802,6 +809,81 @@ def get_run(run_id: str, current_user: Annotated[UserOut, Depends(get_current_us
     }
 
 
+def _cost_by_invocation(session, run_id: str) -> dict[int, dict]:
+    """M-ledger C5: each invocation's linked cost, keyed by invocation id. ``cost_records.
+    invocation_id`` links a spend to the node-execution that incurred it; summed defensively (<=1
+    row per invocation today) + COALESCE-safe via the group aggregate. Absent from the map when no
+    cost row links (gates, terminals, a zero-usage reviewer round). Each value is the ``cost``
+    object the ``/graph`` + ``/trajectory`` contracts return."""
+    rows = session.execute(
+        select(
+            CostRecord.invocation_id,
+            func.sum(CostRecord.prompt_tokens),
+            func.sum(CostRecord.completion_tokens),
+            func.sum(CostRecord.total_tokens),
+            func.sum(CostRecord.cost_usd),
+        )
+        .where(CostRecord.workflow_id == run_id, CostRecord.invocation_id.isnot(None))
+        .group_by(CostRecord.invocation_id)
+    ).all()
+    return {
+        inv_id: {
+            "prompt_tokens": int(pt),
+            "completion_tokens": int(ct),
+            "total_tokens": int(tt),
+            "cost_usd": float(cost),
+        }
+        for inv_id, pt, ct, tt, cost in rows
+    }
+
+
+@router.get("/api/runs/{run_id}/trajectory")
+def get_run_trajectory(
+    run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """The one-row-per-node-execution ledger for a run (M-ledger C5) — a capture-only, owner-scoped
+    read (404 unless the run belongs to the current user), NOT consumed by the frontend. Each row
+    assembles the invocation join its node (``role_name`` + ``kind``) join its linked cost (the
+    ``cost_records.invocation_id`` join) join its stored ``context_manifest``, ordered by
+    ``started_at`` ASC — the executor's walk order."""
+    with db.session_scope() as session:
+        run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
+        cost_by_inv = _cost_by_invocation(session, run_id)
+        rows = session.execute(
+            select(AgentInvocation, AgentNode.role_name, AgentNode.kind)
+            .join(AgentNode, AgentInvocation.node_id == AgentNode.id)
+            .where(AgentInvocation.run_id == run_id)
+            .order_by(AgentInvocation.started_at, AgentInvocation.id)
+        ).all()
+        return {
+            "run": {
+                "id": str(run.id),
+                "idea": run.idea,
+                "status": run.status,
+                "cost_total_usd": (
+                    float(run.cost_total_usd) if run.cost_total_usd is not None else None
+                ),
+            },
+            "rows": [
+                {
+                    "invocation_id": inv.id,
+                    "node_id": str(inv.node_id),
+                    "role_name": role_name,
+                    "kind": kind,
+                    "iteration": inv.iteration,
+                    "status": inv.status,
+                    "outcome": inv.outcome,
+                    "outcome_detail": inv.outcome_detail,
+                    "context_manifest": inv.context_manifest,
+                    "cost": cost_by_inv.get(inv.id),
+                    "started_at": inv.started_at.isoformat(),
+                    "ended_at": inv.ended_at.isoformat() if inv.ended_at else None,
+                }
+                for inv, role_name, kind in rows
+            ],
+        }
+
+
 @router.get("/api/runs/{run_id}/graph")
 def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
     """Read-only team graph (nodes + edges) for a run — what the canvas draws. M-accounts Slice B:
@@ -830,6 +912,9 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
             .scalars()
             .all()
         )
+        # M-ledger C5: the per-invocation cost (the cost_records.invocation_id join), keyed by
+        # invocation id — attached to each invocation dict below (null when no cost row links).
+        cost_by_inv = _cost_by_invocation(session, run_id)
         # The node's live state = its latest invocation (max iteration for that node).
         latest_by_node: dict[str, AgentInvocation] = {}
         # The node's full per-round history, ascending by iteration — the verdict-view
@@ -872,6 +957,11 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                             "status": inv.status,
                             "outcome": inv.outcome,
                             "outcome_detail": inv.outcome_detail,
+                            # M-ledger C5 (additive): the stored context manifest (as-is; null for
+                            # thinker/gate/terminal + pre-0019 rows) + the per-invocation cost from
+                            # the cost_records.invocation_id join (null when no cost row links).
+                            "context_manifest": inv.context_manifest,
+                            "cost": cost_by_inv.get(inv.id),
                             "started_at": inv.started_at.isoformat(),
                             "ended_at": inv.ended_at.isoformat() if inv.ended_at else None,
                         }

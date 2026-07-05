@@ -52,7 +52,7 @@ def _stub_agent(monkeypatch, workspace: Path, reviewer) -> None:
     deliverable so a ship has something to commit; the reviewer-style node (``emits_outcome`` True)
     delegates to the per-test ``reviewer(iteration)`` callback returning a canned verdict dict."""
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
         return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
@@ -70,6 +70,7 @@ def _stub_agent(monkeypatch, workspace: Path, reviewer) -> None:
         reviewer_feedback,
         emits_outcome,
         budget,
+        invocation_id=None,
     ):
         if emits_outcome:
             return reviewer(iteration)

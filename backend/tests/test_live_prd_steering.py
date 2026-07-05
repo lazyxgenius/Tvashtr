@@ -143,7 +143,7 @@ def test_mid_run_prd_edit_reaches_the_revision_engineer(client, monkeypatch, tmp
     # Each Engineer call's (iteration, prd_text-it-received) — the observable of the re-source.
     engineer_prds: list[tuple[int, str]] = []
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
         # Real document write (minus the LLM) so read_latest_prd_step resolves to a real version.
         doc = create_document_with_initial_version(
             "Mini-PRD", "prd", f"PRD v1 for: {idea}", "agent:pm", f"{run_id}:pm-prd-v1"
@@ -169,6 +169,7 @@ def test_mid_run_prd_edit_reaches_the_revision_engineer(client, monkeypatch, tmp
         reviewer_feedback,
         emits_outcome,
         budget,
+        invocation_id=None,
     ):
         # P1.8a: ONE generic agent step. The reviewer-style node runs the real forced harness; the
         # engineer-style worker records the PRD IT RECEIVED (``prd_text`` — the observable of the

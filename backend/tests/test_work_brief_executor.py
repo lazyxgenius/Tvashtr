@@ -56,7 +56,7 @@ def test_executor_populates_work_brief_for_thinker_and_worker(client, monkeypatc
     workspace.mkdir()
     init_workspace_repo(str(workspace))
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
         return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
@@ -74,6 +74,7 @@ def test_executor_populates_work_brief_for_thinker_and_worker(client, monkeypatc
         reviewer_feedback,
         emits_outcome,
         budget,
+        invocation_id=None,
     ):
         # Emitting node (Reviewer): the real forced harness -> verdict reasons (NOT a work-brief).
         if emits_outcome:

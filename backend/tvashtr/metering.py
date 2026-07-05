@@ -38,6 +38,7 @@ def record_cost(
     *,
     workflow_id: str | None,
     idempotency_key: str,
+    invocation_id: int | None = None,
 ) -> CostRecord:
     """Persist one metered call — idempotent on ``idempotency_key``.
 
@@ -53,6 +54,8 @@ def record_cost(
 
         record = CostRecord(
             workflow_id=workflow_id,
+            # M-ledger C5: attach this spend to its node-execution (NULL-safe default).
+            invocation_id=invocation_id,
             idempotency_key=idempotency_key,
             model_requested=result.model_requested,
             model_used=result.model_used,
@@ -85,6 +88,7 @@ def record_agent_cost(
     completion_tokens: int,
     total_tokens: int,
     cost_usd: float,
+    invocation_id: int | None = None,
 ) -> CostRecord:
     """Persist one CostRecord for an agent invocation from engine-neutral usage
     numbers — idempotent on ``idempotency_key``.
@@ -101,6 +105,8 @@ def record_agent_cost(
 
         record = CostRecord(
             workflow_id=workflow_id,
+            # M-ledger C5: attach this agent spend to its node-execution (NULL-safe default).
+            invocation_id=invocation_id,
             idempotency_key=idempotency_key,
             model_requested=model,
             model_used=model,

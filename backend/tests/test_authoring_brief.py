@@ -41,7 +41,7 @@ def _full_run_fakes(monkeypatch, workspace):
     Engineer writes the deliverable + reports ``files_changed`` (so its brief is the files variant),
     the PM seeds the PRD."""
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
         return seed_pm_prd(run_id, idea)
 
     def _fake_engineer_setup_step(run_id):
@@ -59,6 +59,7 @@ def _full_run_fakes(monkeypatch, workspace):
         reviewer_feedback,
         emits_outcome,
         budget,
+        invocation_id=None,
     ):
         if emits_outcome:
             return team_run._forced_review_outcome(iteration)
@@ -171,7 +172,7 @@ def test_authoring_last_run_is_latest_across_runs_and_survives_a_skip(
 
     # --- Run 2: the PM runs and closes its brief, then the Engineer SETUP raises -> the Engineer
     #     invocation never OPENS, so run2 SKIPS the Engineer entirely. ---
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens):
+    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
         return seed_pm_prd(run_id, idea)
 
     def _raise_engineer_setup(run_id):

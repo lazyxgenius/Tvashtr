@@ -207,8 +207,9 @@ def _over_budget_route_probe(total_tokens: int, cost_usd: float) -> dict:
     }
     if engineer["total_tokens"] or engineer["cost_usd"]:
         # P1.8a: persist_agent_cost_step gained a node_id (the per-node cost key
-        # {run_id}:agent-cost:{node_id}:{iteration}); the probe passes a stand-in node id.
-        persist_agent_cost_step(run_id, "node-probe", "test/model", engineer, 1)
+        # {run_id}:agent-cost:{node_id}:{iteration}); M-ledger C5 gained an invocation_id. This bare
+        # route probe passes stand-ins for both (no real node/invocation to reference here).
+        persist_agent_cost_step(run_id, "node-probe", "test/model", engineer, 1, invocation_id=1)
     finalize_run_step(run_id, status="over_budget")
     return {"status": "over_budget"}
 

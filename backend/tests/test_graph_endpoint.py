@@ -194,9 +194,14 @@ def test_graph_endpoint_node_invocations_are_ordered_per_round_history(client):
         "status",
         "outcome",
         "outcome_detail",
+        # M-ledger C5 (additive): the per-invocation context manifest + cost (both null here — these
+        # rows were inserted directly, with no manifest and no linked cost row).
+        "context_manifest",
+        "cost",
         "started_at",
         "ended_at",
     }
+    assert rounds[0]["context_manifest"] is None and rounds[0]["cost"] is None
     assert rounds[0]["outcome_detail"] == "missing tests for the edge case"
     assert rounds[1]["outcome_detail"] is None
     assert rounds[0]["status"] == "done" and rounds[0]["started_at"] is not None

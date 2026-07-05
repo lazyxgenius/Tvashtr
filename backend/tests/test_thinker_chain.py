@@ -102,6 +102,7 @@ def test_thinker_chain_runs_the_non_start_thinker_and_ships(client, monkeypatch,
         reviewer_feedback,
         emits_outcome,
         budget,
+        invocation_id=None,
     ):
         # The Engineer is the only agent node, with no conditional out-edge -> emits_outcome False,
         # so it never short-circuits. Capture the spec it received (proves it read the REFINED spec

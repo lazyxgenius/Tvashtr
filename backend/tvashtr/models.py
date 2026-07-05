@@ -58,6 +58,12 @@ class CostRecord(Base):
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     # Nullable: not every gateway call happens inside a workflow.
     workflow_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    # M-ledger C5 (migration ``0020``): the ``agent_invocations.id`` this spend belongs to — the
+    # durable link that attaches each cost row to the exact node-execution that incurred it (the
+    # ``/graph`` + ``/trajectory`` ledger LEFT-JOINs cost on this). Nullable + indexed; NULL for a
+    # gateway call outside an invocation and every pre-0020 row. The default-``None`` write keeps
+    # any non-executor caller safe.
+    invocation_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     model_requested: Mapped[str] = mapped_column(Text, nullable=False)
     model_used: Mapped[str] = mapped_column(Text, nullable=False)
@@ -132,10 +138,19 @@ class RunEvent(Base):
     """
 
     __tablename__ = "run_events"
-    __table_args__ = (UniqueConstraint("run_id", "seq", name="uq_run_events_run_seq"),)
+    __table_args__ = (
+        UniqueConstraint("run_id", "invocation_id", "seq", name="uq_run_events_run_invocation_seq"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     run_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    # M-ledger C5 (migration ``0020``): the ``agent_invocations.id`` this event belongs to — the
+    # durable per-node-execution join key. The event sink keys idempotency on ``(run_id,
+    # invocation_id, seq)``, not ``(run_id, seq)``: each engine ``run()`` restarts ``seq`` at 0.
+    # A later round's ``seq=0`` would collide with round 1's row and be dropped. Nullable +
+    # indexed; NULL on every pre-0020 legacy row (Postgres treats NULLs as distinct, so the unique
+    # constraint accepts them).
+    invocation_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)

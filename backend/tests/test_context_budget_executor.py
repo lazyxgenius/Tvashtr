@@ -121,7 +121,9 @@ def test_over_context_budget_fails_run_naming_spec_and_persists_manifest(client,
     run_id = str(uuid.uuid4())
     _seed_run(run_id, team_graph_id, "Add a greeting.")
     # Fake PM: seed the LARGE PRD (no LLM). The Engineer re-sources it live → over budget.
-    monkeypatch.setattr(team_run, "pm_step", lambda r, i, m, p, mt: _seed_prd(r, big_spec))
+    monkeypatch.setattr(
+        team_run, "pm_step", lambda r, i, m, p, mt, inv=None: _seed_prd(r, big_spec)
+    )
     captured: dict = {}
     monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _RecordingAdapter(captured))
 
@@ -230,7 +232,9 @@ def test_large_spec_writes_spec_md_pointer_and_never_ships(client, monkeypatch):
     big_spec = "S" * 8000  # ~2000 tok > the ~1500 handle threshold, under the 110000 budget
     run_id = str(uuid.uuid4())
     _seed_run(run_id, team_graph_id, "Add a greeting.")
-    monkeypatch.setattr(team_run, "pm_step", lambda r, i, m, p, mt: _seed_prd(r, big_spec))
+    monkeypatch.setattr(
+        team_run, "pm_step", lambda r, i, m, p, mt, inv=None: _seed_prd(r, big_spec)
+    )
     captured: dict = {}
     monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _RecordingAdapter(captured))
 
