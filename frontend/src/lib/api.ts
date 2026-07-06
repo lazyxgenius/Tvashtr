@@ -93,6 +93,16 @@ export interface GraphData {
   team_graph_id: string;
   nodes: GraphNode[];
   edges: GraphEdge[];
+  // M-tools C7.A (SHARED CONTRACT S1): tools/skills that failed to resolve at run time and were
+  // SKIPPED (the run continued). [] when none — drives the run-inspector warning banner.
+  resolution_warnings?: ResolutionWarning[];
+}
+
+// M-tools C7.A: one run-scoped resolution warning (a skipped tool/skill source).
+export interface ResolutionWarning {
+  source_kind: string;
+  name: string;
+  reason: string;
 }
 
 export interface RunRow {
@@ -233,6 +243,36 @@ export async function addProvider(
 export async function removeProvider(provider: string): Promise<void> {
   const res = await fetch(`/api/providers/${encodeURIComponent(provider)}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /api/providers/${provider} -> ${res.status}`);
+}
+
+// ---- MCP secrets (M-tools C7.A): the account's ${NAME} store for MCP tool_config ----
+
+// A stored MCP secret as the shelf shows it — only the NAME is ever returned, never the value.
+export interface McpSecretName {
+  name: string;
+}
+
+// The NAMES of the account's MCP secrets (never the values). Empty for a fresh account.
+export async function listSecrets(): Promise<McpSecretName[]> {
+  const data = await getJSON<{ secrets: McpSecretName[] }>("/api/secrets");
+  return data.secrets;
+}
+
+// Add (or REPLACE) an MCP ${NAME} secret. Returns `{name}` — never the value.
+export async function addSecret(name: string, value: string): Promise<{ name: string }> {
+  const res = await fetch("/api/secrets", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, value }),
+  });
+  if (!res.ok) throw new ApiError(res.status, `POST /api/secrets -> ${res.status}`);
+  return (await res.json()) as { name: string };
+}
+
+// Remove the account's ${name} secret (204, idempotent).
+export async function removeSecret(name: string): Promise<void> {
+  const res = await fetch(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /api/secrets/${name} -> ${res.status}`);
 }
 
 // ---- The account's runs (the dashboard's "previous runs" list) ----
@@ -464,11 +504,12 @@ export async function updateTeamNode(
     skills?: unknown[] | null;
   } = { prompt, model };
   if (capability !== undefined) body.capability = capability;
-  // M-tools C7.0: send tools/skills ONLY when actually set (non-null). A null/absent value is omitted
-  // ⇒ the backend leaves the stored value unchanged (its is-not-None guard) AND, crucially, the PATCH
-  // body for a tools-less node is byte-identical to before this milestone — the wire is inert.
-  if (toolConfig !== undefined && toolConfig !== null) body.tool_config = toolConfig;
-  if (skills !== undefined && skills !== null) body.skills = skills;
+  // M-tools C7.A (SHARED CONTRACT S2): ALWAYS send tools/skills when the caller passed a value (even
+  // an explicit null → clear to NULL). Only a caller that OMITS the arg (undefined) leaves the stored
+  // value unchanged — the backend distinguishes the two via `model_fields_set`. A caller that omits
+  // both still produces a PATCH body byte-identical to before this milestone.
+  if (toolConfig !== undefined) body.tool_config = toolConfig;
+  if (skills !== undefined) body.skills = skills;
   const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },

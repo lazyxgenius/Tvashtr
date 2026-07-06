@@ -21,6 +21,11 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane.credentials import encrypt_secret, provider_for_model
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
+from tvashtr.control_plane.mcp_secrets import (
+    delete_owner_mcp_secret,
+    list_owner_mcp_secret_names,
+    set_owner_mcp_secret,
+)
 from tvashtr.control_plane.team_run import run_team
 from tvashtr.control_plane.teams import (
     ARCHITECT_PROMPT,
@@ -55,6 +60,7 @@ from tvashtr.models import (
     ProviderCredential,
     Run,
     RunEvent,
+    RunWarning,
     TeamGraph,
 )
 
@@ -940,6 +946,18 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
         # Deterministic left-to-right order (PM at x=0 before Engineer/Reviewer).
         nodes = sorted(nodes, key=lambda n: (n.position.get("x", 0), str(n.id)))
 
+        # M-tools C7.A (SHARED CONTRACT S1): run-scoped resolution warnings — tools/skills that
+        # FAILED to resolve at run time and were SKIPPED (the run continued). Oldest-first; [] none.
+        resolution_warnings = (
+            session.execute(
+                select(RunWarning)
+                .where(RunWarning.run_id == run.id)
+                .order_by(RunWarning.created_at, RunWarning.id)
+            )
+            .scalars()
+            .all()
+        )
+
         return {
             "run_id": run_id,
             "team_graph_id": str(run.team_graph_id),
@@ -980,6 +998,10 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                 for n in nodes
             ],
             "edges": [_edge_to_dict(e) for e in edges],
+            "resolution_warnings": [
+                {"source_kind": w.source_kind, "name": w.name, "reason": w.reason}
+                for w in resolution_warnings
+            ],
         }
 
 
@@ -1077,6 +1099,53 @@ def delete_provider(
         ).scalar_one_or_none()
         if cred is not None:
             session.delete(cred)
+    return Response(status_code=204)
+
+
+# ---- MCP secrets (M-tools C7.A): the account's ${NAME} store for MCP tool_config, encrypted ----
+
+
+class AddSecretRequest(BaseModel):
+    """``POST /api/secrets`` body: a ``${NAME}`` key (e.g. ``GITHUB_TOKEN``) + its plaintext value.
+    The server encrypts the value (Fernet) and upserts on ``(owner, name)`` — adding the same name
+    again REPLACES the stored value. The value is NEVER returned by any endpoint."""
+
+    name: str
+    value: str
+
+
+@router.get("/api/secrets")
+def list_secrets(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """The NAMES of the current account's MCP secrets (never the values), oldest first — feeds the
+    account Secrets shelf and ToolsSection's pre-launch missing-secret check."""
+    names = list_owner_mcp_secret_names(uuid.UUID(current_user.id))
+    return {"secrets": [{"name": n} for n in names]}
+
+
+@router.post("/api/secrets")
+def add_secret(
+    body: AddSecretRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Add (or REPLACE) an MCP ``${NAME}`` secret for the account. Encrypts it (Fernet)
+    and upserts on ``(owner, name)``. 422 on an empty name/value. Returns ``{name}`` — never the
+    value."""
+    name = body.name.strip()
+    value = body.value.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="A secret name is required.")
+    if not value:
+        raise HTTPException(status_code=422, detail="A secret value is required.")
+    set_owner_mcp_secret(uuid.UUID(current_user.id), name, value)
+    return {"name": name}
+
+
+@router.delete("/api/secrets/{name}", status_code=204)
+def delete_secret(
+    name: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> Response:
+    """Remove the current account's ``${name}`` secret (204, idempotent — deleting an absent name
+    still 204s)."""
+    delete_owner_mcp_secret(uuid.UUID(current_user.id), name)
     return Response(status_code=204)
 
 
@@ -1304,12 +1373,13 @@ def update_team_node(
             node.kind, node.engine = _capability_to_columns(body.capability)
         node.prompt = body.prompt
         node.model = body.model
-        # M-tools C7.0: persist tools + skills ADDITIVELY — only when provided (mirrors the
-        # ``capability`` is-not-None guard above), so a save that omits them leaves the stored value
-        # untouched. NULL everywhere today, so this is inert until a later milestone's UI sets them.
-        if body.tool_config is not None:
+        # M-tools C7.A (SHARED CONTRACT S2): persist tools + skills with CLEAR semantics —
+        # ``model_fields_set`` distinguishes "field absent (omitted) -> leave unchanged" from "field
+        # present-and-null -> set NULL (clear)". This is the ONLY change from the C7.0 scaffold's
+        # is-not-None guard, and it's what lets the real editors clear a set config to NULL.
+        if "tool_config" in body.model_fields_set:
             node.tool_config = body.tool_config
-        if body.skills is not None:
+        if "skills" in body.model_fields_set:
             node.skills = body.skills
         session.flush()
         return _node_base_dict(node)

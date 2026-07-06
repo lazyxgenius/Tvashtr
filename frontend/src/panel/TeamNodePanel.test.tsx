@@ -125,6 +125,9 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
       prompt: "Write greeting.txt = SENTINEL",
       model: "openai/gpt-4o-mini",
       capability: "worker",
+      // M-tools C7.A (S2): updateTeamNode now always sends tool_config/skills (null when unset).
+      tool_config: null,
+      skills: null,
     });
     // …and the parent was asked to refetch the team (which clears dirty + shows the saved note).
     expect(onSaved).toHaveBeenCalledTimes(1);
@@ -158,6 +161,9 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
       prompt: "Original engineer prompt",
       model: "openai/gpt-4o-mini",
       capability: "thinker",
+      // M-tools C7.A (S2): updateTeamNode now always sends tool_config/skills (null when unset).
+      tool_config: null,
+      skills: null,
     });
   });
 

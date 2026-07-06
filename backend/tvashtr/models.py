@@ -494,3 +494,48 @@ class ProviderCredential(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class McpSecret(Base):
+    """One account's MCP ``${NAME}`` secret, encrypted at rest (M-tools C7.A, migration ``0022``).
+
+    Mirrors :class:`ProviderCredential`: ``secret_encrypted`` is the Fernet ciphertext of the
+    plaintext value — decrypted only at run time (see :mod:`tvashtr.control_plane.mcp_secrets`); the
+    plaintext is NEVER stored or returned by any endpoint. A node's ``tool_config`` holds only
+    a ``${NAME}`` reference; this table holds the value it points at. Unique ``(owner_id, name)`` —
+    one value per name per account; add is an upsert/replace."""
+
+    __tablename__ = "mcp_secrets"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_mcp_secrets_owner_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class RunWarning(Base):
+    """A run-scoped resolution warning (M-tools C7.A, migration ``0022``): a tool/skill source that
+    FAILED to resolve at run time (missing secret, unreachable repo, MCP connect fail) and was
+    SKIPPED (the run continued). Surfaced in the run inspector via
+    ``GET /api/runs/{run_id}/graph``'s ``resolution_warnings`` array. ``source_kind`` is
+    ``"tool"`` | ``"skill"``; the recorder de-dupes on (run_id, source_kind, name, reason)."""
+
+    __tablename__ = "run_warnings"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

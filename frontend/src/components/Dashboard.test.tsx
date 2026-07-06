@@ -13,6 +13,9 @@ vi.mock("../lib/api", () => ({
   deleteTeam: vi.fn(),
   getTemplates: vi.fn(),
   createTeam: vi.fn(),
+  listSecrets: vi.fn().mockResolvedValue([]),
+  addSecret: vi.fn(),
+  removeSecret: vi.fn(),
 }));
 
 const m = api as unknown as {

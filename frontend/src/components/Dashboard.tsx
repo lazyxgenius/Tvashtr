@@ -24,6 +24,7 @@ import {
 import { RUN_TERMINAL, runStatusPill } from "../lib/status";
 import { BackendDot } from "./BackendDot";
 import { NewTeamDialog } from "./NewTeamDialog";
+import { SecretsShelf } from "./SecretsShelf";
 
 // The providers offered as datalist suggestions under the free-text field (any provider/model
 // leading-slug is accepted; these are the proven in-repo ones).
@@ -407,6 +408,7 @@ export function Dashboard({
               </div>
             )}
           </section>
+          <SecretsShelf />
         </div>
       </main>
 

@@ -7,6 +7,7 @@ import { BackendDot } from "./components/BackendDot";
 import { CancelRunButton } from "./components/CancelRunButton";
 import { LaunchPanel } from "./components/LaunchPanel";
 import { RunBanner } from "./components/RunBanner";
+import { RunWarnings } from "./components/RunWarnings";
 import { TasksDrawer } from "./components/TasksDrawer";
 import { SidePanel } from "./panel/SidePanel";
 import { TeamNodePanel } from "./panel/TeamNodePanel";
@@ -670,6 +671,7 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
                 <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />
               )}
               <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
+              <RunWarnings warnings={graph?.resolution_warnings ?? []} />
             </>
           )
         ) : (
