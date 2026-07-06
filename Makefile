@@ -180,3 +180,6 @@ fmt: ## Autofix twin of lint: backend+scripts ruff format+fix + frontend eslint 
 	cd backend && uv run ruff format . ../scripts && uv run ruff check --fix . ../scripts
 	cd frontend && npm run lint:fix
 	cd frontend && npm run format
+
+tools-e2e: ## M-tools C7.A LIVE gate: a REAL docker+NIM worker whose inline tool_config names the public fetch MCP server (mcp-server-fetch via uvx) invokes the MCP tool THROUGH the docker sandbox (proves brief section 6: resolved plaintext mcp_config survives to the container, not redacted) + a secret-bearing variant resolved from a seeded mcp_secrets row. Needs NVIDIA_BUILD_API_KEY + Docker + agent-server image; skips cleanly otherwise; operator-run. NOT in make test.
+	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AGENT_MODEL=nvidia_nim/meta/llama-3.3-70b-instruct TVASHTR_AGENT_MAX_ITERATIONS=25 uv run python ../scripts/tools_e2e.py
