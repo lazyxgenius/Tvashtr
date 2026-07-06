@@ -239,13 +239,12 @@ describe("SidePanel — C6 per-round ledger + node-scoped feed", () => {
     ];
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>(
-        () =>
-          Promise.resolve({
-            ok: true,
-            status: 200,
-            json: () => Promise.resolve({ run_id: "r1", events }),
-          } as unknown as Response),
+      vi.fn<typeof fetch>(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ run_id: "r1", events }),
+        } as unknown as Response),
       ),
     );
     const node = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "done" });
