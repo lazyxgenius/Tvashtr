@@ -226,6 +226,13 @@ class AgentNode(Base):
     # mutable authored graph is unwanted — a dangling value simply matches nothing. NULL on every
     # authored/builder node (not clones); set by ``clone_team_graph`` on each clone node.
     cloned_from_node_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    # Per-node inline tools + skills (M-tools C7.0, migration ``0021``). Both additive + nullable,
+    # mirroring the ``config`` JSONB style. ``tool_config`` is the raw MCP config object
+    # ``{"mcpServers": {…}}`` (NULL ⇒ no inline tools); ``skills`` is a JSON array of inline
+    # skill-source objects (NULL ⇒ no skills). NULL on every node today (no UI sets them yet),
+    # so the executor + adapters run byte-for-byte as before — the seam is inert until populated.
+    tool_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    skills: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

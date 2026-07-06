@@ -32,6 +32,7 @@ import time
 from itertools import count
 
 from openhands.sdk import LLM, Agent, Conversation, LLMSummarizingCondenser, Tool
+from openhands.sdk.context import AgentContext
 from openhands.sdk.event.conversation_error import ConversationErrorEvent
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.terminal import TerminalTool
@@ -305,10 +306,19 @@ class OpenHandsDockerAdapter:
         # the LLM registry's duplicate-usage_id guard; reset_metrics gives it a fresh meter.
         condenser_llm = llm.model_copy(update={"usage_id": "tvashtr-condenser"})
         condenser_llm.reset_metrics()
+        # M-tools C7.0: thread the node's inline tools + skills (resolved by the Control Plane's own
+        # node_tools/node_skills seams) into the Agent. INERTNESS: when the node has no skills
+        # (``task.skills`` None/empty) we MUST pass ``agent_context=None`` — an empty AgentContext
+        # injects a datetime into the system message and would change the prompt; and an empty
+        # ``mcp_config`` creates NO MCP tools. So with both unset (every node today) this Agent is
+        # byte-identical to before.
+        agent_context = AgentContext(skills=task.skills) if task.skills else None
         agent = Agent(
             llm=llm,
             tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],
             condenser=LLMSummarizingCondenser(llm=condenser_llm, keep_first=2, max_size=80),
+            mcp_config=task.mcp_config or {},
+            agent_context=agent_context,
         )
 
         status = "completed"

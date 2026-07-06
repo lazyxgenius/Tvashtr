@@ -990,8 +990,9 @@ def build_full_squad_team(name: str = "Full feature squad") -> str:
 def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
     """Deep-clone a team graph into a NEW run-scoped ``TeamGraph`` and return its id — the
     clone-on-launch snapshot (P1.8b): fresh node ids, every edge remapped onto the cloned node
-    ids, and ``position``/``config``/``prompt``/``model``/``engine``/``conditions`` copied
-    faithfully. The clone is the run's IMMUTABLE snapshot — editing the authored team afterward
+    ids, and ``position``/``config``/``prompt``/``model``/``engine``/``tool_config``/``skills``/
+    ``conditions`` copied faithfully. The clone is the run's IMMUTABLE snapshot — editing authored
+    team afterward
     never perturbs an in-flight run. Pure DB (no LLM, no workflow); openhands-free at import."""
     src_id = uuid.UUID(source_team_graph_id)
     with session_scope() as session:
@@ -1020,6 +1021,11 @@ def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
                 prompt=n.prompt,
                 position=deepcopy(n.position),
                 config=deepcopy(n.config),
+                # M-tools C7.0: the inline tools + skills ride the clone snapshot exactly as
+                # config/prompt/model do (deepcopy, since they are JSONB dict/list values). NULL on
+                # every node today, so the clone is byte-for-byte unchanged.
+                tool_config=deepcopy(n.tool_config),
+                skills=deepcopy(n.skills),
                 # M2: link the clone back to its origin authored node so the authoring endpoint can
                 # read "what did THIS authored node do last run" — correct even for duplicates.
                 cloned_from_node_id=n.id,

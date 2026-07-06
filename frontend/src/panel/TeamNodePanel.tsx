@@ -17,6 +17,8 @@ import {
 import { applyEmitContract, emitContract } from "../lib/topology";
 import { DrawerShell, type PanelMode } from "./DrawerShell";
 import { glyphForNode } from "./nodeGlyph";
+import { SkillsSection } from "./SkillsSection";
+import { ToolsSection } from "./ToolsSection";
 
 // The sentinel Provider-select value that reveals the inline "add a provider" form.
 const ADD_PROVIDER = "__add_provider__";
@@ -95,6 +97,12 @@ export function TeamNodePanel({
   // the node's kind; reset-on-select is the parent `key` remount.
   const initialCapability = capabilityOf(node);
   const [capability, setCapability] = useState<Capability>(initialCapability);
+  // M-tools C7.0: the node's inline tools + skills (stub editors). Seeded from the node, reset via the
+  // `key` remount, folded into the dirty check, and posted on Save. NULL until a later milestone.
+  const [toolConfig, setToolConfig] = useState<Record<string, unknown> | null>(
+    node?.tool_config ?? null,
+  );
+  const [skills, setSkills] = useState<unknown[] | null>(node?.skills ?? null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -152,7 +160,11 @@ export function TeamNodePanel({
     node !== null &&
     (prompt !== (node.prompt ?? "") ||
       model !== (node.model ?? "") ||
-      capability !== initialCapability);
+      capability !== initialCapability ||
+      // M-tools C7.0: compare the JSON of the inline tools/skills (structural equality) so editing
+      // them enables Save exactly like prompt/model/capability.
+      JSON.stringify(toolConfig ?? null) !== JSON.stringify(node.tool_config ?? null) ||
+      JSON.stringify(skills ?? null) !== JSON.stringify(node.skills ?? null));
   const canSave = dirty && !saving && prompt.trim().length > 0 && model.trim().length > 0;
 
   const pickCapability = (next: Capability) => {
@@ -166,7 +178,7 @@ export function TeamNodePanel({
     setSaving(true);
     setSaveError(false);
     try {
-      await updateTeamNode(teamId, node.id, prompt, model, capability);
+      await updateTeamNode(teamId, node.id, prompt, model, capability, toolConfig, skills);
       setSaved(true);
       await onSaved();
     } catch {
@@ -535,6 +547,24 @@ export function TeamNodePanel({
             </div>
           )}
         </div>
+
+        {/* M-tools C7.0: inline Skills (thinker + worker) + Tools (worker-only editor / thinker
+            note) stub sections. Between the Model field and the Save bar; part of the Save wire. */}
+        <SkillsSection
+          value={skills}
+          onChange={(v) => {
+            setSkills(v);
+            setSaved(false);
+          }}
+        />
+        <ToolsSection
+          value={toolConfig}
+          capability={capability}
+          onChange={(v) => {
+            setToolConfig(v);
+            setSaved(false);
+          }}
+        />
 
         <div className="tv-prd__editbar">
           <button

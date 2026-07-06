@@ -580,3 +580,41 @@ describe("TeamNodePanel — Model row un-floated, inline in the drawer body (Par
     expect(panelBody).toContainElement(model);
   });
 });
+
+describe("TeamNodePanel — M-tools C7.0 tools + skills sections", () => {
+  it("renders both a Skills and a Tools section (with editor) for a worker node", async () => {
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node()} // kind: agent => worker
+        isStartNode={false}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        onClose={() => {}}
+      />,
+    );
+    await screen.findByRole("combobox", { name: "Provider" }); // settle the on-mount providers fetch
+
+    expect(screen.getByText("Skills")).toBeInTheDocument();
+    expect(screen.getByText("Tools")).toBeInTheDocument();
+    // The worker's Tools section shows the real (stub) editor, not the worker-only note.
+    expect(screen.getByLabelText("Tools JSON")).toBeInTheDocument();
+    expect(screen.getByLabelText("Skills JSON")).toBeInTheDocument();
+  });
+
+  it("shows the Tools worker-only note (no editor) for a thinker, Skills still present", async () => {
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ kind: "completion", engine: null })}
+        isStartNode={false}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        onClose={() => {}}
+      />,
+    );
+    await screen.findByRole("combobox", { name: "Provider" });
+
+    expect(screen.getByText("Skills")).toBeInTheDocument();
+    expect(screen.getByText(/switch this node to Worker to add them/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Tools JSON")).toBeNull();
+  });
+});

@@ -144,6 +144,11 @@ class UpdateTeamNodeRequest(BaseModel):
     prompt: str
     model: str
     capability: Literal["thinker", "worker"] | None = None
+    # M-tools C7.0: optional inline tools + skills. Additive — a request omitting them (None) leaves
+    # the stored value unchanged (the same is-not-None guard the executor path uses), so existing
+    # ``{prompt, model[, capability]}`` saves stay byte-for-byte back-compatible.
+    tool_config: dict | None = None
+    skills: list | None = None
 
 
 class CreateTeamRequest(BaseModel):
@@ -263,6 +268,10 @@ def _node_base_dict(n: AgentNode) -> dict:
         "prompt": n.prompt,
         "position": n.position,
         "config": n.config,
+        # M-tools C7.0: the node's inline tools + skills (NULL on every node today). Additive — the
+        # canvas ignores unknown keys, and the side panel round-trips these through the PATCH below.
+        "tool_config": n.tool_config,
+        "skills": n.skills,
     }
 
 
@@ -1295,6 +1304,13 @@ def update_team_node(
             node.kind, node.engine = _capability_to_columns(body.capability)
         node.prompt = body.prompt
         node.model = body.model
+        # M-tools C7.0: persist tools + skills ADDITIVELY — only when provided (mirrors the
+        # ``capability`` is-not-None guard above), so a save that omits them leaves the stored value
+        # untouched. NULL everywhere today, so this is inert until a later milestone's UI sets them.
+        if body.tool_config is not None:
+            node.tool_config = body.tool_config
+        if body.skills is not None:
+            node.skills = body.skills
         session.flush()
         return _node_base_dict(node)
 

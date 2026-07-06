@@ -333,6 +333,10 @@ export interface TeamGraphNode {
   prompt: string | null; // null for gate/terminal control primitives
   position: NodePosition;
   config: NodeConfig | null;
+  // M-tools C7.0: per-node inline tools (raw MCP config object) + skills (inline sources array).
+  // NULL until a later milestone's UI sets them; the drawer round-trips them via updateTeamNode.
+  tool_config?: Record<string, unknown> | null;
+  skills?: unknown[] | null;
   // M2: the authoring "last run" brief — the latest invocation of any CLONE of this authored node,
   // across all the team's runs (null if it never ran). Read-only; the run-view endpoint has none.
   last_run?: {
@@ -439,19 +443,32 @@ export const getTeamGraph = (teamId: string): Promise<TeamGraphData> =>
 // "worker" is an engine-backed sandboxed run (like the Engineer). Maps server-side to kind+engine.
 export type Capability = "thinker" | "worker";
 
-// Persist an edited library-team node's prompt + model, and (P1.8c) optionally its capability. The
-// `capability` is included in the PATCH body ONLY when provided, so existing 4-arg call sites still
-// post `{prompt, model}` unchanged (back-compat). Returns the updated node; the caller refetches the
-// team to refresh the canvas.
+// Persist an edited library-team node's prompt + model, and (P1.8c) optionally its capability, and
+// (M-tools C7.0) optionally its inline tools/skills. Each optional field is included in the PATCH body
+// ONLY when provided, so existing call sites stay back-compatible and an omitted field leaves the
+// stored value unchanged. Returns the updated node; the caller refetches the team to refresh the canvas.
 export async function updateTeamNode(
   teamId: string,
   nodeId: string,
   prompt: string,
   model: string,
   capability?: Capability,
+  toolConfig?: Record<string, unknown> | null,
+  skills?: unknown[] | null,
 ): Promise<TeamGraphNode> {
-  const body: { prompt: string; model: string; capability?: Capability } = { prompt, model };
+  const body: {
+    prompt: string;
+    model: string;
+    capability?: Capability;
+    tool_config?: Record<string, unknown> | null;
+    skills?: unknown[] | null;
+  } = { prompt, model };
   if (capability !== undefined) body.capability = capability;
+  // M-tools C7.0: send tools/skills ONLY when actually set (non-null). A null/absent value is omitted
+  // ⇒ the backend leaves the stored value unchanged (its is-not-None guard) AND, crucially, the PATCH
+  // body for a tools-less node is byte-identical to before this milestone — the wire is inert.
+  if (toolConfig !== undefined && toolConfig !== null) body.tool_config = toolConfig;
+  if (skills !== undefined && skills !== null) body.skills = skills;
   const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },

@@ -60,7 +60,16 @@ class AgentTask:
     workspace-READ-ONLY — it passes ``("REVIEW_VERDICT.json",)`` so only the verdict sidecar is
     harvested and a reviewer can never clobber the worker's correct edit. It is an ADDITIVE,
     defaulted field in the SAME spirit as ``workspace_mode``/``llm_api_key``: the adapter learns a
-    SYNC DIRECTIVE (which files to pull), NEVER the node's role — the seam stays role-neutral."""
+    SYNC DIRECTIVE (which files to pull), NEVER the node's role — the seam stays role-neutral.
+
+    ``mcp_config`` + ``skills`` (M-tools C7.0) are the per-node tools/skills the adapter hands to
+    ``Agent(mcp_config=…, agent_context=AgentContext(skills=…))``. Both are ADDITIVE, defaulted
+    fields in the SAME spirit as ``llm_api_key``/``pull_paths``: the Control Plane resolves them via
+    its own ``node_tools`` / ``node_skills`` seams and passes them through — it never learns their
+    tool/skill CONTENT. ``mcp_config`` is a plain dict (an empty/``None`` one ⇒ the adapter creates
+    NO MCP tools). ``skills`` is typed as an opaque ``list`` (of engine-specific Skill objects — the
+    adapter knows the type; base.py stays ``openhands``-free); an empty/``None`` list ⇒ the adapter
+    passes ``agent_context=None``, so with both unset the Agent is byte-identical to before."""
 
     instruction: str
     workspace_dir: str
@@ -68,6 +77,8 @@ class AgentTask:
     llm_api_key: str | None = None
     workspace_mode: Literal["greenfield", "brownfield"] = "greenfield"
     pull_paths: tuple[str, ...] | None = None
+    mcp_config: dict | None = None
+    skills: list | None = None  # opaque list of Skill objects (the adapter knows the type)
 
 
 @dataclass(frozen=True)

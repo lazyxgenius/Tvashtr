@@ -58,6 +58,8 @@ from tvashtr.control_plane.credentials import resolve_owner_api_key
 from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
+from tvashtr.control_plane.node_skills import build_skills, inject_skills_into_prompt
+from tvashtr.control_plane.node_tools import build_mcp_config
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
 from tvashtr.control_plane.worktree import add_worktree, build_repo_grounding
 from tvashtr.db import session_scope
@@ -148,6 +150,11 @@ def load_graph_step(run_id: str) -> dict:
             # role dispatch. NULL for gate/terminal nodes (no LLM).
             "prompt": n.prompt,
             "config": n.config,
+            # M-tools C7.0: inline tools + skills (NULL on every node today). ``run_graph``
+            # threads them to the step fns ONLY when non-NULL, so the inert path is byte-for-byte
+            # unchanged; at load they ride the picklable graph dict like prompt/model/config.
+            "tool_config": n.tool_config,
+            "skills": n.skills,
         }
         for n in nodes
     ]
@@ -258,6 +265,7 @@ def pm_step(
     pm_prompt: str,
     max_tokens: int,
     invocation_id: int,
+    skills: list | None = None,
 ) -> dict:
     """PM node: a direct, metered gateway completion -> a versioned PRD document.
 
@@ -271,6 +279,10 @@ def pm_step(
     that
     silently truncated the drafted spec as it grew."""
     prompt = pm_prompt + f"\n\nFeature request:\n{idea}"
+    # M-tools C7.0: fold this thinker node's inline skills into its prompt. A stub today —
+    # inject_skills_into_prompt returns the prompt unchanged when skills is None/empty, so this is
+    # byte-for-byte inert; C7.B prepends the resolved skill content.
+    prompt = inject_skills_into_prompt(skills, prompt, run_id)
     request = CompletionRequest(
         model=pm_model,
         messages=[{"role": "user", "content": prompt}],
@@ -341,6 +353,7 @@ def thinker_refine_step(
     spec_document_id: str,
     max_tokens: int,
     invocation_id: int,
+    skills: list | None = None,
 ) -> dict:
     """A LATER thinker node (P1.8c): a metered gateway completion that REFINES the run's single
     shared spec document and appends a new version.
@@ -365,6 +378,9 @@ def thinker_refine_step(
             f"preserving everything still needed) ---\n{current_spec}"
         )
     )
+    # M-tools C7.0: fold this thinker node's inline skills into its refine prompt. A stub today —
+    # unchanged when skills is None/empty, so byte-for-byte inert; C7.B prepends resolved content.
+    prompt_full = inject_skills_into_prompt(skills, prompt_full, run_id)
     request = CompletionRequest(
         model=model,
         messages=[{"role": "user", "content": prompt_full}],
@@ -712,6 +728,8 @@ def agent_run_step(
     invocation_id: int,
     grounding: str | None = None,
     subpath: str | None = None,
+    tool_config: dict | None = None,
+    skills: list | None = None,
 ) -> dict:
     """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
     ``reviewer_agent_run_step``. Runs the node's ``node_prompt`` (its behavior, seeded by the
@@ -840,6 +858,13 @@ def agent_run_step(
         # ⇒ the full pull, byte-identical to before. ``_harvest_verdict(workspace)`` still reads the
         # sidecar the scoped pull carried home. The adapter learns a sync directive, not "reviewer".
         pull_paths=("REVIEW_VERDICT.json",) if emits_outcome else None,
+        # M-tools C7.0: the node's inline tools + skills, resolved via the Control Plane's OWN seams
+        # (node_tools / node_skills) so team_run never learns content and stays openhands-free.
+        # Both are stubs today — build_mcp_config(None)->{} (the adapter builds NO MCP tools) and
+        # build_skills(None)->[] (=> agent_context=None in the adapter), so a NULL-columns node is
+        # byte-for-byte inert. ``workspace`` is this worker's own dir (the workspace_dir arg).
+        mcp_config=build_mcp_config(tool_config, run_id),
+        skills=build_skills(skills, workspace, run_id),
     )
     # Select local vs Docker-sandboxed engine from the configured sandbox mode (P1.3a). The
     # EngineAdapter contract + AgentRunResult shape are identical across modes; the adapter is
@@ -1062,12 +1087,24 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # graph dict + settings (replay-stable) and passed as a step ARG, so the checkpoint
             # stays deterministic on resume.
             thinker_max_tokens = resolve_thinker_max_tokens(get_settings(), node["config"])
+            # M-tools C7.0: thread this thinker's inline skills to the step ONLY when set, so the
+            # inert path (skills NULL) calls the step with byte-identical args — every thinker
+            # fake still matches. Mirrors the brownfield_kwargs conditional idiom below.
+            thinker_skills_kwargs: dict = {}
+            if node.get("skills") is not None:
+                thinker_skills_kwargs["skills"] = node["skills"]
             if is_first_thinker:
                 # The FIRST thinker (the root): create the spec doc from the idea. Byte-identical to
                 # the old PM path — same ``pm_step``, same ``pm-llm`` / ``pm-prd-v1`` keys, so the
                 # single-thinker templates + their checkers are untouched.
                 result = pm_step(
-                    run_id, idea, node["model"], node["prompt"], thinker_max_tokens, inv_id
+                    run_id,
+                    idea,
+                    node["model"],
+                    node["prompt"],
+                    thinker_max_tokens,
+                    inv_id,
+                    **thinker_skills_kwargs,
                 )
             else:
                 # A LATER thinker: read the current spec (recorded -> deterministic on resume),
@@ -1084,6 +1121,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     pm_document_id,
                     thinker_max_tokens,
                     inv_id,
+                    **thinker_skills_kwargs,
                 )
             pm_document_id = result["document_id"]
             close_invocation_step(
@@ -1158,6 +1196,16 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 brownfield_kwargs["grounding"] = grounding
                 if subpath:
                     brownfield_kwargs["subpath"] = subpath
+            # M-tools C7.0: thread this worker node's inline tools + skills ONLY when set (same
+            # conditional idiom as brownfield_kwargs). The inert path (both NULL) calls the step
+            # with byte-identical args, so every existing agent_run_step fake still matches; when
+            # populated, the values flow to build_mcp_config / build_skills unchanged. Keys are
+            # disjoint from brownfield_kwargs (grounding/subpath), so unpackings never collide.
+            tools_kwargs: dict = {}
+            if node.get("tool_config") is not None:
+                tools_kwargs["tool_config"] = node["tool_config"]
+            if node.get("skills") is not None:
+                tools_kwargs["skills"] = node["skills"]
             result = agent_run_step(
                 run_id,
                 node["prompt"],
@@ -1171,6 +1219,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 emits,
                 budget,
                 inv_id,
+                **tools_kwargs,
                 **brownfield_kwargs,
             )
             delete_vkey_step(run_id, vkey)
