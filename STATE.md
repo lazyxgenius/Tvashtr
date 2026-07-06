@@ -1,99 +1,105 @@
 # Tvashtr — Autonomous Execution State
 
 ## Current Milestone
-M-frontend — **F2c: the dashboard reskin** (frontend-only) — ONE unified teams table with per-team
-status + spend, the New-team template picker, delete-confirm, the stat strip, reskinned providers,
-the canvas status-pill overflow rider, and TeamsRail removal. Brief: `prompts/F2c-dashboard.md`.
-Branch: `feat/f2c-dashboard` (off `main` @ `825adea`, i.e. after F2-delete merged).
+**M-tools C7.B — Skills** (the Skills half of the C7.A‖C7.B parallel batch). Branch
+`feat/m-tools-c7b-skills` off `main` @ `ce14b96`. Brief: `prompts/M-tools-C7.B-skills.md`.
 
-## OUTCOME — F2c SHIPPED (READY_TO_MERGE; clean SUCCESS)
-`Dashboard.tsx` is reskinned to `design/Tvashtr Frontend Overhaul/Dashboard.dc.html` with the
-operator's model ("a run is a team that ran"):
-- A greeting header (wordmark + the account avatar/menu), a **real stat strip** — Teams in your
-  library / Active runs (teams whose `last_run` is non-terminal) / Total spend (Σ `spend_usd`).
-- **ONE unified teams table**: Team (row → `onOpenTeam`) · Nodes · **Status** (a `last_run`→pill map:
-  Running / Awaiting you / Completed / Failed / Stopped / Over budget, or a muted **Not run yet**) ·
-  **Spend** (`$` + `spend_usd`) · Created · a row **delete**.
-- The **New-team template picker** (new `NewTeamDialog.tsx`) — a warm centered pop-up over the dimmed
-  dashboard: a name field + a Blank card + one card per `getTemplates()` (the four F2a templates) →
-  `createTeam(key, name)` → `onOpenTeam(new id)` lands on the canvas.
-- The **delete confirm** — names the team, adds "A run is in progress — deleting will stop it." when
-  the latest run is non-terminal → `deleteTeam(id)` → reload `getTeams`.
-- The **providers** section reskinned (behavior unchanged).
-- **RIDER**: `flex-wrap: wrap` on the ONE `.rf-node__meta` rule in `canvas.css` — the worker card's
-  capability + engine + status pill now wrap instead of clipping the pill at the fixed 216px width.
-- The orphaned **`TeamsRail.tsx` + `TeamsRail.test.tsx` deleted** (grep-confirmed nothing imports it).
+## OUTCOME — C7.B SHIPPED (READY_TO_MERGE)
+A node's inline `skills` now work end-to-end through ONE capability-agnostic resolver: inline SKILL.md
+(always / trigger / agent modes), a GitHub-repo clone at a pinned ref (+ filter), and adopt-this-repo's
+own-rules (incl. the modern `.cursor/rules/*.mdc` the SDK misses). A WORKER gets them via
+`AgentContext`; a THINKER gets the SAME resolved skills rendered into its prompt (the thin bridge). A
+source that fails to resolve is SKIPPED with a warning emitted through C7.A's recorder via a lazy,
+import-guarded shim. A NULL-`skills` node is byte-for-byte inert.
 
 ## Last Completed Step
-F2c — dashboard reskin — 2026-07-04 — branch: feat/f2c-dashboard — commit: (tip; exact sha in the
-FINAL REPORT).
+M-tools C7.B — skills resolver + thinker bridge + real SkillsSection + skills-e2e — 2026-07-06 —
+branch: feat/m-tools-c7b-skills — commit: (tip; exact sha in the FINAL REPORT).
 
 ## READY_TO_MERGE
-READY_TO_MERGE: branch=feat/f2c-dashboard, frontend=191 vitest passing
+READY_TO_MERGE: branch=feat/m-tools-c7b-skills, sha=<tip>, tests=411 backend + 226 vitest passing
 
-## The change (frontend-only)
-- **`frontend/src/lib/api.ts`** — ADDITIVE only: `+ last_run: {status, at, run_id} | null` +
-  `+ spend_usd: number` on `TeamSummary`. Diff vs main = EXACTLY those two lines.
-- **`frontend/src/lib/status.ts`** — `+ runStatusPill(status)` (+ `RunPillTone`): the run-status→pill
-  {tone,label} map (extend the single status source of truth, per the hard rail; not inline).
-- **`frontend/src/components/Dashboard.tsx`** — the reskin (stat strip + unified table + avatar menu +
-  reskinned providers; wires the picker + the delete confirm; drops the "Previous runs" section +
-  its `listRuns`/`RunSummary` imports).
-- **`frontend/src/components/NewTeamDialog.tsx`** (NEW) — the template picker pop-up.
-- **`frontend/src/index.css`** — the `.tv-dash__*` reskin recipes (stat strip / unified table / row
-  open-behind-cells + delete-in-front / providers shelf / dialog + template cards), `+
-  .tv-pill--overbudget` (amber), `+ .tv-avatarmenu__name`. Token-driven; base tokens untouched.
-- **`frontend/src/canvas.css`** — the single-line rider (`flex-wrap: wrap` on `.rf-node__meta`).
-- **`frontend/src/components/Dashboard.test.tsx`** — re-pointed to the new DOM + added picker / delete
-  (incl. the in-progress warning) / render (status→pill + spend + stat totals) tests (5 → 8 tests).
-- **Deleted:** `frontend/src/components/TeamsRail.tsx` + `TeamsRail.test.tsx`.
+## The change (files — all within the C7.B ownership list)
+- **`backend/tvashtr/control_plane/node_skills.py`** — the real `build_skills` + `inject_skills_into_prompt`
+  (signatures UNCHANGED) over ONE private `_resolve_skills`; `_resolve_inline` (3 modes → exact SDK
+  `Skill` fields), `_resolve_repo` (`load_public_skills` at the pinned ref + `fnmatch` filter),
+  `_resolve_project_rules` (`load_project_skills` + the `.cursor/rules/*.mdc` glue `_load_cursor_rules`/
+  `_parse_mdc`), the thinker-bridge render, and the `_emit_skill_warning` shim (lazy import-guarded per
+  SHARED CONTRACT S1). Every `openhands.*` import is FUNCTION-LOCAL (INVARIANT 1 held).
+- **`backend/tests/test_node_skills.py`** (NEW, 19 tests) — inline 3-modes / repo via a LOCAL git
+  fixture (no network) / filter / project_rules incl. the `.mdc` glue proven load-bearing / thinker
+  bridge / skip+warn / inertness / the no-module-level-openhands AST check.
+- **`frontend/src/lib/api.ts`** — APPENDED only the `SkillSource` union (Inline/Repo/ProjectRules) in its
+  own fenced region; `updateTeamNode` / `GraphData` untouched.
+- **`frontend/src/panel/SkillsSection.tsx`** — the real editor (new-inline + mode segmented control +
+  add-from-repo + use-repo-rules toggle + badged rows + clear→`onChange(null)`), drop-in for the C7.0
+  props so `TeamNodePanel.tsx` stays untouched.
+- **`frontend/src/lib/api.test.ts`** (+2) and **`frontend/src/panel/SkillsSection.test.tsx`** (rewritten
+  3→7) — real-component + type-check coverage.
+- **`frontend/src/panel/TeamNodePanel.test.tsx`** — ONE re-pointed assertion (the removed stub label
+  `"Skills JSON"` → the real `"Skill name"` control); DOM legitimately changed. NOT the component.
+- **`Makefile`** + **`scripts/skills_e2e.py`** (NEW) — the `make skills-e2e` live target.
 
-## Acceptance evidence (all green this session)
-- `make build-frontend` → `tsc --noEmit` strict clean + `vite build` ✓ (`built in 1.20s`).
-- `make test-frontend` → **191 passed (25 files)**. F2c-start baseline was **193** (26 files); −5
-  (TeamsRail's 5 tests, file 26→25) + 3 net-new Dashboard tests (5 → 8) = **191**.
-- `make lint` → ruff clean + eslint (`--max-warnings 0`) clean + prettier clean.
-- **Playwright self-sign-off on :5173** (operator account, real backend; targeted `browser_evaluate`
-  + screenshots, no whole-tree snapshot). Functional facts verified + a screenshot each (in the
-  session scratchpad, NOT committed):
-  - Dashboard: greeting "Good to see you, Operator.", stat strip **5 teams / 2 active / $2.51**, all
-    five status pills mapped (Completed/Awaiting you/Running/Failed/Not run yet) + spends + providers.
-  - Picker: New team → the dialog with **Blank + the four templates** → pick + Create → lands on the
-    canvas (a review_loop clone rendered).
-  - Delete: row delete → the confirm naming the team ("Delete PRD to prototype?") + the in-progress
-    warning band.
-  - Rider: the canvas Thinker + BOTH Worker nodes with the widest labels (Done / Working… / Over
-    budget) — measured `pillClipped: false` + `metaOverflowsHoriz: false` on every node
-    (`.rf-node__meta` computed `flex-wrap: wrap`).
-- Diffs: `api.ts` = exactly the 2 fields; `canvas.css` = the single `flex-wrap: wrap` line; TeamsRail
-  files deleted; nothing under `backend/`, `frontend/src/design-system/tokens/`, `LandingPage.tsx`, or
-  `landing.css`.
-- Independent review (fresh subagent over the FE diff) → (result in the FINAL REPORT).
+## Acceptance evidence (this session)
+- `make test` → **411 passed** (baseline 392 → 411; +19 new backend tests). Isolated DB `tvashtr_c7b`
+  (`DATABASE_URL` override; the `.env` pins the shared `tvashtr`, so `make ... DATABASE_URL=$DATABASE_URL`).
+- `make lint` → ruff check "All checks passed!" + ruff format clean + eslint (`--max-warnings 0`) clean +
+  prettier clean **for every C7.B file**. The only prettier warnings are `EventFeed.test.tsx` +
+  `SidePanel.test.tsx` — PRE-EXISTING debt on `main` (`git diff --name-only main` shows I never touched
+  them; HANDOVER §7 / §15), NOT introduced here.
+- `cd frontend && npx tsc --noEmit` clean; `npm run build` green (`built in 1.26s`); `npx vitest run` →
+  **226 passed (30 files)** (baseline 220 → 226; +6).
+- Resolver decisive tests green: inline always/trigger/agent map to `(trigger, is_agentskills_format)`;
+  repo loads from a local git fixture at a pinned sha + filter narrows; project_rules reads BOTH
+  `CLAUDE.md` (SDK) AND `.cursor/rules/*.mdc` (glue) — with a companion test proving the SDK alone MISSES
+  the `.mdc`; the thinker bridge prepends an `always` skill's content and gates a `trigger` skill on a
+  match; skip+warn calls `_emit_skill_warning` for an unreachable repo (patched).
+- **`make skills-e2e`** (live docker+NIM): the inline `always` skill RESOLVED into a real `Skill` and
+  reached the docker `AgentTask` — log line `resolved = 1 skill(s): [('Skill', 'file-marker')]`; the
+  container came up and the agent conversation ran (`GET /api/conversations/... 200`). The end-to-end
+  marker verdict is **NEEDS_HUMAN (live infra only)**: after the resolver→AgentTask step succeeded, the
+  SDK's `RemoteConversation` polling of the agent-server hung on repeated `timed out` warnings for ~12 min
+  with no progress (the container answered conversation GETs 200 but the SDK poll timed out — the
+  NVCF-serverless/SDK polling wall of CLI-RULES §4.6, an EXTERNAL block, not a C7.B wiring bug). Re-run
+  `make skills-e2e` on a healthy NIM window to capture the marker; the 19-test offline resolver suite is
+  the standing proof.
 
-## Invariants held
-- `api.ts` diff vs `main` is EXACTLY the two `TeamSummary` fields — nothing else.
-- `canvas.css` diff is the single `.rf-node__meta` `flex-wrap: wrap` line — no other canvas recipe, no
-  canvas `.tsx`.
-- NO change under `backend/`; NO migration (alembic head stays `0018`).
-- Base design tokens byte-untouched (`git diff main -- frontend/src/design-system/` EMPTY) — the
-  reskin only ADDS `.tv-*` recipes to `index.css` + reuses existing tokens.
-- `LandingPage.tsx` + `landing.css` UNTOUCHED (the parallel session owns them).
-- Commit stages ONLY the 8 frontend paths + `STATE.md` — no living docs, no `prompts/*.md`, no
-  side-chat files, no browser/demo artifacts, never `.tvashtr/loop-state.md`.
+## Playwright self-sign-off
+Attempted on my Vite `:5174` (operator login 200; `browser_evaluate`-driven per the canvas-hang rail).
+The Vite dev proxy hardcodes `/api → :8000`, which the PARALLEL C7.A backend occupies (its `tvashtr_c7a`
+DB), and `vite.config.ts` is outside C7.B ownership (can't repoint) — so an isolated live canvas capture
+was constrained. The SkillsSection→TeamNodePanel integration for BOTH kinds is proven GREEN by vitest:
+`TeamNodePanel.test.tsx` "renders both a Skills and a Tools section … for a worker node" (asserts the
+real `Skill name` control) + "… Skills still present" for a thinker. Operator can screenshot trivially:
+this branch, Vite 5174, a backend on 8000.
+
+## Invariants held (proof)
+- `git diff --name-only main` = ONLY owned files (Makefile, node_skills.py, api.ts, SkillsSection.tsx,
+  the tests) + untracked `test_node_skills.py` / `skills_e2e.py`. NO team_run.py / node_tools.py /
+  routers.py / ToolsSection.tsx / TeamNodePanel.tsx / adapter / migration.
+- `git diff main -- backend/tvashtr/control_plane/team_run.py` = EMPTY.
+- `node_skills.py` has NO module-level `openhands` import; every `openhands.*` import is function-local
+  (lines 122/153/175/187).
+- `build_skills` / `inject_skills_into_prompt` signatures unchanged.
+- `resolution_warnings.py` NOT created; NO `run_warnings` table; NO migration (alembic head stays `0021`).
+- Existing tests unmodified except the ONE unavoidable `TeamNodePanel.test.tsx` re-point (listed above).
 
 ## Deviations from the brief
-- `status.ts` extended with `runStatusPill` (the run-status→pill map). The brief said "reuse the
-  existing StatusPill"; StatusPill is typed to the canvas `NodeStatus` vocab (idle/running/done/…),
-  so a literal reuse can't produce the dashboard's labels ("Awaiting you", "Over budget", "Not run
-  yet"). Per the standing hard rail ("`status.ts` is the single source of truth for derived status —
-  extend it there, not in components"), the mapping lives in `status.ts` and the dashboard renders the
-  same `.tv-pill` design vocabulary StatusPill uses. Net: the DS pill is reused; the derivation is
-  centralized. Also added two small additive `.tv-*` recipes to `index.css`: `.tv-pill--overbudget`
-  (amber — a status the base pill set lacked) and `.tv-avatarmenu__name`. Both extend, none edit.
+- **`TeamNodePanel.test.tsx` re-point** (1 assertion): the stub label `"Skills JSON"` no longer exists;
+  re-pointed to the real `"Skill name"` control. This is the brief-sanctioned "RE-POINT the tests the
+  DOM legitimately changes"; the file is a TEST, not the forbidden component.
+- **Test robustness**: resolver tests assert `type(x).__name__` not `isinstance` — parts of the suite
+  clear `openhands` from `sys.modules` (registry/review-cap tests), so the class OBJECT differs across
+  that reload boundary; the field values are the real assertion. Production has a single import path.
+- **`make test` DB override**: `DATABASE_URL=$DATABASE_URL` on the make line (the `.env` include pins the
+  shared `tvashtr`; the override keeps me on the isolated `tvashtr_c7b`).
 
 ## Test Count
-**191 vitest** (F2c baseline 193 → 191; −5 TeamsRail + 3 net-new Dashboard tests) — 2026-07-04.
-Backend untouched (340 backend pytest unchanged).
+**411 backend pytest** (392 → 411) + **226 vitest** (220 → 226) — 2026-07-06.
 
 ## Blocked
-None — clean SUCCESS. Next: **F3** (the auth wizard) per the M-frontend roadmap, then any F4-polish.
+NEEDS_HUMAN (the live gate ONLY): `make skills-e2e` — the agent-server `RemoteConversation` poll hung on
+repeated `timed out` warnings (~12 min, no progress) — an external NIM/SDK infra wall (CLI-RULES §4.6),
+NOT a C7.B bug. The resolver→AgentTask path WAS proven live (`resolved = 1 skill(s): [('Skill',
+'file-marker')]`); the 19-test offline resolver suite + the FE suite are the standing proof. Re-run on a
+healthy NIM window to capture the end-to-end marker. Everything else — offline + FE — is green.

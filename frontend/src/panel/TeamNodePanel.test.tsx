@@ -604,7 +604,9 @@ describe("TeamNodePanel — M-tools C7.0 tools + skills sections", () => {
     expect(screen.getByText("Tools")).toBeInTheDocument();
     // The worker's Tools section shows the real (stub) editor, not the worker-only note.
     expect(screen.getByLabelText("Tools JSON")).toBeInTheDocument();
-    expect(screen.getByLabelText("Skills JSON")).toBeInTheDocument();
+    // C7.B re-point: the real Skills editor replaced the C7.0 JSON textarea — assert one of its
+    // real controls instead of the removed "Skills JSON" label (the DOM legitimately changed).
+    expect(screen.getByLabelText("Skill name")).toBeInTheDocument();
   });
 
   it("shows the Tools worker-only note (no editor) for a thinker, Skills still present", async () => {

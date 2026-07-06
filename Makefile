@@ -17,7 +17,7 @@ TVASHTR_RUNG2_REPO ?= /Users/adimac/Desktop/trade_mcp
 # independent numeric gate is unaffected (it runs host-side at the repo ROOT).
 TVASHTR_RUNG2_SUBPATH ?= core
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e model-picker-e2e seed lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e model-picker-e2e skills-e2e tools-e2e seed lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -181,5 +181,10 @@ fmt: ## Autofix twin of lint: backend+scripts ruff format+fix + frontend eslint 
 	cd frontend && npm run lint:fix
 	cd frontend && npm run format
 
+
 tools-e2e: ## M-tools C7.A LIVE gate: a REAL docker+NIM worker whose inline tool_config names the public fetch MCP server (mcp-server-fetch via uvx) invokes the MCP tool THROUGH the docker sandbox (proves brief section 6: resolved plaintext mcp_config survives to the container, not redacted) + a secret-bearing variant resolved from a seeded mcp_secrets row. Needs NVIDIA_BUILD_API_KEY + Docker + agent-server image; skips cleanly otherwise; operator-run. NOT in make test.
 	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AGENT_MODEL=nvidia_nim/meta/llama-3.3-70b-instruct TVASHTR_AGENT_MAX_ITERATIONS=25 uv run python ../scripts/tools_e2e.py
+
+skills-e2e: ## M-tools C7.B LIVE gate: a WORKER node with an `always` inline skill (a distinctive file-marker rule) runs through the DOCKER sandbox on NIM; PASS iff the produced file carries the marker (proof the inline skill reached the agent via AgentContext, end-to-end). Needs NVIDIA_BUILD_API_KEY + Docker + agent-server image; skips cleanly otherwise; operator-run. NOT in `make test`.
+	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AGENT_MODEL=nvidia_nim/meta/llama-3.3-70b-instruct uv run python ../scripts/skills_e2e.py
+

@@ -388,6 +388,42 @@ export interface TeamGraphNode {
   } | null;
 }
 
+// ===== M-tools C7.B (Skills) — skill-source union (OWNED BY C7.B; keep in this region) =========
+// One element of `AgentNode.skills`. Resolved server-side by control_plane/node_skills.py into SDK
+// Skill objects; a WORKER gets them via AgentContext, a THINKER gets them folded into its prompt.
+// Extend additively only.
+
+// An inline SKILL.md authored on the node. `mode` picks the disclosure behavior:
+//  - "always"  → always active (full content in every prompt / the SDK's <REPO_CONTEXT>)
+//  - "trigger" → surfaced when the conversation matches `triggers`
+//  - "agent"   → exposed as an invokable skill the agent chooses (progressive disclosure)
+export interface InlineSkillSource {
+  type: "inline";
+  name: string;
+  content: string;
+  mode: "always" | "trigger" | "agent";
+  triggers?: string[];
+}
+
+// A GitHub repo cloned at the PINNED `ref` (a living reference; the ref pins reproducibility).
+// `filter` selects a subset of the repo's skills. Subsumes marketplaces (a marketplace is a
+// repo + manifest).
+export interface RepoSkillSource {
+  type: "repo";
+  url: string;
+  ref: string;
+  filter?: string | null;
+}
+
+// Adopt the rules of the repo the run OPERATES ON — its own CLAUDE.md / .cursorrules / AGENTS.md /
+// GEMINI.md / .agents/skills PLUS the modern .cursor/rules/*.mdc. No URL — it's the run's workspace.
+export interface ProjectRulesSkillSource {
+  type: "project_rules";
+}
+
+export type SkillSource = InlineSkillSource | RepoSkillSource | ProjectRulesSkillSource;
+// ===== end M-tools C7.B block ==================================================================
+
 export interface TeamGraphData {
   team_graph_id: string;
   nodes: TeamGraphNode[];

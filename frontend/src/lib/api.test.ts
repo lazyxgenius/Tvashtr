@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ContextManifest, InvocationCost, NodeInvocation, RunEvent } from "./api";
+import type {
+  ContextManifest,
+  InlineSkillSource,
+  InvocationCost,
+  NodeInvocation,
+  ProjectRulesSkillSource,
+  RepoSkillSource,
+  RunEvent,
+  SkillSource,
+} from "./api";
 import { inspectRepo, MODEL_PRESETS, presetsForProvider, providerOf, runTeam } from "./api";
 
 describe("providerOf — parity with the backend provider_for_model", () => {
@@ -181,5 +190,40 @@ describe("M-ledger C6 additive types round-trip", () => {
     expect(legacy.invocation_id).toBeNull();
     expect(legacy.node_id).toBeNull();
     expect(legacy.iteration).toBeNull();
+  });
+});
+
+// ---- M-tools C7.B: the skill-source union type-checks. Constructing the literals IS the compile-time
+// check; the assertions exercise the discriminant + the inline modes + the optional repo filter. ----
+describe("M-tools C7.B skill-source types", () => {
+  it("constructs each skill-source variant with the right discriminant", () => {
+    const inline: InlineSkillSource = {
+      type: "inline",
+      name: "house-style",
+      content: "prefer small diffs",
+      mode: "trigger",
+      triggers: ["database"],
+    };
+    const repo: RepoSkillSource = {
+      type: "repo",
+      url: "https://github.com/org/skills",
+      ref: "v1.0.0",
+      filter: "greet",
+    };
+    const rules: ProjectRulesSkillSource = { type: "project_rules" };
+    const sources: SkillSource[] = [inline, repo, rules];
+
+    expect(sources.map((s) => s.type)).toEqual(["inline", "repo", "project_rules"]);
+    // Narrowing on the discriminant reaches variant-only fields (the compile-time proof).
+    expect(inline.mode).toBe("trigger");
+    expect(inline.triggers).toEqual(["database"]);
+    expect(repo.filter).toBe("greet");
+  });
+
+  it("allows the three inline disclosure modes and an optional repo filter", () => {
+    const modes: InlineSkillSource["mode"][] = ["always", "trigger", "agent"];
+    expect(modes).toHaveLength(3);
+    const repoNoFilter: RepoSkillSource = { type: "repo", url: "u", ref: "r" };
+    expect(repoNoFilter.filter).toBeUndefined();
   });
 });
