@@ -19,12 +19,17 @@ Offline throughout — no NIM, no network (the repo test uses a local ``git init
 
 import ast
 import subprocess
+import uuid
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 
 from tvashtr.control_plane import node_skills
 from tvashtr.control_plane.node_skills import build_skills, inject_skills_into_prompt
+from tvashtr.control_plane.teams import build_two_node_team
+from tvashtr.db import session_scope
+from tvashtr.models import Run, RunWarning, User
 
 _RUN = "run-123"
 
@@ -79,6 +84,33 @@ def _make_project_rules_workspace(tmp_path: Path) -> str:
         encoding="utf-8",
     )
     return str(ws)
+
+
+def _make_user() -> uuid.UUID:
+    """A fresh User row to own a seeded Run (mirrors test_mcp_tools._make_user)."""
+    uid = uuid.uuid4()
+    with session_scope() as session:
+        session.add(User(id=uid, email=f"skills-{uid.hex}@tvashtr.local", password_hash="x"))
+    return uid
+
+
+def _make_owned_run(owner_id: uuid.UUID) -> str:
+    """A minimal owned Run with a VALID-UUID id (mirrors test_mcp_tools._make_owned_run) so the
+    recorder's uuid.UUID(run_id) parses and the run_warnings -> runs FK resolves."""
+    run_id = str(uuid.uuid4())
+    team_graph_id = build_two_node_team()
+    with session_scope() as session:
+        session.add(
+            Run(
+                id=uuid.UUID(run_id),
+                team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=owner_id,
+                idea="x",
+                workflow_id=run_id,
+                status="running",
+            )
+        )
+    return run_id
 
 
 @pytest.fixture
@@ -323,10 +355,26 @@ def test_unknown_source_type_is_skipped_and_warns(monkeypatch):
     assert warnings
 
 
-def test_emit_skill_warning_is_a_noop_without_the_recorder():
-    """The shim is import-guarded: with C7.A's recorder module absent (this worktree), calling it is
-    a no-op (never raises)."""
-    node_skills._emit_skill_warning(_RUN, "some-label", "some reason")  # must not raise
+def test_emit_skill_warning_reaches_the_recorder_and_records_a_skill_warning(client):
+    """POST-MERGE reality: C7.A's recorder IS present now, so the lazy shim reaches the REAL
+    record_resolution_warning and records a run-scoped SKILL warning (not an inert no-op).
+
+    Seeds a real owned Run (valid-UUID id) so the recorder's uuid.UUID(run_id) and the
+    run_warnings FK resolve, then asserts exactly one row landed with source_kind="skill" and the
+    emitted label/reason. Mutation-real: a shim that did NOT reach the recorder (import-guard
+    swallow / no-op / wrong kind) leaves zero matching rows and fails."""
+    run_id = _make_owned_run(_make_user())
+    node_skills._emit_skill_warning(run_id, "some-label", "some reason")
+    with session_scope() as session:
+        rows = (
+            session.execute(select(RunWarning).where(RunWarning.run_id == uuid.UUID(run_id)))
+            .scalars()
+            .all()
+        )
+    assert len(rows) == 1, f"want exactly one recorded warning, got {rows}"
+    assert rows[0].source_kind == "skill"  # C7.B emits through the recorder as the 'skill' kind
+    assert rows[0].name == "some-label"
+    assert rows[0].reason == "some reason"
 
 
 # ---------------------------------------------------------------------------------------------

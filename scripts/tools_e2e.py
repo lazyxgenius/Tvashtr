@@ -1,14 +1,16 @@
 #!/usr/bin/env python
-"""M-tools C7.A LIVE gate — an inline MCP ``tool_config`` works end-to-end through the DOCKER sandbox.
+"""M-tools C7.A LIVE gate — an inline MCP ``tool_config`` works end-to-end through the
+DOCKER sandbox.
 
 Part A (DB-backed, fast): seed a per-account ``mcp_secrets`` row, ``build_mcp_config`` a
 ``${NAME}``-referencing config, and assert the resolved PLAINTEXT is substituted into the returned
 ``mcp_config`` — the store -> resolver -> sandbox-config path, live against the real DB.
 
 Part B (live docker+NIM): ``build_mcp_config`` the public no-secret ``fetch`` MCP server
-(``mcp-server-fetch`` via ``uvx``) and run the DOCKER adapter with the NIM agent, then assert from the
-trajectory that the agent INVOKED the MCP fetch tool through the container — the definitive proof of
-brief section 6 (the resolved plaintext ``mcp_config`` survived to the sandbox, NOT redacted).
+(``mcp-server-fetch`` via ``uvx``) and run the DOCKER adapter with the NIM agent, then assert
+from the trajectory that the agent INVOKED the MCP fetch tool through the container — the
+definitive proof of brief section 6 (the resolved plaintext ``mcp_config`` survived to the
+sandbox, NOT redacted).
 
 Needs NVIDIA_BUILD_API_KEY + Docker + the agent-server image. Skips cleanly otherwise.
 Run via ``make tools-e2e``.
@@ -103,7 +105,8 @@ def part_b() -> bool:
         f"files_changed={result.files_changed}"
     )
     print(
-        f"[tools-e2e][B] events referencing 'fetch' = {len(fetch_hits)}; mcp/tool marker = {mcp_marker}"
+        f"[tools-e2e][B] events referencing 'fetch' = {len(fetch_hits)}; "
+        f"mcp/tool marker = {mcp_marker}"
     )
     print(f"[tools-e2e][B] fetched.txt exists = {fetched.exists()}")
     if fetched.exists():
@@ -119,7 +122,8 @@ def part_b() -> bool:
 def main() -> int:
     if not os.environ.get("NVIDIA_BUILD_API_KEY"):
         print(
-            "[tools-e2e] SKIP: NVIDIA_BUILD_API_KEY not set (the live agent needs it). Not a failure."
+            "[tools-e2e] SKIP: NVIDIA_BUILD_API_KEY not set "
+            "(the live agent needs it). Not a failure."
         )
         return 0
     a = b = False
