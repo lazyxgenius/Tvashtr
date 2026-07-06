@@ -48,7 +48,10 @@ test("M-tools C7.A: real Tools editor + pre-launch ${NAME} note + run banner + S
   const createResp = page.waitForResponse(
     (r) => r.url().endsWith("/api/teams") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: /New team/ }).first().click();
+  await page
+    .getByRole("button", { name: /New team/ })
+    .first()
+    .click();
   await page.getByRole("button", { name: /^PM → Engineer A PM writes/ }).click();
   await page.getByLabel("Team name").fill(`Tools C7A ${Date.now()}`);
   await page.getByRole("button", { name: "Create team" }).click();
