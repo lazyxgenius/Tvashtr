@@ -7,6 +7,9 @@ C7.A's way — this milestone fills in ONLY this module (the call site is unchan
 
 Behavior:
   * ``None``/empty ``tool_config`` -> ``{}`` (byte-for-byte inert — no MCP tools built).
+  * ids at ``tvashtr.library`` (C7.C) are expanded from the owner's ``tool_library`` into a base
+    servers dict (a LIVE lookup, fresh each run); the node's inline ``mcpServers`` overlay it,
+    INLINE WINNING on a name collision. A dangling library ref is SKIPPED + a warning is recorded.
   * A per-server ``tvashtr.servers.<name>.enabled: false`` toggle DROPS that server (default = on; a
     pasted config with no ``tvashtr`` block = all-on). That Tvashtr-only metadata block is
     STRIPPED from the returned dict (the SDK's ``Agent(mcp_config=…)`` validates only
@@ -28,6 +31,7 @@ import uuid
 from sqlalchemy import select
 
 from tvashtr.control_plane.mcp_secrets import resolve_owner_mcp_secret
+from tvashtr.control_plane.node_library import resolve_owner_tool
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.db import session_scope
 from tvashtr.models import Run
@@ -75,22 +79,59 @@ def _substitute(server: dict, values: dict[str, str]) -> dict:
 
 
 def build_mcp_config(tool_config: dict | None, run_id: str) -> dict:
-    """Resolve a node's inline MCP config into the dict passed to ``Agent(mcp_config=…)`` — see the
-    module docstring for the full contract. Signature is FROZEN (do NOT widen it — that keeps this
-    milestone out of ``team_run.py``)."""
+    """Resolve a node's MCP config into the dict passed to ``Agent(mcp_config=…)`` — see the module
+    docstring for the full contract. Signature is FROZEN (do NOT widen it — keeps this milestone
+    out of ``team_run.py``).
+
+    C7.C: BEFORE the per-server resolution, any ids at ``tool_config.tvashtr.library`` are expanded
+    into a base servers dict from the owner's ``tool_library`` (a LIVE lookup, fresh each run;
+    a dangling ref is SKIPPED + warned). The node's inline ``mcpServers`` are then overlaid ON TOP —
+    INLINE WINS on a name collision (local > shared, matching Claude Code's MCP precedence). Then
+    the existing logic runs UNCHANGED over the merged dict (allow-list, ``${NAME}`` secrets)."""
     if not tool_config:
         return {}  # inert: the adapter builds no MCP tools from an empty dict
     config = copy.deepcopy(tool_config)
-    servers = config.get("mcpServers")
-    if not isinstance(servers, dict):
-        return {"mcpServers": {}}
-    enabled_meta = ((config.get("tvashtr") or {}).get("servers")) or {}
+    inline_servers = config.get("mcpServers")
+    if not isinstance(inline_servers, dict):
+        inline_servers = {}
+    tvashtr_meta = config.get("tvashtr") or {}
+    enabled_meta = tvashtr_meta.get("servers") or {}
+    library_ids = tvashtr_meta.get("library") or []
 
     owner_id: uuid.UUID | None = None
     owner_looked_up = False
+
+    def _owner() -> uuid.UUID | None:
+        # Resolve the run owner LAZILY + ONCE, shared by the library expansion + secret substitution
+        # (a no-ref / no-secret config never touches the DB; inert for a synthetic run_id).
+        nonlocal owner_id, owner_looked_up
+        if not owner_looked_up:
+            owner_id = _owner_for_run(run_id)
+            owner_looked_up = True
+        return owner_id
+
+    # C7.C: expand LIVE library references into a base servers dict (fetched fresh each run).
+    library_servers: dict = {}
+    if isinstance(library_ids, list):
+        for lib_id in library_ids:
+            owner = _owner()
+            resolved_ref = resolve_owner_tool(owner, lib_id) if owner else None
+            if resolved_ref is None:
+                # Deleted / not the owner's / unparseable -> SKIP + warn (the run continues).
+                record_resolution_warning(
+                    run_id, "tool", f"library:{lib_id}", "referenced library tool not found"
+                )
+                continue
+            ref_name, ref_config = resolved_ref
+            library_servers[ref_name] = ref_config
+
+    # Inline overrides a library server of the same NAME (the node's own pasted server wins).
+    servers = {**library_servers, **inline_servers}
+
     resolved: dict = {}
     for name, server in servers.items():
-        # Allow-list: an absent entry or ``enabled: true`` is INCLUDED; ``false`` DROPS it.
+        # Allow-list: an absent entry or ``enabled: true`` is INCLUDED; ``false`` DROPS it — applies
+        # to the resulting server NAME whether it came from a library ref or inline.
         if enabled_meta.get(name, {}).get("enabled", True) is False:
             continue
         if not isinstance(server, dict):
@@ -100,14 +141,12 @@ def build_mcp_config(tool_config: dict | None, run_id: str) -> dict:
         if not refs:
             resolved[name] = server  # no ``${NAME}`` -> keep as-is (the owner is never needed)
             continue
-        if not owner_looked_up:
-            owner_id = _owner_for_run(run_id)
-            owner_looked_up = True
-        values = {n: (resolve_owner_mcp_secret(owner_id, n) if owner_id else None) for n in refs}
+        owner = _owner()
+        values = {n: (resolve_owner_mcp_secret(owner, n) if owner else None) for n in refs}
         missing = sorted(n for n, v in values.items() if v is None)
         if missing:
             record_resolution_warning(run_id, "tool", name, f"missing secret {', '.join(missing)}")
             continue  # SKIP the server; the run continues without it
         resolved[name] = _substitute(server, values)  # type: ignore[arg-type]
-    # Return ONLY ``{"mcpServers": {…}}`` — the Tvashtr ``tvashtr`` metadata block is stripped.
+    # Return ONLY ``{"mcpServers": {…}}`` — the ``tvashtr`` block (incl. ``library``) is stripped.
     return {"mcpServers": resolved}

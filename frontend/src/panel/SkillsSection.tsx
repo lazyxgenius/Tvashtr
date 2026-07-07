@@ -1,19 +1,23 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import type { SkillSource } from "../lib/api";
+import type { SkillLibraryItem, SkillSource } from "../lib/api";
+import { listSkillLibrary } from "../lib/api";
 
 /**
- * M-tools C7.B — the per-node **Skills** editor. Renders for BOTH thinker and worker nodes (a worker
- * gets an AgentContext; a thinker folds the same resolved skills into its prompt), so — unlike Tools —
- * it takes no `capability`. It authors the `skills` source array the resolver
+ * M-tools C7.B + C7.C — the per-node **Skills** editor. Renders for BOTH thinker and worker nodes (a
+ * worker gets an AgentContext; a thinker folds the same resolved skills into its prompt), so — unlike
+ * Tools — it takes no `capability`. It authors the `skills` source array the resolver
  * (`control_plane/node_skills.py`) turns into SDK Skill objects at run time:
  *  - **New skill (inline)** — a name + SKILL.md content + a disclosure mode (Always / On trigger /
  *    Agent decides); On-trigger reveals a trigger-words input.
  *  - **Add from a repo** — a URL + pinned ref (+ optional filter) → a `repo` source.
  *  - **Use this repo's own rules** — a toggle for the single `project_rules` source.
- * Each source shows a badge + a remove control. Clearing the last source calls `onChange(null)` (the
- * C7.A clear-path then PATCHes `skills: null`). The props match the C7.0 stub exactly so
- * `TeamNodePanel` stays untouched.
+ *  - **(C7.C) Add from library** — reference a reusable account-library skill by id (appends a
+ *    `{type:"library",id}` source); referenced skills render as **Library**-badged rows. When a
+ *    library skill's name collides with an earlier source's name a muted "overridden" tag shows
+ *    (first-in-list wins — the resolver de-dups by name).
+ * Each source shows a badge + a remove control. Clearing the last source calls `onChange(null)`. The
+ * props match the C7.0 stub exactly so `TeamNodePanel` stays untouched.
  */
 
 type Mode = InlineSkillSource["mode"];
@@ -29,18 +33,34 @@ const BADGE_LABEL: Record<SkillSource["type"], string> = {
   inline: "Inline",
   repo: "Repo",
   project_rules: "Repo rules",
+  library: "Library",
 };
 
 const BADGE_CLASS: Record<SkillSource["type"], string> = {
   inline: "tv-badge tv-badge--accent",
   repo: "tv-badge tv-badge--neutral",
   project_rules: "tv-badge tv-badge--outline",
+  library: "tv-badge tv-badge--accent",
 };
 
-function sourceLabel(s: SkillSource): string {
+// The display label for a source's row (the library item's name is resolved from the account list).
+function labelOf(s: SkillSource, lib: SkillLibraryItem[]): string {
   if (s.type === "inline") return s.name || "(unnamed skill)";
   if (s.type === "repo") return s.url || "(repo)";
-  return "This repo’s own rules";
+  if (s.type === "project_rules") return "This repo’s own rules";
+  const item = lib.find((x) => x.id === s.id);
+  return item ? item.name : "(removed from library)";
+}
+
+// The name used for the first-in-list "overridden" check — null when unknowable at author time
+// (a repo/project_rules source, or a library ref to a repo/project_rules skill).
+function overrideNameOf(s: SkillSource, lib: SkillLibraryItem[]): string | null {
+  if (s.type === "inline") return s.name || null;
+  if (s.type === "library") {
+    const item = lib.find((x) => x.id === s.id);
+    return item && item.source.type === "inline" ? item.name : null;
+  }
+  return null;
 }
 
 const rowStyle = {
@@ -71,7 +91,22 @@ export function SkillsSection({
   const [ref, setRef] = useState("");
   const [filter, setFilter] = useState("");
 
+  // C7.C: the account's library skills — to resolve a referenced id to its name + power the picker.
+  const [librarySkills, setLibrarySkills] = useState<SkillLibraryItem[]>([]);
+  const [showPicker, setShowPicker] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    listSkillLibrary()
+      .then((s) => live && setLibrarySkills(s))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const hasProjectRules = sources.some((s) => s.type === "project_rules");
+  const referencedIds = new Set(sources.flatMap((s) => (s.type === "library" ? [s.id] : [])));
 
   // Persist the source list — an empty list clears to null so C7.A's PATCH sends `skills: null`.
   const emit = (next: SkillSource[]) => onChange(next.length > 0 ? next : null);
@@ -112,6 +147,12 @@ export function SkillsSection({
     setFilter("");
   };
 
+  const addLibraryRef = (id: string) => {
+    if (referencedIds.has(id)) return;
+    emit([...sources, { type: "library", id }]);
+    setShowPicker(false);
+  };
+
   const toggleProjectRules = () => {
     emit(
       hasProjectRules
@@ -121,6 +162,15 @@ export function SkillsSection({
   };
 
   const removeAt = (idx: number) => emit(sources.filter((_, i) => i !== idx));
+
+  // Precompute the first-in-list "overridden" flags (the resolver de-dups by name, first wins).
+  const seenNames = new Set<string>();
+  const rows = sources.map((s, i) => {
+    const overrideName = overrideNameOf(s, librarySkills);
+    const overridden = overrideName != null && seenNames.has(overrideName);
+    if (overrideName != null) seenNames.add(overrideName);
+    return { s, i, label: labelOf(s, librarySkills), overridden };
+  });
 
   return (
     <details
@@ -148,19 +198,24 @@ export function SkillsSection({
             gap: "0.35rem",
           }}
         >
-          {sources.map((s, i) => (
+          {rows.map(({ s, i, label, overridden }) => (
             <li className="tv-skills__row" key={`${s.type}-${i}`} style={rowStyle}>
               <span className={BADGE_CLASS[s.type]}>{BADGE_LABEL[s.type]}</span>
               <span
                 className="tv-skills__label"
                 style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}
               >
-                {sourceLabel(s)}
+                {label}
               </span>
+              {overridden && (
+                <span className="tv-field__hint" style={{ fontStyle: "italic" }}>
+                  overridden
+                </span>
+              )}
               <button
                 type="button"
                 className="tv-btn tv-btn--link tv-btn--sm"
-                aria-label={`Remove ${sourceLabel(s)}`}
+                aria-label={`Remove ${label}`}
                 onClick={() => removeAt(i)}
               >
                 Remove
@@ -266,6 +321,52 @@ export function SkillsSection({
         >
           Add repo
         </button>
+      </div>
+
+      {/* Add from the account library */}
+      <div
+        className="tv-skills__add"
+        style={{ display: "grid", gap: "0.4rem", marginTop: "0.5rem" }}
+      >
+        <button
+          type="button"
+          className="tv-btn tv-btn--sm"
+          aria-label="Add from library"
+          onClick={() => setShowPicker((v) => !v)}
+        >
+          Add from library
+        </button>
+        {showPicker && (
+          <ul
+            aria-label="Skill library picker"
+            style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.35rem" }}
+          >
+            {librarySkills.length === 0 ? (
+              <li className="tv-field__hint">
+                No library skills yet — add one in the Skill library shelf on your dashboard.
+              </li>
+            ) : (
+              librarySkills.map((item) => {
+                const already = referencedIds.has(item.id);
+                return (
+                  <li key={`pick-${item.id}`} style={rowStyle}>
+                    <span className="tv-badge tv-badge--outline">{item.source.type}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>{item.name}</span>
+                    <button
+                      type="button"
+                      className="tv-btn tv-btn--sm"
+                      aria-label={`Add ${item.name} from library`}
+                      disabled={already}
+                      onClick={() => addLibraryRef(item.id)}
+                    >
+                      {already ? "added" : "Add"}
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        )}
       </div>
 
       {/* Adopt this repo's own rules */}

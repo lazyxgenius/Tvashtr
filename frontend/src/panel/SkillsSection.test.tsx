@@ -1,7 +1,16 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { listSkillLibrary } from "../lib/api";
 import { SkillsSection } from "./SkillsSection";
+
+// C7.C: SkillsSection now fetches the account's library skills (the "Add from library" picker +
+// resolving a referenced id to a name). Mock it — a fixture-signature update (new dependency).
+vi.mock("../lib/api", () => ({ listSkillLibrary: vi.fn() }));
+const mockLibrary = listSkillLibrary as unknown as ReturnType<typeof vi.fn>;
+
+beforeEach(() => mockLibrary.mockResolvedValue([]));
+afterEach(() => vi.clearAllMocks());
 
 // M-tools C7.B: the real per-node Skills editor (replaces the C7.0 JSON-textarea stub). Authors the
 // `skills` source array (inline / repo / project_rules); clearing the last source emits onChange(null).
@@ -107,5 +116,46 @@ describe("SkillsSection (M-tools C7.B)", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Remove only" }));
     expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  // ---- C7.C: "Add from library" picker + library-reference rows + the overridden tag ----
+
+  it("picking a library skill appends a {type:'library',id} source and renders a Library row", async () => {
+    const onChange = vi.fn();
+    mockLibrary.mockResolvedValue([
+      {
+        id: "s1",
+        name: "house-style",
+        source: { type: "inline", name: "house-style", content: "B", mode: "always" },
+        created_at: "x",
+      },
+    ]);
+    render(<SkillsSection value={null} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add from library" }));
+    await waitFor(() => screen.getByRole("button", { name: "Add house-style from library" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add house-style from library" }));
+    expect(onChange).toHaveBeenCalledWith([{ type: "library", id: "s1" }]);
+  });
+
+  it("shows an 'overridden' tag when a library skill's name collides with an earlier inline skill", async () => {
+    mockLibrary.mockResolvedValue([
+      {
+        id: "s1",
+        name: "DUP",
+        source: { type: "inline", name: "DUP", content: "lib", mode: "always" },
+        created_at: "x",
+      },
+    ]);
+    render(
+      <SkillsSection
+        value={[
+          { type: "inline", name: "DUP", content: "first", mode: "always" },
+          { type: "library", id: "s1" },
+        ]}
+        onChange={vi.fn()}
+      />,
+    );
+    // the library row (second, resolving to the same name "DUP") is the overridden one
+    await waitFor(() => expect(screen.getByText("overridden")).toBeInTheDocument());
   });
 });

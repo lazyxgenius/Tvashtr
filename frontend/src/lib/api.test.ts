@@ -4,13 +4,24 @@ import type {
   ContextManifest,
   InlineSkillSource,
   InvocationCost,
+  LibrarySkillSource,
   NodeInvocation,
   ProjectRulesSkillSource,
   RepoSkillSource,
   RunEvent,
+  SkillLibraryItem,
   SkillSource,
+  ToolLibraryItem,
 } from "./api";
-import { inspectRepo, MODEL_PRESETS, presetsForProvider, providerOf, runTeam } from "./api";
+import {
+  createSkillLibraryItem,
+  createToolLibraryItem,
+  inspectRepo,
+  MODEL_PRESETS,
+  presetsForProvider,
+  providerOf,
+  runTeam,
+} from "./api";
 
 describe("providerOf — parity with the backend provider_for_model", () => {
   // The SAME cases the backend test asserts (tests/test_resolve_owner_key.py): leading slug segment,
@@ -225,5 +236,59 @@ describe("M-tools C7.B skill-source types", () => {
     expect(modes).toHaveLength(3);
     const repoNoFilter: RepoSkillSource = { type: "repo", url: "u", ref: "r" };
     expect(repoNoFilter.filter).toBeUndefined();
+  });
+});
+
+describe("M-tools C7.C — library types + clients", () => {
+  it("type-checks the new library item types and the `library` SkillSource variant", () => {
+    const tool: ToolLibraryItem = {
+      id: "t1",
+      name: "fetch",
+      server_config: { command: "uvx" },
+      created_at: "x",
+    };
+    const skill: SkillLibraryItem = {
+      id: "s1",
+      name: "house",
+      source: { type: "inline", name: "house", content: "B", mode: "always" },
+      created_at: "x",
+    };
+    const ref: LibrarySkillSource = { type: "library", id: "s1" };
+    const asSource: SkillSource = ref; // the union now includes the library variant
+    expect(tool.name).toBe("fetch");
+    expect(skill.source.type).toBe("inline");
+    expect(asSource.type).toBe("library");
+  });
+
+  it("createToolLibraryItem POSTs { name, server_config }", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(jsonOk({ id: "t1", name: "fetch" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await createToolLibraryItem("fetch", { command: "uvx" });
+    expect(out).toEqual({ id: "t1", name: "fetch" });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/tool-library");
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
+      name: "fetch",
+      server_config: { command: "uvx" },
+    });
+  });
+
+  it("createSkillLibraryItem POSTs { name, source }", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(jsonOk({ id: "s1", name: "house" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await createSkillLibraryItem("house", {
+      type: "inline",
+      name: "house",
+      content: "B",
+      mode: "always",
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/skill-library");
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
+      name: "house",
+      source: { type: "inline", name: "house", content: "B", mode: "always" },
+    });
   });
 });

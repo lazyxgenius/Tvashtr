@@ -539,3 +539,55 @@ class RunWarning(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class ToolLibraryItem(Base):
+    """One account's reusable MCP server (M-tools C7.C, migration ``0023``).
+
+    A library **Tool** is ONE MCP server: ``name`` (the ``mcpServers`` key) + ``server_config``
+    (the value under that key — ``{command,args,env}`` stdio or ``{url,headers,type}`` http/sse). A
+    node REFERENCES it by id via a list at ``tool_config.tvashtr.library``; the resolver
+    (:mod:`tvashtr.control_plane.node_library`) fetches the content FRESH at run time and merges it
+    with the node's inline ``mcpServers`` (inline WINS on a name collision). Unique ``(owner_id,
+    name)`` — one server per name per account; add = upsert/replace. Mirrors :class:`McpSecret` /
+    :class:`ProviderCredential`, but its content IS returned by the endpoints (it is editable, not a
+    credential)."""
+
+    __tablename__ = "tool_library"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_tool_library_owner_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    server_config: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class SkillLibraryItem(Base):
+    """One account's reusable skill (M-tools C7.C, migration ``0023``).
+
+    A library **Skill** is ONE named skill source: ``name`` (display label) + ``source`` (one C7.B
+    source object — inline/repo/project_rules). A node
+    REFERENCES it via a ``{"type":"library","id":…}`` element in its ``skills`` list; the resolver
+    fetches the source FRESH at run time, resolves it ONE level, and de-dups the final
+    skill list by name (first-in-list wins). Unique ``(owner_id, name)``. Mirrors
+    :class:`ToolLibraryItem`."""
+
+    __tablename__ = "skill_library"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_skill_library_owner_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

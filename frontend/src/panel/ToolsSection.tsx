@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
 
-import type { Capability } from "../lib/api";
-import { listSecrets } from "../lib/api";
+import type { Capability, ToolLibraryItem } from "../lib/api";
+import { listSecrets, listToolLibrary } from "../lib/api";
 
 /**
- * M-tools C7.A — the per-node **Tools** (MCP) editor. A worker node gets a real editor:
+ * M-tools C7.A + C7.C — the per-node **Tools** (MCP) editor. A worker node gets a real editor:
  *  - a raw paste-config `<textarea>` (Cursor / Claude Code `mcp.json` parity),
  *  - per-server rows (transport badge + an on/off toggle writing the Tvashtr allow-list metadata +
  *    remove),
  *  - a guided Add-server form (Local = stdio `command`; Remote = HTTP/SSE `url`),
- *  - a pre-launch note for any `${NAME}` reference whose secret isn't in the account's Secrets shelf.
- * A non-worker (thinker) gets only the worker-only note (tools run in a worker's sandbox). Props are
- * unchanged from the scaffold (`value` / `onChange` / `capability`) so `TeamNodePanel` is untouched.
+ *  - **(C7.C) an "Add from library" picker** — reference a reusable account-library server by id
+ *    (stored at `tool_config.tvashtr.library`); referenced servers render as **Library**-badged rows
+ *    with the same on/off toggle + a remove-reference control. If a library ref's name collides with
+ *    an inline server the library row shows a muted "overridden" tag (inline wins at run time).
+ *  - a pre-launch note for any inline `${NAME}` whose secret isn't in the account's Secrets shelf.
+ * A non-worker (thinker) gets only the worker-only note. Props are UNCHANGED from the scaffold
+ * (`value` / `onChange` / `capability`) so `TeamNodePanel` is untouched.
  */
 
 type Cfg = Record<string, unknown> | null;
@@ -46,6 +50,11 @@ function refsOf(cfg: Cfg): string[] {
   }
   return [...names];
 }
+// C7.C: the ids of the account-library servers this node REFERENCES (stored beside the allow-list).
+function librariesOf(cfg: Cfg): string[] {
+  const lib = asRecord(asRecord(cfg)["tvashtr"])["library"];
+  return Array.isArray(lib) ? lib.filter((x): x is string => typeof x === "string") : [];
+}
 
 export function ToolsSection({
   value,
@@ -59,6 +68,8 @@ export function ToolsSection({
   const [text, setText] = useState(value == null ? "" : JSON.stringify(value, null, 2));
   const [open, setOpen] = useState(true);
   const [secretNames, setSecretNames] = useState<string[]>([]);
+  const [libraryTools, setLibraryTools] = useState<ToolLibraryItem[]>([]);
+  const [showPicker, setShowPicker] = useState(false);
   const [addName, setAddName] = useState("");
   const [addKind, setAddKind] = useState<"local" | "remote">("local");
   const [addTarget, setAddTarget] = useState("");
@@ -68,6 +79,17 @@ export function ToolsSection({
     let live = true;
     listSecrets()
       .then((s) => live && setSecretNames(s.map((x) => x.name)))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // C7.C: the account's library tools — to resolve a referenced id to its name + power the picker.
+  useEffect(() => {
+    let live = true;
+    listToolLibrary()
+      .then((t) => live && setLibraryTools(t))
       .catch(() => {});
     return () => {
       live = false;
@@ -135,19 +157,45 @@ export function ToolsSection({
     setAddTarget("");
   };
 
+  // C7.C: append / drop a library reference id at `tvashtr.library` (the servers/textarea untouched).
+  const addLibraryRef = (id: string) => {
+    const current = librariesOf(cfg);
+    if (current.includes(id)) return;
+    const base = asRecord(cfg);
+    const meta = asRecord(base["tvashtr"]);
+    apply({ ...base, tvashtr: { ...meta, library: [...current, id] } });
+    setShowPicker(false);
+  };
+  const removeLibraryRef = (id: string) => {
+    const base = asRecord(cfg);
+    const meta = asRecord(base["tvashtr"]);
+    apply({ ...base, tvashtr: { ...meta, library: librariesOf(cfg).filter((x) => x !== id) } });
+  };
+
   const serverNames = Object.keys(servers);
+  const inlineNameSet = new Set(serverNames);
+  const libraryIds = librariesOf(cfg);
+  const referencedRows = libraryIds.map((id) => {
+    const item = libraryTools.find((t) => t.id === id) ?? null;
+    return { id, name: item ? item.name : null };
+  });
+  // The 🔧 N count includes referenced servers (a name shared with an inline server counts once).
+  const effectiveCount = new Set([
+    ...serverNames,
+    ...referencedRows.map((r) => r.name).filter((n): n is string => n != null),
+  ]).size;
 
   return (
     <details className="tv-field" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary className="tv-field__label">
-        Tools {serverNames.length > 0 && `(${serverNames.length})`}
+        Tools {effectiveCount > 0 && `(${effectiveCount})`}
       </summary>
       <span className="tv-field__hint">
-        MCP servers — paste an <code>mcp.json</code> or add one below. Secrets stay as{" "}
-        <code>${"{NAME}"}</code> references, resolved at run time.
+        MCP servers — paste an <code>mcp.json</code>, add one below, or reference one from your
+        account library. Secrets stay as <code>${"{NAME}"}</code> references, resolved at run time.
       </span>
 
-      {serverNames.length > 0 && (
+      {(serverNames.length > 0 || referencedRows.length > 0) && (
         <ul className="tv-mcp-list">
           {serverNames.map((name) => (
             <li className="tv-mcp-row" key={name}>
@@ -172,6 +220,39 @@ export function ToolsSection({
               </button>
             </li>
           ))}
+          {referencedRows.map(({ id, name }) => {
+            const overridden = name != null && inlineNameSet.has(name);
+            return (
+              <li className="tv-mcp-row" key={`lib-${id}`}>
+                <span className="tv-mcp-badge">Library</span>
+                <span className="tv-mcp-name">{name ?? "(removed from library)"}</span>
+                {name != null && (
+                  <label className="tv-mcp-toggle">
+                    <input
+                      type="checkbox"
+                      aria-label={`Enable ${name}`}
+                      checked={enabledOf(cfg, name)}
+                      onChange={(e) => setEnabled(name, e.currentTarget.checked)}
+                    />
+                    <span>{enabledOf(cfg, name) ? "on" : "off"}</span>
+                  </label>
+                )}
+                {overridden && (
+                  <span className="tv-field__hint" style={{ fontStyle: "italic" }}>
+                    overridden
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="tv-mcp-remove"
+                  aria-label={`Remove reference ${name ?? id}`}
+                  onClick={() => removeLibraryRef(id)}
+                >
+                  ×
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -215,7 +296,45 @@ export function ToolsSection({
         <button type="button" className="tv-btn tv-btn--ghost" onClick={addServer}>
           Add server
         </button>
+        <button
+          type="button"
+          className="tv-btn tv-btn--ghost"
+          aria-label="Add from library"
+          onClick={() => setShowPicker((v) => !v)}
+        >
+          Add from library
+        </button>
       </div>
+
+      {showPicker && (
+        <ul className="tv-mcp-list" aria-label="Tool library picker">
+          {libraryTools.length === 0 ? (
+            <li className="tv-field__hint">
+              No library tools yet — add one in the Tool library shelf on your dashboard.
+            </li>
+          ) : (
+            libraryTools.map((t) => {
+              const already = libraryIds.includes(t.id);
+              const clash = inlineNameSet.has(t.name);
+              return (
+                <li className="tv-mcp-row" key={`pick-${t.id}`}>
+                  <span className="tv-mcp-badge">{transportOf(t.server_config)}</span>
+                  <span className="tv-mcp-name">{t.name}</span>
+                  <button
+                    type="button"
+                    className="tv-btn tv-btn--sm"
+                    aria-label={`Add ${t.name} from library`}
+                    disabled={already || clash}
+                    onClick={() => addLibraryRef(t.id)}
+                  >
+                    {already ? "added" : clash ? "in use" : "Add"}
+                  </button>
+                </li>
+              );
+            })
+          )}
+        </ul>
+      )}
 
       <textarea
         className="tv-node-prompt"

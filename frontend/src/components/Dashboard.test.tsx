@@ -16,6 +16,9 @@ vi.mock("../lib/api", () => ({
   listSecrets: vi.fn().mockResolvedValue([]),
   addSecret: vi.fn(),
   removeSecret: vi.fn(),
+  // C7.C: the dashboard now mounts the Tool + Skill library shelves, which fetch on mount.
+  listToolLibrary: vi.fn().mockResolvedValue([]),
+  listSkillLibrary: vi.fn().mockResolvedValue([]),
 }));
 
 const m = api as unknown as {

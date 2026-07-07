@@ -421,8 +421,121 @@ export interface ProjectRulesSkillSource {
   type: "project_rules";
 }
 
-export type SkillSource = InlineSkillSource | RepoSkillSource | ProjectRulesSkillSource;
-// ===== end M-tools C7.B block ==================================================================
+// M-tools C7.C: a LIVE reference to an account-library skill. No content on the node — the resolver
+// (control_plane/node_skills.py) fetches the referenced library skill's SOURCE fresh each run and
+// resolves it one level. Appended to the node's `skills` list; de-duped by name (first-in-list wins).
+export interface LibrarySkillSource {
+  type: "library";
+  id: string;
+}
+
+export type SkillSource =
+  | InlineSkillSource
+  | RepoSkillSource
+  | ProjectRulesSkillSource
+  | LibrarySkillSource;
+// ===== end M-tools C7.B / C7.C skill-source block ==============================================
+
+// ===== M-tools C7.C — the account Tool + Skill LIBRARY (reusable items a node references) =======
+// UNLIKE a secret, a library item's content IS returned (it is editable, not a credential). A node
+// stores only the id (tools: in `tool_config.tvashtr.library`; skills: a {type:"library",id} source);
+// the run-time resolver merges the referenced content with the node's inline config (inline wins).
+
+// A library skill's stored source is one of the non-reference sources (never nests another library).
+export type LibrarySkillItemSource = InlineSkillSource | RepoSkillSource | ProjectRulesSkillSource;
+
+export interface ToolLibraryItem {
+  id: string;
+  name: string;
+  server_config: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface SkillLibraryItem {
+  id: string;
+  name: string;
+  source: LibrarySkillItemSource;
+  created_at: string;
+}
+
+// The account's library tools (oldest first). Empty for a fresh account.
+export async function listToolLibrary(): Promise<ToolLibraryItem[]> {
+  const data = await getJSON<{ tools: ToolLibraryItem[] }>("/api/tool-library");
+  return data.tools;
+}
+
+// Add (or REPLACE, upsert on name) a library tool. Returns `{id, name}` — never the whole row.
+export async function createToolLibraryItem(
+  name: string,
+  serverConfig: Record<string, unknown>,
+): Promise<{ id: string; name: string }> {
+  const res = await fetch("/api/tool-library", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, server_config: serverConfig }),
+  });
+  if (!res.ok) throw new ApiError(res.status, `POST /api/tool-library -> ${res.status}`);
+  return (await res.json()) as { id: string; name: string };
+}
+
+// Edit a library tool by id (propagates LIVE to every referencing node's next run).
+export async function updateToolLibraryItem(
+  id: string,
+  name: string,
+  serverConfig: Record<string, unknown>,
+): Promise<{ id: string; name: string }> {
+  const res = await fetch(`/api/tool-library/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, server_config: serverConfig }),
+  });
+  if (!res.ok) throw new ApiError(res.status, `PATCH /api/tool-library/${id} -> ${res.status}`);
+  return (await res.json()) as { id: string; name: string };
+}
+
+export async function deleteToolLibraryItem(id: string): Promise<void> {
+  const res = await fetch(`/api/tool-library/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /api/tool-library/${id} -> ${res.status}`);
+}
+
+// The account's library skills (oldest first).
+export async function listSkillLibrary(): Promise<SkillLibraryItem[]> {
+  const data = await getJSON<{ skills: SkillLibraryItem[] }>("/api/skill-library");
+  return data.skills;
+}
+
+export async function createSkillLibraryItem(
+  name: string,
+  source: LibrarySkillItemSource,
+): Promise<{ id: string; name: string }> {
+  const res = await fetch("/api/skill-library", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, source }),
+  });
+  if (!res.ok) throw new ApiError(res.status, `POST /api/skill-library -> ${res.status}`);
+  return (await res.json()) as { id: string; name: string };
+}
+
+export async function updateSkillLibraryItem(
+  id: string,
+  name: string,
+  source: LibrarySkillItemSource,
+): Promise<{ id: string; name: string }> {
+  const res = await fetch(`/api/skill-library/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, source }),
+  });
+  if (!res.ok) throw new ApiError(res.status, `PATCH /api/skill-library/${id} -> ${res.status}`);
+  return (await res.json()) as { id: string; name: string };
+}
+
+export async function deleteSkillLibraryItem(id: string): Promise<void> {
+  const res = await fetch(`/api/skill-library/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /api/skill-library/${id} -> ${res.status}`);
+}
+// ===== end M-tools C7.C library block ==========================================================
 
 export interface TeamGraphData {
   team_graph_id: string;

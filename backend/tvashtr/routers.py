@@ -26,6 +26,16 @@ from tvashtr.control_plane.mcp_secrets import (
     list_owner_mcp_secret_names,
     set_owner_mcp_secret,
 )
+from tvashtr.control_plane.node_library import (
+    create_owner_skill,
+    create_owner_tool,
+    delete_owner_skill,
+    delete_owner_tool,
+    list_owner_skills,
+    list_owner_tools,
+    update_owner_skill,
+    update_owner_tool,
+)
 from tvashtr.control_plane.team_run import run_team
 from tvashtr.control_plane.teams import (
     ARCHITECT_PROMPT,
@@ -1146,6 +1156,156 @@ def delete_secret(
     """Remove the current account's ``${name}`` secret (204, idempotent — deleting an absent name
     still 204s)."""
     delete_owner_mcp_secret(uuid.UUID(current_user.id), name)
+    return Response(status_code=204)
+
+
+# ---- Tool + Skill LIBRARY (M-tools C7.C): the account's reusable, referenceable items ----
+# UNLIKE a secret, a library item's content IS stored + returned (it is editable, not a credential);
+# a node references it by id INSIDE its own tool_config/skills, resolved + merged at run time.
+
+
+class ToolLibraryBody(BaseModel):
+    """``POST``/``PATCH`` body for a library tool: a ``name`` (the ``mcpServers`` key) + a
+    ``server_config`` object (the single server's config — ``{command,args,env}`` stdio or
+    ``{url,headers,type}`` http/sse). Upserts on ``(owner, name)``."""
+
+    name: str
+    server_config: dict
+
+
+class SkillLibraryBody(BaseModel):
+    """``POST``/``PATCH`` body for a library skill: a ``name`` (display label) + a ``source`` object
+    (one C7.B skill source — inline/repo/project_rules). A ``library``-typed source is REJECTED — a
+    library item's source never nests another reference."""
+
+    name: str
+    source: dict
+
+
+_LIBRARY_SKILL_SOURCE_TYPES = {"inline", "repo", "project_rules"}
+
+
+def _tool_library_to_dict(item: dict) -> dict:
+    return {
+        "id": str(item["id"]),
+        "name": item["name"],
+        "server_config": item["server_config"],
+        "created_at": item["created_at"].isoformat(),
+    }
+
+
+def _skill_library_to_dict(item: dict) -> dict:
+    return {
+        "id": str(item["id"]),
+        "name": item["name"],
+        "source": item["source"],
+        "created_at": item["created_at"].isoformat(),
+    }
+
+
+@router.get("/api/tool-library")
+def list_tool_library(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """The current account's library tools (``{id, name, server_config, created_at}``), oldest
+    first."""
+    items = list_owner_tools(uuid.UUID(current_user.id))
+    return {"tools": [_tool_library_to_dict(t) for t in items]}
+
+
+@router.post("/api/tool-library")
+def add_tool_library(
+    body: ToolLibraryBody, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Add (or REPLACE — upsert on ``(owner, name)``) a library tool. 422 on an empty name or an
+    empty/non-object ``server_config``. Returns ``{id, name}``."""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="A tool name is required.")
+    if not isinstance(body.server_config, dict) or not body.server_config:
+        raise HTTPException(status_code=422, detail="A server config object is required.")
+    item_id = create_owner_tool(uuid.UUID(current_user.id), name, body.server_config)
+    return {"id": str(item_id), "name": name}
+
+
+@router.patch("/api/tool-library/{item_id}")
+def edit_tool_library(
+    item_id: str,
+    body: ToolLibraryBody,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """Update the owner's library tool by id. 422 as POST; 404 if not the owner's. Returns
+    ``{id, name}``. Editing an item propagates LIVE to every referencing node's next run."""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="A tool name is required.")
+    if not isinstance(body.server_config, dict) or not body.server_config:
+        raise HTTPException(status_code=422, detail="A server config object is required.")
+    if not update_owner_tool(uuid.UUID(current_user.id), item_id, name, body.server_config):
+        raise HTTPException(status_code=404, detail="tool not found in your library")
+    return {"id": item_id, "name": name}
+
+
+@router.delete("/api/tool-library/{item_id}", status_code=204)
+def remove_tool_library(
+    item_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> Response:
+    """Remove the owner's tool by id (204, idempotent + owner-scoped). A node still holding a
+    dangling reference to it simply skips + warns on its next run."""
+    delete_owner_tool(uuid.UUID(current_user.id), item_id)
+    return Response(status_code=204)
+
+
+@router.get("/api/skill-library")
+def list_skill_library(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """The current account's library skills (``{id, name, source, created_at}``), oldest first."""
+    items = list_owner_skills(uuid.UUID(current_user.id))
+    return {"skills": [_skill_library_to_dict(s) for s in items]}
+
+
+@router.post("/api/skill-library")
+def add_skill_library(
+    body: SkillLibraryBody, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Add (or REPLACE) a library skill. 422 on an empty name or a source whose ``type`` is not one
+    of inline/repo/project_rules (a ``library`` source is rejected — no nesting). Returns
+    ``{id, name}``."""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="A skill name is required.")
+    stype = body.source.get("type") if isinstance(body.source, dict) else None
+    if stype not in _LIBRARY_SKILL_SOURCE_TYPES:
+        raise HTTPException(
+            status_code=422, detail="A skill source must be inline, repo, or project_rules."
+        )
+    item_id = create_owner_skill(uuid.UUID(current_user.id), name, body.source)
+    return {"id": str(item_id), "name": name}
+
+
+@router.patch("/api/skill-library/{item_id}")
+def edit_skill_library(
+    item_id: str,
+    body: SkillLibraryBody,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """Update the owner's library skill by id. 422 as POST; 404 if not the owner's."""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="A skill name is required.")
+    stype = body.source.get("type") if isinstance(body.source, dict) else None
+    if stype not in _LIBRARY_SKILL_SOURCE_TYPES:
+        raise HTTPException(
+            status_code=422, detail="A skill source must be inline, repo, or project_rules."
+        )
+    if not update_owner_skill(uuid.UUID(current_user.id), item_id, name, body.source):
+        raise HTTPException(status_code=404, detail="skill not found in your library")
+    return {"id": item_id, "name": name}
+
+
+@router.delete("/api/skill-library/{item_id}", status_code=204)
+def remove_skill_library(
+    item_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> Response:
+    """Remove the owner's library skill by id (204, idempotent + owner-scoped)."""
+    delete_owner_skill(uuid.UUID(current_user.id), item_id)
     return Response(status_code=204)
 
 

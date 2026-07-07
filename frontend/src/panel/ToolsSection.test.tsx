@@ -1,14 +1,20 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { listSecrets } from "../lib/api";
+import { listSecrets, listToolLibrary } from "../lib/api";
 import { ToolsSection } from "./ToolsSection";
 
-// ToolsSection fetches the account's secret NAMES to flag an unstored `${NAME}`. Mock just that.
-vi.mock("../lib/api", () => ({ listSecrets: vi.fn() }));
+// ToolsSection fetches the account's secret NAMES (unstored `${NAME}` flag) AND, since C7.C, the
+// account's library tools (the "Add from library" picker + resolving a referenced id to a name).
+// Mock both (a fixture-signature update — the component gained the C7.C library dependency).
+vi.mock("../lib/api", () => ({ listSecrets: vi.fn(), listToolLibrary: vi.fn() }));
 const mockList = listSecrets as unknown as ReturnType<typeof vi.fn>;
+const mockLibrary = listToolLibrary as unknown as ReturnType<typeof vi.fn>;
 
-beforeEach(() => mockList.mockResolvedValue([]));
+beforeEach(() => {
+  mockList.mockResolvedValue([]);
+  mockLibrary.mockResolvedValue([]);
+});
 afterEach(() => vi.clearAllMocks());
 
 describe("ToolsSection (M-tools C7.A)", () => {
@@ -84,5 +90,71 @@ describe("ToolsSection (M-tools C7.A)", () => {
       />,
     );
     await waitFor(() => expect(screen.queryByText(/Needs .*GITHUB_TOKEN/)).toBeNull());
+  });
+
+  // ---- C7.C: "Add from library" picker + library-reference rows + the overridden tag ----
+
+  it("lists library tools in the picker and greys out a name-collision", async () => {
+    mockLibrary.mockResolvedValue([
+      { id: "t1", name: "fetch", server_config: { command: "uvx" }, created_at: "x" },
+      { id: "t2", name: "gh", server_config: { url: "https://x" }, created_at: "x" },
+    ]);
+    // an inline server named "gh" already exists → the "gh" library item is greyed out (name clash)
+    render(
+      <ToolsSection
+        value={{ mcpServers: { gh: { command: "z" } } }}
+        onChange={vi.fn()}
+        capability="worker"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add from library" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Add fetch from library" })).toBeEnabled(),
+    );
+    expect(screen.getByRole("button", { name: "Add gh from library" })).toBeDisabled();
+  });
+
+  it("picking a library tool appends its id to tvashtr.library and renders a Library row", async () => {
+    const onChange = vi.fn();
+    mockLibrary.mockResolvedValue([
+      { id: "t1", name: "fetch", server_config: { command: "uvx" }, created_at: "x" },
+    ]);
+    render(<ToolsSection value={null} onChange={onChange} capability="worker" />);
+    fireEvent.click(screen.getByRole("button", { name: "Add from library" }));
+    await waitFor(() => screen.getByRole("button", { name: "Add fetch from library" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add fetch from library" }));
+    expect(onChange).toHaveBeenCalledWith({ tvashtr: { library: ["t1"] } });
+    expect(screen.getByText("Library")).toBeInTheDocument(); // the badge on the referenced row
+  });
+
+  it("shows an 'overridden' tag when an inline server shares a name with a library reference", async () => {
+    mockLibrary.mockResolvedValue([
+      { id: "t1", name: "gh", server_config: { command: "lib" }, created_at: "x" },
+    ]);
+    render(
+      <ToolsSection
+        value={{ mcpServers: { gh: { command: "inline" } }, tvashtr: { library: ["t1"] } }}
+        onChange={vi.fn()}
+        capability="worker"
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("overridden")).toBeInTheDocument());
+  });
+
+  it("remove-reference drops the id from tvashtr.library", async () => {
+    const onChange = vi.fn();
+    mockLibrary.mockResolvedValue([
+      { id: "t1", name: "fetch", server_config: { command: "uvx" }, created_at: "x" },
+    ]);
+    render(
+      <ToolsSection
+        value={{ tvashtr: { library: ["t1"] } }}
+        onChange={onChange}
+        capability="worker"
+      />,
+    );
+    await waitFor(() => screen.getByRole("button", { name: "Remove reference fetch" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove reference fetch" }));
+    expect(onChange).toHaveBeenCalledWith({ tvashtr: { library: [] } });
   });
 });

@@ -19,6 +19,8 @@ Each source object is one of (see :data:`SkillSource` in ``frontend/src/lib/api.
 * ``{"type": "repo", "url", "ref", "filter"?}`` — a GitHub repo cloned at the PINNED ref
 * ``{"type": "project_rules"}`` — adopt the run's own workspace rules (``CLAUDE.md`` etc. + the
   modern ``.cursor/rules/*.mdc`` files the SDK's ``load_project_skills`` does NOT read)
+* ``{"type": "library", "id": "<uuid>"}`` — (C7.C) a LIVE ref to the owner's ``skill_library``;
+  its stored source (inline/repo/project_rules) is fetched fresh + resolved one level at run time
 
 A source that fails to resolve (bad repo, unreadable rules, unknown type) is SKIPPED — the run
 continues — and records a warning through C7.A's recorder via the lazy shim
@@ -92,7 +94,11 @@ def inject_skills_into_prompt(skills: list | None, base_prompt: str, run_id: str
 def _resolve_skills(skills: list | None, workspace_dir: str | None, run_id: str) -> list:
     """Turn each source into SDK ``Skill`` objects. A source that raises / can't resolve is SKIPPED
     and warned (the run continues). With ``workspace_dir=None`` (a thinker) ``project_rules``
-    contributes nothing (there is no workspace to adopt)."""
+    contributes nothing (there is no workspace to adopt).
+
+    C7.C: a ``{"type":"library","id":…}`` source is expanded ONE level from the owner's library (a
+    LIVE lookup); the FINAL list is then de-duped by skill NAME (first-in-list wins) — the only
+    precedence rule for skills, applied uniformly to inline/repo/library-expanded results."""
     resolved: list = []
     if not skills:
         return resolved
@@ -101,20 +107,61 @@ def _resolve_skills(skills: list | None, workspace_dir: str | None, run_id: str)
         try:
             if not isinstance(source, dict):
                 raise ValueError("skill source must be an object")
-            stype = source.get("type")
-            if stype == "inline":
-                resolved.append(_resolve_inline(source))
-            elif stype == "repo":
-                resolved.extend(_resolve_repo(source))
-            elif stype == "project_rules":
-                if workspace_dir:
-                    resolved.extend(_resolve_project_rules(workspace_dir))
-                # else: no workspace (a thinker) → project_rules yields nothing (expected, no warn)
+            if source.get("type") == "library":
+                resolved.extend(_resolve_library_source(source, workspace_dir, run_id))
             else:
-                raise ValueError(f"unknown skill source type: {stype!r}")
+                resolved.extend(_resolve_source_one_level(source, workspace_dir))
         except Exception as exc:  # noqa: BLE001 — one bad source must never sink the run
             _emit_skill_warning(run_id, label, _reason(exc))
-    return resolved
+    return _dedup_by_name(resolved)
+
+
+def _resolve_source_one_level(source: dict, workspace_dir: str | None) -> list:
+    """Resolve ONE non-library source (inline / repo / project_rules) into a list of ``Skill``
+    objects. A ``library`` type reaching here is a NESTED reference (unsupported — a library item's
+    source is only ever inline/repo/project_rules); it raises so the caller skips + warns."""
+    stype = source.get("type")
+    if stype == "inline":
+        return [_resolve_inline(source)]
+    if stype == "repo":
+        return _resolve_repo(source)
+    if stype == "project_rules":
+        # No workspace (a thinker) → project_rules yields nothing (expected, no warn).
+        return _resolve_project_rules(workspace_dir) if workspace_dir else []
+    if stype == "library":
+        raise ValueError("nested library skill source is unsupported")
+    raise ValueError(f"unknown skill source type: {stype!r}")
+
+
+def _resolve_library_source(source: dict, workspace_dir: str | None, run_id: str) -> list:
+    """C7.C: expand a ``{"type":"library","id":…}`` reference — fetch the owner's library skill
+    SOURCE fresh (a LIVE lookup) and resolve it ONE level. A dangling / foreign
+    / unparseable ref is SKIPPED + warned (the run continues). ``node_library`` is imported
+    FUNCTION-LOCAL to keep this module's import surface minimal (INVARIANT 1 style)."""
+    from tvashtr.control_plane import node_library
+
+    lib_id = source.get("id")
+    owner_id = node_library.owner_for_run(run_id)
+    lib_source = node_library.resolve_owner_skill_source(owner_id, lib_id) if owner_id else None
+    if not isinstance(lib_source, dict):
+        _emit_skill_warning(run_id, f"library:{lib_id}", "referenced library skill not found")
+        return []
+    return _resolve_source_one_level(lib_source, workspace_dir)
+
+
+def _dedup_by_name(resolved: list) -> list:
+    """De-dup the FINAL resolved skills by NAME, FIRST occurrence wins (drawer/list order — the row
+    higher in the section wins, which is what the user sees). Benign (no warning)."""
+    seen: set = set()
+    out: list = []
+    for skill in resolved:
+        name = getattr(skill, "name", None)
+        if name is not None:
+            if name in seen:
+                continue
+            seen.add(name)
+        out.append(skill)
+    return out
 
 
 def _resolve_inline(source: dict):
