@@ -17,7 +17,7 @@ import os
 import uuid
 from pathlib import Path
 
-from conftest import auth_user_id, seed_pm_prd
+from conftest import auth_user_id, entry_report_result
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select
 
@@ -56,9 +56,6 @@ def test_executor_populates_work_brief_for_thinker_and_worker(client, monkeypatc
     workspace.mkdir()
     init_workspace_repo(str(workspace))
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
-        return seed_pm_prd(run_id, idea)
-
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
@@ -75,7 +72,11 @@ def test_executor_populates_work_brief_for_thinker_and_worker(client, monkeypatc
         emits_outcome,
         budget,
         invocation_id=None,
+        edits_allowed=True,
+        **kwargs,
     ):
+        if not edits_allowed:
+            return entry_report_result(idea)
         # Emitting node (Reviewer): the real forced harness -> verdict reasons (NOT a work-brief).
         if emits_outcome:
             return team_run._forced_review_outcome(iteration)
@@ -96,7 +97,6 @@ def test_executor_populates_work_brief_for_thinker_and_worker(client, monkeypatc
             "cost_usd": 0.0,
         }
 
-    monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
     monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 

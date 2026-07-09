@@ -63,6 +63,26 @@ _PART_REVISION = "revision"
 _PART_GROUNDING = "grounding"
 _PART_WORKER_PROTOCOL = "worker_protocol"
 _PART_WORKER_FOCUS = "worker_focus"
+# M-unify U1 (D2.5): the report-only capability note — appended ONLY for an edits-OFF node. Its body
+# is the brief's verbatim-close text; a ``--- REPORT-ONLY NODE ---`` header delimits it like every
+# other typed part (each carries its own leading separator/header). The "do NOT build or implement"
+# clarification of "report-only" was added after a live observation that an entry agent, given a
+# build-shaped idea, implements the FEATURE (e.g. greeting.txt) instead of writing its report to
+# REPORT.md — a faithful elaboration of "report-only", not a rewrite.
+_PART_CAPABILITY_NOTE = "capability_note"
+_CAPABILITY_NOTE_BODY = (
+    "File changes you make in this run are not applied anywhere — this node is report-only: do NOT "
+    "build or implement the feature, and create no code/feature files. Write your complete "
+    "deliverable — a written report — to REPORT.md at the workspace root. Do not attempt "
+    "workarounds to apply file changes."
+)
+
+
+def _capability_note_text() -> str:
+    """The edits-off capability note part text (header + verbatim body). A module fn so the executor
+    + tests reference the SAME string when asserting 'the note is present iff edits-off'."""
+    return f"\n\n--- REPORT-ONLY NODE ---\n{_CAPABILITY_NOTE_BODY}"
+
 
 # C4 static-first partition (large-spec handle path only): the STABLE parts (fixed across every loop
 # iteration of a run — the node prompt, the once-computed grounding, the constant worker protocol /
@@ -77,6 +97,11 @@ _STATIC_FIRST_NAMES = (
     _PART_IDEA,
     _PART_SPEC,
     _PART_REVISION,
+    # M-unify U1: the edits-off capability note trails (edits-on nodes never reach the handle path
+    # with a note — they have none). Present in the order so ``_static_first`` never KeyErrors when
+    # a
+    # report-only node with a large spec offloads.
+    _PART_CAPABILITY_NOTE,
 )
 
 
@@ -163,34 +188,44 @@ def compile_context(
     *,
     node_prompt: str,
     idea: str,
-    spec: str,
+    spec: str | None,
     iteration: int,
     reviewer_feedback: str | None,
     grounding: str | None,
     emits_outcome: bool,
     subpath: str | None,
     budget: int,
+    edits_allowed: bool = True,
     handle_threshold: int = _SPEC_HANDLE_TOKEN_THRESHOLD,
 ) -> CompiledContext:
-    """Compile one worker node's typed context parts + assembled instruction (pure; see the module
+    """Compile one node's typed context parts + assembled instruction (pure; see the module
     docstring). Preserves the EXACT pre-refactor conditional logic:
 
-    * ``node_prompt`` + ``idea`` + ``spec`` (the live PRD) are always present;
+    * ``node_prompt`` + ``idea`` are always present; ``spec`` (the live PRD) is present when
+    non-None
+      — the ONLY None case is the ENTRY node's FIRST invocation, which has no spec yet (it CREATES
+      it), so its part is omitted; every worker caller passes a real spec (byte-identical);
     * ``revision`` only on a rework round (``iteration > 1 and reviewer_feedback``);
     * ``grounding`` only for a brownfield run (``grounding`` truthy);
     * ``worker_protocol`` only for a brownfield WORKER (``grounding and not emits_outcome``);
     * ``worker_focus`` only for a brownfield worker on a sub-path scope (…``and subpath``).
 
+    M-unify U1 (D2.5): ``edits_allowed=False`` appends ONE trailing ``capability_note`` part (the
+    report-only instruction). ``edits_allowed`` defaults True (an edits-ON worker), so the worker
+    compiled instruction + manifest are byte-identical to before — the golden test + every worker
+    fixture never pass this arg and never see a note.
+
     The budget is checked over the FULL inline content; the C4 handle offloads a large spec only
     when under budget (see the module docstring). ``budget`` is the resolved per-node input budget
     (:func:`resolve_context_budget`)."""
     # 1. Build the FULL inline typed parts, in the ORIGINAL order, byte-identical to today's
-    #    assembly: node_prompt + idea + spec [+ revision] [+ grounding [+ protocol [+ focus]]].
+    #    assembly: node_prompt + idea [+ spec] [+ revision] [+ grounding [+ protocol [+ focus]]].
     parts: list[ContextPart] = [
         _part(_PART_NODE_PROMPT, node_prompt),
         _part(_PART_IDEA, f"\n\n--- ORIGINAL IDEA ---\n{idea}"),
-        _part(_PART_SPEC, f"\n\n--- PRD ---\n{spec}"),
     ]
+    if spec is not None:
+        parts.append(_part(_PART_SPEC, f"\n\n--- PRD ---\n{spec}"))
     if iteration > 1 and reviewer_feedback:
         parts.append(_part(_PART_REVISION, _revision_text(iteration, reviewer_feedback)))
     if grounding:
@@ -199,6 +234,11 @@ def compile_context(
             parts.append(_part(_PART_WORKER_PROTOCOL, f"\n\n{WORKER_PROTOCOL}"))
             if subpath:
                 parts.append(_part(_PART_WORKER_FOCUS, f"\n\n{worker_focus_directive(subpath)}"))
+    # M-unify U1 (D2.5): a report-only (edits-off) node gets ONE trailing part telling it its file
+    # changes are not applied and to write its deliverable to REPORT.md. Edits-ON nodes get NO new
+    # part (default), so their instruction + manifest stay byte-identical.
+    if not edits_allowed:
+        parts.append(_part(_PART_CAPABILITY_NOTE, _capability_note_text()))
 
     total_tokens = sum(p.tokens for p in parts)
     fattest = max(parts, key=lambda p: p.tokens)
@@ -207,11 +247,12 @@ def compile_context(
     # 2. Budget is over the FULL inline content (above). Only when UNDER budget do we apply the C4
     #    handle (a layout optimisation). Over budget ⇒ the caller fails pre-call naming ``fattest``;
     #    the instruction stays inline (it is never sent). Under budget + big spec ⇒ offload +
-    #    reorder.
+    #    reorder. The entry's first invocation has no spec part ⇒ ``spec_part`` None ⇒ handle never
+    #    fires (nothing to offload).
     handle_used = False
     spec_doc: str | None = None
-    spec_part = next(p for p in parts if p.name == _PART_SPEC)
-    if not over_budget and spec_part.tokens > handle_threshold:
+    spec_part = next((p for p in parts if p.name == _PART_SPEC), None)
+    if spec_part is not None and not over_budget and spec_part.tokens > handle_threshold:
         handle_used = True
         spec_doc = spec  # the full spec text -> <workspace>/SPEC.md (the caller does the write)
         # Replace the inline spec with a one-line pointer (same "--- PRD ---" header) and reorder

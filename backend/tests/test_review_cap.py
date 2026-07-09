@@ -27,7 +27,7 @@ import time
 import uuid
 from pathlib import Path
 
-from conftest import auth_user_id, seed_pm_prd
+from conftest import auth_user_id, entry_report_result
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import func, select
 
@@ -74,9 +74,6 @@ def _stub_agent(monkeypatch, workspace: Path) -> list[tuple[int, str | None]]:
     can assert how many times the Engineer ran (the cap proof)."""
     engineer_calls: list[tuple[int, str | None]] = []
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
-        return seed_pm_prd(run_id, idea)
-
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
@@ -93,7 +90,11 @@ def _stub_agent(monkeypatch, workspace: Path) -> list[tuple[int, str | None]]:
         emits_outcome,
         budget,
         invocation_id=None,
+        edits_allowed=True,
+        **kwargs,
     ):
+        if not edits_allowed:
+            return entry_report_result(idea)
         # P1.8a unified agent step: the reviewer-style node runs the REAL forced harness
         # (TVASHTR_FORCE_REVISIONS over the cap drives the escalation); the worker records each
         # call (the cap proof) + the attempt row + writes the deliverable.
@@ -113,7 +114,6 @@ def _stub_agent(monkeypatch, workspace: Path) -> list[tuple[int, str | None]]:
             "cost_usd": 0.0,
         }
 
-    monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
     monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
     return engineer_calls

@@ -15,7 +15,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from conftest import auth_user_id, seed_pm_prd
+from conftest import auth_user_id, maybe_write_entry_report
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select
 
@@ -56,6 +56,10 @@ class _FakeAdapter:
         self._captured = captured
 
     def run(self, task, on_event=None):
+        if maybe_write_entry_report(task):
+            return AgentRunResult(
+                status="completed", summary="report", events=[], files_changed=["REPORT.md"]
+            )
         self._captured["instruction"] = task.instruction
         self._captured["workspace_mode"] = task.workspace_mode
         calc = Path(task.workspace_dir) / "calculator.py"
@@ -73,9 +77,6 @@ def test_brownfield_run_lands_on_real_branch_offline(client, monkeypatch, tmp_pa
     original_head = _git(fixture, "rev-parse", "HEAD").stdout.strip()
 
     captured: dict = {}
-    monkeypatch.setattr(
-        team_run, "pm_step", lambda run_id, idea, m, p, mt, inv=None: seed_pm_prd(run_id, idea)
-    )
     monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _FakeAdapter(captured))
 
     run_id = str(uuid.uuid4())
@@ -179,6 +180,10 @@ class _ReviewLoopFakeAdapter:
         self._module_rel = module_rel
 
     def run(self, task, on_event=None):
+        if maybe_write_entry_report(task):
+            return AgentRunResult(
+                status="completed", summary="report", events=[], files_changed=["REPORT.md"]
+            )
         ws = Path(task.workspace_dir)
         if "You are the Reviewer" in task.instruction:
             self._captured["reviewer_instruction"] = task.instruction
@@ -227,9 +232,6 @@ def test_brownfield_review_loop_worker_gets_protocol_reviewer_does_not_offline(
     original_head = _git(fixture, "rev-parse", "HEAD").stdout.strip()
 
     captured: dict = {}
-    monkeypatch.setattr(
-        team_run, "pm_step", lambda run_id, idea, m, p, mt, inv=None: seed_pm_prd(run_id, idea)
-    )
     monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _ReviewLoopFakeAdapter(captured))
 
     run_id = str(uuid.uuid4())
@@ -317,9 +319,6 @@ def test_brownfield_review_loop_reviewer_cannot_clobber_worker_edit_offline(
 
     captured: dict = {}
     monkeypatch.setattr(
-        team_run, "pm_step", lambda run_id, idea, m, p, mt, inv=None: seed_pm_prd(run_id, idea)
-    )
-    monkeypatch.setattr(
         team_run, "resolve_adapter", lambda name: _ReviewLoopFakeAdapter(captured, clobber=True)
     )
 
@@ -404,9 +403,6 @@ def test_brownfield_subpath_appends_worker_focus_reviewer_excluded_offline(
     original_head = _git(fixture, "rev-parse", "HEAD").stdout.strip()
 
     captured: dict = {}
-    monkeypatch.setattr(
-        team_run, "pm_step", lambda run_id, idea, m, p, mt, inv=None: seed_pm_prd(run_id, idea)
-    )
     monkeypatch.setattr(
         team_run,
         "resolve_adapter",

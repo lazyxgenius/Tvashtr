@@ -15,9 +15,9 @@ import uuid
 from pathlib import Path
 from uuid import uuid4
 
-from conftest import auth_user_id
+from conftest import auth_user_id, entry_report_result
 from dbos import DBOS, SetWorkflowID
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from tvashtr.control_plane import team_run
 from tvashtr.control_plane.shipping import init_workspace_repo
@@ -97,8 +97,10 @@ def test_read_latest_prd_step_is_a_dbos_step():
     sibling step (``pm_step``) has and that a known plain helper (``next_node``) lacks — robust
     against any single attribute's semantics shifting between DBOS versions."""
     markers = ("__wrapped__", "dbos_func_decorator_info", "dbos_function_name")
-    # sanity: a known step carries them; a known plain function carries none.
-    assert all(hasattr(team_run.pm_step, m) for m in markers)
+    # sanity: a known step carries them; a known plain function carries none. (M-unify U1: pm_step
+    # is
+    # gone — use the unified agent_run_step as the known-sibling @DBOS.step.)
+    assert all(hasattr(team_run.agent_run_step, m) for m in markers)
     assert not any(hasattr(team_run.next_node, m) for m in markers)
     # the re-read carries the same step markers -> it is a recorded step.
     assert all(hasattr(team_run.read_latest_prd_step, m) for m in markers)
@@ -143,17 +145,6 @@ def test_mid_run_prd_edit_reaches_the_revision_engineer(client, monkeypatch, tmp
     # Each Engineer call's (iteration, prd_text-it-received) — the observable of the re-source.
     engineer_prds: list[tuple[int, str]] = []
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
-        # Real document write (minus the LLM) so read_latest_prd_step resolves to a real version.
-        doc = create_document_with_initial_version(
-            "Mini-PRD", "prd", f"PRD v1 for: {idea}", "agent:pm", f"{run_id}:pm-prd-v1"
-        )
-        with session_scope() as session:
-            session.execute(
-                update(Run).where(Run.id == uuid.UUID(run_id)).values(pm_document_id=doc.id)
-            )
-        return {"document_id": str(doc.id), "prd_text": f"PRD v1 for: {idea}"}
-
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
@@ -170,7 +161,11 @@ def test_mid_run_prd_edit_reaches_the_revision_engineer(client, monkeypatch, tmp
         emits_outcome,
         budget,
         invocation_id=None,
+        edits_allowed=True,
+        **kwargs,
     ):
+        if not edits_allowed:
+            return entry_report_result(idea)
         # P1.8a: ONE generic agent step. The reviewer-style node runs the real forced harness; the
         # engineer-style worker records the PRD IT RECEIVED (``prd_text`` — the observable of the
         # live re-source), writes the attempt row + deliverable, and — between round 1 and the
@@ -200,7 +195,6 @@ def test_mid_run_prd_edit_reaches_the_revision_engineer(client, monkeypatch, tmp
             "cost_usd": 0.0,
         }
 
-    monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
     monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 
@@ -214,5 +208,6 @@ def test_mid_run_prd_edit_reaches_the_revision_engineer(client, monkeypatch, tmp
     # The Engineer ran twice. Round 1 re-sourced the PM's v1; round 2 re-sourced the LIVE human
     # edit — the document, not the once-captured snapshot, is the source of truth (J3).
     assert [it for it, _ in engineer_prds] == [1, 2]
-    assert engineer_prds[0][1] == "PRD v1 for: build greeting.txt"
+    # M-unify U1: v1 is now the entry node's REPORT.md (``PRD: {idea}`` from entry_report_result).
+    assert engineer_prds[0][1] == "PRD: build greeting.txt"
     assert engineer_prds[1][1] == _STEERED_PRD  # <-- the keystone; FAILS if the re-source reverts

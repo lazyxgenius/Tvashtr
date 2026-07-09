@@ -12,7 +12,7 @@ events instead of dropping them on the old ``(run_id, seq)`` collision.
 import uuid
 from pathlib import Path
 
-from conftest import auth_user_id, seed_pm_prd
+from conftest import auth_user_id, entry_report_result, maybe_write_entry_report
 from dbos import DBOS, SetWorkflowID
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -65,9 +65,6 @@ def _drive_forced_two_round_run(monkeypatch, tmp_path) -> str:
     workspace.mkdir()
     init_workspace_repo(str(workspace))
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
-        return seed_pm_prd(run_id, idea)
-
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
@@ -84,7 +81,11 @@ def _drive_forced_two_round_run(monkeypatch, tmp_path) -> str:
         emits_outcome,
         budget,
         invocation_id,
+        edits_allowed=True,
+        **kwargs,
     ):
+        if not edits_allowed:
+            return entry_report_result(idea)
         # The outcome-emitting (reviewer) node routes through the REAL forced harness (no events).
         if emits_outcome:
             return team_run._forced_review_outcome(iteration)
@@ -107,7 +108,6 @@ def _drive_forced_two_round_run(monkeypatch, tmp_path) -> str:
             "cost_usd": 0.001,
         }
 
-    monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
     monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 
@@ -323,6 +323,10 @@ class _EmittingAdapter:
     name = "openhands-docker"
 
     def run(self, task, on_event=None):
+        if maybe_write_entry_report(task):
+            return AgentRunResult(
+                status="completed", summary="report", events=[], files_changed=["REPORT.md"]
+            )
         if on_event is not None:
             on_event(EngineEvent(seq=0, kind="action", payload={"stub": True}))
             on_event(EngineEvent(seq=1, kind="observation", payload={"stub": True}))
@@ -352,7 +356,6 @@ def test_real_agent_run_step_scopes_events_to_invocation(client, monkeypatch, tm
 
     # Fake ONLY the LLM / workspace-setup seams; agent_run_step itself runs for real so its
     # make_run_event_sink(run_id, invocation_id) construction is exercised end-to-end.
-    monkeypatch.setattr(team_run, "pm_step", lambda r, i, m, p, mt, inv=None: seed_pm_prd(r, i))
     monkeypatch.setattr(team_run, "engineer_setup_step", lambda run_id: str(workspace))
     monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _EmittingAdapter())
 

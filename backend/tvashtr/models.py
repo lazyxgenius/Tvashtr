@@ -30,6 +30,20 @@ class Base(DeclarativeBase):
     pass
 
 
+def _edits_allowed_default_from_kind(context) -> bool:
+    """M-unify U1 (migration ``0024``): the ORM insert-time default for
+    ``agent_nodes.edits_allowed``
+    — it MAPS ``kind`` (a worker ``agent`` is edits-ON; every other kind is edits-OFF), so any
+    ``AgentNode(...)`` that omits ``edits_allowed`` derives it from the node's own kind rather than
+    a
+    blanket DB default (the column carries NO server default by design — see the migration). An
+    EXPLICIT ``edits_allowed=`` on the construction always overrides this. Context-sensitive
+    default:
+    SQLAlchemy passes the pending row's parameters, so ``kind`` (always set on every insert) is
+    available here."""
+    return context.get_current_parameters().get("kind") == "agent"
+
+
 class SpikeHelloEvent(Base):
     """One row per durable step execution in the hello_durable spike."""
 
@@ -233,6 +247,18 @@ class AgentNode(Base):
     # so the executor + adapters run byte-for-byte as before — the seam is inert until populated.
     tool_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     skills: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # M-unify U1 (migration ``0024``): the ONE capability distinction after the executor
+    # unification.
+    # ``True`` ⇒ a worker whose file changes are pulled to the shippable worktree; ``False`` ⇒
+    # report-only (runs the full agent loop but pulls EXACTLY ``REPORT.md`` +
+    # ``REVIEW_VERDICT.json``
+    # — no workspace mutation leaves the sandbox). NOT NULL with NO server default: the insert-time
+    # default MAPS ``kind`` (:func:`_edits_allowed_default_from_kind`) so a node's capability tracks
+    # how it was authored; an explicit value (the API PATCH, ``clone_team_graph``) always wins.
+    # ``kind`` stays but is now vestigial for dispatch (a later slice drops it).
+    edits_allowed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=_edits_allowed_default_from_kind
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

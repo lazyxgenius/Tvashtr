@@ -22,7 +22,7 @@ import os
 import uuid
 from pathlib import Path
 
-from conftest import auth_user_id, seed_pm_prd
+from conftest import auth_user_id, entry_report_result
 from dbos import DBOS, SetWorkflowID
 
 from tvashtr.control_plane import team_run
@@ -41,9 +41,6 @@ def _full_run_fakes(monkeypatch, workspace):
     Engineer writes the deliverable + reports ``files_changed`` (so its brief is the files variant),
     the PM seeds the PRD."""
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
-        return seed_pm_prd(run_id, idea)
-
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
@@ -60,7 +57,11 @@ def _full_run_fakes(monkeypatch, workspace):
         emits_outcome,
         budget,
         invocation_id=None,
+        edits_allowed=True,
+        **kwargs,
     ):
+        if not edits_allowed:
+            return entry_report_result(idea)
         if emits_outcome:
             return team_run._forced_review_outcome(iteration)
         with session_scope() as session:
@@ -77,7 +78,6 @@ def _full_run_fakes(monkeypatch, workspace):
             "cost_usd": 0.0,
         }
 
-    monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
     monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 
@@ -172,24 +172,20 @@ def test_authoring_last_run_is_latest_across_runs_and_survives_a_skip(
 
     # --- Run 2: the PM runs and closes its brief, then the Engineer SETUP raises -> the Engineer
     #     invocation never OPENS, so run2 SKIPS the Engineer entirely. ---
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
-        return seed_pm_prd(run_id, idea)
 
-    def _raise_engineer_setup(run_id):
-        raise RuntimeError("decision-b: skip the Engineer in run2")
-
-    monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
-    monkeypatch.setattr(team_run, "engineer_setup_step", _raise_engineer_setup)
+    # M-unify U1: workspace setup + the invocation open now happen at the ENTRY / per node, so the
+    # old
+    # "raise in engineer_setup" skip would kill the PM (or open a stray Engineer invocation).
+    # Instead
+    # REJECT the PRD gate in run2: the PM runs + closes its brief, the gate routes to the stop
+    # terminal, and the Engineer is NEVER reached (no invocation opens) — a clean skip that keeps
+    # the
+    # Engineer's authoring brief on run1.
+    monkeypatch.setattr(team_run, "wait_at_gate", lambda *a, **k: {"resolution": "rejected"})
     _clone2, run2 = _run_clone(library_id)
     with SetWorkflowID(run2):
         h2 = DBOS.start_workflow(team_run.run_team, "build greeting.txt")
-    # run2 fails (the Engineer setup raised) — get_result re-raises; the PM invocation persisted.
-    run2_failed = False
-    try:
-        h2.get_result()
-    except Exception:
-        run2_failed = True
-    assert run2_failed, "run2 should fail at the Engineer setup, skipping the Engineer"
+    assert h2.get_result()["status"] == "rejected"  # gate-rejected → stop; the Engineer was skipped
 
     last = _authored_last_run(client, library_id)
 

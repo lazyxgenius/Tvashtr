@@ -23,14 +23,12 @@ from conftest import auth_user_id
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select, update
 
-from tvashtr.config import get_settings
 from tvashtr.control_plane import team_run
 from tvashtr.control_plane.context_compiler import SPEC_HANDLE_FILENAME
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.db import session_scope
 from tvashtr.documents.service import create_document_with_initial_version
 from tvashtr.engines.base import AgentRunResult
-from tvashtr.gateway import CompletionResult
 from tvashtr.models import AgentInvocation, AgentNode, Run
 
 _WORKSPACE_ROOT = Path(__file__).resolve().parents[1] / ".tvashtr_workspaces"
@@ -83,10 +81,19 @@ class _RecordingAdapter:
 
     name = "openhands"
 
-    def __init__(self, captured: dict) -> None:
+    def __init__(self, captured: dict, report: str | None = None) -> None:
         self._captured = captured
+        self._report = report
 
     def run(self, task, on_event=None):
+        ws0 = Path(task.workspace_dir)
+        # M-unify U1: the entry (edits-off) node runs the agent path too — write its REPORT.md (the
+        # caller-chosen spec body) so the executor versions it as the spec the worker re-sources.
+        if "REPORT-ONLY NODE" in task.instruction:
+            (ws0 / "REPORT.md").write_text(self._report or "PRD: greeting", encoding="utf-8")
+            return AgentRunResult(
+                status="completed", summary="report", events=[], files_changed=["REPORT.md"]
+            )
         self._captured["adapter_called"] = True
         self._captured["instruction"] = task.instruction
         ws = Path(task.workspace_dir)
@@ -120,12 +127,12 @@ def test_over_context_budget_fails_run_naming_spec_and_persists_manifest(client,
 
     run_id = str(uuid.uuid4())
     _seed_run(run_id, team_graph_id, "Add a greeting.")
-    # Fake PM: seed the LARGE PRD (no LLM). The Engineer re-sources it live → over budget.
-    monkeypatch.setattr(
-        team_run, "pm_step", lambda r, i, m, p, mt, inv=None: _seed_prd(r, big_spec)
-    )
+    # M-unify U1: the entry (edits-off PM) writes the LARGE spec as its REPORT.md → versioned as v1;
+    # the Engineer re-sources it live → over budget (no LLM, one adapter fakes both nodes).
     captured: dict = {}
-    monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _RecordingAdapter(captured))
+    monkeypatch.setattr(
+        team_run, "resolve_adapter", lambda name: _RecordingAdapter(captured, report=big_spec)
+    )
 
     workspace = _WORKSPACE_ROOT / run_id
     try:
@@ -148,7 +155,10 @@ def test_over_context_budget_fails_run_naming_spec_and_persists_manifest(client,
                     select(AgentInvocation.context_manifest).where(AgentInvocation.run_id == run_id)
                 ).all()
             ]
-        agent_manifest = next(m for m in manifests if m)  # the worker node's (others are NULL)
+        # M-unify U1: the entry node now also persists a manifest (it runs the agent path), so
+        # select
+        # the WORKER's by its tiny budget rather than the first non-null.
+        agent_manifest = next(m for m in manifests if m and m["budget"] == 100)
         assert agent_manifest["budget"] == 100
         assert agent_manifest["handle_used"] is False
         assert any(p["name"] == "spec" for p in agent_manifest["parts"])
@@ -156,71 +166,12 @@ def test_over_context_budget_fails_run_naming_spec_and_persists_manifest(client,
         shutil.rmtree(workspace, ignore_errors=True)
 
 
-# ---- C3: the thinker max_tokens is sourced from the setting (not 400), and a node override wins --
-
-
-def _capturing_complete(captured: dict):
-    def _fake_complete(request):
-        captured.setdefault("max_tokens_calls", []).append(request.max_tokens)
-        return CompletionResult(
-            text="PRD: greeting",
-            model_requested=request.model,
-            model_used=request.model,
-            prompt_tokens=1,
-            completion_tokens=1,
-            total_tokens=2,
-            cost_usd=0.0,
-            raw_provider="openrouter",
-            latency_ms=0.0,
-        )
-
-    return _fake_complete
-
-
-def test_thinker_max_tokens_sourced_from_setting_not_400(client, monkeypatch):
-    monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
-    team_graph_id = build_two_node_team()
-    run_id = str(uuid.uuid4())
-    _seed_run(run_id, team_graph_id, "Add greeting.txt")
-    captured: dict = {}
-    monkeypatch.setattr(team_run, "complete", _capturing_complete(captured))
-    monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _RecordingAdapter({}))
-
-    workspace = _WORKSPACE_ROOT / run_id
-    try:
-        with SetWorkflowID(run_id):
-            handle = DBOS.start_workflow(team_run.run_team, "Add greeting.txt")
-        result = handle.get_result()
-        assert result["status"] == "completed"
-        # The PM (real pm_step) passed the SETTING value as max_tokens — not the old hardcoded 400.
-        assert captured["max_tokens_calls"] == [get_settings().thinker_max_output_tokens]
-        assert 400 not in captured["max_tokens_calls"]
-    finally:
-        shutil.rmtree(workspace, ignore_errors=True)
-
-
-def test_thinker_max_tokens_per_node_override_wins(client, monkeypatch):
-    monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
-    team_graph_id = build_two_node_team()
-    # A per-node override on the PM (completion) node beats the setting default.
-    _set_node_config(
-        team_graph_id, "completion", {"model_config": {"thinker_max_output_tokens": 777}}
-    )
-    run_id = str(uuid.uuid4())
-    _seed_run(run_id, team_graph_id, "Add greeting.txt")
-    captured: dict = {}
-    monkeypatch.setattr(team_run, "complete", _capturing_complete(captured))
-    monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _RecordingAdapter({}))
-
-    workspace = _WORKSPACE_ROOT / run_id
-    try:
-        with SetWorkflowID(run_id):
-            handle = DBOS.start_workflow(team_run.run_team, "Add greeting.txt")
-        result = handle.get_result()
-        assert result["status"] == "completed"
-        assert captured["max_tokens_calls"] == [777]  # the per-node override, not the setting
-    finally:
-        shutil.rmtree(workspace, ignore_errors=True)
+# ---- C3 REMOVED (M-unify U1): the thinker OUTPUT-ceiling path (a completion `CompletionRequest.
+# max_tokens` from `resolve_thinker_max_tokens`) is GONE — the entry is now an AGENT (no direct
+# completion), so `test_thinker_max_tokens_sourced_from_setting_not_400` +
+# `test_thinker_max_tokens_per_node_override_wins` no longer have a code path to exercise and were
+# deleted. The pure resolver `resolve_thinker_max_tokens` is still unit-tested in
+# `test_context_compiler.py`. ----
 
 
 # ---- C4: a large spec becomes <workspace>/SPEC.md (agent reads it) + a pointer, and never ships --
@@ -232,11 +183,12 @@ def test_large_spec_writes_spec_md_pointer_and_never_ships(client, monkeypatch):
     big_spec = "S" * 8000  # ~2000 tok > the ~1500 handle threshold, under the 110000 budget
     run_id = str(uuid.uuid4())
     _seed_run(run_id, team_graph_id, "Add a greeting.")
-    monkeypatch.setattr(
-        team_run, "pm_step", lambda r, i, m, p, mt, inv=None: _seed_prd(r, big_spec)
-    )
+    # M-unify U1: the entry writes the large spec as its REPORT.md → versioned v1; the Engineer then
+    # re-sources it and the C4 handle offloads it to SPEC.md.
     captured: dict = {}
-    monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _RecordingAdapter(captured))
+    monkeypatch.setattr(
+        team_run, "resolve_adapter", lambda name: _RecordingAdapter(captured, report=big_spec)
+    )
 
     workspace = _WORKSPACE_ROOT / run_id
     try:

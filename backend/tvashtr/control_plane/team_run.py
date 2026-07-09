@@ -52,13 +52,12 @@ from tvashtr.control_plane.context_compiler import (
     SPEC_HANDLE_FILENAME,
     compile_context,
     resolve_context_budget,
-    resolve_thinker_max_tokens,
 )
 from tvashtr.control_plane.credentials import resolve_owner_api_key
 from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
-from tvashtr.control_plane.node_skills import build_skills, inject_skills_into_prompt
+from tvashtr.control_plane.node_skills import build_skills
 from tvashtr.control_plane.node_tools import build_mcp_config
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
 from tvashtr.control_plane.worktree import add_worktree, build_repo_grounding
@@ -71,8 +70,7 @@ from tvashtr.documents.service import (
 from tvashtr.engines.base import AgentTask
 from tvashtr.engines.registry import resolve_adapter
 from tvashtr.engines.run_event_sink import make_run_event_sink
-from tvashtr.gateway import CompletionRequest, complete
-from tvashtr.metering import record_agent_cost, record_cost, running_cost
+from tvashtr.metering import record_agent_cost, running_cost
 from tvashtr.models import AgentNode, Edge, EngineerRunAttempt, Run
 
 logger = logging.getLogger("tvashtr.control_plane.team_run")
@@ -80,8 +78,8 @@ logger = logging.getLogger("tvashtr.control_plane.team_run")
 
 def _owner_api_key(run_id: str, model: str) -> str:
     """Resolve the run owner's provider key for ``model`` (M-accounts Slice B — BYOK, NO ``.env``
-    fallback). Read INSIDE the spend-bearing step (``pm_step`` / ``thinker_refine_step`` /
-    ``agent_run_step``) rather than threaded as a step parameter — so the many tests that
+    fallback). Read INSIDE the spend-bearing ``agent_run_step`` (M-unify U1: the ONE unified path)
+    rather than threaded as a step parameter — so the many tests that
     monkeypatch those whole steps keep their existing signatures — and used transiently: the
     plaintext key is NEVER returned, so it is never persisted in a DBOS step-output checkpoint. The
     run is always owned (``create_run`` sets ``owner_id``; ``load_graph_step`` hard-asserts it), so
@@ -155,6 +153,10 @@ def load_graph_step(run_id: str) -> dict:
             # unchanged; at load they ride the picklable graph dict like prompt/model/config.
             "tool_config": n.tool_config,
             "skills": n.skills,
+            # M-unify U1: the ONE capability distinction the unified walk dispatches on — a worker
+            # (edits-on) pulls its file changes; a report-only node (edits-off) pulls only REPORT.md
+            # + the verdict. Rides the picklable graph dict so the walk reads a replay-stable value.
+            "edits_allowed": n.edits_allowed,
         }
         for n in nodes
     ]
@@ -258,59 +260,41 @@ def node_emits_outcome(edges: list[dict], node_id: str) -> bool:
 
 
 @DBOS.step()
-def pm_step(
-    run_id: str,
-    idea: str,
-    pm_model: str,
-    pm_prompt: str,
-    max_tokens: int,
-    invocation_id: int,
-    skills: list | None = None,
-) -> dict:
-    """PM node: a direct, metered gateway completion -> a versioned PRD document.
+def record_entry_spec_step(
+    run_id: str, node_id: str, iteration: int, report: str, spec_document_id: str | None
+) -> str:
+    """M-unify U1 (D2.3): version the ENTRY node's pulled ``REPORT.md`` into the run's shared spec
+    document — the unified REPLACEMENT for the old ``pm_step`` text→doc AND ``thinker_refine_step``
+    paths. Its input ``report`` is the entry ``agent_run_step``'s recorded return, so this step
+    replays deterministically on a crash.
 
-    P1.8a: the static behavior is the node's ``pm_prompt`` (seeded by the builder, moved off this
-    step); the executor appends the run's idea. Everything else is unchanged — this still writes
-    the versioned PRD document and sets ``Run.pm_document_id`` (the start-node-writes-the-PRD
-    convention stays structural, dispatched by ``current == start_id``, not by role).
-
-    M-ctx1 (C3): ``max_tokens`` is the resolved thinker OUTPUT ceiling (setting default or per-node
-    override — :func:`context_compiler.resolve_thinker_max_tokens`), replacing the hardcoded 400
-    that
-    silently truncated the drafted spec as it grew."""
-    prompt = pm_prompt + f"\n\nFeature request:\n{idea}"
-    # M-tools C7.0: fold this thinker node's inline skills into its prompt. A stub today —
-    # inject_skills_into_prompt returns the prompt unchanged when skills is None/empty, so this is
-    # byte-for-byte inert; C7.B prepends the resolved skill content.
-    prompt = inject_skills_into_prompt(skills, prompt, run_id)
-    request = CompletionRequest(
-        model=pm_model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-        max_tokens=max_tokens,
-        # M-accounts Slice B: resolve THIS run owner's key for the PM's model (BYOK, no .env).
-        api_key=_owner_api_key(run_id, pm_model),
-    )
-    result = complete(request)
-    record_cost(
-        result,
-        workflow_id=run_id,
-        idempotency_key=f"{run_id}:pm-llm",
-        invocation_id=invocation_id,
-    )
-
-    document = create_document_with_initial_version(
-        title="Mini-PRD",
-        doc_type="prd",
-        content=result.text,
-        created_by="agent:pm",
-        idempotency_key=f"{run_id}:pm-prd-v1",
-    )
-    with session_scope() as session:
-        session.execute(
-            update(Run).where(Run.id == uuid.UUID(run_id)).values(pm_document_id=document.id)
+    First entry invocation (``spec_document_id is None``): create the ``Mini-PRD`` document + its v1
+    from the report and set ``Run.pm_document_id`` — idempotent on the run's canonical
+    ``{run_id}:pm-prd-v1`` key (byte-compatible with the old PM's key + the offline harness). A
+    LATER
+    entry invocation (a refine round): append the report as the next version — idempotent on
+    ``{run_id}:spec:{node_id}:{iteration}`` (the old thinker-refine key shape). Returns the spec
+    document id (created or existing)."""
+    if spec_document_id is None:
+        document = create_document_with_initial_version(
+            title="Mini-PRD",
+            doc_type="prd",
+            content=report,
+            created_by="agent:entry",
+            idempotency_key=f"{run_id}:pm-prd-v1",
         )
-    return {"document_id": str(document.id), "prd_text": result.text}
+        with session_scope() as session:
+            session.execute(
+                update(Run).where(Run.id == uuid.UUID(run_id)).values(pm_document_id=document.id)
+            )
+        return str(document.id)
+    add_version(
+        uuid.UUID(spec_document_id),
+        report,
+        created_by="agent:entry",
+        idempotency_key=f"{run_id}:spec:{node_id}:{iteration}",
+    )
+    return spec_document_id
 
 
 @DBOS.step()
@@ -341,71 +325,11 @@ def read_latest_prd_step(run_id: str) -> str:
     return latest.content
 
 
-@DBOS.step()
-def thinker_refine_step(
-    run_id: str,
-    idea: str,
-    model: str,
-    prompt: str,
-    node_id: str,
-    iteration: int,
-    current_spec: str,
-    spec_document_id: str,
-    max_tokens: int,
-    invocation_id: int,
-    skills: list | None = None,
-) -> dict:
-    """A LATER thinker node (P1.8c): a metered gateway completion that REFINES the run's single
-    shared spec document and appends a new version.
-
-    The pivot's last fixed-function residue was that a completion node was valid ONLY as the start
-    node (the PM). This is the additive twin of :func:`pm_step` for any thinker AFTER the root: it
-    reads the current spec (passed in from the recorded :func:`read_latest_prd_step`, so the input
-    is deterministic on resume), runs the node's ``prompt`` over ``idea`` + ``current_spec``, and
-    appends the produced full spec as the next ``DocumentVersion`` of the SAME document
-    (``spec_document_id == Run.pm_document_id``). So a thinker is now composable ANYWHERE.
-
-    Same call shape + return shape as ``pm_step``. Idempotent on the per-node-per-iteration keys
-    (``…:thinker-llm:{node_id}:{iteration}`` for the cost row, ``…:spec:{node_id}:{iteration}`` for
-    the version), so a crash-resume re-reads the same recorded spec and re-appends the same version
-    exactly once. ``pm_step`` stays byte-identical (its ``pm-llm`` / ``pm-prd-v1`` keys unchanged),
-    so the single-thinker templates and their checkers are untouched."""
-    prompt_full = (
-        prompt
-        + f"\n\nFeature request:\n{idea}"
-        + (
-            "\n\n--- CURRENT SPEC (this is the spec so far — produce the COMPLETE updated spec, "
-            f"preserving everything still needed) ---\n{current_spec}"
-        )
-    )
-    # M-tools C7.0: fold this thinker node's inline skills into its refine prompt. A stub today —
-    # unchanged when skills is None/empty, so byte-for-byte inert; C7.B prepends resolved content.
-    prompt_full = inject_skills_into_prompt(skills, prompt_full, run_id)
-    request = CompletionRequest(
-        model=model,
-        messages=[{"role": "user", "content": prompt_full}],
-        temperature=0.3,
-        # M-ctx1 (C3): resolved thinker OUTPUT ceiling (setting default or per-node override),
-        # replacing the hardcoded 400 — the COMPLETE updated spec is no longer silently truncated.
-        max_tokens=max_tokens,
-        # M-accounts Slice B: this thinker resolves the owner's key for ITS model (BYOK, no .env).
-        api_key=_owner_api_key(run_id, model),
-    )
-    result = complete(request)
-    record_cost(
-        result,
-        workflow_id=run_id,
-        idempotency_key=f"{run_id}:thinker-llm:{node_id}:{iteration}",
-        invocation_id=invocation_id,
-    )
-    add_version(
-        uuid.UUID(spec_document_id),
-        result.text,
-        created_by="agent:thinker",
-        idempotency_key=f"{run_id}:spec:{node_id}:{iteration}",
-    )
-    return {"document_id": spec_document_id, "prd_text": result.text}
-
+# M-unify U1: the report-only deliverable file. An edits-off node's pull is scoped to EXACTLY this
+# + the verdict sidecar; the ENTRY node's REPORT.md becomes the next spec version. Shared constant
+# so
+# the pull-scope helper, the entry versioning, and the ship-exclusion all agree on the one name.
+REPORT_FILENAME = "REPORT.md"
 
 # P1.5c: keep review/test byproducts out of the shipped commit. ``idempotent_ship`` does
 # ``git add -A``, so anything matching this workspace ``.gitignore`` is excluded from the ship:
@@ -416,7 +340,57 @@ def thinker_refine_step(
 # picks it up (greenfield's ``os.walk`` container seed ignores ``.gitignore``, so the agent still
 # reads it). Brownfield writes no workspace ``.gitignore`` (its git-aware seed WOULD skip an ignored
 # file), so there the harvest-and-remove in ``agent_run_step`` is what keeps it out of the ship.
-_WORKSPACE_GITIGNORE = f"__pycache__/\n*.pyc\nREVIEW_VERDICT.json\n{SPEC_HANDLE_FILENAME}\n"
+# M-unify U1: ``REPORT.md`` joins the list — the entry node's report becomes the durable spec doc,
+# so
+# it must never ALSO land in the shipped worktree (it persists in the shared workspace after its
+# scoped pull keeps it; the reviewer/verdict sidecar is handled the same way).
+_WORKSPACE_GITIGNORE = (
+    f"__pycache__/\n*.pyc\nREVIEW_VERDICT.json\n{REPORT_FILENAME}\n{SPEC_HANDLE_FILENAME}\n"
+)
+
+
+def _resolve_pull_paths(*, edits_allowed: bool, emits_outcome: bool) -> tuple[str, ...] | None:
+    """M-unify U1 (D2.2) — the end-of-run pull scope, the UNION OF RESTRICTIONS (each applicable
+    rule
+    narrows the set of paths allowed to leave the sandbox; the scope is their INTERSECTION — the
+    most
+    restrictive). ``None`` ⇒ the adapter pulls EVERYTHING (byte-identical to a worker today).
+
+    * edits-ON + non-emitting (an ordinary worker) → ``None`` (unscoped; REPORT.md, if written,
+    rides
+      the full pull as an optional deliverable).
+    * edits-ON + emitting (a reviewer) → ``("REVIEW_VERDICT.json",)`` — the Slice-4 verdict-only
+    pull,
+      BYTE-IDENTICAL (its clobber protection must not regress).
+    * edits-OFF + non-emitting (the entry/thinker) → REPORT.md + verdict: its report is the
+      deliverable, no other workspace mutation leaves.
+    * edits-OFF + emitting (a report-only reviewer) → intersection → verdict-only (the Slice-4 rule
+      survives INDEPENDENTLY of the toggle).
+    """
+    if edits_allowed and not emits_outcome:
+        return None
+    allowed: set[str] | None = None
+    if not edits_allowed:
+        allowed = {REPORT_FILENAME, "REVIEW_VERDICT.json"}
+    if emits_outcome:
+        verdict_only = {"REVIEW_VERDICT.json"}
+        allowed = verdict_only if allowed is None else (allowed & verdict_only)
+    return tuple(sorted(allowed))
+
+
+# How many chars of a non-entry report-only node's REPORT.md are surfaced on its invocation detail
+# (D2.4: pulled + surfaced, never versioned into the spec — that is the entry node's job alone).
+_REPORT_SURFACE_CAP = 2000
+
+
+def _report_brief(report: str | None) -> str:
+    """The 'last run' detail for a NON-entry report-only (edits-off) node: surface its REPORT.md
+    (capped) so the inspector/work-brief shows the deliverable — it is NOT versioned into the
+    spec."""
+    if not report:
+        return "Ran report-only but wrote no REPORT.md."
+    body = report.strip()[:_REPORT_SURFACE_CAP]
+    return f"Report ({len(report)} chars):\n{body}"
 
 
 def _write_spec_handle(workspace: str, content: str) -> None:
@@ -719,7 +693,7 @@ def agent_run_step(
     model: str | None,
     iteration: int,
     idea: str,
-    prd_text: str,
+    prd_text: str | None,
     workspace: str,
     vkey: str | None,
     reviewer_feedback: str | None,
@@ -730,11 +704,22 @@ def agent_run_step(
     subpath: str | None = None,
     tool_config: dict | None = None,
     skills: list | None = None,
+    edits_allowed: bool = True,
 ) -> dict:
     """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
-    ``reviewer_agent_run_step``. Runs the node's ``node_prompt`` (its behavior, seeded by the
-    builder) against the sandboxed adapter behind the unchanged ``EngineAdapter``/``AgentTask``
-    contract, with the idea + live PRD (+ a revision block on a rework round) appended UNIFORMLY.
+    ``reviewer_agent_run_step``. M-unify U1: it is now the SINGLE path EVERY AgentNode executes
+    through — a thinker (the entry/PM), a worker (the Engineer), a reviewer — no more direct
+    completions. Runs the node's ``node_prompt`` (its behavior, seeded by the builder) against the
+    sandboxed adapter behind the unchanged ``EngineAdapter``/``AgentTask`` contract, with the idea +
+    live PRD (+ a revision block on a rework round) appended UNIFORMLY.
+
+    M-unify U1 capability toggle: ``edits_allowed`` (the ONE distinction, default True = a worker).
+    ``False`` ⇒ a report-only node — ``compile_context`` appends the capability note, the pull is
+    scoped to REPORT.md + the verdict (:func:`_resolve_pull_paths`), so NONE of its file changes
+    reach
+    the host. Its ``REPORT.md`` (if written) is read post-pull and returned as ``report`` (``None``
+    when absent) for the workflow body to version (entry) or surface (non-entry). ``prd_text`` is
+    ``None`` for the ENTRY node's FIRST invocation (no spec yet — it CREATES it).
 
     M-ctx1 (C2/C4): the instruction is assembled by the pure
     :func:`context_compiler.compile_context` (the moved-out, unit-tested typed-parts assembly —
@@ -790,6 +775,9 @@ def agent_run_step(
         emits_outcome=emits_outcome,
         subpath=subpath,
         budget=budget,
+        # M-unify U1 (D2.5): a report-only node gets the capability note; an edits-on worker gets NO
+        # new part, so its compiled instruction stays byte-identical to main.
+        edits_allowed=edits_allowed,
     )
     manifest = compiled.manifest()
 
@@ -851,13 +839,16 @@ def agent_run_step(
         model=model,
         llm_api_key=agent_api_key,
         workspace_mode="brownfield" if grounding is not None else "greenfield",
-        # Slice 4 (Item A): an outcome-emitting (reviewer) node is workspace-READ-ONLY — scope its
-        # end-of-run pull to the verdict sidecar so its container edits NEVER mutate the shippable
-        # host worktree (it must GATE, not implement; "Reviewer gates, never implements" now holds
-        # at the WORKSPACE, not just the prompt). A worker (``not emits_outcome``) leaves this None
-        # ⇒ the full pull, byte-identical to before. ``_harvest_verdict(workspace)`` still reads the
-        # sidecar the scoped pull carried home. The adapter learns a sync directive, not "reviewer".
-        pull_paths=("REVIEW_VERDICT.json",) if emits_outcome else None,
+        # M-unify U1 (D2.2) — the pull scope is the UNION OF RESTRICTIONS
+        # (:func:`_resolve_pull_paths`):
+        # edits-off ⇒ REPORT.md + verdict; an emitting node ⇒ verdict-only (the Slice-4 clobber
+        # protection — a reviewer's container edits NEVER mutate the shippable host worktree —
+        # survives
+        # UNCHANGED and independently of the toggle); an edits-on worker ⇒ None (the full pull,
+        # byte-identical to before). ``_harvest_verdict(workspace)`` still reads the sidecar the
+        # scoped
+        # pull carried home. The adapter learns a sync directive, not a role.
+        pull_paths=_resolve_pull_paths(edits_allowed=edits_allowed, emits_outcome=emits_outcome),
         # M-tools C7.0: the node's inline tools + skills, resolved via the Control Plane's OWN seams
         # (node_tools / node_skills) so team_run never learns content and stays openhands-free.
         # Both are stubs today — build_mcp_config(None)->{} (the adapter builds NO MCP tools) and
@@ -902,10 +893,21 @@ def agent_run_step(
             "outcome": None,
             "reasons": None,
             "files_changed": files_changed,
+            "report": None,
             "error": result.error,
             "context_manifest": manifest,
             **usage,
         }
+    # M-unify U1 (D2.1/D2.3): read the pulled REPORT.md (the report-only deliverable). Present for
+    # an
+    # edits-off node (in its scoped pull) or any node that chose to write one; None otherwise. This
+    # read happens AFTER the adapter's end-of-run pull (local: ``_restore_except`` kept the scoped
+    # paths incl. REPORT.md; docker: the selective pull carried it home), and its content is
+    # checkpointed in THIS step's return → the entry's spec version replays deterministically.
+    report_path = Path(workspace) / REPORT_FILENAME
+    report = (
+        report_path.read_text(encoding="utf-8", errors="replace") if report_path.exists() else None
+    )
     if emits_outcome:
         verdict = _harvest_verdict(workspace)
         label, reasons = verdict["outcome"], verdict["reasons"]
@@ -917,6 +919,7 @@ def agent_run_step(
         "outcome": label,
         "reasons": reasons,
         "files_changed": files_changed,
+        "report": report,
         "context_manifest": manifest,
         **usage,
     }
@@ -1026,11 +1029,13 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
     """The uniform graph walk (P1.5b) — replaces P1.5a's ``run_review_loop`` AND
     ``run_team``'s fixed pre/post phases. Walk from ``graph["start_node_id"]`` following
     :func:`next_node` until a ``terminal`` node ends the run (or an engine error /
-    over_budget / escalation-reject short-circuits to a finalize). Dispatch per node ``kind``:
-    ``completion`` (a "thinker" — the FIRST writes the shared spec from the idea via ``pm_step``;
-    a LATER one refines it via ``thinker_refine_step``; composable anywhere, P1.8c),
-    ``agent`` (the Engineer, with the loop cap), ``gate`` (pause for a human, route on
-    approve/reject), ``terminal`` (ship+finalize ``completed``, or stop+finalize ``rejected``).
+    over_budget / escalation-reject short-circuits to a finalize). M-unify U1 (D1 loop-always):
+    ``completion`` + ``agent`` kinds now execute through the ONE unified agent path
+    (:func:`agent_run_step`) — ``kind`` is vestigial for dispatch; the ONE capability distinction is
+    ``edits_allowed``. An edits-OFF node (a thinker/PM) runs the full agent loop but pulls only
+    REPORT.md + the verdict; the ENTRY node's REPORT.md becomes the next spec version. ``gate``
+    (pause for a human, route on approve/reject) + ``terminal`` (ship+finalize ``completed``, or
+    stop+finalize ``rejected``) stay DETERMINISTIC + unchanged.
 
     A **workflow-body helper** (NOT a ``@DBOS.step``) — like the old ``run_review_loop`` it
     issues ``wait_at_gate`` (a ``DBOS.recv``) and calls steps, which must run in workflow
@@ -1068,84 +1073,26 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
         node = nodes_by_id[current]
         kind = node["kind"]
 
-        if kind == "completion":
-            # P1.8c: a "thinker" node — composable ANYWHERE, not start-node-only. It writes/refines
-            # the run's single shared spec document. The FIRST thinker (no spec yet) creates it from
-            # the idea; a LATER thinker reads the current spec and appends a refined version. This
-            # retires the pivot's last fixed-function residue (the old non-start-completion fail).
-            # Dispatch on whether the spec exists yet (``pm_document_id``) — recomputed
+        if kind in ("completion", "agent"):
+            # M-unify U1 (D1 loop-always): the ``completion`` + ``agent`` kinds now execute through
+            # the SAME agent path — ``kind`` is vestigial for dispatch. The ONE capability
+            # distinction
+            # is ``edits_allowed``: a thinker (the entry/PM) is an edits-OFF agent whose REPORT.md
+            # becomes the spec; a worker (Engineer) is edits-ON; a reviewer is edits-ON + emitting.
+            edits_allowed = node["edits_allowed"]
+            # The ENTRY node (the graph root) OWNS the shared spec document: each completed
+            # invocation
+            # whose pull carries REPORT.md writes the NEXT spec version (D2.3) — replacing the old
+            # pm_step text→doc + thinker_refine_step paths. ``current == start_id`` is recomputed
             # deterministically from recorded step outputs as the walk replays, so it is crash-safe.
+            is_entry = current == start_id
             n = iters_by_node.get(current, 0) + 1
             iters_by_node[current] = n
-            inv_id = open_invocation_step(run_id, current, n)
-            # Capture first-vs-later BEFORE ``pm_document_id`` is reassigned below — it drives both
-            # the dispatch AND the per-node work-brief written at close (Option A).
-            is_first_thinker = pm_document_id is None
-            # M-ctx1 (C3): resolve the thinker OUTPUT ceiling from the setting + optional per-node
-            # override (``config.model_config.thinker_max_output_tokens``) and thread it into the
-            # step — replacing the hardcoded 400. Resolved in the workflow body off the recorded
-            # graph dict + settings (replay-stable) and passed as a step ARG, so the checkpoint
-            # stays deterministic on resume.
-            thinker_max_tokens = resolve_thinker_max_tokens(get_settings(), node["config"])
-            # M-tools C7.0: thread this thinker's inline skills to the step ONLY when set, so the
-            # inert path (skills NULL) calls the step with byte-identical args — every thinker
-            # fake still matches. Mirrors the brownfield_kwargs conditional idiom below.
-            thinker_skills_kwargs: dict = {}
-            if node.get("skills") is not None:
-                thinker_skills_kwargs["skills"] = node["skills"]
-            if is_first_thinker:
-                # The FIRST thinker (the root): create the spec doc from the idea. Byte-identical to
-                # the old PM path — same ``pm_step``, same ``pm-llm`` / ``pm-prd-v1`` keys, so the
-                # single-thinker templates + their checkers are untouched.
-                result = pm_step(
-                    run_id,
-                    idea,
-                    node["model"],
-                    node["prompt"],
-                    thinker_max_tokens,
-                    inv_id,
-                    **thinker_skills_kwargs,
-                )
-            else:
-                # A LATER thinker: read the current spec (recorded -> deterministic on resume),
-                # refine it, append a new version. A thinker is now composable ANYWHERE.
-                current_spec = read_latest_prd_step(run_id)
-                result = thinker_refine_step(
-                    run_id,
-                    idea,
-                    node["model"],
-                    node["prompt"],
-                    current,
-                    n,
-                    current_spec,
-                    pm_document_id,
-                    thinker_max_tokens,
-                    inv_id,
-                    **thinker_skills_kwargs,
-                )
-            pm_document_id = result["document_id"]
-            close_invocation_step(
-                run_id,
-                current,
-                n,
-                "done",
-                "prd_written",
-                outcome_detail=_thinker_brief(is_first_thinker, n),
-            )
-            if apply_budget_hook(run_id, node_id=current, iteration=n):
-                return _finalize_over_budget(run_id, pm_document_id)
-            current = next_node(edges, current, outcome=None)
-
-        elif kind == "agent":
-            n = iters_by_node.get(current, 0) + 1
-            iters_by_node[current] = n
-            # Cap-guard, GATED on having an escalation edge: only the Engineer has an
-            # ``edge_type="escalation"`` out-edge, so only the Engineer participates in the loop
-            # cap. The Reviewer (no escalation edge) and the 2-node Engineer (likewise) skip it —
-            # behavior-preserving for the Engineer in both teams (the 2-node Engineer's ``n`` was
-            # never ``> limit`` anyway). Same enforced-termination semantics as 5a's
-            # ``if n > max_iters``: do NOT run an over-limit iteration — route to the escalation
-            # gate (no invocation row for the capped n).
+            # Cap-guard, GATED on having an escalation edge: only a looping worker (the Engineer)
+            # has
+            # an ``edge_type="escalation"`` out-edge, so only it participates in the loop cap. A
+            # thinker/reviewer (no escalation edge) skips it — behavior-preserving. Same
+            # enforced-termination semantics as before: do NOT run an over-limit iteration.
             esc = escalation_target(edges, current)
             if esc is not None:
                 limit = loop_limit_for(edges, current, get_settings().max_review_iterations)
@@ -1153,54 +1100,49 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     current = esc
                     continue
             if workspace is None:
-                # Set up the workspace ONCE, at the first agent node — a worker reworks the prior
-                # round's files in place across iterations (DBOS step-replay won't recreate it on
-                # resume). A reviewer-style node reuses this SAME workspace, so it sees the build.
-                # Brownfield: a worktree of the real repo; greenfield: the empty local workspace.
-                # (engineer_setup_step reads the Run's repo_path itself, so this call site is
-                # byte-for-byte the prior greenfield call — the existing suite exercises it intact.)
+                # Set up the workspace ONCE, at the FIRST node the walk runs through the agent path
+                # (now the entry/thinker, no longer the Engineer) — reused across the run so a
+                # worker
+                # reworks the prior round's files in place. Brownfield: a worktree of the real repo;
+                # greenfield: the empty local workspace. (engineer_setup_step reads the Run's
+                # repo_path itself, so the greenfield call site is byte-for-byte the prior one.)
                 workspace = engineer_setup_step(run_id)
                 if brownfield:
-                    # D6: compute the repo-grounding block ONCE off the freshly-set-up worktree
-                    # (before the agent edits it), recorded → replayed verbatim on resume.
-                    # scoped-mount Slice 1: ``subpath`` roots the structure outline at one package
-                    # (None ⇒ whole-repo grounding, byte-for-byte unchanged).
+                    # D6: compute the repo-grounding block ONCE off the freshly-set-up worktree,
+                    # recorded → replayed verbatim on resume (``subpath`` roots the outline; None ⇒
+                    # whole-repo grounding, byte-for-byte unchanged).
                     grounding = brownfield_grounding_step(run_id, workspace, repo_basename, subpath)
             inv_id = open_invocation_step(run_id, current, n)
-            # Per-iteration virtual key: each mint reflects the THEN-current remaining budget,
-            # so the proxy enforces the run cap across the whole loop (P1.4b composes).
+            # Per-iteration virtual key: each mint reflects the THEN-current remaining budget.
             vkey = mint_vkey_step(run_id)
-            # P1.7a: re-source the PRD LIVE at every agent-node entry (every iteration) via a
-            # recorded step, so a human edit to the PRD propagates to the agent on THIS read (the
-            # document, not the PM's once-captured snapshot, is the source of truth). The ``idea``
-            # stays the immutable anchor — still threaded as a snapshot; only the PRD becomes live.
-            live_prd = read_latest_prd_step(run_id)
-            # P1.8a: ONE generic agent path — no ``config.agent_kind`` dispatch. Whether this node
-            # branches the walk on a routing label is a fact about the AUTHORED TOPOLOGY
-            # (:func:`node_emits_outcome` — does it have a conditional out-edge?), not a hardcoded
-            # role. ``agent_run_step`` runs ``node["prompt"]`` generically; it harvests a verdict
-            # iff ``emits`` (else outcome is None → the close label stays ``"built"``).
+            # Whether THIS is the entry's FIRST invocation (no spec yet ⇒ it CREATES the doc; a
+            # later
+            # entry invocation refines it). Captured BEFORE ``pm_document_id`` is reassigned below —
+            # it drives the create-vs-refine dispatch AND the thinker brief at close.
+            entry_was_first = is_entry and pm_document_id is None
+            # P1.7a: re-source the PRD LIVE at every agent-node entry via a recorded step — EXCEPT
+            # the
+            # entry's FIRST invocation, which has no spec yet (``pm_document_id is None``): it
+            # CREATES
+            # the spec from its REPORT.md, so it runs with ``spec=None`` (no PRD part compiled).
+            spec = read_latest_prd_step(run_id) if pm_document_id is not None else None
+            # Whether this node BRANCHES the walk on a routing label is a fact about the authored
+            # topology (a conditional out-edge), not a role — it harvests a verdict iff ``emits``.
             emits = node_emits_outcome(edges, current)
             # M-ctx1 (C2): resolve THIS node's INPUT-token budget (setting default + optional
-            # ``config.model_config.worker_context_token_budget`` override) — replay-stable off the
-            # recorded graph dict + settings, passed as a step ARG so ``agent_run_step`` fails a
-            # pre-call breach deterministically on resume.
+            # per-node override) — replay-stable off the recorded graph dict + settings.
             budget = resolve_context_budget(get_settings(), node["config"])
-            # M-brownfield: thread the repo-grounding block (+ scoped-mount Slice 1's sub-path) into
-            # the brownfield agent call. Greenfield (``grounding is None``) omits BOTH kwargs, so
-            # this is byte-for-byte the prior greenfield call — the existing offline suite drives
-            # that path UNCHANGED; whole-repo brownfield (``subpath`` None) omits ``subpath`` →
-            # byte-for-byte the prior brownfield call (only a scoped run appends the FOCUS block).
+            # M-brownfield: thread grounding (+ sub-path) into a brownfield call; greenfield omits
+            # BOTH ⇒ byte-for-byte the prior greenfield call (the existing offline suite drives it
+            # UNCHANGED); whole-repo brownfield omits ``subpath`` ⇒ the prior brownfield call.
             brownfield_kwargs: dict = {}
             if grounding is not None:
                 brownfield_kwargs["grounding"] = grounding
                 if subpath:
                     brownfield_kwargs["subpath"] = subpath
-            # M-tools C7.0: thread this worker node's inline tools + skills ONLY when set (same
-            # conditional idiom as brownfield_kwargs). The inert path (both NULL) calls the step
-            # with byte-identical args, so every existing agent_run_step fake still matches; when
-            # populated, the values flow to build_mcp_config / build_skills unchanged. Keys are
-            # disjoint from brownfield_kwargs (grounding/subpath), so unpackings never collide.
+            # M-tools C7.0: thread inline tools + skills ONLY when set (the inert path calls with
+            # byte-identical args). Keys disjoint from brownfield_kwargs, so unpackings never
+            # collide.
             tools_kwargs: dict = {}
             if node.get("tool_config") is not None:
                 tools_kwargs["tool_config"] = node["tool_config"]
@@ -1212,13 +1154,14 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 node["model"],
                 n,
                 idea,
-                live_prd,
+                spec,
                 workspace,
                 vkey,
                 reviewer_feedback,
                 emits,
                 budget,
                 inv_id,
+                edits_allowed=edits_allowed,
                 **tools_kwargs,
                 **brownfield_kwargs,
             )
@@ -1239,9 +1182,10 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 )
                 return _finalize_over_budget(run_id, pm_document_id)
             if result["status"] != "completed":
-                # M-ctx1: an ``over_context`` pre-call budget breach (or any engine error) lands
-                # here → the run finalizes ``failed`` with the self-explaining reason. The manifest
-                # is persisted so the breach's part sizes are queryable off the invocation row.
+                # An ``over_context`` pre-call budget breach (or any engine error) lands here → the
+                # run finalizes ``failed`` with the self-explaining reason. The manifest is
+                # persisted
+                # so the breach's part sizes are queryable off the invocation row.
                 close_invocation_step(
                     run_id,
                     current,
@@ -1261,33 +1205,77 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     "error": result.get("error"),
                 }
 
-            # Meter ONLY if the node actually spent — a forced/zero-usage reviewer writes no row,
-            # so the ``:agent-cost:%`` counts stay engineer-only. The per-node key
-            # (``…:agent-cost:{node_id}:{iteration}``) keeps the engineer's and a real reviewer's
-            # iter-1 rows from colliding while preserving the prefix the checkers count.
+            # Meter ONLY if the node actually spent — a forced/zero-usage reviewer writes no row.
+            # The per-node key (``…:agent-cost:{node_id}:{iteration}``) keeps distinct nodes' rows
+            # from colliding while preserving the ``:agent-cost:%`` prefix the checkers count. NOTE
+            # (M-unify U1): the ENTRY node now runs the real adapter too, so it writes its OWN
+            # agent-cost row — the counts gain +1/run vs the old pm-llm-metered PM.
             if result["total_tokens"] or result["cost_usd"]:
                 persist_agent_cost_step(run_id, current, node["model"], result, n, inv_id)
-            label = result["outcome"]  # None for a non-branching (engineer-style) node
-            # Per-node work-brief (Option A): an EMITTING worker (the Reviewer) keeps its verdict
-            # reasons as ``outcome_detail`` (byte-stable — §14.1 ReviewerView + §14.3 A/B read it);
-            # a NON-emitting worker (the Engineer) gets a deterministic files-changed brief instead
-            # of NULL. ``emits`` is the same authored-topology fact handed to ``agent_run_step``.
-            detail = result["reasons"] if emits else _worker_brief(result.get("files_changed", []))
+
+            # M-unify U1 (D2.3): the ENTRY node versions the shared spec from its pulled REPORT.md.
+            if is_entry:
+                report = result.get("report")
+                if report is None:
+                    # An entry invocation ending with no REPORT.md FAILS with a recorded reason (no
+                    # silent empty spec version) — reusing node-failure semantics, no new routing,
+                    # no
+                    # crash of the workflow.
+                    reason = "entry node produced no REPORT.md — no spec version written"
+                    logger.warning(
+                        "entry node missing REPORT.md run_id=%s node=%s iter=%s", run_id, current, n
+                    )
+                    close_invocation_step(
+                        run_id,
+                        current,
+                        n,
+                        "failed",
+                        None,
+                        outcome_detail=reason,
+                        context_manifest=result.get("context_manifest"),
+                    )
+                    mark_run_failed_step(run_id)
+                    DBOS.logger.error(f"run_team entry node produced no REPORT.md run_id={run_id}")
+                    return {
+                        "run_id": run_id,
+                        "status": "failed",
+                        "document_id": pm_document_id,
+                        "error": reason,
+                    }
+                pm_document_id = record_entry_spec_step(run_id, current, n, report, pm_document_id)
+
+            # Close label + detail. Routing is UNCHANGED — a non-emitting node routes on ``None``
+            # (the
+            # catch-all), an emitting one on its verdict. The stored outcome/detail: the entry keeps
+            # the thinker semantics (byte-stable ``prd_written`` + brief); an emitting reviewer
+            # keeps
+            # its verdict + reasons (byte-stable); a non-entry report-only node surfaces its report
+            # (D2.4); an edits-on worker is byte-identical to before (``built`` + files-brief).
+            route_label = result["outcome"]  # None for a non-emitting node → catch-all routing
+            if is_entry:
+                stored_outcome, detail = "prd_written", _thinker_brief(entry_was_first, n)
+            elif emits:
+                stored_outcome, detail = route_label or "built", result["reasons"]
+            elif not edits_allowed:
+                stored_outcome, detail = "reported", _report_brief(result.get("report"))
+            else:
+                stored_outcome = route_label or "built"
+                detail = _worker_brief(result.get("files_changed", []))
             close_invocation_step(
                 run_id,
                 current,
                 n,
                 "done",
-                label or "built",
+                stored_outcome,
                 outcome_detail=detail,
                 context_manifest=result.get("context_manifest"),
             )
             # Thread the verdict's reasons into the next agent's revision context (None for a
-            # worker → the next round carries no revision block).
+            # non-emitting node → the next round carries no revision block).
             reviewer_feedback = result["reasons"]
             if apply_budget_hook(run_id, node_id=current, iteration=n):
                 return _finalize_over_budget(run_id, pm_document_id)
-            current = next_node(edges, current, label)
+            current = next_node(edges, current, route_label)
 
         elif kind == "gate":
             # A human-approval checkpoint node: pause on the durable recv, then route on the

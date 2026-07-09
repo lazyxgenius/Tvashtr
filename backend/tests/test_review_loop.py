@@ -24,7 +24,7 @@ import os
 import uuid
 from pathlib import Path
 
-from conftest import auth_user_id, seed_pm_prd
+from conftest import auth_user_id, entry_report_result
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import func, select
 
@@ -64,9 +64,6 @@ def test_review_loop_cycles_once_then_ships(client, monkeypatch, tmp_path):
 
     engineer_calls: list[tuple[int, str | None]] = []
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
-        return seed_pm_prd(run_id, idea)
-
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
@@ -83,12 +80,16 @@ def test_review_loop_cycles_once_then_ships(client, monkeypatch, tmp_path):
         emits_outcome,
         budget,
         invocation_id=None,
+        edits_allowed=True,
+        **kwargs,
     ):
         # P1.8a: ONE generic agent step. The reviewer-style node (emits_outcome=True) routes
         # through the REAL forced harness so TVASHTR_FORCE_REVISIONS still drives the loop; the
         # engineer-style worker (emits_outcome=False) records its call (proves iteration + that
         # the revision round got feedback) + the non-idempotent attempt row (proves the step
         # "ran") + writes the deliverable so ship_step has something to commit.
+        if not edits_allowed:
+            return entry_report_result(idea)
         if emits_outcome:
             return team_run._forced_review_outcome(iteration)
         engineer_calls.append((iteration, reviewer_feedback))
@@ -105,7 +106,6 @@ def test_review_loop_cycles_once_then_ships(client, monkeypatch, tmp_path):
             "cost_usd": 0.0,
         }
 
-    monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
     monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 
@@ -195,9 +195,6 @@ def test_two_node_walk_ships_through_gate_and_terminal(client, monkeypatch, tmp_
     workspace.mkdir()
     init_workspace_repo(str(workspace))
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
-        return seed_pm_prd(run_id, idea)
-
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
@@ -214,9 +211,13 @@ def test_two_node_walk_ships_through_gate_and_terminal(client, monkeypatch, tmp_
         emits_outcome,
         budget,
         invocation_id=None,
+        edits_allowed=True,
+        **kwargs,
     ):
         # P1.8a unified agent step: a reviewer-style node runs the real forced harness; a worker
         # writes the deliverable + the non-idempotent attempt row.
+        if not edits_allowed:
+            return entry_report_result(idea)
         if emits_outcome:
             return team_run._forced_review_outcome(iteration)
         with session_scope() as session:
@@ -232,7 +233,6 @@ def test_two_node_walk_ships_through_gate_and_terminal(client, monkeypatch, tmp_
             "cost_usd": 0.0,
         }
 
-    monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
     monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 
@@ -314,9 +314,6 @@ def test_review_loop_persists_verdict_reasons_into_outcome_detail(client, monkey
     workspace.mkdir()
     init_workspace_repo(str(workspace))
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
-        return seed_pm_prd(run_id, idea)
-
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
@@ -333,9 +330,13 @@ def test_review_loop_persists_verdict_reasons_into_outcome_detail(client, monkey
         emits_outcome,
         budget,
         invocation_id=None,
+        edits_allowed=True,
+        **kwargs,
     ):
         # P1.8a unified agent step: a reviewer-style node runs the real forced harness; a worker
         # writes the deliverable + the non-idempotent attempt row.
+        if not edits_allowed:
+            return entry_report_result(idea)
         if emits_outcome:
             return team_run._forced_review_outcome(iteration)
         with session_scope() as session:
@@ -351,7 +352,6 @@ def test_review_loop_persists_verdict_reasons_into_outcome_detail(client, monkey
             "cost_usd": 0.0,
         }
 
-    monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
     monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 

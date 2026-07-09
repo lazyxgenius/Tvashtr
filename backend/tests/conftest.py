@@ -99,12 +99,11 @@ def unauth_client(client):
 
 
 def seed_pm_prd(run_id: str, idea: str) -> dict:
-    """No-LLM stand-in for ``team_run.pm_step``'s document side-effect, shared by the offline
-    ``run_team`` tests. Persists a REAL Mini-PRD document (v1) and sets ``Run.pm_document_id`` so
-    the executor's live PRD re-source (``read_latest_prd_step``, P1.7a) resolves on every
-    agent-node entry, then returns the same ``{"document_id", "prd_text"}`` shape the real step
-    returns. Idempotent on the run's canonical ``{run_id}:pm-prd-v1`` key (a re-run never orphans
-    a duplicate document)."""
+    """No-LLM stand-in for the old ``team_run.pm_step``'s document side-effect. Persists a REAL
+    Mini-PRD document (v1) and sets ``Run.pm_document_id`` directly, then returns the
+    ``{"document_id", "prd_text"}`` shape. Idempotent on the run's canonical ``{run_id}:pm-prd-v1``
+    key. RETAINED for the few tests that need a spec seeded WITHOUT running the entry node (M-unify
+    U1 removed ``pm_step`` — the entry now runs the agent path; see :func:`entry_report_result`)."""
     content = f"PRD: {idea}"
     document = create_document_with_initial_version(
         "Mini-PRD", "prd", content, "agent:pm", f"{run_id}:pm-prd-v1"
@@ -114,3 +113,46 @@ def seed_pm_prd(run_id: str, idea: str) -> dict:
             update(Run).where(Run.id == uuid.UUID(run_id)).values(pm_document_id=document.id)
         )
     return {"document_id": str(document.id), "prd_text": content}
+
+
+def maybe_write_entry_report(task) -> bool:
+    """M-unify U1: for a fake ``EngineAdapter`` (tests that patch ``resolve_adapter``). If ``task``
+    is a report-only (edits-off) node — detected by the capability note the compiler appends — write
+    ``REPORT.md`` to its workspace (content ``PRD: <idea>``, the idea lifted from the compiled
+    instruction, so the versioned spec matches the old ``seed_pm_prd``) and return True. A fake
+    adapter's ``run`` calls this FIRST to service the entry/thinker; returns False for a worker (the
+    fake then runs its normal worker branch)."""
+    import pathlib
+
+    if "REPORT-ONLY NODE" not in task.instruction:
+        return False
+    idea = ""
+    marker = "--- ORIGINAL IDEA ---\n"
+    if marker in task.instruction:
+        idea = task.instruction.split(marker, 1)[1].split("\n\n", 1)[0]
+    (pathlib.Path(task.workspace_dir) / "REPORT.md").write_text(f"PRD: {idea}", encoding="utf-8")
+    return True
+
+
+def entry_report_result(idea: str) -> dict:
+    """M-unify U1: the unified-path replacement for the old ``seed_pm_prd``→``pm_step`` fake. The
+    ENTRY node now runs the ONE agent path (``agent_run_step``) as a report-only (edits-off) node,
+    and the executor versions its returned ``report`` (``REPORT.md`` content) into the spec
+    document.
+    This is the fake ``agent_run_step`` return for an edits-off node: ``report = "PRD: {idea}"`` (so
+    the versioned spec matches what ``seed_pm_prd`` produced) with ZERO usage — mirroring the old
+    direct-completion PM, which never wrote an ``agent-cost`` row (keeps the ``:agent-cost:%``
+    counts
+    engineer-only). A fake ``agent_run_step`` branches on ``not edits_allowed`` to return this."""
+    return {
+        "status": "completed",
+        "outcome": None,
+        "reasons": None,
+        "report": f"PRD: {idea}",
+        "files_changed": [],
+        "context_manifest": None,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cost_usd": 0.0,
+    }

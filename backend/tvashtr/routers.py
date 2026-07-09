@@ -165,6 +165,11 @@ class UpdateTeamNodeRequest(BaseModel):
     # ``{prompt, model[, capability]}`` saves stay byte-for-byte back-compatible.
     tool_config: dict | None = None
     skills: list | None = None
+    # M-unify U1: the capability toggle. The FE still drives ``kind`` via ``capability`` until U3,
+    # so
+    # a ``capability`` change WITHOUT an explicit ``edits_allowed`` SYNCS it to ``kind == 'agent'``;
+    # an EXPLICIT value here always WINS (``model_fields_set`` distinguishes omitted from sent).
+    edits_allowed: bool | None = None
 
 
 class CreateTeamRequest(BaseModel):
@@ -288,6 +293,9 @@ def _node_base_dict(n: AgentNode) -> dict:
         # canvas ignores unknown keys, and the side panel round-trips these through the PATCH below.
         "tool_config": n.tool_config,
         "skills": n.skills,
+        # M-unify U1: the ONE capability distinction — True ⇒ a worker (its file changes ship);
+        # False ⇒ report-only (runs the loop, but only REPORT.md + the verdict leave the sandbox).
+        "edits_allowed": n.edits_allowed,
     }
 
 
@@ -1533,6 +1541,15 @@ def update_team_node(
             node.kind, node.engine = _capability_to_columns(body.capability)
         node.prompt = body.prompt
         node.model = body.model
+        # M-unify U1: the edits toggle. An EXPLICIT ``edits_allowed`` WINS (``model_fields_set``);
+        # else a ``capability`` (kind) change SYNCS it to ``kind == 'agent'`` (the FE drives kind
+        # via
+        # capability until U3); neither ⇒ unchanged. Ordered AFTER the capability flip so the sync
+        # reads the NEW kind.
+        if "edits_allowed" in body.model_fields_set:
+            node.edits_allowed = bool(body.edits_allowed)
+        elif body.capability is not None:
+            node.edits_allowed = node.kind == "agent"
         # M-tools C7.A (SHARED CONTRACT S2): persist tools + skills with CLEAR semantics —
         # ``model_fields_set`` distinguishes "field absent (omitted) -> leave unchanged" from "field
         # present-and-null -> set NULL (clear)". This is the ONLY change from the C7.0 scaffold's

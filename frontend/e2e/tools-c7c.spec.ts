@@ -43,16 +43,16 @@ test("M-tools C7.C: library shelves + Add-from-library pickers + overridden tag"
   await page.getByLabel("Tool name").fill("fetch");
   await page.getByLabel("Server config JSON").fill('{"command":"uvx","args":["mcp-server-fetch"]}');
   await page.getByRole("button", { name: "Add tool" }).click();
-  await expect(
-    page.locator(".tv-dash__prov-name", { hasText: "fetch" }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".tv-dash__prov-name", { hasText: "fetch" }).first()).toBeVisible({
+    timeout: 15_000,
+  });
 
   await page.getByLabel("Skill name").fill("house-style");
   await page.getByLabel("Skill content").fill("Prefer small, well-tested diffs.");
   await page.getByRole("button", { name: "Add skill" }).click();
-  await expect(
-    page.locator(".tv-dash__prov-name", { hasText: "house-style" }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".tv-dash__prov-name", { hasText: "house-style" }).first()).toBeVisible(
+    { timeout: 15_000 },
+  );
 
   await page.getByRole("heading", { name: "Tool library" }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(SHOTS, "a-library-shelves.png") });

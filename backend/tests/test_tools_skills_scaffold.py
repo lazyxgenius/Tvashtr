@@ -26,7 +26,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from conftest import auth_user_id, seed_pm_prd
+from conftest import auth_user_id, maybe_write_entry_report
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select, update
 
@@ -160,6 +160,10 @@ class _CapturingAdapter:
         self._captured = captured
 
     def run(self, task, on_event=None):
+        if maybe_write_entry_report(task):
+            return AgentRunResult(
+                status="completed", summary="report", events=[], files_changed=["REPORT.md"]
+            )
         self._captured["mcp_config"] = task.mcp_config
         self._captured["skills"] = task.skills
         (Path(task.workspace_dir) / "greeting.txt").write_text("hi\n", encoding="utf-8")
@@ -205,7 +209,6 @@ def test_worker_tool_config_and_skills_flow_to_the_agenttask(client, monkeypatch
         )
 
     # Fake PM (no LLM) + a capturing fake adapter (no container).
-    monkeypatch.setattr(team_run, "pm_step", lambda r, i, m, p, mt, inv=None: seed_pm_prd(r, i))
     captured: dict = {}
     monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _CapturingAdapter(captured))
 
@@ -230,7 +233,9 @@ def test_worker_tool_config_and_skills_flow_to_the_agenttask(client, monkeypatch
         assert captured["mcp_config"] == _SAMPLE_TOOLS
         # build_skills received the node's skills (its stub return [] then lands on the task).
         assert skills_calls, "build_skills was never called on the worker path"
-        assert skills_calls[0][0] == _SAMPLE_SKILLS
+        # M-unify U1: the entry (edits-off PM) now runs the agent path too and calls build_skills
+        # (with its own None skills) BEFORE the worker — so filter for the worker's call, not [0].
+        assert _SAMPLE_SKILLS in [c[0] for c in skills_calls]
         assert captured["skills"] == []
     finally:
         shutil.rmtree(workspace, ignore_errors=True)

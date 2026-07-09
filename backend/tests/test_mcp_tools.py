@@ -17,7 +17,7 @@ import shutil
 import uuid
 from pathlib import Path
 
-from conftest import auth_user_id, seed_pm_prd
+from conftest import auth_user_id, maybe_write_entry_report
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select, update
 
@@ -244,6 +244,10 @@ class _CapturingAdapter:
         self._captured = captured
 
     def run(self, task, on_event=None):
+        if maybe_write_entry_report(task):
+            return AgentRunResult(
+                status="completed", summary="report", events=[], files_changed=["REPORT.md"]
+            )
         self._captured["mcp_config"] = task.mcp_config
         self._captured["instruction"] = task.instruction
         (Path(task.workspace_dir) / "greeting.txt").write_text("hi\n", encoding="utf-8")
@@ -279,7 +283,6 @@ def test_resolved_secret_reaches_sandbox_but_never_prompt_row_or_events(client, 
             )
         )
 
-    monkeypatch.setattr(team_run, "pm_step", lambda r, i, m, p, mt, inv=None: seed_pm_prd(r, i))
     captured: dict = {}
     monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _CapturingAdapter(captured))
 

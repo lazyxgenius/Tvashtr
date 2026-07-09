@@ -16,7 +16,7 @@ import os
 import uuid
 from pathlib import Path
 
-from conftest import auth_user_id
+from conftest import auth_user_id, entry_report_result
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import func, select
 
@@ -103,7 +103,11 @@ def test_thinker_chain_runs_the_non_start_thinker_and_ships(client, monkeypatch,
         emits_outcome,
         budget,
         invocation_id=None,
+        edits_allowed=True,
+        **kwargs,
     ):
+        if not edits_allowed:
+            return entry_report_result(idea)
         # The Engineer is the only agent node, with no conditional out-edge -> emits_outcome False,
         # so it never short-circuits. Capture the spec it received (proves it read the REFINED spec
         # via read_latest_prd_step), record the attempt, and write the deliverable so ship has work.
@@ -121,7 +125,9 @@ def test_thinker_chain_runs_the_non_start_thinker_and_ships(client, monkeypatch,
             "cost_usd": 0.0,
         }
 
-    monkeypatch.setattr(team_run, "complete", _fake_complete)
+    # M-unify U1: no `team_run.complete` — the entry/architect run the agent path (fake below), not
+    # a
+    # direct completion. `_fake_complete` is retained only to document the old two-thinker markers.
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
     monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 
@@ -165,22 +171,25 @@ def test_thinker_chain_runs_the_non_start_thinker_and_ships(client, monkeypatch,
     assert run.status == "completed"
     assert run.ship_tag == f"ship-{run_id}"
 
-    # (1) The spec doc has EXACTLY 2 versions: PM v1 + the non-start Architect's v2 (it ran AND
-    #     appended). If the Architect had failed/not-run, there would be only 1.
-    assert n_versions == 2
+    # (1) M-unify U1 (D2.4): the NON-entry Architect (edits-off) runs the full agent loop and its
+    #     REPORT.md is SURFACED, but it NO LONGER versions the shared spec (downstream injection is
+    #     a
+    #     registered deferral). So the doc has EXACTLY 1 version — the ENTRY node's v1 — and the
+    #     Architect ran with a "reported" outcome (not "prd_written").
+    assert n_versions == 1
     doc = get_document_with_versions(document_id)
-    assert [v.version_no for v in doc.versions] == [1, 2]
-    assert doc.versions[0].created_by == "agent:pm"
-    assert doc.versions[1].created_by == "agent:thinker"
+    assert [v.version_no for v in doc.versions] == [1]
+    assert doc.versions[0].created_by == "agent:entry"
+    assert [i.outcome for i in architect_invs] == ["reported"]
+    assert pm_invs and [i.outcome for i in pm_invs] == ["prd_written"]
 
-    # (2) The worker read the REFINED spec via read_latest_prd_step — its prd_text carries BOTH
-    #     markers (the PM's, restated, AND the Architect's appended design).
+    # (2) The worker read the spec via read_latest_prd_step — the entry's v1 (the only version); the
+    #     Architect's refinement is surfaced-only, not injected downstream (D2.4 deferral).
     assert len(worker_prd) == 1
-    assert _PM_MARKER in worker_prd[0]
-    assert _ARCHITECT_MARKER in worker_prd[0]
+    assert worker_prd[0] == "PRD: build greeting.txt"
 
-    # (4) Both thinkers' invocations closed done/prd_written (the PM and the non-start Architect).
+    # (4) M-unify U1 (D2.4): the entry PM closes done/prd_written; the non-start Architect
+    # (edits-off)
+    # closes done/REPORTED (it surfaced a report but did not version the spec).
     assert [(i.iteration, i.status, i.outcome) for i in pm_invs] == [(1, "done", "prd_written")]
-    assert [(i.iteration, i.status, i.outcome) for i in architect_invs] == [
-        (1, "done", "prd_written")
-    ]
+    assert [(i.iteration, i.status, i.outcome) for i in architect_invs] == [(1, "done", "reported")]

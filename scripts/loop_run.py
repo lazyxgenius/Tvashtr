@@ -220,9 +220,9 @@ def _run_feature_mode(client) -> int:
 
 
 def main() -> int:
-    if not os.environ.get("OPENROUTER_API_KEY"):
+    if not os.environ.get("NVIDIA_BUILD_API_KEY"):
         print(
-            "[loop-run] OPENROUTER_API_KEY not set — skipping live run.\n"
+            "[loop-run] NVIDIA_BUILD_API_KEY not set — skipping live run.\n"
             "          Set it in .env to drive a real PM -> Engineer <-> Reviewer loop. "
             "(Not a failure.)"
         )

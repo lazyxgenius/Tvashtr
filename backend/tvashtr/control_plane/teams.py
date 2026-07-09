@@ -1026,6 +1026,10 @@ def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
                 # every node today, so the clone is byte-for-byte unchanged.
                 tool_config=deepcopy(n.tool_config),
                 skills=deepcopy(n.skills),
+                # M-unify U1: carry the capability toggle onto the run snapshot EXPLICITLY (not via
+                # the kind-mapped ORM default) so a node PATCH-toggled OFF-kind (e.g. an edits-off
+                # worker) clones faithfully — the run executes the authored capability.
+                edits_allowed=n.edits_allowed,
                 # M2: link the clone back to its origin authored node so the authoring endpoint can
                 # read "what did THIS authored node do last run" — correct even for duplicates.
                 cloned_from_node_id=n.id,

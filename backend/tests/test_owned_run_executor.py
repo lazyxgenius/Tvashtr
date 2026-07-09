@@ -12,6 +12,7 @@ import shutil
 import uuid
 from pathlib import Path
 
+from conftest import maybe_write_entry_report
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select
 
@@ -20,7 +21,6 @@ from tvashtr.control_plane.credentials import encrypt_secret, provider_for_model
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.db import session_scope
 from tvashtr.engines.base import AgentRunResult
-from tvashtr.gateway import CompletionResult
 from tvashtr.models import AgentNode, ProviderCredential, Run, User
 
 _WORKSPACE_ROOT = Path(__file__).resolve().parents[1] / ".tvashtr_workspaces"
@@ -66,6 +66,13 @@ class _KeyCapturingAdapter:
         self._captured = captured
 
     def run(self, task, on_event=None):
+        if maybe_write_entry_report(task):
+            # M-unify U1: the entry (edits-off) node runs the agent path too — capture ITS threaded
+            # owner key (the old "PM/completion path", now unified onto the agent path).
+            self._captured["entry_api_key"] = task.llm_api_key
+            return AgentRunResult(
+                status="completed", summary="report", events=[], files_changed=["REPORT.md"]
+            )
         self._captured["agent_llm_api_key"] = task.llm_api_key
         (Path(task.workspace_dir) / "greeting.txt").write_text("hi\n", encoding="utf-8")
         return AgentRunResult(
@@ -79,22 +86,8 @@ def test_owned_run_threads_the_owners_key_into_both_paths(client, monkeypatch):
     owner_id = _make_owner_with_keys_for(_providers_for_team(team_graph_id))
     captured: dict = {}
 
-    # Capture the PM CompletionRequest.api_key, return a canned result so the real pm_step runs.
-    def _fake_complete(request):
-        captured["pm_api_key"] = request.api_key
-        return CompletionResult(
-            text="PRD: greeting.txt -> 'hi'",
-            model_requested=request.model,
-            model_used=request.model,
-            prompt_tokens=1,
-            completion_tokens=1,
-            total_tokens=2,
-            cost_usd=0.0,
-            raw_provider="openrouter",
-            latency_ms=0.0,
-        )
-
-    monkeypatch.setattr(team_run, "complete", _fake_complete)
+    # M-unify U1: the PM is now an AGENT (no direct completion) — both the entry and the worker
+    # resolve the owner's key through the ONE agent path; the fake adapter captures each.
     monkeypatch.setattr(team_run, "resolve_adapter", lambda name: _KeyCapturingAdapter(captured))
 
     run_id = str(uuid.uuid4())
@@ -116,8 +109,9 @@ def test_owned_run_threads_the_owners_key_into_both_paths(client, monkeypatch):
             handle = DBOS.start_workflow(team_run.run_team, "Add greeting.txt")
         result = handle.get_result()
         assert result["status"] == "completed"
-        # The PM (completion path) AND the Engineer (agent path) both resolved THE OWNER's key.
-        assert captured["pm_api_key"] == OWNER_KEY
+        # M-unify U1: the entry (former PM) AND the Engineer both resolved THE OWNER's key on the
+        # unified agent path.
+        assert captured["entry_api_key"] == OWNER_KEY
         assert captured["agent_llm_api_key"] == OWNER_KEY
     finally:
         shutil.rmtree(workspace, ignore_errors=True)

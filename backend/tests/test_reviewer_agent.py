@@ -16,7 +16,7 @@ resolved, so ``test_registry`` stays green.
 import uuid
 from pathlib import Path
 
-from conftest import auth_user_id, seed_pm_prd
+from conftest import auth_user_id, entry_report_result
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select
 
@@ -52,9 +52,6 @@ def _stub_agent(monkeypatch, workspace: Path, reviewer) -> None:
     deliverable so a ship has something to commit; the reviewer-style node (``emits_outcome`` True)
     delegates to the per-test ``reviewer(iteration)`` callback returning a canned verdict dict."""
 
-    def _fake_pm_step(run_id, idea, pm_model, pm_prompt, max_tokens, invocation_id=None):
-        return seed_pm_prd(run_id, idea)
-
     def _fake_engineer_setup_step(run_id):
         return str(workspace)
 
@@ -71,7 +68,11 @@ def _stub_agent(monkeypatch, workspace: Path, reviewer) -> None:
         emits_outcome,
         budget,
         invocation_id=None,
+        edits_allowed=True,
+        **kwargs,
     ):
+        if not edits_allowed:
+            return entry_report_result(idea)
         if emits_outcome:
             return reviewer(iteration)
         (Path(workspace_dir) / "greeting.txt").write_text(f"build {iteration}\n")
@@ -85,7 +86,6 @@ def _stub_agent(monkeypatch, workspace: Path, reviewer) -> None:
             "cost_usd": 0.0,
         }
 
-    monkeypatch.setattr(team_run, "pm_step", _fake_pm_step)
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
     monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
 
