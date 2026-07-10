@@ -101,6 +101,30 @@ def test_create_gate_and_terminals(client):
     assert bad.status_code == 400, bad.text
 
 
+def test_patch_gate_config_flips_to_secret_leak_scan_partial_merge(client):
+    """M-rails C8: a dropped gate is configurable — flipping its ``gate_kind`` to the
+    ``secret_leak_scan`` guardrail lands + persists, and a PARTIAL edit (gate_kind only) preserves
+    the untouched title/description (a fresh-dict merge, not a clobber)."""
+    tid = _create_blank(client, "Gate config")
+    gate = client.post(
+        f"/api/teams/{tid}/nodes",
+        json={"node_kind": "gate", "title": "Original title", "description": "Original desc."},
+    ).json()
+    assert gate["config"]["gate_kind"] == "approval"
+
+    # Flip ONLY gate_kind → the guardrail; title/description are untouched, surviving the merge.
+    resp = client.patch(
+        f"/api/teams/{tid}/nodes/{gate['id']}", json={"gate_kind": "secret_leak_scan"}
+    )
+    assert resp.status_code == 200, resp.text
+
+    row = _node_row(gate["id"])
+    assert row.config["gate_kind"] == "secret_leak_scan"
+    assert row.config["title"] == "Original title"  # preserved by the partial merge
+    assert row.config["description"] == "Original desc."
+    assert row.prompt is None and row.model is None  # a gate never gains prompt/model
+
+
 # --- Edge create — the four roles round-trip to (edge_type, conditions) ---------------------------
 
 

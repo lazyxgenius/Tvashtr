@@ -683,6 +683,26 @@ export async function updateTeamNode(
   return (await res.json()) as TeamGraphNode;
 }
 
+// M-rails C8: persist an edited GATE node's config — its `gate_kind` (`gate_approval` human vs the
+// `secret_leak_scan` guardrail) + human-facing `title`/`description`. A SEPARATE fn from
+// `updateTeamNode` (which owns the agent prompt/model/capability editor): the same node-update
+// endpoint accepts EITHER shape, and the backend branches on the node's kind. Returns the updated node.
+export async function updateGateNode(
+  teamId: string,
+  nodeId: string,
+  gateKind: string,
+  title: string,
+  description: string,
+): Promise<TeamGraphNode> {
+  const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ gate_kind: gateKind, title, description }),
+  });
+  if (!res.ok) throw new Error(`PATCH gate /api/teams/${teamId}/nodes/${nodeId} -> ${res.status}`);
+  return (await res.json()) as TeamGraphNode;
+}
+
 // ---- Topology editing (P1.8d): node/edge CRUD + position persistence + the validity verdict ----
 
 // The canvas vocabulary the palette drops + the four edge roles the inline editor offers. Each maps

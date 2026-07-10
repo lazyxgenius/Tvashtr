@@ -55,6 +55,7 @@ from tvashtr.control_plane.context_compiler import (
 )
 from tvashtr.control_plane.credentials import resolve_owner_api_key
 from tvashtr.control_plane.gates import wait_at_gate
+from tvashtr.control_plane.guardrails import GUARDRAIL_GATE_KINDS, guardrail_gate_step
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
 from tvashtr.control_plane.node_skills import build_skills
@@ -1278,21 +1279,40 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             current = next_node(edges, current, route_label)
 
         elif kind == "gate":
-            # A human-approval checkpoint node: pause on the durable recv, then route on the
-            # resolution (the node-id-scoped topic keeps concurrent gates collision-free).
+            # A checkpoint node with two dispositions on ``config.gate_kind``:
+            #  * a GUARDRAIL kind (M-rails C8, e.g. ``secret_leak_scan``) runs a DETERMINISTIC
+            #    content check against the run's workspace and auto-emits approved/rejected — NO
+            #    human, NO ``wait_at_gate``. The verdict is a recorded step so it replays verbatim
+            #    on crash-resume (no re-scan of a possibly-mutated tree).
+            #  * any other / absent kind is the HUMAN-approval path (unchanged): pause on the
+            #    durable recv, then route on the resolution.
             open_invocation_step(run_id, current, 1)
             cfg = node["config"] or {}
-            gate = wait_at_gate(
-                run_id,
-                topic=f"gate:{run_id}:{current}",
-                kind=cfg.get("gate_kind", "gate_approval"),
-                priority="high_blocker",
-                blocking=True,
-                title=cfg["title"],
-                description=cfg["description"],
-            )
-            close_invocation_step(run_id, current, 1, "done", gate["resolution"])
-            current = next_node(edges, current, gate["resolution"])
+            if cfg.get("gate_kind") in GUARDRAIL_GATE_KINDS:
+                verdict = guardrail_gate_step(run_id, current, cfg["gate_kind"], workspace)
+                close_invocation_step(
+                    run_id,
+                    current,
+                    1,
+                    "done",
+                    verdict["resolution"],
+                    outcome_detail=verdict["reasons"],
+                )
+                current = next_node(edges, current, verdict["resolution"])
+            else:
+                # A human-approval checkpoint node: pause on the durable recv, then route on the
+                # resolution (the node-id-scoped topic keeps concurrent gates collision-free).
+                gate = wait_at_gate(
+                    run_id,
+                    topic=f"gate:{run_id}:{current}",
+                    kind=cfg.get("gate_kind", "gate_approval"),
+                    priority="high_blocker",
+                    blocking=True,
+                    title=cfg["title"],
+                    description=cfg["description"],
+                )
+                close_invocation_step(run_id, current, 1, "done", gate["resolution"])
+                current = next_node(edges, current, gate["resolution"])
 
         elif kind == "terminal":
             # The walk's endpoint: ship-and-finalize ``completed``, or stop-and-finalize

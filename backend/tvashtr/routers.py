@@ -149,17 +149,28 @@ class AddDocumentVersionRequest(BaseModel):
 
 
 class UpdateTeamNodeRequest(BaseModel):
-    """A human edit to a persistent-team agent node: its ``prompt`` (the node's whole
-    identity/behavior), its ``model``, and (P1.8c) optionally its ``capability`` — ``"thinker"``
-    (a direct LLM completion, like the PM) or ``"worker"`` (an engine-backed sandboxed run, like
-    the Engineer). ``prompt``/``model`` are sent on every Save (the FE is dirty-aware but posts the
-    full values). ``capability`` is OPTIONAL — omitted leaves ``kind``/``engine`` unchanged
-    (back-compat with the prior ``{prompt, model}`` saves). Topology + the control primitives
-    (gate/terminal) remain non-editable (later slices)."""
+    """A human edit to a persistent-team node.
 
-    prompt: str
-    model: str
+    For an **agent/completion** node: its ``prompt`` (the node's whole identity/behavior), its
+    ``model``, and (P1.8c) optionally its ``capability`` — ``"thinker"`` (a direct LLM completion,
+    like the PM) or ``"worker"`` (an engine-backed sandboxed run, like the Engineer).
+    ``prompt``/``model`` are sent on every agent Save (the FE is dirty-aware but posts the full
+    values) and are REQUIRED for an agent node. ``capability`` is OPTIONAL — omitted leaves
+    ``kind``/``engine`` unchanged (back-compat with the prior ``{prompt, model}`` saves).
+
+    For a **gate** node (M-rails C8): its editable ``config`` — ``gate_kind`` (``gate_approval`` /
+    ``secret_leak_scan`` / …), ``title``, ``description`` — each optional, merged into the existing
+    config so a partial edit preserves the rest. ``prompt``/``model``/``capability`` do not apply to
+    a control primitive and are ignored. **Terminal** nodes stay non-editable here (409)."""
+
+    prompt: str | None = None
+    model: str | None = None
     capability: Literal["thinker", "worker"] | None = None
+    # M-rails C8: a gate's editable config. Only meaningful when the target node is a gate; the
+    # dedicated FE gate-update fn sends these (never prompt/model), so both stay optional.
+    gate_kind: str | None = None
+    title: str | None = None
+    description: str | None = None
     # M-tools C7.0: optional inline tools + skills. Additive — a request omitting them (None) leaves
     # the stored value unchanged (the same is-not-None guard the executor path uses), so existing
     # ``{prompt, model[, capability]}`` saves stay byte-for-byte back-compatible.
@@ -1506,14 +1517,16 @@ def update_team_node(
     body: UpdateTeamNodeRequest,
     current_user: Annotated[UserOut, Depends(get_current_user)],
 ) -> dict:
-    """Persist an edited library-team node's ``prompt`` + ``model``, and (P1.8c) optionally its
-    ``capability`` (``"thinker"`` -> ``kind=completion``/``engine=null``; ``"worker"`` ->
-    ``kind=agent``/``engine=openhands``). Validates the node belongs to ``team_id`` AND that
-    ``team_id`` is a library team, and REJECTS gate/terminal nodes (control primitives). 400 on a
+    """Persist an edited library-team node. For an agent/completion node: its ``prompt`` + ``model``
+    and (P1.8c) optionally its ``capability`` (``"thinker"`` -> ``kind=completion``/``engine=null``;
+    ``"worker"`` -> ``kind=agent``/``engine=openhands``). For a **gate** node (M-rails C8): its
+    editable ``config`` (``gate_kind``/``title``/``description``, merged into the existing config).
+    Validates the node belongs to ``team_id`` AND that ``team_id`` is a library team. 400 on a
     malformed id; 404 if the team is not a library team or the node is not one of its nodes; 409 if
-    the node is a gate/terminal, OR if ``capability="worker"`` is asked of the ROOT node (the first
-    node scopes the work — it must stay a thinker, the one executor invariant). Returns the updated
-    node."""
+    the node is a **terminal** (still a non-editable control primitive here), OR if
+    ``capability="worker"`` is asked of the ROOT node (the first node scopes the work — it must stay
+    a thinker, the one executor invariant); 422 if an agent node's ``prompt``/``model`` is missing.
+    Returns the updated node."""
     try:
         nid = uuid.UUID(node_id)
     except ValueError as exc:
@@ -1523,10 +1536,30 @@ def update_team_node(
         node = session.execute(select(AgentNode).where(AgentNode.id == nid)).scalar_one_or_none()
         if node is None or node.team_graph_id != graph.id:
             raise HTTPException(status_code=404, detail="node not found in the team")
-        if node.kind in ("gate", "terminal"):
+        if node.kind == "terminal":
             raise HTTPException(
                 status_code=409,
-                detail="gate/terminal nodes are control primitives — no prompt/model to edit",
+                detail="terminal nodes are control primitives — no config to edit here",
+            )
+        if node.kind == "gate":
+            # M-rails C8: a gate's config is editable (its gate_kind + human copy) — prompt/model/
+            # capability/tools do not apply to a control primitive. Merge the provided fields into a
+            # FRESH config dict (a new object so SQLAlchemy flags the JSONB column dirty) so a
+            # partial edit preserves the rest.
+            cfg = dict(node.config or {})
+            if body.gate_kind is not None:
+                cfg["gate_kind"] = body.gate_kind
+            if body.title is not None:
+                cfg["title"] = body.title
+            if body.description is not None:
+                cfg["description"] = body.description
+            node.config = cfg
+            session.flush()
+            return _node_base_dict(node)
+        # ---- agent / completion: the prompt/model[/capability/tools] editor ----
+        if body.prompt is None or body.model is None:
+            raise HTTPException(
+                status_code=422, detail="prompt and model are required for an agent node"
             )
         # P1.8c: an optional capability flip (thinker <-> worker) is a paired kind+engine write.
         # The ONLY invariant the executor needs is that the root stays a thinker (it writes the

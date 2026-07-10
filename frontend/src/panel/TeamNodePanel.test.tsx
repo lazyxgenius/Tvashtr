@@ -459,41 +459,102 @@ describe("TeamNodePanel — recommendation hint (Slice C, the discriminating pai
   });
 });
 
-// ---- F1c Decision 4: the read-only gate / terminal author views (the node-update endpoint
-// 409-rejects control primitives, so the drawer SHOWS but never saves — no PATCH may fire) ----
+// ---- M-rails C8 (re-point): the gate author view is now EDITABLE (Gate type picker + title/desc +
+// a Save that PATCHes gate config); the terminal view stays read-only. ----
 
-describe("TeamNodePanel — F1c read-only gate / terminal author views (Decision 4)", () => {
-  it("a gate opens a READ-ONLY checkpoint drawer: title + description, NO Save, NO node-update PATCH", async () => {
+function gateNode() {
+  return node({
+    id: "n-gate",
+    role_name: "prd_gate",
+    kind: "gate",
+    model: null,
+    prompt: null,
+    config: {
+      gate_kind: "prd_approval",
+      title: "Approve the PRD",
+      description: "Approve the spec before building.",
+    },
+  });
+}
+
+describe("TeamNodePanel — M-rails C8 editable gate + read-only terminal author views", () => {
+  it("a gate opens an EDITABLE drawer: Gate type picker + title/description + a dirty-aware Save that PATCHes gate config", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn().mockResolvedValue(undefined);
     render(
       <TeamNodePanel
         teamId="team-1"
-        node={node({
-          id: "n-gate",
-          role_name: "prd_gate",
-          kind: "gate",
-          model: null,
-          prompt: null,
-          config: {
-            gate_kind: "prd_approval",
-            title: "Approve the PRD",
-            description: "Approve the spec before building.",
-          },
-        })}
+        node={gateNode()}
         isStartNode={false}
-        onSaved={() => {}}
+        onSaved={onSaved}
         onClose={() => {}}
       />,
     );
-    // The read-only checkpoint copy + the gate's own title/description show…
-    expect(screen.getByText(/A checkpoint pauses the run/i)).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Approve the PRD")).toBeInTheDocument();
-    expect(screen.getByText("Approve the spec before building.")).toBeInTheDocument();
-    // …but there is NO editable surface: no prompt textbox, no Save control.
-    expect(screen.queryByRole("textbox", { name: /prompt/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
-    // And no node-update PATCH is ever fired from this view (the drawer only shows the control copy).
-    await Promise.resolve();
+
+    // The gate's copy is shown + EDITABLE (a title input + a description textarea).
+    const title = screen.getByRole<HTMLInputElement>("textbox", { name: "Gate title" });
+    expect(title.value).toBe("Approve the PRD");
+    expect(screen.getByRole("textbox", { name: "Gate description" })).toBeInTheDocument();
+
+    // prd_approval is a human kind → "Human approval" is the initial type; Save is disabled (clean).
+    expect(screen.getByRole("button", { name: "Human approval" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Secret leak scan" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled();
     expect(patchCall()).toBeUndefined();
+
+    // Flip to the guardrail → dirty → Save → PATCHes gate config (gate_kind=secret_leak_scan), and
+    // the body carries ONLY gate fields (no prompt/model — this is the gate-update fn, not updateTeamNode).
+    await user.click(screen.getByRole("button", { name: "Secret leak scan" }));
+    expect(screen.getByRole("button", { name: "Secret leak scan" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(save).toBeEnabled();
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    await user.click(save);
+
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    const [calledUrl, init] = patchCall()!;
+    expect(urlOf(calledUrl)).toBe("/api/teams/team-1/nodes/n-gate");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toEqual({
+      gate_kind: "secret_leak_scan",
+      title: "Approve the PRD",
+      description: "Approve the spec before building.",
+    });
+    expect(onSaved).toHaveBeenCalledTimes(1);
+  });
+
+  it("editing the title while staying 'Human approval' PRESERVES the original human gate_kind (prd_approval)", async () => {
+    const user = userEvent.setup();
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={gateNode()}
+        isStartNode={false}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        onClose={() => {}}
+      />,
+    );
+    const title = screen.getByRole("textbox", { name: "Gate title" });
+    await user.clear(title);
+    await user.type(title, "Approve before building");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    // Still human → the original sub-kind survives (NOT flattened to gate_approval), title updated.
+    expect(JSON.parse(patchCall()![1].body as string)).toEqual({
+      gate_kind: "prd_approval",
+      title: "Approve before building",
+      description: "Approve the spec before building.",
+    });
   });
 
   it("a terminal opens a READ-ONLY endpoint drawer: a DISABLED Ship/Stop indicator, NO Save/PATCH", async () => {

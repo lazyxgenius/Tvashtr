@@ -17,7 +17,7 @@ TVASHTR_RUNG2_REPO ?= /Users/adimac/Desktop/trade_mcp
 # independent numeric gate is unaffected (it runs host-side at the repo ROOT).
 TVASHTR_RUNG2_SUBPATH ?= core
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e edits-toggle-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e model-picker-e2e skills-e2e tools-e2e seed lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e edits-toggle-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e skills-e2e tools-e2e seed lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -167,6 +167,9 @@ accounts-e2e: ## Live M-accounts Slice B accounts E2E: the full account journey 
 
 model-picker-e2e: ## Live M-accounts Slice C model-picker E2E: register a FRESH account, self-seed dummy encrypted provider creds via the API (.env-FREE), open a team → click the Engineer node (the Provider select lists the seeded providers + the Model field), inline-add a provider (appears in the panel + the dashboard), open the Reviewer (the same-model hint shows) + the PM thinker (absent). NO agent run / NO real LLM — needs NO provider keys; just Postgres + a real backend + Vite + Playwright.
 	./scripts/model_picker_e2e.sh
+
+secret-gate-e2e: ## M-rails C8 secret-gate E2E: register a fresh account, create a review_loop team (it carries a PRD gate), OPEN it on the canvas, click the gate (its drawer is now EDITABLE), pick "Secret leak scan" in the Gate type picker, Save, and assert config.gate_kind persisted via a live /api/teams/{id}/graph read. Isolated ports (backend :8001, Vite :5174 -> proxy :8001). A screenshot per check. NO agent run — needs NO provider keys; just Postgres + a real backend + Vite + Playwright.
+	./scripts/secret_gate_e2e.sh
 
 budget-demo: ## Live budget cap demo: tiny per-run cap -> breach -> auto-approve -> ship (needs key; skips otherwise)
 	./scripts/budget_demo.sh

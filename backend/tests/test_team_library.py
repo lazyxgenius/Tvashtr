@@ -306,18 +306,44 @@ def test_patch_team_node_persists_prompt_and_model(client):
     assert refetched["prompt"] == new_prompt and refetched["model"] == new_model
 
 
-def test_patch_team_node_rejects_gate_and_terminal_409(client):
+def test_patch_team_node_edits_gate_config_but_rejects_terminal_409(client):
+    """M-rails C8 re-point: a GATE's config (gate_kind/title/description) is now PATCHable — the
+    guardrail-gate authoring surface — while a TERMINAL stays a non-editable control primitive
+    (409). A gate never gains a prompt/model (prompt/model in the body are ignored for a gate)."""
     tid = create_team_from_template("review_loop", "Guards", auth_user_id())
     nodes = client.get(f"/api/teams/{tid}/graph").json()["nodes"]
-    for role in ("prd_gate", "escalation_gate", "ship", "stop"):
+
+    # A gate's config edits land (200) and PERSIST — including flipping it to the secret_leak_scan
+    # guardrail. prompt/model in the body are ignored (a gate stays prompt/model-null).
+    for role in ("prd_gate", "escalation_gate"):
+        node = next(n for n in nodes if n["role_name"] == role)
+        resp = client.patch(
+            f"/api/teams/{tid}/nodes/{node['id']}",
+            json={
+                "gate_kind": "secret_leak_scan",
+                "title": "Scan for secrets",
+                "description": "Automatic secret check.",
+                "prompt": "ignored",
+                "model": "ignored",
+            },
+        )
+        assert resp.status_code == 200, f"{role}: {resp.status_code} {resp.text}"
+
+    # A terminal is still non-editable here.
+    for role in ("ship", "stop"):
         node = next(n for n in nodes if n["role_name"] == role)
         resp = client.patch(
             f"/api/teams/{tid}/nodes/{node['id']}", json={"prompt": "x", "model": "y"}
         )
         assert resp.status_code == 409, f"{role}: {resp.status_code} {resp.text}"
-    # The rejected control nodes still carry no prompt/model (the write never landed).
+
+    # Persisted (fresh read): gate config flipped; the gate stays prompt/model-null; the terminal
+    # write never landed.
     after = {n["role_name"]: n for n in client.get(f"/api/teams/{tid}/graph").json()["nodes"]}
-    assert after["prd_gate"]["prompt"] is None and after["ship"]["model"] is None
+    assert after["prd_gate"]["config"]["gate_kind"] == "secret_leak_scan"
+    assert after["prd_gate"]["config"]["title"] == "Scan for secrets"
+    assert after["prd_gate"]["prompt"] is None and after["prd_gate"]["model"] is None
+    assert after["ship"]["model"] is None
 
 
 def test_patch_team_node_404_for_foreign_node_and_non_library_team_and_400_bad_id(client):

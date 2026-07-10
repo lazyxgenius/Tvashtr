@@ -11,6 +11,7 @@ import {
   providerOf,
   type TeamGraphNode,
   type TerminalConfig,
+  updateGateNode,
   updateTeamNode,
 } from "../lib/api";
 import { applyEmitContract, emitContract } from "../lib/topology";
@@ -108,6 +109,17 @@ export function TeamNodePanel({
   const [saveError, setSaveError] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // M-rails C8: a GATE's editable config (its type + human copy). Seeded from `node.config`; the
+  // parent `key`-remount resets it per node. Unused/harmless for agent/completion/terminal nodes.
+  const gateCfg = (node?.config ?? {}) as GateConfig;
+  const initialGateKind = gateCfg.gate_kind || "gate_approval";
+  const initialGateTitle = gateCfg.title ?? "";
+  const initialGateDesc = gateCfg.description ?? "";
+  const initialGateGuardrail = initialGateKind === "secret_leak_scan";
+  const [gateGuardrail, setGateGuardrail] = useState(initialGateGuardrail);
+  const [gateTitle, setGateTitle] = useState(initialGateTitle);
+  const [gateDesc, setGateDesc] = useState(initialGateDesc);
+
   // F1c: the model-chip express lane — a focus signal from the parent (a bumping nonce; 0 = a normal
   // open). On a bump, scroll the Model field into view + flash a transient coral ring.
   const modelFieldRef = useRef<HTMLDivElement>(null);
@@ -200,6 +212,34 @@ export function TeamNodePanel({
     }
   };
 
+  // M-rails C8: the gate config Save. Flipping to the guardrail sends `secret_leak_scan`; staying
+  // human PRESERVES the original human sub-kind (prd_approval/…) — flipping guardrail→human falls
+  // back to the generic `gate_approval` (a human sub-kind can't be re-derived once switched away).
+  const savedGateKind = gateGuardrail
+    ? "secret_leak_scan"
+    : initialGateGuardrail
+      ? "gate_approval"
+      : initialGateKind;
+  const gateDirty =
+    node !== null &&
+    (gateGuardrail !== initialGateGuardrail ||
+      gateTitle !== initialGateTitle ||
+      gateDesc !== initialGateDesc);
+  const handleGateSave = async () => {
+    if (!node || !gateDirty) return;
+    setSaving(true);
+    setSaveError(false);
+    try {
+      await updateGateNode(teamId, node.id, savedGateKind, gateTitle, gateDesc);
+      setSaved(true);
+      await onSaved();
+    } catch {
+      setSaveError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ---- M-accounts Slice C: the provider-gated model picker (UI over the SINGLE node.model string) ----
   const currentProvider = model.trim() ? providerOf(model) : "";
   const providerOptions = Array.from(
@@ -283,42 +323,101 @@ export function TeamNodePanel({
     );
   }
 
-  // ---- F1c Decision 4: gate — READ-ONLY checkpoint view (no Save; editing gate copy is a §15
-  //      backend follow-on — the node-update endpoint 409-rejects control primitives). ----
+  // ---- M-rails C8: gate — an EDITABLE checkpoint. A "Gate type" picker chooses a human approval
+  //      or the automatic `secret_leak_scan` guardrail; plus title/description + a dirty-aware Save
+  //      (the node-update endpoint now PATCHes gate config). ----
   if (node.kind === "gate") {
-    const cfg = (node.config ?? {}) as GateConfig;
-    const gateTitle = cfg.title || ROLE_TITLES[node.role_name] || node.role_name;
+    const gateHeaderTitle = gateTitle || ROLE_TITLES[node.role_name] || node.role_name;
     return (
       <DrawerShell
         glyph={glyphForNode("gate", node.role_name)}
-        title={gateTitle}
-        subtitle="A human checkpoint"
-        ariaLabel={`${gateTitle} checkpoint`}
+        title={gateHeaderTitle}
+        subtitle={gateGuardrail ? "An automatic guardrail" : "A human checkpoint"}
+        ariaLabel={`${gateHeaderTitle} checkpoint`}
         panelMode={panelMode}
         onTogglePanelMode={onTogglePanelMode}
         onClose={onClose}
       >
         <div className="tv-scroll tv-node-edit">
-          <p className="tv-readonly-note">
-            A checkpoint pauses the run for a human decision.{" "}
-            <span className="tv-readonly-note__soft">
-              Editing gate copy in the drawer is a planned backend follow-on.
-            </span>
-          </p>
           <div className="tv-field">
+            <span className="tv-field__label">Gate type</span>
+            <div className="tv-seg" role="group" aria-label="Gate type">
+              <button
+                type="button"
+                aria-pressed={!gateGuardrail}
+                disabled={saving}
+                className={`tv-seg__btn${!gateGuardrail ? " tv-seg__btn--active" : ""}`}
+                onClick={() => {
+                  setGateGuardrail(false);
+                  setSaved(false);
+                }}
+              >
+                Human approval
+              </button>
+              <button
+                type="button"
+                aria-pressed={gateGuardrail}
+                disabled={saving}
+                className={`tv-seg__btn${gateGuardrail ? " tv-seg__btn--active" : ""}`}
+                onClick={() => {
+                  setGateGuardrail(true);
+                  setSaved(false);
+                }}
+              >
+                Secret leak scan
+              </button>
+            </div>
+            <span className="tv-field__hint">
+              {gateGuardrail
+                ? "Secret leak scan — an automatic check. It scans the run’s workspace and emits approved / rejected with no human pause."
+                : "Human approval — the run pauses here for a person to approve or reject."}
+            </span>
+          </div>
+
+          <label className="tv-field">
             <span className="tv-field__label">Title</span>
             <input
-              className="tv-readonly-field"
+              className="tv-node-model"
               aria-label="Gate title"
               value={gateTitle}
-              readOnly
+              spellCheck={false}
+              onChange={(e) => {
+                setGateTitle(e.target.value);
+                setSaved(false);
+              }}
             />
-          </div>
-          <div className="tv-field">
+          </label>
+
+          <label className="tv-field">
             <span className="tv-field__label">Description</span>
-            <div className="tv-readonly-field tv-readonly-field--multiline">
-              {cfg.description || "No description."}
-            </div>
+            <textarea
+              className="tv-node-prompt"
+              aria-label="Gate description"
+              value={gateDesc}
+              rows={5}
+              spellCheck={false}
+              onChange={(e) => {
+                setGateDesc(e.target.value);
+                setSaved(false);
+              }}
+            />
+          </label>
+
+          <div className="tv-prd__editbar">
+            <button
+              className="tv-btn"
+              type="button"
+              onClick={() => void handleGateSave()}
+              disabled={!gateDirty || saving}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            {gateDirty ? (
+              <span className="tv-prd__dirty">Unsaved changes</span>
+            ) : saved ? (
+              <span className="tv-prd__saved">Saved — this drives the next run you launch.</span>
+            ) : null}
+            {saveError && <span className="tv-prd__saveerr">Couldn’t save — try again.</span>}
           </div>
         </div>
       </DrawerShell>
