@@ -1,15 +1,11 @@
-"""M-ctx1 — executor-level proofs (C2 input budget / C3 thinker max_tokens / C4 SPEC.md doc-handle),
-each driving a REAL ``run_team`` over the two_node team with the LLM + engine adapter mocked
-(offline,
-no NIM). These are the mutation-real complements to the pure ``test_context_compiler.py``:
+"""M-ctx1 — executor-level proofs (C2 input budget / C4 SPEC.md doc-handle), each driving a REAL
+``run_team`` over the two_node team with the LLM + engine adapter mocked (offline, no NIM). These
+are the mutation-real complements to the pure ``test_context_compiler.py``:
 
 * **C2** — a per-node input budget breach FAILS the run PRE-CALL (the adapter never runs) with a
   reason naming the fattest ``spec`` part + its token count, and the manifest is persisted on the
   failed invocation. This regression FAILS if the budget check is deleted (the run would instead
   complete, since the fake adapter ships a deliverable).
-* **C3** — the PM (a real ``pm_step``) sources ``CompletionRequest.max_tokens`` from the setting
-  (NOT the old hardcoded 400), and a per-node ``model_config.thinker_max_output_tokens`` override
-  wins.
 * **C4** — a large spec is written to ``<workspace>/SPEC.md`` (the agent sees it + a pointer in its
   instruction), then removed after the run so it NEVER lands in the shipped commit.
 """
@@ -166,12 +162,9 @@ def test_over_context_budget_fails_run_naming_spec_and_persists_manifest(client,
         shutil.rmtree(workspace, ignore_errors=True)
 
 
-# ---- C3 REMOVED (M-unify U1): the thinker OUTPUT-ceiling path (a completion `CompletionRequest.
-# max_tokens` from `resolve_thinker_max_tokens`) is GONE — the entry is now an AGENT (no direct
-# completion), so `test_thinker_max_tokens_sourced_from_setting_not_400` +
-# `test_thinker_max_tokens_per_node_override_wins` no longer have a code path to exercise and were
-# deleted. The pure resolver `resolve_thinker_max_tokens` is still unit-tested in
-# `test_context_compiler.py`. ----
+# ---- C3 REMOVED: the thinker OUTPUT-ceiling path was retired by M-unify U1 (the entry node is now
+# an AGENT with no direct completion, so there is no `max_tokens` ceiling to source) and its dead
+# config + pure resolver were deleted in the deadcode-hygiene pass. No executor proof remains. ----
 
 
 # ---- C4: a large spec becomes <workspace>/SPEC.md (agent reads it) + a pointer, and never ships --

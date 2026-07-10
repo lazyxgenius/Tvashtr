@@ -275,12 +275,12 @@ def compile_context(
     )
 
 
-# ---- Per-node model-policy resolvers (setting default + optional per-node override) --------------
+# ---- Per-node model-policy resolver (setting default + optional per-node override) ---------------
 # The override lives in the node's EXISTING ``config`` JSONB under a ``model_config`` sub-object
-# (``agent_nodes.config`` — additive, NO migration), e.g. ``{"model_config": {"thinker_max_output_
-# tokens": 4096, "worker_context_token_budget": 60000}}``. Pure + importable so they are unit-tested
-# directly and the executor sources the effective values from them (policy resolved in the workflow
-# body, mechanism — the CompletionRequest / the budget check — applied in the step).
+# (``agent_nodes.config`` — additive, NO migration), e.g.
+# ``{"model_config": {"worker_context_token_budget": 60000}}``. Pure + importable so it is
+# unit-tested directly and the executor sources the effective value from it (policy resolved in the
+# workflow body, mechanism — the budget check — applied in the step).
 
 
 def _node_model_config(node_config: dict | None) -> dict:
@@ -300,22 +300,10 @@ def _positive_int_override(value: object) -> int | None:
     return value if value > 0 else None
 
 
-def resolve_thinker_max_tokens(settings: Settings, node_config: dict | None) -> int:
-    """C3: the thinker OUTPUT ceiling for one completion node — the per-node override
-    (``config.model_config.thinker_max_output_tokens``, a positive int) when set, else the
-    ``settings.thinker_max_output_tokens`` default. The executor passes the result as
-    ``CompletionRequest.max_tokens`` for ``pm_step`` / ``thinker_refine_step`` (no longer the
-    hardcoded 400)."""
-    override = _positive_int_override(
-        _node_model_config(node_config).get("thinker_max_output_tokens")
-    )
-    return override if override is not None else settings.thinker_max_output_tokens
-
-
 def resolve_context_budget(settings: Settings, node_config: dict | None) -> int:
     """C2: the per-worker-node INPUT budget — the per-node override
     (``config.model_config.worker_context_token_budget``, a positive int) when set, else the
-    ``settings.worker_context_token_budget`` default. Mirrors :func:`resolve_thinker_max_tokens`."""
+    ``settings.worker_context_token_budget`` default."""
     override = _positive_int_override(
         _node_model_config(node_config).get("worker_context_token_budget")
     )

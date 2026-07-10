@@ -41,5 +41,8 @@ frontend/dist/
 # ---- tvashtr-loop scratch (ephemeral resume state; durable record is §17 + the loop report) ----
 .tvashtr/
 
+# ---- CLI-agent running log (per-session scratch, overwritten each run; durable record is §17) ----
+STATE.md
+
 # stray root-level screenshots (visual-acceptance artifacts)
 /*.png

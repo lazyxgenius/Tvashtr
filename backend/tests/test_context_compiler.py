@@ -19,7 +19,6 @@ from tvashtr.control_plane.context_compiler import (
     compile_context,
     estimate_tokens,
     resolve_context_budget,
-    resolve_thinker_max_tokens,
 )
 from tvashtr.control_plane.team_run import (
     _WORKSPACE_GITIGNORE,
@@ -223,18 +222,7 @@ def test_manifest_shape_records_parts_total_budget_and_handle():
     assert m["handle_used"] is False
 
 
-# ---- C3 / C2 per-node resolvers (setting default + optional per-node override) -------------------
-
-
-def test_resolve_thinker_max_tokens_default_and_override():
-    s = Settings(thinker_max_output_tokens=2048)
-    assert resolve_thinker_max_tokens(s, None) == 2048
-    assert resolve_thinker_max_tokens(s, {}) == 2048
-    assert resolve_thinker_max_tokens(s, {"model_config": {}}) == 2048
-    # A positive-int per-node override WINS over the setting default.
-    assert (
-        resolve_thinker_max_tokens(s, {"model_config": {"thinker_max_output_tokens": 4096}}) == 4096
-    )
+# ---- C2 per-node resolver (setting default + optional per-node override) -------------------------
 
 
 def test_resolve_context_budget_default_and_override():
@@ -248,19 +236,15 @@ def test_resolve_context_budget_default_and_override():
 
 
 def test_resolvers_ignore_non_positive_and_bool_overrides():
-    s = Settings(thinker_max_output_tokens=2048, worker_context_token_budget=110_000)
+    s = Settings(worker_context_token_budget=110_000)
     # Zero / negative / bool / non-int are NOT valid overrides → the setting default stands.
     for bad in (0, -5, True, "4096", 3.5, None):
-        assert (
-            resolve_thinker_max_tokens(s, {"model_config": {"thinker_max_output_tokens": bad}})
-            == 2048
-        )
         assert (
             resolve_context_budget(s, {"model_config": {"worker_context_token_budget": bad}})
             == 110_000
         )
     # A non-dict model_config is ignored too.
-    assert resolve_thinker_max_tokens(s, {"model_config": "nope"}) == 2048
+    assert resolve_context_budget(s, {"model_config": "nope"}) == 110_000
 
 
 # ---- C4 SPEC.md never ships: the gitignore belt + the write/remove suspenders --------------------
