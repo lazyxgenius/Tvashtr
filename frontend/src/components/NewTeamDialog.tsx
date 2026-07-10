@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 
 import { createTeam, getTemplates, type Template } from "../lib/api";
+import { useModalDialog } from "../lib/useModalDialog";
 
 // The Blank starting-point the FE adds ahead of the server templates — the minimal valid skeleton
 // (one thinker → Ship) the backend materializes for the "blank" key.
@@ -30,6 +31,10 @@ export function NewTeamDialog({
   const [selected, setSelected] = useState<string>(BLANK_CARD.template);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // A11y (Filler-A): trap focus in the dialog — always active, since this surface only ever renders
+  // as a scrim modal. Escape / focus-restore-on-close come from the same hook.
+  const dialogRef = useModalDialog<HTMLDivElement>(true, onClose);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -77,6 +82,7 @@ export function NewTeamDialog({
         role="dialog"
         aria-modal="true"
         aria-label="New team"
+        ref={dialogRef}
       >
         <header className="tv-dash__dialog-head">
           <h2 className="tv-dash__dialog-title">New team</h2>

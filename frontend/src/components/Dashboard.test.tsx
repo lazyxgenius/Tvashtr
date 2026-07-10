@@ -210,4 +210,23 @@ describe("Dashboard", () => {
       await screen.findByText(/A run is in progress — deleting will stop it/),
     ).toBeInTheDocument();
   });
+
+  // A11y (Filler-A): the delete-confirm dialog is a trapped modal while `confirmTeam` is set.
+  it("moves focus into the delete-confirm dialog when it opens", async () => {
+    setup({ teams: [team()] });
+    fireEvent.click(await screen.findByRole("button", { name: "Delete My team" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete My team" });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+  });
+
+  it("closes the delete-confirm dialog on Escape (no delete fired)", async () => {
+    setup({ teams: [team()] });
+    fireEvent.click(await screen.findByRole("button", { name: "Delete My team" }));
+    await screen.findByRole("dialog", { name: "Delete My team" });
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(m.deleteTeam).not.toHaveBeenCalled();
+  });
 });

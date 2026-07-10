@@ -54,4 +54,20 @@ describe("NewTeamDialog", () => {
     expect(screen.getByRole("button", { name: "Create team" })).toBeEnabled();
     expect(onOpenTeam).not.toHaveBeenCalled();
   });
+
+  // A11y (Filler-A): the shared modal focus-trap is wired in (always active for this dialog).
+  it("moves focus into the dialog when it opens", async () => {
+    renderDialog();
+    const dialog = await screen.findByRole("dialog", { name: "New team" });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+  });
+
+  it("closes on Escape", async () => {
+    const { onClose } = renderDialog();
+    await screen.findByRole("dialog", { name: "New team" });
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

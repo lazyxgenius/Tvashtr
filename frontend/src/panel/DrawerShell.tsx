@@ -1,6 +1,8 @@
 import { type ReactNode } from "react";
 import { type LucideIcon, Maximize, PanelRight, X } from "lucide-react";
 
+import { useModalDialog } from "../lib/useModalDialog";
+
 // F1c: the panel viewing mode. A session-STICKY preference (App owns the state): "drawer" docks the
 // panel to the right as a flex child that pushes the canvas; "modal" lifts it into a centered pop-up
 // over a click-to-close scrim (canvas full-width behind). NOT persisted — a reload starts docked.
@@ -41,8 +43,19 @@ export function DrawerShell({
   const ToggleIcon = isModal ? PanelRight : Maximize;
   const toggleLabel = isModal ? "Dock to the side" : "Open as a pop-up";
 
+  // A11y (Filler-A): trap focus + close-on-Escape ONLY in modal mode. Docked mode passes
+  // `active=false`, so the hook is completely inert and the docked <aside> stays byte-unchanged
+  // (the `role`/`aria-modal` below collapse to `undefined`, and `ref` is not a DOM attribute).
+  const dialogRef = useModalDialog<HTMLElement>(isModal, onClose);
+
   const shell = (
-    <aside className={`tv-panel${isModal ? " tv-panel--modal" : ""}`} aria-label={ariaLabel}>
+    <aside
+      className={`tv-panel${isModal ? " tv-panel--modal" : ""}`}
+      aria-label={ariaLabel}
+      ref={dialogRef}
+      role={isModal ? "dialog" : undefined}
+      aria-modal={isModal ? true : undefined}
+    >
       <header className="tv-panel__head">
         <div className="tv-panel__id">
           <div className="tv-panel__idrow">

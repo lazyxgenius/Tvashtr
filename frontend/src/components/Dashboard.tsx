@@ -22,6 +22,7 @@ import {
   type TeamSummary,
 } from "../lib/api";
 import { RUN_TERMINAL, runStatusPill } from "../lib/status";
+import { useModalDialog } from "../lib/useModalDialog";
 import { BackendDot } from "./BackendDot";
 import { NewTeamDialog } from "./NewTeamDialog";
 import { SecretsShelf } from "./SecretsShelf";
@@ -83,6 +84,12 @@ export function Dashboard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [picking, setPicking] = useState(false);
   const [confirmTeam, setConfirmTeam] = useState<TeamSummary | null>(null);
+
+  // A11y (Filler-A): trap focus in the delete-confirm dialog while a team is queued for deletion;
+  // Escape / scrim close it, then focus returns to the row's delete button.
+  const confirmDialogRef = useModalDialog<HTMLDivElement>(confirmTeam !== null, () =>
+    setConfirmTeam(null),
+  );
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -434,6 +441,7 @@ export function Dashboard({
             role="dialog"
             aria-modal="true"
             aria-label={`Delete ${confirmTeam.name}`}
+            ref={confirmDialogRef}
           >
             <header className="tv-dash__dialog-head">
               <h2 className="tv-dash__dialog-title">Delete {confirmTeam.name}?</h2>
