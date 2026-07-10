@@ -82,9 +82,19 @@ def _payload_of(event: Event, kind: str) -> dict:
     """Extract a small, JSON-able, engine-neutral payload (no OpenHands types)."""
     try:
         if kind == "action":
+            # Reasoning-content models (deepseek-chat, qwen3, ...) hand the ActionEvent a
+            # Sequence[TextContent] thought; stringify it (join the parts' .text) so the
+            # run_events JSON column stays serializable in BOTH local and docker modes,
+            # which share this _payload_of. A plain str is kept; None / "" / [] -> "".
+            thought = getattr(event, "thought", "") or ""
+            if not isinstance(thought, str):
+                thought = "".join(
+                    part.text if isinstance(getattr(part, "text", None), str) else str(part)
+                    for part in thought
+                )
             return {
                 "tool_name": getattr(event, "tool_name", None),
-                "thought": (getattr(event, "thought", "") or "")[:1000],
+                "thought": thought[:1000],
                 "action": str(getattr(event, "action", ""))[:2000],
             }
         if kind == "observation":

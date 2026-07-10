@@ -137,7 +137,10 @@ def test_create_run_allowed_once_the_owner_adds_the_keys(monkeypatch):
 
     monkeypatch.setattr(routers.DBOS, "start_workflow", lambda *a, **k: None)
     c, _ = _fresh_account()
-    for provider in ("openrouter", "openai", "nvidia_nim"):
+    # Cover every provider a default team's node models may resolve to across dev model configs,
+    # including ``deepseek`` when TVASHTR_AGENT_MODEL is M-robust's ``deepseek/deepseek-chat`` slug
+    # (an unused extra key is harmless under any other agent model).
+    for provider in ("openrouter", "openai", "nvidia_nim", "deepseek"):
         c.post("/api/providers", json={"provider": provider, "api_key": f"sk-{provider}-key"})
     resp = c.post("/api/runs", json={})
     assert resp.status_code == 200, resp.text

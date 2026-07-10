@@ -24,10 +24,11 @@ from tvashtr.models import ProviderCredential, Run  # noqa: E402
 
 # M-accounts Slice B: the providers the default test teams' node models use (openrouter for the
 # PM/default_model; openrouter/openai for engineer_model; nvidia_nim when TVASHTR_AGENT_MODEL is the
-# NIM slug; gemini/groq too). The shared `client` user gets a DUMMY encrypted credential for each,
-# so every owned run's launch pre-flight + per-owner resolver pass offline — the LLM is
-# mocked, so the dummy key is never used against a real provider.
-_TEST_PROVIDERS = ("openrouter", "openai", "nvidia_nim", "gemini", "groq")
+# NIM slug; gemini/groq too; deepseek when TVASHTR_AGENT_MODEL is the M-robust reasoning slug
+# `deepseek/deepseek-chat`). The shared `client` user gets a DUMMY encrypted credential for each, so
+# every owned run's launch pre-flight + per-owner resolver pass offline — the LLM is mocked, so the
+# dummy key is never used against a real provider.
+_TEST_PROVIDERS = ("openrouter", "openai", "nvidia_nim", "gemini", "groq", "deepseek")
 _DUMMY_KEY = "dummy-offline-test-key-0000"
 
 # The shared `client` user's id, captured at register so direct-`Run(`-insert tests can OWN their

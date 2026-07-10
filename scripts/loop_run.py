@@ -14,8 +14,9 @@ Then it asserts the loop actually cycled (NOT just that the run completed):
   * the Engineer (agent) node has ``AgentInvocation`` rows for iterations {1, 2}
   * the Reviewer node has rows for iterations {1, 2} with outcomes
     [changes_requested, approved] (exactly one loop-back)
-  * ``EngineerRunAttempt`` has exactly 2 rows for the run (the Engineer ran twice)
-  * exactly 2 ``{run_id}:agent-cost:{i}`` CostRecords (per-iteration metering)
+  * ``EngineerRunAttempt`` has exactly 3 rows for the run (M-unify U1: the entry PM runs the agent
+    path too, so it adds a row to the Engineer's 2 iterations)
+  * exactly 3 ``{run_id}:agent-cost:{i}`` CostRecords (entry PM + the Engineer's 2 iterations)
   * exactly one ``ship-{run_id}`` git tag, run ``completed``, committed file matches
 
 Skips cleanly without a key. Exits non-zero unless every assertion holds.
@@ -347,17 +348,20 @@ def main() -> int:
                 "!= [1, 2] / [changes_requested, approved]"
             )
 
-        # --- the agent step re-executed twice (distinct EngineerRunAttempt rows) ---
-        if n_attempts == 2:
-            ok("exactly 2 EngineerRunAttempt rows (the agent step ran twice)")
+        # --- one EngineerRunAttempt row per agent step. M-unify U1: the entry PM now runs the ONE
+        # agent path too, so it writes a row on top of the Engineer's 2 iterations -> 3 (pre-U1 the
+        # PM was a completion node; skeleton_run.py expects the entry to meter as an agent).
+        if n_attempts == 3:
+            ok("exactly 3 EngineerRunAttempt rows (entry PM + Engineer x2 — unified agent path)")
         else:
-            fail(f"expected 2 EngineerRunAttempt rows, got {n_attempts}")
+            fail(f"expected 3 EngineerRunAttempt rows (entry PM + Engineer x2), got {n_attempts}")
 
-        # --- per-iteration metering (one cost row per Engineer iteration) ---
-        if n_agent_cost == 2:
-            ok("exactly 2 per-iteration agent-cost CostRecords")
+        # --- per-iteration metering: entry PM (1) + Engineer's 2 iterations = 3 agent-cost rows
+        # (under U1 the entry PM meters as an agent, not a pm-llm completion). ---
+        if n_agent_cost == 3:
+            ok("exactly 3 agent-cost CostRecords (entry PM + Engineer x2 — unified agent path)")
         else:
-            fail(f"expected 2 agent-cost rows, got {n_agent_cost}")
+            fail(f"expected 3 agent-cost rows (entry PM + Engineer x2), got {n_agent_cost}")
 
         # --- shipped exactly once, completed, file matches ---
         if run.get("status") == "completed":
