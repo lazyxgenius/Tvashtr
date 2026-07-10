@@ -1,98 +1,55 @@
-# HANDOVER — for Tvashtr-53
+# HANDOVER — for Tvashtr-54
 
-> Structured snapshot for the next architect chat. Read this AND `PROJECTPLAN.md` (root) before doing anything. The living docs are the source of truth; this file carries the standing directives + the immediate next step so the next instance inherits them.
+**You are Tvashtr-54.** Read this + `PROJECTPLAN.md` (root) before doing anything. You are the **architect/planner ONLY** — all implementation goes through Claude Code; you design, write `/goal`s, hand the operator a copyable launch package, then **audit on disk**.
 
----
+## §0 — Standing operator directives (carry forward EVERY session)
+- **Role:** architect/planner ONLY. ALL code (product, scripts, build/Makefile) goes through Claude Code (the CLI `/goal` loop, launched `--dangerously-skip-permissions`). Your only direct edits: `PROJECTPLAN.md`, `HANDOVER.md`, `prompts/*.md`, trivial doc/typo fixes. When tempted to write code, write a `/goal` instead.
+- **The disk audit is the real control point** — never trust Claude Code's self-report. Read the files it changed, verify git from `.git/` plumbing (there is NO git CLI in the MCP — use `.git/refs/heads/<b>`, `.git/logs/refs/heads/<b>`), confirm tests are mutation-real (they must FAIL on pre-fix code), diff "untouched" claims against a pre-image.
+- **Launch package = 3 copyable blocks inline, EVERY time** (never "same as before", never point the operator at a file for the init/goal text): (1) the shell command, (2) the FULL init prompt verbatim, (3) the FULL `/goal` verbatim. The detailed brief MAY live in `prompts/*.md` (the `/goal` references it), but the init+goal text are always reproduced inline.
+- **Standing ask:** every init prompt + `/goal` must tell Claude Code to write a DETAILED final report (files changed, exact commands+output, deviations, open questions, next step).
+- **`/goal` scope:** one full bounded milestone, verifiable in a single transcript. Acceptance runs ALL checks itself (`make test`, lint, live smoke/e2e) + debugs to green + echoes evidence into chat; never hand the operator commands to run. **Reproduce-first for bug fixes** (a failing test that PROVES the bug, confirmed failing on current code, BEFORE the fix — this is what caught my wrong root-cause this session). Stop conditions distinguish "a second/unknown or unproven-broad change → NEEDS_HUMAN" from "a code-proven, contained, regression-guarded fix → proceed".
+- **Merges are operator-only, always FF** (`git merge --ff-only`). Give ALL merge commands as copyable text every time (cd → checkout main → merge --ff-only → verify log → optional branch -d), state the expected tip sha + what to do if the FF is refused (stop, don't force). The agent commits only its own changed paths on its branch; never pushes (the no-push + migration-freeze PreToolUse hooks survive bypass).
+- **Design decisions:** derive from the vision (§1) + the Tvashtr-25 pivot, NEVER from effort. One design question at a time, decided directly (not an option-menu — reserve menus for genuine strategic-direction calls), and PAIR every decision with its concrete frontend/UX consequence (what the user sees + does on the canvas).
+- **Visual/manual sign-off:** default to Claude Code's Playwright self-sign-off (screenshots); when you DO ask the operator to check by eye, give a NUMBERED, click-by-click script (exact team/screen, node by its VISIBLE label, exact action, explicit pass/fail).
+- **Operator comms:** terse ("proceed"/"go"/"merged"/"done" = ratify + move; "by the way" = wants a SHORT answer). Procedures ONE STEP AT A TIME (give step 1, wait for the reported output, then step 2). Simple everyday language. Analogies help. Always hand over copyable artifacts.
 
-## 0. Who you are + how we work (STANDING — carry forward every handover)
+## Current state (Tvashtr-53 closeout)
+- **`main` @ `69e1f3a`.** History: `69e1f3a`(Filler-B) → `8c17982`(Filler-A) → `b4229b5`(M-robust) → `0feae15`(U1) → `adf1f32`(Tvashtr-52 docs). Everything below is MERGED + disk-audited + re-verified green on merged `main`.
+- **alembic head `0024`; migration freeze `0001–0024`** (freeze hook regex now `2[0-4]`). Floors **454 backend / 275 vitest**. All green (operator-confirmed: vitest 275 passed, build clean, backend 454).
+- **DeepSeek is the go-forward agent model** — `.env`: `TVASHTR_AGENT_MODEL=deepseek/deepseek-chat`, `DEFAULT_MODEL=deepseek/deepseek-chat` (gitignored). Use `deepseek-chat`, NOT `deepseek-reasoner`. NIM (`nvidia_nim/meta/llama-3.3-70b-instruct`) was HARD-DOWN all of Tvashtr-53 (a documented degradation — connects but never returns, ~181s/attempt); moot now that we're on DeepSeek.
+- **The self-imposed `engines/` freeze is RETIRED** — M-robust made the FIRST sanctioned `engines/` change (`_payload_of`). Future `engines/` work is allowed WITH CARE (keep it surgical + justified). The MIGRATION freeze is SEPARATE + still enforced by the hook.
+- **Default sandbox mode is LOCAL** (in-process); docker is opt-in (isolated real-repo work). Both adapters share `_payload_of`, so the M-robust fix covers BOTH (docker confirmed live).
 
-You are **Tvashtr-53**, the **architect/planner** for Tvashtr. **Open by stating your name** so the operator can title the chat.
+## What shipped this session (all merged; full as-built in §17, 2026-07-09)
+- **M-unify DESIGNED** (4 decisions + D2 — below). **U1 SHIPPED** (`0feae15`, mig `0024`): thinker(`completion`)/worker(`agent`) collapse to ONE agent path gated by a boolean `agent_nodes.edits_allowed`; loop-always; capability note appended only when edits-off; the Slice-4 emitting-node verdict-only pull survives.
+- **M-robust SHIPPED** (`b4229b5`): the `_payload_of` thought-stringify (+12 lines, the SOLE `engines/` change) — reasoning models (DeepSeek/qwen3/…) run clean in local + docker; docker confirmed LIVE.
+- **Filler-A** (`8c17982`): a shared modal focus-trap hook (`useModalDialog.ts`). **Filler-B** (`69e1f3a`): a guided Local/Remote Tools-shelf add form.
 
-**Division of labor (strict):** ALL implementation — product code, diagnostic scripts, build/Makefile/config — goes through **Claude Code** (the CLI agent). You DESIGN, write the `/goal` (+ optional `prompts/*.md` brief), hand the operator a complete copyable launch package, and **audit the result on disk**. The ONLY architect-direct edits: the two living docs (`PROJECTPLAN.md`, `HANDOVER.md`), `prompts/*.md` briefs, and trivial doc/typo fixes. When tempted to write code, write a `/goal` instead.
+## The M-unify design (the ACTIVE milestone — carry the detail)
+- **D1 loop-always:** every node runs the FULL agent loop. Sandbox reuse is **U2** (a hard requirement, scoped to a node's OWN subsequent goals).
+- **The pull manifest is the SOLE "edits-not-allowed" enforcer** (tool detachment is steering only); the Slice-4 emitting-node verdict-only pull survives INDEPENDENTLY of the toggle.
+- **A compiler-appended capability NOTE, not persona-swap** (only when edits-off; edits-on byte-identical).
+- **A file-based deliverable — REPORT.md at the workspace root** + **D2 the ENTRY node owns the spec** (its REPORT.md → the next spec version; a missing REPORT.md fails the invocation cleanly; non-entry reports surfaced not versioned; downstream reads SPEC.md).
+- Sliced: **U1 (done) → U2 (sandbox reuse, NEXT, deferred HARD req) → U3 (FE).**
 
-**The loop:** you write ONE lean `/goal` for a full bounded milestone (outcome + hard invariants-as-evidence + acceptance/evidence checklist the transcript must show + stop conditions; CC self-decomposes) → hand the operator the **3 copyable blocks** (shell launch / full init prompt / full `/goal`) inline, every time, never "same as last time" → operator runs it (bypass mode) → operator pastes the report (or you read `STATE.md`/the branch) → **you audit on disk** (read changed files, diff against pre-images, verify git from `.git` plumbing, confirm tests are mutation-real, check invariants) → **you give ALL the merge commands copyable; operator FF-merges** → repeat.
+## On the horizon (operator-sequenced)
+1. **M-unify U2 — sandbox reuse (NEXT; a deferred HARD requirement).** Reuse ONE agent sandbox across a node's subsequent goals within its own scope. **Latency baselines to beat** (entry-node spin-up→REPORT.md): DeepSeek local 12.2s · DeepSeek docker 20.2s · gpt-4o-mini 8.1s.
+2. **M-unify U3 — the FE surface.** Capability→Edits toggle; tools on EVERY node (not worker-only); a pre-launch AMBER action-verb lint on edits-off nodes; the PM/Engineer/Reviewer builders → a drop-and-edit TEMPLATE library (flip the Reviewer template to edits-off).
+3. **M-rails (C8) — first guardrail gate-nodes** (on trigger: first multi-user exposure or first externally-consequential repo write).
+4. **M-memory — agentic memory/RAG** (committed by Sidechat-7, 2026-07-09; Postgres→pgvector, a per-node Memory drawer, brownfield-phase as first consumer) — when scheduled.
+5. **Brownfield thesis re-run** — deferred, awaiting the right milestone window (now attemptable on DeepSeek + the condenser).
+6. **Mv — a non-founder shipping real value on their own repo** — the REAL product gate, off the phase ladder (= the Wizard-of-Oz demand probe, ≥1 non-founder paying user).
+- **Company/legal (operator's side):** Tvashtr was explored as a sole proprietorship first; Udyam registration hit a PAN-validation issue (a suspected Aadhaar-PAN name mismatch) — checking Aadhaar-PAN linking at the Income-Tax portal was the next step.
 
-**Filesystem access:** full read/write on `/Users/adimac/Desktop/Tvashtr` (**capital T load-bearing**). Confirm the allowed dir at session start (`list_allowed_directories`). **No `git` CLI in the MCP** — reconstruct git state from `.git/refs/heads/<b>`, `.git/logs/HEAD`, `.git/logs/refs/heads/<b>`. The disk audit is your real control point — verify, never rubber-stamp; scrutinize any deviation from the brief by reading the actual change.
+## Gotchas + working notes (not already in PROJECTPLAN)
+- **Two chat sequences share this project memory:** "Tvashtr-X" (this — the main build sequence) and "Tvashtr Sidechat-X" (side planning/brainstorming, NOT the build loop). State which you are from the opening message.
+- **Git worktrees for parallel sessions** are SIBLINGS of the repo (e.g. `../Tvashtr-x`) — OUTSIDE the Filesystem tool's allowed scope, so you CANNOT read their files directly; audit AFTER the FF-merge lands them in the main checkout. Each worktree needs its OWN Postgres DB + Vite port (5174).
+- **`prompts/*.md` you author are NOT visible inside a worktree** (untracked, separate working tree) — so for a worktree run the `/goal` is the BINDING brief; always inline the full spec, never "see prompts/…". (In the MAIN checkout, prompts/ IS visible.)
+- **File reads:** `copy_file_user_to_claude` caches by basename (a re-copy of a CHANGED file returns the STALE cached version) — use `Filesystem:read_text_file` (cache-free; supports `head`/`tail` and a `view_range`) for anything that may have changed; stash a pre-image before re-copying to diff "untouched" claims.
+- **Editing the living docs:** use `Filesystem:edit_file` (oldText/newText, EXACT match; the CONTAINER's `str_replace` does NOT reach the user disk — it will say "File not found"). `PROJECTPLAN.md` is ~1060 lines — grep the header index (`grep -nE '^#{2,3} '`) + read/edit targeted ranges; the header banner is ONE giant line 6 (prepend the new session summary, demote the prior to `_Prior:_`). §17 append anchor = the last entry's tail + `\n\n---\n\n## 18. Glossary`.
+- **litellm `timeout=` does NOT bound a connected-but-hung call** (the NIM failure mode) — a SIGALRM wall-clock guard would; logged in §15.
+- **STATE.md** is the CLI agent's running log — TRACKED + committed by agents, so it rides onto `main` as scratch (overwritten each run); a `.gitignore` candidate (§15). When cherry-picking a filler whose commit bundles STATE.md, keep `main`'s (`git checkout HEAD -- STATE.md` after `git cherry-pick -n`).
+- **§15 micro-refinements** surfaced this session (OUTCOME.json rename; `resolve_thinker_max_tokens`/`thinker_max_output_tokens` now dead code post-loop-always; edits-on-emitting-node consent UX; the Filler nits; the `/goal` Stop-hook can't encode a NEEDS_HUMAN terminal) — all logged, none blocking.
 
-**Guardrails (survive bypass — they're PreToolUse hooks):** the agent never pushes (`.claude/hooks/protect-no-push.sh`); the existing migration set is frozen (`.claude/hooks/protect-migrations.sh`, now `0001-0023`) — never edit a frozen migration, create a NEW one and bump the freeze LAST (only if the slice adds a migration). `--dangerously-skip-permissions` skips the permission layer so allow/deny rules go inert — only hooks survive.
-
-**Operator comms (preferences):** terse — "Go"/"proceed"/"merged"/"done" = ratify + move forward; a message starting **"By the way"** wants a short answer. Give **procedures one step at a time** (one step, they report, next). **Analogies help.** **Simple, everyday language — avoid jargon.** Always hand over **copyable artifacts** (commands, init prompt, `/goal`, merge commands, sign-off scripts) — never make them scroll back or retrieve from a file.
-
-**Design decisions:** decide from the §1 vision + the Tvashtr-25 pivot, **never from effort/path-of-least-resistance**; **one design question at a time**, decide it directly (don't present option menus except for genuine strategic-direction calls), get sign-off before the next; **pair every decision with its concrete user-facing UX consequence** (what the user sees/does on the canvas/UI), every time.
-
-**Merge handoff + visual sign-off:** give ALL merge commands copyable every time (cd → checkout main → `git merge --ff-only <branch>` → verify line, + expected tip sha + "if FF fails, stop — that's divergence" + optional `git branch -d`). Prefer CC's Playwright self-sign-off with screenshots; when you DO ask the operator for a visual check, make it a NUMBERED, click-by-click script keyed on VISIBLE labels (never "a thinker node").
-
----
-
-## 1. Where we are RIGHT NOW
-
-- **`main` @ `2c13d56`** (M-tools C7.C merged). Alembic head **`0023`**; migration freeze **`0001-0023`**. Floors: **442 backend / 252 vitest**.
-- **M-tools is COMPLETE** (C7.0 scaffold + C7.A Tools + C7.B Skills + C7.C library). This was Tvashtr-52's ship.
-- **Proven live agent model:** `nvidia_nim/meta/llama-3.3-70b-instruct` via `.env` `TVASHTR_AGENT_MODEL` (~1.4s/call). `qwen3-next-80b` is parked (~40% TextContent serialization crashes in the OpenHands/LiteLLM path).
-- Nothing is in flight — this is a clean milestone boundary.
-- One **untracked** file from Tvashtr-52: `prompts/M-tools-C7.C-library.md` (the C7.C brief). It doesn't affect anything; commit it at the next docs closeout (or leave it — the operator merges docs).
-
----
-
-## 2. What C7.C shipped (so you have the mental model)
-
-An **account-level library**: define a **tool** (one MCP server) or a **skill** (one skill source) ONCE, then **reference** it from any node. The reference lives INSIDE the node's existing field — **no new node column**: tools = an id list at `tool_config.tvashtr.library`; skills = a `{type:"library","id":…}` element in `skills`. That's the load-bearing choice — it lets the two resolvers (`build_mcp_config`, `_resolve_skills`) expand references with **frozen signatures**, which keeps C7.C entirely out of `team_run.py` (verified: empty diff).
-
-- **Backend:** mig `0023` (`tool_library` + `skill_library`, owner-scoped, mirror `mcp_secrets`); new openhands-free `control_plane/node_library.py` (owner-scoped CRUD + LIVE resolver fetch + `owner_for_run`); `build_mcp_config` merges library servers with inline **inline-wins** on a name clash; `_resolve_skills` expands a library ref one level (rejects nesting) then de-dups by name **first-in-list-wins**; 8 owner-scoped `/api/tool-library` + `/api/skill-library` endpoints (content returned; 422/404; skill source rejects nested `library`). A dangling/foreign ref is skipped + warned through C7.A's recorder. Reference is **LIVE** (id only, fetched fresh each run → edit-once-propagates).
-- **FE:** the `library` `SkillSource` variant + 8 clients in `api.ts`; an "Add from library" picker in both drawer sections (Library-badged rows + a muted "overridden" tag on a name clash — inline wins; no tag for repo refs); two account shelves `ToolsShelf`/`SkillsShelf` mounted beside Secrets in the dashboard.
-- **Design was verified against Claude Code + Cursor first** — their user-scope MCP servers + user rules are the same model (define-once/reference, local-overrides-shared, live-not-snapshot).
-
-Full as-built: PROJECTPLAN §17 (2026-07-07, Tvashtr-52).
-
----
-
-## 3. Immediate next step — the operator sequences this (3 live options)
-
-M-tools is done. The next milestone is an **operator call** — present these and let them pick (this IS a genuine strategic-direction choice, so a short menu is appropriate here):
-
-**(a) The two live-target re-runs** — the only pieces of M-tools that never ran on real infra: the agent actually **invoking** an MCP tool end-to-end (`make tools-e2e`, wedged on the container `uvx mcp-server-fetch` first-run MCP-init) and actually **using** a skill end-to-end (`make skills-e2e`, hung on the NIM/SDK polling wall). Both seams are proven; only the final agent-execution line awaits a healthy NIM + warmed-uvx window. This is a verification pass, not a build — needs the infra window, not new code.
-
-**(b) M-rails (C8)** — the first guardrail GATE-nodes: `output_schema_check` / `secret_leak_scan` / `diff_touches_forbidden_paths`, built as deterministic / single-completion gate nodes emitting approved/rejected (NOT NeMo Guardrails as a dependency — that's reject X4), + codify the per-owner request-time credential invariant with a test. Built **one check at a time** (each its own `/goal`). *Its trigger:* first multi-user exposure or first externally-consequential repo write.
-
-**(c) M-unify** — collapse the thinker/worker boundary so every node is a full agent differing ONLY by an **"Edits allowed / Not allowed"** toggle (whether the file-write tool is attached). A "thinker" becomes "an agent with edits off" — keeps the reasoning loop, read-only + MCP tools, on-demand skill invocation. **Forward-compat is already banked:** C7.B built skills capability-agnostic with the thinker's prompt-injection delivery as a THIN BRIDGE that simply gets dropped here (authored skills keep working via the identical `AgentContext` path). Touches the executor thinker path (`pm_step`/`thinker_refine_step`), the `kind`/capability model + the drawer's Capability toggle → an edits toggle, and spec-writing behavior. A dedicated milestone.
-
-Also standing (§15, NOT queued): the **brownfield stronger-worker thesis re-run** (deferred — partially supported; the blocker is rate-limit/BYOK robustness, not model capability; kimi-k2 was writing correct output before a free-tier 429 crashed the loop); the **LIVE validation of C1 + C9** (condensation events + the full `make model-bench` table — needs an NVIDIA key from `main`).
-
-**Mv — a non-founder shipping real value on their own repo — remains THE real gate.** No amount of shipping resolves it; only a Wizard-of-Oz demand probe (≥1 non-founder paying/using) does.
-
----
-
-## 4. Key decisions + rationale (so they're not re-litigated)
-
-- **Reference-inside-the-existing-field, no new node column** (C7.C) — chosen so the resolvers expand refs with frozen signatures → C7.C stays out of `team_run.py`, and refs ride the existing PATCH/round-trip/clone paths for free.
-- **Inline-wins (tools) / first-in-list-wins (skills)** — local override beats the shared library on a name clash; matches Claude Code's MCP precedence.
-- **Live reference, not a snapshot** — editing a library item propagates to every referencing node's next run; the clone-on-launch carries the ref id. (Per-run snapshotting is deferred, §15.)
-- **Owner-scoped everything** — a node can never reach another account's library item; every query filters `owner_id`. This is the security property; the tests assert it.
-- **M-tools ran C7.0 scaffold → C7.A ‖ C7.B (parallel) → C7.C (solo).** The scaffold-first pattern (laying the shared skeleton INERT) is what let the two per-node verticals run file-disjoint in parallel.
-
----
-
-## 5. Gotchas + working-method notes (not already in PROJECTPLAN)
-
-- **`copy_file_user_to_claude` caches by basename** — re-copying a changed file returns the STALE version. For current disk state, use `read_multiple_files` (cache-free), or copy a file you haven't cached this session. (This bit during the C7.C audit — api.ts/Dashboard.tsx had to be read cache-free.)
-- **`Filesystem:edit_file` needs an exact on-disk anchor** — always `dryRun: true` first with a unique multi-line anchor, then apply. `write_file` is more reliable than `edit_file` for a full `HANDOVER.md` rewrite.
-- **`PROJECTPLAN.md` is ~320KB; the header banner is a giant single-line entry at line 6.** Index headers with `grep -nE '^#{1,3} '`, read targeted ranges with `sed -n`. To bump the banner, replace a short unique PREFIX of line 6 (prepend the new entry + `_Prior:_`, demote the old).
-- **`/goal` has a ~4000-char hard limit** — put the detailed brief in `prompts/*.md`, keep the `/goal` lean with a pointer.
-- **Goal-writing lesson (banked):** never pin an exact changed-file COUNT alongside a full-lint gate — a full lint can surface unrelated pre-existing debt, making the goal self-contradictory. Word the no-drift invariant as "`git diff main -- <path>` is empty."
-- **`prompts/CLI-RULES.md` + `CLI-SETUP.md` are STALE** (say head 0014, floors 239/114, reference a non-existent `graph_runner.py`; the real executor is `control_plane/team_run.py`). The per-session init prompt overrides them. Worth a refresh pass someday, but not blocking.
-- All git commands to the operator must be **comment-free** (zsh `INTERACTIVE_COMMENTS` is off non-interactively).
-
----
-
-## 6. Key files
-
-- **Living docs:** `PROJECTPLAN.md` (§1 vision, §9 data model, §13 strategy, §14 features, §15 deferred register, §16 milestones, §17 append-only decision log, §18 glossary), `HANDOVER.md` (this), `STATE.md` (CLI agent's log — you read it, don't maintain it).
-- **Contracts:** `prompts/CLI-RULES.md`, `prompts/CLI-SETUP.md`; hooks `.claude/hooks/protect-migrations.sh` + `protect-no-push.sh`; `.claude/settings.json`.
-- **Backend:** `backend/tvashtr/{models.py, routers.py, config.py, control_plane/*}` (C7 seams: `node_tools.py`, `node_skills.py`, `node_library.py`, `mcp_secrets.py`, `resolution_warnings.py`, `team_run.py`); migrations `backend/alembic/versions/0001-0023*`.
-- **FE:** `frontend/src/{lib/api.ts, panel/*, components/*}` (C7: `panel/ToolsSection.tsx` + `SkillsSection.tsx`; `components/{SecretsShelf,ToolsShelf,SkillsShelf,Dashboard}.tsx`).
-
----
-
-## 7. Ready-to-paste opener for Tvashtr-53
-
-> You are Tvashtr-53. Read `HANDOVER.md` and `PROJECTPLAN.md` at the project root first; then help me pick the next milestone (the two live-target re-runs, M-rails, or M-unify) and scope its first `/goal`. Don't start work until you've read both.
+## Ready-to-paste opener for the next chat
+> You are Tvashtr-54. Read `HANDOVER.md` and `PROJECTPLAN.md` at the project root first; don't start work until you've read both. Then — instead of doing just one milestone — PLAN TWO SEPARATE workstreams to run IN PARALLEL across two Claude Code sessions: two genuinely different pieces of work (e.g. two different milestones from the horizon), NOT the frontend and backend halves of a single milestone. Respect the parallel-session rules: the two must touch DISJOINT files (give me the file-overlap map FIRST), AT MOST ONE may add a migration (two = two alembic heads git won't flag), and each runs in its OWN git worktree with its OWN Postgres DB + Vite port. Candidates: M-unify U2 (sandbox reuse), M-unify U3 (the FE surface), M-rails C8, M-memory, or a hygiene/refinements bundle. Surface the two you'd pick with the split rationale + the overlap map, get my sign-off, then hand me both launch packages.
