@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -554,6 +554,66 @@ describe("TeamNodePanel — M-rails C8 editable gate + read-only terminal author
       gate_kind: "prd_approval",
       title: "Approve before building",
       description: "Approve the spec before building.",
+    });
+  });
+
+  it("selecting 'Forbidden paths' reveals a globs textarea and Save PATCHes forbidden_paths config", async () => {
+    const user = userEvent.setup();
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={gateNode()}
+        isStartNode={false}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        onClose={() => {}}
+      />,
+    );
+    // The globs field is HIDDEN until the diff_touches_forbidden_paths kind is picked.
+    expect(screen.queryByRole("textbox", { name: "Forbidden paths" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Forbidden paths" }));
+    const box = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Forbidden paths" });
+    // One glob per line; a trailing blank line is trimmed away on Save.
+    fireEvent.change(box, { target: { value: ".github/**\ninfra/**\n" } });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    expect(urlOf(patchCall()![0])).toBe("/api/teams/team-1/nodes/n-gate");
+    expect(JSON.parse(patchCall()![1].body as string)).toEqual({
+      gate_kind: "diff_touches_forbidden_paths",
+      title: "Approve the PRD",
+      description: "Approve the spec before building.",
+      forbidden_paths: [".github/**", "infra/**"],
+    });
+  });
+
+  it("selecting 'Output schema' reveals output-file + JSON-schema inputs and Save PATCHes output_schema config", async () => {
+    const user = userEvent.setup();
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={gateNode()}
+        isStartNode={false}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("textbox", { name: "Output file" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Output schema" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Output file" }), {
+      target: { value: "result.json" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "JSON schema" }), {
+      target: { value: '{"type":"object","required":["ok"]}' },
+    });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    expect(JSON.parse(patchCall()![1].body as string)).toEqual({
+      gate_kind: "output_schema_check",
+      title: "Approve the PRD",
+      description: "Approve the spec before building.",
+      output_file: "result.json",
+      output_schema: { type: "object", required: ["ok"] },
     });
   });
 

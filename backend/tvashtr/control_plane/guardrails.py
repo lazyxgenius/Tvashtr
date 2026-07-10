@@ -19,15 +19,20 @@ Imports NEITHER ``litellm`` NOR ``openhands`` (only stdlib + ``dbos``), exactly 
 :mod:`tvashtr.control_plane.gates` — so ``team_run`` stays openhands-free at import.
 """
 
+import fnmatch
+import json
 import os
 import re
+import subprocess
 from pathlib import Path
 
 from dbos import DBOS
 
 # The set of ``config.gate_kind`` values the executor's gate arm dispatches DETERMINISTICALLY (no
 # human ``wait_at_gate``). Any other / absent kind stays the human-approval path, byte-identical.
-GUARDRAIL_GATE_KINDS: frozenset[str] = frozenset({"secret_leak_scan"})
+GUARDRAIL_GATE_KINDS: frozenset[str] = frozenset(
+    {"secret_leak_scan", "diff_touches_forbidden_paths", "output_schema_check"}
+)
 
 # Directories never worth scanning (VCS internals, dependency/build caches) — skipped wholesale
 # for speed AND to avoid false positives from vendored fixtures. Matched on the directory basename.
@@ -172,8 +177,148 @@ def secret_leak_scan(workspace: str) -> tuple[str, str | None]:
     return "approved", None
 
 
+# ---- M-rails C9 kind: diff_touches_forbidden_paths -------------------------
+
+
+def _git_changed_files(workspace: str) -> list[str]:
+    """The agent's changed paths in ``workspace`` (name-only), via git — a SORTED, de-duplicated
+    list of workspace-relative POSIX paths. The union of tracked modifications/deletions vs ``HEAD``
+    (``git diff --name-only HEAD``) and NEW untracked files respecting ``.gitignore``
+    (``git ls-files --others --exclude-standard``) — together the full "since the base commit" set
+    the agent produced (staged or not) BEFORE the ship commit. A non-repo path or any git error
+    yields ``[]`` (nothing detectable ⇒ the caller approves)."""
+    if not (Path(workspace) / ".git").exists():
+        return []
+    changed: set[str] = set()
+    for args in (
+        ("diff", "--name-only", "HEAD"),
+        ("ls-files", "--others", "--exclude-standard"),
+    ):
+        proc = subprocess.run(
+            ["git", "-C", workspace, "-c", "core.quotePath=false", *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode == 0:
+            changed.update(line for line in proc.stdout.splitlines() if line)
+    return sorted(changed)
+
+
+def diff_touches_forbidden_paths(workspace: str, config: dict) -> tuple[str, str | None]:
+    """Deterministically REJECT if the agent's git diff touches a forbidden path.
+
+    ``config["forbidden_paths"]`` is a list of ``fnmatch`` globs (e.g. ``".github/**"``,
+    ``"infra/**"``, ``"*.pem"``; ``*`` matches ``/`` too, so a directory prefix forbids its whole
+    subtree). Returns ``("rejected", reason)`` on the FIRST offending change — the reason names the
+    workspace-relative file + the matched glob, NEVER the file's contents — else
+    ``("approved", None)``. Deterministic: changed files are tested in SORTED order, globs in
+    configured order, so the first-hit report is stable. No forbidden globs (or no detectable diff)
+    ⇒ approve."""
+    globs = [g for g in (config.get("forbidden_paths") or []) if isinstance(g, str) and g.strip()]
+    if not globs:
+        return "approved", None
+    for path in _git_changed_files(workspace):  # sorted → deterministic first hit
+        for glob in globs:  # configured order
+            if fnmatch.fnmatchcase(path, glob):
+                return "rejected", f"changed file {path} matches forbidden path {glob}"
+    return "approved", None
+
+
+# ---- M-rails C9 kind: output_schema_check ----------------------------------
+
+
+def _type_ok(value: object, type_name: str) -> bool:
+    """True if ``value`` satisfies a single JSON-Schema ``type`` name. ``bool`` is excluded from the
+    numeric types (a JSON boolean is not an integer/number)."""
+    if type_name == "object":
+        return isinstance(value, dict)
+    if type_name == "array":
+        return isinstance(value, list)
+    if type_name == "string":
+        return isinstance(value, str)
+    if type_name == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if type_name == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if type_name == "boolean":
+        return isinstance(value, bool)
+    if type_name == "null":
+        return value is None
+    return True  # an unknown/unsupported constraint is not enforced (never a false reject)
+
+
+def _join_path(path: str, key: str) -> str:
+    return key if not path else f"{path}.{key}"
+
+
+def _schema_violation(value: object, schema: object, path: str) -> str | None:
+    """Return the dotted path of the FIRST schema violation in ``value`` under ``schema``, or
+    ``None`` if it validates. A deterministic SUBSET validator (stdlib-only, no ``jsonschema``
+    dependency): ``type`` (incl. a list of types), ``enum``, object ``required`` + ``properties``,
+    and array ``items``. Traversal order is fixed — ``required`` in listed order, then
+    ``properties`` in SORTED key order, then array items by index — so the first-failure report is
+    stable. Only KEY names/paths are ever surfaced, never values (the redaction rule)."""
+    if not isinstance(schema, dict):
+        return None
+    declared = schema.get("type")
+    if declared is not None:
+        names = declared if isinstance(declared, list) else [declared]
+        if not any(_type_ok(value, str(n)) for n in names):
+            return path or "(root)"
+    if "enum" in schema and isinstance(schema["enum"], list) and value not in schema["enum"]:
+        return path or "(root)"
+    if isinstance(value, dict):
+        for key in schema.get("required", []) or []:
+            if key not in value:
+                return _join_path(path, key)
+        props = schema.get("properties")
+        if isinstance(props, dict):
+            for key in sorted(props):
+                if key in value:
+                    hit = _schema_violation(value[key], props[key], _join_path(path, key))
+                    if hit is not None:
+                        return hit
+    if isinstance(value, list):
+        items = schema.get("items")
+        if isinstance(items, dict):
+            for i, item in enumerate(value):
+                hit = _schema_violation(item, items, f"{path}[{i}]")
+                if hit is not None:
+                    return hit
+    return None
+
+
+def output_schema_check(workspace: str, config: dict) -> tuple[str, str | None]:
+    """Deterministically REJECT if a required output file is missing / not JSON / off-schema.
+
+    ``config["output_file"]`` is a workspace-relative path; ``config["schema"]`` is a JSON-Schema
+    subset (see :func:`_schema_violation`). Returns ``("rejected", reason)`` when the file is
+    missing or unreadable, is not valid JSON, or violates the schema — the reason names the file
+    (and, for a schema failure, the FIRST failing key/path), NEVER the file's contents or the
+    offending value — else ``("approved", None)``. No ``output_file`` configured ⇒ nothing to check
+    ⇒ approve."""
+    output_file = config.get("output_file")
+    if not isinstance(output_file, str) or not output_file.strip():
+        return "approved", None
+    schema = config.get("schema") or {}
+    path = Path(workspace) / output_file
+    if not path.is_file():
+        return "rejected", f"required output file {output_file} is missing"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):  # ValueError covers JSONDecodeError + UnicodeDecodeError
+        return "rejected", f"output file {output_file} is not valid JSON"
+    violation = _schema_violation(data, schema, "")
+    if violation is not None:
+        return "rejected", f"output file {output_file} fails schema at {violation}"
+    return "approved", None
+
+
 @DBOS.step()
-def guardrail_gate_step(run_id: str, node_id: str, gate_kind: str, workspace: str | None) -> dict:
+def guardrail_gate_step(
+    run_id: str, node_id: str, gate_kind: str, workspace: str | None, config: dict
+) -> dict:
     """Recorded deterministic guardrail verdict for a gate node (M-rails C8).
 
     Runs the ``gate_kind`` check against ``workspace`` and returns
@@ -189,6 +334,10 @@ def guardrail_gate_step(run_id: str, node_id: str, gate_kind: str, workspace: st
         return {"resolution": "approved", "reasons": None}
     if gate_kind == "secret_leak_scan":
         resolution, reasons = secret_leak_scan(workspace)
+    elif gate_kind == "diff_touches_forbidden_paths":
+        resolution, reasons = diff_touches_forbidden_paths(workspace, config or {})
+    elif gate_kind == "output_schema_check":
+        resolution, reasons = output_schema_check(workspace, config or {})
     else:
         resolution, reasons = "approved", None
     DBOS.logger.info(

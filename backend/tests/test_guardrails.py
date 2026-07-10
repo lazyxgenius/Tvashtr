@@ -14,6 +14,7 @@ Two layers, both LLM-free / agent-free:
   that today's code does not handle a guardrail gate_kind deterministically.
 """
 
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -24,7 +25,9 @@ from sqlalchemy import select
 from tvashtr.control_plane import team_run
 from tvashtr.control_plane.guardrails import (
     GUARDRAIL_GATE_KINDS,
+    diff_touches_forbidden_paths,
     guardrail_gate_step,
+    output_schema_check,
     secret_leak_scan,
 )
 from tvashtr.control_plane.shipping import init_workspace_repo
@@ -105,7 +108,7 @@ def test_scan_of_missing_dir_approves(tmp_path):
 
 def test_guardrail_step_none_workspace_approves(client):
     # A guardrail gate reached before any workspace exists scans nothing -> approved.
-    assert guardrail_gate_step("wf-x", "node-x", "secret_leak_scan", None) == {
+    assert guardrail_gate_step("wf-x", "node-x", "secret_leak_scan", None, {}) == {
         "resolution": "approved",
         "reasons": None,
     }
@@ -118,7 +121,7 @@ def test_secret_leak_scan_is_a_registered_guardrail_kind():
 # ---- routing: the REAL run_team walk over a guardrail gate ------------------
 
 
-def _build_guardrail_graph() -> dict[str, str]:
+def _build_guardrail_graph(gate_config: dict | None = None) -> dict[str, str]:
     """A minimal walk exercising the guardrail gate arm:
 
         entry (completion, edits-off, writes the spec)
@@ -148,7 +151,8 @@ def _build_guardrail_graph() -> dict[str, str]:
             model=None,
             engine=None,
             position={"x": 260, "y": 0},
-            config={
+            config=gate_config
+            or {
                 "gate_kind": "secret_leak_scan",
                 "title": "Scan for leaked secrets",
                 "description": "Automatic check — rejects if the workspace contains a secret.",
@@ -310,4 +314,258 @@ def test_secret_gate_approves_a_clean_workspace_and_ships(client, monkeypatch, t
     assert human_called["n"] == 0
     assert result["status"] == "completed"
     outcome, _ = _gate_invocation_outcome(run_id, ids["gate"])
+    assert outcome == "approved"
+
+
+# ============================================================================
+# M-rails C9 — two MORE deterministic guardrail kinds
+#   * diff_touches_forbidden_paths — REJECT when the agent's git diff touches a forbidden glob.
+#   * output_schema_check — REJECT when a required output file is missing / not JSON / off-schema.
+# Both mirror secret_leak_scan (stdlib+dbos only) and honor the redaction rule (name the
+# file/path/key, NEVER echo a value or file contents). Each REJECT test below FAILS if its check is
+# stubbed to always-approve — the reproduce-first / mutation-real proof.
+# ============================================================================
+
+# A sentinel VALUE planted inside a fixture file: the redacted reason must NEVER echo it.
+_PLANTED_VALUE = "s3cr3t-value-do-not-echo-1234567890"
+
+
+def _init_repo_with(tmp_path: Path, files: dict[str, str]) -> Path:
+    """A git-inited workspace (empty init commit) with ``files`` written as UNCOMMITTED changes —
+    exactly the state the executor sees at gate time (the agent's diff not yet shipped)."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    init_workspace_repo(str(ws))
+    for rel, content in files.items():
+        path = ws / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    return ws
+
+
+# ---- unit: diff_touches_forbidden_paths ------------------------------------
+
+
+def test_diff_forbidden_rejects_a_touched_forbidden_path(tmp_path):
+    ws = _init_repo_with(tmp_path, {".github/workflows/deploy.yml": f"secret: {_PLANTED_VALUE}\n"})
+    outcome, reason = diff_touches_forbidden_paths(str(ws), {"forbidden_paths": [".github/**"]})
+    assert outcome == "rejected"
+    assert reason is not None
+    # Names the offending file + the matched glob…
+    assert ".github/workflows/deploy.yml" in reason
+    assert ".github/**" in reason
+    # …but NEVER the file's contents.
+    assert _PLANTED_VALUE not in reason
+
+
+def test_diff_forbidden_approves_when_no_forbidden_path_touched(tmp_path):
+    ws = _init_repo_with(tmp_path, {"src/app.py": "print('hi')\n", "README.md": "# ok\n"})
+    assert diff_touches_forbidden_paths(
+        str(ws), {"forbidden_paths": [".github/**", "infra/**", "*.pem"]}
+    ) == ("approved", None)
+
+
+def test_diff_forbidden_approves_with_no_globs_configured(tmp_path):
+    # A change is present, but nothing is forbidden -> nothing can match -> approve.
+    ws = _init_repo_with(tmp_path, {"infra/main.tf": "resource {}\n"})
+    assert diff_touches_forbidden_paths(str(ws), {}) == ("approved", None)
+    assert diff_touches_forbidden_paths(str(ws), {"forbidden_paths": []}) == ("approved", None)
+
+
+def test_diff_forbidden_matches_a_modified_tracked_file(tmp_path):
+    # A file that existed at HEAD and was MODIFIED is a changed path too
+    # (git diff --name-only HEAD).
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    init_workspace_repo(str(ws))
+    (ws / "secrets.py").write_text("TOKEN = 'x'\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(ws), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(ws), "commit", "-q", "-m", "base"], check=True)
+    (ws / "secrets.py").write_text("TOKEN = 'changed'\n", encoding="utf-8")  # modify tracked file
+    outcome, reason = diff_touches_forbidden_paths(str(ws), {"forbidden_paths": ["secrets.py"]})
+    assert outcome == "rejected"
+    assert reason is not None and "secrets.py" in reason
+
+
+def test_diff_forbidden_is_deterministic_first_hit(tmp_path):
+    # Two forbidden files touched -> the lexicographically-first changed path is reported (sorted).
+    ws = _init_repo_with(tmp_path, {"infra/a.tf": "x\n", "zzz/last.pem": "-----BEGIN-----\n"})
+    outcome, reason = diff_touches_forbidden_paths(
+        str(ws), {"forbidden_paths": ["infra/**", "*.pem"]}
+    )
+    assert outcome == "rejected"
+    assert reason is not None and "infra/a.tf" in reason  # sorted -> infra/ before zzz/
+
+
+# ---- unit: output_schema_check ---------------------------------------------
+
+_SCHEMA = {
+    "type": "object",
+    "required": ["status", "count"],
+    "properties": {"status": {"type": "string"}, "count": {"type": "integer"}},
+}
+
+
+def test_output_schema_rejects_a_missing_file(tmp_path):
+    ws = _init_repo_with(tmp_path, {"README.md": "# nothing else\n"})
+    outcome, reason = output_schema_check(
+        str(ws), {"output_file": "result.json", "schema": _SCHEMA}
+    )
+    assert outcome == "rejected"
+    assert reason is not None and "result.json" in reason
+
+
+def test_output_schema_rejects_invalid_json_without_echoing_contents(tmp_path):
+    ws = _init_repo_with(tmp_path, {"result.json": f"not json at all {_PLANTED_VALUE}"})
+    outcome, reason = output_schema_check(
+        str(ws), {"output_file": "result.json", "schema": _SCHEMA}
+    )
+    assert outcome == "rejected"
+    assert reason is not None and "result.json" in reason
+    assert _PLANTED_VALUE not in reason  # file contents never echoed
+
+
+def test_output_schema_rejects_a_schema_violation_naming_the_key(tmp_path):
+    # Valid JSON, but `count` is a string (schema wants integer) -> reject naming the failing key,
+    # never the value.
+    ws = _init_repo_with(
+        tmp_path, {"result.json": '{"status": "ok", "count": "' + _PLANTED_VALUE + '"}'}
+    )
+    outcome, reason = output_schema_check(
+        str(ws), {"output_file": "result.json", "schema": _SCHEMA}
+    )
+    assert outcome == "rejected"
+    assert reason is not None and "result.json" in reason
+    assert "count" in reason  # names the FIRST failing key/path
+    assert _PLANTED_VALUE not in reason  # the offending value is never echoed
+
+
+def test_output_schema_rejects_a_missing_required_key(tmp_path):
+    ws = _init_repo_with(tmp_path, {"result.json": '{"status": "ok"}'})  # `count` missing
+    outcome, reason = output_schema_check(
+        str(ws), {"output_file": "result.json", "schema": _SCHEMA}
+    )
+    assert outcome == "rejected"
+    assert reason is not None and "result.json" in reason and "count" in reason
+
+
+def test_output_schema_approves_a_valid_output(tmp_path):
+    ws = _init_repo_with(tmp_path, {"result.json": '{"status": "ok", "count": 3}'})
+    assert output_schema_check(str(ws), {"output_file": "result.json", "schema": _SCHEMA}) == (
+        "approved",
+        None,
+    )
+
+
+def test_output_schema_approves_when_nothing_configured(tmp_path):
+    ws = _init_repo_with(tmp_path, {"result.json": '{"whatever": 1}'})
+    assert output_schema_check(str(ws), {}) == ("approved", None)
+
+
+# ---- dispatch: guardrail_gate_step routes each new kind WITH its config -----
+
+
+def test_guardrail_step_dispatches_diff_touches_forbidden_paths(client, tmp_path):
+    ws = _init_repo_with(tmp_path, {"infra/main.tf": "resource {}\n"})
+    out = guardrail_gate_step(
+        "wf", "node", "diff_touches_forbidden_paths", str(ws), {"forbidden_paths": ["infra/**"]}
+    )
+    assert out["resolution"] == "rejected"
+    assert out["reasons"] is not None and "infra/main.tf" in out["reasons"]
+
+
+def test_guardrail_step_dispatches_output_schema_check(client, tmp_path):
+    ws = _init_repo_with(tmp_path, {"result.json": '{"status": "ok"}'})  # missing `count`
+    out = guardrail_gate_step(
+        "wf",
+        "node",
+        "output_schema_check",
+        str(ws),
+        {"output_file": "result.json", "schema": _SCHEMA},
+    )
+    assert out["resolution"] == "rejected"
+    assert out["reasons"] is not None and "result.json" in out["reasons"]
+
+
+def test_both_new_kinds_are_registered_guardrails():
+    assert "diff_touches_forbidden_paths" in GUARDRAIL_GATE_KINDS
+    assert "output_schema_check" in GUARDRAIL_GATE_KINDS
+
+
+# ---- routing (executor gate arm e2e): the REAL run_team walk over each new kind ----
+
+
+def test_forbidden_paths_gate_routes_reject_without_human(client, monkeypatch, tmp_path):
+    """Kind 1 through the executor gate arm: a `diff_touches_forbidden_paths` gate over a workspace
+    whose diff touches `.github/**` auto-REJECTS (routes to the stop terminal) with NO human pause.
+    RED if the check is stubbed to always-approve (it would ship instead of stop)."""
+    ws = _init_repo_with(tmp_path, {".github/workflows/deploy.yml": "name: deploy\n"})
+    _wire_entry_fakes(monkeypatch, ws)
+
+    human_called = {"n": 0}
+
+    def _spy_wait_at_gate(*a, **k):
+        human_called["n"] += 1
+        return {"resolution": "approved", "note": None}
+
+    monkeypatch.setattr(team_run, "wait_at_gate", _spy_wait_at_gate)
+
+    ids = _build_guardrail_graph(
+        gate_config={
+            "gate_kind": "diff_touches_forbidden_paths",
+            "title": "No CI/CD edits",
+            "description": "Rejects if the change touches protected paths.",
+            "forbidden_paths": [".github/**", "infra/**"],
+        }
+    )
+    run_id = _make_run(ids["team_graph_id"])
+    with SetWorkflowID(run_id):
+        handle = DBOS.start_workflow(team_run.run_team, "ship a feature")
+    result = handle.get_result()
+
+    assert human_called["n"] == 0, "a guardrail gate must not call wait_at_gate"
+    assert result["status"] == "rejected"
+    outcome, detail = _gate_invocation_outcome(run_id, ids["gate"])
+    print(
+        f"[C9-e2e] Kind1 diff_touches_forbidden_paths -> resolution={outcome!r} detail={detail!r}"
+    )
+    assert outcome == "rejected"
+    assert detail is not None
+    assert ".github/workflows/deploy.yml" in detail and ".github/**" in detail
+
+
+def test_output_schema_gate_routes_approve_and_ships(client, monkeypatch, tmp_path):
+    """Kind 2 through the executor gate arm: an `output_schema_check` gate over a workspace whose
+    output file validates auto-APPROVES (routes to ship -> completed), no human pause."""
+    ws = _init_repo_with(tmp_path, {"result.json": '{"status": "ok", "count": 2}'})
+    _wire_entry_fakes(monkeypatch, ws)
+
+    human_called = {"n": 0}
+    monkeypatch.setattr(
+        team_run,
+        "wait_at_gate",
+        lambda *a, **k: (
+            human_called.__setitem__("n", human_called["n"] + 1)
+            or {"resolution": "rejected", "note": None}
+        ),
+    )
+
+    ids = _build_guardrail_graph(
+        gate_config={
+            "gate_kind": "output_schema_check",
+            "title": "Deliverable present",
+            "description": "Rejects if result.json is missing or off-schema.",
+            "output_file": "result.json",
+            "schema": _SCHEMA,
+        }
+    )
+    run_id = _make_run(ids["team_graph_id"])
+    with SetWorkflowID(run_id):
+        handle = DBOS.start_workflow(team_run.run_team, "ship a feature")
+    result = handle.get_result()
+
+    assert human_called["n"] == 0
+    assert result["status"] == "completed"
+    outcome, _ = _gate_invocation_outcome(run_id, ids["gate"])
+    print(f"[C9-e2e] Kind2 output_schema_check -> resolution={outcome!r} (run completed)")
     assert outcome == "approved"

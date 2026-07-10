@@ -171,6 +171,15 @@ class UpdateTeamNodeRequest(BaseModel):
     gate_kind: str | None = None
     title: str | None = None
     description: str | None = None
+    # M-rails C9: the parameterized guardrail configs — ``forbidden_paths`` (globs) for
+    # ``diff_touches_forbidden_paths``; ``output_file`` + ``output_schema`` for
+    # ``output_schema_check``. Each merged into the gate's config only when sent (None ⇒ left
+    # unchanged), so a secret_leak_scan / human save stays byte-identical. ``output_schema`` (not
+    # ``schema``) avoids shadowing ``BaseModel.schema``; STORED under the config key ``schema``
+    # (what :func:`output_schema_check` reads).
+    forbidden_paths: list | None = None
+    output_file: str | None = None
+    output_schema: dict | None = None
     # M-tools C7.0: optional inline tools + skills. Additive — a request omitting them (None) leaves
     # the stored value unchanged (the same is-not-None guard the executor path uses), so existing
     # ``{prompt, model[, capability]}`` saves stay byte-for-byte back-compatible.
@@ -1553,6 +1562,14 @@ def update_team_node(
                 cfg["title"] = body.title
             if body.description is not None:
                 cfg["description"] = body.description
+            # M-rails C9: the parameterized guardrail configs (merged only when sent). The FE sends
+            # ``output_schema``; it is stored under the config key ``schema`` the executor reads.
+            if body.forbidden_paths is not None:
+                cfg["forbidden_paths"] = body.forbidden_paths
+            if body.output_file is not None:
+                cfg["output_file"] = body.output_file
+            if body.output_schema is not None:
+                cfg["schema"] = body.output_schema
             node.config = cfg
             session.flush()
             return _node_base_dict(node)

@@ -31,6 +31,14 @@ const ROLE_TITLES: Record<string, string> = {
   reviewer: "Reviewer",
 };
 
+// M-rails C8/C9: the gate_kinds that run a DETERMINISTIC guardrail check (vs the human-approval
+// path). Mirrors the backend GUARDRAIL_GATE_KINDS frozenset.
+const GUARDRAIL_GATE_KINDS = new Set([
+  "secret_leak_scan",
+  "diff_touches_forbidden_paths",
+  "output_schema_check",
+]);
+
 // M-unify U3: a node's ONE capability distinction is `edits_allowed` (may it write files?). Seed the
 // toggle from the node's own value, falling back to the backend's kind-mapped default (agent ⇒ on)
 // for any node/fixture that predates the field. (Gate/terminal nodes route to the read-only branches
@@ -109,16 +117,28 @@ export function TeamNodePanel({
   const [saveError, setSaveError] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // M-rails C8: a GATE's editable config (its type + human copy). Seeded from `node.config`; the
-  // parent `key`-remount resets it per node. Unused/harmless for agent/completion/terminal nodes.
+  // M-rails C8/C9: a GATE's editable config (its type + human copy + the parameterized guardrail
+  // configs). Seeded from `node.config`; the parent `key`-remount resets it per node.
+  // Unused/harmless for agent/completion/terminal nodes.
   const gateCfg = (node?.config ?? {}) as GateConfig;
   const initialGateKind = gateCfg.gate_kind || "gate_approval";
   const initialGateTitle = gateCfg.title ?? "";
   const initialGateDesc = gateCfg.description ?? "";
-  const initialGateGuardrail = initialGateKind === "secret_leak_scan";
-  const [gateGuardrail, setGateGuardrail] = useState(initialGateGuardrail);
+  // The human sub-kind to restore when "Human approval" is (re)selected: preserve the node's own
+  // human sub-kind (prd_approval/…); a node that started as a guardrail can't recover one → the
+  // generic gate_approval.
+  const humanGateKind = GUARDRAIL_GATE_KINDS.has(initialGateKind)
+    ? "gate_approval"
+    : initialGateKind;
+  const initialForbiddenText = (gateCfg.forbidden_paths ?? []).join("\n");
+  const initialOutputFile = gateCfg.output_file ?? "";
+  const initialSchemaText = gateCfg.schema ? JSON.stringify(gateCfg.schema, null, 2) : "";
+  const [gateKind, setGateKind] = useState(initialGateKind);
   const [gateTitle, setGateTitle] = useState(initialGateTitle);
   const [gateDesc, setGateDesc] = useState(initialGateDesc);
+  const [forbiddenText, setForbiddenText] = useState(initialForbiddenText);
+  const [outputFile, setOutputFile] = useState(initialOutputFile);
+  const [schemaText, setSchemaText] = useState(initialSchemaText);
 
   // F1c: the model-chip express lane — a focus signal from the parent (a bumping nonce; 0 = a normal
   // open). On a bump, scroll the Model field into view + flash a transient coral ring.
@@ -212,25 +232,48 @@ export function TeamNodePanel({
     }
   };
 
-  // M-rails C8: the gate config Save. Flipping to the guardrail sends `secret_leak_scan`; staying
-  // human PRESERVES the original human sub-kind (prd_approval/…) — flipping guardrail→human falls
-  // back to the generic `gate_approval` (a human sub-kind can't be re-derived once switched away).
-  const savedGateKind = gateGuardrail
-    ? "secret_leak_scan"
-    : initialGateGuardrail
-      ? "gate_approval"
-      : initialGateKind;
+  // M-rails C8/C9: the gate config Save. `gateKind` is the source of truth (Human approval restores
+  // the human sub-kind; each guardrail button sets its own kind). The parameterized config is sent
+  // ONLY for the kind that uses it, so a human / secret_leak_scan save keeps the byte-identical
+  // `{gate_kind, title, description}` body.
   const gateDirty =
     node !== null &&
-    (gateGuardrail !== initialGateGuardrail ||
+    (gateKind !== initialGateKind ||
       gateTitle !== initialGateTitle ||
-      gateDesc !== initialGateDesc);
+      gateDesc !== initialGateDesc ||
+      forbiddenText !== initialForbiddenText ||
+      outputFile !== initialOutputFile ||
+      schemaText !== initialSchemaText);
   const handleGateSave = async () => {
     if (!node || !gateDirty) return;
+    let extra:
+      | {
+          forbidden_paths?: string[];
+          output_file?: string;
+          output_schema?: Record<string, unknown>;
+        }
+      | undefined;
+    if (gateKind === "diff_touches_forbidden_paths") {
+      extra = {
+        forbidden_paths: forbiddenText
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      };
+    } else if (gateKind === "output_schema_check") {
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = (schemaText.trim() ? JSON.parse(schemaText) : {}) as Record<string, unknown>;
+      } catch {
+        setSaveError(true); // invalid JSON schema — surface the error, do not save
+        return;
+      }
+      extra = { output_file: outputFile.trim(), output_schema: parsed };
+    }
     setSaving(true);
     setSaveError(false);
     try {
-      await updateGateNode(teamId, node.id, savedGateKind, gateTitle, gateDesc);
+      await updateGateNode(teamId, node.id, gateKind, gateTitle, gateDesc, extra);
       setSaved(true);
       await onSaved();
     } catch {
@@ -328,11 +371,38 @@ export function TeamNodePanel({
   //      (the node-update endpoint now PATCHes gate config). ----
   if (node.kind === "gate") {
     const gateHeaderTitle = gateTitle || ROLE_TITLES[node.role_name] || node.role_name;
+    const isGuardrail = GUARDRAIL_GATE_KINDS.has(gateKind);
+    const gateTypeOptions: { kind: string; label: string; pressed: boolean }[] = [
+      { kind: humanGateKind, label: "Human approval", pressed: !isGuardrail },
+      {
+        kind: "secret_leak_scan",
+        label: "Secret leak scan",
+        pressed: gateKind === "secret_leak_scan",
+      },
+      {
+        kind: "diff_touches_forbidden_paths",
+        label: "Forbidden paths",
+        pressed: gateKind === "diff_touches_forbidden_paths",
+      },
+      {
+        kind: "output_schema_check",
+        label: "Output schema",
+        pressed: gateKind === "output_schema_check",
+      },
+    ];
+    const gateTypeHint =
+      gateKind === "secret_leak_scan"
+        ? "Secret leak scan — scans the run’s workspace and emits approved / rejected with no human pause."
+        : gateKind === "diff_touches_forbidden_paths"
+          ? "Forbidden paths — rejects automatically if the run’s changes touch any path you list below."
+          : gateKind === "output_schema_check"
+            ? "Output schema — rejects unless the named output file exists and matches the JSON schema."
+            : "Human approval — the run pauses here for a person to approve or reject.";
     return (
       <DrawerShell
         glyph={glyphForNode("gate", node.role_name)}
         title={gateHeaderTitle}
-        subtitle={gateGuardrail ? "An automatic guardrail" : "A human checkpoint"}
+        subtitle={isGuardrail ? "An automatic guardrail" : "A human checkpoint"}
         ariaLabel={`${gateHeaderTitle} checkpoint`}
         panelMode={panelMode}
         onTogglePanelMode={onTogglePanelMode}
@@ -341,38 +411,90 @@ export function TeamNodePanel({
         <div className="tv-scroll tv-node-edit">
           <div className="tv-field">
             <span className="tv-field__label">Gate type</span>
-            <div className="tv-seg" role="group" aria-label="Gate type">
-              <button
-                type="button"
-                aria-pressed={!gateGuardrail}
-                disabled={saving}
-                className={`tv-seg__btn${!gateGuardrail ? " tv-seg__btn--active" : ""}`}
-                onClick={() => {
-                  setGateGuardrail(false);
-                  setSaved(false);
-                }}
-              >
-                Human approval
-              </button>
-              <button
-                type="button"
-                aria-pressed={gateGuardrail}
-                disabled={saving}
-                className={`tv-seg__btn${gateGuardrail ? " tv-seg__btn--active" : ""}`}
-                onClick={() => {
-                  setGateGuardrail(true);
-                  setSaved(false);
-                }}
-              >
-                Secret leak scan
-              </button>
+            <div
+              className="tv-seg"
+              role="group"
+              aria-label="Gate type"
+              style={{ flexWrap: "wrap" }}
+            >
+              {gateTypeOptions.map((opt) => (
+                <button
+                  key={opt.label}
+                  type="button"
+                  aria-pressed={opt.pressed}
+                  disabled={saving}
+                  className={`tv-seg__btn${opt.pressed ? " tv-seg__btn--active" : ""}`}
+                  onClick={() => {
+                    setGateKind(opt.kind);
+                    setSaved(false);
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
-            <span className="tv-field__hint">
-              {gateGuardrail
-                ? "Secret leak scan — an automatic check. It scans the run’s workspace and emits approved / rejected with no human pause."
-                : "Human approval — the run pauses here for a person to approve or reject."}
-            </span>
+            <span className="tv-field__hint">{gateTypeHint}</span>
           </div>
+
+          {gateKind === "diff_touches_forbidden_paths" && (
+            <label className="tv-field">
+              <span className="tv-field__label">Forbidden paths</span>
+              <span className="tv-field__hint">
+                One glob per line (e.g. <code>.github/**</code>, <code>infra/**</code>,{" "}
+                <code>*.pem</code>). The gate rejects if the run’s diff touches any of them.
+              </span>
+              <textarea
+                className="tv-node-prompt"
+                aria-label="Forbidden paths"
+                value={forbiddenText}
+                rows={4}
+                spellCheck={false}
+                onChange={(e) => {
+                  setForbiddenText(e.target.value);
+                  setSaved(false);
+                }}
+              />
+            </label>
+          )}
+
+          {gateKind === "output_schema_check" && (
+            <>
+              <label className="tv-field">
+                <span className="tv-field__label">Output file</span>
+                <span className="tv-field__hint">
+                  A workspace-relative path to a JSON file (e.g. <code>result.json</code>).
+                </span>
+                <input
+                  className="tv-node-model"
+                  aria-label="Output file"
+                  value={outputFile}
+                  spellCheck={false}
+                  onChange={(e) => {
+                    setOutputFile(e.target.value);
+                    setSaved(false);
+                  }}
+                />
+              </label>
+              <label className="tv-field">
+                <span className="tv-field__label">JSON schema</span>
+                <span className="tv-field__hint">
+                  A JSON Schema (type / required / properties / items / enum). The gate rejects
+                  unless the output file validates.
+                </span>
+                <textarea
+                  className="tv-node-prompt"
+                  aria-label="JSON schema"
+                  value={schemaText}
+                  rows={8}
+                  spellCheck={false}
+                  onChange={(e) => {
+                    setSchemaText(e.target.value);
+                    setSaved(false);
+                  }}
+                />
+              </label>
+            </>
+          )}
 
           <label className="tv-field">
             <span className="tv-field__label">Title</span>

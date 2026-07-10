@@ -1289,7 +1289,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             open_invocation_step(run_id, current, 1)
             cfg = node["config"] or {}
             if cfg.get("gate_kind") in GUARDRAIL_GATE_KINDS:
-                verdict = guardrail_gate_step(run_id, current, cfg["gate_kind"], workspace)
+                verdict = guardrail_gate_step(run_id, current, cfg["gate_kind"], workspace, cfg)
                 close_invocation_step(
                     run_id,
                     current,

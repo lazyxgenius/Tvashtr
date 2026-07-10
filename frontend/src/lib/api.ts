@@ -13,6 +13,12 @@ export interface GateConfig {
   gate_kind: string;
   title: string;
   description: string;
+  // M-rails C9: parameterized guardrail configs. `forbidden_paths` drives
+  // `diff_touches_forbidden_paths`; `output_file` + `schema` drive `output_schema_check` (stored
+  // under the config key `schema`, which is what the executor reads).
+  forbidden_paths?: string[];
+  output_file?: string;
+  schema?: Record<string, unknown>;
 }
 export interface TerminalConfig {
   terminal_kind: "ship" | "stop";
@@ -693,11 +699,22 @@ export async function updateGateNode(
   gateKind: string,
   title: string,
   description: string,
+  // M-rails C9: the parameterized guardrail configs, sent ONLY for the kind that uses them (so a
+  // human / secret_leak_scan save keeps the byte-identical `{gate_kind, title, description}` body).
+  config?: {
+    forbidden_paths?: string[];
+    output_file?: string;
+    output_schema?: Record<string, unknown>;
+  },
 ): Promise<TeamGraphNode> {
+  const body: Record<string, unknown> = { gate_kind: gateKind, title, description };
+  if (config?.forbidden_paths !== undefined) body.forbidden_paths = config.forbidden_paths;
+  if (config?.output_file !== undefined) body.output_file = config.output_file;
+  if (config?.output_schema !== undefined) body.output_schema = config.output_schema;
   const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ gate_kind: gateKind, title, description }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`PATCH gate /api/teams/${teamId}/nodes/${nodeId} -> ${res.status}`);
   return (await res.json()) as TeamGraphNode;
