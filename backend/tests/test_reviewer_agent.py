@@ -71,7 +71,7 @@ def _stub_agent(monkeypatch, workspace: Path, reviewer) -> None:
         edits_allowed=True,
         **kwargs,
     ):
-        if not edits_allowed:
+        if not edits_allowed and not emits_outcome:
             return entry_report_result(idea)
         if emits_outcome:
             return reviewer(iteration)

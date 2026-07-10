@@ -20,7 +20,7 @@ afterEach(() => vi.clearAllMocks());
 describe("ToolsSection (M-tools C7.A)", () => {
   it("round-trips a pasted mcp.json through onChange", () => {
     const onChange = vi.fn();
-    render(<ToolsSection value={null} onChange={onChange} capability="worker" />);
+    render(<ToolsSection value={null} onChange={onChange} />);
     fireEvent.change(screen.getByLabelText("Tools JSON"), {
       target: { value: '{"mcpServers":{"fetch":{"command":"uvx"}}}' },
     });
@@ -28,26 +28,31 @@ describe("ToolsSection (M-tools C7.A)", () => {
   });
 
   it("seeds the textarea from an existing tool_config value", () => {
-    render(<ToolsSection value={{ mcpServers: {} }} onChange={vi.fn()} capability="worker" />);
+    render(<ToolsSection value={{ mcpServers: {} }} onChange={vi.fn()} />);
     expect(screen.getByLabelText<HTMLTextAreaElement>("Tools JSON").value).toContain("mcpServers");
   });
 
   it("clears to null when the editor is emptied", () => {
     const onChange = vi.fn();
-    render(<ToolsSection value={{ mcpServers: {} }} onChange={onChange} capability="worker" />);
+    render(<ToolsSection value={{ mcpServers: {} }} onChange={onChange} />);
     fireEvent.change(screen.getByLabelText("Tools JSON"), { target: { value: "" } });
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
-  it("shows the worker-only note (no editor) for a thinker", () => {
-    render(<ToolsSection value={null} onChange={vi.fn()} capability="thinker" />);
-    expect(screen.getByText(/switch this node to Worker to add them/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText("Tools JSON")).toBeNull();
+  // M-unify U3: the editor is available on EVERY node now (the thinker/worker split collapsed to the
+  // edits toggle) — no `capability` prop, no worker-only note. An edits-off node still runs read-only +
+  // MCP tools, so it authors tools too. (Mutation-real: on the pre-U3 gate a non-worker rendered only
+  // the "switch this node to Worker" note with NO editor.)
+  it("renders the full Tools editor on every node (no worker-only gate)", () => {
+    render(<ToolsSection value={null} onChange={vi.fn()} />);
+    expect(screen.getByLabelText("Tools JSON")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add server" })).toBeInTheDocument();
+    expect(screen.queryByText(/switch this node to Worker/i)).toBeNull();
   });
 
   it("appends a server via the guided Add-server form", () => {
     const onChange = vi.fn();
-    render(<ToolsSection value={null} onChange={onChange} capability="worker" />);
+    render(<ToolsSection value={null} onChange={onChange} />);
     fireEvent.change(screen.getByLabelText("New server name"), { target: { value: "fetch" } });
     fireEvent.change(screen.getByLabelText("Command"), { target: { value: "uvx" } });
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
@@ -57,11 +62,7 @@ describe("ToolsSection (M-tools C7.A)", () => {
   it("writes the tvashtr allow-list metadata when a server is toggled off", () => {
     const onChange = vi.fn();
     render(
-      <ToolsSection
-        value={{ mcpServers: { fetch: { command: "uvx" } } }}
-        onChange={onChange}
-        capability="worker"
-      />,
+      <ToolsSection value={{ mcpServers: { fetch: { command: "uvx" } } }} onChange={onChange} />,
     );
     fireEvent.click(screen.getByLabelText("Enable fetch")); // was on → toggle off
     expect(onChange).toHaveBeenCalledWith(
@@ -74,7 +75,6 @@ describe("ToolsSection (M-tools C7.A)", () => {
       <ToolsSection
         value={{ mcpServers: { gh: { command: "x", env: { GH: "${GITHUB_TOKEN}" } } } }}
         onChange={vi.fn()}
-        capability="worker"
       />,
     );
     expect(screen.getByText(/Needs .*GITHUB_TOKEN/)).toBeInTheDocument();
@@ -86,7 +86,6 @@ describe("ToolsSection (M-tools C7.A)", () => {
       <ToolsSection
         value={{ mcpServers: { gh: { command: "x", env: { GH: "${GITHUB_TOKEN}" } } } }}
         onChange={vi.fn()}
-        capability="worker"
       />,
     );
     await waitFor(() => expect(screen.queryByText(/Needs .*GITHUB_TOKEN/)).toBeNull());
@@ -100,13 +99,7 @@ describe("ToolsSection (M-tools C7.A)", () => {
       { id: "t2", name: "gh", server_config: { url: "https://x" }, created_at: "x" },
     ]);
     // an inline server named "gh" already exists → the "gh" library item is greyed out (name clash)
-    render(
-      <ToolsSection
-        value={{ mcpServers: { gh: { command: "z" } } }}
-        onChange={vi.fn()}
-        capability="worker"
-      />,
-    );
+    render(<ToolsSection value={{ mcpServers: { gh: { command: "z" } } }} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Add from library" }));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Add fetch from library" })).toBeEnabled(),
@@ -119,7 +112,7 @@ describe("ToolsSection (M-tools C7.A)", () => {
     mockLibrary.mockResolvedValue([
       { id: "t1", name: "fetch", server_config: { command: "uvx" }, created_at: "x" },
     ]);
-    render(<ToolsSection value={null} onChange={onChange} capability="worker" />);
+    render(<ToolsSection value={null} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "Add from library" }));
     await waitFor(() => screen.getByRole("button", { name: "Add fetch from library" }));
     fireEvent.click(screen.getByRole("button", { name: "Add fetch from library" }));
@@ -135,7 +128,6 @@ describe("ToolsSection (M-tools C7.A)", () => {
       <ToolsSection
         value={{ mcpServers: { gh: { command: "inline" } }, tvashtr: { library: ["t1"] } }}
         onChange={vi.fn()}
-        capability="worker"
       />,
     );
     await waitFor(() => expect(screen.getByText("overridden")).toBeInTheDocument());
@@ -146,13 +138,7 @@ describe("ToolsSection (M-tools C7.A)", () => {
     mockLibrary.mockResolvedValue([
       { id: "t1", name: "fetch", server_config: { command: "uvx" }, created_at: "x" },
     ]);
-    render(
-      <ToolsSection
-        value={{ tvashtr: { library: ["t1"] } }}
-        onChange={onChange}
-        capability="worker"
-      />,
-    );
+    render(<ToolsSection value={{ tvashtr: { library: ["t1"] } }} onChange={onChange} />);
     await waitFor(() => screen.getByRole("button", { name: "Remove reference fetch" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove reference fetch" }));
     expect(onChange).toHaveBeenCalledWith({ tvashtr: { library: [] } });

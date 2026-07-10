@@ -9,6 +9,50 @@ import {
   type TeamGraphNode,
 } from "../lib/api";
 
+// M-unify U3: a node's ONE capability distinction — edits-off ⇒ it runs the full agent loop read-only
+// (only its report/verdict leaves the sandbox). Falls back to the backend's kind-mapped default (agent
+// ⇒ edits-on) for a node/fixture predating the field.
+const isEditsOff = (n: TeamGraphNode): boolean => !(n.edits_allowed ?? n.kind === "agent");
+
+// The curated action verbs (imperative base forms — the shape instruction-prompts use).
+const ACTION_VERBS = [
+  "implement",
+  "build",
+  "create",
+  "write",
+  "edit",
+  "modify",
+  "add",
+  "fix",
+  "refactor",
+  "delete",
+  "rename",
+  "generate",
+  "update",
+  "change",
+  "remove",
+  "rewrite",
+];
+// A sentence that NEGATES ("do NOT modify, create, or delete …") or is about the node's OWN
+// report/verdict/spec deliverable (which an edits-off node LEGITIMATELY writes) is not a
+// misconfiguration — skip it. Precision-first, so the advisory never cries wolf on a correctly
+// edits-off node (e.g. the Reviewer's "Write a file named REVIEW_VERDICT.json").
+const NEGATOR = /\b(?:not|never|without|avoid|don't|dont|cannot|can't|cant)\b/;
+const DELIVERABLE = /\b(?:report(?:\.md)?|review_verdict(?:\.json)?|verdict|prd|spec)\b/;
+
+// The first file-editing action verb an edits-off node's prompt POSITIVELY asks for (else null),
+// scanned per sentence so list-negation and deliverable-writing are excluded.
+function askedActionVerb(prompt: string | null): string | null {
+  if (!prompt) return null;
+  for (const sentence of prompt.toLowerCase().split(/[.!?\n]+/)) {
+    if (NEGATOR.test(sentence) || DELIVERABLE.test(sentence)) continue;
+    for (const verb of ACTION_VERBS) {
+      if (new RegExp(`\\b${verb}\\b`).test(sentence)) return verb;
+    }
+  }
+  return null;
+}
+
 /**
  * The launch panel (M-brownfield Slice 2, D5). Clicking "Run this team" OPENS this; it does not fire
  * the run. One unified surface where the user (a) types a feature request (the idea — optional;
@@ -69,6 +113,12 @@ export function LaunchPanel({
   const workerNames = teamNodes.filter((n) => n.kind === "agent").map((n) => n.role_name);
   const showHint =
     validated && repoInfo.tracked_file_count > LARGE_REPO_FILE_THRESHOLD && !hintDismissed;
+
+  // M-unify U3: the pre-launch action-verb advisory (NON-BLOCKING) — every edits-off node whose prompt
+  // POSITIVELY asks for a file edit. Independent of the repo target; a nudge, never a gate.
+  const editsOffAsks = teamNodes
+    .map((n) => ({ node: n, verb: isEditsOff(n) ? askedActionVerb(n.prompt) : null }))
+    .filter((x): x is { node: TeamGraphNode; verb: string } => x.verb !== null);
 
   const launch = () => {
     const opts: RunTeamOptions = {};
@@ -215,6 +265,17 @@ export function LaunchPanel({
               </div>
             )}
           </>
+        )}
+
+        {editsOffAsks.length > 0 && (
+          <div className="tv-launch__warn" role="note" aria-label="Edits-off action-verb advisory">
+            {editsOffAsks.map(({ node, verb }) => (
+              <span key={node.id}>
+                <strong>{node.role_name}</strong> can’t write files (edits off) but its prompt asks
+                it to <code>{verb}</code> — did you mean to allow edits?
+              </span>
+            ))}
+          </div>
         )}
 
         <div className="tv-launch__actions">

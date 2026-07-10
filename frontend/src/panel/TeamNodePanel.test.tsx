@@ -5,10 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GraphEdge, TeamGraphNode } from "../lib/api";
 import { TeamNodePanel } from "./TeamNodePanel";
 
-// P1.8b/P1.8c: the team-authoring editor — the capability toggle (Thinker/Worker) + prompt + model
-// fields, dirty-aware Save (no autosave), and the node-update PATCH. Stubs `fetch` (so updateTeamNode
-// is exercised end-to-end through the real client) rather than mocking the helper, so the URL/method/
-// body contract is proven too.
+// P1.8b/P1.8c → M-unify U3: the team-authoring editor — the Edits toggle (Edits allowed / Not allowed,
+// driving `edits_allowed`, replacing Thinker/Worker) + prompt + model fields, dirty-aware Save (no
+// autosave), and the node-update PATCH. Stubs `fetch` (so updateTeamNode is exercised end-to-end
+// through the real client) rather than mocking the helper, so the URL/method/body contract is proven.
 
 function node(over: Partial<TeamGraphNode> = {}): TeamGraphNode {
   return {
@@ -77,8 +77,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save", () => {
-  it("shows prompt + model + capability, gates Save on dirty, and PATCHes the node-update endpoint", async () => {
+describe("TeamNodePanel — edit prompt + model + edits toggle, dirty-aware Save", () => {
+  it("shows prompt + model + edits toggle, gates Save on dirty, and PATCHes the node-update endpoint", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn().mockResolvedValue(undefined);
     render(
@@ -96,9 +96,12 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
     expect(prompt.value).toBe("Original engineer prompt");
     expect(model.value).toBe("openai/gpt-4o-mini");
 
-    // The agent node seeds the toggle to Worker (kind=agent).
-    expect(screen.getByRole("button", { name: "Worker" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Thinker" })).toHaveAttribute(
+    // The agent node seeds the toggle to Edits allowed (edits_allowed defaults on for a worker).
+    expect(screen.getByRole("button", { name: "Edits allowed" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Not allowed" })).toHaveAttribute(
       "aria-pressed",
       "false",
     );
@@ -116,7 +119,8 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
     await user.click(save);
 
     // The Save PATCHed the node-update endpoint with the edited prompt + model + the (unchanged)
-    // capability — the panel posts the full values (the FE is dirty-aware but sends all of them).
+    // edits_allowed — the panel posts the full values (the FE is dirty-aware but sends all of them).
+    // M-unify U3: it drives `edits_allowed` (the source of truth), NOT `capability` (no longer sent).
     await waitFor(() => expect(patchCall()).toBeDefined());
     const [calledUrl, init] = patchCall()!;
     expect(urlOf(calledUrl)).toBe("/api/teams/team-1/nodes/n-eng");
@@ -124,7 +128,7 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
     expect(JSON.parse(init.body as string)).toEqual({
       prompt: "Write greeting.txt = SENTINEL",
       model: "openai/gpt-4o-mini",
-      capability: "worker",
+      edits_allowed: true,
       // M-tools C7.A (S2): updateTeamNode now always sends tool_config/skills (null when unset).
       tool_config: null,
       skills: null,
@@ -133,7 +137,7 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
     expect(onSaved).toHaveBeenCalledTimes(1);
   });
 
-  it("flipping the capability ALONE (no prompt/model edit) enables Save and PATCHes the new capability", async () => {
+  it("flipping the Edits toggle ALONE (no prompt/model edit) enables Save and PATCHes edits_allowed", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn().mockResolvedValue(undefined);
     render(
@@ -149,9 +153,12 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
     const save = screen.getByRole("button", { name: "Save" });
     expect(save).toBeDisabled();
 
-    // Flip Worker -> Thinker without touching prompt/model.
-    await user.click(screen.getByRole("button", { name: "Thinker" }));
-    expect(screen.getByRole("button", { name: "Thinker" })).toHaveAttribute("aria-pressed", "true");
+    // Flip Edits allowed -> Not allowed without touching prompt/model.
+    await user.click(screen.getByRole("button", { name: "Not allowed" }));
+    expect(screen.getByRole("button", { name: "Not allowed" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(save).toBeEnabled();
 
     await user.click(save);
@@ -160,14 +167,14 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
     expect(JSON.parse(init.body as string)).toEqual({
       prompt: "Original engineer prompt",
       model: "openai/gpt-4o-mini",
-      capability: "thinker",
+      edits_allowed: false,
       // M-tools C7.A (S2): updateTeamNode now always sends tool_config/skills (null when unset).
       tool_config: null,
       skills: null,
     });
   });
 
-  it("locks the capability toggle for the start node (defense-in-depth on the backend 409)", async () => {
+  it("locks the Edits toggle OFF for the start node (it writes the shared spec, edits-off)", async () => {
     const user = userEvent.setup();
     render(
       <TeamNodePanel
@@ -179,16 +186,16 @@ describe("TeamNodePanel — edit prompt + model + capability, dirty-aware Save",
       />,
     );
 
-    const thinker = screen.getByRole("button", { name: "Thinker" });
-    const worker = screen.getByRole("button", { name: "Worker" });
-    // The root is a thinker, and the toggle is locked there.
-    expect(thinker).toHaveAttribute("aria-pressed", "true");
-    expect(thinker).toBeDisabled();
-    expect(worker).toBeDisabled();
+    const notAllowed = screen.getByRole("button", { name: "Not allowed" });
+    const editsAllowed = screen.getByRole("button", { name: "Edits allowed" });
+    // The entry node is edits-off (it writes the shared spec), and the toggle is locked there.
+    expect(notAllowed).toHaveAttribute("aria-pressed", "true");
+    expect(notAllowed).toBeDisabled();
+    expect(editsAllowed).toBeDisabled();
 
-    // Clicking the locked Worker does nothing — capability stays thinker, Save stays disabled.
-    await user.click(worker);
-    expect(thinker).toHaveAttribute("aria-pressed", "true");
+    // Clicking the locked "Edits allowed" does nothing — it stays edits-off, Save stays disabled.
+    await user.click(editsAllowed);
+    expect(notAllowed).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
@@ -609,7 +616,7 @@ describe("TeamNodePanel — M-tools C7.0 tools + skills sections", () => {
     expect(screen.getByLabelText("Skill name")).toBeInTheDocument();
   });
 
-  it("shows the Tools worker-only note (no editor) for a thinker, Skills still present", async () => {
+  it("renders the Tools editor for a completion/edits-off node too (tools on every node — M-unify U3)", async () => {
     render(
       <TeamNodePanel
         teamId="team-1"
@@ -622,7 +629,8 @@ describe("TeamNodePanel — M-tools C7.0 tools + skills sections", () => {
     await screen.findByRole("combobox", { name: "Provider" });
 
     expect(screen.getByText("Skills")).toBeInTheDocument();
-    expect(screen.getByText(/switch this node to Worker to add them/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText("Tools JSON")).toBeNull();
+    // U3: a completion/edits-off node shows the SAME real Tools editor — the worker-only note is gone.
+    expect(screen.getByLabelText("Tools JSON")).toBeInTheDocument();
+    expect(screen.queryByText(/switch this node to Worker/i)).toBeNull();
   });
 });

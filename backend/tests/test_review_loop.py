@@ -88,7 +88,7 @@ def test_review_loop_cycles_once_then_ships(client, monkeypatch, tmp_path):
         # engineer-style worker (emits_outcome=False) records its call (proves iteration + that
         # the revision round got feedback) + the non-idempotent attempt row (proves the step
         # "ran") + writes the deliverable so ship_step has something to commit.
-        if not edits_allowed:
+        if not edits_allowed and not emits_outcome:
             return entry_report_result(idea)
         if emits_outcome:
             return team_run._forced_review_outcome(iteration)
@@ -216,7 +216,7 @@ def test_two_node_walk_ships_through_gate_and_terminal(client, monkeypatch, tmp_
     ):
         # P1.8a unified agent step: a reviewer-style node runs the real forced harness; a worker
         # writes the deliverable + the non-idempotent attempt row.
-        if not edits_allowed:
+        if not edits_allowed and not emits_outcome:
             return entry_report_result(idea)
         if emits_outcome:
             return team_run._forced_review_outcome(iteration)
@@ -335,7 +335,7 @@ def test_review_loop_persists_verdict_reasons_into_outcome_detail(client, monkey
     ):
         # P1.8a unified agent step: a reviewer-style node runs the real forced harness; a worker
         # writes the deliverable + the non-idempotent attempt row.
-        if not edits_allowed:
+        if not edits_allowed and not emits_outcome:
             return entry_report_result(idea)
         if emits_outcome:
             return team_run._forced_review_outcome(iteration)

@@ -333,6 +333,12 @@ def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
             prompt=REVIEWER_PROMPT,
             position={"x": 780, "y": 0},
             config={"agent_kind": "reviewer"},
+            # M-unify U3: the Reviewer GATES the diff — it emits a verdict, never ships
+            # edits. Author it EXPLICITLY edits-off (overriding the kind-mapped agent →
+            # edits-on default); the Slice-4 verdict-only pull already enforced this, so
+            # it's a behavior-consistent default alignment. Under loop-always it still runs
+            # the deliverable's tests in the sandbox.
+            edits_allowed=False,
         )
         escalation_gate = AgentNode(
             team_graph_id=graph.id,

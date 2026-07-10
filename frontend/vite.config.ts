@@ -2,15 +2,18 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
-// The dev server proxies backend routes to the FastAPI app on :8000 so the
-// frontend can call /health (and later /api/*) without CORS config.
+// The dev server proxies backend routes to the FastAPI app so the frontend can call /health (and
+// /api/*) without CORS config. The target defaults to :8000 (normal dev + the existing e2e scripts),
+// but `TVASHTR_API_PROXY_TARGET` overrides it so a parallel-session / non-8000 backend (e.g. the
+// M-unify U3 edits-toggle e2e on :8002) can be proxied without editing this file.
+const API_PROXY_TARGET = process.env.TVASHTR_API_PROXY_TARGET ?? "http://localhost:8000";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
     proxy: {
-      "/health": "http://localhost:8000",
-      "/api": "http://localhost:8000",
+      "/health": API_PROXY_TARGET,
+      "/api": API_PROXY_TARGET,
     },
   },
   // vitest = the unit suite under src/ only. The Playwright `e2e/*.spec.ts` files are run by

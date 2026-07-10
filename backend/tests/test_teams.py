@@ -130,3 +130,17 @@ def test_build_review_loop_team_places_loop_escalation_gate_and_terminals():
         (e.conditions or {}).get("when"): e.target_node_id for e in edges if e.source_node_id == esc
     }
     assert esc_out == {"approved": by_role["ship"].id, "rejected": by_role["stop"].id}
+
+
+def test_build_review_loop_team_reviewer_is_edits_off():
+    """M-unify U3 (piece 4): the Reviewer GATES the diff — it emits a verdict and (Slice-4)
+    already pulls only the verdict, never shipping file edits — so the ``review_loop`` template
+    must author it EXPLICITLY edits-off (overriding the kind-mapped agent → edits-on default).
+    The Engineer stays edits-on (its file changes ARE the deliverable). Under loop-always the
+    edits-off Reviewer still runs the deliverable's tests in the sandbox; it just can't ship
+    edits (behavior-consistent with the Slice-4 verdict-only pull, now the authored default).
+    Reproduce-first for the teams.py flip."""
+    graph_id = uuid.UUID(build_review_loop_team())
+    _, by_role, _ = _nodes_edges(graph_id)
+    assert by_role["reviewer"].edits_allowed is False
+    assert by_role["engineer"].edits_allowed is True

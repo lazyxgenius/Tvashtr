@@ -164,7 +164,7 @@ def test_mid_run_prd_edit_reaches_the_revision_engineer(client, monkeypatch, tmp
         edits_allowed=True,
         **kwargs,
     ):
-        if not edits_allowed:
+        if not edits_allowed and not emits_outcome:
             return entry_report_result(idea)
         # P1.8a: ONE generic agent step. The reviewer-style node runs the real forced harness; the
         # engineer-style worker records the PRD IT RECEIVED (``prd_text`` — the observable of the

@@ -27,6 +27,9 @@ import type { GateState, NodeStatus, TerminalState } from "../lib/status";
 export type AgentNodeData = {
   role_name: string;
   kind: string; // completion | agent | gate | terminal
+  // M-unify U3: the ONE capability distinction — true ⇒ writes files ("Edits on"), false ⇒
+  // report-only ("Edits off"). Optional so run/fixture nodes predating the field fall back to `kind`.
+  edits_allowed?: boolean;
   model: string;
   engine: string | null;
   status: NodeStatus;
@@ -75,10 +78,15 @@ function prettyEngine(engine: string): string {
   return engine === "openhands" ? "OpenHands" : engine;
 }
 
-// P1.8c: a node's capability rides its `kind` — `completion` is a Thinker (a direct LLM call),
-// `agent` is a Worker (a sandboxed engine run). Shown on the card so a capability flip RE-LABELS it.
-function capabilityLabel(kind: string): string {
-  return kind === "completion" ? "Thinker" : "Worker";
+// M-unify U3: a node's capability is now the edits distinction — `edits_allowed` true ⇒ it writes
+// files ("Edits on"), false ⇒ report-only ("Edits off"). Falls back to the kind-mapped default
+// (agent ⇒ on) for a run/fixture node predating the field. Shown on the card so an Edits flip
+// RE-LABELS it.
+function editsAllowedOf(d: AgentNodeData): boolean {
+  return d.edits_allowed ?? d.kind === "agent";
+}
+function capabilityLabel(d: AgentNodeData): string {
+  return editsAllowedOf(d) ? "Edits on" : "Edits off";
 }
 
 /** One handle scheme for EVERY node kind: a source + a target on all four sides, so the
@@ -191,9 +199,10 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
   const Icon = d.isEntry ? Zap : roleIcon;
   const title = ROLE_TITLE[d.role_name] ?? d.role_name;
   const caption = ROLE_BLURB[d.role_name] ?? d.kind;
-  // The capability (Thinker/Worker) rides `d.kind`; a completion node reads as a Thinker (the DS
-  // "rare secondary" blue tag), an agent as a Worker (coral). A capability flip re-labels it here.
-  const isThinker = d.kind === "completion";
+  // M-unify U3: the capability tag reads the edits distinction (not kind). Edits-off keeps the DS
+  // "rare secondary" muted/blue tag the old thinker used; edits-on is the coral (writes-files) tag.
+  // An Edits flip re-labels it here (the `--thinker` class is now the edits-off style token).
+  const isReadOnly = !editsAllowedOf(d);
 
   return (
     <div
@@ -215,8 +224,8 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
         {d.iteration >= 2 && <span className="rf-node__round">round {d.iteration}</span>}
       </div>
       <div className="rf-node__meta">
-        <span className={`rf-node__cap${isThinker ? " rf-node__cap--thinker" : ""}`}>
-          {capabilityLabel(d.kind)}
+        <span className={`rf-node__cap${isReadOnly ? " rf-node__cap--thinker" : ""}`}>
+          {capabilityLabel(d)}
         </span>
         {d.engine && <span className="rf-node__engine">{prettyEngine(d.engine)}</span>}
         <StatusPill status={d.status} />

@@ -67,6 +67,10 @@ export interface GraphNode {
   // copy lives on the team-graph read.
   prompt: string | null;
   position: NodePosition;
+  // M-unify U1/U3: the ONE capability distinction — true ⇒ this node's file edits ship; false ⇒
+  // report-only (runs the full loop, only REPORT.md + the verdict leave the sandbox). The run graph
+  // returns it too, so the node card labels off the edits capability in both views.
+  edits_allowed?: boolean;
   // P1.5b: gate/terminal node metadata (null for completion/agent).
   config: NodeConfig | null;
   // P1.5a: the node's live per-invocation state (backend owns this now).
@@ -372,6 +376,10 @@ export interface TeamGraphNode {
   engine: string | null;
   prompt: string | null; // null for gate/terminal control primitives
   position: NodePosition;
+  // M-unify U1/U3: the ONE capability distinction the drawer's Edits toggle drives — true ⇒ the
+  // node's file edits ship; false ⇒ report-only (runs the full agent loop, read-only + MCP tools,
+  // but only REPORT.md + the verdict leave the sandbox). Returned by _node_base_dict on every node.
+  edits_allowed?: boolean;
   config: NodeConfig | null;
   // M-tools C7.0: per-node inline tools (raw MCP config object) + skills (inline sources array).
   // NULL until a later milestone's UI sets them; the drawer round-trips them via updateTeamNode.
@@ -632,10 +640,12 @@ export const getTeamGraph = (teamId: string): Promise<TeamGraphData> =>
 // "worker" is an engine-backed sandboxed run (like the Engineer). Maps server-side to kind+engine.
 export type Capability = "thinker" | "worker";
 
-// Persist an edited library-team node's prompt + model, and (P1.8c) optionally its capability, and
-// (M-tools C7.0) optionally its inline tools/skills. Each optional field is included in the PATCH body
-// ONLY when provided, so existing call sites stay back-compatible and an omitted field leaves the
-// stored value unchanged. Returns the updated node; the caller refetches the team to refresh the canvas.
+// Persist an edited library-team node's prompt + model, and (P1.8c) optionally its capability,
+// (M-tools C7.0) optionally its inline tools/skills, and (M-unify U3) optionally its edits_allowed —
+// the ONE capability distinction the drawer's Edits toggle now drives (the backend NodeUpdate accepts
+// it; an EXPLICIT value wins over the capability→kind sync). Each optional field is included in the
+// PATCH body ONLY when provided, so existing call sites stay back-compatible and an omitted field
+// leaves the stored value unchanged. Returns the updated node; the caller refetches the team.
 export async function updateTeamNode(
   teamId: string,
   nodeId: string,
@@ -644,6 +654,7 @@ export async function updateTeamNode(
   capability?: Capability,
   toolConfig?: Record<string, unknown> | null,
   skills?: unknown[] | null,
+  editsAllowed?: boolean,
 ): Promise<TeamGraphNode> {
   const body: {
     prompt: string;
@@ -651,8 +662,12 @@ export async function updateTeamNode(
     capability?: Capability;
     tool_config?: Record<string, unknown> | null;
     skills?: unknown[] | null;
+    edits_allowed?: boolean;
   } = { prompt, model };
   if (capability !== undefined) body.capability = capability;
+  // M-unify U3: the Edits toggle's source of truth. Sent whenever the caller passes it; the backend's
+  // ``model_fields_set`` guard makes an explicit value win over the legacy capability→kind sync.
+  if (editsAllowed !== undefined) body.edits_allowed = editsAllowed;
   // M-tools C7.A (SHARED CONTRACT S2): ALWAYS send tools/skills when the caller passed a value (even
   // an explicit null → clear to NULL). Only a caller that OMITS the arg (undefined) leaves the stored
   // value unchanged — the backend distinguishes the two via `model_fields_set`. A caller that omits

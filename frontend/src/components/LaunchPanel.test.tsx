@@ -188,3 +188,62 @@ describe("LaunchPanel", () => {
     });
   });
 });
+
+describe("LaunchPanel — edits-off action-verb advisory (M-unify U3)", () => {
+  const WARN = "Edits-off action-verb advisory";
+
+  it("flags an edits-off node whose prompt asks it to implement (amber, names node + verb, non-blocking)", () => {
+    const { onLaunch } = renderPanel({
+      nodes: [
+        tnode({
+          id: "n-x",
+          role_name: "planner",
+          kind: "completion", // completion ⇒ edits-off by default
+          prompt: "Implement the subtract(a, b) function and a unit test.",
+        }),
+      ],
+    });
+    // The advisory names the node + the verb…
+    const warn = screen.getByRole("note", { name: WARN });
+    expect(warn).toHaveTextContent("planner");
+    expect(warn).toHaveTextContent("implement");
+    expect(warn).toHaveTextContent(/can.t write files/i);
+    // …and it NEVER blocks launch — Run is enabled and fires.
+    const run = screen.getByRole("button", { name: "Run" });
+    expect(run).toBeEnabled();
+    fireEvent.click(run);
+    expect(onLaunch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT flag an EDITS-ON node with the same action-verb prompt", () => {
+    renderPanel({
+      nodes: [
+        tnode({
+          id: "n-eng",
+          role_name: "engineer",
+          kind: "agent", // agent ⇒ edits-on by default → not a misconfiguration
+          prompt: "Implement the subtract(a, b) function.",
+        }),
+      ],
+    });
+    expect(screen.queryByRole("note", { name: WARN })).toBeNull();
+  });
+
+  it("does NOT flag an edits-off node whose action verb is NEGATED or about its own verdict/report", () => {
+    renderPanel({
+      nodes: [
+        // A Reviewer-shaped prompt: "do NOT modify…" (negated) + "Write … REVIEW_VERDICT.json" (its
+        // own deliverable) — both spared, so a correctly edits-off reviewer never trips the advisory.
+        tnode({
+          id: "n-rev",
+          role_name: "reviewer",
+          kind: "agent",
+          edits_allowed: false,
+          prompt:
+            "Review it. Do NOT modify, create, or delete any file. Write a file named REVIEW_VERDICT.json with your verdict.",
+        }),
+      ],
+    });
+    expect(screen.queryByRole("note", { name: WARN })).toBeNull();
+  });
+});

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { Capability, ToolLibraryItem } from "../lib/api";
+import type { ToolLibraryItem } from "../lib/api";
 import { listSecrets, listToolLibrary } from "../lib/api";
 
 /**
@@ -14,8 +14,9 @@ import { listSecrets, listToolLibrary } from "../lib/api";
  *    with the same on/off toggle + a remove-reference control. If a library ref's name collides with
  *    an inline server the library row shows a muted "overridden" tag (inline wins at run time).
  *  - a pre-launch note for any inline `${NAME}` whose secret isn't in the account's Secrets shelf.
- * A non-worker (thinker) gets only the worker-only note. Props are UNCHANGED from the scaffold
- * (`value` / `onChange` / `capability`) so `TeamNodePanel` is untouched.
+ * M-unify U3: the editor is available on EVERY agent node (the thinker/worker split collapsed to the
+ * edits toggle) — an edits-off node still runs read-only + MCP tools, so it authors tools too, exactly
+ * like `SkillsSection`, which already renders for both. Props: `value` / `onChange`.
  */
 
 type Cfg = Record<string, unknown> | null;
@@ -56,15 +57,7 @@ function librariesOf(cfg: Cfg): string[] {
   return Array.isArray(lib) ? lib.filter((x): x is string => typeof x === "string") : [];
 }
 
-export function ToolsSection({
-  value,
-  onChange,
-  capability,
-}: {
-  value: Cfg;
-  onChange: (value: Cfg) => void;
-  capability: Capability;
-}) {
+export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value: Cfg) => void }) {
   const [text, setText] = useState(value == null ? "" : JSON.stringify(value, null, 2));
   const [open, setOpen] = useState(true);
   const [secretNames, setSecretNames] = useState<string[]>([]);
@@ -95,18 +88,6 @@ export function ToolsSection({
       live = false;
     };
   }, []);
-
-  // Tools run inside a worker's sandbox, so a thinker gets only a nudge — no editor.
-  if (capability !== "worker") {
-    return (
-      <div className="tv-field">
-        <span className="tv-field__label">Tools</span>
-        <span className="tv-field__hint">
-          Tools run inside a worker&rsquo;s sandbox — switch this node to Worker to add them.
-        </span>
-      </div>
-    );
-  }
 
   // The current config = the textarea if it parses, else the last-good `value`.
   const parseText = (): Cfg => {

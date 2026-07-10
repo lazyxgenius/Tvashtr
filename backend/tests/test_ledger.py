@@ -84,7 +84,7 @@ def _drive_forced_two_round_run(monkeypatch, tmp_path) -> str:
         edits_allowed=True,
         **kwargs,
     ):
-        if not edits_allowed:
+        if not edits_allowed and not emits_outcome:
             return entry_report_result(idea)
         # The outcome-emitting (reviewer) node routes through the REAL forced harness (no events).
         if emits_outcome:

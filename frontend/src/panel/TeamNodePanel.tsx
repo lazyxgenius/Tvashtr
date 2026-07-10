@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { LastRun } from "../components/LastRun";
 import {
   addProvider,
-  type Capability,
   type GateConfig,
   type GraphEdge,
   listProviders,
@@ -31,20 +30,22 @@ const ROLE_TITLES: Record<string, string> = {
   reviewer: "Reviewer",
 };
 
-// A node's capability rides the `kind` column: a `completion` node is a thinker, an `agent` is a
-// worker. (Gate/terminal nodes route to the read-only branches below, not this map.)
-const capabilityOf = (node: TeamGraphNode | null): Capability =>
-  node?.kind === "completion" ? "thinker" : "worker";
+// M-unify U3: a node's ONE capability distinction is `edits_allowed` (may it write files?). Seed the
+// toggle from the node's own value, falling back to the backend's kind-mapped default (agent ⇒ on)
+// for any node/fixture that predates the field. (Gate/terminal nodes route to the read-only branches
+// below, never here.)
+const editsAllowedOf = (node: TeamGraphNode | null): boolean =>
+  node?.edits_allowed ?? node?.kind === "agent";
 
 const START_LOCK_TOOLTIP =
-  "The first node scopes the work — it writes the spec the rest of the team reads.";
+  "The first node scopes the work — it writes the shared spec the team reads, so it stays edits-off.";
 
 const AGENT_SUBTITLE = "Its prompt is its whole identity — edit, then run";
 
 /**
  * The team-authoring config drawer (F1c reskin of P1.8b/c): the premium right drawer shown when a
  * node is selected on the persistent team canvas. It branches on `node.kind`:
- *  - **agent / completion** — the editor: a Capability toggle, the **prompt** (the node's whole
+ *  - **agent / completion** — the editor: an Edits (allowed/not) toggle, the **prompt** (the node's whole
  *    identity), a branch-worker Output-contract block, the Slice-C provider/model picker (now the
  *    design's 130px-provider + flex-1-model row), a dirty-aware Save (PATCHes the node-update
  *    endpoint), and a read-only "Last run" brief.
@@ -93,10 +94,10 @@ export function TeamNodePanel({
   const [addError, setAddError] = useState<string | null>(null);
   const [hintDismissed, setHintDismissed] = useState(false);
 
-  // P1.8c: the node's capability (thinker = completion / worker = agent) is authorable. Seed it from
-  // the node's kind; reset-on-select is the parent `key` remount.
-  const initialCapability = capabilityOf(node);
-  const [capability, setCapability] = useState<Capability>(initialCapability);
+  // M-unify U3: the node's ONE capability distinction — may it write files? — is authorable via the
+  // Edits toggle. Seed from `edits_allowed`; reset-on-select is the parent `key` remount.
+  const initialEditsAllowed = editsAllowedOf(node);
+  const [editsAllowed, setEditsAllowed] = useState<boolean>(initialEditsAllowed);
   // M-tools C7.0: the node's inline tools + skills (stub editors). Seeded from the node, reset via the
   // `key` remount, folded into the dirty check, and posted on Save. NULL until a later milestone.
   const [toolConfig, setToolConfig] = useState<Record<string, unknown> | null>(
@@ -160,16 +161,16 @@ export function TeamNodePanel({
     node !== null &&
     (prompt !== (node.prompt ?? "") ||
       model !== (node.model ?? "") ||
-      capability !== initialCapability ||
+      editsAllowed !== initialEditsAllowed ||
       // M-tools C7.0: compare the JSON of the inline tools/skills (structural equality) so editing
       // them enables Save exactly like prompt/model/capability.
       JSON.stringify(toolConfig ?? null) !== JSON.stringify(node.tool_config ?? null) ||
       JSON.stringify(skills ?? null) !== JSON.stringify(node.skills ?? null));
   const canSave = dirty && !saving && prompt.trim().length > 0 && model.trim().length > 0;
 
-  const pickCapability = (next: Capability) => {
-    if (isStartNode) return; // the start node is locked to "thinker" (the backend 409 is the real guard)
-    setCapability(next);
+  const pickEdits = (next: boolean) => {
+    if (isStartNode) return; // the entry node is locked edits-off — it writes the shared spec, never edits
+    setEditsAllowed(next);
     setSaved(false);
   };
 
@@ -178,7 +179,18 @@ export function TeamNodePanel({
     setSaving(true);
     setSaveError(false);
     try {
-      await updateTeamNode(teamId, node.id, prompt, model, capability, toolConfig, skills);
+      // M-unify U3: the Edits toggle is the source of truth; `capability` is no longer authored here
+      // (kind is vestigial under loop-always), so pass it undefined and drive `edits_allowed` instead.
+      await updateTeamNode(
+        teamId,
+        node.id,
+        prompt,
+        model,
+        undefined,
+        toolConfig,
+        skills,
+        editsAllowed,
+      );
       setSaved(true);
       await onSaved();
     } catch {
@@ -381,40 +393,40 @@ export function TeamNodePanel({
     >
       <div className="tv-scroll tv-node-edit">
         <div className="tv-field">
-          <span className="tv-field__label">Capability</span>
+          <span className="tv-field__label">Edits</span>
           <div
             className="tv-seg"
             role="group"
-            aria-label="Capability"
+            aria-label="Edits"
             title={isStartNode ? START_LOCK_TOOLTIP : undefined}
           >
             <button
               type="button"
-              aria-pressed={capability === "thinker"}
+              aria-pressed={editsAllowed}
               disabled={isStartNode || saving}
-              className={`tv-seg__btn${capability === "thinker" ? " tv-seg__btn--active" : ""}`}
-              onClick={() => pickCapability("thinker")}
+              className={`tv-seg__btn${editsAllowed ? " tv-seg__btn--active" : ""}`}
+              onClick={() => pickEdits(true)}
               title={isStartNode ? START_LOCK_TOOLTIP : undefined}
             >
-              Thinker
+              Edits allowed
             </button>
             <button
               type="button"
-              aria-pressed={capability === "worker"}
+              aria-pressed={!editsAllowed}
               disabled={isStartNode || saving}
-              className={`tv-seg__btn${capability === "worker" ? " tv-seg__btn--active" : ""}`}
-              onClick={() => pickCapability("worker")}
+              className={`tv-seg__btn${!editsAllowed ? " tv-seg__btn--active" : ""}`}
+              onClick={() => pickEdits(false)}
               title={isStartNode ? START_LOCK_TOOLTIP : undefined}
             >
-              Worker
+              Not allowed
             </button>
           </div>
           <span className="tv-field__hint">
             {isStartNode
               ? START_LOCK_TOOLTIP
-              : capability === "thinker"
-                ? "Thinker — one direct LLM call; writes the shared spec."
-                : "Worker — runs in a sandbox; can read & write files."}
+              : editsAllowed
+                ? "Edits allowed — this node runs the full agent loop and can write & change files in its sandbox."
+                : "Not allowed — the same full agent loop, but read-only (reasoning + read-only & MCP tools); only its report leaves the sandbox."}
           </span>
         </div>
 
@@ -559,7 +571,6 @@ export function TeamNodePanel({
         />
         <ToolsSection
           value={toolConfig}
-          capability={capability}
           onChange={(v) => {
             setToolConfig(v);
             setSaved(false);

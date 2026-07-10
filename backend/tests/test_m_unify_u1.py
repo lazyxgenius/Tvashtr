@@ -489,10 +489,14 @@ def test_patch_syncs_edits_allowed_explicit_wins_and_clone_carries_it(client):
 
 
 def test_backfill_mapping_agent_true_others_false(client):
-    """The 0024 backfill mapping — ``edits_allowed = (kind == 'agent')`` — as realized by the ORM
-    kind-mapped default on every builder node: a worker (``agent``) is edits-ON; the PM
-    (``completion``) + the gate/terminal control primitives are edits-OFF."""
-    team_graph_id = build_review_loop_team()
+    """The 0024 backfill mapping — ``edits_allowed = (kind == 'agent')`` — as realized by the
+    ORM kind-mapped default on a builder node that does NOT set it explicitly: a worker
+    (``agent``) is edits-ON; the PM (``completion``) + the gate/terminal control primitives are
+    edits-OFF. Uses ``build_two_node_team`` because it carries NO explicit ``edits_allowed``
+    override anywhere, so it isolates the pure kind-mapped default. (The ``review_loop`` Reviewer
+    now sets ``edits_allowed=False`` EXPLICITLY — M-unify U3 — an override of this default,
+    asserted in ``test_teams.py``.)"""
+    team_graph_id = build_two_node_team()
     with session_scope() as session:
         nodes = (
             session.execute(
@@ -504,7 +508,7 @@ def test_backfill_mapping_agent_true_others_false(client):
     by_kind = {}
     for n in nodes:
         by_kind.setdefault(n.kind, set()).add(n.edits_allowed)
-    assert by_kind["agent"] == {True}  # engineer + reviewer
+    assert by_kind["agent"] == {True}  # the Engineer (the sole agent; no explicit override)
     assert by_kind["completion"] == {False}  # the PM
     assert by_kind["gate"] == {False}
     assert by_kind["terminal"] == {False}

@@ -93,7 +93,7 @@ def _stub_agent(monkeypatch, workspace: Path) -> list[tuple[int, str | None]]:
         edits_allowed=True,
         **kwargs,
     ):
-        if not edits_allowed:
+        if not edits_allowed and not emits_outcome:
             return entry_report_result(idea)
         # P1.8a unified agent step: the reviewer-style node runs the REAL forced harness
         # (TVASHTR_FORCE_REVISIONS over the cap drives the escalation); the worker records each

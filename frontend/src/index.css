@@ -582,6 +582,24 @@ body,
 .tv-launch__dismiss {
   align-self: flex-start;
 }
+/* M-unify U3: the pre-launch action-verb advisory — genuinely AMBER (a warning), distinct from the
+   coral large-repo hint above, theme-aware via the amber tokens (the same recipe as the over_budget
+   pill + the A/B amber note). Non-blocking; a nudge, never a gate. */
+.tv-launch__warn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--amber-100);
+  border: var(--border-width) solid color-mix(in srgb, var(--amber-500) 30%, transparent);
+  color: color-mix(in srgb, var(--amber-500) 64%, var(--ink-900));
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+}
+.tv-launch__warn code {
+  font-family: var(--font-mono);
+}
 .tv-launch__actions {
   display: flex;
   align-items: center;

@@ -75,7 +75,7 @@ def test_executor_populates_work_brief_for_thinker_and_worker(client, monkeypatc
         edits_allowed=True,
         **kwargs,
     ):
-        if not edits_allowed:
+        if not edits_allowed and not emits_outcome:
             return entry_report_result(idea)
         # Emitting node (Reviewer): the real forced harness -> verdict reasons (NOT a work-brief).
         if emits_outcome:

@@ -79,6 +79,8 @@ function nodeData(
   return {
     role_name: n.role_name,
     kind: n.kind,
+    // M-unify U3: the edits capability drives the card's Edits on/off tag (both views return it).
+    edits_allowed: n.edits_allowed,
     model: n.model,
     engine: n.engine,
     config: n.config,

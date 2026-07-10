@@ -127,6 +127,14 @@ def maybe_write_entry_report(task) -> bool:
 
     if "REPORT-ONLY NODE" not in task.instruction:
         return False
+    # M-unify U3: an edits-off EMITTING node (a reviewer, edits_allowed=False on the review_loop
+    # template) also carries the report-only capability note, but it delivers a VERDICT — its pull
+    # scope is verdict-only (no REPORT.md), matching the real ``_resolve_pull_paths(False, True)``.
+    # Only a report-writing node (REPORT.md IN its pull scope) gets the entry-report treatment here;
+    # an emitting node falls through so the fake adapter runs its own verdict branch.
+    pull = getattr(task, "pull_paths", None)
+    if pull is not None and "REPORT.md" not in pull:
+        return False
     idea = ""
     marker = "--- ORIGINAL IDEA ---\n"
     if marker in task.instruction:
