@@ -87,6 +87,40 @@ def subpath_is_tracked_dir(repo_path: str, subpath: str) -> bool:
     return any(line.startswith(prefix) for line in res.stdout.splitlines() if line.strip())
 
 
+# Cap the number of top-level package dirs the picker offers (bounds the payload on a very wide
+# repo; a short list is the useful UX, and a repo with more top dirs than this is better run whole).
+_SUBPATHS_MAX = 100
+
+
+def repo_subpaths(repo_path: str) -> list[dict]:
+    """M-brownfield scoped-mount Slice 2: the repo's TOP-LEVEL tracked directories, each a
+    ``{"path": str, "file_count": int}`` where ``file_count`` is the number of tracked files
+    ANYWHERE under ``<path>/`` (recursive). Deterministic (sorted by path) and bounded
+    (:data:`_SUBPATHS_MAX`).
+
+    Powers ``POST /api/repo/inspect``'s ``subpaths`` — the launch panel's Scope picker — so a user
+    can scope a large-repo brownfield run to one package (the ``runs.subpath`` the executor already
+    honors, wall #1 of the rung-2 context overflow). Every path returned has ≥1 tracked file under
+    it, so it satisfies :func:`subpath_is_tracked_dir` and a picked scope always passes
+    ``create_run``'s validation. Top-level FILES (no ``/``) are excluded — they are not a scope.
+    Defensive: never raises (a wedged repo / missing path / absent git → ``[]``), like
+    :func:`repo_inspect`."""
+    try:
+        res = _git(repo_path, "ls-files", check=False)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    counts: dict[str, int] = {}
+    for raw in res.stdout.splitlines():
+        line = raw.strip()
+        if "/" not in line:
+            continue  # a top-level FILE, not under a package directory
+        top = line.split("/", 1)[0]
+        if top:
+            counts[top] = counts.get(top, 0) + 1
+    entries = [{"path": p, "file_count": counts[p]} for p in sorted(counts)]
+    return entries[:_SUBPATHS_MAX]
+
+
 def branch_name_for(run_id: str) -> str:
     """The deterministic ship branch a brownfield run lands on. Factored so the executor, the
     worktree creation, and the tests share one source of truth (no nicer name than this — §15)."""

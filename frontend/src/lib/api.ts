@@ -317,6 +317,10 @@ export interface RunTeamOptions {
   idea?: string;
   repo_path?: string;
   base_ref?: string;
+  // scoped-mount Slice 2: an optional package to scope a brownfield run to (the Scope picker's
+  // choice — a tracked dir of the repo). Included in the POST body ONLY when set, so a whole-repo /
+  // greenfield launch omits it entirely (the byte-for-byte contract is preserved).
+  subpath?: string;
 }
 
 // Clone-on-launch (P1.8b): "Run this team" launches a run on a fresh deep-clone of the persistent
@@ -328,12 +332,20 @@ export interface RunTeamOptions {
 // field is added to the body ONLY when non-empty, so `runTeam(id)` (or `runTeam(id, {})`) posts
 // exactly `{ team_graph_id }` — the greenfield launch is byte-for-byte unchanged.
 export async function runTeam(teamGraphId: string, opts: RunTeamOptions = {}): Promise<string> {
-  const body: { team_graph_id: string; idea?: string; repo_path?: string; base_ref?: string } = {
+  const body: {
+    team_graph_id: string;
+    idea?: string;
+    repo_path?: string;
+    base_ref?: string;
+    subpath?: string;
+  } = {
     team_graph_id: teamGraphId,
   };
   if (opts.idea) body.idea = opts.idea;
   if (opts.repo_path) body.repo_path = opts.repo_path;
   if (opts.base_ref) body.base_ref = opts.base_ref;
+  // scoped-mount Slice 2: only a picked package threads through — whole-repo/greenfield omits it.
+  if (opts.subpath) body.subpath = opts.subpath;
   const res = await fetch("/api/runs", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -342,6 +354,14 @@ export async function runTeam(teamGraphId: string, opts: RunTeamOptions = {}): P
   if (!res.ok) throw new Error(`POST /api/runs -> ${res.status}`);
   const data = (await res.json()) as { run_id: string };
   return data.run_id;
+}
+
+// scoped-mount Slice 2: one top-level tracked package directory the Scope picker offers.
+// `file_count` = tracked files anywhere under it (recursive), so a user can size a package before
+// scoping the run to it. Every one satisfies the backend's subpath validation (≥1 file under it).
+export interface RepoSubpath {
+  path: string;
+  file_count: number;
 }
 
 // M-brownfield Slice 2: the discriminated result of `POST /api/repo/inspect` (the backend returns a
@@ -354,6 +374,11 @@ export type RepoInspect =
       current_branch: string | null;
       branches: string[];
       tracked_file_count: number;
+      // scoped-mount Slice 2 (additive/optional): the repo's top-level tracked package dirs the
+      // launch panel's Scope picker offers. The backend endpoint always returns it for a git repo;
+      // optional so a client/fixture predating the field is still a valid `RepoInspect` (⇒ no
+      // packages ⇒ whole-repo only).
+      subpaths?: RepoSubpath[];
     }
   | { is_git: false; error: string };
 

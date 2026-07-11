@@ -187,6 +187,85 @@ describe("LaunchPanel", () => {
       base_ref: "dev",
     });
   });
+
+  // ---- scoped-mount Slice 2: the Scope picker ----
+
+  it("a valid repo renders the Scope picker: 'Whole repo' default + one option per subpath (with counts)", async () => {
+    stubInspect({
+      is_git: true,
+      current_branch: "main",
+      branches: ["main"],
+      tracked_file_count: 20,
+      subpaths: [
+        { path: "api", file_count: 3 },
+        { path: "core", file_count: 9 },
+      ],
+    });
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "On" }));
+    inspectPath("/Users/me/repo");
+
+    const scope = await screen.findByLabelText<HTMLSelectElement>("Scope");
+    expect(scope.value).toBe(""); // Whole repo by default
+    expect(Array.from(scope.options).map((o) => o.value)).toEqual(["", "api", "core"]);
+    // The option labels carry the file counts (so a user can size a package before scoping to it).
+    expect(scope).toHaveTextContent("api (3 files)");
+    expect(scope).toHaveTextContent("core (9 files)");
+  });
+
+  it("picking a package threads subpath into the launch options; whole-repo omits it", async () => {
+    stubInspect({
+      is_git: true,
+      current_branch: "main",
+      branches: ["main"],
+      tracked_file_count: 20,
+      subpaths: [
+        { path: "api", file_count: 3 },
+        { path: "core", file_count: 9 },
+      ],
+    });
+    const { onLaunch } = renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "On" }));
+    inspectPath("/Users/me/repo");
+    await screen.findByLabelText("Scope");
+
+    // Default = whole repo ⇒ the launch OMITS subpath (byte-for-byte the prior brownfield contract).
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    expect(onLaunch).toHaveBeenLastCalledWith({
+      repo_path: "/Users/me/repo",
+      base_ref: "main",
+    });
+
+    // Pick a package ⇒ subpath is threaded through.
+    fireEvent.change(screen.getByLabelText("Scope"), { target: { value: "core" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    expect(onLaunch).toHaveBeenLastCalledWith({
+      repo_path: "/Users/me/repo",
+      base_ref: "main",
+      subpath: "core",
+    });
+  });
+
+  it("escalates the large-repo hint to suggest scoping; picking a package clears the nudge", async () => {
+    stubInspect({
+      is_git: true,
+      current_branch: "main",
+      branches: ["main"],
+      tracked_file_count: LARGE_REPO_FILE_THRESHOLD + 1,
+      subpaths: [{ path: "core", file_count: 40 }],
+    });
+    renderPanel({ nodes: [tnode({ id: "n-eng", role_name: "engineer", kind: "agent" })] });
+    fireEvent.click(screen.getByRole("button", { name: "On" }));
+    inspectPath("/Users/me/big-repo");
+
+    const hint = await screen.findByRole("note");
+    expect(hint).toHaveTextContent(/Large repo/);
+    // Escalated copy: it now suggests scoping to a package (the fix for the context-overflow wall).
+    expect(hint).toHaveTextContent(/scope/i);
+    // Scoping to a package RESOLVES the nudge (scoping IS the fix), so the hint disappears.
+    fireEvent.change(screen.getByLabelText("Scope"), { target: { value: "core" } });
+    await waitFor(() => expect(screen.queryByRole("note")).toBeNull());
+  });
 });
 
 describe("LaunchPanel — edits-off action-verb advisory (M-unify U3)", () => {

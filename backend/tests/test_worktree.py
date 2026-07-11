@@ -13,6 +13,7 @@ from tvashtr.control_plane.worktree import (
     branch_name_for,
     build_repo_grounding,
     repo_inspect,
+    repo_subpaths,
     subpath_is_tracked_dir,
     worker_focus_directive,
 )
@@ -61,6 +62,52 @@ def test_repo_inspect_on_missing_path(tmp_path):
     info = repo_inspect(str(tmp_path / "nope"))
     assert info["is_git"] is False
     assert "error" in info
+
+
+# ---- repo_subpaths (scoped-mount Slice 2: the Scope picker's top-level package list) ------------
+
+
+def test_repo_subpaths_returns_top_level_tracked_dirs_with_counts(tmp_path):
+    repo = _init_repo(
+        tmp_path / "repo",
+        files={
+            "README.md": "# root\n",  # a top-level FILE — never a subpath
+            "pyproject.toml": "[project]\n",  # ditto
+            "core/a.py": "a\n",
+            "core/b.py": "b\n",
+            "core/sub/c.py": "c\n",  # a nested file still counts UNDER `core`
+            "api/handlers.py": "h\n",
+            "utils/x.py": "x\n",
+            "utils/y.py": "y\n",
+        },
+    )
+    # Deterministic (sorted by path), root files excluded, each count = tracked files ANYWHERE
+    # under `<path>/` (recursive).
+    assert repo_subpaths(str(repo)) == [
+        {"path": "api", "file_count": 1},
+        {"path": "core", "file_count": 3},
+        {"path": "utils", "file_count": 2},
+    ]
+
+
+def test_repo_subpaths_root_only_repo_and_missing_path_are_empty(tmp_path):
+    # A repo whose tracked files all live at the root has NO package dirs -> [].
+    flat = _init_repo(tmp_path / "flat", files={"main.py": "x\n", "README.md": "# r\n"})
+    assert repo_subpaths(str(flat)) == []
+    # A non-git / missing path never raises -> [] (mirrors repo_inspect's defensiveness).
+    assert repo_subpaths(str(tmp_path / "nope")) == []
+
+
+def test_repo_subpaths_entries_all_pass_subpath_is_tracked_dir(tmp_path):
+    # Every path the picker offers must satisfy create_run's subpath validation (no 422 on a pick).
+    repo = _init_repo(
+        tmp_path / "repo",
+        files={"core/a.py": "a\n", "web/app.py": "w\n", "top.py": "t\n"},
+    )
+    entries = repo_subpaths(str(repo))
+    assert [e["path"] for e in entries] == ["core", "web"]  # `top.py` (root file) excluded
+    for entry in entries:
+        assert subpath_is_tracked_dir(str(repo), entry["path"]) is True
 
 
 # ---- add_worktree -------------------------------------------------------------------------------

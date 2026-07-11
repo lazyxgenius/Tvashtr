@@ -58,6 +58,47 @@ def test_inspect_repo_on_non_git_path_is_200_discriminated(client, tmp_path):
     assert resp.status_code == 200
     assert resp.json()["is_git"] is False
     assert "error" in resp.json()
+    # A non-git result carries NO subpaths (nothing to scope) — the picker only shows for a
+    # git repo.
+    assert "subpaths" not in resp.json()
+
+
+def _init_multi_package_repo(path):
+    """A tmp git repo with two top-level packages (`api`, `core`) + a root file — the shape the
+    Scope picker offers."""
+    path.mkdir(parents=True, exist_ok=True)
+    for a in (
+        ["init", "-q", "-b", "main"],
+        ["config", "user.email", "t@t.local"],
+        ["config", "user.name", "t"],
+    ):
+        subprocess.run(["git", "-C", str(path), *a], check=True, capture_output=True)
+    for rel, content in {
+        "README.md": "# multi\n",  # a root file — never a subpath
+        "core/indicators.py": "x\n",
+        "core/ema.py": "y\n",
+        "api/server.py": "z\n",
+    }.items():
+        f = path / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(content)
+    for a in (["add", "-A"], ["commit", "-qm", "init"]):
+        subprocess.run(["git", "-C", str(path), *a], check=True, capture_output=True)
+    return path
+
+
+def test_inspect_repo_returns_subpaths_for_multi_package_repo(client, tmp_path):
+    # scoped-mount Slice 2: POST /api/repo/inspect ALSO returns the repo's top-level tracked package
+    # dirs + counts (the launch panel's Scope picker source). Fails pre-change (no `subpaths` key).
+    repo = _init_multi_package_repo(tmp_path / "multi")
+    resp = client.post("/api/repo/inspect", json={"path": str(repo)})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["is_git"] is True
+    assert body["subpaths"] == [
+        {"path": "api", "file_count": 1},
+        {"path": "core", "file_count": 2},
+    ]
 
 
 # ---- POST /api/runs brownfield validation + recording -------------------------------------------

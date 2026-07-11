@@ -81,6 +81,9 @@ export function LaunchPanel({
   const [inspecting, setInspecting] = useState(false);
   const [baseRef, setBaseRef] = useState("");
   const [hintDismissed, setHintDismissed] = useState(false);
+  // scoped-mount Slice 2: the picked package to scope the run to. "" = whole repo (the default);
+  // any other value is a tracked package dir threaded to the run as `subpath`.
+  const [scope, setScope] = useState("");
 
   // The validated git result, narrowed to its `is_git: true` variant (else null). The whole
   // brownfield surface — branch dropdown, the hint, the Run-into-repo enablement — keys off this.
@@ -100,6 +103,7 @@ export function LaunchPanel({
       if (result.is_git) {
         setBaseRef(result.current_branch ?? result.branches[0] ?? "");
         setHintDismissed(false);
+        setScope(""); // a fresh repo defaults to whole-repo (never carry a stale package)
       }
     } catch {
       setInspect({ is_git: false, error: "Couldn't reach the server to inspect that path." });
@@ -111,8 +115,14 @@ export function LaunchPanel({
   // D4: the worker nodes whose model the hint suggests strengthening — agent-kind nodes, by their
   // visible label (`role_name`). Empty for a thinker-only team (then the hint omits the names).
   const workerNames = teamNodes.filter((n) => n.kind === "agent").map((n) => n.role_name);
-  const showHint =
-    validated && repoInfo.tracked_file_count > LARGE_REPO_FILE_THRESHOLD && !hintDismissed;
+  // scoped-mount Slice 2: the repo's top-level packages the Scope picker offers ([] when the repo
+  // has none, or on a client/fixture predating the field). Whole repo = "" (the default).
+  const subpaths = repoInfo?.subpaths ?? [];
+  const bigRepo = validated && repoInfo.tracked_file_count > LARGE_REPO_FILE_THRESHOLD;
+  // The large-repo advisory ESCALATES: it fires only while a big repo is still whole-repo
+  // (scope === ""). Once a package is picked, scoping IS the fix for the context-overflow, so the
+  // nudge resolves. Still dismissible (D4 — a recommendation, never a blocker).
+  const showHint = bigRepo && !hintDismissed && scope === "";
 
   // M-unify U3: the pre-launch action-verb advisory (NON-BLOCKING) — every edits-off node whose prompt
   // POSITIVELY asks for a file edit. Independent of the repo target; a nudge, never a gate.
@@ -126,6 +136,9 @@ export function LaunchPanel({
     if (validated) {
       opts.repo_path = repoPath.trim();
       opts.base_ref = baseRef;
+      // scoped-mount Slice 2: only a picked package threads through; whole-repo ("") omits it, so
+      // the whole-repo brownfield launch stays byte-for-byte the prior contract.
+      if (scope) opts.subpath = scope;
     }
     onLaunch(opts);
   };
@@ -248,11 +261,38 @@ export function LaunchPanel({
               </label>
             )}
 
+            {validated && subpaths.length > 0 && (
+              <label className="tv-field">
+                <span className="tv-field__label">Scope</span>
+                <span className="tv-field__hint">
+                  Limit the team to one package so it doesn’t drown in a large repo. Whole repo by
+                  default.
+                </span>
+                <select
+                  className="tv-launch__input tv-launch__select"
+                  value={scope}
+                  aria-label="Scope"
+                  onChange={(e) => setScope(e.target.value)}
+                >
+                  <option value="">Whole repo</option>
+                  {subpaths.map((s) => (
+                    <option key={s.path} value={s.path}>
+                      {s.path} ({s.file_count} files)
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             {showHint && (
               <div className="tv-launch__hint" role="note">
                 <span>
                   Large repo (~{repoInfo.tracked_file_count} files). Working on existing code this
-                  size is harder — consider a stronger model on your worker {nodeWord}
+                  size is harder —{" "}
+                  {subpaths.length > 0
+                    ? "scope the run to a package above, or use a bigger-context model on your worker "
+                    : "consider a stronger model on your worker "}
+                  {nodeWord}
                   {hintNames}. Edit a node to change its model.
                 </span>
                 <button

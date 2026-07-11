@@ -58,7 +58,7 @@ from tvashtr.control_plane.teams import (
     reviewer_model,
     seed_library_if_empty,
 )
-from tvashtr.control_plane.worktree import repo_inspect, subpath_is_tracked_dir
+from tvashtr.control_plane.worktree import repo_inspect, repo_subpaths, subpath_is_tracked_dir
 from tvashtr.documents.service import add_version, get_document_with_versions, list_documents
 from tvashtr.models import (
     AgentInvocation,
@@ -504,8 +504,16 @@ def inspect_repo(body: RepoInspectRequest) -> dict:
     """M-brownfield Slice 1 (D5): discriminate a candidate local repo for a brownfield launch.
     Returns ``repo_inspect``'s **discriminated result** (``{is_git: True, current_branch, branches,
     tracked_file_count}`` or ``{is_git: False, error}``) with a 200 in BOTH cases — a non-repo is a
-    renderable result the FE shows inline, NOT an exception."""
-    return repo_inspect(body.path)
+    renderable result the FE shows inline, NOT an exception.
+
+    scoped-mount Slice 2: for a git repo the result ALSO carries ``subpaths`` — the top-level
+    tracked package dirs (each ``{path, file_count}``) the launch panel's Scope picker offers.
+    Added only on the FE-facing endpoint (``repo_inspect`` itself stays byte-identical for
+    ``create_run``'s reuse); a non-git result is unchanged (no ``subpaths`` — nothing to scope)."""
+    result = repo_inspect(body.path)
+    if result.get("is_git"):
+        result["subpaths"] = repo_subpaths(body.path)
+    return result
 
 
 def _require_owned_run(session, run_id: str, owner_id: uuid.UUID) -> Run:

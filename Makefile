@@ -17,7 +17,7 @@ TVASHTR_RUNG2_REPO ?= /Users/adimac/Desktop/trade_mcp
 # independent numeric gate is unaffected (it runs host-side at the repo ROOT).
 TVASHTR_RUNG2_SUBPATH ?= core
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e skills-e2e tools-e2e seed lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e scope-picker-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e skills-e2e tools-e2e seed lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -164,6 +164,9 @@ authoring-brief-e2e: ## Live M2 authoring-brief E2E: create a review_loop team, 
 
 launch-panel-e2e: ## Live M-brownfield Slice 2 launch-panel E2E: open the app, click "Run this team" (assert the launch panel OPENS), flip "work on a local repo", type a REAL fixture git repo path (assert the base-branch dropdown populates from the live POST /api/repo/inspect round-trip), and confirm the greenfield path still launches ({ team_graph_id } only). A screenshot per check. NO agent run — needs NO NVIDIA key; just Postgres + a real backend + Vite + Playwright.
 	./scripts/launch_panel_e2e.sh
+
+scope-picker-e2e: ## Live M-brownfield scoped-mount Slice 2 SCOPE-PICKER E2E: register a fresh account, open the seeded team, click "Run this team", flip "work on a local repo" On, type a REAL multi-package fixture git repo path (assert the base-branch dropdown AND the new Scope dropdown populate from the live POST /api/repo/inspect round-trip), pick a package, and assert the launch POST /api/runs body carries `subpath`. A screenshot per check. Isolated ports (backend :8001, Vite :5174 -> proxy :8001). NO agent run — needs NO provider keys; just Postgres + a real backend + Vite + Playwright.
+	./scripts/scope_picker_e2e.sh
 
 auth-e2e: ## Live M-accounts Slice A auth E2E: the whole app sits behind login — unauthenticated→landing, register→dashboard, logout→landing, seeded-login→dashboard. Seeds the operator account first. A screenshot per check. NO agent run — needs NO NVIDIA key; just Postgres + a real backend + Vite + Playwright.
 	./scripts/auth_e2e.sh
