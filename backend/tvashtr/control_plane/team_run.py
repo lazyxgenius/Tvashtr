@@ -991,6 +991,26 @@ def close_run_sandboxes_step(run_id: str) -> None:
     close_run_sandboxes(run_id)
 
 
+def _run_end_teardown(run_id: str) -> None:
+    """Close this run's process-cached sandboxes at run-end (M-unify U2). Prefer the checkpointed
+    :func:`close_run_sandboxes_step`; if DBOS REFUSES it — a CANCELLED workflow raises
+    ``DBOSWorkflowCancelledError``, a ``BaseException`` an ``except Exception`` CANNOT catch — fall
+    back to the raw :func:`close_run_sandboxes` so a warm container is never stranded (its surviving
+    cache entry would otherwise make reap-before-start keep SPARING it — only a restart's boot sweep
+    clears it). NEVER raises: teardown must not mask the run's real terminal, which keeps unwinding
+    out of the caller's ``finally``."""
+    try:
+        close_run_sandboxes_step(run_id)
+    except BaseException:  # noqa: BLE001
+        # DBOS raises DBOSWorkflowCancelledError (a BaseException) when a step runs in a cancelled
+        # workflow — an ``except Exception`` would miss it and the container would leak. Do the raw
+        # teardown instead; the ORIGINAL terminal still unwinds out of run_team's finally.
+        try:
+            close_run_sandboxes(run_id)
+        except Exception:
+            logger.warning("sandbox run-end teardown failed run_id=%s", run_id, exc_info=True)
+
+
 def apply_budget_hook(run_id: str, *, node_id: str, iteration: int) -> bool:
     """Budget as cross-cutting POLICY (P1.5b) — the between-spend-steps hook the walk
     applies after every spend-bearing node, replacing P1.5a's two hand-placed
@@ -1408,13 +1428,4 @@ def run_team(idea: str) -> dict:
         graph = load_graph_step(run_id)
         return run_graph(run_id, graph, idea)
     finally:
-        try:
-            close_run_sandboxes_step(run_id)
-        except Exception:
-            # e.g. the workflow was cancelled and DBOS refuses a new step — fall back to the raw
-            # process-local teardown so a warm container never leaks. Teardown must NEVER mask the
-            # real terminal/exception, so swallow everything here.
-            try:
-                close_run_sandboxes(run_id)
-            except Exception:
-                logger.warning("sandbox run-end teardown failed run_id=%s", run_id, exc_info=True)
+        _run_end_teardown(run_id)

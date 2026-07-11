@@ -6,6 +6,7 @@ DQ1 pull-at-end file copy, the usage read, and the identical ``AgentRunResult``
 shape — entirely offline.
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -349,9 +350,22 @@ def test_run_reuses_warm_container_and_carries_conversation(tmp_path):
         patch.object(mod, "Tool"),
         patch.object(mod, "TerminalTool"),
         patch.object(mod, "FileEditorTool"),
+        # Make every fired OH event a collectable "message" carrying its round marker.
+        patch.object(mod, "_kind_of", return_value="message"),
+        patch.object(mod, "_payload_of", side_effect=lambda ev, kind: {"marker": ev.marker}),
     ):
         key = sandbox_cache.session_key_for("run-xyz", "node-A")
         adapter = mod.OpenHandsDockerAdapter()
+        # Callback-repoint probe: each conversation.run() fires ONE event through the callback bound
+        # ONCE at construction (handle.dispatch). A working repoint routes it to THIS round's sink.
+        _round = {"n": 0}
+
+        def _fire_event_on_run():
+            _round["n"] += 1
+            dispatch = conv.call_args.kwargs["callbacks"][0]  # handle.dispatch (bound once)
+            dispatch(SimpleNamespace(marker=f"r{_round['n']}"))
+
+        convo.run.side_effect = _fire_event_on_run
         r1 = adapter.run(
             AgentTask(
                 instruction="round 1 goal",
@@ -385,6 +399,12 @@ def test_run_reuses_warm_container_and_carries_conversation(tmp_path):
         assert ws._container_id in reap.call_args_list[1].kwargs["keep_ids"]
         # The warm container is NOT torn down between rounds.
         ws.cleanup.assert_not_called()
+        # Callback repoint (M-unify U2): the callback is bound ONCE (handle.dispatch), so each round
+        # must repoint the sink — round-2's event lands in round-2's collector, NOT round-1's. A
+        # broken repoint routes round 2's event to round-1's (already-returned) collector, leaving
+        # r2.events EMPTY.
+        assert [e.payload["marker"] for e in r1.events] == ["r1"]
+        assert [e.payload["marker"] for e in r2.events] == ["r2"]
 
     # Run-end teardown (the Control Plane's close_run_sandboxes_step) closes + evicts it.
     sandbox_cache.close_run_sandboxes("run-xyz")

@@ -135,6 +135,11 @@ def test_same_node_reuses_sandbox_distinct_node_gets_its_own(client, monkeypatch
         assert pm.hit is False
         assert eng1.hit is False
         assert eng2.hit is True
+        # run_team's finally must have TORN DOWN this run's cached sandboxes (the teardown wiring).
+        # Asserted BEFORE the finally-clear below → proves run_team's teardown ran, not the test's
+        # (deleting close_run_sandboxes_step from run_team's finally makes these survive → fails).
+        assert sandbox_cache.get(pm.key) is None
+        assert sandbox_cache.get(eng1.key) is None
     finally:
         sandbox_cache.clear()
 
@@ -160,9 +165,20 @@ def test_local_adapter_reuses_conversation_across_rounds(tmp_path):
             patch.object(local_mod, "Tool"),
             patch.object(local_mod, "TerminalTool"),
             patch.object(local_mod, "FileEditorTool"),
+            patch.object(local_mod, "_kind_of", return_value="message"),
+            patch.object(local_mod, "_payload_of", side_effect=lambda e, k: {"marker": e.marker}),
         ):
             key = sandbox_cache.session_key_for("run-L", "node-L")
             adapter = local_mod.OpenHandsAdapter()
+            # Callback-repoint probe: each run() fires ONE event through the callback bound ONCE at
+            # construction (handle.dispatch); a working repoint routes it to THIS round's sink.
+            _round = {"n": 0}
+
+            def _fire_event_on_run():
+                _round["n"] += 1
+                Conv.call_args.kwargs["callbacks"][0](SimpleNamespace(marker=f"r{_round['n']}"))
+
+            convo.run.side_effect = _fire_event_on_run
             r1 = adapter.run(
                 AgentTask(
                     instruction="g1",
@@ -188,6 +204,34 @@ def test_local_adapter_reuses_conversation_across_rounds(tmp_path):
         # Per-round usage is the DELTA: round 1 = (3,4); round 2 = (10,9)-(3,4) = (7,5).
         assert (r1.prompt_tokens, r1.completion_tokens) == (3, 4)
         assert (r2.prompt_tokens, r2.completion_tokens) == (7, 5)
+        # Callback repoint: round-2's event must land in round-2's collector (a broken repoint sends
+        # it to round-1's already-returned collector, leaving r2.events EMPTY).
+        assert [e.payload["marker"] for e in r1.events] == ["r1"]
+        assert [e.payload["marker"] for e in r2.events] == ["r2"]
     finally:
         sandbox_cache.close_run_sandboxes("run-L")
         sandbox_cache.clear()
+
+
+def test_run_end_teardown_falls_back_when_step_refused(monkeypatch):
+    """M-unify U2: DBOS raises ``DBOSWorkflowCancelledError`` — a ``BaseException`` — when a
+    ``@DBOS.step`` is invoked in a CANCELLED workflow. run_team's run-end teardown MUST catch that
+    BaseException (an ``except Exception`` would miss it) and still run the raw process-local
+    ``close_run_sandboxes``, so a warm container never leaks on the cancel-at-gate path. Mutation
+    teeth: revert ``except BaseException`` to ``except Exception`` and this test fails (the fake
+    step-refusal propagates, the raw fallback never runs)."""
+
+    class _StepRefused(BaseException):  # mimics DBOSWorkflowCancelledError (a BaseException)
+        pass
+
+    raw_called: list = []
+
+    def _refuse(run_id):
+        raise _StepRefused()
+
+    monkeypatch.setattr(team_run, "close_run_sandboxes_step", _refuse)
+    monkeypatch.setattr(team_run, "close_run_sandboxes", lambda run_id: raw_called.append(run_id))
+
+    # Must NOT raise, and MUST fall back to the raw process-local teardown.
+    team_run._run_end_teardown("run-cancelled")
+    assert raw_called == ["run-cancelled"]
