@@ -71,6 +71,7 @@ from tvashtr.documents.service import (
 from tvashtr.engines.base import AgentTask
 from tvashtr.engines.registry import resolve_adapter
 from tvashtr.engines.run_event_sink import make_run_event_sink
+from tvashtr.engines.sandbox_cache import close_run_sandboxes, session_key_for
 from tvashtr.metering import record_agent_cost, running_cost
 from tvashtr.models import AgentNode, Edge, EngineerRunAttempt, Run
 
@@ -706,6 +707,7 @@ def agent_run_step(
     tool_config: dict | None = None,
     skills: list | None = None,
     edits_allowed: bool = True,
+    node_id: str | None = None,
 ) -> dict:
     """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
     ``reviewer_agent_run_step``. M-unify U1: it is now the SINGLE path EVERY AgentNode executes
@@ -857,6 +859,12 @@ def agent_run_step(
         # byte-for-byte inert. ``workspace`` is this worker's own dir (the workspace_dir arg).
         mcp_config=build_mcp_config(tool_config, run_id),
         skills=build_skills(skills, workspace, run_id),
+        # M-unify U2: the per-node sandbox-reuse key. The Control Plane passes only the KEY (never
+        # a live handle) — the adapter reuses this node's warm container + continues its
+        # Conversation across the node's own rounds. ``node_id`` None (older/test call sites that
+        # don't thread it) ⇒ ``session_key`` None ⇒ NO reuse: byte-for-byte the
+        # build-and-teardown-per-run path.
+        session_key=session_key_for(run_id, node_id) if node_id is not None else None,
     )
     # Select local vs Docker-sandboxed engine from the configured sandbox mode (P1.3a). The
     # EngineAdapter contract + AgentRunResult shape are identical across modes; the adapter is
@@ -968,6 +976,19 @@ def finalize_run_step(run_id: str, status: str = "completed") -> dict:
 def mark_run_failed_step(run_id: str) -> None:
     with session_scope() as session:
         session.execute(update(Run).where(Run.id == uuid.UUID(run_id)).values(status="failed"))
+
+
+@DBOS.step()
+def close_run_sandboxes_step(run_id: str) -> None:
+    """M-unify U2 run-end teardown: close + evict any process-cached sandboxes (warm docker
+    containers + live Conversations) this run kept alive for per-node reuse. Engine-NEUTRAL — it
+    delegates to :func:`sandbox_cache.close_run_sandboxes` (run_id in, nothing out; no engine
+    internals leak) — and best-effort: the cache is a process-local OPTIMIZATION, so a
+    skipped/failed teardown is harmless (backstopped by reap-before-start + the boot sweep), and a
+    ``kill -9`` simply evaporates it. Called from :func:`run_team`'s ``try/finally`` around
+    :func:`run_graph`, so it runs on EVERY terminal path of the walk — the scattered ``return``s AND
+    the unhandled-exception path — so a warm container is never stranded on a clean run-end."""
+    close_run_sandboxes(run_id)
 
 
 def apply_budget_hook(run_id: str, *, node_id: str, iteration: int) -> bool:
@@ -1163,6 +1184,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 budget,
                 inv_id,
                 edits_allowed=edits_allowed,
+                node_id=current,  # M-unify U2: per-node sandbox-reuse key (run_id+node_id)
                 **tools_kwargs,
                 **brownfield_kwargs,
             )
@@ -1378,5 +1400,21 @@ def run_team(idea: str) -> dict:
     terminal) and returns the fully-finalized result dict."""
     run_id = DBOS.workflow_id
     DBOS.logger.info(f"run_team start run_id={run_id} idea={idea!r}")
-    graph = load_graph_step(run_id)
-    return run_graph(run_id, graph, idea)
+    # M-unify U2: the SINGLE run-end teardown point. ``run_graph`` is called ONLY here, so this
+    # ``try/finally`` fires the sandbox teardown on EVERY one of its terminal paths — the scattered
+    # ``return``s (ship / stop / over_budget / failed) AND the unhandled-exception path (a step
+    # raising propagates through here) — closing any warm docker containers this run kept for reuse.
+    try:
+        graph = load_graph_step(run_id)
+        return run_graph(run_id, graph, idea)
+    finally:
+        try:
+            close_run_sandboxes_step(run_id)
+        except Exception:
+            # e.g. the workflow was cancelled and DBOS refuses a new step — fall back to the raw
+            # process-local teardown so a warm container never leaks. Teardown must NEVER mask the
+            # real terminal/exception, so swallow everything here.
+            try:
+                close_run_sandboxes(run_id)
+            except Exception:
+                logger.warning("sandbox run-end teardown failed run_id=%s", run_id, exc_info=True)

@@ -46,6 +46,29 @@ def test_reap_force_removes_each_container():
     assert ["docker", "rm", "-f", "c2"] in calls
 
 
+def test_reap_spares_kept_container_ids():
+    # M-unify U2: reap-before-start passes keep_ids (the live warm sandboxes the reuse cache holds)
+    # — those must be SPARED while every other orphan is reaped. Short/full id normalization: the
+    # cache holds full 64-char ids; `docker ps -aq` yields 12-char short ids (matched by 12-char
+    # prefix).
+    full_keep = "abcdef012345" + "0" * 52  # a live cached container's FULL id
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        if args[:3] == ["docker", "ps", "-aq"]:
+            return _completed(stdout="abcdef012345\ndeadbeef9999\n")  # SHORT ids from `ps`
+        return _completed(returncode=0)
+
+    with patch(_RUN, side_effect=fake_run):
+        reaped = docker_runtime.reap_agent_containers("img:tag", keep_ids=frozenset({full_keep}))
+
+    # The kept container (matched by its 12-char prefix) is spared; the orphan is reaped.
+    assert reaped == ["deadbeef9999"]
+    assert ["docker", "rm", "-f", "abcdef012345"] not in calls
+    assert ["docker", "rm", "-f", "deadbeef9999"] in calls
+
+
 def test_reap_no_containers_is_noop():
     with patch(_RUN, return_value=_completed(stdout="")) as run:
         reaped = docker_runtime.reap_agent_containers("img:tag")

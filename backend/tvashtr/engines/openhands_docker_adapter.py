@@ -39,6 +39,7 @@ from openhands.tools.terminal import TerminalTool
 from openhands.workspace import DockerWorkspace
 
 from tvashtr.config import agent_llm_routing, get_settings
+from tvashtr.engines import sandbox_cache
 from tvashtr.engines.base import AgentRunResult, AgentTask, EngineEvent
 from tvashtr.engines.docker_runtime import (
     enumerate_push_files,
@@ -206,6 +207,27 @@ def _push_workspace(workspace, host_dir: str, mode: str = "greenfield") -> list[
     return pushed
 
 
+class _DockerHandle:
+    """The live docker sandbox stashed in ``sandbox_cache`` for cross-round reuse (M-unify U2): the
+    running container's ``workspace`` + the live ``RemoteConversation`` bound to it, plus a
+    repointable event ``sink``.
+
+    The Conversation's callback is bound ONCE at construction to :meth:`dispatch`, which forwards to
+    the CURRENT round's ``sink``. That indirection is load-bearing for reuse: each ``run()`` builds
+    a fresh per-round collector closure, and a REUSED Conversation must stream its events to THIS
+    round's collector — not round 1's stale closure. On a HIT the adapter just repoints ``sink``."""
+
+    def __init__(self, workspace):
+        self.workspace = workspace
+        self.conversation = None
+        self.sink = None
+
+    def dispatch(self, oh_event) -> None:
+        sink = self.sink
+        if sink is not None:
+            sink(oh_event)
+
+
 class OpenHandsDockerAdapter:
     """Drive the OpenHands agent in a Docker container behind Tvashtr's
     ``EngineAdapter``. Returns the identical ``AgentRunResult`` shape as the local
@@ -224,24 +246,12 @@ class OpenHandsDockerAdapter:
         host_dir = task.workspace_dir
         os.makedirs(host_dir, exist_ok=True)
 
-        # Reap-before-start (DQ2): clear any orphaned agent-server container before
-        # starting a fresh one. Pure orphan hygiene now — under P1.3b part-1 ephemeral
-        # host ports the fresh container binds a NEW port, so reaping no longer frees a
-        # port the new container needs (it only removes leftovers). Image-based, so it
-        # reaps all agent-server containers — correct for serial single-operator
-        # runs (see docker_runtime).
-        reap_agent_containers()
-
-        logger.warning(
-            "OpenHandsDockerAdapter (%s): starting container image=%s platform=%s "
-            "host_port=%s (None=ephemeral: the SDK picks a fresh free port); "
-            "host pull-target=%s",
-            WORKSPACE_MODE,
-            settings.agent_server_image,
-            platform_str,
-            settings.agent_server_host_port,
-            host_dir,
-        )
+        # Reap-before-start (DQ2), M-unify U2: clear orphaned agent-server containers EXCEPT the
+        # live warm sandboxes the reuse cache is keeping for this run's OTHER nodes (``keep_ids``)
+        # — so a HIT's warm container is never killed between rounds. Image-based otherwise
+        # (correct for serial single-operator runs). The boot sweep passes no keep-set, so it still
+        # reaps EVERYTHING — the crash backstop, unchanged.
+        reap_agent_containers(keep_ids=sandbox_cache.live_container_ids())
 
         seq = count()
         collected: list[EngineEvent] = []
@@ -275,51 +285,12 @@ class OpenHandsDockerAdapter:
             if on_event is not None:
                 on_event(event)
 
-        # P1.4a: route the agent's own LLM through the LiteLLM proxy when enabled. OFF by
-        # default -> the EXACT prior direct path (bare slug + OPENROUTER_API_KEY). The LLM
-        # config (incl. whichever api_key — master key when on, OPENROUTER_API_KEY when off)
-        # is serialized into the agent and the calls are made by the agent-server INSIDE the
-        # container — NOT the container env. So the container needs egress to its target: the
-        # proxy when on, OpenRouter when off. docker mode reaches the proxy at
-        # host.docker.internal (agent_llm_base_url("docker")) because the agent-server
-        # container runs on Docker's DEFAULT BRIDGE (started ad-hoc by DockerWorkspace), NOT
-        # the compose network — the #1 reachability risk, proven by `make proxy-smoke`.
-        # P1.4b: ``task.llm_api_key`` (the per-run virtual key, minted with a max_budget) is
-        # threaded in as the agent's api_key so the proxy cuts the agent off mid-call at the
-        # run's budget. It is serialized into the agent-server INSIDE the container along with
-        # the rest of the LLM config (the container reaches the proxy at host.docker.internal).
-        # None (proxy off / no key) -> byte-for-byte as 4a.
-        llm = LLM(
-            **agent_llm_routing(settings, model, "docker", api_key_override=task.llm_api_key),
-            temperature=0.0,
-            usage_id="tvashtr-agent",
-        )
-        # M-ctx0 (C1): give the worker Agent an in-transcript summarizing condenser so a long
-        # real-repo run compacts its own history as it grows instead of overflowing the model
-        # context window and crashing. keep_first=2 pins the compiled instruction (the first
-        # messages) — Tvashtr's durable spec / worktree / verdict artifacts live OUTSIDE the
-        # transcript, so 2 suffices (vs the SDK preset's 4). max_size=80 is the SDK preset default
-        # (openhands.tools.preset): inert under ~80 events so short greenfield/loop runs are
-        # byte-for-byte unchanged, and it fires on a long run before the window overflows. The
-        # condenser reuses the worker's model + key via a model_copy under its OWN usage_id
-        # (mirrors the SDK's settings.build_condenser) so the serialized docker agent never trips
-        # the LLM registry's duplicate-usage_id guard; reset_metrics gives it a fresh meter.
-        condenser_llm = llm.model_copy(update={"usage_id": "tvashtr-condenser"})
-        condenser_llm.reset_metrics()
-        # M-tools C7.0: thread the node's inline tools + skills (resolved by the Control Plane's own
-        # node_tools/node_skills seams) into the Agent. INERTNESS: when the node has no skills
-        # (``task.skills`` None/empty) we MUST pass ``agent_context=None`` — an empty AgentContext
-        # injects a datetime into the system message and would change the prompt; and an empty
-        # ``mcp_config`` creates NO MCP tools. So with both unset (every node today) this Agent is
-        # byte-identical to before.
-        agent_context = AgentContext(skills=task.skills) if task.skills else None
-        agent = Agent(
-            llm=llm,
-            tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],
-            condenser=LLMSummarizingCondenser(llm=condenser_llm, keep_first=2, max_size=80),
-            mcp_config=task.mcp_config or {},
-            agent_context=agent_context,
-        )
+        # M-unify U2: reuse this node's warm container + live Conversation across its own rounds
+        # when a ``session_key`` is set. A HIT skips the ~20s container spin-up AND continues the
+        # SAME Conversation (the agent remembers prior rounds; the condenser keeps folding the
+        # growing transcript). ``session_key`` None ⇒ a MISS every time: build a fresh container +
+        # Conversation and tear it down at run-end — byte-for-byte the prior path.
+        cached = sandbox_cache.get(task.session_key)
 
         status = "completed"
         error: str | None = None
@@ -328,27 +299,92 @@ class OpenHandsDockerAdapter:
         cost_usd = 0.0
         files_changed: list[str] = []
         conversation = None
+        workspace = None
+        usage_before = (0, 0, 0.0)  # per-round baseline; nonzero only on a HIT (metrics accumulate)
         try:
-            # Constructing DockerWorkspace starts the container (pull/run/health);
-            # __exit__ tears it down (docker stop; the image is run with --rm).
-            with DockerWorkspace(
-                server_image=settings.agent_server_image,
-                host_port=settings.agent_server_host_port,
-                platform=platform_str,
-                extra_ports=False,
-            ) as workspace:
-                # Read back the ACTUAL host port the SDK bound. With host_port=None
-                # (ephemeral) the SDK picks a fresh free port at construction, so this
-                # is the only place the real port is known (config now carries None).
+            if cached is None:
+                # MISS (or reuse OFF): build the LLM/agent, start a fresh container, open a new
+                # Conversation. P1.4a/P1.4b: route the agent's LLM — proxy master key when on,
+                # per-run vkey / owner BYOK via ``task.llm_api_key`` when off; serialized into the
+                # agent-server INSIDE the container (reaches the proxy at host.docker.internal).
+                # None ⇒ byte-for-byte as 4a.
+                llm = LLM(
+                    **agent_llm_routing(
+                        settings, model, "docker", api_key_override=task.llm_api_key
+                    ),
+                    temperature=0.0,
+                    usage_id="tvashtr-agent",
+                )
+                # M-ctx0 (C1): the in-transcript summarizing condenser (keep_first=2 / max_size=80),
+                # reused via a model_copy under its OWN usage_id so the serialized agent never trips
+                # the LLM registry's duplicate-usage_id guard; reset_metrics gives it a fresh meter.
+                # On a REUSED Conversation the condenser lives on the retained agent, so it keeps
+                # folding the growing multi-round transcript (the M-unify U2 conversation-carry).
+                condenser_llm = llm.model_copy(update={"usage_id": "tvashtr-condenser"})
+                condenser_llm.reset_metrics()
+                # M-tools C7.0: the node's inline tools + skills; both unset ⇒ agent_context=None
+                # and no MCP tools, so the Agent is byte-identical to before.
+                agent_context = AgentContext(skills=task.skills) if task.skills else None
+                agent = Agent(
+                    llm=llm,
+                    tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],
+                    condenser=LLMSummarizingCondenser(llm=condenser_llm, keep_first=2, max_size=80),
+                    mcp_config=task.mcp_config or {},
+                    agent_context=agent_context,
+                )
+                logger.warning(
+                    "OpenHandsDockerAdapter (%s): starting container image=%s platform=%s "
+                    "host_port=%s (None=ephemeral: the SDK picks a fresh free port); "
+                    "host pull-target=%s",
+                    WORKSPACE_MODE,
+                    settings.agent_server_image,
+                    platform_str,
+                    settings.agent_server_host_port,
+                    host_dir,
+                )
+                # Constructing DockerWorkspace starts the container (pull/run/health). M-unify U2:
+                # we no longer use ``with`` — the container may outlive this run() for the next
+                # round, so it is CACHED and torn down explicitly at run-end
+                # (``close_run_sandboxes``), or here in the ``finally`` when reuse is off
+                # (session_key None).
+                workspace = DockerWorkspace(
+                    server_image=settings.agent_server_image,
+                    host_port=settings.agent_server_host_port,
+                    platform=platform_str,
+                    extra_ports=False,
+                )
                 logger.warning(
                     "OpenHandsDockerAdapter (%s): container ready on host port=%s",
                     WORKSPACE_MODE,
                     workspace.host_port,
                 )
-                # P1.5c loop-seeding: push the host workspace into the fresh container
-                # so a docker-mode iteration > 1 resumes on iteration N-1's files (the
-                # mirror of the pull-at-end). Iteration 1's host holds only .git ->
-                # enumerates to [] -> a clean no-op (no log for the common case).
+                # The callback is bound ONCE to the handle's dispatcher so a REUSED Conversation can
+                # be repointed at each round's collector (a RemoteWorkspace makes Conversation()
+                # return a RemoteConversation; callbacks stream over the server's WebSocket).
+                handle = _DockerHandle(workspace)
+                handle.sink = _on_oh_event
+                conversation = Conversation(
+                    agent=agent,
+                    workspace=workspace,
+                    callbacks=[handle.dispatch],
+                    max_iteration_per_run=_MAX_ITERATIONS,
+                    delete_on_close=False,
+                )
+                handle.conversation = conversation
+                # Cache the live sandbox (reuse ON only) BEFORE the run so run-end teardown ALWAYS
+                # finds it — a failed first round is torn down at run-end, never leaked.
+                # ``put(None,…)`` is a no-op, so the no-reuse path caches nothing.
+                sandbox_cache.put(
+                    task.session_key,
+                    sandbox_cache.CachedSandbox(
+                        handle=handle,
+                        close=workspace.cleanup,
+                        container_id=getattr(workspace, "_container_id", None),
+                    ),
+                )
+                # P1.5c loop-seeding: push the host workspace into the fresh container so a
+                # docker-mode iteration > 1 resumes on iteration N-1's files. Iteration 1's host
+                # holds only .git -> [] -> a clean no-op.
                 seeded = _push_workspace(workspace, host_dir, task.workspace_mode)
                 if seeded:
                     logger.warning(
@@ -358,25 +394,55 @@ class OpenHandsDockerAdapter:
                         len(seeded),
                         seeded,
                     )
-                # A RemoteWorkspace makes Conversation() return a RemoteConversation
-                # automatically; callbacks stream over the server's WebSocket.
-                conversation = Conversation(
-                    agent=agent,
-                    workspace=workspace,
-                    callbacks=[_on_oh_event],
-                    max_iteration_per_run=_MAX_ITERATIONS,
-                    delete_on_close=False,
-                )
                 conversation.send_message(task.instruction)
-                conversation.run()
-                # Decision 2 path, identical accessor over the remote conversation.
-                prompt_tokens, completion_tokens, cost_usd = _read_usage(conversation)
-                # DQ1: pull the agent's files to the host before teardown. ``task.pull_paths``
-                # (Slice 4) scopes this to a fixed list for an emitting (reviewer) node — its
-                # workspace edits then never mutate the shippable host worktree (None ⇒ full pull).
-                files_changed = _pull_workspace(
-                    workspace, host_dir, task.workspace_mode, task.pull_paths
+            else:
+                # HIT (M-unify U2): reuse the warm container + its live Conversation. Re-sync the
+                # host workspace into the container FIRST (the host is the cross-round source of
+                # truth the prior round's pull wrote), THEN send the next goal as a FOLLOW-UP to
+                # the SAME Conversation and run() again — NOT a fresh Conversation, so the
+                # condenser folds the growing transcript and the agent remembers prior rounds.
+                handle = cached.handle
+                workspace = handle.workspace
+                conversation = handle.conversation
+                handle.sink = _on_oh_event  # repoint the dispatcher at THIS round's collector
+                # Read the reused Conversation's cumulative usage FIRST — it is (a) this round's
+                # per-round-delta baseline (metrics accumulate on a reused Conversation) AND (b) a
+                # deterministic conversation-carry signal: >0 carried tokens prove the SAME
+                # Conversation kept the prior round's transcript (not a fresh one).
+                usage_before = _read_usage(conversation)
+                logger.warning(
+                    "OpenHandsDockerAdapter (%s): REUSED warm container (node reuse) on host "
+                    "port=%s — NO spin-up; continuing the same Conversation (carried %d prior "
+                    "tokens)",
+                    WORKSPACE_MODE,
+                    getattr(workspace, "host_port", "?"),
+                    usage_before[0] + usage_before[1],
                 )
+                reseeded = _push_workspace(workspace, host_dir, task.workspace_mode)
+                if reseeded:
+                    logger.warning(
+                        "OpenHandsDockerAdapter (%s): re-seeded %d file(s) into the reused "
+                        "container: %s",
+                        WORKSPACE_MODE,
+                        len(reseeded),
+                        reseeded,
+                    )
+                conversation.send_message(task.instruction)
+            conversation.run()
+            # Decision 2 path over the (possibly reused) remote conversation. On a HIT the metrics
+            # are cumulative across rounds, so subtract the pre-run baseline to get THIS round's
+            # usage.
+            pa, ca, cost_a = _read_usage(conversation)
+            prompt_tokens = max(0, pa - usage_before[0])
+            completion_tokens = max(0, ca - usage_before[1])
+            cost_usd = max(0.0, cost_a - usage_before[2])
+            # DQ1: pull the agent's files to the host at the END of EVERY round (first + follow-up)
+            # — the host stays the cross-round source of truth the next re-seed reads.
+            # ``task.pull_paths`` (Slice 4) scopes it for an emitting (reviewer) node (None ⇒ full
+            # pull).
+            files_changed = _pull_workspace(
+                workspace, host_dir, task.workspace_mode, task.pull_paths
+            )
         except Exception as exc:
             # P1.4b: classify the proxy's mid-call budget cutoff as ``over_budget`` (else a
             # generic ``failed``). In DOCKER mode the SDK strips the budget message from the
@@ -388,12 +454,12 @@ class OpenHandsDockerAdapter:
             )
             status = "over_budget" if budget_hit else "failed"
             error = str(exc)
-            # Best-effort partial-usage read on the cutoff path (Task 0.5); in docker mode the
-            # container is torn down as the ``with`` exits, so the remote conversation may no
-            # longer report metrics — _read_usage then cleanly yields 0s (the proxy's server-side
-            # budget is the authoritative cutoff regardless).
+            # Best-effort partial-usage read on the cutoff path (per-round delta on a HIT).
             if status == "over_budget" and conversation is not None:
-                prompt_tokens, completion_tokens, cost_usd = _read_usage(conversation)
+                pa, ca, cost_a = _read_usage(conversation)
+                prompt_tokens = max(0, pa - usage_before[0])
+                completion_tokens = max(0, ca - usage_before[1])
+                cost_usd = max(0.0, cost_a - usage_before[2])
             # Self-diagnosing: log the FULL surface we classified on, so any future miss is
             # debuggable from this log alone (this very bug required a container-log spelunk).
             logger.exception(
@@ -402,6 +468,16 @@ class OpenHandsDockerAdapter:
                 str(exc),
                 error_event_texts,
             )
+        finally:
+            # M-unify U2: reuse OFF (session_key None) ⇒ replicate the old ``with`` teardown — stop
+            # the container now. Reuse ON ⇒ leave the warm container alive for the next round; it
+            # is torn down at run-end by ``close_run_sandboxes`` (the Control Plane's run_team
+            # ``finally``).
+            if task.session_key is None and workspace is not None:
+                try:
+                    workspace.cleanup()
+                except Exception:
+                    logger.warning("container teardown failed (no-reuse path)", exc_info=True)
 
         total_tokens = prompt_tokens + completion_tokens
         # Only the success path is downgraded by error events; never clobber a classified

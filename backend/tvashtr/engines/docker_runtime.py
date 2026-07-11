@@ -62,17 +62,30 @@ def list_agent_containers(image: str | None = None) -> list[str]:
     return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
 
 
-def reap_agent_containers(image: str | None = None) -> list[str]:
+def reap_agent_containers(
+    image: str | None = None, keep_ids: frozenset[str] = frozenset()
+) -> list[str]:
     """Force-remove every agent-server container from ``image``. Idempotent (a
     no-op when none exist; ``docker rm -f`` is safe to repeat) and **exception-safe**
     — it never raises on a missing / slow / wedged docker (both the listing *and*
     the per-container ``rm`` loop are guarded), so the adapter can call it before
     starting a container without risking a crash. Returns the ids actually removed.
+
+    ``keep_ids`` (M-unify U2) is a set of container ids to SPARE — the live warm sandboxes the
+    process-level reuse cache is keeping alive across a node's rounds
+    (``sandbox_cache.live_container_ids()``). Reap-before-start passes them so a HIT's warm
+    container is never killed between rounds; the boot sweep passes NONE (the default) so it still
+    reaps EVERYTHING — the crash backstop, unchanged. Ids are normalized to their 12-char short
+    form before comparison because ``docker ps -aq`` yields short ids while the cache holds the
+    full 64-char id.
     """
     image = image or agent_server_image()
+    keep_short = {k[:12] for k in keep_ids}
     reaped: list[str] = []
     try:
         for cid in list_agent_containers(image):
+            if cid[:12] in keep_short:
+                continue  # a live cached sandbox — spare it (boot sweep passes no keep-set)
             rm = _docker("rm", "-f", cid)
             if rm.returncode == 0:
                 reaped.append(cid)

@@ -69,7 +69,19 @@ class AgentTask:
     tool/skill CONTENT. ``mcp_config`` is a plain dict (an empty/``None`` one ⇒ the adapter creates
     NO MCP tools). ``skills`` is typed as an opaque ``list`` (of engine-specific Skill objects — the
     adapter knows the type; base.py stays ``openhands``-free); an empty/``None`` list ⇒ the adapter
-    passes ``agent_context=None``, so with both unset the Agent is byte-identical to before."""
+    passes ``agent_context=None``, so with both unset the Agent is byte-identical to before.
+
+    ``session_key`` (M-unify U2) is an OPAQUE per-node reuse key (``"{run_id}::{node_id}"``) the
+    Control Plane passes so the adapter can REUSE this node's sandbox across the node's own repeated
+    goals (the Engineer/Reviewer across review-loop rounds): a docker container stays warm and the
+    SAME OpenHands Conversation continues, so round 2+ skip the ~20s container spin-up AND the agent
+    remembers prior rounds. ``None`` (the default) ⇒ NO reuse — the adapter builds + tears down a
+    fresh sandbox per run, byte-for-byte today's behavior. It is an ADDITIVE, defaulted field in the
+    SAME spirit as ``llm_api_key``/``pull_paths``/``mcp_config``: the Control Plane passes a KEY,
+    NEVER a live sandbox handle — the live cache lives entirely in the adapter layer
+    (``engines.sandbox_cache``), OUTSIDE the DBOS durable model (a live handle can't cross a
+    ``@DBOS.step`` boundary). The key is stable across a node's loop rounds (node ids are minted
+    once at clone-on-launch), so ``(run_id, node_id)`` is the reuse identity."""
 
     instruction: str
     workspace_dir: str
@@ -79,6 +91,7 @@ class AgentTask:
     pull_paths: tuple[str, ...] | None = None
     mcp_config: dict | None = None
     skills: list | None = None  # opaque list of Skill objects (the adapter knows the type)
+    session_key: str | None = None  # M-unify U2: per-node sandbox-reuse key; None ⇒ no reuse
 
 
 @dataclass(frozen=True)

@@ -311,11 +311,12 @@ def _run_docker_result(tmp_path, *, feed_events, raise_exc):
         convo.send_message.return_value = None
         return convo
 
-    # A context-manager mock that does NOT suppress the raised exception (__exit__ -> False),
-    # so the adapter's except block runs (where classification happens).
+    # M-unify U2: the adapter no longer wraps DockerWorkspace in ``with`` — DockerWorkspace(...) IS
+    # the workspace, so the raised exception propagates straight to the adapter's except block
+    # (where classification happens); the no-reuse teardown then calls workspace.cleanup() in the
+    # finally.
     workspace_cm = MagicMock()
-    workspace_cm.__enter__.return_value = workspace_cm
-    workspace_cm.__exit__.return_value = False
+    workspace_cm.working_dir = "/workspace"
 
     with (
         patch.object(docker_mod, "get_settings", return_value=settings),

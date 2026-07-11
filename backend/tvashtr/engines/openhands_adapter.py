@@ -32,6 +32,7 @@ from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.terminal import TerminalTool
 
 from tvashtr.config import agent_llm_routing, get_settings
+from tvashtr.engines import sandbox_cache
 from tvashtr.engines.base import AgentRunResult, AgentTask, EngineEvent
 
 logger = logging.getLogger("tvashtr.engines.openhands")
@@ -273,6 +274,25 @@ def _is_budget_error(exc: Exception) -> bool:
     return type(exc).__name__ == "BudgetExceededError"
 
 
+class _LocalHandle:
+    """The live local sandbox stashed in ``sandbox_cache`` for cross-round conversation-carry
+    (M-unify U2): the in-process ``Conversation`` bound to the shared per-run workspace dir, plus a
+    repointable event ``sink`` (see the docker adapter's ``_DockerHandle`` for the dispatch
+    rationale — a reused Conversation must stream each round's events to THAT round's collector).
+    Local mode has no container to keep 'warm'; the reuse value is purely the SAME Conversation
+    continuing across
+    rounds so the agent remembers."""
+
+    def __init__(self):
+        self.conversation = None
+        self.sink = None
+
+    def dispatch(self, oh_event) -> None:
+        sink = self.sink
+        if sink is not None:
+            sink(oh_event)
+
+
 class OpenHandsAdapter:
     """Drive the OpenHands Software Agent SDK behind Tvashtr's ``EngineAdapter``.
 
@@ -314,45 +334,12 @@ class OpenHandsAdapter:
             if on_event is not None:
                 on_event(event)
 
-        # P1.4a: route the agent's own LLM through the LiteLLM proxy when enabled (the
-        # physical spend chokepoint). OFF by default -> the EXACT prior direct path (bare
-        # slug + OPENROUTER_API_KEY, no base_url). local mode runs in-process on the host,
-        # so the proxy (when on) is reached at 127.0.0.1. The PM/gateway path is NOT routed
-        # here. ``agent_llm_routing`` owns model/api_key/base_url; we add temperature/usage_id.
-        # P1.4b: ``task.llm_api_key`` is the per-run virtual key (minted with a max_budget) —
-        # threaded in as the agent's api_key so the proxy cuts it off mid-call at the budget;
-        # None (proxy off / no key) -> byte-for-byte as 4a.
-        llm = LLM(
-            **agent_llm_routing(settings, model, "local", api_key_override=task.llm_api_key),
-            temperature=0.0,
-            usage_id="tvashtr-agent",
-        )
-        # M-ctx0 (C1): give the worker Agent an in-transcript summarizing condenser so a long
-        # real-repo run compacts its own history as it grows instead of overflowing the model
-        # context window and crashing. keep_first=2 pins the compiled instruction (the first
-        # messages) — Tvashtr's durable spec / worktree / verdict artifacts live OUTSIDE the
-        # transcript, so 2 suffices (vs the SDK preset's 4). max_size=80 is the SDK preset default
-        # (openhands.tools.preset): inert under ~80 events so short greenfield/loop runs are
-        # byte-for-byte unchanged, and it fires on a long run before the window overflows. The
-        # condenser reuses the worker's model + key via a model_copy under its OWN usage_id
-        # (mirrors the SDK's settings.build_condenser) so the serialized docker agent never trips
-        # the LLM registry's duplicate-usage_id guard; reset_metrics gives it a fresh meter.
-        condenser_llm = llm.model_copy(update={"usage_id": "tvashtr-condenser"})
-        condenser_llm.reset_metrics()
-        # M-tools C7.0: thread the node's inline tools + skills (resolved by the Control Plane's own
-        # node_tools/node_skills seams) into the Agent. INERTNESS: when the node has no skills
-        # (``task.skills`` None/empty) we MUST pass ``agent_context=None`` — an empty AgentContext
-        # injects a datetime into the system message and would change the prompt; and an empty
-        # ``mcp_config`` creates NO MCP tools. So with both unset (every node today) this Agent is
-        # byte-identical to before.
-        agent_context = AgentContext(skills=task.skills) if task.skills else None
-        agent = Agent(
-            llm=llm,
-            tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],
-            condenser=LLMSummarizingCondenser(llm=condenser_llm, keep_first=2, max_size=80),
-            mcp_config=task.mcp_config or {},
-            agent_context=agent_context,
-        )
+        # M-unify U2: reuse this node's live Conversation across its own rounds when a
+        # ``session_key`` is set — the SAME Conversation continues (the agent remembers prior
+        # rounds; the condenser folds the growing transcript). Local mode has no container to keep
+        # warm and the workspace is already the shared per-run dir, so reuse == conversation-carry.
+        # ``None`` ⇒ a fresh Conversation per run, byte-for-byte the prior path.
+        cached = sandbox_cache.get(task.session_key)
 
         before = _snapshot(task.workspace_dir)
         # Slice 4: for a workspace-READ-ONLY (outcome-emitting / reviewer) node, capture file
@@ -368,29 +355,88 @@ class OpenHandsAdapter:
         completion_tokens = 0
         cost_usd = 0.0
         conversation = None
+        usage_before = (0, 0, 0.0)  # per-round baseline; nonzero only on a HIT (metrics accumulate)
         try:
-            conversation = Conversation(
-                agent=agent,
-                workspace=task.workspace_dir,
-                callbacks=[_on_oh_event],
-                max_iteration_per_run=_MAX_ITERATIONS,
-                delete_on_close=False,  # keep the workspace + produced files
-            )
-            conversation.send_message(task.instruction)
+            if cached is None:
+                # MISS (or reuse OFF): build the LLM/agent + a fresh Conversation. P1.4a/P1.4b:
+                # route the agent's LLM through the proxy when on (master key / per-run vkey /
+                # owner BYOK via ``task.llm_api_key``); OFF ⇒ the EXACT prior direct path (bare
+                # slug + OPENROUTER_API_KEY). ``agent_llm_routing`` owns model/api_key/base_url.
+                llm = LLM(
+                    **agent_llm_routing(
+                        settings, model, "local", api_key_override=task.llm_api_key
+                    ),
+                    temperature=0.0,
+                    usage_id="tvashtr-agent",
+                )
+                # M-ctx0 (C1): the in-transcript summarizing condenser (keep_first=2 / max_size=80)
+                # via a model_copy under its OWN usage_id (fresh meter). On a REUSED Conversation
+                # it lives on the retained agent, so it keeps folding the growing multi-round
+                # transcript.
+                condenser_llm = llm.model_copy(update={"usage_id": "tvashtr-condenser"})
+                condenser_llm.reset_metrics()
+                # M-tools C7.0: the node's inline tools + skills; both unset ⇒ agent_context=None +
+                # no MCP tools, so the Agent is byte-identical to before.
+                agent_context = AgentContext(skills=task.skills) if task.skills else None
+                agent = Agent(
+                    llm=llm,
+                    tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],
+                    condenser=LLMSummarizingCondenser(llm=condenser_llm, keep_first=2, max_size=80),
+                    mcp_config=task.mcp_config or {},
+                    agent_context=agent_context,
+                )
+                # The callback is bound ONCE to the handle's dispatcher so a REUSED Conversation can
+                # be repointed at each round's collector.
+                handle = _LocalHandle()
+                handle.sink = _on_oh_event
+                conversation = Conversation(
+                    agent=agent,
+                    workspace=task.workspace_dir,
+                    callbacks=[handle.dispatch],
+                    max_iteration_per_run=_MAX_ITERATIONS,
+                    delete_on_close=False,  # keep the workspace + produced files
+                )
+                handle.conversation = conversation
+                # Cache the live Conversation (reuse ON only). Local ``close`` is a no-op — the
+                # shared workspace dir must survive to ship; eviction drops the ref and the
+                # Conversation GCs exactly as today. ``put(None,…)`` is a no-op, so the no-reuse
+                # path caches nothing.
+                sandbox_cache.put(
+                    task.session_key,
+                    sandbox_cache.CachedSandbox(handle=handle, close=lambda: None),
+                )
+                conversation.send_message(task.instruction)
+            else:
+                # HIT (M-unify U2): reuse the SAME Conversation. The local workspace is already the
+                # shared per-run dir (the prior round wrote it in place), so no re-sync is needed —
+                # just send the next goal as a FOLLOW-UP and run() again (NOT a fresh Conversation).
+                handle = cached.handle
+                conversation = handle.conversation
+                handle.sink = _on_oh_event  # repoint the dispatcher at THIS round's collector
+                usage_before = _read_usage(
+                    conversation
+                )  # cumulative-so-far → per-round delta below
+                conversation.send_message(task.instruction)
             conversation.run()
-            # Decision 2 (primary path): read OpenHands' own accumulated usage
-            # after the run — NOT a process-global litellm callback, which would
-            # also capture the gateway's direct calls (one shared litellm).
-            prompt_tokens, completion_tokens, cost_usd = _read_usage(conversation)
+            # Decision 2 (primary path): read OpenHands' own accumulated usage after the run — NOT a
+            # process-global litellm callback (which would also capture the gateway's direct calls).
+            # On a HIT the metrics are cumulative across rounds, so subtract the pre-run baseline.
+            pa, ca, cost_a = _read_usage(conversation)
+            prompt_tokens = max(0, pa - usage_before[0])
+            completion_tokens = max(0, ca - usage_before[1])
+            cost_usd = max(0.0, cost_a - usage_before[2])
         except Exception as exc:
             # P1.4b: classify the proxy's mid-call budget cutoff as ``over_budget`` (else a
             # generic ``failed``). On the cutoff path, best-effort read whatever partial usage
-            # accrued before the proxy cut it off (Task 0.5) so the run's ledger reflects it;
-            # _read_usage is defensive (returns 0s if the conversation has none / isn't ready).
+            # accrued before the proxy cut it off (per-round delta on a HIT); _read_usage is
+            # defensive (returns 0s if the conversation has none / isn't ready).
             status = "over_budget" if _is_budget_error(exc) else "failed"
             error = str(exc)
             if status == "over_budget" and conversation is not None:
-                prompt_tokens, completion_tokens, cost_usd = _read_usage(conversation)
+                pa, ca, cost_a = _read_usage(conversation)
+                prompt_tokens = max(0, pa - usage_before[0])
+                completion_tokens = max(0, ca - usage_before[1])
+                cost_usd = max(0.0, cost_a - usage_before[2])
             logger.exception(
                 "OpenHands run cut off over budget"
                 if status == "over_budget"

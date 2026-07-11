@@ -51,12 +51,10 @@ def _docker_agent_kwargs(tmp_path) -> dict:
     ws = MagicMock()
     ws.working_dir = "/workspace"
     ws.execute_command.return_value = MagicMock(stdout="", exit_code=0)
-    dw_cm = MagicMock()
-    dw_cm.__enter__.return_value = ws
-    dw_cm.__exit__.return_value = None
     with (
         patch.object(docker_mod, "reap_agent_containers"),
-        patch.object(docker_mod, "DockerWorkspace", return_value=dw_cm),
+        # M-unify U2: the adapter no longer uses ``with`` — DockerWorkspace(...) IS the workspace.
+        patch.object(docker_mod, "DockerWorkspace", return_value=ws),
         patch.object(docker_mod, "Conversation"),
         patch.object(docker_mod, "Agent") as Agent,
     ):

@@ -6,12 +6,22 @@ DQ1 pull-at-end file copy, the usage read, and the identical ``AgentRunResult``
 shape — entirely offline.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 from tvashtr.engines import openhands_docker_adapter as mod
+from tvashtr.engines import sandbox_cache
 from tvashtr.engines.base import AgentTask
+
+
+@pytest.fixture(autouse=True)
+def _clean_sandbox_cache():
+    """M-unify U2: the reuse cache is process-global; keep it from leaking a live handle between the
+    reuse tests below (and into the rest of the suite)."""
+    sandbox_cache.clear()
+    yield
+    sandbox_cache.clear()
 
 
 def test_detect_platform_maps_arch():
@@ -103,10 +113,6 @@ def test_run_orchestration_reaps_starts_runs_pulls(tmp_path):
 
     ws.file_download.side_effect = fake_download
 
-    dw_cm = MagicMock()
-    dw_cm.__enter__.return_value = ws
-    dw_cm.__exit__.return_value = None
-
     convo = MagicMock()
     metrics = MagicMock(accumulated_cost=0.0023)
     metrics.accumulated_token_usage = MagicMock(prompt_tokens=7, completion_tokens=11)
@@ -118,8 +124,10 @@ def test_run_orchestration_reaps_starts_runs_pulls(tmp_path):
         patch.object(
             mod, "reap_agent_containers", side_effect=lambda *a, **k: order.append("reap")
         ) as reap,
+        # M-unify U2: the adapter no longer uses ``with`` — DockerWorkspace(...) is the workspace
+        # directly (the container starts at construction), so the mock returns ``ws`` (not a CM).
         patch.object(
-            mod, "DockerWorkspace", side_effect=lambda **k: order.append("start") or dw_cm
+            mod, "DockerWorkspace", side_effect=lambda **k: order.append("start") or ws
         ) as dw,
         patch.object(mod, "Conversation", return_value=convo) as conv,
         patch.object(mod, "LLM"),
@@ -154,6 +162,9 @@ def test_run_orchestration_reaps_starts_runs_pulls(tmp_path):
     assert conv.call_args.kwargs["workspace"] is ws
     assert len(conv.call_args.kwargs["callbacks"]) == 1
     assert (tmp_path / "greeting.txt").read_text() == "hi"
+    # M-unify U2: no session_key ⇒ no reuse ⇒ the container is torn down at run-end (the explicit
+    # cleanup that replaces the old ``with`` __exit__).
+    ws.cleanup.assert_called_once()
 
 
 def test_run_failure_is_caught_and_reported(tmp_path):
@@ -298,3 +309,84 @@ def test_registry_resolves_docker_adapter():
     adapter = resolve_adapter("openhands-docker")
     assert adapter.name == "openhands-docker"
     assert isinstance(adapter, mod.OpenHandsDockerAdapter)
+
+
+def test_run_reuses_warm_container_and_carries_conversation(tmp_path):
+    """M-unify U2: two runs with the SAME session_key reuse ONE container + the SAME Conversation
+    (round 2 sends a follow-up, no second spin-up), reap-before-start SPARES the live container, and
+    per-round usage is the DELTA of the cumulative metrics — not double-counted. The teardown fires
+    at run-end via ``close_run_sandboxes``, not between rounds."""
+    ws = MagicMock()
+    ws.working_dir = "/workspace"
+    ws.host_port = 12345
+    # A full 64-char container id (the cache holds full ids; the reaper normalizes to 12-char).
+    ws._container_id = "abcdef012345" + "0" * 52
+    ws.execute_command.return_value = MagicMock(stdout="greeting.txt\n", exit_code=0)
+    ws.file_upload.return_value = MagicMock(success=True)
+
+    def fake_download(src, dest):
+        with open(dest, "w") as f:
+            f.write("hi")
+        return MagicMock(success=True)
+
+    ws.file_download.side_effect = fake_download
+
+    convo = MagicMock()
+    m1 = MagicMock(accumulated_cost=0.0010)
+    m1.accumulated_token_usage = MagicMock(prompt_tokens=5, completion_tokens=5)
+    m2 = MagicMock(accumulated_cost=0.0025)
+    m2.accumulated_token_usage = MagicMock(prompt_tokens=9, completion_tokens=8)
+    # read_usage calls: [round-1 after] , [round-2 before (HIT baseline)] , [round-2 after].
+    convo.conversation_stats.get_combined_metrics.side_effect = [m1, m1, m2]
+
+    with (
+        patch.object(mod, "reap_agent_containers") as reap,
+        patch.object(mod, "DockerWorkspace", return_value=ws) as dw,
+        patch.object(mod, "Conversation", return_value=convo) as conv,
+        patch.object(mod, "LLM"),
+        patch.object(mod, "Agent"),
+        patch.object(mod, "LLMSummarizingCondenser"),
+        patch.object(mod, "Tool"),
+        patch.object(mod, "TerminalTool"),
+        patch.object(mod, "FileEditorTool"),
+    ):
+        key = sandbox_cache.session_key_for("run-xyz", "node-A")
+        adapter = mod.OpenHandsDockerAdapter()
+        r1 = adapter.run(
+            AgentTask(
+                instruction="round 1 goal",
+                workspace_dir=str(tmp_path),
+                model="m",
+                llm_api_key="byok",
+                session_key=key,
+            )
+        )
+        r2 = adapter.run(
+            AgentTask(
+                instruction="round 2 goal",
+                workspace_dir=str(tmp_path),
+                model="m",
+                llm_api_key="byok",
+                session_key=key,
+            )
+        )
+
+        # Round 2 REUSED: exactly ONE container + ONE Conversation across both rounds.
+        assert dw.call_count == 1, "round 2 must NOT spin up a second container"
+        assert conv.call_count == 1, "round 2 must reuse the SAME Conversation, not build a new one"
+        # Each round sent its goal (round 2 as a FOLLOW-UP to the same Conversation) + ran.
+        assert convo.send_message.call_args_list == [call("round 1 goal"), call("round 2 goal")]
+        assert convo.run.call_count == 2
+        # Per-round usage is the DELTA — round 1 = (5,5); round 2 = (9,8)-(5,5) = (4,3), NOT (9,8).
+        assert (r1.prompt_tokens, r1.completion_tokens) == (5, 5)
+        assert (r2.prompt_tokens, r2.completion_tokens) == (4, 3)
+        # Reap-before-start on round 2 SPARED the live cached container.
+        assert reap.call_count == 2
+        assert ws._container_id in reap.call_args_list[1].kwargs["keep_ids"]
+        # The warm container is NOT torn down between rounds.
+        ws.cleanup.assert_not_called()
+
+    # Run-end teardown (the Control Plane's close_run_sandboxes_step) closes + evicts it.
+    sandbox_cache.close_run_sandboxes("run-xyz")
+    ws.cleanup.assert_called_once()
+    assert sandbox_cache.live_container_ids() == frozenset()
