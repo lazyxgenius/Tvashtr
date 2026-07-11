@@ -18,7 +18,12 @@ from sqlalchemy import func, select, update
 from tvashtr import db
 from tvashtr.auth import UserOut, get_current_user
 from tvashtr.config import get_settings
-from tvashtr.control_plane.credentials import encrypt_secret, provider_for_model
+from tvashtr.control_plane.credentials import (
+    NoCredentialError,
+    encrypt_secret,
+    provider_for_model,
+    resolve_owner_api_key,
+)
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
 from tvashtr.control_plane.mcp_secrets import (
@@ -37,6 +42,7 @@ from tvashtr.control_plane.node_library import (
     update_owner_tool,
 )
 from tvashtr.control_plane.run_diff import compute_run_diff
+from tvashtr.control_plane.run_explain import build_system_prompt
 from tvashtr.control_plane.team_run import run_team
 from tvashtr.control_plane.teams import (
     ARCHITECT_PROMPT,
@@ -60,6 +66,8 @@ from tvashtr.control_plane.teams import (
 )
 from tvashtr.control_plane.worktree import repo_inspect, repo_subpaths, subpath_is_tracked_dir
 from tvashtr.documents.service import add_version, get_document_with_versions, list_documents
+from tvashtr.gateway import CompletionRequest, GatewayError, complete
+from tvashtr.metering import record_cost
 from tvashtr.models import (
     AgentInvocation,
     AgentNode,
@@ -77,6 +85,10 @@ from tvashtr.models import (
 
 # Map the resolve API's decision verb to the durable resolution recorded on the task.
 _DECISION_TO_RESOLUTION = {"approve": "approved", "reject": "rejected"}
+
+# Mode A ("Ask the node"): the max chat turns the stateless ask endpoint accepts per request (the
+# client holds + sends the whole history each turn, so this bounds a single request's growth).
+_ASK_MAX_MESSAGES = 24
 
 router = APIRouter()
 
@@ -117,6 +129,16 @@ class CreateRunRequest(BaseModel):
     # greenfield run (no ``repo_path``) ignores it (stored NULL). The picker that supplies it is FE
     # Slice 2 — here it is an optional API field only.
     subpath: str | None = None
+
+
+class AskMessage(BaseModel):
+    # One chat turn the client holds and re-sends each request (Mode A is stateless server-side).
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class AskRequest(BaseModel):
+    messages: list[AskMessage]
 
 
 class RepoInspectRequest(BaseModel):
@@ -962,6 +984,86 @@ def get_run_diff(run_id: str, current_user: Annotated[UserOut, Depends(get_curre
     return compute_run_diff(
         run_id=run_id, repo_path=repo_path, base_ref=base_ref, ship_branch=ship_branch
     )
+
+
+@router.post("/api/runs/{run_id}/nodes/{node_id}/ask")
+def ask_node(
+    run_id: str,
+    node_id: str,
+    body: AskRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """Mode A — "Ask the node": a stateless, owner-scoped chat about what ONE node did in a run.
+
+    The client holds the chat history and sends it each turn (``body.messages``). The endpoint
+    owner-scopes the run (404 unless it belongs to the current user, exactly like ``/diff``),
+    requires the node to belong to the run's ``team_graph``, be an agent/completion node, and have
+    >=1 recorded ``AgentInvocation`` (else a clean 4xx). It then assembles the node's recorded TRAIL
+    into a SYSTEM message (``run_explain.build_system_prompt``) that pins the model to that record,
+    and answers with the node's OWN model + the run-owner's BYOK key. The spend is metered with
+    ``workflow_id=None`` — this meta-question is deliberately NOT attributed to the run's ledger. It
+    never touches the executor/engines; it only READS the run's recorded rows + the gateway."""
+    if not body.messages:
+        raise HTTPException(status_code=422, detail="messages must be non-empty")
+    if len(body.messages) > _ASK_MAX_MESSAGES:
+        raise HTTPException(status_code=422, detail=f"too many messages (max {_ASK_MAX_MESSAGES})")
+
+    with db.session_scope() as session:
+        run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
+        try:
+            node_uuid = uuid.UUID(node_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="node not found") from None
+        node = session.execute(
+            select(AgentNode).where(
+                AgentNode.id == node_uuid,
+                AgentNode.team_graph_id == run.team_graph_id,
+            )
+        ).scalar_one_or_none()
+        if node is None:
+            raise HTTPException(status_code=404, detail="node not found")
+        if node.kind not in ("agent", "completion"):
+            raise HTTPException(status_code=400, detail="only agent/completion nodes are askable")
+        if not node.model:
+            raise HTTPException(status_code=422, detail="node has no model configured")
+        invocation_count = session.execute(
+            select(func.count())
+            .select_from(AgentInvocation)
+            .where(
+                AgentInvocation.run_id == run.workflow_id,
+                AgentInvocation.node_id == node.id,
+            )
+        ).scalar_one()
+        if invocation_count == 0:
+            raise HTTPException(status_code=422, detail="node has not run yet (no recorded trail)")
+        owner_id = run.owner_id
+        model = node.model
+
+    system_prompt = build_system_prompt(run_id=run_id, node_id=node_id)
+
+    try:
+        api_key = resolve_owner_api_key(owner_id, model)
+    except NoCredentialError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"no credential for provider {exc.provider!r}"
+        ) from exc
+
+    messages = [{"role": "system", "content": system_prompt}] + [
+        {"role": m.role, "content": m.content} for m in body.messages
+    ]
+    try:
+        result = complete(CompletionRequest(model=model, messages=messages, api_key=api_key))
+    except GatewayError as exc:
+        raise HTTPException(status_code=502, detail="the model call failed") from exc
+
+    # Meter the spend but do NOT attribute it to the run (``workflow_id=None``): asking about a run
+    # is a meta-action, not part of the run's own cost. ``running_cost(run_id)`` stays unchanged.
+    record_cost(
+        result,
+        workflow_id=None,
+        idempotency_key=f"node-ask:{run_id}:{node_id}:{uuid.uuid4().hex}",
+    )
+    return {"answer": result.text}
 
 
 @router.get("/api/runs/{run_id}/graph")

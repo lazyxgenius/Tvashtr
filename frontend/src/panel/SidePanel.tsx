@@ -6,6 +6,7 @@ import { deriveNodeStatus, isPrdEditable, type NodeStatus, WORKFLOW_FAILED } fro
 import { titleCase } from "../lib/text";
 import { DrawerShell, type PanelMode } from "./DrawerShell";
 import { EventFeed } from "./EventFeed";
+import { NodeChat } from "./NodeChat";
 import { glyphForNode } from "./nodeGlyph";
 import { PrdView } from "./PrdView";
 import { RunDiff } from "./RunDiff";
@@ -85,13 +86,7 @@ export function SidePanel({
   // PM; editability is run-status-based (P1.7b), never role-based.
   let body: ReactNode;
   if (node.kind === "completion") {
-    body = (
-      <PrdView
-        documentId={run?.pm_document_id ?? null}
-        emptyHint={specEmptyHint(runId, run, workflowStatus)}
-        editable={isPrdEditable(run?.status ?? null, workflowStatus)}
-      />
-    );
+    body = <ThinkerBody node={node} runId={runId} run={run} workflowStatus={workflowStatus} />;
   } else {
     // kind === "agent" (worker, incl. the Reviewer): the action/observation feed AND the run's file
     // changes, behind a segmented tab (M-changes). The feed stays the default tab (byte-identical),
@@ -136,7 +131,9 @@ function WorkerBody({
   run: RunRow | null;
   workflowStatus: string | null;
 }) {
-  const [tab, setTab] = useState<"activity" | "changes">("activity");
+  // Mode A: the Ask tab appears only once the node has a recorded run to explain.
+  const canAsk = node.invocations.length > 0;
+  const [tab, setTab] = useState<"activity" | "changes" | "ask">("activity");
   return (
     <>
       <div className="tv-worktabs">
@@ -157,13 +154,79 @@ function WorkerBody({
           >
             Changes
           </button>
+          {canAsk ? (
+            <button
+              type="button"
+              aria-pressed={tab === "ask"}
+              className={`tv-seg__btn${tab === "ask" ? " tv-seg__btn--active" : ""}`}
+              onClick={() => setTab("ask")}
+            >
+              Ask
+            </button>
+          ) : null}
         </div>
       </div>
       {tab === "activity" ? (
         <EventFeed node={node} runId={runId} run={run} workflowStatus={workflowStatus} />
-      ) : (
+      ) : tab === "changes" ? (
         <RunDiff runId={runId} />
+      ) : (
+        <NodeChat runId={runId} nodeId={node.id} />
       )}
+    </>
+  );
+}
+
+/**
+ * A thinker (`completion`) node's drawer body: the shared spec (`PrdView`, live-editable in-flight,
+ * P1.7b). Once the node has a recorded run, a Spec|Ask segmented tab is added so the user can ask
+ * what the thinker did (Mode A). Spec stays the default, so the run view is unchanged until asked;
+ * before the node has run (no invocations) it is just the bare spec (byte-identical to before).
+ */
+function ThinkerBody({
+  node,
+  runId,
+  run,
+  workflowStatus,
+}: {
+  node: GraphNode;
+  runId: string | null;
+  run: RunRow | null;
+  workflowStatus: string | null;
+}) {
+  const canAsk = node.invocations.length > 0;
+  const [tab, setTab] = useState<"spec" | "ask">("spec");
+  const spec = (
+    <PrdView
+      documentId={run?.pm_document_id ?? null}
+      emptyHint={specEmptyHint(runId, run, workflowStatus)}
+      editable={isPrdEditable(run?.status ?? null, workflowStatus)}
+    />
+  );
+  if (!canAsk) return spec;
+  return (
+    <>
+      <div className="tv-worktabs">
+        <div className="tv-seg" role="group" aria-label="Thinker view">
+          <button
+            type="button"
+            aria-pressed={tab === "spec"}
+            className={`tv-seg__btn${tab === "spec" ? " tv-seg__btn--active" : ""}`}
+            onClick={() => setTab("spec")}
+          >
+            Spec
+          </button>
+          <button
+            type="button"
+            aria-pressed={tab === "ask"}
+            className={`tv-seg__btn${tab === "ask" ? " tv-seg__btn--active" : ""}`}
+            onClick={() => setTab("ask")}
+          >
+            Ask
+          </button>
+        </div>
+      </div>
+      {tab === "spec" ? spec : <NodeChat runId={runId} nodeId={node.id} />}
     </>
   );
 }

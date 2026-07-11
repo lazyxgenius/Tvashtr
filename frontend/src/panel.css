@@ -1279,3 +1279,71 @@
 .tv-diff__ln--hunk {
   color: var(--text-secondary);
 }
+
+/* Mode A — "Ask the node" chat (NodeChat): a transcript + input inside the run-view drawer. Reuses
+   the shared .tv-seg tab control (SidePanel), .tv-scroll region, and .tv-btn Send button; only the
+   message log, bubbles, and input row are new here. */
+.tv-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.tv-chat__log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.tv-chat__msg {
+  max-width: 85%;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tv-chat__msg--user {
+  align-self: flex-end;
+  background: var(--coral-100);
+  color: var(--text-primary);
+}
+.tv-chat__msg--assistant {
+  align-self: flex-start;
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  color: var(--text-primary);
+}
+.tv-chat__error {
+  color: var(--danger);
+}
+.tv-chat__form {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-top: var(--border-width) solid var(--border-hairline);
+}
+.tv-chat__input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 var(--space-4);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+}
+.tv-chat__input:focus-visible {
+  outline: none;
+  border-color: var(--coral-200);
+  box-shadow: var(--shadow-focus);
+}
+.tv-chat__input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.tv-chat__send {
+  white-space: nowrap;
+}

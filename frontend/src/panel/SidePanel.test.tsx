@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { GraphNode, NodeInvocation, RunRow } from "../lib/api";
@@ -261,5 +261,85 @@ describe("SidePanel — C6 per-round ledger + node-scoped feed", () => {
     expect(await screen.findByText("engineer step one")).toBeInTheDocument();
     expect(screen.getByText("Round 1")).toBeInTheDocument();
     expect(screen.queryByText("OTHER node step")).toBeNull();
+  });
+});
+
+// ---- Mode A ("Ask the node"): the run-view drawer gains an Ask tab on BOTH a worker (agent) and a
+// thinker (completion) node, but ONLY once the node has a recorded run (invocations.length > 0). ----
+describe("SidePanel — Ask tab (Mode A) wiring by kind", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function stubEmptyFetch() {
+    // A worker's default Activity tab mounts EventFeed, which polls; keep it inert with empty events.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ run_id: "r1", events: [] }),
+        } as unknown as Response),
+      ),
+    );
+  }
+
+  it("a WORKER node with a recorded run shows an Ask tab that opens the chat", () => {
+    stubEmptyFetch();
+    const node = gnode({
+      id: "n-eng",
+      role_name: "engineer",
+      kind: "agent",
+      invocations: [inv({ iteration: 1, outcome: "built", outcome_detail: "did it" })],
+    });
+    render(
+      <SidePanel
+        node={node}
+        runId="r1"
+        run={runRow({ status: "completed" })}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(screen.getByLabelText("Ask this node")).toBeInTheDocument();
+  });
+
+  it("a THINKER (completion) node with a recorded run shows a Spec | Ask seg", () => {
+    const node = gnode({
+      id: "n-pm",
+      role_name: "pm",
+      kind: "completion",
+      invocations: [inv({ iteration: 1, outcome: "prd_written", outcome_detail: "drafted spec" })],
+    });
+    render(
+      <SidePanel
+        node={node}
+        runId="r1"
+        run={runRow({ status: "completed", pm_document_id: null })}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Spec" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(screen.getByLabelText("Ask this node")).toBeInTheDocument();
+  });
+
+  it("hides Ask on a node that has not run yet (no invocations)", () => {
+    stubEmptyFetch();
+    const node = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", invocations: [] });
+    render(
+      <SidePanel
+        node={node}
+        runId="r1"
+        run={runRow({ status: "running" })}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
   });
 });

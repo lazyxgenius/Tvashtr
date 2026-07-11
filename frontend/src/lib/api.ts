@@ -423,6 +423,33 @@ export interface RunDiff {
 export const getRunDiff = (runId: string): Promise<RunDiff> =>
   getJSON<RunDiff>(`/api/runs/${runId}/diff`);
 
+export interface AskMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AskAnswer {
+  answer: string;
+}
+
+// Mode A ("Ask the node"): a stateless chat about what ONE node did during a run. The client holds
+// the whole history and sends it each turn; the server assembles the node's recorded trail into a
+// system message and answers ONLY from it. Owner-scoped server-side (404 on a foreign/absent run),
+// and NOT attributed to the run's cost. Mirrors resolveTask's POST-with-path-ids shape.
+export async function askNode(
+  runId: string,
+  nodeId: string,
+  messages: AskMessage[],
+): Promise<AskAnswer> {
+  const res = await fetch(`/api/runs/${runId}/nodes/${nodeId}/ask`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ messages }),
+  });
+  if (!res.ok) throw new Error(`POST ask ${nodeId} -> ${res.status}`);
+  return (await res.json()) as AskAnswer;
+}
+
 // ---- The team library (P1.8b: multiple persistent teams + a drop-and-edit template library) ----
 
 // One node of a library team — the canvas/edit shape (the team is NOT running, so no live
