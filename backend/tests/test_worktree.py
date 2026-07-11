@@ -110,6 +110,20 @@ def test_repo_subpaths_entries_all_pass_subpath_is_tracked_dir(tmp_path):
         assert subpath_is_tracked_dir(str(repo), entry["path"]) is True
 
 
+def test_repo_subpaths_skips_git_quoted_nonascii_dirs(tmp_path):
+    # git C-quotes non-ASCII/special paths under the default core.quotePath; such a top dir can't
+    # round-trip subpath_is_tracked_dir, so repo_subpaths SKIPS it (never a garbled, un-pickable
+    # option). A repo whose ONLY package is non-ASCII simply falls back to whole-repo.
+    repo = _init_repo(
+        tmp_path / "repo",
+        files={"café/a.py": "x\n", "core/b.py": "y\n", "README.md": "# r\n"},
+    )
+    entries = repo_subpaths(str(repo))
+    assert entries == [{"path": "core", "file_count": 1}]  # the C-quoted `café` dir is excluded
+    for e in entries:
+        assert subpath_is_tracked_dir(str(repo), e["path"]) is True  # the guarantee holds
+
+
 # ---- add_worktree -------------------------------------------------------------------------------
 
 

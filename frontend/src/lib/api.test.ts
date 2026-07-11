@@ -92,6 +92,18 @@ describe("runTeam — POST body shaping (greenfield byte-for-byte)", () => {
       idea: "ship a greeting",
     });
   });
+
+  it("includes subpath when a package is scoped (a wrong key / dropped line fails this)", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "r5" })));
+    vi.stubGlobal("fetch", fetchMock);
+    await runTeam("team-1", { repo_path: "/repo", base_ref: "main", subpath: "core" });
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
+      team_graph_id: "team-1",
+      repo_path: "/repo",
+      base_ref: "main",
+      subpath: "core",
+    });
+  });
 });
 
 describe("inspectRepo", () => {

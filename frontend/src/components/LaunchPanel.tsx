@@ -277,7 +277,7 @@ export function LaunchPanel({
                   <option value="">Whole repo</option>
                   {subpaths.map((s) => (
                     <option key={s.path} value={s.path}>
-                      {s.path} ({s.file_count} files)
+                      {s.path} ({s.file_count} {s.file_count === 1 ? "file" : "files"})
                     </option>
                   ))}
                 </select>

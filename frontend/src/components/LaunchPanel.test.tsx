@@ -197,7 +197,7 @@ describe("LaunchPanel", () => {
       branches: ["main"],
       tracked_file_count: 20,
       subpaths: [
-        { path: "api", file_count: 3 },
+        { path: "api", file_count: 1 }, // exercises the SINGULAR "1 file" label
         { path: "core", file_count: 9 },
       ],
     });
@@ -208,8 +208,8 @@ describe("LaunchPanel", () => {
     const scope = await screen.findByLabelText<HTMLSelectElement>("Scope");
     expect(scope.value).toBe(""); // Whole repo by default
     expect(Array.from(scope.options).map((o) => o.value)).toEqual(["", "api", "core"]);
-    // The option labels carry the file counts (so a user can size a package before scoping to it).
-    expect(scope).toHaveTextContent("api (3 files)");
+    // The option labels carry the file counts, correctly pluralized (1 file vs N files).
+    expect(scope).toHaveTextContent("api (1 file)");
     expect(scope).toHaveTextContent("core (9 files)");
   });
 

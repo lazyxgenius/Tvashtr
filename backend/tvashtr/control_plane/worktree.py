@@ -102,8 +102,9 @@ def repo_subpaths(repo_path: str) -> list[dict]:
     can scope a large-repo brownfield run to one package (the ``runs.subpath`` the executor already
     honors, wall #1 of the rung-2 context overflow). Every path returned has ≥1 tracked file under
     it, so it satisfies :func:`subpath_is_tracked_dir` and a picked scope always passes
-    ``create_run``'s validation. Top-level FILES (no ``/``) are excluded — they are not a scope.
-    Defensive: never raises (a wedged repo / missing path / absent git → ``[]``), like
+    ``create_run``'s validation. Top-level FILES (no ``/``) are excluded — they are not a scope; so
+    are git-C-quoted "unusual" names (non-ASCII / special chars), which can't round-trip the
+    validator. Defensive: never raises (a wedged repo / missing path / absent git → ``[]``), like
     :func:`repo_inspect`."""
     try:
         res = _git(repo_path, "ls-files", check=False)
@@ -112,6 +113,12 @@ def repo_subpaths(repo_path: str) -> list[dict]:
     counts: dict[str, int] = {}
     for raw in res.stdout.splitlines():
         line = raw.strip()
+        # git C-quotes "unusual" paths (non-ASCII / control / quote chars) under the default
+        # core.quotePath. Such a top dir can't round-trip subpath_is_tracked_dir (git returns the
+        # same quoted form, which never matches a raw prefix), so skip it rather than offer a
+        # garbled, un-pickable option (keeping the round-trip guarantee above TRUE).
+        if line.startswith('"'):
+            continue
         if "/" not in line:
             continue  # a top-level FILE, not under a package directory
         top = line.split("/", 1)[0]

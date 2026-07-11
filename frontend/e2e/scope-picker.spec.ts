@@ -102,7 +102,7 @@ test("scope-picker: inspect populates base-branch + Scope dropdowns; picking a p
     );
     expect(optionTexts, "Scope options render each package with its file count").toEqual([
       "Whole repo",
-      "api (1 files)",
+      "api (1 file)", // correctly singular for a one-file package
       "core (2 files)",
     ]);
     await panel.screenshot({ path: path.join(SHOTS_DIR, "check2-scope-populated.png") });
