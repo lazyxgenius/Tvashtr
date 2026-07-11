@@ -370,6 +370,34 @@ export async function inspectRepo(path: string): Promise<RepoInspect> {
 export const getGraph = (runId: string): Promise<GraphData> =>
   getJSON<GraphData>(`/api/runs/${runId}/graph`);
 
+// ---- Run diff (M-changes — the run-view "Changes" tab): the files the run changed on its ship
+// branch, so a reviewer can SEE the shipped change before accepting it. ----
+
+// One changed file in a run's diff. `status` is git's change class; `additions`/`deletions` are the
+// ±line counts; `patch` is the unified-diff hunk text the Changes tab renders line-by-line.
+export interface RunDiffFile {
+  path: string;
+  status: "added" | "modified" | "deleted";
+  additions: number;
+  deletions: number;
+  patch: string;
+}
+
+// A run's full change set. Brownfield diffs `base_ref`..`ship_branch` (both mirror RunRow); a
+// greenfield run reports its produced workspace files as additions (base_ref/ship_branch null). A
+// run with nothing to diff yet -> an empty `files` list (never an error).
+export interface RunDiff {
+  run_id: string;
+  base_ref: string | null;
+  ship_branch: string | null;
+  files: RunDiffFile[];
+  total: number;
+}
+
+// The run's changed files (owner-scoped server-side, like every other run read). Mirrors getGraph.
+export const getRunDiff = (runId: string): Promise<RunDiff> =>
+  getJSON<RunDiff>(`/api/runs/${runId}/diff`);
+
 // ---- The team library (P1.8b: multiple persistent teams + a drop-and-edit template library) ----
 
 // One node of a library team — the canvas/edit shape (the team is NOT running, so no live

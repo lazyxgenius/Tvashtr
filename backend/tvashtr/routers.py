@@ -36,6 +36,7 @@ from tvashtr.control_plane.node_library import (
     update_owner_skill,
     update_owner_tool,
 )
+from tvashtr.control_plane.run_diff import compute_run_diff
 from tvashtr.control_plane.team_run import run_team
 from tvashtr.control_plane.teams import (
     ARCHITECT_PROMPT,
@@ -935,6 +936,24 @@ def get_run_trajectory(
                 for inv, role_name, kind in rows
             ],
         }
+
+
+@router.get("/api/runs/{run_id}/diff")
+def get_run_diff(run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """The per-file change set of a run's reviewed work — the run-view "Changes" tab (M-changes). A
+    read-only, owner-scoped git read (404 unless the run belongs to the current user, mirroring
+    ``/trajectory``): a BROWNFIELD run diffs ``base_ref..tvashtr/<run_id>`` in the real repo; a
+    GREENFIELD run reports the produced workspace files as additions. A run with nothing to diff yet
+    -> an empty ``files`` list with 200 (not an error). Reads git + the existing ``Run`` row only —
+    no mutation, no schema change."""
+    with db.session_scope() as session:
+        run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
+        repo_path = run.repo_path
+        base_ref = run.base_ref
+        ship_branch = run.ship_branch
+    return compute_run_diff(
+        run_id=run_id, repo_path=repo_path, base_ref=base_ref, ship_branch=ship_branch
+    )
 
 
 @router.get("/api/runs/{run_id}/graph")

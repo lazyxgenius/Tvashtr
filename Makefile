@@ -17,7 +17,7 @@ TVASHTR_RUNG2_REPO ?= /Users/adimac/Desktop/trade_mcp
 # independent numeric gate is unaffected (it runs host-side at the repo ROOT).
 TVASHTR_RUNG2_SUBPATH ?= core
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e edits-toggle-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e skills-e2e tools-e2e seed lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e skills-e2e tools-e2e seed lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -149,6 +149,9 @@ capability-edit-e2e: ## Live P1.8c capability-authoring E2E: "+ New team" from t
 
 edits-toggle-e2e: ## Live M-unify U3 edits-surface E2E: register → open the seeded review_loop team → flip a non-start node's Edits toggle (persists + re-labels the card), assert the Tools editor on an edits-off node, the pre-launch AMBER action-verb advisory, and the start-node lock. Pure authoring (NO LLM/key); backend :8002 + Vite :5175 (parallel-safe).
 	./scripts/edits_toggle_e2e.sh
+
+run-diff-e2e: ## Live M-changes run-diff E2E: register a fresh account, seed its deepseek key, create a review_loop team + run it to completion (LOCAL sandbox, deepseek/deepseek-chat, forced reviewer-approve — NO docker containers), open the run view, click "Changes", assert the produced file(s) render with an expandable per-file diff + a screenshot per check. Backend :8002 + Vite :5175 (parallel-safe). Needs DEEPSEEK_API_KEY; skips otherwise.
+	./scripts/run_diff_e2e.sh
 
 topology-e2e: ## Live P1.8d topology-editing E2E: from a BLANK team author root thinker → Engineer → Ship (palette + edge CRUD), RUN it through the UI and assert it ships (real NIM); PLUS an invalid graph (an unconnected node) greys out Run with the reason AND create_run is refused 422. Vite dev server + headless Playwright; needs NVIDIA_BUILD_API_KEY, skips otherwise.
 	./scripts/topology_e2e.sh

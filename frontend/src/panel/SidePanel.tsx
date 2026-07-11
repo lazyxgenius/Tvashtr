@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 import { LastRun } from "../components/LastRun";
 import type { GraphNode, RunRow } from "../lib/api";
@@ -8,6 +8,7 @@ import { DrawerShell, type PanelMode } from "./DrawerShell";
 import { EventFeed } from "./EventFeed";
 import { glyphForNode } from "./nodeGlyph";
 import { PrdView } from "./PrdView";
+import { RunDiff } from "./RunDiff";
 
 /** The thinker's placeholder copy when there is no spec document yet — derived from run-level
  *  signals directly (this panel stays run-level; it never receives the graph's documents). The
@@ -92,8 +93,10 @@ export function SidePanel({
       />
     );
   } else {
-    // kind === "agent" (worker, incl. the Reviewer): the agent's action/observation feed.
-    body = <EventFeed node={node} runId={runId} run={run} workflowStatus={workflowStatus} />;
+    // kind === "agent" (worker, incl. the Reviewer): the action/observation feed AND the run's file
+    // changes, behind a segmented tab (M-changes). The feed stays the default tab (byte-identical),
+    // so the run view is unchanged until a reviewer asks to see the diff.
+    body = <WorkerBody node={node} runId={runId} run={run} workflowStatus={workflowStatus} />;
   }
 
   return (
@@ -112,5 +115,55 @@ export function SidePanel({
       </section>
       {body}
     </DrawerShell>
+  );
+}
+
+/**
+ * A worker (`agent`) node's drawer body: the action/observation feed and the run's per-file diff,
+ * behind an Activity|Changes segmented tab (M-changes). A diff is the product of a worker editing
+ * the repo, so it lives on the worker; it can't stack under the auto-scrolling feed, so the tab
+ * shows one at a time. "Activity" is the default (so nothing about the run view changes until the
+ * reviewer clicks "Changes"), and RunDiff only fetches once it's the active tab.
+ */
+function WorkerBody({
+  node,
+  runId,
+  run,
+  workflowStatus,
+}: {
+  node: GraphNode;
+  runId: string | null;
+  run: RunRow | null;
+  workflowStatus: string | null;
+}) {
+  const [tab, setTab] = useState<"activity" | "changes">("activity");
+  return (
+    <>
+      <div className="tv-worktabs">
+        <div className="tv-seg" role="group" aria-label="Worker view">
+          <button
+            type="button"
+            aria-pressed={tab === "activity"}
+            className={`tv-seg__btn${tab === "activity" ? " tv-seg__btn--active" : ""}`}
+            onClick={() => setTab("activity")}
+          >
+            Activity
+          </button>
+          <button
+            type="button"
+            aria-pressed={tab === "changes"}
+            className={`tv-seg__btn${tab === "changes" ? " tv-seg__btn--active" : ""}`}
+            onClick={() => setTab("changes")}
+          >
+            Changes
+          </button>
+        </div>
+      </div>
+      {tab === "activity" ? (
+        <EventFeed node={node} runId={runId} run={run} workflowStatus={workflowStatus} />
+      ) : (
+        <RunDiff runId={runId} />
+      )}
+    </>
   );
 }

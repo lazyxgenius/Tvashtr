@@ -1173,3 +1173,109 @@
   font-family: var(--font-mono);
   color: var(--text-primary);
 }
+
+/* ---- M-changes: the run-view "Changes" tab — a per-file diff of what the run shipped. Colors reuse
+   the established sage(add)/red(del) token pair + the .tv-verdict color-mix recipe; no ad-hoc hex. */
+.tv-worktabs {
+  padding: var(--space-4) var(--space-5) 0;
+}
+.tv-diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.tv-diff__file {
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  background: var(--surface-panel);
+}
+.tv-diff__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+}
+.tv-diff__row:hover {
+  background: color-mix(in srgb, var(--ink-900) 4%, transparent);
+}
+.tv-diff__row:focus-visible {
+  outline: 2px solid var(--ink-900);
+  outline-offset: -2px;
+}
+.tv-diff__status {
+  flex: none;
+  font-family: var(--font-code);
+  font-size: var(--fs-body-sm);
+  text-transform: lowercase;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm, 5px);
+  background: var(--panel-300);
+  color: var(--ink-600);
+}
+.tv-diff__status--added {
+  background: var(--sage-100);
+  color: color-mix(in srgb, var(--sage-500) 62%, var(--ink-900));
+}
+.tv-diff__status--deleted {
+  background: var(--red-100);
+  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
+}
+.tv-diff__status--modified {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.tv-diff__path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-code);
+  font-size: var(--fs-body-sm);
+}
+.tv-diff__counts {
+  flex: none;
+  display: flex;
+  gap: var(--space-2);
+  font-family: var(--font-code);
+  font-size: var(--fs-body-sm);
+}
+.tv-diff__add {
+  color: color-mix(in srgb, var(--sage-500) 62%, var(--ink-900));
+}
+.tv-diff__del {
+  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
+}
+.tv-diff__patch {
+  margin: 0;
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-hairline);
+  background: var(--surface-inset, var(--panel-300));
+  overflow-x: auto;
+  font-family: var(--font-code);
+  font-size: var(--fs-body-sm);
+  line-height: 1.5;
+}
+.tv-diff__ln {
+  display: block;
+  white-space: pre;
+}
+.tv-diff__ln--add {
+  background: var(--sage-100);
+  color: color-mix(in srgb, var(--sage-500) 62%, var(--ink-900));
+}
+.tv-diff__ln--del {
+  background: var(--red-100);
+  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
+}
+.tv-diff__ln--hunk {
+  color: var(--text-secondary);
+}
