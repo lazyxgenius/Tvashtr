@@ -55,6 +55,35 @@ def memory_tier(repo_key: str | None, node_id: uuid.UUID | None) -> MemoryTier:
     return "account"
 
 
+MemoryPolarity = Literal["require", "prefer", "allow", "context", "avoid", "forbid"]
+
+# The 6 polarity values (M-memory S1b) — a fact's directive FORCE, RFC-2119-grounded:
+#   require = MUST (hard positive)        prefer  = SHOULD (soft positive)
+#   allow   = MAY (explicitly permitted)  context = neutral fact, no directive (the DEFAULT)
+#   avoid   = SHOULD NOT (soft negative)  forbid  = MUST NOT (hard negative)
+_POLARITIES: frozenset[str] = frozenset(MemoryPolarity.__args__)
+
+
+class InvalidPolarityError(ValueError):
+    """A memory ``polarity`` outside the 6-value taxonomy
+    (``require``/``prefer``/``allow``/``context``/``avoid``/``forbid``). The API rejects it 422 —
+    mirrors :class:`InvalidTierError`."""
+
+
+def is_valid_polarity(value: str | None) -> bool:
+    """True iff ``value`` is one of the 6 polarity literals (``None`` / anything else ⇒ False)."""
+    return value in _POLARITIES
+
+
+def _validate_polarity(value: str) -> None:
+    """Raise :class:`InvalidPolarityError` unless ``value`` is a valid polarity. Called up front so
+    an invalid polarity is rejected BEFORE any embedding spend — same ordering as the tier check."""
+    if not is_valid_polarity(value):
+        raise InvalidPolarityError(
+            f"invalid polarity {value!r} (must be one of {sorted(_POLARITIES)})"
+        )
+
+
 def _parse_uuid(value: str | None) -> uuid.UUID | None:
     """Parse a uuid string, returning ``None`` on anything malformed/absent (the caller 404s)."""
     if value is None:
@@ -89,6 +118,7 @@ def _to_dict(row: NodeMemory) -> dict:
     return {
         "id": str(row.id),
         "content": row.content,
+        "polarity": row.polarity,
         "repo_key": row.repo_key,
         "node_id": str(row.node_id) if row.node_id is not None else None,
         "tier": memory_tier(row.repo_key, row.node_id),
@@ -112,11 +142,13 @@ def create_memory(
     repo_key: str | None = None,
     node_id: uuid.UUID | None = None,
     pinned: bool = False,
+    polarity: str = "context",
 ) -> dict:
-    """Create one owner-scoped memory: validate the tier, embed the content, store the row
-    (``status='active'``, ``confirmation_count=1``). Raises :class:`InvalidTierError` on the invalid
-    tier BEFORE spending an embedding call."""
-    memory_tier(repo_key, node_id)  # validate up front (raises on the invalid combo)
+    """Create one owner-scoped memory: validate the tier + polarity, embed the content, store the
+    row (``status='active'``, ``confirmation_count=1``). Raises :class:`InvalidTierError` /
+    :class:`InvalidPolarityError` — both BEFORE spending an embedding call."""
+    memory_tier(repo_key, node_id)  # validate the tier up front (raises on the invalid combo)
+    _validate_polarity(polarity)  # and the polarity — BEFORE any embedding spend
     vector = _embed_content(content)
     with session_scope() as session:
         row = NodeMemory(
@@ -127,6 +159,7 @@ def create_memory(
             embedding=vector,
             pinned=pinned,
             status="active",
+            polarity=polarity,
         )
         session.add(row)
         session.flush()
@@ -175,9 +208,14 @@ def update_memory(
     *,
     content: str | None = None,
     pinned: bool | None = None,
+    polarity: str | None = None,
 ) -> dict | None:
-    """Edit the owner's memory: RE-embed when ``content`` actually changes; set ``pinned`` when
-    given. Owner-scoped — returns ``None`` (⇒ 404) unless it is the owner's row."""
+    """Edit the owner's memory: RE-embed when ``content`` actually changes; set ``pinned`` /
+    ``polarity`` when given. A polarity-only (or pin-only) change NEVER re-embeds — only a real
+    ``content`` change does. Owner-scoped — returns ``None`` (⇒ 404) unless it is the owner's row.
+    Raises :class:`InvalidPolarityError` on an invalid polarity (validated up front)."""
+    if polarity is not None:
+        _validate_polarity(polarity)  # reject an invalid polarity BEFORE the lookup / any spend
     mid = _parse_uuid(memory_id)
     if mid is None:
         return None
@@ -192,6 +230,8 @@ def update_memory(
             row.embedding = _embed_content(content)  # re-embed on a real content change
         if pinned is not None:
             row.pinned = pinned
+        if polarity is not None:
+            row.polarity = polarity  # a polarity-only change does NOT touch the embedding
         session.flush()
         session.refresh(row)
         return _to_dict(row)

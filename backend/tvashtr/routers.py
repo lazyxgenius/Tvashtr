@@ -1480,14 +1480,19 @@ class CreateMemoryRequest(BaseModel):
     repo_key: str | None = None
     node_id: str | None = None
     pinned: bool = False
+    # The directive force (M-memory S1b). Optional; defaults to the neutral 'context'. One of
+    # require/prefer/allow/context/avoid/forbid — an invalid value is rejected 422.
+    polarity: str = "context"
 
 
 class UpdateMemoryRequest(BaseModel):
-    """``PATCH /api/memories/{id}`` body — edit ``content`` (RE-embeds on change) and/or ``pinned``.
-    Both optional; an omitted field is left unchanged."""
+    """``PATCH /api/memories/{id}`` body — edit ``content`` (RE-embeds on change), ``pinned``,
+    and/or ``polarity`` (a polarity-only edit does NOT re-embed). All optional; an omitted field is
+    left unchanged."""
 
     content: str | None = None
     pinned: bool | None = None
+    polarity: str | None = None
 
 
 @router.post("/api/memories")
@@ -1513,8 +1518,9 @@ def create_memory_endpoint(
             repo_key=body.repo_key,
             node_id=node_uuid,
             pinned=body.pinned,
+            polarity=body.polarity,
         )
-    except memory.InvalidTierError as exc:
+    except (memory.InvalidTierError, memory.InvalidPolarityError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except GatewayError as exc:
         raise HTTPException(status_code=502, detail="the embedding call failed") from exc
@@ -1557,8 +1563,14 @@ def update_memory_endpoint(
     content = body.content.strip() if body.content is not None else None
     try:
         row = memory.update_memory(
-            uuid.UUID(current_user.id), memory_id, content=content, pinned=body.pinned
+            uuid.UUID(current_user.id),
+            memory_id,
+            content=content,
+            pinned=body.pinned,
+            polarity=body.polarity,
         )
+    except memory.InvalidPolarityError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except GatewayError as exc:
         raise HTTPException(status_code=502, detail="the embedding call failed") from exc
     if row is None:

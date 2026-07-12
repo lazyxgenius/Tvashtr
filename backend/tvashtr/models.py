@@ -656,6 +656,12 @@ class NodeMemory(Base):
     # PLAIN uuid, NOT a FK — the authored origin node; a dangling value matches nothing.
     node_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # The fact's directive FORCE (M-memory S1b, migration 0026) — one of: require (MUST) /
+    # prefer (SHOULD) / allow (MAY) / context (neutral fact, no directive — the DEFAULT) /
+    # avoid (SHOULD NOT) / forbid (MUST NOT). A CHECK constraint restricts the DB to these 6.
+    polarity: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'context'"), default="context"
+    )
     # 1536 = text-embedding-3-small's dimension; the dimension is PINNED here + in migration 0025.
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     valid_from: Mapped[datetime] = mapped_column(
