@@ -95,6 +95,15 @@ class Settings(BaseSettings):
     # own ``max_tokens`` are unaffected.
     default_max_tokens_per_call: int | None = 4096
 
+    # M-memory S1: the embedding model for the agentic memory store, routed through the SAME
+    # gateway/litellm path as completions. Default ``openai/text-embedding-3-small`` (1536-dim).
+    # The ``vector(1536)`` dimension is PINNED in migration 0025 — switching this to a
+    # different-dimension model later needs a NEW migration + a re-embed of every stored row.
+    embedding_model: str = Field(
+        default="openai/text-embedding-3-small",
+        validation_alias=AliasChoices("TVASHTR_EMBEDDING_MODEL", "embedding_model"),
+    )
+
     # M-ctx1 (C2): the per-worker-node INPUT token budget — a pre-call ceiling on the compiled
     # agent instruction (idea + spec + revision + grounding + …). When the compiled input EXCEEDS
     # this, the executor does NOT call the agent: it fails that node with a clear terminal reason

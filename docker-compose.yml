@@ -2,7 +2,11 @@
 # processes (via Make targets) so the crash-resume demo has a killable PID.
 services:
   postgres:
-    image: postgres:16
+    # M-memory S1: pgvector-enabled Postgres 16 (drop-in — same env vars, same volume; the existing
+    # tvashtr_pgdata is PG16 format-compatible, no re-init). Makes the `vector` extension AVAILABLE;
+    # migration 0025 runs `CREATE EXTENSION vector` to enable it in the `tvashtr` database. Only THIS
+    # service image changes — litellm-db-init (a createdb one-shot) + litellm stay on their images.
+    image: pgvector/pgvector:pg16
     container_name: tvashtr-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-tvashtr}

@@ -2,12 +2,21 @@
 metering boundary. Import ``complete`` and the Tvashtr-owned types from here;
 never import ``litellm`` outside this package."""
 
-from tvashtr.gateway.gateway import complete
-from tvashtr.gateway.types import CompletionRequest, CompletionResult, GatewayError
+from tvashtr.gateway.gateway import complete, embed
+from tvashtr.gateway.types import (
+    CompletionRequest,
+    CompletionResult,
+    EmbeddingRequest,
+    EmbeddingResult,
+    GatewayError,
+)
 
 __all__ = [
     "CompletionRequest",
     "CompletionResult",
+    "EmbeddingRequest",
+    "EmbeddingResult",
     "GatewayError",
     "complete",
+    "embed",
 ]

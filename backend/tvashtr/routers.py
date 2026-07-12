@@ -18,6 +18,7 @@ from sqlalchemy import func, select, update
 from tvashtr import db
 from tvashtr.auth import UserOut, get_current_user
 from tvashtr.config import get_settings
+from tvashtr.control_plane import memory
 from tvashtr.control_plane.credentials import (
     NoCredentialError,
     encrypt_secret,
@@ -1464,6 +1465,137 @@ def remove_skill_library(
     """Remove the owner's library skill by id (204, idempotent + owner-scoped)."""
     delete_owner_skill(uuid.UUID(current_user.id), item_id)
     return Response(status_code=204)
+
+
+# ---- Agentic memory (M-memory S1): the owner-scoped memory store behind /api/memories ----
+
+
+class CreateMemoryRequest(BaseModel):
+    """``POST /api/memories`` body. ``content`` (required) is the fact. The TIER is encoded by which
+    of ``repo_key`` / ``node_id`` are set (account = neither, repo = repo_key only, node = both); a
+    ``node_id`` without a ``repo_key`` is rejected 422. ``node_id`` is a plain uuid string (the
+    authored origin node's id)."""
+
+    content: str
+    repo_key: str | None = None
+    node_id: str | None = None
+    pinned: bool = False
+
+
+class UpdateMemoryRequest(BaseModel):
+    """``PATCH /api/memories/{id}`` body — edit ``content`` (RE-embeds on change) and/or ``pinned``.
+    Both optional; an omitted field is left unchanged."""
+
+    content: str | None = None
+    pinned: bool | None = None
+
+
+@router.post("/api/memories")
+def create_memory_endpoint(
+    body: CreateMemoryRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Create an owner-scoped memory: validate the tier, embed ``content`` (a real ``vector(1536)``
+    via the gateway) and store the row. 422 on empty content / the invalid tier (node_id without
+    repo_key) / a malformed node_id; 502 if the embedding provider call fails."""
+    content = body.content.strip()
+    if not content:
+        raise HTTPException(status_code=422, detail="content is required")
+    node_uuid: uuid.UUID | None = None
+    if body.node_id is not None:
+        try:
+            node_uuid = uuid.UUID(body.node_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="node_id must be a uuid") from None
+    try:
+        return memory.create_memory(
+            uuid.UUID(current_user.id),
+            content=content,
+            repo_key=body.repo_key,
+            node_id=node_uuid,
+            pinned=body.pinned,
+        )
+    except memory.InvalidTierError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except GatewayError as exc:
+        raise HTTPException(status_code=502, detail="the embedding call failed") from exc
+
+
+@router.get("/api/memories")
+def list_memories_endpoint(
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    repo_key: str | None = None,
+    node_id: str | None = None,
+    include_superseded: bool = False,
+) -> dict:
+    """List the owner's memories (oldest first), optionally filtered by ``repo_key`` and/or
+    ``node_id``. Excludes non-active rows unless ``include_superseded=true``. Owner-scoped."""
+    node_uuid: uuid.UUID | None = None
+    if node_id is not None:
+        try:
+            node_uuid = uuid.UUID(node_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="node_id must be a uuid") from None
+    rows = memory.list_memories(
+        uuid.UUID(current_user.id),
+        repo_key=repo_key,
+        node_id=node_uuid,
+        include_superseded=include_superseded,
+    )
+    return {"memories": rows}
+
+
+@router.patch("/api/memories/{memory_id}")
+def update_memory_endpoint(
+    memory_id: str,
+    body: UpdateMemoryRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """Edit the owner's memory — ``content`` (RE-embeds on a real change) and/or ``pinned``. 422 on
+    blank content; 404 if not the owner's; 502 if a re-embed's provider call fails."""
+    if body.content is not None and not body.content.strip():
+        raise HTTPException(status_code=422, detail="content cannot be blank")
+    content = body.content.strip() if body.content is not None else None
+    try:
+        row = memory.update_memory(
+            uuid.UUID(current_user.id), memory_id, content=content, pinned=body.pinned
+        )
+    except GatewayError as exc:
+        raise HTTPException(status_code=502, detail="the embedding call failed") from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="memory not found")
+    return row
+
+
+@router.delete("/api/memories/{memory_id}", status_code=204)
+def delete_memory_endpoint(
+    memory_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> Response:
+    """Hard-delete the owner's memory (204, idempotent + owner-scoped — deleting an absent/foreign
+    id still 204s but never touches another owner's row)."""
+    memory.delete_memory(uuid.UUID(current_user.id), memory_id)
+    return Response(status_code=204)
+
+
+@router.post("/api/memories/{memory_id}/pin")
+def pin_memory_endpoint(
+    memory_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Pin the owner's memory (hot — always injected later). 404 if not the owner's."""
+    row = memory.set_pinned(uuid.UUID(current_user.id), memory_id, True)
+    if row is None:
+        raise HTTPException(status_code=404, detail="memory not found")
+    return row
+
+
+@router.post("/api/memories/{memory_id}/unpin")
+def unpin_memory_endpoint(
+    memory_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Unpin the owner's memory. 404 if not the owner's."""
+    row = memory.set_pinned(uuid.UUID(current_user.id), memory_id, False)
+    if row is None:
+        raise HTTPException(status_code=404, detail="memory not found")
+    return row
 
 
 def _run_summary(run: Run) -> dict:

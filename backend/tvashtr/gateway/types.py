@@ -47,5 +47,39 @@ class CompletionResult:
     latency_ms: float
 
 
+@dataclass(frozen=True)
+class EmbeddingRequest:
+    """A provider-agnostic embedding request (M-memory S1). ``model`` is the same free-form
+    ``provider/model`` pass-through string as :class:`CompletionRequest` (e.g.
+    ``openai/text-embedding-3-small``); ``input`` is a batch of texts to embed.
+
+    ``api_key`` mirrors :class:`CompletionRequest`: a set key is the per-owner BYOK key (the
+    run-scoped distillation path threads it in a later slice); ``None`` (the default) ⇒ litellm
+    resolves the key its own env way — the non-run/manual path (the S1 CRUD embed reads
+    ``OPENAI_API_KEY`` from ``.env``, exactly like the ``generate_doc`` spike)."""
+
+    model: str
+    input: list[str]
+    api_key: str | None = None
+
+
+@dataclass(frozen=True)
+class EmbeddingResult:
+    """The gateway's own embedding result — never a raw LiteLLM response. ``vectors`` holds one
+    embedding per input text, order-aligned with ``EmbeddingRequest.input``. Cost is captured as raw
+    token counts AND a computed USD figure (``0.0`` is legitimate — unknown pricing), the same
+    discipline as :class:`CompletionResult`. There is no ``model_requested``/``model_used`` split:
+    an embedding model is a deliberate, dimension-pinned choice, so the gateway never fails it over
+    to a different model (see ``gateway.embed``)."""
+
+    vectors: list[list[float]]
+    model: str
+    prompt_tokens: int
+    total_tokens: int
+    cost_usd: float
+    raw_provider: str
+    latency_ms: float
+
+
 class GatewayError(RuntimeError):
     """Raised when every model in the ordered list (requested + fallbacks) fails."""

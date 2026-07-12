@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -21,6 +22,7 @@ from sqlalchemy import (
     Uuid,
     false,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -611,6 +613,73 @@ class SkillLibraryItem(Base):
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class NodeMemory(Base):
+    """One owner-scoped agentic-memory fact (M-memory S1, migration ``0025``) — the persistent,
+    cross-run recall the later slices distil into (S2) and inject from (S3). The THIRD legibility
+    layer: the shared spec + the per-node work-brief are human-facing; this is the node's own
+    AGENT-facing memory.
+
+    **Tier** is DERIVED from which scoping columns are set (see
+    :func:`tvashtr.control_plane.memory.memory_tier`), NOT stored:
+
+    * ``repo_key`` SET, ``node_id`` NULL  → **repo** (shared across every node on that repo — the
+      proven default).
+    * ``repo_key`` SET, ``node_id`` SET   → **node** (only that authored origin node — the Tvashtr
+      differentiator).
+    * ``repo_key`` NULL, ``node_id`` NULL → **account** (cross-repo prefs for the owner).
+    * ``repo_key`` NULL, ``node_id`` SET  → **invalid** (rejected at the API).
+
+    ``repo_key`` is the repo identity — today the run's ``repo_path`` string (single-operator).
+    ``node_id`` is a PLAIN uuid (NOT a FK) — the authored origin node's identity (via
+    ``agent_nodes.cloned_from_node_id``), because authored nodes are deletable/re-addable, so a
+    dangling value must simply match nothing (mirrors why ``cloned_from_node_id`` is a plain uuid).
+
+    Bi-temporal / provenance columns are the substrate S2/S4 write (supersede-not-delete): S1 only
+    ever writes ``status='active'``, ``invalid_at=NULL``, ``superseded_by=NULL``,
+    ``confirmation_count=1`` and populates ``embedding`` on create. ``embedding`` is NULLABLE so a
+    row can exist pre-embed / on an embed failure, but the S1 create path always fills it."""
+
+    __tablename__ = "node_memories"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    # NULL => account tier. The repo identity (today = the run's ``repo_path``).
+    repo_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # PLAIN uuid, NOT a FK — the authored origin node; a dangling value matches nothing.
+    node_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    # 1536 = text-embedding-3-small's dimension; the dimension is PINNED here + in migration 0025.
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    valid_from: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # NULL => currently valid; set => superseded/retired (S2/S4 write it; S1 leaves NULL).
+    invalid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The row that replaced this one (S2 writes it). PLAIN uuid, self-referential, no FK.
+    superseded_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    # A trust/ranking signal (S2 bumps it on a re-confirmation).
+    confirmation_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1"), default=1
+    )
+    # Provenance — NULL for a manual add; S2 sets these to the distilling run/invocation.
+    source_run_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_invocation_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # A pinned fact is "hot" — always injected later (S3), never filtered by top-K retrieval.
+    pinned: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
+    # 'active' / 'superseded' / 'pending_review'. S1 writes only 'active'; S4 uses 'pending_review'.
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'active'"), default="active"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

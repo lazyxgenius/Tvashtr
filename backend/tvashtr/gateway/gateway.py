@@ -21,7 +21,13 @@ import time
 import litellm
 
 from tvashtr.config import get_settings
-from tvashtr.gateway.types import CompletionRequest, CompletionResult, GatewayError
+from tvashtr.gateway.types import (
+    CompletionRequest,
+    CompletionResult,
+    EmbeddingRequest,
+    EmbeddingResult,
+    GatewayError,
+)
 
 # Keep the gateway quiet and side-effect free: no debug spam, no phone-home.
 litellm.suppress_debug_info = True
@@ -107,3 +113,47 @@ def complete(request: CompletionRequest) -> CompletionResult:
     raise GatewayError(
         f"all models failed for request (tried {_ordered_models(request)}): {last_error}"
     ) from last_error
+
+
+def embed(request: EmbeddingRequest) -> EmbeddingResult:
+    """Embed a batch of texts through the requested model (M-memory S1).
+
+    Mirrors :func:`complete` — a pure ``request -> result`` call with NO database writes (persisting
+    the cost is the caller's job, which keeps metering idempotent). ``api_key`` is
+    forwarded to litellm only when set (the per-owner BYOK path); ``None`` lets litellm resolve the
+    key its own env way (the manual/non-run path — reads ``OPENAI_API_KEY`` from ``.env``).
+
+    Unlike ``complete`` there is NO fallback list: an embedding model is a deliberate,
+    dimension-pinned choice (the ``vector(1536)`` column matches ``text-embedding-3-small``), so a
+    silent fail-over to a different-dimension model would corrupt the store. Any provider failure
+    raises ``GatewayError``.
+    """
+    kwargs: dict = {"model": request.model, "input": request.input}
+    if request.api_key is not None:
+        kwargs["api_key"] = request.api_key
+
+    started = time.perf_counter()
+    try:
+        response = litellm.embedding(**kwargs)
+    except Exception as exc:  # noqa: BLE001 — surface any provider error as a GatewayError
+        raise GatewayError(f"embedding failed for model {request.model!r}: {exc}") from exc
+    latency_ms = (time.perf_counter() - started) * 1000.0
+
+    vectors: list[list[float]] = []
+    for item in getattr(response, "data", None) or []:
+        raw = item["embedding"] if isinstance(item, dict) else getattr(item, "embedding", [])
+        vectors.append([float(x) for x in raw])
+
+    usage = getattr(response, "usage", None)
+    prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+    total_tokens = int(getattr(usage, "total_tokens", 0) or 0) or prompt_tokens
+
+    return EmbeddingResult(
+        vectors=vectors,
+        model=request.model,
+        prompt_tokens=prompt_tokens,
+        total_tokens=total_tokens,
+        cost_usd=_cost_of(response),
+        raw_provider=_provider_of(request.model),
+        latency_ms=latency_ms,
+    )

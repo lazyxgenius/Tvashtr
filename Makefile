@@ -72,6 +72,9 @@ build-frontend: ## Frontend build gate: tsc --noEmit (strict types) + vite build
 smoke: ## Live gateway smoke — one real LLM call (needs OPENROUTER_API_KEY; skips cleanly otherwise)
 	cd backend && uv run python ../scripts/smoke_gateway.py
 
+memory-smoke: ## Live memory embedding round-trip (M-memory S1): POST /api/memories stores a REAL text-embedding-3-small vector(1536) in pgvector, read back from the DB. Needs OPENAI_API_KEY in .env + Postgres up/migrated; FAILS (not skips) without the key — the live embed is the point
+	cd backend && uv run python ../scripts/memory_smoke.py
+
 agent-smoke: ## Live OpenHands agent smoke — trivial task in a local workspace (needs key; skips otherwise)
 	cd backend && uv run python ../scripts/smoke_agent.py
 
