@@ -979,6 +979,22 @@ def mark_run_failed_step(run_id: str) -> None:
 
 
 @DBOS.step()
+def distill_run_memory_step(run_id: str) -> None:
+    """M-memory S2: distil durable memory from the finished run (the WRITE half of the memory loop).
+
+    BEST-EFFORT — the run is ALREADY finalized when this runs, so a distillation failure must NEVER
+    change the run's terminal status. All errors are caught + logged + swallowed here (even a plain
+    call cannot break the workflow body). Lazy-imports ``memory_distill`` to keep the import
+    surface minimal (``memory_distill`` is openhands-free, so no import-boundary concern)."""
+    try:
+        from tvashtr.control_plane.memory_distill import distill_run
+
+        distill_run(run_id)
+    except Exception:  # noqa: BLE001 — best-effort: a distill failure must not touch the finalized run
+        logger.warning("run-end memory distillation failed run_id=%s", run_id, exc_info=True)
+
+
+@DBOS.step()
 def close_run_sandboxes_step(run_id: str) -> None:
     """M-unify U2 run-end teardown: close + evict any process-cached sandboxes (warm docker
     containers + live Conversations) this run kept alive for per-node reuse. Engine-NEUTRAL — it
@@ -1364,6 +1380,10 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             if cfg.get("terminal_kind") == "ship":
                 ship = ship_step(run_id, workspace)
                 final = finalize_run_step(run_id, status="completed")
+                # M-memory S2: distil durable memory from the run's own trail + outcome. Best-effort
+                # — the run is already finalized ``completed`` above; the step swallows a failure
+                # so distillation can never change that terminal status.
+                distill_run_memory_step(run_id)
                 close_invocation_step(run_id, current, 1, "done", "shipped")
                 DBOS.logger.info(
                     f"run_team done run_id={run_id} ship_sha={ship['sha']} tag={ship['tag']}"

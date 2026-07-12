@@ -104,6 +104,16 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("TVASHTR_EMBEDDING_MODEL", "embedding_model"),
     )
 
+    # M-memory S2: the run-END distiller model — a CHEAP NON-REASONING model (a reasoning model
+    # over-thinks a bounded extraction). Given the run outcome + a bounded trail + the existing
+    # in-scope facts, it proposes candidate memory ops; the gating + code-authoritative
+    # consolidation live in ``control_plane/memory_distill.py``. Metered ON the run with the owner's
+    # key (openai provider — shares the embedding model's key).
+    memory_distiller_model: str = Field(
+        default="openai/gpt-4o-mini",
+        validation_alias=AliasChoices("TVASHTR_MEMORY_DISTILLER_MODEL", "memory_distiller_model"),
+    )
+
     # M-ctx1 (C2): the per-worker-node INPUT token budget — a pre-call ceiling on the compiled
     # agent instruction (idea + spec + revision + grounding + …). When the compiled input EXCEEDS
     # this, the executor does NOT call the agent: it fails that node with a clear terminal reason

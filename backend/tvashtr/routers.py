@@ -18,7 +18,7 @@ from sqlalchemy import func, select, update
 from tvashtr import db
 from tvashtr.auth import UserOut, get_current_user
 from tvashtr.config import get_settings
-from tvashtr.control_plane import memory
+from tvashtr.control_plane import memory, memory_distill
 from tvashtr.control_plane.credentials import (
     NoCredentialError,
     encrypt_secret,
@@ -985,6 +985,20 @@ def get_run_diff(run_id: str, current_user: Annotated[UserOut, Depends(get_curre
     return compute_run_diff(
         run_id=run_id, repo_path=repo_path, base_ref=base_ref, ship_branch=ship_branch
     )
+
+
+@router.get("/api/runs/{run_id}/memories")
+def get_run_memories(
+    run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """The durable memory facts this run TAUGHT (M-memory S2 distillation) — ``active`` +
+    ``pending_review``, each with polarity/status/tier/content. Owner-scoped (404 unless the run
+    belongs to the current user, mirroring ``/diff`` and ``/trajectory``). Backs the "run taught
+    N things" view. Read-only — reads ``node_memories`` filtered to ``source_run_id == run_id``."""
+    owner_id = uuid.UUID(current_user.id)
+    with db.session_scope() as session:
+        _require_owned_run(session, run_id, owner_id)  # 404 unless the run is the caller's
+    return {"memories": memory_distill.list_run_memories(owner_id, run_id)}
 
 
 @router.post("/api/runs/{run_id}/nodes/{node_id}/ask")
