@@ -1,58 +1,222 @@
-# HANDOVER — Tvashtr
+# HANDOVER — Tvashtr (architect chat) → Tvashtr-60
 
-_A structured snapshot for the next architect chat. Read this first, then `PROJECTPLAN.md` (the source of truth). Last rewritten: Tvashtr-56 (2026-07-11)._
-
----
-
-## §0 — Standing operator directives (carry forward EVERY session)
-
-- **Your role = ARCHITECT / PLANNER only.** ALL implementation goes through Claude Code `/goal` runs — product code, diagnostic scripts, AND build/Makefile/config changes alike. When tempted to write code, write a `/goal` instead.
-- **Architect-direct edits ONLY:** `PROJECTPLAN.md`, `HANDOVER.md`, `prompts/*.md` briefs, and trivial doc/comment/typo fixes. Also acceptable: **resolving a mechanical merge conflict** during the operator's merge (a pure union of two already-Claude-Code-authored changes is a merge fix, not new code — e.g. the Tvashtr-56 Makefile `.PHONY` conflict). Everything else → a `/goal`.
-- **The disk audit is the control point.** Never trust Claude Code's report. Read the changed files, byte-diff "untouched" claims vs a pre-image, confirm tests are mutation-real (they must fail on the pre-fix code), reconstruct git state from `.git/` plumbing (no git CLI in the MCP: `.git/refs/heads/<b>`, `.git/logs/refs/heads/<b>`). **Worktree files are OUTSIDE the Filesystem MCP scope** → the full file audit happens POST-merge once files land in the main checkout (plumbing pre-check first; rollback is `git reset --hard <base>` since nothing is pushed).
-- **Chat naming:** open each chat by stating its name (Tvashtr-N), from the operator's opening message.
-- **Design from the vision, one decision at a time, each paired with its concrete canvas/UX consequence.** Decide directly (don't present option menus) except for genuine strategic-direction calls. If the operator says "take all decisions / don't shy from work," decide the whole set ambitiously (grounded in the vision + market practice — Claude Code / Cursor), don't ask for per-decision sign-off.
-- **The Claude Code launch package is ALWAYS three fully-copyable blocks, every time, reproduced inline** (never "same as before", never "get it from a file"): (1) the shell launch command (`… && claude --dangerously-skip-permissions`), (2) the FULL init prompt verbatim, (3) the FULL `/goal` verbatim. Worktree runs can't see `prompts/*.md`, so the `/goal` must be **self-contained** (inline the whole spec; the `/goal` cap is ~4000 chars).
-- **Init prompt must explicitly tell Claude Code to** (1) after its ≤5-line summary + env check, STOP and WAIT for the `/goal`; (2) when executing the `/goal`, USE ultracode, dynamic workflows, and the superpowers skills; (3) run ALL verification itself (make test / test-frontend / lint + the live proof) and debug to green before `READY_TO_MERGE`; (4) end with a detailed final report.
-- **`/goal` must specify:** outcome; hard invariants/do-not-touch (expressed AS on-disk evidence where possible); the acceptance/evidence checklist (tests + pass thresholds + live smoke targets + a `READY_TO_MERGE` line, Claude Code runs it all itself, never the operator); reproduce-first for bug-fixes (a failing regression proven on current code); stop conditions (`NEEDS_HUMAN` → `STATE.md` on an external blocker; a turn cap; distinguish "a contained, regression-guarded, code-proven fix → may proceed" from "a broad/unproven change → STOP").
-- **Parallel batches = TWO DIFFERENT features** (never two halves of one). Each its own worktree + Postgres DB + Vite port; **≤1 Alembic migration across the batch**. **File overlap is ACCEPTABLE — zero overlap is NOT required (operator, Tvashtr-56):** still MAP the overlap FIRST (predictable merge), but overlapping files are fine and the conflict is RESOLVED AT MERGE (FF the first branch; cherry-pick/rebase the second with keep-both on shared files, then re-verify green).
-- **Merge handoff = ALL commands copyable, every time** (`cd` root · `git checkout main` · the exact FF/cherry-pick · a verify `git log` + expected tip sha · what to do if FF is refused · optional branch cleanup). FF-only for the first branch; same-base second branch → cherry-pick (not FF). Merges are operator-run; the architect may resolve a conflicted file.
-- **Guardrails survive bypass as PreToolUse hooks** (deny rules in `.claude/settings.json` go inert under `--dangerously-skip-permissions`): the no-push guard (`protect-no-push.sh`) + the migration-freeze (`protect-migrations.sh`, blocks 0001–0024). Convert any new guard to a hook before a bypass run.
-- **Operator comms:** terse ("go"/"proceed"/"merged"/"done" = ratify + advance; "by the way" = wants a short answer); procedures ONE step at a time (give step 1, wait for the output, then step 2); analogies help; simple everyday language, minimal formatting/jargon; always hand over copyable artifacts (never make them reconstruct or scroll back).
-- **Living docs (maintain in place):** `PROJECTPLAN.md` (source of truth: §1 vision, §14 features, §15 deferred register + build sequence, §16 milestones, append-only §17 decision/as-built log, §18 glossary), `HANDOVER.md` (this file). `STATE.md` is the CLI agent's log (they own it; now gitignored — never rides onto `main`).
+**You are Tvashtr-60.** Read this file and `PROJECTPLAN.md` at the project root FIRST (PROJECTPLAN is
+large — copy it to the container, `grep -nE '^#{2,3} '` for the section index, then `sed -n 'X,Yp'`
+targeted reads; never load it whole). Don't start work until you've read both. State your chat name
+in your opening message.
 
 ---
 
-## Current state
+## 0. WHERE WE ARE (as of the close of Tvashtr-59)
 
-- **`main` @ `6e1d8f4`; alembic head `0024`; floors 497 backend / 285 vitest; repo is `main`-only (worktree-list clean).**
-- **Nothing is in flight.** Tvashtr-56 ratified the M-unify **U2** design pass (4 decisions) and shipped the **U2 ‖ M-changes** parallel batch — both DISK-AUDITED, merged (FF U2 `→0c8f277`, then M-changes cherry-picked `→6e1d8f4`), and cleaned up. Both zero-migration.
-  - **U2 (sandbox reuse) — DONE.** A process-level sandbox cache keyed per (run_id, node_id) OUTSIDE the DBOS durable model (`engines/sandbox_cache.py`, stdlib-only, opaque handle); an additive `AgentTask.session_key`; an engine-neutral `close_run_sandboxes(run_id)` teardown step called from `run_team`'s `try/finally`; conversation-carry (keep the OpenHands Conversation alive + continue it); the reaper spares live cached containers via `keep_ids` (boot sweep still reaps everything). A node stays warm across its own review-loop rounds (no docker re-spin on round 2+). Adversarial pass fixed a HIGH (teardown must `except BaseException` for the DBOS-cancel path). Live-proven on deepseek+docker.
-  - **M-changes (Run Changes view) — DONE.** A read-only owner-scoped `GET /api/runs/{run_id}/diff` (`control_plane/run_diff.py`, subprocess git, stdlib-only, three-dot merge-base for brownfield / produced-files-as-added for greenfield, never raises → []/200) + a `RunDiff.tsx` "Changes" tab in the run view. The user can now SEE the reviewed change.
-- **Milestone status:** M-frontend COMPLETE · M-tools COMPLETE · M-ctx0/M-ctx1 shipped (live model-bench validation still deferred, §15) · M-ledger shipped · **M-unify COMPLETE** (U1+U2+U3 all shipped) · M-rails content-check surface COMPLETE (secret_leak_scan + diff_touches_forbidden_paths + output_schema_check + the credential invariant; further gate kinds on-trigger only) · M-robust shipped (DeepSeek `deepseek/deepseek-chat` is the go-forward agent model; both sandbox modes serialize reasoning-model output cleanly).
+- `main` @ **`f555c07`**, alembic head **`0026`**, test floors **597 backend / 296 vitest**, lint clean,
+  working tree otherwise clean (only the usual uncommitted `PROJECTPLAN.md` / `HANDOVER.md` doc edits +
+  any untracked `prompts/*.md` briefs — see §6 closeout).
+- Postgres is the **pgvector image** (`pgvector/pgvector:pg16`) on host **:5433**, database `tvashtr`,
+  at head `0026`. `.env` holds the operator's provider keys: **OpenAI** (the only one doing embeddings —
+  `text-embedding-3-small`, dim 1536), **xAI**, **DeepSeek**. Agent model `deepseek/deepseek-chat`.
+- **M-memory** (the third legibility layer — a node's agent-facing cross-run recall) is **4 of ~6 slices
+  merged**: S1 (substrate) + S1b (polarity) + S2 (anti-backfire distillation = the WRITE) + S3
+  (injection = the READ). **Remaining: S4 + S5** (see §3).
 
----
+## 1. WHAT M-MEMORY IS + THE RATIFIED DESIGN (Tvashtr-58 §17; carry forward verbatim)
 
-## Next steps (Tvashtr-57)
+A node's persistent, cross-run memory. Six ratified decisions:
+- **D1 — three tiers**, encoded by which scoping columns are set on `node_memories`: **account** `(owner)`
+  = `repo_key` NULL + `node_id` NULL; **repo** `(owner,repo)` = `repo_key` set + `node_id` NULL;
+  **node** `(owner,repo,node)` = both set. `repo_key` = the run's `repo_path` string (single-operator).
+  `node_id` = the AUTHORED origin node (a PLAIN uuid, NOT an FK — matches `cloned_from_node_id`, because
+  authored nodes are deletable/re-addable so a dangling value must simply match nothing). Invalid combo
+  (`repo_key` NULL + `node_id` set) → 422.
+- **D2 — auto-distill at run-end** via Extract→Consolidate (never silent), + an agent-remember tool +
+  a review mode. (S2 shipped the run-end distillation; the agent-remember tool + review-MODE are still
+  open — S4 owns the human-facing review/promote surface.)
+- **D3 — read = hot (pinned) + cold (pgvector top-K)** injected via `compile_context`. (S3 shipped this.)
+- **D4 — bi-temporal supersede-not-delete** + event-driven invalidation + `confirmation_count`.
+- **D5 — new `node_memories` table, pgvector, NO graph DB.**
+- **D6 — three FE surfaces**: a memory drawer, a run-inspector tab, an account shelf. (S5 — not built.)
 
-1. **The next parallel batch** — pick TWO DIFFERENT brief-ready features, map the file overlap first (overlap OK, resolved at merge), ≤1 migration across the batch, each its own worktree + DB + Vite port. Design each enough to write a self-contained `/goal`; audit each on disk post-merge.
-2. **M-memory** (agentic memory / RAG via pgvector — committed Sidechat-7, a §16 milestone) still needs **its own design pass** before it can be briefed (it's a real architectural direction: Postgres-now → pgvector-next, a per-node Memory surface). Don't rush it into a parallel batch.
-3. **§15 hygiene the operator may pick up** (all in PROJECTPLAN §15): modernize the stale `skeleton-crash-docker` demo (add login+cookie, un-hardcode compose-project/port/DB); filter workspace scaffolding (`.gitignore` + init-commit files) from the greenfield `/diff`; LOCAL-mode containment; the C9 4-option gate picker `.tv-seg` treatment; the Option-B crash-time re-attach-by-id (the crash twin of U2); per-node fallback models; typed output schemas.
-- **Mv** (a non-founder shipping real value on their own repo) remains the standing value gate no amount of shipping resolves.
+**Polarity taxonomy (S1b — 6 values, RFC-2119).** Every memory row carries one `polarity` (a CHECK
+constraint restricts the DB to these): `require` (MUST) · `prefer` (SHOULD) · `allow` (MAY, mostly
+user-authored exceptions) · `context` (neutral fact — the DEFAULT) · `avoid` (SHOULD NOT) · `forbid`
+(MUST NOT). S2 captures it; S3 renders it grouped into CAPS force-sections.
 
----
+**The 5 anti-backfire layers (S2 — the operator's key concern: a genuine failure must NOT mark
+everything "don't-do").** All ride S1's existing columns — NO schema beyond `polarity`:
+1. **Failure-cause TRIAGE** — an environmental terminal (over_budget/over_context/rate-limit/infra/engine
+   error/cancelled) writes ZERO negatives; the SAFE DEFAULT for an unexplained failure is
+   "environmental" (no negatives). Only genuinely agent-attributable failures (reviewer rejection, a
+   failing test/build in the trail) may yield negatives.
+2. **Evidence-required** — every `avoid`/`forbid` must cite a concrete failure signal or is dropped.
+3. **Failed runs PROPOSE, don't IMPOSE** — a negative from a non-success run is written
+   `status='pending_review'` (quarantined from S3's active-only injection) until a 2nd run corroborates
+   (auto-promote) OR the user confirms. Success/positive/neutral facts go `active` immediately.
+4. **Fact cap** — ≤5 facts/run, strongest-force first.
+5. **Self-correction** — a later success that contradicts an active `avoid` supersedes it.
 
-## Key gotchas & lessons
+## 2. AS-BUILT — S1/S1b/S2/S3 (the code S4/S5 build against)
 
-- **`copy_file_user_to_claude` caches by basename** — re-copying a changed file returns STALE content. Use `Filesystem:read_multiple_files` / `read_text_file` (cache-free) for a file that changed this session; or stash a pre-image to `/tmp/pre/`. `/mnt/user-data/uploads/` is read-only to bash, and bash runs in Claude's container (can't reach the operator's disk or git).
-- **PROJECTPLAN.md is ~365 KB.** Copy it to `/mnt/user-data/uploads` and `grep -nE '^#{2,3} '` for the header index, then `sed -n 'X,Yp'` targeted reads. Line 6 is one giant "Last updated" banner. **§17 append anchor:** the last entry's closing (`…remains the real gate.`) + `\n\n---\n\n## 18. Glossary` (unique — disambiguates the repeated closing phrase). **Header update:** prepend the new Tvashtr-N summary + `_Prior:_` before the current lead entry.
-- **`Filesystem:edit_file` needs exact `oldText` match** — `dryRun: true` first for risky matches (or accept a failed apply is no worse than a dry-run). For full HANDOVER rewrites use `write_file` (it overwrites).
-- **Same-base parallel pair:** both branches fork from the same `main` tip → only the FIRST fast-forwards; the SECOND must be cherry-picked (`git cherry-pick <sha>`) or rebased, and gets a NEW sha (so `git branch -D` it at cleanup, not `-d`). A shared file (e.g. the Makefile `.PHONY` line) conflicts at cherry-pick — resolve keep-both.
-- **Parallel docker hazard:** the container reaper is image-based (reaps ALL agent-server containers). Two sessions running docker agent-runs at once would reap each other — scope live proofs so only one uses docker at a time (the other uses LOCAL/fixture), or stagger them.
-- **`GIT_EDITOR=true git cherry-pick --continue`** avoids the commit-message editor popping up (useful when guiding the operator).
-- **Reproduce-first for design-pass milestones too:** the "prove the new behavior" test must be mutation-real (U2's round-2 cache-HIT went RED as `[None,None,None]` before the seam was threaded; M-changes' owner-isolation asserts a foreign user → 404).
+**Table `node_memories`** (S1, migration `0025`; S1b `0026` added `polarity`): `id, owner_id (FK users),
+repo_key (nullable), node_id (nullable plain uuid), content, polarity (default 'context', CHECK on the
+6), embedding vector(1536) (nullable), valid_from, invalid_at (nullable), superseded_by (nullable uuid),
+confirmation_count (default 1), source_run_id (nullable), source_invocation_id (nullable), pinned
+(default false), status ('active'|'superseded'|'pending_review', default 'active'), created_at,
+updated_at`. HNSW cosine index on embedding.
 
----
+**S1 — `control_plane/memory.py`**: tier derivation (`memory_tier`/`is_valid_tier`), owner-scoped CRUD
+(`create_memory`/`list_memories`/`get_owned_memory`/`update_memory`/`set_pinned`/`delete_memory`),
+`_embed_content` (manual path → gateway `embed`, `api_key=None` → `.env`, metered OFF-ledger
+`workflow_id=None`), `_to_dict`. Endpoints `/api/memories` (POST/GET/PATCH/DELETE + pin). S1b added the
+`MemoryPolarity` Literal + `is_valid_polarity` + `InvalidPolarityError`→422; create/update validate
+polarity BEFORE embed; a polarity-only PATCH never re-embeds.
 
-## Ready-to-paste opener for Tvashtr-57
+**S2 — `control_plane/memory_distill.py`** (NEW; `memory.py` imported not modified). `distill_run(run_id)`
+= load run → `classify_terminal` (layer 1) → `_assemble_run_trail` (REUSES `run_explain.build_system_
+prompt` read-only, per executed node, bounded) → `_fetch_in_scope` → distiller LLM
+(`_run_distiller`, model = new setting `memory_distiller_model` default `openai/gpt-4o-mini`, metered
+ON-run with the owner's key via `resolve_owner_api_key`) → `_gate` (layers 1/2/4) → `_consolidate_and_
+write`. **Consolidation is CODE-authoritative by embedding cosine** (`DUP_THRESHOLD=0.85`; the LLM's op
+is advisory): same-sign→confirm (+ promote a corroborated pending fact from a DIFFERENT run to active);
+opposite-sign vs an ACTIVE fact→supersede (`invalid_at`+`superseded_by`+`status='superseded'`) + add;
+else→add. **Best-effort** (per-fact sessions; the DBOS step swallows all). `list_run_memories` backs the
+endpoint. Wired in `team_run.py::run_graph` **ship arm** after `finalize_run_step` as
+`@DBOS.step distill_run_memory_step` (lazy-imports the module; never touches the run's terminal status).
+`GET /api/runs/{run_id}/memories` (routers.py, owner-scoped) returns this run's `active`+`pending_review`
+facts. Constants: `FACT_CAP=5`, `DUP_THRESHOLD=0.85`, `MAX_EXISTING_FACTS=40`, `MAX_TRAIL_NODES=6`,
+`MAX_TRAIL_CHARS=24000`. **Defect fixes already in** (from adversarial review): bare status `rejected`
+is NOT an agent marker (human-gate reject ≠ agent fault); corroboration requires same-sign (a neutral
+can't promote a quarantined negative).
 
-> You are Tvashtr-57. Read `HANDOVER.md` (especially §0 + Current state) and `PROJECTPLAN.md` at the project root first; don't start work until you've read both. There is nothing in flight — Tvashtr-56 ratified the M-unify U2 design pass and shipped + merged the U2 ‖ M-changes parallel batch (main @ `6e1d8f4`, head `0024`, floors 497/285, repo main-only). M-unify is COMPLETE (U1+U2+U3). Your first work: propose the next parallel batch — two DIFFERENT brief-ready features (file overlap OK, resolved at merge; ≤1 migration; own worktree+DB+port each), overlap-mapped first — OR, if the operator wants it, the M-memory design pass (it needs one before a brief). Mv (a non-founder shipping real value on their own repo) remains the real gate.
+**S3 — `control_plane/memory_retrieval.py`** (NEW). `retrieve_for_node(owner, repo_key,
+authored_node_id, query, *, embed_query, k=8, token_budget=2000)`: scope = owner's `status='active'` rows
+in account ∪ repo ∪ node tiers (`_scope_filter`; greenfield repo_key NULL → account only); HOT = all
+pinned in-scope (always); COLD = pgvector `cosine_distance` top-K over non-pinned+embedded, ranked to the
+query; `_apply_budget` keeps HOT + best COLD under the budget (drop lowest-similarity COLD, never HOT).
+**Best-effort** (`try/except → []`). A `has_cold` probe means `embed_query` (injected) is called ONLY
+when cold candidates exist → empty scope + greenfield + the offline suite are network-free +
+byte-identical. `embed_query_metered` = the run-path closure (owner key, metered ON-run). `memory_query`
+= idea + node_prompt + PRD-title (pure). Wired in `team_run.py::run_graph` **node-execution arm** as
+`@DBOS.step retrieve_memory_step` (resolves owner/repo_path/`cloned_from_node_id`; lazy owner-key embed
+closure), threaded into `agent_run_step` → `compile_context(memory=…)`. `context_compiler.compile_
+context` gained an optional `memory=` param → a rendered memory ContextPart AFTER `node_prompt` (only
+non-empty polarity sections, order MUST/MUST NOT/SHOULD/SHOULD NOT/MAY/CONTEXT); `manifest()` records the
+injected ids+polarity under a `memory` key in the invocation's existing `context_manifest` JSONB (NO
+migration — **S5 reads this key**). None/empty ⇒ byte-identical to pre-S3. Constants `COLD_TOP_K=8`,
+`MEMORY_TOKEN_BUDGET=2000`.
+
+Live gates (both LOCAL sandbox + deepseek + gpt-4o-mini/openai, NO docker, NOT in `make test`):
+`make memory-distill-gate` (S2), `make memory-injection-check` (S3), plus `make memory-smoke` (S1).
+
+## 3. IMMEDIATE NEXT STEPS (in order)
+
+1. **S4 — human confirm/promote surface + the review MODE (D2).** The place a user reviews the
+   quarantined `pending_review` negatives from failed runs and promotes/rejects them, plus (D2) the
+   agent-remember tool and a review-before-persist toggle. Backend-first (endpoints:
+   promote a pending fact → active; reject → delete/supersede; maybe a review-mode setting), then its FE
+   likely folds into S5. **Design this first (one question at a time, vision-grounded, pair each decision
+   with its UX consequence) and get sign-off before writing the `/goal`.**
+2. **S5 — the three FE surfaces (D6):** the memory drawer, the run-inspector "what this run taught / what
+   this node remembered" tab (reads `GET /api/runs/{id}/memories` + `context_manifest.memory` — both
+   already exist), the account shelf. Editable/deletable/pinnable per D4/D6.
+3. **Mv gate** — a NON-founder shipping real value on their own repo remains the real value gate; no
+   amount of shipping resolves it. Keep it visible.
+
+Cadence question for S4/S5: S4 is smaller (backend + a bit of FE); S5 is FE-heavy. Could be one combined
+slice or S4-then-S5. Decide from the vision, not effort.
+
+## 4. STANDING OPERATOR DIRECTIVES (the operating contract — inherit ALL of this)
+
+**Role.** You are ARCHITECT/PLANNER ONLY. ALL implementation goes through **Claude Code (CC)** via a
+`/goal`. Architect-direct edits allowed ONLY: the two living docs (`PROJECTPLAN.md`, `HANDOVER.md`),
+`prompts/*.md` briefs, trivial doc/typo fixes, and **mechanical merge-conflict resolution** (a union of
+two already-authored changes — resolve directly, e.g. via `Filesystem:edit_file`). No "diagnostics are
+architect-direct" carve-out — diagnose yourself, but the FIX goes through a `/goal`.
+
+**The disk audit is the control point — NEVER rubber-stamp CC's report.** There is no git CLI in the
+MCP: reconstruct git state from `.git` plumbing (`refs/heads/<b>`, `logs/refs/heads/<b>`, `config` for
+no-remote) and byte-verify via the git object walk. **The object-walk method (this session's tool):**
+copy loose objects from `.git/objects/<2>/<38>` with `Filesystem:copy_file_user_to_claude` → inflate in
+the container (`/mnt/user-data/gitwalk/inflate.py`, or `python3 -c "zlib.decompress"`, strip the
+`blob/tree/commit <len>\0` header) → diff trees top-down to get the exact changed-file set + confirm
+byte-invariants (identical blob sha ⇒ byte-identical) + descend to read new files. Worktree dirs
+(siblings) are OUTSIDE Filesystem scope, but their committed objects live in the SHARED `.git/objects`,
+so the object-walk audits worktree branches too, pre-merge.
+
+**Every CC launch = 3 fully-copyable blocks, EVERY time (even if unchanged):** (1) the shell
+`cd <dir> && claude --dangerously-skip-permissions`; (2) the FULL init prompt verbatim; (3) the FULL
+`/goal` verbatim. Never say "same as before" or point at a file for the init/goal text. The DETAILED
+brief lives in `prompts/*.md` (referenced BY the `/goal`); the init + `/goal` are always inline.
+
+**Init prompt must tell CC:** read `prompts/CLI-RULES.md` + `prompts/CLI-SETUP.md` + `HANDOVER.md`;
+bypass = only PreToolUse hooks fire (the no-push + migration-freeze guards); don't push / don't checkout
+main; run `make setup` + bring up its DB + migrate; run ALL verification (`make test`/`lint`/`build-
+frontend`/`test-frontend` + the live gate) and debug to green — never hand verification back; use
+ultracode/dynamic-workflows/superpowers; echo evidence; after a ≤5-line summary STOP + WAIT for the
+`/goal`; end with a FINAL REPORT (CLI-RULES §4.7). `/goal` ≤4000 chars, lean, points at the brief; scope
+= one full bounded milestone. Bug-fix `/goals`: reproduce-first (a failing regression proven on current
+code). Stop clauses: distinguish "a second/unknown problem needing a broad/unproven change → STATE.md +
+stop" from "a code-proven, contained, regression-guarded fix → may proceed."
+
+**Guardrails (survive bypass — they're PreToolUse hooks):** `.claude/hooks/protect-no-push.sh` (blocks
+`git push` / `git reset --hard`; a structural shell-token matcher — intact) and
+`.claude/hooks/protect-migrations.sh` (blocks Edit/Write to frozen migrations — regex currently
+`00(0[1-9]|1[0-9]|2[0-6])` = 0001-0026). Never edit a frozen migration; create a NEW one, and only then
+bump the freeze regex as the LAST step of that slice.
+
+**Merge discipline.** FF-only, operator-runs, give ALL commands as copyable text (cd, checkout main,
+`merge --ff-only <b>`, `log --oneline -N`, `branch -d <b>`), state the expected tip sha + the "stop if
+FF refused" note. **Parallel batches** = two DIFFERENT features, each its own git worktree + its own
+Postgres **database** (`tvashtr_sN`) on the shared pgvector container + its own ports (slot 1 = backend
+`:8001`/Vite `:5174`, slot 2 = `:8002`/`:5175`), ≤1 migration across the batch. Merge protocol: FF the
+first branch; **cherry-pick** the second onto main (resolve the union in the MAIN checkout, which IS in
+Filesystem scope), `git add` + `GIT_EDITOR=true git cherry-pick --continue`, `make test` green on the
+merged main, then `git worktree remove` + `git branch -d` (first) / `-D` (cherry-picked second, its SHA
+isn't in history) + optionally `dropdb`.
+
+**Design decisions.** Decide from (a) the §1 vision + (b) the Tvashtr-25 pivot (blank prompt-driven
+agents; the user authors their own team), NEVER from effort. One design question at a time, decide
+directly (no option menus except genuine strategic forks), get explicit sign-off before the next. **Pair
+every decision with its concrete user-facing UX consequence on the canvas/UI — every time.**
+
+**Comms.** The operator is TERSE: "go"/"proceed"/"merged"/"done" = ratify + advance; "By the way" = a
+short answer. Give multi-step PROCEDURES ONE STEP AT A TIME (they run it, report, then the next) —
+especially apt for conflict-prone merges. Simple plain language. Analogies help. Always hand over
+copyable artifacts; never make them scroll back / reconstruct. Handover PROACTIVELY as context fills
+(the operator saying "handover" = an immediate trigger).
+
+**Tools.** `Filesystem:*` = the OPERATOR's disk (`/Users/adimac/Desktop/Tvashtr`, capital T
+load-bearing). `bash_tool`/`str_replace`/`create_file`/`view` = Claude's CONTAINER only (never the
+operator disk). `Filesystem:edit_file` uses exact substring match — `dryRun:true` first; anchor on the
+conflict block (tab-free lines) not huge recipe lines. `Filesystem:write_file` for full rewrites (but
+NOT the Makefile — its recipes are TAB-indented; edit surgically instead). PROJECTPLAN.md is large — copy
+to container, grep sections, sed ranges; §17 is append-only.
+
+**Two chat sequences (standing):** "Tvashtr-X" (main build) + "Tvashtr Sidechat-X" (open-ended
+Q&A/planning; NOT part of the `/goal` build loop). Both share project memory. State which + the number
+on opening from the operator's message.
+
+## 5. GOTCHAS (this session, not already above)
+
+- **`createdb` collation mismatch** on the pgvector container (template stamped 2.41, OS provides 2.36 →
+  `template database "template1" has a collation version mismatch`). Fix (safe — empty template):
+  `docker compose exec postgres psql -U tvashtr -d postgres -c "ALTER DATABASE template1 REFRESH
+  COLLATION VERSION;"` (+ same for `postgres`), then `createdb` works. New DBs created after are
+  internally consistent.
+- **Parallel-batch overlap this batch:** the ONLY shared code file was `team_run.py` (S2 = ship arm, S3 =
+  node-exec arm — the union AUTO-MERGED cleanly). The Makefile also conflicted (both added a `.PHONY`
+  target + re-added S1's `memory-smoke`) — a trivial union resolved in main. Map overlap before writing
+  parallel `/goals`, but overlap is not forbidden (resolve at merge).
+- **Filesystem MCP was intermittently unresponsive** this session (4-min timeouts on copy/read, ~every
+  1-2 calls at worst; a full Cmd+Q + reopen of Claude Desktop cleared it, single reads are most
+  reliable). If it wedges: tell the operator to fully quit + reopen Desktop, then resume; batch reads
+  where possible; the object-walk copies are the risky calls.
+- **CC's commit trailer** is `Co-Authored-By: Claude Opus 4.8 (1M context)` — harmless, in the message.
+- Both S2 and S3 ran 5-agent adversarial reviews and found+fixed REAL defects with regression tests
+  before reporting — a good signal, but the disk audit still verified the high-stakes items independently.
+
+## 6. DOCS CLOSEOUT (do at the end of THIS handover)
+
+`PROJECTPLAN.md` §17 has the S1b/S2/S3 as-built entry + the header date is bumped (done this session).
+The untracked `prompts/M-memory-S1b-polarity.md`, `prompts/M-memory-S2-distillation.md`,
+`prompts/M-memory-S3-injection.md` briefs + the doc edits get committed by the OPERATOR with the command
+the architect provides (there's no git CLI in the MCP). These don't affect anything already merged.
