@@ -58,6 +58,11 @@ from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.guardrails import GUARDRAIL_GATE_KINDS, guardrail_gate_step
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
+from tvashtr.control_plane.memory_retrieval import (
+    embed_query_metered,
+    memory_query,
+    retrieve_for_node,
+)
 from tvashtr.control_plane.node_skills import build_skills
 from tvashtr.control_plane.node_tools import build_mcp_config
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
@@ -325,6 +330,63 @@ def read_latest_prd_step(run_id: str) -> str:
     if latest is None:
         raise RuntimeError(f"read_latest_prd_step: document {document_id} has no versions")
     return latest.content
+
+
+@DBOS.step()
+def retrieve_memory_step(run_id: str, node_id: str, iteration: int, query: str) -> list[dict]:
+    """M-memory S3 — the recorded READ step: retrieve THIS node's remembered facts (hot + cold
+    pgvector top-K, tier-scoped + ``active``-only) for injection into ``compile_context(memory=…)``.
+    Mirrors :func:`read_latest_prd_step` / :func:`brownfield_grounding_step` — a recorded step
+    whose result feeds the compiler, so it replays deterministically on a crash-resume.
+
+    The scope is the run OWNER's active memories in the tiers that apply: account ∪ repo
+    (``run.repo_path``) ∪ node (that repo + this node's AUTHORED id). The authored id = the exec
+    node's ``cloned_from_node_id`` (the clone→origin back-reference), falling back to the node's OWN
+    id when it is not a clone. A greenfield run (``repo_path`` NULL) ⇒ account tier only. The query
+    embed uses the run owner's key (:func:`resolve_owner_api_key`), metered ON the run
+    (``workflow_id=run_id``) — resolved LAZILY inside the closure so an empty in-scope set (no cold
+    candidates) never resolves a key or hits the network (byte-identical to no-memory).
+
+    **BEST-EFFORT** — ANY failure returns ``[]`` so a retrieval problem NEVER crashes or changes a
+    run (:func:`retrieve_for_node` is itself best-effort; this guard also covers the owner/repo/
+    authored-id resolution)."""
+    try:
+        with session_scope() as session:
+            run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
+            owner_id = run.owner_id
+            repo_key = run.repo_path
+            authored = session.execute(
+                select(AgentNode.cloned_from_node_id).where(AgentNode.id == uuid.UUID(node_id))
+            ).scalar_one_or_none()
+        if owner_id is None:
+            return []
+        # The authored origin id (via cloned_from_node_id); fall back to the node's own id if it is
+        # not a clone (``cloned_from_node_id`` NULL, or the node row is absent).
+        authored_node_id = authored if authored is not None else uuid.UUID(node_id)
+        model = get_settings().embedding_model
+        idempotency_key = f"{run_id}:memory-embed:{node_id}:{iteration}"
+
+        def _embed(text: str) -> list[float] | None:
+            # Reached ONLY when there are cold candidates — so the owner-key resolution + the
+            # on-run metering only happen when a real retrieval embed is needed.
+            api_key = resolve_owner_api_key(owner_id, model)
+            return embed_query_metered(
+                text,
+                api_key=api_key,
+                model=model,
+                run_id=run_id,
+                idempotency_key=idempotency_key,
+            )
+
+        return retrieve_for_node(owner_id, repo_key, authored_node_id, query, embed_query=_embed)
+    except Exception:  # noqa: BLE001 — best-effort: a retrieval failure never crashes a run
+        logger.warning(
+            "retrieve_memory_step best-effort empty run_id=%s node=%s",
+            run_id,
+            node_id,
+            exc_info=True,
+        )
+        return []
 
 
 # M-unify U1: the report-only deliverable file. An edits-off node's pull is scoped to EXACTLY this
@@ -708,6 +770,7 @@ def agent_run_step(
     skills: list | None = None,
     edits_allowed: bool = True,
     node_id: str | None = None,
+    memory: list | None = None,
 ) -> dict:
     """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
     ``reviewer_agent_run_step``. M-unify U1: it is now the SINGLE path EVERY AgentNode executes
@@ -781,6 +844,9 @@ def agent_run_step(
         # M-unify U1 (D2.5): a report-only node gets the capability note; an edits-on worker gets NO
         # new part, so its compiled instruction stays byte-identical to main.
         edits_allowed=edits_allowed,
+        # M-memory S3: the node's remembered facts. None/[] ⇒ NO memory part ⇒ the compiled
+        # instruction + manifest stay byte-identical to a run with no memory (inert-when-empty).
+        memory=memory,
     )
     manifest = compiled.manifest()
 
@@ -1206,6 +1272,17 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 tools_kwargs["tool_config"] = node["tool_config"]
             if node.get("skills") is not None:
                 tools_kwargs["skills"] = node["skills"]
+            # M-memory S3: retrieve THIS node's remembered facts (best-effort, recorded step) and
+            # thread them into the compiler — mirrors the grounding/PRD reads above. An empty
+            # scope ⇒ [] ⇒ NO memory kwarg ⇒ the compiled instruction stays byte-identical to before
+            # (the whole offline suite + every greenfield run with no seeded memory stay green). The
+            # query is a compact task probe (idea + node prompt + PRD title), NOT the context.
+            memory_kwargs: dict = {}
+            remembered = retrieve_memory_step(
+                run_id, current, n, memory_query(idea, node["prompt"], spec)
+            )
+            if remembered:
+                memory_kwargs["memory"] = remembered
             result = agent_run_step(
                 run_id,
                 node["prompt"],
@@ -1223,6 +1300,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 node_id=current,  # M-unify U2: per-node sandbox-reuse key (run_id+node_id)
                 **tools_kwargs,
                 **brownfield_kwargs,
+                **memory_kwargs,  # M-memory S3: the retrieved facts (absent ⇒ byte-identical call)
             )
             delete_vkey_step(run_id, vkey)
 

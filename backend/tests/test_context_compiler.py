@@ -264,3 +264,120 @@ def test_write_and_remove_spec_handle_roundtrip(tmp_path):
     assert not (tmp_path / SPEC_HANDLE_FILENAME).exists()
     # Idempotent: removing an absent handle is a no-op (never raises).
     _remove_spec_handle(ws)
+
+
+# ---- M-memory S3: the injected-memory part (polarity-grouped CAPS force-sections) ----------------
+
+# The 6 CAPS force-headers in their required render order (MUST → MUST NOT → SHOULD → SHOULD NOT →
+# MAY → CONTEXT). Each maps from a NodeMemory.polarity value (require/forbid/prefer/avoid/allow/
+# context). "MUST:" (with the colon) never substring-collides with "MUST NOT:".
+_FORCE_HEADERS = ("MUST:", "MUST NOT:", "SHOULD:", "SHOULD NOT:", "MAY:", "CONTEXT:")
+
+
+def _facts(*pairs):
+    """[(polarity, content), …] → the retrieval fact-dict shape compile_context injects."""
+    return [
+        {"id": f"id-{i}", "polarity": pol, "content": txt} for i, (pol, txt) in enumerate(pairs)
+    ]
+
+
+def test_memory_none_or_empty_is_byte_identical_no_part_no_manifest_key():
+    """The inert-when-empty invariant: memory None OR [] compiles byte-for-byte as today — no memory
+    part, no ``memory`` manifest key. (Every existing caller passes no memory ⇒ this is what keeps
+    the whole offline suite green.)"""
+    base = _compile()  # today's output (no memory arg)
+    for empty in (None, []):
+        c = _compile(memory=empty)
+        assert [p.name for p in c.parts] == ["node_prompt", "idea", "spec"]
+        assert c.instruction == base.instruction  # byte-identical
+        assert "memory" not in c.manifest()
+        assert all(p["name"] != "memory" for p in c.manifest()["parts"])
+
+
+def test_memory_part_inserted_after_node_prompt_and_concatenates():
+    facts = _facts(("require", "Run the tests before you finish."))
+    c = _compile(memory=facts)
+    # Injected right after the node's identity prompt, before the idea (standing lessons first).
+    assert [p.name for p in c.parts] == ["node_prompt", "memory", "idea", "spec"]
+    # The part carries its own leading separator so parts still concatenate to the instruction.
+    assert "".join(p.text for p in c.parts) == c.instruction
+    mem = next(p for p in c.parts if p.name == "memory")
+    assert mem.text.startswith("\n\n--- REMEMBERED LESSONS ---")
+    assert mem.tokens == estimate_tokens(mem.text)
+    assert "Run the tests before you finish." in c.instruction
+
+
+def test_memory_renders_polarity_groups_as_caps_sections_in_required_order():
+    # One fact per polarity, supplied OUT of render order to prove the render re-orders it.
+    facts = _facts(
+        ("context", "The repo ships with pytest."),
+        ("allow", "You may add helper modules."),
+        ("avoid", "Avoid global mutable state."),
+        ("prefer", "Prefer small pure functions."),
+        ("forbid", "Never edit production config."),
+        ("require", "Always run black before committing."),
+    )
+    mem = next(p for p in _compile(memory=facts).parts if p.name == "memory").text
+    # All six force-headers present…
+    for h in _FORCE_HEADERS:
+        assert h in mem, f"missing section header {h}"
+    # …in exactly MUST → MUST NOT → SHOULD → SHOULD NOT → MAY → CONTEXT order.
+    positions = [mem.index(h) for h in _FORCE_HEADERS]
+    assert positions == sorted(positions)
+
+    # Each fact renders as a bullet under EXACTLY its mapped force-header — ALL 6 bindings. A swap
+    # polarity→header mapping keeps the header ORDER + presence but inverts the RFC-2119 force, so
+    # bullet PLACEMENT (not mere presence) is what pins the taxonomy. ("SHOULD:" never substring-
+    # collides with "SHOULD NOT:"; each header appears once.)
+    def _section(header: str) -> str:
+        body = mem[mem.index(header) + len(header) :]
+        end = body.find("\n\n")  # up to the next blank-line-separated section
+        return body if end == -1 else body[:end]
+
+    assert "- Always run black before committing." in _section("MUST:")  # require
+    assert "- Never edit production config." in _section("MUST NOT:")  # forbid
+    assert "- Prefer small pure functions." in _section("SHOULD:")  # prefer
+    assert "- Avoid global mutable state." in _section("SHOULD NOT:")  # avoid
+    assert "- You may add helper modules." in _section("MAY:")  # allow
+    assert "- The repo ships with pytest." in _section("CONTEXT:")  # context
+
+
+def test_memory_only_nonempty_sections_are_emitted():
+    facts = _facts(
+        ("forbid", "No network in unit tests."),
+        ("forbid", "No sleeps in tests."),
+        ("context", "CI runs on Linux."),
+    )
+    mem = next(p for p in _compile(memory=facts).parts if p.name == "memory").text
+    assert "MUST NOT:" in mem and "CONTEXT:" in mem
+    # Absent polarities emit NO header (MUST:/SHOULD:/SHOULD NOT:/MAY: never appear).
+    assert "MUST:" not in mem  # "MUST NOT:" contains "MUST" but not "MUST:"
+    assert "SHOULD:" not in mem and "SHOULD NOT:" not in mem and "MAY:" not in mem
+    # Both forbid facts group under the single MUST NOT header.
+    assert "- No network in unit tests." in mem and "- No sleeps in tests." in mem
+
+
+def test_memory_manifest_records_injected_ids_and_polarity():
+    facts = _facts(("require", "x"), ("context", "y"))
+    facts[0]["id"], facts[1]["id"] = "mem-aaa", "mem-bbb"
+    m = _compile(memory=facts).manifest()
+    # The memory part joins the existing parts array…
+    assert any(p["name"] == "memory" for p in m["parts"])
+    # …AND the injected ids (+ polarity) are recorded under the manifest's ``memory`` key (S5 reads
+    # this to show "what this node remembered").
+    assert m["memory"] == [
+        {"id": "mem-aaa", "polarity": "require"},
+        {"id": "mem-bbb", "polarity": "context"},
+    ]
+
+
+def test_memory_part_survives_large_spec_handle_static_first_reorder():
+    """A memory part must not break the C4 static-first reorder (it must be in _STATIC_FIRST_NAMES,
+    else ``_static_first`` KeyErrors when a big-spec node also has memory)."""
+    big_spec = "S" * (4 * (_SPEC_HANDLE_TOKEN_THRESHOLD + 500))
+    facts = _facts(("require", "Keep the change minimal."))
+    c = _compile(spec=big_spec, memory=facts, budget=_BIG_BUDGET)
+    assert c.handle_used is True
+    assert any(p.name == "memory" for p in c.parts)
+    assert "--- REMEMBERED LESSONS ---" in c.instruction
+    assert "Keep the change minimal." in c.instruction

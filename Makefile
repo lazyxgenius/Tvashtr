@@ -17,7 +17,7 @@ TVASHTR_RUNG2_REPO ?= /Users/adimac/Desktop/trade_mcp
 # independent numeric gate is unaffected (it runs host-side at the repo ROOT).
 TVASHTR_RUNG2_SUBPATH ?= core
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check memory-smoke memory-distill-gate brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e node-ask-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e scope-picker-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e skills-e2e tools-e2e seed lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check memory-smoke memory-distill-gate brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e node-ask-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e scope-picker-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e skills-e2e tools-e2e memory-injection-check seed lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -74,6 +74,9 @@ smoke: ## Live gateway smoke — one real LLM call (needs OPENROUTER_API_KEY; sk
 
 memory-smoke: ## Live memory embedding round-trip (M-memory S1): POST /api/memories stores a REAL text-embedding-3-small vector(1536) in pgvector, read back from the DB. Needs OPENAI_API_KEY in .env + Postgres up/migrated; FAILS (not skips) without the key — the live embed is the point
 	cd backend && uv run python ../scripts/memory_smoke.py
+
+memory-injection-check: ## M-memory S3 LIVE gate: a REAL LOCAL-sandbox deepseek review_loop on a rung-1 brownfield fixture repo, with the owner's memories seeded FIRST (a pinned account fact + a repo-tier fact + a node-tier fact keyed to the review_loop Engineer's origin). Asserts the executed Engineer's context_manifest lists the injected ids (incl. the pinned + node-tier) AND an on-run embed cost row (workflow_id=run_id) exists. Needs DEEPSEEK_API_KEY + OPENAI_API_KEY in .env; skips cleanly otherwise. NO docker. NOT in `make test`.
+	cd backend && TVASHTR_AGENT_SANDBOX=local TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FORCE_REVISIONS=0 uv run python ../scripts/memory_injection_check.py
 
 agent-smoke: ## Live OpenHands agent smoke — trivial task in a local workspace (needs key; skips otherwise)
 	cd backend && uv run python ../scripts/smoke_agent.py

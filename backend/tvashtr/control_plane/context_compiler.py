@@ -63,6 +63,10 @@ _PART_REVISION = "revision"
 _PART_GROUNDING = "grounding"
 _PART_WORKER_PROTOCOL = "worker_protocol"
 _PART_WORKER_FOCUS = "worker_focus"
+# M-memory S3: the injected-memory part (the node's remembered facts). NOT part of the original
+# assembly — inserted right after ``node_prompt`` (standing lessons first) ONLY when memory
+# is present; absent by default so today's compiled instruction + manifest stay byte-identical.
+_PART_MEMORY = "memory"
 # M-unify U1 (D2.5): the report-only capability note — appended ONLY for an edits-OFF node. Its body
 # is the brief's verbatim-close text; a ``--- REPORT-ONLY NODE ---`` header delimits it like every
 # other typed part (each carries its own leading separator/header). The "do NOT build or implement"
@@ -84,6 +88,42 @@ def _capability_note_text() -> str:
     return f"\n\n--- REPORT-ONLY NODE ---\n{_CAPABILITY_NOTE_BODY}"
 
 
+# M-memory S3 — the injected-memory part's rendering. The node's remembered facts (S1 substrate,
+# retrieved by ``control_plane.memory_retrieval``) are grouped BY POLARITY into CAPS force-sections:
+# an agent reads a MUST NOT list very differently from a neutral fact — that force framing is
+# the whole point of the S1b polarity taxonomy. Only non-empty sections render, in a fixed force
+# order; each fact becomes a ``- {content}`` bullet under its polarity's header.
+_MEMORY_PREAMBLE = "You have learned these lessons in earlier runs on this work — honor them:"
+# (``NodeMemory.polarity`` value → CAPS force-header) in render order: MUST → MUST NOT → SHOULD →
+# SHOULD NOT → MAY → CONTEXT. The RFC-2119 force mapping is fixed in ``control_plane.memory``.
+_MEMORY_FORCE_ORDER: tuple[tuple[str, str], ...] = (
+    ("require", "MUST"),
+    ("forbid", "MUST NOT"),
+    ("prefer", "SHOULD"),
+    ("avoid", "SHOULD NOT"),
+    ("allow", "MAY"),
+    ("context", "CONTEXT"),
+)
+
+
+def _render_memory(facts: list[dict]) -> str:
+    """Render the injected memory facts into the memory part's text: a one-line preamble + the facts
+    grouped into CAPS force-sections (only non-empty, in :data:`_MEMORY_FORCE_ORDER`), each fact a
+    ``- {content}`` bullet under its polarity's header. Carries the leading ``--- REMEMBERED LESSONS
+    ---`` separator/header so it concatenates into the instruction like every other typed part.
+    Called only with a non-empty ``facts`` (compile_context skips the part when memory is empty)."""
+    by_polarity: dict[str, list[str]] = {}
+    for fact in facts:
+        by_polarity.setdefault(fact["polarity"], []).append(fact["content"])
+    blocks: list[str] = []
+    for polarity, header in _MEMORY_FORCE_ORDER:
+        items = by_polarity.get(polarity)
+        if items:
+            body = "\n".join(f"- {content}" for content in items)
+            blocks.append(f"{header}:\n{body}")
+    return f"\n\n--- REMEMBERED LESSONS ---\n{_MEMORY_PREAMBLE}\n\n" + "\n\n".join(blocks)
+
+
 # C4 static-first partition (large-spec handle path only): the STABLE parts (fixed across every loop
 # iteration of a run — the node prompt, the once-computed grounding, the constant worker protocol /
 # focus) lead so a provider prefix-cache hits; the VOLATILE parts trail — the per-round ``revision``
@@ -91,6 +131,11 @@ def _capability_note_text() -> str:
 # is grouped with them per the C4 spec. The small path keeps the original order untouched.
 _STATIC_FIRST_NAMES = (
     _PART_NODE_PROMPT,
+    # M-memory S3: remembered lessons are stable across a node's rework rounds (the query =
+    # idea + node prompt + PRD title, none of which change per round) → group with the static prefix
+    # so the provider prefix-cache still hits on the large-spec handle path. MUST be listed here or
+    # ``_static_first`` KeyErrors when a big-spec node also carries a memory part.
+    _PART_MEMORY,
     _PART_GROUNDING,
     _PART_WORKER_PROTOCOL,
     _PART_WORKER_FOCUS,
@@ -146,18 +191,28 @@ class CompiledContext:
     fattest: ContextPart
     handle_used: bool
     spec_doc: str | None
+    # M-memory S3: the injected memory facts ({id, polarity, content}) — carried so :meth:`manifest`
+    # can record which memories this node remembered. ``None`` when no memory was injected (the
+    # inert-when-empty path), keeping the manifest byte-identical to the pre-S3 shape.
+    memory: list[dict] | None = None
 
     def manifest(self) -> dict:
         """The ``context_manifest`` JSONB persisted per worker invocation (migration ``0019``):
         ``{parts: [{name, tokens}], total_tokens, budget, handle_used}`` — the FULL-content sizes
-        (so a reader sees the true spec size even when :attr:`handle_used` offloaded it to a
-        file)."""
-        return {
+        (so a reader sees the true spec size even when :attr:`handle_used` offloaded it to a file).
+        M-memory S3: when memory was injected, a ``memory: [{id, polarity}]`` key records the
+        injected ids (the memory part already joins ``parts`` as ``{name: "memory"}``) so S5 can
+        show 'what this node remembered'. Absent when no memory → byte-identical to the pre-S3
+        manifest."""
+        manifest = {
             "parts": [{"name": p.name, "tokens": p.tokens} for p in self.parts],
             "total_tokens": self.total_tokens,
             "budget": self.budget,
             "handle_used": self.handle_used,
         }
+        if self.memory:
+            manifest["memory"] = [{"id": f["id"], "polarity": f["polarity"]} for f in self.memory]
+        return manifest
 
 
 def _part(name: str, text: str) -> ContextPart:
@@ -196,6 +251,7 @@ def compile_context(
     subpath: str | None,
     budget: int,
     edits_allowed: bool = True,
+    memory: list[dict] | None = None,
     handle_threshold: int = _SPEC_HANDLE_TOKEN_THRESHOLD,
 ) -> CompiledContext:
     """Compile one node's typed context parts + assembled instruction (pure; see the module
@@ -220,10 +276,15 @@ def compile_context(
     (:func:`resolve_context_budget`)."""
     # 1. Build the FULL inline typed parts, in the ORIGINAL order, byte-identical to today's
     #    assembly: node_prompt + idea [+ spec] [+ revision] [+ grounding [+ protocol [+ focus]]].
-    parts: list[ContextPart] = [
-        _part(_PART_NODE_PROMPT, node_prompt),
-        _part(_PART_IDEA, f"\n\n--- ORIGINAL IDEA ---\n{idea}"),
-    ]
+    parts: list[ContextPart] = [_part(_PART_NODE_PROMPT, node_prompt)]
+    # M-memory S3: the node's remembered facts, folded in right after its identity prompt (standing
+    # lessons before the specific task). ONLY when non-empty — an empty/None ``memory`` appends NO
+    # part, so the compiled instruction + manifest stay byte-for-byte today's output (the
+    # inert-when-empty invariant). Budget-accounted like every other part (a memory-part overflow
+    # names ``memory`` as the fattest).
+    if memory:
+        parts.append(_part(_PART_MEMORY, _render_memory(memory)))
+    parts.append(_part(_PART_IDEA, f"\n\n--- ORIGINAL IDEA ---\n{idea}"))
     if spec is not None:
         parts.append(_part(_PART_SPEC, f"\n\n--- PRD ---\n{spec}"))
     if iteration > 1 and reviewer_feedback:
@@ -272,6 +333,8 @@ def compile_context(
         fattest=fattest,
         handle_used=handle_used,
         spec_doc=spec_doc,
+        # M-memory S3: empty list → None ⇒ manifest omits the ``memory`` key (inert-when-empty).
+        memory=(memory or None),
     )
 
 
