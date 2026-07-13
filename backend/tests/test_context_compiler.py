@@ -76,6 +76,38 @@ def test_rework_round_adds_revision_part():
     assert rev.tokens == estimate_tokens(rev.text)
 
 
+# ---- M-memory S4: the agent-remember capture protocol part (gated, default OFF)
+# -------------------
+
+
+def test_remember_protocol_absent_by_default_is_byte_identical():
+    """OFF (the default) ⇒ NO capture-protocol part; the compiled instruction is byte-identical to a
+    pre-S4 compile (the inert-when-off invariant)."""
+    baseline = _compile()
+    off = _compile(remember_enabled=False)
+    assert [p.name for p in off.parts] == [p.name for p in baseline.parts]
+    assert off.instruction == baseline.instruction
+    assert all(p.name != "remember_protocol" for p in off.parts)
+
+
+def test_remember_protocol_present_when_enabled():
+    c = _compile(remember_enabled=True)
+    assert [p.name for p in c.parts][-1] == "remember_protocol"  # trailing part
+    prot = next(p for p in c.parts if p.name == "remember_protocol")
+    assert "TVASHTR_REMEMBER.jsonl" in prot.text  # the capture channel the agent writes
+    assert "polarity" in prot.text  # tells the agent the optional polarity field
+    assert prot.text in c.instruction  # folded into the compiled instruction
+
+
+def test_remember_protocol_survives_static_first_on_large_spec():
+    """A large-spec node (the C4 handle/static-first path) with the protocol ON must not KeyError in
+    ``_static_first`` — the part is registered in the static-first order."""
+    big_spec = "PRD: " + ("lorem ipsum " * (_SPEC_HANDLE_TOKEN_THRESHOLD // 2))
+    c = _compile(spec=big_spec, remember_enabled=True)
+    assert c.handle_used is True  # the spec offloaded
+    assert any(p.name == "remember_protocol" for p in c.parts)  # and no exception was raised
+
+
 def test_iteration_one_or_no_feedback_has_no_revision():
     # iteration==1 (even with feedback) and iteration>1 without feedback both omit the revision.
     assert all(p.name != "revision" for p in _compile(iteration=1, reviewer_feedback="x").parts)

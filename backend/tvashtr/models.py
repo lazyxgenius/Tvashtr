@@ -490,6 +490,14 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # M-memory S4: the per-owner review-before-persist toggle (migration 0027). OFF (the default) is
+    # the pre-S4 write behaviour exactly. ON routes every otherwise-``active`` memory write (the
+    # run-END distilled facts AND the agent-remember captures) to ``pending_review`` instead, and
+    # DEFERS any supersession until the human promotes the fact — nothing reaches ``active`` without
+    # an explicit promote. Read owner-scoped at run-end distillation + in the agent-remember path.
+    memory_review_mode: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
 
 
 class ProviderCredential(Base):

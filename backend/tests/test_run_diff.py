@@ -61,6 +61,30 @@ def _seed_run(run_id: str, **cols) -> None:
         )
 
 
+def test_run_diff_excludes_remember_capture_sidecar(tmp_path):
+    """M-memory S4: even if the ``TVASHTR_REMEMBER.jsonl`` capture sidecar reached a commit, the run
+    diff never surfaces it (defense-in-depth beside the ship-time exclusion)."""
+    from tvashtr.control_plane.run_diff import compute_run_diff
+
+    run_id = str(uuid.uuid4())
+    fixture = _init_fixture(tmp_path / "repo")
+    _git(fixture, "checkout", "-qb", f"tvashtr/{run_id}")
+    (fixture / "feature.py").write_text("x = 1\n", encoding="utf-8")
+    (fixture / "TVASHTR_REMEMBER.jsonl").write_text('{"content":"y"}\n', encoding="utf-8")
+    _git(fixture, "add", "-A")
+    _git(fixture, "commit", "-qm", "change + capture")
+
+    result = compute_run_diff(
+        run_id=run_id,
+        repo_path=str(fixture),
+        base_ref="main",
+        ship_branch=f"tvashtr/{run_id}",
+    )
+    paths = [f["path"] for f in result["files"]]
+    assert "feature.py" in paths
+    assert "TVASHTR_REMEMBER.jsonl" not in paths  # capture sidecar never in the diff
+
+
 def test_run_diff_brownfield_reports_exact_per_file_status(client, tmp_path):
     """Brownfield /diff = ``git diff base_ref..tvashtr/<run_id>``: the exact per-file add / modify /
     delete class + real ±line counts (fails against a stub returning [])."""

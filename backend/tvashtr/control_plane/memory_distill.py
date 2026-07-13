@@ -54,7 +54,7 @@ from tvashtr.control_plane.run_explain import build_system_prompt
 from tvashtr.db import session_scope
 from tvashtr.gateway import CompletionRequest, EmbeddingRequest, complete, embed
 from tvashtr.metering import record_cost, record_embedding_cost
-from tvashtr.models import AgentInvocation, AgentNode, NodeMemory, Run
+from tvashtr.models import AgentInvocation, AgentNode, NodeMemory, Run, User
 
 logger = logging.getLogger("tvashtr.control_plane.memory_distill")
 
@@ -171,10 +171,16 @@ def _as_list(embedding: object) -> list[float]:
     return [float(x) for x in embedding]
 
 
-def _status_for(sign: str, outcome_class: OutcomeClass) -> str:
+def _status_for(sign: str, outcome_class: OutcomeClass, review_mode: bool = False) -> str:
     """Layer 3 — a negative that survived triage+evidence is ``pending_review`` unless the run
-    SUCCEEDED; everything else (positives, neutral facts, a success run's negatives) is active."""
+    SUCCEEDED; everything else (positives, neutral facts, a success run's negatives) is active.
+
+    M-memory S4 — when the owner has review-before-persist mode ON, EVERY write that would otherwise
+    reach ``active`` is quarantined ``pending_review`` too: nothing reaches ``active`` without an
+    explicit human promote. OFF (the default) is the pre-S4 behaviour exactly."""
     if sign == "neg" and outcome_class != "success":
+        return "pending_review"
+    if review_mode:
         return "pending_review"
     return "active"
 
@@ -483,13 +489,18 @@ def _resolve_scope(
 
 
 def _same_scope(
-    session, owner_id: uuid.UUID, repo_key: str | None, node_id: uuid.UUID | None
+    session,
+    owner_id: uuid.UUID,
+    repo_key: str | None,
+    node_id: uuid.UUID | None,
+    statuses: tuple[str, ...] = ("active", "pending_review"),
 ) -> list[NodeMemory]:
-    """The owner's active + pending facts at the EXACT (repo_key, node_id) scope of a candidate — so
-    a repo fact never supersedes an account fact."""
+    """The owner's rows at the EXACT (repo_key, node_id) scope of a candidate, restricted to
+    ``statuses`` — so a repo fact never supersedes an account fact. Default = active + pending (the
+    consolidation set); S4 also queries ``('rejected',)`` for the tombstone-drop check."""
     stmt = select(NodeMemory).where(
         NodeMemory.owner_id == owner_id,
-        NodeMemory.status.in_(("active", "pending_review")),
+        NodeMemory.status.in_(statuses),
     )
     stmt = (
         stmt.where(NodeMemory.repo_key == repo_key)
@@ -502,6 +513,21 @@ def _same_scope(
         else stmt.where(NodeMemory.node_id.is_(None))
     )
     return list(session.execute(stmt).scalars().all())
+
+
+def _best_match(
+    rows: list[NodeMemory], vector: list[float] | None
+) -> tuple[NodeMemory | None, float]:
+    """The highest-cosine row in ``rows`` vs ``vector`` (``(None, 0.0)`` when no vector / no rows).
+    The shared nearest-fact primitive for consolidation, the tombstone-drop, and promote."""
+    best: NodeMemory | None = None
+    best_sim = 0.0
+    if vector is not None:
+        for row in rows:
+            sim = _cosine(vector, _as_list(row.embedding))
+            if sim > best_sim:
+                best_sim, best = sim, row
+    return best, best_sim
 
 
 def _insert(
@@ -540,27 +566,41 @@ def _apply_one(
     vector: list[float] | None,
     owner_id: uuid.UUID,
     run_id: str,
+    review_mode: bool = False,
 ) -> dict | None:
     """Consolidate ONE gated candidate against the store + write it, in its own session (isolated).
 
     Code-authoritative consolidation by embedding cosine (>= :data:`DUP_THRESHOLD`):
+    * S4 TOMBSTONE-DROP (front gate) — a new SAME-sign candidate matching a ``rejected`` tombstone
+      in scope is DROPPED (``None``): a human ``reject`` STICKS, stopping the re-proposal loop.
+      Opposite sign is NOT blocked (a rejected 'avoid X' must not suppress a new 'prefer X').
     * SAME sign ⇒ CONFIRM: bump ``confirmation_count``; PROMOTE a corroborated pending fact
       (from a DIFFERENT run) to active (layer 3) — no dup row (NOOP). ONLY a same-sign candidate
-      corroborates; a neutral or opposite one never promotes a quarantined negative (anti-backfire);
+      corroborates; a neutral or opposite one never promotes a quarantined negative (anti-backfire).
+      **S4 review mode SUPPRESSES that auto-promote** (the corroborated row stays pending_review).
     * OPPOSITE sign ({pos, neg}) + the match is ``active`` ⇒ SUPERSEDE it (``invalid_at`` +
-      ``superseded_by`` + ``status='superseded'``) and ADD the new fact (layer 5);
+      ``superseded_by`` + ``status='superseded'``) and ADD the new fact (layer 5). **S4 review mode
+      DEFERS the supersede** — the candidate lands pending_review,
+      the active fact is left untouched,
+      and the retire happens when the human promotes (see :func:`memory_review.promote`).
     * otherwise (neutral vs a directive, or a contradiction of a NON-active fact) ⇒ ADD.
     """
     now = datetime.now(UTC)
     with session_scope() as session:
-        existing = _same_scope(session, owner_id, repo_key, node_id)
-        best: NodeMemory | None = None
-        best_sim = 0.0
+        # S4 tombstone-drop: a re-proposal of a same-sign REJECTED fact is dropped (no re-add).
+        # Match against the SAME-SIGN rejected tombstones ONLY (filter BEFORE the nearest-match) so
+        # a nearer OPPOSITE-sign tombstone can never mask a same-sign one at the same scope.
         if vector is not None:
-            for row in existing:
-                sim = _cosine(vector, _as_list(row.embedding))
-                if sim > best_sim:
-                    best_sim, best = sim, row
+            same_sign_tombs = [
+                r
+                for r in _same_scope(session, owner_id, repo_key, node_id, statuses=("rejected",))
+                if _polarity_sign(r.polarity) == cand.sign
+            ]
+            tomb, tomb_sim = _best_match(same_sign_tombs, vector)
+            if tomb is not None and tomb_sim >= DUP_THRESHOLD:
+                return None  # dropped: matches a same-sign rejected tombstone
+
+        best, best_sim = _best_match(_same_scope(session, owner_id, repo_key, node_id), vector)
 
         if best is not None and best_sim >= DUP_THRESHOLD:
             best_sign = _polarity_sign(best.polarity)
@@ -568,9 +608,14 @@ def _apply_one(
                 # SAME sign ⇒ genuine corroboration (a real dup): bump confirmation_count; PROMOTE a
                 # corroborated pending fact (from a DIFFERENT run) to active (layer 3). No new row
                 # (NOOP). Only a SAME-sign candidate corroborates — never a neutral/opposite one.
+                # S4: review mode suppresses the auto-promote (stays pending until a human promote).
                 best.confirmation_count = (best.confirmation_count or 1) + 1
                 promoted = False
-                if best.status == "pending_review" and best.source_run_id != run_id:
+                if (
+                    not review_mode
+                    and best.status == "pending_review"
+                    and best.source_run_id != run_id
+                ):
                     best.status = "active"
                     promoted = True
                 session.flush()
@@ -578,7 +623,10 @@ def _apply_one(
                 return {**_memory_to_dict(best), "action": "promote" if promoted else "confirm"}
 
             if {cand.sign, best_sign} == {"pos", "neg"} and best.status == "active":
-                # OPPOSITE directive vs an ACTIVE fact ⇒ layer 5: retire it + add the new one.
+                # OPPOSITE directive vs an ACTIVE fact ⇒ layer 5:
+                # retire it + add the new one — UNLESS
+                # review mode, which DEFERS the supersede (add pending, leave the active fact; the
+                # retire happens on promote).
                 new = _insert(
                     session,
                     cand,
@@ -590,6 +638,9 @@ def _apply_one(
                     run_id=run_id,
                 )
                 session.flush()  # assign new.id before referencing it
+                if review_mode:
+                    session.refresh(new)
+                    return {**_memory_to_dict(new), "action": "add"}
                 best.invalid_at = now
                 best.superseded_by = new.id
                 best.status = "superseded"
@@ -627,14 +678,18 @@ def _consolidate_and_write(
     role_map: dict[str, uuid.UUID],
     owner_key: str | None,
     embed_model: str,
+    review_mode: bool = False,
 ) -> list[dict]:
     """Embed, consolidate + write each gated candidate — each independently (best-effort: one
-    candidate failing never sinks the others, and never touches the run's terminal status)."""
+    candidate failing never sinks the others, and never touches
+    the run's terminal status). ``review_
+    mode`` (the owner's S4 toggle) routes every otherwise-active write to ``pending_review`` +
+    defers supersession + suppresses corroboration auto-promote."""
     written: list[dict] = []
     for cand in candidates:
         try:
             repo_key, node_id = _resolve_scope(cand, run_repo_key, role_map)
-            status = _status_for(cand.sign, outcome_class)
+            status = _status_for(cand.sign, outcome_class, review_mode)
             vector: list[float] | None = None
             try:
                 vector = _embed_on_run(
@@ -650,12 +705,23 @@ def _consolidate_and_write(
                 vector=vector,
                 owner_id=owner_id,
                 run_id=run_id,
+                review_mode=review_mode,
             )
             if result is not None:
                 written.append(result)
         except Exception:  # noqa: BLE001 — best-effort: independent per-fact writes
             logger.warning("distill fact write failed run=%s", run_id, exc_info=True)
     return written
+
+
+def _owner_review_mode(owner_id: uuid.UUID) -> bool:
+    """The owner's S4 review-before-persist toggle (``users.memory_review_mode``). Missing/legacy
+    owner ⇒ False (the safe default — the pre-S4 write behaviour). Read-only."""
+    with session_scope() as session:
+        val = session.execute(
+            select(User.memory_review_mode).where(User.id == owner_id)
+        ).scalar_one_or_none()
+    return bool(val)
 
 
 # ------------------------------------------------------------------ orchestration ----
@@ -680,6 +746,7 @@ def distill_run(run_id: str) -> dict:
     if owner_id is None:  # a legacy/un-owned run cannot own owner-scoped memory
         return {"written": 0, "skipped": "no-owner"}
 
+    review_mode = _owner_review_mode(owner_id)  # S4: the owner's review-before-persist toggle
     reason = _failure_reason(run_id, status)
     outcome_class = classify_terminal(status, reason)
     trail = _assemble_run_trail(run_id)
@@ -718,6 +785,7 @@ def distill_run(run_id: str) -> dict:
         role_map=role_map,
         owner_key=owner_key,
         embed_model=settings.embedding_model,
+        review_mode=review_mode,
     )
     logger.info(
         "distilled run=%s outcome=%s candidates=%d written=%d",
@@ -752,3 +820,75 @@ def list_run_memories(owner_id: uuid.UUID, run_id: str) -> list[dict]:
             .all()
         )
         return [_memory_to_dict(r) for r in rows]
+
+
+# ------------------------------------------------------------------ S4: agent-remember ----
+
+
+def _remember_candidates(captures: list[dict]) -> list[_Candidate]:
+    """Build the gated candidates for a DELIBERATE agent-remember capture. Unlike the distiller's
+    ``_gate``, this BYPASSES the failed-run triage (layer 1) + the evidence requirement (layer 2) —
+    a deliberate capture is trusted — but it still applies the fact cap (layer 4, strongest-force
+    first) and forces tier=repo (the agent does NOT choose the tier; ``_resolve_scope`` maps
+    repo→(run repo_key, None), or account for a greenfield run). Polarity defaults to ``context``;
+    an unknown polarity falls back to ``context``."""
+    cands: list[_Candidate] = []
+    for cap in captures:
+        if not isinstance(cap, dict):
+            continue
+        content = str(cap.get("content") or "").strip()
+        if not content:
+            continue
+        polarity = str(cap.get("polarity") or "context").strip().lower()
+        if not is_valid_polarity(polarity):
+            polarity = "context"
+        cands.append(
+            _Candidate(
+                content=content[:400],
+                polarity=polarity,
+                sign=_polarity_sign(polarity),
+                evidence="",
+                tier="repo",
+                node_role=None,
+                rationale="agent-remember",
+            )
+        )
+    cands.sort(key=lambda c: _FORCE_RANK.get(c.polarity, 3))  # layer 4: keep the strongest
+    return cands[:FACT_CAP]
+
+
+def remember_facts(
+    run_id: str,
+    captures: list[dict],
+    *,
+    owner_id: uuid.UUID,
+    repo_key: str | None,
+    review_mode: bool,
+    owner_key: str | None,
+    embed_model: str,
+) -> list[dict]:
+    """M-memory S4 agent-remember — consolidate + write a node's DELIBERATE mid-run captures.
+
+    Each ``capture`` is ``{"content": str, "polarity"?: one of the 6}``. Routes through the SAME
+    code-authoritative Consolidate as the distiller (dedup / supersede / tombstone-drop) but with
+    ``outcome_class='success'`` so it BYPASSES the failed-run triage (layer 1) +
+    quarantine (layer 3)
+    — a deliberate capture lands ``active`` immediately (default tier=repo, optional
+    polarity) UNLESS
+    the owner's review mode is ON (⇒ ``pending_review``). Capped at :data:`FACT_CAP` per run.
+    Best-effort per fact (a partial write is fine); returns the written-fact dicts
+    (for the gate)."""
+    candidates = _remember_candidates(captures)
+    if not candidates:
+        return []
+    return _consolidate_and_write(
+        candidates,
+        run_id=run_id,
+        owner_id=owner_id,
+        run_repo_key=repo_key,
+        outcome_class="success",  # trusted: bypass triage (layer 1) + quarantine (layer 3)
+        role_map={},  # tier is forced to repo in _remember_candidates
+        owner_key=owner_key,
+        embed_model=embed_model,
+        review_mode=review_mode,
+    )

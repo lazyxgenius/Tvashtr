@@ -173,17 +173,24 @@ def list_memories(
     repo_key: str | None = None,
     node_id: uuid.UUID | None = None,
     include_superseded: bool = False,
+    status: str | None = None,
 ) -> list[dict]:
     """List the owner's memories, oldest first. Owner-scoped ALWAYS. Filters are plain column
     matches: ``repo_key`` ⇒ that repo's rows (repo- AND node-tier), ``node_id`` ⇒ that node's rows.
-    Excludes non-active rows unless ``include_superseded``."""
+
+    M-memory S4: an explicit ``status`` (e.g. ``pending_review`` / ``rejected``)
+    returns EXACTLY that
+    status — the surface the review UI (S5) fetches the quarantined + tombstoned rows through. When
+    ``status`` is omitted the pre-S4 default holds: active-only unless ``include_superseded``."""
     with session_scope() as session:
         stmt = select(NodeMemory).where(NodeMemory.owner_id == owner_id)
         if repo_key is not None:
             stmt = stmt.where(NodeMemory.repo_key == repo_key)
         if node_id is not None:
             stmt = stmt.where(NodeMemory.node_id == node_id)
-        if not include_superseded:
+        if status is not None:
+            stmt = stmt.where(NodeMemory.status == status)  # explicit filter wins over the default
+        elif not include_superseded:
             stmt = stmt.where(NodeMemory.status == "active")
         stmt = stmt.order_by(NodeMemory.created_at, NodeMemory.id)
         rows = session.execute(stmt).scalars().all()

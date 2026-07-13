@@ -55,6 +55,16 @@ _SPEC_POINTER = (
     f"The full current spec is in ./{SPEC_HANDLE_FILENAME} — read that file before you start."
 )
 
+# M-memory S4: the agent-remember capture file (relative to the agent workspace), shared with the
+# executor (which reads it at run-end + ship-excludes it) + tests. A TOP-LEVEL NON-HIDDEN sidecar
+# (like SPEC.md / REPORT.md / REVIEW_VERDICT.json) DELIBERATELY: the docker greenfield
+# container->host pull enumerates ``find . -type f -not -path '*/.*'``, which DROPS every hidden
+# (dot) path — so a
+# ``.tvashtr/`` capture would never reach the host in the DEFAULT (docker) + greenfield config. A
+# non-hidden top-level file is pulled in every sandbox mode, then excluded from the diff + the ship
+# commit (so the user's reviewed output stays clean). One module constant so all references agree.
+REMEMBER_FILENAME = "TVASHTR_REMEMBER.jsonl"
+
 # Part names, in their ORIGINAL (pre-refactor, byte-identical) assembly order.
 _PART_NODE_PROMPT = "node_prompt"
 _PART_IDEA = "idea"
@@ -86,6 +96,33 @@ def _capability_note_text() -> str:
     """The edits-off capability note part text (header + verbatim body). A module fn so the executor
     + tests reference the SAME string when asserting 'the note is present iff edits-off'."""
     return f"\n\n--- REPORT-ONLY NODE ---\n{_CAPABILITY_NOTE_BODY}"
+
+
+# M-memory S4: the agent-remember capture protocol — a trailing part telling an edits-on worker how
+# to deliberately record a durable, reusable lesson for a FUTURE run (append a JSON line to the
+# ``TVASHTR_REMEMBER.jsonl`` sidecar via its file editor). GATED + default OFF (``remember_enabled``
+# False), so every existing compile stays byte-identical; the executor turns it on only when the
+# owner enabled the feature AND the node can write files (an edits-on worker). The control plane
+# reads the file at run-end and routes each line through Consolidate (``memory_review``).
+_PART_REMEMBER_PROTOCOL = "remember_protocol"
+_REMEMBER_PROTOCOL_BODY = (
+    "If during this run you learn a DURABLE, reusable lesson about this repository, "
+    "this task, or how "
+    "to work effectively here that a FUTURE run should remember, record it: "
+    "using your file editor, "
+    f"APPEND one JSON object per line to the file `{REMEMBER_FILENAME}` at the workspace root. "
+    "Each line must be: "
+    '{"content": "<a short, self-contained imperative lesson>", "polarity": "<one of: require, '
+    'prefer, allow, context, avoid, forbid — default context>"}. Record only a few of your '
+    "highest-value lessons, not routine narration. This file is PRIVATE: it never ships and is not "
+    "part of your deliverable."
+)
+
+
+def _remember_protocol_text() -> str:
+    """The agent-remember capture-protocol part text (header + verbatim body). A module fn so the
+    executor + tests reference the SAME string."""
+    return f"\n\n--- REMEMBERING LESSONS FOR FUTURE RUNS ---\n{_REMEMBER_PROTOCOL_BODY}"
 
 
 # M-memory S3 — the injected-memory part's rendering. The node's remembered facts (S1 substrate,
@@ -147,6 +184,10 @@ _STATIC_FIRST_NAMES = (
     # a
     # report-only node with a large spec offloads.
     _PART_CAPABILITY_NOTE,
+    # M-memory S4: the agent-remember capture protocol trails too (an edits-on worker with the
+    # feature on + a large spec offloads through the handle path) — registered so ``_static_first``
+    # never KeyErrors on it.
+    _PART_REMEMBER_PROTOCOL,
 )
 
 
@@ -252,6 +293,7 @@ def compile_context(
     budget: int,
     edits_allowed: bool = True,
     memory: list[dict] | None = None,
+    remember_enabled: bool = False,
     handle_threshold: int = _SPEC_HANDLE_TOKEN_THRESHOLD,
 ) -> CompiledContext:
     """Compile one node's typed context parts + assembled instruction (pure; see the module
@@ -300,6 +342,11 @@ def compile_context(
     # part (default), so their instruction + manifest stay byte-identical.
     if not edits_allowed:
         parts.append(_part(_PART_CAPABILITY_NOTE, _capability_note_text()))
+    # M-memory S4: an edits-on worker with the agent-remember feature ON gets ONE trailing part
+    # telling it how to record a durable lesson (append to ``TVASHTR_REMEMBER.jsonl``). Default OFF
+    # ⇒ NO new part ⇒ byte-identical to today's compiled instruction + manifest.
+    if remember_enabled:
+        parts.append(_part(_PART_REMEMBER_PROTOCOL, _remember_protocol_text()))
 
     total_tokens = sum(p.tokens for p in parts)
     fattest = max(parts, key=lambda p: p.tokens)

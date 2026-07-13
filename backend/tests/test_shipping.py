@@ -45,6 +45,27 @@ def test_idempotent_ship_commits_once_and_dedups_by_tag(tmp_path):
     assert _show(ws, "ship-run-abc", "greeting.txt") == "Shipped by the team\n"
 
 
+def test_idempotent_ship_excludes_remember_capture_sidecar(tmp_path):
+    """M-memory S4: the agent-remember capture sidecar (``TVASHTR_REMEMBER.jsonl``) must NEVER land
+    in the shipped commit — it stays on disk (read at run-end) but `git add -A` excludes it."""
+    ws = tmp_path / "ws-tv"
+    ws.mkdir()
+    init_workspace_repo(str(ws))
+    (ws / "greeting.txt").write_text("hi\n")
+    (ws / "TVASHTR_REMEMBER.jsonl").write_text('{"content":"x"}\n')
+
+    idempotent_ship(str(ws), "run-tv")
+
+    tracked = subprocess.run(
+        ["git", "-C", str(ws), "ls-tree", "-r", "--name-only", "ship-run-tv"],
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert "greeting.txt" in tracked
+    assert "TVASHTR_REMEMBER.jsonl" not in tracked  # capture sidecar excluded from the ship
+    assert (ws / "TVASHTR_REMEMBER.jsonl").exists()  # survives on disk for the run-end read
+
+
 def test_ship_with_no_changes_raises(tmp_path):
     ws = tmp_path / "ws-empty"
     ws.mkdir()

@@ -46,7 +46,12 @@ def idempotent_ship(workspace_dir: str, run_id: str) -> dict:
     if existing.returncode == 0:
         return {"sha": existing.stdout.strip(), "tag": tag, "created": False}
 
-    _git(workspace_dir, "add", "-A")
+    # `git add -A` EXCEPT the M-memory S4 agent-remember capture sidecar (``TVASHTR_REMEMBER.jsonl``
+    # = context_compiler.REMEMBER_FILENAME): it is read at run-end but must NEVER ship. A pathspec
+    # exclude (mount-agnostic: covers both the greenfield workspace and a brownfield
+    # worktree) leaves
+    # the file on disk for the run-end read while keeping it out of the commit.
+    _git(workspace_dir, "add", "-A", "--", ".", ":(exclude)TVASHTR_REMEMBER.jsonl")
     # `git diff --cached --quiet` exits 0 when there is NOTHING staged.
     if _git(workspace_dir, "diff", "--cached", "--quiet", check=False).returncode == 0:
         # Crash window: the process may have died *between* commit and tag. If HEAD

@@ -49,6 +49,7 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.budget_nudge import maybe_emit_budget_nudge_step
 from tvashtr.control_plane.context_compiler import (
+    REMEMBER_FILENAME,
     SPEC_HANDLE_FILENAME,
     compile_context,
     resolve_context_budget,
@@ -408,8 +409,12 @@ REPORT_FILENAME = "REPORT.md"
 # so
 # it must never ALSO land in the shipped worktree (it persists in the shared workspace after its
 # scoped pull keeps it; the reviewer/verdict sidecar is handled the same way).
+# M-memory S4: ``TVASHTR_REMEMBER.jsonl`` (the agent-remember capture sidecar) joins too — the
+# greenfield ship must never pick it up (belt beside ``shipping``'s pathspec exclude, which also
+# covers brownfield, where no workspace ``.gitignore`` is written).
 _WORKSPACE_GITIGNORE = (
     f"__pycache__/\n*.pyc\nREVIEW_VERDICT.json\n{REPORT_FILENAME}\n{SPEC_HANDLE_FILENAME}\n"
+    f"{REMEMBER_FILENAME}\n"
 )
 
 
@@ -847,6 +852,12 @@ def agent_run_step(
         # M-memory S3: the node's remembered facts. None/[] ⇒ NO memory part ⇒ the compiled
         # instruction + manifest stay byte-identical to a run with no memory (inert-when-empty).
         memory=memory,
+        # M-memory S4: the agent-remember capture protocol — only for an edits-ON WORKER when the
+        # owner enabled the feature (the setting default OFF ⇒ byte-identical to pre-S4).
+        # A reviewer /
+        # thinker (edits-off) never gets it. The control plane ingests TVASHTR_REMEMBER.jsonl at
+        # run-end.
+        remember_enabled=get_settings().memory_remember_enabled and edits_allowed,
     )
     manifest = compiled.manifest()
 
@@ -1058,6 +1069,28 @@ def distill_run_memory_step(run_id: str) -> None:
         distill_run(run_id)
     except Exception:  # noqa: BLE001 — best-effort: a distill failure must not touch the finalized run
         logger.warning("run-end memory distillation failed run_id=%s", run_id, exc_info=True)
+
+
+@DBOS.step()
+def ingest_agent_remembers_step(run_id: str, workspace: str) -> None:
+    """M-memory S4: ingest the run's DELIBERATE agent-remember captures from the still-on-disk
+    workspace (``TVASHTR_REMEMBER.jsonl``) at run-END, routing each through Consolidate.
+    Runs at the
+    ship arm right after distillation, where ``workspace`` is guaranteed present (``ship_step`` just
+    used it) — the local workspace dir is never deleted, and this executes before ``run_team``'s
+    teardown.
+
+    BEST-EFFORT — the run is ALREADY finalized when this runs,
+    so an ingest failure must NEVER change
+    the terminal status: all errors are caught + logged + swallowed here (mirrors
+    :func:`distill_run_memory_step`). Lazy-imports ``memory_review`` (openhands-free) to keep the
+    import surface minimal."""
+    try:
+        from tvashtr.control_plane.memory_review import ingest_run_remembers
+
+        ingest_run_remembers(run_id, workspace)
+    except Exception:  # noqa: BLE001 — best-effort: an ingest failure must not touch the finalized run
+        logger.warning("run-end agent-remember ingest failed run_id=%s", run_id, exc_info=True)
 
 
 @DBOS.step()
@@ -1462,6 +1495,11 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # — the run is already finalized ``completed`` above; the step swallows a failure
                 # so distillation can never change that terminal status.
                 distill_run_memory_step(run_id)
+                # M-memory S4: ingest the run's deliberate agent-remember captures
+                # (TVASHTR_REMEMBER.jsonl) — the workspace is still on disk here
+                # (ship_step just used
+                # it). Best-effort, same as distillation.
+                ingest_agent_remembers_step(run_id, workspace)
                 close_invocation_step(run_id, current, 1, "done", "shipped")
                 DBOS.logger.info(
                     f"run_team done run_id={run_id} ship_sha={ship['sha']} tag={ship['tag']}"

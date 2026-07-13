@@ -18,7 +18,7 @@ from sqlalchemy import func, select, update
 from tvashtr import db
 from tvashtr.auth import UserOut, get_current_user
 from tvashtr.config import get_settings
-from tvashtr.control_plane import memory, memory_distill
+from tvashtr.control_plane import memory, memory_distill, memory_review
 from tvashtr.control_plane.credentials import (
     NoCredentialError,
     encrypt_secret,
@@ -1546,9 +1546,12 @@ def list_memories_endpoint(
     repo_key: str | None = None,
     node_id: str | None = None,
     include_superseded: bool = False,
+    status: str | None = None,
 ) -> dict:
     """List the owner's memories (oldest first), optionally filtered by ``repo_key`` and/or
-    ``node_id``. Excludes non-active rows unless ``include_superseded=true``. Owner-scoped."""
+    ``node_id``. Excludes non-active rows unless ``include_superseded=true``. M-memory S4: an
+    explicit ``status`` (e.g. ``pending_review`` / ``rejected``) returns exactly that status — the
+    surface the review UI fetches the quarantined + tombstoned rows through. Owner-scoped."""
     node_uuid: uuid.UUID | None = None
     if node_id is not None:
         try:
@@ -1560,6 +1563,7 @@ def list_memories_endpoint(
         repo_key=repo_key,
         node_id=node_uuid,
         include_superseded=include_superseded,
+        status=status,
     )
     return {"memories": rows}
 
@@ -1619,6 +1623,34 @@ def unpin_memory_endpoint(
 ) -> dict:
     """Unpin the owner's memory. 404 if not the owner's."""
     row = memory.set_pinned(uuid.UUID(current_user.id), memory_id, False)
+    if row is None:
+        raise HTTPException(status_code=404, detail="memory not found")
+    return row
+
+
+@router.post("/api/memories/{memory_id}/promote")
+def promote_memory_endpoint(
+    memory_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """M-memory S4: promote a ``pending_review``/``rejected`` memory to ``active`` VIA Consolidate
+    (dedup / supersede-the-contradicted-active / activate — never a blind flip). 404 if not the
+    owner's or not in a promotable state."""
+    row = memory_review.promote(uuid.UUID(current_user.id), memory_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="memory not found")
+    return row
+
+
+@router.post("/api/memories/{memory_id}/reject")
+def reject_memory_endpoint(
+    memory_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """M-memory S4: reject a ``pending_review``/``active`` memory
+    — a TOMBSTONE (``status='rejected'``
+    + ``invalid_at``), NOT a delete: it suppresses re-proposal of the same same-sign fact.
+    404 if not
+    the owner's or not in a rejectable state."""
+    row = memory_review.reject(uuid.UUID(current_user.id), memory_id)
     if row is None:
         raise HTTPException(status_code=404, detail="memory not found")
     return row

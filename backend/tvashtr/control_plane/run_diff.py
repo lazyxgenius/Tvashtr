@@ -100,6 +100,10 @@ def _diff_files(cwd: str, base: str, head: str) -> list[dict]:
         counts = _numstat(cwd, base, head)
         files: list[dict] = []
         for letter, path in _name_status(cwd, base, head):
+            # M-memory S4: the agent-remember capture sidecar (``TVASHTR_REMEMBER.jsonl``) never
+            # surfaces in a run's reviewed diff (defense-in-depth beside the ship-time exclude).
+            if path == "TVASHTR_REMEMBER.jsonl":
+                continue
             additions, deletions = counts.get(path, (0, 0))
             files.append(
                 {
