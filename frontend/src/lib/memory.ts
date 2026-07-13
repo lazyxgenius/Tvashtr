@@ -106,3 +106,47 @@ export function bucketMemories(rows: NodeMemoryRow[], selectedRepo: string): Mem
 
   return { account, repoGroups };
 }
+
+// ===== M-memory S5b — the run-inspector "Used this run" resolution ==============================
+// A node's per-round injected memory is stored as {id, polarity} stubs on each round's
+// context_manifest.memory. These pure helpers dedupe those stubs, resolve them against the store,
+// and order them by directive force so the tab reads strongest-first.
+
+// The sort rank of a polarity force = its POLARITY_ORDER index; an unknown/legacy force sorts last.
+export function polarityRank(polarity: string): number {
+  const i = POLARITY_ORDER.indexOf(polarity as MemoryPolarity);
+  return i === -1 ? POLARITY_ORDER.length : i;
+}
+
+// One fact a node saw injected this run: the polarity + id, resolved to the stored row — or `null`
+// when the fact has since been deleted (the view then shows "(no longer stored)" with just polarity).
+export interface UsedFact {
+  id: string;
+  polarity: MemoryPolarity;
+  row: NodeMemoryRow | null;
+}
+
+// Resolve a node's injected-memory refs (gathered across every round, in round order) into
+// displayable facts: dedupe by id (a fact injected in several rounds is ONE fact — first occurrence
+// wins), resolve each against a store id→row map, and return them ordered by directive force (a
+// resolved row sorts by its CURRENT polarity; an unresolved ref by its injected polarity).
+export function usedFacts(
+  refs: { id: string; polarity: string }[],
+  byId: Map<string, NodeMemoryRow>,
+): UsedFact[] {
+  const seen = new Set<string>();
+  const out: UsedFact[] = [];
+  for (const ref of refs) {
+    if (seen.has(ref.id)) continue;
+    seen.add(ref.id);
+    out.push({
+      id: ref.id,
+      polarity: ref.polarity as MemoryPolarity,
+      row: byId.get(ref.id) ?? null,
+    });
+  }
+  return out.sort(
+    (a, b) =>
+      polarityRank(a.row?.polarity ?? a.polarity) - polarityRank(b.row?.polarity ?? b.polarity),
+  );
+}

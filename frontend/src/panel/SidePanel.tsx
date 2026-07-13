@@ -10,6 +10,7 @@ import { NodeChat } from "./NodeChat";
 import { glyphForNode } from "./nodeGlyph";
 import { PrdView } from "./PrdView";
 import { RunDiff } from "./RunDiff";
+import { RunMemory } from "./RunMemory";
 
 /** The thinker's placeholder copy when there is no spec document yet — derived from run-level
  *  signals directly (this panel stays run-level; it never receives the graph's documents). The
@@ -131,9 +132,9 @@ function WorkerBody({
   run: RunRow | null;
   workflowStatus: string | null;
 }) {
-  // Mode A: the Ask tab appears only once the node has a recorded run to explain.
+  // Mode A: the Ask + Memory tabs appear only once the node has a recorded run to explain / inspect.
   const canAsk = node.invocations.length > 0;
-  const [tab, setTab] = useState<"activity" | "changes" | "ask">("activity");
+  const [tab, setTab] = useState<"activity" | "changes" | "ask" | "memory">("activity");
   return (
     <>
       <div className="tv-worktabs">
@@ -155,14 +156,24 @@ function WorkerBody({
             Changes
           </button>
           {canAsk ? (
-            <button
-              type="button"
-              aria-pressed={tab === "ask"}
-              className={`tv-seg__btn${tab === "ask" ? " tv-seg__btn--active" : ""}`}
-              onClick={() => setTab("ask")}
-            >
-              Ask
-            </button>
+            <>
+              <button
+                type="button"
+                aria-pressed={tab === "ask"}
+                className={`tv-seg__btn${tab === "ask" ? " tv-seg__btn--active" : ""}`}
+                onClick={() => setTab("ask")}
+              >
+                Ask
+              </button>
+              <button
+                type="button"
+                aria-pressed={tab === "memory"}
+                className={`tv-seg__btn${tab === "memory" ? " tv-seg__btn--active" : ""}`}
+                onClick={() => setTab("memory")}
+              >
+                Memory
+              </button>
+            </>
           ) : null}
         </div>
       </div>
@@ -170,6 +181,8 @@ function WorkerBody({
         <EventFeed node={node} runId={runId} run={run} workflowStatus={workflowStatus} />
       ) : tab === "changes" ? (
         <RunDiff runId={runId} />
+      ) : tab === "memory" ? (
+        <RunMemory invocations={node.invocations} runId={runId} />
       ) : (
         <NodeChat runId={runId} nodeId={node.id} />
       )}
@@ -195,7 +208,7 @@ function ThinkerBody({
   workflowStatus: string | null;
 }) {
   const canAsk = node.invocations.length > 0;
-  const [tab, setTab] = useState<"spec" | "ask">("spec");
+  const [tab, setTab] = useState<"spec" | "ask" | "memory">("spec");
   const spec = (
     <PrdView
       documentId={run?.pm_document_id ?? null}
@@ -224,9 +237,23 @@ function ThinkerBody({
           >
             Ask
           </button>
+          <button
+            type="button"
+            aria-pressed={tab === "memory"}
+            className={`tv-seg__btn${tab === "memory" ? " tv-seg__btn--active" : ""}`}
+            onClick={() => setTab("memory")}
+          >
+            Memory
+          </button>
         </div>
       </div>
-      {tab === "spec" ? spec : <NodeChat runId={runId} nodeId={node.id} />}
+      {tab === "spec" ? (
+        spec
+      ) : tab === "memory" ? (
+        <RunMemory invocations={node.invocations} runId={runId} />
+      ) : (
+        <NodeChat runId={runId} nodeId={node.id} />
+      )}
     </>
   );
 }

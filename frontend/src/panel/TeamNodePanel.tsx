@@ -17,6 +17,7 @@ import {
 import { applyEmitContract, emitContract } from "../lib/topology";
 import { DrawerShell, type PanelMode } from "./DrawerShell";
 import { glyphForNode } from "./nodeGlyph";
+import { NodeMemorySection } from "./NodeMemorySection";
 import { SkillsSection } from "./SkillsSection";
 import { ToolsSection } from "./ToolsSection";
 
@@ -79,6 +80,7 @@ export function TeamNodePanel({
   focusModel = 0,
   onSaved,
   onClose,
+  onManageMemory,
 }: {
   teamId: string;
   node: TeamGraphNode | null;
@@ -90,6 +92,9 @@ export function TeamNodePanel({
   focusModel?: number;
   onSaved: () => void | Promise<void>;
   onClose: () => void;
+  // M-memory S5b: navigate to the Dashboard Memory shelf (the drawer's "Manage all memory" link).
+  // Optional → existing tests/usage that render <TeamNodePanel/> without it are unchanged.
+  onManageMemory?: () => void;
 }) {
   const [prompt, setPrompt] = useState(node?.prompt ?? "");
   const [model, setModel] = useState(node?.model ?? "");
@@ -797,6 +802,10 @@ export function TeamNodePanel({
             setSaved(false);
           }}
         />
+
+        {/* M-memory S5b: the node's own private notes (its node-tier facts). Independent-fetch +
+            direct-mutate — it hits the memory endpoints itself, NOT part of the Save wire above. */}
+        <NodeMemorySection nodeId={node.id} onManageAll={onManageMemory} />
 
         <div className="tv-prd__editbar">
           <button

@@ -766,6 +766,7 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
                     focusModel={focusModel}
                     onSaved={() => loadTeam(currentTeamId)}
                     onClose={() => handleSelectNodeId(null)}
+                    onManageMemory={onBackToDashboard}
                   />
                 )
               : selectedRunNode && (

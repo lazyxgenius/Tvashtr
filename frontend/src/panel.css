@@ -1578,3 +1578,14 @@
   border-color: color-mix(in srgb, var(--red-500) 28%, transparent);
 }
 /* ===== end M-memory S5a shelf styles ========================================================= */
+
+/* ===== M-memory S5b — the two scoped views (run-inspector Memory tab + authoring-drawer section).
+   Reuses the S5a fact/badge/section vocabulary above; only these two presentational rules are new. */
+.tv-mem-fact__gone {
+  color: var(--stone-400);
+  font-style: italic;
+}
+.tv-mem-drawer__foot {
+  margin-top: 0.55rem;
+}
+/* ===== end M-memory S5b view styles ========================================================== */

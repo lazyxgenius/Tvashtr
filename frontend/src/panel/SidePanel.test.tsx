@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { GraphNode, NodeInvocation, RunRow } from "../lib/api";
+import type { GraphNode, NodeInvocation, NodeMemoryRow, RunRow } from "../lib/api";
 import { SidePanel } from "./SidePanel";
 
 // Option A: the run-view panel is keyed on the node's KIND (not a hardcoded role) and surfaces a
@@ -341,5 +341,130 @@ describe("SidePanel — Ask tab (Mode A) wiring by kind", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
+  });
+});
+
+// ---- M-memory S5b: the run-view drawer gains a Memory tab on BOTH a worker (Activity | Changes |
+// Ask | Memory) and a thinker (Spec | Ask | Memory), gated (like Ask) on the node having a run. ----
+describe("SidePanel — Memory tab (S5b) wiring by kind", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function memRow(over: Partial<NodeMemoryRow> = {}): NodeMemoryRow {
+    return {
+      id: "m1",
+      content: "a fact",
+      polarity: "context",
+      repo_key: null,
+      node_id: null,
+      tier: "account",
+      pinned: false,
+      status: "active",
+      confirmation_count: 1,
+      source_run_id: "r1",
+      source_invocation_id: null,
+      embedding_dim: 1536,
+      valid_from: null,
+      invalid_at: null,
+      created_at: "2026-07-01T00:00:00Z",
+      updated_at: null,
+      ...over,
+    };
+  }
+
+  // A URL-aware stub: the run-memories endpoint feeds "Learned this run", /api/memories feeds the
+  // used-id store, and everything else (EventFeed's poll) stays inert with empty events.
+  function stubMemFetch(store: NodeMemoryRow[], learned: NodeMemoryRow[]) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>((input: RequestInfo | URL) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        const body = /\/api\/runs\/[^/]+\/memories/.test(url)
+          ? { memories: learned }
+          : url.includes("/api/memories")
+            ? { memories: store }
+            : { run_id: "r1", events: [] };
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(body),
+        } as unknown as Response);
+      }),
+    );
+  }
+
+  it("a WORKER with a run shows a Memory tab that resolves used facts + lists learned facts", async () => {
+    stubMemFetch(
+      [memRow({ id: "u1", content: "prefer pnpm", polarity: "prefer" })],
+      [memRow({ id: "l1", content: "run the linter", polarity: "require", status: "active" })],
+    );
+    const node = gnode({
+      id: "n-eng",
+      role_name: "engineer",
+      kind: "agent",
+      invocations: [
+        inv({
+          iteration: 1,
+          outcome: "built",
+          outcome_detail: "did it",
+          context_manifest: {
+            parts: [],
+            total_tokens: 0,
+            budget: 0,
+            handle_used: false,
+            memory: [{ id: "u1", polarity: "prefer" }],
+          },
+        }),
+      ],
+    });
+    render(
+      <SidePanel
+        node={node}
+        runId="r1"
+        run={runRow({ status: "completed" })}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Memory" }));
+    expect(await screen.findByText("prefer pnpm")).toBeInTheDocument(); // used, resolved client-side
+    expect(await screen.findByText("run the linter")).toBeInTheDocument(); // learned this run
+  });
+
+  it("a THINKER with a run shows a Spec | Ask | Memory seg", async () => {
+    stubMemFetch([], []);
+    const node = gnode({
+      id: "n-pm",
+      role_name: "pm",
+      kind: "completion",
+      invocations: [inv({ iteration: 1, outcome: "prd_written", outcome_detail: "drafted spec" })],
+    });
+    render(
+      <SidePanel
+        node={node}
+        runId="r1"
+        run={runRow({ status: "completed", pm_document_id: null })}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Spec" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Memory" }));
+    expect(await screen.findByText(/No memory was injected/i)).toBeInTheDocument();
+  });
+
+  it("hides Memory on a node that has not run yet (no invocations)", () => {
+    stubMemFetch([], []);
+    const node = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", invocations: [] });
+    render(
+      <SidePanel
+        node={node}
+        runId="r1"
+        run={runRow({ status: "running" })}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Memory" })).toBeNull();
   });
 });

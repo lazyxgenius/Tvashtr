@@ -33,6 +33,11 @@ export interface ContextManifest {
   total_tokens: number;
   budget: number;
   handle_used: boolean;
+  // M-memory S3/S5b (additive): the memory facts injected into THIS round's context — id + polarity
+  // stubs only (resolve id→content client-side against the store). Absent (key omitted) when no
+  // memory was injected, byte-identical to the pre-S3 manifest. Backs the run-inspector "Used this
+  // run" zone (S5b).
+  memory?: { id: string; polarity: string }[];
 }
 
 // M-ledger C6: the token/$ cost of one invocation. `null` when no cost row is linked (gates /
@@ -422,6 +427,13 @@ export interface RunDiff {
 // The run's changed files (owner-scoped server-side, like every other run read). Mirrors getGraph.
 export const getRunDiff = (runId: string): Promise<RunDiff> =>
   getJSON<RunDiff>(`/api/runs/${runId}/diff`);
+
+// M-memory S5b: the durable memory facts THIS run taught (`active` + `pending_review`), owner-scoped
+// server-side like every run read. Backs the run-inspector "Learned this run" zone. Unwraps the
+// `{ memories }` envelope like listMemories; the rows are full `NodeMemoryRow`s (content/polarity/
+// status/tier + source linkage). Read-only — the existing GET endpoint (no backend change for S5b).
+export const getRunMemories = (runId: string): Promise<NodeMemoryRow[]> =>
+  getJSON<{ memories: NodeMemoryRow[] }>(`/api/runs/${runId}/memories`).then((d) => d.memories);
 
 export interface AskMessage {
   role: "user" | "assistant";

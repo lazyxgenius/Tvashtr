@@ -6,8 +6,10 @@ import {
   bucketMemories,
   defaultRepo,
   POLARITY_META,
+  polarityRank,
   reposOf,
   TIER_LABEL,
+  usedFacts,
 } from "./memory";
 
 function row(over: Partial<NodeMemoryRow> = {}): NodeMemoryRow {
@@ -120,5 +122,76 @@ describe("bucketMemories", () => {
       .repoGroups.map((g) => g.repo_key)
       .sort();
     expect(keys).toEqual(["/x", "/y"]);
+  });
+});
+
+describe("polarityRank", () => {
+  it("ranks by directive force (require strongest → forbid weakest)", () => {
+    expect(polarityRank("require")).toBeLessThan(polarityRank("prefer"));
+    expect(polarityRank("prefer")).toBeLessThan(polarityRank("context"));
+    expect(polarityRank("context")).toBeLessThan(polarityRank("forbid"));
+  });
+
+  it("sorts an unknown/legacy force last", () => {
+    expect(polarityRank("bogus")).toBeGreaterThan(polarityRank("forbid"));
+  });
+});
+
+describe("usedFacts", () => {
+  const byId = new Map<string, NodeMemoryRow>([
+    ["a", row({ id: "a", polarity: "require", content: "run the linter" })],
+    ["b", row({ id: "b", polarity: "context", content: "uses pnpm" })],
+  ]);
+
+  it("resolves each injected ref to its stored row", () => {
+    const out = usedFacts([{ id: "b", polarity: "context" }], byId);
+    expect(out).toHaveLength(1);
+    expect(out[0].row?.content).toBe("uses pnpm");
+  });
+
+  it("leaves row null for an id no longer in the store (deleted → '(no longer stored)')", () => {
+    const out = usedFacts([{ id: "gone", polarity: "avoid" }], byId);
+    expect(out[0].row).toBeNull();
+    expect(out[0].polarity).toBe("avoid");
+  });
+
+  it("dedupes a fact injected across several rounds to one entry (first occurrence wins)", () => {
+    const out = usedFacts(
+      [
+        { id: "a", polarity: "require" },
+        { id: "a", polarity: "require" },
+        { id: "b", polarity: "context" },
+      ],
+      byId,
+    );
+    expect(out.map((u) => u.id)).toEqual(["a", "b"]);
+  });
+
+  it("orders the resolved facts by directive force, strongest first", () => {
+    const out = usedFacts(
+      [
+        { id: "b", polarity: "context" },
+        { id: "a", polarity: "require" },
+      ],
+      byId,
+    );
+    // 'a' is require (strongest) so it comes first even though 'b' was injected earlier.
+    expect(out.map((u) => u.id)).toEqual(["a", "b"]);
+  });
+
+  it("orders a resolved row by its CURRENT polarity, not the injected ref's", () => {
+    // The ref says context, but the stored row was since edited up to require → it sorts as require.
+    const store = new Map<string, NodeMemoryRow>([
+      ["x", row({ id: "x", polarity: "require" })],
+      ["y", row({ id: "y", polarity: "prefer" })],
+    ]);
+    const out = usedFacts(
+      [
+        { id: "y", polarity: "prefer" },
+        { id: "x", polarity: "context" },
+      ],
+      store,
+    );
+    expect(out.map((u) => u.id)).toEqual(["x", "y"]);
   });
 });
