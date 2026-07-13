@@ -14,13 +14,19 @@ import type {
   ToolLibraryItem,
 } from "./api";
 import {
+  createMemory,
   createSkillLibraryItem,
   createToolLibraryItem,
+  getReviewMode,
   inspectRepo,
+  listMemories,
   MODEL_PRESETS,
   presetsForProvider,
+  promoteMemory,
   providerOf,
+  rejectMemory,
   runTeam,
+  setReviewMode,
 } from "./api";
 
 describe("providerOf — parity with the backend provider_for_model", () => {
@@ -302,5 +308,81 @@ describe("M-tools C7.C — library types + clients", () => {
       name: "house",
       source: { type: "inline", name: "house", content: "B", mode: "always" },
     });
+  });
+});
+
+// ---- M-memory S5a: the memory client — the request-shaping the shelf drives. The listMemories
+// query-string builder and the SINGULAR /api/memory/review-mode path are the load-bearing bits (a
+// wrong param name / a collision with /api/memories/{id} fails here). ----
+describe("M-memory S5 — the memory client", () => {
+  it("listMemories with no params GETs /api/memories (no query) and unwraps { memories }", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(jsonOk({ memories: [{ id: "m1" }] })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const rows = await listMemories();
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/memories");
+    expect(rows).toEqual([{ id: "m1" }]);
+  });
+
+  it("listMemories encodes repo_key / status / include_superseded as query params", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ memories: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+    await listMemories({ repo_key: "/srv/app", status: "rejected", include_superseded: true });
+    const [path, query] = (fetchMock.mock.calls[0][0] as string).split("?");
+    expect(path).toBe("/api/memories");
+    const sp = new URLSearchParams(query);
+    expect(sp.get("repo_key")).toBe("/srv/app");
+    expect(sp.get("status")).toBe("rejected");
+    expect(sp.get("include_superseded")).toBe("true");
+  });
+
+  it("listMemories omits include_superseded when it is false", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ memories: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+    await listMemories({ include_superseded: false });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/memories");
+  });
+
+  it("createMemory POSTs { content, polarity, repo_key } and returns the row", async () => {
+    const row = { id: "m1", content: "use pnpm", polarity: "require", repo_key: null };
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk(row)));
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await createMemory({ content: "use pnpm", polarity: "require", repo_key: null });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/memories");
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
+      content: "use pnpm",
+      polarity: "require",
+      repo_key: null,
+    });
+    expect(out).toEqual(row);
+  });
+
+  it("getReviewMode GETs the SINGULAR /api/memory/review-mode and unwraps review_mode", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ review_mode: true })));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await getReviewMode()).toBe(true);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/memory/review-mode");
+  });
+
+  it("setReviewMode PATCHes { review_mode } to /api/memory/review-mode and returns the value", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ review_mode: false })));
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await setReviewMode(false);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/memory/review-mode");
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe("PATCH");
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({ review_mode: false });
+    expect(out).toBe(false);
+  });
+
+  it("promoteMemory / rejectMemory POST the S4 review-queue sub-paths", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(jsonOk({ id: "m1", status: "active" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await promoteMemory("m1");
+    await rejectMemory("m2");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/memories/m1/promote");
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/memories/m2/reject");
   });
 });

@@ -24,6 +24,7 @@ import {
 import { RUN_TERMINAL, runStatusPill } from "../lib/status";
 import { useModalDialog } from "../lib/useModalDialog";
 import { BackendDot } from "./BackendDot";
+import { MemoryShelf } from "./MemoryShelf";
 import { NewTeamDialog } from "./NewTeamDialog";
 import { SecretsShelf } from "./SecretsShelf";
 import { SkillsShelf } from "./SkillsShelf";
@@ -420,6 +421,7 @@ export function Dashboard({
           <SecretsShelf />
           <ToolsShelf />
           <SkillsShelf />
+          <MemoryShelf />
         </div>
       </main>
 

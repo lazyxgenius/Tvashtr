@@ -82,6 +82,7 @@ from tvashtr.models import (
     RunEvent,
     RunWarning,
     TeamGraph,
+    User,
 )
 
 # Map the resolve API's decision verb to the durable resolution recorded on the task.
@@ -1654,6 +1655,42 @@ def reject_memory_endpoint(
     if row is None:
         raise HTTPException(status_code=404, detail="memory not found")
     return row
+
+
+class ReviewModeRequest(BaseModel):
+    """``PATCH /api/memory/review-mode`` body — the per-owner review-before-persist toggle."""
+
+    review_mode: bool
+
+
+@router.get("/api/memory/review-mode")
+def get_memory_review_mode(
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """The current account's memory review-mode flag (M-memory S4/S5a). ON routes every otherwise-
+    ``active`` memory write to ``pending_review`` until the owner promotes it. Owner-scoped; reads
+    ``users.memory_review_mode``. Singular ``/api/memory/`` path — never collides with the
+    ``/api/memories/{id}`` store."""
+    with db.session_scope() as session:
+        user = session.get(User, uuid.UUID(current_user.id))
+        if user is None:  # a now-deleted user (get_current_user already 401s first)
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        return {"review_mode": user.memory_review_mode}
+
+
+@router.patch("/api/memory/review-mode")
+def set_memory_review_mode(
+    body: ReviewModeRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """Set the current account's memory review-mode flag — writes ``users.memory_review_mode`` for
+    the owner (the ``session_scope`` commit on block exit persists it). Owner-scoped."""
+    with db.session_scope() as session:
+        user = session.get(User, uuid.UUID(current_user.id))
+        if user is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        user.memory_review_mode = body.review_mode
+    return {"review_mode": body.review_mode}
 
 
 def _run_summary(run: Run) -> dict:

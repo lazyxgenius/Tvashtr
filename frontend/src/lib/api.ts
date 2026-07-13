@@ -1090,3 +1090,148 @@ export async function addDocumentVersion(
 
 export const getRunEvents = (runId: string): Promise<RunEventsResponse> =>
   getJSON<RunEventsResponse>(`/api/spike/run-events/${runId}`);
+
+// ===== M-memory S5 — the owner-scoped agentic-memory client (the account Memory shelf + S5b) =====
+// The store the shelf makes visible/controllable: facts the agents learned across runs, tier-scoped
+// (account / repo / per-node), each with a directive `polarity`. Every fn is owner-scoped
+// server-side (the session cookie), mirroring the providers / secrets / tool-library clients.
+
+// The fact's directive FORCE (M-memory S1b) — the closed 6-value taxonomy the backend CHECK pins.
+// RFC-2119: require=MUST, prefer=SHOULD, allow=MAY, context=neutral (the default), avoid=SHOULD NOT,
+// forbid=MUST NOT.
+export type MemoryPolarity = "require" | "prefer" | "allow" | "context" | "avoid" | "forbid";
+
+// The tier is DERIVED server-side from the scoping columns (never stored): account = neither set,
+// repo = repo_key only, node = both set.
+export type MemoryTier = "account" | "repo" | "node";
+
+// One memory row exactly as the API serializes it (control_plane/memory.py `_to_dict`). The server
+// OMITS owner_id, the raw embedding vector, and superseded_by; `tier` is derived at serialization.
+export interface NodeMemoryRow {
+  id: string;
+  content: string;
+  polarity: MemoryPolarity;
+  repo_key: string | null;
+  node_id: string | null;
+  tier: MemoryTier;
+  pinned: boolean;
+  status: string; // active | pending_review | rejected | superseded
+  confirmation_count: number;
+  source_run_id: string | null;
+  source_invocation_id: number | null;
+  embedding_dim: number | null;
+  valid_from: string | null;
+  invalid_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+// GET /api/memories — the owner's memories (oldest first), optionally filtered. Excludes non-active
+// rows unless include_superseded; an explicit `status` returns EXACTLY that status (the review UI
+// fetches pending_review / rejected / superseded through it). Returns the bare row list.
+export async function listMemories(
+  params: {
+    repo_key?: string;
+    node_id?: string;
+    status?: string;
+    include_superseded?: boolean;
+  } = {},
+): Promise<NodeMemoryRow[]> {
+  const q = new URLSearchParams();
+  if (params.repo_key !== undefined) q.set("repo_key", params.repo_key);
+  if (params.node_id !== undefined) q.set("node_id", params.node_id);
+  if (params.status !== undefined) q.set("status", params.status);
+  if (params.include_superseded) q.set("include_superseded", "true");
+  const qs = q.toString();
+  const data = await getJSON<{ memories: NodeMemoryRow[] }>(`/api/memories${qs ? `?${qs}` : ""}`);
+  return data.memories;
+}
+
+// POST /api/memories — author a fact. The TIER is encoded by which scoping fields are set (account =
+// neither, repo = repo_key only). Returns the created row (422 on empty content / an invalid tier /
+// a bad polarity; 502 if the embedding provider call fails).
+export async function createMemory(input: {
+  content: string;
+  repo_key?: string | null;
+  node_id?: string | null;
+  pinned?: boolean;
+  polarity?: MemoryPolarity;
+}): Promise<NodeMemoryRow> {
+  const res = await fetch("/api/memories", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new ApiError(res.status, `POST /api/memories -> ${res.status}`);
+  return (await res.json()) as NodeMemoryRow;
+}
+
+// PATCH /api/memories/{id} — edit content (re-embeds on a real change), pinned, and/or polarity.
+// Omitted fields are left unchanged. Returns the updated row.
+export async function updateMemory(
+  id: string,
+  patch: { content?: string; pinned?: boolean; polarity?: MemoryPolarity },
+): Promise<NodeMemoryRow> {
+  const res = await fetch(`/api/memories/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new ApiError(res.status, `PATCH /api/memories/${id} -> ${res.status}`);
+  return (await res.json()) as NodeMemoryRow;
+}
+
+// DELETE /api/memories/{id} — hard-delete (204, idempotent + owner-scoped).
+export async function deleteMemory(id: string): Promise<void> {
+  const res = await fetch(`/api/memories/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /api/memories/${id} -> ${res.status}`);
+}
+
+// POST /api/memories/{id}/pin | /unpin — a pinned fact is "hot" (always injected later). Returns row.
+export async function pinMemory(id: string): Promise<NodeMemoryRow> {
+  const res = await fetch(`/api/memories/${encodeURIComponent(id)}/pin`, { method: "POST" });
+  if (!res.ok) throw new ApiError(res.status, `POST pin ${id} -> ${res.status}`);
+  return (await res.json()) as NodeMemoryRow;
+}
+
+export async function unpinMemory(id: string): Promise<NodeMemoryRow> {
+  const res = await fetch(`/api/memories/${encodeURIComponent(id)}/unpin`, { method: "POST" });
+  if (!res.ok) throw new ApiError(res.status, `POST unpin ${id} -> ${res.status}`);
+  return (await res.json()) as NodeMemoryRow;
+}
+
+// POST /api/memories/{id}/promote | /reject (M-memory S4) — the pending-review queue's two actions.
+// promote → active VIA Consolidate (dedup / supersede-the-contradicted-active / activate). reject →
+// a TOMBSTONE (status rejected + invalid_at) that also suppresses re-proposal. Both return the row.
+export async function promoteMemory(id: string): Promise<NodeMemoryRow> {
+  const res = await fetch(`/api/memories/${encodeURIComponent(id)}/promote`, { method: "POST" });
+  if (!res.ok) throw new ApiError(res.status, `POST promote ${id} -> ${res.status}`);
+  return (await res.json()) as NodeMemoryRow;
+}
+
+export async function rejectMemory(id: string): Promise<NodeMemoryRow> {
+  const res = await fetch(`/api/memories/${encodeURIComponent(id)}/reject`, { method: "POST" });
+  if (!res.ok) throw new ApiError(res.status, `POST reject ${id} -> ${res.status}`);
+  return (await res.json()) as NodeMemoryRow;
+}
+
+// GET / PATCH /api/memory/review-mode (M-memory S5a — the ONE new endpoint) — the per-owner
+// review-before-persist toggle (users.memory_review_mode). ON routes every otherwise-active memory
+// write to pending_review until the owner confirms it. Singular /api/memory/ path — never collides
+// with /api/memories/{id}.
+export async function getReviewMode(): Promise<boolean> {
+  const data = await getJSON<{ review_mode: boolean }>("/api/memory/review-mode");
+  return data.review_mode;
+}
+
+export async function setReviewMode(reviewMode: boolean): Promise<boolean> {
+  const res = await fetch("/api/memory/review-mode", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ review_mode: reviewMode }),
+  });
+  if (!res.ok) throw new ApiError(res.status, `PATCH /api/memory/review-mode -> ${res.status}`);
+  const data = (await res.json()) as { review_mode: boolean };
+  return data.review_mode;
+}
+// ===== end M-memory S5 client block ============================================================

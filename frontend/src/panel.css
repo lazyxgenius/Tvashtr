@@ -1347,3 +1347,234 @@
 .tv-chat__send {
   white-space: nowrap;
 }
+
+/* ===== M-memory S5a — the account Memory shelf ================================================
+   Fact chips, the 6 polarity badges, and the review-mode switch. Reuses the .tv-* / .tv-badge /
+   .tv-dash__prov vocabulary; only memory-specific classes are new (no index.css / canvas.css). */
+
+.tv-mem-review,
+.tv-mem-pending,
+.tv-mem-facts,
+.tv-mem-archived {
+  margin-top: 0.85rem;
+}
+
+/* Add-a-memory form: the tier / repo / force / submit controls wrap on a narrow shelf. */
+.tv-mem-addrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+.tv-mem-addrow .tv-field {
+  gap: 0.2rem;
+}
+.tv-mem select {
+  font: inherit;
+  font-size: var(--fs-micro);
+  color: var(--ink-900);
+  background: var(--panel-300);
+  border: var(--border-width) solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 0.32rem 0.5rem;
+}
+.tv-mem select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* Review-mode switch — no on/off primitive existed in the DS, so it is authored here as a
+   role="switch" button with a sliding thumb. */
+.tv-mem-review {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--panel-300);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+}
+.tv-mem-review__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.tv-mem-review__text strong {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  color: var(--ink-900);
+}
+.tv-switch {
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  margin-top: 2px;
+  padding: 0;
+  border: var(--border-width) solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--panel-400);
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+.tv-switch__thumb {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--cream-100, #fbfaf5);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.28);
+  transition: left 140ms ease;
+}
+.tv-switch--on {
+  background: var(--coral-500);
+  border-color: var(--coral-600);
+}
+.tv-switch--on .tv-switch__thumb {
+  left: calc(100% - 18px);
+}
+.tv-switch:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Section headings + the fact list reset. */
+.tv-mem-section + .tv-mem-section,
+.tv-mem-nodegroup {
+  margin-top: 0.6rem;
+}
+.tv-mem-section__head {
+  margin: 0 0 0.35rem;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.tv-mem-section__sub {
+  margin: 0.4rem 0 0.3rem;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  color: var(--ink-500);
+}
+.tv-mem-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.tv-mem-reposel {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0.4rem;
+}
+
+/* One fact chip. */
+.tv-mem-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--cream-100, #fbfaf5);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+}
+.tv-mem-fact__row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.tv-mem-fact__content {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-size: var(--fs-small, 0.86rem);
+  color: var(--ink-900);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.tv-mem-fact__edit {
+  flex: 1 1 100%;
+  font: inherit;
+  color: var(--ink-900);
+  background: var(--cream-100, #fff);
+  border: var(--border-width) solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.45rem;
+  resize: vertical;
+}
+.tv-mem-fact__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--fs-micro);
+  color: var(--stone-400);
+}
+.tv-mem-fact__pinned {
+  color: var(--coral-700);
+  font-weight: var(--fw-medium);
+}
+.tv-mem-fact__status {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.tv-mem-fact__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.tv-mem-fact__confirm {
+  font-size: var(--fs-micro);
+  color: var(--ink-600);
+}
+.tv-mem-fact__polarity {
+  margin-right: 0.15rem;
+}
+
+/* The 6 polarity badges — a fork of .tv-badge--danger's tint + color-mix recipe, one hue per
+   force: require→sage, prefer→coral, allow→blue, context→neutral, avoid→amber, forbid→red. */
+.tv-mem-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.tv-mem-badge--require {
+  background: var(--sage-100);
+  color: color-mix(in srgb, var(--sage-500) 64%, var(--ink-900));
+  border-color: color-mix(in srgb, var(--sage-500) 26%, transparent);
+}
+.tv-mem-badge--prefer {
+  background: var(--coral-100);
+  color: var(--coral-700);
+  border-color: var(--coral-200);
+}
+.tv-mem-badge--allow {
+  background: var(--blue-100);
+  color: color-mix(in srgb, var(--blue-500) 64%, var(--ink-900));
+  border-color: color-mix(in srgb, var(--blue-500) 26%, transparent);
+}
+.tv-mem-badge--context {
+  background: var(--panel-300);
+  color: var(--ink-600);
+  border-color: var(--border-hairline);
+}
+.tv-mem-badge--avoid {
+  background: var(--amber-100);
+  color: color-mix(in srgb, var(--amber-500) 64%, var(--ink-900));
+  border-color: color-mix(in srgb, var(--amber-500) 30%, transparent);
+}
+.tv-mem-badge--forbid {
+  background: var(--red-100);
+  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
+  border-color: color-mix(in srgb, var(--red-500) 28%, transparent);
+}
+/* ===== end M-memory S5a shelf styles ========================================================= */

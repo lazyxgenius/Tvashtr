@@ -886,3 +886,48 @@ def test_ingest_step_is_best_effort_on_raise(client, monkeypatch, tmp_path):
         run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
     assert run.status == "completed"  # terminal status untouched
     assert _run_memories(run_id, owner) == []  # nothing partial-written
+
+
+# ---- M-memory S5a: the review-mode toggle ENDPOINT (GET / PATCH /api/memory/review-mode) --------
+# The ONE backend addition of the S5a slice — the Memory shelf's review-mode switch drives it. It
+# reads/writes the already-existing ``users.memory_review_mode`` column (migration 0027) for the
+# current owner, on a DISTINCT singular path so it never collides with ``/api/memories/{id}``.
+
+
+def test_review_mode_endpoint_reflects_and_flips_the_column(client):
+    """GET reports the owner's flag; PATCH flips the REAL column (both directions) and GET reflects
+    it. Mutation-real: each step reads the ``users`` row back from the DB. Restores OFF (the shared
+    conftest owner's default) so it never leaks onto another test."""
+    owner = auth_user_id()
+
+    # A fresh (untoggled) owner reads OFF — the pre-S4 default.
+    resp = client.get("/api/memory/review-mode")
+    assert resp.status_code == 200
+    assert resp.json() == {"review_mode": False}
+
+    # Turn it ON — the response AND the persisted column both flip.
+    resp = client.patch("/api/memory/review-mode", json={"review_mode": True})
+    assert resp.status_code == 200
+    assert resp.json() == {"review_mode": True}
+    with session_scope() as session:
+        assert session.get(User, owner).memory_review_mode is True
+
+    # A subsequent GET reflects the persisted ON value.
+    assert client.get("/api/memory/review-mode").json() == {"review_mode": True}
+
+    # Turn it back OFF — the column returns to False (leaving the shared owner clean).
+    resp = client.patch("/api/memory/review-mode", json={"review_mode": False})
+    assert resp.status_code == 200
+    assert resp.json() == {"review_mode": False}
+    with session_scope() as session:
+        assert session.get(User, owner).memory_review_mode is False
+    assert client.get("/api/memory/review-mode").json() == {"review_mode": False}
+
+
+def test_review_mode_patch_requires_the_review_mode_field(client):
+    """PATCH with no ``review_mode`` is a 422 (required field); the column is untouched."""
+    owner = auth_user_id()
+    resp = client.patch("/api/memory/review-mode", json={})
+    assert resp.status_code == 422
+    with session_scope() as session:
+        assert session.get(User, owner).memory_review_mode is False
