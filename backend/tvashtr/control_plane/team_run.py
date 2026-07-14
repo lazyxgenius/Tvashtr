@@ -53,6 +53,7 @@ from tvashtr.control_plane.context_compiler import (
     SPEC_HANDLE_FILENAME,
     compile_context,
     resolve_context_budget,
+    resolve_remember_enabled,
 )
 from tvashtr.control_plane.credentials import resolve_owner_api_key
 from tvashtr.control_plane.gates import wait_at_gate
@@ -774,6 +775,7 @@ def agent_run_step(
     tool_config: dict | None = None,
     skills: list | None = None,
     edits_allowed: bool = True,
+    remember_enabled: bool = False,
     node_id: str | None = None,
     memory: list | None = None,
 ) -> dict:
@@ -852,12 +854,13 @@ def agent_run_step(
         # M-memory S3: the node's remembered facts. None/[] ⇒ NO memory part ⇒ the compiled
         # instruction + manifest stay byte-identical to a run with no memory (inert-when-empty).
         memory=memory,
-        # M-memory S4: the agent-remember capture protocol — only for an edits-ON WORKER when the
-        # owner enabled the feature (the setting default OFF ⇒ byte-identical to pre-S4).
-        # A reviewer /
-        # thinker (edits-off) never gets it. The control plane ingests TVASHTR_REMEMBER.jsonl at
-        # run-end.
-        remember_enabled=get_settings().memory_remember_enabled and edits_allowed,
+        # M-memory: the agent-remember capture protocol — only for an edits-ON WORKER whose PER-NODE
+        # config opted in (``config["memory_remember_enabled"]``, resolved by the caller via
+        # ``resolve_remember_enabled`` and threaded in as ``remember_enabled``; default False ⇒
+        # byte-identical to a node that never opted in). A reviewer / thinker (edits-off) never gets
+        # it — the ``and edits_allowed`` gate holds. The control plane ingests the
+        # TVASHTR_REMEMBER.jsonl sidecar at run-end.
+        remember_enabled=remember_enabled and edits_allowed,
     )
     manifest = compiled.manifest()
 
@@ -1289,6 +1292,11 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # M-ctx1 (C2): resolve THIS node's INPUT-token budget (setting default + optional
             # per-node override) — replay-stable off the recorded graph dict + settings.
             budget = resolve_context_budget(get_settings(), node["config"])
+            # M-memory: resolve THIS node's PER-NODE agent-remember decision off its config JSONB
+            # (default False; NO settings fallback — the retired global flag has zero effect). The
+            # step ANDs it with edits_allowed (only an edits-on node can write the sidecar).
+            # Replay-stable off the recorded graph dict.
+            remember_enabled = resolve_remember_enabled(node["config"])
             # M-brownfield: thread grounding (+ sub-path) into a brownfield call; greenfield omits
             # BOTH ⇒ byte-for-byte the prior greenfield call (the existing offline suite drives it
             # UNCHANGED); whole-repo brownfield omits ``subpath`` ⇒ the prior brownfield call.
@@ -1330,6 +1338,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 budget,
                 inv_id,
                 edits_allowed=edits_allowed,
+                remember_enabled=remember_enabled,  # M-memory: per-node agent-remember opt-in
                 node_id=current,  # M-unify U2: per-node sandbox-reuse key (run_id+node_id)
                 **tools_kwargs,
                 **brownfield_kwargs,

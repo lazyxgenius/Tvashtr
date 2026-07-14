@@ -215,6 +215,11 @@ class UpdateTeamNodeRequest(BaseModel):
     # a ``capability`` change WITHOUT an explicit ``edits_allowed`` SYNCS it to ``kind == 'agent'``;
     # an EXPLICIT value here always WINS (``model_fields_set`` distinguishes omitted from sent).
     edits_allowed: bool | None = None
+    # M-memory: the per-node agent-remember toggle — a top-level bool in the node's EXISTING config
+    # JSONB (no migration). Merged into config only when SENT (``model_fields_set``); omitted ⇒
+    # config unchanged. The run gate ANDs it with ``edits_allowed`` (only an edits-on node can write
+    # the sidecar), so the FE shows the control only for an edits-on agent node.
+    memory_remember_enabled: bool | None = None
 
 
 class CreateTeamRequest(BaseModel):
@@ -1964,6 +1969,14 @@ def update_team_node(
             node.tool_config = body.tool_config
         if "skills" in body.model_fields_set:
             node.skills = body.skills
+        # M-memory: the per-node agent-remember toggle lives in the EXISTING config JSONB. Merge it
+        # into a FRESH config dict (a new object so SQLAlchemy flags the JSONB column dirty) ONLY
+        # when SENT (``model_fields_set``) — preserving any existing config (e.g. ``model_config``).
+        # Omitted ⇒ ``node.config`` byte-unchanged (the C7.A clear-semantics pattern).
+        if "memory_remember_enabled" in body.model_fields_set:
+            cfg = dict(node.config or {})
+            cfg["memory_remember_enabled"] = bool(body.memory_remember_enabled)
+            node.config = cfg
         session.flush()
         return _node_base_dict(node)
 

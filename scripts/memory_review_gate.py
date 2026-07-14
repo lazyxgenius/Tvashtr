@@ -4,11 +4,11 @@
 Proves the four S4 capabilities end-to-end on a REAL LOCAL-sandbox ``deepseek`` stack (real agent,
 real distiller LLM, real ``text-embedding-3-small`` embeds, real DB, real endpoints):
 
-  (a) AGENT-REMEMBER — a real Engineer, with the capture protocol injected
-      (``TVASHTR_MEMORY_REMEMBER_ENABLED=1``), appends a sentinel lesson to
-      ``TVASHTR_REMEMBER.jsonl``; the run-end ingest lands it ``active`` at the REPO tier (the
-      FALLBACK channel — the PRIMARY live-MCP channel was infeasible: no MCP-hosting infra + the
-      in-process gate binds no port).
+  (a) AGENT-REMEMBER — a real Engineer, with the capture protocol injected via its PER-NODE
+      ``config["memory_remember_enabled"]`` (seeded through the node-update endpoint below — the
+      global flag is retired), appends a sentinel lesson to ``TVASHTR_REMEMBER.jsonl``; the run-end
+      ingest lands it ``active`` at the REPO tier (the FALLBACK channel — the PRIMARY live-MCP
+      channel was infeasible: no MCP-hosting infra + the in-process gate binds no port).
   (b) REVIEW MODE ON — with the owner's ``memory_review_mode`` ON, a shipped run's distilled fact
       lands ``pending_review`` (not ``active``).
   (c) PROMOTE — a promote through ``POST /api/memories/{id}/promote`` activates a quarantined fact
@@ -30,12 +30,12 @@ import time
 import uuid
 from pathlib import Path
 
-# LOCAL sandbox + auto-approve the PRD gate + forced reviewer-approve (so the loop ships) + the
-# agent-remember capture protocol ON — all set before app import.
+# LOCAL sandbox + auto-approve the PRD gate + forced reviewer-approve (so the loop ships) — all set
+# before app import. Agent-remember is now PER-NODE (seeded on the Engineer node in step (a)),
+# not a global env flag.
 os.environ.setdefault("TVASHTR_AGENT_SANDBOX", "local")
 os.environ.setdefault("TVASHTR_AUTO_APPROVE_GATES", "1")
 os.environ.setdefault("TVASHTR_FORCE_REVISIONS", "1")
-os.environ.setdefault("TVASHTR_MEMORY_REMEMBER_ENABLED", "1")
 
 POLL_TIMEOUT_S = int(os.environ.get("TVASHTR_MEMORY_REVIEW_TIMEOUT_S", "1200"))
 _TERMINAL_WF = {"SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
@@ -145,7 +145,7 @@ def main() -> int:
     from tvashtr.main import app
     from tvashtr.models import NodeMemory, User
 
-    print("[review-gate] LOCAL sandbox | agent=deepseek/deepseek-chat | remember=ON | review S4")
+    print("[review-gate] LOCAL sandbox | agent=deepseek/deepseek-chat | remember=per-node | S4")
     tmp = tempfile.mkdtemp(prefix="review-gate-")
     failed = False
     try:
@@ -176,6 +176,25 @@ def main() -> int:
             tm = client.post("/api/teams", json={"template": "review_loop", "name": "review-gate"})
             tm.raise_for_status()
             team_graph_id = tm.json()["team_graph_id"]
+            # M-memory: agent-remember is PER-NODE now (the global flag is retired). Seed the
+            # review_loop Engineer's config["memory_remember_enabled"]=True via the REAL node-update
+            # endpoint (mirrors memory_injection_check.py's engineer-origin lookup); the run clones
+            # the team, so the Engineer clone carries the seeded opt-in and gets the protocol.
+            graph = client.get(f"/api/teams/{team_graph_id}/graph").json()
+            engineer = next(n for n in graph["nodes"] if n.get("role_name") == "engineer")
+            seeded = client.patch(
+                f"/api/teams/{team_graph_id}/nodes/{engineer['id']}",
+                json={
+                    "prompt": engineer["prompt"],
+                    "model": engineer["model"],
+                    "memory_remember_enabled": True,
+                },
+            )
+            seeded.raise_for_status()
+            print(
+                f"[review-gate] seeded engineer {engineer['id']} "
+                f"config.memory_remember_enabled=True (HTTP {seeded.status_code})"
+            )
             run = client.post(
                 "/api/runs",
                 json={

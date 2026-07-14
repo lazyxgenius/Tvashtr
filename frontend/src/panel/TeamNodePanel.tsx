@@ -47,6 +47,12 @@ const GUARDRAIL_GATE_KINDS = new Set([
 const editsAllowedOf = (node: TeamGraphNode | null): boolean =>
   node?.edits_allowed ?? node?.kind === "agent";
 
+// M-memory: the per-node "Remember what I learn" decision, read off the node's config JSONB (the
+// backend stores + echoes it under `config`). Default false. A safe cast since `config` is a union
+// (GateConfig | TerminalConfig | Record) shared with the gate/terminal branches.
+const rememberEnabledOf = (node: TeamGraphNode | null): boolean =>
+  Boolean((node?.config as Record<string, unknown> | null | undefined)?.memory_remember_enabled);
+
 const START_LOCK_TOOLTIP =
   "The first node scopes the work — it writes the shared spec the team reads, so it stays edits-off.";
 
@@ -112,6 +118,11 @@ export function TeamNodePanel({
   // Edits toggle. Seed from `edits_allowed`; reset-on-select is the parent `key` remount.
   const initialEditsAllowed = editsAllowedOf(node);
   const [editsAllowed, setEditsAllowed] = useState<boolean>(initialEditsAllowed);
+  // M-memory: the per-node "Remember what I learn" toggle — an edits-on sub-option. Seeded from the
+  // node's config JSONB (default false); reset-on-select is the parent `key` remount.
+  const initialMemoryRemember = rememberEnabledOf(node);
+  const [memoryRememberEnabled, setMemoryRememberEnabled] =
+    useState<boolean>(initialMemoryRemember);
   // M-tools C7.0: the node's inline tools + skills (stub editors). Seeded from the node, reset via the
   // `key` remount, folded into the dirty check, and posted on Save. NULL until a later milestone.
   const [toolConfig, setToolConfig] = useState<Record<string, unknown> | null>(
@@ -199,6 +210,7 @@ export function TeamNodePanel({
     (prompt !== (node.prompt ?? "") ||
       model !== (node.model ?? "") ||
       editsAllowed !== initialEditsAllowed ||
+      memoryRememberEnabled !== initialMemoryRemember ||
       // M-tools C7.0: compare the JSON of the inline tools/skills (structural equality) so editing
       // them enables Save exactly like prompt/model/capability.
       JSON.stringify(toolConfig ?? null) !== JSON.stringify(node.tool_config ?? null) ||
@@ -208,6 +220,13 @@ export function TeamNodePanel({
   const pickEdits = (next: boolean) => {
     if (isStartNode) return; // the entry node is locked edits-off — it writes the shared spec, never edits
     setEditsAllowed(next);
+    setSaved(false);
+  };
+
+  // M-memory: flip the per-node remember toggle (an edits-on sub-option) — an authorable field like
+  // prompt/model, so it enables Save.
+  const pickRemember = (next: boolean) => {
+    setMemoryRememberEnabled(next);
     setSaved(false);
   };
 
@@ -227,6 +246,7 @@ export function TeamNodePanel({
         toolConfig,
         skills,
         editsAllowed,
+        memoryRememberEnabled,
       );
       setSaved(true);
       await onSaved();
@@ -655,6 +675,35 @@ export function TeamNodePanel({
                 : "Not allowed — the same full agent loop, but read-only (reasoning + read-only & MCP tools); only its report leaves the sandbox."}
           </span>
         </div>
+
+        {editsAllowed && (
+          <div className="tv-field">
+            <span className="tv-field__label">Remember what I learn</span>
+            <div className="tv-seg" role="group" aria-label="Remember what I learn">
+              <button
+                type="button"
+                aria-pressed={memoryRememberEnabled}
+                disabled={saving}
+                className={`tv-seg__btn${memoryRememberEnabled ? " tv-seg__btn--active" : ""}`}
+                onClick={() => pickRemember(true)}
+              >
+                Remember
+              </button>
+              <button
+                type="button"
+                aria-pressed={!memoryRememberEnabled}
+                disabled={saving}
+                className={`tv-seg__btn${!memoryRememberEnabled ? " tv-seg__btn--active" : ""}`}
+                onClick={() => pickRemember(false)}
+              >
+                {"Don't remember"}
+              </button>
+            </div>
+            <span className="tv-field__hint">
+              When on, this node records durable lessons from each run so future runs recall them.
+            </span>
+          </div>
+        )}
 
         <label className="tv-field">
           <span className="tv-field__label">System prompt</span>

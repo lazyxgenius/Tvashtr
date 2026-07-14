@@ -418,3 +418,13 @@ def resolve_context_budget(settings: Settings, node_config: dict | None) -> int:
         _node_model_config(node_config).get("worker_context_token_budget")
     )
     return override if override is not None else settings.worker_context_token_budget
+
+
+def resolve_remember_enabled(node_config: dict | None) -> bool:
+    """M-memory: the per-node agent-remember decision — the top-level
+    ``config["memory_remember_enabled"]`` bool in a node's EXISTING ``config`` JSONB (additive,
+    NO migration), default ``False``. Pure + None-safe. There is NO settings fallback: the former
+    global remember flag is RETIRED, so each agent node decides for itself. The executor ANDs this
+    with ``edits_allowed`` (only an edits-on node writes the sidecar), mirroring
+    :func:`resolve_context_budget`."""
+    return bool((node_config or {}).get("memory_remember_enabled", False))

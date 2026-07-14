@@ -27,6 +27,7 @@ import {
   rejectMemory,
   runTeam,
   setReviewMode,
+  updateTeamNode,
 } from "./api";
 
 describe("providerOf — parity with the backend provider_for_model", () => {
@@ -58,6 +59,58 @@ function bodyOf(call: unknown[]): unknown {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("updateTeamNode — memory_remember_enabled sent only when passed", () => {
+  it("omits memory_remember_enabled when the caller does not pass it", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
+    vi.stubGlobal("fetch", fetchMock);
+    await updateTeamNode("team-1", "n1", "p", "m");
+    const body = bodyOf(fetchMock.mock.calls[0]) as Record<string, unknown>;
+    expect("memory_remember_enabled" in body).toBe(false);
+    expect(body).toEqual({ prompt: "p", model: "m" });
+  });
+
+  it("sends memory_remember_enabled (true AND false) when passed as the trailing arg", async () => {
+    const fetchOn = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
+    vi.stubGlobal("fetch", fetchOn);
+    // Positional tail: capability, toolConfig, skills, editsAllowed, memoryRememberEnabled.
+    await updateTeamNode(
+      "team-1",
+      "n1",
+      "p",
+      "m",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+    expect(bodyOf(fetchOn.mock.calls[0])).toEqual({
+      prompt: "p",
+      model: "m",
+      memory_remember_enabled: true,
+    });
+
+    const fetchOff = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
+    vi.stubGlobal("fetch", fetchOff);
+    await updateTeamNode(
+      "team-1",
+      "n1",
+      "p",
+      "m",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      false,
+    );
+    expect(bodyOf(fetchOff.mock.calls[0])).toEqual({
+      prompt: "p",
+      model: "m",
+      memory_remember_enabled: false,
+    });
+  });
 });
 
 describe("runTeam — POST body shaping (greenfield byte-for-byte)", () => {

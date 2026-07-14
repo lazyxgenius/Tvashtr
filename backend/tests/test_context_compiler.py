@@ -19,6 +19,7 @@ from tvashtr.control_plane.context_compiler import (
     compile_context,
     estimate_tokens,
     resolve_context_budget,
+    resolve_remember_enabled,
 )
 from tvashtr.control_plane.team_run import (
     _WORKSPACE_GITIGNORE,
@@ -277,6 +278,59 @@ def test_resolvers_ignore_non_positive_and_bool_overrides():
         )
     # A non-dict model_config is ignored too.
     assert resolve_context_budget(s, {"model_config": "nope"}) == 110_000
+
+
+# ---- M-memory: per-node agent-remember resolver (retired global flag → per-node config) ----
+
+
+def test_resolve_remember_enabled_none_and_absent_are_false():
+    """None config, an empty config, or a config with only UNRELATED keys ⇒ False (the safe default;
+    NO settings fallback — the retired global flag has zero effect)."""
+    assert resolve_remember_enabled(None) is False
+    assert resolve_remember_enabled({}) is False
+    assert resolve_remember_enabled({"model_config": {"model": "x"}}) is False
+
+
+def test_resolve_remember_enabled_roundtrips_the_top_level_bool():
+    """A top-level ``memory_remember_enabled`` bool is honored verbatim, and it coexists with the
+    ``model_config`` override sub-object (both live in the same config JSONB)."""
+    assert resolve_remember_enabled({"memory_remember_enabled": True}) is True
+    assert resolve_remember_enabled({"memory_remember_enabled": False}) is False
+    both = {
+        "memory_remember_enabled": True,
+        "model_config": {"worker_context_token_budget": 60_000},
+    }
+    assert resolve_remember_enabled(both) is True
+
+
+# ---- M-memory: per-node remember GATE through compile_context (mirrors the team_run step) ----
+
+
+def _remember_gate(node_config: dict | None, edits_allowed: bool) -> bool:
+    """The exact team_run.py agent-step gate: the per-node resolver ANDed with ``edits_allowed``
+    (only an edits-on node runs the sandbox + can write the ``TVASHTR_REMEMBER.jsonl`` sidecar)."""
+    return resolve_remember_enabled(node_config) and edits_allowed
+
+
+def _compiled_has_remember(node_config: dict | None, edits_allowed: bool) -> bool:
+    c = _compile(
+        edits_allowed=edits_allowed,
+        remember_enabled=_remember_gate(node_config, edits_allowed),
+    )
+    return any(p.name == "remember_protocol" for p in c.parts)
+
+
+def test_gate_edits_on_node_opted_in_carries_the_protocol():
+    assert _compiled_has_remember({"memory_remember_enabled": True}, edits_allowed=True) is True
+
+
+def test_gate_edits_on_node_without_key_has_no_protocol():
+    assert _compiled_has_remember({"model_config": {"model": "x"}}, edits_allowed=True) is False
+
+
+def test_gate_edits_off_node_even_opted_in_has_no_protocol():
+    """The ``and edits_allowed`` half holds: an edits-OFF node never remembers even if opted in."""
+    assert _compiled_has_remember({"memory_remember_enabled": True}, edits_allowed=False) is False
 
 
 # ---- C4 SPEC.md never ships: the gitignore belt + the write/remove suspenders --------------------

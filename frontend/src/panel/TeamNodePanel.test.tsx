@@ -129,6 +129,8 @@ describe("TeamNodePanel — edit prompt + model + edits toggle, dirty-aware Save
       prompt: "Write greeting.txt = SENTINEL",
       model: "openai/gpt-4o-mini",
       edits_allowed: true,
+      // M-memory: the remember toggle is always sent too (config: null ⇒ seeded false).
+      memory_remember_enabled: false,
       // M-tools C7.A (S2): updateTeamNode now always sends tool_config/skills (null when unset).
       tool_config: null,
       skills: null,
@@ -168,6 +170,8 @@ describe("TeamNodePanel — edit prompt + model + edits toggle, dirty-aware Save
       prompt: "Original engineer prompt",
       model: "openai/gpt-4o-mini",
       edits_allowed: false,
+      // M-memory: the remember toggle is always sent too (config: null ⇒ seeded false).
+      memory_remember_enabled: false,
       // M-tools C7.A (S2): updateTeamNode now always sends tool_config/skills (null when unset).
       tool_config: null,
       skills: null,
@@ -753,5 +757,89 @@ describe("TeamNodePanel — M-tools C7.0 tools + skills sections", () => {
     // U3: a completion/edits-off node shows the SAME real Tools editor — the worker-only note is gone.
     expect(screen.getByLabelText("Tools JSON")).toBeInTheDocument();
     expect(screen.queryByText(/switch this node to Worker/i)).toBeNull();
+  });
+});
+
+describe("TeamNodePanel — Remember what I learn toggle (edits-on agent only)", () => {
+  it("renders on an edits-on agent node (seeded from config) and hides when Edits flips off", async () => {
+    const user = userEvent.setup();
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ config: { memory_remember_enabled: true } })}
+        isStartNode={false}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        onClose={() => {}}
+      />,
+    );
+    // Seeded ON from the node's config JSONB.
+    expect(await screen.findByRole("button", { name: "Remember" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // Flipping Edits -> Not allowed hides the remember sub-option (backend gate is `and edits_allowed`).
+    await user.click(screen.getByRole("button", { name: "Not allowed" }));
+    expect(screen.queryByRole("button", { name: "Remember" })).toBeNull();
+  });
+
+  it("is absent on a gate node", () => {
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ kind: "gate", config: { gate_kind: "gate_approval" } })}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Remember" })).toBeNull();
+  });
+
+  it("is absent on a terminal node", () => {
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ kind: "terminal", config: { terminal_kind: "ship" } })}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Remember" })).toBeNull();
+  });
+
+  it("flipping Remember alone enables Save and PATCHes memory_remember_enabled: true", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node()}
+        isStartNode={false}
+        onSaved={onSaved}
+        onClose={() => {}}
+      />,
+    );
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled();
+    // node() has config: null ⇒ Remember seeded OFF; flipping it ON marks the drawer dirty.
+    await user.click(await screen.findByRole("button", { name: "Remember" }));
+    expect(screen.getByRole("button", { name: "Remember" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(save).toBeEnabled();
+
+    await user.click(save);
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    const [, init] = patchCall()!;
+    expect(JSON.parse(init.body as string)).toEqual({
+      prompt: "Original engineer prompt",
+      model: "openai/gpt-4o-mini",
+      edits_allowed: true,
+      memory_remember_enabled: true,
+      tool_config: null,
+      skills: null,
+    });
   });
 });

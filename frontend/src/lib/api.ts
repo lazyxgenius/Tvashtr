@@ -753,6 +753,7 @@ export async function updateTeamNode(
   toolConfig?: Record<string, unknown> | null,
   skills?: unknown[] | null,
   editsAllowed?: boolean,
+  memoryRememberEnabled?: boolean,
 ): Promise<TeamGraphNode> {
   const body: {
     prompt: string;
@@ -761,11 +762,15 @@ export async function updateTeamNode(
     tool_config?: Record<string, unknown> | null;
     skills?: unknown[] | null;
     edits_allowed?: boolean;
+    memory_remember_enabled?: boolean;
   } = { prompt, model };
   if (capability !== undefined) body.capability = capability;
   // M-unify U3: the Edits toggle's source of truth. Sent whenever the caller passes it; the backend's
   // ``model_fields_set`` guard makes an explicit value win over the legacy capability→kind sync.
   if (editsAllowed !== undefined) body.edits_allowed = editsAllowed;
+  // M-memory: the per-node "Remember what I learn" toggle — sent ONLY when the caller passes it (the
+  // backend's model_fields_set guard leaves config untouched when omitted). Mirrors editsAllowed.
+  if (memoryRememberEnabled !== undefined) body.memory_remember_enabled = memoryRememberEnabled;
   // M-tools C7.A (SHARED CONTRACT S2): ALWAYS send tools/skills when the caller passed a value (even
   // an explicit null → clear to NULL). Only a caller that OMITS the arg (undefined) leaves the stored
   // value unchanged — the backend distinguishes the two via `model_fields_set`. A caller that omits
