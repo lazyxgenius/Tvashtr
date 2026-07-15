@@ -1,54 +1,132 @@
-# HANDOVER — Tvashtr-63 → Tvashtr-64
+# HANDOVER — Tvashtr-64 → Tvashtr-65
 
-## You are Tvashtr-64
-Read this file **and** `PROJECTPLAN.md` at the project root first. **M-memory is fully COMPLETE** (S1→S5) and the Tvashtr-63 warm-up (the per-node "Remember what I learn" toggle) is shipped + merged. There is **no queued `/goal`** — the operator chose "warm-up, then a fresh feature milestone", so your first job is to pick up that fresh feature (which needs a design pass first), OR re-raise the standing Mv/thesis-probe recommendation. See "Immediate next steps". Don't start work until you've read both docs.
+_Written at the close of Tvashtr-64 (2026-07-15). Read this **and** `PROJECTPLAN.md` before starting work._
 
 ---
 
-## Standing directives (carry forward — the operator's operating contract)
-- **Role: ARCHITECT / PLANNER only.** ALL implementation (product code, diagnostic scripts, Makefile/config) goes through Claude Code (CC) via a `/goal`. Your only direct edits: `PROJECTPLAN.md`, `HANDOVER.md`, `prompts/*.md`, and trivial doc/typo fixes. Diagnosing a bug yourself is your job; the *fix* is a `/goal`.
-- **The disk audit is your main control point.** Never rubber-stamp CC's report. **There is no git CLI in the MCP** — two proven techniques: (a) **quick pass** — read `.git/refs/heads/<branch>` (tip shas) + `.git/logs/HEAD` (the full reflog: shows the branch was cut from `main`'s tip, the single commit + its parent = FF-ability, and no amend/reset/push). (b) **deep pass (Tvashtr-62)** — decompress commit/tree/blob objects directly (copy the loose object from `.git/objects/xx/yyyy…` via `copy_file_user_to_claude`, then `zlib.decompress` in `bash_tool`; a commit object gives `tree`+`parent` shas; a tree body is `mode name\0<20-byte sha>` entries — an IDENTICAL subtree hash cryptographically guarantees that whole subtree is byte-identical). For most milestones the quick pass + reading the changed files fresh (`read_text_file` / `read_multiple_files`) + confirming tests are mutation-real is enough; reach for the object walk when a byte-intact claim is load-bearing. **Also: the FF merge stat the operator pastes is itself strong evidence** — it lists the exact changed paths (confirm no docs/prompts swept) + the ±line totals.
-- **Every CC handoff = THREE copyable blocks, every time, inline verbatim** (never "same as last time", never "retrieve from a file"): (1) the shell launch `cd /Users/adimac/Desktop/Tvashtr && claude --dangerously-skip-permissions`; (2) the full init prompt; (3) the full `/goal` command. The init prompt must tell CC to read `prompts/CLI-RULES.md` + `CLI-SETUP.md`, give a ≤5-line summary then **STOP and WAIT** for the `/goal`, and when executing to **USE ultracode, dynamic workflows, and the superpowers skills**. The `/goal` may point at a `prompts/*.md` brief (the detail lives there; the init + `/goal` text are always reproduced inline).
-- **`/goal` character cap is 4000 chars** — Tvashtr-63 hit it (the first draft was 8310). Keep the `/goal` lean (outcome + hard invariants-as-evidence + acceptance checklist + stop conditions); move any long brief to `prompts/*.md` and point at it. Draft it in the container and `wc -c` before handing it over.
-- **CC runs ALL verification itself** (make test, lint, FE build+vitest, live gates, Playwright self-sign-off with a screenshot per check) and debugs to green before reporting `READY_TO_MERGE`. Never hand the operator commands to run manually (except a genuinely un-automatable eyeball glance). For a bug-fix `/goal`, require a reproduce-first regression that FAILS on the current code before any fix.
-- **FF-only merges, operator-executed.** Give ALL merge commands as copyable text every time (`cd …; git checkout main; git merge --ff-only <branch>; git log --oneline -N`), state the expected tip sha + "if FF fails, that's divergence — stop", + optional `git branch -d`.
-- **Design decisions from the VISION (§1) + the Tvashtr-25 pivot, NOT from effort.** Default protocol: ONE design question at a time, each paired with its concrete user-facing UX consequence, with explicit operator ratification; don't present option menus for vision calls (decide) — reserve "present both, you choose" for genuine strategic-direction calls. *(Both the Tvashtr-61 S5-design grant and the Tvashtr-63 "take the design call, don't shy from work, no need to run it past me" grant were ONE-SESSION grants — the default one-at-a-time protocol applies again for Tvashtr-64 unless re-granted.)*
-- **Pair every decision with its UX consequence** — describe what the user sees/does on the canvas/UI as a result, every time.
-- **Handover proactively** as context fills — don't wait for exhaustion; the operator saying "handover" is an immediate trigger.
-- **Operator comms: terse.** "Proceed"/"go"/"merged"/"done" = ratify + move. "By the way" wants a short answer. Give multi-step procedures ONE step at a time. Simple everyday language, minimal jargon. Analogies help. Always hand over copyable artifacts.
-- **Guardrails survive bypass:** the no-push guard + the migration-freeze are PreToolUse hooks (allow/deny rules go inert under `--dangerously-skip-permissions`). The freeze hook `.claude/hooks/protect-migrations.sh` currently blocks `0001-0027`; bump it ONLY as the last step of a slice that adds a real migration.
+## 1. Where we are
 
-## Tooling gotchas
-- **`PROJECTPLAN.md` is ~445 KB with a single enormous line-6 header** (a rolling "Last updated" summary — each new entry PREPENDS its own bolded summary before a `_Prior:_` separator, so the whole history accumulates on that one line). Copy it to the container then `grep -nE '^#{1,3} '` / `sed -n` for section reads. **Editing the header (CONFIRMED working Tvashtr-63):** `Filesystem:edit_file` matches a short unique substring anchored at the *start* of the giant line — anchor `oldText` on `> **Last updated:** <date> — **Tvashtr-N — <first clause up to a unique word>` and set `newText` to your new lead ending in `_Prior:_ **Tvashtr-N — <same first clause>`. The dry-run diff comes back "too large for context" (expected — single-line diff); verify success by grepping the stored tool-result JSON for your new markers + confirming the hunk header is `@@ -2,9 +2,9 @@` (a 1:1 line replacement, no duplication). **§17 appends** go immediately before `## 18. Glossary` — anchor `oldText` on `---\n\n## 18. Glossary` and prepend `<entry>\n\n---\n\n## 18. Glossary`. **§15 register** items live under `### Deferred refinements & named upgrades` → the relevant category subheading (e.g. `**Memory (M-memory COMPLETE)**`); anchor on the exact bullet(s) to add/close.
-- **`copy_file_user_to_claude` caches by basename** — re-copying a CHANGED file returns the stale copy. For fresh reads of files CC just changed, use `read_text_file` / `read_multiple_files`. (Unchanged files + loose git objects — each a unique sha filename — are safe to re-copy/read.)
-- **Container filesystem** (`bash_tool`, `/home/claude/`, `/mnt/user-data/uploads/`) **and the operator's disk** (Filesystem MCP at `/Users/adimac/Desktop/Tvashtr`) **are entirely separate** — `bash_tool` cannot read `/Users/…`; everything crosses via `copy_file_user_to_claude` (operator→container, one file/call) or `Filesystem:read_*` / `write_file` / `edit_file` (which operate on the operator disk).
-- **The Filesystem MCP is intermittently unresponsive** (per prior sessions) — a `write_file`/`edit_file` can silently fail; after a suspected failure, verify with a `read_text_file` (head/tail) before assuming it landed.
-- **Makefile** must always be edited surgically with `edit_file` (never `write_file`) — TAB-indented recipes are fragile to full rewrites.
+**`main` @ `a108e86`** — clean, all merged, nothing in flight.
 
-## Current state
-- **`main` @ `9f6de25`**, alembic head **`0027`** (UNCHANGED — no migration this session), freeze regex `2[0-7]`, floors **645 backend / 363 vitest**, lint clean. Repo `main`-only; the `feat/m-memory-remember-toggle` branch was deleted post-merge.
-- **Tvashtr-63 SHIPPED the per-node "Remember what I learn" toggle** (`9f6de25`, 12 files, +430/−28). The global `memory_remember_enabled` env flag is RETIRED; deliberate agent-remember is now a per-node `AgentNode.config["memory_remember_enabled"]` bool (default False, no migration), resolved by pure `resolve_remember_enabled(node_config)` (in `context_compiler.py`, beside `resolve_context_budget`), threaded into `agent_run_step`, gated `remember_enabled and edits_allowed`. The config drawer shows a "Remember what I learn" toggle rendered ONLY when Edits is allowed. The live `make memory-review-gate` was rewired to seed the Engineer node's config via the real node-update endpoint (dropped the env) + PASSED a real deepseek run. Full as-built in `PROJECTPLAN.md` §17, 2026-07-14 (Tvashtr-63).
-- **This session's audit was the quick-pass** (refs + full reflog + reading every changed seam fresh + the FF stat): single commit FF-able off `083923b`, unpushed, the 12 paths confirmed with docs NOT swept; the resolver pure/no-fallback; `compile_context` byte-identical; the routers fresh-dict `model_fields_set` merge; the FE gate `{editsAllowed && …}`; the proof-of-design test FAILS on pre-change `main` + PATCH tests re-read the persisted row; grep-clean. Merged clean → `main` @ `9f6de25`, branch deleted.
-- **`PROJECTPLAN.md` fully updated this session (Tvashtr-63)** — header (line 6) leads with the Tvashtr-63 summary; §15 CLOSED the `memory_remember_enabled` default-OFF-flip + per-node-toggle pair; §17 gained the full Tvashtr-63 as-built entry. `HANDOVER.md` is this rewrite. **Both files are edited on disk but NOT yet committed** — see "Docs closeout" below.
+| Fact | Value |
+|---|---|
+| Alembic head | `0027_memory_review_mode` (Tvashtr-64 added **no** migration) |
+| Backend test floor | **648** passed |
+| Vitest floor | **365** passed |
+| Lint / FE build | clean (`make lint`, `make build-frontend`) |
+| Branches | none — `feat/m-endpoint-editable` merged + deleted |
+| Remote | **NONE configured** (`.git/config` has no `[remote]`) — see §4 |
 
-## §15 register — status after Tvashtr-63
-- **CLOSED this session:** the per-node agent-remember toggle + the `memory_remember_enabled` default-OFF flip (Tvashtr-63 shipped both — the toggle IS the control now).
-- **Still OPEN (Memory):** the PRIMARY agent-remember **live channel** (a zero-repo-trace internal MCP tool — needs MCP-hosting infra + a per-run auth seam; the FALLBACK `TVASHTR_REMEMBER.jsonl` sidecar is what ships). *Trigger:* if a zero-repo-trace live capture is wanted or the sidecar proves unreliable.
-- **Still OPEN (hygiene, both small, pre-existing):** (1) `.env` line 13 `x-api-key=` isn't a shell-valid identifier so `source`-based e2e scripts skip it defensively — *trigger:* rename it or add a defensive loader; (2) stale `auth.spec.ts` labels ("Try the canvas"/"Sign in") predate the `AuthWizard` overhaul — *trigger:* the next legitimate touch of the auth e2e spec.
-- The full OPEN register lives in `PROJECTPLAN.md` §15 under `### Deferred refinements & named upgrades` (Memory / Metering / etc. subheadings).
+**No `/goal` is queued.** The next chat picks the next milestone.
 
-## Mv gate
-Mv — **a non-founder shipping real value on their own repo** — remains the standing product-value gate. No amount of feature-shipping (M-memory, the toggle) resolves it on its own. Name it explicitly to the operator.
+### Untracked files that MUST stay untracked (architect-owned)
+`design/`, `DEEPDIVE-context-and-long-running-agents.md`, `Making Small Models Go the Distance.md`, `NVIDIA's Long-Running Agent Stack.md`, `prompts/M-memory-S5a-shelf.md`, `prompts/M-memory-S5b-views.md`. Every `/goal` must forbid `git add -A` and name these. (Tvashtr-64's `prompts/M-endpoint-editable.md` was committed at the docs closeout.)
 
-## Immediate next steps (Tvashtr-64)
-1. **No `/goal` is queued.** The operator's stated direction this session was "warm-up (done), then a fresh feature milestone." So open by either:
-   - **(operator's stated path) Start the fresh-feature design pass.** Nothing is drafted — a new milestone needs its own vision-grounded design pass (like M-memory's Tvashtr-58 session): ground it on disk (read the current relevant seams) + against §1 vision + the Tvashtr-25 pivot, surface ONE design question at a time (each UX-paired), get ratification, THEN write the brief + the launch package. Ask the operator which capability area (candidates: the next legibility/composability surface; the deferred M-tools/M-rails on-trigger items; a run-export/share surface; etc. — but let the operator name the target, don't pick unilaterally).
-   - **(the standing recommendation) Re-raise the Mv/thesis probe.** Per the strategic note recorded in §17 (2026-07-14) and §13-S4: the rung-2 brownfield thesis has NOT been re-run on a real repo since Tvashtr-38's finding (a 264-file monorepo defeated the proven path), yet ALL the tooling built since to beat it (context management, DeepSeek go-forward, the whole memory system) is now on `main`. The honest next move is probing the Mv/thesis DIRECTLY on a real repo rather than building another feature. Surface this as the recommended alternative before committing to a new feature.
-   Frame it as a genuine strategic-direction call (present both, let the operator choose) — not a unilateral pick.
-2. **Docs closeout** — `PROJECTPLAN.md` + `HANDOVER.md` are edited on disk but uncommitted. Give the operator this commit block once they're ready to close out (do NOT run it yourself — filesystem edits are architect-direct, but git commits are the operator's action):
-   ```
-   cd /Users/adimac/Desktop/Tvashtr
-   git add PROJECTPLAN.md HANDOVER.md
-   git commit -m "docs(tvashtr-63): per-node remember toggle as-built (§17) + close §15 items + handover"
-   git log --oneline -3
-   ```
+---
+
+## 2. What just shipped (Tvashtr-64)
+
+**M-endpoint-editable** — a dropped Ship/Stop endpoint is now editable post-drop. `config["terminal_kind"]` is the single source of truth **and `role_name` is synced to it on every flip**, so a flipped endpoint is byte-identical to a freshly-dropped one. Edges survive; the next run honours the flip.
+
+This **closes the §15 item "Gate/terminal post-drop config editing" outright** (the gate half was M-rails C8). **The canvas now has no non-editable node kind left.**
+
+Full as-built + the audit + the design trap: `PROJECTPLAN.md` §17, entry dated 2026-07-15.
+
+---
+
+## 3. The Grok Build trial — result and what it does *not* prove
+
+The operator trialled **xAI's Grok Build** (`grok --always-approve`, its own `/goal` mode) instead of Claude Code for this milestone. **It cleared the bar on all seven scorecard items**: self-decomposition · tests that bite · ran every gate itself and debugged to green · invariant discipline · **the trap (caught)** · branch hygiene · honest reporting.
+
+**Do not over-read this.** It was ONE small, deterministic, zero-migration, zero-key slice **with a near-identical sibling to pattern-match** (`secret-gate-e2e`). It says nothing yet about Grok on a hard multi-file design milestone, a live-LLM debugging loop, or a genuine `NEEDS_HUMAN` judgement call. What it establishes is that **process compliance — the thing a tool swap actually risks — held.**
+
+Either tool is now a defensible choice. **Ask the operator which to use** if it isn't stated.
+
+---
+
+## 4. ⚠️ THE GUARDRAIL FINDING — read this before launching any non-Claude-Code agent
+
+`grok inspect` proved empirically:
+
+- Grok Build **reads `~/.claude/CLAUDE.md`** and picks up the Claude-Code plugin/skill/MCP ecosystem (35 skills, claude-mem + superpowers, MCP stitch/playwright/sequential-thinking/context7).
+- Grok Build does **NOT read `.claude/settings.json`** → **BOTH PreToolUse hooks are INERT**: `protect-migrations.sh` (migration freeze) and `protect-no-push.sh` (no-push guard).
+- **`prompts/CLI-RULES.md` §3.11 still falsely asserts those guards are "hard walls."** Grok read it and correctly did *not* rely on it — a future agent might. **Fix that stale claim via a `/goal` when convenient** (it's product-adjacent config, not an architect-direct edit).
+
+**What actually made the trial safe — and the thing to re-verify every time:**
+> **`.git/config` has NO remote configured, so `git push` is structurally impossible.**
+
+If a remote is ever added, that safety net vanishes and an unguarded agent becomes genuinely risky. **Re-read `.git/config` before trusting any agent that doesn't honour `.claude/settings.json`.**
+
+Mitigations that worked and should be reused: pick a **zero-migration** slice; restate the guards as hard **textual invariants expressed AS on-disk evidence**; **audit the disk before merge**.
+
+---
+
+## 5. The standing strategic question (UNCHANGED — surfaced three sessions running)
+
+**The rung-2 brownfield thesis has not been re-run on a real repo since Tvashtr-38**, where a 264-file monorepo defeated the proven path. Everything built since to beat it — context management, the DeepSeek go-forward, the whole memory system, scoped mounts — is now on `main` and **has never been tested against the thing it was built for.**
+
+Per §13-S4 the honest next move is **probing the thesis directly on a real repo, not building another feature.** The operator has now chosen a feature three times (Tvashtr-63 warm-up, Tvashtr-64 tooling benchmark). **Surface it once, take the answer, move on** — do not nag.
+
+**Mv — at least one non-founder shipping real value on their own repo — remains the real project value gate. No amount of shipping resolves it.**
+
+---
+
+## 6. Standing directives (carry these forward verbatim)
+
+**Role.** Claude is **ARCHITECT / PLANNER ONLY.** Direct edits allowed: `PROJECTPLAN.md`, `HANDOVER.md`, `prompts/*.md`, trivial doc/comment/typo fixes. **ALL implementation** — product code, diagnostic scripts, build/Makefile/config — goes through a CLI `/goal`. There is **no "diagnostics are architect-direct" carve-out**: diagnose yourself, but the *fix* goes through a `/goal`.
+
+**The disk audit is the control point.** Never trust the agent's self-report. Read the changed files, diff "untouched" claims against a pre-image, confirm tests are mutation-real by reading the bodies, verify git state from the plumbing.
+
+**Every CLI handoff = THREE fully copyable blocks, every single time, no exceptions, never "same as before":**
+1. the shell launch command
+2. the **full init prompt, verbatim**
+3. the **full `/goal` command, verbatim**
+
+Never tell the operator to retrieve text from `prompts/` or scroll back. (A detailed *brief* may live in `prompts/*.md` and be referenced by the `/goal` — but the init prompt and `/goal` text are always reproduced inline.)
+
+**`/goal` character cap is 4000.** Keep it lean; push detail into a `prompts/*.md` brief.
+
+**The CLI agent runs ALL verification itself** — `make test`, lint, FE build, AND the live smoke/e2e targets — debugging to green before reporting `READY_TO_MERGE`. Never hand the operator a list of commands to run. Only a genuine eyeball glance stays optional-human.
+
+**Merges: FF-only, operator executes.** Always give ALL merge commands as copyable text (`cd`, `git checkout main`, `git merge --ff-only <branch>`, verify, optional `git branch -d`). State the expected tip sha and what to do if the FF fails.
+
+**All git commands handed to the operator must be completely comment-free** — zsh runs inline `#` as a command in non-interactive mode.
+
+**Design decisions:** derive from the §1 vision + the Tvashtr-25 pivot, **never** from effort-minimization. **One design question at a time**, decided (not an option menu — reserve menus for genuine strategic-direction calls). **Pair every decision with its concrete user-facing UX consequence on the canvas — every time.**
+
+**Hand over proactively** as context fills; "handover" from the operator is an immediate trigger.
+
+**Communication:** the operator is terse. "proceed"/"go"/"merged"/"done" = ratify and advance. **"By the way"** = a short answer is wanted. **Give multi-step procedures ONE step at a time.** Simple everyday language; analogies help. Two chat sequences: **Tvashtr-X** (main build loop) and **Tvashtr Sidechat-X** (planning/research) — state which on opening.
+
+---
+
+## 7. Gotchas (not all in PROJECTPLAN)
+
+- **No `git` CLI in the Filesystem MCP.** Reconstruct git state from `.git/refs/heads/<branch>` and `.git/logs/refs/heads/<branch>`.
+- **The DEEP audit pass** (worth it every time): copy the loose object from `.git/objects/xx/yyy…` via `copy_file_user_to_claude`, `zlib.decompress` it in bash, parse the tree. **An IDENTICAL subtree hash cryptographically proves that whole subtree byte-intact** — far stronger than a file-level diff. Tvashtr-64 proved every migration + the entire control plane untouched in two hashes, and proved nothing was swept via a zero-added-entries root-tree diff.
+- **`copy_file_user_to_claude` caches by BASENAME.** Re-copying a *changed* file returns the STALE copy — this can falsely "prove" a file unchanged. Use `Filesystem:read_text_file` for fresh reads of recently-changed files. (Unchanged files and unique-sha git objects are safe to copy.)
+- **`Filesystem:read_text_file` may ignore `view_range`** and return the whole file — expensive on big files. Prefer `head`/`tail`, or copy-then-`grep`/`sed` in the container when the file wasn't previously copied.
+- **`PROJECTPLAN.md` is ~460KB with a giant single-line line-6 banner.** Copy to container → `grep -nE '^#{1,3} '` for a header index → `sed -n 'X,Yp'` for targeted reads → `Filesystem:edit_file` with `dryRun:true` first, anchored on multi-line unique text. **§17 is append-only** (prepend the new entry before `## 18. Glossary`).
+- **The line-6 banner edit returns a "too large" diff.** Verify by grepping the stored tool-result for the new markers + confirming the hunk header reads `@@ -2,9 +2,9 @@`.
+- **`edit_file` dry-run success does NOT guarantee anchor uniqueness** — read the returned diff.
+- **Makefile: always surgical `edit_file`, NEVER `write_file`** — recipes are TAB-indented.
+- **Playwright's full-page a11y snapshot wedges on the React Flow canvas.** Use targeted `data-id` selectors + `browser_evaluate` + screenshots, or the scripted headless path.
+- **Filesystem MCP hangs intermittently** (multi-minute). Full Cmd+Q + reopen of Claude Desktop is the reliable recovery; verify writes landed afterward.
+- **Container filesystem (`bash`, `/mnt/user-data/`) and the operator's disk (`/Users/…` via Filesystem MCP) are entirely separate.**
+- **`DEFAULT_MODEL` must be a non-reasoning instruct model** — a reasoning model silently returns empty PRD content.
+- **Cross-check §17's as-built log, not milestone text**, to determine what actually shipped.
+
+---
+
+## 8. Next step for Tvashtr-65
+
+Nothing is in flight. Open by:
+1. Asking the operator **which milestone** — and surface §5 (the brownfield-thesis probe) **once** as the honest alternative to another feature.
+2. Asking **which CLI agent** (Claude Code or Grok Build) if they don't say.
+3. Then: one design question at a time → the brief → the three copyable blocks → the disk audit → the merge commands.
+
+---
+
+## 9. Ready-to-paste opener for the next chat
+
+> You are Tvashtr-65. Read `HANDOVER.md` and `PROJECTPLAN.md` at the project root first; then pick up at choosing the next milestone. Don't start work until you've read both.
