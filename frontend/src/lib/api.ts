@@ -817,6 +817,24 @@ export async function updateGateNode(
   return (await res.json()) as TeamGraphNode;
 }
 
+// M-endpoint-editable: persist an edited TERMINAL node's disposition (ship ↔ stop). Same endpoint
+// as updateTeamNode / updateGateNode; the backend branches on node.kind and syncs role_name to
+// terminal_kind. Returns the updated node.
+export async function updateTerminalNode(
+  teamId: string,
+  nodeId: string,
+  terminalKind: "ship" | "stop",
+): Promise<TeamGraphNode> {
+  const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ terminal_kind: terminalKind }),
+  });
+  if (!res.ok)
+    throw new Error(`PATCH terminal /api/teams/${teamId}/nodes/${nodeId} -> ${res.status}`);
+  return (await res.json()) as TeamGraphNode;
+}
+
 // ---- Topology editing (P1.8d): node/edge CRUD + position persistence + the validity verdict ----
 
 // The canvas vocabulary the palette drops + the four edge roles the inline editor offers. Each maps

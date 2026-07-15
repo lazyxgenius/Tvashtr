@@ -621,7 +621,11 @@ describe("TeamNodePanel — M-rails C8 editable gate + read-only terminal author
     });
   });
 
-  it("a terminal opens a READ-ONLY endpoint drawer: a DISABLED Ship/Stop indicator, NO Save/PATCH", async () => {
+  it("a terminal opens an EDITABLE endpoint drawer: live Ship/Stop, dirty Save, no readonly note", async () => {
+    // M-endpoint-editable: the Ship/Stop control is LIVE (not disabled); flipping enables Save and
+    // PATCHes terminal_kind; the apologetic "delete and re-drop" note is gone.
+    const user = userEvent.setup();
+    const onSaved = vi.fn().mockResolvedValue(undefined);
     render(
       <TeamNodePanel
         teamId="team-1"
@@ -634,21 +638,34 @@ describe("TeamNodePanel — M-rails C8 editable gate + read-only terminal author
           config: { terminal_kind: "ship" },
         })}
         isStartNode={false}
-        onSaved={() => {}}
+        onSaved={onSaved}
         onClose={() => {}}
       />,
     );
-    // Ship is the active endpoint; BOTH buttons are DISABLED (a read-only indicator, not a toggle —
-    // persisting ship↔stop is a §15 backend follow-on).
     const ship = screen.getByRole("button", { name: "Ship it" });
     const stop = screen.getByRole("button", { name: "Stop" });
-    expect(ship).toBeDisabled();
-    expect(stop).toBeDisabled();
+    expect(ship).toBeEnabled();
+    expect(stop).toBeEnabled();
     expect(ship).toHaveAttribute("aria-pressed", "true");
     expect(stop).toHaveAttribute("aria-pressed", "false");
-    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
-    await Promise.resolve();
-    expect(patchCall()).toBeUndefined();
+    // No apologetic readonly note about deleting and re-dropping.
+    expect(screen.queryByText(/planned backend follow-on/i)).toBeNull();
+    expect(screen.queryByText(/delete this endpoint/i)).toBeNull();
+
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled(); // clean until an edit
+
+    await user.click(stop);
+    expect(stop).toHaveAttribute("aria-pressed", "true");
+    expect(ship).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    expect(save).toBeEnabled();
+
+    await user.click(save);
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    const [, init] = patchCall()!;
+    expect(JSON.parse(init.body as string)).toEqual({ terminal_kind: "stop" });
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 });
 

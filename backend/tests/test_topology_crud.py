@@ -125,6 +125,75 @@ def test_patch_gate_config_flips_to_secret_leak_scan_partial_merge(client):
     assert row.prompt is None and row.model is None  # a gate never gains prompt/model
 
 
+def test_patch_terminal_ship_to_stop_persists_role_name_and_edges(client):
+    """M-endpoint-editable: flipping a Ship endpoint to Stop persists in the DB row (not just the
+    PATCH echo), syncs ``role_name`` to ``stop``, leaves in-edges intact, and the flipped node
+    matches a freshly-dropped Stop. Pre-change main 409'd this PATCH — this test fails on that
+    code."""
+    tid = _create_blank(client, "Endpoint flip")
+    graph = _graph(client, tid)
+    ship = next(n for n in graph["nodes"] if n["kind"] == "terminal")
+    assert ship["config"]["terminal_kind"] == "ship"
+    assert ship["role_name"] == "ship"
+    ship_id = ship["id"]
+
+    # Snapshot in-edges before the flip (blank skeleton: one thinker → ship edge).
+    before_edges = [
+        (e["source_node_id"], e["target_node_id"], e["edge_type"], e.get("conditions"))
+        for e in graph["edges"]
+        if e["target_node_id"] == ship_id
+    ]
+    assert len(before_edges) == 1
+
+    resp = client.patch(f"/api/teams/{tid}/nodes/{ship_id}", json={"terminal_kind": "stop"})
+    # On pre-change main this is 409 ("terminal nodes are control primitives…").
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["config"]["terminal_kind"] == "stop"
+    assert resp.json()["role_name"] == "stop"
+
+    # Persistence: RE-READ the ORM row from the DB — not the response echo (in-place JSONB
+    # mutation would echo right and still not save).
+    row = _node_row(ship_id)
+    assert row is not None
+    assert row.config["terminal_kind"] == "stop"
+    assert row.role_name == "stop"
+    assert row.kind == "terminal"
+
+    # In-edges survive the flip (same source/target/type/conditions).
+    after_graph = _graph(client, tid)
+    after_edges = [
+        (e["source_node_id"], e["target_node_id"], e["edge_type"], e.get("conditions"))
+        for e in after_graph["edges"]
+        if e["target_node_id"] == ship_id
+    ]
+    assert after_edges == before_edges
+
+    # Flipped node matches a freshly-dropped Stop (config + role_name + kind).
+    fresh = client.post(
+        f"/api/teams/{tid}/nodes", json={"node_kind": "terminal", "terminal_kind": "stop"}
+    ).json()
+    assert fresh["kind"] == "terminal"
+    assert fresh["role_name"] == "stop"
+    assert fresh["config"]["terminal_kind"] == "stop"
+    assert row.role_name == fresh["role_name"]
+    assert row.config["terminal_kind"] == fresh["config"]["terminal_kind"]
+
+
+def test_patch_terminal_omitted_kind_leaves_config_byte_unchanged(client):
+    """A terminal PATCH with no ``terminal_kind`` stays on the terminal branch (does not fall
+    through to the agent path) and leaves config + role_name byte-unchanged."""
+    tid = _create_blank(client, "Endpoint no-op")
+    ship = next(n for n in _graph(client, tid)["nodes"] if n["kind"] == "terminal")
+    before = _node_row(ship["id"])
+    assert before.config == {"terminal_kind": "ship"} and before.role_name == "ship"
+
+    resp = client.patch(f"/api/teams/{tid}/nodes/{ship['id']}", json={})
+    assert resp.status_code == 200, resp.text
+    after = _node_row(ship["id"])
+    assert after.config == before.config
+    assert after.role_name == before.role_name
+
+
 # --- Edge create — the four roles round-trip to (edge_type, conditions) ---------------------------
 
 

@@ -13,6 +13,7 @@ import {
   type TerminalConfig,
   updateGateNode,
   updateTeamNode,
+  updateTerminalNode,
 } from "../lib/api";
 import { applyEmitContract, emitContract } from "../lib/topology";
 import { DrawerShell, type PanelMode } from "./DrawerShell";
@@ -65,11 +66,10 @@ const AGENT_SUBTITLE = "Its prompt is its whole identity — edit, then run";
  *    identity), a branch-worker Output-contract block, the Slice-C provider/model picker (now the
  *    design's 130px-provider + flex-1-model row), a dirty-aware Save (PATCHes the node-update
  *    endpoint), and a read-only "Last run" brief.
- *  - **gate** (F1c Decision 4) — a READ-ONLY checkpoint view (its title + description from
- *    `node.config`, no Save): the node-update endpoint 409-rejects control primitives, so editing
- *    gate copy is a backend follow-on (§15).
- *  - **terminal** (F1c Decision 4) — a READ-ONLY endpoint view (its Ship/Stop state, a DISABLED
- *    indicator — persisting ship↔stop is a backend follow-on; to switch it, delete + re-drop).
+ *  - **gate** (M-rails C8) — an editable checkpoint: gate type + title/description + parameterized
+ *    guardrail config, dirty-aware Save via `updateGateNode`.
+ *  - **terminal** (M-endpoint-editable) — an editable endpoint: live Ship/Stop control, dirty-aware
+ *    Save via `updateTerminalNode` (persists `terminal_kind` + synced `role_name`).
  *
  * The drawer⇄modal chrome + the sticky `panelMode` live in the shared `DrawerShell`. The node
  * card's model chip (author mode) opens this drawer with `focusModel` bumped, scrolling the Model
@@ -155,6 +155,12 @@ export function TeamNodePanel({
   const [forbiddenText, setForbiddenText] = useState(initialForbiddenText);
   const [outputFile, setOutputFile] = useState(initialOutputFile);
   const [schemaText, setSchemaText] = useState(initialSchemaText);
+
+  // M-endpoint-editable: a TERMINAL's editable disposition. Seeded from `node.config`; the parent
+  // `key`-remount resets it per node. Unused/harmless for agent/gate nodes.
+  const termCfg = (node?.config ?? {}) as TerminalConfig;
+  const initialTerminalKind: "ship" | "stop" = termCfg.terminal_kind === "ship" ? "ship" : "stop";
+  const [terminalKind, setTerminalKind] = useState<"ship" | "stop">(initialTerminalKind);
 
   // F1c: the model-chip express lane — a focus signal from the parent (a bumping nonce; 0 = a normal
   // open). On a bump, scroll the Model field into view + flash a transient coral ring.
@@ -571,11 +577,25 @@ export function TeamNodePanel({
     );
   }
 
-  // ---- F1c Decision 4: terminal — READ-ONLY endpoint view. Ship/Stop is a DISABLED indicator, not
-  //      a working toggle (persisting ship↔stop is a §15 backend follow-on). ----
+  // ---- M-endpoint-editable: terminal — live Ship/Stop control + dirty-aware Save. ----
   if (node.kind === "terminal") {
-    const isShip = (node.config as TerminalConfig)?.terminal_kind === "ship";
+    const isShip = terminalKind === "ship";
     const termTitle = isShip ? "Ship" : "Stop";
+    const terminalDirty = terminalKind !== initialTerminalKind;
+    const handleTerminalSave = async () => {
+      if (!terminalDirty) return;
+      setSaving(true);
+      setSaveError(false);
+      try {
+        await updateTerminalNode(teamId, node.id, terminalKind);
+        setSaved(true);
+        await onSaved();
+      } catch {
+        setSaveError(true);
+      } finally {
+        setSaving(false);
+      }
+    };
     return (
       <DrawerShell
         glyph={glyphForNode("terminal", node.role_name, isShip ? "ship" : "stop")}
@@ -587,29 +607,28 @@ export function TeamNodePanel({
         onClose={onClose}
       >
         <div className="tv-scroll tv-node-edit">
-          <p className="tv-readonly-note">
-            This is where the flow ends.{" "}
-            <span className="tv-readonly-note__soft">
-              Changing ship ↔ stop is a planned backend follow-on — to switch it, delete this
-              endpoint and drop the other from the palette.
-            </span>
-          </p>
           <div className="tv-field">
             <span className="tv-field__label">Endpoint</span>
-            <div className="tv-seg" role="group" aria-label="Endpoint" aria-disabled="true">
+            <div className="tv-seg" role="group" aria-label="Endpoint">
               <button
                 type="button"
-                disabled
                 aria-pressed={isShip}
                 className={`tv-seg__btn${isShip ? " tv-seg__btn--active" : ""}`}
+                onClick={() => {
+                  setTerminalKind("ship");
+                  setSaved(false);
+                }}
               >
                 Ship it
               </button>
               <button
                 type="button"
-                disabled
                 aria-pressed={!isShip}
                 className={`tv-seg__btn${!isShip ? " tv-seg__btn--active" : ""}`}
+                onClick={() => {
+                  setTerminalKind("stop");
+                  setSaved(false);
+                }}
               >
                 Stop
               </button>
@@ -619,6 +638,23 @@ export function TeamNodePanel({
                 ? "Ship — open a reviewed change on a branch and tag it."
                 : "Stop — end the run here with no change shipped."}
             </span>
+          </div>
+
+          <div className="tv-prd__editbar">
+            <button
+              className="tv-btn"
+              type="button"
+              onClick={() => void handleTerminalSave()}
+              disabled={!terminalDirty || saving}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            {terminalDirty ? (
+              <span className="tv-prd__dirty">Unsaved changes</span>
+            ) : saved ? (
+              <span className="tv-prd__saved">Saved — this drives the next run you launch.</span>
+            ) : null}
+            {saveError && <span className="tv-prd__saveerr">Couldn’t save — try again.</span>}
           </div>
         </div>
       </DrawerShell>

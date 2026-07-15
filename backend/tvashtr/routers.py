@@ -186,7 +186,14 @@ class UpdateTeamNodeRequest(BaseModel):
     For a **gate** node (M-rails C8): its editable ``config`` — ``gate_kind`` (``gate_approval`` /
     ``secret_leak_scan`` / …), ``title``, ``description`` — each optional, merged into the existing
     config so a partial edit preserves the rest. ``prompt``/``model``/``capability`` do not apply to
-    a control primitive and are ignored. **Terminal** nodes stay non-editable here (409)."""
+    a control primitive and are ignored.
+
+    For a **terminal** node (M-endpoint-editable): ``terminal_kind`` (``ship`` / ``stop``) — the
+    single source of truth for the endpoint disposition. When sent, it is written into
+    ``config["terminal_kind"]`` AND synced onto ``role_name`` so a flipped endpoint is
+    byte-identical to a freshly-dropped one of the same kind (trajectory ledger joins on
+    ``role_name``). Omitted leaves config + role_name byte-unchanged. ``prompt``/``model`` are
+    ignored for a terminal."""
 
     prompt: str | None = None
     model: str | None = None
@@ -196,6 +203,9 @@ class UpdateTeamNodeRequest(BaseModel):
     gate_kind: str | None = None
     title: str | None = None
     description: str | None = None
+    # M-endpoint-editable: a terminal's editable disposition. Only meaningful when the target is a
+    # terminal; the dedicated FE terminal-update fn sends this alone.
+    terminal_kind: Literal["ship", "stop"] | None = None
     # M-rails C9: the parameterized guardrail configs — ``forbidden_paths`` (globs) for
     # ``diff_touches_forbidden_paths``; ``output_file`` + ``output_schema`` for
     # ``output_schema_check``. Each merged into the gate's config only when sent (None ⇒ left
@@ -1891,12 +1901,13 @@ def update_team_node(
     and (P1.8c) optionally its ``capability`` (``"thinker"`` -> ``kind=completion``/``engine=null``;
     ``"worker"`` -> ``kind=agent``/``engine=openhands``). For a **gate** node (M-rails C8): its
     editable ``config`` (``gate_kind``/``title``/``description``, merged into the existing config).
-    Validates the node belongs to ``team_id`` AND that ``team_id`` is a library team. 400 on a
-    malformed id; 404 if the team is not a library team or the node is not one of its nodes; 409 if
-    the node is a **terminal** (still a non-editable control primitive here), OR if
-    ``capability="worker"`` is asked of the ROOT node (the first node scopes the work — it must stay
-    a thinker, the one executor invariant); 422 if an agent node's ``prompt``/``model`` is missing.
-    Returns the updated node."""
+    For a **terminal** node (M-endpoint-editable): its ``terminal_kind`` (``ship``/``stop``),
+    written into ``config`` AND synced onto ``role_name``. Validates the node belongs to
+    ``team_id`` AND that ``team_id`` is a library team. 400 on a malformed id; 404 if the team is
+    not a library team or the node is not one of its nodes; 409 if ``capability="worker"`` is
+    asked of the ROOT node (the first node scopes the work — it must stay a thinker, the one
+    executor invariant); 422 if an agent node's ``prompt``/``model`` is missing. Returns the
+    updated node."""
     try:
         nid = uuid.UUID(node_id)
     except ValueError as exc:
@@ -1907,10 +1918,19 @@ def update_team_node(
         if node is None or node.team_graph_id != graph.id:
             raise HTTPException(status_code=404, detail="node not found in the team")
         if node.kind == "terminal":
-            raise HTTPException(
-                status_code=409,
-                detail="terminal nodes are control primitives — no config to edit here",
-            )
+            # M-endpoint-editable: a terminal's disposition is editable (ship ↔ stop). Merge into a
+            # FRESH config dict so SQLAlchemy flags the JSONB column dirty (in-place mutation does
+            # NOT persist). ``role_name`` is synced to ``terminal_kind`` so a flipped endpoint is
+            # byte-identical to a freshly-dropped one (trajectory ledger joins on role_name).
+            # Omitted ``terminal_kind`` leaves config + role_name byte-unchanged; never fall through
+            # into the agent branch (which would 422 on missing prompt/model).
+            if "terminal_kind" in body.model_fields_set and body.terminal_kind is not None:
+                cfg = dict(node.config or {})
+                cfg["terminal_kind"] = body.terminal_kind
+                node.config = cfg
+                node.role_name = body.terminal_kind
+            session.flush()
+            return _node_base_dict(node)
         if node.kind == "gate":
             # M-rails C8: a gate's config is editable (its gate_kind + human copy) — prompt/model/
             # capability/tools do not apply to a control primitive. Merge the provided fields into a

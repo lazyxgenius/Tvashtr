@@ -28,6 +28,7 @@ import {
   runTeam,
   setReviewMode,
   updateTeamNode,
+  updateTerminalNode,
 } from "./api";
 
 describe("providerOf — parity with the backend provider_for_model", () => {
@@ -59,6 +60,36 @@ function bodyOf(call: unknown[]): unknown {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("updateTerminalNode — PATCHes terminal_kind (M-endpoint-editable)", () => {
+  it("POSTs terminal_kind to the node endpoint and returns the node", async () => {
+    const echo = {
+      id: "n-ship",
+      role_name: "stop",
+      kind: "terminal",
+      config: { terminal_kind: "stop" },
+    };
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk(echo)));
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await updateTerminalNode("team-1", "n-ship", "stop");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/teams/team-1/nodes/n-ship");
+    expect((init as RequestInit).method).toBe("PATCH");
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({ terminal_kind: "stop" });
+    expect(out).toEqual(echo);
+  });
+
+  it("throws when the server rejects the PATCH", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve({ ok: false, status: 409, json: () => Promise.resolve({}) } as Response),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(updateTerminalNode("team-1", "n-ship", "stop")).rejects.toThrow(
+      /PATCH terminal .* -> 409/,
+    );
+  });
 });
 
 describe("updateTeamNode — memory_remember_enabled sent only when passed", () => {
