@@ -16,7 +16,10 @@ from tvashtr.db import session_scope
 from tvashtr.models import ProviderCredential, Run, TeamGraph, User
 from tvashtr.seed import backfill_owner, import_env_provider_keys
 
-# Every provider env var the seed reads — cleared per test so only what we set is seen.
+# Every provider env var the seed reads — cleared per test so only what we set is seen. (Includes
+# DEEPSEEK_API_KEY so the count assertions below stay deterministic: `make test` exports the real
+# .env DEEPSEEK_API_KEY into os.environ, and once the seed maps deepseek an uncleared value would be
+# imported and skew the exact-count tests.)
 _ALL_ENV = [
     "OPENROUTER_API_KEY",
     "OPENAI_API_KEY",
@@ -25,6 +28,7 @@ _ALL_ENV = [
     "GROQ_API_KEY",
     "NVIDIA_BUILD_API_KEY",
     "NVIDIA_NIM_API_KEY",
+    "DEEPSEEK_API_KEY",
 ]
 
 
@@ -64,6 +68,24 @@ def test_import_creates_encrypted_creds_for_set_env_vars(client, monkeypatch):
     assert decrypt_secret(creds["openrouter"].secret_encrypted) == "sk-or-real-1111"
     assert creds["openrouter"].key_last4 == "1111"
     assert decrypt_secret(creds["nvidia_nim"].secret_encrypted) == "nvapi-real-2222"
+
+
+def test_import_creates_deepseek_credential_from_env(client, monkeypatch):
+    """M-rung2 blocker A (reproduce-first): the DeepSeek go-forward agent model
+    (`deepseek/deepseek-chat`) resolves to provider `deepseek`, so `make seed` MUST import
+    DEEPSEEK_API_KEY into the operator's provider_credentials — else every review_loop node's launch
+    pre-flight refuses with 422 missing_providers=["deepseek"]. RED before `_ENV_PROVIDER_MAP` gains
+    the deepseek entry (the seed silently drops the key); GREEN after. Not vacuous: DEEPSEEK_API_KEY
+    is set explicitly here, so the RED proves the MAP drops it, not that the env var is absent."""
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek-real-9999")
+    op = _operator()
+
+    assert import_env_provider_keys(op) == 1  # deepseek is the only SET provider
+    creds = _creds(op)
+    assert "deepseek" in creds, "seed dropped DEEPSEEK_API_KEY — no deepseek provider credential"
+    assert decrypt_secret(creds["deepseek"].secret_encrypted) == "sk-deepseek-real-9999"
+    assert creds["deepseek"].key_last4 == "9999"
 
 
 def test_import_uses_groq_cloud_then_falls_back_to_groq(client, monkeypatch):
