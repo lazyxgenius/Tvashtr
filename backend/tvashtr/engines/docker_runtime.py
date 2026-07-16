@@ -27,6 +27,7 @@ import os
 import subprocess
 
 from tvashtr.config import get_settings
+from tvashtr.engines import sandbox_cache
 
 logger = logging.getLogger("tvashtr.engines.docker_runtime")
 
@@ -105,15 +106,27 @@ def reap_agent_containers(
 
 
 def sweep_orphaned_agent_containers() -> None:
-    """Boot-time sweep (DQ2): remove **all** agent-server containers before DBOS
-    recovers any PENDING run. For the single-operator v1 any such container at boot
-    is an orphan from a crashed run — clearing it frees the host port and lets a
-    resumed ``engineer_run_step`` start a fresh container. No-op (warn only) if
-    docker is unavailable, so a local-mode / docker-less host still boots cleanly.
+    """Boot-time sweep (DQ2, M-reaper): remove orphaned agent-server containers before DBOS recovers
+    any PENDING run — clearing a crashed run's container frees its host port so a resumed
+    ``engineer_run_step`` starts fresh.
+
+    **Per-run spare (M-reaper):** the sweep runs on EVERY boot in the default ``docker`` mode —
+    including the FastAPI lifespan that ``make test`` triggers (``with TestClient(app)``). It must
+    therefore NOT destroy a container owned by a LIVE run in another process. So it consults the
+    host-side live-container registry and spares (``keep_ids``) every container whose owning pid is
+    still alive; a container with NO entry or a DEAD-pid entry is a genuine orphan and is reaped —
+    the P1.3a crash backstop, unchanged. Reading the registry is best-effort (a bad file spares
+    nothing → reap-everything, today's behavior); the whole sweep is exception-guarded so it can
+    never block app startup. No-op (warn only) if docker is unavailable.
     """
     try:
-        reaped = reap_agent_containers()
-        logger.info("agent-server boot sweep complete (reaped=%d)", len(reaped))
+        keep_ids = sandbox_cache.spared_container_ids()
+        reaped = reap_agent_containers(keep_ids=keep_ids)
+        logger.info(
+            "agent-server boot sweep complete (spared=%d live-owned, reaped=%d)",
+            len(keep_ids),
+            len(reaped),
+        )
     except Exception:  # never let the sweep block app startup
         logger.warning("agent-server boot sweep failed; continuing", exc_info=True)
 

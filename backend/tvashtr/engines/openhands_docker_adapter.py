@@ -300,6 +300,9 @@ class OpenHandsDockerAdapter:
         files_changed: list[str] = []
         conversation = None
         workspace = None
+        container_id: str | None = None  # M-reaper: set on the MISS path; read in the finally
+        created_this_call = False  # M-reaper: did THIS call create a container? (finally teardown)
+        cached_for_reuse = False  # M-reaper: did put() cache it for reuse? (finally teardown)
         usage_before = (0, 0, 0.0)  # per-round baseline; nonzero only on a HIT (metrics accumulate)
         try:
             if cached is None:
@@ -358,6 +361,19 @@ class OpenHandsDockerAdapter:
                     WORKSPACE_MODE,
                     workspace.host_port,
                 )
+                # M-reaper: register the live container the MOMENT it exists — BEFORE building the
+                # Conversation (a WebSocket handshake to the agent server) — so a boot sweep
+                # in ANOTHER process (e.g. ``make test``) can never reap it mid-setup while
+                # THIS process is alive. ``pid`` = this process; ``run_id`` from the reuse key. De-
+                # registered at teardown (reuse success/HIT: ``close_run_sandboxes``; no-reuse OR a
+                # reuse-path failure before caching: the ``finally`` below). No-op on a falsy id.
+                container_id = getattr(workspace, "_container_id", None)
+                created_this_call = True
+                sandbox_cache.register_live_container(
+                    container_id,
+                    run_id=sandbox_cache.run_id_from_session_key(task.session_key),
+                    pid=os.getpid(),
+                )
                 # The callback is bound ONCE to the handle's dispatcher so a REUSED Conversation can
                 # be repointed at each round's collector (a RemoteWorkspace makes Conversation()
                 # return a RemoteConversation; callbacks stream over the server's WebSocket).
@@ -379,9 +395,13 @@ class OpenHandsDockerAdapter:
                     sandbox_cache.CachedSandbox(
                         handle=handle,
                         close=workspace.cleanup,
-                        container_id=getattr(workspace, "_container_id", None),
+                        container_id=container_id,
                     ),
                 )
+                # M-reaper: put() succeeded ⇒ close_run_sandboxes owns this container's teardown +
+                # de-register (reuse path). The finally below only cleans up when this flag is False
+                # (no-reuse, or a reuse-path failure that left it registered-but-uncached).
+                cached_for_reuse = True
                 # P1.5c loop-seeding: push the host workspace into the fresh container so a
                 # docker-mode iteration > 1 resumes on iteration N-1's files. Iteration 1's host
                 # holds only .git -> [] -> a clean no-op.
@@ -473,11 +493,20 @@ class OpenHandsDockerAdapter:
             # the container now. Reuse ON ⇒ leave the warm container alive for the next round; it
             # is torn down at run-end by ``close_run_sandboxes`` (the Control Plane's run_team
             # ``finally``).
-            if task.session_key is None and workspace is not None:
+            # Tear down + de-register the container when THIS call must not leave it warm:
+            #  - no-reuse (session_key None): always (replaces the old ``with`` __exit__);
+            #  - reuse, but this call CREATED a container and failed BEFORE caching it (e.g. the
+            #    Conversation ctor raised) — close_run_sandboxes won't see it, so tear it down +
+            #    de-register here, else a registered container leaks + is wrongly spared forever.
+            # A cached reuse container (success) or a HIT is left warm for close_run_sandboxes.
+            if workspace is not None and (
+                task.session_key is None or (created_this_call and not cached_for_reuse)
+            ):
                 try:
                     workspace.cleanup()
                 except Exception:
-                    logger.warning("container teardown failed (no-reuse path)", exc_info=True)
+                    logger.warning("container teardown failed", exc_info=True)
+                sandbox_cache.deregister_live_container(container_id)
 
         total_tokens = prompt_tokens + completion_tokens
         # Only the success path is downgraded by error events; never clobber a classified

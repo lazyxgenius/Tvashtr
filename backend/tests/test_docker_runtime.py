@@ -6,13 +6,36 @@ gracefully when the daemon (or the CLI) is missing. The openhands-free-ness of t
 startup-path module is covered in ``test_registry``.
 """
 
+import os
 import subprocess
+import sys
 from unittest.mock import patch
 
-from tvashtr.engines import docker_runtime
+from tvashtr.engines import docker_runtime, sandbox_cache
 from tvashtr.engines.docker_runtime import enumerate_push_files, enumerate_push_files_git
 
 _RUN = "tvashtr.engines.docker_runtime.subprocess.run"
+
+
+def _dead_pid() -> int:
+    """A pid guaranteed dead: spawn a trivial process, reap it (``wait``), return its freed pid."""
+    proc = subprocess.Popen([sys.executable, "-c", ""])
+    proc.wait()
+    return proc.pid
+
+
+def _docker_ps_lists(cid: str):
+    """A ``subprocess.run`` fake for the reaper: ``ps -aq`` lists ``cid``, ``rm -f`` succeeds.
+    Returns ``(fake_run, calls)`` so a test can assert whether ``rm -f cid`` was invoked."""
+    calls: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        if args[:3] == ["docker", "ps", "-aq"]:
+            return _completed(stdout=f"{cid}\n")
+        return _completed(returncode=0)
+
+    return fake_run, calls
 
 
 def _completed(returncode=0, stdout="", stderr=""):
@@ -96,6 +119,58 @@ def test_sweep_swallows_unexpected_errors(monkeypatch):
     monkeypatch.setattr(docker_runtime, "reap_agent_containers", _boom)
     # The boot sweep must never propagate (it runs at app startup).
     docker_runtime.sweep_orphaned_agent_containers()
+
+
+# --- M-reaper: the boot sweep must SPARE a container owned by a LIVE run, REAP orphans -----------
+# (registry path isolated per-test by the conftest ``_isolate_live_container_registry`` autouse
+# fixture, so ``register_live_container`` writes a temp file, not the real one.)
+
+
+def test_boot_sweep_spares_live_pid_owned_container():
+    """REPRODUCE-FIRST (M-reaper): a container whose registry entry names a LIVE owning pid must
+    SURVIVE the boot sweep — the whole point of the fix (``make test``'s lifespan sweep must not
+    destroy a real run's container in another process). Pre-fix the sweep passes NO keep-set and
+    force-removes every agent-server container, so asserting no ``rm -f`` call FAILS."""
+    cid = "livecid00001"
+    # THIS test process is alive -> its pid is a genuine live owner.
+    sandbox_cache.register_live_container(cid, run_id="run-live", pid=os.getpid())
+    fake_run, calls = _docker_ps_lists(cid)
+
+    with patch(_RUN, side_effect=fake_run):
+        docker_runtime.sweep_orphaned_agent_containers()
+
+    assert ["docker", "rm", "-f", cid] not in calls, (
+        "boot sweep reaped a container owned by a LIVE process — it must be spared"
+    )
+
+
+def test_boot_sweep_reaps_dead_pid_owned_container():
+    """The P1.3a backstop, intact: a registry entry whose owning pid is DEAD (the owner crashed)
+    is a genuine orphan and MUST still be reaped."""
+    cid = "deadcid00002"
+    sandbox_cache.register_live_container(cid, run_id="run-dead", pid=_dead_pid())
+    fake_run, calls = _docker_ps_lists(cid)
+
+    with patch(_RUN, side_effect=fake_run):
+        docker_runtime.sweep_orphaned_agent_containers()
+
+    assert ["docker", "rm", "-f", cid] in calls, (
+        "a dead-pid (orphaned) container must be reaped — the crash backstop"
+    )
+
+
+def test_boot_sweep_reaps_unregistered_container():
+    """The P1.3a backstop, intact: a container with NO registry entry (a crash before registration,
+    or a pre-registry orphan) is unknown-owner and MUST be reaped — reap-everything, unchanged."""
+    cid = "orphancid0003"  # never registered
+    fake_run, calls = _docker_ps_lists(cid)
+
+    with patch(_RUN, side_effect=fake_run):
+        docker_runtime.sweep_orphaned_agent_containers()
+
+    assert ["docker", "rm", "-f", cid] in calls, (
+        "an unregistered (unknown-owner) container must be reaped"
+    )
 
 
 # --- P1.5c: enumerate_push_files (pure host-side walk; no Docker, openhands-free) ---------

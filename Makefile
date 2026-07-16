@@ -17,7 +17,7 @@ TVASHTR_RUNG2_REPO ?= /Users/adimac/Desktop/trade_mcp
 # independent numeric gate is unaffected (it runs host-side at the repo ROOT).
 TVASHTR_RUNG2_SUBPATH ?= core
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check memory-smoke memory-distill-gate memory-review-gate memory-shelf-e2e brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e node-ask-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e scope-picker-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e endpoint-edit-e2e skills-e2e tools-e2e memory-injection-check seed lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check reaper-check memory-smoke memory-distill-gate memory-review-gate memory-shelf-e2e brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e node-ask-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e scope-picker-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e endpoint-edit-e2e skills-e2e tools-e2e memory-injection-check seed lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -104,6 +104,9 @@ loop-crash: ## Prove the review LOOP resumes MID-CYCLE across a kill -9 mid Engi
 
 seeding-smoke: ## Prove docker-mode loop seeding (P1.5c, NO LLM): push the host workspace into a fresh container (flat + nested + the revise-then-pull round-trip); host<->container sync proven. Needs Docker + agent-server image; operator-run
 	cd backend && uv run python ../scripts/seeding_smoke.py
+
+reaper-check: ## M-reaper LIVE gate (per-run boot-sweep spare): start a REAL agent-server container, register it live -> boot sweep -> assert it SURVIVES; mark its owner pid dead -> sweep -> assert it is REAPED (the P1.3a orphan backstop). Needs Docker + agent-server image; skips cleanly otherwise; operator-run
+	cd backend && uv run python ../scripts/reaper_check.py
 
 loop-run-docker: ## Live 3-node review-loop run, DOCKER sandbox + forced revisions: the Engineer<->Reviewer cycle ships once on the containerized substrate (iter-2 seeded from the host). Needs key + Docker + agent-server image; operator-run (P1.5c)
 	cd backend && TVASHTR_AGENT_SANDBOX=docker TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FORCE_REVISIONS=1 uv run python ../scripts/loop_run.py

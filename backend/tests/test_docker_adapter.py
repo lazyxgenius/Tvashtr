@@ -6,6 +6,7 @@ DQ1 pull-at-end file copy, the usage read, and the identical ``AgentRunResult``
 shape — entirely offline.
 """
 
+import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
@@ -188,6 +189,102 @@ def test_run_failure_is_caught_and_reported(tmp_path):
     assert result.status == "failed"
     assert "container bring-up failed" in (result.error or "")
     assert result.files_changed == []
+
+
+def test_run_registers_live_container_and_deregisters_on_teardown(tmp_path):
+    """M-reaper: the no-reuse docker path REGISTERS its container as live-owned (pid = this process)
+    when it starts — so a concurrent boot sweep in another process spares it — and DE-REGISTERS it
+    when the container is torn down at run-end. Proves the production wiring end-to-end."""
+    ws = MagicMock()
+    ws.working_dir = "/workspace"
+    ws._container_id = "reg123456789" + "0" * 52  # a real 64-char id (not an auto-mock attr)
+    ws.execute_command.return_value = MagicMock(stdout="greeting.txt\n", exit_code=0)
+
+    def fake_download(src, dest):
+        with open(dest, "w") as f:
+            f.write("hi")
+        return MagicMock(success=True)
+
+    ws.file_download.side_effect = fake_download
+
+    convo = MagicMock()
+    metrics = MagicMock(accumulated_cost=0.0)
+    metrics.accumulated_token_usage = MagicMock(prompt_tokens=0, completion_tokens=0)
+    convo.conversation_stats.get_combined_metrics.return_value = metrics
+
+    with (
+        patch.object(mod, "reap_agent_containers"),
+        patch.object(mod, "DockerWorkspace", return_value=ws),
+        patch.object(mod, "Conversation", return_value=convo),
+        patch.object(mod, "LLM"),
+        patch.object(mod, "Agent"),
+        patch.object(mod, "LLMSummarizingCondenser"),
+        patch.object(mod, "Tool"),
+        patch.object(mod, "TerminalTool"),
+        patch.object(mod, "FileEditorTool"),
+        patch.object(sandbox_cache, "register_live_container") as reg,
+        patch.object(sandbox_cache, "deregister_live_container") as dereg,
+    ):
+        # No session_key ⇒ the no-reuse path (the container is torn down in run()'s own finally).
+        task = AgentTask(
+            instruction="do it", workspace_dir=str(tmp_path), model="m", llm_api_key="byok-key"
+        )
+        mod.OpenHandsDockerAdapter().run(task)
+
+    # Registered the live container on start, tagged with THIS process's pid...
+    reg.assert_called_once()
+    assert reg.call_args.args[0] == ws._container_id
+    assert reg.call_args.kwargs["pid"] == os.getpid()
+    # ...and de-registered it once the no-reuse container was torn down.
+    ws.cleanup.assert_called_once()
+    dereg.assert_called_once_with(ws._container_id)
+
+
+def test_run_registers_before_conversation_and_cleans_up_on_early_failure(tmp_path):
+    """M-reaper (window-close): the container is registered live the MOMENT it exists, BEFORE the
+    network-heavy Conversation constructor — so a concurrent boot sweep can't reap it mid-setup. And
+    if the Conversation ctor fails on the REUSE path (before caching), the container is
+    torn down + de-registered here, never leaked as a wrongly-spared entry. Reproduce-first:
+    pre-fix register runs AFTER Conversation, so a Conversation failure leaves it unregistered (reg
+    never called) and, on the reuse path, the container is not torn down (cleanup never called)."""
+    ws = MagicMock()
+    ws.working_dir = "/workspace"
+    ws._container_id = "early1234567" + "0" * 52  # a real 64-char id
+
+    with (
+        patch.object(mod, "reap_agent_containers"),
+        patch.object(mod, "DockerWorkspace", return_value=ws),
+        patch.object(
+            mod, "Conversation", side_effect=RuntimeError("agent-server handshake failed")
+        ),
+        patch.object(mod, "LLM"),
+        patch.object(mod, "Agent"),
+        patch.object(mod, "LLMSummarizingCondenser"),
+        patch.object(mod, "Tool"),
+        patch.object(mod, "TerminalTool"),
+        patch.object(mod, "FileEditorTool"),
+        patch.object(sandbox_cache, "register_live_container") as reg,
+        patch.object(sandbox_cache, "deregister_live_container") as dereg,
+    ):
+        # Reuse path (session_key set) — the case where close_run_sandboxes would normally handle
+        # teardown, but it never cached the sandbox because the Conversation ctor failed first.
+        key = sandbox_cache.session_key_for("run-early", "node-A")
+        task = AgentTask(
+            instruction="x",
+            workspace_dir=str(tmp_path),
+            model="m",
+            llm_api_key="byok",
+            session_key=key,
+        )
+        result = mod.OpenHandsDockerAdapter().run(task)
+
+    assert result.status == "failed"
+    # Registered BEFORE the Conversation ctor: register ran even though Conversation raised.
+    reg.assert_called_once()
+    assert reg.call_args.args[0] == ws._container_id
+    # Reuse-path early failure (sandbox never cached) -> torn down + de-registered here, not leaked.
+    ws.cleanup.assert_called_once()
+    dereg.assert_called_once_with(ws._container_id)
 
 
 def test_pull_workspace_raises_on_find_failure(tmp_path):

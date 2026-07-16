@@ -30,11 +30,16 @@ settings = get_settings()
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Reap orphaned agent-server containers (docker sandbox mode only) before DBOS
-    recovers any PENDING run, so a resumed agent step starts on a clean container +
-    a free host port (P1.3a, DQ2). No-op in the default ``local`` mode, and a no-op
-    (warn only) if docker is unavailable — so startup stays ``openhands``-free and
-    robust on any host."""
+    """Reap ORPHANED agent-server containers before DBOS recovers any PENDING run, so a resumed
+    agent step starts on a clean container + a free host port (P1.3a, DQ2).
+
+    Runs whenever ``agent_sandbox_mode == "docker"`` — which is the DEFAULT (``config.py``), so it
+    fires on essentially every boot, INCLUDING the FastAPI lifespan that ``make test`` triggers via
+    ``with TestClient(app)``. It is therefore per-run-safe (M-reaper): the sweep spares a container
+    owned by a LIVE run in another process (via the host-side registry) and reaps only genuine
+    orphans (unknown or dead owner). Skipped only under ``local`` mode (the fast dev/test
+    targets opt in with ``TVASHTR_AGENT_SANDBOX=local``); a no-op (warn only) if docker is
+    unavailable — so startup stays ``openhands``-free and robust on any host."""
     if settings.agent_sandbox_mode == "docker":
         sweep_orphaned_agent_containers()
     yield
