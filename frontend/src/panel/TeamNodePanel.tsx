@@ -54,6 +54,19 @@ const editsAllowedOf = (node: TeamGraphNode | null): boolean =>
 const rememberEnabledOf = (node: TeamGraphNode | null): boolean =>
   Boolean((node?.config as Record<string, unknown> | null | undefined)?.memory_remember_enabled);
 
+// M-docs: per-node document routing read off the node's config JSONB. `writes_to` = the ONE document
+// name the node authors (default ""); `reads_from` = the list of names whose documents feed its
+// context. Safe casts (config is the shared union). Empty by default — a node with neither behaves
+// exactly as today.
+const writesToOf = (node: TeamGraphNode | null): string => {
+  const raw = (node?.config as Record<string, unknown> | null | undefined)?.writes_to;
+  return typeof raw === "string" ? raw : "";
+};
+const readsFromOf = (node: TeamGraphNode | null): string[] => {
+  const raw = (node?.config as Record<string, unknown> | null | undefined)?.reads_from;
+  return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string") : [];
+};
+
 const START_LOCK_TOOLTIP =
   "The first node scopes the work — it writes the shared spec the team reads, so it stays edits-off.";
 
@@ -123,6 +136,13 @@ export function TeamNodePanel({
   const initialMemoryRemember = rememberEnabledOf(node);
   const [memoryRememberEnabled, setMemoryRememberEnabled] =
     useState<boolean>(initialMemoryRemember);
+  // M-docs: per-node document routing. writes_to = a single doc name (text input); reads_from = a
+  // list of names (one per line in a textarea). Seeded from config, reset via the `key` remount,
+  // folded into the dirty check, and posted on Save. Empty by default.
+  const initialWritesTo = writesToOf(node);
+  const [writesTo, setWritesTo] = useState<string>(initialWritesTo);
+  const initialReadsFromText = readsFromOf(node).join("\n");
+  const [readsFromText, setReadsFromText] = useState<string>(initialReadsFromText);
   // M-tools C7.0: the node's inline tools + skills (stub editors). Seeded from the node, reset via the
   // `key` remount, folded into the dirty check, and posted on Save. NULL until a later milestone.
   const [toolConfig, setToolConfig] = useState<Record<string, unknown> | null>(
@@ -220,7 +240,10 @@ export function TeamNodePanel({
       // M-tools C7.0: compare the JSON of the inline tools/skills (structural equality) so editing
       // them enables Save exactly like prompt/model/capability.
       JSON.stringify(toolConfig ?? null) !== JSON.stringify(node.tool_config ?? null) ||
-      JSON.stringify(skills ?? null) !== JSON.stringify(node.skills ?? null));
+      JSON.stringify(skills ?? null) !== JSON.stringify(node.skills ?? null) ||
+      // M-docs: writes_to/reads_from are authorable fields — editing either enables Save.
+      writesTo !== initialWritesTo ||
+      readsFromText !== initialReadsFromText);
   const canSave = dirty && !saving && prompt.trim().length > 0 && model.trim().length > 0;
 
   const pickEdits = (next: boolean) => {
@@ -253,6 +276,11 @@ export function TeamNodePanel({
         skills,
         editsAllowed,
         memoryRememberEnabled,
+        writesTo.trim(),
+        readsFromText
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean),
       );
       setSaved(true);
       await onSaved();
@@ -870,6 +898,48 @@ export function TeamNodePanel({
             </div>
           )}
         </div>
+
+        {/* M-docs: per-node document routing. Writes-to = the ONE document this node authors;
+            reads-from = the documents that feed its context (one name per line). Empty by default —
+            a node with neither behaves exactly as before. Rendered for any agent/completion node
+            (not gated on Edits: a thinker authors documents too). */}
+        <label className="tv-field">
+          <span className="tv-field__label">Writes to</span>
+          <span className="tv-field__hint">
+            The document this node authors (e.g. design). Blank = the shared spec (the entry node)
+            or nothing.
+          </span>
+          <input
+            className="tv-node-model"
+            type="text"
+            value={writesTo}
+            spellCheck={false}
+            placeholder="(none)"
+            onChange={(e) => {
+              setWritesTo(e.target.value);
+              setSaved(false);
+            }}
+          />
+        </label>
+
+        <label className="tv-field">
+          <span className="tv-field__label">Reads from</span>
+          <span className="tv-field__hint">
+            Documents that feed this node, one name per line (e.g. spec, then design). Blank = the
+            run spec/PRD.
+          </span>
+          <textarea
+            className="tv-node-prompt"
+            value={readsFromText}
+            rows={3}
+            spellCheck={false}
+            placeholder="(defaults to the spec)"
+            onChange={(e) => {
+              setReadsFromText(e.target.value);
+              setSaved(false);
+            }}
+          />
+        </label>
 
         {/* M-tools C7.0: inline Skills (thinker + worker) + Tools (worker-only editor / thinker
             note) stub sections. Between the Model field and the Save bar; part of the Save wire. */}

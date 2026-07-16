@@ -66,7 +66,12 @@ from tvashtr.control_plane.teams import (
     seed_library_if_empty,
 )
 from tvashtr.control_plane.worktree import repo_inspect, repo_subpaths, subpath_is_tracked_dir
-from tvashtr.documents.service import add_version, get_document_with_versions, list_documents
+from tvashtr.documents.service import (
+    add_version,
+    get_document_with_versions,
+    list_documents,
+    list_documents_for_run,
+)
 from tvashtr.gateway import CompletionRequest, GatewayError, complete
 from tvashtr.metering import record_cost
 from tvashtr.models import (
@@ -230,6 +235,12 @@ class UpdateTeamNodeRequest(BaseModel):
     # config unchanged. The run gate ANDs it with ``edits_allowed`` (only an edits-on node can write
     # the sidecar), so the FE shows the control only for an edits-on agent node.
     memory_remember_enabled: bool | None = None
+    # M-docs: per-node doc routing in the EXISTING config JSONB (no migration). ``writes_to`` is
+    # ONE document name the node authors; ``reads_from`` is a LIST of names whose documents feed the
+    # node's context. Merged into config only when SENT (``model_fields_set``); omitted ⇒ config
+    # unchanged. Empty by default — a node with neither behaves exactly as today.
+    writes_to: str | None = None
+    reads_from: list[str] | None = None
 
 
 class CreateTeamRequest(BaseModel):
@@ -326,6 +337,9 @@ def _document_meta(doc: Document) -> dict:
         "id": str(doc.id),
         "title": doc.title,
         "doc_type": doc.doc_type,
+        # M-docs: the run-scoped document NAME (None for legacy / non-run documents) — the run-view
+        # picker labels each document by it ("spec", "design", …).
+        "name": doc.name,
         "created_at": doc.created_at.isoformat(),
         "updated_at": doc.updated_at.isoformat(),
     }
@@ -908,6 +922,22 @@ def get_run(run_id: str, current_user: Annotated[UserOut, Depends(get_current_us
         "run": run_dict,
         "costs": costs,
     }
+
+
+@router.get("/api/runs/{run_id}/documents")
+def get_run_documents(
+    run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """M-docs: every document THIS run produced (metadata only, oldest first) — the list backing
+    the run-view document PICKER. Owner-scoped (404 unless the run belongs to the current user), the
+    same guard as :func:`get_run`. Each item is a ``_document_meta`` dict; the FE opens any one by
+    id via the existing ``GET /api/documents/{id}`` + the shared TipTap editor. An empty list for a
+    run that produced no run-scoped documents (e.g. a pre-0028 run)."""
+    with db.session_scope() as session:
+        run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
+        run_uuid = run.id
+    documents = [_document_meta(d) for d in list_documents_for_run(run_uuid)]
+    return {"run_id": run_id, "documents": documents}
 
 
 def _cost_by_invocation(session, run_id: str) -> dict[int, dict]:
@@ -1996,6 +2026,17 @@ def update_team_node(
         if "memory_remember_enabled" in body.model_fields_set:
             cfg = dict(node.config or {})
             cfg["memory_remember_enabled"] = bool(body.memory_remember_enabled)
+            node.config = cfg
+        # M-docs: writes_to (one doc name) + reads_from (a list of names) live in the SAME config
+        # JSONB — one fresh-dict merge, ``model_fields_set``-guarded (omitted ⇒ config unchanged,
+        # preserving e.g. ``model_config``/``memory_remember_enabled``). The executor's resolvers
+        # normalise blanks/None, so a cleared value is inert.
+        if "writes_to" in body.model_fields_set or "reads_from" in body.model_fields_set:
+            cfg = dict(node.config or {})
+            if "writes_to" in body.model_fields_set:
+                cfg["writes_to"] = body.writes_to
+            if "reads_from" in body.model_fields_set:
+                cfg["reads_from"] = body.reads_from
             node.config = cfg
         session.flush()
         return _node_base_dict(node)

@@ -1,7 +1,7 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { LastRun } from "../components/LastRun";
-import type { GraphNode, RunRow } from "../lib/api";
+import { type DocumentMeta, getRunDocuments, type GraphNode, type RunRow } from "../lib/api";
 import { deriveNodeStatus, isPrdEditable, type NodeStatus, WORKFLOW_FAILED } from "../lib/status";
 import { titleCase } from "../lib/text";
 import { DrawerShell, type PanelMode } from "./DrawerShell";
@@ -26,6 +26,77 @@ function specEmptyHint(
   if (failed && !run.pm_document_id)
     return "The product manager didn't finish the spec for this run.";
   return "The product manager is drafting the spec…";
+}
+
+/** M-docs: the run-view document PICKER. Lists EVERY document the run produced — the entry PM's spec
+ *  plus any node's authored document (a Design Doc, etc.) — and opens the selected one in the SAME
+ *  TipTap editor via {@link PrdView}. A single-document run (the common case) shows NO chip bar and
+ *  is byte-identical to the old single-PrdView panel. Editability is run-level; every document shares
+ *  it. Fetches the run's document list on open; each chip opens its document by id. */
+function PrdDocuments({
+  runId,
+  run,
+  workflowStatus,
+}: {
+  runId: string | null;
+  run: RunRow | null;
+  workflowStatus: string | null;
+}) {
+  const [docs, setDocs] = useState<DocumentMeta[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!runId) {
+      setDocs([]);
+      return;
+    }
+    let cancelled = false;
+    getRunDocuments(runId)
+      .then((r) => {
+        if (!cancelled) setDocs(r.documents);
+      })
+      .catch(() => {
+        if (!cancelled) setDocs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runId]);
+
+  // Default to the run's primary spec (pm_document_id) when present, else the first document.
+  const primaryId = run?.pm_document_id ?? null;
+  const hasPrimary = docs.some((d) => d.id === primaryId);
+  const activeId = selectedId ?? (hasPrimary ? primaryId : (docs[0]?.id ?? primaryId));
+
+  return (
+    <div className="tv-prd-docs">
+      {docs.length > 1 && (
+        <div
+          className="tv-prd__versions"
+          role="group"
+          aria-label="Documents"
+          data-testid="doc-picker"
+        >
+          {docs.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              className={`tv-prd__version${d.id === activeId ? " tv-prd__version--active" : ""}`}
+              onClick={() => setSelectedId(d.id)}
+              data-doc-name={d.name ?? d.doc_type}
+            >
+              {d.name ?? d.title}
+            </button>
+          ))}
+        </div>
+      )}
+      <PrdView
+        documentId={activeId}
+        emptyHint={specEmptyHint(runId, run, workflowStatus)}
+        editable={isPrdEditable(run?.status ?? null, workflowStatus)}
+      />
+    </div>
+  );
 }
 
 // Nice titles for the seeded roles; a custom/authored node falls back to a title-cased role name
@@ -209,13 +280,7 @@ function ThinkerBody({
 }) {
   const canAsk = node.invocations.length > 0;
   const [tab, setTab] = useState<"spec" | "ask" | "memory">("spec");
-  const spec = (
-    <PrdView
-      documentId={run?.pm_document_id ?? null}
-      emptyHint={specEmptyHint(runId, run, workflowStatus)}
-      editable={isPrdEditable(run?.status ?? null, workflowStatus)}
-    />
-  );
+  const spec = <PrdDocuments runId={runId} run={run} workflowStatus={workflowStatus} />;
   if (!canAsk) return spec;
   return (
     <>

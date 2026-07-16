@@ -754,6 +754,8 @@ export async function updateTeamNode(
   skills?: unknown[] | null,
   editsAllowed?: boolean,
   memoryRememberEnabled?: boolean,
+  writesTo?: string,
+  readsFrom?: string[],
 ): Promise<TeamGraphNode> {
   const body: {
     prompt: string;
@@ -763,6 +765,8 @@ export async function updateTeamNode(
     skills?: unknown[] | null;
     edits_allowed?: boolean;
     memory_remember_enabled?: boolean;
+    writes_to?: string;
+    reads_from?: string[];
   } = { prompt, model };
   if (capability !== undefined) body.capability = capability;
   // M-unify U3: the Edits toggle's source of truth. Sent whenever the caller passes it; the backend's
@@ -771,6 +775,11 @@ export async function updateTeamNode(
   // M-memory: the per-node "Remember what I learn" toggle — sent ONLY when the caller passes it (the
   // backend's model_fields_set guard leaves config untouched when omitted). Mirrors editsAllowed.
   if (memoryRememberEnabled !== undefined) body.memory_remember_enabled = memoryRememberEnabled;
+  // M-docs: per-node document routing — writes_to (one doc name) + reads_from (a list of names) in
+  // the node's config JSONB. Sent ONLY when the caller passes it (the backend's model_fields_set
+  // guard leaves config untouched when omitted). Mirrors memoryRememberEnabled.
+  if (writesTo !== undefined) body.writes_to = writesTo;
+  if (readsFrom !== undefined) body.reads_from = readsFrom;
   // M-tools C7.A (SHARED CONTRACT S2): ALWAYS send tools/skills when the caller passed a value (even
   // an explicit null → clear to NULL). Only a caller that OMITS the arg (undefined) leaves the stored
   // value unchanged — the backend distinguishes the two via `model_fields_set`. A caller that omits
@@ -1076,6 +1085,17 @@ export interface DocumentDetail {
   versions: DocumentVersion[]; // ascending by version_no
 }
 
+// M-docs: the run-view document PICKER's list-item shape (metadata only, no versions) — the backend
+// `_document_meta`. Fetched via getRunDocuments; each item opens in the shared TipTap editor by id.
+export interface DocumentMeta {
+  id: string;
+  title: string;
+  doc_type: string;
+  name: string | null; // the run-scoped name ("spec", "design", …); null for legacy docs
+  created_at: string;
+  updated_at: string;
+}
+
 // ---- Run events (the Engineer panel) ----
 
 export interface RunEvent {
@@ -1098,6 +1118,13 @@ export interface RunEventsResponse {
 
 export const getDocument = (documentId: string): Promise<DocumentDetail> =>
   getJSON<DocumentDetail>(`/api/documents/${documentId}`);
+
+// M-docs: every document THIS run produced (metadata only, oldest first) — backs the run-view
+// document picker. Owner-scoped server-side; the picker opens any one by id via getDocument.
+export const getRunDocuments = (
+  runId: string,
+): Promise<{ run_id: string; documents: DocumentMeta[] }> =>
+  getJSON<{ run_id: string; documents: DocumentMeta[] }>(`/api/runs/${runId}/documents`);
 
 // P1.7b live steering: append a human edit as a NEW version (the server stamps
 // created_by="human" + a fresh idempotency key per POST, so every Save is a new version the

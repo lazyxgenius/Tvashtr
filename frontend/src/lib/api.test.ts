@@ -18,6 +18,7 @@ import {
   createSkillLibraryItem,
   createToolLibraryItem,
   getReviewMode,
+  getRunDocuments,
   inspectRepo,
   listMemories,
   MODEL_PRESETS,
@@ -141,6 +142,97 @@ describe("updateTeamNode — memory_remember_enabled sent only when passed", () 
       model: "m",
       memory_remember_enabled: false,
     });
+  });
+});
+
+describe("updateTeamNode — writes_to / reads_from (M-docs)", () => {
+  it("omits writes_to/reads_from when not passed (byte-identical PATCH)", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
+    vi.stubGlobal("fetch", fetchMock);
+    await updateTeamNode("team-1", "n1", "p", "m");
+    const body = bodyOf(fetchMock.mock.calls[0]) as Record<string, unknown>;
+    expect("writes_to" in body).toBe(false);
+    expect("reads_from" in body).toBe(false);
+  });
+
+  it("sends writes_to + reads_from as the trailing args", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
+    vi.stubGlobal("fetch", fetchMock);
+    // tail: capability, toolConfig, skills, editsAllowed, memoryRememberEnabled, writesTo, readsFrom
+    await updateTeamNode(
+      "team-1",
+      "n1",
+      "p",
+      "m",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "design",
+      ["spec", "design"],
+    );
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
+      prompt: "p",
+      model: "m",
+      writes_to: "design",
+      reads_from: ["spec", "design"],
+    });
+  });
+
+  it("sends empty writes_to / reads_from to CLEAR them", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
+    vi.stubGlobal("fetch", fetchMock);
+    await updateTeamNode(
+      "team-1",
+      "n1",
+      "p",
+      "m",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "",
+      [],
+    );
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
+      prompt: "p",
+      model: "m",
+      writes_to: "",
+      reads_from: [],
+    });
+  });
+});
+
+describe("getRunDocuments (M-docs run-view picker)", () => {
+  it("GETs the run's documents list", async () => {
+    const payload = {
+      run_id: "r1",
+      documents: [
+        {
+          id: "d1",
+          name: "spec",
+          title: "Mini-PRD",
+          doc_type: "prd",
+          created_at: "",
+          updated_at: "",
+        },
+        {
+          id: "d2",
+          name: "design",
+          title: "Document: design",
+          doc_type: "design",
+          created_at: "",
+          updated_at: "",
+        },
+      ],
+    };
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk(payload)));
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await getRunDocuments("r1");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/runs/r1/documents");
+    expect(out.documents.map((d) => d.name)).toEqual(["spec", "design"]);
   });
 });
 

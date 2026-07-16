@@ -134,6 +134,9 @@ describe("TeamNodePanel — edit prompt + model + edits toggle, dirty-aware Save
       // M-tools C7.A (S2): updateTeamNode now always sends tool_config/skills (null when unset).
       tool_config: null,
       skills: null,
+      // M-docs: writes_to/reads_from are always sent too (config: null ⇒ seeded "" / []).
+      writes_to: "",
+      reads_from: [],
     });
     // …and the parent was asked to refetch the team (which clears dirty + shows the saved note).
     expect(onSaved).toHaveBeenCalledTimes(1);
@@ -175,6 +178,9 @@ describe("TeamNodePanel — edit prompt + model + edits toggle, dirty-aware Save
       // M-tools C7.A (S2): updateTeamNode now always sends tool_config/skills (null when unset).
       tool_config: null,
       skills: null,
+      // M-docs: writes_to/reads_from are always sent too (config: null ⇒ seeded "" / []).
+      writes_to: "",
+      reads_from: [],
     });
   });
 
@@ -857,6 +863,39 @@ describe("TeamNodePanel — Remember what I learn toggle (edits-on agent only)",
       memory_remember_enabled: true,
       tool_config: null,
       skills: null,
+      writes_to: "",
+      reads_from: [],
     });
+  });
+});
+
+describe("TeamNodePanel — writes_to / reads_from document routing (M-docs)", () => {
+  it("seeds the routing fields from config and Save PATCHes the edited routing", async () => {
+    const onSaved = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ config: { writes_to: "design", reads_from: ["spec", "design"] } })}
+        isStartNode={false}
+        onSaved={onSaved}
+        onClose={() => {}}
+      />,
+    );
+    // Seeded from the node's config JSONB: the text input + the newline-joined list.
+    const writesTo = screen.getByRole<HTMLInputElement>("textbox", { name: /writes to/i });
+    const readsFrom = screen.getByRole<HTMLTextAreaElement>("textbox", { name: /reads from/i });
+    expect(writesTo.value).toBe("design");
+    expect(readsFrom.value).toBe("spec\ndesign");
+
+    // Editing writes_to enables Save; the PATCH carries the edited value + the seeded reads_from.
+    fireEvent.change(writesTo, { target: { value: "blueprint" } });
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    const body = JSON.parse(patchCall()![1].body as string) as Record<string, unknown>;
+    expect(body.writes_to).toBe("blueprint");
+    expect(body.reads_from).toEqual(["spec", "design"]);
   });
 });

@@ -53,7 +53,9 @@ from tvashtr.control_plane.context_compiler import (
     SPEC_HANDLE_FILENAME,
     compile_context,
     resolve_context_budget,
+    resolve_reads_from,
     resolve_remember_enabled,
+    resolve_writes_to,
 )
 from tvashtr.control_plane.credentials import resolve_owner_api_key
 from tvashtr.control_plane.gates import wait_at_gate
@@ -67,13 +69,16 @@ from tvashtr.control_plane.memory_retrieval import (
 )
 from tvashtr.control_plane.node_skills import build_skills
 from tvashtr.control_plane.node_tools import build_mcp_config
+from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
 from tvashtr.control_plane.worktree import add_worktree, build_repo_grounding
 from tvashtr.db import session_scope
 from tvashtr.documents.service import (
     add_version,
     create_document_with_initial_version,
+    find_or_create_run_document,
     get_latest_version,
+    latest_content_by_name,
 )
 from tvashtr.engines.base import AgentTask
 from tvashtr.engines.registry import resolve_adapter
@@ -270,7 +275,12 @@ def node_emits_outcome(edges: list[dict], node_id: str) -> bool:
 
 @DBOS.step()
 def record_entry_spec_step(
-    run_id: str, node_id: str, iteration: int, report: str, spec_document_id: str | None
+    run_id: str,
+    node_id: str,
+    iteration: int,
+    report: str,
+    spec_document_id: str | None,
+    name: str = "spec",
 ) -> str:
     """M-unify U1 (D2.3): version the ENTRY node's pulled ``REPORT.md`` into the run's shared spec
     document — the unified REPLACEMENT for the old ``pm_step`` text→doc AND ``thinker_refine_step``
@@ -285,12 +295,18 @@ def record_entry_spec_step(
     ``{run_id}:spec:{node_id}:{iteration}`` (the old thinker-refine key shape). Returns the spec
     document id (created or existing)."""
     if spec_document_id is None:
+        # M-docs: stamp the entry's document run-scoped (``run_id`` — closes the orphaned-documents
+        # leak + makes it CASCADE-delete with the run) + NAMED (``name``, default "spec"; the
+        # entry's ``config["writes_to"]`` overrides it). ``Run.pm_document_id`` still points at it.
+        # Title/doc_type/idempotency_key are UNCHANGED, so the default "spec" doc is byte-stable.
         document = create_document_with_initial_version(
             title="Mini-PRD",
             doc_type="prd",
             content=report,
             created_by="agent:entry",
             idempotency_key=f"{run_id}:pm-prd-v1",
+            run_id=uuid.UUID(run_id),
+            name=name,
         )
         with session_scope() as session:
             session.execute(
@@ -332,6 +348,46 @@ def read_latest_prd_step(run_id: str) -> str:
     if latest is None:
         raise RuntimeError(f"read_latest_prd_step: document {document_id} has no versions")
     return latest.content
+
+
+@DBOS.step()
+def read_named_documents_step(run_id: str, names: list[str]) -> list[dict]:
+    """M-docs — the recorded READ step behind a node's ``config["reads_from"]``: resolve each
+    requested document NAME to its latest content by ``(run_id, name)`` and return
+    ``[{"name", "content"}]`` in the REQUESTED order. A name with no matching document (or one with
+    no versions yet) is SKIPPED — a node may legitimately list a doc a peer has not produced yet. A
+    recorded ``@DBOS.step`` like :func:`read_latest_prd_step`, so the resumed walk reads the SAME
+    versions the original execution saw (deterministic crash-resume). Returns ``[]`` for an
+    empty/all-missing list; the caller then omits the ``read_documents`` kwarg (byte-identical)."""
+    rid = uuid.UUID(run_id)
+    out: list[dict] = []
+    for name in names:
+        content = latest_content_by_name(rid, name)
+        if content is not None:
+            out.append({"name": name, "content": content})
+    return out
+
+
+@DBOS.step()
+def write_named_document_step(
+    run_id: str, node_id: str, iteration: int, report: str, name: str
+) -> None:
+    """M-docs — the recorded WRITE step behind a NON-entry node's ``config["writes_to"]``: version
+    its pulled ``REPORT.md`` (its ``report``) into its OWN run-scoped document, find-or-created on
+    ``(run_id, name)``. Idempotent on ``{run_id}:doc:{name}:{node_id}:{iteration}`` (a DBOS replay
+    insert-or-returns, never a duplicate version or a second document for the name). Unlike the
+    entry's :func:`record_entry_spec_step` it does NOT touch ``Run.pm_document_id`` — only the entry
+    owns the run's primary spec pointer. The document is created ``title="Document: {name}"`` +
+    ``doc_type=name`` so the run-view picker labels it legibly."""
+    find_or_create_run_document(
+        run_id=uuid.UUID(run_id),
+        name=name,
+        title=f"Document: {name}",
+        doc_type=name,
+        content=report,
+        created_by=f"agent:{node_id}",
+        idempotency_key=f"{run_id}:doc:{name}:{node_id}:{iteration}",
+    )
 
 
 @DBOS.step()
@@ -778,6 +834,7 @@ def agent_run_step(
     remember_enabled: bool = False,
     node_id: str | None = None,
     memory: list | None = None,
+    read_documents: list | None = None,
 ) -> dict:
     """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
     ``reviewer_agent_run_step``. M-unify U1: it is now the SINGLE path EVERY AgentNode executes
@@ -861,6 +918,10 @@ def agent_run_step(
         # it — the ``and edits_allowed`` gate holds. The control plane ingests the
         # TVASHTR_REMEMBER.jsonl sidecar at run-end.
         remember_enabled=remember_enabled and edits_allowed,
+        # M-docs: the named read documents (config["reads_from"]) resolved + threaded by the
+        # workflow body (read_named_documents_step). None ⇒ NO read-docs part ⇒ byte-identical; when
+        # present the caller also passed spec=None so they REPLACE the default PRD part.
+        read_documents=read_documents,
     )
     manifest = compiled.manifest()
 
@@ -1280,12 +1341,23 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # entry invocation refines it). Captured BEFORE ``pm_document_id`` is reassigned below —
             # it drives the create-vs-refine dispatch AND the thinker brief at close.
             entry_was_first = is_entry and pm_document_id is None
-            # P1.7a: re-source the PRD LIVE at every agent-node entry via a recorded step — EXCEPT
-            # the
-            # entry's FIRST invocation, which has no spec yet (``pm_document_id is None``): it
-            # CREATES
-            # the spec from its REPORT.md, so it runs with ``spec=None`` (no PRD part compiled).
-            spec = read_latest_prd_step(run_id) if pm_document_id is not None else None
+            # M-docs: resolve this node's per-node document ROUTING off its config JSONB
+            # (replay-stable off the recorded graph dict), mirroring the budget/remember resolvers
+            # below. ``writes_to`` (OUTPUT doc name) is applied at the write hook after the run;
+            # ``reads_from`` (INPUT doc names) drives the read here.
+            writes_to = resolve_writes_to(node["config"])
+            reads_from = resolve_reads_from(node["config"])
+            # reads_from (INPUT): a node that declared which documents feed it reads those by
+            # (run_id, name); they REPLACE the default spec/PRD part (so ``spec=None``). No
+            # reads_from ⇒ P1.7a: re-source the PRD LIVE at every agent-node entry via a recorded
+            # step — EXCEPT the entry's FIRST invocation, which has no spec yet (``pm_document_id is
+            # None``): it CREATES the spec from its REPORT.md, so it runs with ``spec=None``.
+            read_documents: list | None = None
+            if reads_from:
+                read_documents = read_named_documents_step(run_id, reads_from) or None
+                spec = None
+            else:
+                spec = read_latest_prd_step(run_id) if pm_document_id is not None else None
             # Whether this node BRANCHES the walk on a routing label is a fact about the authored
             # topology (a conditional out-edge), not a role — it harvests a verdict iff ``emits``.
             emits = node_emits_outcome(edges, current)
@@ -1324,6 +1396,11 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             )
             if remembered:
                 memory_kwargs["memory"] = remembered
+            # M-docs: thread the resolved reads_from documents ONLY when present — an empty/None
+            # read set omits the kwarg ⇒ the agent_run_step call is byte-identical to today.
+            docs_kwargs: dict = {}
+            if read_documents:
+                docs_kwargs["read_documents"] = read_documents
             result = agent_run_step(
                 run_id,
                 node["prompt"],
@@ -1343,6 +1420,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 **tools_kwargs,
                 **brownfield_kwargs,
                 **memory_kwargs,  # M-memory S3: the retrieved facts (absent ⇒ byte-identical call)
+                **docs_kwargs,  # M-docs: the reads_from documents (absent ⇒ byte-identical call)
             )
             delete_vkey_step(run_id, vkey)
 
@@ -1392,8 +1470,26 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             if result["total_tokens"] or result["cost_usd"]:
                 persist_agent_cost_step(run_id, current, node["model"], result, n, inv_id)
 
-            # M-unify U1 (D2.3): the ENTRY node versions the shared spec from its pulled REPORT.md.
-            if is_entry:
+            # M-docs: route the node's OUTPUT to a document (its ``config["writes_to"]``).
+            #  * an EMITTING node (verdict-only pull, Slice-4) + writes_to is a misconfig — it
+            #    has no REPORT.md to version without WIDENING its pull scope, which would break the
+            #    anti-clobber invariant — so record a RunWarning and write nothing.
+            #  * the ENTRY node versions the shared spec (M-unify U1 D2.3; default name "spec", its
+            #    writes_to overrides only the NAME) and OWNS ``Run.pm_document_id`` — the
+            #    create-vs-refine dispatch + the fail-on-missing-REPORT.md path is byte-identical.
+            #  * a NON-entry, NON-emitting node with a writes_to versions its REPORT.md into its OWN
+            #    ``(run_id, name)`` doc (never touching pm_document_id); a missing REPORT.md is a
+            #    RunWarning + skip (non-fatal — only the entry's spec is load-bearing enough).
+            #  * NO writes_to on a non-entry node ⇒ NO document write (byte-identical to before).
+            if emits and writes_to:
+                record_resolution_warning(
+                    run_id,
+                    "document",
+                    writes_to,
+                    "an emitting node cannot author a document — its verdict-only pull carries no "
+                    "REPORT.md; move writes_to onto a non-emitting node",
+                )
+            elif is_entry:
                 report = result.get("report")
                 if report is None:
                     # An entry invocation ending with no REPORT.md FAILS with a recorded reason (no
@@ -1421,7 +1517,20 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                         "document_id": pm_document_id,
                         "error": reason,
                     }
-                pm_document_id = record_entry_spec_step(run_id, current, n, report, pm_document_id)
+                pm_document_id = record_entry_spec_step(
+                    run_id, current, n, report, pm_document_id, name=writes_to or "spec"
+                )
+            elif writes_to:
+                report = result.get("report")
+                if report is None:
+                    record_resolution_warning(
+                        run_id,
+                        "document",
+                        writes_to,
+                        "node produced no REPORT.md — nothing versioned into its writes_to doc",
+                    )
+                else:
+                    write_named_document_step(run_id, current, n, report, writes_to)
 
             # Close label + detail. Routing is UNCHANGED — a non-emitting node routes on ``None``
             # (the

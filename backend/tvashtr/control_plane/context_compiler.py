@@ -73,6 +73,11 @@ _PART_REVISION = "revision"
 _PART_GROUNDING = "grounding"
 _PART_WORKER_PROTOCOL = "worker_protocol"
 _PART_WORKER_FOCUS = "worker_focus"
+# M-docs: the named read-documents part (a node's ``config["reads_from"]``). NOT part of the
+# original assembly — rendered where the default ``spec``/PRD part sits, REPLACING it, ONLY when a
+# node declared the documents that feed it (the executor passes ``spec=None`` + ``read_documents``).
+# Absent by default ⇒ today's compiled instruction + manifest stay byte-identical.
+_PART_READ_DOCS = "read_documents"
 # M-memory S3: the injected-memory part (the node's remembered facts). NOT part of the original
 # assembly — inserted right after ``node_prompt`` (standing lessons first) ONLY when memory
 # is present; absent by default so today's compiled instruction + manifest stay byte-identical.
@@ -178,6 +183,10 @@ _STATIC_FIRST_NAMES = (
     _PART_WORKER_FOCUS,
     _PART_IDEA,
     _PART_SPEC,
+    # M-docs: the named read-documents part sits where spec sits — registered so ``_static_first``
+    # never KeyErrors even if a reads_from node reached the large-spec handle path (it cannot today:
+    # reads_from ⇒ spec=None ⇒ no spec_part ⇒ the handle never fires).
+    _PART_READ_DOCS,
     _PART_REVISION,
     # M-unify U1: the edits-off capability note trails (edits-on nodes never reach the handle path
     # with a note — they have none). Present in the order so ``_static_first`` never KeyErrors when
@@ -272,6 +281,16 @@ def _revision_text(iteration: int, reviewer_feedback: str) -> str:
     )
 
 
+def _render_read_documents(read_documents: list[dict]) -> str:
+    """M-docs: render the named read documents (a node's ``config["reads_from"]``) into ONE typed
+    part — each document as a ``--- DOCUMENT: {name} ---`` block, in the authored order. Carries the
+    leading ``\\n\\n`` separators so it concatenates into the instruction like the other parts.
+    Called only with a non-empty list (``compile_context`` skips the part when ``reads_from``
+    resolved to nothing). Distinct from the default ``--- PRD ---`` header so a node reading several
+    documents sees each one clearly delimited."""
+    return "".join(f"\n\n--- DOCUMENT: {d['name']} ---\n{d['content']}" for d in read_documents)
+
+
 def _static_first(parts: list[ContextPart]) -> list[ContextPart]:
     """Reorder present parts into :data:`_STATIC_FIRST_NAMES` order (each name appears at most
     once),
@@ -294,6 +313,7 @@ def compile_context(
     edits_allowed: bool = True,
     memory: list[dict] | None = None,
     remember_enabled: bool = False,
+    read_documents: list[dict] | None = None,
     handle_threshold: int = _SPEC_HANDLE_TOKEN_THRESHOLD,
 ) -> CompiledContext:
     """Compile one node's typed context parts + assembled instruction (pure; see the module
@@ -329,6 +349,12 @@ def compile_context(
     parts.append(_part(_PART_IDEA, f"\n\n--- ORIGINAL IDEA ---\n{idea}"))
     if spec is not None:
         parts.append(_part(_PART_SPEC, f"\n\n--- PRD ---\n{spec}"))
+    # M-docs: the named read documents (a node's ``config["reads_from"]``) REPLACE the default PRD
+    # part — the executor passes ``spec=None`` + ``read_documents=[…]`` when a node declared exactly
+    # which documents feed it. Empty/None ⇒ NO part ⇒ byte-identical to today's compiled instruction
+    # + manifest (the golden test + every existing caller never pass this arg).
+    if read_documents:
+        parts.append(_part(_PART_READ_DOCS, _render_read_documents(read_documents)))
     if iteration > 1 and reviewer_feedback:
         parts.append(_part(_PART_REVISION, _revision_text(iteration, reviewer_feedback)))
     if grounding:
@@ -428,3 +454,35 @@ def resolve_remember_enabled(node_config: dict | None) -> bool:
     with ``edits_allowed`` (only an edits-on node writes the sidecar), mirroring
     :func:`resolve_context_budget`."""
     return bool((node_config or {}).get("memory_remember_enabled", False))
+
+
+def resolve_writes_to(node_config: dict | None) -> str | None:
+    """M-docs: the per-node OUTPUT document name — the top-level ``config["writes_to"]`` string in a
+    node's EXISTING ``config`` JSONB (additive, NO migration), default ``None``. Pure + None-safe;
+    a blank/whitespace/non-str value is treated as unset. A NON-emitting node with a ``writes_to``
+    versions its pulled ``REPORT.md`` into the ``(run_id, name)`` document; the ENTRY node defaults
+    to the ``"spec"`` document (``Run.pm_document_id``). There is NO settings fallback — each node
+    decides for itself, mirroring :func:`resolve_remember_enabled`. (An *emitting* node's
+    ``writes_to`` is a misconfiguration the executor records as a RunWarning + ignores — its
+    verdict-only pull carries no REPORT.md to version.)"""
+    if not node_config:
+        return None
+    value = node_config.get("writes_to")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def resolve_reads_from(node_config: dict | None) -> list[str]:
+    """M-docs: the per-node INPUT document names — the top-level ``config["reads_from"]`` list of
+    strings in a node's EXISTING ``config`` JSONB (additive, NO migration), default ``[]`` (the node
+    reads the run's default spec/PRD exactly as today — byte-identical). Pure + None-safe; a
+    non-list value ⇒ ``[]``, and non-str / blank entries are dropped while order + duplicates are
+    kept as authored. A non-empty result REPLACES the default spec part: the executor reads each
+    named doc by ``(run_id, name)`` and passes them as ``read_documents`` (with ``spec=None``)."""
+    if not node_config:
+        return []
+    value = node_config.get("reads_from")
+    if not isinstance(value, list):
+        return []
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()]

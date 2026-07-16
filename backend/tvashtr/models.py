@@ -100,6 +100,19 @@ class Document(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     doc_type: Mapped[str] = mapped_column(Text, nullable=False)
+    # M-docs (migration ``0028``): the run this document belongs to (FK ``runs.id``,
+    # ``ondelete=CASCADE`` — documents now cascade-delete with their run, closing the registered
+    # orphaned-documents leak). Nullable: legacy pre-0028 documents + the ``doc_writer`` proof
+    # workflow have no run (a NULL FK never cascades). Every document the executor writes — the
+    # entry's default "spec" and any node's ``config["writes_to"]`` document — sets it.
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # M-docs (migration ``0028``): the document's run-scoped NAME — the second half of the
+    # ``(run_id, name)`` key the executor find-or-creates on. The default document is ``"spec"``
+    # (``Run.pm_document_id`` points at it); a node's ``config["writes_to"]`` authors another
+    # (e.g. ``"design"``). Nullable: legacy / non-run documents have none.
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
