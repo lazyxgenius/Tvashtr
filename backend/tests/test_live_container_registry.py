@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from tvashtr.engines import sandbox_cache
 
@@ -137,3 +138,36 @@ def test_close_run_sandboxes_deregisters_live_container():
         assert cid not in sandbox_cache.spared_container_ids()
     finally:
         sandbox_cache.clear()  # don't leak the in-memory cache into other tests
+
+
+# --- M-reaper-S2: the registry must be HOST-GLOBAL, not checkout-local ---------------------------
+# (these target ``_default_registry_path()`` directly — NOT the conftest-monkeypatched
+# ``_REGISTRY_PATH`` — so they see the real default, regardless of the isolation fixture.)
+
+
+def test_registry_default_path_is_not_inside_the_repo_checkout(monkeypatch):
+    """REPRODUCE-FIRST (M-reaper-S2): the default registry path must NOT resolve inside the repo
+    checkout. A ``__file__``-derived path is CHECKOUT-LOCAL — invisible to a boot sweep in a git
+    worktree / second clone that shares the host's docker containers, which would then reap a live
+    run's container it never saw registered. Pre-fix the default resolves to
+    ``<repo>/backend/.tvashtr_workspaces/...`` (inside the checkout) → this FAILS."""
+    monkeypatch.delenv("TVASHTR_LIVE_CONTAINER_REGISTRY", raising=False)
+    default = sandbox_cache._default_registry_path().resolve()
+    repo_root = Path(sandbox_cache.__file__).resolve().parents[3]  # -> <repo> checkout root
+    assert repo_root not in default.parents, (
+        f"registry default {default} must not live inside the repo checkout {repo_root} "
+        f"(a checkout-local path cannot guard host-global docker containers)"
+    )
+
+
+def test_env_override_is_honored(monkeypatch, tmp_path):
+    """The host-global default is overridable via TVASHTR_LIVE_CONTAINER_REGISTRY so tests/CI can
+    isolate the whole process; with no override it is ``~/.tvashtr/live_containers.json``."""
+    override = tmp_path / "custom-dir" / "reg.json"
+    monkeypatch.setenv("TVASHTR_LIVE_CONTAINER_REGISTRY", str(override))
+    assert sandbox_cache._default_registry_path() == override
+
+    monkeypatch.delenv("TVASHTR_LIVE_CONTAINER_REGISTRY", raising=False)
+    assert (
+        sandbox_cache._default_registry_path() == Path.home() / ".tvashtr" / "live_containers.json"
+    )

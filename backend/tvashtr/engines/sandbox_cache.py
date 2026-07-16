@@ -105,9 +105,9 @@ def put(session_key: str | None, sandbox: CachedSandbox) -> None:
 
 
 def live_container_ids() -> frozenset[str]:
-    """The container ids of every currently-cached docker sandbox — the reaper's keep-set, so
-    reap-before-start skips warm containers it must NOT kill (the boot sweep passes nothing and
-    still reaps everything). Local sandboxes contribute no id."""
+    """The container ids of every currently-cached docker sandbox — reap-before-start's keep-set, so
+    it skips warm containers it must NOT kill. (The boot sweep uses a DIFFERENT keep-set — the
+    host-global live-container registry, M-reaper.) Local sandboxes contribute no id."""
     with _LOCK:
         return frozenset(cs.container_id for cs in _CACHE.values() if cs.container_id)
 
@@ -159,8 +159,9 @@ def clear() -> None:
 # crashed / exited), ⇒ NOT spared ⇒ reaped — a genuine orphan, exactly what the sweep must clear.
 #
 # ROBUSTNESS: every op is best-effort. A missing / unreadable / corrupt file is treated as EMPTY
-# (warn, never raise) so a bad file can never block app boot nor crash a run. The registry sits
-# beside the agent workspaces (both gitignored). Writes are atomic (temp + ``os.replace``) so a
+# (warn, never raise) so a bad file can never block app boot nor crash a run. The registry lives at
+# a HOST-GLOBAL path (``~/.tvashtr/live_containers.json``, outside any checkout — see
+# :func:`_default_registry_path`). Writes are atomic (temp + ``os.replace``) so a
 # concurrent reader (the sweep) never sees a torn file; the module ``_LOCK`` serializes in-process
 # access. Cross-process is last-writer-wins — correct for the serial single-operator v1. The
 # registration TOCTOU window is just the ``DockerWorkspace`` ctor's own span (the adapter registers
@@ -175,9 +176,30 @@ def clear() -> None:
 # next run's reap-before-start (image-scoped). A start-time-qualified liveness check (using stored
 # ``started_at``) is the named follow-on that closes it.
 
-_REGISTRY_PATH = (
-    Path(__file__).resolve().parents[2] / ".tvashtr_workspaces" / "live_containers.json"
-)
+# HOST-GLOBAL, deliberately NOT ``__file__``-derived: docker containers are host-scoped (the reaper
+# selects them by ``ancestor=<image>``, seeing EVERY container on the machine), so the registry that
+# decides which to spare must be host-scoped too. A ``__file__``-derived path is CHECKOUT-LOCAL —
+# invisible to a boot sweep in a git worktree / second clone that shares the host's containers,
+# which would then reap a live run's container it never saw registered. ``~/.tvashtr`` is PER-USER —
+# host-wide for the single-operator v1 (closing the checkout/worktree case); a genuine multi-user
+# host, or a run + sweep with a divergent ``$HOME``, reopens it (the container set is host-global
+# across ALL users) and is a named follow-on.
+_REGISTRY_ENV_VAR = "TVASHTR_LIVE_CONTAINER_REGISTRY"
+
+
+def _default_registry_path() -> Path:
+    """Resolve the host-global registry path: ``TVASHTR_LIVE_CONTAINER_REGISTRY`` override if set
+    (non-empty), else ``~/.tvashtr/live_containers.json`` (per-user; host-wide for the single-
+    operator v1). Read once at import to seed ``_REGISTRY_PATH``; the env var isolates a process
+    (tests / CI), while the conftest fixture + ``reaper_check`` still isolate by reassigning
+    ``_REGISTRY_PATH``. The parent dir is created on demand by :func:`_write_registry`."""
+    override = os.environ.get(_REGISTRY_ENV_VAR)
+    if override:
+        return Path(override)
+    return Path.home() / ".tvashtr" / "live_containers.json"
+
+
+_REGISTRY_PATH = _default_registry_path()
 
 
 def _pid_alive(pid: object) -> bool:
@@ -225,7 +247,7 @@ def _read_registry() -> list[dict]:
 
 def _write_registry(entries: list[dict]) -> None:
     """Atomically write ``entries`` (temp file + ``os.replace``) so a concurrent reader never sees a
-    torn file. Creates the workspaces dir if absent. Caller holds ``_LOCK`` + wraps exceptions."""
+    torn file. Creates its parent dir if absent. Caller holds ``_LOCK`` + wraps errors."""
     _REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = _REGISTRY_PATH.with_name(f"{_REGISTRY_PATH.name}.{os.getpid()}.tmp")
     with open(tmp, "w", encoding="utf-8") as fh:

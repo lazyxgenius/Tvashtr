@@ -18,8 +18,10 @@ the CLI keeps this module dependency-light and matches the brief.)
 exposes no custom-name / label hook, so a deterministic per-run identifier is not
 available. Per the brief (DQ2) we fall back to reaping by the agent-server image,
 which is safe for the single-operator v1 (the only containers from that image are
-ours). Consequence: reaping is all-or-nothing across runs — fine while runs are
-serial; per-run isolation is a named upgrade if concurrency ever lands.
+ours). Consequence: the CLI SELECTS by image (every container of that image, across
+runs), but the boot sweep is no longer all-or-nothing — it spares any container a
+LIVE run registered (per-run isolation landed in ``de2f515``; see
+``sweep_orphaned_agent_containers`` + the host-global ``sandbox_cache`` registry).
 """
 
 import logging
@@ -72,11 +74,12 @@ def reap_agent_containers(
     the per-container ``rm`` loop are guarded), so the adapter can call it before
     starting a container without risking a crash. Returns the ids actually removed.
 
-    ``keep_ids`` (M-unify U2) is a set of container ids to SPARE — the live warm sandboxes the
-    process-level reuse cache is keeping alive across a node's rounds
-    (``sandbox_cache.live_container_ids()``). Reap-before-start passes them so a HIT's warm
-    container is never killed between rounds; the boot sweep passes NONE (the default) so it still
-    reaps EVERYTHING — the crash backstop, unchanged. Ids are normalized to their 12-char short
+    ``keep_ids`` is a set of container ids to SPARE. Two callers pass two different spare-sets:
+    reap-before-start (M-unify U2) passes the process-level warm sandboxes
+    (``sandbox_cache.live_container_ids()``) so a HIT's warm container is never killed between
+    rounds; the boot sweep passes ``sandbox_cache.spared_container_ids()`` (the host-global
+    registry's LIVE-pid-owned set, M-reaper) so it spares any container a live run owns and reaps
+    only genuine orphans — the crash backstop, intact. Ids are normalized to their 12-char short
     form before comparison because ``docker ps -aq`` yields short ids while the cache holds the
     full 64-char id.
     """
@@ -86,7 +89,7 @@ def reap_agent_containers(
     try:
         for cid in list_agent_containers(image):
             if cid[:12] in keep_short:
-                continue  # a live cached sandbox — spare it (boot sweep passes no keep-set)
+                continue  # spared: this id is in keep_ids (both callers pass a real spare-set now)
             rm = _docker("rm", "-f", cid)
             if rm.returncode == 0:
                 reaped.append(cid)

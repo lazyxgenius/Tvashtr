@@ -249,8 +249,8 @@ class OpenHandsDockerAdapter:
         # Reap-before-start (DQ2), M-unify U2: clear orphaned agent-server containers EXCEPT the
         # live warm sandboxes the reuse cache is keeping for this run's OTHER nodes (``keep_ids``)
         # — so a HIT's warm container is never killed between rounds. Image-based otherwise
-        # (correct for serial single-operator runs). The boot sweep passes no keep-set, so it still
-        # reaps EVERYTHING — the crash backstop, unchanged.
+        # (correct for serial single-operator runs). The boot sweep passes the live-container
+        # registry's spare-set (M-reaper), reaping only orphans — the crash backstop, intact.
         reap_agent_containers(keep_ids=sandbox_cache.live_container_ids())
 
         seq = count()

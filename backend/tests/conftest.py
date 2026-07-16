@@ -72,7 +72,7 @@ def auth_user_id() -> uuid.UUID:
 @pytest.fixture(autouse=True)
 def _isolate_live_container_registry(tmp_path, monkeypatch):
     """M-reaper: point the host-side live-container registry at a per-test temp file so no test
-    writes the real ``.tvashtr_workspaces/live_containers.json`` (a mocked-workspace docker-adapter
+    writes the real ``~/.tvashtr/live_containers.json`` (a mocked-workspace docker-adapter
     test registers into it on container start) and no registry state leaks between tests. Function
     -scoped: the session ``client`` lifespan sweep (set up first, at the outermost scope) still
     targets the REAL path — a clean no-op offline, since no agent-server containers exist."""
