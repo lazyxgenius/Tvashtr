@@ -14,11 +14,13 @@ asserts the M-docs proof:
     first invocation has none. Deterministic — NOT an LLM-echo check — and it survives even if the
     downstream Engineer/Reviewer loop does not ship.
 
-Every node runs on the PROVEN NIM agent model ``nvidia_nim/meta/llama-3.3-70b-instruct`` (the same
-path ``make thinker-chain-e2e`` uses — serialization-clean AND it reliably writes ``REPORT.md`` to
-its workspace, unlike weaker models), LOCAL sandbox, gates auto-approve (``TVASHTR_AGENT_SANDBOX=
-local`` + ``TVASHTR_AUTO_APPROVE_GATES=1``). Skips cleanly without ``NVIDIA_BUILD_API_KEY``. Exits
-non-zero unless BOTH proofs hold.
+Every node runs on the CONFIGURED agent model — ``.env`` ``TVASHTR_AGENT_MODEL`` (the DeepSeek
+go-forward slug ``deepseek/deepseek-chat``), NOT a hardcode; override per run with
+``make docs-chain-e2e TVASHTR_DOCS_CHAIN_MODEL=<slug>`` (mirroring the ``TVASHTR_RUNG2_MODEL ?=``
+precedent). LOCAL sandbox, gates auto-approve (``TVASHTR_AGENT_SANDBOX=local`` +
+``TVASHTR_AUTO_APPROVE_GATES=1``). Skips cleanly when the configured model's provider has no key in
+``.env`` (run ``make seed`` first so the per-owner credential is in the DB). Exits non-zero unless
+BOTH proofs hold.
 
 Run via ``make docs-chain-e2e``.
 """
@@ -30,7 +32,19 @@ from pathlib import Path
 
 POLL_TIMEOUT_S = int(os.environ.get("TVASHTR_DOCS_CHAIN_TIMEOUT_S", "600"))
 _TERMINAL_WF = {"SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
-_MODEL = "nvidia_nim/meta/llama-3.3-70b-instruct"
+
+# Each provider slug -> the ``.env`` var(s) whose key ``make seed`` imports for it (mirrors
+# ``seed._ENV_PROVIDER_MAP``). The gate honors the CONFIGURED model and skips cleanly when that
+# provider has no key to seed — a no-op off-box, like the other live gates.
+_PROVIDER_ENV_KEYS: dict[str, tuple[str, ...]] = {
+    "openrouter": ("OPENROUTER_API_KEY",),
+    "openai": ("OPENAI_API_KEY",),
+    "gemini": ("GEMINI_API_KEY",),
+    "groq": ("GROQ_CLOUD_API_KEY", "GROQ_API_KEY"),
+    "nvidia_nim": ("NVIDIA_BUILD_API_KEY", "NVIDIA_NIM_API_KEY"),
+    "deepseek": ("DEEPSEEK_API_KEY",),
+}
+_DEFAULT_MODEL = "deepseek/deepseek-chat"
 
 
 def _load_dotenv() -> None:
@@ -51,20 +65,26 @@ def _load_dotenv() -> None:
 
 def main() -> int:
     _load_dotenv()
-    if not os.environ.get("NVIDIA_BUILD_API_KEY"):
+
+    # Honor the CONFIGURED model (``.env`` ``TVASHTR_AGENT_MODEL``, set by the Makefile from
+    # ``TVASHTR_DOCS_CHAIN_MODEL``); fall back to the DeepSeek go-forward slug. NOT a hardcode.
+    model = os.environ.get("TVASHTR_AGENT_MODEL") or _DEFAULT_MODEL
+    provider = model.split("/", 1)[0]
+    key_names = _PROVIDER_ENV_KEYS.get(provider)
+    if key_names and not any(os.environ.get(n) for n in key_names):
         print(
-            "[docs-chain-e2e] NVIDIA_BUILD_API_KEY not set — skipping live run.\n"
-            "              Set it in .env to drive the PM->Architect->Engineer journey. "
-            "(Not a failure.)"
+            f"[docs-chain-e2e] no {provider!r} key ({'/'.join(key_names)}) in .env — "
+            "skipping. Run `make seed` after setting it. (Not a failure.)"
         )
         return 0
 
-    # Pin the serialization-proven model + LOCAL sandbox + auto-approve gates BEFORE the settings
-    # cache is populated by the app import below.
+    # Pin LOCAL sandbox + the resolved model + auto-approve gates BEFORE the settings cache is
+    # populated by the app import below.
     os.environ["TVASHTR_AGENT_SANDBOX"] = "local"
-    os.environ["TVASHTR_AGENT_MODEL"] = _MODEL
-    os.environ["DEFAULT_MODEL"] = _MODEL
+    os.environ["TVASHTR_AGENT_MODEL"] = model
+    os.environ["DEFAULT_MODEL"] = model
     os.environ["TVASHTR_AUTO_APPROVE_GATES"] = "1"
+    print(f"[docs-chain-e2e] model={model} (provider={provider}), LOCAL sandbox")
 
     from fastapi.testclient import TestClient
     from operator_session import login_operator
@@ -89,14 +109,14 @@ def main() -> int:
             for n in client.get(f"/api/teams/{team_graph_id}/graph").json()["nodes"]
         }
 
-        # Seed the NEW per-node document routing + pin the proven model on every agent/completion
+        # Seed the NEW per-node document routing + pin the resolved model on every agent/completion
         # node (the clone-on-launch carries this into the run). The Architect AUTHORS "design"; the
         # Engineer READS both. writes_to is NOT set on the emitting Reviewer (that would warn).
         for role in ("pm", "architect", "engineer", "reviewer"):
             node = nodes.get(role)
             if node is None:
                 continue
-            body: dict = {"prompt": node["prompt"], "model": _MODEL}
+            body: dict = {"prompt": node["prompt"], "model": model}
             if role == "architect":
                 body["writes_to"] = "design"
             if role == "engineer":
@@ -116,6 +136,12 @@ def main() -> int:
         run_id = client.post("/api/runs", json={"team_graph_id": team_graph_id}).json()["run_id"]
         print(f"[docs-chain-e2e] started run_id={run_id}; polling…")
 
+        # TEARDOWN-RACE FIX: exit on a TERMINAL DBOS *workflow* status, not the run's own status.
+        # ``finalize_run_step`` sets ``runs.status="completed"`` while the same ``run_team``
+        # workflow is still running distill/ingest/teardown; breaking on "completed" tore DBOS
+        # down mid-workflow ("System database accessed before DBOS was launched") and left a
+        # PENDING ``run_team`` that wedged the next boot. ``wf in _TERMINAL_WF`` fires only after
+        # the whole workflow returns, so nothing outlives the TestClient.
         deadline = time.time() + POLL_TIMEOUT_S
         final = None
         while time.time() < deadline:
@@ -123,7 +149,7 @@ def main() -> int:
             wf = body["workflow_status"]
             run_status = (body.get("run") or {}).get("status")
             print(f"  workflow={wf}  run={run_status}")
-            if wf in _TERMINAL_WF or run_status in {"completed", "failed", "rejected"}:
+            if wf in _TERMINAL_WF:
                 final = body
                 break
             time.sleep(4)
@@ -154,9 +180,19 @@ def main() -> int:
                 pm_parts += part_names
         architect_read_prd = "spec" in arch_parts and "spec" not in pm_parts
 
+        # Prove the CONFIGURED model is on the RUN graph (the clone-on-launch nodes): read the run's
+        # OWN cloned graph (GET /api/runs/{id}/graph) and show each agent node's model (gates and
+        # terminals have model=None and are filtered out).
+        run_nodes = client.get(f"/api/runs/{run_id}/graph").json().get("nodes", [])
+        run_models = {
+            n["role_name"]: n.get("model") for n in run_nodes if n.get("model") is not None
+        }
+
         print("\n================= M-DOCS JOURNEY RESULT =================")
         print(f"run_id            = {run_id}")
         print(f"run.status        = {(final.get('run') or {}).get('status')}")
+        print(f"configured model  = {model}")
+        print(f"run graph models  = {run_models}")
         print(f"documents         = {sorted(n for n in names if n)}")
         print(f"architect parts   = {arch_parts}")
         print(f"pm parts          = {pm_parts}")
