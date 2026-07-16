@@ -50,17 +50,44 @@ from pathlib import Path
 # Baking the default in keeps the committed target a no-op in CI / on other machines.
 _REPO_PATH = os.environ.get("TVASHTR_RUNG2_REPO", "/Users/adimac/Desktop/trade_mcp")
 
+
 # scoped-mount Slice 1: the optional sub-path the brownfield agent's context map + FOCUS scope to.
 # Default ``core`` — the DEMA target package — so the Engineer's surface is core/'s handful of files
 # (NOT the 264-file monorepo that overflowed the model at rung 2). The INDEPENDENT numeric gate is
 # UNCHANGED: it runs host-side from a verify venv at the repo ROOT (installs .[dev], runs
 # tests/test_indicators.py, computes DEMA), so scoping the AGENT does not affect the gate.
-_SUBPATH = os.environ.get("TVASHTR_RUNG2_SUBPATH", "core")
+def _resolve_subpath(env=None) -> str:
+    """The agent's mount sub-path, resolved from ``TVASHTR_RUNG2_SUBPATH``.
+
+    UNSET -> ``core`` (the proven scoped default — must NOT change). Explicitly BLANK
+    (``TVASHTR_RUNG2_SUBPATH=``) -> ``""`` -> whole-repo mount, mirroring the FE
+    (``LaunchPanel.tsx``: ``if (scope) opts.subpath = scope`` omits an empty scope).
+    """
+    return (os.environ if env is None else env).get("TVASHTR_RUNG2_SUBPATH", "core")
+
+
+_SUBPATH = _resolve_subpath()
 
 # A real review loop on a real repo (container dep-install + possible rework rounds) is slow.
 POLL_TIMEOUT_S = int(os.environ.get("TVASHTR_RUNG2_TIMEOUT_S", "2400"))
+# Exit the poll loop only on a TERMINAL DBOS *workflow* status (NOT the run's own status): a fast
+# run sets ``runs.status="completed"`` while the same ``run_team`` workflow is still running
+# distill/ingest/teardown — breaking on that tore DBOS down mid-workflow and left a PENDING
+# ``run_team`` that wedged the next boot (mirrors ``docs_chain_check``'s teardown-race fix).
 _TERMINAL_WF = {"SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
-_TERMINAL_RUN = {"completed", "failed", "over_budget", "rejected"}
+
+# Each provider slug -> the ``.env`` var(s) whose key ``make seed`` imports for it (mirrors
+# ``seed._ENV_PROVIDER_MAP`` and ``docs_chain_check._PROVIDER_ENV_KEYS``). The gate honors the
+# CONFIGURED model and skips cleanly when that provider has no key — a no-op off-box.
+_PROVIDER_ENV_KEYS: dict[str, tuple[str, ...]] = {
+    "openrouter": ("OPENROUTER_API_KEY",),
+    "openai": ("OPENAI_API_KEY",),
+    "gemini": ("GEMINI_API_KEY",),
+    "groq": ("GROQ_CLOUD_API_KEY", "GROQ_API_KEY"),
+    "nvidia_nim": ("NVIDIA_BUILD_API_KEY", "NVIDIA_NIM_API_KEY"),
+    "deepseek": ("DEEPSEEK_API_KEY",),
+}
+_DEFAULT_MODEL = "deepseek/deepseek-chat"
 
 # The run's worktree lands here (backend/.tvashtr_workspaces/<run_id>).
 _WORKSPACE_ROOT = Path(__file__).resolve().parents[1] / "backend" / ".tvashtr_workspaces"
@@ -193,11 +220,36 @@ def _summary_line(pytest_output: str) -> str:
     return "(no pytest summary line)"
 
 
+def _create_run_body(idea: str, repo_path: str, base_ref: str, subpath: str) -> dict[str, str]:
+    """The ``POST /api/runs`` body for a rung-2 review_loop run.
+
+    Mirrors the FE (``LaunchPanel.tsx``: ``if (scope) opts.subpath = scope``): a non-empty
+    ``subpath`` scopes the agent's context map + FOCUS to it (default ``core`` — the DEMA target
+    package, not the 264-file monorepo); a BLANK subpath OMITS the key so the backend mounts the
+    WHOLE repo (absent/None => whole-repo). The INDEPENDENT numeric gate is unaffected — it runs
+    host-side at the repo ROOT regardless of the agent's mount scope.
+    """
+    body = {
+        "team_shape": "review_loop",
+        "idea": idea,
+        "repo_path": repo_path,
+        "base_ref": base_ref,
+    }
+    if subpath:
+        body["subpath"] = subpath
+    return body
+
+
 def main() -> int:  # noqa: C901 — a linear live-proof harness; readability beats decomposition
-    if not os.environ.get("NVIDIA_BUILD_API_KEY"):
+    # Honor the CONFIGURED model (``.env`` ``TVASHTR_AGENT_MODEL``, set by the Makefile from
+    # ``TVASHTR_RUNG2_MODEL``); else the DeepSeek slug. NOT a hardcode — env wins.
+    model = os.environ.get("TVASHTR_AGENT_MODEL") or _DEFAULT_MODEL
+    provider = model.split("/", 1)[0]
+    key_names = _PROVIDER_ENV_KEYS.get(provider)
+    if key_names and not any(os.environ.get(n) for n in key_names):
         print(
-            "[brownfield-rung2] NVIDIA_BUILD_API_KEY not set — skipping live run.\n"
-            "              Set it in .env to drive a real docker+NIM review_loop. (Not a failure.)"
+            f"[brownfield-rung2] no {provider!r} key ({'/'.join(key_names)}) in .env — "
+            "skipping live run. Set it in .env + run `make seed`. (Not a failure.)"
         )
         return 0
     if not (Path(_REPO_PATH) / ".git").exists():
@@ -206,6 +258,7 @@ def main() -> int:  # noqa: C901 — a linear live-proof harness; readability be
             "(set TVASHTR_RUNG2_REPO). Skipping live run. (Not a failure.)"
         )
         return 0
+    print(f"[brownfield-rung2] model={model} (provider={provider})")
 
     from fastapi.testclient import TestClient
     from operator_session import login_operator
@@ -252,15 +305,7 @@ def main() -> int:  # noqa: C901 — a linear live-proof harness; readability be
 
             resp = client.post(
                 "/api/runs",
-                json={
-                    "team_shape": "review_loop",
-                    "idea": _IDEA,
-                    "repo_path": str(clone),
-                    "base_ref": current_branch,
-                    # scoped-mount Slice 1: scope the agent's context map + FOCUS to <subpath>, so
-                    # the Engineer's surface is core/'s handful of files, not the 264-file monorepo.
-                    "subpath": _SUBPATH,
-                },
+                json=_create_run_body(_IDEA, str(clone), current_branch, _SUBPATH),
             )
             assert resp.status_code == 200, resp.text
             run_id = resp.json()["run_id"]
@@ -282,7 +327,7 @@ def main() -> int:  # noqa: C901 — a linear live-proof harness; readability be
                 wf = body.get("workflow_status")
                 run_status = (body.get("run") or {}).get("status")
                 print(f"  workflow={wf}  run={run_status}")
-                if wf in _TERMINAL_WF or run_status in _TERMINAL_RUN:
+                if wf in _TERMINAL_WF:
                     final = body
                     break
                 time.sleep(10)
@@ -416,6 +461,7 @@ def main() -> int:  # noqa: C901 — a linear live-proof harness; readability be
 
         print("\n================= RUNG-2 (trade_mcp DEMA) RESULT =================")
         print(f"run_id              = {run_id}")
+        print(f"configured model    = {model}")
         print(f"run.status          = {run.get('status')}")
         print(f"agent scope         = subpath '{_SUBPATH}'   [scoped-mount Slice 1]")
         print(f"run.subpath         = {run.get('subpath')}   (persisted on the run)")
