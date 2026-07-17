@@ -17,6 +17,7 @@ import {
   createMemory,
   createSkillLibraryItem,
   createToolLibraryItem,
+  getGithubRepos,
   getReviewMode,
   getRunDocuments,
   inspectRepo,
@@ -285,6 +286,48 @@ describe("runTeam — POST body shaping (greenfield byte-for-byte)", () => {
       base_ref: "main",
       subpath: "core",
     });
+  });
+
+  // M-h1b: a hosted launch threads github_repo (owner/name) ONLY when set; an empty value omits it,
+  // so a self-hosted/greenfield launch stays byte-for-byte the prior request contract.
+  it("includes github_repo when a hosted repo is targeted, and omits an empty one", async () => {
+    const fetchOn = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "r6" })));
+    vi.stubGlobal("fetch", fetchOn);
+    await runTeam("team-1", { idea: "add subtract", github_repo: "octo/app" });
+    expect(bodyOf(fetchOn.mock.calls[0])).toEqual({
+      team_graph_id: "team-1",
+      idea: "add subtract",
+      github_repo: "octo/app",
+    });
+
+    const fetchOff = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "r7" })));
+    vi.stubGlobal("fetch", fetchOff);
+    await runTeam("team-1", { github_repo: "" });
+    expect(bodyOf(fetchOff.mock.calls[0])).toEqual({ team_graph_id: "team-1" });
+  });
+});
+
+describe("getGithubRepos (M-h1b hosted-mode repo list)", () => {
+  it("GETs /api/github/repos and returns the repos + installation_count", async () => {
+    const payload = {
+      repos: [
+        {
+          name: "app",
+          full_name: "octo/app",
+          private: false,
+          default_branch: "main",
+          html_url: "u",
+        },
+      ],
+      installation_count: 2,
+    };
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk(payload)));
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await getGithubRepos();
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/github/repos");
+    expect(out.installation_count).toBe(2);
+    expect(out.repos[0].full_name).toBe("octo/app");
+    expect(out.repos[0].private).toBe(false);
   });
 });
 

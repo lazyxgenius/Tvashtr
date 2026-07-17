@@ -15,6 +15,7 @@ import {
   acknowledgeTask,
   type AuthUser,
   cancelRun,
+  type Config,
   type CostRow,
   type CreateNodeBody,
   createTeamEdge,
@@ -51,15 +52,18 @@ const EMPTY_TASKS: HumanTask[] = [];
 
 // M-accounts Slice A: optional props so AuthGate can thread the logged-in identity + a logout
 // handler into the top bar. Slice B adds `teamId` (open this dashboard-selected team) + a
-// `onBackToDashboard` control. All optional → existing tests/usage that render <App /> are unchanged.
+// `onBackToDashboard` control. M-h1b adds `config` (the public posture) so the launch panel knows
+// whether to show the hosted GitHub-repo dropdown. All optional → existing tests/usage that render
+// <App /> are unchanged.
 interface AppProps {
   user?: AuthUser | null;
   onLogout?: () => void;
   teamId?: string;
   onBackToDashboard?: () => void;
+  config?: Config | null;
 }
 
-export default function App({ user, onLogout, teamId, onBackToDashboard }: AppProps = {}) {
+export default function App({ user, onLogout, teamId, onBackToDashboard, config }: AppProps = {}) {
   const [runId, setRunId] = useState<string | null>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [run, setRun] = useState<RunRow | null>(null);
@@ -657,6 +661,8 @@ export default function App({ user, onLogout, teamId, onBackToDashboard }: AppPr
                     starting={starting}
                     onLaunch={(opts) => void handleLaunch(opts)}
                     onClose={() => setLaunchOpen(false)}
+                    hosted={config?.hosted_mode ?? false}
+                    githubManageUrl={config?.github_manage_url ?? ""}
                   />
                 )}
               </span>

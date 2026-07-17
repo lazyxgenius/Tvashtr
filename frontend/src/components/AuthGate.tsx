@@ -129,6 +129,7 @@ export function AuthGate() {
         onLogout={() => void handleLogout()}
         teamId={openTeamId}
         onBackToDashboard={() => setOpenTeamId(null)}
+        config={config}
       />
     );
   }

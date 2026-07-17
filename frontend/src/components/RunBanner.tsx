@@ -49,7 +49,23 @@ export function RunBanner({
       ) : (
         costs.length > 0 && <Item label="cost" value={`$${totalFromRows.toFixed(4)}`} />
       )}
-      {run?.ship_branch ? (
+      {run?.pr_url ? (
+        // M-h1b: a hosted run's deliverable is the opened pull request — surface it as a clickable
+        // link (it supersedes the raw branch/ship text; the PR IS what the hosted user came for).
+        <a
+          href={run.pr_url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-baseline gap-1.5"
+          style={{
+            fontFamily: "var(--font-code)",
+            fontSize: "var(--fs-caption)",
+            color: "var(--accent)",
+          }}
+        >
+          Opened PR →
+        </a>
+      ) : run?.ship_branch ? (
         // M-brownfield: a brownfield run landed on a real branch in the user's repo — surface it
         // (the branch IS the deliverable; the redundant ship tag is omitted for this run).
         <Item label="branch" value={run.ship_branch} />

@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 
 import {
+  getGithubRepos,
+  type GithubRepo,
   inspectRepo,
   LARGE_REPO_FILE_THRESHOLD,
   type RepoInspect,
@@ -62,17 +64,31 @@ function askedActionVerb(prompt: string | null): string | null {
  * back with the assembled options; the brownfield fields are included ONLY when the repo validated.
  *
  * Brownfield is a run-TARGET choice, not a separate mode — the team graph is identical either way.
+ *
+ * M-h1b: in HOSTED mode (`hosted`, from /api/config) the repo target is a GitHub App repo, not a
+ * local path — the free-text path box is replaced by a Repository dropdown fed by
+ * `GET /api/github/repos`, the base branch is the repo's read-only `default_branch` (no picker, no
+ * Scope picker, no large-repo hint — /api/repo/inspect is fenced server-side in hosted mode), and
+ * the launch threads the selected repo's `full_name` as `github_repo`. An empty repo list surfaces
+ * the "Add repositories on GitHub" install link (`githubManageUrl`) — the only way out for an
+ * account whose app is installed on no repo.
  */
 export function LaunchPanel({
   teamNodes,
   starting,
   onLaunch,
   onClose,
+  hosted = false,
+  githubManageUrl = "",
 }: {
   teamNodes: TeamGraphNode[];
   starting: boolean;
   onLaunch: (opts: RunTeamOptions) => void;
   onClose: () => void;
+  // M-h1b: the hosted posture (from /api/config `hosted_mode`) + the "add repositories" install URL
+  // (`github_manage_url`). Both default so the self-hosted callers/tests render byte-for-byte as before.
+  hosted?: boolean;
+  githubManageUrl?: string;
 }) {
   const [idea, setIdea] = useState("");
   const [repoOn, setRepoOn] = useState(false);
@@ -84,6 +100,31 @@ export function LaunchPanel({
   // scoped-mount Slice 2: the picked package to scope the run to. "" = whole repo (the default);
   // any other value is a tracked package dir threaded to the run as `subpath`.
   const [scope, setScope] = useState("");
+  // M-h1b hosted mode: the account's GitHub App repos (null until loaded), the picked repo's
+  // `full_name`, and a load flag. `reposRequested` guards the fetch to fire exactly once.
+  const [repos, setRepos] = useState<GithubRepo[] | null>(null);
+  const [reposLoading, setReposLoading] = useState(false);
+  const [reposRequested, setReposRequested] = useState(false);
+  const [selectedRepo, setSelectedRepo] = useState("");
+
+  // Fetch the account's repos lazily — only once the user opts to work on a repo in hosted mode (so
+  // a greenfield / self-hosted panel never calls the endpoint). A failure resolves to an empty list
+  // ⇒ the "Add repositories on GitHub" escape hatch shows (the only way out).
+  useEffect(() => {
+    if (!hosted || !repoOn || reposRequested) return;
+    setReposRequested(true);
+    setReposLoading(true);
+    getGithubRepos()
+      .then((res) => {
+        setRepos(res.repos);
+        if (res.repos.length > 0) setSelectedRepo(res.repos[0].full_name);
+      })
+      .catch(() => setRepos([]))
+      .finally(() => setReposLoading(false));
+  }, [hosted, repoOn, reposRequested]);
+
+  // The picked repo object (its read-only `default_branch` is the base the PR is opened against).
+  const selectedRepoObj = (repos ?? []).find((r) => r.full_name === selectedRepo) ?? null;
 
   // The validated git result, narrowed to its `is_git: true` variant (else null). The whole
   // brownfield surface — branch dropdown, the hint, the Run-into-repo enablement — keys off this.
@@ -133,7 +174,11 @@ export function LaunchPanel({
   const launch = () => {
     const opts: RunTeamOptions = {};
     if (idea.trim()) opts.idea = idea.trim();
-    if (validated) {
+    if (repoOn && hosted) {
+      // M-h1b hosted: the selected GitHub repo's full_name is the whole target — no path/branch/scope
+      // (the base branch is the repo's read-only default; inspect is fenced server-side).
+      if (selectedRepo) opts.github_repo = selectedRepo;
+    } else if (validated) {
       opts.repo_path = repoPath.trim();
       opts.base_ref = baseRef;
       // scoped-mount Slice 2: only a picked package threads through; whole-repo ("") omits it, so
@@ -143,9 +188,11 @@ export function LaunchPanel({
     onLaunch(opts);
   };
 
-  // Run is disabled only when the user asked for a repo but it isn't a validated git repo (D5:
-  // "the Run-into-repo path stays disabled" on a bad path). Greenfield is always launchable.
-  const runDisabled = starting || (repoOn && !validated);
+  // Run is disabled only when the user asked for a repo but it isn't a runnable target: self-hosted
+  // needs a validated git repo (D5: "the Run-into-repo path stays disabled" on a bad path); hosted
+  // needs a repo picked from the dropdown (an empty list ⇒ nothing picked ⇒ disabled, the escape
+  // hatch is the install link). Greenfield (repo Off) is always launchable.
+  const runDisabled = starting || (repoOn && (hosted ? !selectedRepo : !validated));
 
   const nodeWord = workerNames.length === 1 ? "node" : "node(s)";
   const hintNames = workerNames.length > 0 ? `: ${workerNames.join(", ")}` : "";
@@ -182,8 +229,14 @@ export function LaunchPanel({
         </label>
 
         <div className="tv-field">
-          <span className="tv-field__label">Work on a local repo</span>
-          <div className="tv-seg" role="group" aria-label="Work on a local repo">
+          <span className="tv-field__label">
+            {hosted ? "Work on a GitHub repo" : "Work on a local repo"}
+          </span>
+          <div
+            className="tv-seg"
+            role="group"
+            aria-label={hosted ? "Work on a GitHub repo" : "Work on a local repo"}
+          >
             <button
               type="button"
               aria-pressed={!repoOn}
@@ -202,12 +255,13 @@ export function LaunchPanel({
             </button>
           </div>
           <span className="tv-field__hint">
-            Off ⇒ a fresh greenfield app. On ⇒ the team works on an isolated branch of your real
-            repo; your working tree is never touched.
+            {hosted
+              ? "Off ⇒ a fresh greenfield app. On ⇒ the team works on an isolated branch of one of your GitHub repos and opens a pull request."
+              : "Off ⇒ a fresh greenfield app. On ⇒ the team works on an isolated branch of your real repo; your working tree is never touched."}
           </span>
         </div>
 
-        {repoOn && (
+        {repoOn && !hosted && (
           <>
             <label className="tv-field">
               <span className="tv-field__label">Repo path</span>
@@ -302,6 +356,66 @@ export function LaunchPanel({
                 >
                   Dismiss
                 </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* M-h1b HOSTED mode: a Repository dropdown (GitHub App repos) replaces the free-text path
+            box; the base branch is the repo's read-only default; no Scope picker / large-repo hint
+            (inspect is fenced server-side). An empty list ⇒ the install-link escape hatch. */}
+        {repoOn && hosted && (
+          <>
+            {reposLoading && repos === null && (
+              <p className="tv-launch__note">Loading repositories…</p>
+            )}
+
+            {repos !== null && repos.length > 0 && (
+              <>
+                <label className="tv-field">
+                  <span className="tv-field__label">Repository</span>
+                  <span className="tv-field__hint">
+                    The team works on an isolated branch of this repo and opens a pull request.
+                  </span>
+                  <select
+                    className="tv-launch__input tv-launch__select"
+                    value={selectedRepo}
+                    aria-label="Repository"
+                    onChange={(e) => setSelectedRepo(e.target.value)}
+                  >
+                    {repos.map((r) => (
+                      <option key={r.full_name} value={r.full_name}>
+                        {r.full_name}
+                        {r.private ? " · private" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {selectedRepoObj && (
+                  <label className="tv-field">
+                    <span className="tv-field__label">Base branch</span>
+                    <span className="tv-field__hint">
+                      The branch the run’s pull request is opened against.
+                    </span>
+                    <input
+                      className="tv-launch__input"
+                      type="text"
+                      value={selectedRepoObj.default_branch}
+                      readOnly
+                      aria-label="Base branch"
+                    />
+                  </label>
+                )}
+              </>
+            )}
+
+            {repos !== null && repos.length === 0 && (
+              <div className="tv-launch__note">
+                <span>No repositories available on your GitHub App installation. </span>
+                <a className="tv-btn tv-btn--link" href={githubManageUrl}>
+                  Add repositories on GitHub →
+                </a>
               </div>
             )}
           </>

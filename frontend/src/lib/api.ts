@@ -135,6 +135,12 @@ export interface RunRow {
   repo_path?: string | null;
   base_ref?: string | null;
   ship_branch?: string | null;
+  // M-h1b: the hosted run target + deliverable. `github_repo` (owner/name) is set when the run was
+  // launched against a GitHub App repo (null for a local/greenfield run); `pr_url` is the opened
+  // pull request — the hosted user's deliverable — set once the run pushes + opens it (null until
+  // then / for a non-hosted run). Optional so existing greenfield/brownfield fixtures stay valid.
+  github_repo?: string | null;
+  pr_url?: string | null;
   cost_total_usd: number | null;
   created_at: string;
   updated_at: string;
@@ -174,6 +180,10 @@ export interface AuthUser {
 export interface Config {
   hosted_mode: boolean;
   github_install_url: string;
+  // M-h1b: the "add repositories" GitHub App install URL — the hosted launch panel's escape hatch
+  // when the account has the app installed on NO repo (the repo dropdown is then empty). Empty when
+  // unset server-side; never a session signal (this endpoint is public).
+  github_manage_url: string;
 }
 
 // An error that preserves the HTTP status so the login screen can branch on 401 / 409 / 422.
@@ -211,7 +221,7 @@ export async function getMe(): Promise<AuthUser | null> {
 // fails: any non-OK response or network error falls back to the self-hosted default (email/password),
 // and it NEVER trips the 401 seam (the endpoint is public, so a 401 here is not a session signal).
 export async function getConfig(): Promise<Config> {
-  const fallback: Config = { hosted_mode: false, github_install_url: "" };
+  const fallback: Config = { hosted_mode: false, github_install_url: "", github_manage_url: "" };
   try {
     const res = await fetch("/api/config");
     if (!res.ok) return fallback;
@@ -219,6 +229,7 @@ export async function getConfig(): Promise<Config> {
     return {
       hosted_mode: data.hosted_mode === true,
       github_install_url: data.github_install_url ?? "",
+      github_manage_url: data.github_manage_url ?? "",
     };
   } catch {
     return fallback;
@@ -352,6 +363,10 @@ export interface RunTeamOptions {
   // choice — a tracked dir of the repo). Included in the POST body ONLY when set, so a whole-repo /
   // greenfield launch omits it entirely (the byte-for-byte contract is preserved).
   subpath?: string;
+  // M-h1b: the hosted run target — a GitHub App repo `full_name` (owner/name), mutually exclusive
+  // with `repo_path` server-side. Included in the POST body ONLY when set, so a self-hosted /
+  // greenfield launch omits it entirely (the prior request contract is byte-for-byte preserved).
+  github_repo?: string;
 }
 
 // Clone-on-launch (P1.8b): "Run this team" launches a run on a fresh deep-clone of the persistent
@@ -369,6 +384,7 @@ export async function runTeam(teamGraphId: string, opts: RunTeamOptions = {}): P
     repo_path?: string;
     base_ref?: string;
     subpath?: string;
+    github_repo?: string;
   } = {
     team_graph_id: teamGraphId,
   };
@@ -377,6 +393,9 @@ export async function runTeam(teamGraphId: string, opts: RunTeamOptions = {}): P
   if (opts.base_ref) body.base_ref = opts.base_ref;
   // scoped-mount Slice 2: only a picked package threads through — whole-repo/greenfield omits it.
   if (opts.subpath) body.subpath = opts.subpath;
+  // M-h1b: the hosted GitHub repo target threads through ONLY when set — a self-hosted/greenfield
+  // launch omits it, so its request body is byte-for-byte the prior contract.
+  if (opts.github_repo) body.github_repo = opts.github_repo;
   const res = await fetch("/api/runs", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -386,6 +405,32 @@ export async function runTeam(teamGraphId: string, opts: RunTeamOptions = {}): P
   const data = (await res.json()) as { run_id: string };
   return data.run_id;
 }
+
+// ---- Hosted-mode GitHub repos (M-h1b): the account's GitHub App repos the launch panel offers ----
+
+// One repo the account's GitHub App installation can see, as `GET /api/github/repos` serializes it.
+// `full_name` (owner/name) is what a hosted launch threads as `github_repo`; `private` marks the
+// dropdown label; `default_branch` is the read-only base the run's PR is opened against.
+export interface GithubRepo {
+  name: string;
+  full_name: string;
+  private: boolean;
+  default_branch: string;
+  html_url: string;
+}
+
+// The owner-scoped repo list + how many app installations back it (0 ⇒ the app is installed nowhere;
+// an empty `repos` with a non-zero count ⇒ installed but on no repo — both drive the panel's
+// "Add repositories on GitHub" escape hatch).
+export interface GithubReposResponse {
+  repos: GithubRepo[];
+  installation_count: number;
+}
+
+// The account's GitHub App repos (owner-scoped server-side, like every other session read). Only
+// meaningful in hosted mode; the launch panel calls it when the user opts to work on a repo.
+export const getGithubRepos = (): Promise<GithubReposResponse> =>
+  getJSON<GithubReposResponse>("/api/github/repos");
 
 // scoped-mount Slice 2: one top-level tracked package directory the Scope picker offers.
 // `file_count` = tracked files anywhere under it (recursive), so a user can size a package before

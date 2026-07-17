@@ -70,4 +70,27 @@ describe("RunBanner — greenfield ship vs brownfield branch", () => {
     expect(screen.queryByText("branch")).toBeNull();
     expect(screen.queryByText("ship")).toBeNull();
   });
+
+  // M-h1b: a hosted run's deliverable is the opened PR — it supersedes the branch/ship text.
+  it("hosted: shows the 'Opened PR →' link (href = pr_url) INSTEAD of the branch/ship", () => {
+    render(
+      <RunBanner
+        runId="run-abc12345"
+        run={run({
+          ship_tag: "ship-run-1",
+          ship_commit_sha: "abcdef1234567",
+          ship_branch: "tvashtr/run-1",
+          github_repo: "octo/app",
+          pr_url: "https://github.com/octo/app/pull/7",
+        })}
+        workflowStatus="SUCCESS"
+        costs={[]}
+      />,
+    );
+    const link = screen.getByRole("link", { name: /Opened PR/ });
+    expect(link).toHaveAttribute("href", "https://github.com/octo/app/pull/7");
+    // The PR supersedes the raw branch + ship text.
+    expect(screen.queryByText("branch")).toBeNull();
+    expect(screen.queryByText("ship")).toBeNull();
+  });
 });

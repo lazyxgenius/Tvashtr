@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { LARGE_REPO_FILE_THRESHOLD, type RepoInspect, type TeamGraphNode } from "../lib/api";
+import {
+  type GithubReposResponse,
+  LARGE_REPO_FILE_THRESHOLD,
+  type RepoInspect,
+  type TeamGraphNode,
+} from "../lib/api";
 import { LaunchPanel } from "./LaunchPanel";
 
 // Interaction in this file uses fireEvent (not user-event): some flows assert across the async
@@ -32,7 +37,25 @@ function stubInspect(result: RepoInspect) {
   return fetchMock;
 }
 
-function renderPanel(opts?: { nodes?: TeamGraphNode[]; onLaunch?: ReturnType<typeof vi.fn> }) {
+// M-h1b: stub `GET /api/github/repos` (the hosted-mode repo dropdown's source).
+function stubRepos(result: GithubReposResponse) {
+  const fetchMock = vi.fn(() =>
+    Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(result),
+    } as unknown as Response),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function renderPanel(opts?: {
+  nodes?: TeamGraphNode[];
+  onLaunch?: ReturnType<typeof vi.fn>;
+  hosted?: boolean;
+  githubManageUrl?: string;
+}) {
   const onLaunch = opts?.onLaunch ?? vi.fn();
   const onClose = vi.fn();
   render(
@@ -41,6 +64,8 @@ function renderPanel(opts?: { nodes?: TeamGraphNode[]; onLaunch?: ReturnType<typ
       starting={false}
       onLaunch={onLaunch}
       onClose={onClose}
+      hosted={opts?.hosted ?? false}
+      githubManageUrl={opts?.githubManageUrl ?? ""}
     />,
   );
   return { onLaunch, onClose };
@@ -324,5 +349,82 @@ describe("LaunchPanel — edits-off action-verb advisory (M-unify U3)", () => {
       ],
     });
     expect(screen.queryByRole("note", { name: WARN })).toBeNull();
+  });
+});
+
+describe("LaunchPanel — hosted mode (M-h1b)", () => {
+  const REPOS: GithubReposResponse = {
+    repos: [
+      { name: "app", full_name: "octo/app", private: false, default_branch: "main", html_url: "" },
+      {
+        name: "secret",
+        full_name: "octo/secret",
+        private: true,
+        default_branch: "trunk",
+        html_url: "",
+      },
+    ],
+    installation_count: 1,
+  };
+
+  it("HOSTED: a Repository dropdown (full_name + private marker) replaces the free-text path box", async () => {
+    stubRepos(REPOS);
+    renderPanel({ hosted: true });
+    fireEvent.click(screen.getByRole("button", { name: "On" }));
+
+    const select = await screen.findByLabelText<HTMLSelectElement>("Repository");
+    // One option per repo, valued by full_name.
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["octo/app", "octo/secret"]);
+    expect(select).toHaveTextContent("octo/app");
+    expect(select).toHaveTextContent("octo/secret");
+    // Private repos are MARKED (the public one is not).
+    expect(select).toHaveTextContent(/private/i);
+    // The base branch is the selected repo's default_branch, shown READ-ONLY (not a picker).
+    const branch = screen.getByLabelText<HTMLInputElement>("Base branch");
+    expect(branch.value).toBe("main");
+    expect(branch).toHaveAttribute("readonly");
+    // The free-text path box is GONE, and there is NO Scope picker (inspect is fenced in hosted mode).
+    expect(screen.queryByLabelText("Repo path")).toBeNull();
+    expect(screen.queryByLabelText("Scope")).toBeNull();
+  });
+
+  it("HOSTED: launches with github_repo (the selected repo's full_name) — no repo_path/base_ref/subpath", async () => {
+    stubRepos(REPOS);
+    const { onLaunch } = renderPanel({ hosted: true });
+    fireEvent.change(screen.getByLabelText("Feature request"), {
+      target: { value: "add subtract" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "On" }));
+    const select = await screen.findByLabelText("Repository");
+
+    // Default = first repo.
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    expect(onLaunch).toHaveBeenLastCalledWith({ idea: "add subtract", github_repo: "octo/app" });
+
+    // Pick the private one ⇒ its full_name threads through (still no path/branch/scope keys).
+    fireEvent.change(select, { target: { value: "octo/secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    expect(onLaunch).toHaveBeenLastCalledWith({ idea: "add subtract", github_repo: "octo/secret" });
+  });
+
+  it("HOSTED with an EMPTY repo list shows the 'Add repositories on GitHub →' link (href = manage url)", async () => {
+    stubRepos({ repos: [], installation_count: 1 });
+    const manageUrl = "https://github.com/apps/tvashtr/installations/new";
+    renderPanel({ hosted: true, githubManageUrl: manageUrl });
+    fireEvent.click(screen.getByRole("button", { name: "On" }));
+
+    const link = await screen.findByRole("link", { name: /Add repositories on GitHub/ });
+    expect(link).toHaveAttribute("href", manageUrl);
+    // No dropdown when there are no repos, and Run stays disabled (nothing to target).
+    expect(screen.queryByLabelText("Repository")).toBeNull();
+    expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+  });
+
+  it("SELF-HOSTED (the default) still shows the free-text path box and NO Repository dropdown", () => {
+    renderPanel(); // hosted defaults false
+    fireEvent.click(screen.getByRole("button", { name: "On" }));
+    // The regression proof: the self-hosted harness is byte-for-byte the prior panel.
+    expect(screen.getByLabelText("Repo path")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Repository")).toBeNull();
   });
 });
