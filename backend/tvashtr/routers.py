@@ -542,6 +542,10 @@ def _run_to_dict(run: Run) -> dict:
         # scoped-mount Slice 1: the optional sub-path scope (NULL ⇒ whole repo). Surfaced parallel
         # to the sibling brownfield columns (the FE picker reads it in Slice 2).
         "subpath": run.subpath,
+        # M-h1b: the hosted-GitHub target (owner/name) + the opened PR url — both NULL for a local
+        # brownfield or greenfield run. The RunBanner shows "Opened PR ->" when pr_url is set.
+        "github_repo": run.github_repo,
+        "pr_url": run.pr_url,
         "cost_total_usd": float(run.cost_total_usd) if run.cost_total_usd is not None else None,
         # A/B pairing (P1.5c §14.2): additive, NULL for an ordinary standalone run. Two runs
         # sharing ``pair_id`` are the A/B; ``pair_label`` is the config side. The §14.3

@@ -360,6 +360,14 @@ class Run(Base):
     # directive, while the worktree / ship branch / root manifest line stay repo-ROOT. A greenfield
     # run (no ``repo_path``) ignores it (stored NULL).
     subpath: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # M-h1b (migration ``0030``): the HOSTED-GitHub run target + the opened PR url. ``github_repo``
+    # is the ``owner/name`` a hosted run targets; NULL ⇒ NOT a hosted-GitHub run (every local
+    # brownfield run, every greenfield run, every existing row). A durable clone step reads it and
+    # SETS ``repo_path`` before ``load_graph_step`` — so a hosted run then looks like a local
+    # brownfield run to the executor (the walk is never forked). ``pr_url`` is the opened PR html
+    # url, set on the Ship terminal (NULL until it exists / on a non-hosted run).
+    github_repo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pr_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     cost_total_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
     # Per-run dollar cap (P1.2). NULL = no cap (enforcement is opt-in). The live
     # running total is a query (``metering.running_cost``), NOT a stored field —
