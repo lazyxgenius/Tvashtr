@@ -149,15 +149,46 @@ def test_list_repositories_returns_whitelist_only(gh, monkeypatch):
     assert "owner" not in repos[0] and "permissions" not in repos[0]  # whitelist drops the rest
 
 
-def test_build_install_url_prefers_slug_then_client_id_then_empty(monkeypatch):
+def test_build_install_url_is_oauth_authorize_primary(monkeypatch):
+    """Rider 1: the sign-in door is the OAuth authorize URL (client_id) — it authorises an EXISTING
+    installation AND prompts a first-timer to install, so a RETURNING user is actually signed in.
+    The slug ``installations/new`` page only works once (GitHub then bounces an already-installed
+    user to its settings and issues no ``code``), so it is NO LONGER the sign-in primary even when a
+    slug is set."""
     s = get_settings()
-    monkeypatch.setattr(s, "github_app_slug", "tvashtr")
     monkeypatch.setattr(s, "github_app_client_id", "Iv1.abc")
-    assert github_app.build_install_url() == "https://github.com/apps/tvashtr/installations/new"
-    monkeypatch.setattr(s, "github_app_slug", "")
+    monkeypatch.setattr(s, "github_app_slug", "tvashtr")  # slug set, but no longer wins for sign-in
     assert (
         github_app.build_install_url()
         == "https://github.com/login/oauth/authorize?client_id=Iv1.abc"
     )
     monkeypatch.setattr(s, "github_app_client_id", "")
-    assert github_app.build_install_url() == ""  # nothing public to link to
+    assert github_app.build_install_url() == ""  # no client_id -> nothing to authorize
+
+
+def test_build_manage_url_is_slug_install_page_or_empty(monkeypatch):
+    """Rider 2: the SECONDARY "add repositories" URL is the slug ``installations/new`` install page,
+    for a signed-in user whose installation covers no repos and needs to grant access. Empty when no
+    slug is configured (nothing public to link to)."""
+    s = get_settings()
+    monkeypatch.setattr(s, "github_app_slug", "tvashtr")
+    assert github_app.build_manage_url() == "https://github.com/apps/tvashtr/installations/new"
+    monkeypatch.setattr(s, "github_app_slug", "")
+    assert github_app.build_manage_url() == ""
+
+
+def test_build_manage_url_tolerates_a_pasted_full_url_slug(monkeypatch):
+    """Rider 3: GitHub's settings page offers the app link as a full URL with a copy button, so a
+    slug pasted as ``https://github.com/apps/tvashtr-dev`` (any scheme, optional trailing slash)
+    must still yield a SANE install URL, never the doubled ``…/apps/https://github.com/apps/…``."""
+    s = get_settings()
+    for pasted in (
+        "https://github.com/apps/tvashtr-dev",
+        "https://github.com/apps/tvashtr-dev/",
+        "http://github.com/apps/tvashtr-dev",
+        "github.com/apps/tvashtr-dev",
+    ):
+        monkeypatch.setattr(s, "github_app_slug", pasted)
+        assert (
+            github_app.build_manage_url() == "https://github.com/apps/tvashtr-dev/installations/new"
+        )

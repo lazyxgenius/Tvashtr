@@ -101,7 +101,11 @@ def _fresh_account() -> tuple[TestClient, uuid.UUID]:
 def test_config_is_public_and_defaults_to_self_hosted(unauth_client):
     resp = unauth_client.get("/api/config")  # reachable WITHOUT a session (pre-login)
     assert resp.status_code == 200
-    assert resp.json() == {"hosted_mode": False, "github_install_url": ""}
+    assert resp.json() == {
+        "hosted_mode": False,
+        "github_install_url": "",
+        "github_manage_url": "",
+    }
 
 
 def test_config_hosted_exposes_install_url_but_no_secret(client, monkeypatch):
@@ -109,8 +113,14 @@ def test_config_hosted_exposes_install_url_but_no_secret(client, monkeypatch):
     resp = client.get("/api/config")
     body = resp.json()
     assert body["hosted_mode"] is True
-    assert body["github_install_url"] == "https://github.com/apps/tvashtr/installations/new"
-    assert set(body) == {"hosted_mode", "github_install_url"}  # exactly the public fields
+    # Rider 1: the sign-in door is now the OAuth authorize URL (client_id), not the slug page.
+    assert (
+        body["github_install_url"]
+        == "https://github.com/login/oauth/authorize?client_id=Iv1.testclientid"
+    )
+    # Rider 2: the slug install page is demoted to the SECONDARY "add repositories" URL.
+    assert body["github_manage_url"] == "https://github.com/apps/tvashtr/installations/new"
+    assert set(body) == {"hosted_mode", "github_install_url", "github_manage_url"}
     assert CLIENT_SECRET_SENTINEL not in resp.text
     assert PRIVATE_KEY_PEM not in resp.text
 
@@ -131,7 +141,8 @@ def test_callback_creates_user_records_installation_and_issues_session(unauth_cl
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert resp.headers["location"] == "/"
+    # Rider 4: redirect to the configurable FE origin (default), not the backend root "/".
+    assert resp.headers["location"] == "http://localhost:5173"
     assert "tv_session" in resp.headers.get("set-cookie", "")
     # The SECRETS the callback handled never appear in the redirect response.
     for secret in (USER_TOKEN_SENTINEL, CLIENT_SECRET_SENTINEL, PRIVATE_KEY_PEM):
@@ -175,6 +186,18 @@ def test_callback_links_an_existing_email_account_instead_of_duplicating(
         rows = s.execute(select(User).where(User.email == email)).scalars().all()
         assert len(rows) == 1  # LINKED, not duplicated
         assert rows[0].id == existing_id and rows[0].github_user_id == gh_id
+
+
+def test_callback_redirects_to_the_configured_frontend_origin(unauth_client, monkeypatch):
+    """Rider 4: the post-sign-in redirect targets a CONFIGURABLE FE origin (default
+    ``http://localhost:5173``), NOT the backend root ``/`` (which 404s on the API port). M-h4 points
+    it at the real domain by setting ``TVASHTR_FRONTEND_ORIGIN``."""
+    _configure_hosted(monkeypatch)
+    monkeypatch.setattr(get_settings(), "frontend_origin", "https://app.tvashtr.example")
+    monkeypatch.setattr(github_app, "_http", _fake_github_http([]))
+    resp = unauth_client.get("/api/auth/github/callback?code=abc", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "https://app.tvashtr.example"
 
 
 # ---------------------------------------------------------------- /api/github/repos

@@ -85,18 +85,22 @@ def health() -> HealthResponse:
 class ConfigResponse(BaseModel):
     hosted_mode: bool
     github_install_url: str
+    github_manage_url: str
 
 
 @app.get("/api/config", response_model=ConfigResponse)
 def config() -> ConfigResponse:
     """PUBLIC client bootstrap (open, like ``/health``): the posture the FE needs BEFORE login. In
-    HOSTED mode the AuthWizard shows only "Continue with GitHub" linking to ``github_install_url``;
-    when ``hosted_mode`` is False it stays the email/password wizard unchanged. Exposes
-    ONLY public fields — the client secret and private key are never serializable here."""
+    HOSTED mode the AuthWizard shows only "Continue with GitHub" linking to ``github_install_url``
+    (the OAuth sign-in door), and the launch panel offers ``github_manage_url`` (the SECONDARY "add
+    repositories" install page) when a signed-in user's installation covers no repos; when
+    ``hosted_mode`` is False it stays the email/password wizard unchanged. Exposes ONLY public
+    fields — the client secret and private key are never serializable here."""
     settings = get_settings()
     return ConfigResponse(
         hosted_mode=settings.hosted_mode,
         github_install_url=github_app.build_install_url() if settings.hosted_mode else "",
+        github_manage_url=github_app.build_manage_url() if settings.hosted_mode else "",
     )
 
 

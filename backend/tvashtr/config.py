@@ -284,6 +284,16 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("GITHUB_APP_PRIVATE_KEY_B64", "github_app_private_key_b64"),
     )
+    # M-h1b (HOSTED mode): the origin the GitHub sign-in callback bounces back to after it issues
+    # the session cookie. The callback runs on the BACKEND origin, but the SPA is served from a
+    # SEPARATE origin (Vite dev :5173, the real domain in prod), so redirecting to the backend root
+    # ``/`` lands on a bare JSON 404. Default the local Vite origin for dev; M-h4 points
+    # ``TVASHTR_FRONTEND_ORIGIN`` at the deployed domain. (Cookies scope by DOMAIN not port, so the
+    # cross-port redirect keeps the session.)
+    frontend_origin: str = Field(
+        default="http://localhost:5173",
+        validation_alias=AliasChoices("TVASHTR_FRONTEND_ORIGIN", "frontend_origin"),
+    )
 
     def agent_llm_base_url(self, sandbox_mode: str) -> str:
         """The proxy base URL the agent's LLM points at, chosen by THIS run's sandbox

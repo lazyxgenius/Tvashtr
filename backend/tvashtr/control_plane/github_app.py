@@ -223,15 +223,40 @@ def get_authenticated_user(user_token: str) -> dict:
 
 
 def build_install_url() -> str:
-    """The FE "Continue with GitHub" target, built server-side from PUBLIC config ONLY. Prefers the
-    GitHub install page (``github.com/apps/<slug>/installations/new``) when a slug is configured,
-    else falls back to the client_id OAuth-authorize URL. Empty string when neither slug nor
-    client_id is set (hosted mode misconfigured). NEVER contains a secret."""
-    settings = get_settings()
-    slug = settings.github_app_slug.strip()
-    if slug:
-        return f"{_GITHUB_OAUTH_BASE}/apps/{slug}/installations/new"
-    client_id = settings.github_app_client_id.strip()
+    """The FE "Continue with GitHub" SIGN-IN target, built server-side from PUBLIC config ONLY. Uses
+    the OAuth **authorize** URL (``github.com/login/oauth/authorize?client_id=…``) as the PRIMARY
+    door: it authorises an EXISTING installation AND prompts a first-time user to install, so a
+    RETURNING hosted user is actually signed in. (The slug ``installations/new`` page only works
+    ONCE — GitHub then bounces an already-installed user to its settings and issues no ``code``,
+    so the callback never fires. That URL is demoted to the SECONDARY ``build_manage_url``.) Empty
+    string when no client_id is configured (hosted mode misconfigured). NEVER contains a secret."""
+    client_id = get_settings().github_app_client_id.strip()
     if client_id:
         return f"{_GITHUB_OAUTH_BASE}/login/oauth/authorize?client_id={client_id}"
+    return ""
+
+
+def _normalize_app_slug(raw: str) -> str:
+    """The bare ``<slug>`` from a configured ``GITHUB_APP_SLUG`` that MAY have been pasted as the
+    full ``https://github.com/apps/<slug>`` URL GitHub's settings page offers (with a copy button).
+    Strip that known ``…/apps/`` prefix (any scheme) and keep only the slug segment, so it is never
+    interpolated raw into a doubled ``…/apps/https://github.com/apps/<slug>/…`` 404."""
+    slug = raw.strip()
+    for host in ("https://github.com", "http://github.com", "github.com"):
+        prefix = f"{host}/apps/"
+        if slug.startswith(prefix):
+            slug = slug[len(prefix) :]
+            break
+    return slug.strip("/").split("/", 1)[0]
+
+
+def build_manage_url() -> str:
+    """The SECONDARY "add repositories on GitHub" target — the
+    ``github.com/apps/<slug>/installations/new`` install page — for a signed-in user whose
+    installation covers NO repos and needs to grant the App access to some. Built from the PUBLIC
+    app slug ONLY (tolerating a slug pasted as the full app URL, see ``_normalize_app_slug``); empty
+    string when no slug is configured. NEVER contains a secret."""
+    slug = _normalize_app_slug(get_settings().github_app_slug)
+    if slug:
+        return f"{_GITHUB_OAUTH_BASE}/apps/{slug}/installations/new"
     return ""

@@ -290,6 +290,8 @@ def github_callback(
         if installation_id:
             _store_installation(session, user.id, installation_id)
 
-    response = RedirectResponse(url="/", status_code=302)
+    # Rider 4 (M-h1b): bounce to the CONFIGURABLE FE origin, not the backend root "/" (which 404s on
+    # the API port). The session cookie is scoped by domain, so the cross-port redirect keeps it.
+    response = RedirectResponse(url=settings.frontend_origin, status_code=302)
     set_session_cookie(response, user_id)
     return response
