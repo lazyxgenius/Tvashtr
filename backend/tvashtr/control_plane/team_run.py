@@ -46,6 +46,7 @@ from dbos import DBOS
 from sqlalchemy import select, update
 
 from tvashtr.config import get_settings
+from tvashtr.control_plane import github_app
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.budget_nudge import maybe_emit_budget_nudge_step
 from tvashtr.control_plane.context_compiler import (
@@ -85,7 +86,7 @@ from tvashtr.engines.registry import resolve_adapter
 from tvashtr.engines.run_event_sink import make_run_event_sink
 from tvashtr.engines.sandbox_cache import close_run_sandboxes, session_key_for
 from tvashtr.metering import record_agent_cost, running_cost
-from tvashtr.models import AgentNode, Edge, EngineerRunAttempt, Run
+from tvashtr.models import AgentNode, Edge, EngineerRunAttempt, GithubInstallation, Run
 
 logger = logging.getLogger("tvashtr.control_plane.team_run")
 
@@ -110,6 +111,60 @@ def _owner_api_key(run_id: str, model: str) -> str:
             "fallback). Every run must be owned by construction."
         )
     return resolve_owner_api_key(owner_id, model)
+
+
+# M-h1b — a hosted-GitHub clone lands in a deterministic per-run dir (so a resume is idempotent),
+# under the same gitignored convention as the workspace root. It becomes the run's ``repo_path``.
+_CLONE_ROOT = Path(__file__).resolve().parents[2] / ".tvashtr_clones"
+
+
+def _hosted_clone_dir(run_id: str) -> str:
+    return str(_CLONE_ROOT / run_id)
+
+
+def _owner_installation_ids(owner_id) -> list[int]:
+    """The GitHub App installation ids this run's owner controls (owner-scoped, exactly like
+    ``/api/github/repos``) — the authz anchor for resolving which installation reaches the repo."""
+    with session_scope() as session:
+        return [
+            row.installation_id
+            for row in session.execute(
+                select(GithubInstallation).where(GithubInstallation.owner_id == owner_id)
+            ).scalars()
+        ]
+
+
+@DBOS.step()
+def clone_github_repo_step(run_id: str) -> None:
+    """M-h1b — the LOAD-BEARING clone. For a HOSTED-GitHub run (``github_repo`` set, ``repo_path``
+    NULL) clone the repo into a per-run dir and SET ``repo_path`` to it — BEFORE ``load_graph_step``
+    snapshots ``repo_path`` into the graph. Once set, the run looks byte-identically like a LOCAL
+    BROWNFIELD run to the rest of the executor (``engineer_setup`` cuts its worktree from the clone;
+    grounding / pull-paths / ship untouched — the walk is never forked). A local-brownfield /
+    greenfield run (no ``github_repo``) is a clean no-op.
+
+    Idempotent + crash-safe (mirrors ``add_worktree`` / ``init_workspace_repo``): a run whose
+    ``repo_path`` is already set is a no-op, and the clone no-ops on an existing ``.git``, so a
+    DBOS replay is safe. NOT in the endpoint: a clone is unbounded network I/O that must be
+    durable and must not block ``POST /api/runs``. The 1h token is scrubbed off ``.git/config``
+    in :func:`github_app.clone_repo` — never persisted."""
+    with session_scope() as session:
+        run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
+        github_repo = run.github_repo
+        repo_path = run.repo_path
+        owner_id = run.owner_id
+    if not github_repo or repo_path:
+        return  # not a hosted-GitHub run, or already cloned (idempotent resume)
+    match = github_app.find_repo_in_installations(_owner_installation_ids(owner_id), github_repo)
+    if match is None:
+        raise RuntimeError(
+            f"run {run_id}: github_repo {github_repo!r} is not in the owner's installations"
+        )
+    installation_id, _ = match
+    dest = _hosted_clone_dir(run_id)
+    github_app.clone_repo(installation_id, github_repo, dest)
+    with session_scope() as session:
+        session.execute(update(Run).where(Run.id == uuid.UUID(run_id)).values(repo_path=dest))
 
 
 @DBOS.step()
@@ -1096,6 +1151,45 @@ def ship_step(run_id: str, workspace: str) -> dict:
 
 
 @DBOS.step()
+def push_and_open_pr_step(run_id: str, repo_dir: str, branch: str | None) -> str | None:
+    """M-h1b — the hosted Ship's delivery to GitHub. For a HOSTED-GitHub run (``github_repo`` set)
+    push the ship ``branch`` from the clone/worktree and open a PR into the repo's ``base_ref``,
+    IDEMPOTENTLY (list-open-first; a re-run reuses the PR). Records + returns ``runs.pr_url``. A
+    local-brownfield / greenfield run (no ``github_repo``) is a no-op returning ``None`` — the local
+    ship is unchanged.
+
+    A FRESH installation token is minted here (the clone-time one may be expired on a long run). The
+    caller finalizes ``completed`` ONLY AFTER this returns, so a push/PR failure fails the run
+    VISIBLY — for a throwaway per-run clone, a commit that never reached GitHub shipped nothing, so
+    this is NOT best-effort (unlike distill/ingest). Never a silent completed with no PR."""
+    with session_scope() as session:
+        run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
+        github_repo = run.github_repo
+        base_ref = run.base_ref
+        owner_id = run.owner_id
+        idea = run.idea
+    if not github_repo:
+        return None
+    if not branch:
+        raise RuntimeError(f"run {run_id}: hosted ship has no ship_branch to push")
+    match = github_app.find_repo_in_installations(_owner_installation_ids(owner_id), github_repo)
+    if match is None:
+        raise RuntimeError(
+            f"run {run_id}: github_repo {github_repo!r} is not in the owner's installations"
+        )
+    installation_id, _ = match
+    github_app.push_branch(installation_id, github_repo, repo_dir, branch)
+    title = f"Tvashtr: {idea}"[:72]
+    body = f"Automated change by a Tvashtr agent team for run `{run_id}`.\n\nIdea:\n\n{idea}\n"
+    pr_url = github_app.open_pull_request_idempotent(
+        installation_id, github_repo, head=branch, base=base_ref or "main", title=title, body=body
+    )
+    with session_scope() as session:
+        session.execute(update(Run).where(Run.id == uuid.UUID(run_id)).values(pr_url=pr_url))
+    return pr_url
+
+
+@DBOS.step()
 def finalize_run_step(run_id: str, status: str = "completed") -> dict:
     """Mark the run terminal and total its cost rows (idempotent aggregate).
 
@@ -1608,6 +1702,23 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             cfg = node["config"] or {}
             if cfg.get("terminal_kind") == "ship":
                 ship = ship_step(run_id, workspace)
+                # M-h1b: for a HOSTED-GitHub run push the ship branch + open the PR BEFORE
+                # finalizing completed — a per-run throwaway clone's commit that never reached
+                # GitHub shipped nothing, so a failure here fails the run VISIBLY (naming the
+                # reason), never a silent completed with no PR. A local/greenfield ship is a no-op.
+                try:
+                    pr_url = push_and_open_pr_step(run_id, workspace, ship.get("ship_branch"))
+                except Exception as exc:  # noqa: BLE001 — surface the reason; do NOT report completed
+                    reason = f"github delivery failed: {exc}"
+                    mark_run_failed_step(run_id)
+                    close_invocation_step(run_id, current, 1, "failed", reason)
+                    DBOS.logger.error(f"run_team hosted ship failed run_id={run_id}: {reason}")
+                    return {
+                        "run_id": run_id,
+                        "status": "failed",
+                        "document_id": pm_document_id,
+                        "error": reason,
+                    }
                 final = finalize_run_step(run_id, status="completed")
                 # M-memory S2: distil durable memory from the run's own trail + outcome. Best-effort
                 # — the run is already finalized ``completed`` above; the step swallows a failure
@@ -1630,6 +1741,8 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     "ship_tag": ship["tag"],
                     # M-brownfield: the real branch the change landed on (None for greenfield).
                     "ship_branch": ship.get("ship_branch"),
+                    # M-h1b: the opened PR url for a hosted run (None for local/greenfield).
+                    "pr_url": pr_url,
                     "cost_total": final["cost_total_usd"],
                 }
             final = finalize_run_step(run_id, status="rejected")
@@ -1679,6 +1792,9 @@ def run_team(idea: str) -> dict:
     # ``return``s (ship / stop / over_budget / failed) AND the unhandled-exception path (a step
     # raising propagates through here) — closing any warm docker containers this run kept for reuse.
     try:
+        # M-h1b: for a HOSTED-GitHub run, clone the repo + set repo_path BEFORE load_graph_step
+        # snapshots it, so the walk sees a brownfield repo_path. No-op for local/greenfield runs.
+        clone_github_repo_step(run_id)
         graph = load_graph_step(run_id)
         return run_graph(run_id, graph, idea)
     finally:

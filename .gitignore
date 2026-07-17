@@ -31,6 +31,8 @@ frontend/dist/
 
 # ---- Agent workspaces (P0.3, local-unsandboxed) ----
 .tvashtr_workspaces/
+# ---- Hosted-GitHub per-run clones (M-h1b; deterministic per-run dir, throwaway) ----
+.tvashtr_clones/
 
 # ---- Logs / tmp ----
 *.log

@@ -137,6 +137,11 @@ class CreateRunRequest(BaseModel):
     # greenfield run (no ``repo_path``) ignores it (stored NULL). The picker that supplies it is FE
     # Slice 2 — here it is an optional API field only.
     subpath: str | None = None
+    # M-h1b (HOSTED mode): the ``owner/name`` of one of the account's OWN GitHub repos to run on.
+    # The backend clones it server-side, runs, and opens a real PR. Hosted mode ONLY (422 else),
+    # mutually exclusive with ``repo_path`` (the free-text path door is fenced off in hosted mode).
+    # Omitted (every self-hosted / greenfield caller) ⇒ the create is byte-for-byte unchanged.
+    github_repo: str | None = None
 
 
 class AskMessage(BaseModel):
@@ -568,6 +573,11 @@ def inspect_repo(body: RepoInspectRequest) -> dict:
     tracked package dirs (each ``{path, file_count}``) the launch panel's Scope picker offers.
     Added only on the FE-facing endpoint (``repo_inspect`` itself stays byte-identical for
     ``create_run``'s reuse); a non-git result is unchanged (no ``subpaths`` — nothing to scope)."""
+    # M-h1b: FENCE in hosted mode — /api/repo/inspect is the reconnaissance half of the free-text
+    # path door (it leaks branch names + file counts for any server path), closed alongside the
+    # create_run repo_path fence (§3). Self-hosted (the default) is byte-unchanged.
+    if get_settings().hosted_mode:
+        raise HTTPException(status_code=422, detail="repo inspection is disabled in hosted mode")
     result = repo_inspect(body.path)
     if result.get("is_git"):
         result["subpaths"] = repo_subpaths(body.path)
@@ -622,10 +632,51 @@ def create_run(
 
     # Validate the brownfield target FIRST (before any team graph is built), so a rejected launch
     # leaves no orphan team/run — mirroring the clone-on-launch validation discipline below.
+    settings = get_settings()
+    hosted = settings.hosted_mode
     repo_path = body.repo_path
     base_ref = body.base_ref
     subpath = body.subpath
-    if repo_path is not None:
+    github_repo = body.github_repo
+
+    # M-h1b — the two mutually-exclusive brownfield source postures. Hosted mode FENCES the
+    # free-text server-path door (§3): with a delivery chute to GitHub now present, a free
+    # ``repo_path`` would let any account courier the server's private files out via the ship. The
+    # GitHub dropdown is the only hosted brownfield source; ``repo_path`` stays self-hosted-only.
+    if repo_path is not None and github_repo is not None:
+        raise HTTPException(status_code=422, detail="provide github_repo or repo_path, not both")
+    if github_repo is not None and not hosted:
+        raise HTTPException(status_code=422, detail="github_repo is hosted mode only")
+    if hosted and repo_path is not None:
+        raise HTTPException(status_code=422, detail="repo_path is not accepted in hosted mode")
+
+    if github_repo is not None:
+        # Hosted GitHub run: AUTHORISE the repo against THIS owner's installation(s) — a user can
+        # POST any full_name, so this is an authz check, not a convenience — and resolve base_ref
+        # from its default_branch (no branch picker). ``repo_path`` stays NULL: the durable
+        # ``clone_github_repo_step`` sets it before ``load_graph_step``, so the run then looks
+        # like a local brownfield run (the walk is never forked).
+        owner_id = uuid.UUID(current_user.id)
+        with db.session_scope() as session:
+            installation_ids = [
+                row.installation_id
+                for row in session.execute(
+                    select(GithubInstallation).where(GithubInstallation.owner_id == owner_id)
+                ).scalars()
+            ]
+        # The HTTP calls run AFTER the session closes — never hold a session across network I/O.
+        match = github_app.find_repo_in_installations(installation_ids, github_repo)
+        if match is None:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "github_repo is not in your installations",
+                    "github_repo": github_repo,
+                },
+            )
+        base_ref = match[1].get("default_branch") or "main"
+        subpath = None  # no hosted scope picker — whole-repo is the validated default (Tvashtr-67)
+    elif repo_path is not None:
         info = repo_inspect(repo_path)
         if not info["is_git"]:
             raise HTTPException(
@@ -729,6 +780,9 @@ def create_run(
                 # M-brownfield: both None for a greenfield run ⇒ identical column defaults.
                 repo_path=repo_path,
                 base_ref=base_ref,
+                # M-h1b: the hosted-GitHub target (None for self-hosted/greenfield). repo_path stays
+                # NULL here — the durable clone step sets it before load_graph_step.
+                github_repo=github_repo,
                 # scoped-mount Slice 1: the optional sub-path scope (None for greenfield /
                 # whole-repo brownfield ⇒ identical column default).
                 subpath=subpath,

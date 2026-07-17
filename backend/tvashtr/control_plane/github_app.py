@@ -20,6 +20,8 @@ or openhands, so any module may import it without breaching the import boundary.
 
 import base64
 import json
+import os
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -40,6 +42,9 @@ _APP_JWT_TTL_SECONDS = 9 * 60
 _INSTALLATION_TOKEN_SKEW_SECONDS = 5 * 60
 # A defensive cap on repo pagination (100/page) — a run's owner is not expected to have thousands.
 _MAX_REPO_PAGES = 10
+# Bound the clone/push git subprocess so a wedged network can't hang a run (mirrors worktree's git
+# cap, but longer — a clone of a real repo over HTTPS is heavier than a local worktree add).
+_GIT_TIMEOUT_SECONDS = 300
 
 # installation_id -> (token, expiry_epoch). In-process ONLY — never persisted; cleared on restart.
 _installation_token_cache: dict[int, tuple[str, float]] = {}
@@ -260,3 +265,131 @@ def build_manage_url() -> str:
     if slug:
         return f"{_GITHUB_OAUTH_BASE}/apps/{slug}/installations/new"
     return ""
+
+
+# ---- Git clone / push over HTTPS + the Pull Request API (M-h1b) ----------------------------------
+#
+# The hosted-run delivery chute: clone the user's repo server-side (a durable step then sets
+# ``repo_path`` so the run looks like a local brownfield run), then push the ship branch + open a PR
+# on the Ship terminal. The 1h installation token is a SECRET — it rides the git command line / the
+# tokenised URL ONLY, is scrubbed off ``.git/config`` right after a clone, and NEVER lands in a
+# log (this module has none), a row, a response, or an error (``_git`` names only the subcommand;
+# git echoes the tokenised remote URL into its OWN stderr, so the raw output must never surface).
+
+
+def _git(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess:
+    """Run a git command, capturing output. On failure raise ``GithubAppError`` naming ONLY the
+    subcommand (``args[0]``) + the exit code — NEVER the argv or stderr: a clone/push argv carries
+    the tokenised ``https://x-access-token:<token>@…`` URL, and git echoes it back into stderr, so
+    surfacing either would leak the token."""
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=_GIT_TIMEOUT_SECONDS,
+    )
+    if result.returncode != 0:
+        raise GithubAppError(f"git {args[0]} failed (exit {result.returncode})")
+    return result
+
+
+def _tokenized_url(token: str, full_name: str) -> str:
+    """The tokenised HTTPS git URL for ``owner/name``. SECRET — command-line / clone use ONLY."""
+    return f"https://x-access-token:{token}@github.com/{full_name}.git"
+
+
+def _tokenless_url(full_name: str) -> str:
+    """The plain HTTPS git URL for ``owner/name`` — safe to persist in ``.git/config``."""
+    return f"https://github.com/{full_name}.git"
+
+
+def _clone_and_scrub(tokenized_url: str, tokenless_url: str, dest: str) -> None:
+    """Clone ``tokenized_url`` into ``dest``, then IMMEDIATELY rewrite ``remote.origin.url`` to
+    ``tokenless_url``. git persists the clone URL into ``dest/.git/config``, so a 1h token left
+    there is both a leak and useless by push time — scrub it. Idempotent (crash-resume): a
+    ``dest`` that already holds a repo is left as-is, only the tokenless remote re-asserted. Split
+    from :func:`clone_repo` (builds the URLs) so the scrub is unit-testable against a local repo."""
+    if os.path.isdir(os.path.join(dest, ".git")):
+        _git("remote", "set-url", "origin", tokenless_url, cwd=dest)
+        return
+    parent = os.path.dirname(dest)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    _git("clone", tokenized_url, dest)
+    _git("remote", "set-url", "origin", tokenless_url, cwd=dest)
+
+
+def clone_repo(installation_id: int, full_name: str, dest: str) -> None:
+    """Clone ``full_name`` (``owner/name``) into ``dest`` with a fresh 1h installation token, then
+    scrub the token off ``.git/config`` (see :func:`_clone_and_scrub`). Idempotent on resume."""
+    token = get_installation_token(installation_id)
+    _clone_and_scrub(_tokenized_url(token, full_name), _tokenless_url(full_name), dest)
+
+
+def push_branch(installation_id: int, full_name: str, repo_dir: str, branch: str) -> None:
+    """Push ``branch`` from ``repo_dir`` to ``full_name`` with a FRESH 1h installation token on the
+    command line ONLY — never persisted, never re-added as a remote (the run's ``.git/config`` stays
+    tokenless). An explicit refspec so nothing else is pushed."""
+    token = get_installation_token(installation_id)
+    _git("-C", repo_dir, "push", _tokenized_url(token, full_name), f"{branch}:{branch}")
+
+
+def find_repo_in_installations(
+    installation_ids: list[int], full_name: str
+) -> tuple[int, dict] | None:
+    """The ``(installation_id, repo-dict)`` for ``full_name`` across ``installation_ids`` — or
+    ``None`` if no installation can access it. OWNER-SCOPED authorization: the caller passes the ids
+    from ``github_installations`` WHERE ``owner_id`` == the current user, so this can only match a
+    repo the owner actually controls (a user may POST any ``full_name``)."""
+    for installation_id in installation_ids:
+        for repo in list_installation_repositories(installation_id):
+            if repo.get("full_name") == full_name:
+                return installation_id, repo
+    return None
+
+
+def list_open_pull_requests(installation_id: int, full_name: str, *, head: str) -> list[dict]:
+    """Open PRs on ``full_name`` whose head branch is ``head`` — for idempotent PR creation (create
+    only if absent). GitHub's ``head`` filter wants ``owner:branch``."""
+    token = get_installation_token(installation_id)
+    owner = full_name.split("/", 1)[0]
+    result = _http(
+        "GET",
+        f"{_GITHUB_API}/repos/{full_name}/pulls?state=open&head={owner}:{head}",
+        token=token,
+    )
+    return result if isinstance(result, list) else []
+
+
+def create_pull_request(
+    installation_id: int, full_name: str, *, head: str, base: str, title: str, body: str
+) -> dict:
+    """Open a PR on ``full_name`` from ``head`` into ``base``. Returns the NON-secret
+    ``{html_url, number}``. A duplicate create returns a 422 whose body ``_http`` drops (status
+    alone can't tell 'already exists' from a real error), so callers MUST dedup via
+    :func:`list_open_pull_requests` first — never catch-and-guess."""
+    token = get_installation_token(installation_id)
+    result = _http(
+        "POST",
+        f"{_GITHUB_API}/repos/{full_name}/pulls",
+        token=token,
+        body={"title": title, "head": head, "base": base, "body": body},
+    )
+    if not isinstance(result, dict) or not result.get("html_url"):
+        raise GithubAppError("GitHub returned no PR url.")
+    return {"html_url": result.get("html_url"), "number": result.get("number")}
+
+
+def open_pull_request_idempotent(
+    installation_id: int, full_name: str, *, head: str, base: str, title: str, body: str
+) -> str:
+    """Open a PR from ``head`` into ``base`` IDEMPOTENTLY (the ``idempotent_ship`` discipline): list
+    open PRs for ``head`` first, create only if absent. Returns the PR html url. Re-runnable — a
+    second Ship (crash-resume, or a re-run) reuses the existing PR instead of erroring on a dup."""
+    existing = list_open_pull_requests(installation_id, full_name, head=head)
+    if existing:
+        return existing[0].get("html_url")
+    return create_pull_request(
+        installation_id, full_name, head=head, base=base, title=title, body=body
+    )["html_url"]
