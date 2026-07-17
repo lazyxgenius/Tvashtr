@@ -6,21 +6,21 @@ Before this fix ``trade_mcp_rung2_check.py`` ALWAYS put ``"subpath": _SUBPATH`` 
 mirrors the FE (``LaunchPanel.tsx``: ``if (scope) opts.subpath = scope``): a blank subpath OMITS
 the key entirely (whole repo); the proven scoped default (``core`` when UNSET) is unchanged.
 
-Lives beside the harness under ``scripts/`` (NOT ``backend/tests/``) so the backend/ tree stays
-untouched — this is a harness-only change. The driver has lazy ``tvashtr`` imports inside
-``main()``, so it loads cleanly by file path with no live backend/DB (mirrors ``test_model_bench``).
-Run it directly: ``cd backend && uv run pytest ../scripts/test_rung2_whole_repo.py``.
+Loads the ``scripts/`` driver BY FILE PATH — the ``test_model_bench`` pattern (``parents[2]``) —
+the driver has lazy ``tvashtr`` imports inside ``main()``, so it loads cleanly with no live
+backend/DB. Moved here from ``scripts/`` (M-h1b Task 2) so ``make test`` actually runs it (a
+mutation-real regression under ``scripts/`` never ran, so it would rot).
 """
 
 import importlib.util
 from pathlib import Path
 
-_RUNG2_PATH = Path(__file__).resolve().parent / "trade_mcp_rung2_check.py"
+_RUNG2_PATH = Path(__file__).resolve().parents[2] / "scripts" / "trade_mcp_rung2_check.py"
 
 
 def _load_rung2():
     spec = importlib.util.spec_from_file_location("rung2_under_test", _RUNG2_PATH)
-    assert spec and spec.loader, "could not create a spec for trade_mcp_rung2_check.py"
+    assert spec and spec.loader, "could not create a spec for scripts/trade_mcp_rung2_check.py"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
