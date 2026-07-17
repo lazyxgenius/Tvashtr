@@ -26,7 +26,7 @@ TVASHTR_RUNG2_MODEL ?= $(TVASHTR_AGENT_MODEL)
 # above — NOT a hardcoded slug. Override with `make docs-chain-e2e TVASHTR_DOCS_CHAIN_MODEL=<slug>`.
 TVASHTR_DOCS_CHAIN_MODEL ?= $(TVASHTR_AGENT_MODEL)
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check reaper-check memory-smoke memory-distill-gate memory-review-gate memory-shelf-e2e brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e docs-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e node-ask-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e scope-picker-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e endpoint-edit-e2e skills-e2e tools-e2e memory-injection-check seed lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check reaper-check memory-smoke memory-distill-gate memory-review-gate memory-shelf-e2e brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e docs-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e node-ask-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e scope-picker-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e endpoint-edit-e2e skills-e2e tools-e2e memory-injection-check github-app-e2e seed lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -173,6 +173,9 @@ thinker-chain-e2e: ## Live P1.8c thinker-chain E2E (API-driven): instantiate the
 
 docs-chain-e2e: ## M-docs LIVE gate: a REAL LOCAL-sandbox plan_review run on the CONFIGURED .env model (deepseek/deepseek-chat; override `make docs-chain-e2e TVASHTR_DOCS_CHAIN_MODEL=<slug>`) seeded with the Architect's writes_to=design + the Engineer's reads_from=[spec,design]. Asserts the run produced TWO documents (spec + design) AND the Architect's trajectory context_manifest carries a `spec` part (it compiled the PM's PRD) while the PM's does not — the PM->Architect->Engineer document journey end to end. Run `make seed` first so the model's provider credential is in the DB; skips cleanly without it. NO docker. NOT in `make test`.
 	cd backend && TVASHTR_AGENT_SANDBOX=local TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_AGENT_MODEL=$(TVASHTR_DOCS_CHAIN_MODEL) uv run python ../scripts/docs_chain_check.py
+
+github-app-e2e: ## M-h1a LIVE gate: mint the app JWT -> a 1h installation token for the operator's real App -> list its repos, asserting `trade_mcp` is present (echoes the token's expiry + length, NEVER the token). Skips cleanly without GITHUB_APP_* in .env. NO docker, NO browser. NOT in `make test`.
+	cd backend && uv run python ../scripts/github_app_e2e_check.py
 
 capability-edit-e2e: ## Live P1.8c capability-authoring E2E: "+ New team" from the thinker_chain template, click the Architect node, flip the Capability toggle thinker→worker, Save, and assert the flip PERSISTED (kind=agent/engine=openhands), the canvas RE-LABELS it as a Worker, and the PM (start node) toggle is LOCKED. Vite dev server + headless Playwright; needs NVIDIA_BUILD_API_KEY, skips otherwise.
 	./scripts/capability_edit_e2e.sh
