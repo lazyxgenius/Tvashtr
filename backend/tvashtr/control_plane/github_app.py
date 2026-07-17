@@ -281,14 +281,19 @@ def _git(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess:
     """Run a git command, capturing output. On failure raise ``GithubAppError`` naming ONLY the
     subcommand (``args[0]``) + the exit code — NEVER the argv or stderr: a clone/push argv carries
     the tokenised ``https://x-access-token:<token>@…`` URL, and git echoes it back into stderr, so
-    surfacing either would leak the token."""
-    result = subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        timeout=_GIT_TIMEOUT_SECONDS,
-    )
+    surfacing either would leak the token. A timeout is the same hazard: ``subprocess.run`` raises
+    ``TimeoutExpired``, whose ``__str__`` renders the full tokenised argv. Catch it and raise a
+    token-free error (``from None`` keeps the original out of the traceback)."""
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        raise GithubAppError(f"git {args[0]} timed out after {_GIT_TIMEOUT_SECONDS}s") from None
     if result.returncode != 0:
         raise GithubAppError(f"git {args[0]} failed (exit {result.returncode})")
     return result
@@ -330,9 +335,10 @@ def clone_repo(installation_id: int, full_name: str, dest: str) -> None:
 def push_branch(installation_id: int, full_name: str, repo_dir: str, branch: str) -> None:
     """Push ``branch`` from ``repo_dir`` to ``full_name`` with a FRESH 1h installation token on the
     command line ONLY — never persisted, never re-added as a remote (the run's ``.git/config`` stays
-    tokenless). An explicit refspec so nothing else is pushed."""
+    tokenless). An explicit refspec so nothing else is pushed. Runs git IN ``repo_dir`` via ``cwd``
+    (not ``-C``), so an error names the real subcommand (``git push``), not ``git -C``."""
     token = get_installation_token(installation_id)
-    _git("-C", repo_dir, "push", _tokenized_url(token, full_name), f"{branch}:{branch}")
+    _git("push", _tokenized_url(token, full_name), f"{branch}:{branch}", cwd=repo_dir)
 
 
 def find_repo_in_installations(

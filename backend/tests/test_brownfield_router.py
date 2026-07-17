@@ -10,6 +10,7 @@ import uuid
 from sqlalchemy import select
 
 from tvashtr import routers
+from tvashtr.config import get_settings
 from tvashtr.db import session_scope
 from tvashtr.models import Run
 
@@ -39,7 +40,8 @@ def _init_repo(path, branch="main"):
 # ---- POST /api/repo/inspect ---------------------------------------------------------------------
 
 
-def test_inspect_repo_on_real_repo(client, tmp_path):
+def test_inspect_repo_on_real_repo(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # pin: never rely on ambient .env
     repo = _init_repo(tmp_path / "repo")
     resp = client.post("/api/repo/inspect", json={"path": str(repo)})
     assert resp.status_code == 200
@@ -50,7 +52,8 @@ def test_inspect_repo_on_real_repo(client, tmp_path):
     assert body["tracked_file_count"] >= 2
 
 
-def test_inspect_repo_on_non_git_path_is_200_discriminated(client, tmp_path):
+def test_inspect_repo_on_non_git_path_is_200_discriminated(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # pin: never rely on ambient .env
     plain = tmp_path / "plain"
     plain.mkdir()
     resp = client.post("/api/repo/inspect", json={"path": str(plain)})
@@ -87,7 +90,8 @@ def _init_multi_package_repo(path):
     return path
 
 
-def test_inspect_repo_returns_subpaths_for_multi_package_repo(client, tmp_path):
+def test_inspect_repo_returns_subpaths_for_multi_package_repo(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # pin: never rely on ambient .env
     # scoped-mount Slice 2: POST /api/repo/inspect ALSO returns the repo's top-level tracked package
     # dirs + counts (the launch panel's Scope picker source). Fails pre-change (no `subpaths` key).
     repo = _init_multi_package_repo(tmp_path / "multi")
@@ -106,6 +110,8 @@ def test_inspect_repo_returns_subpaths_for_multi_package_repo(client, tmp_path):
 
 def test_create_run_rejects_non_git_repo_path_422(client, monkeypatch, tmp_path):
     _stub_launch(monkeypatch)
+    # Defect 2: pin self-hosted (a test must never rely on the ambient .env).
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)
     plain = tmp_path / "plain"
     plain.mkdir()
     resp = client.post("/api/runs", json={"idea": "x", "repo_path": str(plain)})
@@ -115,6 +121,8 @@ def test_create_run_rejects_non_git_repo_path_422(client, monkeypatch, tmp_path)
 
 def test_create_run_rejects_unknown_base_ref_422(client, monkeypatch, tmp_path):
     _stub_launch(monkeypatch)
+    # Defect 2: pin self-hosted (a test must never rely on the ambient .env).
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)
     repo = _init_repo(tmp_path / "repo")
     resp = client.post(
         "/api/runs",
@@ -126,6 +134,8 @@ def test_create_run_rejects_unknown_base_ref_422(client, monkeypatch, tmp_path):
 
 def test_create_run_brownfield_defaults_base_ref_and_records_columns(client, monkeypatch, tmp_path):
     _stub_launch(monkeypatch)
+    # Defect 2: pin self-hosted (a test must never rely on the ambient .env).
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)
     repo = _init_repo(tmp_path / "repo", branch="main")
     resp = client.post("/api/runs", json={"idea": "Add subtract", "repo_path": str(repo)})
     assert resp.status_code == 200
@@ -147,6 +157,8 @@ def test_create_run_brownfield_defaults_base_ref_and_records_columns(client, mon
 
 def test_create_run_greenfield_records_null_brownfield_columns(client, monkeypatch):
     _stub_launch(monkeypatch)
+    # Defect 2: pin self-hosted (a test must never rely on the ambient .env).
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)
     resp = client.post("/api/runs", json={"idea": "greenfield idea"})
     assert resp.status_code == 200
     run_id = resp.json()["run_id"]
@@ -174,6 +186,8 @@ def _init_repo_with_pkg(path, branch="main"):
 
 def test_create_run_brownfield_persists_valid_subpath(client, monkeypatch, tmp_path):
     _stub_launch(monkeypatch)
+    # Defect 2: pin self-hosted (a test must never rely on the ambient .env).
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)
     repo = _init_repo_with_pkg(tmp_path / "repo")
     resp = client.post(
         "/api/runs", json={"idea": "Add to pkg", "repo_path": str(repo), "subpath": "pkg"}
@@ -190,6 +204,8 @@ def test_create_run_brownfield_persists_valid_subpath(client, monkeypatch, tmp_p
 
 def test_create_run_rejects_subpath_that_is_not_a_tracked_dir_422(client, monkeypatch, tmp_path):
     _stub_launch(monkeypatch)
+    # Defect 2: pin self-hosted (a test must never rely on the ambient .env).
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)
     repo = _init_repo_with_pkg(tmp_path / "repo")
     # A tracked FILE is not a directory, and a non-existent path is not tracked → clean 422 each.
     for bad in ("pkg/mod.py", "does-not-exist"):
@@ -200,6 +216,8 @@ def test_create_run_rejects_subpath_that_is_not_a_tracked_dir_422(client, monkey
 
 def test_create_run_greenfield_ignores_subpath(client, monkeypatch):
     _stub_launch(monkeypatch)
+    # Defect 2: pin self-hosted (a test must never rely on the ambient .env).
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)
     # No repo_path → greenfield → a supplied subpath is IGNORED (stored NULL), never a 422.
     resp = client.post("/api/runs", json={"idea": "greenfield", "subpath": "pkg"})
     assert resp.status_code == 200

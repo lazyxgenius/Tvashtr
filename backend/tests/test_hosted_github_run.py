@@ -122,15 +122,17 @@ def test_repo_inspect_fenced_in_hosted_mode(client, monkeypatch):
     assert resp.status_code == 422
 
 
-def test_repo_inspect_unchanged_when_self_hosted(client, tmp_path):
+def test_repo_inspect_unchanged_when_self_hosted(client, monkeypatch, tmp_path):
     """Byte-unchanged self-hosted: /api/repo/inspect still discriminates a path (non-git -> 200)."""
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # pin: never rely on ambient .env
     resp = client.post("/api/repo/inspect", json={"path": str(tmp_path)})
     assert resp.status_code == 200
     assert resp.json()["is_git"] is False  # a plain dir is a renderable result, not an error
 
 
-def test_create_run_github_repo_requires_hosted_mode(client):
+def test_create_run_github_repo_requires_hosted_mode(client, monkeypatch):
     """github_repo outside hosted mode -> 422 (keeps the two postures crisp)."""
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # pin: never rely on ambient .env
     resp = client.post("/api/runs", json={"idea": "x", "github_repo": _REPO})
     assert resp.status_code == 422
     assert "hosted" in str(resp.json()).lower()
@@ -347,6 +349,29 @@ def test_git_error_never_leaks_the_argv_or_token(tmp_path):
         github_app._git("clone", f"/nonexistent/{secret}/repo.git", str(tmp_path / "d"))
     assert "ghs_SECRET_leak_me" not in str(exc.value)
     assert "git clone failed" in str(exc.value)
+
+
+def test_git_timeout_never_leaks_the_token(monkeypatch):
+    """§5.5 / C8 on the TIMEOUT path (the sibling above covers only the exit-code path). A git that
+    blocks past the deadline makes ``subprocess.run(timeout=…)`` raise ``TimeoutExpired`` BEFORE the
+    returncode check, and ``TimeoutExpired.__str__`` renders the FULL argv — which for clone/push
+    carries ``https://x-access-token:<token>@…``. Uncaught, that token reaches the ship arm's
+    ``reason`` (a DB row + a log) and the clone path's persisted workflow error. ``_git`` must catch
+    it and re-raise a token-free ``GithubAppError`` naming ONLY the subcommand."""
+    token = "ghs_SECRET_timeout_leak"  # noqa: S105 — a fake token, asserted ABSENT from the error
+    tokenized = f"https://x-access-token:{token}@github.com/o/r.git"
+
+    def fake_run(cmd, **kwargs):
+        # git blocks past the deadline; subprocess raises TimeoutExpired, whose str() renders `cmd`.
+        raise subprocess.TimeoutExpired(cmd=cmd, timeout=github_app._GIT_TIMEOUT_SECONDS)
+
+    monkeypatch.setattr(github_app.subprocess, "run", fake_run)
+
+    with pytest.raises((github_app.GithubAppError, subprocess.TimeoutExpired)) as exc:
+        github_app._git("clone", tokenized, "/dest")
+    assert token not in str(exc.value)  # RED pre-fix: the raw TimeoutExpired str carries the token
+    assert isinstance(exc.value, github_app.GithubAppError)  # a wrapped, token-free error
+    assert "clone" in str(exc.value)
 
 
 def test_github_app_imports_no_logging_and_no_httpx():

@@ -98,7 +98,8 @@ def _fresh_account() -> tuple[TestClient, uuid.UUID]:
 # ---------------------------------------------------------------- /api/config
 
 
-def test_config_is_public_and_defaults_to_self_hosted(unauth_client):
+def test_config_is_public_and_defaults_to_self_hosted(unauth_client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # pin: never rely on ambient .env
     resp = unauth_client.get("/api/config")  # reachable WITHOUT a session (pre-login)
     assert resp.status_code == 200
     assert resp.json() == {
@@ -128,7 +129,8 @@ def test_config_hosted_exposes_install_url_but_no_secret(client, monkeypatch):
 # ---------------------------------------------------------------- the OAuth callback
 
 
-def test_callback_404_when_not_hosted(unauth_client):
+def test_callback_404_when_not_hosted(unauth_client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # pin: never rely on ambient .env
     resp = unauth_client.get("/api/auth/github/callback?code=abc", follow_redirects=False)
     assert resp.status_code == 404  # feature off by default -> not even a redirect
 
