@@ -1,0 +1,163 @@
+"""M-h1a — GitHub App client unit tests (``tvashtr.control_plane.github_app``).
+
+Exercises the credential chain in isolation: the app JWT is REAL RS256 with ``iss`` = the app id and
+``exp`` <= 10 min (verified against the public key); the installation token is minted once + cached
+until near expiry; ``list_installation_repositories`` returns a whitelist only; and a bad/absent key
+raises WITHOUT echoing key material. Outbound HTTP is faked at the ``_http`` seam — the repo
+convention (no respx/MockTransport exists; see ``litellm_admin``).
+"""
+
+import base64
+from datetime import UTC, datetime, timedelta
+
+import jwt
+import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+
+from tvashtr.config import get_settings
+from tvashtr.control_plane import github_app
+
+
+def _rsa_key_b64() -> tuple[str, str]:
+    """A fresh RSA-2048 keypair: (base64 of the PKCS#1 PEM private key, the public PEM). PKCS#1 =
+    ``TraditionalOpenSSL`` => the ``-----BEGIN RSA PRIVATE KEY-----`` form the brief specifies."""
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.TraditionalOpenSSL,
+        serialization.NoEncryption(),
+    ).decode()
+    pub = (
+        key.public_key()
+        .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        .decode()
+    )
+    return base64.b64encode(pem.encode()).decode(), pub
+
+
+# One keypair for the whole module (RSA keygen is the slow part).
+_KEY_B64, _PUB_PEM = _rsa_key_b64()
+_APP_ID = "424242"
+
+
+def _iso_in(**delta) -> str:
+    return (datetime.now(UTC) + timedelta(**delta)).isoformat()
+
+
+@pytest.fixture
+def gh(monkeypatch):
+    """Configure the shared Settings with a real key + app id and reset the token cache."""
+    s = get_settings()
+    monkeypatch.setattr(s, "github_app_id", _APP_ID)
+    monkeypatch.setattr(s, "github_app_private_key_b64", _KEY_B64)
+    monkeypatch.setattr(s, "github_app_client_id", "Iv1.testclientid")
+    monkeypatch.setattr(s, "github_app_client_secret", "test-client-secret")
+    monkeypatch.setattr(s, "github_app_slug", "")
+    github_app._installation_token_cache.clear()
+    yield s
+    github_app._installation_token_cache.clear()
+
+
+def test_app_jwt_is_rs256_with_iss_and_exp_under_10min(gh):
+    now = 1_700_000_000
+    token = github_app.mint_app_jwt(now=now)
+    # Verify with the PUBLIC key — proves it was signed with the app private key, RS256.
+    claims = jwt.decode(token, _PUB_PEM, algorithms=["RS256"], options={"verify_exp": False})
+    assert claims["iss"] == _APP_ID
+    assert claims["exp"] <= now + 600  # GitHub's 10-minute cap
+    assert claims["iat"] <= now  # back-dated for clock skew
+    assert jwt.get_unverified_header(token)["alg"] == "RS256"
+
+
+def test_app_jwt_unconfigured_raises_naming_the_missing_var(monkeypatch):
+    monkeypatch.setattr(get_settings(), "github_app_id", "")
+    with pytest.raises(github_app.GithubAppError) as exc:
+        github_app.mint_app_jwt()
+    assert "GITHUB_APP_ID" in str(exc.value)
+
+
+def test_bad_private_key_raises_without_echoing_the_value(monkeypatch):
+    s = get_settings()
+    monkeypatch.setattr(s, "github_app_id", _APP_ID)
+    not_a_pem = base64.b64encode(b"this-is-secret-key-material-not-a-pem").decode()
+    monkeypatch.setattr(s, "github_app_private_key_b64", not_a_pem)
+    with pytest.raises(github_app.GithubAppError) as exc:
+        github_app.mint_app_jwt()
+    assert not_a_pem not in str(exc.value)  # the (secret) value never appears in the message
+
+
+def test_installation_token_minted_once_then_cached(gh, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_http(method, url, *, token=None, body=None, accept=None):
+        calls["n"] += 1
+        assert url.endswith("/access_tokens") and method == "POST"
+        return {"token": "ghs_installtoken", "expires_at": _iso_in(hours=1)}
+
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    first = github_app.get_installation_token(147133756)
+    second = github_app.get_installation_token(147133756)
+    assert first == second == "ghs_installtoken"
+    assert calls["n"] == 1  # minted ONCE, then served from the in-process cache
+
+
+def test_installation_token_refreshed_when_within_skew(gh, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_http(method, url, *, token=None, body=None, accept=None):
+        calls["n"] += 1
+        # Expires in 1 minute -> inside the 5-minute refresh skew -> never cached, always re-minted.
+        return {"token": f"ghs_tok{calls['n']}", "expires_at": _iso_in(minutes=1)}
+
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    github_app.get_installation_token(1)
+    github_app.get_installation_token(1)
+    assert calls["n"] == 2  # re-minted because the cached token was within the refresh skew
+
+
+def test_list_repositories_returns_whitelist_only(gh, monkeypatch):
+    def fake_http(method, url, *, token=None, body=None, accept=None):
+        if url.endswith("/access_tokens"):
+            return {"token": "ghs_tok", "expires_at": _iso_in(hours=1)}
+        assert "/installation/repositories" in url
+        return {
+            "repositories": [
+                {
+                    "name": "trade_mcp",
+                    "full_name": "o/trade_mcp",
+                    "private": True,
+                    "default_branch": "main",
+                    "html_url": "https://github.com/o/trade_mcp",
+                    "owner": {"login": "o", "id": 1},  # extra fields must be DROPPED
+                    "permissions": {"admin": True},
+                }
+            ]
+        }
+
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    repos = github_app.list_installation_repositories(147133756)
+    assert repos == [
+        {
+            "name": "trade_mcp",
+            "full_name": "o/trade_mcp",
+            "private": True,
+            "default_branch": "main",
+            "html_url": "https://github.com/o/trade_mcp",
+        }
+    ]
+    assert "owner" not in repos[0] and "permissions" not in repos[0]  # whitelist drops the rest
+
+
+def test_build_install_url_prefers_slug_then_client_id_then_empty(monkeypatch):
+    s = get_settings()
+    monkeypatch.setattr(s, "github_app_slug", "tvashtr")
+    monkeypatch.setattr(s, "github_app_client_id", "Iv1.abc")
+    assert github_app.build_install_url() == "https://github.com/apps/tvashtr/installations/new"
+    monkeypatch.setattr(s, "github_app_slug", "")
+    assert (
+        github_app.build_install_url()
+        == "https://github.com/login/oauth/authorize?client_id=Iv1.abc"
+    )
+    monkeypatch.setattr(s, "github_app_client_id", "")
+    assert github_app.build_install_url() == ""  # nothing public to link to

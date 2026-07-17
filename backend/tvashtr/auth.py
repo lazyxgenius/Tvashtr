@@ -17,13 +17,15 @@ from typing import Annotated
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from itsdangerous import BadData, URLSafeTimedSerializer
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from tvashtr.config import get_settings
+from tvashtr.control_plane import github_app
 from tvashtr.db import session_scope
-from tvashtr.models import User
+from tvashtr.models import GithubInstallation, User
 
 # The session cookie the browser carries after login. HttpOnly + signed; the payload is the user id.
 SESSION_COOKIE_NAME = "tv_session"
@@ -191,3 +193,103 @@ def me(current_user: Annotated[UserOut, Depends(get_current_user)]) -> UserOut:
     """The logged-in identity — 401 (via the dependency) without a valid session. The FE login gate
     calls this on load."""
     return current_user
+
+
+# ---- GitHub App sign-in (M-h1a, HOSTED mode) ----
+
+# A Django "unusable password" sentinel: NOT a valid bcrypt hash, so ``verify_password`` (which
+# returns False on a malformed hash) can NEVER match it. A GitHub-authenticated account exists but
+# has no password and can only sign in via GitHub — the password path's schema (NOT NULL
+# ``password_hash``) is untouched, so every existing gate still authenticates.
+UNUSABLE_PASSWORD_HASH = "!github-oauth-no-password"
+
+
+def _github_email(identity: dict) -> str:
+    """The account email for a GitHub identity: the account's GitHub email if present, else the
+    stable ``<login>@users.noreply.github.com`` fallback (GitHub may keep the email private).
+    Normalized exactly like the password path so the ``users.email`` unique constraint matches."""
+    raw = identity.get("email") or f"{identity.get('login')}@users.noreply.github.com"
+    return _normalize_email(raw)
+
+
+def _find_or_link_github_user(
+    session, github_user_id: int, github_login: str | None, email: str
+) -> User:
+    """Find-or-create-or-LINK the account behind a GitHub identity:
+
+    1. an account already linked to this ``github_user_id`` -> reuse it (refresh the login);
+    2. else one with the same ``email`` -> LINK it (attach github_user_id/login), so a user who
+       first registered with email/password and later "Continue with GitHub" keeps ONE account;
+    3. else create a new account with an unusable placeholder password (GitHub-only sign-in).
+
+    ``session.flush()`` populates ``user.id`` before the scope closes (mirrors ``register``)."""
+    user = session.scalar(select(User).where(User.github_user_id == github_user_id))
+    if user is None and email:
+        user = session.scalar(select(User).where(User.email == email))
+    if user is None:
+        user = User(
+            email=email,
+            password_hash=UNUSABLE_PASSWORD_HASH,
+            github_user_id=github_user_id,
+            github_login=github_login,
+        )
+        session.add(user)
+    else:
+        user.github_user_id = github_user_id
+        user.github_login = github_login
+    session.flush()
+    return user
+
+
+def _store_installation(session, owner_id, installation_id: str) -> None:
+    """Record (or re-own) the installation for this account. ``installation_id`` is UNIQUE
+    — a re-auth by the same owner is a no-op; a re-install re-points ownership to whoever just
+    proved control via OAuth. NO token is stored (installation tokens are minted on demand)."""
+    try:
+        inst_id = int(installation_id)
+    except (TypeError, ValueError):
+        return
+    row = session.scalar(
+        select(GithubInstallation).where(GithubInstallation.installation_id == inst_id)
+    )
+    if row is None:
+        session.add(GithubInstallation(owner_id=owner_id, installation_id=inst_id))
+    else:
+        row.owner_id = owner_id
+
+
+@auth_router.get("/github/callback")
+def github_callback(
+    code: str,
+    installation_id: str | None = None,
+    setup_action: str | None = None,
+) -> RedirectResponse:
+    """Complete GitHub App sign-in (HOSTED mode). GitHub redirects the browser here after the user
+    authorizes/installs:``?code`` identifies the user; ``?installation_id`` + ``?setup_action``
+    name the installation they granted. Exchange the code for a user token, read the identity,
+    find-or-create-or-link the account, record the installation, then issue the SAME signed
+    ``tv_session`` cookie the password path issues and redirect into the app.
+
+    Unauthenticated by design — it is how a GitHub user obtains their first session, so it lives on
+    ``auth_router`` (mounted WITHOUT ``get_current_user``). 404s when ``hosted_mode`` is off."""
+    settings = get_settings()
+    if not settings.hosted_mode:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        user_token = github_app.exchange_code_for_user_token(code)
+        identity = github_app.get_authenticated_user(user_token)
+    except github_app.GithubAppError:
+        # Never surface the underlying GitHub error (defense-in-depth: it could echo a code/secret).
+        raise HTTPException(status_code=400, detail="GitHub sign-in failed.") from None
+
+    with session_scope() as session:
+        user = _find_or_link_github_user(
+            session, int(identity["id"]), identity.get("login"), _github_email(identity)
+        )
+        user_id = str(user.id)
+        if installation_id:
+            _store_installation(session, user.id, installation_id)
+
+    response = RedirectResponse(url="/", status_code=302)
+    set_session_cookie(response, user_id)
+    return response

@@ -20,6 +20,7 @@ from sqlalchemy import select
 from tvashtr import db
 from tvashtr.auth import auth_router, get_current_user
 from tvashtr.config import get_settings
+from tvashtr.control_plane import github_app
 from tvashtr.control_plane.hello_durable import hello_durable
 from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
 from tvashtr.models import SpikeHelloEvent
@@ -79,6 +80,24 @@ def health() -> HealthResponse:
         return HealthResponse(status="ok", db="ok")
     except Exception:
         return HealthResponse(status="degraded", db="down")
+
+
+class ConfigResponse(BaseModel):
+    hosted_mode: bool
+    github_install_url: str
+
+
+@app.get("/api/config", response_model=ConfigResponse)
+def config() -> ConfigResponse:
+    """PUBLIC client bootstrap (open, like ``/health``): the posture the FE needs BEFORE login. In
+    HOSTED mode the AuthWizard shows only "Continue with GitHub" linking to ``github_install_url``;
+    when ``hosted_mode`` is False it stays the email/password wizard unchanged. Exposes
+    ONLY public fields — the client secret and private key are never serializable here."""
+    settings = get_settings()
+    return ConfigResponse(
+        hosted_mode=settings.hosted_mode,
+        github_install_url=github_app.build_install_url() if settings.hosted_mode else "",
+    )
 
 
 @app.post(

@@ -495,7 +495,10 @@ class User(Base):
     run resolves its model key today."""
 
     __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("email", name="uq_users_email"),)
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_users_email"),
+        UniqueConstraint("github_user_id", name="uq_users_github_user_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(Text, nullable=False)
@@ -511,6 +514,14 @@ class User(Base):
     memory_review_mode: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=false(), default=False
     )
+    # M-h1a (HOSTED mode, migration 0029): the GitHub identity link for an account authenticated
+    # via the GitHub App. ``github_user_id`` is GitHub's STABLE numeric user id — the find-or-link
+    # key, UNIQUE so one Tvashtr account per GitHub user; nullable + Postgres-distinct-NULLs
+    # so every email/password account leaves it NULL (no collision). ``github_login`` is the
+    # display handle. Both NULL on every self-hosted account — the password path is unchanged, and a
+    # GitHub account carries a placeholder ``password_hash`` (it can never password-login).
+    github_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    github_login: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ProviderCredential(Base):
@@ -537,6 +548,34 @@ class ProviderCredential(Base):
     provider: Mapped[str] = mapped_column(Text, nullable=False)
     secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     key_last4: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class GithubInstallation(Base):
+    """One GitHub App installation linked to an account (M-h1a, migration ``0029``).
+
+    A row records that ``owner_id`` (a Tvashtr account) installed the GitHub App as
+    ``installation_id`` (GitHub's globally-unique numeric installation id). It holds NO secret:
+    installation ACCESS tokens are minted on demand from the app JWT and cached in-process only
+    (see :mod:`tvashtr.control_plane.github_app`), NEVER persisted — the only stored GitHub datum is
+    this non-secret numeric id. ``installation_id`` is UNIQUE (one owner per installation). This is
+    the owner-scoping anchor for ``GET /api/github/repos``: that query ANDs
+    ``owner_id == <current user>`` so account A can never see account B's installations or repos.
+    Mirrors the owner-scoped shape of :class:`ProviderCredential`, minus the secret column."""
+
+    __tablename__ = "github_installations"
+    __table_args__ = (
+        UniqueConstraint("installation_id", name="uq_github_installations_installation_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    installation_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

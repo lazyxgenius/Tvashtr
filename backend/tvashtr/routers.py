@@ -18,7 +18,7 @@ from sqlalchemy import func, select, update
 from tvashtr import db
 from tvashtr.auth import UserOut, get_current_user
 from tvashtr.config import get_settings
-from tvashtr.control_plane import memory, memory_distill, memory_review
+from tvashtr.control_plane import github_app, memory, memory_distill, memory_review
 from tvashtr.control_plane.credentials import (
     NoCredentialError,
     encrypt_secret,
@@ -81,6 +81,7 @@ from tvashtr.models import (
     Document,
     DocumentVersion,
     Edge,
+    GithubInstallation,
     HumanTask,
     ProviderCredential,
     Run,
@@ -2439,3 +2440,25 @@ def cancel_run(run_id: str, current_user: Annotated[UserOut, Depends(get_current
         "status": run_status,
         "workflow_status": workflow_status.status if workflow_status is not None else "NOT_FOUND",
     }
+
+
+@router.get("/api/github/repos")
+def list_github_repos(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """List the repositories the current account's GitHub App installation(s) can access (HOSTED
+    mode). OWNER-SCOPED: reads ONLY ``github_installations`` rows WHERE ``owner_id`` == the current
+    user, so account A can NEVER see account B's installations or repos. Its repos are
+    fetched with a freshly-minted, in-memory-cached installation token — no token is ever stored,
+    logged, or returned. Returns a whitelist of non-secret repo fields."""
+    owner_id = uuid.UUID(current_user.id)
+    with db.session_scope() as session:
+        installation_ids = [
+            row.installation_id
+            for row in session.execute(
+                select(GithubInstallation).where(GithubInstallation.owner_id == owner_id)
+            ).scalars()
+        ]
+    # The HTTP calls run AFTER the DB session closes — never hold a session across network I/O.
+    repos: list[dict] = []
+    for installation_id in installation_ids:
+        repos.extend(github_app.list_installation_repositories(installation_id))
+    return {"repos": repos, "installation_count": len(installation_ids)}

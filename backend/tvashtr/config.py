@@ -245,6 +245,46 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("TVASHTR_SECRET_KEY", "secret_key"),
     )
 
+    # M-h1a (HOSTED mode): GitHub App = identity provider + repo source. The posture flag
+    # gates the whole feature. With ``hosted_mode`` FALSE (the DEFAULT) NONE of the four
+    # GitHub App credentials are read and the app behaves EXACTLY as the self-hosted
+    # email/password build does — the password path + ``login_operator`` + ``repo_path`` are
+    # untouched. The four credentials are sourced from the operator's real GitHub App via
+    # ``.env``; ``client_id``/``app_id`` are public (safe to surface to the FE), but the
+    # ``client_secret`` and the base64 PKCS#1 ``private_key_b64`` are SECRETS that are NEVER
+    # echoed, logged, or serialized into any API response (see ``control_plane/github_app.py`` +
+    # the redaction tests). Empty-string defaults so an UNCONFIGURED install leaves them blank and
+    # the live ``github-app-e2e`` gate SKIPS cleanly (mirrors ``docs_chain_check`` env-absent skip).
+    hosted_mode: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("TVASHTR_HOSTED_MODE", "hosted_mode"),
+    )
+    github_app_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("GITHUB_APP_ID", "github_app_id"),
+    )
+    github_app_client_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("GITHUB_APP_CLIENT_ID", "github_app_client_id"),
+    )
+    # OPTIONAL public app slug (env ``GITHUB_APP_SLUG``) — the ``github.com/apps/<slug>`` URL name.
+    # Used ONLY to build the FE "Continue with GitHub" install URL server-side (exposed by the open
+    # ``GET /api/config``); it is public + empty-default, so leaving it unset simply falls back to
+    # the client_id OAuth-authorize URL. NOT one of the four credential secrets — it authenticates
+    # nothing. (The four credentials above are what the ``github-app-e2e`` gate exercises.)
+    github_app_slug: str = Field(
+        default="",
+        validation_alias=AliasChoices("GITHUB_APP_SLUG", "github_app_slug"),
+    )
+    github_app_client_secret: str = Field(
+        default="",
+        validation_alias=AliasChoices("GITHUB_APP_CLIENT_SECRET", "github_app_client_secret"),
+    )
+    github_app_private_key_b64: str = Field(
+        default="",
+        validation_alias=AliasChoices("GITHUB_APP_PRIVATE_KEY_B64", "github_app_private_key_b64"),
+    )
+
     def agent_llm_base_url(self, sandbox_mode: str) -> str:
         """The proxy base URL the agent's LLM points at, chosen by THIS run's sandbox
         mode. ``docker`` -> ``host.docker.internal`` (the agent-server container is on
