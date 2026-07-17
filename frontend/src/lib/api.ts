@@ -168,6 +168,14 @@ export interface AuthUser {
   email: string;
 }
 
+// M-h1a: the PUBLIC client bootstrap (GET /api/config) — the posture the AuthWizard needs BEFORE
+// login. Only public fields (never a client secret / private key). Self-hosted default: hosted_mode
+// false + an empty install URL, so the wizard stays the email/password flow.
+export interface Config {
+  hosted_mode: boolean;
+  github_install_url: string;
+}
+
 // An error that preserves the HTTP status so the login screen can branch on 401 / 409 / 422.
 export class ApiError extends Error {
   constructor(
@@ -197,6 +205,24 @@ export async function getMe(): Promise<AuthUser | null> {
   }
   if (!res.ok) throw new ApiError(res.status, `GET /api/auth/me -> ${res.status}`);
   return (await res.json()) as AuthUser;
+}
+
+// The public posture bootstrap. Resilient by design — the login screen must render even if this
+// fails: any non-OK response or network error falls back to the self-hosted default (email/password),
+// and it NEVER trips the 401 seam (the endpoint is public, so a 401 here is not a session signal).
+export async function getConfig(): Promise<Config> {
+  const fallback: Config = { hosted_mode: false, github_install_url: "" };
+  try {
+    const res = await fetch("/api/config");
+    if (!res.ok) return fallback;
+    const data = (await res.json()) as Partial<Config>;
+    return {
+      hosted_mode: data.hosted_mode === true,
+      github_install_url: data.github_install_url ?? "",
+    };
+  } catch {
+    return fallback;
+  }
 }
 
 async function postAuth(

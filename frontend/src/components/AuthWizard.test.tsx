@@ -48,6 +48,24 @@ describe("AuthWizard", () => {
     expect(screen.queryByText(/Step \d of 3/)).toBeNull();
   });
 
+  it("HOSTED posture shows ONLY 'Continue with GitHub' (no email/password)", () => {
+    const url = "https://github.com/apps/tvashtr/installations/new";
+    render(<AuthWizard onAuthed={vi.fn()} hosted githubInstallUrl={url} />);
+    const link = screen.getByRole("link", { name: /Continue with GitHub/i });
+    expect(link).toHaveAttribute("href", url); // links to the App's install URL
+    // the email/password door is entirely absent in hosted mode
+    expect(screen.queryByLabelText("Email")).toBeNull();
+    expect(screen.queryByLabelText("Password")).toBeNull();
+  });
+
+  it("self-hosted (hosted=false, the default) renders the email/password form UNCHANGED", () => {
+    render(<AuthWizard onAuthed={vi.fn()} />);
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
+    // and no GitHub door leaks into the self-hosted wizard
+    expect(screen.queryByRole("link", { name: /Continue with GitHub/i })).toBeNull();
+  });
+
   it("initialMode='register' opens in sign-up — Create-account submit + the 3-step progress bar", () => {
     render(<AuthWizard onAuthed={vi.fn()} initialMode="register" />);
     expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument();

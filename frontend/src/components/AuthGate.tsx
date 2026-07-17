@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 
 import App from "../App";
-import { type AuthUser, getMe, logout, setUnauthorizedHandler } from "../lib/api";
+import {
+  type AuthUser,
+  type Config,
+  getConfig,
+  getMe,
+  logout,
+  setUnauthorizedHandler,
+} from "../lib/api";
 import { Dashboard } from "./Dashboard";
 import { LandingPage } from "./LandingPage";
 import { type AuthMode, AuthWizard } from "./AuthWizard";
@@ -26,6 +33,8 @@ export function AuthGate() {
   const [loginMode, setLoginMode] = useState<AuthMode>("login");
   // Logged-in sub-view: the dashboard by default; opening a team routes to the canvas for that team.
   const [openTeamId, setOpenTeamId] = useState<string | null>(null);
+  // M-h1a: the public backend posture (hosted vs self-hosted) — drives which door the AuthWizard shows.
+  const [config, setConfig] = useState<Config | null>(null);
 
   // Register the 401 seam first: a 401 on getMe (below) or any later poll flips us back to the
   // logged-out landing page. Cleared on unmount so a stale closure can't fire after this gate is gone.
@@ -55,6 +64,17 @@ export function AuthGate() {
       .catch(() => {
         if (!cancelled) setStatus("unauthed");
       });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Fetch the public posture once on mount (resilient: defaults to self-hosted if it fails).
+  useEffect(() => {
+    let cancelled = false;
+    void getConfig().then((c) => {
+      if (!cancelled) setConfig(c);
+    });
     return () => {
       cancelled = true;
     };
@@ -94,6 +114,8 @@ export function AuthGate() {
           onAuthed={handleAuthed}
           initialMode={loginMode}
           onBack={() => setUnauthView("landing")}
+          hosted={config?.hosted_mode ?? false}
+          githubInstallUrl={config?.github_install_url ?? ""}
         />
       );
     }

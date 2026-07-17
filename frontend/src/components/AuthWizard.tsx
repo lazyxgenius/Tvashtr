@@ -136,10 +136,16 @@ export function AuthWizard({
   onAuthed,
   initialMode = "login",
   onBack,
+  hosted = false,
+  githubInstallUrl = "",
 }: {
   onAuthed: (user: AuthUser) => void;
   initialMode?: AuthMode;
   onBack?: () => void;
+  // M-h1a HOSTED posture: when true, the wizard shows ONLY "Continue with GitHub" (linking to
+  // ``githubInstallUrl``); when false (the default) it renders the email/password flow unchanged.
+  hosted?: boolean;
+  githubInstallUrl?: string;
 }) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [step, setStep] = useState<Step>("account");
@@ -196,6 +202,65 @@ export function AuthWizard({
     const b = BUILD_OPTS.find((o) => o.val === building);
     if (r) chips.push({ label: r.title, Icon: r.Icon });
     if (b) chips.push({ label: b.title, Icon: b.Icon });
+  }
+
+  // HOSTED posture (M-h1a): GitHub is the identity provider, so the wizard shows ONLY a "Continue
+  // with GitHub" link to the App's install URL — no email/password. Self-hosted (hosted=false, the
+  // default) skips this and renders the email/password wizard below, byte-for-byte unchanged.
+  if (hosted) {
+    return (
+      <div className="tv-authwiz">
+        <aside className="tv-authwiz__brand">
+          <div className="tv-authwiz__brand-wash" />
+          <img
+            className="tv-authwiz__brand-mark"
+            src="/mark-coral.png"
+            alt=""
+            width={460}
+            height={460}
+          />
+          <div className="tv-authwiz__brand-inner">
+            <div className="tv-authwiz__brand-logo">
+              <img src="/mark-coral.png" alt="" width={28} height={28} />
+              <span className="tv-authwiz__brand-word">Tvashtr</span>
+            </div>
+            <div>
+              <div className="tv-authwiz__eyebrow">{brand.eyebrow}</div>
+              <h1 className="tv-authwiz__brand-headline">{brand.headline}</h1>
+              <p className="tv-authwiz__brand-sub">{brand.sub}</p>
+            </div>
+            <p className="tv-authwiz__brand-foot">
+              The loom remembers — threads you can pick back up.
+            </p>
+          </div>
+        </aside>
+        <div className="tv-authwiz__panel">
+          <div className="tv-authwiz__form">
+            <div className="tv-authwiz__step">
+              <h2 className="tv-authwiz__h2">Sign in to Tvashtr</h2>
+              <p className="tv-authwiz__lede">
+                Continue with your GitHub account to compose and run teams on your repositories.
+              </p>
+              <a
+                className="tv-btn tv-authwiz__submit"
+                href={githubInstallUrl}
+                aria-label="Continue with GitHub"
+              >
+                <GitBranch size={16} strokeWidth={1.8} aria-hidden="true" />
+                Continue with GitHub
+              </a>
+              {onBack && (
+                <div className="tv-authwiz__account-nav">
+                  <button type="button" className="tv-btn tv-btn--link" onClick={onBack}>
+                    ← Back
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
