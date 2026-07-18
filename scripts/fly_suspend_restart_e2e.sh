@@ -95,9 +95,30 @@ trap cleanup EXIT
 
 hr() { printf '%s\n' "============================================================"; }
 
+# Kill anything already listening on our port. THIS IS NOT HOUSEKEEPING — it is load-bearing.
+# A leftover backend from an earlier attempt keeps answering /health, so `wait_for_health` goes
+# green while the uvicorn we just launched dies instantly on "address already in use". The proof
+# then silently runs entirely inside the OLD process, which still holds the in-memory handle, and
+# the whole point of the gate — reconstructing after that process is gone — is never exercised.
+free_the_port() {
+  local pids
+  pids="$(lsof -ti "tcp:${PORT}" 2>/dev/null || true)"
+  if [[ -n "$pids" ]]; then
+    echo "[suspend-e2e] port ${PORT} was held by pid(s) $pids — killing before we start"
+    # shellcheck disable=SC2086
+    kill -9 $pids 2>/dev/null || true
+    while lsof -ti "tcp:${PORT}" >/dev/null 2>&1; do sleep 0.2; done
+  fi
+}
+
 start_uvicorn() {
   LAST_LOG="$1"
-  ( cd "$BACKEND" && "$VENV_PY" -m uvicorn tvashtr.main:app \
+  free_the_port
+  # `exec` so the backgrounded subshell BECOMES uvicorn and `$!` is uvicorn's own pid. Without it
+  # `$!` is the subshell's, and `kill -9 $!` reaps the wrapper while uvicorn keeps running and
+  # serving — which is exactly how an earlier version of this gate "restarted" without ever
+  # stopping the original process.
+  ( cd "$BACKEND" && exec "$VENV_PY" -m uvicorn tvashtr.main:app \
       --host 127.0.0.1 --port "$PORT" --log-level warning >"$LAST_LOG" 2>&1 ) &
   CURRENT_PID=$!
 }
@@ -139,10 +160,21 @@ echo ">>> STEP C — park the run at a blocking gate with the machine SUSPENDED"
 
 hr
 echo ">>> STEP D — kill -9 the backend (the process holding the in-memory handle)"
-kill -9 "$PID1"
+kill -9 "$PID1" 2>/dev/null || true
 while kill -0 "$PID1" 2>/dev/null; do sleep 0.2; done
 CURRENT_PID=""
-echo "[suspend-e2e] killed uvicorn #1 (pid $PID1) — the _RUNS handle is now GONE"
+# The pid being gone is NOT sufficient evidence the backend is gone — assert the socket is actually
+# released. If anything is still listening here, the "restart" below would be a no-op against a
+# process that never lost its in-memory handle, and the gate would prove nothing while printing PASS.
+for _ in $(seq 1 50); do
+  lsof -ti "tcp:${PORT}" >/dev/null 2>&1 || break
+  sleep 0.2
+done
+if lsof -ti "tcp:${PORT}" >/dev/null 2>&1; then
+  echo "ERROR: something is STILL listening on ${PORT} after kill -9 — the restart would be fake" >&2
+  exit 1
+fi
+echo "[suspend-e2e] killed uvicorn #1 (pid $PID1); port ${PORT} released — the _RUNS handle is GONE"
 
 hr
 echo ">>> STEP E — backend process #2 (DBOS recovery re-enters and re-blocks on the gate)"
