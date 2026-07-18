@@ -59,7 +59,12 @@ from openhands.tools.terminal import TerminalTool
 from tvashtr.config import agent_llm_routing, get_settings
 from tvashtr.engines import sandbox_cache
 from tvashtr.engines.base import AgentRunResult, AgentTask, EngineEvent
-from tvashtr.engines.fly_machines import FlyMachines, mint_session_key
+from tvashtr.engines.fly_machines import (
+    FlyMachines,
+    FlyRunMachine,
+    app_name_for_run,
+    derive_session_key,
+)
 
 # The engine-neutral event mapping + post-run usage read, shared with BOTH other adapters so the
 # EngineEvent shape is identical across all three sandbox modes.
@@ -125,16 +130,70 @@ class _FlyRunSandbox:
 
     The session key is held HERE — in process memory, for the life of the run — and deliberately
     nowhere else: not on the ``FlyRunMachine`` (which gets logged), not in the DB, not in any step
-    checkpoint. Persisting-vs-re-deriving it across a backend restart is an M-h2b question."""
+    checkpoint. **M-h2b answered the "persist vs re-derive across a restart" question with
+    RE-DERIVE** (:func:`~tvashtr.engines.fly_machines.derive_session_key`): the key is a pure
+    function of the run_id and the server secret, so a fresh process re-cuts it on demand and the
+    "never persisted" invariant survives durability."""
 
-    def __init__(self, fly: FlyMachines, machine, session_api_key: str) -> None:
+    def __init__(
+        self, fly: FlyMachines, machine, session_api_key: str, *, suspended: bool = False
+    ) -> None:
         self.fly = fly
         self.machine = machine
         self.session_api_key = session_api_key
         self.nodes: dict[str, _FlyNodeHandle] = {}
+        # M-h2b: set when the workflow suspended this machine at a gate, so the next node's boot
+        # knows to resume it. In-process bookkeeping only — the DURABLE reading of the same fact is
+        # the machine's own ``state`` on Fly, which is what the reconstruct path consults instead.
+        self.suspended = suspended
+
+    def resume_if_suspended(self, *, health_timeout_s: float = 300.0) -> bool:
+        """Start a suspended machine and wait for its agent server to answer again. Returns whether
+        a resume actually happened.
+
+        The ``wait_healthy`` is NOT optional padding. A machine that has just resumed "thinks its
+        connections are still live", so the first calls across the Flycast door can ``ECONNRESET``
+        or hang; re-establishing the backend↔machine connection here is what turns that into a
+        non-event. It also transparently covers the case where Fly COLD-BOOTED instead of restoring
+        the snapshot — the agent server takes longer to answer, and we simply wait for it."""
+        if not self.suspended:
+            return False
+        logger.warning(
+            "OpenHandsFlyAdapter (%s): resuming suspended machine %s (app=%s)",
+            WORKSPACE_MODE,
+            self.machine.machine_id,
+            self.machine.app_name,
+        )
+        self.fly.start_machine(self.machine.app_name, self.machine.machine_id)
+        self.fly.wait_healthy(self.machine.flycast_host, timeout_s=health_timeout_s)
+        self.suspended = False
+        return True
+
+    def suspend(self) -> bool:
+        """Suspend this run's machine (Firecracker memory snapshot; storage-only billing).
+
+        Best-effort by construction: returns ``False`` and logs rather than raising, because the
+        only
+        thing a failed suspend costs is money we were already spending. A run must never fail
+        because an economy measure did."""
+        try:
+            self.fly.suspend_machine(self.machine.app_name, self.machine.machine_id)
+        except Exception:
+            logger.warning(
+                "fly: suspend failed for app %s (machine keeps billing)",
+                self.machine.app_name,
+                exc_info=True,
+            )
+            return False
+        self.suspended = True
+        self.fly.wait_suspended(self.machine.app_name, self.machine.machine_id)
+        return True
 
     def close(self) -> None:
-        """Destroy the whole app (machine + Flycast IP + app) and drop the HTTP client."""
+        """Destroy the whole app (machine + Flycast IP + app) and drop the HTTP client. Works on a
+        SUSPENDED machine too — ``DELETE /v1/apps/<name>`` is total regardless of machine state, so
+        a run that ends at a terminal right after a gate never needs waking up just to be
+        destroyed."""
         try:
             self.fly.delete_app(self.machine.app_name)
         finally:
@@ -172,16 +231,11 @@ def _resolve_owner_id(run_id: str | None) -> str:
     return run_id or uuid.uuid4().hex
 
 
-def _get_or_create_run_sandbox(run_id: str) -> tuple["_FlyRunSandbox", bool]:
-    """Return this run's microVM, booting it on the first node. ``(sandbox, created_now)``."""
-    with _LOCK:
-        existing = _RUNS.get(run_id)
-    if existing is not None:
-        return existing, False
-
+def _new_fly_client() -> FlyMachines:
+    """One place that builds the Fly client from settings, so the boot, reconstruct and reap paths
+    can never drift apart on org/region/image/guest."""
     settings = get_settings()
-    session_api_key = mint_session_key()  # D2b: fresh random, per run
-    fly = FlyMachines(
+    return FlyMachines(
         token=settings.fly_api_token,
         org=settings.fly_org,
         region=settings.fly_region,
@@ -189,6 +243,92 @@ def _get_or_create_run_sandbox(run_id: str) -> tuple["_FlyRunSandbox", bool]:
         guest_cpus=settings.fly_guest_cpus,
         guest_memory_mb=settings.fly_guest_memory_mb,
     )
+
+
+def _ensure_run_sandbox(run_id: str) -> tuple["_FlyRunSandbox", bool]:
+    """Return this run's microVM, by whichever of THREE routes applies. ``(sandbox, is_new_here)``,
+    where ``is_new_here`` means "newly entered into THIS process's ``_RUNS``" — true for both a
+    fresh boot and a reconstruct, because in both cases this process must also register the run-end
+    teardown hook (``sandbox_cache`` is process-local and a restart empties it too).
+
+    THE THREE ARMS, in order:
+
+    1. **In-process HIT** — the ordinary case, and the one that must stay cheap. Resume the machine
+       first if the workflow suspended it at a gate.
+    2. **RECONSTRUCT** (M-h2b Piece 3) — no in-process handle, but the app still exists on Fly. This
+       is the backend-restart case: DBOS replays completed steps from their checkpoints rather than
+       re-running them, so ``_RUNS`` is never refilled, yet the run's machine is very much alive
+       (and paid for). Re-derive the key, re-discover the machine, resume it if suspended, and
+       rebuild the handle. **Emphatically NOT ``create_app``** — that would 409 against the existing
+       app, and even if it didn't, it would abandon a billing machine and re-clone from scratch.
+    3. **Fresh boot** — a genuinely new run's first node.
+
+    The reconstructed handle deliberately carries an **EMPTY nodes dict**. Conversation ids are not
+    persisted (agent-native resume is a separate, deferred bet), so the next node is a MISS: it
+    opens
+    a fresh conversation and re-seeds its working dir from the HOST workspace, which survived on
+    disk.
+    That makes the path **snapshot-agnostic** — identical whether Fly restored the memory snapshot
+    or
+    silently cold-booted — so correctness rests on the host workspace + DBOS checkpoints and never
+    on guest RAM."""
+    with _LOCK:
+        existing = _RUNS.get(run_id)
+    if existing is not None:
+        existing.resume_if_suspended()
+        return existing, False
+
+    settings = get_settings()
+    # D2b + M-h2b: DERIVED, not minted — the same key is re-cut by any process that knows the
+    # run_id and the secret, which is exactly what makes the reconstruct arm above possible.
+    session_api_key = derive_session_key(run_id, settings.fly_session_secret)
+    fly = _new_fly_client()
+    app_name = app_name_for_run(run_id)
+
+    # --- ARM 2: the app outlived the process that booted it -> re-attach, never re-create.
+    try:
+        info = fly.get_run_machine(app_name)
+    except Exception:
+        logger.warning("fly: machine re-discovery failed for %s; booting fresh", app_name)
+        info = None
+    if info is not None:
+        machine = FlyRunMachine(
+            app_name=app_name,
+            machine_id=info.machine_id,
+            private_ip=info.private_ip,
+            flycast_address="",  # not needed to dial: flycast_host is derived from app_name
+            boot_seconds=0.0,  # this process did not boot it; claiming a number would be a lie
+            ready_seconds=0.0,
+        )
+        sandbox = _FlyRunSandbox(fly, machine, session_api_key, suspended=info.is_suspended)
+        logger.warning(
+            "OpenHandsFlyAdapter (%s): RECONSTRUCTED run %s from Fly "
+            "(app=%s machine=%s state=%s) — no new app, no re-clone",
+            WORKSPACE_MODE,
+            run_id,
+            app_name,
+            info.machine_id,
+            info.state or "unknown",
+        )
+        sandbox.resume_if_suspended()
+        with _LOCK:
+            raced = _RUNS.get(run_id)
+            if raced is not None:
+                fly.close()
+                return raced, False
+            _RUNS[run_id] = sandbox
+        return sandbox, True
+
+    # An app with NO machine is a husk from a half-finished create. Clear it, or the fresh boot
+    # below would 409 on create_app and strand the run.
+    try:
+        if fly.app_exists(app_name):
+            logger.warning("fly: app %s exists with no machine; deleting the husk", app_name)
+            fly.delete_app(app_name)
+    except Exception:
+        logger.warning("fly: husk check failed for %s; attempting a fresh boot", app_name)
+
+    # --- ARM 3: a brand-new run's first node.
     owner_id = _resolve_owner_id(run_id)
     logger.warning(
         "OpenHandsFlyAdapter (%s): booting per-run microVM image=%s region=%s guest=%sc/%sMB",
@@ -223,6 +363,51 @@ def _get_or_create_run_sandbox(run_id: str) -> tuple["_FlyRunSandbox", bool]:
         loser.close()
         return sandbox, False
     return sandbox, True
+
+
+def suspend_run_machine(run_id: str) -> bool:
+    """Suspend ``run_id``'s microVM while the run waits at a human gate. Returns whether it worked.
+
+    **NEVER raises and never fails a run.** Everything this does is an economy measure: the downside
+    of failure is that we keep paying for a machine we are already paying for, which is exactly the
+    status quo it improves on. A run must not die because a cost optimization did.
+
+    TWO ROUTES, because the in-process handle is not guaranteed to be here:
+
+    1. **In-process handle** — the ordinary path, straight after this run's own agent node ran.
+    2. **No handle** — the backend restarted between the agent node and the gate, so ``_RUNS`` is
+       empty (DBOS replays completed steps from checkpoints, it does not re-run them). We still
+       suspend, by deriving the app name from the run_id and reading the machine back off Fly. This
+       deliberately does NOT go through :func:`_ensure_run_sandbox`: that path RESUMES a suspended
+       machine, and resuming one purely in order to suspend it again would be perverse. A machine
+       that is already suspended, or an app that is already gone, is a no-op."""
+    with _LOCK:
+        sandbox = _RUNS.get(run_id)
+    if sandbox is not None:
+        return sandbox.suspend()
+
+    fly = None
+    try:
+        app_name = app_name_for_run(run_id)
+        fly = _new_fly_client()
+        info = fly.get_run_machine(app_name)
+        if info is None or info.is_suspended:
+            return False
+        fly.suspend_machine(app_name, info.machine_id)
+        fly.wait_suspended(app_name, info.machine_id)
+        logger.warning(
+            "OpenHandsFlyAdapter (%s): suspended %s for run %s without an in-process handle",
+            WORKSPACE_MODE,
+            app_name,
+            run_id,
+        )
+        return True
+    except Exception:
+        logger.warning("fly: handle-free suspend failed for run %s", run_id, exc_info=True)
+        return False
+    finally:
+        if fly is not None:
+            fly.close()
 
 
 def close_run_machine(run_id: str) -> None:
@@ -299,7 +484,7 @@ class OpenHandsFlyAdapter:
         conversation = None
         usage_before = (0, 0, 0.0)
         try:
-            sandbox, created_now = _get_or_create_run_sandbox(run_id)
+            sandbox, created_now = _ensure_run_sandbox(run_id)
             if created_now and not ephemeral:
                 # Register the run-end teardown on the engine-neutral cache the Control Plane
                 # already calls (``close_run_sandboxes(run_id)``), so the app is destroyed with NO

@@ -185,7 +185,7 @@ def _install_probe() -> None:
     unchanged — the run itself is not altered by being watched."""
     from tvashtr.engines import openhands_fly_adapter as fly_mod
 
-    real_create = fly_mod._get_or_create_run_sandbox
+    real_create = fly_mod._ensure_run_sandbox
     real_close = fly_mod.close_run_machine
 
     def probing_create(run_id):
@@ -212,7 +212,7 @@ def _install_probe() -> None:
             print(f"[fly-pr-e2e] peak guest memory: {OBSERVED['peak_mem']}")
         real_close(run_id)
 
-    fly_mod._get_or_create_run_sandbox = probing_create
+    fly_mod._ensure_run_sandbox = probing_create
     fly_mod.close_run_machine = probing_close
 
 

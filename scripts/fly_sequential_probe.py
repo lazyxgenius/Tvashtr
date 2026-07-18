@@ -109,13 +109,13 @@ def main() -> int:
     from tvashtr.engines.fly_machines import (
         FlyMachines,
         app_name_for_run,
-        mint_session_key,
+        derive_session_key,
     )
 
     settings = get_settings()
     run_id = str(uuid.uuid4())
     owner_id = str(uuid.uuid4())
-    session_key = mint_session_key()
+    session_key = derive_session_key(run_id, settings.fly_session_secret)
     image = settings.fly_agent_image
     app_name = app_name_for_run(run_id)
 

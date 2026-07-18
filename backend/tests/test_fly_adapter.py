@@ -17,6 +17,7 @@ import pytest
 from tvashtr.engines import openhands_fly_adapter as mod
 from tvashtr.engines import sandbox_cache
 from tvashtr.engines.base import AgentTask
+from tvashtr.engines.fly_machines import derive_session_key as real_derive_session_key
 
 RUN_ID = "aa9d8a2b-d54d-49e2-9cc0-ab20b60a1098"
 
@@ -69,6 +70,16 @@ class _Ctx:
     def __init__(self):
         self.fly = MagicMock()
         self.fly.start_run_sandbox.return_value = _fake_machine()
+        # M-h2b: the default posture is "no app exists on Fly yet" ⇒ ``_ensure_run_sandbox`` takes
+        # its FRESH-BOOT arm, which is what every M-h2a test here was written against. A test that
+        # wants the RECONSTRUCT arm sets this to a ``FlyMachineInfo`` explicitly. Without this the
+        # bare MagicMock would return a truthy machine and silently divert every test into the
+        # reconnect path.
+        self.fly.get_run_machine.return_value = None
+        # Same honesty for the husk check: no app exists yet, so there is nothing to clear. A bare
+        # MagicMock returns a truthy sentinel here, which would fake a leftover app into existence
+        # and fire ``delete_app`` on every fresh boot.
+        self.fly.app_exists.return_value = False
         self.workspaces: list[MagicMock] = []
         self.ws_kwargs: list[dict] = []
         self.convos: list[MagicMock] = []
@@ -88,7 +99,7 @@ class _Ctx:
     def __enter__(self):
         self._patches = [
             patch.object(mod, "FlyMachines", return_value=self.fly),
-            patch.object(mod, "mint_session_key", return_value="per-run-secret-key"),
+            patch.object(mod, "derive_session_key", return_value="per-run-secret-key"),
             patch.object(mod, "_resolve_owner_id", return_value="owner-1"),
             patch.object(mod, "RemoteWorkspace", side_effect=self._make_workspace),
             patch.object(mod, "Conversation", side_effect=self._make_conversation),
@@ -109,13 +120,15 @@ class _Ctx:
         return False
 
 
-def _task(tmp_path, node_id: str | None, instruction: str = "do it") -> AgentTask:
+def _task(
+    tmp_path, node_id: str | None, instruction: str = "do it", run_id: str = RUN_ID
+) -> AgentTask:
     return AgentTask(
         instruction=instruction,
         workspace_dir=str(tmp_path),
         model="m",
         llm_api_key="byok-key",
-        session_key=None if node_id is None else f"{RUN_ID}::{node_id}",
+        session_key=None if node_id is None else f"{run_id}::{node_id}",
     )
 
 
@@ -205,17 +218,49 @@ def test_every_node_workspace_carries_the_per_run_session_key(tmp_path):
     assert ctx.fly.start_run_sandbox.call_args.kwargs["session_api_key"] == "per-run-secret-key"
 
 
-def test_a_second_run_mints_a_different_key(tmp_path):
-    """Fresh-random PER RUN — a key that outlived its run would be a standing credential."""
-    seen = []
+def test_a_second_run_derives_a_different_key(tmp_path):
+    """PER RUN still — a key that outlived its run would be a standing credential.
+
+    M-h2b swapped the random mint for an HMAC derivation, so this now asserts the property the
+    derivation must preserve rather than the mechanism it replaced: two DIFFERENT runs get unrelated
+    keys. The REAL :func:`derive_session_key` runs here (only the secret is pinned) — patching it
+    would test the mock instead of the guarantee."""
+    other_run = "bb1c7d3e-0000-4444-8888-ab20b60a1098"
     with _Ctx() as ctx:
-        with patch.object(mod, "mint_session_key", side_effect=["key-run-1", "key-run-2"]):
+        with patch.object(
+            mod,
+            "derive_session_key",
+            side_effect=lambda rid, secret=None: real_derive_session_key(rid, "pinned-test-secret"),
+        ):
             adapter = mod.OpenHandsFlyAdapter()
             adapter.run(_task(tmp_path, "node-a"))
-            mod._RUNS.clear()  # simulate a different run
-            adapter.run(_task(tmp_path, "node-a"))
+            mod._RUNS.clear()  # a genuinely different run, in a fresh process
+            adapter.run(_task(tmp_path, "node-a", run_id=other_run))
         seen = [kw["api_key"] for kw in ctx.ws_kwargs]
-    assert seen == ["key-run-1", "key-run-2"]
+    assert len(seen) == 2
+    assert seen[0] != seen[1], "distinct runs must never share a session key"
+    assert all(len(k) >= 32 for k in seen)
+
+
+def test_the_same_run_re_derives_the_identical_key_in_a_fresh_process(tmp_path):
+    """M-h2b Piece 3, the property the whole durable handle rests on: a RESTARTED backend re-cuts
+    the byte-identical key from the run_id alone, having stored nothing.
+
+    ``mod._RUNS.clear()`` is the stand-in for "the process died" — the in-process handle is gone, as
+    it would be after a ``kill -9``. If this ever fails, a restarted backend can no longer talk to
+    its own surviving microVM."""
+    with _Ctx() as ctx:
+        with patch.object(
+            mod,
+            "derive_session_key",
+            side_effect=lambda rid, secret=None: real_derive_session_key(rid, "pinned-test-secret"),
+        ):
+            adapter = mod.OpenHandsFlyAdapter()
+            adapter.run(_task(tmp_path, "node-a"))
+            mod._RUNS.clear()  # the backend died here
+            adapter.run(_task(tmp_path, "node-b"))  # a fresh process, same run
+        seen = [kw["api_key"] for kw in ctx.ws_kwargs]
+    assert seen[0] == seen[1], "a restarted backend must re-derive the SAME per-run key"
 
 
 def test_the_session_key_is_not_leaked_into_the_result(tmp_path):
