@@ -62,6 +62,13 @@ def test_importing_docker_runtime_does_not_import_openhands():
     _assert_no_openhands("tvashtr.engines.docker_runtime")
 
 
+def test_importing_fly_machines_does_not_import_openhands():
+    # M-h2a: the Fly lifecycle module is pure httpx + REST/GraphQL. It must stay openhands-free for
+    # the same reason docker_runtime does — it is composed with the SDK by the adapter, never the
+    # other way round, so naming the Fly substrate can never drag a heavy SDK into app startup.
+    _assert_no_openhands("tvashtr.engines.fly_machines")
+
+
 def test_importing_team_run_does_not_import_openhands():
     # The workflow module selects local-vs-docker by name but resolves adapters
     # lazily — importing it (as app startup does) must not pull openhands.*.
