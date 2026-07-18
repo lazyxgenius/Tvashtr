@@ -16,6 +16,7 @@ os.environ.setdefault("HELLO_SLEEP_SECONDS", "0.1")
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select, update  # noqa: E402
 
+from tvashtr.config import get_settings  # noqa: E402
 from tvashtr.control_plane.credentials import encrypt_secret  # noqa: E402
 from tvashtr.db import session_scope  # noqa: E402
 from tvashtr.documents.service import create_document_with_initial_version  # noqa: E402
@@ -79,6 +80,29 @@ def _isolate_live_container_registry(tmp_path, monkeypatch):
     from tvashtr.engines import sandbox_cache
 
     monkeypatch.setattr(sandbox_cache, "_REGISTRY_PATH", tmp_path / "live_containers.json")
+
+
+@pytest.fixture(autouse=True)
+def _lift_hosted_run_ceilings(monkeypatch):
+    """M-h3: hold the hosted RUN CEILINGS out of the general suite's way.
+
+    The ceilings count in-flight runs across the WHOLE ``runs`` table, and this suite shares ONE
+    Postgres across hundreds of tests — leaving runs parked in ``running`` because their workflows
+    are mocked — and across re-runs. So the fleet cap is ambiently blown no matter what any single
+    test does. That is shared-fixture pollution rather than the behaviour under test, exactly the
+    reason ``_isolate_live_container_registry`` above exists. It bites the WHOLE suite (not just the
+    hosted tests) because the repo ``.env`` sets ``TVASHTR_HOSTED_MODE=true``, which makes the
+    ceilings live for every run-creating test.
+
+    This lifts ONLY the three M-h3 caps — never ``hosted_mode`` itself, so each test's posture is
+    still whatever it pins. The ceilings are exercised for real in ``test_hosted_run_ceilings.py``,
+    which sets each cap explicitly (this fixture runs first; the test's own monkeypatch wins), and
+    the SHIPPED defaults are asserted there off the model field defaults — so this lift can never
+    make that test lie about what the product ships."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "hosted_max_concurrent_runs_per_owner", 10_000)
+    monkeypatch.setattr(settings, "hosted_max_concurrent_runs_global", 10_000)
+    monkeypatch.setattr(settings, "hosted_max_runs_per_owner_per_day", 10_000)
 
 
 @pytest.fixture(scope="session")

@@ -7,6 +7,7 @@ API to ORM/gateway types.
 
 import os
 import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -615,6 +616,85 @@ def _missing_provider_credentials(owner_id: uuid.UUID, team_graph_id: str) -> li
     return sorted(needed - have)
 
 
+# M-h3: the statuses that HOLD a sandbox. ``awaiting_human`` counts — M-h2b suspends the microVM at
+# a gate (so it stops billing CPU/RAM), but the machine still exists: a run parked at a gate has not
+# given its slot back. The terminals (completed/failed/rejected/cancelled/over_budget) have no
+# machine and must never consume capacity.
+_IN_FLIGHT_STATUSES = ("pending", "running", "awaiting_human")
+
+
+def _enforce_run_ceilings(owner_id: uuid.UUID, launching: int = 1) -> None:
+    """Refuse (429) a launch that would breach one of the three M-h3 HOSTED run ceilings.
+
+    A hosted run is BYOK for the LLM — the owner's own key pays for tokens — so what the OPERATOR
+    pays for is a Fly microVM per in-flight run. These three caps bound that: the owner's own
+    concurrency, the fleet-wide concurrency, and the owner's rolling-24h launch rate.
+
+    ``launching`` is how many runs THIS request creates — 1 for POST /api/runs, 2 for the
+    POST /api/ab-runs pair — so an A/B launch cannot slip a second sandbox past a cap that had room
+    for only one. Checked most-specific first (the owner's concurrency, then the fleet, then their
+    rate) so the message names the limit the caller can actually act on.
+
+    A no-op unless ``hosted_mode``: self-hosted runs on the operator's OWN machine, so there is
+    nothing to bound and the create path stays byte-identical to the pre-M-h3 build.
+    """
+    settings = get_settings()
+    if not settings.hosted_mode:
+        return
+
+    since = datetime.now(UTC) - timedelta(hours=24)
+    with db.session_scope() as session:
+        owner_in_flight = session.execute(
+            select(func.count())
+            .select_from(Run)
+            .where(Run.owner_id == owner_id, Run.status.in_(_IN_FLIGHT_STATUSES))
+        ).scalar_one()
+        fleet_in_flight = session.execute(
+            select(func.count()).select_from(Run).where(Run.status.in_(_IN_FLIGHT_STATUSES))
+        ).scalar_one()
+        launched_today = session.execute(
+            select(func.count())
+            .select_from(Run)
+            .where(Run.owner_id == owner_id, Run.created_at >= since)
+        ).scalar_one()
+
+    if owner_in_flight + launching > settings.hosted_max_concurrent_runs_per_owner:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "owner_concurrency_limit",
+                "message": (
+                    f"you already have {owner_in_flight} run(s) in flight "
+                    f"(limit {settings.hosted_max_concurrent_runs_per_owner}) — "
+                    "wait for one to finish, or cancel it"
+                ),
+            },
+        )
+    if fleet_in_flight + launching > settings.hosted_max_concurrent_runs_global:
+        # Deliberately does NOT echo the fleet count or the fleet cap: that is operator capacity
+        # information, not something an account should be able to probe from a launch button.
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "global_concurrency_limit",
+                "message": (
+                    "the service is at capacity right now — please try again in a few minutes"
+                ),
+            },
+        )
+    if launched_today + launching > settings.hosted_max_runs_per_owner_per_day:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "owner_daily_limit",
+                "message": (
+                    f"you have started {launched_today} run(s) in the last 24h "
+                    f"(limit {settings.hosted_max_runs_per_owner_per_day}) — try again later"
+                ),
+            },
+        )
+
+
 @router.post("/api/runs")
 def create_run(
     body: CreateRunRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
@@ -627,7 +707,12 @@ def create_run(
     validated (422 on a non-git path or an unknown ``base_ref``), ``base_ref`` defaults to the
     repo's current branch, and both are recorded on the Run row (the executor then cuts a worktree
     + ships to ``tvashtr/<run_id>``). When ``repo_path`` is None the create is byte-for-byte the
-    prior greenfield path."""
+    prior greenfield path.
+
+    M-h3: the hosted RUN CEILINGS are checked FIRST — before the idea resolves, before any target
+    validation, and long before a Run row or a team clone exists. A launch refused for capacity
+    should cost nothing and leave nothing behind."""
+    _enforce_run_ceilings(uuid.UUID(current_user.id))
     idea = resolve_run_idea(body.idea)
 
     # Validate the brownfield target FIRST (before any team graph is built), so a rejected launch
@@ -813,7 +898,13 @@ def create_ab_runs(
     workflow keyed on its run_id (exactly like :func:`create_run`) — with the SAME idea and the
     SAME budget cap on both (a fair comparison); the only added state is the shared ``pair_id``
     + the ``pair_label`` ("A"/"B"). No executor change: this just seeds two runs and starts two
-    standard ``run_team`` workflows."""
+    standard ``run_team`` workflows.
+
+    M-h3: a pair is TWO sandboxes, so the hosted run ceilings are checked once, up front, for BOTH
+    sides (``launching=2``). Checking per-side inside the loop would let a pair start side A and
+    then 429 on side B, stranding half a comparison — and would let an A/B launch slip a second
+    machine past a cap that had room for one."""
+    _enforce_run_ceilings(uuid.UUID(current_user.id), launching=2)
     idea = resolve_run_idea(body.idea)
     # Same cap-resolution as a single run (P1.2 DP-A), applied identically to both sides.
     cap = body.budget_cap_usd

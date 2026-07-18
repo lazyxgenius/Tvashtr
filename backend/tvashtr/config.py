@@ -392,6 +392,51 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("TVASHTR_FRONTEND_ORIGIN", "frontend_origin"),
     )
 
+    # M-h3 (HOSTED mode): the three RUN CEILINGS that bound the operator's COMPUTE spend. A hosted
+    # run is BYOK for the LLM — the owner's own provider key pays for tokens (there is no ``.env``
+    # fallback), so what the OPERATOR pays for is a Fly Firecracker microVM per IN-FLIGHT run. These
+    # bound exactly that, and are enforced at the TOP of the run-create path (before any Run row
+    # exists) by ``routers._enforce_run_ceilings``. They are read ONLY when ``hosted_mode`` is True:
+    # self-hosted is the operator's own machine, so it stays UNCAPPED and byte-identical.
+    # Distinct from ``default_run_budget_usd`` above, which caps ONE run's token SPEND — that is the
+    # BYOK dollar gate and is untouched here. These cap how many sandboxes exist at once, and how
+    # fast one account may open them.
+    #
+    # Finite defaults, in the safety-by-default posture of ``agent_sandbox_mode`` and
+    # ``default_run_budget_usd``: forgetting to configure a ceiling lands BOUNDED, never unbounded.
+    # All three are env-dialable so the operator retunes capacity with no code change.
+    #
+    # ``in-flight`` = ``pending|running|awaiting_human``. ``awaiting_human`` COUNTS: M-h2b suspends
+    # the microVM at a gate (so it stops billing CPU/RAM), but the machine still exists and still
+    # holds a slot — a run parked at a gate has not given its sandbox back.
+    hosted_max_concurrent_runs_per_owner: int = Field(
+        default=3,
+        gt=0,
+        validation_alias=AliasChoices(
+            "TVASHTR_HOSTED_MAX_CONCURRENT_RUNS_PER_OWNER", "hosted_max_concurrent_runs_per_owner"
+        ),
+    )
+    # The fleet-wide ceiling — the operator's absolute wallet stop across ALL accounts. Sized well
+    # above the per-owner cap so one account cannot starve the fleet, while a stampede still lands
+    # against a hard wall rather than an unbounded Fly bill.
+    hosted_max_concurrent_runs_global: int = Field(
+        default=25,
+        gt=0,
+        validation_alias=AliasChoices(
+            "TVASHTR_HOSTED_MAX_CONCURRENT_RUNS_GLOBAL", "hosted_max_concurrent_runs_global"
+        ),
+    )
+    # The per-owner RATE ceiling, over a rolling 24h window on ``runs.created_at`` (a sliding
+    # window, not a calendar day — there is no midnight reset to stampede against). Concurrency
+    # alone cannot bound a script that launches, cancels, and relaunches all day; this does.
+    hosted_max_runs_per_owner_per_day: int = Field(
+        default=20,
+        gt=0,
+        validation_alias=AliasChoices(
+            "TVASHTR_HOSTED_MAX_RUNS_PER_OWNER_PER_DAY", "hosted_max_runs_per_owner_per_day"
+        ),
+    )
+
     def agent_llm_base_url(self, sandbox_mode: str) -> str:
         """The proxy base URL the agent's LLM points at, chosen by THIS run's sandbox
         mode. ``docker`` -> ``host.docker.internal`` (the agent-server container is on
