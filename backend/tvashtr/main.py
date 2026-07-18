@@ -21,6 +21,7 @@ from tvashtr import db
 from tvashtr.auth import auth_router, get_current_user
 from tvashtr.config import get_settings
 from tvashtr.control_plane import github_app
+from tvashtr.control_plane.clone_reaper import sweep_orphaned_clones
 from tvashtr.control_plane.fly_reaper import sweep_orphaned_fly_apps
 from tvashtr.control_plane.hello_durable import hello_durable
 from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
@@ -52,6 +53,12 @@ async def _lifespan(app: FastAPI):
         # any single process), so a run legitimately parked at a gate is SPARED, and never touches
         # an app that is not ours. Never raises: startup must not fail over cost hygiene.
         sweep_orphaned_fly_apps()
+    # M-clonegc: the same reconcile one substrate down — orphaned hosted-GitHub clones on local
+    # disk. NOT mode-gated, unlike the two sweeps above: a clone is created by any run with a
+    # ``github_repo``, whatever the sandbox is, so the backstop has to run wherever the backend
+    # runs. Self-hosted / greenfield deployments never create the root, and the sweep returns 0
+    # without touching the disk — which is what keeps those paths byte-identical to before.
+    sweep_orphaned_clones()
     yield
 
 

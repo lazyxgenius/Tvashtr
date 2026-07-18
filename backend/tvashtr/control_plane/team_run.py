@@ -46,7 +46,7 @@ from dbos import DBOS
 from sqlalchemy import select, update
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import github_app
+from tvashtr.control_plane import clone_reaper, github_app
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.budget_nudge import maybe_emit_budget_nudge_step
 from tvashtr.control_plane.context_compiler import (
@@ -125,11 +125,11 @@ def _owner_api_key(run_id: str, model: str) -> str:
 
 # M-h1b — a hosted-GitHub clone lands in a deterministic per-run dir (so a resume is idempotent),
 # under the same gitignored convention as the workspace root. It becomes the run's ``repo_path``.
-_CLONE_ROOT = Path(__file__).resolve().parents[2] / ".tvashtr_clones"
-
-
+# M-clonegc: the path now lives in ``clone_reaper``, which owns the directory's whole lifecycle
+# (create here, reclaim there). Delegating rather than re-deriving keeps ONE definition, so the
+# reaper can never sweep a root the executor is not writing to.
 def _hosted_clone_dir(run_id: str) -> str:
-    return str(_CLONE_ROOT / run_id)
+    return clone_reaper.clone_dir_for_run(run_id)
 
 
 def _owner_installation_ids(owner_id) -> list[int]:
@@ -1310,7 +1310,13 @@ def _run_end_teardown(run_id: str) -> None:
     back to the raw :func:`close_run_sandboxes` so a warm container is never stranded (its surviving
     cache entry would otherwise make reap-before-start keep SPARING it — only a restart's boot sweep
     clears it). NEVER raises: teardown must not mask the run's real terminal, which keeps unwinding
-    out of the caller's ``finally``."""
+    out of the caller's ``finally``.
+
+    M-clonegc: also reclaims this run's hosted-GitHub clone — a clean no-op for self-hosted /
+    greenfield runs, which have no clone dir. Deliberately LAST and deliberately un-checkpointed: it
+    is a plain filesystem delete, so unlike the sandbox teardown there is no DBOS step for a
+    cancelled workflow to refuse, and running it after the sandbox close means a container that
+    still holds the directory is gone first."""
     try:
         close_run_sandboxes_step(run_id)
     except BaseException:  # noqa: BLE001
@@ -1321,6 +1327,10 @@ def _run_end_teardown(run_id: str) -> None:
             close_run_sandboxes(run_id)
         except Exception:
             logger.warning("sandbox run-end teardown failed run_id=%s", run_id, exc_info=True)
+    try:
+        clone_reaper.delete_run_clone(run_id)
+    except BaseException:  # noqa: BLE001 — belt-and-braces; delete_run_clone never raises itself
+        logger.warning("clone run-end teardown failed run_id=%s", run_id, exc_info=True)
 
 
 def apply_budget_hook(run_id: str, *, node_id: str, iteration: int) -> bool:
