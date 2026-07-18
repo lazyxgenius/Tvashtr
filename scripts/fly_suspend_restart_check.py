@@ -7,7 +7,7 @@ of the backend process and only a shell can do that:
   ``phase1 <run_id_file>``  — create a HOSTED fly-sandbox run, approve the PRD gate (not the
                               target) while LOWERING the budget cap mid-run, and wait until the run
                               parks at the BUDGET gate. Then assert the machine is genuinely
-                              SUSPENDED on Fly and record the app name. Exits leaving the run parked.
+                              SUSPENDED on Fly and record the app name. Leaves the run parked.
   ``phase2 <run_id_file>``  — run AFTER the backend was killed and restarted. Assert the app is the
                               SAME one (no new ``tv-run-*`` was created — reconstruct, not
                               re-create) and that the machine is STILL suspended across the restart.
