@@ -27,4 +27,10 @@ def resolve_adapter(engine_name: str) -> EngineAdapter:
         )
 
         return OpenHandsDockerAdapter()
+    if engine_name == "openhands-fly":
+        from tvashtr.engines.openhands_fly_adapter import (  # lazy import
+            OpenHandsFlyAdapter,
+        )
+
+        return OpenHandsFlyAdapter()
     raise ValueError(f"unknown engine: {engine_name!r}")

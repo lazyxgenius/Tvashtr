@@ -91,6 +91,16 @@ from tvashtr.models import AgentNode, Edge, EngineerRunAttempt, GithubInstallati
 logger = logging.getLogger("tvashtr.control_plane.team_run")
 
 
+def _engine_for_sandbox_mode(sandbox_mode: str) -> str:
+    """Map the configured sandbox posture to an engine NAME (never an adapter — resolving one
+    imports the engine SDK, and this module stays ``openhands``-free at import).
+
+    ``docker`` and ``local`` resolve to exactly the names they always did; M-h2a adds ``fly`` (a
+    per-run Firecracker microVM). Total by construction: an unrecognized value still falls back to
+    the local engine, byte-for-byte the prior behaviour."""
+    return {"docker": "openhands-docker", "fly": "openhands-fly"}.get(sandbox_mode, "openhands")
+
+
 def _owner_api_key(run_id: str, model: str) -> str:
     """Resolve the run owner's provider key for ``model`` (M-accounts Slice B — BYOK, NO ``.env``
     fallback). Read INSIDE the spend-bearing ``agent_run_step`` (M-unify U1: the ONE unified path)
@@ -1065,9 +1075,7 @@ def agent_run_step(
     # Select local vs Docker-sandboxed engine from the configured sandbox mode (P1.3a). The
     # EngineAdapter contract + AgentRunResult shape are identical across modes; the adapter is
     # role-neutral — it just runs the AgentTask's instruction in its workspace.
-    engine_name = (
-        "openhands-docker" if get_settings().agent_sandbox_mode == "docker" else "openhands"
-    )
+    engine_name = _engine_for_sandbox_mode(get_settings().agent_sandbox_mode)
     adapter = resolve_adapter(engine_name)  # lazy openhands import happens here
     try:
         result = adapter.run(task, on_event=make_run_event_sink(run_id, invocation_id))

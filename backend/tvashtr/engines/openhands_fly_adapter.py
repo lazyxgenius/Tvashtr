@@ -1,0 +1,442 @@
+"""The Fly-sandboxed OpenHands engine adapter — Tvashtr's HOSTED ``EngineAdapter`` path (M-h2a).
+
+Same engine-neutral contract as the local and docker adapters (status / events / files_changed /
+usage), but the agent server runs inside a **throwaway Fly Firecracker microVM, ONE machine per
+RUN**, on the run owner's own private network, reached only through a one-way Flycast door behind a
+fresh-per-run ``X-Session-API-Key``.
+
+WHY THIS EXISTS AT ALL — the thing it is defending against. Today's docker sandbox runs the agent
+server bound to ``127.0.0.1`` with **no password** (``DockerWorkspace`` literally does
+``object.__setattr__(self, "api_key", None)``). That is safe only because loopback is the fence.
+Lift that same unauthenticated server onto Fly and it must bind the network to be reachable —
+landing
+it on a network shared with every other tenant's sandbox, the backend, and Postgres. Naive Fly is
+therefore a *downgrade*: Firecracker is a stronger wall but a weaker door. So this adapter is
+mostly fence, and the fence is two layers (D2): a **private network per user**, plus the agent
+server's session key actually turned **on**.
+
+THE TWO-LEVEL CACHE (D1 + D4), which is the whole structural idea:
+
+- **Per RUN — one microVM.** The trust boundary is between *tenants*, not between a user's own
+  nodes, so all of a run's nodes share one machine, sequentially. Keyed by ``run_id``, parsed out of
+  ``task.session_key`` (``"{run_id}::{node_id}"``).
+- **Per NODE — its own working dir AND its own conversation.** Docker hands every node a fresh
+  container ⇒ a fresh empty ``/workspace``. A *shared* ``/workspace`` on Fly would let node B read
+  node A's leftovers and silently diverge the Fly path from the docker proof harness — so each node
+  gets ``/workspace/<node_id>``. Isolation between a team's own nodes is a **folder**, not a VM.
+  Within one node's repeated goals (the Engineer/Reviewer across review-loop rounds) the SAME
+  conversation continues, exactly as the docker adapter reuses across rounds.
+
+REUSE, NOT COPY: ``_push_workspace`` / ``_pull_workspace`` and the whole event-mapping + usage-read
+helper set are IMPORTED from the docker adapter and the local adapter and called unchanged. They
+were already pure functions over anything exposing the inherited ``RemoteWorkspace`` HTTP seam
+(``execute_command`` / ``file_upload`` / ``file_download``), which a Fly-backed ``RemoteWorkspace``
+is. Nothing in the docker path is edited — it stays byte-identical as the control harness.
+
+TEARDOWN: the run's whole Fly **app** is deleted at run-end via the Control Plane's existing
+``close_run_sandboxes(run_id)`` hook — this adapter registers a teardown-only entry in the
+engine-neutral ``sandbox_cache`` (its public API, whose documented purpose is exactly "an
+adapter-provided ``close``"), with ``container_id=None`` so the docker reaper never sees it. A
+mid-run failure that never reached the cache is torn down in this module's own ``finally``. Deleting
+the app is atomic and total — machine, Flycast IP and app in one call — because the #1 way to burn
+money on Fly is a machine that outlives its job. (Cross-run orphan reaping is M-h2b.)
+"""
+
+import logging
+import os
+import threading
+import time
+import uuid
+from itertools import count
+
+from openhands.sdk import LLM, Agent, Conversation, LLMSummarizingCondenser, Tool
+from openhands.sdk.context import AgentContext
+from openhands.sdk.event.conversation_error import ConversationErrorEvent
+from openhands.sdk.workspace import RemoteWorkspace
+from openhands.tools.file_editor import FileEditorTool
+from openhands.tools.terminal import TerminalTool
+
+from tvashtr.config import agent_llm_routing, get_settings
+from tvashtr.engines import sandbox_cache
+from tvashtr.engines.base import AgentRunResult, AgentTask, EngineEvent
+from tvashtr.engines.fly_machines import FlyMachines, mint_session_key
+
+# The engine-neutral event mapping + post-run usage read, shared with BOTH other adapters so the
+# EngineEvent shape is identical across all three sandbox modes.
+from tvashtr.engines.openhands_adapter import (
+    _MAX_ITERATIONS,
+    _is_budget_error,
+    _kind_of,
+    _payload_of,
+    _read_usage,
+    _text_has_budget_signature,
+)
+
+# The host<->workspace sync helpers, REUSED from the docker adapter unchanged (they are pure
+# functions over the RemoteWorkspace HTTP seam, which is precisely what a Fly workspace exposes).
+# Importing them — rather than extracting them into a new shared module — is what keeps the docker
+# files byte-identical to main.
+from tvashtr.engines.openhands_docker_adapter import _pull_workspace, _push_workspace
+
+logger = logging.getLogger("tvashtr.engines.openhands_fly")
+
+WORKSPACE_MODE = "fly-microvm"
+
+# Every node's working dir lives under this root (D4). The docker path gets per-node isolation for
+# free from a fresh container; on one shared machine it has to be a directory.
+_WORKSPACE_ROOT = "/workspace"
+
+# The per-run sandbox registry. Keyed by run_id — NOT by session_key — because the machine is
+# per-RUN while conversations are per-NODE. A module-level dict guarded by a lock, exactly like
+# ``sandbox_cache``: runs are serial in v1, but the lock keeps a concurrent teardown consistent.
+_RUNS: dict[str, "_FlyRunSandbox"] = {}
+_LOCK = threading.Lock()
+
+# The sandbox_cache key suffix under which each run registers its teardown hook. It is a reserved
+# pseudo-node id: ``close_run_sandboxes`` matches entries by the run_id BEFORE the "::", so this
+# rides the existing run-end teardown with no change to the Control Plane.
+_TEARDOWN_NODE = "__fly_machine__"
+
+
+class _FlyNodeHandle:
+    """One node's live state on the shared machine: its own ``RemoteWorkspace`` (pinned to
+    ``/workspace/<node_id>``) plus the live ``RemoteConversation`` bound to it, and a repointable
+    event ``sink``.
+
+    The sink indirection is load-bearing for round-to-round reuse, exactly as in the docker adapter:
+    the Conversation's callback is bound ONCE at construction to :meth:`dispatch`, and each round
+    repoints ``sink`` at that round's collector closure — a reused Conversation must stream into
+    THIS round's collector, not round 1's stale one."""
+
+    def __init__(self, workspace: RemoteWorkspace) -> None:
+        self.workspace = workspace
+        self.conversation = None
+        self.sink = None
+
+    def dispatch(self, oh_event) -> None:
+        sink = self.sink
+        if sink is not None:
+            sink(oh_event)
+
+
+class _FlyRunSandbox:
+    """One run's microVM: the Fly client, the live machine, the per-run session key, and the
+    per-node handles that share it.
+
+    The session key is held HERE — in process memory, for the life of the run — and deliberately
+    nowhere else: not on the ``FlyRunMachine`` (which gets logged), not in the DB, not in any step
+    checkpoint. Persisting-vs-re-deriving it across a backend restart is an M-h2b question."""
+
+    def __init__(self, fly: FlyMachines, machine, session_api_key: str) -> None:
+        self.fly = fly
+        self.machine = machine
+        self.session_api_key = session_api_key
+        self.nodes: dict[str, _FlyNodeHandle] = {}
+
+    def close(self) -> None:
+        """Destroy the whole app (machine + Flycast IP + app) and drop the HTTP client."""
+        try:
+            self.fly.delete_app(self.machine.app_name)
+        finally:
+            self.fly.close()
+
+
+def _resolve_owner_id(run_id: str | None) -> str:
+    """The owner whose private network this run's app joins (D2a).
+
+    Resolved from the DB by run_id, mirroring how ``team_run._owner_api_key`` resolves the owner for
+    BYOK. ``AgentTask`` cannot carry it: ``engines/base.py`` is frozen byte-identical this
+    milestone,
+    so an additive field is not available.
+
+    FALLBACK: when there is no run row to read (``session_key`` unset — the older/test call sites
+    that thread no key), fall back to the run's own id as the network discriminator. That yields a
+    network per RUN rather than per USER, which is *stricter*, never looser — a fence that fails
+    closed."""
+    if run_id:
+        try:
+            from sqlalchemy import select
+
+            from tvashtr.db import session_scope
+            from tvashtr.models import Run
+
+            with session_scope() as session:
+                owner_id = session.execute(
+                    select(Run.owner_id).where(Run.id == uuid.UUID(run_id))
+                ).scalar_one_or_none()
+            if owner_id is not None:
+                return str(owner_id)
+        except Exception:
+            # Never let an owner lookup fail the run — degrade to the stricter per-run network.
+            logger.warning("fly: owner lookup failed for run %s; using a per-run network", run_id)
+    return run_id or uuid.uuid4().hex
+
+
+def _get_or_create_run_sandbox(run_id: str) -> tuple["_FlyRunSandbox", bool]:
+    """Return this run's microVM, booting it on the first node. ``(sandbox, created_now)``."""
+    with _LOCK:
+        existing = _RUNS.get(run_id)
+    if existing is not None:
+        return existing, False
+
+    settings = get_settings()
+    session_api_key = mint_session_key()  # D2b: fresh random, per run
+    fly = FlyMachines(
+        token=settings.fly_api_token,
+        org=settings.fly_org,
+        region=settings.fly_region,
+        image=settings.fly_agent_image,
+        guest_cpus=settings.fly_guest_cpus,
+        guest_memory_mb=settings.fly_guest_memory_mb,
+    )
+    owner_id = _resolve_owner_id(run_id)
+    logger.warning(
+        "OpenHandsFlyAdapter (%s): booting per-run microVM image=%s region=%s guest=%sc/%sMB",
+        WORKSPACE_MODE,
+        settings.fly_agent_image,
+        settings.fly_region,
+        settings.fly_guest_cpus,
+        settings.fly_guest_memory_mb,
+    )
+    machine = fly.start_run_sandbox(
+        run_id=run_id, owner_id=owner_id, session_api_key=session_api_key
+    )
+    logger.warning(
+        "OpenHandsFlyAdapter (%s): microVM ready app=%s private_ip=%s boot=%.1fs ready=%.1fs",
+        WORKSPACE_MODE,
+        machine.app_name,
+        machine.private_ip,
+        machine.boot_seconds,
+        machine.ready_seconds,
+    )
+    sandbox = _FlyRunSandbox(fly, machine, session_api_key)
+    with _LOCK:
+        # A concurrent booter would have won the race; prefer the winner and destroy ours.
+        raced = _RUNS.get(run_id)
+        if raced is not None:
+            loser = sandbox
+            sandbox = raced
+        else:
+            _RUNS[run_id] = sandbox
+            loser = None
+    if loser is not None:
+        loser.close()
+        return sandbox, False
+    return sandbox, True
+
+
+def close_run_machine(run_id: str) -> None:
+    """Destroy ``run_id``'s microVM and forget it. Idempotent + best-effort — a failing teardown is
+    logged, never raised, so it can't break a workflow's terminal (mirrors
+    ``sandbox_cache.close_run_sandboxes``). Also the public seam a test uses to assert no leak."""
+    with _LOCK:
+        sandbox = _RUNS.pop(run_id, None)
+    if sandbox is None:
+        return
+    try:
+        sandbox.close()
+    except Exception:
+        logger.warning("fly: teardown failed for run %s (evicted anyway)", run_id, exc_info=True)
+
+
+class OpenHandsFlyAdapter:
+    """Drive the OpenHands agent inside a per-run Fly microVM behind Tvashtr's ``EngineAdapter``.
+    Returns the identical ``AgentRunResult`` shape as the local and docker adapters; the microVM +
+    the two fences are the boundary."""
+
+    name = "openhands-fly"
+
+    def run(self, task: AgentTask, on_event=None) -> AgentRunResult:
+        settings = get_settings()
+        model = task.model or settings.default_model
+
+        # ``task.workspace_dir`` is the HOST dir (created + git-init'd by the setup step) — the
+        # pull-target + ship root, not the agent's working dir (which lives in the microVM).
+        host_dir = task.workspace_dir
+        os.makedirs(host_dir, exist_ok=True)
+
+        # The two-level identity. No session_key (older/test call sites) ⇒ a synthetic single-node
+        # run: its own machine, torn down in the finally — byte-for-byte the no-reuse posture.
+        run_id = sandbox_cache.run_id_from_session_key(task.session_key)
+        ephemeral = run_id is None
+        if ephemeral:
+            run_id = uuid.uuid4().hex
+            node_id = "n0"
+        else:
+            node_id = task.session_key.split("::", 1)[1] or "n0"
+
+        seq = count()
+        collected: list[EngineEvent] = []
+        lock = threading.Lock()
+        error_event_texts: list[str] = []
+
+        def _on_oh_event(oh_event) -> None:
+            if isinstance(oh_event, ConversationErrorEvent):
+                # As in docker mode, the SDK genericizes the raised exception over a remote
+                # conversation — the proxy's budget message survives only in this event's detail.
+                with lock:
+                    error_event_texts.append(f"{oh_event.code}: {oh_event.detail}")
+            kind = _kind_of(oh_event)
+            if kind is None:
+                return
+            with lock:
+                event = EngineEvent(
+                    seq=next(seq),
+                    kind=kind,
+                    payload=_payload_of(oh_event, kind),
+                    ts=time.time(),
+                )
+                collected.append(event)
+            if on_event is not None:
+                on_event(event)
+
+        status = "completed"
+        error: str | None = None
+        prompt_tokens = 0
+        completion_tokens = 0
+        cost_usd = 0.0
+        files_changed: list[str] = []
+        conversation = None
+        usage_before = (0, 0, 0.0)
+        try:
+            sandbox, created_now = _get_or_create_run_sandbox(run_id)
+            if created_now and not ephemeral:
+                # Register the run-end teardown on the engine-neutral cache the Control Plane
+                # already calls (``close_run_sandboxes(run_id)``), so the app is destroyed with NO
+                # change to team_run.py or sandbox_cache.py. ``container_id=None`` keeps this entry
+                # invisible to the docker reaper's keep-set.
+                sandbox_cache.put(
+                    f"{run_id}::{_TEARDOWN_NODE}",
+                    sandbox_cache.CachedSandbox(
+                        handle=sandbox,
+                        close=lambda rid=run_id: close_run_machine(rid),
+                        container_id=None,
+                    ),
+                )
+
+            handle = sandbox.nodes.get(node_id)
+            if handle is None:
+                # MISS — this node's first goal. Give it its OWN working dir on the shared machine
+                # (D4) and open a fresh conversation bound to it.
+                working_dir = f"{_WORKSPACE_ROOT}/{node_id}"
+                workspace = RemoteWorkspace(
+                    host=sandbox.machine.flycast_host,
+                    working_dir=working_dir,
+                    api_key=sandbox.session_api_key,  # D2b -> the X-Session-API-Key header
+                )
+                # The dir must exist before the conversation binds to it.
+                workspace.execute_command(f"mkdir -p {working_dir}", cwd="/tmp", timeout=30.0)
+
+                llm = LLM(
+                    **agent_llm_routing(settings, model, "fly", api_key_override=task.llm_api_key),
+                    temperature=0.0,
+                    usage_id="tvashtr-agent",
+                )
+                condenser_llm = llm.model_copy(update={"usage_id": "tvashtr-condenser"})
+                condenser_llm.reset_metrics()
+                agent_context = AgentContext(skills=task.skills) if task.skills else None
+                agent = Agent(
+                    llm=llm,
+                    tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],
+                    condenser=LLMSummarizingCondenser(llm=condenser_llm, keep_first=2, max_size=80),
+                    mcp_config=task.mcp_config or {},
+                    agent_context=agent_context,
+                )
+                handle = _FlyNodeHandle(workspace)
+                handle.sink = _on_oh_event
+                conversation = Conversation(
+                    agent=agent,
+                    workspace=workspace,
+                    callbacks=[handle.dispatch],
+                    max_iteration_per_run=_MAX_ITERATIONS,
+                    delete_on_close=False,
+                )
+                handle.conversation = conversation
+                sandbox.nodes[node_id] = handle
+                logger.warning(
+                    "OpenHandsFlyAdapter (%s): node %s opened on %s (dir=%s)",
+                    WORKSPACE_MODE,
+                    node_id,
+                    sandbox.machine.app_name,
+                    working_dir,
+                )
+            else:
+                # HIT — this node's next round. Continue the SAME conversation so the condenser
+                # keeps folding the transcript and the agent remembers prior rounds.
+                workspace = handle.workspace
+                conversation = handle.conversation
+                handle.sink = _on_oh_event  # repoint at THIS round's collector
+                usage_before = _read_usage(conversation)
+                logger.warning(
+                    "OpenHandsFlyAdapter (%s): REUSED node %s's conversation (carried %d tokens)",
+                    WORKSPACE_MODE,
+                    node_id,
+                    usage_before[0] + usage_before[1],
+                )
+
+            # Seed the node's working dir from the host (the cross-round source of truth the prior
+            # round's pull wrote). Reused from the docker adapter, unchanged.
+            seeded = _push_workspace(handle.workspace, host_dir, task.workspace_mode)
+            if seeded:
+                logger.warning(
+                    "OpenHandsFlyAdapter (%s): seeded %d file(s) into %s",
+                    WORKSPACE_MODE,
+                    len(seeded),
+                    node_id,
+                )
+            conversation.send_message(task.instruction)
+            conversation.run()
+
+            pa, ca, cost_a = _read_usage(conversation)
+            prompt_tokens = max(0, pa - usage_before[0])
+            completion_tokens = max(0, ca - usage_before[1])
+            cost_usd = max(0.0, cost_a - usage_before[2])
+            files_changed = _pull_workspace(
+                handle.workspace, host_dir, task.workspace_mode, task.pull_paths
+            )
+        except Exception as exc:
+            budget_hit = _is_budget_error(exc) or any(
+                _text_has_budget_signature(t) for t in error_event_texts
+            )
+            status = "over_budget" if budget_hit else "failed"
+            error = str(exc)
+            if status == "over_budget" and conversation is not None:
+                pa, ca, cost_a = _read_usage(conversation)
+                prompt_tokens = max(0, pa - usage_before[0])
+                completion_tokens = max(0, ca - usage_before[1])
+                cost_usd = max(0.0, cost_a - usage_before[2])
+            logger.exception(
+                "OpenHandsFlyAdapter run %s (exc=%r; error_events=%r)",
+                "cut off over budget" if status == "over_budget" else "failed",
+                str(exc),
+                error_event_texts,
+            )
+        finally:
+            # A run that threads a session_key keeps its microVM warm for the next node and is torn
+            # down at run-end by ``close_run_sandboxes``. An ephemeral (keyless) call owns its
+            # machine outright, so it must destroy it here — otherwise the app bills forever.
+            if ephemeral:
+                close_run_machine(run_id)
+
+        total_tokens = prompt_tokens + completion_tokens
+        if status == "completed" and any(e.kind == "error" for e in collected):
+            status = "failed"
+
+        n_action = sum(1 for e in collected if e.kind == "action")
+        n_obs = sum(1 for e in collected if e.kind == "observation")
+        summary = (
+            f"{status}: {len(collected)} events "
+            f"({n_action} actions, {n_obs} observations); files_changed={files_changed}"
+        )
+
+        return AgentRunResult(
+            status=status,
+            summary=summary,
+            events=collected,
+            files_changed=files_changed,
+            error=error,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cost_usd=cost_usd,
+        )

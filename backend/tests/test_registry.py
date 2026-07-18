@@ -31,6 +31,19 @@ def test_resolve_adapter_unknown_engine_raises():
         resolve_adapter("definitely-not-an-engine")
 
 
+def test_engine_name_selection_covers_every_sandbox_mode():
+    """M-h2a made the posture->engine mapping 3-way. Asserted HERE (not by resolving adapters)
+    because this file must stay openhands-free: the mapping is a pure string function, so the
+    ``local``/``docker`` guarantee — they resolve to exactly the names they always did — is
+    checkable without importing an SDK. An unknown value must still fall back to local."""
+    from tvashtr.control_plane.team_run import _engine_for_sandbox_mode
+
+    assert _engine_for_sandbox_mode("local") == "openhands"
+    assert _engine_for_sandbox_mode("docker") == "openhands-docker"
+    assert _engine_for_sandbox_mode("fly") == "openhands-fly"
+    assert _engine_for_sandbox_mode("something-new") == "openhands"
+
+
 def _assert_no_openhands(module_name: str) -> None:
     for name in list(sys.modules):
         if name == "openhands" or name.startswith("openhands."):
