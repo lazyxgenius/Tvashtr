@@ -68,9 +68,8 @@ cleanup() {
   # Never leave a machine billing, whatever happened above. Reads the app name this run recorded
   # and deletes it; a 404 is fine (the happy path already tore it down).
   "$VENV_PY" - "$STATE" <<'PY' 2>/dev/null || true
-import json, sys, os, re
+import json, sys, os
 from pathlib import Path
-root = Path(__file__).resolve().parents[0] if False else Path.cwd()
 try:
     state = json.loads(Path(sys.argv[1]).read_text())
     app_name = state.get("app_name")
