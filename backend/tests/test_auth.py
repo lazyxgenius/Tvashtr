@@ -3,7 +3,10 @@ cookie/hash primitives. Mutation-real: real status codes, the cookie actually se
 tampered/expired cookie genuinely rejected — not smoke asserts.
 """
 
+import base64
 import uuid
+
+import pytest
 
 from tvashtr.auth import (
     hash_password,
@@ -200,6 +203,55 @@ def test_session_cookie_signs_reads_and_expires():
     assert read_session_cookie(value) == uid
     # Expired (forced via the max_age seam) → None.
     assert read_session_cookie(value, max_age=-1) is None
-    # Tampered → None.
-    tampered = value[:-1] + ("A" if value[-1] != "A" else "B")
-    assert read_session_cookie(tampered) is None
+    # Tampered → None. Mutate a DATA byte in the MIDDLE of the signature — never the LAST
+    # character. See ``test_session_cookie_tamper_detected_in_the_slack_bit_class`` below for why
+    # the last character is the one place a "tamper" can silently be a no-op.
+    assert read_session_cookie(_tamper_signature(value)) is None
+
+
+def _tamper_signature(value: str) -> str:
+    """Flip one character in the MIDDLE of the cookie's signature segment.
+
+    The cookie is ``payload.timestamp.signature``; every character of the signature except the last
+    encodes 6 real bits, so changing one always changes the decoded HMAC bytes."""
+    head, _, sig = value.rpartition(".")
+    i = len(sig) // 2
+    return f"{head}.{sig[:i]}{'A' if sig[i] != 'A' else 'B'}{sig[i + 1 :]}"
+
+
+def test_session_cookie_tamper_detected_in_the_slack_bit_class():
+    """Regression for a ~1-in-16 phantom red that predated M-h2a (pre-existing since M-accounts).
+
+    itsdangerous signs with a 20-byte HMAC that is base64url-encoded WITHOUT padding. 20 bytes is
+    160 bits, but 27 base64 characters carry 162 — so the FINAL character holds 4 real bits plus 2
+    SLACK bits that Python writes as zero. Only 16 of the 64 characters can ever land there
+    (``048AEIMQUYcgkosw``), and a flip between two of them that differ only in those slack bits —
+    'A' → 'B' — decodes to the SAME 20 signature bytes. The old tamper (replace the last character)
+    was therefore a NO-OP whenever the signature happened to end in 'A': the cookie still validated,
+    ``read_session_cookie`` returned the uid, and the ``is None`` assert above failed for reasons
+    that had nothing to do with the code under test.
+
+    This pins the fix by driving the exact class that used to flake: a cookie whose signature ends
+    in 'A'. The first assertion is pure base64 arithmetic (stable regardless of the signing library)
+    showing the no-op class is real; the second is the actual guard — a middle-byte mutation is
+    caught every time."""
+    # Deterministic: the dev session secret + the fixed salt make this search reproducible.
+    for i in range(4096):
+        uid = f"00000000-0000-0000-0000-{i:012d}"
+        value = make_session_cookie_value(uid)
+        if value.rpartition(".")[2].endswith("A"):
+            break
+    else:  # pragma: no cover — 4096 draws without a hit is a ~1e-115 event
+        pytest.skip("no signature ending in 'A' found; the slack-bit class is unreachable here")
+
+    def _decode(seg: str) -> bytes:
+        return base64.urlsafe_b64decode(seg + "=" * (-len(seg) % 4))
+
+    # The no-op class is real: flipping the trailing 'A' to 'B' touches ONLY the discarded slack
+    # bits, so the signature bytes are byte-identical and the cookie still verifies.
+    old_style = value[:-1] + "B"
+    assert _decode(old_style.rpartition(".")[2]) == _decode(value.rpartition(".")[2])
+    assert read_session_cookie(old_style) == uid
+
+    # The guard: a DATA-byte mutation invalidates deterministically, for this class and every other.
+    assert read_session_cookie(_tamper_signature(value)) is None
