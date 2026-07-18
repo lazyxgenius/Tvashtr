@@ -5,7 +5,7 @@ from decimal import Decimal
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # P1.5c capstone idea (env-overridable via ``TVASHTR_TASK_IDEA``). The real, non-trivial
@@ -151,7 +151,12 @@ class Settings(BaseSettings):
     # opt out explicitly with ``TVASHTR_AGENT_SANDBOX=local`` — they test
     # orchestration, not containment. Override per-process with the env var, e.g.
     # ``TVASHTR_AGENT_SANDBOX=local``.
-    agent_sandbox_mode: Literal["local", "docker"] = Field(
+    # ``fly`` (M-h2a) adds the HOSTED path: the agent server runs in a throwaway Fly Firecracker
+    # microVM, ONE machine per RUN, on the run owner's own private network (``u<owner_id>-net``),
+    # reached only through a one-way Flycast door behind a fresh-per-run ``X-Session-API-Key``. It
+    # is a THIRD value, not a replacement — ``local``/``docker`` resolve exactly as before, and the
+    # default stays ``docker`` (safety-by-default: forgetting the posture still lands contained).
+    agent_sandbox_mode: Literal["local", "docker", "fly"] = Field(
         default="docker",
         validation_alias=AliasChoices("TVASHTR_AGENT_SANDBOX", "agent_sandbox_mode"),
     )
@@ -201,6 +206,77 @@ class Settings(BaseSettings):
     # Docker image platform; ``None`` auto-detects the host arch (arm64 ->
     # ``linux/arm64``) since the installed SDK has no ``detect_platform`` helper.
     agent_server_platform: Literal["linux/amd64", "linux/arm64"] | None = None
+
+    # --- M-h2a: the Fly microVM sandbox knobs (read only when agent_sandbox_mode == "fly") -------
+    # The org-scoped Fly API token. Empty default so an UNCONFIGURED install leaves it blank and the
+    # live ``github-pr-fly-e2e`` gate SKIPS cleanly (mirrors the GITHUB_APP_* pattern). It is a
+    # SECRET: never logged, never persisted, never serialized into a response — see
+    # ``engines/fly_machines.py``'s scrubbing.
+    fly_api_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("TVASHTR_FLY_API_TOKEN", "fly_api_token"),
+    )
+    # The Fly org the per-run apps are created in. ``personal`` is the operator's real org SLUG (the
+    # dashboard's ``aditya-sharma-664`` is a URL handle, not the slug). M-h4 moves Tvashtr's runs to
+    # their own org for blast radius.
+    fly_org: str = Field(
+        default="personal",
+        validation_alias=AliasChoices("TVASHTR_FLY_ORG", "fly_org"),
+    )
+    # The region run machines boot in. Choosing the region for USERS' machines is M-h4; ``bom`` is
+    # simply nearest the operator today.
+    fly_region: str = Field(
+        default="bom",
+        validation_alias=AliasChoices("TVASHTR_FLY_REGION", "fly_region"),
+    )
+    # The agent-server image the microVM boots — PINNED BY DIGEST, deliberately, to the byte-
+    # identical image the docker path is already proven on (``agent_server_image``'s
+    # ``:latest-python`` as resolved on 2026-06-15, ``sha256:0c86a6b2…``).
+    #
+    # WHY A DIGEST AND NOT ``agent_server_image``'s MOVING TAG (found the hard way, M-h2a Task A):
+    # docker only pulls ``:latest-python`` when it is absent, so the laptop has quietly been running
+    # a CACHED June build that matches the pinned ``openhands-sdk==1.28.1``. A Fly host has no such
+    # cache — it pulls ``latest`` fresh on every cold boot, which today resolves to a NEWER server
+    # whose events carry an ``extended_content`` field that SDK 1.28.1's ``Event`` model rejects
+    # (``extra_forbidden``), crashing the client mid-conversation. A moving tag on a
+    # pull-every-time substrate is a version-skew generator; the digest makes the Fly sandbox and
+    # the docker control harness provably the SAME server, which is exactly what an invariant
+    # calling docker "the control harness" requires. Re-pin this in lockstep with the SDK.
+    #
+    # It stays a knob because THE IMAGE IS THE COST LEVER: this build bakes in VSCode + VNC we never
+    # open, which on a laptop is paid once and on Fly is paid on EVERY cold host (as bandwidth, and
+    # as the user's stare at "Starting sandbox…"). Pointing it at a slim image is the evidence-based
+    # follow-up the live gate's measurements feed.
+    fly_agent_image: str = Field(
+        default=(
+            "ghcr.io/openhands/agent-server@sha256:"
+            "0c86a6b2396195bdd26fb214902a6ee5298ae897dad31eef116422f97ef23a07"
+        ),
+        validation_alias=AliasChoices("TVASHTR_FLY_AGENT_IMAGE", "fly_agent_image"),
+    )
+    # Guest size. Shared-CPU + 2GB comfortably runs the agent server; both are env-dialable so the
+    # live gate's measured peak-memory reading can retune them without a code change.
+    fly_guest_cpus: int = Field(
+        default=1,
+        gt=0,
+        validation_alias=AliasChoices("TVASHTR_FLY_GUEST_CPUS", "fly_guest_cpus"),
+    )
+    fly_guest_memory_mb: int = Field(
+        default=2048,
+        gt=0,
+        validation_alias=AliasChoices("TVASHTR_FLY_GUEST_MEMORY_MB", "fly_guest_memory_mb"),
+    )
+
+    @model_validator(mode="after")
+    def _fly_agent_image_falls_back_to_the_docker_image(self) -> "Settings":
+        """An explicitly-blanked ``TVASHTR_FLY_AGENT_IMAGE=`` falls back to ``agent_server_image``.
+
+        The default above is a digest pin, but blanking the knob is a deliberate "just use whatever
+        docker uses" escape hatch (e.g. after re-pinning ``agent_server_image`` to a new build) —
+        it must never leave the Fly path with an empty image string."""
+        if not self.fly_agent_image:
+            self.fly_agent_image = self.agent_server_image
+        return self
 
     # LiteLLM proxy (P1.4a — the agent-internal spend chokepoint; the per-key budget
     # cutoff is P1.4b). **OPT-IN.** When OFF (the default) the agent's LLM is built
