@@ -135,7 +135,7 @@ echo "[suspend-e2e] uvicorn #1 pid=$PID1"
 
 hr
 echo ">>> STEP C — park the run at a blocking gate with the machine SUSPENDED"
-( cd "$BACKEND" && "$VENV_PY" "$CHECK" phase1 "$STATE" )
+( cd "$BACKEND" && "$VENV_PY" -u "$CHECK" phase1 "$STATE" )
 
 hr
 echo ">>> STEP D — kill -9 the backend (the process holding the in-memory handle)"
@@ -149,11 +149,11 @@ echo ">>> STEP E — backend process #2 (DBOS recovery re-enters and re-blocks o
 start_uvicorn "$LOG2"
 wait_for_health
 echo "[suspend-e2e] uvicorn #2 pid=$CURRENT_PID"
-( cd "$BACKEND" && "$VENV_PY" "$CHECK" phase2 "$STATE" )
+( cd "$BACKEND" && "$VENV_PY" -u "$CHECK" phase2 "$STATE" )
 
 hr
 echo ">>> STEP F — approve for real; reconstruct + resume + ship a REAL PR"
-( cd "$BACKEND" && "$VENV_PY" "$CHECK" phase3 "$STATE" )
+( cd "$BACKEND" && "$VENV_PY" -u "$CHECK" phase3 "$STATE" )
 
 hr
 echo "[suspend-e2e] PASS — a hosted run survived a kill -9 while parked, and shipped."

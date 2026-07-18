@@ -4,10 +4,10 @@
 Driven in THREE phases by the shell script, because the middle of this proof is a real ``kill -9``
 of the backend process and only a shell can do that:
 
-  ``phase1 <run_id_file>``  — create a HOSTED fly-sandbox run with a TINY budget cap, approve the
-                              PRD gate (not the target), and wait until the run is parked at the
-                              BUDGET gate. Then assert the machine is genuinely SUSPENDED on Fly and
-                              record the app name. Exits leaving the run parked.
+  ``phase1 <run_id_file>``  — create a HOSTED fly-sandbox run, approve the PRD gate (not the
+                              target) while LOWERING the budget cap mid-run, and wait until the run
+                              parks at the BUDGET gate. Then assert the machine is genuinely
+                              SUSPENDED on Fly and record the app name. Exits leaving the run parked.
   ``phase2 <run_id_file>``  — run AFTER the backend was killed and restarted. Assert the app is the
                               SAME one (no new ``tv-run-*`` was created — reconstruct, not
                               re-create) and that the machine is STILL suspended across the restart.
@@ -16,8 +16,9 @@ of the backend process and only a shell can do that:
                               ``pr_url``, and the app DELETED afterwards.
 
 WHY THE BUDGET GATE IS THE TARGET. It is the only gate that is (a) genuinely blocking, (b)
-deterministic to trigger (set a cap of a fraction of a cent and the first agent node breaches it),
-and — the part that matters — (c) followed by ANOTHER AGENT NODE. The team is
+deterministic to trigger — see the mid-run cap drop in ``phase1``; note the budget hook fires after
+EVERY spend-bearing node INCLUDING the PM, so a cap set at create would park the run before any
+microVM existed and prove nothing — and (c) followed by ANOTHER AGENT NODE. The team is
 ``pm → prd_gate → engineer ⇄ reviewer → ship``: the Engineer boots the microVM, the budget gate
 parks it, and the Reviewer after the gate is what forces the reconstruct path to run. A gate
 followed by a terminal would prove suspend but never exercise reconstruction, because shipping is
@@ -44,8 +45,9 @@ _IDEA = os.environ.get(
     "TVASHTR_SUSPEND_E2E_IDEA",
     "Add a short CONTRIBUTING.md explaining how to run the test suite.",
 )
-# Small enough that the FIRST agent node's spend breaches it, so the budget gate is reached
-# deterministically rather than by luck.
+# The cap is applied MID-RUN, not at create — see phase1. Any value below the PM's already-recorded
+# spend makes the next budget check a certain breach, so the target gate is reached
+# deterministically rather than by guessing what an agent run will cost.
 _BUDGET_CAP = os.environ.get("TVASHTR_SUSPEND_E2E_CAP", "0.0001")
 _PARK_TIMEOUT_S = int(os.environ.get("TVASHTR_SUSPEND_E2E_PARK_TIMEOUT_S", "1800"))
 _FINISH_TIMEOUT_S = int(os.environ.get("TVASHTR_SUSPEND_E2E_FINISH_TIMEOUT_S", "2400"))
@@ -167,6 +169,24 @@ def _seed_operator_installation(owner_id: uuid.UUID) -> None:
             row.owner_id = owner_id
 
 
+def _set_budget_cap(run_id: str, cap: str) -> None:
+    """Lower the run's cap mid-flight, while it is parked at the PRD gate.
+
+    ``budget_check_step`` re-reads the cap from the database on every check, so this takes effect on
+    the very next one."""
+    from decimal import Decimal
+
+    from sqlalchemy import update
+
+    from tvashtr.db import session_scope
+    from tvashtr.models import Run
+
+    with session_scope() as session:
+        session.execute(
+            update(Run).where(Run.workflow_id == run_id).values(budget_cap_usd=Decimal(cap))
+        )
+
+
 def _run_row(run_id: str) -> dict:
     from sqlalchemy import select
 
@@ -209,7 +229,6 @@ def phase1(run_file: str) -> int:
     import httpx
     from operator_session import login_operator
 
-    from tvashtr.control_plane.teams import build_review_loop_team
     from tvashtr.engines.fly_machines import app_name_for_run
 
     with httpx.Client(base_url=BASE, timeout=60.0) as client:
@@ -219,28 +238,35 @@ def phase1(run_file: str) -> int:
         _seed_operator_installation(uuid.UUID(me.json()["id"]))
 
         # pm -> prd_gate -> engineer <-> reviewer -> ship. The REVIEWER after the gate is what
-        # makes this a reconstruction proof and not merely a suspend proof.
-        team_graph_id = build_review_loop_team(name="m-h2b suspend/restart")
+        # makes this a reconstruction proof and not merely a suspend proof: an agent node has to
+        # run AFTER the restart for _ensure_run_sandbox's reconstruct arm to be exercised at all.
+        # ``team_shape`` (not ``team_graph_id``) is the right door — the router builds the graph
+        # server-side, whereas a client-built graph is unowned and rejected 404 by the
+        # M-accounts ownership guard.
+        # NO cap at create. The budget hook runs after EVERY spend-bearing node — including the PM
+        # completion node — so a cap set here would park the run before any microVM existed and the
+        # proof would be vacuous (measured: the PM alone spends ~$0.0017).
         resp = client.post(
             "/api/runs",
-            json={
-                "idea": _IDEA,
-                "github_repo": _REPO,
-                "team_graph_id": team_graph_id,
-                "budget_cap_usd": _BUDGET_CAP,
-            },
+            json={"idea": _IDEA, "github_repo": _REPO, "team_shape": "review_loop"},
         )
         assert resp.status_code == 200, f"create_run failed: {resp.status_code} {resp.text}"
         run_id = resp.json()["run_id"]
         app_name = app_name_for_run(run_id)
         _write_state(run_file, run_id=run_id, app_name=app_name)
-        print(f"[suspend-e2e] run_id={run_id} app={app_name} cap=${_BUDGET_CAP}")
+        print(f"[suspend-e2e] run_id={run_id} app={app_name} (no cap yet — see below)")
 
         # The PRD gate blocks first (auto-approve is OFF). It is NOT the target — approve it and
         # let the run reach the Engineer, which is what boots the microVM.
         prd = _wait_for(
             lambda: _pending_task(client, run_id, "prd_approval"), 600, "the PRD gate to open"
         )
+        # THE TRICK that makes the target gate deterministic. With the run safely parked at the PRD
+        # gate, drop the cap BELOW the spend the PM has already recorded. The next budget check —
+        # the one after the Engineer, the first node that boots a microVM — is then a CERTAIN
+        # breach, with no guessing about what an agent run happens to cost.
+        _set_budget_cap(run_id, _BUDGET_CAP)
+        print(f"[suspend-e2e] cap lowered to ${_BUDGET_CAP} mid-run — next check is a sure breach")
         client.post(f"/api/runs/{run_id}/tasks/{prd['id']}/resolve", json={"decision": "approve"})
         print("[suspend-e2e] PRD gate approved (not the target gate) — Engineer starts")
 
