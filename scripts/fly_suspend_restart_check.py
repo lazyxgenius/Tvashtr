@@ -187,6 +187,24 @@ def _set_budget_cap(run_id: str, cap: str) -> None:
         )
 
 
+def _workflow_status(run_id: str) -> str:
+    """The DBOS workflow's own status (``PENDING`` / ``SUCCESS`` / ``ERROR`` / …).
+
+    Read straight from the system table rather than through the DBOS API, because this process
+    deliberately never launches a DBOS instance — that is what keeps it from racing the backend it
+    is observing for workflow recovery."""
+    from sqlalchemy import text
+
+    from tvashtr.db import session_scope
+
+    with session_scope() as session:
+        row = session.execute(
+            text("select status from dbos.workflow_status where workflow_uuid = :wid"),
+            {"wid": run_id},
+        ).first()
+    return row[0] if row else ""
+
+
 def _run_row(run_id: str) -> dict:
     from sqlalchemy import select
 
@@ -354,17 +372,46 @@ def phase3(run_file: str) -> int:
         assert resp.status_code == 200, f"resolve failed: {resp.status_code} {resp.text}"
         print("[suspend-e2e] budget gate APPROVED via the real API — the run should now resume")
 
-        final = _wait_for(
-            lambda: (
-                (r := _run_row(run_id))
-                and r["status"] in {"completed", "failed", "rejected", "over_budget", "cancelled"}
-                and r
-            ),
-            _FINISH_TIMEOUT_S,
-            "the run to reach a terminal status",
-        )
+        # THE RECONSTRUCTION PROOF, watched directly rather than inferred. The next node (the
+        # Reviewer, an agent node) must boot through ``_ensure_run_sandbox``, find no in-process
+        # handle, re-attach to THIS app and START the suspended machine. Watching the machine leave
+        # ``suspended`` is the one observation that distinguishes "reconstructed and resumed" from
+        # "quietly did something else" — the adapter's own log lines are swallowed by uvicorn's
+        # --log-level, so they cannot be the evidence.
+        fly_watch = _fly_client()
+        try:
+            resumed = _wait_for(
+                lambda: (m := fly_watch.get_run_machine(app_name)) and not m.is_suspended and m,
+                900,
+                "the suspended machine to be RESUMED by the next node",
+            )
+            print(
+                f"[suspend-e2e] RESUMED: machine {resumed.machine_id} left suspended -> "
+                f"state={resumed.state} (reconstruct + start, no new app)"
+            )
+            assert resumed.machine_id == state["machine_id"], (
+                f"resumed a DIFFERENT machine: {resumed.machine_id} != {state['machine_id']}"
+            )
+        finally:
+            fly_watch.close()
 
-    print(f"[suspend-e2e] final run.status={final['status']} pr_url={final.get('pr_url')!r}")
+        # Poll to the DBOS **WORKFLOW** terminal, NOT ``run.status``. This is a known trap in this
+        # repo and the first live attempt fell into it: ``finalize_run_step`` sets
+        # ``run.status='completed'`` and the in-workflow teardown runs AFTER it, so a driver that
+        # stops at ``run.status`` checks for a deleted app while the delete is still in flight and
+        # reports a leak that is not one.
+        _wait_for(
+            lambda: _workflow_status(run_id) in {"SUCCESS", "ERROR", "CANCELLED"},
+            _FINISH_TIMEOUT_S,
+            "the DBOS workflow to reach a terminal status",
+        )
+        final = _run_row(run_id)
+        wf = _workflow_status(run_id)
+
+    print(
+        f"[suspend-e2e] workflow={wf} final run.status={final['status']} "
+        f"pr_url={final.get('pr_url')!r}"
+    )
     fly = _fly_client()
     try:
         leftover = _tv_run_apps(fly)
@@ -378,7 +425,7 @@ def phase3(run_file: str) -> int:
     print(f"[suspend-e2e] run completed        : {completed}")
     print(f"[suspend-e2e] REAL PR opened       : {has_pr}  {final.get('pr_url') or ''}")
     print(f"[suspend-e2e] app deleted after    : {app_deleted}  ({app_name})")
-    ok = completed and has_pr and app_deleted
+    ok = completed and has_pr and app_deleted and wf == "SUCCESS"
     print(f"[suspend-e2e] phase3 {'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
 
