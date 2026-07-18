@@ -261,10 +261,31 @@ class Settings(BaseSettings):
         gt=0,
         validation_alias=AliasChoices("TVASHTR_FLY_GUEST_CPUS", "fly_guest_cpus"),
     )
+    # M-h2b: 1024, NOT 2048. Fly refuses to SUSPEND a machine with more than 2 GB of RAM, and
+    # suspend-on-gate is what stops a run parked overnight from billing CPU/RAM until morning.
+    # 2048 sat exactly ON that boundary; M-h2a MEASURED a 570 MB peak, so halving it buys ample
+    # headroom under the limit, a smaller/faster memory snapshot, and a cheaper running machine.
+    # Raising this above 2048 silently forfeits suspend eligibility — the run still works, it just
+    # bills while it waits.
     fly_guest_memory_mb: int = Field(
-        default=2048,
+        default=1024,
         gt=0,
         validation_alias=AliasChoices("TVASHTR_FLY_GUEST_MEMORY_MB", "fly_guest_memory_mb"),
+    )
+
+    # M-h2b: the secret the per-run agent-server key is DERIVED from —
+    # ``HMAC-SHA256(fly_session_secret, run_id)`` (see ``engines.fly_machines.derive_session_key``).
+    # Deriving rather than minting is what lets a RESTARTED backend re-attach to a still-alive
+    # microVM without ever having stored the key: same run_id + same secret ⇒ same key, so the C8
+    # "never logged, persisted, or serialized" invariant holds while the handle still survives a
+    # crash. A dev default keeps the offline suite + local dev working with no extra env; PRODUCTION
+    # MUST override ``TVASHTR_FLY_SESSION_SECRET`` with a real random secret, and it MUST be STABLE
+    # — rotating it while runs are parked at a gate strands those sandboxes behind a key nobody can
+    # re-derive (they fail closed, never silently mis-address). Distinct from ``session_secret`` and
+    # ``secret_key``: a leak of one does not compromise the others.
+    fly_session_secret: str = Field(
+        default="dev-insecure-fly-session-secret-change-me",
+        validation_alias=AliasChoices("TVASHTR_FLY_SESSION_SECRET", "fly_session_secret"),
     )
 
     @model_validator(mode="after")

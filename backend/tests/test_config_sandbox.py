@@ -73,7 +73,12 @@ def test_fly_knob_defaults(monkeypatch):
     assert s.fly_org == "personal"
     assert s.fly_region == "bom"
     assert s.fly_guest_cpus == 1
-    assert s.fly_guest_memory_mb == 2048
+    # M-h2b: 1024, NOT 2048. Fly refuses to SUSPEND a machine over 2 GB, and suspend-on-gate is what
+    # keeps an overnight-parked run from billing CPU/RAM until morning. 2048 sat exactly ON the
+    # boundary; the measured peak is 570 MB, so 1024 is ample headroom. This assertion is the guard
+    # against someone raising it back and silently forfeiting suspend eligibility.
+    assert s.fly_guest_memory_mb == 1024
+    assert s.fly_guest_memory_mb <= 2048, "over 2 GB Fly cannot suspend the machine at a gate"
     # Pinned BY DIGEST, not by the moving ``:latest-python`` tag: a Fly host pulls fresh on every
     # cold boot, so a moving tag silently outruns the pinned SDK (proven in M-h2a Task A — the
     # newer server's ``Event.extended_content`` is rejected by SDK 1.28.1). The digest also makes

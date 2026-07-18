@@ -25,7 +25,7 @@ THE TWO FENCES (D2), both implemented here:
 2. **The agent server's ``X-Session-API-Key`` turned ON**, fresh-random per run. The docker path can
    run the agent server passwordless because loopback is its fence (``DockerWorkspace`` literally
    does ``object.__setattr__(self, "api_key", None)``); a network-bound server has no such luxury.
-   We mint a key (:func:`mint_session_key`), hand it to the server via the machine's
+   We derive a key (:func:`derive_session_key`), hand it to the server via the machine's
    ``SESSION_API_KEY`` env var (the agent server's own ``V0_SESSION_API_KEY_ENV`` — see
    ``openhands/agent_server/config.py``), and the adapter presents the SAME key as the
    ``RemoteWorkspace`` ``api_key``, which the SDK sends as the ``X-Session-API-Key`` header.
@@ -53,9 +53,11 @@ through :func:`_scrub`, which redacts both before the text can reach a log line 
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import logging
 import re
-import secrets
 import time
 from dataclasses import dataclass
 
@@ -120,10 +122,55 @@ def network_name_for_owner(owner_id: object) -> str:
     return f"u{slug}-net"
 
 
-def mint_session_key() -> str:
-    """A fresh random per-run agent-server key (D2b). ``secrets`` (not ``random``) — this is the
-    only thing between the public-ish Flycast door and a shell."""
-    return secrets.token_urlsafe(32)
+def derive_session_key(run_id: object, secret: str | None = None) -> str:
+    """The per-run agent-server key (D2b), **DERIVED** rather than minted: ``HMAC-SHA256(secret,
+    run_id)``, urlsafe-base64 encoded.
+
+    M-h2b replaces the M-h2a random mint with a derivation for ONE reason — **durability without
+    storage**. The key must survive a backend restart so a fresh process can re-attach to a run's
+    still-alive microVM (see ``openhands_fly_adapter._ensure_run_sandbox``). A random key would have
+    to be persisted to survive, and persisting it is precisely what the C8 invariant forbids ("the
+    per-run key is never logged, persisted, or serialized"). Deriving it from two things the new
+    process ALREADY has — the run_id (in the workflow's arguments) and the server secret (in the
+    environment) — means the same key is re-cut on demand and never written down anywhere.
+
+    Security properties preserved from the mint it replaces:
+
+    - **Fresh per run.** Distinct run_ids give unrelated keys — HMAC's whole job.
+    - **Unguessable.** The run_id is public-ish (it appears in the app name), but without the secret
+      an attacker cannot go from run_id to key; HMAC-SHA256 is a PRF under a secret key.
+    - **≥32 chars.** A 32-byte digest, urlsafe-b64 encoded ⇒ 43 chars, matching the old
+      ``token_urlsafe(32)`` length class.
+
+    THE SECRET MUST BE STABLE AND STRONG IN PRODUCTION. Rotating it while runs are parked at a gate
+    strands those machines behind a key nobody can re-derive (the run then fails closed at reconnect
+    — it cannot silently talk to the wrong sandbox). ``secret`` is an explicit parameter so unit
+    tests can pin determinism without touching global settings; it defaults to the configured
+    ``fly_session_secret``. The import is function-scoped to keep this module's import graph free of
+    the app's config layer, exactly as it is free of ``openhands``."""
+    if secret is None:
+        from tvashtr.config import get_settings
+
+        secret = get_settings().fly_session_secret
+    digest = hmac.new(secret.encode("utf-8"), str(run_id).encode("utf-8"), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+@dataclass(frozen=True)
+class FlyMachineInfo:
+    """What :meth:`FlyMachines.get_run_machine` reads back off Fly about an app's one machine.
+
+    Deliberately the MINIMUM needed to re-attach after a backend restart: the id to address it by,
+    the state to decide whether it needs resuming, and the private_ip that re-proves the fence. Like
+    :class:`FlyRunMachine` it carries NO session key — the key is derived, never transported."""
+
+    machine_id: str
+    state: str
+    private_ip: str
+
+    @property
+    def is_suspended(self) -> bool:
+        return self.state == "suspended"
 
 
 @dataclass(frozen=True)
@@ -412,6 +459,126 @@ class FlyMachines:
         raise FlyApiError(
             f"fly app_exists failed: HTTP {resp.status_code} {self._scrub(resp.text)[:400]}"
         )
+
+    # --- suspend / resume (M-h2b Piece 1: the economics of a parked run) --------------------
+
+    def suspend_machine(self, app_name: str, machine_id: str) -> None:
+        """``POST …/machines/<id>/suspend`` — snapshot the guest's memory and stop billing CPU/RAM.
+
+        **SUSPEND, NOT STOP — and the difference is the whole feature.** A *stopped* Fly machine is
+        reset to its original state on restart: the agent's entire in-guest conversation is thrown
+        away. *Suspend* takes a Firecracker memory snapshot and a later ``start`` resumes from it.
+        A run parked at an approval gate overnight (park at 11pm, approve at 8am) would otherwise
+        hold a live, fully-billed VM for nine hours; suspended it drops to **storage-only billing**.
+
+        THE MACHINE MUST QUALIFY: ≤ 2 GB RAM, no swap, no schedule, no GPU. ``machine_config`` sets
+        no swap/schedule/GPU at all, and ``fly_guest_memory_mb`` defaults to 1024 — deliberately
+        *under* the 2048 boundary rather than exactly on it (M-h2a measured a 570 MB peak, so 1 GB
+        is ample, snapshots faster, and costs less). See ``test_fly_machines`` for the pinned
+        assertion."""
+        self._request(
+            "POST",
+            f"{FLY_MACHINES_API}/apps/{app_name}/machines/{machine_id}/suspend",
+            op="suspend_machine",
+            ok=(200, 202),
+        )
+        logger.info("fly: suspended machine %s in app %s", machine_id, app_name)
+
+    def wait_suspended(self, app_name: str, machine_id: str, timeout_s: float = 60.0) -> bool:
+        """Best-effort confirmation that the machine reached ``suspended``. Returns success as a
+        BOOL and **never raises**.
+
+        Deliberately not a hard gate: the value of suspending is purely economic, so a confirmation
+        that times out must not fail a run that is otherwise fine. The worst case of returning
+        ``False`` is that we kept billing a machine we meant to park — strictly no worse than not
+        having tried. Mirrors :meth:`wait_started`'s loop (Fly caps each ``/wait`` at 60s) but
+        swallows every error instead of raising at the deadline."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            remaining = max(1, min(60, int(deadline - time.monotonic())))
+            try:
+                resp = self._client.request(
+                    "GET",
+                    f"{FLY_MACHINES_API}/apps/{app_name}/machines/{machine_id}/wait",
+                    headers=self._headers(),
+                    params={"state": "suspended", "timeout": remaining},
+                )
+            except httpx.HTTPError:
+                continue
+            if resp.status_code == 200:
+                return True
+        logger.info("fly: machine %s did not confirm suspended within %ss", machine_id, timeout_s)
+        return False
+
+    def start_machine(self, app_name: str, machine_id: str) -> None:
+        """``POST …/machines/<id>/start`` — THE RESUME. There is no separate "resume" verb: starting
+        a suspended machine is what restores its snapshot.
+
+        **Resume is best-effort by design, and the caller must not assume the snapshot survived.**
+        Fly attempts a snapshot-restore (typically a few hundred ms) but may silently COLD-BOOT
+        instead — host migration, capacity, maintenance, snapshot loss. On a cold boot the rootfs is
+        NOT reset, so ``/workspace/<node_id>`` survives; only in-guest memory (the conversations) is
+        lost. That is exactly why the reconnect path in the adapter rebuilds with an EMPTY nodes
+        dict
+        and re-seeds from the host workspace: the two outcomes are then INDISTINGUISHABLE to us, so
+        there is one code path instead of two, and no correctness rests on guest RAM."""
+        self._request(
+            "POST",
+            f"{FLY_MACHINES_API}/apps/{app_name}/machines/{machine_id}/start",
+            op="start_machine",
+            ok=(200, 202),
+        )
+        logger.info("fly: started (resumed) machine %s in app %s", machine_id, app_name)
+
+    def get_run_machine(self, app_name: str) -> FlyMachineInfo | None:
+        """``GET …/apps/<app>/machines`` ⇒ the app's single machine, or ``None``.
+
+        The **re-discovery** half of the storage-free durable handle (M-h2b Piece 3): after a
+        backend
+        restart nothing in memory remembers the machine id, but a per-run app has exactly ONE
+        machine
+        by construction, so it can simply be read back off Fly. Returns ``None`` — never raises —
+        when the app is gone (404) or carries no machine, because both are legitimate "nothing to
+        re-attach to, boot fresh" answers rather than errors."""
+        resp = self._client.request(
+            "GET", f"{FLY_MACHINES_API}/apps/{app_name}/machines", headers=self._headers()
+        )
+        if resp.status_code == 404:
+            return None
+        if resp.status_code != 200:
+            raise FlyApiError(
+                f"fly get_run_machine failed: "
+                f"HTTP {resp.status_code} {self._scrub(resp.text)[:400]}"
+            )
+        body = resp.json()
+        machines = body if isinstance(body, list) else body.get("machines") or []
+        for m in machines:
+            machine_id = m.get("id") or ""
+            if not machine_id:
+                continue
+            return FlyMachineInfo(
+                machine_id=machine_id,
+                state=m.get("state") or "",
+                private_ip=m.get("private_ip") or "",
+            )
+        return None
+
+    def list_apps(self) -> list[str]:
+        """``GET /v1/apps?org_slug=<org>`` ⇒ every app name in the org. The orphan reaper's input.
+
+        Returns bare NAMES because the name is the only thing the reaper reasons about: it is what
+        carries the run_id (``tv-run-<run_id>``) and it is what the "never touch anything that is
+        not ours" rule is enforced on."""
+        resp = self._request(
+            "GET",
+            f"{FLY_MACHINES_API}/apps",
+            op="list_apps",
+            ok=(200,),
+            params={"org_slug": self.org},
+        )
+        body = resp.json()
+        apps = body if isinstance(body, list) else body.get("apps") or []
+        return [a.get("name") or "" for a in apps if isinstance(a, dict) and a.get("name")]
 
     # --- the composed happy path ----------------------------------------------------------
 
