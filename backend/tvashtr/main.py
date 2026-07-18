@@ -21,6 +21,7 @@ from tvashtr import db
 from tvashtr.auth import auth_router, get_current_user
 from tvashtr.config import get_settings
 from tvashtr.control_plane import github_app
+from tvashtr.control_plane.fly_reaper import sweep_orphaned_fly_apps
 from tvashtr.control_plane.hello_durable import hello_durable
 from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
 from tvashtr.models import SpikeHelloEvent
@@ -43,6 +44,14 @@ async def _lifespan(app: FastAPI):
     unavailable — so startup stays ``openhands``-free and robust on any host."""
     if settings.agent_sandbox_mode == "docker":
         sweep_orphaned_agent_containers()
+    elif settings.agent_sandbox_mode == "fly":
+        # M-h2b: the same idea one substrate up. A ``kill -9`` mid-hosted-run leaves a Fly app that
+        # BILLS until something deletes it, and nothing in-process survives to do so. Sweeping here
+        # — before DBOS recovery, for the same reason the docker sweep is here — means the next boot
+        # is what cleans up the last crash. Reads liveness from the ``runs`` table (Fly apps outlive
+        # any single process), so a run legitimately parked at a gate is SPARED, and never touches
+        # an app that is not ours. Never raises: startup must not fail over cost hygiene.
+        sweep_orphaned_fly_apps()
     yield
 
 
