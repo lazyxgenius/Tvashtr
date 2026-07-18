@@ -1272,6 +1272,37 @@ def close_run_sandboxes_step(run_id: str) -> None:
     close_run_sandboxes(run_id)
 
 
+@DBOS.step()
+def suspend_fly_machine_step(run_id: str) -> bool:
+    """M-h2b Piece 1: SUSPEND this run's Fly microVM before it parks at a human gate. Returns
+    whether the suspend actually landed.
+
+    A gate can hold a run for hours — park at 11pm, approve at 8am. Without this the run keeps a
+    fully-billed VM alive for all nine of them. Fly *suspend* takes a Firecracker memory snapshot
+    and drops the machine to STORAGE-ONLY billing; the next node's boot resumes it lazily.
+    Deliberately
+    **suspend, not stop**: a stopped machine is reset to its original state on restart, throwing the
+    agent's whole conversation away, whereas a suspended one resumes from its snapshot.
+
+    WHY A RECORDED ``@DBOS.step``, which is the subtle part: on a crash-replay DBOS returns this
+    step's checkpointed output instead of re-executing it. So a resumed workflow does NOT re-suspend
+    — which matters because the in-process handle it would have needed died with the old process.
+    The durability story and the economics story stay independent of each other.
+
+    Best-effort and **never raises**: the ``openhands``-free import discipline of this module is why
+    the adapter import is function-scoped (``openhands_fly_adapter`` pulls in the agent SDK, and
+    ``team_run`` must stay clean at module import), and a failure to suspend is only ever a cost, so
+    it must never fail a run. Called ONLY under ``agent_sandbox_mode == "fly"`` — see the call
+    sites, which is what keeps docker/local step sequences byte-identical to before."""
+    try:
+        from tvashtr.engines.openhands_fly_adapter import suspend_run_machine
+
+        return suspend_run_machine(run_id)
+    except Exception:  # noqa: BLE001 — an economy measure must never break a run
+        DBOS.logger.warning(f"suspend_fly_machine_step failed run_id={run_id}")
+        return False
+
+
 def _run_end_teardown(run_id: str) -> None:
     """Close this run's process-cached sandboxes at run-end (M-unify U2). Prefer the checkpointed
     :func:`close_run_sandboxes_step`; if DBOS REFUSES it — a CANCELLED workflow raises
@@ -1310,6 +1341,11 @@ def apply_budget_hook(run_id: str, *, node_id: str, iteration: int) -> bool:
     check = budget_check_step(run_id)
     if check["over"]:
         spent, cap = check["spent"], check["cap"]
+        # M-h2b: park the hosted microVM (storage-only billing) before blocking on the human. The
+        # condition lives HERE, not inside the step, so a docker/local run's recorded step sequence
+        # is byte-identical to before this milestone — the step is simply absent from its walk.
+        if get_settings().agent_sandbox_mode == "fly":
+            suspend_fly_machine_step(run_id)
         gate = wait_at_gate(
             run_id,
             topic=f"budget:{run_id}:{node_id}:{iteration}",
@@ -1691,6 +1727,11 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             else:
                 # A human-approval checkpoint node: pause on the durable recv, then route on the
                 # resolution (the node-id-scoped topic keeps concurrent gates collision-free).
+                # M-h2b: suspend the hosted microVM first — this is THE gate a run sits at
+                # overnight, so it is where suspend-on-gate earns its keep. Fly-mode only, checked
+                # at the call site so docker/local step sequences never change.
+                if get_settings().agent_sandbox_mode == "fly":
+                    suspend_fly_machine_step(run_id)
                 gate = wait_at_gate(
                     run_id,
                     topic=f"gate:{run_id}:{current}",
