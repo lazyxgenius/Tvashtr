@@ -26,8 +26,12 @@ TVASHTR_RUNG2_MODEL ?= $(TVASHTR_AGENT_MODEL)
 # above — NOT a hardcoded slug. Override with `make docs-chain-e2e TVASHTR_DOCS_CHAIN_MODEL=<slug>`.
 TVASHTR_DOCS_CHAIN_MODEL ?= $(TVASHTR_AGENT_MODEL)
 TVASHTR_PR_E2E_MODEL ?= $(TVASHTR_AGENT_MODEL)
+# M-h2a: the Fly live gate's agent model. Defaults to the configured .env TVASHTR_AGENT_MODEL via
+# the `include .env` above — a POSTURE is pinned inline in the recipe (TVASHTR_AGENT_SANDBOX=fly),
+# never a model slug.
+TVASHTR_PR_FLY_E2E_MODEL ?= $(TVASHTR_AGENT_MODEL)
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check reaper-check memory-smoke memory-distill-gate memory-review-gate memory-shelf-e2e brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e docs-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e node-ask-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e scope-picker-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e endpoint-edit-e2e skills-e2e tools-e2e memory-injection-check github-app-e2e github-pr-e2e seed lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check reaper-check memory-smoke memory-distill-gate memory-review-gate memory-shelf-e2e brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e docs-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e node-ask-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e scope-picker-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e endpoint-edit-e2e skills-e2e tools-e2e memory-injection-check github-app-e2e github-pr-e2e github-pr-fly-e2e fly-probe seed lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -180,6 +184,12 @@ github-app-e2e: ## M-h1a LIVE gate: mint the app JWT -> a 1h installation token 
 
 github-pr-e2e: ## M-h1b LIVE gate: a HOSTED run clones a REAL GitHub repo (lazyxgenius/trade_mcp) on the CONFIGURED .env model (deepseek/deepseek-chat; override `make github-pr-e2e TVASHTR_PR_E2E_MODEL=<slug>`), LOCAL sandbox + forced reviewer-approve, and opens a REAL Pull Request (operator consented) -> asserts repo_path is the clone, github_repo/subpath, run.status=completed, a terminal workflow, and a non-empty pr_url (echoed). Run `make seed` first. Skips cleanly without GITHUB_APP_* or the model's provider key. NO docker, NO browser. NOT in `make test`.
 	cd backend && TVASHTR_HOSTED_MODE=true TVASHTR_AGENT_SANDBOX=local TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FORCE_REVISIONS=0 TVASHTR_AGENT_MODEL=$(TVASHTR_PR_E2E_MODEL) uv run python ../scripts/github_pr_e2e_check.py
+
+fly-probe: ## M-h2a Task A probe: boot ONE Fly microVM and drive >=2 SEQUENTIAL per-node conversations against its single agent server, each in its own /workspace/<node_id> -> proves the D1 (one machine per RUN) + D4 (one working dir per NODE) shape. Tears the machine down in a `finally`. Skips cleanly without TVASHTR_FLY_API_TOKEN or the model's provider key. Needs an ACTIVE WireGuard tunnel. NOT in `make test`.
+	cd backend && uv run python ../scripts/fly_sequential_probe.py
+
+github-pr-fly-e2e: ## M-h2a LIVE gate: a HOSTED run whose agent runs INSIDE a real Fly Firecracker microVM (TVASHTR_AGENT_SANDBOX=fly, one machine per run, on the owner's private network behind a one-way Flycast door + a fresh-per-run X-Session-API-Key) clones lazyxgenius/trade_mcp and opens a REAL PR (operator consented) -> asserts run.status=completed, a terminal workflow, a non-empty pr_url, the machine private_ip NOT on the default network (the fence, read off the address), an UNKEYED request rejected 401/403, and the tv-run-<run_id> app DELETED after; MEASURES image pull size + cold-boot seconds + peak guest memory. Run `make seed` first. Skips cleanly without TVASHTR_FLY_API_TOKEN / GITHUB_APP_* / the model's provider key. Needs an ACTIVE WireGuard tunnel. Spends real money. NOT in `make test`.
+	cd backend && TVASHTR_HOSTED_MODE=true TVASHTR_AGENT_SANDBOX=fly TVASHTR_AUTO_APPROVE_GATES=1 TVASHTR_FORCE_REVISIONS=0 TVASHTR_AGENT_MODEL=$(TVASHTR_PR_FLY_E2E_MODEL) uv run python ../scripts/github_pr_fly_e2e_check.py
 
 capability-edit-e2e: ## Live P1.8c capability-authoring E2E: "+ New team" from the thinker_chain template, click the Architect node, flip the Capability toggle thinker→worker, Save, and assert the flip PERSISTED (kind=agent/engine=openhands), the canvas RE-LABELS it as a Worker, and the PM (start node) toggle is LOCKED. Vite dev server + headless Playwright; needs NVIDIA_BUILD_API_KEY, skips otherwise.
 	./scripts/capability_edit_e2e.sh
