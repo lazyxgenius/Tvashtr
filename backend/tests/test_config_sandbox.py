@@ -69,7 +69,9 @@ def test_agent_sandbox_accepts_fly(monkeypatch):
 def test_fly_knob_defaults(monkeypatch):
     _fly_clean(monkeypatch)
     s = Settings(_env_file=None)
-    assert s.fly_api_token == ""  # unconfigured install ⇒ the live gate skips cleanly
+    # SecretStr: unwrap to assert. The "unconfigured" signal is the PLAINTEXT being "" — which is
+    # what the live gate's skip keys off.
+    assert s.fly_api_token.get_secret_value() == ""
     assert s.fly_org == "personal"
     assert s.fly_region == "bom"
     assert s.fly_guest_cpus == 1
@@ -95,7 +97,7 @@ def test_fly_knob_env_overrides(monkeypatch):
     monkeypatch.setenv("TVASHTR_FLY_GUEST_CPUS", "4")
     monkeypatch.setenv("TVASHTR_FLY_GUEST_MEMORY_MB", "8192")
     s = Settings(_env_file=None)
-    assert s.fly_api_token == "tok-123"
+    assert s.fly_api_token.get_secret_value() == "tok-123"
     assert s.fly_org == "some-org"
     assert s.fly_region == "iad"
     assert s.fly_agent_image == "ghcr.io/example/slim:1"  # the slim-image cost lever

@@ -62,7 +62,10 @@ def mint_virtual_key(*, max_budget: float | None, duration: str) -> dict:
     Raises if the master key is unset: a proxy-ON run with no master key is already broken
     (the agent would 401), so fail loudly rather than mint nothing and run unbudgeted.
     """
-    master_key = get_settings().litellm_master_key
+    # ``litellm_master_key`` is an optional SecretStr: unwrap AFTER the None check, then test the
+    # PLAINTEXT for emptiness — the same "" the raw str field used to carry.
+    configured = get_settings().litellm_master_key
+    master_key = configured.get_secret_value() if configured else ""
     if not master_key:
         raise RuntimeError(
             "LITELLM_MASTER_KEY is not set — cannot mint a per-run proxy virtual key. "
@@ -82,7 +85,8 @@ def delete_virtual_key(key: str) -> None:
     correctness dependency (deleting an already-expired/absent key 404s — swallowed). A
     missing master key or empty key is a clean no-op.
     """
-    master_key = get_settings().litellm_master_key
+    configured = get_settings().litellm_master_key
+    master_key = configured.get_secret_value() if configured else ""
     if not master_key or not key:
         return
     try:

@@ -32,7 +32,7 @@ def _fernet() -> Fernet:
     env-configured ``TVASHTR_SECRET_KEY`` is honored and tests can point at a different key. The key
     must be a 44-char urlsafe-base64 ``Fernet.generate_key()`` value (the dev default is; PROD
     overrides with its own)."""
-    return Fernet(get_settings().secret_key.encode("utf-8"))
+    return Fernet(get_settings().secret_key.get_secret_value().encode("utf-8"))
 
 
 def encrypt_secret(plaintext: str) -> str:

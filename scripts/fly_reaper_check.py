@@ -82,7 +82,7 @@ def main() -> int:
     parked_app = app_name_for_run(parked_run)
 
     fly = FlyMachines(
-        token=settings.fly_api_token,
+        token=settings.fly_api_token.get_secret_value(),
         org=settings.fly_org,
         region=settings.fly_region,
         image=settings.fly_agent_image,

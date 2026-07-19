@@ -7,6 +7,7 @@ Pure (no DB): a round-trip recovers the plaintext, ciphertext is not the plainte
 
 import pytest
 from cryptography.fernet import Fernet, InvalidToken
+from pydantic import SecretStr
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane.credentials import decrypt_secret, encrypt_secret
@@ -35,7 +36,9 @@ def test_wrong_key_cannot_decrypt(monkeypatch):
     token = encrypt_secret("top-secret-key")
     other_key = Fernet.generate_key().decode()
     # Point the helper at a different secret key (settings are cached → patch the cached instance).
-    monkeypatch.setattr(get_settings(), "secret_key", other_key)
+    # Wrapped: the field is a SecretStr, and assignment does NOT coerce (no validate_assignment),
+    # so a bare str here would leave the helper calling .get_secret_value() on a plain string.
+    monkeypatch.setattr(get_settings(), "secret_key", SecretStr(other_key))
     with pytest.raises(InvalidToken):
         decrypt_secret(token)
 
@@ -43,4 +46,4 @@ def test_wrong_key_cannot_decrypt(monkeypatch):
 def test_default_secret_key_is_a_valid_fernet_key():
     """The hardcoded dev default must be a usable Fernet key (so the offline suite + local dev work
     with no extra env)."""
-    Fernet(get_settings().secret_key.encode("utf-8"))  # raises if malformed
+    Fernet(get_settings().secret_key.get_secret_value().encode("utf-8"))  # raises if malformed

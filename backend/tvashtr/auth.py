@@ -59,7 +59,9 @@ def verify_password(password: str, password_hash: str) -> bool:
 def _serializer() -> URLSafeTimedSerializer:
     # Read the secret at call time (not import time) so the env-configured secret is honored and
     # tests can point at a different secret if needed.
-    return URLSafeTimedSerializer(get_settings().session_secret, salt=_COOKIE_SALT)
+    return URLSafeTimedSerializer(
+        get_settings().session_secret.get_secret_value(), salt=_COOKIE_SALT
+    )
 
 
 def make_session_cookie_value(user_id: str) -> str:

@@ -81,7 +81,7 @@ if app_name:
     from tvashtr.config import get_settings
     from tvashtr.engines.fly_machines import FlyMachines
     s = get_settings()
-    fly = FlyMachines(token=s.fly_api_token, org=s.fly_org, image=s.fly_agent_image)
+    fly = FlyMachines(token=s.fly_api_token.get_secret_value(), org=s.fly_org, image=s.fly_agent_image)
     try:
         if fly.app_exists(app_name):
             fly.delete_app(app_name)

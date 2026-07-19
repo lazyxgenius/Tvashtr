@@ -122,7 +122,10 @@ def _fly_client():
 
     s = get_settings()
     return FlyMachines(
-        token=s.fly_api_token, org=s.fly_org, region=s.fly_region, image=s.fly_agent_image
+        token=s.fly_api_token.get_secret_value(),
+        org=s.fly_org,
+        region=s.fly_region,
+        image=s.fly_agent_image,
     )
 
 

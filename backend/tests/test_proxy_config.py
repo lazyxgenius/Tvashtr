@@ -151,7 +151,7 @@ def test_routing_on_gemini_ignores_provider_key_and_uses_proxy(monkeypatch):
 def test_litellm_master_key_from_env(monkeypatch):
     monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-from-env")
     s = Settings(_env_file=None)
-    assert s.litellm_master_key == "sk-from-env"
+    assert s.litellm_master_key.get_secret_value() == "sk-from-env"
 
 
 def test_litellm_proxy_enabled_from_env(monkeypatch):

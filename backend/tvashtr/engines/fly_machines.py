@@ -188,7 +188,7 @@ def derive_session_key(run_id: object, secret: str | None = None) -> str:
     if secret is None:
         from tvashtr.config import get_settings
 
-        secret = get_settings().fly_session_secret
+        secret = get_settings().fly_session_secret.get_secret_value()
     digest = hmac.new(secret.encode("utf-8"), str(run_id).encode("utf-8"), hashlib.sha256).digest()
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 

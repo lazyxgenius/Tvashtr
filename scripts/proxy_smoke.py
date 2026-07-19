@@ -120,14 +120,18 @@ def completion_phase(settings) -> bool | None:
         return None
     # No silent fallback: present exactly what a real agent run would (settings.litellm_master_key).
     # If it's unset, a real run would 401 too — so skip honestly rather than mask it.
-    if not settings.litellm_master_key:
+    # ``litellm_master_key`` is an optional SecretStr — unwrap once, then both the skip-guard and
+    # the call below work on the plaintext (litellm would otherwise stringify the SecretStr into
+    # the auth header as the literal "**********" and 401).
+    configured = settings.litellm_master_key
+    master_key = configured.get_secret_value() if configured else ""
+    if not master_key:
         print(
             "\n[proxy-smoke] (3) SKIP — LITELLM_MASTER_KEY not set. A real proxy-enabled agent "
             "run would present api_key=None and 401 at the proxy; set LITELLM_MASTER_KEY "
             "(matching the proxy's key) to exercise a completion."
         )
         return None
-    master_key = settings.litellm_master_key
     base_url = settings.agent_llm_base_url("local")
     model = f"litellm_proxy/{settings.default_model}"
 

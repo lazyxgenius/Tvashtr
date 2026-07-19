@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import select
 
 from tvashtr.config import get_settings
@@ -59,9 +60,9 @@ def _configure_hosted(monkeypatch, *, slug: str = "") -> None:
     s = get_settings()
     monkeypatch.setattr(s, "hosted_mode", True)
     monkeypatch.setattr(s, "github_app_id", "424242")
-    monkeypatch.setattr(s, "github_app_private_key_b64", _KEY_B64)
+    monkeypatch.setattr(s, "github_app_private_key_b64", SecretStr(_KEY_B64))
     monkeypatch.setattr(s, "github_app_client_id", "Iv1.testclientid")
-    monkeypatch.setattr(s, "github_app_client_secret", CLIENT_SECRET_SENTINEL)
+    monkeypatch.setattr(s, "github_app_client_secret", SecretStr(CLIENT_SECRET_SENTINEL))
     monkeypatch.setattr(s, "github_app_slug", slug)
     github_app._installation_token_cache.clear()
 

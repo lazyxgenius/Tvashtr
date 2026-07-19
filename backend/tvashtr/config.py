@@ -5,7 +5,7 @@ from decimal import Decimal
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # P1.5c capstone idea (env-overridable via ``TVASHTR_TASK_IDEA``). The real, non-trivial
@@ -47,6 +47,25 @@ TASK_LIST_IDEA = os.environ.get(
 )
 
 
+# EVERY secret-bearing field below is typed ``SecretStr``, never plain ``str``. This is not
+# decoration: a pytest traceback once rendered a frame holding a ``Settings`` instance and dumped
+# the Fly API token, the GitHub App client secret and its private key into a transcript (all had to
+# be rotated). ``make test`` does ``include .env`` + ``export``, so the operator's REAL credentials
+# are ambient in the suite — any repr of this object is a live disclosure risk. ``SecretStr`` reprs
+# as ``**********``, which makes non-leakage the DEFAULT rather than a thing every future call site
+# has to remember.
+#
+# The contract for call sites:
+#   * read the plaintext with ``.get_secret_value()`` AT THE POINT OF USE — never hoist it into a
+#     long-lived local, an f-string, or anything that might get logged;
+#   * "is it configured?" guards unwrap FIRST and test the plaintext. As of pydantic 2.13 a
+#     ``SecretStr`` defines ``__len__`` and no ``__bool__``, so ``SecretStr("")`` happens to be
+#     FALSY and a bare guard would work by accident — but that is an implementation detail of the
+#     library, not a promise, and reading it off the plaintext says what is actually meant;
+#   * defaults are written ``SecretStr("...")`` rather than a bare string because pydantic does NOT
+#     validate an unset field's default — a raw-str default would stay a plain ``str`` and every
+#     ``.get_secret_value()`` would ``AttributeError`` on exactly the unconfigured installs.
+# ``tests/test_config_secret_hardening.py`` pins all three properties.
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # When run from backend/ the repo-root .env is one level up; env vars
@@ -211,9 +230,10 @@ class Settings(BaseSettings):
     # The org-scoped Fly API token. Empty default so an UNCONFIGURED install leaves it blank and the
     # live ``github-pr-fly-e2e`` gate SKIPS cleanly (mirrors the GITHUB_APP_* pattern). It is a
     # SECRET: never logged, never persisted, never serialized into a response — see
-    # ``engines/fly_machines.py``'s scrubbing.
-    fly_api_token: str = Field(
-        default="",
+    # ``engines/fly_machines.py``'s scrubbing. ``SecretStr`` (see the note on the secret fields
+    # below) makes that structural: read it with ``.get_secret_value()``.
+    fly_api_token: SecretStr = Field(
+        default=SecretStr(""),
         validation_alias=AliasChoices("TVASHTR_FLY_API_TOKEN", "fly_api_token"),
     )
     # The Fly org the per-run apps are created in. ``personal`` is the operator's real org SLUG (the
@@ -283,8 +303,8 @@ class Settings(BaseSettings):
     # — rotating it while runs are parked at a gate strands those sandboxes behind a key nobody can
     # re-derive (they fail closed, never silently mis-address). Distinct from ``session_secret`` and
     # ``secret_key``: a leak of one does not compromise the others.
-    fly_session_secret: str = Field(
-        default="dev-insecure-fly-session-secret-change-me",
+    fly_session_secret: SecretStr = Field(
+        default=SecretStr("dev-insecure-fly-session-secret-change-me"),
         validation_alias=AliasChoices("TVASHTR_FLY_SESSION_SECRET", "fly_session_secret"),
     )
 
@@ -352,16 +372,17 @@ class Settings(BaseSettings):
     litellm_proxy_host_local: str = "127.0.0.1"
     litellm_proxy_host_docker: str = "host.docker.internal"
     # The proxy master key (env ``LITELLM_MASTER_KEY``); the agent presents it as its
-    # api_key when the proxy is on. ``None`` when unset (proxy off / not configured).
-    litellm_master_key: str | None = None
+    # api_key when the proxy is on. ``None`` when unset (proxy off / not configured) — the
+    # OPTIONAL secret, so call sites must handle ``None`` *before* ``.get_secret_value()``.
+    litellm_master_key: SecretStr | None = None
 
     # M-accounts Slice A: the secret that signs the ``tv_session`` login cookie (itsdangerous,
     # see ``auth.py``). A dev default keeps the offline suite + local dev working with no extra
     # env; PRODUCTION MUST override ``TVASHTR_SESSION_SECRET`` with a real random secret (and the
     # cookie must be marked ``Secure`` over https). Distinct from ``secret_key`` below (which
     # encrypts BYOK provider keys) — a leak of one does not compromise the other.
-    session_secret: str = Field(
-        default="dev-insecure-session-secret-change-me",
+    session_secret: SecretStr = Field(
+        default=SecretStr("dev-insecure-session-secret-change-me"),
         validation_alias=AliasChoices("TVASHTR_SESSION_SECRET", "session_secret"),
     )
 
@@ -373,8 +394,8 @@ class Settings(BaseSettings):
     # SAME key, so rotating it strands every saved credential (re-enter them after a rotation).
     # Distinct from ``session_secret`` (which only signs the login cookie); a leak of one does not
     # compromise the other.
-    secret_key: str = Field(
-        default="TzxdlCpD6FYWPsjw6h7e3sYQw6EvjI-cmvJI2KQE7ho=",
+    secret_key: SecretStr = Field(
+        default=SecretStr("TzxdlCpD6FYWPsjw6h7e3sYQw6EvjI-cmvJI2KQE7ho="),
         validation_alias=AliasChoices("TVASHTR_SECRET_KEY", "secret_key"),
     )
 
@@ -409,12 +430,12 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("GITHUB_APP_SLUG", "github_app_slug"),
     )
-    github_app_client_secret: str = Field(
-        default="",
+    github_app_client_secret: SecretStr = Field(
+        default=SecretStr(""),
         validation_alias=AliasChoices("GITHUB_APP_CLIENT_SECRET", "github_app_client_secret"),
     )
-    github_app_private_key_b64: str = Field(
-        default="",
+    github_app_private_key_b64: SecretStr = Field(
+        default=SecretStr(""),
         validation_alias=AliasChoices("GITHUB_APP_PRIVATE_KEY_B64", "github_app_private_key_b64"),
     )
     # M-h1b (HOSTED mode): the origin the GitHub sign-in callback bounces back to after it issues
@@ -520,9 +541,13 @@ def agent_llm_routing(
     both adapters share one verified decision (kept here, openhands-free, so it is unit-
     testable without spinning an agent and the import boundary is untouched)."""
     if settings.litellm_proxy_enabled:
+        master = settings.litellm_master_key
         return {
             "model": f"litellm_proxy/{model}",
-            "api_key": api_key_override or settings.litellm_master_key,
+            # Unwrapped AT THE USE: the LLM client needs the raw key. ``master_key`` is the
+            # OPTIONAL secret, so ``None`` (unset) has to survive as ``None`` — the caller's
+            # ``or`` still falls back to it exactly as before.
+            "api_key": api_key_override or (master.get_secret_value() if master else None),
             "base_url": settings.agent_llm_base_url(sandbox_mode),
         }
     if api_key_override is None:

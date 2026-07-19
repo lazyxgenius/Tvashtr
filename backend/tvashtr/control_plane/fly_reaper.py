@@ -97,7 +97,12 @@ def sweep_orphaned_fly_apps() -> int:
     settings = get_settings()
     if settings.agent_sandbox_mode != "fly":
         return 0
-    if not settings.fly_api_token:
+    # Unwrapped BEFORE the guard so "unconfigured" is read off the plaintext. (``SecretStr("")``
+    # is in fact falsy under pydantic 2.13 — it has ``__len__`` and no ``__bool__`` — so a bare
+    # check would also work today; this does not lean on that.) The unwrapped token is then the
+    # one thing passed to FlyMachines, which needs the real str for its Bearer header.
+    fly_token = settings.fly_api_token.get_secret_value()
+    if not fly_token:
         logger.info("fly reaper: no API token configured; skipping sweep")
         return 0
 
@@ -105,7 +110,7 @@ def sweep_orphaned_fly_apps() -> int:
     reaped = 0
     try:
         fly = FlyMachines(
-            token=settings.fly_api_token,
+            token=fly_token,
             org=settings.fly_org,
             region=settings.fly_region,
             image=settings.fly_agent_image,

@@ -115,7 +115,7 @@ def main() -> int:
     settings = get_settings()
     run_id = str(uuid.uuid4())
     owner_id = str(uuid.uuid4())
-    session_key = derive_session_key(run_id, settings.fly_session_secret)
+    session_key = derive_session_key(run_id, settings.fly_session_secret.get_secret_value())
     image = settings.fly_agent_image
     app_name = app_name_for_run(run_id)
 

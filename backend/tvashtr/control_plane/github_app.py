@@ -72,7 +72,10 @@ def _load_private_key() -> str:
     """Decode the base64 PKCS#1 PEM (``GITHUB_APP_PRIVATE_KEY_B64``) into the PEM text PyJWT reads
     with RS256 (via cryptography). Never echoes the key material — a decode failure raises a generic
     ``GithubAppError``."""
-    b64 = _require(get_settings().github_app_private_key_b64, "GITHUB_APP_PRIVATE_KEY_B64")
+    b64 = _require(
+        get_settings().github_app_private_key_b64.get_secret_value(),
+        "GITHUB_APP_PRIVATE_KEY_B64",
+    )
     try:
         pem = base64.b64decode(b64).decode("utf-8")
     except Exception:
@@ -200,7 +203,9 @@ def exchange_code_for_user_token(code: str) -> str:
     settings = get_settings()
     body = {
         "client_id": _require(settings.github_app_client_id, "GITHUB_APP_CLIENT_ID"),
-        "client_secret": _require(settings.github_app_client_secret, "GITHUB_APP_CLIENT_SECRET"),
+        "client_secret": _require(
+            settings.github_app_client_secret.get_secret_value(), "GITHUB_APP_CLIENT_SECRET"
+        ),
         "code": code,
     }
     result = _http(

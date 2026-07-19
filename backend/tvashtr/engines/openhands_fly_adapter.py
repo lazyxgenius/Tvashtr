@@ -242,7 +242,7 @@ def _new_fly_client() -> FlyMachines:
     with a half-built sandbox already billing."""
     settings = get_settings()
     return FlyMachines(
-        token=settings.fly_api_token,
+        token=settings.fly_api_token.get_secret_value(),
         org=settings.fly_org,
         region=settings.fly_region,
         image=settings.fly_agent_image,
@@ -288,7 +288,7 @@ def _ensure_run_sandbox(run_id: str) -> tuple["_FlyRunSandbox", bool]:
     settings = get_settings()
     # D2b + M-h2b: DERIVED, not minted — the same key is re-cut by any process that knows the
     # run_id and the secret, which is exactly what makes the reconstruct arm above possible.
-    session_api_key = derive_session_key(run_id, settings.fly_session_secret)
+    session_api_key = derive_session_key(run_id, settings.fly_session_secret.get_secret_value())
     fly = _new_fly_client()
     app_name = app_name_for_run(run_id)
 

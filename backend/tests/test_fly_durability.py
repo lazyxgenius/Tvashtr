@@ -24,6 +24,7 @@ import httpx
 import pytest
 from conftest import auth_user_id
 from dbos import DBOS, SetWorkflowID
+from pydantic import SecretStr
 from sqlalchemy import select
 
 from tvashtr.control_plane import fly_reaper
@@ -91,7 +92,9 @@ def test_reconstruction_re_derives_the_key_without_reading_it_from_anywhere():
 
     from tvashtr.config import get_settings
 
-    assert sandbox.session_api_key == derive_session_key(RUN_ID, get_settings().fly_session_secret)
+    assert sandbox.session_api_key == derive_session_key(
+        RUN_ID, get_settings().fly_session_secret.get_secret_value()
+    )
 
 
 def test_reconstruction_resumes_a_suspended_machine():
@@ -368,7 +371,9 @@ def _sweep_with(app_names: list[str], live_ids: set[str]) -> MagicMock:
     fly = _reaper_fly(app_names)
     settings = MagicMock(
         agent_sandbox_mode="fly",
-        fly_api_token="fake-token",
+        # SecretStr, matching the real Settings field — the reaper unwraps it, so a bare str here
+        # would make this fake diverge from the object it stands in for.
+        fly_api_token=SecretStr("fake-token"),
         fly_org="personal",
         fly_region="bom",
         fly_agent_image="img",
@@ -415,7 +420,9 @@ def test_one_stubborn_app_does_not_abort_the_rest_of_the_sweep():
     fly.delete_app.side_effect = [FlyApiError("HTTP 500"), None]
     settings = MagicMock(
         agent_sandbox_mode="fly",
-        fly_api_token="fake-token",
+        # SecretStr, matching the real Settings field — the reaper unwraps it, so a bare str here
+        # would make this fake diverge from the object it stands in for.
+        fly_api_token=SecretStr("fake-token"),
         fly_org="personal",
         fly_region="bom",
         fly_agent_image="img",
@@ -435,7 +442,9 @@ def test_the_sweep_never_raises_when_the_fly_api_is_down():
     backend down over a cost optimization."""
     settings = MagicMock(
         agent_sandbox_mode="fly",
-        fly_api_token="fake-token",
+        # SecretStr, matching the real Settings field — the reaper unwraps it, so a bare str here
+        # would make this fake diverge from the object it stands in for.
+        fly_api_token=SecretStr("fake-token"),
         fly_org="personal",
         fly_region="bom",
         fly_agent_image="img",
@@ -462,7 +471,8 @@ def test_the_sweep_is_inert_without_a_token():
     with patch.object(
         fly_reaper,
         "get_settings",
-        return_value=MagicMock(agent_sandbox_mode="fly", fly_api_token=""),
+        # An EMPTY SecretStr — the unconfigured install, which must still skip the sweep.
+        return_value=MagicMock(agent_sandbox_mode="fly", fly_api_token=SecretStr("")),
     ):
         assert fly_reaper.sweep_orphaned_fly_apps() == 0
 
@@ -531,7 +541,7 @@ def test_the_derived_key_is_never_written_to_the_run_row(client):
     run_id = _make_over_budget_run()
     from tvashtr.config import get_settings
 
-    key = derive_session_key(run_id, get_settings().fly_session_secret)
+    key = derive_session_key(run_id, get_settings().fly_session_secret.get_secret_value())
     with session_scope() as session:
         run = session.execute(select(Run).where(Run.workflow_id == run_id)).scalar_one()
         serialized = repr({c.name: getattr(run, c.name) for c in Run.__table__.columns})

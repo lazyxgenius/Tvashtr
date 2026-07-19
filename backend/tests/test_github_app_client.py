@@ -14,6 +14,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from pydantic import SecretStr
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane import github_app
@@ -50,9 +51,11 @@ def gh(monkeypatch):
     """Configure the shared Settings with a real key + app id and reset the token cache."""
     s = get_settings()
     monkeypatch.setattr(s, "github_app_id", _APP_ID)
-    monkeypatch.setattr(s, "github_app_private_key_b64", _KEY_B64)
+    # The two SECRET fields are SecretStr and assignment does not coerce — wrap them, or the
+    # production ``.get_secret_value()`` read hits a plain str.
+    monkeypatch.setattr(s, "github_app_private_key_b64", SecretStr(_KEY_B64))
     monkeypatch.setattr(s, "github_app_client_id", "Iv1.testclientid")
-    monkeypatch.setattr(s, "github_app_client_secret", "test-client-secret")
+    monkeypatch.setattr(s, "github_app_client_secret", SecretStr("test-client-secret"))
     monkeypatch.setattr(s, "github_app_slug", "")
     github_app._installation_token_cache.clear()
     yield s
@@ -81,7 +84,7 @@ def test_bad_private_key_raises_without_echoing_the_value(monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, "github_app_id", _APP_ID)
     not_a_pem = base64.b64encode(b"this-is-secret-key-material-not-a-pem").decode()
-    monkeypatch.setattr(s, "github_app_private_key_b64", not_a_pem)
+    monkeypatch.setattr(s, "github_app_private_key_b64", SecretStr(not_a_pem))
     with pytest.raises(github_app.GithubAppError) as exc:
         github_app.mint_app_jwt()
     assert not_a_pem not in str(exc.value)  # the (secret) value never appears in the message

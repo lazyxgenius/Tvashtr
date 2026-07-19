@@ -321,7 +321,9 @@ def main() -> int:
     from tvashtr.engines.fly_machines import FlyMachines
 
     fly = FlyMachines(
-        token=settings.fly_api_token, org=settings.fly_org, image=settings.fly_agent_image
+        token=settings.fly_api_token.get_secret_value(),
+        org=settings.fly_org,
+        image=settings.fly_agent_image,
     )
     try:
         app_still_exists = fly.app_exists(app_name) if app_name else None
