@@ -129,7 +129,9 @@ def main() -> int:
             live_survived = (live_dir / ".git" / "config").exists()
             collateral = [n for n in pre_existing if not (CLONE_ROOT / n).exists()]
 
-            print(f"[clone-gc] terminal-run clone REAPED  : {terminal_gone}   ({terminal_dir.name})")
+            print(
+                f"[clone-gc] terminal-run clone REAPED  : {terminal_gone}   ({terminal_dir.name})"
+            )
             print(f"[clone-gc] parked-run clone SURVIVED  : {live_survived}   ({live_dir.name})")
             print(f"[clone-gc] pre-existing dirs removed  : {collateral or 'none'}")
             if collateral:
