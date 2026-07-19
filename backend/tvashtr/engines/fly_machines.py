@@ -59,6 +59,7 @@ import hmac
 import logging
 import re
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import httpx
@@ -82,6 +83,42 @@ _APP_PREFIX = "tv-run-"
 _MAX_APP_NAME = 63  # Fly's limit
 _INVALID_CHARS = re.compile(r"[^a-z0-9-]+")
 _RUNS_OF_DASHES = re.compile(r"-{2,}")
+
+# --- M-h3: the EGRESS fence -----------------------------------------------------------------
+# The per-run network policy's name. One policy per app, so a fixed name is fine and makes the
+# thing greppable in Fly's own UI.
+EGRESS_POLICY_NAME = "tv-egress"
+# 443 = the LLM provider, dialed DIRECTLY (hosted runs are BYOK with the LiteLLM proxy OFF, so
+# there is no local hop to relax this to). 80 = plain-HTTP package/index redirects. 53 = DNS,
+# without which every hostname — including the provider's — is unreachable.
+DEFAULT_EGRESS_PORTS: tuple[int, ...] = (443, 80, 53)
+# DNS is UDP first, TCP only for oversized answers. The allowlist is a flat list of ports, so this
+# is the one port that must also be emitted with the udp protocol.
+_DNS_PORT = 53
+
+
+def parse_egress_ports(raw: str) -> tuple[int, ...]:
+    """Parse the ``fly_egress_allowed_ports`` config string (``"443,80,53"``) into ports.
+
+    Deliberately STRICT about junk and tolerant about whitespace/empties: a typo in a firewall
+    allowlist must fail loudly at client-construction time, because the alternative — silently
+    dropping the port someone meant to allow — surfaces much later as an inexplicable network
+    failure inside a microVM nobody can shell into. An entirely empty string is a legitimate
+    "no ports" answer and returns ``()``; see :meth:`FlyMachines.create_egress_policy` for why
+    that then refuses to post rather than shipping a brick."""
+    ports: list[int] = []
+    for field in raw.split(","):
+        field = field.strip()
+        if not field:
+            continue
+        try:
+            port = int(field)
+        except ValueError:
+            raise ValueError(f"egress port {field!r} is not an integer") from None
+        if not 1 <= port <= 65535:
+            raise ValueError(f"egress port {port} is outside the port space")
+        ports.append(port)
+    return tuple(ports)
 
 
 class FlyApiError(RuntimeError):
@@ -212,6 +249,7 @@ class FlyMachines:
         image: str,
         guest_cpus: int = 1,
         guest_memory_mb: int = 2048,
+        egress_ports: Sequence[int] = DEFAULT_EGRESS_PORTS,
         client: httpx.Client | None = None,
         timeout: float = 60.0,
     ) -> None:
@@ -223,6 +261,10 @@ class FlyMachines:
         self.image = image
         self.guest_cpus = guest_cpus
         self.guest_memory_mb = guest_memory_mb
+        # M-h3: the egress allowlist arrives as ints, already parsed. Config is read in ONE place
+        # (``openhands_fly_adapter._new_fly_client``), which is what keeps this module free of the
+        # app's config layer exactly as it is free of ``openhands``.
+        self.egress_ports = tuple(egress_ports)
         self._owns_client = client is None
         self._client = client or httpx.Client(timeout=timeout)
 
@@ -278,6 +320,84 @@ class FlyMachines:
             json={"app_name": app_name, "org_slug": self.org, "network": network},
         )
         logger.info("fly: created app %s on network %s", app_name, network)
+
+    def egress_policy_body(self) -> dict:
+        """The network-policy payload. Split out from the POST so a unit test can pin the exact
+        shape — and the shape matters more here than anywhere else in this module, because of one
+        inverted-by-default property of the feature:
+
+        **Creating a single egress rule flips the app to DENY-ALL egress.** Fly's words: "Once you
+        create a rule for a direction (ingress or egress), the default for that direction becomes
+        'deny all.'" There is no explicit deny to write — ``action`` only accepts ``allow`` — and
+        no "default" to configure; the allowlist below is not a hint, it *is* the firewall. Which
+        cuts both ways: forget ``udp/53`` and the guest cannot resolve a hostname; add a port "just
+        in case" and the fence is quietly wider than its docstring.
+
+        The flip is **PER-DIRECTION**, which is why this rule is safe to add: it defaults *egress*
+        to deny and leaves *ingress* entirely untouched, so nothing about how the backend reaches
+        the agent server changes. Belt and braces, Fly also exempts **Fly-Proxy traffic** outright
+        ("network policies … do not affect traffic routed through the Fly Proxy") — and Flycast is
+        Fly-Proxy-routed by construction. The D2 door and this fence compose rather than collide.
+
+        WHAT THIS HONESTLY IS NOT: Fly network policies are **port/protocol only — there is no
+        destination, CIDR or domain field**, so an allow rule opens that port to *every* host. This
+        cannot say "the provider yes, everyone else no"; it says "443 yes, 25 no". That is a real
+        reduction — no SMTP, no SSH, no arbitrary C2 port, no plain-text database port — but a
+        determined exfiltrator still has 443 to anywhere, and (because DNS needs udp/53 to an
+        arbitrary resolver) a DNS-tunnelling channel. Closing those needs an egress *proxy*, which
+        is a different mechanism and a different milestone. Claiming more than this from a
+        port-only firewall would be the actual security bug."""
+        if not self.egress_ports:
+            # An empty ``ports`` list would still flip the app to default-deny while permitting
+            # nothing — a machine that cannot even resolve DNS, failing in a way that looks like a
+            # broken image rather than a firewall. Refuse to build it.
+            raise ValueError(
+                "no egress ports configured: refusing to post a policy that denies everything "
+                "(set TVASHTR_FLY_EGRESS_ALLOWED_PORTS, e.g. '443,80,53')"
+            )
+        ports: list[dict] = [{"protocol": "tcp", "port": p} for p in self.egress_ports]
+        if _DNS_PORT in self.egress_ports:
+            ports.append({"protocol": "udp", "port": _DNS_PORT})
+        return {
+            "name": EGRESS_POLICY_NAME,
+            # ``all: true`` = every machine in this app. The app is per-RUN, so "all" is exactly
+            # "this run's one machine" — the policy inherits the app's blast radius for free and
+            # dies with it (``DELETE /v1/apps`` is total).
+            "selector": {"all": True},
+            "rules": [{"action": "allow", "direction": "egress", "ports": ports}],
+        }
+
+    def create_egress_policy(self, app_name: str) -> None:
+        """``POST /v1/apps/<app>/network_policies`` — raise the egress fence (M-h3).
+
+        THE ORDERING IS THE SECURITY PROPERTY: this is called after ``create_app`` and **before**
+        ``create_machine``, while the app has no machine at all. Two things follow. First, there is
+        no window — not even a sub-second one — in which a booted guest running agent-authored code
+        has unrestricted egress. Second, **no restart is needed**: Fly's own troubleshooting note
+        says "after creating or updating a policy, restart or redeploy the Machines for changes to
+        take effect", which is a real constraint for an app whose machines already exist — and
+        exactly the constraint this ordering sidesteps, because at this instant the app has no
+        machines to restart. The machine's very first packet is already fenced. (That the ordering
+        genuinely suffices is not taken on faith: ``fly-egress-check`` proves it live, by showing
+        the SAME port connecting with the policy absent and refused with it present.)
+
+        Fails CLOSED by design. If the policy cannot be created the exception propagates into
+        :meth:`start_run_sandbox`'s ``except``, which deletes the app — no sandbox at all beats an
+        unfenced one, and an unfenced one would boot silently, looking exactly like a healthy run.
+        """
+        body = self.egress_policy_body()
+        self._request(
+            "POST",
+            f"{FLY_MACHINES_API}/apps/{app_name}/network_policies",
+            op="create_egress_policy",
+            ok=(200, 201),
+            json=body,
+        )
+        logger.info(
+            "fly: egress policy on %s — DENY all except %s (+udp/53 for DNS)",
+            app_name,
+            ",".join(str(p) for p in self.egress_ports),
+        )
 
     def allocate_flycast(self, app_name: str) -> str:
         """Allocate the app's Flycast (private v6) address via GraphQL and return it.
@@ -603,6 +723,10 @@ class FlyMachines:
         started = time.monotonic()
         self.create_app(app_name, network)
         try:
+            # M-h3, FIRST inside the try and BEFORE the machine exists: raise the egress fence
+            # while there is nothing running to be unfenced, and let any failure fall into the
+            # teardown below rather than boot a machine that can dial anywhere.
+            self.create_egress_policy(app_name)
             address = self.allocate_flycast(app_name)
             machine_id, private_ip = self.create_machine(app_name, session_api_key, env)
             self.wait_started(app_name, machine_id, timeout_s=wait_timeout_s)

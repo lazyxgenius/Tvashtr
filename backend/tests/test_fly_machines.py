@@ -56,6 +56,13 @@ class FakeFly:
 
         if method == "POST" and path == "/v1/apps":
             return httpx.Response(201, json={})
+        if method == "POST" and path.endswith("/network_policies"):
+            # M-h3: ``start_run_sandbox`` now raises the egress fence between app-create and
+            # machine-create, so this fake has to answer it — mirroring the real API, which
+            # returns 201 with the new policy's ULID. The fence's OWN assertions (exact body,
+            # ordering, fail-closed) live in ``test_fly_egress.py``; here it is scripted only so
+            # the M-h2a composition tests keep testing what they were written to test.
+            return httpx.Response(201, json={"id": "01KXWNAG11DV1THSFSMFKT5XVR"})
         if method == "POST" and "api.fly.io" in request.url.host:
             return httpx.Response(
                 200,

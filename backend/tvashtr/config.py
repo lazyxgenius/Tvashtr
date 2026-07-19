@@ -288,6 +288,42 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("TVASHTR_FLY_SESSION_SECRET", "fly_session_secret"),
     )
 
+    # M-h3: the microVM's EGRESS allowlist — the ports a run's guest may dial OUT on. A comma-
+    # separated string rather than a list because it is an env knob first (``AliasChoices`` +
+    # ``.env``), parsed by ``engines.fly_machines.parse_egress_ports``.
+    #
+    # THE DEFAULT IS THE WHOLE SECURITY POSTURE, so each port is here on evidence, not on habit:
+    #   443 — the LLM provider, dialed DIRECTLY. Hosted runs are BYOK with the LiteLLM proxy OFF
+    #         (``agent_llm_routing(..., "fly", ...)`` returns the bare slug + the owner's key and
+    #         NO base_url), so there is no local hop through which this could be narrowed further.
+    #   80  — plain-HTTP redirects that package indexes and installers still emit.
+    #   53  — DNS. Emitted as udp/53 *and* tcp/53; without it every hostname is unreachable and
+    #         the run dies with a symptom that points nowhere near a firewall.
+    # Deliberately ABSENT: 22 (git-over-ssh is host-side — clone and push never happen in the
+    # guest), 25/465/587 (mail), and every database port. Fly network policies are port/protocol
+    # only — there is no host allowlist — so this cannot say "only the provider"; it says "only
+    # the ports a coding agent legitimately needs", which still removes SMTP, SSH, and every
+    # arbitrary C2 port from an environment that runs model-authored code.
+    #
+    # Setting it EMPTY does not mean "allow everything" — it makes the client refuse to post a
+    # policy at all (see ``create_egress_policy``), because one empty rule would still flip Fly to
+    # deny-all and brick the guest.
+    #
+    # THE DEBUGGING TRAP, measured rather than guessed: a denied port is **DROPPED, not refused**.
+    # A refused port fails in milliseconds with a clear ECONNREFUSED; a dropped one HANGS until the
+    # caller's own timeout (8.0s in every ``fly-egress-check`` reading). So the symptom of hitting
+    # this fence is not "connection refused" anywhere in a log — it is an agent that appears to
+    # freeze. If a hosted run stalls on a command with NO error text, check this allowlist against
+    # what that command dials before assuming the model wedged. The agent's own workload is what
+    # widens it: a repo whose test suite talks to, say, a websocket stream on :9443 will hang here,
+    # and the fix is to widen this knob deliberately — not to remove the fence.
+    fly_egress_allowed_ports: str = Field(
+        default="443,80,53",
+        validation_alias=AliasChoices(
+            "TVASHTR_FLY_EGRESS_ALLOWED_PORTS", "fly_egress_allowed_ports"
+        ),
+    )
+
     @model_validator(mode="after")
     def _fly_agent_image_falls_back_to_the_docker_image(self) -> "Settings":
         """An explicitly-blanked ``TVASHTR_FLY_AGENT_IMAGE=`` falls back to ``agent_server_image``.

@@ -64,6 +64,7 @@ from tvashtr.engines.fly_machines import (
     FlyRunMachine,
     app_name_for_run,
     derive_session_key,
+    parse_egress_ports,
 )
 
 # The engine-neutral event mapping + post-run usage read, shared with BOTH other adapters so the
@@ -233,7 +234,12 @@ def _resolve_owner_id(run_id: str | None) -> str:
 
 def _new_fly_client() -> FlyMachines:
     """One place that builds the Fly client from settings, so the boot, reconstruct and reap paths
-    can never drift apart on org/region/image/guest."""
+    can never drift apart on org/region/image/guest — or, since M-h3, on the EGRESS ALLOWLIST.
+
+    Parsing the ports HERE (rather than inside ``fly_machines``) is what keeps that module free of
+    the app's config layer, exactly as it is free of ``openhands``. A malformed knob therefore
+    fails at client construction — loudly, before any app exists — instead of at policy-post time
+    with a half-built sandbox already billing."""
     settings = get_settings()
     return FlyMachines(
         token=settings.fly_api_token,
@@ -242,6 +248,7 @@ def _new_fly_client() -> FlyMachines:
         image=settings.fly_agent_image,
         guest_cpus=settings.fly_guest_cpus,
         guest_memory_mb=settings.fly_guest_memory_mb,
+        egress_ports=parse_egress_ports(settings.fly_egress_allowed_ports),
     )
 
 
