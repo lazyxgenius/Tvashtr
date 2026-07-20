@@ -157,13 +157,19 @@ def test_build_install_url_is_oauth_authorize_primary(monkeypatch):
     installation AND prompts a first-timer to install, so a RETURNING user is actually signed in.
     The slug ``installations/new`` page only works once (GitHub then bounces an already-installed
     user to its settings and issues no ``code``), so it is NO LONGER the sign-in primary even when a
-    slug is set."""
+    slug is set.
+
+    M-h4 re-pointed the expected string: the URL now also carries an explicit, URL-encoded
+    ``redirect_uri`` naming THIS deployment's callback, because the App carries two registered
+    callbacks (local + deployed) and GitHub would otherwise choose between them itself. The
+    authorize-URL-is-primary decision this test exists to pin is unchanged."""
     s = get_settings()
     monkeypatch.setattr(s, "github_app_client_id", "Iv1.abc")
     monkeypatch.setattr(s, "github_app_slug", "tvashtr")  # slug set, but no longer wins for sign-in
-    assert (
-        github_app.build_install_url()
-        == "https://github.com/login/oauth/authorize?client_id=Iv1.abc"
+    monkeypatch.setattr(s, "public_base_url", "http://localhost:8000")
+    assert github_app.build_install_url() == (
+        "https://github.com/login/oauth/authorize?client_id=Iv1.abc"
+        "&redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Fapi%2Fauth%2Fgithub%2Fcallback"
     )
     monkeypatch.setattr(s, "github_app_client_id", "")
     assert github_app.build_install_url() == ""  # no client_id -> nothing to authorize

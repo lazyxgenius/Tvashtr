@@ -84,22 +84,35 @@ def read_session_cookie(value: str, max_age: int = SESSION_MAX_AGE_SECONDS) -> s
 def set_session_cookie(response: Response, user_id: str) -> None:
     """Attach the signed ``tv_session`` cookie to ``response``.
 
-    ``secure=False`` for local http dev. PRODUCTION over https MUST set ``secure=True`` (and supply
-    a real ``TVASHTR_SESSION_SECRET``); ``SameSite=lax`` already blocks cross-site sends."""
+    ``secure`` comes from config (M-h4): FALSE locally, because a browser will not store a Secure
+    cookie delivered over ``http://localhost``; TRUE in the deployed app, where TLS is real and the
+    flag stops the session from ever riding a plain-http request. ``SameSite=lax`` stays — the SPA
+    is served one-origin from this same backend, so the cookie is first-party and needs no
+    cross-site relaxation."""
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=make_session_cookie_value(user_id),
         max_age=SESSION_MAX_AGE_SECONDS,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=get_settings().cookie_secure,
         path="/",
     )
 
 
 def clear_session_cookie(response: Response) -> None:
-    """Expire the ``tv_session`` cookie (logout). Path/SameSite must match the set call to clear."""
-    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/", samesite="lax")
+    """Expire the ``tv_session`` cookie (logout).
+
+    EVERY attribute must match the ``set_session_cookie`` call above — path, samesite AND ``secure``
+    (M-h4). A browser matches the clearing ``Set-Cookie`` against the stored cookie's attributes, so
+    a non-Secure expiry leaves a Secure cookie sitting in the jar: logout would return 204 and the
+    user would still be signed in."""
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/",
+        samesite="lax",
+        secure=get_settings().cookie_secure,
+    )
 
 
 # ---- The current-user dependency + the auth router ----

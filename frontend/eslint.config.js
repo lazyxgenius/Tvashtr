@@ -16,8 +16,20 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    // Build output + vendored + generated reports — never linted.
-    ignores: ["dist", "node_modules", "coverage", "test-results", "playwright-report"],
+    // Build output + vendored + generated reports — never linted. The dot-directories are local
+    // agent/editor tooling scaffolding (gitignored, not application source, authored by those
+    // tools rather than by us); linting them fails the gate on files the project does not own.
+    ignores: [
+      "dist",
+      "node_modules",
+      "coverage",
+      "test-results",
+      "playwright-report",
+      ".opencode",
+      ".october",
+      ".claude",
+      ".grok",
+    ],
   },
 
   // Plain-JS recommended applies everywhere (incl. this config + prettier.config.js).

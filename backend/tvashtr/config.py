@@ -386,6 +386,24 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("TVASHTR_SESSION_SECRET", "session_secret"),
     )
 
+    # M-h4 (DEPLOY): mark the ``tv_session`` cookie ``Secure`` — the browser then refuses to send it
+    # over plain http at all, so a downgraded/intercepted request cannot carry a live session.
+    #
+    # The default is FALSE and must stay false, which is the opposite of this codebase's usual
+    # safety-by-default posture — deliberately. A browser will not STORE a Secure cookie delivered
+    # over ``http://localhost``, so defaulting this True would break local sign-in entirely (login
+    # returns 200, the cookie is silently dropped, every subsequent call 401s — a genuinely
+    # confusing failure). Production is the environment that knows it has TLS, so production is
+    # where it is turned on: fly.toml sets ``TVASHTR_COOKIE_SECURE=true``.
+    #
+    # ``auth.clear_session_cookie`` reads the SAME value: browsers only clear a cookie when the
+    # clearing ``Set-Cookie`` matches the stored one's attributes, so a Secure cookie needs a Secure
+    # expiry or logout silently does nothing.
+    cookie_secure: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("TVASHTR_COOKIE_SECURE", "cookie_secure"),
+    )
+
     # M-accounts Slice B: the Fernet key that encrypts BYOK provider keys at rest in
     # ``provider_credentials`` (see ``control_plane.credentials``). A real 44-char urlsafe-base64
     # ``Fernet.generate_key()`` value is hardcoded as the dev default so the offline suite + local
@@ -447,6 +465,38 @@ class Settings(BaseSettings):
     frontend_origin: str = Field(
         default="http://localhost:5173",
         validation_alias=AliasChoices("TVASHTR_FRONTEND_ORIGIN", "frontend_origin"),
+    )
+
+    # M-h4 (DEPLOY): this deployment's OWN public origin — the scheme+host a browser reaches the
+    # BACKEND at. Distinct from ``frontend_origin`` above: that says where to bounce the user AFTER
+    # sign-in, this says what address to tell GitHub to come BACK to. They are the same value in a
+    # one-origin deploy and deliberately different locally (Vite :5173 vs the API :8000), which is
+    # exactly why they stay two fields.
+    #
+    # It exists because the GitHub App now carries TWO registered callbacks —
+    # ``http://localhost:8000/api/auth/github/callback`` and
+    # ``https://tvashtr.fly.dev/api/auth/github/callback``. With no ``redirect_uri`` on the
+    # authorize URL, GitHub picks between them itself, so a local sign-in could land on the
+    # deployed app (or the reverse). ``github_app.build_install_url`` appends this, URL-encoded.
+    # The default is the LOCAL callback so http dev is unchanged; prod sets the .fly.dev origin in
+    # fly.toml's ``[env]``.
+    public_base_url: str = Field(
+        default="http://localhost:8000",
+        validation_alias=AliasChoices("TVASHTR_PUBLIC_BASE_URL", "public_base_url"),
+    )
+
+    # M-h4: where the BUILT frontend lives, for one-origin serving (``main.mount_frontend``). The
+    # default is the path the Dockerfile copies Vite's output to INSIDE the image; on a laptop that
+    # path does not exist, and a missing dist is a deliberate no-op (no mount, no catch-all), so a
+    # local backend keeps serving only ``/api`` + ``/health`` exactly as it did before M-h4 and
+    # local dev keeps using the Vite server on ``frontend_origin``.
+    #
+    # One-origin is not cosmetic: serving the SPA from the SAME origin as ``/api`` makes the session
+    # cookie first-party and same-site, which is what lets ``samesite="lax"`` + ``cookie_secure``
+    # below be a complete answer instead of a CORS negotiation.
+    frontend_dist: str = Field(
+        default="/app/frontend/dist",
+        validation_alias=AliasChoices("TVASHTR_FRONTEND_DIST", "frontend_dist"),
     )
 
     # M-h3 (HOSTED mode): the three RUN CEILINGS that bound the operator's COMPUTE spend. A hosted

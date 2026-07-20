@@ -1,0 +1,72 @@
+# Tvashtr — the deployed app (M-h4). ONE Fly app: the backend + the built SPA, one origin.
+#
+# NO SECRET VALUES LIVE HERE. This file is committed; the ten production credentials (DATABASE_URL,
+# TVASHTR_SESSION_SECRET, TVASHTR_SECRET_KEY, TVASHTR_FLY_SESSION_SECRET, TVASHTR_FLY_API_TOKEN and
+# the five GITHUB_APP_* values) are Fly secrets, injected as env at runtime. Only NON-secret posture
+# flags belong in [env] below.
+
+app = "tvashtr"
+# Singapore, not Mumbai: Fly's own docs flag `bom` as high-demand, and it returned
+# `insufficient_capacity` twice inside one minute on 2026-07-19. `sin` had capacity and is ~60ms
+# from Delhi. Run machines co-locate here too (TVASHTR_FLY_REGION below).
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Runs on a temporary machine from the NEW image, with the app's secrets attached (so it has
+  # DATABASE_URL) and BEFORE the new version starts serving — a failed migration therefore aborts
+  # the release rather than leaving a running app pointed at a schema it does not match.
+  # The image's WORKDIR is /app/backend, where alembic.ini lives, so this needs no `cd`.
+  release_command = "alembic upgrade head"
+
+[env]
+  # Posture only — every one of these is public.
+  TVASHTR_HOSTED_MODE = "true"
+  # Agent work runs in a per-run Fly microVM. The backend is in the SAME org, so it reaches those
+  # machines over the org's private 6PN network natively — no WireGuard tunnel, which is the whole
+  # reason the backend moved onto Fly.
+  TVASHTR_AGENT_SANDBOX = "fly"
+  TVASHTR_FLY_ORG = "personal"
+  # The ordered capacity-fallback ladder (parse_regions): try Singapore, then Ashburn, then
+  # Frankfurt. `bom` is deliberately excluded — see primary_region above.
+  TVASHTR_FLY_REGION = "sin,iad,fra"
+  # One origin: the SPA and the API are the same host, so the post-sign-in bounce and the GitHub
+  # callback both point back here.
+  TVASHTR_FRONTEND_ORIGIN = "https://tvashtr.fly.dev"
+  TVASHTR_PUBLIC_BASE_URL = "https://tvashtr.fly.dev"
+  # Real TLS, so the session cookie is marked Secure and can never ride plain http.
+  TVASHTR_COOKIE_SECURE = "true"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # SLEEP WHEN IDLE — the ~$0-standing-cost knob. `suspend` snapshots memory instead of a full stop,
+  # so waking is fast; `min_machines_running = 0` means an idle app really does go to zero. A
+  # stopped backend holds no database connection, so Neon then scales itself to zero as well.
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    # /healthz, NOT /health — the DB-free one. /health pings Postgres, and a probe hitting it every
+    # 30s would keep waking a scale-to-zero Neon and burn the free compute-hours this whole
+    # deployment is shaped to stay inside.
+    path = "/healthz"
+    method = "GET"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  # 1 GB, not 512 MB: importing the DBOS runtime, litellm and the OpenHands SDK is memory-hungry at
+  # start-up, and an OOM here looks like a mysterious boot loop. Also stays under Fly's 2 GB ceiling
+  # for suspend eligibility, which auto_stop_machines = "suspend" above depends on.
+  memory = "1gb"
+
+# Insurance for the import-time memory spike above, so a transient peak pages instead of OOM-killing
+# the process.
+swap_size_mb = 512

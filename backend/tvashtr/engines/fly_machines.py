@@ -121,9 +121,40 @@ def parse_egress_ports(raw: str) -> tuple[int, ...]:
     return tuple(ports)
 
 
+def parse_regions(raw: str) -> list[str]:
+    """Parse the ``fly_region`` config string into an ORDERED fallback ladder.
+
+    ``"bom"`` -> ``["bom"]`` (one region = exactly the pre-M-h4 behaviour); ``"sin,iad,fra"`` ->
+    ``["sin", "iad", "fra"]``, tried in that order. Mirrors :func:`parse_egress_ports` — same
+    comma-separated env-knob shape, same "parse at client construction so a typo fails loudly"
+    posture — but differs on the empty case, and deliberately: an empty egress list is a meaningful
+    "no ports", whereas a machine must boot SOMEWHERE, so an empty ladder is a configuration error
+    rather than a silent no-region POST that Fly would reject much later with a worse message."""
+    regions = [field.strip().lower() for field in raw.split(",")]
+    regions = [region for region in regions if region]
+    if not regions:
+        raise ValueError("fly region list is empty — at least one region is required")
+    return regions
+
+
 class FlyApiError(RuntimeError):
     """A Fly API call failed. The message carries the operation + status + a SCRUBBED body (never
     the API token, never the per-run session key)."""
+
+
+def _is_capacity_error(exc: FlyApiError) -> bool:
+    """True iff ``exc`` is Fly saying "this region is full right now" — the ONE failure worth
+    retrying in another region.
+
+    Matched off the message because that is the shape ``_request`` produces (``HTTP <status>
+    <scrubbed body>``), and BOTH markers are required: the 422 status *and* the capacity text. A
+    500 that merely mentions capacity is a real failure and must not walk the ladder. Fly has
+    written this both ways over time, so the spaced spelling is accepted alongside the
+    underscored one — a false negative here costs a user their run for no reason."""
+    message = str(exc).lower()
+    if "http 422" not in message:
+        return False
+    return "insufficient_capacity" in message or "insufficient capacity" in message
 
 
 def _slug(raw: object) -> str:
@@ -245,7 +276,7 @@ class FlyMachines:
         *,
         token: str,
         org: str = "personal",
-        region: str = "bom",
+        regions: Sequence[str] = ("bom",),
         image: str,
         guest_cpus: int = 1,
         guest_memory_mb: int = 2048,
@@ -257,7 +288,13 @@ class FlyMachines:
             raise ValueError("a Fly API token is required")
         self._token = token
         self.org = org
-        self.region = region
+        # M-h4: an ORDERED capacity-fallback ladder, not a single region. Parsed by the caller
+        # (``openhands_fly_adapter._new_fly_client``) for the same reason ``egress_ports`` is —
+        # it keeps this module free of the app's config layer. A 1-element ladder, which is the
+        # default, is byte-identically the old single-region behaviour.
+        self.regions = list(regions)
+        if not self.regions:
+            raise ValueError("at least one Fly region is required")
         self.image = image
         self.guest_cpus = guest_cpus
         self.guest_memory_mb = guest_memory_mb
@@ -477,14 +514,48 @@ class FlyMachines:
 
         The ``private_ip`` is returned to the caller (and, from there, to the live gate) because it
         is the FENCE EVIDENCE: it is minted by Fly on the network the app was created with, so it
-        proves the isolation off the address rather than off our own config."""
-        resp = self._request(
-            "POST",
-            f"{FLY_MACHINES_API}/apps/{app_name}/machines",
-            op="create_machine",
-            ok=(200, 201),
-            json={"region": self.region, "config": self.machine_config(session_api_key, env)},
-        )
+        proves the isolation off the address rather than off our own config.
+
+        M-h4 — THE REGION LADDER. Fly answers HTTP 422 ``insufficient_capacity`` when a region has
+        no hosts free for this guest size; ``bom`` did it twice inside one minute on 2026-07-19,
+        which failed a whole run for a reason that had nothing to do with the user. So a capacity
+        422 falls through to the NEXT region instead of raising. Three properties matter:
+
+        * the app is NOT torn down between attempts — it already exists, on the owner's private
+          network, and re-creating it would drop the fence it was created with;
+        * every OTHER failure raises immediately, so a genuinely bad request costs one round trip
+          rather than one per region;
+        * a fallback-region machine keeps ALL of the fences (per-owner 6PN network, per-run
+          Flycast door, egress policy) — those span regions within an org, so falling back trades
+          latency, never isolation."""
+        config = self.machine_config(session_api_key, env)
+        last: FlyApiError | None = None
+        for region in self.regions:
+            try:
+                resp = self._request(
+                    "POST",
+                    f"{FLY_MACHINES_API}/apps/{app_name}/machines",
+                    op="create_machine",
+                    ok=(200, 201),
+                    json={"region": region, "config": config},
+                )
+                break
+            except FlyApiError as exc:
+                if not _is_capacity_error(exc):
+                    raise
+                logger.warning(
+                    "fly: region %s is at capacity for app %s; trying the next region",
+                    region,
+                    app_name,
+                )
+                last = exc
+        else:
+            # Every region full. Rare, transient, and not the caller's fault — so say that, and
+            # name the ladder, rather than surfacing a bare HTTP 422 nobody can act on.
+            raise FlyApiError(
+                f"fly create_machine failed: capacity briefly unavailable in "
+                f"{', '.join(self.regions)} — retry shortly (last: {last})"
+            )
         body = resp.json()
         machine_id = body.get("id") or ""
         private_ip = body.get("private_ip") or ""

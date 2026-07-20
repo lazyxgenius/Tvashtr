@@ -1,0 +1,45 @@
+# Keep the build context small — and, first of all, keep SECRETS OUT OF THE IMAGE.
+#
+# `.env` holds the operator's real provider keys, the Fly API token, and the GitHub App private key.
+# The deployed app reads all of those from Fly's secret vault at runtime, so the file must never
+# enter the build context: an ignored file cannot be COPYd in by a later careless edit, which makes
+# this a structural guarantee rather than a rule someone has to remember.
+.env
+.env.*
+**/.env
+**/.env.*
+*.pem
+*.key
+
+# Version control + local tooling state.
+.git
+.gitignore
+.claude
+.grok
+.october
+
+# Build/dependency output that the image rebuilds itself (stage 1 runs `npm ci` + `vite build`,
+# stage 2 runs `uv sync`) — copying a host-built tree in would defeat the lockfile pinning and can
+# carry host-arch binaries into a linux image.
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+
+# Test + local-run artefacts the server never reads.
+backend/tests
+frontend/e2e
+frontend/playwright-report
+frontend/test-results
+.tvashtr_clones
+scripts
+
+# Docs — they change constantly and would bust the build cache for no reason.
+*.md
+design
+prompts
+docs

@@ -26,6 +26,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime
+from urllib.parse import quote
 
 import jwt
 
@@ -33,6 +34,10 @@ from tvashtr.config import get_settings
 
 _GITHUB_API = "https://api.github.com"
 _GITHUB_OAUTH_BASE = "https://github.com"
+# The path GitHub returns the browser to after authorize/install — ``auth.github_callback``'s route.
+# Kept as one constant because it is registered on the GitHub App itself (twice: local + deployed),
+# so the string here and the string on github.com must never drift.
+GITHUB_CALLBACK_PATH = "/api/auth/github/callback"
 _TIMEOUT_SECONDS = 15.0
 # The app JWT lifetime. GitHub caps it at 10 min; 9 min stays under the cap even with clock skew
 # (the ``iat`` is also back-dated 60s for the same reason).
@@ -239,11 +244,23 @@ def build_install_url() -> str:
     RETURNING hosted user is actually signed in. (The slug ``installations/new`` page only works
     ONCE — GitHub then bounces an already-installed user to its settings and issues no ``code``,
     so the callback never fires. That URL is demoted to the SECONDARY ``build_manage_url``.) Empty
-    string when no client_id is configured (hosted mode misconfigured). NEVER contains a secret."""
-    client_id = get_settings().github_app_client_id.strip()
-    if client_id:
-        return f"{_GITHUB_OAUTH_BASE}/login/oauth/authorize?client_id={client_id}"
-    return ""
+    string when no client_id is configured (hosted mode misconfigured). NEVER contains a secret.
+
+    M-h4 adds an EXPLICIT ``redirect_uri``. The App now carries TWO registered callbacks — the local
+    ``http://localhost:8000/…`` and the deployed ``https://tvashtr.fly.dev/…`` — and GitHub, given
+    no preference, chooses one itself; a local sign-in that comes back to the deployed app (or the
+    reverse) lands the user in the wrong environment holding a cookie for the other. Naming the
+    callback removes the ambiguity. It is URL-ENCODED because an unencoded ``://`` inside a query
+    value is precisely what makes GitHub reject a redirect as not matching a registered one."""
+    settings = get_settings()
+    client_id = settings.github_app_client_id.strip()
+    if not client_id:
+        return ""
+    callback = f"{settings.public_base_url.rstrip('/')}{GITHUB_CALLBACK_PATH}"
+    return (
+        f"{_GITHUB_OAUTH_BASE}/login/oauth/authorize"
+        f"?client_id={client_id}&redirect_uri={quote(callback, safe='')}"
+    )
 
 
 def _normalize_app_slug(raw: str) -> str:

@@ -4,3 +4,12 @@ package-lock.json
 coverage
 test-results
 playwright-report
+
+# Local agent/editor tooling scaffolding: gitignored, authored by those tools rather than by us,
+# and not application source. Formatting them fails the lint gate on files the project does not own.
+.opencode
+.october
+.claude
+.grok
+AGENTS.md
+CLAUDE.md

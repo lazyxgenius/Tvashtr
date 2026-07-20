@@ -11,9 +11,12 @@ emitted only after the lifespan's startup phase, so the sweep precedes any resum
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from dbos import DBOS, DBOSConfig
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -98,6 +101,19 @@ def health() -> HealthResponse:
         return HealthResponse(status="degraded", db="down")
 
 
+@app.get("/healthz")
+def healthz() -> dict[str, str]:
+    """The DB-FREE liveness check — what the platform's health probe points at (M-h4).
+
+    ``/health`` above pings Postgres, which is exactly right for a human asking "is the whole thing
+    up?" and exactly wrong for an automated probe: the deployed database (Neon, free tier) scales to
+    zero after a few idle minutes, and a probe that pings it every few seconds would wake it forever
+    and burn the free compute-hours this deployment is built to stay inside. This answers purely
+    from the process — if it responds, the app is serving — so an idle machine can go quiet and let
+    the database follow it down. ``/health`` is unchanged and stays the human answer."""
+    return {"status": "ok"}
+
+
 class ConfigResponse(BaseModel):
     hosted_mode: bool
     github_install_url: str
@@ -159,3 +175,59 @@ def get_hello_durable(workflow_id: str) -> dict:
         "status": status.status if status is not None else "NOT_FOUND",
         "events": events,
     }
+
+
+def mount_frontend(app: FastAPI, dist_dir: str) -> bool:
+    """Serve the built SPA from THIS app, one-origin with ``/api`` (M-h4). ``True`` if it mounted.
+
+    One origin is the point. When the frontend sits on its own origin the session cookie is
+    third-party — which is the fragility M-h1b kept paying for (CORS, SameSite negotiation, a
+    redirect that has to carry the cookie across a port). Serving ``/`` and ``/api/*`` from one
+    process makes the cookie first-party and same-site, and ``SameSite=lax`` becomes a complete
+    answer rather than a compromise.
+
+    A MISSING BUILD IS A DELIBERATE NO-OP. Locally there is no ``dist`` at the configured path (the
+    default is the in-image one) and Vite serves the frontend instead, so this adds NO routes at
+    all and a local backend stays byte-identical to pre-M-h4: ``/`` 404s exactly as it did. That is
+    why the check is on ``index.html`` rather than the directory — a stale empty ``dist/`` should
+    fall back to "no frontend", not to serving a blank page.
+
+    MUST BE CALLED LAST, after every router. The catch-all matches any path, and FastAPI resolves
+    routes in registration order, so registering it earlier would swallow the API."""
+    dist = Path(dist_dir).resolve()
+    index = dist / "index.html"
+    if not index.is_file():
+        return False
+
+    assets = dist / "assets"
+    if assets.is_dir():
+        # Vite emits content-hashed filenames here, so these are the immutably-cacheable files.
+        app.mount("/assets", StaticFiles(directory=str(assets)), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa(full_path: str) -> FileResponse:
+        """Any non-API GET returns the app shell, so client-side routes survive a reload.
+
+        ``/dashboard`` is a route only the browser's router knows about; a hard refresh on it is a
+        real HTTP GET this server has never heard of, and returning 404 there is the classic
+        deep-link break."""
+        # An unknown /api path must stay a JSON 404. Swallowing it into index.html would turn every
+        # frontend API bug into a silent 200 of HTML that the client then fails to parse — a much
+        # harder thing to debug than a 404.
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found")
+
+        # Real built files (favicon, robots.txt, anything Vite copied from public/) serve as
+        # themselves; everything else is a client route. ``resolve()`` + the containment check keep
+        # a crafted path from reading outside the build directory.
+        candidate = (dist / full_path).resolve()
+        if full_path and candidate.is_file() and candidate.is_relative_to(dist):
+            return FileResponse(candidate)
+        return FileResponse(index)
+
+    return True
+
+
+# LAST, deliberately (see mount_frontend): every API router above is already registered, so the
+# catch-all can only ever see paths nothing else claimed.
+mount_frontend(app, settings.frontend_dist)

@@ -65,6 +65,7 @@ from tvashtr.engines.fly_machines import (
     app_name_for_run,
     derive_session_key,
     parse_egress_ports,
+    parse_regions,
 )
 
 # The engine-neutral event mapping + post-run usage read, shared with BOTH other adapters so the
@@ -239,12 +240,15 @@ def _new_fly_client() -> FlyMachines:
     Parsing the ports HERE (rather than inside ``fly_machines``) is what keeps that module free of
     the app's config layer, exactly as it is free of ``openhands``. A malformed knob therefore
     fails at client construction — loudly, before any app exists — instead of at policy-post time
-    with a half-built sandbox already billing."""
+    with a half-built sandbox already billing. M-h4 threads the REGION LADDER through the same
+    seam for the same reason: ``TVASHTR_FLY_REGION`` is now an ordered comma-separated list
+    (``"sin,iad,fra"``), and its default single ``"bom"`` parses to a 1-element ladder that behaves
+    byte-identically to the pre-M-h4 single-region client."""
     settings = get_settings()
     return FlyMachines(
         token=settings.fly_api_token.get_secret_value(),
         org=settings.fly_org,
-        region=settings.fly_region,
+        regions=parse_regions(settings.fly_region),
         image=settings.fly_agent_image,
         guest_cpus=settings.fly_guest_cpus,
         guest_memory_mb=settings.fly_guest_memory_mb,

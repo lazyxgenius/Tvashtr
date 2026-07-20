@@ -116,9 +116,12 @@ def test_config_hosted_exposes_install_url_but_no_secret(client, monkeypatch):
     body = resp.json()
     assert body["hosted_mode"] is True
     # Rider 1: the sign-in door is now the OAuth authorize URL (client_id), not the slug page.
-    assert (
-        body["github_install_url"]
-        == "https://github.com/login/oauth/authorize?client_id=Iv1.testclientid"
+    # M-h4 re-pointed the expected string: it now also carries the URL-encoded ``redirect_uri`` that
+    # tells GitHub WHICH of the two registered callbacks (local vs deployed) to return to. The
+    # public-only, no-secrets property this test guards is unchanged and asserted below.
+    assert body["github_install_url"] == (
+        "https://github.com/login/oauth/authorize?client_id=Iv1.testclientid"
+        "&redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Fapi%2Fauth%2Fgithub%2Fcallback"
     )
     # Rider 2: the slug install page is demoted to the SECONDARY "add repositories" URL.
     assert body["github_manage_url"] == "https://github.com/apps/tvashtr/installations/new"
