@@ -1296,11 +1296,11 @@ body,
   color: var(--text-primary);
 }
 
-/* The unified teams table (grid) — Team / Nodes / Status / Spend / Created / delete. */
+/* The unified teams table (grid) — expander / Team / Nodes / Status / Spend / Created / actions. */
 .tv-dash__thead,
 .tv-dash__trow {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) 64px 148px 92px 116px 40px;
+  grid-template-columns: 24px minmax(200px, 1fr) 64px 148px 92px 116px 68px;
   gap: 16px;
   align-items: center;
 }
@@ -1325,13 +1325,18 @@ body,
   margin: 0;
   padding: 0;
 }
+/* The list item wraps the row AND its expanded run-history panel, so the panel spans the full
+   width instead of being squeezed into a grid cell. The row keeps the grid + the hover surface;
+   the separator moves out to the item so an open panel stays visually attached to its row. */
+.tv-dash__titem {
+  border-bottom: var(--border-width) solid var(--border-faint);
+}
+.tv-dash__titem:last-child {
+  border-bottom: none;
+}
 .tv-dash__trow {
   position: relative;
   padding: 14px var(--space-6);
-  border-bottom: var(--border-width) solid var(--border-faint);
-}
-.tv-dash__trow:last-child {
-  border-bottom: none;
 }
 .tv-dash__trow:hover {
   background: var(--surface-page);
@@ -1427,6 +1432,163 @@ body,
 .tv-dash__trow-del:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
+}
+
+/* ---- Row actions: rename + delete, sharing the trailing column -------------------------------
+   Both sit IN FRONT of the full-row open surface (z-index 2, like the delete button always has),
+   so a click on either acts on the row rather than opening the team. */
+.tv-dash__trow-acts {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.tv-dash__trow-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  color: var(--ink-600);
+  background: transparent;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+.tv-dash__trow-act:hover {
+  background: var(--surface-sunken, var(--surface-page));
+  color: var(--text-primary);
+}
+.tv-dash__trow-act:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* ---- The run-history expander (leading chevron) ---------------------------------------------- */
+.tv-dash__trow-exp {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+.tv-dash__trow-exp:hover {
+  background: var(--surface-sunken, var(--surface-page));
+  color: var(--text-primary);
+}
+.tv-dash__trow-exp:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* ---- Inline rename editor (replaces the name in the Team cell) -------------------------------
+   `pointer-events: auto` re-enables input inside `.tv-dash__tcell`, which is inert by default so
+   clicks fall through to the row-open surface. While renaming that surface is not rendered. */
+.tv-dash__rename {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  pointer-events: auto;
+}
+.tv-dash__rename-input {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 30px;
+  padding: 0 8px;
+  font-size: var(--fs-body-sm);
+}
+.tv-dash__rename-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  color: var(--ink-600);
+  background: transparent;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.tv-dash__rename-act:hover {
+  background: var(--surface-sunken, var(--surface-page));
+  color: var(--text-primary);
+}
+.tv-dash__rename-act:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* ---- The per-team run-history drill-down panel ------------------------------------------------
+   Inset and sunken so it reads as belonging to the row above it rather than as a sibling row. */
+.tv-dash__runs {
+  padding: 4px var(--space-6) 12px calc(var(--space-6) + 40px);
+  background: var(--surface-page);
+}
+.tv-dash__runs-empty {
+  margin: 0;
+  padding: 8px 0;
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+}
+.tv-dash__runs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tv-dash__runrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 148px 92px 116px;
+  gap: 16px;
+  align-items: center;
+  width: 100%;
+  padding: 7px 8px;
+  text-align: left;
+  background: transparent;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.tv-dash__runrow:hover {
+  background: var(--surface-card, #fff);
+}
+.tv-dash__runrow:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.tv-dash__runrow-idea {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-body-sm);
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv-dash__runrow-spend,
+.tv-dash__runrow-at {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
 }
 .tv-dash__empty {
   margin: 0;

@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Check,
+  ChevronDown,
+  ChevronRight,
   DollarSign,
   GitBranch,
   KeyRound,
   LogOut,
+  Pencil,
   Play,
   Plus,
   Trash2,
@@ -15,10 +19,13 @@ import {
   addProvider,
   type AuthUser,
   deleteTeam,
+  getTeamRuns,
   getTeams,
   listProviders,
   type ProviderCredential,
   removeProvider,
+  renameTeam,
+  type TeamRunRow,
   type TeamSummary,
 } from "../lib/api";
 import { RUN_TERMINAL, runStatusPill } from "../lib/status";
@@ -65,10 +72,15 @@ export function Dashboard({
   user,
   onLogout,
   onOpenTeam,
+  onOpenRun,
 }: {
   user: AuthUser;
   onLogout: () => void;
   onOpenTeam: (teamId: string) => void;
+  // Open one run from a team's history drill-down. Carries the owning team as well as the run:
+  // the run view lives on that team's canvas, so the caller needs both to route there. Optional so
+  // the dashboard still renders standalone (and in tests) without a run surface wired behind it.
+  onOpenRun?: (runId: string, teamId: string) => void;
 }) {
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [providers, setProviders] = useState<ProviderCredential[]>([]);
@@ -85,6 +97,27 @@ export function Dashboard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [picking, setPicking] = useState(false);
   const [confirmTeam, setConfirmTeam] = useState<TeamSummary | null>(null);
+
+  // Inline rename: which row is being edited, and its draft name. One at a time — a table where
+  // several rows are mid-edit has no obvious save semantics.
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Run-history drill-down: which row is expanded, and that team's runs. Fetched ON EXPAND (never
+  // on mount) so the dashboard's first paint still costs exactly two requests, and held for one
+  // team at a time so an open panel can never show another team's history.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [teamRuns, setTeamRuns] = useState<TeamRunRow[]>([]);
+  const [runsLoading, setRunsLoading] = useState(false);
+  // A panel-local failure flag, distinct from the page-level `error` banner. Without it a failed
+  // fetch and a never-run team are indistinguishable — both leave `teamRuns` empty — so a 500 would
+  // tell a user with a dozen runs, in the panel's own voice, that their team has never run.
+  const [runsError, setRunsError] = useState(false);
+  // The team id of the MOST RECENT history request. Expanding B while A's fetch is still in flight
+  // must not land A's runs under B — and `expandedId` read inside that fetch's closure is stale, so
+  // liveness is tracked in a ref the resolve path can compare against.
+  const runsRequestRef = useRef<string | null>(null);
 
   // A11y (Filler-A): trap focus in the delete-confirm dialog while a team is queued for deletion;
   // Escape / scrim close it, then focus returns to the row's delete button.
@@ -170,6 +203,72 @@ export function Dashboard({
       }
     },
     [load],
+  );
+
+  // Move focus into the rename field when the editor opens, so the row is immediately typeable
+  // (and Escape/Enter land on it) without an autofocus attribute.
+  useEffect(() => {
+    if (renamingId) renameInputRef.current?.select();
+  }, [renamingId]);
+
+  const startRename = useCallback((t: TeamSummary) => {
+    setRenamingId(t.team_graph_id);
+    setRenameValue(t.name); // pre-filled: correcting a name should be an edit, not a re-type
+  }, []);
+
+  const cancelRename = useCallback(() => {
+    setRenamingId(null);
+    setRenameValue("");
+  }, []);
+
+  const handleRename = useCallback(
+    async (teamId: string) => {
+      const name = renameValue.trim();
+      // Refused here as well as server-side (422): a blank name is a slip, and round-tripping it
+      // just to be told no would clear the editor the user still needs.
+      if (!name) return;
+      setBusy(true);
+      try {
+        await renameTeam(teamId, name);
+        if (mountedRef.current) cancelRename();
+        await load();
+      } catch {
+        if (mountedRef.current) setError(true);
+      } finally {
+        if (mountedRef.current) setBusy(false);
+      }
+    },
+    [renameValue, cancelRename, load],
+  );
+
+  const toggleRuns = useCallback(
+    async (teamId: string) => {
+      if (expandedId === teamId) {
+        runsRequestRef.current = null; // an in-flight fetch for this row is now stale
+        setExpandedId(null);
+        setTeamRuns([]);
+        return;
+      }
+      runsRequestRef.current = teamId;
+      setExpandedId(teamId);
+      setTeamRuns([]);
+      setRunsError(false); // a previous row's failure must not colour this one
+      setRunsLoading(true);
+      try {
+        const rows = await getTeamRuns(teamId);
+        // Drop the response if the user collapsed this row or expanded a different one while it
+        // was in flight — otherwise one team's history renders under another team's name.
+        if (!mountedRef.current || runsRequestRef.current !== teamId) return;
+        setTeamRuns(rows);
+      } catch {
+        if (mountedRef.current && runsRequestRef.current === teamId) setRunsError(true);
+      } finally {
+        // Only the CURRENT request may clear the spinner; a stale one resolving late would
+        // otherwise declare the new row loaded while it is still fetching.
+        if (mountedRef.current && runsRequestRef.current === teamId) setRunsLoading(false);
+      }
+    },
+    [expandedId],
   );
 
   const activeRuns = teams.filter(isActive).length;
@@ -287,6 +386,7 @@ export function Dashboard({
             ) : (
               <>
                 <div className="tv-dash__thead" aria-hidden="true">
+                  <span className="tv-dash__th" />
                   <span className="tv-dash__th">Team</span>
                   <span className="tv-dash__th tv-dash__th--num">Nodes</span>
                   <span className="tv-dash__th">Status</span>
@@ -297,42 +397,150 @@ export function Dashboard({
                 <ul className="tv-dash__rows">
                   {teams.map((t) => {
                     const pill = runStatusPill(t.last_run?.status ?? null);
+                    const renaming = renamingId === t.team_graph_id;
+                    const expanded = expandedId === t.team_graph_id;
                     return (
-                      <li className="tv-dash__trow" key={t.team_graph_id}>
-                        <button
-                          type="button"
-                          className="tv-dash__trow-open"
-                          onClick={() => onOpenTeam(t.team_graph_id)}
-                          aria-label={`Open ${t.name}`}
-                        />
-                        <div className="tv-dash__tcell tv-dash__team">
-                          <span className="tv-dash__team-ic">
-                            <Workflow size={16} strokeWidth={1.6} />
-                          </span>
-                          <span className="tv-dash__team-name">{t.name}</span>
+                      <li className="tv-dash__titem" key={t.team_graph_id}>
+                        <div className="tv-dash__trow">
+                          {/* The full-row open surface is withheld while the row is being renamed:
+                              a click meant for the text field must not navigate away mid-edit. */}
+                          {!renaming && (
+                            <button
+                              type="button"
+                              className="tv-dash__trow-open"
+                              onClick={() => onOpenTeam(t.team_graph_id)}
+                              aria-label={`Open ${t.name}`}
+                            />
+                          )}
+                          <button
+                            type="button"
+                            className="tv-dash__trow-exp"
+                            onClick={() => void toggleRuns(t.team_graph_id)}
+                            aria-expanded={expanded}
+                            aria-label={`${expanded ? "Hide" : "Show"} runs for ${t.name}`}
+                          >
+                            {expanded ? (
+                              <ChevronDown size={15} strokeWidth={1.9} />
+                            ) : (
+                              <ChevronRight size={15} strokeWidth={1.9} />
+                            )}
+                          </button>
+                          <div className="tv-dash__tcell tv-dash__team">
+                            <span className="tv-dash__team-ic">
+                              <Workflow size={16} strokeWidth={1.6} />
+                            </span>
+                            {renaming ? (
+                              <span className="tv-dash__rename">
+                                <input
+                                  ref={renameInputRef}
+                                  className="tv-launch__input tv-dash__rename-input"
+                                  aria-label="New team name"
+                                  value={renameValue}
+                                  onChange={(e) => setRenameValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") void handleRename(t.team_graph_id);
+                                    if (e.key === "Escape") cancelRename();
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  className="tv-dash__rename-act"
+                                  onClick={() => void handleRename(t.team_graph_id)}
+                                  disabled={busy}
+                                  aria-label="Save name"
+                                >
+                                  <Check size={15} strokeWidth={2} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="tv-dash__rename-act"
+                                  onClick={cancelRename}
+                                  aria-label="Cancel rename"
+                                >
+                                  <X size={15} strokeWidth={1.9} />
+                                </button>
+                              </span>
+                            ) : (
+                              <span className="tv-dash__team-name">{t.name}</span>
+                            )}
+                          </div>
+                          <div className="tv-dash__tcell tv-dash__tcell--num">{t.node_count}</div>
+                          <div className="tv-dash__tcell">
+                            <span className={`tv-pill tv-pill--${pill.tone}`}>
+                              <span className="tv-pill__dot" />
+                              {pill.label}
+                            </span>
+                          </div>
+                          <div className="tv-dash__tcell tv-dash__tcell--spend">
+                            ${(t.spend_usd ?? 0).toFixed(2)}
+                          </div>
+                          <div className="tv-dash__tcell tv-dash__tcell--created">
+                            {formatCreated(t.created_at)}
+                          </div>
+                          <div className="tv-dash__trow-acts">
+                            {!renaming && (
+                              <button
+                                type="button"
+                                className="tv-dash__trow-act"
+                                onClick={() => startRename(t)}
+                                disabled={busy}
+                                aria-label={`Rename ${t.name}`}
+                              >
+                                <Pencil size={14} strokeWidth={1.8} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="tv-dash__trow-del"
+                              onClick={() => setConfirmTeam(t)}
+                              disabled={busy}
+                              aria-label={`Delete ${t.name}`}
+                            >
+                              <Trash2 size={15} strokeWidth={1.8} />
+                            </button>
+                          </div>
                         </div>
-                        <div className="tv-dash__tcell tv-dash__tcell--num">{t.node_count}</div>
-                        <div className="tv-dash__tcell">
-                          <span className={`tv-pill tv-pill--${pill.tone}`}>
-                            <span className="tv-pill__dot" />
-                            {pill.label}
-                          </span>
-                        </div>
-                        <div className="tv-dash__tcell tv-dash__tcell--spend">
-                          ${(t.spend_usd ?? 0).toFixed(2)}
-                        </div>
-                        <div className="tv-dash__tcell tv-dash__tcell--created">
-                          {formatCreated(t.created_at)}
-                        </div>
-                        <button
-                          type="button"
-                          className="tv-dash__trow-del"
-                          onClick={() => setConfirmTeam(t)}
-                          disabled={busy}
-                          aria-label={`Delete ${t.name}`}
-                        >
-                          <Trash2 size={15} strokeWidth={1.8} />
-                        </button>
+                        {expanded && (
+                          <div className="tv-dash__runs">
+                            {runsLoading ? (
+                              <p className="tv-dash__runs-empty">Loading runs…</p>
+                            ) : runsError ? (
+                              <p className="tv-dash__runs-empty" role="alert">
+                                Couldn't load this team's runs — is the backend running?
+                              </p>
+                            ) : teamRuns.length === 0 ? (
+                              <p className="tv-dash__runs-empty">This team hasn't run yet.</p>
+                            ) : (
+                              <ul className="tv-dash__runs-list">
+                                {teamRuns.map((r) => {
+                                  const rp = runStatusPill(r.status);
+                                  return (
+                                    <li key={r.run_id}>
+                                      <button
+                                        type="button"
+                                        className="tv-dash__runrow"
+                                        onClick={() => onOpenRun?.(r.run_id, t.team_graph_id)}
+                                        aria-label={`Open run: ${r.idea}`}
+                                      >
+                                        <span className="tv-dash__runrow-idea">{r.idea}</span>
+                                        <span className={`tv-pill tv-pill--${rp.tone}`}>
+                                          <span className="tv-pill__dot" />
+                                          {rp.label}
+                                        </span>
+                                        <span className="tv-dash__runrow-spend">
+                                          ${(r.cost_total_usd ?? 0).toFixed(2)}
+                                        </span>
+                                        <span className="tv-dash__runrow-at">
+                                          {formatCreated(r.created_at)}
+                                        </span>
+                                      </button>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            )}
+                          </div>
+                        )}
                       </li>
                     );
                   })}

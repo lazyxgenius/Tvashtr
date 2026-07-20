@@ -27,6 +27,7 @@ from tvashtr.control_plane import github_app
 from tvashtr.control_plane.clone_reaper import sweep_orphaned_clones
 from tvashtr.control_plane.fly_reaper import sweep_orphaned_fly_apps
 from tvashtr.control_plane.hello_durable import hello_durable
+from tvashtr.control_plane.workspace_reaper import sweep_orphaned_workspaces
 from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
 from tvashtr.models import SpikeHelloEvent
 from tvashtr.routers import router as api_router
@@ -62,6 +63,12 @@ async def _lifespan(app: FastAPI):
     # runs. Self-hosted / greenfield deployments never create the root, and the sweep returns 0
     # without touching the disk — which is what keeps those paths byte-identical to before.
     sweep_orphaned_clones()
+    # M-wsgc: the same reconcile for the per-run agent workspaces. NOT mode-gated either, and for a
+    # stronger version of the clone sweep's reason: a workspace is created by EVERY run that reaches
+    # an agent step, in every sandbox mode, so this is the one sweep that always has something to
+    # reconcile. Before DBOS recovery for the usual reason — a workspace belonging to a run that is
+    # about to be RECOVERED must be spared, and the reaper reads that liveness from ``runs``.
+    sweep_orphaned_workspaces()
     yield
 
 

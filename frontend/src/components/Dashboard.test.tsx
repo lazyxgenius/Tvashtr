@@ -11,6 +11,8 @@ vi.mock("../lib/api", () => ({
   addProvider: vi.fn(),
   removeProvider: vi.fn(),
   deleteTeam: vi.fn(),
+  renameTeam: vi.fn(),
+  getTeamRuns: vi.fn(),
   getTemplates: vi.fn(),
   createTeam: vi.fn(),
   listSecrets: vi.fn().mockResolvedValue([]),
@@ -30,6 +32,8 @@ const m = api as unknown as {
   addProvider: Mock;
   removeProvider: Mock;
   deleteTeam: Mock;
+  renameTeam: Mock;
+  getTeamRuns: Mock;
   getTemplates: Mock;
   createTeam: Mock;
 };
@@ -51,14 +55,37 @@ function team(over: Record<string, unknown> = {}) {
 
 afterEach(() => vi.clearAllMocks());
 
-function setup(over: { teams?: unknown[]; providers?: unknown[]; templates?: unknown[] } = {}) {
+// One row in a team's run-history drill-down; override per test.
+function run(over: Record<string, unknown> = {}) {
+  return {
+    run_id: "r1",
+    status: "completed",
+    idea: "Build a greeting",
+    created_at: "2026-03-14T00:00:00Z",
+    cost_total_usd: 0.5,
+    ...over,
+  };
+}
+
+function setup(
+  over: {
+    teams?: unknown[];
+    providers?: unknown[];
+    templates?: unknown[];
+    runs?: unknown[];
+  } = {},
+) {
   m.getTeams.mockResolvedValue(over.teams ?? []);
   m.listProviders.mockResolvedValue(over.providers ?? []);
   m.getTemplates.mockResolvedValue(over.templates ?? []);
+  m.getTeamRuns.mockResolvedValue(over.runs ?? []);
   const onOpenTeam = vi.fn();
+  const onOpenRun = vi.fn();
   const onLogout = vi.fn();
-  render(<Dashboard user={USER} onLogout={onLogout} onOpenTeam={onOpenTeam} />);
-  return { onOpenTeam, onLogout };
+  render(
+    <Dashboard user={USER} onLogout={onLogout} onOpenTeam={onOpenTeam} onOpenRun={onOpenRun} />,
+  );
+  return { onOpenTeam, onOpenRun, onLogout };
 }
 
 describe("Dashboard", () => {
@@ -231,5 +258,172 @@ describe("Dashboard", () => {
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(m.deleteTeam).not.toHaveBeenCalled();
+  });
+
+  // ---- Rename a team (inline, on the row) -------------------------------------------------
+
+  it("rename → the inline editor saves the new name and refetches the list", async () => {
+    setup({ teams: [team()] });
+    fireEvent.click(await screen.findByRole("button", { name: "Rename My team" }));
+
+    const input = screen.getByLabelText<HTMLInputElement>("New team name");
+    expect(input.value).toBe("My team"); // pre-filled, so a small correction is a small edit
+    fireEvent.change(input, { target: { value: "Renamed team" } });
+    m.renameTeam.mockResolvedValue({ ...team(), name: "Renamed team" });
+    m.getTeams.mockResolvedValueOnce([team({ name: "Renamed team" })]);
+    fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+
+    await waitFor(() => expect(m.renameTeam).toHaveBeenCalledWith("t1", "Renamed team"));
+    await waitFor(() => expect(m.getTeams).toHaveBeenCalledTimes(2)); // initial + post-rename
+    expect(await screen.findByText("Renamed team")).toBeInTheDocument();
+  });
+
+  it("rename → Enter submits without needing the Save button", async () => {
+    setup({ teams: [team()] });
+    fireEvent.click(await screen.findByRole("button", { name: "Rename My team" }));
+
+    fireEvent.change(screen.getByLabelText("New team name"), { target: { value: "Via Enter" } });
+    m.renameTeam.mockResolvedValue({ ...team(), name: "Via Enter" });
+    fireEvent.keyDown(screen.getByLabelText("New team name"), { key: "Enter" });
+
+    await waitFor(() => expect(m.renameTeam).toHaveBeenCalledWith("t1", "Via Enter"));
+  });
+
+  it("rename → Cancel closes the editor and never calls renameTeam", async () => {
+    setup({ teams: [team()] });
+    fireEvent.click(await screen.findByRole("button", { name: "Rename My team" }));
+    fireEvent.change(screen.getByLabelText("New team name"), { target: { value: "Discarded" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel rename" }));
+
+    await waitFor(() => expect(screen.queryByLabelText("New team name")).not.toBeInTheDocument());
+    expect(m.renameTeam).not.toHaveBeenCalled();
+    expect(screen.getByText("My team")).toBeInTheDocument();
+  });
+
+  it("rename → a blank name is refused client-side (no request fired)", async () => {
+    setup({ teams: [team()] });
+    fireEvent.click(await screen.findByRole("button", { name: "Rename My team" }));
+
+    fireEvent.change(screen.getByLabelText("New team name"), { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+
+    await waitFor(() => expect(m.renameTeam).not.toHaveBeenCalled());
+    expect(screen.getByLabelText("New team name")).toBeInTheDocument(); // still open to fix
+  });
+
+  // ---- Per-run history drill-down ------------------------------------------------------------
+
+  it("drill-down → expanding a team row lists its runs with status, spend and idea", async () => {
+    setup({
+      teams: [team({ last_run: { status: "completed", at: "x", run_id: "r2" }, spend_usd: 1.75 })],
+      runs: [
+        run({ run_id: "r2", idea: "Newest idea", status: "completed", cost_total_usd: 1.25 }),
+        run({ run_id: "r1", idea: "Older idea", status: "failed", cost_total_usd: 0.5 }),
+      ],
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show runs for My team" }));
+
+    await waitFor(() => expect(m.getTeamRuns).toHaveBeenCalledWith("t1"));
+    expect(await screen.findByText("Newest idea")).toBeInTheDocument();
+    expect(screen.getByText("Older idea")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument(); // the run row's own status pill
+    expect(screen.getByText("$1.25")).toBeInTheDocument();
+  });
+
+  it("drill-down → a run row opens the run view by run_id", async () => {
+    const { onOpenRun } = setup({
+      teams: [team()],
+      runs: [run({ run_id: "run-42", idea: "Ship it" })],
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Show runs for My team" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open run: Ship it" }));
+
+    // The owning team rides along: the run view lives on that team's canvas.
+    expect(onOpenRun).toHaveBeenCalledWith("run-42", "t1");
+  });
+
+  it("drill-down → a never-run team shows an empty state, not an error", async () => {
+    setup({ teams: [team()], runs: [] });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show runs for My team" }));
+
+    expect(await screen.findByText(/hasn't run yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't load/i)).not.toBeInTheDocument();
+  });
+
+  it("drill-down → a FAILED history fetch is distinguishable from a never-run team", async () => {
+    // Without a panel-local failure state both paths leave `teamRuns` at [], so a 500 would tell a
+    // user with a dozen runs — authoritatively — that their team has never run.
+    setup({ teams: [team()] });
+    m.getTeamRuns.mockRejectedValueOnce(new Error("GET /api/teams/t1/runs -> 500"));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show runs for My team" }));
+
+    expect(await screen.findByText(/Couldn't load this team's runs/i)).toBeInTheDocument();
+    expect(screen.queryByText(/hasn't run yet/i)).not.toBeInTheDocument();
+  });
+
+  it("drill-down → a failed fetch does not poison the next team's panel", async () => {
+    setup({
+      teams: [
+        team({ team_graph_id: "a", name: "Team A" }),
+        team({ team_graph_id: "b", name: "Team B" }),
+      ],
+    });
+    m.getTeamRuns
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce([run({ idea: "B is fine" })]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show runs for Team A" }));
+    expect(await screen.findByText(/Couldn't load this team's runs/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show runs for Team B" }));
+
+    expect(await screen.findByText("B is fine")).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't load this team's runs/i)).not.toBeInTheDocument();
+  });
+
+  it("drill-down → collapsing hides the run list again", async () => {
+    setup({ teams: [team()], runs: [run({ idea: "Transient" })] });
+    fireEvent.click(await screen.findByRole("button", { name: "Show runs for My team" }));
+    expect(await screen.findByText("Transient")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide runs for My team" }));
+
+    await waitFor(() => expect(screen.queryByText("Transient")).not.toBeInTheDocument());
+  });
+
+  it("drill-down → a slow response for one team never lands under another", async () => {
+    // THE RACE: expand A, then expand B before A's fetch resolves. `expandedId` inside A's fetch
+    // closure is stale, so a mount-only guard would happily render A's runs under B's name.
+    setup({
+      teams: [
+        team({ team_graph_id: "a", name: "Team A" }),
+        team({ team_graph_id: "b", name: "Team B" }),
+      ],
+    });
+    let resolveA!: (rows: unknown[]) => void;
+    m.getTeamRuns
+      .mockImplementationOnce(() => new Promise<unknown[]>((res) => (resolveA = res)))
+      .mockResolvedValueOnce([run({ run_id: "b1", idea: "B's own run" })]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show runs for Team A" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show runs for Team B" }));
+    expect(await screen.findByText("B's own run")).toBeInTheDocument();
+
+    resolveA([run({ run_id: "a1", idea: "A's stale run" })]); // arrives late, for a row now closed
+
+    await waitFor(() => expect(screen.queryByText("A's stale run")).not.toBeInTheDocument());
+    expect(screen.getByText("B's own run")).toBeInTheDocument();
+  });
+
+  it("drill-down → is collapsed by default (no history request on mount)", async () => {
+    setup({ teams: [team()] });
+    await screen.findByText("My team");
+
+    expect(m.getTeamRuns).not.toHaveBeenCalled();
   });
 });

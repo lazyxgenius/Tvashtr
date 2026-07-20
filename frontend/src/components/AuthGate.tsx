@@ -33,6 +33,10 @@ export function AuthGate() {
   const [loginMode, setLoginMode] = useState<AuthMode>("login");
   // Logged-in sub-view: the dashboard by default; opening a team routes to the canvas for that team.
   const [openTeamId, setOpenTeamId] = useState<string | null>(null);
+  // The dashboard's per-team run-history drill-down can open ONE run directly. It carries the team
+  // too, so the canvas lands on the right team with that run's view already seeded — going "back"
+  // from there is the ordinary authoring view of the same team.
+  const [openRunId, setOpenRunId] = useState<string | null>(null);
   // M-h1a: the public backend posture (hosted vs self-hosted) — drives which door the AuthWizard shows.
   const [config, setConfig] = useState<Config | null>(null);
 
@@ -128,10 +132,27 @@ export function AuthGate() {
         user={user}
         onLogout={() => void handleLogout()}
         teamId={openTeamId}
-        onBackToDashboard={() => setOpenTeamId(null)}
+        initialRunId={openRunId}
+        onBackToDashboard={() => {
+          setOpenTeamId(null);
+          setOpenRunId(null);
+        }}
         config={config}
       />
     );
   }
-  return <Dashboard user={user} onLogout={() => void handleLogout()} onOpenTeam={setOpenTeamId} />;
+  return (
+    <Dashboard
+      user={user}
+      onLogout={() => void handleLogout()}
+      onOpenTeam={(teamId) => {
+        setOpenRunId(null); // opening a team is the authoring view, never a stale run
+        setOpenTeamId(teamId);
+      }}
+      onOpenRun={(runId, teamId) => {
+        setOpenRunId(runId);
+        setOpenTeamId(teamId);
+      }}
+    />
+  );
 }

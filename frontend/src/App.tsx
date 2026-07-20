@@ -59,12 +59,23 @@ interface AppProps {
   user?: AuthUser | null;
   onLogout?: () => void;
   teamId?: string;
+  // Open straight into ONE run's view (the dashboard's per-team history drill-down links here by
+  // run_id) instead of the team's authoring view. Seeds `runId`, which is what makes `authoring`
+  // false; the existing poll then fills in the run + its graph exactly as a fresh launch does.
+  initialRunId?: string | null;
   onBackToDashboard?: () => void;
   config?: Config | null;
 }
 
-export default function App({ user, onLogout, teamId, onBackToDashboard, config }: AppProps = {}) {
-  const [runId, setRunId] = useState<string | null>(null);
+export default function App({
+  user,
+  onLogout,
+  teamId,
+  initialRunId,
+  onBackToDashboard,
+  config,
+}: AppProps = {}) {
+  const [runId, setRunId] = useState<string | null>(initialRunId ?? null);
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [run, setRun] = useState<RunRow | null>(null);
   const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);

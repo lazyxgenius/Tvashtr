@@ -46,7 +46,7 @@ from dbos import DBOS
 from sqlalchemy import select, update
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import clone_reaper, github_app
+from tvashtr.control_plane import clone_reaper, github_app, workspace_reaper
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.budget_nudge import maybe_emit_budget_nudge_step
 from tvashtr.control_plane.context_compiler import (
@@ -1316,7 +1316,15 @@ def _run_end_teardown(run_id: str) -> None:
     greenfield runs, which have no clone dir. Deliberately LAST and deliberately un-checkpointed: it
     is a plain filesystem delete, so unlike the sandbox teardown there is no DBOS step for a
     cancelled workflow to refuse, and running it after the sandbox close means a container that
-    still holds the directory is gone first."""
+    still holds the directory is gone first.
+
+    M-wsgc: and this run's agent WORKSPACE, on the same terms and for the same reasons. It rides
+    here rather than in its own hook because the ordering constraint is identical — the sandbox that
+    may still hold the directory open must be closed first — and because both deletes are
+    status-gated on a LIVE run, so a ``finally`` that fires mid-flight (a step raising while the row
+    still reads ``running``, which DBOS may then RECOVER) spares both. Broader than the clone: every
+    run has a workspace, so unlike the clone this is a no-op only for a run that never reached an
+    agent step."""
     try:
         close_run_sandboxes_step(run_id)
     except BaseException:  # noqa: BLE001
@@ -1331,6 +1339,10 @@ def _run_end_teardown(run_id: str) -> None:
         clone_reaper.delete_run_clone(run_id)
     except BaseException:  # noqa: BLE001 — belt-and-braces; delete_run_clone never raises itself
         logger.warning("clone run-end teardown failed run_id=%s", run_id, exc_info=True)
+    try:
+        workspace_reaper.delete_run_workspace(run_id)
+    except BaseException:  # noqa: BLE001 — belt-and-braces; delete_run_workspace never raises
+        logger.warning("workspace run-end teardown failed run_id=%s", run_id, exc_info=True)
 
 
 def apply_budget_hook(run_id: str, *, node_id: str, iteration: int) -> bool:
