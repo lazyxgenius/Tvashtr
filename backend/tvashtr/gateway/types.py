@@ -19,13 +19,23 @@ class CompletionRequest:
     the owner's encrypted ``provider_credentials`` and threads in, so the completion (gateway) path
     is BYOK + ``.env``-free exactly like the agent path. ``None`` (the default) ⇒ the gateway lets
     litellm resolve the key the legacy way (its provider env lookup) — used only by non-run callers
-    (e.g. the ``generate_doc`` spike); on the run path the executor ALWAYS sets it."""
+    (e.g. the ``generate_doc`` spike); on the run path the executor ALWAYS sets it.
+
+    ``fallback_model`` / ``fallback_api_key`` (per-node capabilities, Session A) carry ONE authored
+    failover slug from the node's ``config["fallback_model"]`` plus the owner key resolved for THAT
+    slug's provider (it may differ from the primary's). Both default ``None`` ⇒ every caller
+    is byte-identical. ``multimodal`` mirrors ``config["multimodal"]``: it travels with the request
+    so the flag reaches the model boundary; it is BOUNDED BY THE MODEL (see
+    :func:`gateway.multimodal_supported`)."""
 
     model: str
     messages: list[dict[str, str]]
     temperature: float | None = None
     max_tokens: int | None = None
     api_key: str | None = None
+    fallback_model: str | None = None
+    fallback_api_key: str | None = None
+    multimodal: bool = False
 
 
 @dataclass(frozen=True)

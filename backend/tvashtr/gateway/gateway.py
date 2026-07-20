@@ -51,6 +51,38 @@ def _provider_of(model: str) -> str:
         return model.split("/", 1)[0]
 
 
+def _is_rate_limit(exc: Exception) -> bool:
+    """True when a provider error is a RATE LIMIT (429) rather than a HARD failure.
+
+    The per-node fallback (``config["fallback_model"]``) must NEVER burn on a 429: a rate limit is
+    transient and is already owned by the Milestone-B retry envelope (``agent_num_retries`` /
+    ``retry_max_wait``, see :func:`tvashtr.config.agent_llm_routing`). Swapping models on one would
+    silently downgrade a run that only needed to wait. A HARD failure — bad/absent credentials, an
+    unreachable provider, an unknown model — is what the swap is for.
+
+    Classified structurally first (litellm surfaces ``status_code`` on its provider errors), with
+    a conservative text check as the fallback for wrapped/opaque errors.
+    """
+    if getattr(exc, "status_code", None) == 429:
+        return True
+    text = str(exc).lower()
+    return "429" in text or "rate limit" in text or "ratelimit" in text
+
+
+def multimodal_supported(model: str) -> bool:
+    """Best-effort: can ``model`` actually accept non-text (image) input?
+
+    The per-node ``config["multimodal"]`` opt-in is BOUNDED BY THE MODEL — a text-only slug simply
+    cannot use it. This probe lets a caller SURFACE that mismatch (an advisory warning) instead of
+    the flag silently doing nothing. Never raises: an unknown/unmapped slug answers ``False`` rather
+    than crashing a run.
+    """
+    try:
+        return bool(litellm.supports_vision(model))
+    except Exception:  # noqa: BLE001 — an unknown slug must never crash a run
+        return False
+
+
 def _cost_of(response: object) -> float:
     """Computed USD cost. ``0.0`` is legitimate (free tiers / unknown pricing)."""
     try:
@@ -71,7 +103,18 @@ def complete(request: CompletionRequest) -> CompletionResult:
     max_tokens = request.max_tokens
     if max_tokens is None:
         max_tokens = get_settings().default_max_tokens_per_call
-    for model in _ordered_models(request):
+    # Each candidate is ``(model, api_key)``: the per-node fallback may be a DIFFERENT provider than
+    # the primary, so it carries the key the executor resolved for ITS provider. The list is built
+    # from the unchanged ``_ordered_models`` (requested + the static config fallbacks) and is
+    # MUTATED below — the per-node fallback is spliced in directly after the primary, but ONLY when
+    # the primary fails HARD. A request with no ``fallback_model`` never splices, so its order and
+    # semantics are byte-identical to before this feature.
+    candidates: list[tuple[str, str | None]] = [
+        (model, request.api_key) for model in _ordered_models(request)
+    ]
+    index = 0
+    while index < len(candidates):
+        model, api_key = candidates[index]
         kwargs: dict = {"model": model, "messages": request.messages}
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
@@ -80,14 +123,32 @@ def complete(request: CompletionRequest) -> CompletionResult:
         # M-accounts Slice B: pass the per-owner provider key (BYOK) when the caller set one, so the
         # completion path resolves from the run owner's encrypted credential, not ``.env``. ``None``
         # ⇒ litellm's own env lookup (non-run callers only — the executor always sets it on a run).
-        if request.api_key is not None:
-            kwargs["api_key"] = request.api_key
+        if api_key is not None:
+            kwargs["api_key"] = api_key
 
         started = time.perf_counter()
         try:
             response = litellm.completion(**kwargs)
         except Exception as exc:  # noqa: BLE001 — any provider error means: try the next model
             last_error = exc
+            # The per-node failover: swap ONCE, only off the PRIMARY (``index == 0``), only on a
+            # HARD failure (never a 429 — see :func:`_is_rate_limit`), and only if the fallback slug
+            # isn't already queued. Tried BEFORE the static ``model_fallbacks`` because an AUTHORED
+            # per-node choice is more specific than a deployment-wide default.
+            fallback = request.fallback_model
+            if (
+                index == 0
+                and fallback
+                and fallback not in [m for m, _ in candidates]
+                and not _is_rate_limit(exc)
+            ):
+                fallback_key = (
+                    request.fallback_api_key
+                    if request.fallback_api_key is not None
+                    else request.api_key
+                )
+                candidates.insert(1, (fallback, fallback_key))
+            index += 1
             continue
         latency_ms = (time.perf_counter() - started) * 1000.0
 
@@ -111,7 +172,7 @@ def complete(request: CompletionRequest) -> CompletionResult:
         )
 
     raise GatewayError(
-        f"all models failed for request (tried {_ordered_models(request)}): {last_error}"
+        f"all models failed for request (tried {[m for m, _ in candidates]}): {last_error}"
     ) from last_error
 
 

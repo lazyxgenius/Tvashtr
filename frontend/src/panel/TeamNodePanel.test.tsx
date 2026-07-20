@@ -899,3 +899,171 @@ describe("TeamNodePanel — writes_to / reads_from document routing (M-docs)", (
     expect(body.reads_from).toEqual(["spec", "design"]);
   });
 });
+
+// ---- Per-node capabilities (Session A): the three new drawer fields + the edit-time model hint ----
+
+describe("TeamNodePanel — per-node capability fields", () => {
+  it("renders a Fallback model field seeded from config and PATCHes it on Save", async () => {
+    const onSaved = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ config: { fallback_model: "openai/gpt-4o-mini" } })}
+        isStartNode={false}
+        onSaved={onSaved}
+        onClose={() => {}}
+      />,
+    );
+    const fallback = screen.getByRole<HTMLInputElement>("combobox", { name: "Fallback model" });
+    expect(fallback.value).toBe("openai/gpt-4o-mini");
+
+    // Editing it alone enables Save (it is an authorable field like prompt/model).
+    fireEvent.change(fallback, { target: { value: "gemini/gemini-2.0-flash" } });
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    const body = JSON.parse(patchCall()![1].body as string) as Record<string, unknown>;
+    expect(body.fallback_model).toBe("gemini/gemini-2.0-flash");
+  });
+
+  it("renders an Expected output JSON field + a Multimodal toggle, and PATCHes both", async () => {
+    const onSaved = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ kind: "completion", engine: null })}
+        isStartNode={false}
+        onSaved={onSaved}
+        onClose={() => {}}
+      />,
+    );
+    const schema = screen.getByRole<HTMLTextAreaElement>("textbox", { name: /expected output/i });
+    expect(schema.value).toBe("");
+    fireEvent.change(schema, { target: { value: '{"type":"object"}' } });
+    fireEvent.click(screen.getByRole("button", { name: "Multimodal" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    const body = JSON.parse(patchCall()![1].body as string) as Record<string, unknown>;
+    expect(body.output_schema).toEqual({ type: "object" });
+    expect(body.multimodal).toBe(true);
+  });
+
+  it("a node with none of the three set sends a PATCH with none of the three keys", async () => {
+    const onSaved = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node()}
+        isStartNode={false}
+        onSaved={onSaved}
+        onClose={() => {}}
+      />,
+    );
+    // Dirty ONLY the prompt — the capability fields stay untouched/empty.
+    fireEvent.change(screen.getByRole("textbox", { name: /prompt/i }), {
+      target: { value: "edited prompt" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    const body = JSON.parse(patchCall()![1].body as string) as Record<string, unknown>;
+    expect("fallback_model" in body).toBe(false);
+    expect("output_schema" in body).toBe(false);
+    expect("multimodal" in body).toBe(false);
+  });
+
+  it("refuses to save an Expected output that is not valid JSON", async () => {
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node()}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: /expected output/i }), {
+      target: { value: "{not json" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByText(/valid JSON/i)).toBeInTheDocument());
+    expect(patchCall()).toBeUndefined(); // nothing was PATCHed
+  });
+});
+
+describe("TeamNodePanel — edit-time model validation hint (soft, never blocks Save)", () => {
+  it("is ABSENT for a recognised preset on a configured provider", async () => {
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ model: "openai/gpt-4o-mini" })}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    // The providers fetch resolves openai + nvidia_nim; gpt-4o-mini is a MODEL_PRESETS entry.
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Model" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("model-validity-hint")).not.toBeInTheDocument();
+  });
+
+  it("RENDERS when the slug's provider is not one the account has configured", async () => {
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ model: "anthropic/claude-3-5-sonnet" })}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    const hint = await screen.findByTestId("model-validity-hint");
+    expect(hint).toHaveTextContent(/anthropic/i);
+  });
+
+  it("RENDERS when the provider IS configured but the slug is not a known preset", async () => {
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ model: "openai/gpt-9-turbo-typo" })}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect(await screen.findByTestId("model-validity-hint")).toBeInTheDocument();
+  });
+
+  it("is dismissible, and Save still fires while it is showing", async () => {
+    const onSaved = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ model: "anthropic/claude-3-5-sonnet" })}
+        isStartNode={false}
+        onSaved={onSaved}
+        onClose={() => {}}
+      />,
+    );
+    await screen.findByTestId("model-validity-hint");
+
+    // Save is NEVER disabled by the hint: dirty the prompt and it saves with the hint showing.
+    fireEvent.change(screen.getByRole("textbox", { name: /prompt/i }), {
+      target: { value: "edited" },
+    });
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await waitFor(() => expect(patchCall()).toBeDefined());
+
+    // And it can be dismissed.
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss model warning" }));
+    await waitFor(() =>
+      expect(screen.queryByTestId("model-validity-hint")).not.toBeInTheDocument(),
+    );
+  });
+});

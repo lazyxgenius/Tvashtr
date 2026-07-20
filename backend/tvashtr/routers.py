@@ -20,6 +20,7 @@ from tvashtr import db
 from tvashtr.auth import UserOut, get_current_user
 from tvashtr.config import get_settings
 from tvashtr.control_plane import github_app, memory, memory_distill, memory_review
+from tvashtr.control_plane.context_compiler import resolve_fallback_model, resolve_multimodal
 from tvashtr.control_plane.credentials import (
     NoCredentialError,
     encrypt_secret,
@@ -43,6 +44,7 @@ from tvashtr.control_plane.node_library import (
     update_owner_skill,
     update_owner_tool,
 )
+from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.control_plane.run_diff import compute_run_diff
 from tvashtr.control_plane.run_explain import build_system_prompt
 from tvashtr.control_plane.team_run import run_team
@@ -73,7 +75,7 @@ from tvashtr.documents.service import (
     list_documents,
     list_documents_for_run,
 )
-from tvashtr.gateway import CompletionRequest, GatewayError, complete
+from tvashtr.gateway import CompletionRequest, GatewayError, complete, multimodal_supported
 from tvashtr.metering import record_cost
 from tvashtr.models import (
     AgentInvocation,
@@ -248,6 +250,17 @@ class UpdateTeamNodeRequest(BaseModel):
     # unchanged. Empty by default — a node with neither behaves exactly as today.
     writes_to: str | None = None
     reads_from: list[str] | None = None
+    # Per-node capabilities (Session A): three more optional settings in the SAME config JSONB (no
+    # migration). Merged only when SENT (``model_fields_set``); omitted ⇒ config unchanged, so
+    # with none of them set is byte-identical to before this slice.
+    #   * ``fallback_model`` — the auto-failover slug used ONCE on a PRIMARY-provider HARD failure.
+    #   * ``multimodal`` — the per-node multimodal opt-in (bounded by the chosen model).
+    # ``output_schema`` is REUSED from the guardrail block above: it is consumed by the GATE branch
+    # (stored as ``schema``) and, for an agent/completion node, by the agent branch (stored as
+    # ``output_schema``) — the two branches never both run, so one wire field serves both.
+    # ``dict | None`` is what rejects a non-object schema with 422.
+    fallback_model: str | None = None
+    multimodal: bool | None = None
 
 
 class CreateTeamRequest(BaseModel):
@@ -1249,6 +1262,14 @@ def ask_node(
             raise HTTPException(status_code=422, detail="node has not run yet (no recorded trail)")
         owner_id = run.owner_id
         model = node.model
+        # Per-node capabilities (Session A): this is the ONE per-node model call the HOST makes, so
+        # it is where the node's authored capability config is honored. Read inside the session with
+        # the rest of the node's fields.
+        node_config = node.config
+        node_role = node.role_name
+
+    fallback_model = resolve_fallback_model(node_config)
+    multimodal = resolve_multimodal(node_config)
 
     system_prompt = build_system_prompt(run_id=run_id, node_id=node_id)
 
@@ -1259,11 +1280,42 @@ def ask_node(
             status_code=422, detail=f"no credential for provider {exc.provider!r}"
         ) from exc
 
+    # The fallback's provider may differ from the primary's, so its key is resolved SEPARATELY. An
+    # owner with no key for the fallback's provider simply gets no failover (the primary still
+    # answers) — a missing fallback credential must never break a call the primary could serve.
+    fallback_api_key: str | None = None
+    if fallback_model:
+        try:
+            fallback_api_key = resolve_owner_api_key(owner_id, fallback_model)
+        except NoCredentialError:
+            fallback_model = None
+
+    # The multimodal opt-in is BOUNDED BY THE MODEL: a node that asks for it on a text-only slug is
+    # told (an advisory RunWarning in the run inspector) instead of the flag silently doing nothing.
+    # Threading image CONTENT PARTS into the sandboxed agent loop is a documented follow-on — that
+    # call is made inside the container, behind the frozen EngineAdapter contract.
+    if multimodal and not multimodal_supported(model):
+        record_resolution_warning(
+            run_id,
+            "multimodal",
+            node_role,
+            f"model {model!r} does not accept image input — the multimodal flag has no effect",
+        )
+
     messages = [{"role": "system", "content": system_prompt}] + [
         {"role": m.role, "content": m.content} for m in body.messages
     ]
     try:
-        result = complete(CompletionRequest(model=model, messages=messages, api_key=api_key))
+        result = complete(
+            CompletionRequest(
+                model=model,
+                messages=messages,
+                api_key=api_key,
+                fallback_model=fallback_model,
+                fallback_api_key=fallback_api_key,
+                multimodal=multimodal,
+            )
+        )
     except GatewayError as exc:
         raise HTTPException(status_code=502, detail="the model call failed") from exc
 
@@ -2187,6 +2239,20 @@ def update_team_node(
                 cfg["writes_to"] = body.writes_to
             if "reads_from" in body.model_fields_set:
                 cfg["reads_from"] = body.reads_from
+            node.config = cfg
+        # Per-node capabilities (Session A): fallback_model / output_schema / multimodal ride the
+        # SAME config JSONB by the SAME rule — one fresh-dict merge, ``model_fields_set``-guarded,
+        # an omitted field leaves the stored value untouched (the byte-identical guard) while an
+        # EXPLICIT null clears it. ``output_schema`` reaches this branch only for an agent or
+        # completion node (a gate returned above), so it is stored under its own key and never
+        # guardrail gate's ``schema``. The executor's resolvers normalise blank/malformed values, so
+        # a cleared or wrong-typed value is inert at run time.
+        _CAPABILITY_KEYS = ("fallback_model", "output_schema", "multimodal")
+        if any(key in body.model_fields_set for key in _CAPABILITY_KEYS):
+            cfg = dict(node.config or {})
+            for key in _CAPABILITY_KEYS:
+                if key in body.model_fields_set:
+                    cfg[key] = getattr(body, key)
             node.config = cfg
         session.flush()
         return _node_base_dict(node)

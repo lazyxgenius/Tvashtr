@@ -827,6 +827,16 @@ export async function updateTeamNode(
   memoryRememberEnabled?: boolean,
   writesTo?: string,
   readsFrom?: string[],
+  // Per-node capabilities (Session A): the three additive drawer settings, GROUPED into one optional
+  // trailing object (the `updateGateNode` precedent) rather than three more positional args. Each key
+  // is independent and follows the same rule as every field above — it reaches the PATCH body ONLY
+  // when the caller provides it, so an omitted key leaves the stored value untouched, and an EXPLICIT
+  // null clears it. A caller that omits the whole object produces a byte-identical PATCH body.
+  capabilities?: {
+    fallback_model?: string | null;
+    output_schema?: Record<string, unknown> | null;
+    multimodal?: boolean;
+  },
 ): Promise<TeamGraphNode> {
   const body: {
     prompt: string;
@@ -838,6 +848,9 @@ export async function updateTeamNode(
     memory_remember_enabled?: boolean;
     writes_to?: string;
     reads_from?: string[];
+    fallback_model?: string | null;
+    output_schema?: Record<string, unknown> | null;
+    multimodal?: boolean;
   } = { prompt, model };
   if (capability !== undefined) body.capability = capability;
   // M-unify U3: the Edits toggle's source of truth. Sent whenever the caller passes it; the backend's
@@ -857,6 +870,10 @@ export async function updateTeamNode(
   // both still produces a PATCH body byte-identical to before this milestone.
   if (toolConfig !== undefined) body.tool_config = toolConfig;
   if (skills !== undefined) body.skills = skills;
+  // Session A: fallback_model / output_schema / multimodal — same per-key rule as everything above.
+  if (capabilities?.fallback_model !== undefined) body.fallback_model = capabilities.fallback_model;
+  if (capabilities?.output_schema !== undefined) body.output_schema = capabilities.output_schema;
+  if (capabilities?.multimodal !== undefined) body.multimodal = capabilities.multimodal;
   const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },

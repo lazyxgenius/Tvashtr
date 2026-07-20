@@ -67,6 +67,21 @@ const readsFromOf = (node: TeamGraphNode | null): string[] => {
   return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string") : [];
 };
 
+// Per-node capabilities (Session A), read off the SAME config JSONB. `fallback_model` = the ONE slug
+// the model call fails over to on a hard provider failure; `output_schema` = the ADVISORY expected
+// output shape; `multimodal` = the (model-bounded) multimodal opt-in. All empty/off by default, so a
+// node with none of them set behaves — and PATCHes — exactly as before this slice.
+const fallbackModelOf = (node: TeamGraphNode | null): string => {
+  const raw = (node?.config as Record<string, unknown> | null | undefined)?.fallback_model;
+  return typeof raw === "string" ? raw : "";
+};
+const outputSchemaTextOf = (node: TeamGraphNode | null): string => {
+  const raw = (node?.config as Record<string, unknown> | null | undefined)?.output_schema;
+  return raw && typeof raw === "object" ? JSON.stringify(raw, null, 2) : "";
+};
+const multimodalOf = (node: TeamGraphNode | null): boolean =>
+  (node?.config as Record<string, unknown> | null | undefined)?.multimodal === true;
+
 const START_LOCK_TOOLTIP =
   "The first node scopes the work — it writes the shared spec the team reads, so it stays edits-off.";
 
@@ -143,6 +158,18 @@ export function TeamNodePanel({
   const [writesTo, setWritesTo] = useState<string>(initialWritesTo);
   const initialReadsFromText = readsFromOf(node).join("\n");
   const [readsFromText, setReadsFromText] = useState<string>(initialReadsFromText);
+  // Session A: the three per-node capability fields. Seeded from config, reset via the `key`
+  // remount, folded into the dirty check, and posted on Save — exactly like the M-docs fields above.
+  const initialFallbackModel = fallbackModelOf(node);
+  const [fallbackModel, setFallbackModel] = useState<string>(initialFallbackModel);
+  const initialOutputSchemaText = outputSchemaTextOf(node);
+  const [outputSchemaText, setOutputSchemaText] = useState<string>(initialOutputSchemaText);
+  const initialMultimodal = multimodalOf(node);
+  const [multimodal, setMultimodal] = useState<boolean>(initialMultimodal);
+  // The edit-time model hint is dismissible per node (the `key` remount resets it).
+  const [modelHintDismissed, setModelHintDismissed] = useState(false);
+  // A malformed Expected-output JSON blocks only ITS OWN save (never the model field's free text).
+  const [schemaError, setSchemaError] = useState(false);
   // M-tools C7.0: the node's inline tools + skills (stub editors). Seeded from the node, reset via the
   // `key` remount, folded into the dirty check, and posted on Save. NULL until a later milestone.
   const [toolConfig, setToolConfig] = useState<Record<string, unknown> | null>(
@@ -243,7 +270,11 @@ export function TeamNodePanel({
       JSON.stringify(skills ?? null) !== JSON.stringify(node.skills ?? null) ||
       // M-docs: writes_to/reads_from are authorable fields — editing either enables Save.
       writesTo !== initialWritesTo ||
-      readsFromText !== initialReadsFromText);
+      readsFromText !== initialReadsFromText ||
+      // Session A: the three capability fields are authorable too — editing any enables Save.
+      fallbackModel !== initialFallbackModel ||
+      outputSchemaText !== initialOutputSchemaText ||
+      multimodal !== initialMultimodal);
   const canSave = dirty && !saving && prompt.trim().length > 0 && model.trim().length > 0;
 
   const pickEdits = (next: boolean) => {
@@ -261,8 +292,35 @@ export function TeamNodePanel({
 
   const handleSave = async () => {
     if (!node || !canSave) return;
+    // Session A: build the capability payload FIRST — a malformed Expected-output JSON must refuse
+    // the save before any request goes out (the same guard the gate editor's schema field uses).
+    // Each key is included ONLY when this node actually has a value or is CLEARING a stored one, so
+    // a node that never touched these fields sends a PATCH body byte-identical to before the slice.
+    const capabilities: {
+      fallback_model?: string | null;
+      output_schema?: Record<string, unknown> | null;
+      multimodal?: boolean;
+    } = {};
+    if (fallbackModel.trim() !== initialFallbackModel) {
+      capabilities.fallback_model = fallbackModel.trim() || null;
+    }
+    if (outputSchemaText !== initialOutputSchemaText) {
+      if (!outputSchemaText.trim()) {
+        capabilities.output_schema = null; // cleared
+      } else {
+        try {
+          capabilities.output_schema = JSON.parse(outputSchemaText) as Record<string, unknown>;
+        } catch {
+          setSchemaError(true); // invalid JSON — surface it, save nothing
+          return;
+        }
+      }
+    }
+    if (multimodal !== initialMultimodal) capabilities.multimodal = multimodal;
+
     setSaving(true);
     setSaveError(false);
+    setSchemaError(false);
     try {
       // M-unify U3: the Edits toggle is the source of truth; `capability` is no longer authored here
       // (kind is vestigial under loop-always), so pass it undefined and drive `edits_allowed` instead.
@@ -281,6 +339,8 @@ export function TeamNodePanel({
           .split("\n")
           .map((s) => s.trim())
           .filter(Boolean),
+        // Session A: an EMPTY object sends none of the three keys (byte-identical PATCH).
+        capabilities,
       );
       setSaved(true);
       await onSaved();
@@ -402,6 +462,23 @@ export function TeamNodePanel({
         ) ?? null)
       : null;
   const showHint = sameModelSibling !== null && !hintDismissed;
+
+  // ---- Session A, Feature 3: edit-time model validation (SOFT — never blocks Save) ----
+  // The model field is deliberately free-text (BYOK, any provider), so an unrecognised slug is a
+  // WARNING, not a block: we cannot know every valid model. It fires when EITHER the slug's provider
+  // isn't one the account has configured a key for, OR the provider is configured but the slug isn't
+  // a known preset for it. That catches the typo-that-fails-30s-into-a-run at authoring time.
+  // Suppressed while the providers list is still loading (empty) so it can't flash on mount.
+  const configuredProviders = new Set(providers.map((p) => p.provider));
+  const providerConfigured = configuredProviders.has(currentProvider);
+  const knownPreset = quickPicks.includes(model.trim());
+  const modelWarning =
+    isAgent && model.trim() && providers.length > 0 && !(providerConfigured && knownPreset)
+      ? !providerConfigured
+        ? `No API key configured for “${currentProvider}”.`
+        : `“${model.trim()}” isn’t a known ${currentProvider} model.`
+      : null;
+  const showModelWarning = modelWarning !== null && !modelHintDismissed;
   const siblingTitle = sameModelSibling
     ? (ROLE_TITLES[sameModelSibling.role_name] ?? sameModelSibling.role_name)
     : "";
@@ -897,6 +974,95 @@ export function TeamNodePanel({
               </button>
             </div>
           )}
+
+          {/* Session A, Feature 3: the edit-time model warning. SOFT by design — Save is never
+              disabled and the field stays free-text; this only catches the typo/unconfigured-provider
+              case at authoring time instead of 30s into a run. */}
+          {showModelWarning && (
+            <div className="tv-node-hint" role="status" data-testid="model-validity-hint">
+              <span className="tv-node-hint__text">
+                {modelWarning} It’ll fail at run time if the slug is wrong or the provider key isn’t
+                set.
+              </span>
+              <button
+                type="button"
+                className="tv-btn tv-btn--link tv-btn--sm"
+                onClick={() => setModelHintDismissed(true)}
+                aria-label="Dismiss model warning"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Session A, Feature 1: the per-node fallback model — directly under the model picker.
+            Empty by default ⇒ no behaviour change. Same free-text + preset datalist as the primary
+            field, because the same BYOK "any provider" rule applies. */}
+        <label className="tv-field">
+          <span className="tv-field__label">Fallback model</span>
+          <span className="tv-field__hint">
+            Used once if this node’s model hard-fails (bad key, provider down). Blank = no fallback.
+          </span>
+          <input
+            className="tv-node-model"
+            type="text"
+            list="tv-model-presets"
+            aria-label="Fallback model"
+            value={fallbackModel}
+            spellCheck={false}
+            placeholder="e.g. openai/gpt-4o-mini"
+            onChange={(e) => {
+              setFallbackModel(e.target.value);
+              setSaved(false);
+            }}
+          />
+        </label>
+
+        {/* Session A, Feature 2: the ADVISORY expected-output schema + the multimodal opt-in. */}
+        <label className="tv-field">
+          <span className="tv-field__label">Expected output</span>
+          <span className="tv-field__hint">
+            Optional JSON Schema for this node’s output. Advisory — a mismatch is recorded as a run
+            warning, never a failure.
+          </span>
+          <textarea
+            className="tv-field__input tv-field__input--mono"
+            aria-label="Expected output"
+            rows={4}
+            spellCheck={false}
+            placeholder={'{ "type": "object", "required": ["title"] }'}
+            value={outputSchemaText}
+            onChange={(e) => {
+              setOutputSchemaText(e.target.value);
+              setSchemaError(false);
+              setSaved(false);
+            }}
+          />
+          {schemaError && (
+            <span className="tv-prd__saveerr">That isn’t valid JSON — fix it to save.</span>
+          )}
+        </label>
+
+        <div className="tv-field">
+          <span className="tv-field__label">Multimodal</span>
+          <span className="tv-field__hint">
+            Let this node exchange images as well as text. Bounded by the model — a text-only model
+            ignores it.
+          </span>
+          <div className="tv-seg" role="group" aria-label="Multimodal">
+            <button
+              type="button"
+              className="tv-seg__btn"
+              aria-pressed={multimodal}
+              onClick={() => {
+                setMultimodal(!multimodal);
+                setSaved(false);
+              }}
+            >
+              Multimodal
+            </button>
+          </div>
         </div>
 
         {/* M-docs: per-node document routing. Writes-to = the ONE document this node authors;

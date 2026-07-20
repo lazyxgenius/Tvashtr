@@ -54,13 +54,19 @@ from tvashtr.control_plane.context_compiler import (
     SPEC_HANDLE_FILENAME,
     compile_context,
     resolve_context_budget,
+    resolve_fallback_model,
+    resolve_output_schema,
     resolve_reads_from,
     resolve_remember_enabled,
     resolve_writes_to,
 )
-from tvashtr.control_plane.credentials import resolve_owner_api_key
+from tvashtr.control_plane.credentials import NoCredentialError, resolve_owner_api_key
 from tvashtr.control_plane.gates import wait_at_gate
-from tvashtr.control_plane.guardrails import GUARDRAIL_GATE_KINDS, guardrail_gate_step
+from tvashtr.control_plane.guardrails import (
+    GUARDRAIL_GATE_KINDS,
+    _schema_violation,  # REUSED (M-rails C9's shipped JSON-Schema-subset validator) — never a copy
+    guardrail_gate_step,
+)
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
 from tvashtr.control_plane.memory_retrieval import (
@@ -121,6 +127,65 @@ def _owner_api_key(run_id: str, model: str) -> str:
             "fallback). Every run must be owned by construction."
         )
     return resolve_owner_api_key(owner_id, model)
+
+
+def _resolve_model_and_key(run_id: str, model: str, fallback_model: str | None) -> tuple[str, str]:
+    """Resolve the node's model + the run owner's key for it, failing over ONCE to the node's
+    ``config["fallback_model"]`` on a PRIMARY-provider HARD failure.
+
+    This is the REACHABLE host-side seam on the agent path. The host resolves ``model -> provider ->
+    owner key`` here, immediately before building the ``AgentTask`` — so a missing credential for
+    the PRIMARY's provider (``NoCredentialError``: an auth-class hard failure, explicitly NOT a 429)
+    is visible to the host and can be failed over cheaply, BEFORE any agent runs.
+
+    **Scope limitation (deliberate, per the slice brief).** The agent's actual litellm call is made
+    by the OpenHands SDK *inside* the sandbox — in ``docker``/``fly`` mode, inside the container —
+    and its own 429/retry envelope comes from :func:`tvashtr.config.agent_llm_routing`
+    (``num_retries``/``retry_max_wait``). A provider hard-failure that happens THERE cannot be
+    failed over from the host without patching the in-container agent-server, which this slice
+    deliberately does not do (the same in-container wall that scoped proactive pacing in
+    Milestone B). The host-side completion path (``gateway.complete``) DOES get the full swap,
+    including the 429 exclusion — see :func:`tvashtr.gateway.gateway.complete`.
+
+    No ``fallback_model`` ⇒ the original error propagates exactly as today.
+    """
+    try:
+        return model, _owner_api_key(run_id, model)
+    except NoCredentialError:
+        if not fallback_model:
+            raise
+        key = _owner_api_key(run_id, fallback_model)
+        # Advisory, not fatal: the run continues on the fallback, and the swap is visible in the
+        # run inspector rather than being a silent model substitution.
+        record_resolution_warning(
+            run_id,
+            "fallback_model",
+            fallback_model,
+            f"no credential for {model!r}'s provider — failed over to the node's fallback model",
+        )
+        return fallback_model, key
+
+
+def _output_schema_violation(output: str | None, schema: dict | None) -> str | None:
+    """ADVISORY check of a completion node's ``output`` against its ``config["output_schema"]``.
+
+    Returns a human reason naming the FIRST failing key path, or ``None`` when it validates (or when
+    there is nothing to check). REUSES the JSON-Schema-subset validator M-rails C9 shipped in
+    :mod:`tvashtr.control_plane.guardrails` (``_schema_violation``) — deliberately NOT a second
+    validator, so the advisory node check and the ``output_schema_check`` guardrail gate can never
+    disagree about what "valid" means.
+
+    Output that is not JSON at all is itself a miss (reported as such), never an exception: v1 never
+    fails a run on a schema result — the caller records a ``RunWarning`` and the walk continues.
+    """
+    if schema is None or output is None:
+        return None
+    try:
+        parsed = json.loads(output)
+    except ValueError:  # covers JSONDecodeError
+        return "output is not valid JSON"
+    violation = _schema_violation(parsed, schema, "")
+    return None if violation is None else f"output fails schema at {violation}"
 
 
 # M-h1b — a hosted-GitHub clone lands in a deterministic per-run dir (so a resume is idempotent),
@@ -900,6 +965,7 @@ def agent_run_step(
     node_id: str | None = None,
     memory: list | None = None,
     read_documents: list | None = None,
+    fallback_model: str | None = None,
 ) -> dict:
     """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
     ``reviewer_agent_run_step``. M-unify U1: it is now the SINGLE path EVERY AgentNode executes
@@ -1040,7 +1106,13 @@ def agent_run_step(
     if get_settings().litellm_proxy_enabled:
         agent_api_key = vkey
     else:
-        agent_api_key = _owner_api_key(run_id, model or get_settings().default_model)
+        # Per-node capabilities (Session A): the host-side failover seam. ``_resolve_model_and_key``
+        # returns the PRIMARY and its key normally, and swaps to the node's ``fallback_model`` when
+        # the primary's provider credential is missing (a hard auth failure the host can see before
+        # any agent runs). ``fallback_model=None`` ⇒ byte-identical to the previous single call.
+        model, agent_api_key = _resolve_model_and_key(
+            run_id, model or get_settings().default_model, fallback_model
+        )
 
     task = AgentTask(
         instruction=instruction,
@@ -1549,6 +1621,13 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             docs_kwargs: dict = {}
             if read_documents:
                 docs_kwargs["read_documents"] = read_documents
+            # Per-node capabilities (Session A): the auto-failover slug, resolved off the SAME
+            # JSONB (replay-stable off the recorded graph dict) and threaded ONLY when the node
+            # authored one — an absent fallback omits the kwarg, so the call is byte-identical.
+            capability_kwargs: dict = {}
+            node_fallback_model = resolve_fallback_model(node["config"])
+            if node_fallback_model:
+                capability_kwargs["fallback_model"] = node_fallback_model
             result = agent_run_step(
                 run_id,
                 node["prompt"],
@@ -1569,6 +1648,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 **brownfield_kwargs,
                 **memory_kwargs,  # M-memory S3: the retrieved facts (absent ⇒ byte-identical call)
                 **docs_kwargs,  # M-docs: the reads_from documents (absent ⇒ byte-identical call)
+                **capability_kwargs,  # Session A: fallback_model (absent ⇒ byte-identical call)
             )
             delete_vkey_step(run_id, vkey)
 
@@ -1679,6 +1759,18 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     )
                 else:
                     write_named_document_step(run_id, current, n, report, writes_to)
+
+            # Per-node capabilities (Session A) — the ADVISORY typed-output check. A COMPLETION
+            # (thinker) node that authored ``config["output_schema"]`` has its output validated
+            # against it, REUSING the M-rails C9 JSON-Schema-subset validator. A miss records a
+            # ``RunWarning`` (surfaced in the run inspector's ``resolution_warnings``) and the walk
+            # CONTINUES — v1 deliberately never fails a run on a schema result; a hard gate is the
+            # separate ``output_schema_check`` GUARDRAIL node. No schema ⇒ no check ⇒ identical.
+            output_schema = resolve_output_schema(node["config"])
+            if output_schema is not None and kind == "completion":
+                violation = _output_schema_violation(result.get("report"), output_schema)
+                if violation is not None:
+                    record_resolution_warning(run_id, "output_schema", node["role_name"], violation)
 
             # Close label + detail. Routing is UNCHANGED — a non-emitting node routes on ``None``
             # (the

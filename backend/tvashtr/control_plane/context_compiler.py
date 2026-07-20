@@ -486,3 +486,43 @@ def resolve_reads_from(node_config: dict | None) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+
+
+def resolve_fallback_model(node_config: dict | None) -> str | None:
+    """Per-node capabilities (Session A): the AUTO-FAILOVER model slug — the top-level
+    ``config["fallback_model"]`` string in a node's EXISTING ``config`` JSONB (additive, NO
+    migration), default ``None`` (no failover ⇒ byte-identical to today). Pure + None-safe; a
+    blank/whitespace/non-str value is treated as unset, mirroring :func:`resolve_writes_to`.
+
+    The model call swaps to this slug ONCE on a PRIMARY-provider HARD failure (auth / unreachable
+    provider / unknown model) — never on a 429, which the Milestone-B retry envelope owns."""
+    if not node_config:
+        return None
+    value = node_config.get("fallback_model")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def resolve_output_schema(node_config: dict | None) -> dict | None:
+    """Per-node capabilities (Session A): the ADVISORY expected-output schema — the top-level
+    ``config["output_schema"]`` JSON object in a node's EXISTING ``config`` JSONB (additive, NO
+    migration), default ``None`` (no check ⇒ byte-identical to today). Pure + None-safe; a
+    value is treated as unset so a malformed authored value can never crash a run.
+
+    v1 enforcement is ADVISORY: a completion node whose output violates this records a
+    ``RunWarning`` and the run CONTINUES. (A hard gate is the separate ``output_schema_check``
+    own schema lives under the distinct config key ``schema``.)"""
+    if not node_config:
+        return None
+    value = node_config.get("output_schema")
+    return value if isinstance(value, dict) else None
+
+
+def resolve_multimodal(node_config: dict | None) -> bool:
+    """Per-node capabilities (Session A): the multimodal opt-in — the top-level
+    ``config["multimodal"]`` bool in a node's EXISTING ``config`` JSONB (additive, NO migration),
+    default ``False``. Pure + None-safe; ONLY a real bool opts in (a truthy string does not), so a
+    malformed authored value stays inert. The flag is bounded by the chosen model — see
+    :func:`tvashtr.gateway.gateway.multimodal_supported`."""
+    return (node_config or {}).get("multimodal") is True

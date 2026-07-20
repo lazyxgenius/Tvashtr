@@ -605,3 +605,102 @@ describe("M-memory S5 — the memory client", () => {
     expect(fetchMock.mock.calls[1][0]).toBe("/api/memories/m2/reject");
   });
 });
+
+describe("updateTeamNode — per-node capabilities (Session A)", () => {
+  it("omits all three capability fields when not passed (byte-identical PATCH)", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
+    vi.stubGlobal("fetch", fetchMock);
+    await updateTeamNode("team-1", "n1", "p", "m");
+    const body = bodyOf(fetchMock.mock.calls[0]) as Record<string, unknown>;
+    expect("fallback_model" in body).toBe(false);
+    expect("output_schema" in body).toBe(false);
+    expect("multimodal" in body).toBe(false);
+    expect(body).toEqual({ prompt: "p", model: "m" });
+  });
+
+  it("sends each capability field ONLY when the caller provides it", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
+    vi.stubGlobal("fetch", fetchMock);
+    // Grouped trailing object (the `updateGateNode` precedent) — each key is independent.
+    await updateTeamNode(
+      "team-1",
+      "n1",
+      "p",
+      "m",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        fallback_model: "openai/gpt-4o-mini",
+      },
+    );
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
+      prompt: "p",
+      model: "m",
+      fallback_model: "openai/gpt-4o-mini",
+    });
+  });
+
+  it("sends output_schema + multimodal together", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
+    vi.stubGlobal("fetch", fetchMock);
+    const schema = { type: "object", required: ["title"] };
+    await updateTeamNode(
+      "team-1",
+      "n1",
+      "p",
+      "m",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        output_schema: schema,
+        multimodal: true,
+      },
+    );
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
+      prompt: "p",
+      model: "m",
+      output_schema: schema,
+      multimodal: true,
+    });
+  });
+
+  it("sends explicit nulls to CLEAR fallback_model / output_schema", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ id: "n1" })));
+    vi.stubGlobal("fetch", fetchMock);
+    await updateTeamNode(
+      "team-1",
+      "n1",
+      "p",
+      "m",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        fallback_model: null,
+        output_schema: null,
+        multimodal: false,
+      },
+    );
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
+      prompt: "p",
+      model: "m",
+      fallback_model: null,
+      output_schema: null,
+      multimodal: false,
+    });
+  });
+});
