@@ -110,6 +110,7 @@ def main() -> int:
         FlyMachines,
         app_name_for_run,
         derive_session_key,
+        parse_regions,
     )
 
     settings = get_settings()
@@ -126,7 +127,7 @@ def main() -> int:
     fly = FlyMachines(
         token=token,
         org=settings.fly_org,
-        region=settings.fly_region,
+        regions=parse_regions(settings.fly_region),
         image=image,
         guest_cpus=settings.fly_guest_cpus,
         guest_memory_mb=settings.fly_guest_memory_mb,

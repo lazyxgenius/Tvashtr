@@ -220,9 +220,18 @@ def mount_frontend(app: FastAPI, dist_dir: str) -> bool:
         # Real built files (favicon, robots.txt, anything Vite copied from public/) serve as
         # themselves; everything else is a client route. ``resolve()`` + the containment check keep
         # a crafted path from reading outside the build directory.
-        candidate = (dist / full_path).resolve()
-        if full_path and candidate.is_file() and candidate.is_relative_to(dist):
-            return FileResponse(candidate)
+        #
+        # The whole probe is wrapped because BOTH calls touch the filesystem with a
+        # caller-controlled string: a NUL byte raises ValueError and an over-long segment raises
+        # OSError, and an unhandled exception here would turn a junk URL into a 500 with a
+        # traceback. Any path we cannot even evaluate is, by definition, not a built file — so it
+        # falls through to the app shell exactly like any other unknown route.
+        try:
+            candidate = (dist / full_path).resolve()
+            if full_path and candidate.is_file() and candidate.is_relative_to(dist):
+                return FileResponse(candidate)
+        except (OSError, ValueError):
+            pass
         return FileResponse(index)
 
     return True

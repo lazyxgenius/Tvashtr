@@ -109,10 +109,14 @@ def sweep_orphaned_fly_apps() -> int:
     fly = None
     reaped = 0
     try:
+        # No region argument, deliberately (M-h4). This client only LISTS and DELETES apps —
+        # it never creates a machine, so a region is meaningless to it. Passing one would also
+        # mean a malformed TVASHTR_FLY_REGION raised inside the broad ``except`` below and
+        # silently disabled the sweep, which is the one failure this cost-hygiene backstop must
+        # never have.
         fly = FlyMachines(
             token=fly_token,
             org=settings.fly_org,
-            region=settings.fly_region,
             image=settings.fly_agent_image,
         )
         # THE FENCE: everything downstream sees only our own apps. Nothing else in this function

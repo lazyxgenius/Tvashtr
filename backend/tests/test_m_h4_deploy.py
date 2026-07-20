@@ -33,6 +33,7 @@ import httpx
 import pytest
 from fastapi import FastAPI, Response
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from tvashtr import auth as auth_module
 from tvashtr import db
@@ -336,6 +337,105 @@ def test_mount_frontend_is_a_no_op_without_a_build(tmp_path):
     assert len(app.routes) == before
 
     assert TestClient(app).get("/").status_code == 404
+
+
+def test_spa_survives_a_path_the_filesystem_cannot_evaluate(tmp_path):
+    """A junk URL must not 500. Both filesystem probes take a caller-controlled string, and a NUL
+    byte (ValueError) or an over-long segment (OSError) would otherwise escape as an unhandled 500
+    with a traceback — from an endpoint any crawler can reach."""
+    client = _app_with_spa(_dist(tmp_path))
+    for path in ("/%00", "/" + "a" * 5000, "/%00/../etc/passwd"):
+        resp = client.get(path)
+        assert resp.status_code in (200, 404), f"{path} -> {resp.status_code}"
+        assert "Traceback" not in resp.text
+
+
+# ---- the regression guards for the three defects the pre-deploy review caught ------------------
+
+
+def test_every_flymachines_call_site_uses_the_new_regions_kwarg():
+    """M-h4 renamed ``region`` -> ``regions`` (keyword-only). A call site left on the old name
+    raises TypeError at CONSTRUCTION — and in ``fly_reaper`` that lands inside a broad
+    ``except Exception`` that swallows it, silently disabling the orphan sweep on the one substrate
+    that BILLS for orphans. Nothing else catches this: every reaper test patches ``FlyMachines``
+    with a plain Mock, which accepts any kwarg."""
+    root = Path(__file__).resolve().parents[2]
+    offenders = []
+    for path in list((root / "backend").rglob("*.py")) + list((root / "scripts").rglob("*.py")):
+        if ".venv" in path.parts:
+            continue
+        for number, line in enumerate(path.read_text().splitlines(), start=1):
+            stripped = line.strip()
+            # The kwarg form only — ``region=%s`` inside a log format string is not a call site.
+            if stripped.startswith("region=") and not stripped.startswith("regions="):
+                offenders.append(f"{path.relative_to(root)}:{number}: {stripped}")
+    joined = "\n".join(offenders)
+    assert not offenders, f"stale region= kwarg (FlyMachines takes regions=):\n{joined}"
+
+
+def test_the_orphan_reaper_actually_constructs_its_client(monkeypatch):
+    """The reaper must REACH the Fly API, not die building the client.
+
+    ``autospec=True`` is the point: it enforces the REAL ``FlyMachines`` signature, so a stale
+    kwarg raises here exactly as it would in production — unlike the plain-Mock patches used
+    elsewhere, which accept anything and made the original defect invisible."""
+    from unittest.mock import patch
+
+    from tvashtr.control_plane import fly_reaper
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "agent_sandbox_mode", "fly")
+    monkeypatch.setattr(settings, "fly_api_token", SecretStr("fly-test-token-NOT-REAL"))
+
+    with patch.object(fly_reaper, "FlyMachines", autospec=True) as fake:
+        fake.return_value.list_apps.return_value = []
+        fly_reaper.sweep_orphaned_fly_apps()
+
+    assert fake.called, "the reaper never constructed a client"
+    assert "region" not in fake.call_args.kwargs, "the reaper passed the removed region= kwarg"
+    fake.return_value.list_apps.assert_called_once()
+
+
+def test_fly_toml_keeps_swap_at_the_top_level():
+    """``swap_size_mb`` is a TOP-LEVEL fly.toml key. TOML scopes every bare key to the preceding
+    table header, so moving this below ``[[vm]]`` silently parses it as ``vm[0].swap_size_mb`` —
+    which Fly drops, and which ``flyctl config validate --strict`` does NOT flag (it accepts
+    unrecognised keys inside ``[[vm]]``). The machine would boot with no swap and nothing would
+    say so, so the only place this can be caught is here."""
+    import tomllib
+
+    config = tomllib.loads((Path(__file__).resolve().parents[2] / "fly.toml").read_text())
+
+    assert config.get("swap_size_mb") == 512, "swap_size_mb is not a top-level key"
+    assert "swap_size_mb" not in config["vm"][0], "swap_size_mb is scoped inside [[vm]] (inert)"
+    # The health check must stay on the DB-free endpoint, or Fly's probe keeps waking Neon.
+    assert config["http_service"]["checks"][0]["path"] == "/healthz"
+    # Sleep-when-idle: suspend needs <= 2GB, and min_machines_running must be 0 to reach zero.
+    assert config["vm"][0]["memory"] == "1gb"
+    assert config["http_service"]["min_machines_running"] == 0
+    assert config["http_service"]["auto_stop_machines"] == "suspend"
+
+
+def test_fly_toml_and_dockerfile_carry_no_secret_values():
+    """The C8 invariant, mechanically: the committed deploy config names secrets only as Fly
+    secret NAMES (which live in the vault), never as values. A pasted value would otherwise be
+    committed to git forever."""
+    root = Path(__file__).resolve().parents[2]
+    for name in ("fly.toml", "Dockerfile"):
+        text = (root / name).read_text()
+        for secret in (
+            "DATABASE_URL",
+            "TVASHTR_SESSION_SECRET",
+            "TVASHTR_SECRET_KEY",
+            "TVASHTR_FLY_SESSION_SECRET",
+            "TVASHTR_FLY_API_TOKEN",
+            "GITHUB_APP_CLIENT_SECRET",
+            "GITHUB_APP_PRIVATE_KEY_B64",
+        ):
+            assert f"{secret} =" not in text and f"{secret}=" not in text, (
+                f"{name} assigns {secret} — secrets belong in Fly's vault, not in a committed file"
+            )
+        assert "COPY .env" not in text and "COPY ./.env" not in text
 
 
 def test_healthz_is_db_free_while_health_still_pings(client, monkeypatch):

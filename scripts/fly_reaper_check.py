@@ -84,7 +84,6 @@ def main() -> int:
     fly = FlyMachines(
         token=settings.fly_api_token.get_secret_value(),
         org=settings.fly_org,
-        region=settings.fly_region,
         image=settings.fly_agent_image,
     )
     ok = False

@@ -11,6 +11,13 @@ app = "tvashtr"
 # from Delhi. Run machines co-locate here too (TVASHTR_FLY_REGION below).
 primary_region = "sin"
 
+# Insurance for the import-time memory spike (see [[vm]] below), so a transient peak pages instead
+# of OOM-killing the process. MUST stay at top level and ABOVE [[vm]]: TOML scopes every bare key to
+# the last table header, so writing this after [[vm]] silently parses it as vm[0].swap_size_mb —
+# which Fly drops without complaint, and which `flyctl config validate --strict` does NOT catch
+# (it accepts unrecognised keys inside [[vm]]). The swap would simply not exist.
+swap_size_mb = 512
+
 [build]
   dockerfile = "Dockerfile"
 
@@ -66,7 +73,3 @@ primary_region = "sin"
   # start-up, and an OOM here looks like a mysterious boot loop. Also stays under Fly's 2 GB ceiling
   # for suspend eligibility, which auto_stop_machines = "suspend" above depends on.
   memory = "1gb"
-
-# Insurance for the import-time memory spike above, so a transient peak pages instead of OOM-killing
-# the process.
-swap_size_mb = 512

@@ -118,13 +118,13 @@ def _pin_posture() -> None:
 
 def _fly_client():
     from tvashtr.config import get_settings
-    from tvashtr.engines.fly_machines import FlyMachines
+    from tvashtr.engines.fly_machines import FlyMachines, parse_regions
 
     s = get_settings()
     return FlyMachines(
         token=s.fly_api_token.get_secret_value(),
         org=s.fly_org,
-        region=s.fly_region,
+        regions=parse_regions(s.fly_region),
         image=s.fly_agent_image,
     )
 
