@@ -24,12 +24,21 @@ from tvashtr.models import RunEvent
 
 
 def make_run_event_sink(
-    run_id: str, invocation_id: int | None = None
+    run_id: str, invocation_id: int | None = None, seq_offset: int = 0
 ) -> Callable[[EngineEvent], None]:
     """Return an ``on_event`` callback that persists events for ``run_id``, scoped to
-    ``invocation_id`` (the ``agent_invocations.id`` of the node-execution emitting them)."""
+    ``invocation_id`` (the ``agent_invocations.id`` of the node-execution emitting them).
+
+    ``seq_offset`` (Tvashtr-79 item 7) shifts the persisted ``seq``. It exists for the one case
+    where TWO adapter runs share a single invocation: the mid-run provider failover re-runs the
+    step on the node's ``fallback_model``, and every ``run()`` restarts ``seq`` at 0 — so an
+    un-offset retry collides with the first attempt's rows on ``(run_id, invocation_id, seq)`` and
+    is SILENTLY DROPPED by the idempotency probe below, splicing attempt 1's head onto attempt 2's
+    tail in the feed. Offsetting by the first attempt's event count keeps both, in order. The
+    default ``0`` leaves every existing call site byte-identical."""
 
     def sink(event: EngineEvent) -> None:
+        seq = event.seq + seq_offset
         with session_scope() as session:
             # Existence probe via ``.limit(1).first()`` (not ``scalar_one_or_none``): a real
             # ``invocation_id`` is unique on ``(run_id, invocation_id, seq)`` (<=1 row), but a
@@ -40,7 +49,7 @@ def make_run_event_sink(
                 .where(
                     RunEvent.run_id == run_id,
                     RunEvent.invocation_id == invocation_id,
-                    RunEvent.seq == event.seq,
+                    RunEvent.seq == seq,
                 )
                 .limit(1)
             ).first()
@@ -50,7 +59,7 @@ def make_run_event_sink(
                 RunEvent(
                     run_id=run_id,
                     invocation_id=invocation_id,
-                    seq=event.seq,
+                    seq=seq,
                     kind=event.kind,
                     payload=event.payload,
                 )
