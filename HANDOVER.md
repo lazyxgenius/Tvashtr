@@ -1,98 +1,73 @@
-# HANDOVER — Tvashtr-77 → Tvashtr-78
+# HANDOVER — Tvashtr-78 → Tvashtr-79
 
-> Read this, then `PROJECTPLAN.md` (§17 Tvashtr-77 = the M-h4 as-built + audit; §17 Tvashtr-75/76 = the M-h4 design + setup; §15 the launch register; §1 the vision). Don't start work until you've read both.
-
----
-
-## 1. State (verified on disk)
-
-- **`main` @ `7bfd180`** · alembic head **`0030`** · floors **904 backend / 379 vitest** · **no remote** (`.git/config` confirmed — this is what makes bypass mode safe).
-- **🟢 TVASHTR IS LIVE, PUBLIC, HTTPS at `https://tvashtr.fly.dev`.** M-h4 (deploy) SHIPPED + FF-merged. Backend on Fly (off the laptop, no WireGuard tunnel), one-origin SPA, Neon Postgres, **sign-in works end-to-end** (the operator clicked "Continue with GitHub" on the live site → signed in), machine sleeps when idle. **This was the last code milestone before public launch.**
-- **Tvashtr-77 was: write the M-h4 `/goal` → audit M-h4 (cryptographically) → merge → close out the docs.** The `/goal` + brief (`prompts/M-h4.md`) drove Claude Code; the merge was a plain FF `857d9b2..7bfd180`; the branch is deleted.
-- **Untracked (mine, uncommitted):** `PROJECTPLAN.md` + `HANDOVER.md` edits + `prompts/M-h4.md` (the brief). `STATE.md` is CC's (gitignored). **These need committing — see §2.**
-- **⚠️ The line-6 banner is ONE CHAT STALE** (it still leads with Tvashtr-76). I did NOT bump it: line 6 is a single ~80K-char blob and any `edit_file` echoes the whole line back, which is a context hazard (the Tvashtr-65 wall). **§17 is authoritative and IS updated.** Tvashtr-78 can bump the banner early with a fresh budget if it wants (prepend a Tvashtr-77→78 segment via the short anchor `**Last updated:** 2026-07-20 — **Tvashtr-76.**`), or just leave it — the banner self-describes as non-authoritative.
-- **🔴 OPERATOR HOUSEKEEPING (not blocking):** close `lazyxgenius/trade_mcp` PRs **pull/7 + pull/8 + pull/3 + pull/5** (test PRs from prior live gates).
-- **🟡 STANDING OPS CHORE:** the deployed `TVASHTR_FLY_API_TOKEN` is a **short-expiry** org token (`-x 720h` ≈ 30 days). When it nears expiry, re-mint (`fly tokens create org -o personal -x 720h -n tvashtr-deploy`) + re-`fly secrets import` that ONE key, or the live backend loses Fly-API access (can't spawn `tv-run-*` machines).
+**Read this + `PROJECTPLAN.md` (§1 vision, §17 the Tvashtr-78 as-built entry at the bottom, §15 the deferred register) before doing anything.** State is: Tvashtr is **LIVE, public, HTTPS at `https://tvashtr.fly.dev`**; `main` @ **`daf9238`**; alembic head **`0030`**; floors **1000 backend / 403 vitest**; no remote in `.git/config`.
 
 ---
 
-## 2. FIRST — commit the doc closeout (give the operator these commands)
+## 1. The vision (unchanged — full text in PROJECTPLAN §1)
+Tvashtr is a hosted, canvas-based platform where a user **authors their own team of prompt-driven AI agents** (roles, wiring, review gates, per-node models — or anything they define), runs it against their real repo, and gets a **reviewed Pull Request** out. Composability ("the team is mine") is the differentiator layered on the painkiller (idea → working software); documents are first-class, live-editable. The load-bearing architecture is the **Tvashtr-25 pivot** (every node is a blank agent whose identity IS its editable `prompt`; routing is the user-authored graph topology; gates/terminals stay deterministic).
 
-My living-doc edits (this handover + the §17/§15 updates) + the M-h4 brief are uncommitted. They don't affect anything running, but commit them so the record is durable. Hand the operator:
+## 2. Current state + the doc-closeout
+- **The Tvashtr-78 parallel batch landed:** `main` @ `daf9238` (a real `--no-ff` merge, parents A `7eaa7f7` + B `cebc68b`), full suite green on the merged tree (**1000 / 403**), zero migration (head `0030`). Six §15 long-tail features shipped: per-node fallback model, typed output schema + multimodal, edit-time model-validation hint, deliverable-aware workspace GC, team rename, per-run history drill-down.
+- **Doc-closeout is IN THIS COMMIT's working tree, UNCOMMITTED.** Tvashtr-78's edits to `PROJECTPLAN.md` (the §17 Tvashtr-78 entry; two new §15 🟡 riders; the `tvashtr.online`→DROPPED edit; the §17 NEXT pointer; the line-6 banner bump to `daf9238`) **and this `HANDOVER.md`** are not yet committed. **The closeout commit (below) lands them.** Nothing else is pending on `main`.
+- The ambient dirty tree (`.gitignore`, `frontend/.gitignore` modified; `.claude/`, `.grok/`, `CLAUDE.md`, `AGENTS.md`, `design/`, older `prompts/M-*.md` untracked) is pre-existing tooling noise — **leave it; always `git add <explicit paths>`, never `-A`.**
 
+**Closeout commit (run it to land the docs):**
 ```
 cd /Users/adimac/Desktop/Tvashtr
-git add PROJECTPLAN.md HANDOVER.md prompts/M-h4.md
-git commit -m "docs(m-h4): as-built + launch register + M-h4 brief; handover to Tvashtr-78"
+git add PROJECTPLAN.md HANDOVER.md
+git commit -m "docs(tvashtr-78): batch as-built (§17) + §15 riders + tvashtr.online dropped + Tvashtr-79 batch plan + banner"
+git log --oneline -3
 ```
 
-(`.gitignore` / `frontend/.gitignore` also show as modified in the working tree — those are pre-existing untracked-tooling edits, not mine; leave them or the operator can add them separately. Do NOT `git add -A` blindly.)
+## 3. Tvashtr-79's job — FIRST a 4·5·6·7 parallel batch, THEN the launch pass
 
----
+### 3a. The batch (operator-chosen, Tvashtr-78)
+Run **the same 2-session parallel model as the Tvashtr-78 A/B batch** — two Claude Code sessions, each in its own git worktree + its own Postgres DB + its own vite port, all-offline gates, **NO docker/live-LLM gate** (the boot container-sweep can reap the sibling's live container — the M-reaper hazard), file overlap **expected and resolved at merge** (FF the first branch, `--no-ff` merge the second, re-run the full suite green on the merged tree before committing). Floors are now **≥1000 backend / ≥403 vitest**.
 
-## 3. Your job (Tvashtr-78): the launch-planning strategic pass — NOT a `/goal`
+**The split (balanced; the single migration isolated to Session 1):**
 
-Tvashtr is live and works. The milestone ladder (M-h2 → M-h3 → M-h4) is complete. **What's next is a direction decision, not code** — the same shape as the M-h4 design pass (Tvashtr-75): surface ONE question at a time, grounded in §1 + the standing directives, each paired with its concrete UX consequence, explicit sign-off before the next. **This is a genuine strategic-direction call, so here "present the options and let the operator choose" IS warranted** (the rare exception to "no option menus").
+**SESSION 1 — greenfield persistence + the auth flake (items 6 + 4). Carries the batch's ONE migration.**
+- **Item 6 — greenfield-workspace retention (BIG; the migration lives here).** Today (Tvashtr-78 ruling) a greenfield workspace is spared *forever* because it IS the deliverable (`run_diff._greenfield_files` serves the Changes tab from `.tvashtr_workspaces/<run_id>`, no remote) — so disk grows unbounded for greenfield runs. Fix: **persist the greenfield artifact durably at ship time** (a NEW table, e.g. `run_artifacts`, storing the per-file diff/patch — this is migration `0031`), make `run_diff` serve a terminal greenfield run **from the DB when its workspace is gone**, THEN extend the deliverable-aware GC (`workspace_reaper._spared_run_ids`) to reclaim a greenfield workspace **once its artifact is persisted**. ⚠️ **This REVISES the Tvashtr-78 ruling** ("greenfield spared forever" → "greenfield spared *until its artifact is persisted*, then reapable"). Read the §17 Tvashtr-78 finding + `control_plane/workspace_reaper.py` + `control_plane/run_diff.py` before writing this brief. **Hard invariant: never reap a greenfield workspace before its artifact is durably saved** (destroying the deliverable is exactly the bug Tvashtr-78 caught). Reproduce-first: a persisted greenfield run CAN be reaped AND `run_diff` still returns its files from the DB; a not-yet-persisted greenfield run is still spared.
+- **Item 4 — `test_auth.py` cookie flake (TINY).** `make test` fails ~6% (measured 5.99%/20k) because the test's tamper flips the base64 **padding** char, which decodes to identical signature bytes → the "tamper" is a no-op → `read_session_cookie(tampered)` still validates. Fix: **mutate a signature DATA byte (or corrupt the payload), not the final padding char.** ~2 lines in the test; `auth.py` untouched. Reproduce-first: the corrected tamper must make the cookie genuinely invalid.
+- **Session 1 owns migration `0031`; bump the migration-freeze hook to cover it as the LAST step.**
 
-The live open questions (sequence them WITH the operator, don't assume):
-1. **The `tvashtr.online` cutover** — the registered deferred rider (DNS + `fly certs add tvashtr.online` + swap the GitHub App callback + `TVASHTR_FRONTEND_ORIGIN`/`TVASHTR_PUBLIC_BASE_URL` + the cookie domain from `.fly.dev` to the real domain). This is a small, well-scoped code/config `/goal` when the operator decides to show real users on a real domain. **UX consequence:** users land on `tvashtr.online`, not a `.fly.dev` URL — the difference between "a demo" and "a product" to a stranger.
-2. **Seek the first real users? (= attack Mv).** The operator's build-first stance was "no demand validation until a real feature-shipping Tvashtr exists" — and now it EXISTS *and is deployed*. So the door to Mv (a non-founder shipping real value on their own repo) is finally open. This is the real gate; no milestone resolved it. **This is the biggest strategic question** — is now the moment to put it in front of someone?
-3. **Pre-launch polish** — anything that would embarrass a first impression (the hosted visible surface is now proven, but there may be rough edges); vs. shipping to a first user as-is and learning.
-4. **Cost watch** — the deploy is ~$0 standing (2 HA machines both suspend idle; Neon scale-to-zero). Watch items only: the short-token rotation (§1), the DBOS-holds-Neon-awake question (revisit if compute-hours climb), the optional `fly scale count 1`.
+**SESSION 2 — agent-seam observability + failover (items 5 + 7). NO migration.**
+- **Item 5 — `run_events` can't see the condenser (MEDIUM).** `_kind_of` (grep it — the event-recording path, likely `team_run.py` / the openhands adapter) drops every event that isn't action/observation/error/message, so the SDK's **Condensation** event is never persisted; the condenser demonstrably fires (container logs) but only ephemerally. Fix: **persist the Condensation event to `run_events`** (add its kind + serialize via `_payload_of`). This also finally lets M-ctx0's "visible condensation events in `run_events`" acceptance clause be met. No schema change (existing table). Reproduce-first: a run that triggers compaction records a Condensation `run_event` (RED against today's drop).
+- **Item 7 — fallback model's in-container gap (MEDIUM-BIG).** Slice A's "Fallback model" field only fires on the host-side completion (`gateway.complete`) + a pre-flight credential check — NOT mid-run, because the agent loop makes its litellm call **in-container** where the host never sees the failure. Fix: **extend the agent-server protocol to report a CLASSIFIED provider failure** (auth/provider/connection — NOT 429, which the SDK's own retry envelope rides) from the in-container loop back to the host, so the host retries the step with `config["fallback_model"]`. ⚠️ **This is the in-container agent-server change the Slice-A brief explicitly FORBADE — now IN scope (operator's call).** Touches the `engines/` adapter (the agent-server protocol) + `team_run.py` `agent_llm_routing` + the fallback-swap Slice A already shipped (extend it to fire on the new signal). Reproduce-first: an in-container hard provider failure now triggers the host-side fallback swap (RED today).
 
-Small ride-along `/goal`s that exist but aren't the headline: the plain-`Mock`→`autospec` test-sweep (§15); the flake fix is already done (M-h2a).
+**Balance rationale:** item 6 is the biggest (ship-persistence + migration + GC change + run_diff-from-DB), paired with the tiniest (item 4); item 7 (in-container protocol) paired with item 5 (event persistence). Roughly even wall-clock; the single migration is cleanly isolated in Session 1, Session 2 migration-free (satisfies the "≤1 migration across the batch" rule). Both sessions likely touch `team_run.py` (6: ship/GC · 5: events · 7: routing) and the `engines/` adapter (5 + 7) — overlap expected, resolved at merge.
 
-**Don't half-scope this on a thin budget** — if the launch conversation gets deep, it deserves its own room (that's why M-h4's design + `/goal` each got a fresh chat).
+**Tvashtr-79 executes this the normal way:** write the two grounded `prompts/*.md` briefs (read the seams first — the ship path/`run_diff`/`workspace_reaper` for 6, the `_kind_of`/`_payload_of` event path for 5, the `engines/` adapter + `agent_llm_routing` for 7, `test_auth.py` for 4), then hand the two full 3-block launch packages (shell launch + init prompt + `/goal`), disk-audit each committed branch, merge, re-verify on the merged tree.
 
----
+### 3b. The launch-planning pass (AFTER the batch)
+A **direction/strategy conversation, not a `/goal`** (same shape as the M-h2 / M-h4 design passes): now that Tvashtr is live + feature-complete on the hosted ladder, decide the go-to-market posture — **which pre-launch polish** to do (the 4/5/6/7 batch is the operator's first cut of that triage) and the **cost/ops posture for real users** (the M-h3 ceilings, the token-rotation cadence, whether $0-idle holds under load). Surface ONE question at a time, decide each with the operator, pair each with its UX consequence. **`tvashtr.online` is dropped — the domain question is settled (stay on `tvashtr.fly.dev`).** **Do NOT push the operator on "go get a first user" (see §4) — the pass makes the product *ready*; the operator seeks the user in their own time.**
 
-## 4. How M-h4 was audited (so you trust the "LIVE" claim)
+## 4. Standing operator directives (carry ALL of these forward)
+- **Role:** Claude is ARCHITECT/PLANNER ONLY. ALL implementation goes through a Claude Code `/goal`. Direct-edit only: `PROJECTPLAN.md`, `HANDOVER.md`, `prompts/*.md`, trivial typo/comment fixes.
+- **Decide from the vision (§1) + the Tvashtr-25 pivot, never from effort.** No option menus — decide — EXCEPT genuine strategic-direction calls (present those). Pair every design decision with its concrete frontend/UX consequence.
+- **NEW (Tvashtr-78): do NOT repeatedly prompt the operator about seeking a first real user / the Mv gate — they pursue it in their own time.** State such things (and pending housekeeping) once, then drop them; no recurring end-of-turn nudges.
+- **Claude Code runs ALL verification itself** (make test, lint, live smoke/e2e) and debugs to green before READY_TO_MERGE — never hand the operator commands to run, never defer a live target to a "human gate."
+- **Every Claude Code handoff = THREE fully copyable inline blocks, every time:** (1) shell launch `cd /Users/adimac/Desktop/Tvashtr && claude --dangerously-skip-permissions` (or the worktree path), (2) the FULL init prompt verbatim (after its 5-line summary it STOPS + WAITS for the operator to paste `/goal`; when running `/goal` it USES ultracode / dynamic-workflows / superpowers), (3) the FULL `/goal` verbatim. Never "same as before," never point at a file for the text.
+- **Merge handoff = ALL commands every time** (cd, `git checkout main`, the exact merge, the verify line, optional branch cleanup).
+- **Visual sign-off = a numbered, click-by-click script** by visible node label — never an abstract checklist.
+- **Handover proactively** as context fills; "handover" = immediate trigger.
+- **Two chat sequences** share this memory: "Tvashtr-X" (build) + "Tvashtr Sidechat-X" (open-ended). State which on opening.
+- **Cost efficiency for BOTH the user AND the operator is a first-class design input.** Don't shy from large scope — decompose across milestones/chats.
 
-The disk audit was cryptographic (all git objects are loose → decompress with `zlib` + compare subtree/blob SHAs):
-- `main` untouched @ `857d9b2`; branch a clean linear 3-commit FF (`efab8d0` D1–D7 → `69c8f35` review fixes → `7bfd180` screenshot); no remote.
-- **`frontend/src` subtree byte-identical** (FE source untouched); **`backend/alembic` byte-identical** (NO migration, head `0030`, `models.py`/`alembic.ini`/`uv.lock`/`.claude` all SAME → freeze not bumped, no schema change); **in `engines/`, ONLY `fly_machines.py`+`openhands_fly_adapter.py` changed** (docker/local adapters + `base.py` + `registry.py` byte-identical); **`HANDOVER.md`/`PROJECTPLAN.md`/`.gitignore` blobs SAME** (CC didn't sweep my doc edits).
-- The reproduce-first suite (`test_m_h4_deploy.py`) is mutation-real. An adversarial pre-deploy review caught 3 real defects (all fixed + guarded) — chiefly a stale `region=` kwarg that would have silently disabled the orphan reaper. Live smoke 7/7 + the operator's sign-in PASS.
+## 5. Key decisions + rationale (recent)
+- **Deliverable-aware workspace GC (Tvashtr-78, the batch's headline finding).** A greenfield workspace IS the run's only deliverable, so the GC had to DIVERGE from `clone_reaper` (a clone is never a deliverable). The reaper spares greenfield forever via a shared `_spared_run_ids` (reads `status` + `repo_path`); the brief's "mirror clone_reaper exactly" was an architect error, caught in adversarial review. **Item 6 above will refine this** (spare-until-persisted). Full detail: §17 Tvashtr-78.
+- **Fallback model shipped host-side only (Tvashtr-78).** The in-container mid-run failover was out of Slice A's scope; **item 7 closes it.**
+- **`tvashtr.online` cutover DROPPED (Tvashtr-78, operator).** Launch stays permanently on `tvashtr.fly.dev`.
 
-Full detail: §17 Tvashtr-77.
+## 6. Gotchas (not already obvious)
+- **`PROJECTPLAN.md` line 6 is a single giant banner blob (~15K+ chars, visible chain Tvashtr-67→78).** NEVER read it directly (it echoes the whole line). To bump it: `Filesystem:edit_file` with a SHORT unique anchor from the current segment (the current lead is `**Last updated:** 2026-07-20 — **Tvashtr-78** (a parallel 2-session feature batch A+B was merged…`), dryRun first. **Housekeeping flag:** the visible chain has re-grown by ~1–1.5K/session — the same accretion Tvashtr-66 archived at 81K into the `<details>` block; trim it into that archive on the next maintenance touch.
+- **`copy_file_user_to_claude` caches by basename** — a second copy of `PROJECTPLAN.md` returns the STALE first copy. Use `read_text_file` (head/tail) for fresh reads, or pull git blobs directly. (§15/§16/§17 content is stable across a session, so the first working copy is fine for those anchors — only line 6 changes.)
+- **No `git` CLI in the MCP.** Audit off `.git` plumbing: `.git/refs/heads/<branch>` (tip), `.git/logs/refs/heads/<branch>` (reflog — proves FF-eligibility + moves), loose objects under `.git/objects/<2>/<38>` decompressed with `zlib` in the container (decode a commit → its parents/tree; a merge commit has TWO parent lines — Tvashtr-78 confirmed `daf9238`'s parentage this way). Worktrees share the main repo's object store, so a sibling worktree's committed branch is auditable from the main `.git`. **The disk audit is the control point — never rubber-stamp a report.**
+- **The MAIN worktree (`/Users/adimac/Desktop/Tvashtr`) is the ONLY Filesystem-MCP-allowed Tvashtr path** — sibling worktrees (`../Tvashtr-A` etc.) are OUT of scope, so a session's UNCOMMITTED work can't be read; audit only AFTER it commits (its objects land in the shared store).
+- **Postgres runs in the `tvashtr-postgres` docker container** (host port **5433**, user/pass/db all `tvashtr`; `DATABASE_URL=postgresql://tvashtr:tvashtr@localhost:5433/tvashtr`). The Makefile `include`s `.env` guarded by `wildcard` (a worktree without `.env` won't error). Per-worktree isolation = a separate DB (`docker exec tvashtr-postgres createdb -U tvashtr tvashtr_<x>` — refresh `template1` collation first if `createdb` balks) + a copied `.env` with `DATABASE_URL` **appended last** (make takes the last assignment). All batch gates are offline (none binds a server port), so per-worktree DB is the only isolation needed.
+- **`make test` leaves stale non-terminal `runs` rows** the hosted fleet-ceiling counts → the next hosted live-gate 429s. Run `update runs set status='cancelled' where status in ('pending','running','awaiting_human')` before any hosted gate.
+- **Guards that survive `--dangerously-skip-permissions`:** only PreToolUse hooks (the no-push `protect-no-push.sh` + the migration-freeze `protect-migrations.sh`) — deny rules in `.claude/settings.json` go inert. Item 6's `0031` must be a NEW migration + the freeze bumped last.
 
----
-
-## 5. Standing directives (carry forward)
-
-**THREE PERMANENT OPERATOR DIRECTIVES:** (1) **Take all the decisions** — from what's best for the user + product; no option menus (reserve "present both" for genuine strategic-direction calls — and the launch pass IS one). (2) **Cost efficiency for BOTH the user AND the operator is first-class** — near-zero standing budget is HARD-binding (it drove Neon/sleep-when-idle/`.fly.dev`-first/no-2nd-org). (3) **Don't shy from too much work** — decompose big scope across milestones.
-
-**Architect directives:**
-- **Claude is ARCHITECT/PLANNER ONLY.** Direct edits: `PROJECTPLAN.md`, `HANDOVER.md`, `prompts/*.md`, trivial typos. ALL implementation (product code, diagnostics, Makefile, config, Dockerfile, fly.toml) goes through a `/goal`. Diagnosing is yours; the *fix* is a `/goal`.
-- **The disk audit is the control point.** Never rubber-stamp a report — read the changed files, diff "untouched" claims against a pre-image (git blob/subtree SHAs), read test bodies for mutation-realness, verify git state from `.git` plumbing, scrutinise every deviation.
-- **Decide from the vision (§1 + the Tvashtr-25 pivot), never from effort. Pair EVERY decision with its concrete UX consequence.** One design question at a time; explicit sign-off before the next.
-- **Every Claude Code handoff = THREE fully copyable blocks, every time:** (1) shell launch (`cd /Users/adimac/Desktop/Tvashtr && claude --dangerously-skip-permissions`), (2) FULL init prompt verbatim (5-line summary then STOP-and-WAIT for the operator to paste `/goal`; use ultracode / dynamic-workflows / superpowers skills when running `/goal`), (3) FULL `/goal` verbatim. Never "same as before," never point at a file to retrieve text. `/goal` under 4000 chars (measure with `python3 -c "print(len(open(f).read()))"`, not `wc`); push detail into a `prompts/*.md` brief the `/goal` points at.
-- **Merge handoff = ALL commands as copyable text, every time**, comment-free (zsh runs inline `#`): `cd` to root, `git checkout main`, `git merge --ff-only <branch>`, `git log --oneline -N`, optional `git branch -d <branch>`. State the expected tip; if FF fails → stop (divergence).
-- **Visual sign-off = a NUMBERED, click-by-click script** (exact screen, node by its VISIBLE label, exact action, explicit pass/fail); default to CC's Playwright self-sign-off with screenshots.
-- **Every `/goal` has CC run ALL checks itself** (tests, lint, live smoke) and debug to green before `READY_TO_MERGE`. Reproduce-first on fixes (RED on pre-fix code). Migration freeze-bump LAST, only if the slice adds one.
-- **Operator style:** terse. "proceed"/"go"/"merged"/"done" = ratify + advance. "By the way" = short answer. **Procedures one step at a time.** Analogies help. Simple, everyday language. **LIVE SECRET VALUES NEVER IN CHAT** (a partial value is a leak — never screenshot `.env`; keep the two genuinely-reaching secrets — the Fly token that spends money + the GitHub key that acts on repos — off the wire).
-- **Hand over proactively as context fills. Don't half-scope a big milestone/decision on a thin budget.**
-
----
-
-## 6. Gotchas that will cost you turns (carry-forward)
-
-**Fly / deploy facts:** the deployed app runs **2 machines** (HA default) — both suspend idle → ~$0; `fly scale count 1 -a tvashtr` if strictly one is wanted (operator call). `fly deploy -a tvashtr` builds via Fly's **remote builder** (the local Docker pre-check is flaky on Docker Desktop registry timeouts — don't block on it). `release_command` runs `alembic upgrade head` on a temp machine WITH the staged secrets BEFORE serving (a failed migration aborts the deploy). `bom` (Mumbai) is a KNOWN high-demand region (`insufficient_capacity`) → the ladder is `sin→iad→fra`, `bom` excluded. Org `personal`; `cryptoground-data` is the operator's app, suspended — **NEVER touch it**. `TVASHTR_FLY_API_TOKEN` is ambient in every `make` recipe incl. `make test` — any Fly unit test MUST fake the API (`httpx.MockTransport` + fake token). `.fly.dev` is free HTTPS, no dedicated IPv4. `fly secrets import --stage` stores without deploying; staged secrets auto-apply on the next `fly deploy` (incl. the release machine).
-
-**Filesystem-MCP / tooling:** intermittent multi-minute HANGS — full Cmd+Q + reopen Claude Desktop clears it (and the copy-cache). **`copy_file_user_to_claude` CACHES BY BASENAME** — use `read_text_file`/`read_multiple_files` for fresh reads of changed files, or pull git blobs (all loose, no packs). **`str_replace`/container tools write to CLAUDE's disk** — edit the operator's files with `Filesystem:edit_file` (`dryRun:true` first, SHORT unique anchor) or `Filesystem:write_file` (its param is `content`, NOT `file_text`; both are deferred — `tool_search` to load them). **No `git` CLI in the MCP** — reconstruct from `.git/refs/heads/<b>` + `.git/logs/refs/heads/<b>`; objects loose → `zlib.decompress` a commit/tree/blob; **subtree-SHA identity is the strongest "untouched" proof** (equal subtree SHA between two commit trees = byte-identical subtree in one comparison). **`PROJECTPLAN.md` line 6 is a giant ~80K-char single line** — NEVER read it directly; copy to container, `grep -nE '^#{1,3} '` for a header index, `sed -n 'X,Yp'` a window, edit by a SHORT unique anchor; **and editing it echoes the whole line back (context hazard) — bump the banner early in a session or skip it (§17 is authoritative).** **Playwright full-page a11y snapshot HANGS on React Flow** — targeted `browser_evaluate` + screenshots only. **`--dangerously-skip-permissions`** makes `.claude/settings.json` allow/deny rules inert; only PreToolUse hooks survive (`protect-no-push.sh`, `protect-migrations.sh`) — safe because `.git/config` has no remote. **`web_fetch` only accepts URLs from a prior search/fetch result** — you can't independently curl `tvashtr.fly.dev` from the architect chat (a fresh `.fly.dev` app isn't indexed); rely on CC's live smoke + the operator's eyeball.
-
----
-
-## 7. Open items / register
-
-- **M-h4 (deploy) — SHIPPED + LIVE (§17 Tvashtr-77).** M-h2 + M-h3 also COMPLETE. The hosted "ships reviewed code" loop is PROVEN GREEN LIVE ON FLY (PR #8, Tvashtr-74).
-- **DEFERRED / watch (§15):** the `tvashtr.online` domain cutover (a small `/goal` when showing real users); the slim agent-image lever (cold-boot tuning, measure-then-tune); the plain-`Mock`→`autospec` test-sweep (ride-along); the 2-machine HA posture (`fly scale count 1`, operator call); the short-token rotation chore (operator cadence); the DBOS-holds-Neon-awake watch (revisit if compute-hours climb); the org-isolation-via-separate-org residual (a leaked token can still hit `cryptoground-data`, accepted for $0).
-- **🔴 Close `trade_mcp` PRs** pull/7 + pull/8 + pull/3 + pull/5 (operator housekeeping).
-- **Mv** (a non-founder shipping real value on their own repo) remains the real gate — no milestone completion resolves it, and with Tvashtr now live-and-deployed the door to attacking it is finally open (§3.2).
-- Full register: `PROJECTPLAN.md` §15.
-
----
-
-## 8. Ready-to-paste opener for Tvashtr-78
-
-> You are Tvashtr-78. Read `HANDOVER.md` and `PROJECTPLAN.md` at the project root first (HANDOVER §3 = your job; §17 Tvashtr-77 = the M-h4 as-built + audit; §1 = the vision). **Tvashtr is now LIVE, public, HTTPS at `https://tvashtr.fly.dev` — M-h4 (deploy) shipped + merged, sign-in works end-to-end, `main` @ `7bfd180`, head `0030`, floors 904/379.** M-h2 → M-h3 → M-h4 (the whole hosted ladder) is COMPLETE; that was the last code milestone before public launch. **Your job is the launch-planning strategic pass — a direction decision, NOT a `/goal`** (the shape of the M-h4 design pass): surface ONE question at a time, grounded in the vision + the standing directives, each paired with its concrete UX consequence, explicit sign-off before the next — and here "present the options and let me choose" IS warranted (this is a genuine strategic-direction call). The live open questions: the `tvashtr.online` domain cutover (a deferred rider), whether now is the moment to put Tvashtr in front of a first real user (= attack the Mv gate, finally open now that a feature-shipping build is deployed), any pre-launch polish, and the cost/ops watch items. FIRST, though: hand me the doc-closeout commit commands (HANDOVER §2), then also flag whether to bump the stale line-6 banner. Don't start until you've read both docs.
-
+## 7. Your ready-to-paste opener for the next chat
+> You are Tvashtr-79. Read `HANDOVER.md` and `PROJECTPLAN.md` at the project root first (HANDOVER §3 = your job: a 4·5·6·7 parallel batch, then the launch pass; §17 Tvashtr-78 = the last batch's as-built + the deliverable-aware-GC finding item 6 will refine; §1 = the vision). `main` @ `daf9238`, head `0030`, floors 1000/403, LIVE at `tvashtr.fly.dev`. Don't start until you've read both. Then: read the seams for items 6/4 (Session 1, carries the one migration `0031`) and 5/7 (Session 2, no migration), write the two grounded `prompts/*.md` briefs, and hand me the two full 3-block launch packages — one step at a time.
