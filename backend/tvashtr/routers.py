@@ -64,7 +64,9 @@ from tvashtr.control_plane.teams import (
     engineer_model,
     get_team_summary,
     list_library_teams,
+    list_team_runs,
     list_templates,
+    rename_library_team,
     reviewer_model,
     seed_library_if_empty,
 )
@@ -271,6 +273,14 @@ class CreateTeamRequest(BaseModel):
     of a catalog builder — a from-scratch starting point the user wires up."""
 
     template: str
+    name: str
+
+
+class RenameTeamRequest(BaseModel):
+    """Rename a library team: the new ``name``. Trimmed + required — enforced in
+    ``rename_library_team`` (the core), so the rule holds for every caller, not just this endpoint;
+    a blank/whitespace-only name comes back 422."""
+
     name: str
 
 
@@ -2276,6 +2286,60 @@ def delete_team(team_id: str, current_user: Annotated[UserOut, Depends(get_curre
         graph_id = graph.id
     delete_library_team_and_runs(graph_id)
     return {"team_graph_id": team_id, "deleted": True}
+
+
+@router.patch("/api/teams/{team_id}")
+def rename_team(
+    team_id: str,
+    body: RenameTeamRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """Rename a library team; returns the UPDATED SUMMARY (the same shape ``POST /api/teams``
+    returns) so the dashboard can swap the row in place rather than guess at the new state.
+
+    Owner-scoped exactly like ``DELETE /api/teams/{team_id}``: 400 on a malformed id; 404 if the id
+    is not the CURRENT account's library team — a run-snapshot clone, an A/B graph, or another
+    account's team are all indistinguishably "not found", so a foreign team is not probeable. 422 on
+    a blank/whitespace-only name (raised by the core, so every caller is held to it).
+
+    Migration-free: an UPDATE of an existing column."""
+    owner_id = uuid.UUID(current_user.id)
+    try:
+        tid = uuid.UUID(team_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid team id") from exc
+    try:
+        summary = rename_library_team(tid, body.name, owner_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="A team name is required.") from exc
+    if summary is None:
+        raise HTTPException(status_code=404, detail="library team not found")
+    return summary
+
+
+@router.get("/api/teams/{team_id}/runs")
+def get_team_runs(
+    team_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """This team's FULL run history, newest first — the dashboard's per-team drill-down. Each row is
+    ``{run_id, status, idea, created_at, cost_total_usd}``; ``run_id`` is what the run view opens.
+
+    The team summary's ``last_run`` is only the LATEST run; this is every one of them, read through
+    the same clone→origin join (``DISTINCT``-collapsed, so a multi-node team does not report each
+    run once per node). Owner-scoped like the DELETE: 400 on a malformed id, 404 if it is not the
+    current account's library team. A team of yours that has never run is ``{"runs": []}`` with a
+    200 — an empty state, not a missing one.
+
+    Migration-free: a read."""
+    owner_id = uuid.UUID(current_user.id)
+    try:
+        tid = uuid.UUID(team_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid team id") from exc
+    runs = list_team_runs(tid, owner_id)
+    if runs is None:
+        raise HTTPException(status_code=404, detail="library team not found")
+    return {"runs": runs}
 
 
 # ---- Topology editing (P1.8d): node/edge CRUD + position persistence + the validity verdict ----

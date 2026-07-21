@@ -1226,6 +1226,39 @@ def get_team_summary(team_graph_id: str) -> dict:
         return _team_summary(session, graph)
 
 
+def rename_library_team(team_id: uuid.UUID, name: str, owner_id: uuid.UUID) -> dict | None:
+    """Rename ONE of the owner's library teams; return its updated summary, or ``None`` if there is
+    no such team of theirs.
+
+    Owner-scoped by the SAME predicate ``list_library_teams`` and the delete path use
+    (``is_library`` AND ``owner_id``), which is what makes the three not-found cases collapse into
+    one honest answer: an id that does not exist, a RUN-SNAPSHOT CLONE (immutable — renaming one
+    would rewrite the record of what actually ran), and another account's team all return ``None``,
+    which the endpoint maps to 404. A foreign team's existence is therefore not even probeable.
+
+    The name is trimmed and required: a blank or whitespace-only name raises ``ValueError`` (the
+    endpoint maps it to 422) rather than storing an unlabelled row the rail cannot render. The rule
+    lives HERE, not only in the endpoint, so no future caller can write a nameless team.
+
+    Migration-free by construction — this is an UPDATE of an existing column, nothing else."""
+    cleaned = (name or "").strip()
+    if not cleaned:
+        raise ValueError("a team name is required")
+    with session_scope() as session:
+        graph = session.execute(
+            select(TeamGraph).where(
+                TeamGraph.id == team_id,
+                TeamGraph.is_library.is_(True),
+                TeamGraph.owner_id == owner_id,
+            )
+        ).scalar_one_or_none()
+        if graph is None:
+            return None
+        graph.name = cleaned
+        session.flush()
+        return _team_summary(session, graph)
+
+
 def create_team_from_template(template_key: str, name: str, owner_id: uuid.UUID) -> str:
     """Materialize a starter template into a NEW library team OWNED by ``owner_id``; return its id
     (M-accounts Slice B). Calls the byte-intact builder, then sets the user's ``name``, flips
@@ -1357,6 +1390,69 @@ def _team_run_teardown_targets(
         .distinct()
     ).all()
     return [(run_id, clone_graph_id) for run_id, clone_graph_id in rows]
+
+
+def list_team_runs(team_id: uuid.UUID, owner_id: uuid.UUID) -> list[dict] | None:
+    """Every run of one of the owner's library teams, NEWEST FIRST — the dashboard's per-team
+    history drill-down. ``None`` if there is no such team of theirs; ``[]`` for a team that exists
+    but has never run.
+
+    Those two answers are deliberately DISTINCT rather than both empty: ``None`` is "not your team"
+    (the endpoint 404s, so a foreign team is not probeable) while ``[]`` is "your team, no history
+    yet" (a 200 the drill-down renders as an empty state). Collapsing them would make a foreign
+    team indistinguishable from an unrun one — and would silently show a user an empty panel for a
+    team they are not allowed to see, instead of an honest 404.
+
+    Uses the SAME clone→origin link :func:`_run_rollup_by_origin` and
+    :func:`_team_run_teardown_targets` use — a run points at an immutable CLONE of the library team,
+    whose nodes carry ``cloned_from_node_id`` back to the origin library-team nodes. A clone has
+    MANY
+    nodes, so that join fans out to one row per node; ``DISTINCT`` collapses it to one row per run
+    (without it a 6-node team would report every run six times). ``created_at DESC`` orders,
+    with ``Run.id`` as a deterministic tie-break so two runs created in the same instant do not
+    reorder between reads. Both ordering columns are in the select list, as ``SELECT DISTINCT``
+    requires.
+
+    Read-only (SELECTs over ``runs`` + ``agent_nodes``) — migration-free by construction. The first
+    row is by definition the summary's ``last_run``, computed by the same join."""
+    with session_scope() as session:
+        owned = session.execute(
+            select(TeamGraph.id).where(
+                TeamGraph.id == team_id,
+                TeamGraph.is_library.is_(True),
+                TeamGraph.owner_id == owner_id,
+            )
+        ).scalar_one_or_none()
+        if owned is None:
+            return None
+
+        clone = aliased(AgentNode)  # a node of the run's clone (run-snapshot) graph
+        origin = aliased(AgentNode)  # the library-team node it was cloned from
+        rows = session.execute(
+            select(
+                Run.id,
+                Run.status,
+                Run.idea,
+                Run.created_at,
+                func.coalesce(Run.cost_total_usd, 0).label("cost"),
+            )
+            .select_from(Run)
+            .join(clone, clone.team_graph_id == Run.team_graph_id)
+            .join(origin, origin.id == clone.cloned_from_node_id)
+            .where(origin.team_graph_id == team_id)
+            .distinct()
+            .order_by(Run.created_at.desc(), Run.id)
+        ).all()
+        return [
+            {
+                "run_id": str(run_id),
+                "status": status,
+                "idea": idea,
+                "created_at": created_at.isoformat(),
+                "cost_total_usd": float(cost),
+            }
+            for run_id, status, idea, created_at, cost in rows
+        ]
 
 
 def delete_library_team_and_runs(library_team_id: uuid.UUID) -> None:

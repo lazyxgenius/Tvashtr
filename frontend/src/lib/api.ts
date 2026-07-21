@@ -731,6 +731,17 @@ export interface TeamSummary {
   spend_usd: number;
 }
 
+// One row in a team's run-history drill-down (`GET /api/teams/{id}/runs`) — every run the team has
+// ever had, newest first, where `TeamSummary.last_run` carries only the most recent one. `run_id`
+// is what the run view opens.
+export interface TeamRunRow {
+  run_id: string;
+  status: string;
+  idea: string;
+  created_at: string;
+  cost_total_usd: number;
+}
+
 // One starter preset in the New-team picker (the curated, code-resident template library).
 export interface Template {
   template: string; // the stable key passed to createTeam
@@ -799,6 +810,25 @@ export async function createTeam(template: string, name: string): Promise<TeamSu
 export async function deleteTeam(teamId: string): Promise<void> {
   const res = await fetch(`/api/teams/${teamId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /api/teams/${teamId} -> ${res.status}`);
+}
+
+// Rename a library team. Returns the UPDATED SUMMARY, so the caller can swap the row in place
+// rather than re-derive it. The backend trims the name and rejects a blank one (422).
+export async function renameTeam(teamId: string, name: string): Promise<TeamSummary> {
+  const res = await fetch(`/api/teams/${teamId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`PATCH /api/teams/${teamId} -> ${res.status}`);
+  return (await res.json()) as TeamSummary;
+}
+
+// A team's full run history, newest first (the dashboard drill-down). `[]` for a team that exists
+// but has never run; a team that is not yours is a 404, which throws.
+export async function getTeamRuns(teamId: string): Promise<TeamRunRow[]> {
+  const data = await getJSON<{ runs: TeamRunRow[] }>(`/api/teams/${teamId}/runs`);
+  return data.runs;
 }
 
 // One library team's nodes + edges (the canvas/edit shape, no run state).

@@ -84,6 +84,16 @@ def test_importing_invocations_does_not_import_openhands():
     _assert_no_openhands("tvashtr.control_plane.invocations")
 
 
+def test_importing_workspace_reaper_does_not_import_openhands():
+    # M-wsgc: the agent-workspace reaper is on the app-startup path (main.py's boot sweep imports it
+    # at module scope), so it MUST stay openhands-free or startup would load the SDK — the same
+    # P1.3a hard rail clone_reaper and docker_runtime sit behind. This is the reason the module
+    # RE-DERIVES the workspace root instead of importing the canonical
+    # ``openhands_adapter._WORKSPACE_ROOT``: that import would pull the whole agent SDK into every
+    # boot. (That the replicas still agree is asserted in test_workspace_gc.)
+    _assert_no_openhands("tvashtr.control_plane.workspace_reaper")
+
+
 def test_importing_main_does_not_import_openhands():
     # App startup (``import tvashtr.main``) must stay openhands-free (the P1.3a hard
     # rail). Checked in a CLEAN SUBPROCESS — re-importing main in-process would re-run
