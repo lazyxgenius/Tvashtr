@@ -27,14 +27,13 @@ reuse behaviour is model-agnostic). Skips cleanly with no provider key / no dock
 import logging
 import os
 import re
-import subprocess
 import sys
 import time
-from pathlib import Path
+
+from _ship_readback import shipped_once
 
 POLL_TIMEOUT_S = int(os.environ.get("TVASHTR_REUSE_TIMEOUT_S", "1200"))
 DOCKER_BASELINE_S = 20.2  # the measured cold-start baseline the reused round must beat (brief)
-_WORKSPACE_ROOT = Path(__file__).resolve().parents[1] / "backend" / ".tvashtr_workspaces"
 _TERMINAL_WF = {"SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
 _TERMINAL_RUN = {"completed", "failed", "over_budget", "rejected", "cancelled"}
 
@@ -192,7 +191,6 @@ def main() -> int:
             eng_iters = [i.iteration for i in _iters("engineer")]
             rev_rounds = [(i.iteration, i.outcome) for i in _iters("reviewer")]
 
-        ws = _WORKSPACE_ROOT / run_id
         tag = f"ship-{run_id}"
 
         print("\n================= SANDBOX-REUSE PROOF (M-unify U2) =================")
@@ -260,13 +258,16 @@ def main() -> int:
             ok("run.status == completed")
         else:
             fail(f"run.status {run.get('status')!r} != completed")
-        tags = subprocess.run(
-            ["git", "-C", str(ws), "tag", "--list", tag], capture_output=True, text=True
-        ).stdout.split()
-        if tags == [tag]:
-            ok(f"exactly one git tag {tag} (shipped once)")
+        # Tvashtr-80: was ``git tag --list`` in the run's workspace, which the M-wsgc S1 reap
+        # deletes in ``run_team``'s ``finally`` — before the workflow reports SUCCESS. The durable
+        # witness is ``runs.ship_tag`` + ``runs.ship_commit_sha``.
+        if shipped_once(run, run_id):
+            ok(f"shipped exactly once (durable witness: ship_tag {tag} + ship_commit_sha)")
         else:
-            fail(f"expected exactly one {tag} tag, got {tags}")
+            fail(
+                "expected the durable single-ship witness, got "
+                f"ship_tag={run.get('ship_tag')!r} ship_commit_sha={run.get('ship_commit_sha')!r}"
+            )
 
         print("===================================================================")
         if _failed:

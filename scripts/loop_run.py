@@ -17,7 +17,8 @@ Then it asserts the loop actually cycled (NOT just that the run completed):
   * ``EngineerRunAttempt`` has exactly 3 rows for the run (M-unify U1: the entry PM runs the agent
     path too, so it adds a row to the Engineer's 2 iterations)
   * exactly 3 ``{run_id}:agent-cost:{i}`` CostRecords (entry PM + the Engineer's 2 iterations)
-  * exactly one ``ship-{run_id}`` git tag, run ``completed``, committed file matches
+  * shipped exactly once (the durable ``ship_tag``/``ship_commit_sha`` witness — the workspace's
+    git tag is gone by then, see ``_ship_readback``), run ``completed``, committed file matches
 
 Skips cleanly without a key. Exits non-zero unless every assertion holds.
 
@@ -26,10 +27,10 @@ Run via ``make loop-run``.
 
 import logging
 import os
-import subprocess
 import sys
 import time
-from pathlib import Path
+
+from _ship_readback import added_file, shipped_diff, shipped_once
 
 POLL_TIMEOUT_S = 600
 TARGET_FILE = os.environ.get("TVASHTR_SKELETON_FILE", "greeting.txt")
@@ -44,7 +45,6 @@ FEATURE_MODE = os.environ.get("TVASHTR_FEATURE_RUN") == "1"
 # A real Engineer build + the agent-Reviewer running the build's tests in a fresh per-iteration
 # container (plus possible loop-backs) is far slower than the stubbed forced loop → a roomier cap.
 FEATURE_TIMEOUT_S = int(os.environ.get("TVASHTR_FEATURE_TIMEOUT_S", "1800"))
-_WORKSPACE_ROOT = Path(__file__).resolve().parents[1] / "backend" / ".tvashtr_workspaces"
 _TERMINAL_WF = {"SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
 _TERMINAL_RUN = {"completed", "failed", "over_budget", "rejected", "cancelled"}
 
@@ -104,7 +104,6 @@ def _run_feature_mode(client) -> int:
         return 1
 
     run = final.get("run") or {}
-    ws = _WORKSPACE_ROOT / run_id
     tag = f"ship-{run_id}"
 
     with session_scope() as session:
@@ -187,17 +186,19 @@ def _run_feature_mode(client) -> int:
     # --- terminal outcome: shipped-on-green OR cycled (both valid capstone proof) ---
     status = run.get("status")
     if status == "completed":
-        tags = subprocess.run(
-            ["git", "-C", str(ws), "tag", "--list", tag], capture_output=True, text=True
-        ).stdout.split()
-        if tags == [tag]:
-            ok(f"SHIPPED on green: run completed + exactly one git tag {tag}")
-            shipped = subprocess.run(
-                ["git", "-C", str(ws), "show", f"{tag}"], capture_output=True, text=True
-            ).stdout
-            print(f"  (info) ship commit:\n    {shipped.splitlines()[0] if shipped else '(none)'}")
+        # Tvashtr-80: was ``git tag --list`` + ``git show <tag>`` in the run's workspace, which the
+        # M-wsgc S1 reap deletes before the workflow reports SUCCESS. The durable witness that the
+        # run shipped exactly once is ``runs.ship_tag`` + ``runs.ship_commit_sha`` (written from
+        # ``idempotent_ship``'s result, whose ``ship-{run_id}`` tag-dedup IS the single-ship
+        # guarantee — unchanged by this re-point).
+        if shipped_once(run, run_id):
+            ok(f"SHIPPED on green: run completed + durable single-ship witness {tag}")
+            print(f"  (info) ship commit: {run.get('ship_commit_sha')}")
         else:
-            fail(f"run completed but ship tag absent/duplicated: {tags}")
+            fail(
+                "run completed but the durable ship witness is absent/mismatched: "
+                f"ship_tag={run.get('ship_tag')!r} ship_commit_sha={run.get('ship_commit_sha')!r}"
+            )
     elif status in {"blocked", "running"} and any(o == "changes_requested" for _, o in rev_rounds):
         ok(
             f"CYCLED on red: Reviewer requested changes (status={status}) — the loop looped "
@@ -276,7 +277,6 @@ def main() -> int:
             return 1
 
         run = final.get("run") or {}
-        ws = _WORKSPACE_ROOT / run_id
         tag = f"ship-{run_id}"
 
         print("\n================= LOOP RUN PROOF =================")
@@ -369,19 +369,18 @@ def main() -> int:
         else:
             fail(f"run.status {run.get('status')!r} != completed")
 
-        tags = subprocess.run(
-            ["git", "-C", str(ws), "tag", "--list", tag], capture_output=True, text=True
-        ).stdout.split()
-        if tags == [tag]:
-            ok(f"exactly one git tag {tag}")
+        # Tvashtr-80: both reads below used to shell out to git inside
+        # ``.tvashtr_workspaces/{run_id}``, which the M-wsgc S1 reap deletes in ``run_team``'s
+        # ``finally`` — before the workflow reports SUCCESS. Same facts, durable sources.
+        if shipped_once(run, run_id):
+            ok(f"shipped exactly once (durable witness: ship_tag {tag} + ship_commit_sha)")
         else:
-            fail(f"expected exactly one {tag} tag, got {tags}")
+            fail(
+                "expected the durable single-ship witness, got "
+                f"ship_tag={run.get('ship_tag')!r} ship_commit_sha={run.get('ship_commit_sha')!r}"
+            )
 
-        committed = subprocess.run(
-            ["git", "-C", str(ws), "show", f"{tag}:{TARGET_FILE}"],
-            capture_output=True,
-            text=True,
-        ).stdout
+        committed = added_file(shipped_diff(run_id), TARGET_FILE) or ""
         # Substring, not byte-exact: a forced-revision round may cosmetically edit the deliverable;
         # this target proves the cycle RAN (byte-exact content is skeleton-run's proof).
         if REQUIRED_LINE in committed:

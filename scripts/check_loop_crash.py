@@ -26,11 +26,10 @@ for re-execution plus the exactly-once-per-iteration final state for correct mid
 """
 
 import json
-import subprocess
 import sys
 import urllib.request
-from pathlib import Path
 
+from _ship_readback import added_file, artifact_row_count, shipped_diff, shipped_once
 from sqlalchemy import func, select
 
 from tvashtr.db import session_scope
@@ -43,7 +42,6 @@ TARGET_FILE = "greeting.txt"
 NO_CRASH_ENGINEER_ITERATIONS = 3
 EXPECTED_ENGINEER_ITERS = [1, 2, 3]
 EXPECTED_REVIEWER_OUTCOMES = ["changes_requested", "changes_requested", "approved"]
-_WS_ROOT = Path(__file__).resolve().parents[1] / "backend" / ".tvashtr_workspaces"
 
 _failed = False
 
@@ -58,16 +56,11 @@ def ok(msg: str) -> None:
     print(f"  [ok]   {msg}")
 
 
-def _git(ws: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(ws), *args], capture_output=True, text=True)
-
-
 def main() -> None:
     if len(sys.argv) != 5:
         print(__doc__)
         sys.exit(2)
     run_id, old_pid, new_pid, base = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
-    ws = _WS_ROOT / run_id
     tag = f"ship-{run_id}"
 
     with urllib.request.urlopen(f"{base}/api/runs/{run_id}") as resp:
@@ -90,26 +83,29 @@ def main() -> None:
         ok("runs.status == completed")
 
     # --- shipped exactly once ---
-    if run.get("ship_tag") != tag or not run.get("ship_commit_sha"):
+    if not shipped_once(run, run_id):
         fail(f"runs ship_tag/sha wrong: tag={run.get('ship_tag')} sha={run.get('ship_commit_sha')}")
     else:
         ok(f"runs.ship_tag == {tag} and ship_commit_sha set")
 
-    tags = _git(ws, "tag", "--list", tag).stdout.split()
-    if tags != [tag]:
-        fail(f"expected exactly one {tag} tag, got {tags}")
+    # Tvashtr-80 — the DURABLE single-ship witness, replacing BOTH workspace git reads that used to
+    # stand here (``git tag --list ship-<run_id>`` and ``git log --all --grep "Ship: <run_id>"``).
+    # Since M-wsgc S1 the greenfield workspace is reaped in ``run_team``'s ``finally``, before the
+    # workflow reports SUCCESS — and it was the ONLY repo that ever held that commit (there is no
+    # remote), so the empirical commit COUNT is unrecoverable by design, not by oversight. Its
+    # durable replacement is exactly as strong in practice: ``run_artifacts.run_id`` is UNIQUE and
+    # ``ship_step`` UPSERTs, so one row is the "shipped once" fact even across the crash-resume
+    # re-run this gate exists to exercise. The single-ship GUARANTEE remains ``idempotent_ship``'s
+    # ``ship-{run_id}`` tag-dedup, untouched here; the git-log count only ever CONFIRMED it. Read
+    # with the DBOS-SUCCESS and ship_commit_sha assertions above, the claim is unchanged.
+    n_artifacts = artifact_row_count(run_id)
+    if n_artifacts != 1:
+        fail(f"expected exactly one run_artifacts row (durable single ship), got {n_artifacts}")
     else:
-        ok(f"exactly one git tag {tag}")
-
-    ship_log = _git(ws, "log", "--all", "--grep", f"Ship: {run_id}", "--oneline").stdout
-    ship_commits = [ln for ln in ship_log.splitlines() if ln.strip()]
-    if len(ship_commits) != 1:
-        fail(f"expected exactly one 'Ship: {run_id}' commit, got {len(ship_commits)}")
-    else:
-        ok("exactly one ship commit")
+        ok("exactly one run_artifacts row (durable single-ship witness)")
 
     # --- feature present ---
-    content = _git(ws, "show", f"{tag}:{TARGET_FILE}").stdout
+    content = added_file(shipped_diff(run_id), TARGET_FILE) or ""
     # Substring, not byte-exact: a forced-revision round may cosmetically edit the deliverable;
     # this target proves durability/resume (byte-exact content is skeleton-crash's proof).
     if REQUIRED_LINE not in content:

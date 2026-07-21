@@ -5,23 +5,22 @@ Only if ``OPENROUTER_API_KEY`` is set, drives one ``run_team`` workflow end to e
 (via an in-process TestClient, assuming ``db-up`` + ``migrate`` already ran):
 POST /api/runs, poll GET /api/runs/{run_id} to SUCCESS, then print the PRD, the
 engineer's ``files_changed``, the ship sha + tag, the **committed** file contents
-(``git show ship-{run_id}:<file>``), and both cost rows. Skips cleanly without a
-key. Exits non-zero unless the run completes, the committed file matches, and both
-cost rows are present.
+(from the durable ``run_artifacts`` snapshot — see ``_ship_readback``), and both cost
+rows. Skips cleanly without a key. Exits non-zero unless the run completes, the
+committed file matches, and both cost rows are present.
 
 Run via ``make skeleton-run``.
 """
 
 import os
-import subprocess
 import sys
 import time
-from pathlib import Path
+
+from _ship_readback import added_file, shipped_diff
 
 POLL_TIMEOUT_S = 900
 TARGET_FILE = os.environ.get("TVASHTR_SKELETON_FILE", "greeting.txt")
 REQUIRED_LINE = os.environ.get("TVASHTR_SKELETON_LINE", "Shipped by the Tvashtr PM->Engineer team")
-_WORKSPACE_ROOT = Path(__file__).resolve().parents[1] / "backend" / ".tvashtr_workspaces"
 _TERMINAL_WF = {"SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
 
 
@@ -85,14 +84,14 @@ def main() -> int:
             if versions:
                 prd_text = versions[0]["content"]
 
-        # Committed file straight out of the tagged commit.
-        workspace = _WORKSPACE_ROOT / run_id
+        # Committed file, read from the DURABLE snapshot (Tvashtr-80). This used to be
+        # ``git show {ship_tag}:{TARGET_FILE}`` inside ``.tvashtr_workspaces/{run_id}`` — but since
+        # M-wsgc S1 that directory is reaped in ``run_team``'s ``finally``, i.e. BEFORE the workflow
+        # reports SUCCESS, so the read is unsound once the run is over. ``ship_step`` persists the
+        # same content into ``run_artifacts`` while the workspace still exists; a greenfield file is
+        # ``added`` with its body in the patch, so this is the same bytes from a source that lives.
         ship_tag = run.get("ship_tag") or f"ship-{run_id}"
-        committed = subprocess.run(
-            ["git", "-C", str(workspace), "show", f"{ship_tag}:{TARGET_FILE}"],
-            capture_output=True,
-            text=True,
-        ).stdout
+        committed = added_file(shipped_diff(run_id), TARGET_FILE) or ""
 
         keys = {c["idempotency_key"] for c in costs}
         # M-unify U1: the entry (PM) now runs the agent path, so it writes an agent-cost row (not
@@ -129,7 +128,7 @@ def main() -> int:
                 f"  {c['idempotency_key']:<28} model={c['model_used']} "
                 f"tokens={c['total_tokens']} cost=${c['cost_usd']}"
             )
-        print(f"\n--- committed {TARGET_FILE} (via git show {ship_tag}:{TARGET_FILE}) ---")
+        print(f"\n--- committed {TARGET_FILE} (durable run_artifacts snapshot of {ship_tag}) ---")
         print(repr(committed))
         print("\n--- run events (streamed via on_event) ---")
         print(f"  count = {len(ev_list)}  kinds = {ev_kinds}")
