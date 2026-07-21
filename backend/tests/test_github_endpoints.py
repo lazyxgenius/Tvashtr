@@ -67,13 +67,20 @@ def _configure_hosted(monkeypatch, *, slug: str = "") -> None:
     github_app._installation_token_cache.clear()
 
 
-def _fake_github_http(repos_list):
+def _fake_github_http(repos_list, *, installations=None):
     """A fake ``github_app._http`` that plants the sentinel secrets in GitHub's responses and serves
-    ``repos_list`` for the installation-repositories call."""
+    ``repos_list`` for the installation-repositories call. ``installations`` (default empty) is the
+    list of installation dicts returned by ``GET /user/installations`` (callback discovery)."""
+    installations = installations if installations is not None else []
 
     def fake_http(method, url, *, token=None, body=None, accept="application/vnd.github+json"):
         if url.endswith("/login/oauth/access_token"):
             return {"access_token": USER_TOKEN_SENTINEL, "token_type": "bearer"}
+        # ``/user/installations`` must be checked BEFORE bare ``/user`` (endswith would also match
+        # the longer path if order were reversed... actually endswith("/user") does NOT match
+        # ``.../user/installations?...``; still keep the more specific path first for clarity).
+        if "/user/installations" in url:
+            return {"total_count": len(installations), "installations": installations}
         if url.endswith("/user"):
             return {"id": GH_USER_ID, "login": GH_LOGIN, "email": None}
         if url.endswith("/access_tokens"):
@@ -181,6 +188,8 @@ def test_callback_links_an_existing_email_account_instead_of_duplicating(
     def fake_http(method, url, *, token=None, body=None, accept=None):
         if url.endswith("/login/oauth/access_token"):
             return {"access_token": USER_TOKEN_SENTINEL}
+        if "/user/installations" in url:
+            return {"total_count": 0, "installations": []}
         if url.endswith("/user"):
             return {"id": gh_id, "login": "linker", "email": email}
         raise AssertionError(url)
@@ -204,6 +213,150 @@ def test_callback_redirects_to_the_configured_frontend_origin(unauth_client, mon
     resp = unauth_client.get("/api/auth/github/callback?code=abc", follow_redirects=False)
     assert resp.status_code == 302
     assert resp.headers["location"] == "https://app.tvashtr.example"
+
+
+def test_callback_without_installation_id_records_discovered_installations(
+    unauth_client, monkeypatch
+):
+    """OAuth-authorize returns ?code but NO installation_id — discovery via GET /user/installations
+    must still write github_installations rows so /api/github/repos is non-empty after sign-in."""
+    _configure_hosted(monkeypatch)
+    # Unique id+login so shared-DB suite state cannot link to a prior user (email is derived from
+    # login when GitHub returns email=None).
+    suffix = uuid.uuid4().hex[:12]
+    gh_user_id = uuid.uuid4().int % 2_000_000_000
+    gh_login = f"discover-{suffix}"
+    inst_a = uuid.uuid4().int % 2_000_000_000
+    inst_b = uuid.uuid4().int % 2_000_000_000
+    while inst_b == inst_a:
+        inst_b = uuid.uuid4().int % 2_000_000_000
+
+    def fake_http(method, url, *, token=None, body=None, accept="application/vnd.github+json"):
+        if url.endswith("/login/oauth/access_token"):
+            return {"access_token": USER_TOKEN_SENTINEL, "token_type": "bearer"}
+        if "/user/installations" in url:
+            return {
+                "total_count": 2,
+                "installations": [
+                    {"id": inst_a, "account": {"login": "org-a"}},
+                    {"id": inst_b},
+                ],
+            }
+        if url.endswith("/user"):
+            return {"id": gh_user_id, "login": gh_login, "email": None}
+        raise AssertionError(f"unexpected GitHub URL: {url!r}")
+
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    # Primary sign-in door: code only — no ?installation_id.
+    resp = unauth_client.get("/api/auth/github/callback?code=abc", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "tv_session" in resp.headers.get("set-cookie", "")
+    with session_scope() as s:
+        user = s.execute(select(User).where(User.github_user_id == gh_user_id)).scalar_one()
+        assert user.github_login == gh_login
+        rows = (
+            s.execute(select(GithubInstallation).where(GithubInstallation.owner_id == user.id))
+            .scalars()
+            .all()
+        )
+        recorded = sorted(r.installation_id for r in rows)
+        assert recorded == sorted([inst_a, inst_b])  # both discovered ids stored, owned by user
+
+
+def test_callback_with_installation_id_and_discovery_does_not_duplicate(unauth_client, monkeypatch):
+    """?installation_id is still recorded; when discovery returns the SAME id, the unique
+    constraint holds — one row, re-owned to the current user (not two rows)."""
+    _configure_hosted(monkeypatch)
+    suffix = uuid.uuid4().hex[:12]
+    gh_user_id = uuid.uuid4().int % 2_000_000_000
+    gh_login = f"dup-{suffix}"
+    inst_id = uuid.uuid4().int % 2_000_000_000
+    discovered_extra = uuid.uuid4().int % 2_000_000_000
+    while discovered_extra == inst_id:
+        discovered_extra = uuid.uuid4().int % 2_000_000_000
+
+    def fake_http(method, url, *, token=None, body=None, accept="application/vnd.github+json"):
+        if url.endswith("/login/oauth/access_token"):
+            return {"access_token": USER_TOKEN_SENTINEL, "token_type": "bearer"}
+        if "/user/installations" in url:
+            # Discovery returns the same id as ?installation_id plus one extra.
+            return {
+                "total_count": 2,
+                "installations": [{"id": inst_id}, {"id": discovered_extra}],
+            }
+        if url.endswith("/user"):
+            return {"id": gh_user_id, "login": gh_login, "email": None}
+        raise AssertionError(f"unexpected GitHub URL: {url!r}")
+
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    resp = unauth_client.get(
+        f"/api/auth/github/callback?code=abc&installation_id={inst_id}&setup_action=install",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    with session_scope() as s:
+        user = s.execute(select(User).where(User.github_user_id == gh_user_id)).scalar_one()
+        assert user.github_login == gh_login
+        rows = (
+            s.execute(select(GithubInstallation).where(GithubInstallation.owner_id == user.id))
+            .scalars()
+            .all()
+        )
+        by_id = {r.installation_id: r for r in rows}
+        assert set(by_id) == {inst_id, discovered_extra}
+        # Unique constraint: exactly one row per installation_id (param + discovery of same id).
+        assert len(rows) == 2
+        assert by_id[inst_id].owner_id == user.id
+        # Global uniqueness: only one github_installations row for inst_id at all.
+        all_for_inst = (
+            s.execute(
+                select(GithubInstallation).where(GithubInstallation.installation_id == inst_id)
+            )
+            .scalars()
+            .all()
+        )
+        assert len(all_for_inst) == 1
+
+
+def test_repos_skips_dead_installation_and_returns_survivors(monkeypatch):
+    """One installation whose list_installation_repositories raises must not 500 the endpoint —
+    surviving installations still contribute repos."""
+    ca, a_id = _fresh_account()
+    dead_inst = uuid.uuid4().int % 2_000_000_000
+    live_inst = uuid.uuid4().int % 2_000_000_000
+    while live_inst == dead_inst:
+        live_inst = uuid.uuid4().int % 2_000_000_000
+    with session_scope() as s:
+        s.add(GithubInstallation(owner_id=a_id, installation_id=dead_inst))
+        s.add(GithubInstallation(owner_id=a_id, installation_id=live_inst))
+
+    def list_repos(installation_id: int):
+        if installation_id == dead_inst:
+            raise github_app.GithubAppError("GitHub GET installation/repositories -> HTTP 404")
+        return [
+            {
+                "name": "survivor",
+                "full_name": "o/survivor",
+                "private": False,
+                "default_branch": "main",
+                "html_url": "https://github.com/o/survivor",
+            }
+        ]
+
+    monkeypatch.setattr(github_app, "list_installation_repositories", list_repos)
+    resp = ca.get("/api/github/repos")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["installation_count"] == 2  # both rows still counted (DB-side)
+    assert body["repos"] == [
+        {
+            "name": "survivor",
+            "full_name": "o/survivor",
+            "private": False,
+            "default_branch": "main",
+            "html_url": "https://github.com/o/survivor",
+        }
+    ]
 
 
 # ---------------------------------------------------------------- /api/github/repos
