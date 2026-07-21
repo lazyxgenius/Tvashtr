@@ -637,6 +637,44 @@ class RunWarning(Base):
     )
 
 
+class RunArtifact(Base):
+    """A GREENFIELD run's shipped diff, snapshotted DURABLY at ship time (M-wsgc S1, migration
+    ``0031``). One row per run (``run_id`` is UNIQUE), written by ``team_run.ship_step`` right after
+    ``idempotent_ship``, while the workspace still exists.
+
+    ``files`` holds the whole ``run_diff.compute_run_diff`` result dict —
+    ``{run_id, base_ref, ship_branch, files, total}`` — so the run view's "Changes" tab can be
+    served from the database VERBATIM once the workspace directory is gone. That is the point:
+    before this table a greenfield workspace could never be reclaimed, because the directory *was*
+    the deliverable (``idempotent_ship`` commits + tags inside its own git repo and there is no
+    remote, and ``run_diff._greenfield_files`` read the tab out of it). PERSIST-THEN-REAP replaces
+    "spared forever" with "spared until its artifact is persisted": the existence of this row is
+    exactly what licenses :func:`~tvashtr.control_plane.workspace_reaper._spared_run_ids` to let the
+    directory go.
+
+    So the row is the LOAD-BEARING half of a hard invariant — *a greenfield workspace is never
+    reaped before its diff is durably saved here*. Two consequences follow, and both are relied on:
+
+    * **Only greenfield runs ever get a row.** A brownfield/hosted run's deliverable is the
+      ``tvashtr/<run_id>`` branch in the user's real repo, which this table has nothing to do with;
+      its workspace was always a disposable checkout. The writer gates strictly on
+      ``runs.repo_path IS NULL``.
+    * **Absence is the SAFE state.** A run that never shipped, or whose snapshot could not be
+      written, simply has no row — and is therefore still spared, exactly as before this table
+      existed. Nothing degrades toward destroying an un-persisted deliverable."""
+
+    __tablename__ = "run_artifacts"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
+    files: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class ToolLibraryItem(Base):
     """One account's reusable MCP server (M-tools C7.C, migration ``0023``).
 

@@ -90,6 +90,7 @@ from tvashtr.models import (
     HumanTask,
     ProviderCredential,
     Run,
+    RunArtifact,
     RunEvent,
     RunWarning,
     TeamGraph,
@@ -1195,12 +1196,38 @@ def get_run_diff(run_id: str, current_user: Annotated[UserOut, Depends(get_curre
     ``/trajectory``): a BROWNFIELD run diffs ``base_ref..tvashtr/<run_id>`` in the real repo; a
     GREENFIELD run reports the produced workspace files as additions. A run with nothing to diff yet
     -> an empty ``files`` list with 200 (not an error). Reads git + the existing ``Run`` row only —
-    no mutation, no schema change."""
+    no mutation.
+
+    M-wsgc S1 adds ONE branch, for greenfield only: if ``ship_step`` durably snapshotted this run's
+    diff into ``run_artifacts``, return that stored dict VERBATIM. It is the same
+    ``compute_run_diff`` result, captured at ship time while the workspace still existed — which is
+    the whole reason the workspace reaper is now allowed to reclaim that directory. Without this the
+    tab would silently degrade to ``[]`` the moment the GC ran.
+
+    Everything else is byte-identical to before. A greenfield run with NO snapshot (mid-flight, or
+    one that never shipped) falls through to the live workspace read — and its workspace is
+    correspondingly still spared. A BROWNFIELD run never reaches the branch at all: its deliverable
+    is the ``tvashtr/<run_id>`` branch in the user's real repo, which can move after the run, so it
+    must always be diffed live rather than frozen at ship time.
+
+    The snapshot READ lives here rather than in ``run_diff``, which is deliberately kept pure
+    ``subprocess`` + ``pathlib`` (openhands-free AND DBOS-free, so it stays importable anywhere
+    and unit-testable against a temp repo). This router already holds a session; that module must
+    not."""
     with db.session_scope() as session:
         run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
         repo_path = run.repo_path
         base_ref = run.base_ref
         ship_branch = run.ship_branch
+        snapshot = (
+            session.execute(
+                select(RunArtifact.files).where(RunArtifact.run_id == run.id)
+            ).scalar_one_or_none()
+            if repo_path is None
+            else None
+        )
+    if snapshot is not None:
+        return snapshot
     return compute_run_diff(
         run_id=run_id, repo_path=repo_path, base_ref=base_ref, ship_branch=ship_branch
     )

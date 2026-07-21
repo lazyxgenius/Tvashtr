@@ -21,7 +21,14 @@ from sqlalchemy import select
 
 from tvashtr.control_plane.run_diff import compute_run_diff
 from tvashtr.db import session_scope
-from tvashtr.models import AgentInvocation, AgentNode, DocumentVersion, Run, RunEvent
+from tvashtr.models import (
+    AgentInvocation,
+    AgentNode,
+    DocumentVersion,
+    Run,
+    RunArtifact,
+    RunEvent,
+)
 
 # Bounds — keep the assembled record well within any model's context and cheap to send. The trail is
 # a summary, not a transcript; the durable rows remain the source of truth.
@@ -117,9 +124,18 @@ def _render_events(session, invocation_id: int) -> list[str]:
     return lines
 
 
-def _render_diff(run: Run) -> str:
-    """The bounded per-file summary of what the run shipped (worker nodes only)."""
-    diff = compute_run_diff(
+def _render_diff(run: Run, snapshot: dict | None = None) -> str:
+    """The bounded per-file summary of what the run shipped (worker nodes only).
+
+    ``snapshot`` is the run's DURABLE ``run_artifacts.files`` dict when it has one — the same
+    persist-then-reap fallback ``GET /api/runs/{id}/diff`` uses, and required for the same reason.
+    M-wsgc S1 lets the reaper reclaim a greenfield workspace once its diff is in the database, so a
+    live recompute for such a run finds no directory and returns ``[]`` — and this section would
+    then tell the model the run changed NOTHING, which ``_INSTRUCTION`` pins it to repeat. The
+    caller reads the row (it already holds a session; this module stays DB-read-free at this level)
+    and passes it here. ``None`` ⇒ recompute live, exactly as before: brownfield always, and any
+    greenfield run whose diff is not yet persisted (whose workspace is correspondingly spared)."""
+    diff = snapshot or compute_run_diff(
         run_id=run.workflow_id,
         repo_path=run.repo_path,
         base_ref=run.base_ref,
@@ -206,9 +222,19 @@ def build_system_prompt(*, run_id: str, node_id: str) -> str:
                 rounds.append("\n".join(block))
             sections.append("\n".join(rounds))
 
-        # A worker (agent) node: show the code the run actually shipped.
+        # A worker (agent) node: show the code the run actually shipped. M-wsgc S1: prefer the
+        # DURABLE snapshot for a greenfield run — its workspace may already have been reclaimed.
         if node is not None and node.kind == "agent" and run is not None:
-            sections.append("=== CODE CHANGES SHIPPED BY THIS RUN ===\n" + _render_diff(run))
+            snapshot = (
+                session.execute(
+                    select(RunArtifact.files).where(RunArtifact.run_id == run.id)
+                ).scalar_one_or_none()
+                if run.repo_path is None
+                else None
+            )
+            sections.append(
+                "=== CODE CHANGES SHIPPED BY THIS RUN ===\n" + _render_diff(run, snapshot)
+            )
 
     return _clip("\n\n".join(sections), _MAX_TOTAL_CHARS)
 

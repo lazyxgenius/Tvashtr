@@ -3,13 +3,29 @@
 This is the durability guarantee P0.4b's crash test relies on: re-running the
 agent (and thus the ship) must produce **exactly one** tagged commit. Also
 proves commits work with **repo-local** git identity (no global git config).
+
+The second half of the file covers the executor's ``ship_step`` — specifically the M-wsgc S1
+GREENFIELD DIFF SNAPSHOT it takes right after the ship, which is what later licenses the workspace
+reaper to reclaim the directory (see ``test_workspace_gc.py``). Those tests need Postgres; the pure
+``idempotent_ship`` tests above deliberately still do not, because the persist lives in the STEP and
+never in the pure ship function.
 """
 
+import ast
+import shutil
 import subprocess
+import uuid
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from conftest import auth_user_id
 
+from tvashtr.control_plane import run_diff, team_run
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
+from tvashtr.control_plane.teams import build_two_node_team
+from tvashtr.db import session_scope
+from tvashtr.models import Run, RunArtifact
 
 
 def _tags(ws) -> list[str]:
@@ -107,3 +123,273 @@ def test_idempotent_ship_recovers_commit_made_without_tag(tmp_path):
     assert result["sha"] == head
     assert result["tag"] == f"ship-{run_id}"
     assert _tags(ws) == [f"ship-{run_id}"]
+
+
+# ---------------------------------------------------------------------------------------------
+# ``ship_step`` — the durable GREENFIELD diff snapshot (M-wsgc S1, ``run_artifacts``).
+#
+# The whole persist-then-reap milestone hangs on this write landing, and landing at the right
+# moment: INSIDE the workflow body, right after the ship, while the workspace still exists — long
+# before ``_run_end_teardown`` can reclaim anything. Three properties are load-bearing.
+#
+#   * GREENFIELD ONLY. A brownfield/hosted run's deliverable is the ``tvashtr/<run_id>`` branch in
+#     the user's real repo; it has no snapshot and needs none, and writing one would be the first
+#     step toward the reaper treating the two run types as interchangeable.
+#   * IDEMPOTENT. ``ship_step`` is a DBOS step, so a crash-resume re-runs it. The write is an UPSERT
+#     on the UNIQUE ``run_id``, so a re-ship re-persists the same snapshot instead of
+#     duplicating it.
+#   * NOT IN ``idempotent_ship``. The pure ship function stays database-free and network-free.
+# ---------------------------------------------------------------------------------------------
+
+
+def _artifacts(run_id: str) -> list[dict]:
+    """Every ``run_artifacts`` row for this run — a LIST, so a duplicate is visible rather than
+    silently collapsed by a ``scalar_one_or_none``."""
+    with session_scope() as session:
+        return [
+            row.files
+            for row in session.query(RunArtifact)
+            .filter(RunArtifact.run_id == uuid.UUID(run_id))
+            .all()
+        ]
+
+
+def _seed_run(run_id: str, repo_path: str | None) -> None:
+    with session_scope() as session:
+        session.add(
+            Run(
+                id=uuid.UUID(run_id),
+                team_graph_id=uuid.UUID(build_two_node_team()),
+                owner_id=auth_user_id(),
+                idea="ship_step snapshot fixture",
+                workflow_id=run_id,
+                status="running",
+                repo_path=repo_path,
+            )
+        )
+
+
+def _greenfield_workspace(run_id: str) -> Path:
+    """A real shipped workspace at the path ``compute_run_diff`` resolves from ``run_id`` — the
+    snapshot is taken through the SAME reader the endpoint uses, so it cannot be faked by a
+    conveniently-placed tmp dir."""
+    ws = run_diff._WORKSPACE_ROOT / run_id
+    ws.mkdir(parents=True, exist_ok=True)
+    init_workspace_repo(str(ws))
+    (ws / "greeting.txt").write_text("hello\nworld\n", encoding="utf-8")
+    return ws
+
+
+def test_ship_step_persists_a_greenfield_runs_diff(client):
+    """THE MILESTONE'S WRITE. After a greenfield ship there is exactly one ``run_artifacts`` row,
+    and it holds the WHOLE ``compute_run_diff`` result — the shape ``/diff`` returns verbatim once
+    the workspace is gone, not a summary or a file list."""
+    run_id = str(uuid.uuid4())
+    ws = _greenfield_workspace(run_id)
+    try:
+        _seed_run(run_id, repo_path=None)
+
+        team_run.ship_step(run_id, str(ws))
+
+        rows = _artifacts(run_id)
+        assert len(rows) == 1, f"expected exactly one snapshot, got {len(rows)}"
+        snapshot = rows[0]
+        assert set(snapshot) == {"run_id", "base_ref", "ship_branch", "files", "total"}
+        assert snapshot["run_id"] == run_id
+        assert snapshot["total"] == 1
+        assert snapshot["files"][0]["path"] == "greeting.txt"
+        assert snapshot["files"][0]["status"] == "added"
+        assert snapshot["files"][0]["additions"] == 2
+        assert "hello" in snapshot["files"][0]["patch"]
+    finally:
+        shutil.rmtree(ws, ignore_errors=True)
+
+
+def test_ship_step_persist_is_idempotent_across_a_crash_resume(client):
+    """``ship_step`` is a DBOS step: a crash between the ship and the workflow's next checkpoint
+    re-runs it. The UNIQUE ``run_id`` + UPSERT means the second pass re-persists the SAME snapshot —
+    one row, not two, and no ``IntegrityError`` failing a run that had already shipped fine."""
+    run_id = str(uuid.uuid4())
+    ws = _greenfield_workspace(run_id)
+    try:
+        _seed_run(run_id, repo_path=None)
+
+        first = team_run.ship_step(run_id, str(ws))
+        second = team_run.ship_step(run_id, str(ws))  # the resume
+
+        assert second["created"] is False and second["sha"] == first["sha"]
+        rows = _artifacts(run_id)
+        assert len(rows) == 1, f"the resume duplicated the snapshot ({len(rows)} rows)"
+        assert rows[0]["files"][0]["path"] == "greeting.txt"
+    finally:
+        shutil.rmtree(ws, ignore_errors=True)
+
+
+def test_ship_step_persists_a_deliverable_containing_binary_files(client):
+    """A greenfield run can ship an image, a font, a compiled asset. Two things are pinned here, and
+    the SECOND is a KNOWN LIMITATION recorded deliberately rather than papered over.
+
+    1. The write survives it. ``files`` is ``JSONB``, which REJECTS ``\\u0000`` inside a string, and
+       the persist is best-effort — so a raw NUL reaching the insert would raise, be swallowed, and
+       silently cost that run its reap. It does not, because ``git diff`` sniffs a NUL in a file's
+       first 8000 bytes and emits ``Binary files ... differ`` instead of the bytes. That is a
+       property of git, not of this code, which is exactly why it is pinned. (A NUL that first
+       appears AFTER 8000 bytes is not covered by git's sniff; if such a patch ever did reach the
+       write, the best-effort swallow leaves no row — so the workspace stays SPARED, the safe
+       direction, never a silent reap.)
+
+    2. **The snapshot records that binary file's NAME and STATUS, NOT its bytes** — the stored patch
+       is git's marker line and numstat is ``(0, 0)``. Since the row is what licenses the reaper to
+       delete the workspace, a greenfield run that ships a binary has that binary's CONTENT
+       reclaimed with no copy anywhere. The run-view "Changes" tab is unaffected (it showed the same
+       marker before this milestone), so the shipped contract holds; but "the diff is durable" is
+       NOT the same claim as "the deliverable is recoverable" for non-text files. Asserted here so
+       the gap is visible and regression-guarded rather than discovered later — see STATE.md, where
+       it is raised for the architect."""
+    run_id = str(uuid.uuid4())
+    ws = run_diff._WORKSPACE_ROOT / run_id
+    ws.mkdir(parents=True, exist_ok=True)
+    try:
+        init_workspace_repo(str(ws))
+        (ws / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x01\x02NUL-inside\x00\xff")
+        (ws / "index.html").write_text("<h1>hi</h1>\n", encoding="utf-8")
+        _seed_run(run_id, repo_path=None)
+
+        team_run.ship_step(run_id, str(ws))  # must not raise, and must persist
+
+        rows = _artifacts(run_id)
+        assert len(rows) == 1, "a binary deliverable lost its snapshot — its workspace now leaks"
+        by_path = {f["path"]: f for f in rows[0]["files"]}
+        assert set(by_path) == {"logo.png", "index.html"}
+        assert "\x00" not in by_path["logo.png"]["patch"]
+        # The text file IS recoverable from the snapshot; the binary one is NOT (2, above).
+        assert "<h1>hi</h1>" in by_path["index.html"]["patch"]
+        assert "Binary files" in by_path["logo.png"]["patch"]
+        assert (by_path["logo.png"]["additions"], by_path["logo.png"]["deletions"]) == (0, 0)
+    finally:
+        shutil.rmtree(ws, ignore_errors=True)
+
+
+def test_ship_step_writes_no_artifact_for_a_brownfield_run(client, tmp_path):
+    """GREENFIELD ONLY, gated strictly on ``repo_path IS NULL``. A brownfield/hosted run ships onto
+    the ``tvashtr/<run_id>`` branch in the user's REAL repo — that branch is the durable
+    deliverable, its workspace was always a disposable checkout, and its ``/diff`` must keep reading
+    the real repo rather than a snapshot that could go stale the moment the user pushes.
+
+    The worktree is seeded AT ``.tvashtr_workspaces/<run_id>`` — where a brownfield checkout really
+    lives — rather than at some tmp path, and that placement is what gives this test teeth. Put it
+    anywhere else and DELETING the ``repo_path`` gate still leaves the test green, because the
+    greenfield reader would find nothing there, come back empty, and be refused by the
+    empty-snapshot guard. Here an ungated persist would find real files and write a real row, so the
+    gate is the only thing keeping this assertion true."""
+    run_id = str(uuid.uuid4())
+    ws = run_diff._WORKSPACE_ROOT / run_id
+    ws.mkdir(parents=True, exist_ok=True)
+    try:
+        init_workspace_repo(str(ws))
+        (ws / "feature.py").write_text("x = 1\n", encoding="utf-8")
+        _seed_run(run_id, repo_path=str(tmp_path / "real-repo"))
+
+        team_run.ship_step(run_id, str(ws))
+
+        assert _artifacts(run_id) == [], "a brownfield ship wrote a greenfield diff snapshot"
+    finally:
+        shutil.rmtree(ws, ignore_errors=True)
+
+
+def test_ship_step_refuses_to_persist_an_empty_snapshot(client):
+    """THE HARD INVARIANT'S LAST FENCE. ``compute_run_diff`` is crash-proof BY CONTRACT: a missing
+    directory, an unresolvable ref, an absent git, a timeout and an undecodable byte all yield
+    ``[]`` rather than raising. So "empty" does not mean "this run produced nothing" — it means
+    "the read failed", and the run's files are still sitting on disk.
+
+    Persisting that would be the worst possible outcome of this milestone: a row exists, so the
+    reaper concludes the deliverable is durable, and it deletes the only copy. The write must
+    therefore refuse, leaving NO row — which leaves the workspace spared, exactly as before this
+    table existed."""
+    run_id = str(uuid.uuid4())
+    ws = _greenfield_workspace(run_id)
+    try:
+        _seed_run(run_id, repo_path=None)
+        empty = {
+            "run_id": run_id,
+            "base_ref": None,
+            "ship_branch": None,
+            "files": [],
+            "total": 0,
+        }
+
+        with patch.object(team_run, "compute_run_diff", return_value=empty):
+            team_run.ship_step(run_id, str(ws))  # ships fine; must NOT persist
+
+        assert _artifacts(run_id) == [], (
+            "an empty snapshot was persisted — the reaper would now destroy the real deliverable"
+        )
+    finally:
+        shutil.rmtree(ws, ignore_errors=True)
+
+
+def test_ship_step_heals_a_stale_snapshot_on_re_ship(client):
+    """ON CONFLICT DO **UPDATE**, not DO NOTHING and not a bare INSERT.
+
+    This is the difference the plain-insert version hides. Because the persist is best-effort, a
+    bare ``INSERT`` on a re-ship raises ``IntegrityError``, gets swallowed, and leaves whatever was
+    written FIRST in place forever — so a partial or stale first snapshot would become permanent,
+    and the reaper would then destroy the workspace on the strength of it. That is the hard
+    invariant failing quietly rather than loudly.
+
+    So: plant a stale row, ship, and require the real snapshot to have REPLACED it — still exactly
+    one row."""
+    run_id = str(uuid.uuid4())
+    ws = _greenfield_workspace(run_id)
+    try:
+        _seed_run(run_id, repo_path=None)
+        with session_scope() as session:
+            session.add(
+                RunArtifact(
+                    run_id=uuid.UUID(run_id),
+                    files={
+                        "run_id": run_id,
+                        "base_ref": None,
+                        "ship_branch": None,
+                        "files": [],
+                        "total": 0,
+                    },
+                )
+            )
+
+        team_run.ship_step(run_id, str(ws))
+
+        rows = _artifacts(run_id)
+        assert len(rows) == 1, f"the re-ship duplicated the snapshot ({len(rows)} rows)"
+        assert rows[0]["total"] == 1, "the stale snapshot was not replaced — ON CONFLICT DO UPDATE"
+        assert rows[0]["files"][0]["path"] == "greeting.txt"
+    finally:
+        shutil.rmtree(ws, ignore_errors=True)
+
+
+def test_the_ship_step_snapshot_does_not_leak_into_the_pure_ship_function():
+    """The persist lives in the STEP, never in ``idempotent_ship``. ``shipping.py`` is deliberately
+    pure local-git-over-subprocess — importable and testable with no database at all, which is
+    exactly what the tests at the top of this file rely on. Adding the write there would pass every
+    behavioural test in this file, so the boundary needs its own fence.
+
+    PARSED from the source rather than probed with ``hasattr``, for the same reason as
+    ``test_run_diff.test_the_diff_module_stays_pure``: a module attribute is invisible when the
+    import sits INSIDE the function — which is precisely the shape this leak would take
+    (``def idempotent_ship(...): from tvashtr.db import session_scope``). An attribute probe would
+    stay green through exactly the change it exists to catch."""
+    from tvashtr.control_plane import shipping
+
+    source = Path(shipping.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.add(node.module or "." * node.level)
+
+    impure = {"tvashtr", "dbos", "openhands"}
+    forbidden = {name for name in imported if name.split(".")[0] in impure}
+    assert not forbidden, f"the snapshot leaked into the pure ship function: {sorted(forbidden)}"

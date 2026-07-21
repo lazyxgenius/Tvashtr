@@ -11,8 +11,8 @@ startup), that agreement is a REPLICATED constant, and a replicated constant is 
 thing that drifts silently. So this gate seeds through the executor's own ``make_local_workspace``
 rather than re-deriving the path, and fails loudly if the two ever diverge.
 
-FOUR FIXTURES, one sweep, five assertions — under the REAL ``WORKSPACE_ROOT``, seeded at the very
-paths ``make_local_workspace`` hands to the agent step. Two must go, two must stay:
+FIVE FIXTURES, one sweep, six assertions — under the REAL ``WORKSPACE_ROOT``, seeded at the very
+paths ``make_local_workspace`` hands to the agent step. Three must go, two must stay:
 
   1. ``<terminal BROWNFIELD run>`` — ``completed``, ``repo_path`` SET.
      MUST BE REAPED. Its workspace is a ``git worktree`` CHECKOUT; the deliverable is the
@@ -20,23 +20,33 @@ paths ``make_local_workspace`` hands to the agent step. Two must go, two must st
   2. ``<absent run>``   — a workspace with NO Run row at all (a deleted run, or a directory that
      never had one: ``delete_library_team_and_runs`` removes rows and has never touched the disk).
      MUST BE REAPED.
-  3. ``<terminal GREENFIELD run>`` — ``completed``, ``repo_path`` NULL.
+  3. ``<UN-PERSISTED terminal GREENFIELD run>`` — ``completed``, ``repo_path`` NULL, and NO
+     ``run_artifacts`` row.
      MUST SURVIVE. **This is the deliverable-awareness assertion**, and the one thing this gate
-     tests that ``clone_gc_check`` has no analogue for: a greenfield workspace holds the run's
-     shipped commit + tag and there is no remote, so it IS the artifact. A reaper that treats it
-     like a clone destroys the user's work while reporting healthy disk hygiene.
-  4. ``<live run>``     — a workspace for a run whose Run row is ``awaiting_human``.
+     tests that ``clone_gc_check`` has no analogue for: such a workspace holds the run's shipped
+     commit + tag, there is no remote, and its diff is durable nowhere else — so it IS the artifact.
+     A reaper that treats it like a clone destroys the user's work while reporting healthy disk
+     hygiene. This is the live proof of the HARD INVARIANT: **never reap a greenfield workspace
+     before its diff is durably saved.**
+  4. ``<PERSISTED terminal GREENFIELD run>`` — ``completed``, ``repo_path`` NULL, WITH a
+     ``run_artifacts`` row.
+     MUST BE REAPED (M-wsgc S1). ``ship_step`` snapshots a greenfield run's whole diff into the
+     database at ship time and ``/diff`` serves it from there, so once that row exists the directory
+     is a redundant copy and the growth item finally closes. Seeded beside fixture 3 deliberately:
+     the two differ ONLY by that row, so the sweep's opposite verdicts on them isolate the persist
+     gate from every other axis.
+  5. ``<live run>``     — a workspace for a run whose Run row is ``awaiting_human``.
      MUST SURVIVE. That is a run legitimately parked at an approval gate, and
      ``make_local_workspace`` is ``mkdir(exist_ok=True)`` while ``add_worktree`` short-circuits on
      *``.git`` already present*, so reaping it would resume the run onto an EMPTY directory — every
      file the agent already produced silently gone. The reaper and durable resume would quietly
      cancel each other out.
-  5. Anything ELSE already under the root is reported, and any pre-existing directory that the sweep
+  6. Anything ELSE already under the root is reported, and any pre-existing directory that the sweep
      removed is named — so this gate can never quietly destroy a developer's live workspace.
 
 CREDENTIAL-FREE and DOCKER-FREE: pure local filesystem + Postgres. No Fly token, no GitHub App, no
-model provider key, no container — it never runs an agent, it only creates directories. All three
-fixtures are removed in a ``finally`` regardless of outcome.
+model provider key, no container — it never runs an agent, it only creates directories. Every
+fixture is removed in a ``finally`` regardless of outcome.
 """
 
 import os
@@ -89,11 +99,12 @@ def main() -> int:
     from tvashtr.db import session_scope
     from tvashtr.engines.openhands_adapter import make_local_workspace
     from tvashtr.main import app
-    from tvashtr.models import Run
+    from tvashtr.models import Run, RunArtifact
 
     brownfield_run = str(uuid.uuid4())
     absent_run = str(uuid.uuid4())
     greenfield_run = str(uuid.uuid4())
+    persisted_run = str(uuid.uuid4())
     live_run = str(uuid.uuid4())
 
     ok = False
@@ -111,9 +122,10 @@ def main() -> int:
             brownfield_dir = Path(make_local_workspace(brownfield_run))
             absent_dir = Path(make_local_workspace(absent_run))
             greenfield_dir = Path(make_local_workspace(greenfield_run))
+            persisted_dir = Path(make_local_workspace(persisted_run))
             live_dir = Path(make_local_workspace(live_run))
-            created = [brownfield_dir, absent_dir, greenfield_dir, live_dir]
-            fixture_ids = {brownfield_run, absent_run, greenfield_run, live_run}
+            created = [brownfield_dir, absent_dir, greenfield_dir, persisted_dir, live_dir]
+            fixture_ids = {brownfield_run, absent_run, greenfield_run, persisted_run, live_run}
             print(f"[workspace-gc] WORKSPACE_ROOT             : {WORKSPACE_ROOT}")
             print(f"[workspace-gc] executor's workspace path  : {brownfield_dir.parent}")
             assert brownfield_dir.parent == WORKSPACE_ROOT, (
@@ -135,6 +147,7 @@ def main() -> int:
                 for rid, status, repo_path in (
                     (brownfield_run, "completed", "/tmp/m-wsgc-gate-fake-repo"),
                     (greenfield_run, "completed", None),
+                    (persisted_run, "completed", None),
                     (live_run, "awaiting_human", None),
                 ):
                     session.add(
@@ -148,8 +161,31 @@ def main() -> int:
                             repo_path=repo_path,
                         )
                     )
+                # S1: the ONLY difference between the two greenfield fixtures — the durable diff
+                # snapshot ``ship_step`` writes, which is what licenses the reap.
+                session.add(
+                    RunArtifact(
+                        run_id=uuid.UUID(persisted_run),
+                        files={
+                            "run_id": persisted_run,
+                            "base_ref": None,
+                            "ship_branch": None,
+                            "files": [
+                                {
+                                    "path": "src/main.py",
+                                    "status": "added",
+                                    "additions": 1,
+                                    "deletions": 0,
+                                    "patch": "+print('m-wsgc fixture')\n",
+                                }
+                            ],
+                            "total": 1,
+                        },
+                    )
+                )
             print(f"[workspace-gc] terminal BROWNFIELD run    : {brownfield_run}")
-            print(f"[workspace-gc] terminal GREENFIELD run    : {greenfield_run}")
+            print(f"[workspace-gc] GREENFIELD, NO artifact    : {greenfield_run}")
+            print(f"[workspace-gc] GREENFIELD, PERSISTED      : {persisted_run}")
             print(f"[workspace-gc] live (awaiting_human) run  : {live_run}")
             print(f"[workspace-gc] no run row (absent)        : {absent_run}")
 
@@ -166,13 +202,19 @@ def main() -> int:
             brownfield_gone = not brownfield_dir.exists()
             absent_gone = not absent_dir.exists()
             greenfield_survived = (greenfield_dir / "src" / "main.py").exists()
+            persisted_gone = not persisted_dir.exists()
             live_survived = (live_dir / "src" / "main.py").exists()
             collateral = [n for n in pre_existing if not (WORKSPACE_ROOT / n).exists()]
 
             print(f"[workspace-gc] brownfield ws REAPED       : {brownfield_gone}   (worktree)")
             print(f"[workspace-gc] absent-run  ws REAPED      : {absent_gone}   (orphan)")
             print(
-                f"[workspace-gc] GREENFIELD  ws SURVIVED    : {greenfield_survived}   (DELIVERABLE)"
+                f"[workspace-gc] GREENFIELD  ws SURVIVED    : {greenfield_survived}   (DELIVERABLE,"
+                " not yet persisted)"
+            )
+            print(
+                f"[workspace-gc] PERSISTED   ws REAPED      : {persisted_gone}   (diff is durable "
+                "in run_artifacts)"
             )
             print(f"[workspace-gc] parked-run  ws SURVIVED    : {live_survived}   (resumable)")
             print(f"[workspace-gc] pre-existing dirs removed  : {collateral or 'none'}")
@@ -181,7 +223,13 @@ def main() -> int:
                     "[workspace-gc] NOTE: the above were orphans by the same rule (absent row, or "
                     "terminal AND brownfield) — the reaper working, not a fault of this gate."
                 )
-            ok = brownfield_gone and absent_gone and greenfield_survived and live_survived
+            ok = (
+                brownfield_gone
+                and absent_gone
+                and greenfield_survived
+                and persisted_gone
+                and live_survived
+            )
     finally:
         # Every fixture goes, whatever happened. A directory this gate created and left behind is
         # exactly the kind of thing the milestone exists to prevent.

@@ -1,6 +1,6 @@
 """M-wsgc — the per-run agent workspace is reclaimed (run-end delete + reconcile sweep).
 
-REPRODUCE-FIRST (two bugs, in sequence).
+REPRODUCE-FIRST (two bugs, then the ruling that closed the gap they left).
 
 **The leak.** ``make_local_workspace`` creates ``.tvashtr_workspaces/<run_id>`` for EVERY run —
 greenfield (the throwaway build dir) and brownfield (the ``git worktree`` of the user's real repo) —
@@ -21,6 +21,15 @@ disk hygiene: it destroys the deliverable.
 failures against the status-only reaper, all of the shape "a completed GREENFIELD run's deliverable
 was destroyed".
 
+**The half-closed item that spare left behind (S1, migration ``0031``).** Sparing greenfield FOREVER
+was right only because the diff lived nowhere but that directory. ``ship_step`` now snapshots it
+into ``run_artifacts`` at ship time and ``/diff`` serves the snapshot once the directory is gone, so
+the spare narrows to "until the artifact is persisted". The PERSIST-THEN-REAP section below is that
+change — sixteen failures on the pre-change code, of the shape "a persisted greenfield workspace was
+still spared" and "the Changes tab lost the run's files once the dir was reaped". Both halves are
+asserted together, because the HARD INVARIANT running through all of it is that a greenfield
+workspace is never reaped before its diff is durable.
+
 These tests are MUTATION-REAL, exactly like ``test_clone_gc.py``. Every one of them creates actual
 directories with actual files under a tmp workspace root and actual ``runs`` rows in the database,
 then asserts on what is left on disk afterwards. Nothing here asserts that a mock was called: the
@@ -39,7 +48,7 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane import team_run, workspace_reaper
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.db import session_scope
-from tvashtr.models import Run
+from tvashtr.models import Run, RunArtifact
 
 TERMINAL_STATUSES = ("completed", "failed", "rejected", "cancelled", "over_budget")
 
@@ -63,7 +72,8 @@ def _make_run(status: str, repo_path: str | None = "/tmp/some-real-repo") -> str
     brownfield is the only run type whose workspace is reclaimable at all: its deliverable is the
     ``tvashtr/<run_id>`` branch in the user's REAL repo, so the worktree under
     ``.tvashtr_workspaces`` is a disposable checkout. Pass ``repo_path=None`` for a GREENFIELD run,
-    whose workspace *is* the deliverable and must therefore never be reaped."""
+    whose workspace is the deliverable until its diff is persisted (S1) — with no ``run_artifacts``
+    row, as here, it must never be reaped."""
     run_id = str(uuid.uuid4())
     with session_scope() as session:
         session.add(
@@ -257,7 +267,12 @@ def test_a_terminal_greenfield_runs_changes_tab_still_works_after_a_sweep(client
     This is the inverse of the assertion this file carried before the correction: back then it
     proved a GC'd greenfield diff degraded to ``[]``/200 rather than 500-ing. The ruling is that it
     must not be GC'd at all — so ship a real greenfield run, sweep, and assert the run view's
-    "Changes" tab STILL SERVES ITS FILES."""
+    "Changes" tab STILL SERVES ITS FILES.
+
+    S1 REVISION: this run is shipped by hand and therefore has NO ``run_artifacts`` row, so it is
+    still spared for exactly the original reason — the directory is the only copy of the
+    deliverable. What changed is that "forever" became "until the snapshot is durable"; see
+    :func:`test_a_persisted_greenfield_runs_changes_tab_survives_the_reap` for the other half."""
     from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
 
     run_id = str(uuid.uuid4())
@@ -296,6 +311,191 @@ def test_a_terminal_greenfield_runs_changes_tab_still_works_after_a_sweep(client
     finally:
         import shutil
 
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------------------------
+# PERSIST-THEN-REAP (S1) — the deliverable rule, revised.
+#
+# The rule above was "SPARE greenfield forever, because the directory IS the deliverable". True,
+# but only because the deliverable lived NOWHERE ELSE: the run view's "Changes" tab was read
+# straight off the disk, so reaping the directory emptied the tab for good. That made the
+# unbounded-growth item permanently half-closed — greenfield workspaces accumulate without limit.
+#
+# ``run_artifacts`` removes the premise. ``ship_step`` snapshots the greenfield diff into the
+# database while the workspace still exists, so once the row is there the directory is a redundant
+# COPY of something durable — exactly the position a brownfield worktree has always been in. The
+# spare therefore narrows from "forever" to "until the artifact is persisted":
+#
+#   SPARE  a run that is LIVE (any type), or GREENFIELD WITH NO ``run_artifacts`` ROW.
+#   REAP   the run row is ABSENT, or it is terminal AND (brownfield/hosted OR persisted-greenfield).
+#
+# THE HARD INVARIANT, and the only thing here that must never bend: a greenfield workspace is NEVER
+# reaped before its diff is durably saved. Absence of a row is the SAFE state — a run that never
+# shipped, or whose snapshot failed to write, keeps its directory exactly as before this table
+# existed. Every test below is written so that a regression toward reaping-the-unpersisted fails.
+# ---------------------------------------------------------------------------------------------
+
+
+def _persist_artifact(run_id: str, path: str = "src/main.py") -> dict:
+    """The durable snapshot ``ship_step`` writes — the row that LICENSES the reap. Shaped exactly
+    like a ``compute_run_diff`` result, because that is what is stored (and served back
+    verbatim)."""
+    snapshot = {
+        "run_id": run_id,
+        "base_ref": None,
+        "ship_branch": None,
+        "files": [
+            {
+                "path": path,
+                "status": "added",
+                "additions": 1,
+                "deletions": 0,
+                "patch": f"+++ b/{path}\n+print('shipped')\n",
+            }
+        ],
+        "total": 1,
+    }
+    with session_scope() as session:
+        session.add(RunArtifact(run_id=uuid.UUID(run_id), files=snapshot))
+    return snapshot
+
+
+@pytest.mark.parametrize("status", TERMINAL_STATUSES)
+def test_a_greenfield_workspace_is_spared_until_its_artifact_is_persisted(
+    client, monkeypatch, tmp_path, status
+):
+    """THE WHOLE REVISED RULE ON ONE FIXTURE — the same directory, before and after the snapshot.
+
+    The BEFORE half is the hard invariant (an un-persisted deliverable is untouchable) and the AFTER
+    half is the milestone. Asserting both against one run is what makes the pair meaningful: a
+    reaper that spares everything passes the first assertion, a reaper that reaps every terminal
+    greenfield passes the second, and only the persist-gated rule passes both."""
+    root = _use_tmp_workspace_root(monkeypatch, tmp_path)
+    run_id = _make_run(status, repo_path=None)
+    workspace = _seed_workspace(root, run_id)
+
+    assert workspace_reaper.delete_run_workspace(run_id) is False
+    assert workspace.is_dir(), "an UNPERSISTED greenfield deliverable was destroyed"
+
+    _persist_artifact(run_id)
+
+    assert workspace_reaper.delete_run_workspace(run_id) is True, (
+        f"a {status} greenfield workspace was still spared after its diff was persisted"
+    )
+    assert not workspace.exists()
+
+
+@pytest.mark.parametrize("status", TERMINAL_STATUSES)
+def test_the_sweep_reclaims_a_persisted_greenfield_workspace(client, monkeypatch, tmp_path, status):
+    """And the SWEEP applies the same revised rule — which is the whole reason the decision lives in
+    the shared :func:`_spared_run_ids` helper rather than at either call site. A run-end delete that
+    reaped while the sweep spared would leave every crashed run's persisted workspace on disk
+    forever; the reverse would DELAY a destruction the run-end path had refused."""
+    root = _use_tmp_workspace_root(monkeypatch, tmp_path)
+    run_id = _make_run(status, repo_path=None)
+    workspace = _seed_workspace(root, run_id)
+    _persist_artifact(run_id)
+
+    assert workspace_reaper.sweep_orphaned_workspaces() == 1
+
+    assert not workspace.exists(), f"the sweep spared a {status} PERSISTED greenfield workspace"
+
+
+@pytest.mark.parametrize("status", ["pending", "running", "awaiting_human"])
+def test_a_persisted_greenfield_workspace_is_still_spared_while_the_run_is_live(
+    client, monkeypatch, tmp_path, status
+):
+    """LIVENESS OUTRANKS PERSISTENCE, on both paths. A snapshot taken mid-run says nothing about the
+    files the agent is STILL producing, and ``make_local_workspace`` is ``mkdir(exist_ok=True)``, so
+    a resumed run whose workspace we reaped would continue onto an empty directory. The persist gate
+    widens what "terminal and disposable" means; it must never widen it past ``LIVE_STATUSES``."""
+    root = _use_tmp_workspace_root(monkeypatch, tmp_path)
+    run_id = _make_run(status, repo_path=None)
+    workspace = _seed_workspace(root, run_id)
+    _persist_artifact(run_id)
+
+    assert workspace_reaper.delete_run_workspace(run_id) is False
+    assert workspace_reaper.sweep_orphaned_workspaces() == 0
+
+    assert (workspace / "src" / "main.py").exists(), (
+        f"a {status} run's workspace was reaped because a snapshot existed — a resume finds nothing"
+    )
+
+
+def test_one_sweep_separates_persisted_greenfield_from_every_other_case(
+    client, monkeypatch, tmp_path
+):
+    """ALL FIVE CASES IN ONE SWEEP, since the decision is per-directory.
+
+    Reaped: the terminal BROWNFIELD run, the ABSENT run, and — new — the terminal GREENFIELD run
+    whose diff is durably in the database. Spared: the terminal greenfield run with NO snapshot (the
+    hard invariant) and the LIVE greenfield run that HAS one (liveness outranks persistence)."""
+    root = _use_tmp_workspace_root(monkeypatch, tmp_path)
+    brownfield = _seed_workspace(root, _make_run("completed", repo_path="/tmp/real-repo"))
+    absent = _seed_workspace(root, str(uuid.uuid4()))
+    persisted_id = _make_run("completed", repo_path=None)
+    persisted = _seed_workspace(root, persisted_id)
+    _persist_artifact(persisted_id)
+    unpersisted = _seed_workspace(root, _make_run("completed", repo_path=None))
+    live_id = _make_run("awaiting_human", repo_path=None)
+    live = _seed_workspace(root, live_id)
+    _persist_artifact(live_id)
+
+    assert workspace_reaper.sweep_orphaned_workspaces() == 3
+
+    assert not brownfield.exists(), "a terminal brownfield worktree was not reclaimed"
+    assert not absent.exists(), "an orphaned workspace was not reclaimed"
+    assert not persisted.exists(), "a PERSISTED greenfield workspace was not reclaimed"
+    assert unpersisted.is_dir(), "an UNPERSISTED greenfield deliverable was destroyed"
+    assert live.is_dir(), "a LIVE run's workspace was reaped — a resume would find nothing"
+
+
+def test_a_persisted_greenfield_runs_changes_tab_survives_the_reap(client):
+    """THE PRODUCT-LEVEL PROOF OF THE WHOLE MILESTONE, end to end against the REAL root: a real
+    greenfield ship, the real ``ship_step`` persist, a real reap, and the real endpoint.
+
+    Two failures on the pre-change code, and the pair is the point. The workspace was spared
+    (nothing licensed reaping it), and once it IS reaped the "Changes" tab must not degrade to an
+    empty list — the durable snapshot has to carry it. Reclaiming disk by silently emptying the run
+    view is the bug this milestone exists to avoid, not the feature."""
+    import shutil
+
+    from tvashtr.control_plane.shipping import init_workspace_repo
+
+    run_id = str(uuid.uuid4())
+    workspace = Path(workspace_reaper.workspace_dir_for_run(run_id))
+    workspace.mkdir(parents=True, exist_ok=True)
+    try:
+        init_workspace_repo(str(workspace))
+        (workspace / "greeting.txt").write_text("hello\nworld\n", encoding="utf-8")
+        with session_scope() as session:
+            session.add(
+                Run(
+                    id=uuid.UUID(run_id),
+                    team_graph_id=uuid.UUID(build_two_node_team()),
+                    owner_id=auth_user_id(),
+                    idea="s1 persisted greenfield deliverable",
+                    workflow_id=run_id,
+                    status="completed",
+                    repo_path=None,  # GREENFIELD
+                )
+            )
+
+        team_run.ship_step(run_id, str(workspace))  # ships AND snapshots, in that order
+
+        assert workspace_reaper.delete_run_workspace(run_id) is True, (
+            "the workspace was spared even though its diff is durably persisted"
+        )
+        assert not workspace.exists()
+
+        after = client.get(f"/api/runs/{run_id}/diff")
+        assert after.status_code == 200, after.text
+        body = after.json()
+        assert body["total"] == 1, "the Changes tab lost the run's files once the dir was reaped"
+        assert body["files"][0]["path"] == "greeting.txt"
+        assert "hello" in body["files"][0]["patch"]
+    finally:
         shutil.rmtree(workspace, ignore_errors=True)
 
 

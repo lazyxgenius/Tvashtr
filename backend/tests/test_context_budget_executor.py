@@ -11,7 +11,6 @@ are the mutation-real complements to the pure ``test_context_compiler.py``:
 """
 
 import shutil
-import subprocess
 import uuid
 from pathlib import Path
 
@@ -25,7 +24,7 @@ from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.db import session_scope
 from tvashtr.documents.service import create_document_with_initial_version
 from tvashtr.engines.base import AgentRunResult
-from tvashtr.models import AgentInvocation, AgentNode, Run
+from tvashtr.models import AgentInvocation, AgentNode, Run, RunArtifact
 
 _WORKSPACE_ROOT = Path(__file__).resolve().parents[1] / ".tvashtr_workspaces"
 
@@ -197,13 +196,21 @@ def test_large_spec_writes_spec_md_pointer_and_never_ships(client, monkeypatch):
         assert f"./{SPEC_HANDLE_FILENAME}" in captured["instruction"]
         assert big_spec not in captured["instruction"]
 
-        # Removed after the run — gone from disk before the terminal ship node.
-        assert not (workspace / SPEC_HANDLE_FILENAME).exists()
-        # And NEVER in the shipped commit (git add -A honored the .gitignore + the file was gone).
-        tracked = subprocess.run(
-            ["git", "-C", str(workspace), "ls-files"], capture_output=True, text=True
-        ).stdout
-        assert SPEC_HANDLE_FILENAME not in tracked
-        assert "greeting.txt" in tracked
+        # NEVER in the shipped tree: the handle is removed after the run, before the ship node.
+        #
+        # Read from the DURABLE SNAPSHOT rather than a ``git ls-files`` in the workspace, because
+        # M-wsgc S1 reclaims that directory at run-end: ``ship_step`` snapshots a greenfield run's
+        # diff into ``run_artifacts`` while it still exists, and having done so it licenses the GC
+        # to let the directory go. ``run_artifacts.files`` IS what shipped, so it answers this
+        # test's question exactly — and unlike an ``exists()`` probe on a reclaimed path it cannot
+        # pass vacuously: a snapshot that lost the deliverable fails the ``greeting.txt`` assertion.
+        assert not workspace.exists(), "a persisted greenfield workspace should be reclaimed"
+        with session_scope() as session:
+            snapshot = session.execute(
+                select(RunArtifact.files).where(RunArtifact.run_id == uuid.UUID(run_id))
+            ).scalar_one()
+        shipped = {f["path"] for f in snapshot["files"]}
+        assert SPEC_HANDLE_FILENAME not in shipped, "the doc handle reached the shipped commit"
+        assert "greeting.txt" in shipped
     finally:
         shutil.rmtree(workspace, ignore_errors=True)

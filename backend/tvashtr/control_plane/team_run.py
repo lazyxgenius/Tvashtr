@@ -44,6 +44,7 @@ from pathlib import Path
 
 from dbos import DBOS
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane import clone_reaper, github_app, workspace_reaper
@@ -77,6 +78,7 @@ from tvashtr.control_plane.memory_retrieval import (
 from tvashtr.control_plane.node_skills import build_skills
 from tvashtr.control_plane.node_tools import build_mcp_config
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
+from tvashtr.control_plane.run_diff import compute_run_diff
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
 from tvashtr.control_plane.worktree import add_worktree, build_repo_grounding
 from tvashtr.db import session_scope
@@ -92,7 +94,7 @@ from tvashtr.engines.registry import resolve_adapter
 from tvashtr.engines.run_event_sink import make_run_event_sink
 from tvashtr.engines.sandbox_cache import close_run_sandboxes, session_key_for
 from tvashtr.metering import record_agent_cost, running_cost
-from tvashtr.models import AgentNode, Edge, EngineerRunAttempt, GithubInstallation, Run
+from tvashtr.models import AgentNode, Edge, EngineerRunAttempt, GithubInstallation, Run, RunArtifact
 
 logger = logging.getLogger("tvashtr.control_plane.team_run")
 
@@ -1210,23 +1212,84 @@ def agent_run_step(
     }
 
 
+def _persist_greenfield_artifact(run_id: str) -> None:
+    """M-wsgc S1 — snapshot a GREENFIELD run's shipped diff DURABLY into ``run_artifacts``.
+
+    Called from :func:`ship_step` right after the ship, which is the one moment both halves are
+    true: the commit exists, and the workspace directory still does. ``compute_run_diff`` therefore
+    reads exactly what ``GET /api/runs/{id}/diff`` reads today, and the whole result dict is stored
+    verbatim so the endpoint can hand it straight back once the directory is gone.
+
+    That row is what LICENSES the workspace reaper to reclaim a greenfield workspace at all — before
+    it, the directory was the only copy of the deliverable and had to be spared forever. So the
+    ordering here is load-bearing and already correct: ``ship_step`` runs inside the workflow body,
+    while ``_run_end_teardown`` (and its ``delete_run_workspace``) rides the ``finally`` far below.
+
+    **Two deliberate refusals to write, both protecting the hard invariant** — *never reap a
+    greenfield workspace before its diff is durable*. Absence of a row means "still spared", i.e.
+    exactly the pre-milestone behaviour, so declining to write is always the safe answer:
+
+    * An EMPTY snapshot is never stored. ``compute_run_diff`` is crash-proof by contract — a git
+      failure, a wedged repo, an unresolvable ref all yield ``[]`` rather than raising. Persisting
+      that would tell the reaper a deliverable had been captured when nothing was, and the directory
+      would be destroyed. (A genuinely empty greenfield ship cannot reach here: ``idempotent_ship``
+      raises "nothing to ship" first.)
+    * A failed write is SWALLOWED, not raised. This is a snapshot for a read-only view; the run has
+      already shipped successfully, and failing it here would turn a cosmetic problem into a lost
+      run. Un-persisted simply means un-reapable."""
+    try:
+        snapshot = compute_run_diff(run_id=run_id, repo_path=None, base_ref=None, ship_branch=None)
+        if not snapshot.get("files"):
+            logger.warning(
+                "ship_step: greenfield diff snapshot for run %s is empty — not persisting "
+                "(its workspace stays spared)",
+                run_id,
+            )
+            return
+        with session_scope() as session:
+            # UPSERT on the UNIQUE run_id: ``ship_step`` is a DBOS step, so a crash-resume re-runs
+            # it, and a re-ship must re-persist the same snapshot rather than duplicate or 500.
+            session.execute(
+                pg_insert(RunArtifact)
+                .values(run_id=uuid.UUID(run_id), files=snapshot)
+                .on_conflict_do_update(index_elements=["run_id"], set_={"files": snapshot})
+            )
+    except Exception:  # noqa: BLE001 — a snapshot for a read-only view must never fail a shipped run
+        logger.warning(
+            "ship_step: failed to persist the greenfield diff snapshot run_id=%s "
+            "(its workspace stays spared)",
+            run_id,
+            exc_info=True,
+        )
+
+
 @DBOS.step()
 def ship_step(run_id: str, workspace: str) -> dict:
     """Idempotently ship the agent's work; record the sha/tag on the run. ``idempotent_ship`` is
     mount-agnostic — for a brownfield run ``workspace`` is the worktree whose HEAD IS
     ``tvashtr/<run_id>``, so the commit + tag land on that real branch in the user's repo (D2). The
     run's ``ship_branch`` (set at worktree setup; NULL for greenfield) is surfaced in the returned
-    dict so the run result/banner can show the produced branch."""
+    dict so the run result/banner can show the produced branch.
+
+    M-wsgc S1: a GREENFIELD run (``repo_path IS NULL``) additionally gets its shipped diff
+    snapshotted into ``run_artifacts`` here — see :func:`_persist_greenfield_artifact`. Gated
+    strictly on ``repo_path``: a brownfield/hosted run's deliverable is the branch in the user's
+    real repo, which can move after the run, so freezing a snapshot of it would only go stale. The
+    snapshot is taken in its OWN session, after the sha/tag update has committed, so it can never
+    roll that update back."""
     ship = idempotent_ship(workspace, run_id)
     with session_scope() as session:
         run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
         ship_branch = run.ship_branch
+        is_greenfield = run.repo_path is None
         session.execute(
             update(Run)
             .where(Run.id == uuid.UUID(run_id))
             .values(ship_commit_sha=ship["sha"], ship_tag=ship["tag"])
         )
     ship["ship_branch"] = ship_branch
+    if is_greenfield:
+        _persist_greenfield_artifact(run_id)
     return ship
 
 

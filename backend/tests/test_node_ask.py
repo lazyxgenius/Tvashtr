@@ -266,3 +266,49 @@ def test_node_ask_missing_owner_credential_is_4xx(client, monkeypatch):
         json={"messages": [{"role": "user", "content": "explain"}]},
     )
     assert 400 <= resp.status_code < 500, resp.text
+
+
+def test_ask_a_worker_about_a_reaped_greenfield_run_still_sees_its_diff(client):
+    """M-wsgc S1 REGRESSION. ``run_explain`` is the SECOND consumer of the greenfield workspace, and
+    persist-then-reap deletes that directory once the diff is durable — so a live recompute here
+    returns ``[]`` and this section renders "No file changes are recorded for this run."
+
+    That is worse than a blank: ``_INSTRUCTION`` pins the model to answer ONLY from this record and
+    to say plainly when the record does not show something. The node would therefore state
+    confidently that the run changed no files, for a run whose diff is sitting one table away. So
+    the durable snapshot has to reach here too, exactly as it reaches ``GET /api/runs/{id}/diff``.
+
+    Deliberately seeds NO workspace at all — the state a reaped run is actually in."""
+    from tvashtr.control_plane.run_explain import build_system_prompt
+    from tvashtr.models import RunArtifact
+
+    run_id, node_id, _ = _seed_run_with_trail()
+    with session_scope() as session:
+        session.add(
+            RunArtifact(
+                run_id=uuid.UUID(run_id),
+                files={
+                    "run_id": run_id,
+                    "base_ref": None,
+                    "ship_branch": None,
+                    "files": [
+                        {
+                            "path": "greeting.txt",
+                            "status": "added",
+                            "additions": 2,
+                            "deletions": 0,
+                            "patch": "+++ b/greeting.txt\n+hello\n+world\n",
+                        }
+                    ],
+                    "total": 1,
+                },
+            )
+        )
+
+    prompt = build_system_prompt(run_id=run_id, node_id=node_id)
+
+    assert "No file changes are recorded for this run." not in prompt, (
+        "the reaped run's shipped diff vanished from the Ask-the-node prompt"
+    )
+    assert "greeting.txt" in prompt
+    assert "hello" in prompt

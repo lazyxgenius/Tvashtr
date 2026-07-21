@@ -13,37 +13,51 @@ axis is where this module deliberately DIVERGES from ``clone_reaper``. Read them
 not assume the rule is the same; it is strictly narrower here, on purpose.
 
 A clone is a COPY of something the user already has (their GitHub repo), so reclaiming it can only
-ever cost disk. A GREENFIELD workspace is the opposite: ``idempotent_ship`` makes the run's commit
-and tag INSIDE that directory's own git repo and there is no remote, so the directory *is* the run's
-one and only artifact — and ``run_diff._greenfield_files`` serves the run view's "Changes" tab
-straight out of it. **Reaping a terminal greenfield workspace would not reclaim disk, it would
-destroy the deliverable.** So:
+ever cost disk. A GREENFIELD workspace was the opposite: ``idempotent_ship`` makes the run's commit
+and tag INSIDE that directory's own git repo and there is no remote, so the directory *was* the
+run's one and only artifact — and ``run_diff._greenfield_files`` served the run view's "Changes" tab
+straight out of it. **Reaping such a workspace would not reclaim disk, it would destroy the
+deliverable.** So the rule spared greenfield FOREVER, and the unbounded-growth item stayed half
+closed.
+
+PERSIST-THEN-REAP (M-wsgc S1, migration ``0031``) removes the premise rather than the caution.
+``ship_step`` now snapshots a greenfield run's whole diff into ``run_artifacts`` while the workspace
+still exists, and ``GET /api/runs/{id}/diff`` serves that stored snapshot once the directory is
+gone. A greenfield workspace whose artifact is persisted is therefore a redundant COPY of something
+durable — exactly the position a brownfield worktree has always been in. "Spared forever" becomes
+"spared until its artifact is persisted":
 
 - **SPARE** a workspace whose Run is ``pending`` / ``running`` / ``awaiting_human``, whatever its
   type. ``make_local_workspace`` is ``mkdir(exist_ok=True)`` and ``add_worktree`` short-circuits on
   *``.git`` already present*, so a run whose workspace we deleted would resume onto an EMPTY
   directory — every file the agent had already produced silently gone, and, for a brownfield run,
   its worktree registration dangling. Deleting a live run's workspace does not save disk, it
-  destroys a resumable run.
-- **SPARE** every GREENFIELD workspace (``runs.repo_path IS NULL``) — forever, at every status. It
-  is the deliverable. This is the axis ``clone_reaper`` has no analogue for.
+  destroys a resumable run. Liveness OUTRANKS persistence: a mid-run snapshot says nothing about
+  the files the agent is still producing.
+- **SPARE** a GREENFIELD workspace (``runs.repo_path IS NULL``) that has **NO** ``run_artifacts``
+  row. Its diff is not durable anywhere else yet, so the directory is still the deliverable. This
+  is the axis ``clone_reaper`` has no analogue for.
 - **REAP** iff the Run row is ABSENT (``delete_library_team_and_runs`` removes run rows and has
   never touched the disk, so a deleted team leaves its whole workspace tree behind), **or** the Run
-  is terminal AND BROWNFIELD/hosted (``repo_path`` non-NULL). A brownfield workspace is a
-  ``git worktree`` CHECKOUT of the user's real repo; the deliverable is the ``tvashtr/<run_id>``
-  BRANCH, which lives in that real repo's object store and is untouched here. Removing the checkout
-  leaves only a stale admin entry (``.git/worktrees/<name>``) that ``git worktree prune`` clears —
-  and which the live brownfield scripts already clear themselves with
-  ``git worktree remove --force`` + ``shutil.rmtree(..., ignore_errors=True)``.
+  is terminal AND either BROWNFIELD/hosted (``repo_path`` non-NULL) or a GREENFIELD run whose
+  artifact IS persisted. A brownfield workspace is a ``git worktree`` CHECKOUT of the user's real
+  repo; the deliverable is the ``tvashtr/<run_id>`` BRANCH, which lives in that real repo's object
+  store and is untouched here. Removing the checkout leaves only a stale admin entry
+  (``.git/worktrees/<name>``) that ``git worktree prune`` clears — and which the live brownfield
+  scripts already clear themselves with ``git worktree remove --force`` +
+  ``shutil.rmtree(..., ignore_errors=True)``.
+
+**THE HARD INVARIANT: a greenfield workspace is NEVER reaped before its diff is durably saved in the
+database.** Structural, not careful: reaping requires a row to EXIST, so every way the persist can
+fail to happen — a run that never shipped, an empty snapshot, a write that errored — leaves no row
+and leaves the directory spared, i.e. exactly the pre-milestone behaviour. Absence is the safe
+state, which is also why the residual leak is the harmless direction: a FAILED greenfield run never
+ships, so it never persists, so it is kept forever (a registered §15 rider, not a bug to widen the
+reap over).
 
 Deliberately an allow-list of things to SPARE rather than a deny-list of things to reap — a status
 or a run type added later defaults to "spare it", erring toward keeping a directory instead of
 destroying someone's work.
-
-The cost of this narrowing is honest and bounded: greenfield workspaces are no longer reclaimed at
-all, so the unbounded-growth item is only PARTIALLY closed (brownfield + orphans). That is the
-correct trade — disk is recoverable, a deleted deliverable is not — and the remaining growth is
-visible to the operator rather than silently eating their artifacts.
 
 **THE NEVER-TOUCH RULE:** nothing outside :data:`WORKSPACE_ROOT` is reachable from this module. Two
 structural fences, not path arithmetic:
@@ -76,7 +90,7 @@ from sqlalchemy import select
 
 from tvashtr.config import get_settings
 from tvashtr.db import session_scope
-from tvashtr.models import Run
+from tvashtr.models import Run, RunArtifact
 
 logger = logging.getLogger("tvashtr.control_plane.workspace_reaper")
 
@@ -121,9 +135,23 @@ def _workspace_path(run_id: str) -> Path | None:
 def _spared_run_ids(candidate_ids: list[str]) -> set[str]:
     """Which of these run ids must KEEP their workspace, per the database?
 
-    THE ONE RULE, in one place, so the two reclaim paths can never disagree: a run is spared if it
-    is LIVE (a resume needs the directory) **or** GREENFIELD — ``repo_path IS NULL`` — because then
-    the directory is the run's deliverable rather than a disposable checkout.
+    THE ONE RULE, in one place, so the two reclaim paths can never disagree. A run is spared if:
+
+    * it is **LIVE** (a resume needs the directory), whatever its type; **or**
+    * it is **GREENFIELD** (``repo_path IS NULL``) **and has NO** ``run_artifacts`` **row** — its
+      shipped diff is not yet durable anywhere else, so the directory is still the deliverable.
+
+    The second arm used to read simply "greenfield", i.e. spared forever. ``ship_step`` now
+    snapshots a greenfield run's diff into ``run_artifacts`` while the workspace still exists, and
+    ``GET /api/runs/{id}/diff`` serves that snapshot once the directory is gone — so a PERSISTED
+    greenfield workspace is a redundant copy of something durable, exactly the position a brownfield
+    worktree has always been in, and it is finally reclaimable.
+
+    **THE HARD INVARIANT: a greenfield workspace is never reaped before its diff is durably saved.**
+    It holds structurally here, not by care: the reap needs a row to EXIST, so every way the persist
+    can fail to happen — a run that never shipped, a snapshot that came back empty, a write that
+    errored — leaves no row and therefore leaves the workspace spared, which is precisely the
+    pre-milestone behaviour. Absence is the safe state.
 
     Ids that do not parse as UUIDs, and ids with no Run row at all, are simply never in the returned
     set: they cannot match a row, so they read as ABSENT and therefore reapable. That is the correct
@@ -140,14 +168,21 @@ def _spared_run_ids(candidate_ids: list[str]) -> set[str]:
             continue
     if not parsed:
         return set()
+    ids = list(parsed.keys())
     with session_scope() as session:
         rows = session.execute(
-            select(Run.id, Run.status, Run.repo_path).where(Run.id.in_(list(parsed.keys())))
+            select(Run.id, Run.status, Run.repo_path).where(Run.id.in_(ids))
         ).all()
+        # Which candidates already have a durable diff snapshot. A separate SELECT rather than an
+        # outer join so the spare rule above reads as the sentence it is, and so a run type that
+        # never persists (brownfield) costs nothing to evaluate.
+        persisted = set(
+            session.execute(select(RunArtifact.run_id).where(RunArtifact.run_id.in_(ids))).scalars()
+        )
     return {
         parsed[row_id]
         for row_id, status, repo_path in rows
-        if status in LIVE_STATUSES or repo_path is None
+        if status in LIVE_STATUSES or (repo_path is None and row_id not in persisted)
     }
 
 
@@ -169,13 +204,14 @@ def delete_run_workspace(run_id: str) -> bool:
     """RECLAIM PATH 1 — delete THIS run's workspace at run end. Returns whether a directory was
     removed.
 
-    Gated on the same :func:`_spared_run_ids` rule as the sweep, so BROWNFIELD/hosted runs are the
-    only ones reclaimed here. Two independent reasons a run is spared, both subtle enough to state
-    plainly:
+    Gated on the same :func:`_spared_run_ids` rule as the sweep. Two independent reasons a run is
+    spared, both subtle enough to state plainly:
 
-    * **GREENFIELD** (``repo_path IS NULL``) is never reclaimed, at any status. That directory holds
-      the run's shipped commit + tag and there is no remote — deleting it destroys the artifact the
-      run exists to produce, and empties the run view's "Changes" tab for good.
+    * **UN-PERSISTED GREENFIELD** (``repo_path IS NULL`` with no ``run_artifacts`` row) is never
+      reclaimed, at any status. That directory holds the run's shipped commit + tag and there is no
+      remote — deleting it before the snapshot is durable destroys the artifact the run exists to
+      produce, and empties the run view's "Changes" tab for good. Once ``ship_step`` HAS persisted
+      the diff, the same directory is reclaimable: the tab is then served from the database.
     * **LIVE** is never reclaimed. ``_run_end_teardown`` rides a ``finally``, and a ``finally`` also
       fires on paths where the run is *not* finished — a step raising mid-walk unwinds through it
       while the row still reads ``running``, and DBOS may then RECOVER that workflow. Because
@@ -226,8 +262,10 @@ def sweep_orphaned_workspaces() -> int:
 
     Applies the SAME :func:`_spared_run_ids` rule as the run-end delete — which is exactly why the
     greenfield spare lives in that shared rule and not at the teardown call site. Gating only the
-    run-end path would merely DELAY a greenfield deliverable's destruction until the next boot
-    sweep; here, a terminal greenfield workspace is spared permanently.
+    run-end path would merely DELAY an un-persisted greenfield deliverable's destruction until the
+    next boot sweep. It cuts the other way too: because the persist gate lives in the shared rule,
+    this sweep is what finally reclaims the greenfield workspaces of runs that shipped and then
+    CRASHED before their teardown — the backlog the run-end delete can never reach.
 
     **NEVER RAISES.** Called from FastAPI startup (before DBOS recovery) and from a scheduled
     workflow; in both places an exception would be far worse than a missed sweep. Missing root,
