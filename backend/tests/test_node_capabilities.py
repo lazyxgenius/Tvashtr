@@ -19,7 +19,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from conftest import auth_user_id
+from conftest import auth_user_id, maybe_write_entry_report
 from sqlalchemy import select
 
 from tvashtr.control_plane.teams import create_team_from_template
@@ -774,3 +774,303 @@ def test_the_authored_fallback_model_reaches_the_executor_step(client, monkeypat
 
     assert "backup/model" in calls, calls  # the authored node threaded its fallback
     assert "<<omitted>>" in calls, calls  # every other node omitted the kwarg entirely
+
+
+# ---- Tvashtr-79 item 7: the MID-RUN arm of the same fallback_model field ------------------------
+#
+# Slice A (above) gave ``fallback_model`` a REACHABLE host-side seam: ``_resolve_model_and_key``
+# swaps BEFORE any agent runs, when the host can see the primary's credential is missing. It left
+# open the case the field was really asked for — the primary provider hard-failing DURING the agent
+# loop, where the litellm call is made in-container and the host never saw it. Item 7 closes it:
+# the adapter classifies the failure (``provider_failure``, proven in ``test_proxy_adapter_wiring``)
+# and ``agent_run_step`` re-runs the step ONCE on the node's fallback. Everything below drives the
+# REAL ``run_team`` with a fake adapter at the ``resolve_adapter`` seam — no LLM, no container.
+
+_FALLBACK_MODEL = "openai/gpt-4o-mini"  # a provider the conftest owner holds a dummy key for
+
+_PROVIDER_HARD_FAILURE = (
+    "litellm.AuthenticationError: OpenrouterException - No auth credentials found"
+)
+
+
+class _ProviderFailoverAdapter:
+    """Fails the WORKER's first ``fail_times`` attempts the way a hard provider wall does — status
+    ``failed`` plus ``provider_failure`` — then succeeds. Every worker ``AgentTask`` is recorded so
+    a test can prove exactly WHICH model, key and session_key each attempt used. The entry
+    (report-only) node is serviced normally and never counted."""
+
+    name = "openhands"
+
+    def __init__(self, tasks: list, *, fail_times: int, provider_failure: bool = True) -> None:
+        self._tasks = tasks
+        self._fail_times = fail_times
+        self._provider_failure = provider_failure
+
+    def run(self, task, on_event=None):
+        from tvashtr.engines.base import AgentRunResult, EngineEvent
+
+        if maybe_write_entry_report(task):
+            return AgentRunResult(
+                status="completed", summary="report", events=[], files_changed=["REPORT.md"]
+            )
+        self._tasks.append(task)
+        attempt = len(self._tasks)
+        # Stream like a real adapter: ``seq`` restarts at 0 on EVERY run and each collected event
+        # also goes out through ``on_event``. That is exactly what makes the retry's rows collide
+        # with the first attempt's unless the executor offsets the sink.
+        events = [
+            EngineEvent(
+                seq=i, kind="message", payload={"text": f"attempt-{attempt}-{i}"}, ts=float(i)
+            )
+            for i in range(2)
+        ]
+        if on_event is not None:
+            for event in events:
+                on_event(event)
+        if attempt <= self._fail_times:
+            return AgentRunResult(
+                status="failed",
+                summary="provider hard-failed",
+                events=events,
+                files_changed=[],
+                error=_PROVIDER_HARD_FAILURE,
+                provider_failure=self._provider_failure,
+            )
+        Path(task.workspace_dir).joinpath("greeting.txt").write_text("hi\n", encoding="utf-8")
+        return AgentRunResult(
+            status="completed", summary="ok", events=events, files_changed=["greeting.txt"]
+        )
+
+
+def _prepare_failover_run(monkeypatch, tmp_path, tasks, **adapter_kwargs):
+    from tvashtr.control_plane import team_run
+    from tvashtr.control_plane.shipping import init_workspace_repo
+
+    monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    init_workspace_repo(str(ws))
+    monkeypatch.setattr(team_run, "engineer_setup_step", lambda run_id: str(ws))
+    monkeypatch.setattr(
+        team_run,
+        "resolve_adapter",
+        lambda name: _ProviderFailoverAdapter(tasks, **adapter_kwargs),
+    )
+
+
+def _two_node_run(monkeypatch, tmp_path, tasks, *, fallback: str | None, **adapter_kwargs):
+    """Build the two-node team (optionally authoring the Engineer's ``fallback_model``), seed an
+    owned run, and drive the REAL workflow. Returns ``(run_id, result)``."""
+    from tvashtr.control_plane.teams import build_two_node_team
+
+    _prepare_failover_run(monkeypatch, tmp_path, tasks, **adapter_kwargs)
+    team_graph_id = build_two_node_team()
+    if fallback is not None:
+        _set_config_by_role(team_graph_id, "engineer", {"fallback_model": fallback})
+    run_id = str(uuid.uuid4())
+    _seed_run_for(run_id, team_graph_id, "Add a greeting.")
+    return run_id, _drive_run(run_id, "Add a greeting.")
+
+
+def test_a_mid_run_provider_failure_fails_over_once_to_the_node_fallback(
+    client, monkeypatch, tmp_path
+):
+    """THE REPRODUCE-FIRST EXECUTOR CASE: the worker's provider hard-fails mid-loop; the step
+    re-runs ONCE on the node's ``fallback_model`` and the run COMPLETES. RED before item 7 — the
+    first ``failed`` result went straight out the ``status != "completed"`` return and the run
+    finalized ``failed``."""
+    tasks: list = []
+    run_id, result = _two_node_run(
+        monkeypatch, tmp_path, tasks, fallback=_FALLBACK_MODEL, fail_times=1
+    )
+    assert result["status"] == "completed", result
+
+    assert len(tasks) == 2, [t.model for t in tasks]
+    primary, failover = tasks
+    assert primary.model != _FALLBACK_MODEL
+    assert failover.model == _FALLBACK_MODEL
+    # The failover task is the primary task with the model + key swapped — nothing else moves.
+    assert failover.instruction == primary.instruction
+    assert failover.workspace_dir == primary.workspace_dir
+    assert failover.pull_paths == primary.pull_paths
+    assert failover.workspace_mode == primary.workspace_mode
+
+
+def test_the_failover_takes_a_distinct_sandbox_key_scoped_to_the_same_run(
+    client, monkeypatch, tmp_path
+):
+    """The failover needs a FRESH sandbox — a reuse cache HIT skips LLM/Agent construction entirely
+    and continues the EXISTING Conversation, still bound to the PRIMARY model, so a failover
+    carrying the primary's ``session_key`` would silently re-run on the very provider that just
+    hard-failed.
+
+    But it must get that freshness from a DISTINCT key under the SAME run, never from ``None``.
+    ``None`` is the fly adapter's ``ephemeral`` trigger (``openhands_fly_adapter.py``: no session
+    key ⇒ a synthetic ``uuid4().hex`` run id ⇒ a whole new ``tv-run-<synthetic>`` app), and that
+    app has NO ``runs`` row to protect it — so ``fly_reaper.sweep_orphaned_fly_apps`` reads it as an
+    orphan and deletes it on the next 10-minute tick, killing the failover mid-run. A distinct key
+    under the real run id gets the MISS we want AND stays reaper-protected and torn down by
+    ``close_run_sandboxes(run_id)``."""
+    from tvashtr.engines import sandbox_cache
+
+    tasks: list = []
+    run_id, result = _two_node_run(
+        monkeypatch, tmp_path, tasks, fallback=_FALLBACK_MODEL, fail_times=1
+    )
+    assert result["status"] == "completed", result
+    primary, failover = tasks
+    assert primary.session_key is not None, "the primary attempt must still thread the reuse key"
+    # A MISS (so the fallback model is actually constructed) ...
+    assert failover.session_key != primary.session_key
+    # ... but NOT the fly-ephemeral / unprotected path.
+    assert failover.session_key is not None
+    assert sandbox_cache.run_id_from_session_key(failover.session_key) == run_id
+
+
+def test_a_fallback_equal_to_the_model_that_just_ran_is_not_retried(client, monkeypatch, tmp_path):
+    """Reachable WITHOUT a typo: the PRE-FLIGHT swap rebinds ``model`` to ``fallback_model`` when
+    the primary's credential is missing, so by the time the agent runs the two can already be the
+    same slug. Re-running the identical model + key after it hard-failed is a guaranteed-useless
+    second full agent run, so the retry must require that the fallback actually differs."""
+    from tvashtr.control_plane.teams import build_two_node_team
+
+    tasks: list = []
+    _prepare_failover_run(monkeypatch, tmp_path, tasks, fail_times=1)
+    team_graph_id = build_two_node_team()
+    with session_scope() as session:
+        engineer = session.execute(
+            select(AgentNode).where(
+                AgentNode.team_graph_id == uuid.UUID(team_graph_id),
+                AgentNode.role_name == "engineer",
+            )
+        ).scalar_one()
+        # The post-pre-flight state: the node's fallback IS the model it is about to run.
+        engineer.config = {**(engineer.config or {}), "fallback_model": engineer.model}
+    run_id = str(uuid.uuid4())
+    _seed_run_for(run_id, team_graph_id, "Add a greeting.")
+
+    assert _drive_run(run_id, "Add a greeting.")["status"] == "failed"
+    assert len(tasks) == 1, [t.model for t in tasks]
+    assert [w for w in _warnings_for(run_id) if w.source_kind == "fallback_model"] == []
+
+
+def test_the_failover_records_a_resolution_warning_naming_the_fallback(
+    client, monkeypatch, tmp_path
+):
+    """The swap is visible in the run inspector rather than being a silent model substitution —
+    mirroring the pre-flight swap's warning."""
+    tasks: list = []
+    run_id, result = _two_node_run(
+        monkeypatch, tmp_path, tasks, fallback=_FALLBACK_MODEL, fail_times=1
+    )
+    assert result["status"] == "completed", result
+    hits = [w for w in _warnings_for(run_id) if w.source_kind == "fallback_model"]
+    assert len(hits) == 1, [(w.source_kind, w.name, w.reason) for w in _warnings_for(run_id)]
+    assert hits[0].name == _FALLBACK_MODEL
+    assert "mid-run" in hits[0].reason
+
+
+def test_the_failover_happens_at_most_once(client, monkeypatch, tmp_path):
+    """A fallback that ALSO hard-fails propagates as ``failed`` through the existing
+    ``!= "completed"`` path — never a third attempt, never a ping-pong."""
+    tasks: list = []
+    _, result = _two_node_run(monkeypatch, tmp_path, tasks, fallback=_FALLBACK_MODEL, fail_times=2)
+    assert result["status"] == "failed", result
+    assert len(tasks) == 2, [t.model for t in tasks]
+
+
+def test_a_node_with_no_fallback_model_is_never_retried(client, monkeypatch, tmp_path):
+    """THE BYTE-IDENTICAL GUARD: with no ``fallback_model`` authored, the retry branch is never
+    entered — a provider failure propagates as ``failed`` exactly as it does on main."""
+    tasks: list = []
+    run_id, result = _two_node_run(monkeypatch, tmp_path, tasks, fallback=None, fail_times=1)
+    assert result["status"] == "failed", result
+    assert len(tasks) == 1, [t.model for t in tasks]
+    assert [w for w in _warnings_for(run_id) if w.source_kind == "fallback_model"] == []
+
+
+def test_a_plain_failure_is_not_failed_over_even_with_a_fallback_configured(
+    client, monkeypatch, tmp_path
+):
+    """THE DISCRIMINATOR: ``provider_failure`` — not merely ``failed`` — gates the retry. A generic
+    engine failure with a fallback authored must still finalize ``failed`` on the first attempt,
+    which is what keeps a 429 (never flagged — see ``test_byok_retry_envelope``) from failing over.
+    """
+    tasks: list = []
+    run_id, result = _two_node_run(
+        monkeypatch,
+        tmp_path,
+        tasks,
+        fallback=_FALLBACK_MODEL,
+        fail_times=1,
+        provider_failure=False,
+    )
+    assert result["status"] == "failed", result
+    assert len(tasks) == 1, [t.model for t in tasks]
+    assert [w for w in _warnings_for(run_id) if w.source_kind == "fallback_model"] == []
+
+
+def test_provider_failure_is_an_additive_default_false_field():
+    """The contract invariant: ``AgentRunResult.status`` vocabulary is UNCHANGED and the new flag
+    defaults False, so every existing producer + every ``result.status`` switch is byte-identical.
+    """
+    from typing import get_args, get_type_hints
+
+    from tvashtr.engines.base import AgentRunResult
+
+    result = AgentRunResult(status="completed", summary="s", events=[], files_changed=[])
+    assert result.provider_failure is False
+    assert set(get_args(get_type_hints(AgentRunResult)["status"])) == {
+        "completed",
+        "failed",
+        "over_budget",
+    }
+
+
+def test_an_unresolvable_fallback_leaves_the_original_failure_intact(client, monkeypatch, tmp_path):
+    """A ``fallback_model`` whose provider the owner holds NO key for must never be WORSE than
+    having no fallback at all. The launch pre-flight (``_missing_provider_credentials``) validates
+    node MODELS only — it never looks at ``config["fallback_model"]`` — so an unresolvable fallback
+    is reachable by authoring alone. The failover resolution must therefore not raise out of the
+    step (which would crash the run); the run finalizes ``failed`` exactly as it does with no
+    fallback, and the skip is recorded."""
+    tasks: list = []
+    unresolvable = "anthropic/claude-sonnet-5"  # NOT among conftest's seeded test providers
+    run_id, result = _two_node_run(
+        monkeypatch, tmp_path, tasks, fallback=unresolvable, fail_times=1
+    )
+    assert result["status"] == "failed", result
+    assert len(tasks) == 1, [t.model for t in tasks]  # no second attempt was made
+    hits = [w for w in _warnings_for(run_id) if w.source_kind == "fallback_model"]
+    assert len(hits) == 1, [(w.source_kind, w.name, w.reason) for w in _warnings_for(run_id)]
+    assert "no credential" in hits[0].reason
+
+
+def test_both_attempts_events_survive_in_run_events(client, monkeypatch, tmp_path):
+    """The end-to-end proof for the sink's ``seq_offset``: the failover re-runs the adapter inside
+    the SAME invocation, and every adapter run restarts ``seq`` at 0 — so un-offset, the retry's
+    rows collide with the first attempt's on ``(run_id, invocation_id, seq)`` and the idempotency
+    probe drops them, leaving a feed that splices attempt 1's head onto attempt 2's tail.
+
+    Mutation teeth: drop the ``len(result.events)`` argument at the executor's failover sink and
+    attempt 2's rows vanish entirely."""
+    from tvashtr.models import RunEvent
+
+    tasks: list = []
+    run_id, result = _two_node_run(
+        monkeypatch, tmp_path, tasks, fallback=_FALLBACK_MODEL, fail_times=1
+    )
+    assert result["status"] == "completed", result
+    with session_scope() as session:
+        rows = list(
+            session.execute(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)
+            ).scalars()
+        )
+    texts = [r.payload.get("text", "") for r in rows]
+    assert [t for t in texts if t.startswith("attempt-")] == [
+        "attempt-1-0",
+        "attempt-1-1",
+        "attempt-2-0",
+        "attempt-2-1",
+    ], texts

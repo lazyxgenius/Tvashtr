@@ -106,3 +106,43 @@ def test_payload_of_truncates_a_long_joined_thought_to_1000_chars():
     payload = _payload_of(_FakeActionEvent([TextContent(text="x" * 5000)]), "action")
     assert payload["thought"] == "x" * 1000
     assert json.dumps(payload)
+
+
+def test_payload_of_serializes_a_condensation_whose_forgotten_ids_are_a_set():
+    """Tvashtr-79 item 5, the SAME class of bug this file was written for: the SDK's
+    ``Condensation`` carries ``forgotten_event_ids`` as a **set**, and ``json.dumps`` raises on a
+    raw set exactly as it does on a ``TextContent``. So the new ``"condensation"`` branch must
+    REDUCE it (to a count) rather than pass the SDK object through to the ``run_events`` JSON
+    column. Reverting the branch makes ``_payload_of`` fall through to the MESSAGE branch, and the
+    ``forgotten_count`` assertion fails."""
+    from openhands.sdk.event import Condensation
+
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        json.dumps({"forgotten_event_ids": {"a", "b"}})
+
+    payload = _payload_of(
+        Condensation(
+            forgotten_event_ids={"a", "b"},
+            summary="folded the early scaffolding turns",
+            summary_offset=0,
+            llm_response_id="resp-1",
+        ),
+        "condensation",
+    )
+    assert json.dumps(payload)  # no raise
+    assert payload["forgotten_count"] == 2
+    assert payload["summary"] == "folded the early scaffolding turns"
+
+
+def test_payload_of_never_raises_on_a_hostile_condensation_event():
+    """Payload extraction must never break a run. An object whose ``forgotten_event_ids`` has no
+    ``len`` falls into the frozen defensive ``except`` and still returns a serializable dict."""
+
+    class _Hostile:
+        forgotten_event_ids = object()  # no __len__
+        summary = "s"
+        summary_offset = 0
+        llm_response_id = "r"
+
+    payload = _payload_of(_Hostile(), "condensation")
+    assert json.dumps(payload)  # serializable whichever branch produced it

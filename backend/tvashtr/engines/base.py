@@ -22,8 +22,9 @@ class EngineEvent:
     """A normalized, engine-neutral record of one step in the agent loop.
 
     ``kind`` is one of the engine-neutral values ``"action"`` / ``"observation"``
-    / ``"message"`` / ``"error"``; ``payload`` is a free-form, JSON-able dict the
-    adapter fills from the engine's native event (no engine types leak through).
+    / ``"message"`` / ``"error"`` / ``"condensation"`` (the in-transcript context
+    fold, M-ctx0 C1); ``payload`` is a free-form, JSON-able dict the adapter fills
+    from the engine's native event (no engine types leak through).
     """
 
     seq: int
@@ -111,6 +112,14 @@ class AgentRunResult:
     completion_tokens: int = 0
     total_tokens: int = 0
     cost_usd: float = 0.0
+    # ``provider_failure`` (Tvashtr-79 item 7): this ``failed`` run died on a HARD primary-provider
+    # wall — a bad/expired key, an unreachable provider, a model that does not exist there —
+    # explicitly NOT a 429 (the agent's own retry envelope owns those). The Control Plane reads it
+    # to fail the node over ONCE to its ``config["fallback_model"]``. It is an ADDITIVE,
+    # default-False field riding ALONGSIDE ``status``, whose vocabulary is deliberately UNCHANGED:
+    # such a run is still ``"failed"``, so the workflow finalizer and every existing status switch
+    # stay byte-identical when no provider failure occurs.
+    provider_failure: bool = False
 
 
 @runtime_checkable

@@ -10,6 +10,7 @@ top) — legitimately, like test_docker_adapter — keeping the openhands-free p
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from openhands.sdk.event.conversation_error import ConversationErrorEvent
 
 from tvashtr.config import Settings
@@ -448,3 +449,211 @@ def test_local_adapter_worker_none_pull_paths_keeps_edits(tmp_path, monkeypatch)
 
     assert (tmp_path / "greeting.txt").read_text() == "hello"  # the worker's edit survives
     assert result.files_changed == ["greeting.txt"]
+
+
+# --- Tvashtr-79 item 7: the PROVIDER analogue of the budget classifier ---------------------------
+#
+# Mirrors the budget block above, deliberately. The budget path proved that the in-container
+# failure DOES reach the host — genericized in the raised exception, intact in a
+# ``ConversationErrorEvent.detail`` — so a mid-run provider hard-failure is classifiable host-side
+# with NO change to the agent-server protocol. ``provider_failure`` rides ALONGSIDE the unchanged
+# ``status`` vocabulary: a hard provider failure is still ``"failed"``, it just carries the flag the
+# executor's one-shot ``fallback_model`` retry reads.
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # authentication — a bad / expired / revoked key (the "wrong BYOK key" case)
+        "litellm.AuthenticationError: AuthenticationError: OpenrouterException - "
+        "No auth credentials found",
+        "litellm.AuthenticationError: Incorrect API key provided: sk-xxxx",
+        "litellm.AuthenticationError: NvidiaNimException - Unauthorized",
+        # the provider itself is unreachable / down
+        "litellm.APIConnectionError: Connection error.",
+        "APIConnectionError: [Errno 61] Connection refused",
+        "litellm.InternalServerError: NvidiaNimException - Internal Server Error",
+        "litellm.ServiceUnavailableError: OpenrouterException - Service Unavailable",
+        # the model does not exist for this provider / key
+        "litellm.NotFoundError: OpenrouterException - model not found: vendor/typo-slug",
+        "litellm.BadRequestError: LLM Provider NOT provided",
+    ],
+)
+def test_text_has_provider_signature_matches_hard_failures(text):
+    assert local_mod._text_has_provider_signature(text) is True, text
+    assert local_mod._is_provider_error(RuntimeError(text)) is True, text
+
+
+def test_text_has_provider_signature_false_on_generic_and_empty():
+    # The docker generic wrap carries NO signal — it must stay a plain ``failed``, never a failover.
+    assert (
+        local_mod._text_has_provider_signature(
+            "Conversation run failed for id=x: Remote conversation ended with error"
+        )
+        is False
+    )
+    assert local_mod._text_has_provider_signature("") is False
+    assert local_mod._is_provider_error(RuntimeError("boom")) is False
+
+
+def test_is_provider_error_matches_the_exception_TYPE_when_the_message_is_opaque():
+    # litellm raises typed errors whose str() may carry nothing useful; the class name is the
+    # signal. Matched EXACTLY (not by substring) so ``FileNotFoundError`` is never mistaken for
+    # litellm's ``NotFoundError``.
+    for name in (
+        "AuthenticationError",
+        "APIConnectionError",
+        "InternalServerError",
+        "ServiceUnavailableError",
+        "NotFoundError",
+        "PermissionDeniedError",
+    ):
+        exc_cls = type(name, (Exception,), {})
+        assert local_mod._is_provider_error(exc_cls("")) is True, name
+    assert local_mod._is_provider_error(FileNotFoundError("no such file: /x")) is False
+
+
+def test_is_provider_error_finds_the_signature_in_the_cause_chain():
+    # Top-level message is the SDK's generic wrap; the auth signal is on __cause__.
+    inner = Exception(
+        "litellm.AuthenticationError: OpenrouterException - No auth credentials found"
+    )
+    outer = RuntimeError("Conversation run failed: Remote conversation ended with error")
+    outer.__cause__ = inner
+    assert local_mod._is_provider_error(outer) is True
+
+
+def test_a_budget_cutoff_is_never_also_a_provider_failure():
+    # The two classifiers must not both claim the proxy cutoff — budget owns ``over_budget``.
+    exc = _FakeProxyRateLimitError()
+    assert local_mod._is_budget_error(exc) is True
+    assert local_mod._is_provider_error(exc) is False
+
+
+def test_local_adapter_flags_a_provider_hard_failure(tmp_path, monkeypatch):
+    """The LOCAL adapter's except block: status stays ``"failed"`` (vocabulary UNCHANGED) and the
+    additive ``provider_failure`` flag rides alongside it."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    settings = Settings(_env_file=None, litellm_proxy_enabled=False)
+    result = _run_local_result(
+        settings,
+        tmp_path,
+        run_side_effect=RuntimeError(
+            "litellm.AuthenticationError: OpenrouterException - No auth credentials found"
+        ),
+    )
+    assert result.status == "failed"
+    assert result.provider_failure is True
+
+
+def test_local_adapter_does_not_flag_a_generic_or_rate_limited_failure(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    settings = Settings(_env_file=None, litellm_proxy_enabled=False)
+    generic = _run_local_result(settings, tmp_path, run_side_effect=RuntimeError("boom"))
+    assert (generic.status, generic.provider_failure) == ("failed", False)
+    rate_limited = _run_local_result(
+        settings,
+        tmp_path,
+        run_side_effect=RuntimeError("litellm.RateLimitError: 429 Too Many Requests"),
+    )
+    assert (rate_limited.status, rate_limited.provider_failure) == ("failed", False)
+
+
+def test_local_adapter_budget_cutoff_carries_no_provider_flag(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    settings = Settings(_env_file=None, litellm_proxy_enabled=False)
+    result = _run_local_result(settings, tmp_path, run_side_effect=_FakeProxyRateLimitError())
+    assert result.status == "over_budget"
+    assert result.provider_failure is False
+
+
+def _provider_error_event() -> ConversationErrorEvent:
+    """The docker/fly carrier: the SDK genericizes the raised exception, so the provider's auth
+    message reaches the host ONLY in this event's detail (exactly as for budget)."""
+    return ConversationErrorEvent.model_construct(
+        code="LLMAuthenticationError",
+        detail=(
+            "litellm.AuthenticationError: AuthenticationError: OpenrouterException - "
+            "No auth credentials found"
+        ),
+    )
+
+
+def test_docker_flags_a_provider_failure_via_the_error_event(tmp_path):
+    """THE REPRODUCE-FIRST DOCKER CASE — the shape item 7 exists for: the raised exception is the
+    SDK's generic wrap, and the ONLY provider signal is the ConversationErrorEvent detail. Status
+    stays ``failed``; the flag is what the executor's one-shot failover reads."""
+    result = _run_docker_result(
+        tmp_path, feed_events=[_provider_error_event()], raise_exc=_GENERIC_REMOTE_EXC
+    )
+    assert result.status == "failed"
+    assert result.provider_failure is True
+
+
+def test_docker_generic_error_without_a_provider_event_is_not_flagged(tmp_path):
+    """The discriminating negative: same generic raise, NO provider signal anywhere -> no failover
+    (byte-identical to today's behaviour for every non-provider failure)."""
+    result = _run_docker_result(tmp_path, feed_events=[], raise_exc=_GENERIC_REMOTE_EXC)
+    assert result.status == "failed"
+    assert result.provider_failure is False
+
+
+def test_docker_budget_event_is_over_budget_and_not_a_provider_failure(tmp_path):
+    """The two classifications stay disjoint on the docker event surface too."""
+    result = _run_docker_result(
+        tmp_path, feed_events=[_budget_error_event()], raise_exc=_GENERIC_REMOTE_EXC
+    )
+    assert result.status == "over_budget"
+    assert result.provider_failure is False
+
+
+# --- Adversarial-review hardening: the exclusion must hold on BOTH surfaces at once --------------
+
+
+def test_a_429_inside_a_provider_named_exception_class_is_still_excluded():
+    """THE HOLE THE REVIEW FOUND: litellm's own ``APIError``/``APIConnectionError`` classes carry a
+    provider TYPE, but the *message* can be a plain 429. If the transient MESSAGE test only guarded
+    the text path, the type path would still promote it to a failover — breaking the one exclusion
+    this slice must guarantee. The transient veto has to apply to the type path too."""
+    for class_name in ("APIError", "APIConnectionError", "InternalServerError"):
+        exc = type(class_name, (Exception,), {})(
+            "Error code: 429 - Too Many Requests, rate limit exceeded"
+        )
+        assert local_mod._is_provider_error(exc) is False, class_name
+    timed_out = type("APIError", (Exception,), {})("Request timed out after 600s")
+    assert local_mod._is_provider_error(timed_out) is False
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Docker daemon / container plumbing — OUR infrastructure, not the model provider. A
+        # fallback MODEL cannot rescue any of these, so a swap would just burn a second full agent
+        # run against the same broken sandbox.
+        "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. "
+        "Is the docker daemon running?",
+        "[Errno 61] Connection refused",
+        "ConnectionResetError(104, 'Connection reset by peer')",
+        # The OpenHands agent-server's own HTTP surface inside the sandbox.
+        "HTTPError: 502 Bad Gateway from the agent server",
+        "agent server returned 503 Service Unavailable",
+        "500 Internal Server Error while starting the remote conversation",
+    ],
+)
+def test_our_own_infrastructure_failures_are_not_provider_failures(text):
+    """Sandbox/infra failures must stay a plain ``failed``. Only litellm's OWN typed signatures
+    (which always carry the class name on both the exception and the ConversationErrorEvent
+    surfaces) should trigger a model swap."""
+    assert local_mod._text_has_provider_signature(text) is False, text
+    assert local_mod._is_provider_error(RuntimeError(text)) is False, text
+
+
+def test_a_docker_daemon_outage_does_not_trigger_a_failover(tmp_path):
+    """The same negative, driven through the REAL docker adapter's except block."""
+    result = _run_docker_result(
+        tmp_path,
+        feed_events=[],
+        raise_exc=RuntimeError("[Errno 61] Connection refused (docker daemon unreachable)"),
+    )
+    assert result.status == "failed"
+    assert result.provider_failure is False

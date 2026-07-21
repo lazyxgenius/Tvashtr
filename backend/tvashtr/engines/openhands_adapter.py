@@ -24,6 +24,7 @@ from openhands.sdk.context import AgentContext
 from openhands.sdk.event import (
     ActionEvent,
     AgentErrorEvent,
+    Condensation,
     Event,
     MessageEvent,
     ObservationBaseEvent,
@@ -76,6 +77,14 @@ def _kind_of(event: Event) -> str | None:
         return "error"
     if isinstance(event, MessageEvent):
         return "message"
+    # M-ctx0 (C1) DURABILITY: the in-transcript condenser's OWN event. Without this branch every
+    # ``Condensation`` returned ``None`` and the collector dropped it, so "zero condensation rows in
+    # ``run_events``" was STRUCTURALLY GUARANTEED rather than evidence the condenser never fired —
+    # the C1 proof had to be read out of container logs. Checked LAST, and ``Condensation`` is a
+    # DIRECT ``Event`` subclass (not one of the four above), so the pre-existing mappings are
+    # untouched. Both remote adapters import this function, so local, docker AND fly get it.
+    if isinstance(event, Condensation):
+        return "condensation"
     return None
 
 
@@ -105,6 +114,23 @@ def _payload_of(event: Event, kind: str) -> dict:
             }
         if kind == "error":
             return {"error": str(getattr(event, "error", "") or event)[:2000]}
+        if kind == "condensation":
+            # ``forgotten_event_ids`` is a **set** — ``json.dumps`` raises on one exactly as it does
+            # on a raw ``TextContent`` (see test_payload_thought_serialization), so it is reduced to
+            # a COUNT rather than passed through to the ``run_events`` JSON column. The summary is
+            # bounded like every other branch. ``llm_response_id`` is the SDK's id for the
+            # completion that produced this fold — carried so a condensation can be tied back to a
+            # specific provider-side call in the agent/container logs. (It is NOT a ``cost_records``
+            # join key: that table keys on ``invocation_id``, and the condenser's own spend is not
+            # broken out into its own row.)
+            forgotten = getattr(event, "forgotten_event_ids", None) or ()
+            summary = getattr(event, "summary", None)
+            return {
+                "forgotten_count": len(forgotten),
+                "summary": str(summary)[:2000] if summary else "",
+                "summary_offset": getattr(event, "summary_offset", None),
+                "llm_response_id": str(getattr(event, "llm_response_id", "") or "")[:200],
+            }
         # message
         text = getattr(event, "llm_message", None) or getattr(event, "message", None)
         return {"source": str(getattr(event, "source", "")), "text": str(text)[:2000]}
@@ -274,6 +300,148 @@ def _is_budget_error(exc: Exception) -> bool:
     return type(exc).__name__ == "BudgetExceededError"
 
 
+# Tvashtr-79 item 7: the PROVIDER analogue of the budget classifier above — the signal the executor
+# reads to fail a node over to its ``config["fallback_model"]`` MID-RUN. Same discipline as budget:
+# match by MESSAGE substring / CLASS NAME across the exception chain AND the remote-mode
+# ConversationErrorEvent detail, and deliberately do NOT ``import litellm`` (the gateway keeps the
+# litellm monopoly + the import boundary).
+#
+# HARD failures only: a bad/expired key, an unreachable or broken provider, a model that does not
+# exist for this provider. Swapping models cannot help anything else.
+_PROVIDER_ERROR_SIGNATURES = (
+    # --- authentication / authorization: the key is wrong, expired or revoked ---
+    "authenticationerror",
+    "authentication_error",
+    "invalid api key",
+    "incorrect api key",
+    "invalid_api_key",
+    "no auth credentials",
+    "unauthorized",
+    "permission denied",
+    "permissiondeniederror",
+    # --- the provider itself is unreachable or broken ---
+    # NOTE: deliberately only litellm's OWN typed signatures, never a bare "connection refused" /
+    # "internal server error" / "bad gateway" / "503". Those phrases are produced just as readily by
+    # OUR infrastructure — an unreachable docker daemon, the in-sandbox agent server's HTTP surface,
+    # a Fly API hiccup — and a fallback MODEL cannot rescue any of them, so matching them would only
+    # buy a second full agent run against the same broken sandbox. Nothing is lost: litellm stamps
+    # the class name on both surfaces we classify (``str(exc)`` and the ConversationErrorEvent
+    # detail), and ``_PROVIDER_ERROR_TYPES`` catches the exception object directly.
+    "apiconnectionerror",
+    "internalservererror",
+    "serviceunavailableerror",
+    # --- the model does not exist for this provider / key ---
+    "model not found",
+    "model_not_found",
+    "invalid model",
+    "llm provider not provided",
+)
+
+# THE CRUX EXCLUSION. Everything here is owned by the agent's OWN retry envelope
+# (``num_retries``/``retry_max_wait`` from :func:`tvashtr.config.agent_llm_routing`), which rides it
+# out INSIDE the agent loop. Failing over on a 429 would burn the fallback's quota on a wall the
+# primary was about to clear, so these must stay a plain ``failed``. The proxy's budget cutoff is
+# here too: it arrives wrapped as a ``RateLimitError`` and owns its own terminal status
+# (``over_budget``) — it must never be re-read as a provider failure.
+_TRANSIENT_ERROR_SIGNATURES = (
+    "rate limit",
+    "ratelimiterror",
+    "rate_limit",
+    "too many requests",
+    "429",
+    "timeout",
+    "timed out",
+    "overloaded",
+    "budget has been exceeded",
+)
+
+# Exception CLASS names, matched EXACTLY (never by substring): litellm raises typed errors whose
+# ``str()`` can carry nothing useful, so the type is the signal. Exact matching is load-bearing —
+# a substring test would read the stdlib's ``FileNotFoundError`` as litellm's ``NotFoundError``.
+_PROVIDER_ERROR_TYPES = frozenset(
+    {
+        "authenticationerror",
+        "permissiondeniederror",
+        "apiconnectionerror",
+        "internalservererror",
+        "serviceunavailableerror",
+        "notfounderror",
+        "apierror",
+    }
+)
+_TRANSIENT_ERROR_TYPES = frozenset(
+    {
+        "ratelimiterror",
+        "timeout",
+        "timeouterror",
+        "apitimeouterror",
+        "connecttimeout",
+        "readtimeout",
+        "budgetexceedederror",
+    }
+)
+
+
+def _text_has_transient_signature(text: str) -> bool:
+    """True if ``text`` carries a signature the agent's own retry envelope owns. Split out from
+    :func:`_text_has_provider_signature` because the veto has to apply to the exception-TYPE path
+    too — see :func:`_is_provider_error`."""
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(sig in lowered for sig in _TRANSIENT_ERROR_SIGNATURES)
+
+
+def _text_has_provider_signature(text: str) -> bool:
+    """True if ``text`` carries a HARD provider-failure signature — and no transient one.
+
+    The transient test runs FIRST and WINS, so a 429 / rate-limit / timeout can never be promoted to
+    a failover trigger no matter what else the message happens to contain. The single substring test
+    is factored out exactly like ``_text_has_budget_signature`` so it can run against ANY error
+    surface: the exception string (local mode) AND the docker/fly ConversationErrorEvent detail."""
+    if not text:
+        return False
+    if _text_has_transient_signature(text):
+        return False
+    return any(sig in text.lower() for sig in _PROVIDER_ERROR_SIGNATURES)
+
+
+def _exception_chain_type_names(exc: BaseException) -> set[str]:
+    """Lower-cased class names down ``exc``'s ``__cause__`` / ``__context__`` chain — the TYPE
+    mirror of :func:`_exception_chain_text` (same cycle-safe, bounded walk). A bare
+    ``AuthenticationError("")`` carries its signal only here."""
+    names: set[str] = set()
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen and len(names) < 20:
+        seen.add(id(current))
+        names.add(type(current).__name__.lower())
+        current = current.__cause__ or current.__context__
+    return names
+
+
+def _is_provider_error(exc: BaseException) -> bool:
+    """True ONLY for a HARD primary-provider failure the node's ``fallback_model`` could actually
+    rescue; False for every transient failure and every generic one.
+
+    Mirrors :func:`_is_budget_error`: message chain first, then the exception TYPE chain. As with
+    budget, in DOCKER/FLY mode the SDK's remote layer strips the detail from this exception (it
+    becomes "Remote conversation ended with error"), so the adapters additionally classify on the
+    captured ConversationErrorEvent detail via :func:`_text_has_provider_signature`."""
+    text = _exception_chain_text(exc)
+    types = _exception_chain_type_names(exc)
+    # The transient veto spans BOTH surfaces before either is allowed to say "provider". litellm's
+    # own ``APIError`` / ``APIConnectionError`` / ``InternalServerError`` classes are in
+    # ``_PROVIDER_ERROR_TYPES``, yet a plain 429 can arrive wearing one of them — so a veto that
+    # only guarded the message path would let the type path failover on a rate limit anyway,
+    # breaking the one exclusion this slice must guarantee.
+    if types & _TRANSIENT_ERROR_TYPES or _text_has_transient_signature(text):
+        return False
+    if _text_has_provider_signature(text):
+        return True
+    return bool(types & _PROVIDER_ERROR_TYPES)
+
+
 class _LocalHandle:
     """The live local sandbox stashed in ``sandbox_cache`` for cross-round conversation-carry
     (M-unify U2): the in-process ``Conversation`` bound to the shared per-run workspace dir, plus a
@@ -351,6 +519,7 @@ class OpenHandsAdapter:
         )
         status = "completed"
         error: str | None = None
+        provider_failure = False
         prompt_tokens = 0
         completion_tokens = 0
         cost_usd = 0.0
@@ -430,7 +599,13 @@ class OpenHandsAdapter:
             # generic ``failed``). On the cutoff path, best-effort read whatever partial usage
             # accrued before the proxy cut it off (per-round delta on a HIT); _read_usage is
             # defensive (returns 0s if the conversation has none / isn't ready).
-            status = "over_budget" if _is_budget_error(exc) else "failed"
+            budget_hit = _is_budget_error(exc)
+            status = "over_budget" if budget_hit else "failed"
+            # Tvashtr-79 item 7: a HARD provider wall is still ``failed`` — the additive flag rides
+            # alongside so the Control Plane can fail the node over to its ``fallback_model`` ONCE.
+            # Mirrored here for consistency with the remote adapters; local mode sees the real
+            # exception, so the chain classification alone suffices (no event surface to consult).
+            provider_failure = not budget_hit and _is_provider_error(exc)
             error = str(exc)
             if status == "over_budget" and conversation is not None:
                 pa, ca, cost_a = _read_usage(conversation)
@@ -473,4 +648,5 @@ class OpenHandsAdapter:
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             cost_usd=cost_usd,
+            provider_failure=provider_failure,
         )

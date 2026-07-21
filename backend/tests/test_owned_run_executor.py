@@ -115,3 +115,119 @@ def test_owned_run_threads_the_owners_key_into_both_paths(client, monkeypatch):
         assert captured["agent_llm_api_key"] == OWNER_KEY
     finally:
         shutil.rmtree(workspace, ignore_errors=True)
+
+
+# ---- Tvashtr-79 item 7: the MID-RUN failover re-resolves the FALLBACK provider's own key --------
+#
+# The pre-flight swap (Slice A) resolved ``fallback_model`` -> provider -> owner key before any
+# agent ran. The mid-run failover must do the SAME resolution rather than carry the primary's key
+# across: the Engineer's ``openrouter/...`` and the fallback's ``openai/...`` are different
+# providers, so re-using the primary's key would hand provider B a credential minted for provider A.
+
+_FALLBACK_MODEL = "openai/gpt-4o-mini"
+
+
+def _make_owner_with_distinct_key_per_provider(providers: set[str]) -> uuid.UUID:
+    """Like ``_make_owner_with_keys_for``, but each provider gets its OWN distinguishable value —
+    so the captured key identifies WHICH provider it was resolved for."""
+    uid = uuid.uuid4()
+    with session_scope() as session:
+        session.add(User(id=uid, email=f"failover-{uid.hex}@tvashtr.local", password_hash="x"))
+        session.flush()
+        for provider in providers:
+            session.add(
+                ProviderCredential(
+                    owner_id=uid,
+                    provider=provider,
+                    secret_encrypted=encrypt_secret(f"OWNER-KEY-{provider}"),
+                    key_last4=provider[-4:],
+                )
+            )
+    return uid
+
+
+class _FailoverKeyCapturingAdapter:
+    """Hard-fails the worker's FIRST attempt the way a dead provider key does (status ``failed`` +
+    ``provider_failure``), then succeeds — capturing the ``(model, key)`` of every worker
+    attempt."""
+
+    name = "openhands"
+
+    def __init__(self, seen: list) -> None:
+        self._seen = seen
+
+    def run(self, task, on_event=None):
+        if maybe_write_entry_report(task):
+            return AgentRunResult(
+                status="completed", summary="report", events=[], files_changed=["REPORT.md"]
+            )
+        self._seen.append((task.model, task.llm_api_key))
+        if len(self._seen) == 1:
+            return AgentRunResult(
+                status="failed",
+                summary="dead key",
+                events=[],
+                files_changed=[],
+                error=(
+                    "litellm.AuthenticationError: OpenrouterException - No auth credentials found"
+                ),
+                provider_failure=True,
+            )
+        (Path(task.workspace_dir) / "greeting.txt").write_text("hi\n", encoding="utf-8")
+        return AgentRunResult(
+            status="completed", summary="ok", events=[], files_changed=["greeting.txt"]
+        )
+
+
+def test_the_mid_run_failover_resolves_the_fallback_providers_own_key(client, monkeypatch):
+    monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
+    team_graph_id = build_two_node_team()
+    fallback_provider = provider_for_model(_FALLBACK_MODEL)
+    owner_id = _make_owner_with_distinct_key_per_provider(
+        _providers_for_team(team_graph_id) | {fallback_provider}
+    )
+    with session_scope() as session:
+        engineer = session.execute(
+            select(AgentNode).where(
+                AgentNode.team_graph_id == uuid.UUID(team_graph_id),
+                AgentNode.role_name == "engineer",
+            )
+        ).scalar_one()
+        primary_model = engineer.model
+        engineer.config = {**(engineer.config or {}), "fallback_model": _FALLBACK_MODEL}
+    assert provider_for_model(primary_model) != fallback_provider, (
+        "the fallback must live on a DIFFERENT provider or this proves nothing"
+    )
+
+    seen: list = []
+    monkeypatch.setattr(
+        team_run, "resolve_adapter", lambda name: _FailoverKeyCapturingAdapter(seen)
+    )
+
+    run_id = str(uuid.uuid4())
+    with session_scope() as session:
+        session.add(
+            Run(
+                id=uuid.UUID(run_id),
+                team_graph_id=uuid.UUID(team_graph_id),
+                owner_id=owner_id,
+                idea="Add greeting.txt",
+                workflow_id=run_id,
+                status="running",
+            )
+        )
+
+    workspace = _WORKSPACE_ROOT / run_id
+    try:
+        with SetWorkflowID(run_id):
+            result = DBOS.start_workflow(team_run.run_team, "Add greeting.txt").get_result()
+        assert result["status"] == "completed", result
+        assert len(seen) == 2, seen
+        (got_primary_model, got_primary_key), (got_fb_model, got_fb_key) = seen
+        assert got_primary_model == primary_model
+        assert got_primary_key == f"OWNER-KEY-{provider_for_model(primary_model)}"
+        assert got_fb_model == _FALLBACK_MODEL
+        assert got_fb_key == f"OWNER-KEY-{fallback_provider}"
+        assert got_fb_key != got_primary_key  # the key was RE-resolved, not carried over
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)

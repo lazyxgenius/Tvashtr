@@ -40,6 +40,7 @@ import json
 import logging
 import os
 import uuid
+from dataclasses import replace
 from pathlib import Path
 
 from dbos import DBOS
@@ -1151,6 +1152,86 @@ def agent_run_step(
     adapter = resolve_adapter(engine_name)  # lazy openhands import happens here
     try:
         result = adapter.run(task, on_event=make_run_event_sink(run_id, invocation_id))
+        # Per-node capabilities (Tvashtr-79 item 7): the MID-RUN arm of the SAME
+        # ``fallback_model`` field. ``_resolve_model_and_key`` above covers only what the host can
+        # see BEFORE the agent starts (a missing credential). The primary provider hard-failing
+        # DURING the loop happens where the litellm call is actually made — in-container in
+        # docker/fly mode — and used to crash the node. The adapter now classifies that wall
+        # (``provider_failure``: auth / connection / provider-down / unknown-model, and explicitly
+        # NEVER a 429 — the agent's own retry envelope owns those), so the host can re-run the step
+        # ONCE on the node's fallback. No ``fallback_model`` ⇒ this branch is never entered and the
+        # failure propagates through the ``!= "completed"`` return exactly as before.
+        # ``fallback_model != model`` is not a paranoia guard: ``model`` was REBOUND above by the
+        # pre-flight swap, so after that swap fires the node's fallback IS the slug that just ran.
+        # Re-running the identical model + key it just hard-failed on buys nothing but a second
+        # full agent run (and a misleading swap warning).
+        if (
+            result.status == "failed"
+            and result.provider_failure
+            and fallback_model
+            and fallback_model != model
+        ):
+            try:
+                if get_settings().litellm_proxy_enabled:
+                    # Proxy-ON: the per-run virtual key is model-agnostic (the proxy holds the
+                    # upstream keys), so only the slug changes — mirroring the resolution above.
+                    failover_model, failover_key = fallback_model, vkey
+                else:
+                    # The fallback has no further fallback: at most ONE swap per invocation.
+                    failover_model, failover_key = _resolve_model_and_key(
+                        run_id, fallback_model, None
+                    )
+            except NoCredentialError:
+                # An unresolvable fallback must never be WORSE than having none: the launch
+                # pre-flight validates node MODELS only (``_missing_provider_credentials``), never
+                # ``config["fallback_model"]``, so this is reachable by authoring alone. Keep the
+                # original ``failed`` result — byte-identical to the no-fallback path — instead of
+                # raising out of the step and crashing the run, and say why.
+                record_resolution_warning(
+                    run_id,
+                    "fallback_model",
+                    fallback_model,
+                    f"primary {model!r} hard-failed mid-run but the fallback model's provider "
+                    f"has no credential — failover skipped",
+                )
+            else:
+                record_resolution_warning(
+                    run_id,
+                    "fallback_model",
+                    failover_model,
+                    f"primary {model!r} hard-failed mid-run — failed over to the node's "
+                    f"fallback model",
+                )
+                result = adapter.run(
+                    # Identical to the primary task but for the model + its key — and the
+                    # sandbox-reuse key, which must MISS: a cache HIT skips LLM/Agent construction
+                    # and continues the EXISTING Conversation, still bound to the PRIMARY model, so
+                    # a failover carrying the primary's ``session_key`` would silently re-run on the
+                    # very provider that just failed.
+                    #
+                    # A DISTINCT key under the SAME run — never a bare ``None``. ``None`` is the fly
+                    # adapter's ``ephemeral`` trigger: it mints a synthetic run id and boots a whole
+                    # new ``tv-run-<synthetic>`` app which, having no ``runs`` row, the 10-minute
+                    # orphan sweep (``fly_reaper``) deletes out from under the failover mid-run.
+                    # Keeping the real run id gets the MISS we want AND stays reaper-protected, and
+                    # ``close_run_sandboxes(run_id)`` — which matches on the key's run-id prefix —
+                    # still tears it down at run end. ``node_id`` None (older/test call sites) ⇒ the
+                    # primary threaded no key either, so there is no reuse to dodge.
+                    replace(
+                        task,
+                        model=failover_model,
+                        llm_api_key=failover_key,
+                        session_key=(
+                            session_key_for(run_id, f"{node_id}-failover")
+                            if node_id is not None
+                            else None
+                        ),
+                    ),
+                    # The retry restarts ``seq`` at 0 inside the SAME invocation; offset past the
+                    # first attempt's events so they append rather than being swallowed as
+                    # duplicates by the sink's idempotency probe.
+                    on_event=make_run_event_sink(run_id, invocation_id, len(result.events)),
+                )
     finally:
         # C4: SPEC.md (if written) must NEVER reach the shippable worktree — remove it right after
         # the run, whether it succeeded, failed, or raised (the ship node comes later, after every

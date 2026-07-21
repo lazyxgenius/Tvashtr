@@ -73,10 +73,12 @@ from tvashtr.engines.fly_machines import (
 from tvashtr.engines.openhands_adapter import (
     _MAX_ITERATIONS,
     _is_budget_error,
+    _is_provider_error,
     _kind_of,
     _payload_of,
     _read_usage,
     _text_has_budget_signature,
+    _text_has_provider_signature,
 )
 
 # The host<->workspace sync helpers, REUSED from the docker adapter unchanged (they are pure
@@ -488,6 +490,7 @@ class OpenHandsFlyAdapter:
 
         status = "completed"
         error: str | None = None
+        provider_failure = False
         prompt_tokens = 0
         completion_tokens = 0
         cost_usd = 0.0
@@ -595,6 +598,15 @@ class OpenHandsFlyAdapter:
                 _text_has_budget_signature(t) for t in error_event_texts
             )
             status = "over_budget" if budget_hit else "failed"
+            # Tvashtr-79 item 7: the PROVIDER analogue, on the SAME dual surface budget uses — the
+            # SDK genericizes the raised exception over a remote conversation, so a hard provider
+            # wall (bad key / provider down / unknown model) reaches the host only in the captured
+            # ConversationErrorEvent detail. ``status`` stays ``failed``; the additive flag is what
+            # the Control Plane reads to fail this node over ONCE to its ``fallback_model``.
+            provider_failure = not budget_hit and (
+                _is_provider_error(exc)
+                or any(_text_has_provider_signature(t) for t in error_event_texts)
+            )
             error = str(exc)
             if status == "over_budget" and conversation is not None:
                 pa, ca, cost_a = _read_usage(conversation)
@@ -635,4 +647,5 @@ class OpenHandsFlyAdapter:
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             cost_usd=cost_usd,
+            provider_failure=provider_failure,
         )
