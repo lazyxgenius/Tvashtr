@@ -12,6 +12,7 @@ per-owner — a run resolves its owner's encrypted ``provider_credentials`` key,
 see :mod:`tvashtr.control_plane.credentials`.)
 """
 
+import logging
 import uuid
 from typing import Annotated
 
@@ -26,6 +27,8 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane import github_app
 from tvashtr.db import session_scope
 from tvashtr.models import GithubInstallation, User
+
+logger = logging.getLogger("tvashtr.auth")
 
 # The session cookie the browser carries after login. HttpOnly + signed; the payload is the user id.
 SESSION_COOKIE_NAME = "tv_session"
@@ -297,13 +300,28 @@ def github_callback(
         # Never surface the underlying GitHub error (defense-in-depth: it could echo a code/secret).
         raise HTTPException(status_code=400, detail="GitHub sign-in failed.") from None
 
+    # Discover installations the user already granted (OAuth-authorize returns ?code but NO
+    # installation_id). A GitHub hiccup must NOT break sign-in — the user still gets their session.
+    discovered_ids: list[int] = []
+    try:
+        discovered_ids = github_app.list_user_installations(user_token)
+    except github_app.GithubAppError:
+        logger.exception(
+            "list_user_installations failed during GitHub callback; continuing sign-in"
+        )
+
     with session_scope() as session:
         user = _find_or_link_github_user(
             session, int(identity["id"]), identity.get("login"), _github_email(identity)
         )
         user_id = str(user.id)
+        # Prefer the explicit ?installation_id (install flow) AND every id discovered from
+        # GET /user/installations. _store_installation is idempotent on the unique installation_id
+        # constraint (re-owns to the current user; no duplicate rows).
         if installation_id:
             _store_installation(session, user.id, installation_id)
+        for iid in discovered_ids:
+            _store_installation(session, user.id, str(iid))
 
     # Rider 4 (M-h1b): bounce to the CONFIGURABLE FE origin, not the backend root "/" (which 404s on
     # the API port). The session cookie is scoped by domain, so the cross-port redirect keeps it.

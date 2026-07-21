@@ -201,6 +201,34 @@ def list_installation_repositories(installation_id: int) -> list[dict]:
     return repos
 
 
+def list_user_installations(user_token: str) -> list[int]:
+    """The GitHub App installation ids the user can access (``GET /user/installations``), as plain
+    ints. Paginates up to ``_MAX_REPO_PAGES`` pages of 100, mirroring
+    :func:`list_installation_repositories`. Defensive on response shape (non-dict / missing /
+    non-list ``installations`` → empty page). NEVER logs or returns ``user_token``."""
+    ids: list[int] = []
+    page = 1
+    while page <= _MAX_REPO_PAGES:
+        result = _http(
+            "GET",
+            f"{_GITHUB_API}/user/installations?per_page=100&page={page}",
+            token=user_token,
+        )
+        batch = result.get("installations", []) if isinstance(result, dict) else []
+        if not isinstance(batch, list):
+            batch = []
+        for inst in batch:
+            if isinstance(inst, dict) and inst.get("id") is not None:
+                try:
+                    ids.append(int(inst["id"]))
+                except (TypeError, ValueError):
+                    continue
+        if len(batch) < 100:
+            break
+        page += 1
+    return ids
+
+
 def exchange_code_for_user_token(code: str) -> str:
     """Exchange an OAuth ``code`` for a user access token (POST github.com/login/oauth/access_token
     with the client id + client SECRET). The returned token is a SECRET — the callback uses it once

@@ -5,6 +5,7 @@ GET endpoints return plain dicts (matching the P0.1 style) to avoid coupling the
 API to ORM/gateway types.
 """
 
+import logging
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -96,6 +97,8 @@ from tvashtr.models import (
     TeamGraph,
     User,
 )
+
+logger = logging.getLogger("tvashtr.routers")
 
 # Map the resolve API's decision verb to the durable resolution recorded on the task.
 _DECISION_TO_RESOLUTION = {"approve": "approved", "reject": "rejected"}
@@ -2754,7 +2757,8 @@ def list_github_repos(current_user: Annotated[UserOut, Depends(get_current_user)
     mode). OWNER-SCOPED: reads ONLY ``github_installations`` rows WHERE ``owner_id`` == the current
     user, so account A can NEVER see account B's installations or repos. Its repos are
     fetched with a freshly-minted, in-memory-cached installation token — no token is ever stored,
-    logged, or returned. Returns a whitelist of non-secret repo fields."""
+    logged, or returned. Returns a whitelist of non-secret repo fields. One dead/stale installation
+    id must not 500 the endpoint — log and continue so remaining installs still contribute."""
     owner_id = uuid.UUID(current_user.id)
     with db.session_scope() as session:
         installation_ids = [
@@ -2766,5 +2770,12 @@ def list_github_repos(current_user: Annotated[UserOut, Depends(get_current_user)
     # The HTTP calls run AFTER the DB session closes — never hold a session across network I/O.
     repos: list[dict] = []
     for installation_id in installation_ids:
-        repos.extend(github_app.list_installation_repositories(installation_id))
+        try:
+            repos.extend(github_app.list_installation_repositories(installation_id))
+        except github_app.GithubAppError:
+            logger.exception(
+                "list_installation_repositories failed for installation_id=%s; skipping",
+                installation_id,
+            )
+            continue
     return {"repos": repos, "installation_count": len(installation_ids)}

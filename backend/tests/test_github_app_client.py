@@ -152,6 +152,52 @@ def test_list_repositories_returns_whitelist_only(gh, monkeypatch):
     assert "owner" not in repos[0] and "permissions" not in repos[0]  # whitelist drops the rest
 
 
+def test_list_user_installations_paginates_and_parses(gh, monkeypatch):
+    """GET /user/installations: paginate (per_page=100), parse installations[].id as ints, skip
+    malformed entries, stop when a page is short. Never depends on real network."""
+    pages_seen: list[int] = []
+    # Page 1: 100 well-formed ids (forces a second page); page 2: short page + junk to skip.
+    page1_ids = list(range(1, 101))
+    page2_ids = [101, 102]
+
+    def fake_http(method, url, *, token=None, body=None, accept=None):
+        assert method == "GET"
+        assert "/user/installations" in url
+        assert "per_page=100" in url
+        assert token == "ghu_user_token_never_logged"
+        # Parse page= explicitly — naive ``"page=1" in url`` also matches ``per_page=100``.
+        assert "&page=" in url
+        page_num = int(url.rsplit("&page=", 1)[-1])
+        pages_seen.append(page_num)
+        if page_num == 1:
+            return {
+                "total_count": 102,
+                "installations": [{"id": i, "account": {"login": f"a{i}"}} for i in page1_ids],
+            }
+        if page_num == 2:
+            return {
+                "total_count": 102,
+                "installations": [
+                    {"id": page2_ids[0]},
+                    {"id": str(page2_ids[1])},  # string id still coerces via int()
+                    {"id": None},  # skipped
+                    {"no_id": True},  # skipped
+                    "not-a-dict",  # skipped
+                ],
+            }
+        raise AssertionError(f"unexpected page: {url!r}")
+
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    ids = github_app.list_user_installations("ghu_user_token_never_logged")
+    assert pages_seen == [1, 2]
+    assert ids == page1_ids + page2_ids
+    # Defensive shape: non-dict body / missing installations → empty (no raise).
+    monkeypatch.setattr(github_app, "_http", lambda *a, **k: ["not", "a", "dict"])
+    assert github_app.list_user_installations("tok") == []
+    monkeypatch.setattr(github_app, "_http", lambda *a, **k: {"installations": "nope"})
+    assert github_app.list_user_installations("tok") == []
+
+
 def test_build_install_url_is_oauth_authorize_primary(monkeypatch):
     """Rider 1: the sign-in door is the OAuth authorize URL (client_id) — it authorises an EXISTING
     installation AND prompts a first-timer to install, so a RETURNING user is actually signed in.
