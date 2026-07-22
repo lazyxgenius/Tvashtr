@@ -1,18 +1,14 @@
-import { execFileSync } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(HERE, "../..");
+import { shippedFile } from "./_shipReadback";
+
 // DEFAULT_IDEA's deliverable line (backend/tvashtr/routers.py) — the template default the shipped
 // file must NOT be, proving the human's AUTHORED Engineer prompt (not the template) drove the build.
 const DEFAULT_LINE = "Shipped by the Tvashtr PM->Engineer team";
 const TERMINAL_BAD = ["failed", "rejected", "cancelled", "over_budget"];
 // The agent model the run uses (sourced from .env by the harness). Typed into the Model field so the
-// cloned run uses the proven NIM agent regardless of the template's seeded model.
-const AGENT_MODEL = process.env.TVASHTR_AGENT_MODEL ?? "nvidia_nim/meta/llama-3.3-70b-instruct";
+// cloned run uses the proven agent regardless of the template's seeded model.
+const AGENT_MODEL = process.env.TVASHTR_AGENT_MODEL ?? "deepseek/deepseek-chat";
 
 async function runStatus(request: APIRequestContext, runId: string): Promise<string> {
   const res = await request.get(`/api/runs/${runId}`);
@@ -21,26 +17,50 @@ async function runStatus(request: APIRequestContext, runId: string): Promise<str
   return body?.run?.status ?? "";
 }
 
+/**
+ * Post M-accounts: register (cookie on page.request), seed deepseek BYOK, land on the dashboard.
+ * The standalone `request` fixture is unauthenticated — always use page.request for owner reads.
+ */
+async function registerAndSeed(page: import("@playwright/test").Page): Promise<void> {
+  const email = `teamlibrary+${Date.now()}@tvashtr.local`;
+  const reg = await page.request.post("/api/auth/register", {
+    data: { email, password: "team-library-e2e-pass" },
+  });
+  expect(reg.ok(), "register a fresh account").toBeTruthy();
+  const key = process.env.DEEPSEEK_API_KEY;
+  expect(Boolean(key), "DEEPSEEK_API_KEY present in the spec env").toBeTruthy();
+  const seed = await page.request.post("/api/providers", {
+    data: { provider: "deepseek", api_key: key },
+  });
+  expect(seed.ok(), "seed the deepseek provider key (pre-flight needs it)").toBeTruthy();
+  await page.goto("/");
+  // Dashboard after cookie register: New team is available (landing is skipped).
+  await expect(page.getByRole("button", { name: "New team", exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  console.log(`[team-library-e2e] registered ${email} and landed on the dashboard`);
+}
+
 test("P1.8b team library: create a team from a template, edit its Engineer node, and run it — the authored prompt ships", async ({
   page,
-  request,
 }) => {
-  // A real PM (completion) + a real Engineer agent on the live NIM model — give it room. (The
-  // Reviewer is forced-approve via TVASHTR_FORCE_REVISIONS=0, so there is no second agent round.)
+  // A real PM (completion) + a real Engineer agent — give it room. (The Reviewer is forced-approve
+  // via TVASHTR_FORCE_REVISIONS=0, so there is no second agent round.)
   test.setTimeout(22 * 60 * 1000);
 
   // Unique so the assertion can't pass on a stale workspace from a prior run.
   const SENTINEL = `Authored from the library via Tvashtr ${Date.now()}`;
   const TEAM_NAME = `E2E library team ${Date.now()}`;
 
-  await page.goto("/");
+  await registerAndSeed(page);
+  const api = page.request;
 
-  // 1. Open the New-team picker, pick the review_loop template, name it, and create.
-  await page.getByRole("button", { name: /New team/ }).click();
-  const picker = page.getByLabel("New team from a template");
+  // 1. Open the New-team picker (F2c dialog aria-label "New team"), pick review_loop, name it, create.
+  await page.getByRole("button", { name: "New team", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "New team" });
   await expect(picker).toBeVisible({ timeout: 30_000 });
   await picker.getByText("PM → Engineer ↔ Reviewer").click();
-  await picker.getByRole("textbox").fill(TEAM_NAME);
+  await picker.getByLabel("Team name").fill(TEAM_NAME);
   await picker.getByRole("button", { name: "Create team" }).click();
   console.log(`[team-library-e2e] created team "${TEAM_NAME}" from the review_loop template`);
 
@@ -53,9 +73,10 @@ test("P1.8b team library: create a team from a template, edit its Engineer node,
   await expect(panel).toBeVisible({ timeout: 30_000 });
 
   // 3. Rewrite the Engineer's PROMPT so the deliverable is exactly the SENTINEL line, set the MODEL
-  //    to the proven NIM agent, and Save (PATCH the node-update endpoint).
-  const promptBox = panel.locator("textarea.tv-node-prompt");
-  const modelBox = panel.locator("input.tv-node-model");
+  //    to the proven agent, and Save (PATCH the node-update endpoint).
+  // Multiple textareas share .tv-node-prompt (reads-from, skills, tools); pin the System prompt.
+  const promptBox = panel.getByRole("textbox", { name: /System prompt/i });
+  const modelBox = panel.locator("input.tv-node-model").first();
   await promptBox.fill(
     "Create a file named greeting.txt in your current working directory using the relative path " +
       "'greeting.txt'. It MUST contain EXACTLY this single line and nothing else:\n" +
@@ -83,7 +104,7 @@ test("P1.8b team library: create a team from a template, edit its Engineer node,
   const deadline = Date.now() + 18 * 60 * 1000;
   let status = "";
   while (Date.now() < deadline) {
-    status = await runStatus(request, runId);
+    status = await runStatus(api, runId);
     if (status === "completed") break;
     if (TERMINAL_BAD.includes(status)) throw new Error(`run ended '${status}' before shipping`);
     await page.waitForTimeout(3000);
@@ -93,15 +114,16 @@ test("P1.8b team library: create a team from a template, edit its Engineer node,
 
   // 6. The proof: the shipped greeting.txt is the human's SENTINEL — the AUTHORED Engineer prompt
   //    on the library team drove the real agent — NOT the template's DEFAULT_IDEA line.
-  const ws = path.join(REPO_ROOT, "backend", ".tvashtr_workspaces", runId);
-  const tag = `ship-${runId}`;
-  const shipped = execFileSync("git", ["-C", ws, "show", `${tag}:greeting.txt`], {
-    encoding: "utf8",
-  });
-  console.log(`[team-library-e2e] shipped greeting.txt (tag ${tag}):\n---\n${shipped}\n---`);
+  //    Read via /diff (the Changes-tab product surface) — the workspace is reaped after ship.
+  const shipped = await shippedFile(api, runId, "greeting.txt");
+  console.log(`[team-library-e2e] shipped greeting.txt (via /diff):\n---\n${shipped}\n---`);
+  // Non-null + non-empty first so a missing artifact fails LOUDLY (not.toContain would pass on "").
+  expect(shipped, "durable /diff must carry greeting.txt as an added file").toBeTruthy();
   expect(
-    shipped,
+    shipped as string,
     "shipped greeting.txt reflects the authored library-team Engineer prompt",
   ).toContain(SENTINEL);
-  expect(shipped, "the template's DEFAULT_IDEA line did NOT ship").not.toContain(DEFAULT_LINE);
+  expect(shipped as string, "the template's DEFAULT_IDEA line did NOT ship").not.toContain(
+    DEFAULT_LINE,
+  );
 });

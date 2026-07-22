@@ -1,11 +1,7 @@
-import { execFileSync } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(HERE, "../..");
+import { shippedFile } from "./_shipReadback";
+
 // DEFAULT_IDEA's deliverable line (backend/tvashtr/routers.py) — the line the shipped file must
 // NOT be, proving the human's mid-run edit (not the PM's original spec) drove what shipped.
 const DEFAULT_LINE = "Shipped by the Tvashtr PM->Engineer team";
@@ -19,21 +15,45 @@ async function runStatus(request: APIRequestContext, runId: string): Promise<str
   return body?.run?.status ?? "";
 }
 
+/**
+ * Post M-accounts: the canvas is behind login. Register a fresh account (cookie lands on
+ * `page.request` — the standalone `request` fixture is a SEPARATE unauthenticated context),
+ * seed the deepseek BYOK key the launch pre-flight requires, and open the seeded "My team".
+ */
+async function openSeededTeam(page: import("@playwright/test").Page): Promise<void> {
+  const email = `steering+${Date.now()}@tvashtr.local`;
+  const reg = await page.request.post("/api/auth/register", {
+    data: { email, password: "steering-e2e-pass" },
+  });
+  expect(reg.ok(), "register a fresh account").toBeTruthy();
+  const key = process.env.DEEPSEEK_API_KEY;
+  expect(Boolean(key), "DEEPSEEK_API_KEY present in the spec env").toBeTruthy();
+  const seed = await page.request.post("/api/providers", {
+    data: { provider: "deepseek", api_key: key },
+  });
+  expect(seed.ok(), "seed the deepseek provider key (pre-flight needs it)").toBeTruthy();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open My team" }).click();
+  await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
+  console.log(`[steering-e2e] registered ${email} and opened seeded My team`);
+}
+
 test("J3 live steering: a human rewrites the PRD at the gate through the real TipTap editor and the agent ships it", async ({
   page,
-  request,
 }) => {
-  // A real PM + Engineer + Reviewer chain on the live NIM agent — give it room.
+  // A real PM + Engineer + Reviewer chain on the live agent — give it room.
   test.setTimeout(22 * 60 * 1000);
 
   // Unique so the assertion can't pass on a stale workspace from a prior run.
   const SENTINEL = `Steered by a human mid-run via Tvashtr ${Date.now()}`;
 
-  await page.goto("/");
+  await openSeededTeam(page);
 
   // 1. Launch the persistent team via the UI control (P1.8b: the canvas opens to the editable team
   //    and "Run this team" clones+launches it — a review_loop, so it still pauses at the PRD gate).
   //    Wait for the team to load so the control is enabled; capture run_id from the POST response.
+  //    Auth reads use page.request (shares the register cookie).
+  const api = page.request;
   const startResp = page.waitForResponse(
     (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
   );
@@ -49,7 +69,7 @@ test("J3 live steering: a human rewrites the PRD at the gate through the real Ti
   // 2. Wait until it pauses at the PRD gate (awaiting_human). The gate blocks indefinitely, so
   //    there is no timing race — we can take as long as the PM step needs.
   await expect
-    .poll(() => runStatus(request, runId), { timeout: 6 * 60 * 1000, intervals: [2000] })
+    .poll(() => runStatus(api, runId), { timeout: 6 * 60 * 1000, intervals: [2000] })
     .toBe("awaiting_human");
   console.log("[steering-e2e] paused at the PRD gate (awaiting_human)");
 
@@ -82,7 +102,7 @@ test("J3 live steering: a human rewrites the PRD at the gate through the real Ti
   const deadline = Date.now() + 18 * 60 * 1000;
   let status = "awaiting_human";
   while (Date.now() < deadline) {
-    status = await runStatus(request, runId);
+    status = await runStatus(api, runId);
     if (status === "completed") break;
     if (TERMINAL_BAD.includes(status)) throw new Error(`run ended '${status}' before shipping`);
     // `exact` matters: the blocker CARD is itself a button whose accessible name contains the
@@ -103,12 +123,15 @@ test("J3 live steering: a human rewrites the PRD at the gate through the real Ti
   console.log("[steering-e2e] run shipped (completed)");
 
   // 7. The proof: the shipped greeting.txt is the human's SENTINEL, NOT DEFAULT_IDEA's line.
-  const ws = path.join(REPO_ROOT, "backend", ".tvashtr_workspaces", runId);
-  const tag = `ship-${runId}`;
-  const shipped = execFileSync("git", ["-C", ws, "show", `${tag}:greeting.txt`], {
-    encoding: "utf8",
-  });
-  console.log(`[steering-e2e] shipped greeting.txt (tag ${tag}):\n---\n${shipped}\n---`);
-  expect(shipped, "shipped greeting.txt reflects the human's mid-run edit").toContain(SENTINEL);
-  expect(shipped, "the PM's original DEFAULT_IDEA line did NOT ship").not.toContain(DEFAULT_LINE);
+  //    Read via /diff (the Changes-tab product surface) — the workspace is reaped after ship.
+  const shipped = await shippedFile(api, runId, "greeting.txt");
+  console.log(`[steering-e2e] shipped greeting.txt (via /diff):\n---\n${shipped}\n---`);
+  // Non-null + non-empty first so a missing artifact fails LOUDLY (not.toContain would pass on "").
+  expect(shipped, "durable /diff must carry greeting.txt as an added file").toBeTruthy();
+  expect(shipped as string, "shipped greeting.txt reflects the human's mid-run edit").toContain(
+    SENTINEL,
+  );
+  expect(shipped as string, "the PM's original DEFAULT_IDEA line did NOT ship").not.toContain(
+    DEFAULT_LINE,
+  );
 });
