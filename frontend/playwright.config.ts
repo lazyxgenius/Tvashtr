@@ -5,6 +5,9 @@ import { defineConfig, devices } from "@playwright/test";
 // browser against the running dev server. Single worker, no retries: it's one long live run.
 export default defineConfig({
   testDir: "./e2e",
+  // Default Playwright testMatch also picks up `*.test.ts`; those are vitest unit tests that
+  // live next to the helpers (kept out of the Docker image). Only run the live gates here.
+  testMatch: "**/*.spec.ts",
   fullyParallel: false,
   workers: 1,
   retries: 0,

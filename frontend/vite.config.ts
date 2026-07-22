@@ -16,11 +16,11 @@ export default defineConfig({
       "/api": API_PROXY_TARGET,
     },
   },
-  // vitest = the unit suite under src/ only. The Playwright `e2e/*.spec.ts` files are run by
-  // the Playwright runner (make steering-e2e), not vitest — scope the unit glob to src/ so the
-  // default `*.spec.ts` glob doesn't try to execute the live E2E as a unit test.
+  // vitest = unit suite under src/ plus pure helpers under e2e/**/*.test.ts (kept out of the
+  // production image via .dockerignore). Playwright owns e2e/**/*.spec.ts — do NOT widen the
+  // e2e glob to *.spec.ts or vitest will try to run the live gates as unit tests.
   test: {
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "e2e/**/*.test.ts"],
     // jsdom globally — the pure-fn tests don't touch the DOM, so a global jsdom env is
     // harmless for them and spares the RTL/component tests a per-file docblock. `globals`
     // registers jest-dom matchers + RTL's auto-cleanup without per-file boilerplate (the

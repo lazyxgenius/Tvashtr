@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addedFile, type ShipDiff } from "../e2e/_shipReadback";
+import { addedFile, type ShipDiff } from "./_shipReadback";
 
 // Mutation-real unit coverage for the e2e ship-readback helper's patch parsing. Mirrors
 // scripts/_ship_readback.py::added_file — greenfield added-file content lives in the patch's
