@@ -1,65 +1,87 @@
 # HANDOVER — for Tvashtr-82
 
-> Read this **and** `PROJECTPLAN.md` (§1 vision, §15 register, §17 log) before doing anything. You are the ARCHITECT/PLANNER; ALL implementation goes through a Claude Code `/goal`. The disk audit is your control point.
+> Read this **and** `PROJECTPLAN.md` (§1 vision, §15 register, §17 log — start with the **Tvashtr-81** entry at the end of §17) before doing anything. You are the ARCHITECT/PLANNER; ALL implementation goes through a Claude Code `/goal`. The disk audit is your control point.
 
 ---
 
 ## §1 — Where we are
 
-- **`main` @ `e2e4a59`** (verified off `.git/refs/heads/main`). Working tree clean except the uncommitted doc-closeout (§2).
-- **alembic head `0031`** (`0031_run_artifacts`; verified — there is no `0032` on disk). Floors: **1114 backend / 409 vitest**; lint + build clean.
-- **LIVE at `tvashtr.fly.dev`** (2 Fly machines, suspend-when-idle). Hosted GitHub App integration live (`TVASHTR_HOSTED_MODE=true`) — repo discovery **CONFIRMED WORKING LIVE** this session.
-- **Just shipped (Tvashtr-80, four branches over three sittings):** live-gate readback (`9ed45bd`, Claude Code) · hosted GitHub installation discovery (`ad6c695`, Grok) · frontend e2e ship-readback (`9163969`, Grok) · Docker build fix (`e2e4a59`, Grok). All zero-migration. Full as-built: §17 Tvashtr-80.
-- **Tvashtr-81 wrote the Tvashtr-80 doc closeout** (the previous session could not — the Filesystem MCP was failing). It half-landed at `6b8d996` covering sittings 1–2 only; Tvashtr-81 corrected the header (tip + vitest floor) and appended sittings 3–4, the `.env` process note, the new Grok directive, and four §15 changes.
+- **`main` @ `e2e4a59`** (verified off `.git/refs/heads/main`). **NO code shipped in Tvashtr-81** — it was a docs + diagnosis session.
+- **alembic head `0031`**. Floors **1114 backend / 409 vitest**. LIVE at `tvashtr.fly.dev`.
+- **Hosted GitHub repo listing now WORKS** for the operator (both localhost and `.fly.dev`) — but only because they re-authenticated. See §3.
+- **The hosted loop got further than ever on a real user run:** repo picked → PM wrote a PRD → operator approved the gate → **Engineer FAILED**. That failure is your first job.
 
 ## §2 — Pending housekeeping (state once, don't nag)
 
-The **doc-closeout is UNCOMMITTED** in the working tree — Tvashtr-81's `PROJECTPLAN.md` edits (§17 Tvashtr-80 completion + §15) plus this `HANDOVER.md` rewrite. Land them whenever with:
+The **doc work is UNCOMMITTED**: `PROJECTPLAN.md` (the completed Tvashtr-80 entry, the new Tvashtr-81 entry, §15 additions, the new header date field) + this `HANDOVER.md`.
 ```
 cd /Users/adimac/Desktop/Tvashtr
 git add PROJECTPLAN.md HANDOVER.md
-git commit -m "docs(tvashtr-80/81): complete the as-built entry (sittings 3-4) + §15 register + header date field"
+git commit -m "docs(tvashtr-80/81): complete as-built + Tvashtr-81 findings, §15 register, header date field"
 ```
-(Explicit paths only — never `-A`; the ambient untracked noise `.claude/skills/`, `.grok/`, `AGENTS.md`, `CLAUDE.md`, `design/`, old `prompts/M-*.md`, and modified `.gitignore`/`frontend/.gitignore` stays out.) This blocks nothing.
+(Explicit paths only — never `-A`.) Blocks nothing.
 
-**Also open, stated once:** the commented `x-api-key=` line in `.env` still holds a real-looking `xai-…` key in plaintext. Inert for `make` (it's commented), but readable by any agent that opens the file — and Grok Build demonstrated this session that it *will* open `.env` when a script won't source. Rotate whenever convenient.
+**Also open, stated once:** the commented `x-api-key=` line in `.env` still holds a real-looking `xai-…` key in plaintext. Inert for `make`, readable by any agent that opens the file. Rotate whenever convenient.
 
-## §3 — Your job (Tvashtr-82)
+## §3 — Your job (Tvashtr-82), in order
 
-**The launch-planning direction pass** — deferred out of Tvashtr-78, -79 and -80, started in Tvashtr-81. Nothing is queued in front of it. This is a **strategic/direction call, NOT a `/goal`**. Two questions:
+### FIRST — diagnose the Engineer failure (run `6fd2c911`)
 
-1. **Which pre-launch polish is actually worth doing?** Tvashtr is live and the hosted loop is proven end-to-end (real PRs). The question is what a first non-founder user hits that would make them bounce — not a general quality sweep. Ground every candidate in the §1 vision and the Tvashtr-25 pivot, never in "it's cheap to do."
-2. **The cost/ops posture for real users.** BYOK means the user's key pays for tokens; the operator's exposure is a Fly microVM per in-flight run plus the always-on backend. M-h3's ceilings (per-owner 3 / fleet 25 / rolling-24h 20) already bound that — the question is whether those numbers are right for a public front door, and what the operator watches to know something is wrong.
+The operator's first real hosted run on localhost: `deepseek/deepseek-chat`, **Edits on**, OpenHands engine, cost **$0.0036**, branch `tvashtr/6fd2c911-ebb8-4047-9a7d-921d1c91972b`, node status **Failed**.
 
-Work it **one design question at a time**, decide directly (no option menus for vision calls), and pair every decision with its concrete user-facing UX consequence. Check the Tvashtr-81 chat for how far this got before writing anything new.
+What is already ruled out by observation:
+- **Not credentials** — the run started, so the DeepSeek key resolved.
+- **Not sandbox boot** — the Activity feed shows real `file_editor` actions and observations (all stamped 13:48:39).
+- **Not context overflow** — Round 1 totalled **1,029 / 110,000** tokens (node_prompt 97, idea 10, spec 441, grounding 139, worker_protocol 342).
+- The last logged action reads **"All edits are com…"** — so the agent believed it had finished, and the node failed at or after that point. Suspect the post-agent path (outcome/verdict parsing, the ship step, or diff persistence), not the agent loop.
+
+**Ask the operator for the backend terminal output around 13:48:39** — they had `run backend` open; the real exception is there and is not visible in the UI. Diagnose it yourself from the code before writing any `/goal`, and trace the called helpers, not just the top-level file.
+
+⚠️ **Note the environment**: local `.env` has `TVASHTR_HOSTED_MODE=true`, so a localhost run takes the **hosted** path — server-side clone + a **Fly per-run microVM**, not a local sandbox. Factor that in.
+
+### THEN — the error-legibility `/goal`
+
+Tvashtr-81 found **four defects with one root cause** (full detail in §17 Tvashtr-81 and §15). The backend returns correct codes and structured, actionable `detail` payloads; the frontend throws them away and substitutes a wrong guess. Scope for the `/goal`:
+1. `LaunchPanel.tsx:413` — read the already-returned `installation_count` and split the message: `0` ⇒ "sign in with GitHub again"; `>0` ⇒ "Add repositories on GitHub".
+2. Render the backend's real `detail.message` on a failed launch instead of "Couldn't start the run — is the backend running?" (a 422/429 means the backend answered).
+3. Add `deepseek` to `Dashboard.tsx` `PROVIDER_SUGGESTIONS` — it is the product's own default agent model and is missing.
+4. **A backfill for GitHub installations** — discovery runs ONLY in `github_callback`, so every already-signed-in account is stranded with no row and no way to know why. Deploying does not help; only a fresh sign-in does.
+
+This is ONE coherent, well-bounded milestone and it is the highest-value pre-launch work. It needs FE tests plus a live sign-off (Playwright, screenshot per check).
+
+### THEN — finish the launch-planning pass
+
+**Question 1 is DECIDED and recorded** (§17 Tvashtr-81): legibility before subsidy — make failures legible first because it costs nothing; hold the operator-funded token allowance as a later bet, only if a legible version still fails to convert. **Question 2 is still open:** the cost/ops posture for real users — are the M-h3 ceilings (per-owner 3 / fleet 25 / rolling-24h 20) right for a public front door, and what does the operator watch to know something is wrong?
 
 ## §4 — Standing directives (carry these forward verbatim)
 
 - **Role boundary (permanent):** you are ARCHITECT/PLANNER ONLY. ALL implementation — product code, diagnostic scripts, Makefile/build/config — goes through a Claude Code `/goal`. Your only direct edits: `PROJECTPLAN.md`, `HANDOVER.md`, `prompts/*.md`, trivial typo/comment fixes. Diagnose bugs yourself (read code/logs/git), but the FIX goes through a `/goal`.
-- **The `/goal` loop:** ONE lean `/goal` per bounded milestone (outcome + hard invariants-as-evidence + acceptance/evidence checklist Claude Code runs itself + stop conditions). Claude Code self-decomposes. `/goal` hard cap **4000 chars** — measure with `wc -c`. Claude Code runs EVERY gate itself (make test / lint / build / live smoke) and debugs to green — never hand the operator verification commands.
+- **The `/goal` loop:** ONE lean `/goal` per bounded milestone (outcome + hard invariants-as-evidence + acceptance/evidence checklist Claude Code runs itself + stop conditions). `/goal` hard cap **4000 chars** — measure with `wc -c`. Claude Code runs EVERY gate itself (make test / lint / build / live smoke) and debugs to green — never hand the operator verification commands.
 - **Every Claude Code handoff = THREE fully-copyable inline blocks, every time** (even if unchanged): (1) shell launch (`cd … && claude --dangerously-skip-permissions`), (2) the FULL init prompt verbatim, (3) the FULL `/goal` verbatim. Never say "same as before" or point at a `prompts/` file for the init/`/goal` text. The init prompt must: after a ≤5-line summary STOP + WAIT for the `/goal`; and when running the `/goal`, USE ultracode / dynamic-workflows / superpowers.
-- **NEW (Tvashtr-80) — every Grok Build prompt must DEMAND a detailed, thorough final report, never a terse summary table.** Required, written into the prompt EVERY time: what changed **per file and why**; the decisive evidence **quoted verbatim** (failing line before, success line after); every command run with its result; any deviation from the brief with its justification; **anything touched outside the stated scope** (especially credentials/config files); what was deliberately NOT done and why; residual risks / follow-ons found.
-- **NEW (Tvashtr-80) — fence `.env` explicitly in every Grok/bypass brief.** Under `--dangerously-skip-permissions` only PreToolUse hooks survive, and no hook covers `.env`. An agent blocked by a config file WILL edit the config file. Name it read-only-or-ask, or add a hook.
-- **Merge handoff = ALL commands every time** (FF the first branch, `--no-ff --no-commit` the second, `alembic upgrade head` if a migration landed + FULL suite green on the MERGED tree BEFORE committing, then commit, then worktree/branch cleanup). Never assume the operator remembers them.
-- **Do NOT nag (operator directive, Tvashtr-78):** never repeatedly prompt about seeking a first real user / the Mv gate — the operator pursues that in their own time. Same for acknowledged housekeeping — state once, then drop.
-- **Design decisions:** decide from the §1 vision + the Tvashtr-25 pivot, never path-of-least-resistance; one question at a time; pair every decision with its user-facing UX consequence; don't present option menus for vision calls (reserve that for genuine strategic-direction calls).
-- **Two chat sequences (permanent):** "Tvashtr-N" (main build) + "Tvashtr Sidechat-N" (open-ended/brainstorm). Shared project memory. State the sequence + number on opening.
-- **Communication:** the operator is terse — "proceed"/"go"/"merged"/"done" = ratify + advance; "By the way" = wants a short answer; pasted terminal output = a confirmation signal. Give procedures one step at a time. Prefer analogies + plain language.
+- **Every Grok Build prompt must DEMAND a detailed, thorough final report** (Tvashtr-80), never a terse table: per-file what and why; decisive evidence quoted verbatim; every command + result; deviations with justification; anything touched outside scope (especially credentials/config); what was deliberately NOT done; residual risks.
+- **Fence `.env` explicitly in every Grok/bypass brief** (Tvashtr-80). Under `--dangerously-skip-permissions` only PreToolUse hooks survive and none covers `.env`. An agent blocked by a config file WILL edit it.
+- **Merge handoff = ALL commands every time** (FF the first branch, `--no-ff --no-commit` the second, `alembic upgrade head` if a migration landed + FULL suite green on the MERGED tree BEFORE committing, then commit, then cleanup).
+- **Do NOT nag (Tvashtr-78):** never repeatedly prompt about the first real user / the Mv gate. Same for acknowledged housekeeping — state once, then drop.
+- **Design decisions:** decide from the §1 vision + the Tvashtr-25 pivot, never path-of-least-resistance; one question at a time; pair every decision with its user-facing UX consequence; no option menus for vision calls.
+- **Two chat sequences (permanent):** "Tvashtr-N" (main build) + "Tvashtr Sidechat-N". State the sequence + number on opening.
+- **Communication:** the operator is terse — "proceed"/"go"/"merged"/"done" = ratify + advance; "By the way" = wants a short answer; pasted terminal output = a confirmation signal. Procedures **one step at a time**. Prefer analogies + plain language.
 
-## §5 — Key gotchas & patterns (this session's, plus carried)
+## §5 — Key gotchas & patterns
 
-- **A green local build is NOT a deploy-safe green.** `.dockerignore` excludes `frontend/e2e`, `backend/tests`, `scripts`, `prompts`, `docs`, `design`, `.claude`. Anything under `frontend/src` importing across one of those boundaries compiles locally and dies inside the image — only `fly deploy` catches it. Registered §15; the cheap fix is a `make build-image` target.
-- **A skipped gate reads as "not a failure" — that's the dangerous failure mode.** The 3 repaired e2e specs now hardcode deepseek while their shell wrappers still guard on `NVIDIA_BUILD_API_KEY`. `sandbox_reuse_check.py::_seed_provider` has the right pattern (derive the provider from the model slug). Registered §15.
-- **Any residue sweeper MUST filter by AGE, not just the domain.** The repaired specs register `<gate>+${Date.now()}@tvashtr.local`, so a LIVE gate run is also an `@tvashtr.local` account. Domain-only cleanup kills running gates. Registered §15.
-- **`TVASHTR_HOSTED_MAX_CONCURRENT_RUNS_GLOBAL=200` in local `.env` is LOCAL-DEV-ONLY** (the real default is 25). Never deploy it. Registered §15.
-- **Reproduce-first caught an architect diagnosis error.** The live-gate bug was a RACE, not deterministic — the gates break their poll on run-status-terminal, which is set BEFORE the finally-reap, so they usually won. A static trace missed it. Require the failing-regression-first clause in every bug-fix `/goal`.
-- **A half-written closeout is a real hazard.** The Tvashtr-80 docs commit `6b8d996` looked complete but covered only 2 of 4 sittings, and its header asserted a stale tip and vitest floor. Always reconcile the §17 headline against `.git/refs/heads/main` + the reflog before trusting it.
-- **PROJECTPLAN.md editing:** ~665KB; **line 6 is an ~81K single-line banner — NEVER read it directly**, and note that even an `edit_file` on the ADJACENT lines echoes it in full as diff context. Tvashtr-81 added a small **"Last updated"** line just above it (lines 5–6 of the header) — **bump THAT from now on, not the banner.** Index by `grep -nE '^#{1,3} '` on a container copy; edit with a unique anchor + `dryRun:true` first; keep payloads small and split edits.
-- **`copy_file_user_to_claude` caches by basename** — after you've changed a file, re-copying returns stale bytes. Use `read_text_file` / `read_multiple_files` for fresh reads.
-- **Git audit without a git CLI:** `.git/refs/heads/<branch>` → tip; `.git/logs/refs/heads/<branch>` → the full create→merge chain (proves FF-eligibility, parentage, and that nothing was pushed). Worktrees are outside MCP file scope but their commits live in the SHARED object store — walk `.git/objects` and compare subtree/blob SHAs for byte-identity proofs.
-- **Docker/DB:** `tvashtr-postgres` is a fixed-name container (host port 5433, user/pass/db `tvashtr`). Restart a stopped one with `docker compose start postgres` from the project root (not `up`).
-- **Structural safety backstop:** `.git/config` has NO remote — nothing to push to. Verify before any unguarded/bypass run.
+- **DRIVE THE PRODUCT — it is the cheapest bug-finder you have.** Tvashtr-81 found four real defects in one hour by watching the operator do a normal first run. None was caught by 1114 backend + 409 vitest tests plus every live gate, because they are all *legibility* defects: the system was correct and the human was misinformed. Green gates do not mean a usable product.
+- **A correct fix can still be invisible.** The Tvashtr-80 GitHub fix was properly implemented and still looked broken for a full session, because it only fires at OAuth-callback time and there is no backfill. Always ask "what makes this take effect for accounts that already exist?"
+- **Keys are PER-ACCOUNT, not from `.env`** (since M-accounts). `.env` holding `DEEPSEEK_API_KEY` does nothing for a run — the run resolves credentials from the signed-in account. Signing in as a different identity means no keys.
+- **`.dockerignore` asymmetry:** a green `make build-frontend` does NOT prove the Docker build is green (`frontend/e2e`, `backend/tests`, `scripts`, `prompts`, `docs`, `design`, `.claude` are excluded). Only an image build catches it.
+- **A skipped gate reads as "not a failure"** — the 3 e2e specs hardcode deepseek while their shell wrappers still guard on `NVIDIA_BUILD_API_KEY`. `sandbox_reuse_check.py::_seed_provider` has the right pattern.
+- **Any residue sweeper MUST filter by AGE** — live gate runs are also `@tvashtr.local` accounts. Domain-only cleanup kills running gates.
+- **`TVASHTR_HOSTED_MAX_CONCURRENT_RUNS_GLOBAL=200` in local `.env` is LOCAL-DEV-ONLY** (real default 25). Never deploy it.
+- **PROJECTPLAN.md editing:** ~670KB; **line 6 is an ~81K single-line banner — never read it**, and note an `edit_file` on ADJACENT lines still echoes it as diff context. A **"Last updated"** line now sits just above it — bump THAT. Index with `grep -nE '^#{1,3} '` on a container copy; unique anchor + `dryRun:true` first; keep payloads small and split edits.
+- **`copy_file_user_to_claude` caches by basename** — re-copying a changed file returns stale bytes. Use `read_text_file` for fresh reads.
+- **Git audit without a git CLI:** `.git/refs/heads/<branch>` → tip; `.git/logs/refs/heads/<branch>` → the full merge chain. Worktrees are outside MCP scope but their commits are in the SHARED object store — walk `.git/objects` and compare subtree/blob SHAs for byte-identity proofs.
+- **When grepping a long function for its failure paths, read the WHOLE function.** Tvashtr-81 truncated a grep window on `create_run`, enumerated two 422 candidates, and the real one was a third path below the cut.
+- **Docker/DB:** `tvashtr-postgres` is fixed-name (host port 5433, user/pass/db `tvashtr`). Restart with `docker compose start postgres` from the project root (not `up`).
+- **Structural safety backstop:** `.git/config` has NO remote. Verify before any bypass run.
 
 ## §6 — Living docs
 
-`PROJECTPLAN.md` + `HANDOVER.md` at the project root (you maintain both). `prompts/CLI-RULES.md` = the Claude Code operating contract. `STATE.md` = the CLI agent's scratch log (gitignored; you read, don't maintain). **Mv** (a non-founder shipping real value on their own repo) remains the real product-value gate — no milestone completion resolves it.
+`PROJECTPLAN.md` + `HANDOVER.md` at the project root (you maintain both). `prompts/CLI-RULES.md` = the Claude Code operating contract. `STATE.md` = the CLI agent's scratch log (gitignored). **Mv** (a non-founder shipping real value on their own repo) remains the real product-value gate — no milestone completion resolves it.
