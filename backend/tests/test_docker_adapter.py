@@ -507,3 +507,107 @@ def test_run_reuses_warm_container_and_carries_conversation(tmp_path):
     sandbox_cache.close_run_sandboxes("run-xyz")
     ws.cleanup.assert_called_once()
     assert sandbox_cache.live_container_ids() == frozenset()
+
+
+# ---- M-fail: a FAILED node keeps its WORK and its MONEY ----
+
+
+def test_failure_after_conversation_run_keeps_work_and_money(tmp_path):
+    """M-fail (proven live, run 6fd2c911): the agent finished its edits, then ``conversation.run()``
+    tripped ``MaxIterationsReached`` while verifying, and the run discarded EVERY edit and recorded
+    $0. A failure AFTER the conversation existed must (a) still pull the produced files
+    (``files_changed`` non-empty, via a best-effort pull in the except block) and (b) still meter
+    the partial spend (``cost_usd`` > 0 — the usage read runs for any non-completed status), with
+    the original error + ``failed`` status preserved."""
+    ws = MagicMock()
+    ws.working_dir = "/workspace"
+    ws.execute_command.return_value = MagicMock(stdout="app.py\n", exit_code=0)
+
+    def fake_download(src, dest):
+        with open(dest, "w") as f:
+            f.write("code")
+        return MagicMock(success=True)
+
+    ws.file_download.side_effect = fake_download
+
+    convo = MagicMock()
+    metrics = MagicMock(accumulated_cost=0.0104)  # the exact spend run 6fd2c911 threw away
+    metrics.accumulated_token_usage = MagicMock(prompt_tokens=900, completion_tokens=129)
+    convo.conversation_stats.get_combined_metrics.return_value = metrics
+    convo.run.side_effect = RuntimeError("MaxIterationsReached: agent hit its iteration cap")
+
+    with (
+        patch.object(mod, "reap_agent_containers"),
+        patch.object(mod, "DockerWorkspace", return_value=ws),
+        patch.object(mod, "Conversation", return_value=convo),
+        patch.object(mod, "LLM"),
+        patch.object(mod, "Agent"),
+        patch.object(mod, "LLMSummarizingCondenser"),
+        patch.object(mod, "Tool"),
+        patch.object(mod, "TerminalTool"),
+        patch.object(mod, "FileEditorTool"),
+    ):
+        task = AgentTask(
+            instruction="x", workspace_dir=str(tmp_path), model="m", llm_api_key="byok-key"
+        )
+        result = mod.OpenHandsDockerAdapter().run(task)
+
+    assert result.status == "failed"
+    assert "MaxIterationsReached" in (result.error or "")
+    # WORK kept: the best-effort failure pull recovered the agent's file.
+    assert result.files_changed == ["app.py"]
+    assert (tmp_path / "app.py").read_text() == "code"
+    # MONEY metered: partial spend recorded on the failed run, not dropped to $0.
+    assert result.cost_usd == 0.0104
+    assert (result.prompt_tokens, result.completion_tokens, result.total_tokens) == (900, 129, 1029)
+
+
+def test_failure_pull_is_scoped_for_an_emitting_node(tmp_path):
+    """M-fail + Slice-4 anti-clobber: a FAILED emitting (reviewer) node's best-effort failure pull
+    must carry ONLY its verdict sidecar (``pull_paths`` passed UNCHANGED), never the container's
+    other files, so the new failure path can no more clobber the worker's correct edit than the
+    success path could. Structural: the scoped pull never enumerates the container."""
+    ws = MagicMock()
+    ws.working_dir = "/workspace"
+
+    def fake_download(src, dest):
+        os.makedirs(os.path.dirname(dest) or str(tmp_path), exist_ok=True)
+        with open(dest, "w") as f:
+            f.write("{}")
+        return MagicMock(success=True)
+
+    ws.file_download.side_effect = fake_download
+
+    convo = MagicMock()
+    metrics = MagicMock(accumulated_cost=0.0)
+    metrics.accumulated_token_usage = MagicMock(prompt_tokens=0, completion_tokens=0)
+    convo.conversation_stats.get_combined_metrics.return_value = metrics
+    convo.run.side_effect = RuntimeError("boom mid-verify")
+
+    with (
+        patch.object(mod, "reap_agent_containers"),
+        patch.object(mod, "DockerWorkspace", return_value=ws),
+        patch.object(mod, "Conversation", return_value=convo),
+        patch.object(mod, "LLM"),
+        patch.object(mod, "Agent"),
+        patch.object(mod, "LLMSummarizingCondenser"),
+        patch.object(mod, "Tool"),
+        patch.object(mod, "TerminalTool"),
+        patch.object(mod, "FileEditorTool"),
+    ):
+        task = AgentTask(
+            instruction="review",
+            workspace_dir=str(tmp_path),
+            model="m",
+            llm_api_key="byok-key",
+            pull_paths=("REVIEW_VERDICT.json",),
+        )
+        result = mod.OpenHandsDockerAdapter().run(task)
+
+    assert result.status == "failed"
+    # ONLY the verdict sidecar came home — the container's other files never reached the worktree.
+    assert result.files_changed == ["REVIEW_VERDICT.json"]
+    srcs = {c.args[0] for c in ws.file_download.call_args_list}
+    assert srcs == {"/workspace/REVIEW_VERDICT.json"}
+    # The scoped pull is structural — it never enumerates the container (no `find`).
+    ws.execute_command.assert_not_called()

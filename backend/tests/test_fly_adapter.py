@@ -332,3 +332,61 @@ def test_boot_failure_does_not_cache_a_dead_run(tmp_path):
     assert result.status == "failed"
     assert "fly boot failed" in (result.error or "")
     assert mod._RUNS == {}
+
+
+# ---- M-fail: a FAILED node keeps its WORK and its MONEY (fly mirror of the docker case) ----
+
+
+def test_failure_after_conversation_run_keeps_work_and_money(tmp_path):
+    """M-fail (run 6fd2c911): when ``conversation.run()`` raises AFTER the agent produced files,
+    the microVM path must still pull the work (``files_changed`` non-empty, via a best-effort pull
+    in the except block, BEFORE the finally can tear the machine down) and still meter the partial
+    spend (the usage read runs for any non-completed status). Contrast ``..._not_raised`` above,
+    where the Conversation CONSTRUCTOR fails: no conversation existed, so nothing is pulled."""
+    convo = MagicMock()
+    metrics = MagicMock(accumulated_cost=0.0104)
+    metrics.accumulated_token_usage = MagicMock(prompt_tokens=900, completion_tokens=129)
+    convo.conversation_stats.get_combined_metrics.return_value = metrics
+    convo.run.side_effect = RuntimeError("MaxIterationsReached: agent hit its iteration cap")
+
+    with _Ctx():
+        with patch.object(mod, "Conversation", return_value=convo):
+            result = mod.OpenHandsFlyAdapter().run(_task(tmp_path, "node-a"))
+
+    assert result.status == "failed"
+    assert "MaxIterationsReached" in (result.error or "")
+    # WORK kept: the REUSED _pull_workspace recovered the node's file on the failure path too.
+    assert result.files_changed == ["out.txt"]
+    assert (tmp_path / "out.txt").read_text() == "hi"
+    # MONEY metered on the failed run, not dropped to $0.
+    assert result.cost_usd == 0.0104
+    assert (result.prompt_tokens, result.completion_tokens, result.total_tokens) == (900, 129, 1029)
+
+
+def test_failure_pull_is_scoped_for_an_emitting_node(tmp_path):
+    """M-fail + Slice-4 anti-clobber (fly mirror): a FAILED emitting node's best-effort pull carries
+    ONLY its verdict sidecar (``pull_paths`` passed UNCHANGED) — the new failure path preserves the
+    same workspace-read-only scoping the success path already had."""
+    convo = MagicMock()
+    metrics = MagicMock(accumulated_cost=0.0)
+    metrics.accumulated_token_usage = MagicMock(prompt_tokens=0, completion_tokens=0)
+    convo.conversation_stats.get_combined_metrics.return_value = metrics
+    convo.run.side_effect = RuntimeError("boom mid-verify")
+
+    task = AgentTask(
+        instruction="review",
+        workspace_dir=str(tmp_path),
+        model="m",
+        llm_api_key="byok-key",
+        session_key=f"{RUN_ID}::node-a",
+        pull_paths=("REVIEW_VERDICT.json",),
+    )
+    with _Ctx() as ctx:
+        with patch.object(mod, "Conversation", return_value=convo):
+            result = mod.OpenHandsFlyAdapter().run(task)
+
+    assert result.status == "failed"
+    # ONLY the verdict sidecar came home — the node's other edits never reached the worktree.
+    assert result.files_changed == ["REVIEW_VERDICT.json"]
+    srcs = {c.args[0] for c in ctx.workspaces[0].file_download.call_args_list}
+    assert srcs == {"/workspace/node-a/REVIEW_VERDICT.json"}

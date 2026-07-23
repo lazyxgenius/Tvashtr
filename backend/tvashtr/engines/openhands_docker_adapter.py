@@ -486,12 +486,30 @@ class OpenHandsDockerAdapter:
                 or any(_text_has_provider_signature(t) for t in error_event_texts)
             )
             error = str(exc)
-            # Best-effort partial-usage read on the cutoff path (per-round delta on a HIT).
-            if status == "over_budget" and conversation is not None:
+            # M-fail METER-ON-FAILURE: read whatever partial usage accrued for ANY non-completed
+            # status, not only the budget cutoff. A run that failed mid-loop still SPENT money, and
+            # dropping it to $0 hides real cost (run 6fd2c911: $0.0104 recorded as $0). Same
+            # per-round delta, same defensive guard.
+            if status != "completed" and conversation is not None:
                 pa, ca, cost_a = _read_usage(conversation)
                 prompt_tokens = max(0, pa - usage_before[0])
                 completion_tokens = max(0, ca - usage_before[1])
                 cost_usd = max(0.0, cost_a - usage_before[2])
+            # M-fail PULL-ON-FAILURE: the success pull (in the try) is skipped when
+            # conversation.run() raises, so a run that FAILED after landing edits lost them ALL
+            # (run 6fd2c911). Pull them best-effort HERE, in the EXCEPT (NOT the finally, which
+            # tears the container down in the no-reuse / early-failure cases; a pull after teardown
+            # reads nothing). Gated on ``conversation is not None`` so a container/handshake failure
+            # that never ran the agent pulls nothing (ctor-failure tests stay green).
+            # ``task.pull_paths`` is passed UNCHANGED so an emitting node stays verdict-only
+            # (Slice-4 anti-clobber holds here too). Wrapped so it can NEVER mask the error/status.
+            if conversation is not None and workspace is not None:
+                try:
+                    files_changed = _pull_workspace(
+                        workspace, host_dir, task.workspace_mode, task.pull_paths
+                    )
+                except Exception:
+                    logger.warning("M-fail: best-effort failure pull failed", exc_info=True)
             # Self-diagnosing: log the FULL surface we classified on, so any future miss is
             # debuggable from this log alone (this very bug required a container-log spelunk).
             logger.exception(

@@ -496,6 +496,7 @@ class OpenHandsFlyAdapter:
         cost_usd = 0.0
         files_changed: list[str] = []
         conversation = None
+        handle = None  # M-fail: referenced by the best-effort failure pull in the except block
         usage_before = (0, 0, 0.0)
         try:
             sandbox, created_now = _ensure_run_sandbox(run_id)
@@ -608,11 +609,29 @@ class OpenHandsFlyAdapter:
                 or any(_text_has_provider_signature(t) for t in error_event_texts)
             )
             error = str(exc)
-            if status == "over_budget" and conversation is not None:
+            # M-fail METER-ON-FAILURE: meter partial usage for ANY non-completed status, not only
+            # the budget cutoff. A run that failed mid-loop still spent money (run 6fd2c911). Same
+            # per-round delta, same defensive guard.
+            if status != "completed" and conversation is not None:
                 pa, ca, cost_a = _read_usage(conversation)
                 prompt_tokens = max(0, pa - usage_before[0])
                 completion_tokens = max(0, ca - usage_before[1])
                 cost_usd = max(0.0, cost_a - usage_before[2])
+            # M-fail PULL-ON-FAILURE: the success pull (in the try) is skipped when
+            # conversation.run() raises, so a run that FAILED after landing edits lost them ALL.
+            # Pull them best-effort HERE, in the EXCEPT (NOT the finally, which destroys an
+            # ephemeral run's machine, and a pull after teardown reads nothing). Gated on
+            # ``conversation is not None`` so a boot/handshake failure that never ran the agent
+            # pulls nothing (ctor-failure tests stay green), plus ``handle`` for the workspace;
+            # ``task.pull_paths`` passed UNCHANGED keeps an emitting node verdict-only (Slice-4).
+            # It can NEVER mask the original error or status.
+            if conversation is not None and handle is not None:
+                try:
+                    files_changed = _pull_workspace(
+                        handle.workspace, host_dir, task.workspace_mode, task.pull_paths
+                    )
+                except Exception:
+                    logger.warning("M-fail: best-effort failure pull failed", exc_info=True)
             logger.exception(
                 "OpenHandsFlyAdapter run %s (exc=%r; error_events=%r)",
                 "cut off over budget" if status == "over_budget" else "failed",

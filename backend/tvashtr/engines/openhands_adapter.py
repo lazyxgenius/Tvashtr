@@ -46,12 +46,14 @@ WORKSPACE_MODE = "local-unsandboxed"
 # an alternative EngineAdapter / workspace mode; keep this local mode for dev.
 _WORKSPACE_ROOT = Path(__file__).resolve().parents[2] / ".tvashtr_workspaces"
 
-# Cap the agent loop — a trivial task needs very few iterations; this is a
-# runaway backstop for the unsandboxed mode. Env-overridable (``TVASHTR_AGENT_MAX_ITERATIONS``)
-# because a real MULTI-FILE build + a review-loop REWORK round legitimately needs more steps
-# than the skeleton's trivial file-write (P1.5c capstone: 20 was too few for the rework round
-# and tripped ``MaxIterationsReached``). Default 20 keeps the skeleton/smoke targets unchanged.
-_MAX_ITERATIONS = int(os.environ.get("TVASHTR_AGENT_MAX_ITERATIONS", "20"))
+# Cap the agent loop: a runaway BACKSTOP, not a work budget. Env-overridable
+# (``TVASHTR_AGENT_MAX_ITERATIONS``) so a live gate can tighten it. Default 150: a real multi-file
+# build, a review-loop rework round, and (crucially) the agent's own VERIFY pass after it believes
+# it is done all legitimately need many steps. 20 was far too few: run 6fd2c911 (the first hosted
+# run) tripped ``MaxIterationsReached(20)`` while verifying already-finished edits, failing a task
+# the agent had actually completed. The forced-revisions gates stub the agent (this cap never
+# applies to them); the real-run live gates set the env override explicitly.
+_MAX_ITERATIONS = int(os.environ.get("TVASHTR_AGENT_MAX_ITERATIONS", "150"))
 
 
 def make_local_workspace(run_id: str) -> str:
@@ -607,7 +609,11 @@ class OpenHandsAdapter:
             # exception, so the chain classification alone suffices (no event surface to consult).
             provider_failure = not budget_hit and _is_provider_error(exc)
             error = str(exc)
-            if status == "over_budget" and conversation is not None:
+            # M-fail METER-ON-FAILURE: read whatever partial usage accrued for ANY non-completed
+            # status, not only the budget cutoff. A run that failed mid-loop still SPENT money, and
+            # dropping it to $0 hides real cost (run 6fd2c911: $0.0104 recorded as $0). Same
+            # per-round delta, same defensive guard.
+            if status != "completed" and conversation is not None:
                 pa, ca, cost_a = _read_usage(conversation)
                 prompt_tokens = max(0, pa - usage_before[0])
                 completion_tokens = max(0, ca - usage_before[1])

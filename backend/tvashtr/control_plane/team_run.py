@@ -1827,12 +1827,17 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # run finalizes ``failed`` with the self-explaining reason. The manifest is
                 # persisted
                 # so the breach's part sizes are queryable off the invocation row.
+                # M-fail change 4: persist the engine's ``error`` as the invocation's
+                # ``outcome_detail`` so a failed node's REASON lives on the row the run inspector
+                # reads — not only in the transient ``DBOS.logger.error`` line below (run 6fd2c911
+                # stored no reason anywhere queryable).
                 close_invocation_step(
                     run_id,
                     current,
                     n,
                     "failed",
                     None,
+                    outcome_detail=result.get("error"),
                     context_manifest=result.get("context_manifest"),
                 )
                 mark_run_failed_step(run_id)
