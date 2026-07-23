@@ -69,6 +69,20 @@ def provider_for_model(model: str) -> str:
     return model.split("/", 1)[0].strip().lower()
 
 
+def held_provider_slugs(owner_id: uuid.UUID) -> set[str]:
+    """The distinct provider slugs ``owner_id`` holds ANY BYOK credential for — the account's
+    "what can this owner run" set. The SINGLE held-provider rule: the launch pre-flight
+    (``routers._missing_provider_credentials``), the node-create default, AND the team-builder
+    default all consult THIS, so there is one definition of "held", never two that can drift.
+    Read-only; openhands-free at import (only sqlalchemy + the app's own modules)."""
+    with session_scope() as session:
+        return set(
+            session.execute(
+                select(ProviderCredential.provider).where(ProviderCredential.owner_id == owner_id)
+            ).scalars()
+        )
+
+
 def resolve_owner_api_key(owner_id: uuid.UUID, model: str) -> str:
     """Resolve ``owner_id``'s plaintext provider key for ``model``, from the encrypted DB — the
     per-owner replacement for the global ``.env`` lookup on BOTH resolution paths.

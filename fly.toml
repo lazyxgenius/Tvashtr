@@ -35,6 +35,12 @@ swap_size_mb = 512
   # machines over the org's private 6PN network natively — no WireGuard tunnel, which is the whole
   # reason the backend moved onto Fly.
   TVASHTR_AGENT_SANDBOX = "fly"
+  # M-runnable: pin the agent-worker LAST-RESORT model to the same slug local .env uses (the DeepSeek
+  # go-forward default), so a team's fallback model is identical in dev and prod. NON-SECRET — a
+  # per-owner BYOK key still pays for tokens; this only decides the slug when a node omits a model AND
+  # the account holds no catalogued provider. Without it, prod fell back to openrouter while dev used
+  # deepseek, the exact dev/prod divergence M-runnable removes.
+  TVASHTR_AGENT_MODEL = "deepseek/deepseek-chat"
   TVASHTR_FLY_ORG = "personal"
   # The ordered capacity-fallback ladder (parse_regions): try Singapore, then Ashburn, then
   # Frankfurt. `bom` is deliberately excluded — see primary_region above.

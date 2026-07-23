@@ -23,6 +23,7 @@ import {
   getTeams,
   listProviders,
   type ProviderCredential,
+  providerSuggestions,
   removeProvider,
   renameTeam,
   type TeamRunRow,
@@ -37,11 +38,9 @@ import { SecretsShelf } from "./SecretsShelf";
 import { SkillsShelf } from "./SkillsShelf";
 import { ToolsShelf } from "./ToolsShelf";
 
-// The providers offered as datalist suggestions under the free-text field (any provider/model
-// leading-slug is accepted; these are the proven in-repo ones).
-// M-legible: `deepseek` leads — it is the product's OWN default agent model
-// (TVASHTR_AGENT_MODEL=deepseek/deepseek-chat), so a default run's most-needed key is suggested first.
-const PROVIDER_SUGGESTIONS = ["deepseek", "openrouter", "openai", "gemini", "groq", "nvidia_nim"];
+// M-runnable: the datalist suggestions under the free-text provider field are DERIVED from the
+// backend-served provider catalogue (`providerSuggestions()`), never a hardcoded list — so there is
+// one source of truth and nothing to keep in sync. Any provider/model leading-slug is still accepted.
 
 // A friendly handle from the email's local-part (no new PII) — "ava@studio.dev" → "Ava".
 function handleFromEmail(email: string): string {
@@ -573,7 +572,7 @@ export function Dashboard({
                   onChange={(e) => setProviderInput(e.target.value)}
                 />
                 <datalist id="tv-provider-list">
-                  {PROVIDER_SUGGESTIONS.map((p) => (
+                  {providerSuggestions().map((p) => (
                     <option key={p} value={p} />
                   ))}
                 </datalist>

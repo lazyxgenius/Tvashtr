@@ -119,11 +119,12 @@ def test_config_is_public_and_defaults_to_self_hosted(unauth_client, monkeypatch
     monkeypatch.setattr(get_settings(), "hosted_mode", False)  # pin: never rely on ambient .env
     resp = unauth_client.get("/api/config")  # reachable WITHOUT a session (pre-login)
     assert resp.status_code == 200
-    assert resp.json() == {
-        "hosted_mode": False,
-        "github_install_url": "",
-        "github_manage_url": "",
-    }
+    body = resp.json()
+    assert body["hosted_mode"] is False
+    assert body["github_install_url"] == ""
+    assert body["github_manage_url"] == ""
+    # M-runnable: the public provider catalogue (slugs only) rides along for the FE picker.
+    assert {e["provider"] for e in body["provider_catalogue"]} >= {"deepseek", "openrouter"}
 
 
 def test_config_hosted_exposes_install_url_but_no_secret(client, monkeypatch):
@@ -141,7 +142,14 @@ def test_config_hosted_exposes_install_url_but_no_secret(client, monkeypatch):
     )
     # Rider 2: the slug install page is demoted to the SECONDARY "add repositories" URL.
     assert body["github_manage_url"] == "https://github.com/apps/tvashtr/installations/new"
-    assert set(body) == {"hosted_mode", "github_install_url", "github_manage_url"}
+    # M-runnable: the provider catalogue is now part of the payload; still an EXACT key set, so no
+    # unexpected (secret) key can slip in — the two no-leak assertions below still guard the rest.
+    assert set(body) == {
+        "hosted_mode",
+        "github_install_url",
+        "github_manage_url",
+        "provider_catalogue",
+    }
     assert CLIENT_SECRET_SENTINEL not in resp.text
     assert PRIVATE_KEY_PEM not in resp.text
 

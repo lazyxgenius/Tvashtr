@@ -177,6 +177,14 @@ export interface AuthUser {
 // M-h1a: the PUBLIC client bootstrap (GET /api/config) — the posture the AuthWizard needs BEFORE
 // login. Only public fields (never a client secret / private key). Self-hosted default: hosted_mode
 // false + an empty install URL, so the wizard stays the email/password flow.
+// M-runnable: one served catalogue entry — provider + model SLUGS only (never keys). The FE holds NO
+// hardcoded model/provider list; it DERIVES its quick-picks + provider suggestions from these.
+export interface ProviderCatalogueEntry {
+  provider: string;
+  default_model: string;
+  presets: string[];
+}
+
 export interface Config {
   hosted_mode: boolean;
   github_install_url: string;
@@ -184,6 +192,8 @@ export interface Config {
   // when the account has the app installed on NO repo (the repo dropdown is then empty). Empty when
   // unset server-side; never a session signal (this endpoint is public).
   github_manage_url: string;
+  // M-runnable: the backend-owned provider catalogue (slugs only). The picker derives from it.
+  provider_catalogue: ProviderCatalogueEntry[];
 }
 
 // An error that preserves the HTTP status so the login screen can branch on 401 / 409 / 422.
@@ -242,15 +252,25 @@ export async function getMe(): Promise<AuthUser | null> {
 // fails: any non-OK response or network error falls back to the self-hosted default (email/password),
 // and it NEVER trips the 401 seam (the endpoint is public, so a 401 here is not a session signal).
 export async function getConfig(): Promise<Config> {
-  const fallback: Config = { hosted_mode: false, github_install_url: "", github_manage_url: "" };
+  const fallback: Config = {
+    hosted_mode: false,
+    github_install_url: "",
+    github_manage_url: "",
+    provider_catalogue: [],
+  };
   try {
     const res = await fetch("/api/config");
     if (!res.ok) return fallback;
     const data = (await res.json()) as Partial<Config>;
+    const catalogue = Array.isArray(data.provider_catalogue) ? data.provider_catalogue : [];
+    // M-runnable: cache the catalogue for the synchronous picker helpers (presetsForProvider /
+    // providerSuggestions) — this runs at app boot, before the node picker / dashboard are opened.
+    setProviderCatalogue(catalogue);
     return {
       hosted_mode: data.hosted_mode === true,
       github_install_url: data.github_install_url ?? "",
       github_manage_url: data.github_manage_url ?? "",
+      provider_catalogue: catalogue,
     };
   } catch {
     return fallback;
@@ -775,19 +795,28 @@ export interface Template {
   description: string;
 }
 
-// A TINY static list of proven, in-repo model slugs offered as datalist quick-picks under the
-// free-text model field — NOT a maintained registry. The field accepts any provider/model string.
-export const MODEL_PRESETS = [
-  "openai/gpt-4o-mini",
-  "nvidia_nim/meta/llama-3.3-70b-instruct",
-  "openrouter/openai/gpt-4o-mini",
-  "openrouter/meta-llama/llama-3.1-8b-instruct",
-  "openrouter/google/gemini-flash-1.5",
-  // M-accounts Slice C: gemini + groq quick-picks so the picker covers every provider in the
-  // backend PROVIDER_DEFAULT_MODEL map (teams.py) — keep these two in sync with that map's slugs.
-  "gemini/gemini-2.0-flash",
-  "groq/llama-3.3-70b-versatile",
-] as const;
+// M-runnable: the provider catalogue is BACKEND-OWNED (control_plane.teams.PROVIDER_CATALOGUE) and
+// served on GET /api/config; the FE declares NO model/provider list. It is cached here at boot
+// (getConfig) so the SYNCHRONOUS picker helpers below can read it without threading it through every
+// component. Empty until getConfig resolves — the model field still accepts free text, so a
+// not-yet-loaded catalogue degrades to "no quick-picks", never a wrong hardcoded list. The catalogue
+// is static per deployment and getConfig runs at app boot, so it is populated well before the node
+// picker / dashboard are opened.
+let providerCatalogue: ProviderCatalogueEntry[] = [];
+
+export function setProviderCatalogue(entries: ProviderCatalogueEntry[]): void {
+  providerCatalogue = entries;
+}
+
+export function getProviderCatalogue(): ProviderCatalogueEntry[] {
+  return providerCatalogue;
+}
+
+// The provider slugs offered as quick-adds (dashboard datalist + node picker) — DERIVED from the
+// served catalogue in its own order, never a hardcoded list.
+export function providerSuggestions(): string[] {
+  return providerCatalogue.map((e) => e.provider);
+}
 
 // M-accounts Slice C: the ONE provider-canonicalization rule — the leading ``provider/`` slug
 // segment, lower-cased + trimmed. This MUST match the backend ``credentials.provider_for_model``
@@ -796,10 +825,11 @@ export function providerOf(model: string): string {
   return model.split("/")[0].trim().toLowerCase();
 }
 
-// The MODEL_PRESETS quick-picks scoped to one provider (by the canonical rule) — what the Model
-// field offers once a provider is chosen in the picker.
+// The catalogue quick-picks for one provider — what the Model field offers once a provider is chosen.
+// Reads the served catalogue (matched by the canonical provider key); empty for an unknown or
+// not-yet-loaded provider (the free-text field still accepts any slug).
 export function presetsForProvider(provider: string): string[] {
-  return MODEL_PRESETS.filter((m) => providerOf(m) === provider);
+  return providerCatalogue.find((e) => e.provider === provider)?.presets ?? [];
 }
 
 // M-brownfield Slice 2 (D4): above this many tracked files the launch panel surfaces a dismissible

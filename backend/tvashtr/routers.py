@@ -25,6 +25,7 @@ from tvashtr.control_plane.context_compiler import resolve_fallback_model, resol
 from tvashtr.control_plane.credentials import (
     NoCredentialError,
     encrypt_secret,
+    held_provider_slugs,
     provider_for_model,
     resolve_owner_api_key,
 )
@@ -621,26 +622,42 @@ def _require_owned_run(session, run_id: str, owner_id: uuid.UUID) -> Run:
     return run
 
 
-def _missing_provider_credentials(owner_id: uuid.UUID, team_graph_id: str) -> list[str]:
-    """The distinct providers across the team's node models that ``owner_id`` has NO credential for
-    (M-accounts Slice B launch pre-flight). Empty ⇒ the owner can run every node; non-empty ⇒ refuse
-    the launch (422). gate/terminal nodes carry no model and are skipped."""
+def _missing_provider_credentials(
+    owner_id: uuid.UUID, team_graph_id: str
+) -> tuple[list[str], list[str]]:
+    """The launch pre-flight (M-accounts Slice B): the sorted distinct providers across the team's
+    node models that ``owner_id`` has NO credential for, AND the sorted role names of the nodes that
+    need them. Empty providers ⇒ the owner can run every node; non-empty ⇒ refuse the launch (422).
+    gate/terminal nodes carry no model and are skipped. Reuses the ONE held-provider rule
+    (``credentials.held_provider_slugs``), so "held" is defined in one place (M-runnable). The node
+    node names let the refusal say WHICH nodes to fix instead of only which provider is missing."""
     with db.session_scope() as session:
-        models = session.execute(
-            select(AgentNode.model).where(AgentNode.team_graph_id == uuid.UUID(team_graph_id))
-        ).scalars()
-        needed = {provider_for_model(m) for m in models if m}
-        if not needed:
-            return []
-        have = set(
-            session.execute(
-                select(ProviderCredential.provider).where(
-                    ProviderCredential.owner_id == owner_id,
-                    ProviderCredential.provider.in_(needed),
-                )
-            ).scalars()
-        )
-    return sorted(needed - have)
+        rows = session.execute(
+            select(AgentNode.role_name, AgentNode.model).where(
+                AgentNode.team_graph_id == uuid.UUID(team_graph_id)
+            )
+        ).all()
+    needed = {provider_for_model(m) for _rn, m in rows if m}
+    if not needed:
+        return [], []
+    missing = needed - held_provider_slugs(owner_id)
+    if not missing:
+        return [], []
+    nodes = sorted({rn for rn, m in rows if m and provider_for_model(m) in missing})
+    return sorted(missing), nodes
+
+
+def _missing_credentials_detail(providers: list[str], nodes: list[str]) -> dict:
+    """The 422 refusal payload for a launch the owner has no key for — names the missing PROVIDERS
+    (the existing ``missing_providers`` contract) AND the offending NODES (M-runnable), with both in
+    the human ``message`` the FE launch banner renders, so the user learns WHICH nodes to fix rather
+    than only which provider is missing."""
+    node_phrase = " — needed by " + ", ".join(nodes) if nodes else ""
+    return {
+        "message": "you have no API key for: " + ", ".join(providers) + node_phrase,
+        "missing_providers": providers,
+        "missing_nodes": nodes,
+    }
 
 
 # M-h3: the statuses that HOLD a sandbox. ``awaiting_human`` counts — M-h2b suspends the microVM at
@@ -851,6 +868,10 @@ def create_run(
             )
         team_graph_id = clone_team_graph(body.team_graph_id)
     elif body.team_shape == "review_loop":
+        # M-runnable scope: the team_shape / empty-body path builds an EPHEMERAL team from a shape
+        # string — a legacy/harness path (the product launches AUTHORED teams via team_graph_id, the
+        # clone path above). It keeps the legacy default; only the persisted authoring paths
+        # (create_team_from_template / create_blank_team / create_team_node) are account-aware.
         team_graph_id = build_review_loop_team()
     else:
         team_graph_id = build_two_node_team()
@@ -860,14 +881,13 @@ def create_run(
     # the brownfield validate-before-launch discipline (a keyless account can't run; the seeded
     # operator with imported keys passes). On the clone path this checks the clone (== the source's
     # models); a 422 leaves only a harmless non-library orphan clone, never a started run.
-    missing = _missing_provider_credentials(uuid.UUID(current_user.id), team_graph_id)
+    missing, missing_nodes = _missing_provider_credentials(
+        uuid.UUID(current_user.id), team_graph_id
+    )
     if missing:
         raise HTTPException(
             status_code=422,
-            detail={
-                "message": "you have no API key for: " + ", ".join(missing),
-                "missing_providers": missing,
-            },
+            detail=_missing_credentials_detail(missing, missing_nodes),
         )
 
     run_id = str(uuid.uuid4())
@@ -942,17 +962,17 @@ def create_ab_runs(
     owner_id = uuid.UUID(current_user.id)
     runs: list[dict] = []
     for label, team_shape in _AB_CONFIGS:
+        # M-runnable scope: the A/B instrument builds EPHEMERAL teams from a fixed shape (§14), a
+        # launch-time path — it keeps the legacy default, like create_run's team_shape branch (only
+        # the persisted authoring paths are account-aware this milestone).
         team_graph_id = _TEAM_BUILDERS[team_shape]()
         # M-accounts Slice B: same launch pre-flight as a single run, per side — refuse before any
         # run starts if the owner lacks a provider key the config needs (422).
-        missing = _missing_provider_credentials(owner_id, team_graph_id)
+        missing, missing_nodes = _missing_provider_credentials(owner_id, team_graph_id)
         if missing:
             raise HTTPException(
                 status_code=422,
-                detail={
-                    "message": "you have no API key for: " + ", ".join(missing),
-                    "missing_providers": missing,
-                },
+                detail=_missing_credentials_detail(missing, missing_nodes),
             )
         run_id = str(uuid.uuid4())
         with db.session_scope() as session:
@@ -2486,15 +2506,12 @@ def create_team_node(
     ``team_id`` is not a library team (a run snapshot / A-B graph is never editable). Returns the
     created node in the canvas shape."""
     owner_id = uuid.UUID(current_user.id)
+    # M-runnable: the owner's held providers gate the account-aware create default (used only when
+    # body.model is absent) — via the ONE held-provider rule (credentials.held_provider_slugs,
+    # the same set the launch pre-flight consults), so there is not a second definition of "held".
+    held_providers = held_provider_slugs(owner_id)
     with db.session_scope() as session:
         graph = _require_library_team(session, team_id, owner_id)
-        # M-accounts Slice C: the owner's configured providers gate the account-aware create default
-        # (used only when body.model is absent). Same table/owner-scope the dashboard reads.
-        held_providers = set(
-            session.execute(
-                select(ProviderCredential.provider).where(ProviderCredential.owner_id == owner_id)
-            ).scalars()
-        )
         node = _build_node(graph.id, body, held_providers)
         session.add(node)
         session.flush()

@@ -21,6 +21,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import aliased
 
 from tvashtr.config import get_settings
+from tvashtr.control_plane.credentials import held_provider_slugs
 from tvashtr.db import session_scope
 from tvashtr.models import (
     AgentInvocation,
@@ -141,36 +142,101 @@ def reviewer_model() -> str:
     return engineer_model()
 
 
-# M-accounts Slice C: the account-aware node-create default. A STATIC map (NOT a model registry) of
-# provider slug -> a sensible default FULL model slug. Each value MUST be consistent with a
-# ``MODEL_PRESETS`` entry on the FE (``frontend/src/lib/api.ts``) so the picker quick-picks include
-# it. When a newly-dropped node omits an explicit model, ``create_team_node`` defaults it to a
-# provider the OWNER already holds (preference order), else the legacy default. The provider slug is
-# exactly what ``credentials.provider_for_model`` derives.
+# M-runnable: the ONE backend-owned provider catalogue — provider slug -> {default_model, presets} —
+# the SINGLE place a provider or model slug is DECLARED. Static, dependency-free, a module const
+# (no DB, no network); ``account_default_model`` stays pure + unit-testable. Served READ-ONLY to the
+# to the FE on ``GET /api/config`` (slugs only, never keys — ``public_provider_catalogue``); the
+# picker's quick-picks + the dashboard's provider suggestions DERIVE from it, nothing to hand-sync.
+# Seeded from the UNION of the pre-M-runnable ``PROVIDER_DEFAULT_MODEL`` map and the FE's old
+# ``MODEL_PRESETS`` list (so nothing previously offered is lost), PLUS a ``deepseek`` entry — the
+# product's own default agent model (``DEFAULT_MODEL``/``TVASHTR_AGENT_MODEL`` in .env + fly.toml).
+# INVARIANT (pinned by tests): every ``default_model``/preset slug canonicalizes
+# (``credentials.provider_for_model``) to its provider key, and each provider's ``default_model`` is
+# itself a preset.
+PROVIDER_CATALOGUE: dict[str, dict] = {
+    "openrouter": {
+        "default_model": "openrouter/openai/gpt-4o-mini",
+        "presets": [
+            "openrouter/openai/gpt-4o-mini",
+            "openrouter/meta-llama/llama-3.1-8b-instruct",
+            "openrouter/google/gemini-flash-1.5",
+        ],
+    },
+    "nvidia_nim": {
+        "default_model": "nvidia_nim/meta/llama-3.3-70b-instruct",
+        "presets": ["nvidia_nim/meta/llama-3.3-70b-instruct"],
+    },
+    "openai": {
+        "default_model": "openai/gpt-4o-mini",
+        "presets": ["openai/gpt-4o-mini"],
+    },
+    "gemini": {
+        "default_model": "gemini/gemini-2.0-flash",
+        "presets": ["gemini/gemini-2.0-flash"],
+    },
+    "groq": {
+        "default_model": "groq/llama-3.3-70b-versatile",
+        "presets": ["groq/llama-3.3-70b-versatile"],
+    },
+    "deepseek": {
+        "default_model": "deepseek/deepseek-chat",
+        "presets": ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"],
+    },
+}
+# Back-compat DERIVED view (provider -> default_model): the registry above is the sole declaration;
+# this is a pure projection that ``account_default_model`` reads. Nothing new is declared here.
 PROVIDER_DEFAULT_MODEL: dict[str, str] = {
-    "openrouter": "openrouter/openai/gpt-4o-mini",
-    "nvidia_nim": "nvidia_nim/meta/llama-3.3-70b-instruct",
-    "openai": "openai/gpt-4o-mini",
-    "gemini": "gemini/gemini-2.0-flash",
-    "groq": "groq/llama-3.3-70b-versatile",
+    p: e["default_model"] for p, e in PROVIDER_CATALOGUE.items()
 }
 # The deterministic preference order when the account holds several mapped providers: ``openrouter``
 # is the historical default provider (the legacy ``default_model``/``engineer_model`` slugs live
-# there), so it wins first. Any fixed order satisfies the contract.
-_PROVIDER_DEFAULT_ORDER: tuple[str, ...] = ("openrouter", "nvidia_nim", "openai", "gemini", "groq")
+# there), so it wins first. M-runnable APPENDS ``deepseek`` LAST — the existing entries are NOT
+# reordered: order only breaks ties for MULTI-key accounts, and silently changing those accounts'
+# defaults is not this milestone's business.
+_PROVIDER_DEFAULT_ORDER: tuple[str, ...] = (
+    "openrouter",
+    "nvidia_nim",
+    "openai",
+    "gemini",
+    "groq",
+    "deepseek",
+)
 
 
 def account_default_model(held_providers: set[str]) -> str | None:
     """The default FULL model slug for the FIRST provider (preference order) the account holds a
     credential for, else ``None`` (the caller uses the legacy default). Pure + unit-tested;
-    no DB, no env, no registry."""
+    no DB, no env."""
     for provider in _PROVIDER_DEFAULT_ORDER:
         if provider in held_providers and provider in PROVIDER_DEFAULT_MODEL:
             return PROVIDER_DEFAULT_MODEL[provider]
     return None
 
 
-def build_two_node_team(name: str = "PM -> Engineer") -> str:
+def public_provider_catalogue() -> list[dict]:
+    """The provider catalogue as a serializable, PUBLIC list (served on ``GET /api/config``):
+    provider + model slugs ONLY, never any key material. Ordered by ``PROVIDER_CATALOGUE`` insertion
+    so the FE renders a stable provider list. The FE DERIVES its model quick-picks + provider
+    suggestions from this, so a slug is declared in exactly one place (the catalogue above)."""
+    return [
+        {"provider": p, "default_model": e["default_model"], "presets": list(e["presets"])}
+        for p, e in PROVIDER_CATALOGUE.items()
+    ]
+
+
+def _node_default_model(held_providers: set[str] | None, fallback: str) -> str:
+    """The model a builder stamps on a model-bearing node at CREATION: the OWNER's held-provider
+    default when the account holds a catalogued provider (``account_default_model``), else the
+    per-role fallback (a thinker's ``settings.default_model``; a worker's ``engineer_model()``
+    /``reviewer_model()``). This makes the team the account is GIVEN a team it can RUN — every model
+    node's provider is one the owner holds. ``held_providers`` empty/``None`` ⇒ the legacy
+    fallback, byte-identical to the pre-M-runnable behavior for a non-account (direct) caller."""
+    return account_default_model(held_providers or set()) or fallback
+
+
+def build_two_node_team(
+    name: str = "PM -> Engineer", held_providers: set[str] | None = None
+) -> str:
     """Insert the 2-node team as a uniform walk and return its team_graph id.
 
     Topology (the walk the generic executor traces): PM (completion) writes the PRD
@@ -188,7 +254,7 @@ def build_two_node_team(name: str = "PM -> Engineer") -> str:
             team_graph_id=graph.id,
             role_name="pm",
             kind="completion",
-            model=settings.default_model,
+            model=_node_default_model(held_providers, settings.default_model),
             engine=None,
             prompt=PM_PROMPT,
             position={"x": 0, "y": 0},
@@ -206,7 +272,7 @@ def build_two_node_team(name: str = "PM -> Engineer") -> str:
             team_graph_id=graph.id,
             role_name="engineer",
             kind="agent",
-            model=engineer_model(),
+            model=_node_default_model(held_providers, engineer_model()),
             engine="openhands",
             prompt=ENGINEER_PROMPT,
             position={"x": 520, "y": 0},
@@ -267,7 +333,9 @@ def build_two_node_team(name: str = "PM -> Engineer") -> str:
         return str(graph.id)
 
 
-def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
+def build_review_loop_team(
+    name: str = "PM -> Engineer <-> Reviewer", held_providers: set[str] | None = None
+) -> str:
     """Insert the 3-role cyclic review-loop team as a uniform walk and return its id.
 
     Topology (the cycle the generic executor walks): PM (completion) -> prd_gate
@@ -290,7 +358,7 @@ def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
             team_graph_id=graph.id,
             role_name="pm",
             kind="completion",
-            model=settings.default_model,
+            model=_node_default_model(held_providers, settings.default_model),
             engine=None,
             prompt=PM_PROMPT,
             position={"x": 0, "y": 0},
@@ -308,7 +376,7 @@ def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
             team_graph_id=graph.id,
             role_name="engineer",
             kind="agent",
-            model=engineer_model(),
+            model=_node_default_model(held_providers, engineer_model()),
             engine="openhands",
             prompt=ENGINEER_PROMPT,
             position={"x": 520, "y": 0},
@@ -329,7 +397,7 @@ def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
             # NOT because of ``agent_kind`` (left as-is for the FE; the executor ignores it).
             kind="agent",
             engine="openhands",
-            model=reviewer_model(),
+            model=_node_default_model(held_providers, reviewer_model()),
             prompt=REVIEWER_PROMPT,
             position={"x": 780, "y": 0},
             config={"agent_kind": "reviewer"},
@@ -463,7 +531,9 @@ def build_review_loop_team(name: str = "PM -> Engineer <-> Reviewer") -> str:
         return str(graph.id)
 
 
-def build_thinker_chain_team(name: str = "PM -> Architect -> Engineer") -> str:
+def build_thinker_chain_team(
+    name: str = "PM -> Architect -> Engineer", held_providers: set[str] | None = None
+) -> str:
     """Insert the linear PM -> Architect -> Engineer team as a uniform walk; return its id (P1.8c).
 
     Two THINKERS shape the spec before the build: the PM (the root completion) drafts the mini-PRD,
@@ -484,7 +554,7 @@ def build_thinker_chain_team(name: str = "PM -> Architect -> Engineer") -> str:
             team_graph_id=graph.id,
             role_name="pm",
             kind="completion",
-            model=settings.default_model,
+            model=_node_default_model(held_providers, settings.default_model),
             engine=None,
             prompt=PM_PROMPT,
             position={"x": 0, "y": 0},
@@ -493,7 +563,7 @@ def build_thinker_chain_team(name: str = "PM -> Architect -> Engineer") -> str:
             team_graph_id=graph.id,
             role_name="architect",
             kind="completion",
-            model=settings.default_model,
+            model=_node_default_model(held_providers, settings.default_model),
             engine=None,
             prompt=ARCHITECT_PROMPT,
             position={"x": 260, "y": 0},
@@ -511,7 +581,7 @@ def build_thinker_chain_team(name: str = "PM -> Architect -> Engineer") -> str:
             team_graph_id=graph.id,
             role_name="engineer",
             kind="agent",
-            model=engineer_model(),
+            model=_node_default_model(held_providers, engineer_model()),
             engine="openhands",
             prompt=ENGINEER_PROMPT,
             position={"x": 780, "y": 0},
@@ -586,7 +656,9 @@ def build_thinker_chain_team(name: str = "PM -> Architect -> Engineer") -> str:
         return str(graph.id)
 
 
-def build_plan_review_team(name: str = "PM -> Architect -> Engineer <-> Reviewer") -> str:
+def build_plan_review_team(
+    name: str = "PM -> Architect -> Engineer <-> Reviewer", held_providers: set[str] | None = None
+) -> str:
     """Insert the plan-and-review team (two thinkers + a review loop) as a uniform walk; return its
     id (F2a). This is EXACTLY :func:`build_review_loop_team` with an Architect thinker inserted
     between the PM and the PRD gate — ``pm -> prd_gate`` becomes ``pm -> architect -> prd_gate``:
@@ -609,7 +681,7 @@ def build_plan_review_team(name: str = "PM -> Architect -> Engineer <-> Reviewer
             team_graph_id=graph.id,
             role_name="pm",
             kind="completion",
-            model=settings.default_model,
+            model=_node_default_model(held_providers, settings.default_model),
             engine=None,
             prompt=PM_PROMPT,
             position={"x": 0, "y": 0},
@@ -618,7 +690,7 @@ def build_plan_review_team(name: str = "PM -> Architect -> Engineer <-> Reviewer
             team_graph_id=graph.id,
             role_name="architect",
             kind="completion",
-            model=settings.default_model,
+            model=_node_default_model(held_providers, settings.default_model),
             engine=None,
             prompt=ARCHITECT_PROMPT,
             position={"x": 260, "y": 0},
@@ -636,7 +708,7 @@ def build_plan_review_team(name: str = "PM -> Architect -> Engineer <-> Reviewer
             team_graph_id=graph.id,
             role_name="engineer",
             kind="agent",
-            model=engineer_model(),
+            model=_node_default_model(held_providers, engineer_model()),
             engine="openhands",
             prompt=ENGINEER_PROMPT,
             position={"x": 780, "y": 0},
@@ -647,7 +719,7 @@ def build_plan_review_team(name: str = "PM -> Architect -> Engineer <-> Reviewer
             role_name="reviewer",
             kind="agent",
             engine="openhands",
-            model=reviewer_model(),
+            model=_node_default_model(held_providers, reviewer_model()),
             prompt=REVIEWER_PROMPT,
             position={"x": 1040, "y": 0},
             config={"agent_kind": "reviewer"},
@@ -778,7 +850,9 @@ def build_plan_review_team(name: str = "PM -> Architect -> Engineer <-> Reviewer
         return str(graph.id)
 
 
-def build_full_squad_team(name: str = "Full feature squad") -> str:
+def build_full_squad_team(
+    name: str = "Full feature squad", held_providers: set[str] | None = None
+) -> str:
     """Insert the full feature-squad team as a uniform walk; return its id (F2a). EXACTLY
     :func:`build_plan_review_team` PLUS a ``ship_approval`` gate in front of the ship terminal, so
     BOTH ship-bound approvals (the Reviewer's and the escalation gate's) pass a SECOND human
@@ -797,7 +871,7 @@ def build_full_squad_team(name: str = "Full feature squad") -> str:
             team_graph_id=graph.id,
             role_name="pm",
             kind="completion",
-            model=settings.default_model,
+            model=_node_default_model(held_providers, settings.default_model),
             engine=None,
             prompt=PM_PROMPT,
             position={"x": 0, "y": 0},
@@ -806,7 +880,7 @@ def build_full_squad_team(name: str = "Full feature squad") -> str:
             team_graph_id=graph.id,
             role_name="architect",
             kind="completion",
-            model=settings.default_model,
+            model=_node_default_model(held_providers, settings.default_model),
             engine=None,
             prompt=ARCHITECT_PROMPT,
             position={"x": 260, "y": 0},
@@ -824,7 +898,7 @@ def build_full_squad_team(name: str = "Full feature squad") -> str:
             team_graph_id=graph.id,
             role_name="engineer",
             kind="agent",
-            model=engineer_model(),
+            model=_node_default_model(held_providers, engineer_model()),
             engine="openhands",
             prompt=ENGINEER_PROMPT,
             position={"x": 780, "y": 0},
@@ -835,7 +909,7 @@ def build_full_squad_team(name: str = "Full feature squad") -> str:
             role_name="reviewer",
             kind="agent",
             engine="openhands",
-            model=reviewer_model(),
+            model=_node_default_model(held_providers, reviewer_model()),
             prompt=REVIEWER_PROMPT,
             position={"x": 1040, "y": 0},
             config={"agent_kind": "reviewer"},
@@ -1261,11 +1335,13 @@ def rename_library_team(team_id: uuid.UUID, name: str, owner_id: uuid.UUID) -> d
 
 def create_team_from_template(template_key: str, name: str, owner_id: uuid.UUID) -> str:
     """Materialize a starter template into a NEW library team OWNED by ``owner_id``; return its id
-    (M-accounts Slice B). Calls the byte-intact builder, then sets the user's ``name``, flips
-    ``is_library = True``, and stamps ``owner_id`` (build-then-flip — the builder is untouched).
-    Raises ``KeyError`` on an unknown template key (the router maps it to 400)."""
+    (M-accounts Slice B). Calls the builder — passing the OWNER's held providers so every model node
+    defaults to a provider the account can run (M-runnable) — then sets the user's ``name``, flips
+    ``is_library = True``, and stamps ``owner_id`` (build-then-flip; the builder's TOPOLOGY is
+    untouched, only its model DEFAULTS become account-aware). Raises ``KeyError`` on an unknown
+    template key (the router maps it to 400)."""
     template = _TEMPLATES_BY_KEY[template_key]
-    team_graph_id = template.builder()
+    team_graph_id = template.builder(held_providers=held_provider_slugs(owner_id))
     with session_scope() as session:
         graph = session.execute(
             select(TeamGraph).where(TeamGraph.id == uuid.UUID(team_graph_id))
@@ -1284,6 +1360,7 @@ def create_blank_team(name: str, owner_id: uuid.UUID) -> str:
     thinker carries an empty editable prompt (the user fills it). A NEW function — the byte-intact
     builders are untouched; the run-start guard + the canvas validity both accept this skeleton."""
     settings = get_settings()
+    held_providers = held_provider_slugs(owner_id)
     with session_scope() as session:
         graph = TeamGraph(name=name, is_library=True, owner_id=owner_id)
         session.add(graph)
@@ -1293,7 +1370,7 @@ def create_blank_team(name: str, owner_id: uuid.UUID) -> str:
             team_graph_id=graph.id,
             role_name="thinker",
             kind="completion",
-            model=settings.default_model,
+            model=_node_default_model(held_providers, settings.default_model),
             engine=None,
             prompt="",
             position={"x": 0, "y": 0},

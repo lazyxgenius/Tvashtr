@@ -1004,10 +1004,30 @@ describe("TeamNodePanel — edit-time model validation hint (soft, never blocks 
         onClose={() => {}}
       />,
     );
-    // The providers fetch resolves openai + nvidia_nim; gpt-4o-mini is a MODEL_PRESETS entry.
+    // The providers fetch resolves openai + nvidia_nim; gpt-4o-mini is a served-catalogue preset.
     await waitFor(() =>
       expect(screen.getByRole("combobox", { name: "Model" })).toBeInTheDocument(),
     );
+    expect(screen.queryByTestId("model-validity-hint")).not.toBeInTheDocument();
+  });
+
+  it("is ABSENT for deepseek/deepseek-chat once the catalogue is served (M-runnable)", async () => {
+    providersState.push({ provider: "deepseek", key_last4: "3333", created_at: "x" });
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ model: "deepseek/deepseek-chat" })}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Model" })).toBeInTheDocument(),
+    );
+    // deepseek is configured AND deepseek/deepseek-chat is a served-catalogue preset (setup.ts seeds
+    // it), so the "isn't a known deepseek model" false-positive is gone — it fired pre-M-runnable when
+    // presetsForProvider("deepseek") was [] on the product's OWN default agent model.
     expect(screen.queryByTestId("model-validity-hint")).not.toBeInTheDocument();
   });
 

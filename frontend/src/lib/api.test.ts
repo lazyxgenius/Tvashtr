@@ -18,17 +18,20 @@ import {
   createMemory,
   createSkillLibraryItem,
   createToolLibraryItem,
+  getConfig,
   getGithubRepos,
+  getProviderCatalogue,
   getReviewMode,
   getRunDocuments,
   inspectRepo,
   listMemories,
-  MODEL_PRESETS,
   presetsForProvider,
   promoteMemory,
   providerOf,
+  providerSuggestions,
   rejectMemory,
   runTeam,
+  setProviderCatalogue,
   setReviewMode,
   updateTeamNode,
   updateTerminalNode,
@@ -43,13 +46,26 @@ describe("providerOf — parity with the backend provider_for_model", () => {
     expect(providerOf("gpt-4o-mini")).toBe("gpt-4o-mini"); // no slash → the whole slug
   });
 
-  it("scopes MODEL_PRESETS quick-picks to one provider", () => {
+  it("scopes quick-picks to one provider, derived from the served catalogue", () => {
+    setProviderCatalogue([
+      {
+        provider: "openrouter",
+        default_model: "openrouter/openai/gpt-4o-mini",
+        presets: ["openrouter/openai/gpt-4o-mini", "openrouter/google/gemini-flash-1.5"],
+      },
+      {
+        provider: "deepseek",
+        default_model: "deepseek/deepseek-chat",
+        presets: ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"],
+      },
+    ]);
     const openrouter = presetsForProvider("openrouter");
     expect(openrouter.length).toBeGreaterThan(0);
     expect(openrouter.every((m) => providerOf(m) === "openrouter")).toBe(true);
-    // Every preset's provider canonicalizes to itself, and gemini/groq are covered (the map parity).
-    expect(MODEL_PRESETS.some((m) => providerOf(m) === "gemini")).toBe(true);
-    expect(MODEL_PRESETS.some((m) => providerOf(m) === "groq")).toBe(true);
+    // deepseek — the product's default agent model — now offers real quick-picks (was [] before M-runnable).
+    expect(presetsForProvider("deepseek")).toContain("deepseek/deepseek-chat");
+    // an unknown / not-yet-loaded provider yields no quick-picks (the free-text field still accepts any slug).
+    expect(presetsForProvider("nope")).toEqual([]);
   });
 });
 
@@ -63,6 +79,54 @@ function bodyOf(call: unknown[]): unknown {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("getConfig — caches the served provider catalogue (M-runnable)", () => {
+  it("populates the cache so presetsForProvider / providerSuggestions derive from the server", async () => {
+    setProviderCatalogue([]); // start empty — prove getConfig fills it
+    const served = {
+      hosted_mode: false,
+      github_install_url: "",
+      github_manage_url: "",
+      provider_catalogue: [
+        {
+          provider: "deepseek",
+          default_model: "deepseek/deepseek-chat",
+          presets: ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"],
+        },
+        {
+          provider: "openai",
+          default_model: "openai/gpt-4o-mini",
+          presets: ["openai/gpt-4o-mini"],
+        },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() => Promise.resolve(jsonOk(served))),
+    );
+    const cfg = await getConfig();
+    expect(cfg.provider_catalogue).toHaveLength(2);
+    expect(providerSuggestions()).toEqual(["deepseek", "openai"]); // catalogue order
+    expect(presetsForProvider("deepseek")).toContain("deepseek/deepseek-chat");
+    expect(getProviderCatalogue()).toEqual(served.provider_catalogue);
+  });
+
+  it("returns the empty-catalogue fallback and never clobbers the cache when the endpoint is down", async () => {
+    const stable = [
+      { provider: "openai", default_model: "openai/gpt-4o-mini", presets: ["openai/gpt-4o-mini"] },
+    ];
+    setProviderCatalogue(stable);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() =>
+        Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response),
+      ),
+    );
+    const cfg = await getConfig();
+    expect(cfg.provider_catalogue).toEqual([]); // resilient fallback for the returned value
+    expect(getProviderCatalogue()).toEqual(stable); // last-known catalogue is NOT wiped
+  });
 });
 
 describe("updateTerminalNode — PATCHes terminal_kind (M-endpoint-editable)", () => {

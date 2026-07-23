@@ -10,6 +10,15 @@ vi.mock("../lib/api", () => ({
   listProviders: vi.fn(),
   addProvider: vi.fn(),
   removeProvider: vi.fn(),
+  // M-runnable: the provider datalist derives from the served catalogue; this mock stands in for it.
+  providerSuggestions: vi.fn(() => [
+    "openrouter",
+    "nvidia_nim",
+    "openai",
+    "gemini",
+    "groq",
+    "deepseek",
+  ]),
   deleteTeam: vi.fn(),
   renameTeam: vi.fn(),
   getTeamRuns: vi.fn(),

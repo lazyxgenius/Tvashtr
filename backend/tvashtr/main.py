@@ -27,6 +27,7 @@ from tvashtr.control_plane import github_app
 from tvashtr.control_plane.clone_reaper import sweep_orphaned_clones
 from tvashtr.control_plane.fly_reaper import sweep_orphaned_fly_apps
 from tvashtr.control_plane.hello_durable import hello_durable
+from tvashtr.control_plane.teams import public_provider_catalogue
 from tvashtr.control_plane.workspace_reaper import sweep_orphaned_workspaces
 from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
 from tvashtr.models import SpikeHelloEvent
@@ -121,10 +122,20 @@ def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+class ProviderCatalogueEntry(BaseModel):
+    provider: str
+    default_model: str
+    presets: list[str]
+
+
 class ConfigResponse(BaseModel):
     hosted_mode: bool
     github_install_url: str
     github_manage_url: str
+    # M-runnable: the backend-owned provider catalogue — provider + model SLUGS only, never keys.
+    # The FE derives its model quick-picks + provider suggestions from it, so a slug lives in one
+    # place (``control_plane.teams.PROVIDER_CATALOGUE``). Public, like the rest of this response.
+    provider_catalogue: list[ProviderCatalogueEntry]
 
 
 @app.get("/api/config", response_model=ConfigResponse)
@@ -133,13 +144,17 @@ def config() -> ConfigResponse:
     HOSTED mode the AuthWizard shows only "Continue with GitHub" linking to ``github_install_url``
     (the OAuth sign-in door), and the launch panel offers ``github_manage_url`` (the SECONDARY "add
     repositories" install page) when a signed-in user's installation covers no repos; when
-    ``hosted_mode`` is False it stays the email/password wizard unchanged. Exposes ONLY public
+    ``hosted_mode`` is False it stays the email/password wizard unchanged. Also serves the public
+    ``provider_catalogue`` (slugs only) the FE derives its model picker from. Exposes ONLY public
     fields — the client secret and private key are never serializable here."""
     settings = get_settings()
     return ConfigResponse(
         hosted_mode=settings.hosted_mode,
         github_install_url=github_app.build_install_url() if settings.hosted_mode else "",
         github_manage_url=github_app.build_manage_url() if settings.hosted_mode else "",
+        provider_catalogue=[
+            ProviderCatalogueEntry(**entry) for entry in public_provider_catalogue()
+        ],
     )
 
 
