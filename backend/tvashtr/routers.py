@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, update
 
 from tvashtr import db
-from tvashtr.auth import UserOut, get_current_user
+from tvashtr.auth import UserOut, _store_installation, get_current_user
 from tvashtr.config import get_settings
 from tvashtr.control_plane import github_app, memory, memory_distill, memory_review
 from tvashtr.control_plane.context_compiler import resolve_fallback_model, resolve_multimodal
@@ -2751,6 +2751,51 @@ def cancel_run(run_id: str, current_user: Annotated[UserOut, Depends(get_current
     }
 
 
+def _owner_installation_ids(session, owner_id: uuid.UUID) -> list[int]:
+    """The installation ids owned by ``owner_id`` — the owner-scoping chokepoint for the repos read
+    and its re-read after the backfill."""
+    return [
+        row.installation_id
+        for row in session.execute(
+            select(GithubInstallation).where(GithubInstallation.owner_id == owner_id)
+        ).scalars()
+    ]
+
+
+def _backfill_github_installations() -> None:
+    """Self-healing installation discovery from the APP side (M-legible item 4).
+
+    Discovery otherwise runs ONLY in ``auth.github_callback``, which needs a GitHub USER
+    token that is never stored — so an account that signed in before discovery, or whose
+    callback discovery hit the tolerated error path, is stranded with ZERO installation rows
+    and no product route can create one. ``GET /app/installations`` (App JWT, no user token)
+    lists every installation; each is matched by its GitHub ``account.id`` to a
+    ``users.github_user_id`` and recorded for THAT user via the same idempotent, owner-scoped
+    rule the callback uses (``auth._store_installation``). An installation matching no user
+    creates NO row — owner-scoping is absolute. The GitHub call runs BEFORE the DB session
+    opens (never hold a session across network I/O)."""
+    installations = github_app.list_app_installations()
+    account_ids: list[int] = []
+    for inst in installations:
+        account = inst.get("account")
+        if isinstance(account, dict) and account.get("id") is not None:
+            account_ids.append(account["id"])
+    if not account_ids:
+        return
+    with db.session_scope() as session:
+        users_by_github_id = {
+            user.github_user_id: user
+            for user in session.execute(
+                select(User).where(User.github_user_id.in_(account_ids))
+            ).scalars()
+        }
+        for inst in installations:
+            account = inst.get("account") or {}
+            user = users_by_github_id.get(account.get("id"))
+            if user is not None and inst.get("id") is not None:
+                _store_installation(session, user.id, str(inst["id"]))
+
+
 @router.get("/api/github/repos")
 def list_github_repos(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
     """List the repositories the current account's GitHub App installation(s) can access (HOSTED
@@ -2758,15 +2803,23 @@ def list_github_repos(current_user: Annotated[UserOut, Depends(get_current_user)
     user, so account A can NEVER see account B's installations or repos. Its repos are
     fetched with a freshly-minted, in-memory-cached installation token — no token is ever stored,
     logged, or returned. Returns a whitelist of non-secret repo fields. One dead/stale installation
-    id must not 500 the endpoint — log and continue so remaining installs still contribute."""
+    id must not 500 the endpoint — log and continue so remaining installs still contribute.
+
+    SELF-HEALING (M-legible): an account with ZERO installation rows — stranded because discovery
+    only ever ran in the OAuth callback, which needs a user token that is never stored — triggers a
+    one-shot APP-side backfill (:func:`_backfill_github_installations`) and re-reads. Only the
+    zero-row path pays that extra GitHub call; a backfill failure logs and falls through to the
+    honest empty response, never a 500."""
     owner_id = uuid.UUID(current_user.id)
     with db.session_scope() as session:
-        installation_ids = [
-            row.installation_id
-            for row in session.execute(
-                select(GithubInstallation).where(GithubInstallation.owner_id == owner_id)
-            ).scalars()
-        ]
+        installation_ids = _owner_installation_ids(session, owner_id)
+    if not installation_ids:
+        try:
+            _backfill_github_installations()
+        except Exception:
+            logger.exception("github installation backfill failed; returning empty repo list")
+        with db.session_scope() as session:
+            installation_ids = _owner_installation_ids(session, owner_id)
     # The HTTP calls run AFTER the DB session closes — never hold a session across network I/O.
     repos: list[dict] = []
     for installation_id in installation_ids:

@@ -10,6 +10,11 @@ export interface LastRunRound {
   iteration: number;
   outcome: string | null;
   outcome_detail: string | null;
+  // M-legible (run-view only, optional + additive): the invocation's status. When "failed" the round
+  // reads "Failed" in the danger tone instead of the em dash `outcomeLabel(null)` gives it. The
+  // RUN-view caller passes `NodeInvocation` (which already carries `status`); the AUTHORING caller
+  // omits it, so its em dash is unchanged (extending that contract is out of scope).
+  status?: string;
   // M-ledger C6 (optional): the round's token/$ cost + context-budget snapshot. The RUN-view passes
   // the node's `invocations` (which carry both from the /graph contract); the AUTHORING caller
   // passes NEITHER, so its render stays byte-identical. Present ⇒ a cost line / the manifest table.
@@ -63,12 +68,17 @@ export function LastRun({
     <>
       <ol className="tv-verdicts">
         {rounds.map((r) => {
-          const tone = reviewerVerdictLabel(r.outcome).tone;
+          // M-legible: a failed invocation has no `outcome`, so `outcomeLabel(null)` would render "—"
+          // in a neutral tone — a node that DIED reading as an unremarkable round. Surface it as
+          // failed (its reason already renders beneath via `outcome_detail`).
+          const failed = r.status === "failed";
+          const tone = failed ? "failed" : reviewerVerdictLabel(r.outcome).tone;
+          const label = failed ? "Failed" : outcomeLabel(r.outcome);
           return (
             <li key={r.iteration} className={`tv-verdict tv-verdict--${tone}`}>
               <div className="tv-verdict__line">
                 <span className="tv-verdict__round">Round {r.iteration}</span>
-                <span className="tv-verdict__label">{outcomeLabel(r.outcome)}</span>
+                <span className="tv-verdict__label">{label}</span>
               </div>
               {r.outcome_detail && <p className="tv-verdict__reasons">{r.outcome_detail}</p>}
               {r.cost && <p className="tv-verdict__cost">{costSummary(r.cost)}</p>}

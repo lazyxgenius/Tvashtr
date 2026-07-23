@@ -229,6 +229,41 @@ def list_user_installations(user_token: str) -> list[int]:
     return ids
 
 
+def list_app_installations() -> list[dict]:
+    """Every installation of the GitHub App itself (``GET /app/installations``), authenticated with
+    the APP JWT — needs NO user token, which is the whole point: it discovers installations for an
+    account whose user token was never stored (the M-legible stranded-account backfill). Paginates
+    up to ``_MAX_REPO_PAGES`` pages of 100 like the sibling helpers; defensive on response shape
+    (this endpoint returns a TOP-LEVEL ARRAY, not an ``{installations: […]}`` envelope). Each entry
+    is reduced to the NON-secret ``{id, account: {id, login}}`` the backfill matches on. The App JWT
+    is presented but NEVER logged or returned."""
+    installs: list[dict] = []
+    page = 1
+    while page <= _MAX_REPO_PAGES:
+        result = _http(
+            "GET",
+            f"{_GITHUB_API}/app/installations?per_page=100&page={page}",
+            token=mint_app_jwt(),
+        )
+        batch = result if isinstance(result, list) else []
+        for inst in batch:
+            if not isinstance(inst, dict):
+                continue
+            try:
+                inst_id = int(inst["id"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            account = inst.get("account")
+            account = account if isinstance(account, dict) else {}
+            installs.append(
+                {"id": inst_id, "account": {"id": account.get("id"), "login": account.get("login")}}
+            )
+        if len(batch) < 100:
+            break
+        page += 1
+    return installs
+
+
 def exchange_code_for_user_token(code: str) -> str:
     """Exchange an OAuth ``code`` for a user access token (POST github.com/login/oauth/access_token
     with the client id + client SECRET). The returned token is a SECRET — the callback uses it once

@@ -14,6 +14,7 @@ import type {
   ToolLibraryItem,
 } from "./api";
 import {
+  ApiError,
   createMemory,
   createSkillLibraryItem,
   createToolLibraryItem,
@@ -91,6 +92,56 @@ describe("updateTerminalNode — PATCHes terminal_kind (M-endpoint-editable)", (
     await expect(updateTerminalNode("team-1", "n-ship", "stop")).rejects.toThrow(
       /PATCH terminal .* -> 409/,
     );
+  });
+});
+
+describe("runTeam surfaces the backend's error detail (M-legible item 2)", () => {
+  function jsonErr(status: number, body: unknown): Response {
+    return { ok: false, status, json: () => Promise.resolve(body) } as unknown as Response;
+  }
+
+  it("throws an ApiError carrying the 429 ceiling message (detail is a {message} object)", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        jsonErr(429, {
+          detail: {
+            code: "owner_concurrent",
+            message: "You already have 3 runs in flight. Wait for one to finish.",
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const err = await runTeam("team-1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(429);
+    expect((err as ApiError).message).toContain("3 runs in flight");
+  });
+
+  it("throws an ApiError carrying a STRING detail (422 invalid graph)", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(jsonErr(422, { detail: "provide github_repo or repo_path, not both" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const err = await runTeam("team-1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(422);
+    expect((err as ApiError).message).toBe("provide github_repo or repo_path, not both");
+  });
+
+  it("falls back to a generic status message when the error body is unparseable", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve({
+        ok: false,
+        status: 500,
+        json: () => Promise.reject(new Error("no body")),
+      } as unknown as Response),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const err = await runTeam("team-1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(500);
+    expect((err as ApiError).message).toContain("500"); // the generic fallback still carries status
   });
 });
 

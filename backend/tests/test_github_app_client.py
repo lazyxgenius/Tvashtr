@@ -247,3 +247,53 @@ def test_build_manage_url_tolerates_a_pasted_full_url_slug(monkeypatch):
         assert (
             github_app.build_manage_url() == "https://github.com/apps/tvashtr-dev/installations/new"
         )
+
+
+def test_list_app_installations_paginates_parses_and_drops_extras(gh, monkeypatch):
+    """M-legible: ``GET /app/installations`` (App JWT, NO user token) discovers installations for an
+    account whose user token was never stored. It returns a TOP-LEVEL ARRAY (not an
+    ``{installations: […]}`` envelope), paginates ``per_page=100``, reduces each element to the
+    NON-secret ``{id, account: {id, login}}`` the backfill needs, and is defensive on shape. The App
+    JWT is PRESENTED (a real RS256 token verifiable against the public key), never returned."""
+    pages_seen: list[int] = []
+    # Page 1: 100 well-formed entries (forces a second page); the app_id/secret extras must DROP.
+    page1 = [
+        {"id": i, "account": {"id": 5000 + i, "login": f"acct{i}"}, "app_id": 99, "secret": "x"}
+        for i in range(1, 101)
+    ]
+    # Page 2: short page mixing valid + malformed entries to skip.
+    page2 = [
+        {"id": 101, "account": {"id": 5101, "login": "acct101"}},
+        {"id": None, "account": {"id": 1}},  # skipped (no id)
+        {"no_id": True},  # skipped
+        "not-a-dict",  # skipped
+        {"id": 102, "account": "not-a-dict"},  # account non-dict → {id:None, login:None}
+    ]
+
+    def fake_http(method, url, *, token=None, body=None, accept="application/vnd.github+json"):
+        assert method == "GET"
+        assert "/app/installations" in url
+        assert "per_page=100" in url
+        # The App JWT is presented — a REAL RS256 token with iss = the app id (never a user token).
+        claims = jwt.decode(token, _PUB_PEM, algorithms=["RS256"], options={"verify_exp": False})
+        assert claims["iss"] == _APP_ID
+        page_num = int(url.rsplit("&page=", 1)[-1])
+        pages_seen.append(page_num)
+        if page_num == 1:
+            return page1
+        if page_num == 2:
+            return page2
+        raise AssertionError(f"unexpected page: {url!r}")
+
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    installs = github_app.list_app_installations()
+    assert pages_seen == [1, 2]
+    # Each well-formed entry reduced to the non-secret whitelist (extras dropped).
+    assert installs[0] == {"id": 1, "account": {"id": 5001, "login": "acct1"}}
+    assert {"app_id", "secret"}.isdisjoint(installs[0])
+    ids = [i["id"] for i in installs]
+    assert ids == [*range(1, 102), 102]  # 1..101 then 102; the malformed three skipped
+    assert installs[-1] == {"id": 102, "account": {"id": None, "login": None}}
+    # Defensive shape: a non-list (enveloped) body → empty, never a raise.
+    monkeypatch.setattr(github_app, "_http", lambda *a, **k: {"installations": "nope"})
+    assert github_app.list_app_installations() == []

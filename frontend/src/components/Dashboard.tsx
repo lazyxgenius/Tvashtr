@@ -39,7 +39,9 @@ import { ToolsShelf } from "./ToolsShelf";
 
 // The providers offered as datalist suggestions under the free-text field (any provider/model
 // leading-slug is accepted; these are the proven in-repo ones).
-const PROVIDER_SUGGESTIONS = ["openrouter", "openai", "gemini", "groq", "nvidia_nim"];
+// M-legible: `deepseek` leads — it is the product's OWN default agent model
+// (TVASHTR_AGENT_MODEL=deepseek/deepseek-chat), so a default run's most-needed key is suggested first.
+const PROVIDER_SUGGESTIONS = ["deepseek", "openrouter", "openai", "gemini", "groq", "nvidia_nim"];
 
 // A friendly handle from the email's local-part (no new PII) — "ava@studio.dev" → "Ava".
 function handleFromEmail(email: string): string {

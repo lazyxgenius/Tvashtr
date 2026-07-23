@@ -96,4 +96,35 @@ describe("LastRun (shared) — M2", () => {
     expect(container.querySelector(".tv-verdict__cost")).toBeNull();
     expect(container.querySelector(".tv-manifest")).toBeNull();
   });
+
+  // ---- M-legible item 5: a failed round must read as failed, not an em dash. ----
+  it("a round with status 'failed' reads 'Failed' in the danger tone, with its reason (M-legible)", () => {
+    const { container } = render(
+      <LastRun
+        rounds={[
+          {
+            iteration: 1,
+            status: "failed",
+            outcome: null, // a failed invocation has no outcome — outcomeLabel(null) is the "—" today
+            outcome_detail: "MaxIterationsReached: hit the iteration cap while verifying edits.",
+          },
+        ]}
+      />,
+    );
+    // The label reads "Failed" (not the em dash), in the danger tone…
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(container.querySelector(".tv-verdict--failed")).not.toBeNull();
+    // …the failed round is NOT styled as a neutral, unremarkable round…
+    expect(container.querySelector(".tv-verdict--neutral")).toBeNull();
+    // …and M-fail's persisted reason shows beneath it (already rendered — free once labelled).
+    expect(screen.getByText(/MaxIterationsReached: hit the iteration cap/)).toBeInTheDocument();
+  });
+
+  it("a round WITHOUT status (the authoring view) keeps its em dash — run-view-only, unchanged", () => {
+    const { container } = render(
+      <LastRun rounds={[{ iteration: 1, outcome: null, outcome_detail: null }]} />,
+    );
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(container.querySelector(".tv-verdict--failed")).toBeNull();
+  });
 });

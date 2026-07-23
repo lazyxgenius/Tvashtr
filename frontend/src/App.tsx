@@ -13,6 +13,7 @@ import { SidePanel } from "./panel/SidePanel";
 import { TeamNodePanel } from "./panel/TeamNodePanel";
 import {
   acknowledgeTask,
+  ApiError,
   type AuthUser,
   cancelRun,
   type Config,
@@ -99,7 +100,9 @@ export default function App({
   // directly); the panel's Run calls `handleLaunch` with the assembled options.
   const [launchOpen, setLaunchOpen] = useState(false);
   const [acting, setActing] = useState(false);
-  const [error, setError] = useState(false);
+  // M-legible: the launch error is the backend's REAL reason (or the generic network message), not a
+  // bare boolean — a 422/429 means the backend answered, so we render what it said. `null` = no error.
+  const [error, setError] = useState<string | null>(null);
   // Run-view selection is by NODE ID (Option A): a topology-edited team can carry duplicate role
   // names (e.g. two blank thinkers), so the run panel keys on the unique node id — the run-view twin
   // of the authoring `selectedNodeId` below.
@@ -382,15 +385,20 @@ export default function App({
       if (!currentTeamId) return;
       setLaunchOpen(false);
       setStarting(true);
-      setError(false);
+      setError(null);
       resetRunState();
       try {
         const id = await runTeam(currentTeamId, opts);
         const g = await getGraph(id);
         setGraph(g);
         setRunId(id);
-      } catch {
-        setError(true);
+      } catch (e) {
+        // M-legible: a backend answer (ApiError — 422 invalid graph, 429 ceiling, …) carries the
+        // real reason; only a genuine network failure (no status) keeps the "is the backend running?"
+        // guess.
+        setError(
+          e instanceof ApiError ? e.message : "Couldn't start the run — is the backend running?",
+        );
       } finally {
         setStarting(false);
       }
@@ -402,7 +410,7 @@ export default function App({
   // Refetches its graph so any edits made elsewhere are reflected.
   const handleEditTeam = useCallback(() => {
     resetRunState();
-    setError(false);
+    setError(null);
     if (currentTeamId) void loadTeam(currentTeamId);
   }, [resetRunState, loadTeam, currentTeamId]);
 
@@ -673,6 +681,7 @@ export default function App({
                     onLaunch={(opts) => void handleLaunch(opts)}
                     onClose={() => setLaunchOpen(false)}
                     hosted={config?.hosted_mode ?? false}
+                    githubInstallUrl={config?.github_install_url ?? ""}
                     githubManageUrl={config?.github_manage_url ?? ""}
                   />
                 )}
@@ -710,9 +719,7 @@ export default function App({
           </div>
         )}
         {mode === "single" && error && (
-          <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
-            Couldn't start the run — is the backend running?
-          </span>
+          <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>{error}</span>
         )}
         {mode === "single" && authoring && teamError && (
           <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>

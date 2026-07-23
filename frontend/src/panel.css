@@ -705,6 +705,12 @@
   background: var(--panel-300);
   color: var(--ink-600);
 }
+/* M-legible: a FAILED round — the danger tone (red family, distinct from the coral "changes"
+   review outcome) so a node that died is visibly the failure, not an em-dash-grey round. */
+.tv-verdict--failed {
+  background: var(--red-100);
+  color: var(--red-500);
+}
 /* §14.3: the persisted verdict reasons under a changes_requested round — muted, readable,
    wraps multi-line; no ad-hoc hex, no animation. */
 .tv-verdict__reasons {

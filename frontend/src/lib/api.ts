@@ -197,6 +197,27 @@ export class ApiError extends Error {
   }
 }
 
+// M-legible: FastAPI's error `detail` is sometimes a string, sometimes a `{message}` object (and a
+// few endpoints put the human text at a top-level `message`). Read whichever is present so a failed
+// call can surface the backend's REAL reason — a 422/429 means it answered, not that it is down —
+// falling back to the caller's generic text when the body is absent or unparseable.
+async function errorMessageFromBody(res: Response, fallback: string): Promise<string> {
+  try {
+    const body: unknown = await res.json();
+    const detail = (body as { detail?: unknown }).detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (detail && typeof detail === "object") {
+      const nested = (detail as { message?: unknown }).message;
+      if (typeof nested === "string" && nested.trim()) return nested;
+    }
+    const top = (body as { message?: unknown }).message;
+    if (typeof top === "string" && top.trim()) return top;
+  } catch {
+    // a non-JSON / empty body → the generic fallback below
+  }
+  return fallback;
+}
+
 // A single 401 seam: AuthGate registers a handler here; the GET helpers below invoke it when the
 // server rejects an absent/expired session, so a mid-session expiry drops the whole app back to the
 // login screen on the next poll. Set to null on unmount.
@@ -401,7 +422,12 @@ export async function runTeam(teamGraphId: string, opts: RunTeamOptions = {}): P
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`POST /api/runs -> ${res.status}`);
+  if (!res.ok) {
+    // M-legible: carry the backend's real reason (422 invalid graph, 429 ceiling, …) on an ApiError
+    // so App.tsx renders it instead of the misleading "is the backend running?" guess.
+    const message = await errorMessageFromBody(res, `POST /api/runs -> ${res.status}`);
+    throw new ApiError(res.status, message);
+  }
   const data = (await res.json()) as { run_id: string };
   return data.run_id;
 }

@@ -103,6 +103,15 @@ def _fresh_account() -> tuple[TestClient, uuid.UUID]:
     return c, uuid.UUID(resp.json()["id"])
 
 
+def _github_linked_account(github_user_id: int) -> tuple[TestClient, uuid.UUID]:
+    """A fresh account whose ``users.github_user_id`` is set (as the OAuth callback would set it)
+    but with ZERO github_installations rows — the M-legible "stranded" state the backfill heals."""
+    c, uid = _fresh_account()
+    with session_scope() as s:
+        s.get(User, uid).github_user_id = github_user_id
+    return c, uid
+
+
 # ---------------------------------------------------------------- /api/config
 
 
@@ -423,3 +432,181 @@ def test_secrets_never_leak_through_repos(monkeypatch, caplog):
         stored = f"{row.id}|{row.owner_id}|{row.installation_id}"  # every column, serialized
         for secret in (INSTALL_TOKEN_SENTINEL, CLIENT_SECRET_SENTINEL, PRIVATE_KEY_PEM):
             assert secret not in stored  # nothing secret is persisted
+
+
+# ------------------------------------------------ M-legible: the stranded-account backfill (item 4)
+
+
+def test_repos_backfills_a_stranded_account_from_the_app_side(monkeypatch):
+    """REPRODUCE (M-legible item 4): an account with ZERO installation rows whose
+    ``github_user_id`` matches an APP-side installation (``GET /app/installations``) is self-healed
+    on the ``/api/github/repos`` zero-row path — the row is created and its repos returned, with NO
+    re-sign-in. RED on ``main``: discovery runs only in the OAuth callback (needs a user token that
+    is never stored), so the stranded account returns ``{repos: [], installation_count: 0}``."""
+    gh_uid = uuid.uuid4().int % 2_000_000_000
+    ca, a_id = _github_linked_account(gh_uid)
+    inst_id = uuid.uuid4().int % 2_000_000_000
+    with session_scope() as s:  # precondition: genuinely stranded (no rows)
+        assert (
+            s.execute(select(GithubInstallation).where(GithubInstallation.owner_id == a_id))
+            .scalars()
+            .first()
+            is None
+        )
+    monkeypatch.setattr(
+        github_app,
+        "list_app_installations",
+        lambda: [{"id": inst_id, "account": {"id": gh_uid, "login": "octo"}}],
+    )
+    monkeypatch.setattr(
+        github_app,
+        "list_installation_repositories",
+        lambda inst: (
+            [
+                {
+                    "name": "healed",
+                    "full_name": "o/healed",
+                    "private": False,
+                    "default_branch": "main",
+                    "html_url": "https://github.com/o/healed",
+                }
+            ]
+            if inst == inst_id
+            else []
+        ),
+    )
+    body = ca.get("/api/github/repos").json()
+    assert body["installation_count"] == 1
+    assert [r["full_name"] for r in body["repos"]] == ["o/healed"]
+    # The row is now persisted and owned by the stranded account — a re-fetch needs no backfill.
+    with session_scope() as s:
+        row = s.execute(
+            select(GithubInstallation).where(GithubInstallation.installation_id == inst_id)
+        ).scalar_one()
+        assert row.owner_id == a_id
+
+
+def test_repos_backfill_ignores_an_installation_matching_no_user(monkeypatch):
+    """OWNER-SCOPING INVARIANT (M-legible): an APP-side installation whose ``account.id`` matches NO
+    ``users`` row must create NO ``github_installations`` row — the backfill links STRICTLY on
+    ``account.id == github_user_id``, never blindly to the requesting account. Mutation-real: RED
+    against a naive backfill that adopts every app installation for the caller."""
+    ca, _ = _github_linked_account(uuid.uuid4().int % 2_000_000_000)
+    orphan_inst = uuid.uuid4().int % 2_000_000_000
+    orphan_account = uuid.uuid4().int % 2_000_000_000  # matches no users.github_user_id
+    monkeypatch.setattr(
+        github_app,
+        "list_app_installations",
+        lambda: [{"id": orphan_inst, "account": {"id": orphan_account, "login": "nobody"}}],
+    )
+    monkeypatch.setattr(github_app, "list_installation_repositories", lambda inst: [])
+    body = ca.get("/api/github/repos").json()
+    assert body == {"repos": [], "installation_count": 0}  # nothing linked to the caller
+    with session_scope() as s:
+        assert (
+            s.execute(
+                select(GithubInstallation).where(GithubInstallation.installation_id == orphan_inst)
+            ).scalar_one_or_none()
+            is None
+        )  # the unmatched installation created NO row anywhere
+
+
+def test_repos_backfill_never_leaks_the_caller_across_accounts(monkeypatch):
+    """OWNER-SCOPING INVARIANT (M-legible): account A's zero-row backfill, even when the APP-side
+    list contains an installation for a DIFFERENT account B, never returns B's repos to A. The
+    backfill links by ``account.id``, and the endpoint re-read is owner-scoped."""
+    gh_b = uuid.uuid4().int % 2_000_000_000
+    _cb, _b_id = _github_linked_account(gh_b)  # account B, github-linked
+    gh_a = uuid.uuid4().int % 2_000_000_000
+    ca, a_id = _github_linked_account(gh_a)  # account A, stranded (no rows), the caller
+    inst_b = uuid.uuid4().int % 2_000_000_000
+    monkeypatch.setattr(
+        github_app,
+        "list_app_installations",
+        lambda: [{"id": inst_b, "account": {"id": gh_b, "login": "acct-b"}}],  # B's install only
+    )
+    monkeypatch.setattr(
+        github_app,
+        "list_installation_repositories",
+        lambda inst: [{"name": "b-repo", "full_name": "b/repo"}],
+    )
+    body = ca.get("/api/github/repos").json()
+    assert body == {"repos": [], "installation_count": 0}  # A sees NOTHING of B's
+    with session_scope() as s:  # the row that WAS created belongs to B, never to A
+        row = s.execute(
+            select(GithubInstallation).where(GithubInstallation.installation_id == inst_b)
+        ).scalar_one()
+        assert row.owner_id != a_id
+
+
+def test_repos_with_installations_skips_the_backfill(monkeypatch):
+    """The self-heal fires ONLY on the zero-row path: an account that already has an installation
+    must never pay the extra ``GET /app/installations`` call."""
+    ca, a_id = _fresh_account()
+    inst = uuid.uuid4().int % 2_000_000_000
+    with session_scope() as s:
+        s.add(GithubInstallation(owner_id=a_id, installation_id=inst))
+
+    def fail_if_called():
+        raise AssertionError("list_app_installations must NOT be called when rows already exist")
+
+    monkeypatch.setattr(github_app, "list_app_installations", fail_if_called)
+    monkeypatch.setattr(github_app, "list_installation_repositories", lambda i: [])
+    resp = ca.get("/api/github/repos")
+    assert resp.status_code == 200
+    assert resp.json()["installation_count"] == 1
+
+
+def test_repos_backfill_failure_does_not_500(monkeypatch, caplog):
+    """A backfill GitHub failure must not 500 the endpoint — it logs and falls through to the honest
+    empty response. Mutation-real: RED against an un-guarded backfill that lets the error escape."""
+    ca, _ = _github_linked_account(uuid.uuid4().int % 2_000_000_000)
+
+    def boom():
+        raise github_app.GithubAppError("GitHub GET /app/installations -> HTTP 500")
+
+    monkeypatch.setattr(github_app, "list_app_installations", boom)
+    caplog.set_level(logging.ERROR)
+    resp = ca.get("/api/github/repos")
+    assert resp.status_code == 200
+    assert resp.json() == {"repos": [], "installation_count": 0}
+
+
+def test_backfill_path_never_leaks_the_app_jwt_or_tokens(monkeypatch, caplog):
+    """REPRODUCE + SECRETS INVARIANT (M-legible): drive the REAL github_app client through the
+    ``_http`` seam so the backfill mints an App JWT and an installation token; none of those, the
+    client secret, nor the private key may appear in the response or a log line. RED on ``main``
+    (no backfill runs, so the repos never appear); and RED against a token-leaking client."""
+    _configure_hosted(monkeypatch)
+    gh_uid = uuid.uuid4().int % 2_000_000_000
+    ca, _a_id = _github_linked_account(gh_uid)
+    inst_id = uuid.uuid4().int % 2_000_000_000
+
+    def fake_http(method, url, *, token=None, body=None, accept="application/vnd.github+json"):
+        if url.endswith("/access_tokens"):  # must precede the /app/installations substring match
+            return {"token": INSTALL_TOKEN_SENTINEL, "expires_at": _iso_future()}
+        if "/app/installations" in url:  # GET /app/installations?per_page=… (App JWT presented)
+            return [{"id": inst_id, "account": {"id": gh_uid, "login": "octo"}}]
+        if "/installation/repositories" in url:
+            return {
+                "repositories": [
+                    {
+                        "name": "r",
+                        "full_name": "o/r",
+                        "private": False,
+                        "default_branch": "main",
+                        "html_url": "https://github.com/o/r",
+                    }
+                ]
+            }
+        raise AssertionError(f"unexpected GitHub URL: {url!r}")
+
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    caplog.set_level(logging.DEBUG)
+    resp = ca.get("/api/github/repos")
+    assert resp.status_code == 200
+    assert [r["full_name"] for r in resp.json()["repos"]] == ["o/r"]  # backfill + fetch really ran
+    for secret in (INSTALL_TOKEN_SENTINEL, CLIENT_SECRET_SENTINEL, PRIVATE_KEY_PEM):
+        assert secret not in resp.text
+        assert secret not in str(resp.headers)
+        assert secret not in caplog.text

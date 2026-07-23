@@ -50,11 +50,19 @@ function stubRepos(result: GithubReposResponse) {
   return fetchMock;
 }
 
+// M-legible: a `GET /api/github/repos` that REJECTS (network/500) — the third, distinct state.
+function stubReposReject() {
+  const fetchMock = vi.fn(() => Promise.reject(new Error("network down")));
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 function renderPanel(opts?: {
   nodes?: TeamGraphNode[];
   onLaunch?: ReturnType<typeof vi.fn>;
   hosted?: boolean;
   githubManageUrl?: string;
+  githubInstallUrl?: string;
 }) {
   const onLaunch = opts?.onLaunch ?? vi.fn();
   const onClose = vi.fn();
@@ -66,6 +74,7 @@ function renderPanel(opts?: {
       onClose={onClose}
       hosted={opts?.hosted ?? false}
       githubManageUrl={opts?.githubManageUrl ?? ""}
+      githubInstallUrl={opts?.githubInstallUrl ?? ""}
     />,
   );
   return { onLaunch, onClose };
@@ -426,5 +435,57 @@ describe("LaunchPanel — hosted mode (M-h1b)", () => {
     // The regression proof: the self-hosted harness is byte-for-byte the prior panel.
     expect(screen.getByLabelText("Repo path")).toBeInTheDocument();
     expect(screen.queryByLabelText("Repository")).toBeNull();
+  });
+});
+
+// M-legible item 1: the empty repo list is THREE different problems, not one. The panel keeps the
+// already-returned `installation_count` (+ a rejection flag) and tells each apart.
+describe("LaunchPanel — hosted repo states (M-legible)", () => {
+  it("installation_count 0 → the INSTALL message + install link (never the add-repos one)", async () => {
+    stubRepos({ repos: [], installation_count: 0 });
+    const installUrl = "https://github.com/login/oauth/authorize?client_id=Iv1.abc";
+    renderPanel({ hosted: true, githubInstallUrl: installUrl, githubManageUrl: "https://manage" });
+    fireEvent.click(screen.getByRole("button", { name: "On" }));
+
+    // Installed NOWHERE ⇒ tell them to install, and link to the install door.
+    expect(
+      await screen.findByText(/installed the Tvashtr GitHub App on any account/i),
+    ).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /Install the Tvashtr GitHub App/i });
+    expect(link).toHaveAttribute("href", installUrl);
+    // NOT the "add repositories" advice — that dead-ends on an installation that does not exist.
+    expect(screen.queryByText(/Add repositories on GitHub/i)).toBeNull();
+  });
+
+  it("installation_count > 0 with no repos → today's add-repositories link (the case it fits)", async () => {
+    stubRepos({ repos: [], installation_count: 2 });
+    renderPanel({
+      hosted: true,
+      githubManageUrl: "https://manage",
+      githubInstallUrl: "https://install",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "On" }));
+
+    const link = await screen.findByRole("link", { name: /Add repositories on GitHub/i });
+    expect(link).toHaveAttribute("href", "https://manage");
+    // The install message is for a DIFFERENT problem and must not appear here.
+    expect(screen.queryByText(/installed the Tvashtr GitHub App on any account/i)).toBeNull();
+  });
+
+  it("the repos fetch REJECTS → a distinct 'couldn't reach the server' message (not 'no repos')", async () => {
+    stubReposReject();
+    renderPanel({
+      hosted: true,
+      githubManageUrl: "https://manage",
+      githubInstallUrl: "https://install",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "On" }));
+
+    expect(
+      await screen.findByText(/Couldn't reach the server to list your repositories/i),
+    ).toBeInTheDocument();
+    // A failure is NOT collapsed into either "no repos" message (the current .catch bug).
+    expect(screen.queryByText(/No repositories available/i)).toBeNull();
+    expect(screen.queryByText(/installed the Tvashtr GitHub App on any account/i)).toBeNull();
   });
 });

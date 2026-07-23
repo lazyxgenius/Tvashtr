@@ -426,4 +426,13 @@ describe("Dashboard", () => {
 
     expect(m.getTeamRuns).not.toHaveBeenCalled();
   });
+
+  // M-legible item 3: deepseek is the product's OWN default agent model, so the remedy screen must
+  // suggest the one provider a default run most needs.
+  it("offers deepseek — the default agent model — in the provider datalist (M-legible)", async () => {
+    setup({ providers: [] });
+    await screen.findByText(/Add your provider API keys/i);
+    const option = document.querySelector('#tv-provider-list option[value="deepseek"]');
+    expect(option).not.toBeNull();
+  });
 });

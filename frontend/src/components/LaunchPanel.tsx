@@ -69,9 +69,13 @@ function askedActionVerb(prompt: string | null): string | null {
  * local path — the free-text path box is replaced by a Repository dropdown fed by
  * `GET /api/github/repos`, the base branch is the repo's read-only `default_branch` (no picker, no
  * Scope picker, no large-repo hint — /api/repo/inspect is fenced server-side in hosted mode), and
- * the launch threads the selected repo's `full_name` as `github_repo`. An empty repo list surfaces
- * the "Add repositories on GitHub" install link (`githubManageUrl`) — the only way out for an
- * account whose app is installed on no repo.
+ * the launch threads the selected repo's `full_name` as `github_repo`.
+ *
+ * M-legible: an empty repo list is THREE different problems, so the panel keeps the already-returned
+ * `installation_count` (and tracks a fetch rejection separately) to tell them apart — the App
+ * installed nowhere ⇒ the INSTALL link (`githubInstallUrl`); installed but granting no repos ⇒ the
+ * "Add repositories" manage link (`githubManageUrl`); the fetch failed ⇒ a distinct server-unreachable
+ * message. The wrong-half-the-time single message is gone.
  */
 export function LaunchPanel({
   teamNodes,
@@ -79,15 +83,18 @@ export function LaunchPanel({
   onLaunch,
   onClose,
   hosted = false,
+  githubInstallUrl = "",
   githubManageUrl = "",
 }: {
   teamNodes: TeamGraphNode[];
   starting: boolean;
   onLaunch: (opts: RunTeamOptions) => void;
   onClose: () => void;
-  // M-h1b: the hosted posture (from /api/config `hosted_mode`) + the "add repositories" install URL
-  // (`github_manage_url`). Both default so the self-hosted callers/tests render byte-for-byte as before.
+  // M-h1b: the hosted posture (from /api/config `hosted_mode`). M-legible: the INSTALL door
+  // (`github_install_url` — the same OAuth URL the auth path uses) and the "add repositories" manage
+  // URL (`github_manage_url`). All default so the self-hosted callers/tests render byte-for-byte as before.
   hosted?: boolean;
+  githubInstallUrl?: string;
   githubManageUrl?: string;
 }) {
   const [idea, setIdea] = useState("");
@@ -106,10 +113,15 @@ export function LaunchPanel({
   const [reposLoading, setReposLoading] = useState(false);
   const [reposRequested, setReposRequested] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState("");
+  // M-legible: the `installation_count` the endpoint already returns (0 ⇒ installed nowhere) and a
+  // SEPARATE flag for a fetch rejection — so a network/500 is never collapsed into "no repos".
+  const [installationCount, setInstallationCount] = useState(0);
+  const [reposFailed, setReposFailed] = useState(false);
 
   // Fetch the account's repos lazily — only once the user opts to work on a repo in hosted mode (so
-  // a greenfield / self-hosted panel never calls the endpoint). A failure resolves to an empty list
-  // ⇒ the "Add repositories on GitHub" escape hatch shows (the only way out).
+  // a greenfield / self-hosted panel never calls the endpoint). M-legible: keep `installation_count`
+  // and route a rejection to its OWN flag (not an empty list), so the render can tell the three
+  // empty-list problems apart.
   useEffect(() => {
     if (!hosted || !repoOn || reposRequested) return;
     setReposRequested(true);
@@ -117,9 +129,10 @@ export function LaunchPanel({
     getGithubRepos()
       .then((res) => {
         setRepos(res.repos);
+        setInstallationCount(res.installation_count);
         if (res.repos.length > 0) setSelectedRepo(res.repos[0].full_name);
       })
-      .catch(() => setRepos([]))
+      .catch(() => setReposFailed(true))
       .finally(() => setReposLoading(false));
   }, [hosted, repoOn, reposRequested]);
 
@@ -410,7 +423,24 @@ export function LaunchPanel({
               </>
             )}
 
-            {repos !== null && repos.length === 0 && (
+            {/* M-legible: an empty list is THREE different problems. The fetch failed, the App is
+                installed nowhere, or it grants no repos — each gets its own message + correct link. */}
+            {reposFailed && (
+              <div className="tv-launch__note" role="status">
+                <span>Couldn't reach the server to list your repositories.</span>
+              </div>
+            )}
+
+            {!reposFailed && repos !== null && repos.length === 0 && installationCount === 0 && (
+              <div className="tv-launch__note">
+                <span>You haven’t installed the Tvashtr GitHub App on any account yet. </span>
+                <a className="tv-btn tv-btn--link" href={githubInstallUrl}>
+                  Install the Tvashtr GitHub App →
+                </a>
+              </div>
+            )}
+
+            {!reposFailed && repos !== null && repos.length === 0 && installationCount > 0 && (
               <div className="tv-launch__note">
                 <span>No repositories available on your GitHub App installation. </span>
                 <a className="tv-btn tv-btn--link" href={githubManageUrl}>
