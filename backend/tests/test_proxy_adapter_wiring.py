@@ -92,6 +92,10 @@ def test_local_off_builds_direct_llm_with_the_threaded_owner_key(tmp_path, monke
         "retry_max_wait": 120,
         "temperature": 0.0,
         "usage_id": "tvashtr-agent",
+        # M-thrift: the explicit output ceiling every adapter now stamps (Settings default 4096).
+        # Unset, the SDK asked for the model's own maximum and OpenRouter reserved that much credit
+        # up front, 402-ing a low-balance key before generating anything.
+        "max_output_tokens": 4096,
     }
 
 
@@ -106,6 +110,10 @@ def test_docker_off_builds_direct_llm_with_the_threaded_owner_key(tmp_path, monk
         "retry_max_wait": 120,
         "temperature": 0.0,
         "usage_id": "tvashtr-agent",
+        # M-thrift: the explicit output ceiling every adapter now stamps (Settings default 4096).
+        # Unset, the SDK asked for the model's own maximum and OpenRouter reserved that much credit
+        # up front, 402-ing a low-balance key before generating anything.
+        "max_output_tokens": 4096,
     }
 
 
@@ -122,6 +130,10 @@ def test_local_on_routes_through_proxy_at_loopback(tmp_path, monkeypatch):
         "base_url": "http://127.0.0.1:4000",
         "temperature": 0.0,
         "usage_id": "tvashtr-agent",
+        # M-thrift: the explicit output ceiling every adapter now stamps (Settings default 4096).
+        # Unset, the SDK asked for the model's own maximum and OpenRouter reserved that much credit
+        # up front, 402-ing a low-balance key before generating anything.
+        "max_output_tokens": 4096,
     }
 
 
@@ -137,6 +149,10 @@ def test_docker_on_routes_through_proxy_at_host_docker_internal(tmp_path, monkey
         "base_url": "http://host.docker.internal:4000",
         "temperature": 0.0,
         "usage_id": "tvashtr-agent",
+        # M-thrift: the explicit output ceiling every adapter now stamps (Settings default 4096).
+        # Unset, the SDK asked for the model's own maximum and OpenRouter reserved that much credit
+        # up front, 402-ing a low-balance key before generating anything.
+        "max_output_tokens": 4096,
     }
 
 

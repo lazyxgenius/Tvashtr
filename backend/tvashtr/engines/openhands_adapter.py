@@ -332,6 +332,20 @@ _PROVIDER_ERROR_SIGNATURES = (
     "apiconnectionerror",
     "internalservererror",
     "serviceunavailableerror",
+    # --- M-thrift: the key is live but its BALANCE cannot cover the request ---
+    # The wall a dead paid provider actually puts up. OpenRouter answers HTTP 402 "This request
+    # requires more credits, or fewer max_tokens"; DeepSeek answers 402 "Insufficient Balance".
+    # Neither is transient (no amount of retrying mints credit) and neither is OUR run budget
+    # (``_BUDGET_ERROR_SIGNATURES`` owns that terminal) — it is precisely the hard primary-provider
+    # failure a fallback on a DIFFERENT provider rescues, which is why the flag exists.
+    #
+    # Matched by distinctive PHRASE, never by a bare ``"402"``: three digits appear in token counts,
+    # ids and costs, and a false positive here spends a whole second agent run.
+    "requires more credits",
+    "insufficient credits",
+    "insufficient balance",
+    "insufficient_quota",
+    "payment required",
     # --- the model does not exist for this provider / key ---
     "model not found",
     "model_not_found",
@@ -539,6 +553,12 @@ class OpenHandsAdapter:
                     ),
                     temperature=0.0,
                     usage_id="tvashtr-agent",
+                    # M-thrift: an EXPLICIT output ceiling. Unset, the SDK resolves the model's own
+                    # maximum and litellm sends it as ``max_tokens`` — which OpenRouter reserves
+                    # against the key's credit balance before generating anything, 402-ing a
+                    # low-balance key on a request that would have cost cents. The condenser's
+                    # ``model_copy`` below inherits it.
+                    max_output_tokens=settings.agent_max_output_tokens,
                 )
                 # M-ctx0 (C1): the in-transcript summarizing condenser (keep_first=2 / max_size=80)
                 # via a model_copy under its OWN usage_id (fresh meter). On a REUSED Conversation

@@ -250,11 +250,16 @@ def _graph_nodes(client, tid: str) -> dict[str, dict]:
 
 def test_fresh_node_graph_get_has_null_tools_and_skills(client):
     """Inertness at the GET boundary: a freshly-templated team's nodes expose ``tool_config`` and
-    ``skills`` keys, both NULL (nothing set them yet)."""
+    ``skills`` keys, both NULL — EXCEPT that M-thrift now stamps the vendored ``caveman`` skill on
+    every WORKER node, so a worker's ``skills`` carries exactly that one source and nothing else.
+    ``tool_config`` stays NULL everywhere; every non-worker node stays NULL on both."""
     tid = create_team_from_template("plan_review", "Fresh nulls", auth_user_id())
     for node in client.get(f"/api/teams/{tid}/graph").json()["nodes"]:
         assert node["tool_config"] is None
-        assert node["skills"] is None
+        if node["kind"] == "agent":
+            assert [s["name"] for s in node["skills"]] == ["caveman"]
+        else:
+            assert node["skills"] is None
 
 
 def test_patch_get_round_trip_and_clone_carries_tools_and_skills(client):

@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane.teams import (
+    _PROVIDER_DEFAULT_ORDER,
     PROVIDER_DEFAULT_MODEL,
     account_default_model,
     engineer_model,
@@ -35,8 +36,22 @@ def test_account_default_model_none_when_no_mapped_provider():
 
 
 def test_account_default_model_preference_order_is_deterministic():
-    # openrouter wins over nvidia_nim when both are held (the fixed preference order).
-    assert account_default_model({"nvidia_nim", "openrouter"}) == "openrouter/openai/gpt-4o-mini"
+    # M-thrift REORDERED the walk: nvidia_nim FIRST, openrouter LAST. openrouter's free tier is
+    # credit-metered, so a low-balance key is refused outright (402) where NIM's request-metered
+    # tier only throttles — and the tie-break's job is to maximise the chance a new account's first
+    # run succeeds. Was: openrouter won this pair.
+    assert account_default_model({"nvidia_nim", "openrouter"}) == (
+        "nvidia_nim/meta/llama-3.3-70b-instruct"
+    )
+    # The relative order of everything between the two moved entries is UNCHANGED.
+    assert _PROVIDER_DEFAULT_ORDER == (
+        "nvidia_nim",
+        "openai",
+        "gemini",
+        "groq",
+        "deepseek",
+        "openrouter",
+    )
 
 
 def test_provider_default_map_slugs_canonicalize_to_their_own_key():

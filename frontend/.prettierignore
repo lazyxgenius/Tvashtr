@@ -11,5 +11,10 @@ playwright-report
 .october
 .claude
 .grok
+.cursor
+.codex
+.gemini
+.mcp.json
+opencode.json
 AGENTS.md
 CLAUDE.md

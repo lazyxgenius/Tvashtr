@@ -531,6 +531,12 @@ class OpenHandsFlyAdapter:
                     **agent_llm_routing(settings, model, "fly", api_key_override=task.llm_api_key),
                     temperature=0.0,
                     usage_id="tvashtr-agent",
+                    # M-thrift: an EXPLICIT output ceiling. Unset, the SDK resolves the model's own
+                    # maximum and litellm sends it as ``max_tokens`` — which OpenRouter reserves
+                    # against the key's credit balance before generating anything, 402-ing a
+                    # low-balance key on a request that would have cost cents. The condenser's
+                    # ``model_copy`` below inherits it.
+                    max_output_tokens=settings.agent_max_output_tokens,
                 )
                 condenser_llm = llm.model_copy(update={"usage_id": "tvashtr-condenser"})
                 condenser_llm.reset_metrics()

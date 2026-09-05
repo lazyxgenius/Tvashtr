@@ -15,6 +15,7 @@ import uuid
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
 
 from dbos import DBOS
 from sqlalchemy import delete, func, select, update
@@ -188,18 +189,27 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
 PROVIDER_DEFAULT_MODEL: dict[str, str] = {
     p: e["default_model"] for p, e in PROVIDER_CATALOGUE.items()
 }
-# The deterministic preference order when the account holds several mapped providers: ``openrouter``
-# is the historical default provider (the legacy ``default_model``/``engineer_model`` slugs live
-# there), so it wins first. M-runnable APPENDS ``deepseek`` LAST — the existing entries are NOT
-# reordered: order only breaks ties for MULTI-key accounts, and silently changing those accounts'
-# defaults is not this milestone's business.
+# The deterministic preference order when the account holds several mapped providers.
+#
+# M-thrift REORDERS it: ``nvidia_nim`` FIRST, ``openrouter`` LAST. The tie-break's job is to
+# maximise the chance a new account's FIRST run succeeds, and openrouter had been winning it for a
+# historical reason only — the legacy ``default_model``/``engineer_model`` slugs happened to live
+# there. In practice it is the provider that fails: its free tier is credit-metered, so a
+# low-balance key is refused with a 402 pre-flight credit reservation before generating a token
+# (the wall the output ceiling and the 402 classifier above exist for). NVIDIA NIM's tier is
+# request-metered, not balance-metered, so it degrades to throttling — which the agent's retry
+# envelope already rides out — instead of a hard refusal.
+#
+# This changes ONLY the defaults stamped on NEWLY created teams for accounts holding 2+ providers.
+# Persisted node models are never rewritten, and a single-provider account is unaffected: the walk
+# has exactly one candidate whatever the order.
 _PROVIDER_DEFAULT_ORDER: tuple[str, ...] = (
-    "openrouter",
     "nvidia_nim",
     "openai",
     "gemini",
     "groq",
     "deepseek",
+    "openrouter",
 )
 
 
@@ -222,6 +232,76 @@ def public_provider_catalogue() -> list[dict]:
         {"provider": p, "default_model": e["default_model"], "presets": list(e["presets"])}
         for p, e in PROVIDER_CATALOGUE.items()
     ]
+
+
+def account_fallback_model(held_providers: set[str]) -> str | None:
+    """The default FULL model slug of the SECOND catalogued provider (preference order) the account
+    holds a credential for, else ``None``.
+
+    This is the node's ``config["fallback_model"]`` — the one authored escape hatch the executor
+    uses when the PRIMARY provider hard-fails (a dead key, an unreachable provider, or the 402
+    credit wall this milestone made classifiable). Deliberately the SECOND entry of the SAME walk
+    :func:`account_default_model` takes its first from, so primary and fallback can never name the
+    same provider and the failover always crosses a real vendor boundary.
+
+    An account holding fewer than two catalogued providers has nowhere to fail over TO, so this
+    returns ``None`` and the builders write no key at all — that node's ``config`` stays
+    byte-identical to what it was before this milestone. Pure + unit-tested; no DB, no env."""
+    ordered = [
+        p for p in _PROVIDER_DEFAULT_ORDER if p in held_providers and p in PROVIDER_DEFAULT_MODEL
+    ]
+    return PROVIDER_DEFAULT_MODEL[ordered[1]] if len(ordered) > 1 else None
+
+
+# M-thrift: the vendored ``caveman`` skill — an ultra-compressed output style that keeps technical
+# substance and drops filler. Stamped on every WORKER node so an agent round emits far fewer
+# completion tokens (the run's dominant per-round cost) with no change to what it DOES.
+#
+# READ FROM DISK, ONCE, AT IMPORT — never fetched. The agent runs inside a Fly microVM behind the
+# M-h3 egress fence, so a runtime fetch would fail closed; and the content has to be materialized
+# anyway, because an ``inline`` skill source stores its own text (see ``node_skills``). Provenance,
+# the upstream commit and the MIT license live beside the file in ``skills/caveman/``.
+_CAVEMAN_SKILL_PATH = Path(__file__).resolve().parent.parent / "skills" / "caveman" / "SKILL.md"
+CAVEMAN_SKILL_MD: str = _CAVEMAN_SKILL_PATH.read_text(encoding="utf-8")
+
+
+def caveman_skill_sources() -> list[dict]:
+    """The worker skill list a builder stamps: the vendored caveman skill, ``always`` on.
+
+    ``always`` (not ``trigger``/``agent``) because the point is a standing output style for every
+    turn — a trigger-gated compression skill would save nothing on the turns that cost the most.
+    A fresh list per call: these become each node's own mutable ``skills`` JSON, so they must never
+    share one object across nodes."""
+    return [
+        {
+            "type": "inline",
+            "name": "caveman",
+            "content": CAVEMAN_SKILL_MD,
+            "mode": "always",
+        }
+    ]
+
+
+def _stamp_account_defaults(nodes: list, held_providers: set[str] | None) -> list:
+    """Stamp M-thrift's two per-node defaults across a builder's freshly-constructed node list, and
+    return it (so a builder can inline this straight into ``session.add_all``).
+
+    * every MODEL-BEARING node (``model is not None`` — thinker or worker alike) gets
+      ``config["fallback_model"]``, so a dead primary provider costs a swap and not the run;
+    * every WORKER node (``kind == "agent"`` — the engine-backed capability) gets the caveman skill.
+
+    ONE rule in ONE place rather than the same two kwargs repeated across seventeen ``AgentNode``
+    constructions, which is how a builder silently drifts out of the set. Both stamps are additive:
+    with no second held provider and on a non-worker node this function changes nothing, so a
+    node's ``config``/``skills`` stay byte-identical to the pre-M-thrift builder output.
+    Gates and terminals carry no model and no engine, so neither stamp can reach them."""
+    fallback = account_fallback_model(held_providers or set())
+    for node in nodes:
+        if node.model is not None and fallback is not None:
+            node.config = {**(node.config or {}), "fallback_model": fallback}
+        if node.kind == "agent":
+            node.skills = caveman_skill_sources()
+    return nodes
 
 
 def _node_default_model(held_providers: set[str] | None, fallback: str) -> str:
@@ -295,7 +375,9 @@ def build_two_node_team(
             position={"x": 260, "y": 160},
             config={"terminal_kind": "stop"},
         )
-        session.add_all([pm, prd_gate, engineer, ship, stop])
+        session.add_all(
+            _stamp_account_defaults([pm, prd_gate, engineer, ship, stop], held_providers)
+        )
         session.flush()
 
         session.add_all(
@@ -446,7 +528,11 @@ def build_review_loop_team(
             position={"x": 260, "y": 160},
             config={"terminal_kind": "stop"},
         )
-        session.add_all([pm, prd_gate, engineer, reviewer, escalation_gate, ship, stop])
+        session.add_all(
+            _stamp_account_defaults(
+                [pm, prd_gate, engineer, reviewer, escalation_gate, ship, stop], held_providers
+            )
+        )
         session.flush()
 
         session.add_all(
@@ -607,7 +693,9 @@ def build_thinker_chain_team(
             position={"x": 520, "y": 160},
             config={"terminal_kind": "stop"},
         )
-        session.add_all([pm, architect, prd_gate, engineer, ship, stop])
+        session.add_all(
+            _stamp_account_defaults([pm, architect, prd_gate, engineer, ship, stop], held_providers)
+        )
         session.flush()
 
         session.add_all(
@@ -762,7 +850,12 @@ def build_plan_review_team(
             position={"x": 520, "y": 160},
             config={"terminal_kind": "stop"},
         )
-        session.add_all([pm, architect, prd_gate, engineer, reviewer, escalation_gate, ship, stop])
+        session.add_all(
+            _stamp_account_defaults(
+                [pm, architect, prd_gate, engineer, reviewer, escalation_gate, ship, stop],
+                held_providers,
+            )
+        )
         session.flush()
 
         session.add_all(
@@ -962,7 +1055,20 @@ def build_full_squad_team(
             config={"terminal_kind": "stop"},
         )
         session.add_all(
-            [pm, architect, prd_gate, engineer, reviewer, escalation_gate, ship_gate, ship, stop]
+            _stamp_account_defaults(
+                [
+                    pm,
+                    architect,
+                    prd_gate,
+                    engineer,
+                    reviewer,
+                    escalation_gate,
+                    ship_gate,
+                    ship,
+                    stop,
+                ],
+                held_providers,
+            )
         )
         session.flush()
 
@@ -1384,7 +1490,7 @@ def create_blank_team(name: str, owner_id: uuid.UUID) -> str:
             position={"x": 320, "y": 0},
             config={"terminal_kind": "ship"},
         )
-        session.add_all([thinker, ship])
+        session.add_all(_stamp_account_defaults([thinker, ship], held_providers))
         session.flush()
         session.add(
             Edge(

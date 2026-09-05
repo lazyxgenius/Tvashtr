@@ -202,6 +202,20 @@ class Settings(BaseSettings):
         ge=0,
         validation_alias=AliasChoices("TVASHTR_AGENT_RETRY_MAX_WAIT", "agent_retry_max_wait_s"),
     )
+    # M-thrift: the per-call OUTPUT ceiling every adapter stamps on its ``LLM``. OpenHands leaves
+    # ``max_output_tokens`` unset, so the SDK resolves the MODEL's own maximum (16384 on
+    # gpt-4o-mini) and litellm sends that as ``max_tokens`` — which OpenRouter charges against the
+    # key's balance as a PRE-FLIGHT CREDIT RESERVATION. A near-empty paid key is then refused with a
+    # 402 ("requires more credits, or fewer max_tokens") before a single token is generated, even
+    # though the reply would have cost cents. A finite ceiling is the fix, and it is also the
+    # cheapest one available: an agent turn that needs more than 4k output tokens is a runaway, not
+    # a build step. The host-side completion path already had its own ceiling
+    # (``default_max_tokens_per_call``); this is the agent path's equal. Env-dialable.
+    agent_max_output_tokens: int = Field(
+        default=4096,
+        gt=0,
+        validation_alias=AliasChoices("TVASHTR_AGENT_MAX_OUTPUT_TOKENS", "agent_max_output_tokens"),
+    )
     # The prebuilt OpenHands agent-server image the docker path runs (heavy:
     # VSCode/VNC baked in — started with extra_ports=False). Orphan-reaping targets
     # containers from this image (``ancestor=``): the installed DockerWorkspace

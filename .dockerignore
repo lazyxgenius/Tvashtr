@@ -43,3 +43,8 @@ scripts
 design
 prompts
 docs
+
+# …except the vendored agent skills. ``*.md`` above is about DOCS; these are RUNTIME DATA — the
+# caveman SKILL.md is read at import by control_plane/teams.py and stamped onto every worker node,
+# so an image without it fails to start (and a runtime fetch is barred by the M-h3 egress fence).
+!backend/tvashtr/skills/**
