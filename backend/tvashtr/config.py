@@ -232,6 +232,18 @@ class Settings(BaseSettings):
     # SECRET: never logged, never persisted, never serialized into a response — see
     # ``engines/fly_machines.py``'s scrubbing. ``SecretStr`` (see the note on the secret fields
     # below) makes that structural: read it with ``.get_secret_value()``.
+    #
+    # THE SCOPE MUST BE **ORG**, NOT APP (``fly tokens create org``). An app-scoped deploy token
+    # authenticates fine and still cannot serve one run: it is bound to a single EXISTING app, while
+    # the run path's first call CREATES a new one (``POST /v1/apps`` carrying ``org_slug``), then
+    # allocates a Flycast IP through a GraphQL mutation and finally DELETEs the app at teardown —
+    # all org-level operations.
+    #
+    # AND IT EXPIRES. Because the per-run app is created lazily by the FIRST agent node to need a
+    # sandbox, a revoked/expired token surfaced not as a credential error but as the entry node
+    # failing with no spec ("The product manager didn't finish the spec for this run"). The launch
+    # pre-flight in ``control_plane/fly_preflight.py`` now probes this credential at POST /api/runs
+    # and refuses the launch by NAME, so the reason is stated where it can still be acted on.
     fly_api_token: SecretStr = Field(
         default=SecretStr(""),
         validation_alias=AliasChoices("TVASHTR_FLY_API_TOKEN", "fly_api_token"),

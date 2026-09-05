@@ -30,6 +30,7 @@ from tvashtr.control_plane.credentials import (
     resolve_owner_api_key,
 )
 from tvashtr.control_plane.doc_writer import generate_doc
+from tvashtr.control_plane.fly_preflight import fly_launch_blocker
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
 from tvashtr.control_plane.mcp_secrets import (
     delete_owner_mcp_secret,
@@ -739,6 +740,36 @@ def _enforce_run_ceilings(owner_id: uuid.UUID, launching: int = 1) -> None:
         )
 
 
+def _enforce_fly_sandbox_ready() -> None:
+    """Refuse (503) a launch whose per-run Fly microVM could never be created.
+
+    In ``fly`` sandbox mode the sandbox app is created by the FIRST agent node that needs one, so a
+    broken ``TVASHTR_FLY_API_TOKEN`` used to reach the user as *the entry node produced no spec* —
+    "The product manager didn't finish the spec for this run." — with the actual authorization
+    failure four layers down and nothing on screen naming it. This states the real reason at the
+    launch, before a Run row, a workflow or a server-side clone exists to clean up.
+
+    **503, not 422 or 429**, and the distinction is the point. 422 is what the neighbouring
+    ``_missing_provider_credentials`` raises, and it is right there: a missing *BYOK provider* key
+    is the caller's own account to fix. A dead Fly token is the OPERATOR's deployment credential —
+    the caller's request is valid and no edit to it can help. 429 would be worse still: it
+    promises the identical request will work later, when nothing will change until a human mints a
+    new token. 503 is the only one of the three that is true.
+
+    A no-op outside ``fly`` mode (``fly_launch_blocker`` returns None), so the docker/local create
+    path stays byte-for-byte what it was."""
+    blocker = fly_launch_blocker()
+    if blocker is None:
+        return
+    raise HTTPException(
+        status_code=503,
+        detail={
+            "code": "sandbox_unavailable",
+            "message": "the agent sandbox is unavailable: " + blocker,
+        },
+    )
+
+
 @router.post("/api/runs")
 def create_run(
     body: CreateRunRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
@@ -755,8 +786,12 @@ def create_run(
 
     M-h3: the hosted RUN CEILINGS are checked FIRST — before the idea resolves, before any target
     validation, and long before a Run row or a team clone exists. A launch refused for capacity
-    should cost nothing and leave nothing behind."""
+    should cost nothing and leave nothing behind.
+
+    The sandbox pre-flight runs SECOND, after the ceilings: the ceilings are a local database read,
+    this one is a network round-trip to Fly, so a launch refused for capacity never pays for it."""
     _enforce_run_ceilings(uuid.UUID(current_user.id))
+    _enforce_fly_sandbox_ready()
     idea = resolve_run_idea(body.idea)
 
     # Validate the brownfield target FIRST (before any team graph is built), so a rejected launch
@@ -952,6 +987,9 @@ def create_ab_runs(
     then 429 on side B, stranding half a comparison — and would let an A/B launch slip a second
     machine past a cap that had room for one."""
     _enforce_run_ceilings(uuid.UUID(current_user.id), launching=2)
+    # A pair is TWO sandboxes on the SAME credential, so one probe settles both — and settles them
+    # before either side exists, so a dead token can never strand half a comparison.
+    _enforce_fly_sandbox_ready()
     idea = resolve_run_idea(body.idea)
     # Same cap-resolution as a single run (P1.2 DP-A), applied identically to both sides.
     cap = body.budget_cap_usd

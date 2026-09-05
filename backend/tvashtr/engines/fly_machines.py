@@ -157,6 +157,23 @@ def _is_capacity_error(exc: FlyApiError) -> bool:
     return "insufficient_capacity" in message or "insufficient capacity" in message
 
 
+def is_authorization_error(exc: FlyApiError) -> bool:
+    """True iff ``exc`` is Fly REFUSING the API token, as opposed to failing for any other reason.
+
+    Matched off the message for exactly the reason :func:`_is_capacity_error` is — that is the shape
+    ``_request`` produces (``HTTP <status> <scrubbed body>``). Only the two *authorization* statuses
+    count: 401 (no credential, or one Fly cannot parse) and 403 (a credential Fly will not accept
+    for this org — the shape a revoked, expired or wrong-org token takes). Deliberately NOT 404,
+    which is a normal answer on the reap and re-discovery paths, and deliberately NOT any 5xx or
+    transport failure, which mean "Fly did not answer" rather than "Fly said no".
+
+    The launch pre-flight (``control_plane.fly_preflight``) turns a True here into a refused launch,
+    so a false positive grounds an install that actually works. The predicate is narrow on purpose:
+    it reads a verdict, never a symptom."""
+    message = str(exc).lower()
+    return "http 401" in message or "http 403" in message
+
+
 def _slug(raw: object) -> str:
     """Lower-case ``raw`` and squeeze it into Fly's ``^[a-z0-9-]+$``. Runs of invalid characters
     collapse to a single dash and leading/trailing dashes are stripped, so a UUID passes through
