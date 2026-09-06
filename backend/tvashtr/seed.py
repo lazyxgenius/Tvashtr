@@ -35,7 +35,12 @@ DEFAULT_SEED_PASSWORD = "tvashtr-dev"  # dev default; override TVASHTR_SEED_PASS
 # Each provider's ``.env`` var name(s) (first set one wins) -> the canonical provider slug. Mirrors
 # config's per-provider env names; the slug is exactly what ``provider_for_model`` derives, so an
 # imported key resolves both the completion + agent paths.
-_ENV_PROVIDER_MAP: tuple[tuple[tuple[str, ...], str], ...] = (
+#
+# PUBLIC (M-live): it is the project's single declaration of "which ``.env`` var carries which
+# provider's key", and the live agent smoke needs the same answer to gate on the key the CHOSEN
+# agent model actually requires. Promoted rather than imported through the underscore, which is
+# the fix §15 already asks for on the sibling ``routers.py``/``auth._store_installation`` case.
+ENV_PROVIDER_MAP: tuple[tuple[tuple[str, ...], str], ...] = (
     (("OPENROUTER_API_KEY",), "openrouter"),
     (("OPENAI_API_KEY",), "openai"),
     (("GEMINI_API_KEY",), "gemini"),
@@ -62,7 +67,7 @@ def import_env_provider_keys(operator_id: uuid.UUID) -> int:
     (upsert on ``(owner, provider)``); skip unset ones. Returns how many providers were imported."""
     imported = 0
     with session_scope() as session:
-        for env_names, provider in _ENV_PROVIDER_MAP:
+        for env_names, provider in ENV_PROVIDER_MAP:
             key = next((v for n in env_names if (v := os.environ.get(n))), None)
             if not key:
                 continue

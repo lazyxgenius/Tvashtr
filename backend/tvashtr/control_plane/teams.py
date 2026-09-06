@@ -163,9 +163,23 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
             "openrouter/google/gemini-flash-1.5",
         ],
     },
+    # M-live: was ``nvidia_nim/meta/llama-3.3-70b-instruct`` until NVIDIA retired it (410 Gone,
+    # EOL 2026-08-26). Because ``nvidia_nim`` leads ``_PROVIDER_DEFAULT_ORDER``, that one dead slug
+    # made every freshly created multi-provider team unrunnable. The replacement was PROBED, not
+    # guessed — of the 81 models NIM lists, only 7 are reachable with a build key at all, and of
+    # those this is the only one that passed all four gates: a live gateway completion (5/5
+    # non-empty), the THINKER shape (a real PRD under ``max_tokens=400``, no reasoning-eats-the-
+    # budget empty content), the OpenHands CONTENT-BLOCK message shape, and a real agent step that
+    # actually wrote its file inside the workspace. Two near-misses are why each gate exists:
+    # ``mistralai/mistral-nemotron`` completes and tool-calls over raw HTTP yet dies in the agent
+    # loop ("Message content must be normalized"), and ``poolside/laguna-xs-2.1`` reports
+    # ``completed`` while writing to an ABSOLUTE path outside the workspace.
+    #
+    # The preset moves with it: leaving the retired slug as the only NIM quick-pick would offer the
+    # user a model this very milestone teaches the pre-flight to refuse.
     "nvidia_nim": {
-        "default_model": "nvidia_nim/meta/llama-3.3-70b-instruct",
-        "presets": ["nvidia_nim/meta/llama-3.3-70b-instruct"],
+        "default_model": "nvidia_nim/openai/gpt-oss-20b",
+        "presets": ["nvidia_nim/openai/gpt-oss-20b"],
     },
     "openai": {
         "default_model": "openai/gpt-4o-mini",

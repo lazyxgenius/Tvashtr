@@ -25,7 +25,7 @@ from tvashtr.main import app
 
 def test_account_default_model_picks_the_held_providers_slug():
     assert (
-        account_default_model({"nvidia_nim"}) == "nvidia_nim/meta/llama-3.3-70b-instruct"
+        account_default_model({"nvidia_nim"}) == "nvidia_nim/openai/gpt-oss-20b"
     )  # exact slug, not "something is set"
     assert account_default_model({"groq"}) == "groq/llama-3.3-70b-versatile"
 
@@ -40,9 +40,7 @@ def test_account_default_model_preference_order_is_deterministic():
     # credit-metered, so a low-balance key is refused outright (402) where NIM's request-metered
     # tier only throttles — and the tie-break's job is to maximise the chance a new account's first
     # run succeeds. Was: openrouter won this pair.
-    assert account_default_model({"nvidia_nim", "openrouter"}) == (
-        "nvidia_nim/meta/llama-3.3-70b-instruct"
-    )
+    assert account_default_model({"nvidia_nim", "openrouter"}) == ("nvidia_nim/openai/gpt-oss-20b")
     # The relative order of everything between the two moved entries is UNCHANGED.
     assert _PROVIDER_DEFAULT_ORDER == (
         "nvidia_nim",
@@ -85,7 +83,8 @@ def test_create_node_defaults_to_a_held_providers_model(monkeypatch):
     c.post("/api/providers", json={"provider": "nvidia_nim", "api_key": "nv-dummy-key"})
     team_id = _blank_team(c)
     node = c.post(f"/api/teams/{team_id}/nodes", json={"node_kind": "worker"}).json()
-    assert node["model"] == "nvidia_nim/meta/llama-3.3-70b-instruct"  # the nvidia default, exactly
+    # the nvidia default, exactly (M-live: was meta/llama-3.3-70b-instruct until NVIDIA retired it)
+    assert node["model"] == "nvidia_nim/openai/gpt-oss-20b"
 
 
 def test_create_node_falls_back_to_legacy_default_when_no_providers(monkeypatch):

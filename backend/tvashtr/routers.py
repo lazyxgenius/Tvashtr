@@ -20,7 +20,13 @@ from sqlalchemy import func, select, update
 from tvashtr import db
 from tvashtr.auth import UserOut, _store_installation, get_current_user
 from tvashtr.config import get_settings
-from tvashtr.control_plane import github_app, memory, memory_distill, memory_review
+from tvashtr.control_plane import (
+    github_app,
+    memory,
+    memory_distill,
+    memory_review,
+    provider_models,
+)
 from tvashtr.control_plane.context_compiler import resolve_fallback_model, resolve_multimodal
 from tvashtr.control_plane.credentials import (
     NoCredentialError,
@@ -660,6 +666,67 @@ def _missing_credentials_detail(providers: list[str], nodes: list[str]) -> dict:
     }
 
 
+def _unservable_node_models(owner_id: uuid.UUID, team_graph_id: str) -> tuple[list[str], list[str]]:
+    """M-live: the sorted distinct node models the PROVIDER ITSELF no longer serves, AND the sorted
+    role names of the nodes carrying them. The sibling of :func:`_missing_provider_credentials`.
+
+    It runs AFTER the credential check, and the order is not cosmetic: without a key we cannot even
+    ask a provider what it serves, so a keyless account must be told to add a key rather than that
+    its model is dead. Gate/terminal nodes carry no model and are skipped, exactly as the
+    credential check already does.
+
+    FAILS OPEN throughout. ``provider_models`` answers ``None`` for anything short of a parsed list
+    that positively lacks the id, and a key that cannot be resolved is skipped rather than treated
+    as a failure — so a provider outage, a proxy, or an offline laptop can never turn into "you
+    cannot launch anything". A model is refused only on a confident negative.
+    """
+    with db.session_scope() as session:
+        rows = session.execute(
+            select(AgentNode.role_name, AgentNode.model).where(
+                AgentNode.team_graph_id == uuid.UUID(team_graph_id)
+            )
+        ).all()
+    models = {m for _rn, m in rows if m}
+    if not models:
+        return [], []
+
+    unservable: set[str] = set()
+    for model in models:
+        try:
+            api_key = resolve_owner_api_key(owner_id, model)
+        except NoCredentialError:
+            continue  # the credential check owns this case; never double-report it
+        if provider_models.is_definitely_unservable(model, api_key):
+            unservable.add(model)
+    if not unservable:
+        return [], []
+    nodes = sorted({rn for rn, m in rows if m in unservable})
+    return sorted(unservable), nodes
+
+
+def _unservable_models_detail(models: list[str], nodes: list[str]) -> dict:
+    """The 422 refusal payload for a model its provider has retired.
+
+    Deliberately the SAME contract as :func:`_missing_credentials_detail` — ``message`` plus
+    ``missing_nodes`` — so the FE launch banner and any node highlighting keep working untouched;
+    ``unservable_models`` is the only new field. ``missing_providers`` stays present and empty
+    because nothing is missing a key: the shape must not change under the FE's feet.
+    """
+    provider_phrase = ", ".join(sorted({provider_for_model(m) for m in models}))
+    node_phrase = " — used by " + ", ".join(nodes) if nodes else ""
+    return {
+        "message": (
+            ", ".join(models)
+            + f" is no longer served by {provider_phrase}"
+            + node_phrase
+            + ". Pick a current model on those nodes."
+        ),
+        "missing_providers": [],
+        "missing_nodes": nodes,
+        "unservable_models": models,
+    }
+
+
 # M-h3: the statuses that HOLD a sandbox. ``awaiting_human`` counts — M-h2b suspends the microVM at
 # a gate (so it stops billing CPU/RAM), but the machine still exists: a run parked at a gate has not
 # given its slot back. The terminals (completed/failed/rejected/cancelled/over_budget) have no
@@ -890,6 +957,16 @@ def create_run(
             detail=_missing_credentials_detail(missing, missing_nodes),
         )
 
+    # M-live: and the model must still EXIST. A slug its provider retired used to sail through
+    # here and die mid-run with an opaque error (NVIDIA's 410 on meta/llama-3.3-70b-instruct).
+    # Strictly after the credential check — see _unservable_node_models.
+    dead_models, dead_nodes = _unservable_node_models(uuid.UUID(current_user.id), team_graph_id)
+    if dead_models:
+        raise HTTPException(
+            status_code=422,
+            detail=_unservable_models_detail(dead_models, dead_nodes),
+        )
+
     run_id = str(uuid.uuid4())
 
     # Per-run cap: the request body wins, else the configured default (P1.2 DP-A).
@@ -973,6 +1050,14 @@ def create_ab_runs(
             raise HTTPException(
                 status_code=422,
                 detail=_missing_credentials_detail(missing, missing_nodes),
+            )
+        # M-live: the same servability pre-flight per side, so the A/B instrument is not a hole
+        # through which a retired model still reaches a real run.
+        dead_models, dead_nodes = _unservable_node_models(owner_id, team_graph_id)
+        if dead_models:
+            raise HTTPException(
+                status_code=422,
+                detail=_unservable_models_detail(dead_models, dead_nodes),
             )
         run_id = str(uuid.uuid4())
         with db.session_scope() as session:

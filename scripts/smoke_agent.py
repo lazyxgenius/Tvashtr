@@ -1,17 +1,26 @@
 #!/usr/bin/env python
 """Opt-in *live* OpenHands agent smoke (P0.3) — mirrors the gateway smoke pattern.
 
-Only if ``OPENROUTER_API_KEY`` is set, run the OpenHands adapter on a trivial task
-in a fresh LOCAL-UNSANDBOXED workspace, persist its events to ``run_events``, and
-print: the resolved status, the captured EngineEvents (count + kinds),
-``files_changed``, and the **actual contents of the produced file** (proof the
-agent really acted). Skip cleanly with a clear message if no key is present, so
-CI never depends on a paid endpoint or a live agent.
+Only if the key for the CHOSEN agent model's provider is set, run the OpenHands adapter on a
+trivial task in a fresh LOCAL-UNSANDBOXED workspace, persist its events to ``run_events``, and
+print: the resolved status, the captured EngineEvents (count + kinds), ``files_changed``, and the
+**actual contents of the produced file** (proof the agent really acted). Skip cleanly with a clear
+message if that key is absent, so CI never depends on a paid endpoint or a live agent.
+
+M-live fixed the gate. It used to ask one hardcoded question — is ``OPENROUTER_API_KEY`` set? —
+regardless of which model ``TVASHTR_AGENT_MODEL`` names. M-accounts Slice B took provider keys out
+of ``.env`` (they live encrypted in ``provider_credentials``) and the operator's OpenRouter credits
+ran out, so that variable is simply gone: the target CLI-RULES §4.6 names as the pre-flight for any
+live agent run had become a **silent no-op**, exiting 0 while proving nothing. It now resolves the
+key the selected model's own provider needs, and threads it through ``AgentTask.llm_api_key`` —
+which is what ``agent_llm_routing``'s proxy-OFF (BYOK) path requires, and what it refuses to run
+without.
 
 Run via ``make agent-smoke``.
 """
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from uuid import uuid4
 
@@ -27,11 +36,38 @@ TARGET_CONTENT = "Hello from Tvashtr"
 AGENT_MODEL = os.environ.get("TVASHTR_AGENT_MODEL", "openrouter/openai/gpt-4o-mini")
 
 
+def resolve_agent_key(model: str, environ: Mapping[str, str]) -> str | None:
+    """The ``.env`` key for ``model``'s OWN provider, or ``None`` when it is absent.
+
+    Pure (``environ`` is injected) so the gate is unit-testable without a live agent, which is the
+    whole point: the previous gate could only be exercised by running one. Provider names come from
+    ``seed.ENV_PROVIDER_MAP`` — the project's single declaration of which ``.env`` var carries which
+    provider's key — so this can never drift from what ``make seed`` imports. A blank value counts
+    as absent, and a provider with no mapping returns ``None`` rather than borrowing another
+    provider's key: a wrong key produces a confusing auth failure deep inside OpenHands, whereas a
+    clean skip says exactly what is missing.
+    """
+    from tvashtr.control_plane.credentials import provider_for_model
+    from tvashtr.seed import ENV_PROVIDER_MAP
+
+    provider = provider_for_model(model)
+    for env_names, mapped in ENV_PROVIDER_MAP:
+        if mapped != provider:
+            continue
+        for name in env_names:
+            value = (environ.get(name) or "").strip()
+            if value:
+                return value
+    return None
+
+
 def main() -> int:
-    if not os.environ.get("OPENROUTER_API_KEY"):
+    api_key = resolve_agent_key(AGENT_MODEL, os.environ)
+    if not api_key:
         print(
-            "[agent-smoke] OPENROUTER_API_KEY not set — skipping live agent run.\n"
-            "             Set it in .env to exercise a real OpenHands run. (Not a failure.)"
+            f"[agent-smoke] no .env key for {AGENT_MODEL!r}'s provider — skipping live agent run.\n"
+            "             Set that provider's key in .env to exercise a real OpenHands run. "
+            "(Not a failure.)"
         )
         return 0
 
@@ -51,7 +87,14 @@ def main() -> int:
     print("[agent-smoke] running OpenHands agent (first run may be slow)…\n")
 
     adapter = OpenHandsAdapter()
-    task = AgentTask(instruction=instruction, workspace_dir=workspace, model=AGENT_MODEL)
+    # ``llm_api_key`` is what agent_llm_routing's proxy-OFF BYOK path consumes as its
+    # ``api_key_override``; that path REFUSES a None rather than falling back to .env.
+    task = AgentTask(
+        instruction=instruction,
+        workspace_dir=workspace,
+        model=AGENT_MODEL,
+        llm_api_key=api_key,
+    )
     # The sink persists each EngineEvent to run_events as it streams.
     result = adapter.run(task, on_event=make_run_event_sink(run_id))
 

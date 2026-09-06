@@ -77,7 +77,7 @@ POLL_TIMEOUT_S = int(os.environ.get("TVASHTR_RUNG2_TIMEOUT_S", "2400"))
 _TERMINAL_WF = {"SUCCESS", "ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
 
 # Each provider slug -> the ``.env`` var(s) whose key ``make seed`` imports for it (mirrors
-# ``seed._ENV_PROVIDER_MAP`` and ``docs_chain_check._PROVIDER_ENV_KEYS``). The gate honors the
+# ``seed.ENV_PROVIDER_MAP`` and ``docs_chain_check._PROVIDER_ENV_KEYS``). The gate honors the
 # CONFIGURED model and skips cleanly when that provider has no key — a no-op off-box.
 _PROVIDER_ENV_KEYS: dict[str, tuple[str, ...]] = {
     "openrouter": ("OPENROUTER_API_KEY",),

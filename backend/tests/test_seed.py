@@ -74,7 +74,7 @@ def test_import_creates_deepseek_credential_from_env(client, monkeypatch):
     """M-rung2 blocker A (reproduce-first): the DeepSeek go-forward agent model
     (`deepseek/deepseek-chat`) resolves to provider `deepseek`, so `make seed` MUST import
     DEEPSEEK_API_KEY into the operator's provider_credentials — else every review_loop node's launch
-    pre-flight refuses with 422 missing_providers=["deepseek"]. RED before `_ENV_PROVIDER_MAP` gains
+    pre-flight refuses with 422 missing_providers=["deepseek"]. RED before `ENV_PROVIDER_MAP` gains
     the deepseek entry (the seed silently drops the key); GREEN after. Not vacuous: DEEPSEEK_API_KEY
     is set explicitly here, so the RED proves the MAP drops it, not that the env var is absent."""
     _clear_env(monkeypatch)

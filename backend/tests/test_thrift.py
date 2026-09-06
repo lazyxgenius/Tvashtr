@@ -339,7 +339,7 @@ def test_a_two_provider_account_gets_nvidia_primary_and_openrouter_as_the_fallba
         model_bearing = [n for n in nodes if n["model"] is not None]
         assert model_bearing, builder.__name__
         for node in model_bearing:
-            assert node["model"] == "nvidia_nim/meta/llama-3.3-70b-instruct", (
+            assert node["model"] == "nvidia_nim/openai/gpt-oss-20b", (
                 builder.__name__,
                 node["role"],
             )
