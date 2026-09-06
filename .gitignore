@@ -48,3 +48,14 @@ STATE.md
 
 # stray root-level screenshots (visual-acceptance artifacts)
 /*.png
+
+# Playwright run output (traces/screenshots on failure) from the e2e gates.
+frontend/test-results/
+frontend/playwright-report/
+
+# ---- M-proof (make demo-proof / demo-proof-prod / demo-proof-login) ----
+# Per-check browser screenshots for the C1-C12 harness; regenerated on every run.
+artifacts/
+# The saved PROD Playwright storageState. This is a LIVE SESSION CREDENTIAL for the deployed app:
+# never print it, never commit it. Recreate with `make demo-proof-login`.
+.playwright/

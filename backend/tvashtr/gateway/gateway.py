@@ -43,6 +43,50 @@ def _ordered_models(request: CompletionRequest) -> list[str]:
     return ordered
 
 
+def _static_candidates(
+    request: CompletionRequest,
+) -> tuple[list[tuple[str, str | None]], list[str]]:
+    """Build the ``(model, api_key)`` candidate list, and the list of candidates SKIPPED for want of
+    a credential of their own.
+
+    THE INVARIANT (M-proof F2): *a model candidate is never tried with a credential belonging to a
+    different provider; a candidate for which no owner credential can be resolved is skipped, and
+    the original primary error propagates unchanged.*
+
+    Two callers, two shapes:
+
+    * ``api_key is None`` — the non-owner-scoped (self-hosted / direct) caller. litellm resolves
+      EACH candidate's own key from its own provider env var, so every static fallback already
+      carries the right credential. Unchanged, byte for byte.
+    * ``api_key`` set — the BYOK/owner-scoped path (M-accounts Slice B: the run executor ALWAYS sets
+      it). The key in hand belongs to the PRIMARY's provider and to no other, and the gateway is a
+      pure request->result function with no owner handle to resolve a second one with. So a static
+      ``settings.model_fallbacks`` entry is kept only when it is on the primary's own provider — the
+      credential genuinely is that candidate's — and is otherwise skipped.
+
+    Why that matters concretely: the shipped default list is OpenRouter -> OpenRouter -> OpenAI, so
+    on M-thrift's NIM-first default a thinker's hard failure used to send the NVIDIA key to
+    OpenRouter and collect a 401 that REPLACED the real error the operator needed to see.
+
+    The AUTHORED per-node ``fallback_model`` is untouched by this: it arrives with
+    ``fallback_api_key``, the owner credential the executor resolved for ITS provider
+    (``team_run._resolve_model_and_key``), and is spliced in below at index 1.
+    """
+    ordered = _ordered_models(request)
+    if request.api_key is None or len(ordered) < 2:
+        return [(model, request.api_key) for model in ordered], []
+
+    primary_provider = _provider_of(ordered[0])
+    candidates: list[tuple[str, str | None]] = [(ordered[0], request.api_key)]
+    skipped: list[str] = []
+    for model in ordered[1:]:
+        if _provider_of(model) == primary_provider:
+            candidates.append((model, request.api_key))
+        else:
+            skipped.append(model)
+    return candidates, skipped
+
+
 def _provider_of(model: str) -> str:
     """Best-effort provider name for a model slug (e.g. ``openrouter``)."""
     try:
@@ -104,14 +148,12 @@ def complete(request: CompletionRequest) -> CompletionResult:
     if max_tokens is None:
         max_tokens = get_settings().default_max_tokens_per_call
     # Each candidate is ``(model, api_key)``: the per-node fallback may be a DIFFERENT provider than
-    # the primary, so it carries the key the executor resolved for ITS provider. The list is built
-    # from the unchanged ``_ordered_models`` (requested + the static config fallbacks) and is
-    # MUTATED below — the per-node fallback is spliced in directly after the primary, but ONLY when
-    # the primary fails HARD. A request with no ``fallback_model`` never splices, so its order and
-    # semantics are byte-identical to before this feature.
-    candidates: list[tuple[str, str | None]] = [
-        (model, request.api_key) for model in _ordered_models(request)
-    ]
+    # the primary, so it carries the key the executor resolved for ITS provider. The list comes from
+    # :func:`_static_candidates` (requested + whichever static config fallbacks the credential in
+    # hand actually belongs to) and is MUTATED below — the per-node fallback is spliced in directly
+    # after the primary, but ONLY when the primary fails HARD. A request with no ``fallback_model``
+    # never splices, so its order and semantics are byte-identical to before that feature.
+    candidates, uncredentialed = _static_candidates(request)
     index = 0
     while index < len(candidates):
         model, api_key = candidates[index]
@@ -171,8 +213,16 @@ def complete(request: CompletionRequest) -> CompletionResult:
             latency_ms=latency_ms,
         )
 
+    # The primary's own error is what propagates: a candidate skipped for want of its own credential
+    # must never mask it. Name the skipped slugs so the omission is legible rather than silent.
+    skipped_note = (
+        f"; skipped {uncredentialed} — no owner credential for their provider"
+        if uncredentialed
+        else ""
+    )
     raise GatewayError(
-        f"all models failed for request (tried {[m for m, _ in candidates]}): {last_error}"
+        f"all models failed for request (tried {[m for m, _ in candidates]}{skipped_note}): "
+        f"{last_error}"
     ) from last_error
 
 

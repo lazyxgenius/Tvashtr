@@ -74,20 +74,13 @@ def _load_dotenv() -> None:
 
 def _seed_operator_installation(owner_id: uuid.UUID) -> None:
     """Record the operator's GitHub App installation (the OAuth callback creates this in the browser
-    flow; the gate seeds it directly). Re-owns an existing row so the gate is re-runnable."""
-    from sqlalchemy import select
+    flow; the gate seeds it directly). Re-owns an existing row so the gate is re-runnable.
 
-    from tvashtr.db import session_scope
-    from tvashtr.models import GithubInstallation
+    The body now lives in ``scripts/github_fixture.py`` so the M-proof browser harness can share it
+    instead of reaching into this module's private namespace. Behaviour is unchanged."""
+    from github_fixture import seed_operator_installation
 
-    with session_scope() as session:
-        row = session.execute(
-            select(GithubInstallation).where(GithubInstallation.installation_id == _INSTALLATION_ID)
-        ).scalar_one_or_none()
-        if row is None:
-            session.add(GithubInstallation(owner_id=owner_id, installation_id=_INSTALLATION_ID))
-        else:
-            row.owner_id = owner_id
+    seed_operator_installation(owner_id, _INSTALLATION_ID)
 
 
 def main() -> int:
