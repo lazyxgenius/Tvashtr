@@ -48,14 +48,28 @@ const IDEA = process.env.TVASHTR_PROOF_IDEA ?? DEFAULT_IDEA;
 /** M-thrift's `_PROVIDER_DEFAULT_ORDER` (backend/tvashtr/control_plane/teams.py). */
 const PROVIDER_ORDER = ["nvidia_nim", "openai", "gemini", "groq", "deepseek", "openrouter"];
 /** `PROVIDER_CATALOGUE[p].default_model`, same module. */
-const PROVIDER_DEFAULT_MODEL: Record<string, string> = {
-  nvidia_nim: "nvidia_nim/meta/llama-3.3-70b-instruct",
-  openai: "openai/gpt-4o-mini",
-  gemini: "gemini/gemini-2.0-flash",
-  groq: "groq/llama-3.3-70b-versatile",
-  deepseek: "deepseek/deepseek-chat",
-  openrouter: "openrouter/openai/gpt-4o-mini",
-};
+/** M-live: this used to be a hardcoded copy of the backend's `PROVIDER_CATALOGUE`, and it went
+ * stale the moment NVIDIA retired `meta/llama-3.3-70b-instruct` and the catalogue moved on — C5
+ * then failed comparing a CORRECT chip against a dead expectation. A harness that duplicates a
+ * declaration eventually contradicts it, so the expectation is now DERIVED from
+ * `GET /api/config`, which serves `teams.public_provider_catalogue()` — the single place a slug
+ * is declared. This is the same move M-runnable made for the FE's own model presets, and it means
+ * the NEXT retirement cannot desync the harness. */
+interface ConfigPayload {
+  provider_catalogue?: { provider: string; default_model: string }[];
+}
+
+async function providerDefaultModels(api: APIRequestContext): Promise<Record<string, string>> {
+  const cfg = await jsonOf<ConfigPayload>(api, "/api/config");
+  const rows = cfg.provider_catalogue ?? [];
+  if (rows.length === 0) {
+    throw new Error(
+      "GET /api/config returned no provider_catalogue — the harness derives every model " +
+        "expectation from it, so an empty catalogue is a real backend finding, not a skip.",
+    );
+  }
+  return Object.fromEntries(rows.map((r) => [r.provider, r.default_model]));
+}
 /** Terminal DBOS *workflow* statuses. Poll to these, never to `run.status` — a fast run flips
  * `runs.status` to 'completed' while the same `run_team` workflow is still pushing and opening the
  * PR, so `pr_url` is not yet written. */
@@ -227,8 +241,9 @@ test.describe("M-proof", () => {
         );
       }
       const ordered = PROVIDER_ORDER.filter((p) => held.includes(p));
-      const expectedPrimary = PROVIDER_DEFAULT_MODEL[ordered[0]];
-      const expectedFallback = ordered.length > 1 ? PROVIDER_DEFAULT_MODEL[ordered[1]] : "";
+      const defaults = await providerDefaultModels(api);
+      const expectedPrimary = defaults[ordered[0]];
+      const expectedFallback = ordered.length > 1 ? defaults[ordered[1]] : "";
       console.log(
         `[C2] PASS — primary expectation ${expectedPrimary}; fallback expectation ${expectedFallback}`,
       );
