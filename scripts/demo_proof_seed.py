@@ -32,6 +32,40 @@ _INSTALLATION_ID = int(os.environ.get("TVASHTR_PROOF_INSTALLATION_ID", "14713375
 _NON_TERMINAL = ("running", "awaiting_human", "pending")
 
 
+# How old a non-terminal run must be before this harness will terminalize it. `make test` leaves
+# hundreds of fixture rows behind and the M-h3 fleet ceiling counts them FLEET-WIDE, so the first
+# live gate after a suite run dies on a 429 — a registered, recurring tax (§15, Tvashtr-73/80),
+# and it cost this harness two full runs before it was closed here.
+#
+# The AGE filter is the whole safety story, and it is not optional: the repaired e2e specs register
+# their accounts as `<gate>+<timestamp>@tvashtr.local`, so a LIVE, IN-PROGRESS gate run looks
+# exactly like residue by owner or by domain. Only its age distinguishes them. Nothing younger than
+# this window is touched, so a concurrent gate — or this leg's own run — can never be swept.
+_STALE_RUN_AGE_MINUTES = 30
+
+
+def _sweep_stale_fixture_runs() -> int:
+    """Terminalize non-terminal runs older than the window; return how many. LOCAL fixture hygiene.
+
+    Deliberately NOT filtered by owner or e-mail domain — see the age note above, and note that
+    raising the ceiling env vars instead was explicitly rejected in §15 because it hides the very
+    condition the gate is meant to run under.
+    """
+    from sqlalchemy import update
+
+    from tvashtr.db import session_scope
+    from tvashtr.models import Run
+
+    cutoff = datetime.now(UTC) - timedelta(minutes=_STALE_RUN_AGE_MINUTES)
+    with session_scope() as session:
+        result = session.execute(
+            update(Run)
+            .where(Run.status.in_(_NON_TERMINAL), Run.created_at < cutoff)
+            .values(status="cancelled")
+        )
+        return int(result.rowcount or 0)
+
+
 def _load_dotenv() -> None:
     """Load the repo-root ``.env`` into ``os.environ`` without a shell ``source``.
 
@@ -100,6 +134,12 @@ def main() -> int:
         f"[demo-proof-seed] owner runs: non-terminal={non_terminal} created-last-24h={last_24h} "
         "(hosted ceilings: per-owner concurrent + rolling-24h)"
     )
+    swept = _sweep_stale_fixture_runs()
+    if swept:
+        print(
+            f"[demo-proof-seed] terminalized {swept} stale non-terminal run(s) older than "
+            f"{_STALE_RUN_AGE_MINUTES}m — `make test` fixture residue that would 429 this leg"
+        )
     if len(providers) < 2 or "nvidia_nim" not in providers:
         missing = "nvidia_nim" if "nvidia_nim" not in providers else "a second provider"
         print(
