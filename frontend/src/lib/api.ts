@@ -197,35 +197,57 @@ export interface Config {
 }
 
 // An error that preserves the HTTP status so the login screen can branch on 401 / 409 / 422.
+// M-live: it also carries `missingNodes` — the role names the launch pre-flight named as offending
+// (either providers the owner has no key for, or models their provider no longer serves). Both
+// refusals use the SAME contract, so the canvas can highlight the nodes to fix without caring which
+// of the two fired. Defaults to `[]`, so every existing throw site is unchanged.
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    public readonly missingNodes: string[] = [],
   ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
+/** The `detail.missing_nodes` role names, or `[]`. Never throws — a refusal we cannot parse still
+ *  has to surface its message, so a bad shape degrades to "no highlight", never to a crash. */
+function missingNodesOf(body: unknown): string[] {
+  const detail = (body as { detail?: unknown })?.detail;
+  const raw = (detail as { missing_nodes?: unknown })?.missing_nodes;
+  return Array.isArray(raw) ? raw.filter((n): n is string => typeof n === "string") : [];
+}
+
 // M-legible: FastAPI's error `detail` is sometimes a string, sometimes a `{message}` object (and a
 // few endpoints put the human text at a top-level `message`). Read whichever is present so a failed
 // call can surface the backend's REAL reason — a 422/429 means it answered, not that it is down —
 // falling back to the caller's generic text when the body is absent or unparseable.
-async function errorMessageFromBody(res: Response, fallback: string): Promise<string> {
+/** A Response body can be consumed ONCE, so the message and the nodes must come out of a single
+ *  `.json()` — a second call would throw. */
+async function errorDetailFromBody(
+  res: Response,
+  fallback: string,
+): Promise<{ message: string; missingNodes: string[] }> {
   try {
     const body: unknown = await res.json();
+    const nodes = missingNodesOf(body);
     const detail = (body as { detail?: unknown }).detail;
-    if (typeof detail === "string" && detail.trim()) return detail;
+    if (typeof detail === "string" && detail.trim())
+      return { message: detail, missingNodes: nodes };
     if (detail && typeof detail === "object") {
       const nested = (detail as { message?: unknown }).message;
-      if (typeof nested === "string" && nested.trim()) return nested;
+      if (typeof nested === "string" && nested.trim())
+        return { message: nested, missingNodes: nodes };
     }
     const top = (body as { message?: unknown }).message;
-    if (typeof top === "string" && top.trim()) return top;
+    if (typeof top === "string" && top.trim()) return { message: top, missingNodes: nodes };
+    return { message: fallback, missingNodes: nodes };
   } catch {
-    // a non-JSON / empty body → the generic fallback below
+    // a non-JSON / empty body → the generic fallback
   }
-  return fallback;
+  return { message: fallback, missingNodes: [] };
 }
 
 // A single 401 seam: AuthGate registers a handler here; the GET helpers below invoke it when the
@@ -445,8 +467,11 @@ export async function runTeam(teamGraphId: string, opts: RunTeamOptions = {}): P
   if (!res.ok) {
     // M-legible: carry the backend's real reason (422 invalid graph, 429 ceiling, …) on an ApiError
     // so App.tsx renders it instead of the misleading "is the backend running?" guess.
-    const message = await errorMessageFromBody(res, `POST /api/runs -> ${res.status}`);
-    throw new ApiError(res.status, message);
+    const { message, missingNodes } = await errorDetailFromBody(
+      res,
+      `POST /api/runs -> ${res.status}`,
+    );
+    throw new ApiError(res.status, message, missingNodes);
   }
   const data = (await res.json()) as { run_id: string };
   return data.run_id;

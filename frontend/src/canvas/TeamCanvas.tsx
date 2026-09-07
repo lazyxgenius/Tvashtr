@@ -145,6 +145,10 @@ export function TeamCanvas({
   onSelectNodeId,
   onOpenModel,
   busy = false,
+  // M-live: the role names the launch pre-flight refused on, plus the backend's reason. The banner
+  // already renders the message; these put the same fact ON the nodes the user has to fix.
+  blockedNodes = [],
+  blockedReason = "",
 }: {
   graph: GraphData | null;
   run: RunRow | null;
@@ -165,6 +169,8 @@ export function TeamCanvas({
   onMoveNode?: (id: string, position: NodePosition) => void;
   onSelectNodeId?: (id: string | null) => void;
   onOpenModel?: (id: string) => void;
+  blockedNodes?: string[];
+  blockedReason?: string;
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
   const [pending, setPending] = useState<PendingConnect | null>(null);
@@ -178,10 +184,24 @@ export function TeamCanvas({
   const [addPicker, setAddPicker] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const flags = useMemo(
-    () => (editable ? validityFlags(validity) : EMPTY_FLAGS),
-    [editable, validity],
-  );
+  // The graph-validity flags, with the launch refusal's offending nodes folded into the SAME
+  // `nodeErrors` map. Folding rather than adding a parallel channel is deliberate: the card already
+  // turns a `nodeErrors` entry into `tv-node--invalid` plus a tooltip, so a refused launch reuses
+  // the affordance the user has already learned instead of inventing a second error language.
+  // A real validity issue is never overwritten — it is the more actionable of the two.
+  const blockedKey = blockedNodes.join("\u0000");
+  const flags = useMemo(() => {
+    const base = editable ? validityFlags(validity) : EMPTY_FLAGS;
+    const roles = new Set(blockedKey ? blockedKey.split("\u0000") : []);
+    if (roles.size === 0 || !graph) return base;
+    const nodeErrors = new Map(base.nodeErrors);
+    for (const n of graph.nodes) {
+      if (roles.has(n.role_name) && !nodeErrors.has(n.id)) {
+        nodeErrors.set(n.id, blockedReason || "This node's model was refused at launch.");
+      }
+    }
+    return { ...base, nodeErrors };
+  }, [editable, validity, blockedKey, blockedReason, graph]);
 
   // Part 1: the hover handlers. Enter sets the id immediately (+ cancels a pending leave); leave
   // starts the 450ms grace before clearing. Wired only in author mode (see the JSX gate).

@@ -32,35 +32,53 @@ _INSTALLATION_ID = int(os.environ.get("TVASHTR_PROOF_INSTALLATION_ID", "14713375
 _NON_TERMINAL = ("running", "awaiting_human", "pending")
 
 
-# How old a non-terminal run must be before this harness will terminalize it. `make test` leaves
-# hundreds of fixture rows behind and the M-h3 fleet ceiling counts them FLEET-WIDE, so the first
-# live gate after a suite run dies on a 429 — a registered, recurring tax (§15, Tvashtr-73/80),
-# and it cost this harness two full runs before it was closed here.
-#
-# The AGE filter is the whole safety story, and it is not optional: the repaired e2e specs register
-# their accounts as `<gate>+<timestamp>@tvashtr.local`, so a LIVE, IN-PROGRESS gate run looks
-# exactly like residue by owner or by domain. Only its age distinguishes them. Nothing younger than
-# this window is touched, so a concurrent gate — or this leg's own run — can never be swept.
-_STALE_RUN_AGE_MINUTES = 30
+# DBOS statuses that mean a workflow is genuinely alive — everything else (SUCCESS, ERROR,
+# CANCELLED, MAX_RECOVERY_ATTEMPTS_EXCEEDED, or NO ROW AT ALL) means it is not running now.
+_LIVE_WORKFLOW_STATUSES = ("PENDING", "ENQUEUED")
+# A just-inserted run gets its `runs` row before its DBOS workflow row exists. This grace period
+# is only about that race — never about deciding what counts as residue.
+_INSERT_RACE_GRACE_SECONDS = 120
 
 
 def _sweep_stale_fixture_runs() -> int:
-    """Terminalize non-terminal runs older than the window; return how many. LOCAL fixture hygiene.
+    """Terminalize non-terminal `runs` rows that have no LIVE DBOS workflow; return how many.
 
-    Deliberately NOT filtered by owner or e-mail domain — see the age note above, and note that
-    raising the ceiling env vars instead was explicitly rejected in §15 because it hides the very
-    condition the gate is meant to run under.
+    `make test` leaves hundreds of non-terminal fixture rows and the M-h3 fleet ceiling counts them
+    FLEET-WIDE, so the first live gate after a suite run dies on a 429 — a registered, recurring tax
+    (§15, Tvashtr-73/80) whose registered durable fix is the gate script clearing them in setup. It
+    cost this harness three runs before being closed here.
+
+    **The discriminator is workflow LIVENESS, not age, and that distinction is the whole safety
+    story.** An age filter cannot separate the two populations: the repaired e2e specs register
+    accounts as `<gate>+<timestamp>@tvashtr.local`, so a live gate run is indistinguishable from
+    residue by owner or domain — and a window wide enough to protect a 35-minute gate run (30m) also
+    protects the fixture rows `make test` created two minutes ago, which is exactly the case that
+    blocked this leg. Liveness has neither problem: a `runs` row in a non-terminal state whose DBOS
+    workflow is absent or already terminal CANNOT be executing, whatever its age or owner. A fixture
+    row created through `TestClient` never starts a workflow at all, so it has no row here; a real
+    in-flight run is `PENDING` and is protected even if it has been grinding for an hour.
+
+    Measured on the DB that blocked this leg: 254 non-terminal rows, 0 of them genuinely live.
+
+    Raising `TVASHTR_HOSTED_MAX_CONCURRENT_RUNS_GLOBAL` instead was explicitly rejected in §15 — it
+    hides the very condition the gate exists to run under.
     """
-    from sqlalchemy import update
+    from sqlalchemy import text, update
 
     from tvashtr.db import session_scope
     from tvashtr.models import Run
 
-    cutoff = datetime.now(UTC) - timedelta(minutes=_STALE_RUN_AGE_MINUTES)
+    live_list = ", ".join(f"'{s}'" for s in _LIVE_WORKFLOW_STATUSES)
+    not_live = text(
+        "not exists (select 1 from dbos.workflow_status w "
+        "where w.workflow_uuid = runs.workflow_id "
+        f"and w.status in ({live_list}))"
+    )
+    cutoff = datetime.now(UTC) - timedelta(seconds=_INSERT_RACE_GRACE_SECONDS)
     with session_scope() as session:
         result = session.execute(
             update(Run)
-            .where(Run.status.in_(_NON_TERMINAL), Run.created_at < cutoff)
+            .where(Run.status.in_(_NON_TERMINAL), Run.created_at < cutoff, not_live)
             .values(status="cancelled")
         )
         return int(result.rowcount or 0)
@@ -137,8 +155,8 @@ def main() -> int:
     swept = _sweep_stale_fixture_runs()
     if swept:
         print(
-            f"[demo-proof-seed] terminalized {swept} stale non-terminal run(s) older than "
-            f"{_STALE_RUN_AGE_MINUTES}m — `make test` fixture residue that would 429 this leg"
+            f"[demo-proof-seed] terminalized {swept} non-terminal run(s) with no live DBOS "
+            "workflow — `make test` fixture residue that would 429 this leg"
         )
     if len(providers) < 2 or "nvidia_nim" not in providers:
         missing = "nvidia_nim" if "nvidia_nim" not in providers else "a second provider"

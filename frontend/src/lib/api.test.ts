@@ -182,6 +182,59 @@ describe("runTeam surfaces the backend's error detail (M-legible item 2)", () =>
     expect((err as ApiError).message).toContain("3 runs in flight");
   });
 
+  it("carries missing_nodes from the M-live unservable-model refusal (422)", async () => {
+    // The canvas highlights the offending node cards from this; without it the user gets a message
+    // naming three nodes and no way to see WHICH cards on the canvas they are.
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        jsonErr(422, {
+          detail: {
+            message:
+              "nvidia_nim/meta/llama-3.3-70b-instruct is no longer served by nvidia_nim " +
+              "— used by engineer, pm, reviewer. Pick a current model on those nodes.",
+            missing_providers: [],
+            missing_nodes: ["engineer", "pm", "reviewer"],
+            unservable_models: ["nvidia_nim/meta/llama-3.3-70b-instruct"],
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const err = await runTeam("team-1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(422);
+    expect((err as ApiError).message).toContain("no longer served by nvidia_nim");
+    expect((err as ApiError).missingNodes).toEqual(["engineer", "pm", "reviewer"]);
+  });
+
+  it("carries missing_nodes from the pre-existing missing-credential refusal too", async () => {
+    // Both refusals share ONE contract, so the highlight must not care which of them fired.
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        jsonErr(422, {
+          detail: {
+            message: "you have no API key for: nvidia_nim — needed by engineer, pm",
+            missing_providers: ["nvidia_nim"],
+            missing_nodes: ["engineer", "pm"],
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const err = await runTeam("team-1").catch((e: unknown) => e);
+    expect((err as ApiError).missingNodes).toEqual(["engineer", "pm"]);
+  });
+
+  it("degrades to no highlight (never a crash) when missing_nodes is a bad shape", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(jsonErr(422, { detail: { message: "nope", missing_nodes: "engineer" } })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const err = await runTeam("team-1").catch((e: unknown) => e);
+    expect((err as ApiError).message).toBe("nope");
+    expect((err as ApiError).missingNodes).toEqual([]);
+  });
+
   it("throws an ApiError carrying a STRING detail (422 invalid graph)", async () => {
     const fetchMock = vi.fn<typeof fetch>(() =>
       Promise.resolve(jsonErr(422, { detail: "provide github_repo or repo_path, not both" })),

@@ -103,6 +103,9 @@ export default function App({
   // M-legible: the launch error is the backend's REAL reason (or the generic network message), not a
   // bare boolean — a 422/429 means the backend answered, so we render what it said. `null` = no error.
   const [error, setError] = useState<string | null>(null);
+  // M-live: the role names the launch pre-flight refused on. The banner shows the reason; this puts
+  // it on the offending node cards too, so the eye lands on what to fix rather than on the message.
+  const [blockedNodes, setBlockedNodes] = useState<string[]>([]);
   // Run-view selection is by NODE ID (Option A): a topology-edited team can carry duplicate role
   // names (e.g. two blank thinkers), so the run panel keys on the unique node id — the run-view twin
   // of the authoring `selectedNodeId` below.
@@ -386,6 +389,7 @@ export default function App({
       setLaunchOpen(false);
       setStarting(true);
       setError(null);
+      setBlockedNodes([]);
       resetRunState();
       try {
         const id = await runTeam(currentTeamId, opts);
@@ -399,6 +403,7 @@ export default function App({
         setError(
           e instanceof ApiError ? e.message : "Couldn't start the run — is the backend running?",
         );
+        setBlockedNodes(e instanceof ApiError ? e.missingNodes : []);
       } finally {
         setStarting(false);
       }
@@ -754,6 +759,8 @@ export default function App({
             )}
             <div className="relative min-w-0 flex-1">
               <TeamCanvas
+                blockedNodes={blockedNodes}
+                blockedReason={error ?? ""}
                 graph={authoring ? teamAsGraph : graph}
                 run={run}
                 workflowStatus={workflowStatus}
