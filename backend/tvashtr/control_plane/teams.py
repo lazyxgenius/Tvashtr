@@ -143,65 +143,89 @@ def reviewer_model() -> str:
     return engineer_model()
 
 
-# M-runnable: the ONE backend-owned provider catalogue — provider slug -> {default_model, presets} —
-# the SINGLE place a provider or model slug is DECLARED. Static, dependency-free, a module const
-# (no DB, no network); ``account_default_model`` stays pure + unit-testable. Served READ-ONLY to the
-# to the FE on ``GET /api/config`` (slugs only, never keys — ``public_provider_catalogue``); the
-# picker's quick-picks + the dashboard's provider suggestions DERIVE from it, nothing to hand-sync.
-# Seeded from the UNION of the pre-M-runnable ``PROVIDER_DEFAULT_MODEL`` map and the FE's old
-# ``MODEL_PRESETS`` list (so nothing previously offered is lost), PLUS a ``deepseek`` entry — the
-# product's own default agent model (``DEFAULT_MODEL``/``TVASHTR_AGENT_MODEL`` in .env + fly.toml).
-# INVARIANT (pinned by tests): every ``default_model``/preset slug canonicalizes
-# (``credentials.provider_for_model``) to its provider key, and each provider's ``default_model`` is
-# itself a preset.
+# M-runnable: the ONE backend-owned provider catalogue — the SINGLE place a provider or model slug
+# is DECLARED. Static, dependency-free, a module const (no DB, no network); ``account_default_model``
+# stays pure + unit-testable. Served READ-ONLY to the FE on ``GET /api/config`` (slugs only, never
+# keys — ``public_provider_catalogue``); the picker's quick-picks + the dashboard's provider
+# suggestions DERIVE from it, nothing to hand-sync.
+#
+# M-seat SPLITS every entry by SEAT. One ``default_model`` per provider could only answer "which
+# provider?", never "can that provider's model do this job?" — and the two seats are not
+# interchangeable. A THINKER makes one completion and returns a deliverable; a WORKER drives the
+# OpenHands agent loop, with tool calls, content blocks and a transcript that grows all run. M-live
+# proved the difference in production: the nvidia_nim default drove the PM node to a real PRD and a
+# human-approved gate, then killed the Engineer on an empty-bodied provider 400.
+#
+# ``worker_default: None`` is therefore a legal, meaningful answer — "this provider cannot serve a
+# worker seat" — and the walk yields that seat to the next held provider while keeping the seat the
+# provider CAN serve. A capability with no default offers no presets either, or the picker would
+# invite by hand the exact failure the defaults avoid.
+#
+# EVERY value below is PROBED, never guessed: ``scripts/seat_probe.py`` runs four gates for a worker
+# seat (a live gateway completion; the OpenHands content-block + tool shape; a real agent step whose
+# file lands INSIDE the workspace with exact contents; no crash in the loop) and two for a thinker
+# (a live completion; a real deliverable under the 400-token ceiling, not a chain-of-thought). The
+# transcript that filled this table in is in ``STATE.md``.
+#
+# INVARIANT (pinned by tests): every slug canonicalizes (``credentials.provider_for_model``) to its
+# provider key; each declared default is one of its own seat's presets; a seat with no default has
+# no presets.
+CAPABILITIES: tuple[str, ...] = ("thinker", "worker")
+
+
+def capability_of(kind: str) -> str:
+    """The SEAT a node's ``kind`` column names: ``agent`` (engine-backed) is a WORKER, anything
+    else that carries a model is a THINKER. The ``kind``/capability pair is the P1.8c authoring
+    vocabulary; this is the ONE translation between the column and the catalogue's seat names."""
+    return "worker" if kind == "agent" else "thinker"
+
+
 PROVIDER_CATALOGUE: dict[str, dict] = {
+    # UNPROBED — the operator holds no OpenRouter key (its credits ran out, and the variable is gone
+    # from ``.env``), so no gate could be run against it. Declaring ``None`` here would retire a
+    # provider for every OTHER account on no evidence at all, which is a worse error than carrying a
+    # slug that the M-live launch pre-flight will catch the moment it does go dead. Left exactly as
+    # M-runnable seeded it, and it stays LAST in the preference order.
     "openrouter": {
-        "default_model": "openrouter/openai/gpt-4o-mini",
-        "presets": [
+        "thinker_default": "openrouter/openai/gpt-4o-mini",
+        "worker_default": "openrouter/openai/gpt-4o-mini",
+        "thinker_presets": [
             "openrouter/openai/gpt-4o-mini",
             "openrouter/meta-llama/llama-3.1-8b-instruct",
             "openrouter/google/gemini-flash-1.5",
         ],
+        "worker_presets": ["openrouter/openai/gpt-4o-mini"],
     },
-    # M-live: was ``nvidia_nim/meta/llama-3.3-70b-instruct`` until NVIDIA retired it (410 Gone,
-    # EOL 2026-08-26). Because ``nvidia_nim`` leads ``_PROVIDER_DEFAULT_ORDER``, that one dead slug
-    # made every freshly created multi-provider team unrunnable. The replacement was PROBED, not
-    # guessed — of the 81 models NIM lists, only 7 are reachable with a build key at all, and of
-    # those this is the only one that passed all four gates: a live gateway completion (5/5
-    # non-empty), the THINKER shape (a real PRD under ``max_tokens=400``, no reasoning-eats-the-
-    # budget empty content), the OpenHands CONTENT-BLOCK message shape, and a real agent step that
-    # actually wrote its file inside the workspace. Two near-misses are why each gate exists:
-    # ``mistralai/mistral-nemotron`` completes and tool-calls over raw HTTP yet dies in the agent
-    # loop ("Message content must be normalized"), and ``poolside/laguna-xs-2.1`` reports
-    # ``completed`` while writing to an ABSOLUTE path outside the workspace.
-    #
-    # The preset moves with it: leaving the retired slug as the only NIM quick-pick would offer the
-    # user a model this very milestone teaches the pre-flight to refuse.
     "nvidia_nim": {
-        "default_model": "nvidia_nim/openai/gpt-oss-20b",
-        "presets": ["nvidia_nim/openai/gpt-oss-20b"],
+        "thinker_default": "PROBE_PENDING",
+        "worker_default": "PROBE_PENDING",
+        "thinker_presets": [],
+        "worker_presets": [],
     },
     "openai": {
-        "default_model": "openai/gpt-4o-mini",
-        "presets": ["openai/gpt-4o-mini"],
+        "thinker_default": "PROBE_PENDING",
+        "worker_default": "PROBE_PENDING",
+        "thinker_presets": [],
+        "worker_presets": [],
     },
     "gemini": {
-        "default_model": "gemini/gemini-2.0-flash",
-        "presets": ["gemini/gemini-2.0-flash"],
+        "thinker_default": "PROBE_PENDING",
+        "worker_default": "PROBE_PENDING",
+        "thinker_presets": [],
+        "worker_presets": [],
     },
     "groq": {
-        "default_model": "groq/llama-3.3-70b-versatile",
-        "presets": ["groq/llama-3.3-70b-versatile"],
+        "thinker_default": "PROBE_PENDING",
+        "worker_default": "PROBE_PENDING",
+        "thinker_presets": [],
+        "worker_presets": [],
     },
     "deepseek": {
-        "default_model": "deepseek/deepseek-chat",
-        "presets": ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"],
+        "thinker_default": "PROBE_PENDING",
+        "worker_default": "PROBE_PENDING",
+        "thinker_presets": [],
+        "worker_presets": [],
     },
-}
-# Back-compat DERIVED view (provider -> default_model): the registry above is the sole declaration;
-# this is a pure projection that ``account_default_model`` reads. Nothing new is declared here.
-PROVIDER_DEFAULT_MODEL: dict[str, str] = {
-    p: e["default_model"] for p, e in PROVIDER_CATALOGUE.items()
 }
 # The deterministic preference order when the account holds several mapped providers.
 #
@@ -227,13 +251,48 @@ _PROVIDER_DEFAULT_ORDER: tuple[str, ...] = (
 )
 
 
-def account_default_model(held_providers: set[str]) -> str | None:
-    """The default FULL model slug for the FIRST provider (preference order) the account holds a
-    credential for, else ``None`` (the caller uses the legacy default). Pure + unit-tested;
-    no DB, no env."""
+def _capability_keys(capability: str) -> tuple[str, str]:
+    """``(default_key, presets_key)`` for a seat name — and the ONE place a bad seat name is
+    refused. A typo must never resolve silently to the other seat: that is precisely the class of
+    bug this milestone exists to remove."""
+    if capability not in CAPABILITIES:
+        raise ValueError(f"unknown capability {capability!r} (expected one of {CAPABILITIES})")
+    return f"{capability}_default", f"{capability}_presets"
+
+
+def catalogue_default(provider: str, capability: str) -> str | None:
+    """The catalogued default model for one provider in one SEAT, or ``None``.
+
+    ``None`` is a real answer, not a gap: it means the probe found no model this provider serves
+    that can do that job (``scripts/seat_probe.py``). Callers must YIELD the seat rather than
+    substitute the other capability's slug."""
+    default_key, _ = _capability_keys(capability)
+    entry = PROVIDER_CATALOGUE.get(provider)
+    return entry.get(default_key) if entry else None
+
+
+def catalogue_presets(provider: str, capability: str) -> list[str]:
+    """The quick-picks one provider offers for one SEAT (a fresh list — callers may mutate)."""
+    _, presets_key = _capability_keys(capability)
+    entry = PROVIDER_CATALOGUE.get(provider)
+    return list(entry.get(presets_key) or []) if entry else []
+
+
+def account_default_model(held_providers: set[str], capability: str) -> str | None:
+    """The default FULL model slug for the FIRST provider (preference order) that the account holds
+    a credential for AND that declares a default for THIS SEAT; else ``None`` (the caller uses its
+    legacy default). Pure + unit-tested; no DB, no env.
+
+    M-seat added ``capability``. Before it, the walk asked only "which provider?", so a provider
+    that leads the order decided every seat — and the model proven as its THINKER was stamped on
+    WORKER nodes that cannot run it. A provider declaring ``None`` for a capability now yields that
+    seat to the next held provider, while keeping the seat it CAN serve."""
     for provider in _PROVIDER_DEFAULT_ORDER:
-        if provider in held_providers and provider in PROVIDER_DEFAULT_MODEL:
-            return PROVIDER_DEFAULT_MODEL[provider]
+        if provider not in held_providers:
+            continue
+        model = catalogue_default(provider, capability)
+        if model is not None:
+            return model
     return None
 
 
@@ -241,30 +300,47 @@ def public_provider_catalogue() -> list[dict]:
     """The provider catalogue as a serializable, PUBLIC list (served on ``GET /api/config``):
     provider + model slugs ONLY, never any key material. Ordered by ``PROVIDER_CATALOGUE`` insertion
     so the FE renders a stable provider list. The FE DERIVES its model quick-picks + provider
-    suggestions from this, so a slug is declared in exactly one place (the catalogue above)."""
+    suggestions from this, so a slug is declared in exactly one place (the catalogue above).
+
+    M-seat serves BOTH seats. The picker needs the split as much as the builders do: offering a
+    worker node a thinker-only quick-pick invites, by hand, the exact failure the defaults now
+    avoid."""
     return [
-        {"provider": p, "default_model": e["default_model"], "presets": list(e["presets"])}
+        {
+            "provider": p,
+            "thinker_default": e["thinker_default"],
+            "worker_default": e["worker_default"],
+            "thinker_presets": list(e["thinker_presets"]),
+            "worker_presets": list(e["worker_presets"]),
+        }
         for p, e in PROVIDER_CATALOGUE.items()
     ]
 
 
-def account_fallback_model(held_providers: set[str]) -> str | None:
-    """The default FULL model slug of the SECOND catalogued provider (preference order) the account
-    holds a credential for, else ``None``.
+def account_fallback_model(held_providers: set[str], capability: str) -> str | None:
+    """The default model of the SECOND catalogued provider (preference order) the account holds a
+    credential for AND that can serve THIS SEAT, else ``None``.
 
     This is the node's ``config["fallback_model"]`` — the one authored escape hatch the executor
     uses when the PRIMARY provider hard-fails (a dead key, an unreachable provider, or the 402
-    credit wall this milestone made classifiable). Deliberately the SECOND entry of the SAME walk
+    credit wall M-thrift made classifiable). Deliberately the SECOND entry of the SAME walk
     :func:`account_default_model` takes its first from, so primary and fallback can never name the
     same provider and the failover always crosses a real vendor boundary.
 
-    An account holding fewer than two catalogued providers has nowhere to fail over TO, so this
-    returns ``None`` and the builders write no key at all — that node's ``config`` stays
-    byte-identical to what it was before this milestone. Pure + unit-tested; no DB, no env."""
+    It walks the SAME capability for two reasons, and both are correctness, not tidiness: a worker's
+    failover target that can only serve thinkers is a safety net tied to nothing; and a
+    capability-blind walk would skip a provider for the primary and then hand that same provider
+    back as the fallback — or worse, hand the worker its own primary provider, collapsing the
+    cross-vendor property this function exists for.
+
+    An account holding fewer than two providers that can serve this seat has nowhere to fail over
+    TO, so this returns ``None`` and the builders write no key at all. Pure + unit-tested."""
     ordered = [
-        p for p in _PROVIDER_DEFAULT_ORDER if p in held_providers and p in PROVIDER_DEFAULT_MODEL
+        p
+        for p in _PROVIDER_DEFAULT_ORDER
+        if p in held_providers and catalogue_default(p, capability) is not None
     ]
-    return PROVIDER_DEFAULT_MODEL[ordered[1]] if len(ordered) > 1 else None
+    return catalogue_default(ordered[1], capability) if len(ordered) > 1 else None
 
 
 # M-thrift: the vendored ``caveman`` skill — an ultra-compressed output style that keeps technical
@@ -308,24 +384,29 @@ def _stamp_account_defaults(nodes: list, held_providers: set[str] | None) -> lis
     constructions, which is how a builder silently drifts out of the set. Both stamps are additive:
     with no second held provider and on a non-worker node this function changes nothing, so a
     node's ``config``/``skills`` stay byte-identical to the pre-M-thrift builder output.
-    Gates and terminals carry no model and no engine, so neither stamp can reach them."""
-    fallback = account_fallback_model(held_providers or set())
+    Gates and terminals carry no model and no engine, so neither stamp can reach them.
+
+    M-seat: the fallback is resolved PER NODE, for that node's own seat — a worker's failover target
+    has to be a model that can actually drive the agent loop."""
     for node in nodes:
-        if node.model is not None and fallback is not None:
-            node.config = {**(node.config or {}), "fallback_model": fallback}
+        if node.model is not None:
+            fallback = account_fallback_model(held_providers or set(), capability_of(node.kind))
+            if fallback is not None:
+                node.config = {**(node.config or {}), "fallback_model": fallback}
         if node.kind == "agent":
             node.skills = caveman_skill_sources()
     return nodes
 
 
-def _node_default_model(held_providers: set[str] | None, fallback: str) -> str:
+def _node_default_model(held_providers: set[str] | None, fallback: str, capability: str) -> str:
     """The model a builder stamps on a model-bearing node at CREATION: the OWNER's held-provider
-    default when the account holds a catalogued provider (``account_default_model``), else the
-    per-role fallback (a thinker's ``settings.default_model``; a worker's ``engineer_model()``
-    /``reviewer_model()``). This makes the team the account is GIVEN a team it can RUN — every model
-    node's provider is one the owner holds. ``held_providers`` empty/``None`` ⇒ the legacy
-    fallback, byte-identical to the pre-M-runnable behavior for a non-account (direct) caller."""
-    return account_default_model(held_providers or set()) or fallback
+    default FOR THAT NODE'S SEAT (``account_default_model``), else the per-role fallback (a
+    thinker's ``settings.default_model``; a worker's ``engineer_model()``/``reviewer_model()``).
+    This makes the team the account is GIVEN a team it can RUN — every model node's provider is one
+    the owner holds, and every model can do the job its node was built for. ``held_providers``
+    empty/``None`` ⇒ the legacy fallback, byte-identical to the pre-M-runnable behavior for a
+    non-account (direct) caller."""
+    return account_default_model(held_providers or set(), capability) or fallback
 
 
 def build_two_node_team(
@@ -348,7 +429,7 @@ def build_two_node_team(
             team_graph_id=graph.id,
             role_name="pm",
             kind="completion",
-            model=_node_default_model(held_providers, settings.default_model),
+            model=_node_default_model(held_providers, settings.default_model, "thinker"),
             engine=None,
             prompt=PM_PROMPT,
             position={"x": 0, "y": 0},
@@ -366,7 +447,7 @@ def build_two_node_team(
             team_graph_id=graph.id,
             role_name="engineer",
             kind="agent",
-            model=_node_default_model(held_providers, engineer_model()),
+            model=_node_default_model(held_providers, engineer_model(), "worker"),
             engine="openhands",
             prompt=ENGINEER_PROMPT,
             position={"x": 520, "y": 0},
@@ -454,7 +535,7 @@ def build_review_loop_team(
             team_graph_id=graph.id,
             role_name="pm",
             kind="completion",
-            model=_node_default_model(held_providers, settings.default_model),
+            model=_node_default_model(held_providers, settings.default_model, "thinker"),
             engine=None,
             prompt=PM_PROMPT,
             position={"x": 0, "y": 0},
@@ -472,7 +553,7 @@ def build_review_loop_team(
             team_graph_id=graph.id,
             role_name="engineer",
             kind="agent",
-            model=_node_default_model(held_providers, engineer_model()),
+            model=_node_default_model(held_providers, engineer_model(), "worker"),
             engine="openhands",
             prompt=ENGINEER_PROMPT,
             position={"x": 520, "y": 0},
@@ -493,7 +574,7 @@ def build_review_loop_team(
             # NOT because of ``agent_kind`` (left as-is for the FE; the executor ignores it).
             kind="agent",
             engine="openhands",
-            model=_node_default_model(held_providers, reviewer_model()),
+            model=_node_default_model(held_providers, reviewer_model(), "worker"),
             prompt=REVIEWER_PROMPT,
             position={"x": 780, "y": 0},
             config={"agent_kind": "reviewer"},
@@ -654,7 +735,7 @@ def build_thinker_chain_team(
             team_graph_id=graph.id,
             role_name="pm",
             kind="completion",
-            model=_node_default_model(held_providers, settings.default_model),
+            model=_node_default_model(held_providers, settings.default_model, "thinker"),
             engine=None,
             prompt=PM_PROMPT,
             position={"x": 0, "y": 0},
@@ -663,7 +744,7 @@ def build_thinker_chain_team(
             team_graph_id=graph.id,
             role_name="architect",
             kind="completion",
-            model=_node_default_model(held_providers, settings.default_model),
+            model=_node_default_model(held_providers, settings.default_model, "thinker"),
             engine=None,
             prompt=ARCHITECT_PROMPT,
             position={"x": 260, "y": 0},
@@ -681,7 +762,7 @@ def build_thinker_chain_team(
             team_graph_id=graph.id,
             role_name="engineer",
             kind="agent",
-            model=_node_default_model(held_providers, engineer_model()),
+            model=_node_default_model(held_providers, engineer_model(), "worker"),
             engine="openhands",
             prompt=ENGINEER_PROMPT,
             position={"x": 780, "y": 0},
@@ -783,7 +864,7 @@ def build_plan_review_team(
             team_graph_id=graph.id,
             role_name="pm",
             kind="completion",
-            model=_node_default_model(held_providers, settings.default_model),
+            model=_node_default_model(held_providers, settings.default_model, "thinker"),
             engine=None,
             prompt=PM_PROMPT,
             position={"x": 0, "y": 0},
@@ -792,7 +873,7 @@ def build_plan_review_team(
             team_graph_id=graph.id,
             role_name="architect",
             kind="completion",
-            model=_node_default_model(held_providers, settings.default_model),
+            model=_node_default_model(held_providers, settings.default_model, "thinker"),
             engine=None,
             prompt=ARCHITECT_PROMPT,
             position={"x": 260, "y": 0},
@@ -810,7 +891,7 @@ def build_plan_review_team(
             team_graph_id=graph.id,
             role_name="engineer",
             kind="agent",
-            model=_node_default_model(held_providers, engineer_model()),
+            model=_node_default_model(held_providers, engineer_model(), "worker"),
             engine="openhands",
             prompt=ENGINEER_PROMPT,
             position={"x": 780, "y": 0},
@@ -821,7 +902,7 @@ def build_plan_review_team(
             role_name="reviewer",
             kind="agent",
             engine="openhands",
-            model=_node_default_model(held_providers, reviewer_model()),
+            model=_node_default_model(held_providers, reviewer_model(), "worker"),
             prompt=REVIEWER_PROMPT,
             position={"x": 1040, "y": 0},
             config={"agent_kind": "reviewer"},
@@ -978,7 +1059,7 @@ def build_full_squad_team(
             team_graph_id=graph.id,
             role_name="pm",
             kind="completion",
-            model=_node_default_model(held_providers, settings.default_model),
+            model=_node_default_model(held_providers, settings.default_model, "thinker"),
             engine=None,
             prompt=PM_PROMPT,
             position={"x": 0, "y": 0},
@@ -987,7 +1068,7 @@ def build_full_squad_team(
             team_graph_id=graph.id,
             role_name="architect",
             kind="completion",
-            model=_node_default_model(held_providers, settings.default_model),
+            model=_node_default_model(held_providers, settings.default_model, "thinker"),
             engine=None,
             prompt=ARCHITECT_PROMPT,
             position={"x": 260, "y": 0},
@@ -1005,7 +1086,7 @@ def build_full_squad_team(
             team_graph_id=graph.id,
             role_name="engineer",
             kind="agent",
-            model=_node_default_model(held_providers, engineer_model()),
+            model=_node_default_model(held_providers, engineer_model(), "worker"),
             engine="openhands",
             prompt=ENGINEER_PROMPT,
             position={"x": 780, "y": 0},
@@ -1016,7 +1097,7 @@ def build_full_squad_team(
             role_name="reviewer",
             kind="agent",
             engine="openhands",
-            model=_node_default_model(held_providers, reviewer_model()),
+            model=_node_default_model(held_providers, reviewer_model(), "worker"),
             prompt=REVIEWER_PROMPT,
             position={"x": 1040, "y": 0},
             config={"agent_kind": "reviewer"},
@@ -1490,7 +1571,7 @@ def create_blank_team(name: str, owner_id: uuid.UUID) -> str:
             team_graph_id=graph.id,
             role_name="thinker",
             kind="completion",
-            model=_node_default_model(held_providers, settings.default_model),
+            model=_node_default_model(held_providers, settings.default_model, "thinker"),
             engine=None,
             prompt="",
             position={"x": 0, "y": 0},

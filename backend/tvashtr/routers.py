@@ -2505,8 +2505,10 @@ def _build_node(
     with no ``terminal_kind``).
 
     M-accounts Slice C: when ``body.model`` is ABSENT, the model defaults to one whose provider the
-    OWNER already holds (``account_default_model(held_providers)``) — falling back to today's
-    hardcoded default ONLY when the account holds no mapped provider. An explicit ``body.model`` is
+    OWNER already holds (``account_default_model(held_providers, capability)``) — falling back to
+    today's hardcoded default ONLY when the account holds no mapped provider. M-seat passes the
+    node's own SEAT, so a hand-added worker gets a model that can drive the agent loop rather than
+    whichever slug its first held provider happened to declare. An explicit ``body.model`` is
     always preserved. ``held_providers`` defaults ``None`` (treated as empty ⇒ legacy default) so a
     non-account caller keeps the prior behavior; the model stays mandatory (never blank)."""
     position = body.position or {}
@@ -2522,7 +2524,7 @@ def _build_node(
             team_graph_id=graph_id,
             role_name=preset["role_name"] if preset else "thinker",
             kind="completion",
-            model=body.model or account_default_model(held) or get_settings().default_model,
+            model=body.model or account_default_model(held, "thinker") or get_settings().default_model,
             engine=None,
             prompt=preset["prompt"] if preset else (body.prompt if body.prompt is not None else ""),
             position=position,
@@ -2533,7 +2535,7 @@ def _build_node(
             team_graph_id=graph_id,
             role_name=preset["role_name"] if preset else "worker",
             kind="agent",
-            model=body.model or account_default_model(held) or legacy_default,
+            model=body.model or account_default_model(held, "worker") or legacy_default,
             engine="openhands",
             prompt=preset["prompt"] if preset else (body.prompt if body.prompt is not None else ""),
             position=position,

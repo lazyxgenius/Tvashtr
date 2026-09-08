@@ -179,11 +179,20 @@ export interface AuthUser {
 // false + an empty install URL, so the wizard stays the email/password flow.
 // M-runnable: one served catalogue entry — provider + model SLUGS only (never keys). The FE holds NO
 // hardcoded model/provider list; it DERIVES its quick-picks + provider suggestions from these.
+// M-seat: split by SEAT. A thinker makes one completion; a worker drives the agent loop, and a model
+// can be good at the first and unable to do the second — so the picker must offer a worker node only
+// what the backend probed as worker-capable. `worker_default: null` means "this provider cannot
+// serve a worker seat" and its `worker_presets` are then empty.
 export interface ProviderCatalogueEntry {
   provider: string;
-  default_model: string;
-  presets: string[];
+  thinker_default: string | null;
+  worker_default: string | null;
+  thinker_presets: string[];
+  worker_presets: string[];
 }
+
+// The two seats a model-bearing node can occupy. Mirrors the backend `teams.CAPABILITIES`.
+export type Capability = "thinker" | "worker";
 
 export interface Config {
   hosted_mode: boolean;
@@ -850,11 +859,29 @@ export function providerOf(model: string): string {
   return model.split("/")[0].trim().toLowerCase();
 }
 
-// The catalogue quick-picks for one provider — what the Model field offers once a provider is chosen.
-// Reads the served catalogue (matched by the canonical provider key); empty for an unknown or
-// not-yet-loaded provider (the free-text field still accepts any slug).
-export function presetsForProvider(provider: string): string[] {
-  return providerCatalogue.find((e) => e.provider === provider)?.presets ?? [];
+// The catalogue quick-picks for one provider IN ONE SEAT — what the Model field offers once a
+// provider is chosen. Reads the served catalogue (matched by the canonical provider key); empty for
+// an unknown or not-yet-loaded provider, and empty for a provider that cannot serve this seat at all
+// (the free-text field still accepts any slug, so this narrows guidance, never the user's choice).
+export function presetsForProvider(provider: string, capability: Capability): string[] {
+  const entry = providerCatalogue.find((e) => e.provider === provider);
+  if (!entry) return [];
+  return (capability === "worker" ? entry.worker_presets : entry.thinker_presets) ?? [];
+}
+
+// One provider's catalogued default for a seat, or null when it cannot serve that seat. The picker
+// uses it to land on a sensible slug when the user switches provider.
+export function defaultForProvider(provider: string, capability: Capability): string | null {
+  const entry = providerCatalogue.find((e) => e.provider === provider);
+  if (!entry) return null;
+  return (capability === "worker" ? entry.worker_default : entry.thinker_default) ?? null;
+}
+
+// The providers that can serve this seat at all — the ones the picker should offer for this node.
+export function providersForCapability(capability: Capability): string[] {
+  return providerCatalogue
+    .filter((e) => (capability === "worker" ? e.worker_default : e.thinker_default))
+    .map((e) => e.provider);
 }
 
 // M-brownfield Slice 2 (D4): above this many tracked files the launch panel surfaces a dismissible

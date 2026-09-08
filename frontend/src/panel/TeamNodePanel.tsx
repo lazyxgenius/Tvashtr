@@ -6,9 +6,11 @@ import {
   type GateConfig,
   type GraphEdge,
   listProviders,
+  defaultForProvider,
   presetsForProvider,
   type ProviderCredential,
   providerOf,
+  type Capability,
   type TeamGraphNode,
   type TerminalConfig,
   updateGateNode,
@@ -403,19 +405,28 @@ export function TeamNodePanel({
   };
 
   // ---- M-accounts Slice C: the provider-gated model picker (UI over the SINGLE node.model string) ----
+  // M-seat: the quick-picks are chosen for this node's SEAT. A worker drives the OpenHands agent
+  // loop and a thinker makes one completion, so the two lists are genuinely different — offering a
+  // worker a thinker-only slug invites, by hand, the failure the backend defaults now avoid.
+  const capability: Capability = node?.kind === "agent" ? "worker" : "thinker";
   const currentProvider = model.trim() ? providerOf(model) : "";
   const providerOptions = Array.from(
     new Set([...providers.map((p) => p.provider), ...(currentProvider ? [currentProvider] : [])]),
   ).sort();
-  const quickPicks = presetsForProvider(currentProvider);
+  const quickPicks = presetsForProvider(currentProvider, capability);
 
   const onProviderChange = (value: string) => {
     if (value === ADD_PROVIDER) {
       setAddOpen(true);
       return;
     }
-    // Rewrite the leading segment: jump to that provider's first quick-pick, else a bare prefix.
-    setModel(presetsForProvider(value)[0] ?? `${value}/`);
+    // Rewrite the leading segment: jump to that provider's default FOR THIS SEAT, else its first
+    // quick-pick for the seat, else a bare prefix (the field stays free text).
+    setModel(
+      defaultForProvider(value, capability) ??
+        presetsForProvider(value, capability)[0] ??
+        `${value}/`,
+    );
     setSaved(false);
   };
 
@@ -879,7 +890,9 @@ export function TeamNodePanel({
         <div className={`tv-field${modelFlash ? " tv-field--flash" : ""}`} ref={modelFieldRef}>
           <span className="tv-field__label">Model</span>
           <span className="tv-field__hint">
-            Pick a provider you’ve configured, then a model — add a key inline if it’s missing.
+            {capability === "worker"
+              ? "This node runs the agent — the models offered are the ones proven to drive a build. Pick a provider you’ve configured, then a model; add a key inline if it’s missing."
+              : "Pick a provider you’ve configured, then a model — add a key inline if it’s missing."}
           </span>
 
           <div className="tv-modelrow">

@@ -123,9 +123,16 @@ def healthz() -> dict[str, str]:
 
 
 class ProviderCatalogueEntry(BaseModel):
+    """One provider as the FE sees it — slugs only, split by SEAT (M-seat).
+
+    ``worker_default`` is ``str | None``: ``None`` means the provider serves no model that can drive
+    the agent loop, and the picker must not offer its models for a worker node."""
+
     provider: str
-    default_model: str
-    presets: list[str]
+    thinker_default: str | None
+    worker_default: str | None
+    thinker_presets: list[str]
+    worker_presets: list[str]
 
 
 class ConfigResponse(BaseModel):
@@ -145,8 +152,10 @@ def config() -> ConfigResponse:
     (the OAuth sign-in door), and the launch panel offers ``github_manage_url`` (the SECONDARY "add
     repositories" install page) when a signed-in user's installation covers no repos; when
     ``hosted_mode`` is False it stays the email/password wizard unchanged. Also serves the public
-    ``provider_catalogue`` (slugs only) the FE derives its model picker from. Exposes ONLY public
-    fields — the client secret and private key are never serializable here."""
+    ``provider_catalogue`` (slugs only) the FE derives its model picker from — carrying M-seat's
+    thinker/worker split, so the picker can offer a worker node only models proven to drive the
+    agent loop. Exposes ONLY public fields — the client secret and private key are never
+    serializable here."""
     settings = get_settings()
     return ConfigResponse(
         hosted_mode=settings.hosted_mode,
