@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "october-bus": {
+      "url": "http://127.0.0.1:${env:OCTOBER_BUS_PORT}/mcp",
+      "headers": {
+        "X-October-Canvas": "${env:OCTOBER_BUS_CANVAS}",
+        "X-October-Node": "${env:OCTOBER_BUS_NODE}"
+      }
+    }
+  }
+}

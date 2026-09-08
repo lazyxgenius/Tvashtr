@@ -350,12 +350,12 @@ describe("TeamNodePanel — provider-gated model picker (Slice C)", () => {
     // nvidia's probed worker default, not whatever slug the provider happens to lead with.
     await user.selectOptions(provider, "nvidia_nim");
     const model = screen.getByRole<HTMLInputElement>("combobox", { name: "Model" });
-    expect(model.value).toBe("nvidia_nim/openai/gpt-oss-20b");
+    expect(model.value).toBe("nvidia_nim/minimaxai/minimax-m3");
 
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(patchCall()).toBeDefined());
     const saved = JSON.parse(patchCall()![1].body as string) as { model: string };
-    expect(saved.model).toBe("nvidia_nim/openai/gpt-oss-20b");
+    expect(saved.model).toBe("nvidia_nim/minimaxai/minimax-m3");
   });
 
   it("inline 'Add a provider' reuses addProvider, refetches, and selects the new provider", async () => {

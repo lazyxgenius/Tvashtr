@@ -82,9 +82,9 @@ setProviderCatalogue([
   {
     provider: "nvidia_nim",
     thinker_default: "nvidia_nim/openai/gpt-oss-20b",
-    worker_default: "nvidia_nim/openai/gpt-oss-20b",
+    worker_default: "nvidia_nim/minimaxai/minimax-m3",
     thinker_presets: ["nvidia_nim/openai/gpt-oss-20b"],
-    worker_presets: ["nvidia_nim/openai/gpt-oss-20b", "nvidia_nim/minimaxai/minimax-m3"],
+    worker_presets: ["nvidia_nim/minimaxai/minimax-m3", "nvidia_nim/openai/gpt-oss-20b"],
   },
   {
     provider: "openai",

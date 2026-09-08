@@ -1,0 +1,79 @@
+{
+  "screens": [
+    {
+      "id": "screen-mrs0m0zo-3",
+      "title": "Home",
+      "kind": "desktop",
+      "routePath": "/",
+      "position": {
+        "x": 188.3827943808446,
+        "y": -277.8993001285155
+      },
+      "size": {
+        "width": 640,
+        "height": 430
+      },
+      "screenVersion": 1
+    }
+  ],
+  "chatBoxes": [
+    {
+      "ownerDeviceId": "665de4a0-36de-4111-9794-ae65022b8016",
+      "ownerName": "mail2sharma.aditya",
+      "id": "chat-mrs0m0zo-4",
+      "title": "Chat",
+      "position": {
+        "x": -301.94105164947996,
+        "y": 595.1041066811865
+      },
+      "size": {
+        "width": 380,
+        "height": 420
+      },
+      "messages": [],
+      "activeScreenId": "screen-mrs0m0zo-3",
+      "agentName": "Apollo",
+      "ownerUserId": "d747c447-a68d-498c-99b4-d4f4aca7fa3a"
+    }
+  ],
+  "stickies": [],
+  "analytics": [],
+  "experiments": [],
+  "terminals": [],
+  "closedTerminals": [
+    {
+      "id": "term-mrs0mxc2-6",
+      "agentName": "Atlas",
+      "harness": "claude-code",
+      "title": "✳ Build out the Tvashtr project",
+      "cwd": "/Users/adimac/Desktop/Tvashtr",
+      "position": {
+        "x": 695.7127624357681,
+        "y": 767.00149243547
+      },
+      "size": {
+        "width": 560,
+        "height": 360
+      },
+      "session": {
+        "agent": "claude",
+        "sessionId": "4f09c367-4755-4fda-8e0a-695ac4aec810",
+        "file": "/Users/adimac/.claude/projects/-Users-adimac-Desktop-Tvashtr/4f09c367-4755-4fda-8e0a-695ac4aec810.jsonl"
+      },
+      "closedAt": 1784479772545
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn-mrs0m0zp-5",
+      "source": "chat-mrs0m0zo-4",
+      "target": "screen-mrs0m0zo-3"
+    }
+  ],
+  "viewport": {
+    "x": 802.665826817482,
+    "y": 270.6053878642256,
+    "zoom": 0.49311539880564476
+  },
+  "busCanvasId": "359be645-1888-4de3-bc94-b8dcf096b809"
+}

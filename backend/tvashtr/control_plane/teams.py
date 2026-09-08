@@ -206,11 +206,20 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
     # (T2 RateLimitError, then a fragment) — it is kept as a worker quick-pick, not a default.
     "nvidia_nim": {
         "thinker_default": "nvidia_nim/openai/gpt-oss-20b",
-        "worker_default": "nvidia_nim/openai/gpt-oss-20b",
+        # WORKER: `openai/gpt-oss-20b` passes all four probe gates 3/3 and then fails the REAL
+        # brownfield loop DETERMINISTICALLY — twice, on runs 647f9c86 and 98427784, each time on the
+        # Engineer's FIRST request with zero completed calls and an empty-bodied
+        # `Nvidia_nimException`. That is the fifth gate only the full loop exposes, and the probe
+        # cannot see it. `minimaxai/minimax-m3` is the other NIM candidate that passed all four
+        # worker gates, so promoting it is an EVIDENCED swap between two probed models, not a
+        # hand-pick — and `_PROVIDER_DEFAULT_ORDER` is untouched. gpt-oss-20b stays a worker preset
+        # (it is genuinely worker-capable by every check we can automate) and keeps the thinker
+        # seat, which it serves live in every run to date.
+        "worker_default": "nvidia_nim/minimaxai/minimax-m3",
         "thinker_presets": ["nvidia_nim/openai/gpt-oss-20b"],
         "worker_presets": [
-            "nvidia_nim/openai/gpt-oss-20b",
             "nvidia_nim/minimaxai/minimax-m3",
+            "nvidia_nim/openai/gpt-oss-20b",
         ],
     },
     # PROBED 2026-09-08. The two seats genuinely differ here, first-pass in preference order each:

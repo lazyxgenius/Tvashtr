@@ -30,7 +30,9 @@ def test_account_default_model_picks_the_held_providers_slug():
     # M-seat: the walk now takes a SEAT. Exact slugs, not "something is set" — and openai is here
     # because it is the one held provider whose two seats resolve to DIFFERENT models, so a
     # capability-blind regression cannot hide behind a provider that answers both the same.
-    assert account_default_model({"nvidia_nim"}, "worker") == "nvidia_nim/openai/gpt-oss-20b"
+    # nvidia_nim is the one held provider whose seats resolve to DIFFERENT models after the
+    # real brownfield loop rejected gpt-oss-20b as a worker (see the catalogue comment).
+    assert account_default_model({"nvidia_nim"}, "worker") == "nvidia_nim/minimaxai/minimax-m3"
     assert account_default_model({"nvidia_nim"}, "thinker") == "nvidia_nim/openai/gpt-oss-20b"
     assert account_default_model({"groq"}, "worker") == "groq/openai/gpt-oss-120b"
     assert account_default_model({"openai"}, "worker") == "openai/gpt-4.1-mini"
@@ -73,9 +75,8 @@ def test_account_default_model_preference_order_is_deterministic():
     # tier only throttles — and the tie-break's job is to maximise the chance a new account's first
     # run succeeds. Was: openrouter won this pair.
     for capability in CAPABILITIES:
-        assert (
-            account_default_model({"nvidia_nim", "openrouter"}, capability)
-            == "nvidia_nim/openai/gpt-oss-20b"
+        assert account_default_model({"nvidia_nim", "openrouter"}, capability) == catalogue_default(
+            "nvidia_nim", capability
         ), capability
     # The relative order of everything between the two moved entries is UNCHANGED.
     assert _PROVIDER_DEFAULT_ORDER == (
@@ -127,8 +128,8 @@ def test_create_node_defaults_to_a_held_providers_model(monkeypatch):
     c.post("/api/providers", json={"provider": "nvidia_nim", "api_key": "nv-dummy-key"})
     team_id = _blank_team(c)
     node = c.post(f"/api/teams/{team_id}/nodes", json={"node_kind": "worker"}).json()
-    # the nvidia default, exactly (M-live: was meta/llama-3.3-70b-instruct until NVIDIA retired it)
-    assert node["model"] == "nvidia_nim/openai/gpt-oss-20b"
+    # the nvidia WORKER default, exactly
+    assert node["model"] == "nvidia_nim/minimaxai/minimax-m3"
 
 
 def test_create_node_falls_back_to_legacy_default_when_no_providers(monkeypatch):
