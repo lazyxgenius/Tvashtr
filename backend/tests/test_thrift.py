@@ -371,21 +371,29 @@ def test_the_stamped_fallback_never_names_the_primary_s_own_provider():
     failover always crosses a real vendor boundary — the one thing that makes it worth a second run.
     """
     from tvashtr.control_plane.credentials import provider_for_model
-    from tvashtr.control_plane.teams import PROVIDER_CATALOGUE, account_fallback_model
+    from tvashtr.control_plane.teams import (
+        CAPABILITIES,
+        PROVIDER_CATALOGUE,
+        account_fallback_model,
+        catalogue_default,
+    )
     from tvashtr.control_plane.teams import account_default_model as primary_of
 
-    held = set(PROVIDER_CATALOGUE)
-    for _ in range(len(held)):
-        assert provider_for_model(primary_of(held)) != provider_for_model(
-            account_fallback_model(held)
-        )
-        held.discard(provider_for_model(primary_of(held)))
-        if len(held) < 2:
-            break
+    # M-seat: the property must hold in EACH seat independently. A capability-blind walk could skip
+    # a provider for the primary and then hand that same provider back as the fallback, which is
+    # precisely the collapse this asserts against.
+    for capability in CAPABILITIES:
+        held = {p for p in PROVIDER_CATALOGUE if catalogue_default(p, capability) is not None}
+        while len(held) >= 2:
+            primary = primary_of(held, capability)
+            fallback = account_fallback_model(held, capability)
+            assert provider_for_model(primary) != provider_for_model(fallback), capability
+            held.discard(provider_for_model(primary))
     from tvashtr.control_plane.teams import account_fallback_model as fb
 
-    assert fb(set()) is None
-    assert fb({"deepseek"}) is None
+    for capability in CAPABILITIES:
+        assert fb(set(), capability) is None
+        assert fb({"deepseek"}, capability) is None
 
 
 def test_the_executor_resolves_the_fallback_providers_own_key_on_the_gateway_path(client):

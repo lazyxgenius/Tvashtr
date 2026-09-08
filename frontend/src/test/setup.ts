@@ -70,32 +70,51 @@ Object.defineProperties(HTMLElement.prototype, {
 setProviderCatalogue([
   {
     provider: "openrouter",
-    default_model: "openrouter/openai/gpt-4o-mini",
-    presets: [
+    thinker_default: "openrouter/openai/gpt-4o-mini",
+    worker_default: "openrouter/openai/gpt-4o-mini",
+    thinker_presets: [
       "openrouter/openai/gpt-4o-mini",
       "openrouter/meta-llama/llama-3.1-8b-instruct",
       "openrouter/google/gemini-flash-1.5",
     ],
+    worker_presets: ["openrouter/openai/gpt-4o-mini"],
   },
   {
     provider: "nvidia_nim",
-    default_model: "nvidia_nim/meta/llama-3.3-70b-instruct",
-    presets: ["nvidia_nim/meta/llama-3.3-70b-instruct"],
+    thinker_default: "nvidia_nim/openai/gpt-oss-20b",
+    worker_default: "nvidia_nim/openai/gpt-oss-20b",
+    thinker_presets: ["nvidia_nim/openai/gpt-oss-20b"],
+    worker_presets: ["nvidia_nim/openai/gpt-oss-20b", "nvidia_nim/minimaxai/minimax-m3"],
   },
-  { provider: "openai", default_model: "openai/gpt-4o-mini", presets: ["openai/gpt-4o-mini"] },
   {
+    provider: "openai",
+    thinker_default: "openai/gpt-4o-mini",
+    worker_default: "openai/gpt-4.1-mini",
+    thinker_presets: ["openai/gpt-4o-mini"],
+    worker_presets: ["openai/gpt-4.1-mini"],
+  },
+  {
+    // M-seat, probed: gemini drives the agent loop and cannot produce a deliverable under the
+    // output ceiling. Kept EXACTLY as the backend declares it, `null` included — a fixture that
+    // rounded it up to a slug would hide the one shape these tests most need to cover.
     provider: "gemini",
-    default_model: "gemini/gemini-2.0-flash",
-    presets: ["gemini/gemini-2.0-flash"],
+    thinker_default: null,
+    worker_default: "gemini/gemini-2.5-flash",
+    thinker_presets: [],
+    worker_presets: ["gemini/gemini-2.5-flash"],
   },
   {
     provider: "groq",
-    default_model: "groq/llama-3.3-70b-versatile",
-    presets: ["groq/llama-3.3-70b-versatile"],
+    thinker_default: "groq/openai/gpt-oss-120b",
+    worker_default: "groq/openai/gpt-oss-120b",
+    thinker_presets: ["groq/openai/gpt-oss-120b"],
+    worker_presets: ["groq/openai/gpt-oss-120b"],
   },
   {
     provider: "deepseek",
-    default_model: "deepseek/deepseek-chat",
-    presets: ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"],
+    thinker_default: "deepseek/deepseek-chat",
+    worker_default: "deepseek/deepseek-chat",
+    thinker_presets: ["deepseek/deepseek-chat"],
+    worker_presets: ["deepseek/deepseek-chat"],
   },
 ]);

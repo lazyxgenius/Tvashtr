@@ -345,15 +345,17 @@ describe("TeamNodePanel — provider-gated model picker (Slice C)", () => {
     await waitFor(() => expect(provider).toHaveValue("openai"));
     expect(screen.getByRole("option", { name: "nvidia_nim" })).toBeInTheDocument();
 
-    // Switching the provider rewrites node.model's leading segment to that provider's quick-pick.
+    // Switching the provider rewrites node.model's leading segment to that provider's default FOR
+    // THIS NODE'S SEAT (M-seat). The node under test is an engineer — a worker — so this is
+    // nvidia's probed worker default, not whatever slug the provider happens to lead with.
     await user.selectOptions(provider, "nvidia_nim");
     const model = screen.getByRole<HTMLInputElement>("combobox", { name: "Model" });
-    expect(model.value).toBe("nvidia_nim/meta/llama-3.3-70b-instruct");
+    expect(model.value).toBe("nvidia_nim/openai/gpt-oss-20b");
 
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(patchCall()).toBeDefined());
     const saved = JSON.parse(patchCall()![1].body as string) as { model: string };
-    expect(saved.model).toBe("nvidia_nim/meta/llama-3.3-70b-instruct");
+    expect(saved.model).toBe("nvidia_nim/openai/gpt-oss-20b");
   });
 
   it("inline 'Add a provider' reuses addProvider, refetches, and selects the new provider", async () => {
@@ -994,7 +996,31 @@ describe("TeamNodePanel — per-node capability fields", () => {
 });
 
 describe("TeamNodePanel — edit-time model validation hint (soft, never blocks Save)", () => {
-  it("is ABSENT for a recognised preset on a configured provider", async () => {
+  it("is ABSENT for a recognised preset on a configured provider, IN THIS NODE'S SEAT", async () => {
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        // `node()` is an agent — a WORKER — and openai's probed worker model is gpt-4.1-mini.
+        node={node({ model: "openai/gpt-4.1-mini" })}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    // The providers fetch resolves openai + nvidia_nim; gpt-4.1-mini is a served WORKER preset.
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Model" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("model-validity-hint")).not.toBeInTheDocument();
+  });
+
+  it("IS PRESENT when a worker node carries a slug proven only for the thinker seat", async () => {
+    // M-seat's user-facing half. `openai/gpt-4o-mini` passed the THINKER gates and was never
+    // proven able to drive the agent loop, so on a worker node it is exactly the hand-picked
+    // failure the seat split exists to prevent. The hint stays SOFT — Save is never blocked and
+    // the field stays free text — but the user is told before the run instead of 30s into it.
+    // This assertion is the reason the test above had to change rather than be deleted: the old
+    // expectation ("gpt-4o-mini on an engineer is fine") IS the defect.
     render(
       <TeamNodePanel
         teamId="team-1"
@@ -1004,11 +1030,10 @@ describe("TeamNodePanel — edit-time model validation hint (soft, never blocks 
         onClose={() => {}}
       />,
     );
-    // The providers fetch resolves openai + nvidia_nim; gpt-4o-mini is a served-catalogue preset.
     await waitFor(() =>
       expect(screen.getByRole("combobox", { name: "Model" })).toBeInTheDocument(),
     );
-    expect(screen.queryByTestId("model-validity-hint")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("model-validity-hint")).toBeInTheDocument();
   });
 
   it("is ABSENT for deepseek/deepseek-chat once the catalogue is served (M-runnable)", async () => {

@@ -191,9 +191,6 @@ export interface ProviderCatalogueEntry {
   worker_presets: string[];
 }
 
-// The two seats a model-bearing node can occupy. Mirrors the backend `teams.CAPABILITIES`.
-export type Capability = "thinker" | "worker";
-
 export interface Config {
   hosted_mode: boolean;
   github_install_url: string;
@@ -945,6 +942,8 @@ export const getTeamGraph = (teamId: string): Promise<TeamGraphData> =>
 
 // A node's authorable capability (P1.8c): a "thinker" is a direct-LLM completion (like the PM); a
 // "worker" is an engine-backed sandboxed run (like the Engineer). Maps server-side to kind+engine.
+// M-seat reuses this same type as the catalogue's SEAT name (it mirrors the backend
+// `teams.CAPABILITIES`), so the client has exactly one definition of the seat vocabulary.
 export type Capability = "thinker" | "worker";
 
 // Persist an edited library-team node's prompt + model, and (P1.8c) optionally its capability,

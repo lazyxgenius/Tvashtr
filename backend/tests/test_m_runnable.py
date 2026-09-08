@@ -115,15 +115,30 @@ def test_provider_catalogue_is_the_single_registry_with_deepseek():
     provs = set(PROVIDER_CATALOGUE)
     # nothing currently offered is lost + deepseek is added
     assert {"openrouter", "nvidia_nim", "openai", "gemini", "groq", "deepseek"} <= provs
+    # M-seat: one entry, TWO seats. The registry invariants hold per seat, and `None` is a legal
+    # declaration meaning "this provider cannot serve that seat" — in which case it must offer no
+    # presets for it either, or the picker would invite by hand the model the default avoids.
     for provider, entry in PROVIDER_CATALOGUE.items():
-        assert provider_for_model(entry["default_model"]) == provider  # slug canonicalizes to key
-        assert entry["presets"], f"{provider} has no presets"
-        assert entry["default_model"] in entry["presets"]  # the default is itself offered
-        for preset in entry["presets"]:
-            assert provider_for_model(preset) == provider
+        for capability in ("thinker", "worker"):
+            default = entry[f"{capability}_default"]
+            presets = entry[f"{capability}_presets"]
+            if default is None:
+                assert presets == [], f"{provider}.{capability} has no default but offers presets"
+                continue
+            assert provider_for_model(default) == provider  # slug canonicalizes to key
+            assert presets, f"{provider} has no {capability} presets"
+            assert default in presets  # the default is itself offered
+            for preset in presets:
+                assert provider_for_model(preset) == provider
+    # At least one provider must still serve each seat, or no team could be built at all.
+    for capability in ("thinker", "worker"):
+        assert any(e[f"{capability}_default"] for e in PROVIDER_CATALOGUE.values()), capability
     ds = PROVIDER_CATALOGUE["deepseek"]
-    assert ds["default_model"] == "deepseek/deepseek-chat"
-    assert "deepseek/deepseek-reasoner" in ds["presets"]
+    # PROBED 2026-09-08: deepseek-chat passed both seats' gates. `deepseek-reasoner` was a preset
+    # here before M-seat and is deliberately GONE — no gate ever covered it.
+    assert ds["thinker_default"] == "deepseek/deepseek-chat"
+    assert ds["worker_default"] == "deepseek/deepseek-chat"
+    assert "deepseek/deepseek-reasoner" not in ds["thinker_presets"] + ds["worker_presets"]
 
 
 # ---- CONFIG: GET /api/config serves the catalogue (slugs only) and leaks NO key material ----
@@ -143,8 +158,15 @@ def test_config_serves_the_catalogue_with_deepseek_and_no_key_material():
     slug = re.compile(r"^[a-z0-9_]+(?:/[a-zA-Z0-9._-]+)*$")
     for e in cat:
         assert slug.match(e["provider"]), e
-        for m in [e["default_model"], *e["presets"]]:
-            assert slug.match(m), m
+        served = [
+            e["thinker_default"],
+            e["worker_default"],
+            *e["thinker_presets"],
+            *e["worker_presets"],
+        ]
+        for m in served:
+            if m is not None:  # a seat a provider cannot serve declares null, not a slug
+                assert slug.match(m), m
     # and the dev secret_key + obvious secret markers appear nowhere in the payload
     blob = resp.text
     assert get_settings().secret_key.get_secret_value() not in blob

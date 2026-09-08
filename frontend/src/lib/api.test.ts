@@ -18,6 +18,7 @@ import {
   createMemory,
   createSkillLibraryItem,
   createToolLibraryItem,
+  defaultForProvider,
   getConfig,
   getGithubRepos,
   getProviderCatalogue,
@@ -28,6 +29,7 @@ import {
   presetsForProvider,
   promoteMemory,
   providerOf,
+  providersForCapability,
   providerSuggestions,
   rejectMemory,
   runTeam,
@@ -46,26 +48,58 @@ describe("providerOf — parity with the backend provider_for_model", () => {
     expect(providerOf("gpt-4o-mini")).toBe("gpt-4o-mini"); // no slash → the whole slug
   });
 
-  it("scopes quick-picks to one provider, derived from the served catalogue", () => {
+  it("scopes quick-picks to one provider AND one seat, derived from the served catalogue", () => {
+    // M-seat: the fixture deliberately gives `deepseek` a WORKER seat it cannot serve. That is the
+    // shape the milestone exists for — a provider that talks fine and cannot drive the agent loop —
+    // and a mechanical rename of the old fixture would not have exercised it.
     setProviderCatalogue([
       {
         provider: "openrouter",
-        default_model: "openrouter/openai/gpt-4o-mini",
-        presets: ["openrouter/openai/gpt-4o-mini", "openrouter/google/gemini-flash-1.5"],
+        thinker_default: "openrouter/openai/gpt-4o-mini",
+        worker_default: "openrouter/openai/gpt-4o-mini",
+        thinker_presets: ["openrouter/openai/gpt-4o-mini", "openrouter/google/gemini-flash-1.5"],
+        worker_presets: ["openrouter/openai/gpt-4o-mini"],
       },
       {
         provider: "deepseek",
-        default_model: "deepseek/deepseek-chat",
-        presets: ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"],
+        thinker_default: "deepseek/deepseek-chat",
+        worker_default: null,
+        thinker_presets: ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"],
+        worker_presets: [],
       },
     ]);
-    const openrouter = presetsForProvider("openrouter");
+    const openrouter = presetsForProvider("openrouter", "thinker");
     expect(openrouter.length).toBeGreaterThan(0);
     expect(openrouter.every((m) => providerOf(m) === "openrouter")).toBe(true);
-    // deepseek — the product's default agent model — now offers real quick-picks (was [] before M-runnable).
-    expect(presetsForProvider("deepseek")).toContain("deepseek/deepseek-chat");
+    expect(presetsForProvider("deepseek", "thinker")).toContain("deepseek/deepseek-chat");
+    // THE REGRESSION: a provider that cannot serve a worker offers that seat NOTHING. Before the
+    // split this returned the thinker list, so the picker invited by hand the exact failure the
+    // backend defaults now avoid.
+    expect(presetsForProvider("deepseek", "worker")).toEqual([]);
+    expect(presetsForProvider("openrouter", "worker")).toEqual(["openrouter/openai/gpt-4o-mini"]);
     // an unknown / not-yet-loaded provider yields no quick-picks (the free-text field still accepts any slug).
-    expect(presetsForProvider("nope")).toEqual([]);
+    expect(presetsForProvider("nope", "thinker")).toEqual([]);
+    expect(presetsForProvider("nope", "worker")).toEqual([]);
+  });
+
+  it("resolves a per-seat default, and refuses to invent one for a seat a provider cannot serve", () => {
+    setProviderCatalogue([
+      {
+        provider: "deepseek",
+        thinker_default: "deepseek/deepseek-chat",
+        worker_default: null,
+        thinker_presets: ["deepseek/deepseek-chat"],
+        worker_presets: [],
+      },
+    ]);
+    expect(defaultForProvider("deepseek", "thinker")).toBe("deepseek/deepseek-chat");
+    // null, NOT the thinker slug: the picker must land the user on nothing rather than on a model
+    // that cannot do the job. `providersForCapability` hides it from the worker list for the same
+    // reason.
+    expect(defaultForProvider("deepseek", "worker")).toBeNull();
+    expect(defaultForProvider("nope", "thinker")).toBeNull();
+    expect(providersForCapability("thinker")).toEqual(["deepseek"]);
+    expect(providersForCapability("worker")).toEqual([]);
   });
 });
 
@@ -91,13 +125,17 @@ describe("getConfig — caches the served provider catalogue (M-runnable)", () =
       provider_catalogue: [
         {
           provider: "deepseek",
-          default_model: "deepseek/deepseek-chat",
-          presets: ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"],
+          thinker_default: "deepseek/deepseek-chat",
+          worker_default: null,
+          thinker_presets: ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"],
+          worker_presets: [],
         },
         {
           provider: "openai",
-          default_model: "openai/gpt-4o-mini",
-          presets: ["openai/gpt-4o-mini"],
+          thinker_default: "openai/gpt-4o-mini",
+          worker_default: "openai/gpt-4.1-mini",
+          thinker_presets: ["openai/gpt-4o-mini"],
+          worker_presets: ["openai/gpt-4.1-mini"],
         },
       ],
     };
@@ -108,13 +146,22 @@ describe("getConfig — caches the served provider catalogue (M-runnable)", () =
     const cfg = await getConfig();
     expect(cfg.provider_catalogue).toHaveLength(2);
     expect(providerSuggestions()).toEqual(["deepseek", "openai"]); // catalogue order
-    expect(presetsForProvider("deepseek")).toContain("deepseek/deepseek-chat");
+    expect(presetsForProvider("deepseek", "thinker")).toContain("deepseek/deepseek-chat");
+    // both seats survive the round trip, including the null the backend means literally.
+    expect(presetsForProvider("deepseek", "worker")).toEqual([]);
+    expect(defaultForProvider("openai", "worker")).toBe("openai/gpt-4.1-mini");
     expect(getProviderCatalogue()).toEqual(served.provider_catalogue);
   });
 
   it("returns the empty-catalogue fallback and never clobbers the cache when the endpoint is down", async () => {
     const stable = [
-      { provider: "openai", default_model: "openai/gpt-4o-mini", presets: ["openai/gpt-4o-mini"] },
+      {
+        provider: "openai",
+        thinker_default: "openai/gpt-4o-mini",
+        worker_default: "openai/gpt-4.1-mini",
+        thinker_presets: ["openai/gpt-4o-mini"],
+        worker_presets: ["openai/gpt-4.1-mini"],
+      },
     ];
     setProviderCatalogue(stable);
     vi.stubGlobal(
