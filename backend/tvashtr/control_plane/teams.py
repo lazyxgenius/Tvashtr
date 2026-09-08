@@ -144,7 +144,8 @@ def reviewer_model() -> str:
 
 
 # M-runnable: the ONE backend-owned provider catalogue — the SINGLE place a provider or model slug
-# is DECLARED. Static, dependency-free, a module const (no DB, no network); ``account_default_model``
+# is DECLARED. Static, dependency-free, a module const (no DB, no network);
+# ``account_default_model``
 # stays pure + unit-testable. Served READ-ONLY to the FE on ``GET /api/config`` (slugs only, never
 # keys — ``public_provider_catalogue``); the picker's quick-picks + the dashboard's provider
 # suggestions DERIVE from it, nothing to hand-sync.
@@ -196,35 +197,64 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
         ],
         "worker_presets": ["openrouter/openai/gpt-4o-mini"],
     },
+    # PROBED 2026-09-08 (full transcript in ``STATE.md``). Both seats land on the same slug: it is
+    # the ONLY nvidia_nim candidate that passed BOTH matrices, and it passed the worker gates 3/3 on
+    # re-probe. Its first-run ``W1: FAIL — empty content`` was transient (a 95s stall), which is why
+    # a single observation was not allowed to decide a catalogue entry. Rejected here, and the
+    # rejections are real: ``moonshotai/kimi-k2.6`` 404s (not entitled), and
+    # ``minimaxai/minimax-m3`` passed all four WORKER gates but truncates as a thinker
+    # (T2 RateLimitError, then a fragment) — it is kept as a worker quick-pick, not a default.
     "nvidia_nim": {
-        "thinker_default": "PROBE_PENDING",
-        "worker_default": "PROBE_PENDING",
-        "thinker_presets": [],
-        "worker_presets": [],
+        "thinker_default": "nvidia_nim/openai/gpt-oss-20b",
+        "worker_default": "nvidia_nim/openai/gpt-oss-20b",
+        "thinker_presets": ["nvidia_nim/openai/gpt-oss-20b"],
+        "worker_presets": [
+            "nvidia_nim/openai/gpt-oss-20b",
+            "nvidia_nim/minimaxai/minimax-m3",
+        ],
     },
+    # PROBED 2026-09-08. The two seats genuinely differ here, first-pass in preference order each:
+    # ``gpt-4.1-mini`` took the worker seat (W1-W4, 11s) and ``gpt-4o-mini`` the thinker seat
+    # (T1-T2, 1889 chars, 3/4 headings). Neither list carries the other's winner, because neither
+    # was probed in the other seat — an unprobed slug is exactly what this milestone removed.
     "openai": {
-        "thinker_default": "PROBE_PENDING",
-        "worker_default": "PROBE_PENDING",
-        "thinker_presets": [],
-        "worker_presets": [],
+        "thinker_default": "openai/gpt-4o-mini",
+        "worker_default": "openai/gpt-4.1-mini",
+        "thinker_presets": ["openai/gpt-4o-mini"],
+        "worker_presets": ["openai/gpt-4.1-mini"],
     },
+    # PROBED 2026-09-08 — and the clearest case in the table for why the seats are separate.
+    # ``gemini-2.5-flash`` passes ALL FOUR worker gates (W3: a real agent step whose file landed in
+    # the workspace with exact contents) and CANNOT serve a thinker: under the product's own
+    # ``agent_max_output_tokens`` ceiling it spends the whole budget reasoning and returns a
+    # truncated fragment — 63 then 91 characters for completion_tokens=396, twice. The other
+    # candidate, ``gemini-flash-latest``, was given the full flaky-gate retry budget (6 attempts):
+    # it passes T1, a trivial completion, and never once returned a T2 deliverable — every attempt
+    # ServiceUnavailable. So `None` here is EVIDENCE, not a gap: this account's Gemini quota admits
+    # trivial calls and refuses substantial ones, and the thinker seat yields to the next provider.
     "gemini": {
-        "thinker_default": "PROBE_PENDING",
-        "worker_default": "PROBE_PENDING",
+        "thinker_default": None,
+        "worker_default": "gemini/gemini-2.5-flash",
         "thinker_presets": [],
-        "worker_presets": [],
+        "worker_presets": ["gemini/gemini-2.5-flash"],
     },
+    # PROBED 2026-09-08. One model, both seats. The worker gates took 232s because Groq's free tier
+    # 429s on tokens (``rate_limit_exceeded``) and the BYOK retry envelope rode it out rather than
+    # failing — which is the envelope doing its job, and the reason a slow gate is not a failed one.
     "groq": {
-        "thinker_default": "PROBE_PENDING",
-        "worker_default": "PROBE_PENDING",
-        "thinker_presets": [],
-        "worker_presets": [],
+        "thinker_default": "groq/openai/gpt-oss-120b",
+        "worker_default": "groq/openai/gpt-oss-120b",
+        "thinker_presets": ["groq/openai/gpt-oss-120b"],
+        "worker_presets": ["groq/openai/gpt-oss-120b"],
     },
+    # PROBED 2026-09-08. Both seats, first candidate, clean (W1-W4 in 11s; T2 1675 chars).
+    # ``deepseek-reasoner`` was a preset before this milestone and is GONE: no gate ever covered it,
+    # and carrying an unprobed slug forward is precisely the habit the seat split exists to end.
     "deepseek": {
-        "thinker_default": "PROBE_PENDING",
-        "worker_default": "PROBE_PENDING",
-        "thinker_presets": [],
-        "worker_presets": [],
+        "thinker_default": "deepseek/deepseek-chat",
+        "worker_default": "deepseek/deepseek-chat",
+        "thinker_presets": ["deepseek/deepseek-chat"],
+        "worker_presets": ["deepseek/deepseek-chat"],
     },
 }
 # The deterministic preference order when the account holds several mapped providers.
