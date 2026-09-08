@@ -90,6 +90,7 @@ def test_local_off_builds_direct_llm_with_the_threaded_owner_key(tmp_path, monke
         "api_key": "byok-key",
         "num_retries": 8,
         "retry_max_wait": 120,
+        "timeout": 120,
         "temperature": 0.0,
         "usage_id": "tvashtr-agent",
         # M-thrift: the explicit output ceiling every adapter now stamps (Settings default 4096).
@@ -108,6 +109,7 @@ def test_docker_off_builds_direct_llm_with_the_threaded_owner_key(tmp_path, monk
         "api_key": "byok-key",
         "num_retries": 8,
         "retry_max_wait": 120,
+        "timeout": 120,
         "temperature": 0.0,
         "usage_id": "tvashtr-agent",
         # M-thrift: the explicit output ceiling every adapter now stamps (Settings default 4096).

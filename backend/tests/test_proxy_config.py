@@ -53,12 +53,14 @@ def test_routing_off_uses_the_threaded_owner_key(monkeypatch):
     kwargs = agent_llm_routing(
         s, "openrouter/openai/gpt-4o-mini", "docker", api_key_override="byok"
     )
-    # Milestone B: the BYOK dict now also carries the widened rate-limit retry envelope (8 / 120).
+    # Milestone B: the BYOK dict also carries the widened rate-limit retry envelope (8 / 120);
+    # M-seat adds the per-request `timeout` (120s) so one hung attempt cannot outlive the envelope.
     assert kwargs == {
         "model": "openrouter/openai/gpt-4o-mini",
         "api_key": "byok",
         "num_retries": 8,
         "retry_max_wait": 120,
+        "timeout": 120,
     }
     assert "base_url" not in kwargs
 
@@ -127,12 +129,14 @@ def test_routing_off_uses_override_for_any_provider_slug(monkeypatch):
     s = Settings(_env_file=None, litellm_proxy_enabled=False)
     for slug in ("gemini/gemini-2.0-flash", "nvidia_nim/meta/llama-3.3-70b-instruct", "groq/x"):
         kwargs = agent_llm_routing(s, slug, "local", api_key_override="owner-key")
-        # Milestone B: + the widened retry envelope (8 / 120) on the BYOK path, for ANY slug.
+        # Milestone B: + the widened retry envelope (8 / 120) on the BYOK path, for ANY slug;
+        # M-seat: + the per-request `timeout`. Both apply regardless of the provider slug.
         assert kwargs == {
             "model": slug,
             "api_key": "owner-key",
             "num_retries": 8,
             "retry_max_wait": 120,
+            "timeout": 120,
         }
         assert "base_url" not in kwargs
 
@@ -172,13 +176,15 @@ def test_byok_branch_carries_the_retry_envelope_both_modes(monkeypatch):
     s = Settings(_env_file=None, litellm_proxy_enabled=False)
     for mode in ("local", "docker"):
         kwargs = agent_llm_routing(s, "nvidia_nim/x", mode, api_key_override="byok")
-        # the EXACT new BYOK shape (local AND docker): bare slug + threaded key + the widened
-        # envelope (8 / 120), no base_url — the authoritative dict-shape guard for the path.
+        # the EXACT BYOK shape (local AND docker): bare slug + threaded key + the widened
+        # envelope (8 / 120) + the M-seat per-request timeout, no base_url — the authoritative
+        # dict-shape guard for the path. It is what caught `timeout` arriving unannounced.
         assert kwargs == {
             "model": "nvidia_nim/x",
             "api_key": "byok",
             "num_retries": 8,
             "retry_max_wait": 120,
+            "timeout": 120,
         }
 
 
@@ -206,3 +212,67 @@ def test_env_overrides_retune_the_retry_envelope(monkeypatch):
     kwargs = agent_llm_routing(s, "nvidia_nim/x", "local", api_key_override="byok")
     assert kwargs["num_retries"] == 3
     assert kwargs["retry_max_wait"] == 45
+
+
+# --- M-seat: the per-request HTTP timeout (proxy-OFF path ONLY) -----------------------------------
+#
+# The envelope above decides how long to keep TRYING; this decides how long any ONE attempt may hang
+# before it is called a failure. They are different questions and the second had no answer:
+# the SDK's
+# own default is 300s, which the retry envelope then MULTIPLIES, so a provider that accepts the
+# connection and never replies reports nothing for `num_retries x 300s`. M-live lost ~30
+# minutes of a
+# live demo to exactly that shape. With `timeout` set, the same stall surfaces in two minutes as a
+# litellm `APITimeoutError` naming the model — something the run can classify.
+
+
+def test_byok_branch_carries_the_request_timeout(monkeypatch):
+    # RED before M-seat: `agent_llm_routing`'s BYOK dict carried no `timeout` at all, so the SDK
+    # default applied and nothing in the codebase pinned it. Asserted on BOTH modes because the
+    # kwargs SERIALIZE into the in-container agent-server — the docker and fly paths inherit this
+    # dict, so a regression here is invisible from the host.
+    monkeypatch.delenv("TVASHTR_AGENT_REQUEST_TIMEOUT", raising=False)
+    s = Settings(_env_file=None, litellm_proxy_enabled=False)
+    for mode in ("local", "docker"):
+        kwargs = agent_llm_routing(s, "nvidia_nim/x", mode, api_key_override="byok")
+        assert kwargs["timeout"] == 120, mode
+
+
+def test_proxy_on_branch_omits_the_request_timeout():
+    # The COUNTERPART guard, and the reason the timeout was added to one branch only: the proxy-ON
+    # shape must stay byte-unchanged (the registered budget-latency deferral). This test passes
+    # BEFORE M-seat too — that is the point. It exists so the next person to touch the routing
+    # function cannot quietly widen the new key across both branches.
+    s = Settings(_env_file=None, litellm_proxy_enabled=True, litellm_master_key="sk-master")
+    kwargs = agent_llm_routing(s, "openrouter/x", "docker", api_key_override="sk-run-vkey")
+    assert "timeout" not in kwargs
+    assert kwargs == {
+        "model": "litellm_proxy/openrouter/x",
+        "api_key": "sk-run-vkey",
+        "base_url": "http://host.docker.internal:4000",
+    }
+
+
+def test_env_override_retunes_the_request_timeout(monkeypatch):
+    # Env-dialable, so a genuinely slow model can be given room without a code change.
+    monkeypatch.setenv("TVASHTR_AGENT_REQUEST_TIMEOUT", "45")
+    s = Settings(_env_file=None, litellm_proxy_enabled=False)
+    kwargs = agent_llm_routing(s, "nvidia_nim/x", "local", api_key_override="byok")
+    assert kwargs["timeout"] == 45
+
+
+def test_the_timeout_is_a_real_llm_field_not_a_silently_dropped_key():
+    # The same end-to-end proof `test_byok_retry_envelope` makes for the envelope: splat the routing
+    # dict into a REAL OpenHands `LLM` and read the field back. A mis-spelled key
+    # (`request_timeout`,
+    # `timeout_s`) would be accepted by the dict and dropped by the SDK, and every assertion above
+    # would still pass while the setting did nothing.
+    from openhands.sdk import LLM
+
+    s = Settings(_env_file=None, litellm_proxy_enabled=False, agent_request_timeout_s=77)
+    llm = LLM(
+        **agent_llm_routing(s, "nvidia_nim/x", "docker", api_key_override="byok"),
+        temperature=0.0,
+        usage_id="t",
+    )
+    assert llm.timeout == 77
