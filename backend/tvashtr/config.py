@@ -216,6 +216,48 @@ class Settings(BaseSettings):
         gt=0,
         validation_alias=AliasChoices("TVASHTR_AGENT_MAX_OUTPUT_TOKENS", "agent_max_output_tokens"),
     )
+    # M-seat: the per-request HTTP timeout every adapter stamps on its ``LLM``. The SDK's own
+    # default is 300s, and the retry envelope above multiplies it: a provider that ACCEPTS the
+    # connection and then never answers (observed live on nvidia_nim — §17 Tvashtr-82 records an
+    # 8-minute hang, and M-live lost ~30 minutes of a demo to the same shape) burns
+    # ``num_retries x 300s`` before anything is reported. 120s caps a single stalled call at two
+    # minutes and surfaces it as a litellm ``APITimeoutError`` naming the model — a legible failure
+    # the run can classify — instead of an unexplained silence. It is deliberately far above any
+    # healthy call: the slowest gate-passing completion measured in the M-seat probe was ~9s, and
+    # a long agent turn under the 4096-token output ceiling has never approached this. Env-dialable
+    # so a genuinely slow model can be given room without a code change.
+    agent_request_timeout_s: int = Field(
+        default=120,
+        gt=0,
+        validation_alias=AliasChoices("TVASHTR_AGENT_REQUEST_TIMEOUT", "agent_request_timeout_s"),
+    )
+    # M-live: the condenser's TOKEN trigger. M-ctx0 gave every adapter
+    # ``LLMSummarizingCondenser(keep_first=2, max_size=80)`` to stop a long transcript overrunning
+    # the model's context window — but ``max_size`` counts EVENTS, and the SDK gates its
+    # token-based path on a separate ``max_tokens`` that defaults to ``None``:
+    #
+    #     if self.max_tokens and agent_llm:      # llm_summarizing_condenser.py:104
+    #         if total_tokens > self.max_tokens:
+    #
+    # Unset, that branch is dead code and 80 events is the ONLY trigger — which cannot protect a
+    # brownfield run, because reading a handful of large files off a monorepo breaches the window
+    # long before 80 events accumulate. Measured: M-live's Engineer node died on a 131,072-token
+    # overflow after ~20 events, surfaced as an EMPTY-bodied provider 400 (NIM derives
+    # ``window - prompt_tokens`` for max_tokens, gets a negative number, and refuses; litellm drops
+    # the body, so the run log reads only ``Nvidia_nimException -``).
+    #
+    # 96k is chosen against the window this actually has to survive: 131,072 — every NIM model
+    # reachable on a build key, and the retired llama-3.3-70b before them. It leaves ~35k of
+    # headroom for the reply plus the summarization call itself. A model with a SMALLER window is
+    # no worse off than today (the trigger simply never fires, exactly as before); a model with a
+    # larger one condenses earlier than it strictly must, which costs a little and risks nothing.
+    agent_condenser_max_tokens: int = Field(
+        default=96_000,
+        gt=0,
+        validation_alias=AliasChoices(
+            "TVASHTR_AGENT_CONDENSER_MAX_TOKENS", "agent_condenser_max_tokens"
+        ),
+    )
     # The prebuilt OpenHands agent-server image the docker path runs (heavy:
     # VSCode/VNC baked in — started with extra_ports=False). Orphan-reaping targets
     # containers from this image (``ancestor=``): the installed DockerWorkspace
@@ -623,14 +665,20 @@ def agent_llm_routing(
         )
     # BYOK direct path: carry the widened rate-limit retry envelope (milestone B) so a
     # throttled low-tier key rides out a busy window instead of crashing the agent loop.
-    # ``num_retries``/``retry_max_wait`` are real OpenHands ``LLM`` fields; they splat into
-    # the constructor and SERIALIZE into the in-container agent-server, so the docker path
-    # inherits them too. The proxy-ON branch above deliberately OMITS them (budget-latency).
+    # ``num_retries``/``retry_max_wait``/``timeout`` are real OpenHands ``LLM`` fields; they splat
+    # into the constructor and SERIALIZE into the in-container agent-server, so the docker and fly
+    # paths inherit them too. The proxy-ON branch above deliberately OMITS them (budget-latency).
+    #
+    # M-seat adds ``timeout``: the envelope above decides how long to keep TRYING, and this decides
+    # how long any ONE attempt may hang before it is called a failure. Without it the SDK's 300s
+    # default multiplies through the retries, which is how a stalled provider ate ~30 minutes of a
+    # live demo while reporting nothing at all.
     return {
         "model": model,
         "api_key": api_key_override,
         "num_retries": settings.agent_num_retries,
         "retry_max_wait": settings.agent_retry_max_wait_s,
+        "timeout": settings.agent_request_timeout_s,
     }
 
 

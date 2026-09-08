@@ -544,7 +544,14 @@ class OpenHandsFlyAdapter:
                 agent = Agent(
                     llm=llm,
                     tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],
-                    condenser=LLMSummarizingCondenser(llm=condenser_llm, keep_first=2, max_size=80),
+                    condenser=LLMSummarizingCondenser(
+                        llm=condenser_llm,
+                        keep_first=2,
+                        max_size=80,
+                        # M-live: fold on TOKENS too — `max_size` counts events, and a
+                        # large-repo transcript overruns the window in far fewer than 80.
+                        max_tokens=settings.agent_condenser_max_tokens,
+                    ),
                     mcp_config=task.mcp_config or {},
                     agent_context=agent_context,
                 )
