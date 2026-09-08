@@ -47,19 +47,29 @@ const IDEA = process.env.TVASHTR_PROOF_IDEA ?? DEFAULT_IDEA;
 
 /** M-thrift's `_PROVIDER_DEFAULT_ORDER` (backend/tvashtr/control_plane/teams.py). */
 const PROVIDER_ORDER = ["nvidia_nim", "openai", "gemini", "groq", "deepseek", "openrouter"];
-/** `PROVIDER_CATALOGUE[p].default_model`, same module. */
 /** M-live: this used to be a hardcoded copy of the backend's `PROVIDER_CATALOGUE`, and it went
  * stale the moment NVIDIA retired `meta/llama-3.3-70b-instruct` and the catalogue moved on — C5
  * then failed comparing a CORRECT chip against a dead expectation. A harness that duplicates a
  * declaration eventually contradicts it, so the expectation is now DERIVED from
  * `GET /api/config`, which serves `teams.public_provider_catalogue()` — the single place a slug
  * is declared. This is the same move M-runnable made for the FE's own model presets, and it means
- * the NEXT retirement cannot desync the harness. */
+ * the NEXT retirement cannot desync the harness.
+ *
+ * M-seat: the catalogue is now split by SEAT, so the expectation is too. A provider that cannot
+ * serve a worker declares `worker_default: null` and YIELDS that seat to the next held provider —
+ * which means the PM chip and the Engineer/Reviewer chips may legitimately differ, and asserting
+ * they match would pin the very bug this milestone removed. */
+type Capability = "thinker" | "worker";
+interface CatalogueRow {
+  provider: string;
+  thinker_default: string | null;
+  worker_default: string | null;
+}
 interface ConfigPayload {
-  provider_catalogue?: { provider: string; default_model: string }[];
+  provider_catalogue?: CatalogueRow[];
 }
 
-async function providerDefaultModels(api: APIRequestContext): Promise<Record<string, string>> {
+async function providerCatalogue(api: APIRequestContext): Promise<CatalogueRow[]> {
   const cfg = await jsonOf<ConfigPayload>(api, "/api/config");
   const rows = cfg.provider_catalogue ?? [];
   if (rows.length === 0) {
@@ -68,7 +78,20 @@ async function providerDefaultModels(api: APIRequestContext): Promise<Record<str
         "expectation from it, so an empty catalogue is a real backend finding, not a skip.",
     );
   }
-  return Object.fromEntries(rows.map((r) => [r.provider, r.default_model]));
+  return rows;
+}
+
+/** The backend walk, replayed against the served catalogue: the first HELD provider (in
+ * `_PROVIDER_DEFAULT_ORDER`) that declares a default for this seat, then the second — i.e. exactly
+ * what `account_default_model` / `account_fallback_model` resolve for this account. */
+function seatWalk(rows: CatalogueRow[], held: string[], capability: Capability): string[] {
+  const defaultOf = (p: string) => {
+    const row = rows.find((r) => r.provider === p);
+    return (capability === "worker" ? row?.worker_default : row?.thinker_default) ?? null;
+  };
+  return PROVIDER_ORDER.filter((p) => held.includes(p))
+    .map(defaultOf)
+    .filter((m): m is string => Boolean(m));
 }
 /** Terminal DBOS *workflow* statuses. Poll to these, never to `run.status` — a fast run flips
  * `runs.status` to 'completed' while the same `run_team` workflow is still pushing and opening the
@@ -186,6 +209,13 @@ test.describe("M-proof", () => {
     const api = context.request;
     const teamName = `demo-proof-${new Date().toISOString().replace(/[:.]/g, "-")}`;
     let teamId = "";
+    // M-seat rider: C12 deletes the team, and that cascade takes `agent_invocations` with it — the
+    // forensic trail of whatever just went wrong. It destroyed the evidence of the M-live Engineer
+    // failure three separate times. So the delete is now conditional: a run that did NOT reach a
+    // real PR keeps its team, and the transcript says where to look. Residue from a FAILED run is
+    // the cheapest thing in this system; a lost failure trail costs a whole re-run to recover.
+    let runSucceeded = false;
+    let runIdForReport = "";
 
     try {
       // ---- C1: establish the session and land on the dashboard -------------------------------
@@ -240,13 +270,30 @@ test.describe("M-proof", () => {
             "never handle raw credentials.",
         );
       }
-      const ordered = PROVIDER_ORDER.filter((p) => held.includes(p));
-      const defaults = await providerDefaultModels(api);
-      const expectedPrimary = defaults[ordered[0]];
-      const expectedFallback = ordered.length > 1 ? defaults[ordered[1]] : "";
+      const rows = await providerCatalogue(api);
+      const thinkerWalk = seatWalk(rows, held, "thinker");
+      const workerWalk = seatWalk(rows, held, "worker");
+      if (thinkerWalk.length === 0 || workerWalk.length === 0) {
+        needsHuman(
+          `the served catalogue offers this account no ${thinkerWalk.length === 0 ? "thinker" : "worker"} ` +
+            `model at all (held: [${held.join(", ")}]). Every provider it holds declares null for ` +
+            "that seat, so no team it is given can run. Add a key for a provider that serves it, " +
+            "or re-run `scripts/seat_probe.py` and fill the catalogue in.",
+        );
+      }
+      const expected: Record<Capability, { primary: string; fallback: string }> = {
+        thinker: { primary: thinkerWalk[0], fallback: thinkerWalk[1] ?? "" },
+        worker: { primary: workerWalk[0], fallback: workerWalk[1] ?? "" },
+      };
       console.log(
-        `[C2] PASS — primary expectation ${expectedPrimary}; fallback expectation ${expectedFallback}`,
+        `[C2] thinker seat: primary ${expected.thinker.primary}; fallback ` +
+          `${expected.thinker.fallback || "(none)"}`,
       );
+      console.log(
+        `[C2] worker  seat: primary ${expected.worker.primary}; fallback ` +
+          `${expected.worker.fallback || "(none)"}`,
+      );
+      console.log("[C2] PASS — seat expectations derived from GET /api/config");
       await shot(page, 2, "providers");
 
       // ---- C3: the new-team dialog ------------------------------------------------------------
@@ -288,32 +335,49 @@ test.describe("M-proof", () => {
       console.log(`[C4] PASS — created '${teamName}' (${teamId}) from review_loop; canvas open`);
       await shot(page, 4, "canvas-created");
 
-      // ---- C5: canvas model chips -------------------------------------------------------------
-      const roles = ["Product manager", "Engineer", "Reviewer"];
-      for (const role of roles) {
+      // ---- C5: canvas model chips (per SEAT) --------------------------------------------------
+      // M-seat: the PM is a thinker and the Engineer/Reviewer are workers, so each chip is checked
+      // against ITS OWN seat's walk. Asserting all three match would re-pin the defect this
+      // milestone removed — a worker wearing whatever slug the first held provider declared.
+      const roles: [string, Capability][] = [
+        ["Product manager", "thinker"],
+        ["Engineer", "worker"],
+        ["Reviewer", "worker"],
+      ];
+      for (const [role, capability] of roles) {
         const chip = nodeCard(page, role).locator(".rf-node__model-text");
         await expect(chip, `${role} model chip`).toBeVisible({ timeout: 20_000 });
         const slug = (await chip.innerText()).trim();
-        console.log(`[C5] ${role} model chip = ${slug}`);
+        console.log(`[C5] ${role} (${capability}) model chip = ${slug}`);
         if (slug.startsWith("openrouter/")) {
           throw new Error(
             `[C5] FAIL — ${role} is stamped ${slug}: the M-thrift provider reorder did not take ` +
               "for this account (openrouter must be LAST, nvidia_nim FIRST).",
           );
         }
-        expect(slug, `${role} model chip`).toBe(expectedPrimary);
+        expect(slug, `${role} model chip (${capability} seat)`).toBe(expected[capability].primary);
       }
-      console.log(`[C5] PASS — all three model chips read ${expectedPrimary}`);
+      console.log(
+        `[C5] PASS — thinker chip ${expected.thinker.primary}; worker chips ` +
+          `${expected.worker.primary}`,
+      );
       await shot(page, 5, "model-chips");
 
       // ---- C6: the account-derived fallback model, on EVERY model-bearing node -----------------
-      for (const role of roles) {
+      // Also per seat: a worker whose failover target only serves thinkers is a safety net tied to
+      // nothing, so the fallback walks the same capability as the primary.
+      for (const [role, capability] of roles) {
         await openNodeDrawer(page, role);
         const value = await page.locator("input[aria-label='Fallback model']").inputValue();
-        console.log(`[C6] ${role} fallback model value = ${JSON.stringify(value)}`);
-        expect(value, `${role} fallback model (value, not placeholder)`).toBe(expectedFallback);
+        console.log(`[C6] ${role} (${capability}) fallback model value = ${JSON.stringify(value)}`);
+        expect(value, `${role} fallback model (${capability} seat; value, not placeholder)`).toBe(
+          expected[capability].fallback,
+        );
       }
-      console.log(`[C6] PASS — PM, Engineer and Reviewer all carry fallback ${expectedFallback}`);
+      console.log(
+        `[C6] PASS — thinker fallback ${expected.thinker.fallback || "(none)"}; worker fallback ` +
+          `${expected.worker.fallback || "(none)"}`,
+      );
       await shot(page, 6, "fallback-model");
 
       // ---- C7: caveman on the workers ---------------------------------------------------------
@@ -398,6 +462,7 @@ test.describe("M-proof", () => {
           { timeout: 90_000, intervals: [1000] },
         )
         .not.toBe("");
+      runIdForReport = runId;
       console.log(`[C9] PASS — run ${runId} launched against ${REPO}`);
 
       // ---- C10 + C11: approve the real gates through the UI, then a terminal run + a real PR ---
@@ -478,6 +543,7 @@ test.describe("M-proof", () => {
             ? "ESCALATION-GATE (a human waved it through; weaker proof)"
             : `UNDETERMINED (reviewer final outcome '${reviewerFinal}')`;
 
+      runSucceeded = true;
       console.log("[C11] PASS — terminal run with a real pull request");
       console.log(`PR_URL(${LEG}): ${prUrl}`);
       console.log(`SHIP_VIA(${LEG}): ${shipVia}`);
@@ -493,8 +559,19 @@ test.describe("M-proof", () => {
         await page.goto("/");
         await expect(page.locator(".tv-dash__hello")).toBeVisible({ timeout: 30_000 });
         // Sweep every demo-proof-* team, not just this run's: a crashed earlier run leaves one
-        // behind and this harness is permanent, so residue would accumulate forever.
-        const stale = page.getByRole("button", { name: /^Delete demo-proof-/ });
+        // behind and this harness is permanent, so residue would accumulate forever. The ONE
+        // exception is THIS run when it failed (see `runSucceeded` above) — deleting it would
+        // cascade away the agent_invocations that say why.
+        if (!runSucceeded) {
+          console.log(
+            `[C12] PRESERVED '${teamName}' (team ${teamId || "unknown"}, run ` +
+              `${runIdForReport || "not launched"}) — the run did not reach a real PR, so its ` +
+              "invocations are kept for diagnosis. Delete it from the dashboard when done.",
+          );
+        }
+        const stale = page
+          .getByRole("button", { name: /^Delete demo-proof-/ })
+          .and(page.locator(runSucceeded ? "button" : `button:not([aria-label$="${teamName}"])`));
         await expect
           .poll(async () => (await stale.count()) > 0, { timeout: 20_000, intervals: [500] })
           .toBe(true)
@@ -511,7 +588,10 @@ test.describe("M-proof", () => {
           removed += 1;
           console.log(`[C12] deleted '${name}' through the dashboard UI`);
         }
-        console.log(`[C12] PASS — ${removed} demo-proof team(s) cleaned up; the PR is kept`);
+        console.log(
+          `[C12] PASS — ${removed} demo-proof team(s) cleaned up; the PR is kept` +
+            (runSucceeded ? "" : `; '${teamName}' deliberately kept for diagnosis`),
+        );
       } catch (e) {
         console.log(`[C12] cleanup did not complete: ${String(e)}`);
       }
