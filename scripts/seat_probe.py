@@ -70,7 +70,11 @@ WORKER_CANDIDATES: dict[str, list[str]] = {
     "openai": ["openai/gpt-4.1-mini", "openai/gpt-4o-mini", "openai/gpt-5-mini"],
     "gemini": ["gemini/gemini-2.5-flash", "gemini/gemini-flash-latest"],
     "groq": ["groq/openai/gpt-oss-120b", "groq/openai/gpt-oss-20b", "groq/qwen/qwen3.8-27b"],
-    "deepseek": ["deepseek/deepseek-chat", "deepseek/deepseek-v4-pro", "deepseek/deepseek-v4-flash"],
+    "deepseek": [
+        "deepseek/deepseek-chat",
+        "deepseek/deepseek-v4-pro",
+        "deepseek/deepseek-v4-flash",
+    ],
     "openrouter": ["openrouter/openai/gpt-4o-mini"],
 }
 THINKER_CANDIDATES: dict[str, list[str]] = {
@@ -82,12 +86,18 @@ THINKER_CANDIDATES: dict[str, list[str]] = {
     "openai": ["openai/gpt-4o-mini", "openai/gpt-4.1-mini"],
     "gemini": ["gemini/gemini-2.5-flash", "gemini/gemini-flash-latest"],
     "groq": ["groq/openai/gpt-oss-120b", "groq/openai/gpt-oss-20b", "groq/qwen/qwen3.8-27b"],
-    "deepseek": ["deepseek/deepseek-chat", "deepseek/deepseek-v4-pro", "deepseek/deepseek-v4-flash"],
+    "deepseek": [
+        "deepseek/deepseek-chat",
+        "deepseek/deepseek-v4-pro",
+        "deepseek/deepseek-v4-flash",
+    ],
     "openrouter": ["openrouter/openai/gpt-4o-mini"],
 }
 
 TARGET_FILE = "hello.txt"
 TARGET_CONTENT = "Hello from Tvashtr"
+
+
 # W2's tool schema: the smallest thing that forces a provider to accept an OpenAI tool spec next to
 # content BLOCKS. A provider that mangles either shape fails here rather than mid-run.
 #
@@ -276,7 +286,9 @@ def gate_agent_step(model: str, api_key: str) -> tuple[GateResult, GateResult]:
         )
     produced = Path(workspace) / TARGET_FILE
     if not produced.exists():
-        w3 = GateResult("W3", False, f"no {TARGET_FILE} in workspace (changed={result.files_changed})")
+        w3 = GateResult(
+            "W3", False, f"no {TARGET_FILE} in workspace (changed={result.files_changed})"
+        )
     else:
         contents = produced.read_text().strip()
         w3 = (
@@ -361,7 +373,9 @@ def run_matrix(capability: str, providers: dict[str, str], models: list[str] | N
     winners: dict[str, str | None] = {}
     print(f"\n{'=' * 78}\n{capability.upper()} SEAT — four gates, first pass wins\n{'=' * 78}")
     for provider, key in providers.items():
-        candidates = [m for m in (models or table.get(provider, [])) if m.startswith(f"{provider}/")]
+        candidates = [
+            m for m in (models or table.get(provider, [])) if m.startswith(f"{provider}/")
+        ]
         print(f"\n  {provider}  ({len(candidates)} candidate(s))")
         if not candidates:
             print("    (no candidates declared)")

@@ -15,7 +15,8 @@ on an empty-bodied provider 400. The catalogue now declares ``thinker_default`` 
 a worker seat", and the walk YIELDS that seat to the next held provider.
 
 These tests are seat logic, not slug lore: the ones that matter monkeypatch a synthetic catalogue so
-they keep pinning the behaviour whatever a vendor retires next. The live-catalogue tests below assert
+they keep pinning the behaviour whatever a vendor retires next. The live-catalogue tests below
+assert
 only the invariants the catalogue must satisfy, never a particular slug.
 """
 
@@ -129,7 +130,8 @@ def test_unknown_capability_is_refused(synthetic_catalogue):
 @pytest.mark.parametrize("provider", sorted(PROVIDER_CATALOGUE))
 def test_every_catalogue_slug_canonicalizes_to_its_provider(provider):
     """The invariant M-runnable pinned, now across both seats: a slug filed under a provider must
-    actually BE that provider's (otherwise the key resolution at run time picks the wrong secret)."""
+    actually BE that provider's (otherwise the key resolution at run time picks the wrong
+    secret)."""
     for capability in ("thinker", "worker"):
         for slug in catalogue_presets(provider, capability):
             assert provider_for_model(slug) == provider, f"{slug} filed under {provider}"

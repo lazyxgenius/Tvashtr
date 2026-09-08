@@ -2524,7 +2524,9 @@ def _build_node(
             team_graph_id=graph_id,
             role_name=preset["role_name"] if preset else "thinker",
             kind="completion",
-            model=body.model or account_default_model(held, "thinker") or get_settings().default_model,
+            model=body.model
+            or account_default_model(held, "thinker")
+            or get_settings().default_model,
             engine=None,
             prompt=preset["prompt"] if preset else (body.prompt if body.prompt is not None else ""),
             position=position,
