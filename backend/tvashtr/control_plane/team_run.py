@@ -81,7 +81,11 @@ from tvashtr.control_plane.node_tools import build_mcp_config
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.control_plane.run_diff import compute_run_diff
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
-from tvashtr.control_plane.worktree import add_worktree, build_repo_grounding
+from tvashtr.control_plane.worktree import (
+    add_worktree,
+    build_repo_grounding,
+    is_work_tree,
+)
 from tvashtr.db import session_scope
 from tvashtr.documents.service import (
     add_version,
@@ -226,13 +230,30 @@ def clone_github_repo_step(run_id: str) -> None:
     DBOS replay is safe. NOT in the endpoint: a clone is unbounded network I/O that must be
     durable and must not block ``POST /api/runs``. The 1h token is scrubbed off ``.git/config``
     in :func:`github_app.clone_repo` — never persisted."""
+    _materialize_hosted_clone(run_id)
+
+
+def _materialize_hosted_clone(run_id: str) -> None:
+    """The clone step's BODY, gated on the DISK rather than on a database column.
+
+    M-hostedfix — the defect this closes. The old gate was ``if not github_repo or repo_path:
+    return``, i.e. "``runs.repo_path`` is set, so the clone exists". That is a claim about the
+    DATABASE, and the clone is MACHINE-LOCAL disk. A workflow recovered onto a second Fly machine
+    (prod runs two, no shared volume, one ``executor_id``) replays a ``repo_path`` pointing at a
+    directory that machine never had, and every git command against it exits 128.
+
+    Kept as a plain function, NOT a step, so :func:`ensure_run_workspace` can re-run it on a
+    recovery — a ``@DBOS.step`` replays its recorded output and never re-enters its body, which is
+    exactly why the original "idempotent + crash-safe" claim was unreachable."""
     with session_scope() as session:
         run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
         github_repo = run.github_repo
         repo_path = run.repo_path
         owner_id = run.owner_id
-    if not github_repo or repo_path:
-        return  # not a hosted-GitHub run, or already cloned (idempotent resume)
+    if not github_repo:
+        return  # not a hosted-GitHub run
+    if repo_path and is_work_tree(repo_path):
+        return  # the clone is genuinely HERE (idempotent resume) — never re-clone what we hold
     match = github_app.find_repo_in_installations(_owner_installation_ids(owner_id), github_repo)
     if match is None:
         raise RuntimeError(
@@ -687,15 +708,40 @@ def engineer_setup_step(run_id: str) -> str:
       the branch lands in the user's repo via the shared object store). The branch is recorded on
       the Run as ``ship_branch``. No workspace ``.gitignore`` is written (the real repo has its
       own, and ``idempotent_ship``'s ``git add -A`` honors it — D2/D3)."""
+    return _materialize_run_workspace(run_id)
+
+
+def _materialize_run_workspace(run_id: str) -> str:
+    """The setup step's BODY — idempotent, repair-capable, and verified against the DISK.
+
+    Split out of :func:`engineer_setup_step` so :func:`ensure_run_workspace` can re-run it after a
+    recovery. Every branch no-ops when the disk already holds what it would build."""
     from tvashtr.engines.openhands_adapter import make_local_workspace  # lazy (openhands)
 
     with session_scope() as session:
         run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
         repo_path = run.repo_path
         base_ref = run.base_ref
+        github_repo = run.github_repo
 
     workspace = make_local_workspace(run_id)
     if repo_path is not None:
+        if not is_work_tree(repo_path):
+            # The repo the worktree is cut FROM is machine-local too, and on a recovery it is gone
+            # alongside the workspace. A hosted run can rebuild it from GitHub; a run pointed at the
+            # user's OWN folder cannot, and must say so instead of dying inside git plumbing.
+            if not github_repo:
+                raise RuntimeError(
+                    f"run {run_id}: the brownfield repo {repo_path!r} is no longer a git "
+                    "repository on this machine — a local-folder run cannot be resumed elsewhere"
+                )
+            _materialize_hosted_clone(run_id)
+            with session_scope() as session:
+                repo_path = (
+                    session.execute(select(Run).where(Run.id == uuid.UUID(run_id)))
+                    .scalar_one()
+                    .repo_path
+                )
         branch = add_worktree(repo_path, workspace, run_id, base_ref)
         with session_scope() as session:
             session.execute(
@@ -705,6 +751,32 @@ def engineer_setup_step(run_id: str) -> str:
     init_workspace_repo(workspace)
     _write_workspace_gitignore(workspace)
     return workspace
+
+
+def ensure_run_workspace(run_id: str, workspace: str) -> None:
+    """Re-establish the run's MACHINE-LOCAL workspace. Called from the workflow body on EVERY
+    entry, and **deliberately NOT a ``@DBOS.step``**.
+
+    M-hostedfix, the load-bearing half of the fix. ``engineer_setup_step`` is checkpointed: DBOS
+    replays its recorded path and SKIPS its body, so after a recovery nothing has re-created the
+    clone or the ``git worktree`` — and on prod that recovery lands on a second Fly machine whose
+    disk never held either. The sandbox adapters then ``os.makedirs(host_dir, exist_ok=True)`` a
+    bare directory into the worktree's place and the brownfield seed enumeration dies with
+    ``git ls-files … exit status 128``.
+
+    A step cannot fix this (replay skips bodies), and a NEW step here would shift every later
+    ``function_id`` and break replay for in-flight workflows. A plain call adds no checkpoint, so
+    it re-executes on every entry — which is the whole point. On the overwhelmingly common first
+    entry it is one ``git rev-parse`` and returns."""
+    if is_work_tree(workspace):
+        return
+    logger.warning(
+        "run %s: workspace %s is not a git work tree (a recovery onto a machine without it) — "
+        "re-materializing before the agent runs",
+        run_id,
+        workspace,
+    )
+    _materialize_run_workspace(run_id)
 
 
 @DBOS.step()
@@ -1704,6 +1776,10 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # greenfield: the empty local workspace. (engineer_setup_step reads the Run's
                 # repo_path itself, so the greenfield call site is byte-for-byte the prior one.)
                 workspace = engineer_setup_step(run_id)
+                # M-hostedfix: the line above is a CHECKPOINTED step — on a recovery it replays a
+                # recorded PATH and never re-runs its body, so nothing has re-created the workspace
+                # on this machine. Re-materialize here, outside the checkpoint, on every entry.
+                ensure_run_workspace(run_id, workspace)
                 if brownfield:
                     # D6: compute the repo-grounding block ONCE off the freshly-set-up worktree,
                     # recorded → replayed verbatim on resume (``subpath`` roots the outline; None ⇒

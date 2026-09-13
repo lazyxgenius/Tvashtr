@@ -19,6 +19,8 @@ Three helpers, all gated behind ``runs.repo_path IS NOT NULL`` (greenfield never
   agent's instruction the same way the idea + PRD are. Greenfield appends nothing.
 """
 
+import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -36,6 +38,28 @@ def _git(repo_path: str, *args: str, check: bool = True) -> subprocess.Completed
         text=True,
         timeout=_GIT_TIMEOUT_S,
     )
+
+
+def is_work_tree(path: str) -> bool:
+    """Whether ``path`` is a USABLE git work tree, asked of git itself.
+
+    M-hostedfix: the one honest test. ``(path / ".git").exists()`` is NOT it — a ``git worktree``
+    leaves a ``.git`` *file* whose gitdir pointer goes stale the moment the repo it points into is
+    gone, and a directory that merely exists (``os.makedirs(..., exist_ok=True)`` in the sandbox
+    adapters) passes no test at all. Both states answer False here, which is what lets the caller
+    REBUILD instead of dying later inside a git plumbing command with a bare exit 128.
+
+    It asks ``--show-toplevel`` and compares, NOT ``--is-inside-work-tree``: git walks UP from the
+    directory it is handed, and both roots live under the checkout in dev
+    (``backend/.tvashtr_workspaces/<run_id>``), so an EMPTY workspace would otherwise answer True
+    by inheriting Tvashtr's own repo — and the rebuild would be skipped exactly when it is needed.
+    The question is "is ``path`` the ROOT of a work tree", never "is it somewhere inside one"."""
+    if not os.path.isdir(path):
+        return False
+    proc = _git(path, "rev-parse", "--show-toplevel", check=False)
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return False
+    return os.path.realpath(proc.stdout.strip()) == os.path.realpath(path)
 
 
 def repo_inspect(path: str) -> dict:
@@ -144,11 +168,23 @@ def add_worktree(repo_path: str, workspace: str, run_id: str, base_ref: str | No
     ``git worktree add`` accepts the pre-created empty ``workspace`` dir (``make_local_workspace``
     leaves one) — verified on git 2.50. The branch may already exist from a prior crashed-then-
     pruned attempt → reuse it (``add <ws> <branch>``) instead of ``-b`` (which would fail
-    'already exists'); else create it from ``base_ref`` (``add -b <branch> <ws> <base_ref>``)."""
+    'already exists'); else create it from ``base_ref`` (``add -b <branch> <ws> <base_ref>``).
+
+    M-hostedfix — the no-op is decided by the DISK, not by the mere presence of ``.git``. A
+    worktree's ``.git`` is a FILE pointing into ``<repo>/.git/worktrees/<name>``, so it can be
+    present and yet DANGLING (the clone it points at is gone), which is precisely the state a
+    recovered run finds. ``rev-parse --is-inside-work-tree`` is the only honest test, and a stale
+    registration left behind by a vanished checkout must be ``prune``d before ``add`` will accept
+    the path again — otherwise git refuses with "already used by worktree", exit 128."""
     branch = branch_name_for(run_id)
     ws = Path(workspace)
-    if (ws / ".git").exists():
+    if is_work_tree(workspace):
         return branch
+    # A dangling pointer or a half-made checkout: clear it, and drop any stale admin entry in the
+    # repo that still claims this path/branch, so the add below is accepted.
+    if (ws / ".git").exists():
+        (ws / ".git").unlink() if (ws / ".git").is_file() else shutil.rmtree(ws / ".git")
+    _git(repo_path, "worktree", "prune", check=False)
     exists = _git(
         repo_path, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", check=False
     )

@@ -218,20 +218,46 @@ def test_clone_step_clones_and_sets_repo_path_before_load(client, monkeypatch):
     assert captured["full_name"] == _REPO
 
 
-def test_clone_step_is_idempotent_when_repo_path_already_set(client, monkeypatch):
-    """A resume where the clone already ran (repo_path set) must NOT re-clone."""
+def test_clone_step_is_idempotent_when_the_clone_is_on_disk(client, monkeypatch, tmp_path):
+    """A resume where the clone already ran AND is still on this machine must NOT re-clone."""
     called = {"n": 0}
     monkeypatch.setattr(
         github_app, "clone_repo", lambda *a, **k: called.__setitem__("n", called["n"] + 1)
     )
+    clone = tmp_path / "clone"
+    clone.mkdir()
+    subprocess.run(["git", "init", "-q", str(clone)], check=True)
     rid = _make_hosted_run()
     with session_scope() as s:
-        s.execute(select(Run).where(Run.id == rid))  # ensure row exists
+        run = s.execute(select(Run).where(Run.id == rid)).scalar_one()
+        run.repo_path = str(clone)
+    clone_github_repo_step(str(rid))
+    assert called["n"] == 0  # the clone is genuinely here -> no-op
+
+
+def test_clone_step_reclones_when_repo_path_is_set_but_the_clone_is_gone(client, monkeypatch):
+    """M-hostedfix: ``repo_path`` is a DATABASE column; the clone is MACHINE-LOCAL disk. A run
+    recovered onto a machine that never held the clone must re-clone, not trust the column.
+
+    This is the prod defect: the old gate returned early on ``repo_path`` alone, so the worktree
+    was cut from a directory that was not there and every later git call exited 128."""
+    _seed_installation(auth_user_id(), _uniq_inst())
+    _mock_repos(monkeypatch, [{"full_name": _REPO, "default_branch": "main"}])
+    called = {"n": 0}
+
+    def fake_clone(installation_id, full_name, dest):
+        called["n"] += 1
+        os.makedirs(os.path.join(dest, ".git"), exist_ok=True)
+
+    monkeypatch.setattr(github_app, "clone_repo", fake_clone)
+    rid = _make_hosted_run()
     with session_scope() as s:
         run = s.execute(select(Run).where(Run.id == rid)).scalar_one()
-        run.repo_path = "/already/cloned"
+        run.repo_path = "/gone/with/the/other/machine"
     clone_github_repo_step(str(rid))
-    assert called["n"] == 0  # already cloned -> no-op
+    assert called["n"] == 1  # the disk, not the column, decides
+    with session_scope() as s:
+        assert s.execute(select(Run).where(Run.id == rid)).scalar_one().repo_path.endswith(str(rid))
 
 
 # ---------------------------------------------------------------- Task 4c: push + PR Ship terminal

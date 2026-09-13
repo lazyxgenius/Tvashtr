@@ -179,8 +179,24 @@ def enumerate_push_files_git(host_dir: str) -> list[str]:
     ``openhands``-free (subprocess only), so it is unit-tested here against a temp repo.
 
     The greenfield :func:`enumerate_push_files` is left UNTOUCHED — this is a separate, additive
-    enumeration the adapter selects on ``task.workspace_mode``."""
+    enumeration the adapter selects on ``task.workspace_mode``.
+
+    M-hostedfix: the precondition is now NAMED. Both sandbox adapters do
+    ``os.makedirs(host_dir, exist_ok=True)`` before seeding, which turns a workspace that is merely
+    ABSENT into one that exists and is not a repository — and ``git ls-files`` then exits 128 with a
+    message that names neither the run mode nor the missing precondition. That is what a hosted
+    brownfield run showed in prod. The executor now re-materializes the worktree before any agent
+    step (``team_run.ensure_run_workspace``), so reaching here on a non-worktree means a genuinely
+    new fault: say which directory and what was expected, instead of a bare exit status."""
     root = host_dir.rstrip("/")
+    # ``exists``, not ``isdir``: a ``git worktree`` — which is exactly what a brownfield run is
+    # handed — carries a ``.git`` FILE holding a gitdir pointer, while a plain clone carries a
+    # directory. Both are valid here; a manufactured bare directory has neither.
+    if not os.path.exists(os.path.join(root, ".git")):
+        raise RuntimeError(
+            f"brownfield seed: {root!r} is not a git work tree, so the real repo's files cannot "
+            "be enumerated. The run's worktree was not materialized on this machine."
+        )
     proc = subprocess.run(
         ["git", "-C", root, "ls-files", "-c", "-o", "--exclude-standard", "-z"],
         check=True,
