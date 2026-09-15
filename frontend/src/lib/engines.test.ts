@@ -5,6 +5,7 @@ import {
   subscriptionProviderForModel,
   modelProvidersForSubscription,
   credentialTreatment,
+  missingProvidersForModels,
 } from "./engines";
 
 describe("engines mapping", () => {
@@ -46,5 +47,51 @@ describe("engines mapping", () => {
         launchTarget: "hosted",
       }),
     ).toBe("byok");
+  });
+});
+
+describe("missingProvidersForModels", () => {
+  it("lists BYOK providers that are not configured", () => {
+    expect(
+      missingProvidersForModels({
+        models: ["openrouter/openai/gpt-4o", "openai/gpt-4o-mini"],
+        byokProviders: new Set(["openai"]),
+        subscriptionConnected: {},
+        launchTarget: "hosted",
+      }),
+    ).toEqual(["openrouter"]);
+  });
+
+  it("treats a Desktop subscription as covering the mapped BYOK slug", () => {
+    expect(
+      missingProvidersForModels({
+        models: ["openai/gpt-4o-mini", "anthropic/claude-sonnet-4"],
+        byokProviders: new Set(),
+        subscriptionConnected: { codex: true, claude: true },
+        launchTarget: "local",
+      }),
+    ).toEqual([]);
+  });
+
+  it("still requires BYOK on hosted even when a subscription is connected", () => {
+    expect(
+      missingProvidersForModels({
+        models: ["openai/gpt-4o-mini"],
+        byokProviders: new Set(),
+        subscriptionConnected: { codex: true },
+        launchTarget: "hosted",
+      }),
+    ).toEqual(["openai"]);
+  });
+
+  it("ignores blank models and gate-only empties", () => {
+    expect(
+      missingProvidersForModels({
+        models: ["", null, undefined],
+        byokProviders: new Set(),
+        subscriptionConnected: {},
+        launchTarget: "hosted",
+      }),
+    ).toEqual([]);
   });
 });

@@ -23,7 +23,7 @@ import type {
 //
 // The start-click here uses fireEvent (not user-event): user-event deadlocks against vitest's
 // fake timers, and this test must drive virtual time for the poll. The realistic user-event
-// sequence is exercised where interaction IS the subject (the A/B toggle below, team authoring).
+// sequence is exercised where interaction IS the subject (team authoring, provider gate).
 
 const RUN_ID = "run-keystone-1";
 
@@ -189,6 +189,16 @@ beforeEach(() => {
     if (url.endsWith("/tasks"))
       return Promise.resolve(jsonOk({ run_id: RUN_ID, tasks: extraTasks }));
     if (url === `/api/runs/${RUN_ID}`) return Promise.resolve(jsonOk(runStatusFor(phase)));
+    // Credential preflight: team fixtures use openai/* models — seed a matching BYOK key so
+    // existing Run-enabled tests stay green unless a case overrides the mock.
+    if (url === "/api/providers")
+      return Promise.resolve(
+        jsonOk({
+          providers: [{ provider: "openai", key_last4: "test", created_at: "2026-01-01T00:00:00Z" }],
+        }),
+      );
+    if (url === "/api/engines/subscriptions")
+      return Promise.resolve(jsonOk({ subscriptions: [] }));
     return Promise.resolve(jsonOk({}));
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -278,30 +288,6 @@ describe("App — poll lifecycle (keystone)", () => {
   });
 });
 
-describe("App — single-run <-> A/B mode toggle (state-only)", () => {
-  it("mounts the A/B surface on toggle and restores the single-run tree losslessly", async () => {
-    const user = userEvent.setup();
-    render(
-      <StrictMode>
-        <App />
-      </StrictMode>,
-    );
-
-    // Single-run surface is up; the A/B surface is not.
-    expect(await screen.findByRole("button", { name: "Run this team" })).toBeInTheDocument();
-    expect(screen.queryByText(/One idea, two team configs/)).toBeNull();
-
-    // Toggle to A/B compare: the comparison surface mounts; the single-run controls are replaced.
-    await user.click(screen.getByRole("button", { name: "A/B compare" }));
-    expect(screen.getByText(/One idea, two team configs/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Run this team" })).toBeNull();
-
-    // Toggle back: the single-run tree returns (lossless — the underlying state was preserved).
-    await user.click(screen.getByRole("button", { name: "Single run" }));
-    expect(screen.getByRole("button", { name: "Run this team" })).toBeInTheDocument();
-    expect(screen.queryByText(/One idea, two team configs/)).toBeNull();
-  });
-});
 
 describe("App — persistent team authoring (P1.8b)", () => {
   it("opens the editable panel for an agent node + a READ-ONLY drawer for a gate (F1c Decision 4)", async () => {
@@ -477,7 +463,7 @@ describe("App — F-canvas-fidelity-1 screen shell", () => {
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 
-  it("Part C: toolbar = back arrow + Run (before the toggle) + always-on spend ($0.00) + status dot, no hint line", async () => {
+  it("Part C: toolbar = back arrow + Run + always-on spend ($0.00) + status dot, no hint line, no A/B toggle", async () => {
     const user = userEvent.setup();
     const onBack = vi.fn();
     render(
@@ -490,10 +476,9 @@ describe("App — F-canvas-fidelity-1 screen shell", () => {
     // The back-to-dashboard arrow (replaces the header's "← Dashboard" text button) — wired.
     const back = screen.getByRole("button", { name: "Back to dashboard" });
 
-    // Run this team comes BEFORE the Single | A/B toggle (design order — the reverse of before).
-    const run = screen.getByRole("button", { name: "Run this team" });
-    const ab = screen.getByRole("button", { name: "A/B compare" });
-    expect(run.compareDocumentPosition(ab) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Run this team" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "A/B compare" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "View mode" })).toBeNull();
 
     // The always-on spend ("$0.00" while idle) + the backend status dot; the old drag hint line is GONE.
     expect(screen.getByText("$0.00")).toBeInTheDocument();
@@ -502,5 +487,62 @@ describe("App — F-canvas-fidelity-1 screen shell", () => {
 
     await user.click(back);
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks Run and surfaces missing providers with an Engines escape hatch", async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    // Override the default openai BYOK seed: account has no keys for the team's openai models.
+    fetchMock.mockImplementation((input: RequestInfo | URL): Promise<Response> => {
+      const url = urlOf(input);
+      if (url === "/health") return Promise.resolve(jsonOk({ status: "ok", db: "ok" }));
+      if (url === "/api/teams")
+        return Promise.resolve(
+          jsonOk({
+            teams: [
+              {
+                team_graph_id: "team-1",
+                name: "My team",
+                created_at: "2026-01-01T00:00:00Z",
+                node_count: 3,
+              },
+            ],
+          }),
+        );
+      if (url === "/api/templates")
+        return Promise.resolve(
+          jsonOk({
+            templates: [
+              { template: "review_loop", name: "PM → Engineer ↔ Reviewer", description: "reviews" },
+              { template: "two_node", name: "PM → Engineer", description: "no review" },
+            ],
+          }),
+        );
+      if (url === "/api/teams/team-1/graph") return Promise.resolve(jsonOk(teamGraph()));
+      if (url.endsWith("/validate"))
+        return Promise.resolve(jsonOk({ errors: [], warnings: [], runnable: true }));
+      if (url === "/api/providers") return Promise.resolve(jsonOk({ providers: [] }));
+      if (url === "/api/engines/subscriptions")
+        return Promise.resolve(jsonOk({ subscriptions: [] }));
+      return Promise.resolve(jsonOk({}));
+    });
+
+    render(
+      <StrictMode>
+        <App onBackToDashboard={onBack} />
+      </StrictMode>,
+    );
+    await screen.findByText("Product manager");
+
+    // Primary CTA becomes Configure providers; Run this team is gone.
+    const configure = await screen.findByRole("button", { name: "Configure providers" });
+    expect(screen.queryByRole("button", { name: "Run this team" })).toBeNull();
+    expect(screen.getByTestId("missing-providers")).toHaveTextContent(/openai/i);
+
+    await user.click(screen.getByRole("button", { name: "Open Engines" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+
+    await user.click(configure);
+    expect(onBack).toHaveBeenCalledTimes(2);
   });
 });

@@ -18,7 +18,6 @@
 @import "./design-system/tokens/extend.css";
 @import "./canvas.css";
 @import "./panel.css";
-@import "./abcompare.css";
 
 /* Map DS semantic tokens into Tailwind v4 so we get on-brand utilities
    (bg-page, text-secondary, border-hairline, text-accent, font-display, …).
@@ -237,7 +236,7 @@ body,
   background: var(--amber-500);
 }
 
-/* Segmented control — the "Single run | A/B compare" view toggle (§14.3). */
+/* Segmented control — shared pill toggle (node panel, launch, shelves). */
 .tv-seg {
   display: inline-flex;
   gap: 2px;
@@ -584,7 +583,7 @@ body,
 }
 /* M-unify U3: the pre-launch action-verb advisory — genuinely AMBER (a warning), distinct from the
    coral large-repo hint above, theme-aware via the amber tokens (the same recipe as the over_budget
-   pill + the A/B amber note). Non-blocking; a nudge, never a gate. */
+   pill). Non-blocking; a nudge, never a gate. */
 .tv-launch__warn {
   display: flex;
   flex-direction: column;
@@ -1942,7 +1941,7 @@ body,
 
 /* ============================================================
    F-canvas-fidelity-1 — the canvas SCREEN SHELL: the header (brand + account avatar/menu) and the
-   toolbar (back-arrow · Run · Single|A/B · spend · status dot). Matches design/Canvas.dc.html's
+   toolbar (back-arrow · Run · spend · status dot). Matches design/Canvas.dc.html's
    HEADER + TOOLBAR recipes; token-driven, no ad-hoc hex. (The drawer chrome lives in panel.css; the
    node/edge interior in canvas.css.)
    ============================================================ */
