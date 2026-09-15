@@ -72,3 +72,80 @@ describe("DomainsPage list", () => {
     expect(screen.getByRole("tab", { name: /Config/i })).toBeTruthy();
   });
 });
+
+describe("DomainsPage delete confirm", () => {
+  const detail = {
+    domain_id: "d1",
+    name: "Support docs",
+    template: "support",
+    config: {
+      chunking: { strategy: "fixed", size: 600, overlap: 100 },
+      embedding: { model: "text-embedding-3-small" },
+      retrieval: { top_k: 8, mode: "dense" },
+      generation: { model: null },
+    },
+    status: "empty",
+    doc_count: 0,
+    created_at: "2026-09-15T00:00:00Z",
+    updated_at: "2026-09-15T00:00:00Z",
+  };
+
+  beforeEach(() => {
+    m.listDomains.mockResolvedValue([
+      {
+        domain_id: "d1",
+        name: "Support docs",
+        template: "support",
+        config: { embedding: { model: "text-embedding-3-small" } },
+        status: "empty",
+        doc_count: 0,
+        created_at: "2026-09-15T00:00:00Z",
+        updated_at: "2026-09-15T00:00:00Z",
+      },
+    ]);
+    m.getDomain.mockResolvedValue(detail);
+    (api.deleteDomain as Mock).mockResolvedValue(undefined);
+    m.listDomains.mockClear();
+    m.getDomain.mockClear();
+    (api.deleteDomain as Mock).mockClear();
+  });
+
+  it("does not delete when confirm is cancelled", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<DomainsPage />);
+    await user.click(await screen.findByRole("button", { name: /Support docs/i }));
+    await screen.findByRole("button", { name: /Delete domain/i });
+    await user.click(screen.getByRole("button", { name: /Delete domain/i }));
+    expect(confirmSpy).toHaveBeenCalledWith(
+      "Delete this domain? This cannot be undone.",
+    );
+    expect(api.deleteDomain).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("deletes when confirm is accepted", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    m.listDomains
+      .mockResolvedValueOnce([
+        {
+          domain_id: "d1",
+          name: "Support docs",
+          template: "support",
+          config: { embedding: { model: "text-embedding-3-small" } },
+          status: "empty",
+          doc_count: 0,
+          created_at: "2026-09-15T00:00:00Z",
+          updated_at: "2026-09-15T00:00:00Z",
+        },
+      ])
+      .mockResolvedValue([]);
+    render(<DomainsPage />);
+    await user.click(await screen.findByRole("button", { name: /Support docs/i }));
+    await user.click(await screen.findByRole("button", { name: /Delete domain/i }));
+    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => expect(api.deleteDomain).toHaveBeenCalledWith("d1"));
+    confirmSpy.mockRestore();
+  });
+});

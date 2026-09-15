@@ -138,6 +138,9 @@ export function DomainsPage() {
               className="tv-btn tv-btn--danger"
               disabled={busy}
               onClick={() => {
+                if (!window.confirm("Delete this domain? This cannot be undone.")) {
+                  return;
+                }
                 void (async () => {
                   setBusy(true);
                   try {
