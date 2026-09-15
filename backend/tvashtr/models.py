@@ -684,6 +684,31 @@ class DomainChunk(Base):
     )
 
 
+class DomainMessage(Base):
+    """One chat turn for a PolyRAG Domain (Phase 3 cited Q&A).
+
+    ``role`` is ``user`` or ``assistant``. Assistant rows may carry ``citations``
+    (JSON list of chunk/source refs) plus optional ``latency_ms`` / ``cost_usd``.
+    NEVER store provider secrets here.
+    """
+
+    __tablename__ = "domain_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    domain_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # user | assistant
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    citations: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class GithubInstallation(Base):
     """One GitHub App installation linked to an account (M-h1a, migration ``0029``).
 
