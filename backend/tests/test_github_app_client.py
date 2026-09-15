@@ -297,3 +297,31 @@ def test_list_app_installations_paginates_parses_and_drops_extras(gh, monkeypatc
     # Defensive shape: a non-list (enveloped) body → empty, never a raise.
     monkeypatch.setattr(github_app, "_http", lambda *a, **k: {"installations": "nope"})
     assert github_app.list_app_installations() == []
+
+
+def test_exchange_code_for_user_token_omits_redirect_uri_by_default(gh, monkeypatch):
+    """Web / legacy authorize without an explicit redirect_uri must not invent one on exchange."""
+    seen = {}
+
+    def fake_http(method, url, *, token=None, body=None, accept=None):
+        seen["body"] = body
+        return {"access_token": "ghu_test"}
+
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    assert github_app.exchange_code_for_user_token("abc") == "ghu_test"
+    assert seen["body"]["code"] == "abc"
+    assert "redirect_uri" not in seen["body"]
+
+
+def test_exchange_code_for_user_token_passes_optional_redirect_uri(gh, monkeypatch):
+    """Desktop loopback authorize uses redirect_uri; GitHub requires the same value on exchange."""
+    seen = {}
+
+    def fake_http(method, url, *, token=None, body=None, accept=None):
+        seen["body"] = body
+        return {"access_token": "ghu_test"}
+
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    uri = "http://127.0.0.1:5178/api/auth/github/callback"
+    assert github_app.exchange_code_for_user_token("abc", redirect_uri=uri) == "ghu_test"
+    assert seen["body"]["redirect_uri"] == uri

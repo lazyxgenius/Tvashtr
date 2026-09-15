@@ -15,6 +15,7 @@ see :mod:`tvashtr.control_plane.credentials`.)
 import logging
 import uuid
 from typing import Annotated
+from urllib.parse import urlparse
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -276,8 +277,61 @@ def _store_installation(session, owner_id, installation_id: str) -> None:
         row.owner_id = owner_id
 
 
+# Desktop Electron (loopback) may proxy the GitHub callback and ask Fly to (a) exchange the code
+# with the loopback ``redirect_uri`` and (b) bounce the browser back to the local SPA origin.
+# ONLY 127.0.0.1 / localhost over http are accepted — never an arbitrary Origin (open redirect).
+_DESKTOP_REDIRECT_URI_HEADER = "x-tvashtr-redirect-uri"
+_DESKTOP_FRONTEND_ORIGIN_HEADER = "x-tvashtr-frontend-origin"
+
+
+def _is_allowlisted_desktop_loopback(url: str, *, expect_callback_path: bool) -> bool:
+    """True iff ``url`` is http://127.0.0.1|localhost[:port][/…] with no credentials.
+
+    When ``expect_callback_path`` is True, the path must be the GitHub OAuth callback path.
+    When False (frontend origin), the path must be empty or ``/`` with no query/fragment.
+    """
+    try:
+        parsed = urlparse(url.strip())
+    except Exception:
+        return False
+    if parsed.scheme != "http":
+        return False
+    if parsed.hostname not in ("127.0.0.1", "localhost"):
+        return False
+    if parsed.username is not None or parsed.password is not None:
+        return False
+    if expect_callback_path:
+        return parsed.path.rstrip("/") == github_app.GITHUB_CALLBACK_PATH.rstrip("/")
+    return parsed.path in ("", "/") and not parsed.query and not parsed.fragment
+
+
+def _desktop_redirect_uri_from_request(request: Request) -> str | None:
+    raw = request.headers.get(_DESKTOP_REDIRECT_URI_HEADER)
+    if not raw:
+        return None
+    if _is_allowlisted_desktop_loopback(raw, expect_callback_path=True):
+        return raw.strip()
+    logger.warning("Ignoring non-allowlisted desktop redirect_uri header")
+    return None
+
+
+def _desktop_frontend_origin_from_request(request: Request) -> str | None:
+    raw = request.headers.get(_DESKTOP_FRONTEND_ORIGIN_HEADER)
+    if not raw:
+        return None
+    candidate = raw.strip().rstrip("/")
+    # Accept with or without trailing slash for allowlist check.
+    if _is_allowlisted_desktop_loopback(candidate, expect_callback_path=False) or (
+        _is_allowlisted_desktop_loopback(candidate + "/", expect_callback_path=False)
+    ):
+        return candidate
+    logger.warning("Ignoring non-allowlisted desktop frontend-origin header")
+    return None
+
+
 @auth_router.get("/github/callback")
 def github_callback(
+    request: Request,
     code: str,
     installation_id: str | None = None,
     setup_action: str | None = None,
@@ -288,13 +342,21 @@ def github_callback(
     find-or-create-or-link the account, record the installation, then issue the SAME signed
     ``tv_session`` cookie the password path issues and redirect into the app.
 
+    Desktop Electron may proxy this callback from ``http://127.0.0.1:<port>`` and send
+    ``X-Tvashtr-Redirect-Uri`` + ``X-Tvashtr-Frontend-Origin`` (loopback allowlist only) so the
+    token exchange matches the authorize ``redirect_uri`` and the post-login bounce returns to the
+    local SPA — without changing fly.dev web login.
+
     Unauthenticated by design — it is how a GitHub user obtains their first session, so it lives on
     ``auth_router`` (mounted WITHOUT ``get_current_user``). 404s when ``hosted_mode`` is off."""
     settings = get_settings()
     if not settings.hosted_mode:
         raise HTTPException(status_code=404, detail="Not found")
+    desktop_redirect_uri = _desktop_redirect_uri_from_request(request)
     try:
-        user_token = github_app.exchange_code_for_user_token(code)
+        user_token = github_app.exchange_code_for_user_token(
+            code, redirect_uri=desktop_redirect_uri
+        )
         identity = github_app.get_authenticated_user(user_token)
     except github_app.GithubAppError:
         # Never surface the underlying GitHub error (defense-in-depth: it could echo a code/secret).
@@ -324,7 +386,8 @@ def github_callback(
             _store_installation(session, user.id, str(iid))
 
     # Rider 4 (M-h1b): bounce to the CONFIGURABLE FE origin, not the backend root "/" (which 404s on
-    # the API port). The session cookie is scoped by domain, so the cross-port redirect keeps it.
-    response = RedirectResponse(url=settings.frontend_origin, status_code=302)
+    # the API port). Desktop may override with an allowlisted loopback origin via proxy header.
+    frontend = _desktop_frontend_origin_from_request(request) or settings.frontend_origin
+    response = RedirectResponse(url=frontend, status_code=302)
     set_session_cookie(response, user_id)
     return response

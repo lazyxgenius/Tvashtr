@@ -7,12 +7,30 @@
  * so the tv_session cookie stays first-party with SameSite=lax. A cross-origin
  * Electron renderer would hit CORS + third-party cookie breakage. Localhost +
  * proxy keeps relative /api paths and cookies working with no large FE rewrite.
+ *
+ * Desktop GitHub OAuth: the FE rewrites authorize redirect_uri to this loopback
+ * origin; GitHub hits /api/auth/github/callback here; we forward to Fly with
+ * X-Tvashtr-* headers so token exchange + post-login redirect match loopback,
+ * and we strip Domain+Secure on Set-Cookie so Electron stores tv_session on
+ * http://127.0.0.1.
  */
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const express = require("express");
 const { createProxyMiddleware } = require("http-proxy-middleware");
+
+const GITHUB_CALLBACK_PREFIX = "/api/auth/github/callback";
+
+/**
+ * @param {string} setCookie
+ * @returns {string}
+ */
+function stripCookieDomainAndSecure(setCookie) {
+  return String(setCookie)
+    .replace(/;\s*Domain=[^;]*/gi, "")
+    .replace(/;\s*Secure/gi, "");
+}
 
 /**
  * @param {{ distDir: string, apiBase: string, port?: number }} opts
@@ -33,6 +51,9 @@ async function startServer(opts) {
 
   const app = express();
 
+  /** Filled after listen — used when injecting desktop OAuth headers. */
+  const loopback = { origin: `http://127.0.0.1:${preferred}` };
+
   // Mount at app root with pathFilter so /api and /health are NOT stripped
   // (Express app.use("/api", proxy) would forward /api/config → target/config).
   const proxy = createProxyMiddleware({
@@ -42,15 +63,24 @@ async function startServer(opts) {
     xfwd: true,
     pathFilter: (pathname) => pathname === "/health" || pathname.startsWith("/api"),
     on: {
+      proxyReq(proxyReq, req) {
+        const urlPath = (req.url || "").split("?")[0];
+        if (urlPath === GITHUB_CALLBACK_PREFIX || urlPath.startsWith(`${GITHUB_CALLBACK_PREFIX}/`)) {
+          const origin = loopback.origin;
+          proxyReq.setHeader(
+            "X-Tvashtr-Redirect-Uri",
+            `${origin}${GITHUB_CALLBACK_PREFIX}`,
+          );
+          proxyReq.setHeader("X-Tvashtr-Frontend-Origin", origin);
+        }
+      },
       proxyRes(proxyRes) {
         const raw = proxyRes.headers["set-cookie"];
         if (!raw) return;
         const list = Array.isArray(raw) ? raw : [raw];
-        // Strip Domain so the cookie is host-only for 127.0.0.1. Keep Secure —
-        // Chromium treats localhost / 127.0.0.1 as a secure context for cookies.
-        proxyRes.headers["set-cookie"] = list.map((c) =>
-          String(c).replace(/;\s*Domain=[^;]*/gi, ""),
-        );
+        // Strip Domain (host-only for 127.0.0.1) and Secure (http:// loopback — some
+        // Chromium/Electron builds still refuse Secure cookies on plain http).
+        proxyRes.headers["set-cookie"] = list.map(stripCookieDomainAndSecure);
       },
     },
   });
@@ -71,7 +101,8 @@ async function startServer(opts) {
   const server = http.createServer(app);
 
   const port = await listenPrefer(server, preferred);
-  const url = `http://127.0.0.1:${port}/`;
+  loopback.origin = `http://127.0.0.1:${port}`;
+  const url = `${loopback.origin}/`;
   console.log(`[tvashtr-desktop] static FE at ${url} → API ${apiBase}`);
   return { server, url, port };
 }
@@ -99,7 +130,7 @@ function listenPrefer(server, preferred) {
   });
 }
 
-module.exports = { startServer };
+module.exports = { startServer, stripCookieDomainAndSecure };
 
 if (require.main === module) {
   const distDir = process.env.TVASHTR_DESKTOP_DIST || path.join(__dirname, "..", "dist-fe");

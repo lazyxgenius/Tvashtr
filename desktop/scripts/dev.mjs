@@ -52,6 +52,8 @@ spawnInherit("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"
     TVASHTR_API_PROXY_TARGET: apiBase,
     // Empty absolute base — Vite proxy keeps same-origin /api.
     VITE_API_BASE: "",
+    // Enables desktop GitHub OAuth proxy headers + cookie rewrite in vite.config.ts.
+    TVASHTR_DESKTOP_ORIGIN: new URL(viteUrl).origin,
   },
 });
 

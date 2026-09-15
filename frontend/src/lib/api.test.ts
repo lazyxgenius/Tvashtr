@@ -20,6 +20,7 @@ import {
   createToolLibraryItem,
   defaultForProvider,
   getConfig,
+  rewriteGithubInstallUrlForDesktop,
   getGithubRepos,
   getProviderCatalogue,
   getReviewMode,
@@ -113,6 +114,35 @@ function bodyOf(call: unknown[]): unknown {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+
+describe("rewriteGithubInstallUrlForDesktop", () => {
+  const flyUrl =
+    "https://github.com/login/oauth/authorize?client_id=Iv1.abc" +
+    "&redirect_uri=https%3A%2F%2Ftvashtr.fly.dev%2Fapi%2Fauth%2Fgithub%2Fcallback";
+
+  afterEach(() => {
+    // @ts-expect-error test cleanup
+    delete window.tvashtrDesktop;
+  });
+
+  it("is a no-op when not running inside the desktop shell", () => {
+    expect(rewriteGithubInstallUrlForDesktop(flyUrl)).toBe(flyUrl);
+    expect(rewriteGithubInstallUrlForDesktop("")).toBe("");
+  });
+
+  it("rewrites redirect_uri to the current loopback origin when tvashtrDesktop is set", () => {
+    window.tvashtrDesktop = true;
+    // jsdom location is http://localhost:3000 by default in this suite setup — accept whatever origin.
+    const out = rewriteGithubInstallUrlForDesktop(flyUrl);
+    const parsed = new URL(out);
+    expect(parsed.origin).toBe("https://github.com");
+    expect(parsed.searchParams.get("client_id")).toBe("Iv1.abc");
+    expect(parsed.searchParams.get("redirect_uri")).toBe(
+      `${window.location.origin}/api/auth/github/callback`,
+    );
+  });
 });
 
 describe("getConfig — caches the served provider catalogue (M-runnable)", () => {

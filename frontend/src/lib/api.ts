@@ -287,6 +287,25 @@ export async function getMe(): Promise<AuthUser | null> {
   return (await res.json()) as AuthUser;
 }
 
+
+/**
+ * Desktop Electron: rewrite GitHub authorize ``redirect_uri`` to the local loopback
+ * origin so GitHub returns to ``http://127.0.0.1:<port>/api/auth/github/callback``
+ * (proxied to Fly). No-op on the web app or when ``tvashtrDesktop`` is unset.
+ */
+export function rewriteGithubInstallUrlForDesktop(url: string): string {
+  if (!url) return url;
+  if (typeof window === "undefined" || !window.tvashtrDesktop) return url;
+  try {
+    const u = new URL(url);
+    const callback = `${window.location.origin}/api/auth/github/callback`;
+    u.searchParams.set("redirect_uri", callback);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 // The public posture bootstrap. Resilient by design — the login screen must render even if this
 // fails: any non-OK response or network error falls back to the self-hosted default (email/password),
 // and it NEVER trips the 401 seam (the endpoint is public, so a 401 here is not a session signal).
@@ -307,7 +326,7 @@ export async function getConfig(): Promise<Config> {
     setProviderCatalogue(catalogue);
     return {
       hosted_mode: data.hosted_mode === true,
-      github_install_url: data.github_install_url ?? "",
+      github_install_url: rewriteGithubInstallUrlForDesktop(data.github_install_url ?? ""),
       github_manage_url: data.github_manage_url ?? "",
       provider_catalogue: catalogue,
     };

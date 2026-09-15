@@ -5,6 +5,9 @@
  * The UI is loaded from a local HTTP origin (never file://) so relative /api calls
  * and session cookies behave like the one-origin hosted app. A local reverse proxy
  * forwards /api and /health to the hosted backend (default https://tvashtr.fly.dev).
+ *
+ * GitHub OAuth stays INSIDE Electron (loadURL), not the OS browser, so the loopback
+ * callback + proxied Set-Cookie land on the same partition as the SPA.
  */
 const { app, BrowserWindow, shell } = require("electron");
 const path = require("path");
@@ -15,6 +18,10 @@ const DESKTOP_ROOT = path.join(__dirname, "..");
 let localServer = null;
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
+/** @type {string} */
+let localOrigin = "http://127.0.0.1:5178";
+/** @type {string} */
+let apiBaseOrigin = "https://tvashtr.fly.dev";
 
 function envFlag(name, fallback = false) {
   const v = process.env[name];
@@ -22,8 +29,54 @@ function envFlag(name, fallback = false) {
   return !["0", "false", "no", "off"].includes(String(v).toLowerCase());
 }
 
+/**
+ * GitHub OAuth / App-install URLs that return to our callback must stay in-window.
+ * Unrelated github.com pages (docs, issues) still open externally.
+ * @param {string} url
+ */
+function isGithubAuthUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname !== "github.com" && u.hostname !== "www.github.com") return false;
+    const p = u.pathname;
+    return (
+      p.startsWith("/login/oauth/") ||
+      p.includes("/installations/new") ||
+      p.includes("/installations/select_permissions") ||
+      /\/apps\/[^/]+\/installations/.test(p)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * If Fly (or frontend_origin) would navigate the window off loopback after OAuth,
+ * bounce back to the local SPA while keeping cookies already set for 127.0.0.1.
+ * @param {string} url
+ * @returns {string | null} local URL to force, or null to allow
+ */
+function localBounceTarget(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    // Never intercept the loopback itself or GitHub.
+    if (u.hostname === "127.0.0.1" || u.hostname === "localhost") return null;
+    if (u.hostname === "github.com" || u.hostname === "www.github.com") return null;
+    const fly = new URL(apiBaseOrigin);
+    const isApiHost = u.hostname === fly.hostname;
+    // Only bounce SPA-ish landings on the hosted frontend host (not /api — those
+    // should have been proxied via loopback; if we somehow hit fly /api in-window,
+    // still prefer returning home after auth rather than showing JSON).
+    if (!isApiHost) return null;
+    if (u.pathname.startsWith("/api/auth/github/callback")) return null;
+    return `${localOrigin.replace(/\/$/, "")}/`;
+  } catch {
+    return null;
+  }
+}
+
 async function startLocalFrontendServer() {
-  // Lazy-require so `electron .` without the helper still fails clearly.
   const { startServer } = require("../scripts/local-server.cjs");
   const apiBase = process.env.TVASHTR_API_BASE || process.env.VITE_API_BASE || "https://tvashtr.fly.dev";
   const preferPort = Number(process.env.TVASHTR_DESKTOP_PORT || 5178);
@@ -36,7 +89,44 @@ async function startLocalFrontendServer() {
     port: preferPort,
   });
   localServer = result.server;
+  apiBaseOrigin = String(apiBase).replace(/\/$/, "");
+  localOrigin = result.url.replace(/\/$/, "");
   return result.url;
+}
+
+/**
+ * @param {import('electron').BrowserWindow} win
+ */
+function attachNavigationGuards(win) {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isGithubAuthUrl(url)) {
+      void win.loadURL(url);
+      return { action: "deny" };
+    }
+    // External docs / unrelated links → OS browser.
+    void shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  win.webContents.on("will-navigate", (event, url) => {
+    if (isGithubAuthUrl(url)) {
+      // Allow in-window navigation to GitHub OAuth.
+      return;
+    }
+    const bounce = localBounceTarget(url);
+    if (bounce) {
+      event.preventDefault();
+      void win.loadURL(bounce);
+    }
+  });
+
+  win.webContents.on("will-redirect", (event, url) => {
+    const bounce = localBounceTarget(url);
+    if (bounce) {
+      event.preventDefault();
+      void win.loadURL(bounce);
+    }
+  });
 }
 
 function createWindow(startUrl) {
@@ -55,11 +145,7 @@ function createWindow(startUrl) {
     },
   });
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    // External links (GitHub OAuth manage URL, docs, etc.) open in the OS browser.
-    shell.openExternal(url);
-    return { action: "deny" };
-  });
+  attachNavigationGuards(mainWindow);
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -72,6 +158,20 @@ async function boot() {
   // Dev mode: Vite already running; Electron just points at it.
   const devUrl = process.env.TVASHTR_DESKTOP_DEV_URL;
   let startUrl = devUrl;
+
+  if (devUrl) {
+    try {
+      const u = new URL(devUrl);
+      localOrigin = u.origin;
+    } catch {
+      /* keep default */
+    }
+    apiBaseOrigin = (
+      process.env.TVASHTR_API_BASE ||
+      process.env.VITE_API_BASE ||
+      "https://tvashtr.fly.dev"
+    ).replace(/\/$/, "");
+  }
 
   if (!startUrl) {
     startUrl = await startLocalFrontendServer();

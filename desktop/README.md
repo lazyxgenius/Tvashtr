@@ -49,6 +49,18 @@ cd desktop && npm ci && npm run build
 TVASHTR_DESKTOP_SMOKE=1 xvfb-run -a npm start
 ```
 
+
+## GitHub login (required App callback)
+
+Desktop rewrites the OAuth `redirect_uri` to the local server:
+
+`http://127.0.0.1:5178/api/auth/github/callback` (`npm start`)  
+or `http://127.0.0.1:5173/api/auth/github/callback` (`npm run dev`).
+
+**Register that callback URL on the GitHub App** (in addition to fly.dev + localhost:8000). See [`../docs/desktop-v1.md`](../docs/desktop-v1.md#github-oauth-desktop-login).
+
+OAuth stays inside the Electron window; the local proxy forwards the callback to fly.dev with desktop headers and strips `Domain`/`Secure` on `Set-Cookie` so `tv_session` sticks on loopback.
+
 ## Desktop detection
 
-`preload.cjs` exposes `window.tvashtrDesktop === true` (and `window.tvashtrDesktopInfo`) so the FE can later hide web-only chrome. No large FE changes in this slice.
+`preload.cjs` exposes `window.tvashtrDesktop === true` (and `window.tvashtrDesktopInfo`). The FE rewrites `github_install_url` for loopback OAuth when that flag is set.

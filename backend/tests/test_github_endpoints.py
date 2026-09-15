@@ -232,6 +232,94 @@ def test_callback_redirects_to_the_configured_frontend_origin(unauth_client, mon
     assert resp.headers["location"] == "https://app.tvashtr.example"
 
 
+def test_callback_desktop_headers_redirect_and_exchange_with_loopback(
+    unauth_client, monkeypatch
+):
+    """Desktop proxy sends allowlisted X-Tvashtr-* headers: token exchange gets the loopback
+    redirect_uri and the browser bounces to the local SPA (not settings.frontend_origin)."""
+    _configure_hosted(monkeypatch)
+    monkeypatch.setattr(get_settings(), "frontend_origin", "https://tvashtr.fly.dev")
+    seen = {}
+
+    def fake_http(method, url, *, token=None, body=None, accept=None):
+        if url.endswith("/login/oauth/access_token"):
+            seen["exchange_body"] = body
+            return {"access_token": USER_TOKEN_SENTINEL, "token_type": "bearer"}
+        if "/user/installations" in url:
+            return {"total_count": 0, "installations": []}
+        if url.endswith("/user"):
+            return {"id": GH_USER_ID, "login": GH_LOGIN, "email": None}
+        raise AssertionError(url)
+
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    loopback_cb = "http://127.0.0.1:5178/api/auth/github/callback"
+    loopback_fe = "http://127.0.0.1:5178"
+    resp = unauth_client.get(
+        "/api/auth/github/callback?code=abc",
+        headers={
+            "X-Tvashtr-Redirect-Uri": loopback_cb,
+            "X-Tvashtr-Frontend-Origin": loopback_fe,
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert resp.headers["location"] == loopback_fe
+    assert seen["exchange_body"]["redirect_uri"] == loopback_cb
+    assert "tv_session" in resp.headers.get("set-cookie", "")
+
+
+def test_callback_desktop_headers_accept_localhost_alias(unauth_client, monkeypatch):
+    _configure_hosted(monkeypatch)
+    monkeypatch.setattr(get_settings(), "frontend_origin", "https://tvashtr.fly.dev")
+    monkeypatch.setattr(github_app, "_http", _fake_github_http([]))
+    resp = unauth_client.get(
+        "/api/auth/github/callback?code=abc",
+        headers={
+            "X-Tvashtr-Redirect-Uri": "http://localhost:5178/api/auth/github/callback",
+            "X-Tvashtr-Frontend-Origin": "http://localhost:5178",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "http://localhost:5178"
+
+
+def test_callback_rejects_non_allowlisted_desktop_headers(unauth_client, monkeypatch):
+    """Open-redirect guard: evil origins are ignored; exchange omits redirect_uri; bounce uses
+    configured frontend_origin (fly.dev web login unchanged)."""
+    _configure_hosted(monkeypatch)
+    monkeypatch.setattr(get_settings(), "frontend_origin", "https://tvashtr.fly.dev")
+    seen = {}
+
+    def fake_http(method, url, *, token=None, body=None, accept=None):
+        if url.endswith("/login/oauth/access_token"):
+            seen["exchange_body"] = body
+            return {"access_token": USER_TOKEN_SENTINEL}
+        if "/user/installations" in url:
+            return {"total_count": 0, "installations": []}
+        if url.endswith("/user"):
+            # Unique id so we don't collide with other suite users on shared DB.
+            return {
+                "id": uuid.uuid4().int % 2_000_000_000,
+                "login": f"evil-{uuid.uuid4().hex[:8]}",
+                "email": None,
+            }
+        raise AssertionError(url)
+
+    monkeypatch.setattr(github_app, "_http", fake_http)
+    resp = unauth_client.get(
+        "/api/auth/github/callback?code=abc",
+        headers={
+            "X-Tvashtr-Redirect-Uri": "https://evil.example/api/auth/github/callback",
+            "X-Tvashtr-Frontend-Origin": "https://evil.example",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "https://tvashtr.fly.dev"
+    assert "redirect_uri" not in seen["exchange_body"]
+
+
 def test_callback_without_installation_id_records_discovered_installations(
     unauth_client, monkeypatch
 ):

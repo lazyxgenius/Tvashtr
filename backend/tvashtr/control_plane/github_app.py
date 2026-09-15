@@ -264,18 +264,25 @@ def list_app_installations() -> list[dict]:
     return installs
 
 
-def exchange_code_for_user_token(code: str) -> str:
+def exchange_code_for_user_token(code: str, redirect_uri: str | None = None) -> str:
     """Exchange an OAuth ``code`` for a user access token (POST github.com/login/oauth/access_token
     with the client id + client SECRET). The returned token is a SECRET — the callback uses it once
-    to read the user identity, then discards it (never stored/logged/returned)."""
+    to read the user identity, then discards it (never stored/logged/returned).
+
+    When the authorize step used an explicit ``redirect_uri`` (M-h4 + desktop loopback), GitHub
+    requires the SAME ``redirect_uri`` on the token exchange. Pass it through when known; omit it
+    when the authorize URL had no ``redirect_uri`` (legacy). NEVER log the value beyond the call.
+    """
     settings = get_settings()
-    body = {
+    body: dict[str, str] = {
         "client_id": _require(settings.github_app_client_id, "GITHUB_APP_CLIENT_ID"),
         "client_secret": _require(
             settings.github_app_client_secret.get_secret_value(), "GITHUB_APP_CLIENT_SECRET"
         ),
         "code": code,
     }
+    if redirect_uri:
+        body["redirect_uri"] = redirect_uri
     result = _http(
         "POST",
         f"{_GITHUB_OAUTH_BASE}/login/oauth/access_token",
