@@ -1,5 +1,16 @@
 // Typed client for the Tvashtr control-plane HTTP surface (proxied to :8000 by Vite).
 
+// Absolute API origin when set at build time. Empty = same-origin relative paths (preferred).
+// Desktop v1 leaves this empty and reverse-proxies /api → https://tvashtr.fly.dev from localhost
+// so session cookies stay first-party. See docs/desktop-v1.md.
+export const API_BASE = String(import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+export function apiUrl(path: string): string {
+  if (!API_BASE) return path;
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+
 export interface NodePosition {
   x: number;
   y: number;
@@ -413,7 +424,7 @@ export async function listRuns(): Promise<RunSummary[]> {
 }
 
 async function getJSON<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  const res = await fetch(apiUrl(url));
   // M-accounts Slice A: a 401 on any GET poll means the session expired — surface it to the gate.
   if (res.status === 401) unauthorizedHandler?.();
   if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
