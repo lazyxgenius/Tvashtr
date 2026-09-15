@@ -92,6 +92,11 @@ from tvashtr.control_plane.domains import (
 )
 from tvashtr.control_plane.domain_files import MAX_UPLOAD_BYTES
 from tvashtr.control_plane.domain_ingest import ingest_domain, normalize_embedding_model
+from tvashtr.control_plane.domain_ask import (
+    DomainAskError,
+    ask_domain,
+    list_domain_messages,
+)
 from tvashtr.documents.service import (
     add_version,
     get_document_with_versions,
@@ -301,8 +306,6 @@ class CreateTeamRequest(BaseModel):
     name: str
 
 
-
-
 class CreateDomainRequest(BaseModel):
     template: str
     name: str
@@ -311,6 +314,11 @@ class CreateDomainRequest(BaseModel):
 class UpdateDomainRequest(BaseModel):
     name: str | None = None
     config: dict | None = None
+
+
+class DomainAskRequest(BaseModel):
+    question: str
+
 
 class RenameTeamRequest(BaseModel):
     """Rename a library team: the new ``name``. Trimmed + required — enforced in
@@ -2575,6 +2583,40 @@ def post_domain_ingest(
         "workflow_id": str(handle.workflow_id),
         "status": "indexing",
     }
+
+
+@router.post("/api/domains/{domain_id}/ask")
+def post_domain_ask(
+    domain_id: str,
+    body: DomainAskRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    owner_id = uuid.UUID(current_user.id)
+    did = _parse_domain_id(domain_id)
+    # ownership probe first so foreign ids stay 404 even if ask would 422
+    row = get_domain(owner_id, did)
+    if row is None:
+        raise HTTPException(status_code=404, detail="domain not found")
+    try:
+        return ask_domain(owner_id, did, body.question)
+    except DomainAskError as e:
+        if e.code == "not_found":
+            raise HTTPException(status_code=404, detail="domain not found") from e
+        if e.code == "gateway":
+            raise HTTPException(status_code=502, detail=e.detail) from e
+        raise HTTPException(status_code=422, detail=e.detail) from e
+
+
+@router.get("/api/domains/{domain_id}/messages")
+def get_domain_messages(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    owner_id = uuid.UUID(current_user.id)
+    did = _parse_domain_id(domain_id)
+    msgs = list_domain_messages(owner_id, did)
+    if msgs is None:
+        raise HTTPException(status_code=404, detail="domain not found")
+    return {"messages": msgs}
 
 
 
