@@ -98,6 +98,13 @@ from tvashtr.control_plane.domain_ask import (
     list_domain_messages,
     retrieve_domain,
 )
+from tvashtr.control_plane.domain_eval import (
+    create_eval_case,
+    delete_eval_case,
+    latest_eval_run_for_owner,
+    list_eval_cases,
+    run_domain_eval,
+)
 from tvashtr.documents.service import (
     add_version,
     get_document_with_versions,
@@ -330,6 +337,14 @@ class DomainAskRequest(BaseModel):
 class DomainRetrieveRequest(BaseModel):
     query: str
     top_k: int | None = None
+
+
+class DomainEvalCaseCreate(BaseModel):
+    question: str
+    expected_answer: str | None = None
+    expected_citation_doc_ids: list[str] = []
+    expected_keywords: list[str] = []
+    ordinal: int = 0
 
 
 class RenameTeamRequest(BaseModel):
@@ -2658,6 +2673,93 @@ def get_domain_messages(
     if msgs is None:
         raise HTTPException(status_code=404, detail="domain not found")
     return {"messages": msgs}
+
+
+@router.get("/api/domains/{domain_id}/eval/cases")
+def get_domain_eval_cases(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    owner_id = uuid.UUID(current_user.id)
+    did = _parse_domain_id(domain_id)
+    rows = list_eval_cases(owner_id, did)
+    if rows is None:
+        raise HTTPException(status_code=404, detail="domain not found")
+    return {"cases": rows}
+
+
+@router.post("/api/domains/{domain_id}/eval/cases")
+def post_domain_eval_case(
+    domain_id: str,
+    body: DomainEvalCaseCreate,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    owner_id = uuid.UUID(current_user.id)
+    did = _parse_domain_id(domain_id)
+    try:
+        return create_eval_case(
+            owner_id,
+            did,
+            question=body.question,
+            expected_answer=body.expected_answer,
+            expected_citation_doc_ids=body.expected_citation_doc_ids,
+            expected_keywords=body.expected_keywords,
+            ordinal=body.ordinal,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail="domain not found") from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+def _parse_eval_case_id(case_id: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(case_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid case id") from exc
+
+
+@router.delete("/api/domains/{domain_id}/eval/cases/{case_id}", status_code=204)
+def delete_domain_eval_case_route(
+    domain_id: str,
+    case_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> Response:
+    owner_id = uuid.UUID(current_user.id)
+    did = _parse_domain_id(domain_id)
+    cid = _parse_eval_case_id(case_id)
+    if get_domain(owner_id, did) is None:
+        raise HTTPException(status_code=404, detail="domain not found")
+    if not delete_eval_case(owner_id, did, cid):
+        raise HTTPException(status_code=404, detail="case not found")
+    return Response(status_code=204)
+
+
+@router.get("/api/domains/{domain_id}/eval/runs/latest")
+def get_domain_eval_latest(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    owner_id = uuid.UUID(current_user.id)
+    did = _parse_domain_id(domain_id)
+    owned, run = latest_eval_run_for_owner(owner_id, did)
+    if not owned:
+        raise HTTPException(status_code=404, detail="domain not found")
+    if run is None:
+        raise HTTPException(status_code=404, detail="no eval runs yet")
+    return run
+
+
+@router.post("/api/domains/{domain_id}/eval")
+def post_domain_eval(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    owner_id = uuid.UUID(current_user.id)
+    did = _parse_domain_id(domain_id)
+    try:
+        return run_domain_eval(owner_id, did)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail="domain not found") from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 
