@@ -2455,3 +2455,96 @@ body,
   flex: none;
   background: var(--border-hairline);
 }
+/* ---- Domains (Phase 1) ---- */
+.tv-domains__list-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.tv-domains__empty {
+  opacity: 0.75;
+  margin-top: 1.5rem;
+}
+.tv-domains__list {
+  list-style: none;
+  padding: 0;
+  margin: 1.25rem 0 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.tv-domains__card {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--tv-border, rgba(255, 255, 255, 0.08));
+  background: var(--tv-card, rgba(255, 255, 255, 0.03));
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  cursor: pointer;
+}
+.tv-domains__card:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.tv-domains__card-name {
+  display: block;
+  font-weight: 600;
+}
+.tv-domains__card-meta {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  opacity: 0.7;
+}
+.tv-domains__tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.tv-domains__tab {
+  border: none;
+  background: transparent;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.tv-domains__tab--active {
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 1;
+  font-weight: 600;
+}
+.tv-domains__panel {
+  margin-top: 0.5rem;
+}
+.tv-domains__meta {
+  display: grid;
+  gap: 0.75rem;
+}
+.tv-domains__meta dt {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+.tv-domains__meta dd {
+  margin: 0.15rem 0 0;
+}
+.tv-domains__hint {
+  margin: 1rem 0;
+  opacity: 0.75;
+  max-width: 40rem;
+}
+.tv-domains__config-modes {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.tv-domains__config-grid {
+  display: grid;
+  gap: 0.85rem;
+  max-width: 28rem;
+  margin-bottom: 1rem;
+}
+.tv-domains__json {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  min-height: 16rem;
+}

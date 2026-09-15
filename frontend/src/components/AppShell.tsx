@@ -1,16 +1,17 @@
 import type { ReactNode } from "react";
-import { Home, KeyRound, Wrench } from "lucide-react";
+import { BookOpen, Home, KeyRound, Wrench } from "lucide-react";
 
-export type DashView = "home" | "engines" | "tools";
+export type DashView = "home" | "domains" | "engines" | "tools";
 
 const NAV: { id: DashView; label: string; icon: typeof Home }[] = [
   { id: "home", label: "Home", icon: Home },
+  { id: "domains", label: "Domains", icon: BookOpen },
   { id: "engines", label: "Engines", icon: KeyRound },
   { id: "tools", label: "Tools", icon: Wrench },
 ];
 
 /**
- * Dashboard app shell — sticky left nav (Home / Engines / Tools) + main content column.
+ * Dashboard app shell — sticky left nav (Home / Domains / Engines / Tools) + main content column.
  * Account chip stays in the top bar (passed as `barRight`); optional `navFooter` for a chip in the rail.
  */
 export function AppShell({

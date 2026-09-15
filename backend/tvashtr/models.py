@@ -599,6 +599,33 @@ class EngineSubscriptionStatus(Base):
     )
 
 
+class Domain(Base):
+    """Owner-scoped PolyRAG knowledge corpus config (Phase 1).
+
+    Documents / chunks / messages arrive in later phases. ``config`` is domain.yaml-as-JSONB.
+    ``status`` is a stub (``empty`` until Phase 2 ingest). NEVER store provider secrets here.
+    """
+
+    __tablename__ = "domains"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    # financial | legal | scientific | support | blank
+    template: Mapped[str] = mapped_column(Text, nullable=False)
+    config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # Phase 1 stub: empty (no documents). Later phases may set ready / indexing / error.
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="empty", default="empty"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class GithubInstallation(Base):
     """One GitHub App installation linked to an account (M-h1a, migration ``0029``).
 
