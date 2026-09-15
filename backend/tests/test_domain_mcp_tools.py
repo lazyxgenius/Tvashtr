@@ -6,9 +6,12 @@ from unittest.mock import patch
 
 import pytest
 
+from tvashtr.auth import SESSION_COOKIE_NAME, make_session_cookie_value
 from tvashtr.control_plane.domain_ask import DomainAskError
 from tvashtr.control_plane.domain_mcp import (
     DomainMcpToolError,
+    create_domains_fastmcp,
+    owner_id_from_headers,
     run_domain_ask_tool,
     run_domain_retrieve_tool,
 )
@@ -85,3 +88,23 @@ def test_bad_domain_id():
     with pytest.raises(DomainMcpToolError) as ei:
         run_domain_ask_tool(uuid.uuid4(), "not-a-uuid", "q")
     assert "domain_id" in ei.value.message.lower() or "uuid" in ei.value.message.lower()
+
+
+
+def test_owner_id_from_headers_roundtrip():
+    uid = uuid.uuid4()
+    cookie = f"{SESSION_COOKIE_NAME}={make_session_cookie_value(str(uid))}"
+    assert owner_id_from_headers(cookie) == uid
+
+
+def test_owner_id_from_headers_missing():
+    with pytest.raises(DomainMcpToolError):
+        owner_id_from_headers(None)
+
+
+def test_fastmcp_registers_locked_tool_names():
+    mcp = create_domains_fastmcp()
+    # mcp 1.27: ToolManager._tools is name -> Tool; list_tools() returns unhashable Tool objs
+    registered = set(mcp._tool_manager._tools)
+    assert "domain_ask" in registered
+    assert "domain_retrieve" in registered
