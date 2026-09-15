@@ -654,16 +654,58 @@ def _missing_provider_credentials(
     return sorted(missing), nodes
 
 
-def _missing_credentials_detail(providers: list[str], nodes: list[str]) -> dict:
+_MODEL_PROVIDER_TO_SUB = {
+    "anthropic": "claude",
+    "xai": "grok",
+    "grok": "grok",
+    "openai": "codex",
+}
+
+
+def _connected_subscription_ids(owner_id: uuid.UUID) -> set[str]:
+    """Engine providers the owner has a connected status-only subscription mirror for.
+
+    Used only to choose clearer Fly preflight copy when BYOK is missing but a Desktop
+    subscription would cover the same provider — never accepted as a Fly credential.
+    """
+    with db.session_scope() as session:
+        rows = session.execute(
+            select(EngineSubscriptionStatus.provider).where(
+                EngineSubscriptionStatus.owner_id == owner_id,
+                EngineSubscriptionStatus.connected.is_(True),
+            )
+        ).all()
+        return {r[0] for r in rows}
+
+
+def _missing_credentials_detail(
+    providers: list[str], nodes: list[str], *, subscription_only: bool = False
+) -> dict:
     """The 422 refusal payload for a launch the owner has no key for — names the missing PROVIDERS
     (the existing ``missing_providers`` contract) AND the offending NODES (M-runnable), with both in
     the human ``message`` the FE launch banner renders, so the user learns WHICH nodes to fix rather
-    than only which provider is missing."""
-    node_phrase = " — needed by " + ", ".join(nodes) if nodes else ""
+    than only which provider is missing.
+
+    When every missing BYOK provider is coverable by a connected subscription mirror, set
+    ``subscription_only`` so the message points at API key or Desktop local run — never treat the
+    mirror as a Fly credential.
+    """
+    if subscription_only:
+        msg = (
+            "Hosted runs need an API key for: "
+            + ", ".join(providers)
+            + (" — needed by " + ", ".join(nodes) if nodes else "")
+            + ". Your subscription covers local Desktop runs — add a key or run locally on Desktop."
+        )
+    else:
+        msg = "you have no API key for: " + ", ".join(providers) + (
+            " — needed by " + ", ".join(nodes) if nodes else ""
+        )
     return {
-        "message": "you have no API key for: " + ", ".join(providers) + node_phrase,
+        "message": msg,
         "missing_providers": providers,
         "missing_nodes": nodes,
+        "subscription_only": subscription_only,
     }
 
 
@@ -953,9 +995,13 @@ def create_run(
         uuid.UUID(current_user.id), team_graph_id
     )
     if missing:
+        subs = _connected_subscription_ids(uuid.UUID(current_user.id))
+        subscription_only = all(_MODEL_PROVIDER_TO_SUB.get(p) in subs for p in missing)
         raise HTTPException(
             status_code=422,
-            detail=_missing_credentials_detail(missing, missing_nodes),
+            detail=_missing_credentials_detail(
+                missing, missing_nodes, subscription_only=subscription_only
+            ),
         )
 
     # M-live: and the model must still EXIST. A slug its provider retired used to sail through
@@ -1048,9 +1094,13 @@ def create_ab_runs(
         # run starts if the owner lacks a provider key the config needs (422).
         missing, missing_nodes = _missing_provider_credentials(owner_id, team_graph_id)
         if missing:
+            subs = _connected_subscription_ids(owner_id)
+            subscription_only = all(_MODEL_PROVIDER_TO_SUB.get(p) in subs for p in missing)
             raise HTTPException(
                 status_code=422,
-                detail=_missing_credentials_detail(missing, missing_nodes),
+                detail=_missing_credentials_detail(
+                    missing, missing_nodes, subscription_only=subscription_only
+                ),
             )
         # M-live: the same servability pre-flight per side, so the A/B instrument is not a hole
         # through which a retired model still reaches a real run.
