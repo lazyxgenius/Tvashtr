@@ -3,13 +3,13 @@
 import uuid
 
 from tvashtr.auth import SESSION_COOKIE_NAME, make_session_cookie_value
+from tvashtr.main import app
 
 
-def test_mcp_domains_mount_exists(unauth_client):
-    # unauth_client depends on session client so MCP lifespan is already running;
-    # bare probe must not 404 the mount entirely (401/406/405/421 ok).
-    r = unauth_client.get("/mcp/domains")
-    assert r.status_code != 404
+def test_mcp_domains_mount_exists():
+    # Assert mount registration without probing streamable HTTP (GET creates a
+    # session transport and can tear down the shared TestClient/DBOS lifespan).
+    assert any(getattr(r, "path", None) == "/mcp/domains" for r in app.routes)
 
 
 def test_tool_handler_path_uses_cookie_owner():
