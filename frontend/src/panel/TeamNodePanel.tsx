@@ -6,6 +6,7 @@ import {
   type GateConfig,
   type GraphEdge,
   listProviders,
+  listSubscriptionStatuses,
   defaultForProvider,
   presetsForProvider,
   type ProviderCredential,
@@ -17,6 +18,12 @@ import {
   updateTeamNode,
   updateTerminalNode,
 } from "../lib/api";
+import {
+  credentialTreatment,
+  subscriptionProviderForModel,
+  type SubscriptionProviderId,
+  type SubscriptionStatus,
+} from "../lib/engines";
 import { applyEmitContract, emitContract } from "../lib/topology";
 import { DrawerShell, type PanelMode } from "./DrawerShell";
 import { glyphForNode } from "./nodeGlyph";
@@ -137,6 +144,10 @@ export function TeamNodePanel({
   // M-accounts Slice C: the per-node model picker is provider-gated by the account's configured
   // providers. The panel remounts per node (parent `key`), so a local fetch-on-mount is self-contained.
   const [providers, setProviders] = useState<ProviderCredential[]>([]);
+  // Prefer-subscription: Desktop harness / mirror status keyed by subscription provider id.
+  const [subscriptionById, setSubscriptionById] = useState<
+    Partial<Record<SubscriptionProviderId, SubscriptionStatus>>
+  >({});
   const [addOpen, setAddOpen] = useState(false);
   const [addProviderSlug, setAddProviderSlug] = useState("");
   const [addKey, setAddKey] = useState("");
@@ -229,6 +240,33 @@ export function TeamNodePanel({
       .catch(() => {
         /* providers stay empty → the picker still works on the node's own provider */
       });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAgent]);
+
+  useEffect(() => {
+    // Prefer-subscription treatment: Desktop engines.getStatus when available, else mirror API.
+    if (!isAgent) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = window.tvashtrDesktop;
+        const engines =
+          d && typeof d === "object" && d.engines ? d.engines : null;
+        const rows = engines?.getStatus
+          ? await engines.getStatus()
+          : await listSubscriptionStatuses();
+        if (cancelled) return;
+        const map: Partial<Record<SubscriptionProviderId, SubscriptionStatus>> = {};
+        for (const row of Array.isArray(rows) ? rows : []) {
+          map[row.provider] = row;
+        }
+        setSubscriptionById(map);
+      } catch {
+        /* leave empty — pill stays hidden / BYOK path still works */
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -483,10 +521,23 @@ export function TeamNodePanel({
   const configuredProviders = new Set(providers.map((p) => p.provider));
   const providerConfigured = configuredProviders.has(currentProvider);
   const knownPreset = quickPicks.includes(model.trim());
+  const subId = subscriptionProviderForModel(model);
+  const subConnected = subId ? subscriptionById[subId]?.connected === true : false;
+  const launchTarget =
+    document.documentElement.dataset.tvashtrDesktop === "true" ? "local" : "hosted";
+  const treatment = credentialTreatment({
+    model,
+    subscriptionConnected: subConnected,
+    byokConfigured: providerConfigured,
+    launchTarget,
+  });
+  // Soften: when a local subscription covers the model, don't warn solely for missing BYOK.
   const modelWarning =
     isAgent && model.trim() && providers.length > 0 && !(providerConfigured && knownPreset)
       ? !providerConfigured
-        ? `No API key configured for “${currentProvider}”.`
+        ? subConnected && launchTarget === "local"
+          ? null
+          : `No API key configured for “${currentProvider}”.`
         : `“${model.trim()}” isn’t a known ${currentProvider} model.`
       : null;
   const showModelWarning = modelWarning !== null && !modelHintDismissed;
@@ -929,6 +980,10 @@ export function TeamNodePanel({
               ))}
             </datalist>
           </div>
+          {treatment === "subscription" && (
+            <span className="tv-engines-pill">via subscription (local)</span>
+          )}
+          {treatment === "byok" && <span className="tv-engines-pill">via API key</span>}
 
           {addOpen && (
             <div className="tv-node-addprov">
