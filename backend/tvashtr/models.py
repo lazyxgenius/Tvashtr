@@ -714,6 +714,60 @@ class DomainMessage(Base):
     )
 
 
+class DomainEvalCase(Base):
+    """One golden Q&A fixture for a Domain (Phase 6 eval).
+
+    ``expected_citation_doc_ids`` / ``expected_keywords`` drive deterministic
+    hit@k and keyword_hit scores. ``expected_answer`` is human reference only in v1.
+    NEVER store provider secrets here.
+    """
+
+    __tablename__ = "domain_eval_cases"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    domain_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expected_citation_doc_ids: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default="[]", default=list
+    )
+    expected_keywords: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default="[]", default=list
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class DomainEvalRun(Base):
+    """One sync eval execution for a Domain (Phase 6).
+
+    ``scores`` holds aggregate + per_case metrics JSON. NEVER store secrets.
+    """
+
+    __tablename__ = "domain_eval_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    domain_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # pending | running | completed | failed
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="pending", default="pending"
+    )
+    scores: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
 class GithubInstallation(Base):
     """One GitHub App installation linked to an account (M-h1a, migration ``0029``).
 
