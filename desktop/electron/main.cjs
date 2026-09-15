@@ -311,18 +311,27 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => {
-  try {
-    void localRunSupervisor.stopAll();
-  } catch {
-    /* ignore */
-  }
-  if (localServer) {
+/** Prevent re-entrant before-quit while we await stopAll (app.exit skips this handler). */
+let quittingAfterStopAll = false;
+
+app.on("before-quit", (event) => {
+  if (quittingAfterStopAll) return;
+  event.preventDefault();
+  quittingAfterStopAll = true;
+  (async () => {
     try {
-      localServer.close();
+      await localRunSupervisor.stopAll();
     } catch {
       /* ignore */
     }
-    localServer = null;
-  }
+    if (localServer) {
+      try {
+        localServer.close();
+      } catch {
+        /* ignore */
+      }
+      localServer = null;
+    }
+    app.exit(0);
+  })();
 });

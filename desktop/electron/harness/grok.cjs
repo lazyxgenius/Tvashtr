@@ -1,3 +1,8 @@
+/**
+ * Grok harness adapter — detect/status shell.
+ * Assumes Claude-like CLI auth verbs (`auth status` / `whoami` / login) for Connect IPC.
+ * Not production-proven against a real Grok CLI yet; Claude remains the deep path.
+ */
 const { promisify } = require("util");
 const childProcess = require("child_process");
 const defaultExecFile = promisify(childProcess.execFile);

@@ -1,10 +1,19 @@
 const assert = require("assert");
 const { createLocalRunSupervisor } = require("../electron/harness/localRuns.cjs");
 
+/**
+ * Mirrors Electron before-quit: await stopAll so kills finish before quit continues.
+ * (main.cjs uses preventDefault + await stopAll + app.exit.)
+ */
+async function awaitStopAllBeforeContinue(stopAll, after) {
+  await stopAll();
+  after();
+}
+
 async function main() {
+  let killed = false;
   const sup = createLocalRunSupervisor({
     spawn: () => {
-      let killed = false;
       return {
         pid: 4242,
         kill() {
@@ -24,8 +33,15 @@ async function main() {
     provider: "claude",
   });
   assert.ok(localRunId);
-  await sup.stopAll();
+  assert.strictEqual(sup.list().length, 1);
+
+  let continued = false;
+  await awaitStopAllBeforeContinue(() => sup.stopAll(), () => {
+    continued = true;
+  });
+  assert.strictEqual(killed, true, "stopAll must kill workers before quit continues");
   assert.strictEqual(sup.list().length, 0);
+  assert.strictEqual(continued, true);
   console.log("local-runs.test.cjs OK");
 }
 main();
