@@ -5,6 +5,9 @@ import * as api from "../lib/api";
 import { Dashboard } from "./Dashboard";
 
 vi.mock("./BackendDot", () => ({ BackendDot: () => null }));
+vi.mock("./DomainsPage", () => ({
+  DomainsPage: () => <div>Domains page mock</div>,
+}));
 vi.mock("../lib/api", () => ({
   getTeams: vi.fn(),
   listProviders: vi.fn(),
@@ -172,6 +175,22 @@ describe("Dashboard", () => {
     );
     expect(await screen.findByRole("region", { name: /Engines/i })).toBeInTheDocument();
     expect(screen.queryByText(/Create your first team/i)).not.toBeInTheDocument();
+  });
+
+  it("initialView=domains lands on the Domains page", async () => {
+    m.getTeams.mockResolvedValue([]);
+    m.listProviders.mockResolvedValue([]);
+    m.getTemplates.mockResolvedValue([]);
+    m.getTeamRuns.mockResolvedValue([]);
+    render(
+      <Dashboard
+        user={USER}
+        onLogout={vi.fn()}
+        onOpenTeam={vi.fn()}
+        initialView="domains"
+      />,
+    );
+    expect(await screen.findByText(/Domains page mock/i)).toBeTruthy();
   });
 
   it("maps each team's latest-run status to a pill + shows its spend, and the stat strip totals", async () => {

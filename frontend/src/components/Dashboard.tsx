@@ -28,6 +28,7 @@ import { formatRelativeTime } from "../lib/time";
 import { useModalDialog } from "../lib/useModalDialog";
 import { AppShell, type DashView } from "./AppShell";
 import { BackendDot } from "./BackendDot";
+import { DomainsPage } from "./DomainsPage";
 import { EnginesShelf } from "./EnginesShelf";
 import { MemoryShelf } from "./MemoryShelf";
 import { NewTeamDialog } from "./NewTeamDialog";
@@ -584,6 +585,12 @@ export function Dashboard({
               </section>
             </div>
           </>
+        )}
+
+        {view === "domains" && (
+          <div className="tv-dash__stack">
+            <DomainsPage />
+          </div>
         )}
 
         {view === "engines" && (

@@ -157,6 +157,7 @@ export function DomainsPage() {
         {tab === "config" && (
           <section className="tv-domains__panel" aria-label="Config">
             <DomainConfigForm
+              key={detail.domain_id}
               initial={detail.config}
               onSave={async (config) => {
                 const updated = await updateDomain(detail.domain_id, { config });
