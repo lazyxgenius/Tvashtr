@@ -1557,3 +1557,64 @@ export async function setReviewMode(reviewMode: boolean): Promise<boolean> {
   return data.review_mode;
 }
 // ===== end M-memory S5 client block ============================================================
+
+export interface DomainSummary {
+  domain_id: string;
+  name: string;
+  template: string;
+  config: Record<string, unknown>;
+  status: string;
+  doc_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type DomainDetail = DomainSummary;
+
+export interface DomainTemplate {
+  template: string;
+  name: string;
+  description: string;
+}
+
+export async function listDomains(): Promise<DomainSummary[]> {
+  const data = await getJSON<{ domains: DomainSummary[] }>("/api/domains");
+  return data.domains;
+}
+
+export async function getDomainTemplates(): Promise<DomainTemplate[]> {
+  const data = await getJSON<{ templates: DomainTemplate[] }>("/api/domain-templates");
+  return data.templates;
+}
+
+export async function createDomain(template: string, name: string): Promise<DomainSummary> {
+  const res = await fetch(apiUrl("/api/domains"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ template, name }),
+  });
+  if (!res.ok) throw new Error(`POST /api/domains -> ${res.status}`);
+  return (await res.json()) as DomainSummary;
+}
+
+export async function getDomain(domainId: string): Promise<DomainDetail> {
+  return getJSON<DomainDetail>(`/api/domains/${domainId}`);
+}
+
+export async function updateDomain(
+  domainId: string,
+  body: { name?: string; config?: Record<string, unknown> },
+): Promise<DomainDetail> {
+  const res = await fetch(apiUrl(`/api/domains/${domainId}`), {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`PATCH /api/domains/${domainId} -> ${res.status}`);
+  return (await res.json()) as DomainDetail;
+}
+
+export async function deleteDomain(domainId: string): Promise<void> {
+  const res = await fetch(apiUrl(`/api/domains/${domainId}`), { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /api/domains/${domainId} -> ${res.status}`);
+}
