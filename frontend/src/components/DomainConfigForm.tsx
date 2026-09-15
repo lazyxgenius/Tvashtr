@@ -2,14 +2,30 @@ import { useMemo, useState } from "react";
 
 import { parseDomainConfig, type DomainConfig } from "../lib/domains";
 
+function withRerank(cfg: DomainConfig): DomainConfig {
+  const rr = cfg.retrieval.rerank;
+  return {
+    ...cfg,
+    retrieval: {
+      ...cfg.retrieval,
+      mode: cfg.retrieval.mode || "dense",
+      rerank: {
+        enabled: Boolean(rr?.enabled),
+        model: rr?.model ?? null,
+        top_n: Number(rr?.top_n) > 0 ? Number(rr?.top_n) : 20,
+      },
+    },
+  };
+}
+
 function asConfig(initial: Record<string, unknown>): DomainConfig {
-  return (
+  return withRerank(
     parseDomainConfig(initial) ?? {
       chunking: { strategy: "fixed", size: 800, overlap: 100 },
       embedding: { model: "text-embedding-3-small" },
       retrieval: { top_k: 8, mode: "dense" },
       generation: { model: null },
-    }
+    },
   );
 }
 
@@ -38,7 +54,7 @@ export function DomainConfigForm({
           setError("JSON must include chunking, embedding, retrieval, and generation objects.");
           return;
         }
-        next = ok;
+        next = withRerank(ok);
       } catch {
         setError("Invalid JSON.");
         return;
@@ -145,7 +161,7 @@ export function DomainConfigForm({
           </label>
           <label className="tv-field">
             <span className="tv-field__label">Retrieval mode</span>
-            <input
+            <select
               className="tv-launch__input"
               aria-label="Retrieval mode"
               value={cfg.retrieval.mode}
@@ -155,8 +171,84 @@ export function DomainConfigForm({
                   retrieval: { ...cfg.retrieval, mode: e.target.value },
                 })
               }
+            >
+              <option value="dense">dense</option>
+              <option value="lexical">lexical</option>
+              <option value="hybrid">hybrid</option>
+            </select>
+            <span className="tv-field__hint">
+              dense = pgvector cosine; lexical = Postgres full-text; hybrid = RRF fusion of both.
+            </span>
+          </label>
+          <label className="tv-field">
+            <span className="tv-field__label">Rerank enabled</span>
+            <input
+              type="checkbox"
+              aria-label="Rerank enabled"
+              checked={Boolean(cfg.retrieval.rerank?.enabled)}
+              onChange={(e) =>
+                setCfg({
+                  ...cfg,
+                  retrieval: {
+                    ...cfg.retrieval,
+                    rerank: {
+                      enabled: e.target.checked,
+                      model: cfg.retrieval.rerank?.model ?? null,
+                      top_n: cfg.retrieval.rerank?.top_n ?? 20,
+                    },
+                  },
+                })
+              }
             />
-            <span className="tv-field__hint">Phase 1: dense only. Hybrid arrives later.</span>
+            <span className="tv-field__hint">
+              v1: expands the candidate pool to Top N before cutting to Top K. No paid rerank
+              provider is called; model is reserved for a future LiteLLM hook (passthrough when
+              empty).
+            </span>
+          </label>
+          <label className="tv-field">
+            <span className="tv-field__label">Rerank top N</span>
+            <input
+              className="tv-launch__input"
+              type="number"
+              aria-label="Rerank top N"
+              value={cfg.retrieval.rerank?.top_n ?? 20}
+              onChange={(e) =>
+                setCfg({
+                  ...cfg,
+                  retrieval: {
+                    ...cfg.retrieval,
+                    rerank: {
+                      enabled: Boolean(cfg.retrieval.rerank?.enabled),
+                      model: cfg.retrieval.rerank?.model ?? null,
+                      top_n: Number(e.target.value),
+                    },
+                  },
+                })
+              }
+            />
+          </label>
+          <label className="tv-field">
+            <span className="tv-field__label">Rerank model</span>
+            <input
+              className="tv-launch__input"
+              aria-label="Rerank model"
+              placeholder="optional — passthrough when empty"
+              value={cfg.retrieval.rerank?.model ?? ""}
+              onChange={(e) =>
+                setCfg({
+                  ...cfg,
+                  retrieval: {
+                    ...cfg.retrieval,
+                    rerank: {
+                      enabled: Boolean(cfg.retrieval.rerank?.enabled),
+                      model: e.target.value.trim() ? e.target.value : null,
+                      top_n: cfg.retrieval.rerank?.top_n ?? 20,
+                    },
+                  },
+                })
+              }
+            />
           </label>
           <label className="tv-field">
             <span className="tv-field__label">Generation model</span>

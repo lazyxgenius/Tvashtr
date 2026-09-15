@@ -16,13 +16,33 @@ describe("DomainConfigForm", () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<DomainConfigForm initial={sample} onSave={onSave} />);
-    const topK = screen.getByLabelText(/top k/i);
+    // Exact label — /top k/i also hits the rerank hint ("…cutting to Top K").
+    const topK = screen.getByLabelText("Top K");
     await user.clear(topK);
     await user.type(topK, "5");
     await user.click(screen.getByRole("button", { name: /Save config/i }));
     expect(onSave).toHaveBeenCalled();
     const arg = onSave.mock.calls[0][0];
     expect(arg.retrieval.top_k).toBe(5);
+  });
+
+  it("selects hybrid mode and rerank knobs", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<DomainConfigForm initial={sample} onSave={onSave} />);
+    const mode = screen.getByLabelText(/retrieval mode/i);
+    expect(mode.tagName).toBe("SELECT");
+    await user.selectOptions(mode, "hybrid");
+    await user.click(screen.getByLabelText(/rerank enabled/i));
+    const topN = screen.getByLabelText(/rerank top n/i);
+    await user.clear(topN);
+    await user.type(topN, "16");
+    await user.click(screen.getByRole("button", { name: /Save config/i }));
+    const arg = onSave.mock.calls[0][0];
+    expect(arg.retrieval.mode).toBe("hybrid");
+    expect(arg.retrieval.rerank.enabled).toBe(true);
+    expect(arg.retrieval.rerank.top_n).toBe(16);
+    expect(arg.retrieval.rerank.model).toBeNull();
   });
 
   it("rejects invalid JSON in raw mode", async () => {

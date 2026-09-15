@@ -25,11 +25,23 @@ export function labelForDomainTemplate(template: string): string {
   return (LABELS as Record<string, string>)[template] ?? template;
 }
 
+export type RetrievalMode = "dense" | "lexical" | "hybrid";
+
+export interface DomainRerankConfig {
+  enabled: boolean;
+  model: string | null;
+  top_n: number;
+}
+
 /** Phase 1 v1 config shape (matches backend defaults). */
 export interface DomainConfig {
   chunking: { strategy: string; size: number; overlap: number };
   embedding: { model: string };
-  retrieval: { top_k: number; mode: string };
+  retrieval: {
+    top_k: number;
+    mode: RetrievalMode | string;
+    rerank?: DomainRerankConfig;
+  };
   generation: { model: string | null };
 }
 
