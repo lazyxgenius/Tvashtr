@@ -27,9 +27,12 @@ SDK's ``RemoteConversation`` create path serializes the agent with ``expose_secr
 import copy
 import re
 import uuid
+from urllib.parse import urlparse, urlunparse
 
 from sqlalchemy import select
 
+from tvashtr.auth import SESSION_COOKIE_NAME, make_session_cookie_value
+from tvashtr.config import get_settings
 from tvashtr.control_plane.mcp_secrets import resolve_owner_mcp_secret
 from tvashtr.control_plane.node_library import resolve_owner_tool
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
@@ -76,6 +79,34 @@ def _substitute(server: dict, values: dict[str, str]) -> dict:
                 if isinstance(val, str):
                     block_values[key] = _REF.sub(lambda m: values[m.group(1)], val)
     return out
+
+
+
+def domains_mcp_url() -> str:
+    """Control-plane Domains MCP URL reachable from the OpenHands agent process."""
+    settings = get_settings()
+    base = (settings.public_base_url or "http://127.0.0.1:8000").rstrip("/")
+    parsed = urlparse(base)
+    host = parsed.hostname or "127.0.0.1"
+    if settings.agent_sandbox_mode == "docker" and host in ("127.0.0.1", "localhost"):
+        host = settings.litellm_proxy_host_docker
+        netloc = host
+        if parsed.port:
+            netloc = f"{host}:{parsed.port}"
+        elif parsed.scheme == "http":
+            netloc = f"{host}:8000"
+        parsed = parsed._replace(netloc=netloc)
+        base = urlunparse(parsed).rstrip("/")
+    return f"{base}/mcp/domains"
+
+
+def _domains_opt_in(tvashtr_meta: dict) -> bool:
+    flag = tvashtr_meta.get("domains")
+    if flag is True:
+        return True
+    if isinstance(flag, dict) and flag.get("enabled", True) is not False and flag:
+        return True
+    return False
 
 
 def build_mcp_config(tool_config: dict | None, run_id: str) -> dict:
@@ -148,5 +179,16 @@ def build_mcp_config(tool_config: dict | None, run_id: str) -> dict:
             record_resolution_warning(run_id, "tool", name, f"missing secret {', '.join(missing)}")
             continue  # SKIP the server; the run continues without it
         resolved[name] = _substitute(server, values)  # type: ignore[arg-type]
+    # Phase 4b: inject Domains MCP when opted in (inline wins if already present).
+    meta = tvashtr_meta if isinstance(tvashtr_meta, dict) else {}
+    if _domains_opt_in(meta):
+        owner = _owner()
+        if owner is not None and "tvashtr-domains" not in resolved:
+            cookie_val = make_session_cookie_value(str(owner))
+            resolved["tvashtr-domains"] = {
+                "url": domains_mcp_url(),
+                "headers": {"Cookie": f"{SESSION_COOKIE_NAME}={cookie_val}"},
+            }
+
     # Return ONLY ``{"mcpServers": {…}}`` — the ``tvashtr`` block (incl. ``library``) is stripped.
     return {"mcpServers": resolved}
