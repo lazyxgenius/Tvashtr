@@ -555,6 +555,17 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("TVASHTR_FRONTEND_DIST", "frontend_dist"),
     )
 
+    # PolyRAG Domains Phase 2: filesystem root for uploaded domain files.
+    # Path layout: {domain_files_dir}/{owner_id}/{domain_id}/{document_id}/{safe_filename}
+    # Dev/tests default to /tmp (ephemeral). For Fly multi-replica prod, REQUIRE a shared
+    # volume so upload and ingest see the same bytes — set
+    # TVASHTR_DOMAIN_FILES_DIR=/data/domain-files on a mounted volume. Single-machine Fly
+    # still needs a durable volume (not /tmp) across restarts. No Tigris/S3 in Phase 2.
+    domain_files_dir: str = Field(
+        default="/tmp/tvashtr-domain-files",
+        validation_alias=AliasChoices("TVASHTR_DOMAIN_FILES_DIR", "domain_files_dir"),
+    )
+
     # M-h3 (HOSTED mode): the three RUN CEILINGS that bound the operator's COMPUTE spend. A hosted
     # run is BYOK for the LLM — the owner's own provider key pays for tokens (there is no ``.env``
     # fallback), so what the OPERATOR pays for is a Fly Firecracker microVM per IN-FLIGHT run. These

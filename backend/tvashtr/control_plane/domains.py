@@ -1,14 +1,15 @@
-"""PolyRAG Domains — Phase 1 config + CRUD helpers (no ingest/ask)."""
+"""PolyRAG Domains — Phase 1 config + CRUD helpers; Phase 2 document helpers."""
 
 from __future__ import annotations
 
 import uuid
 from copy import deepcopy
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
+from tvashtr.control_plane import domain_files as domain_files_cp
 from tvashtr.db import session_scope
-from tvashtr.models import Domain
+from tvashtr.models import Domain, DomainDocument
 
 
 _SECRET_KEYS = frozenset(
@@ -114,14 +115,81 @@ def list_domain_templates() -> list[dict]:
     ]
 
 
-def domain_to_dict(domain: Domain) -> dict:
+INGEST_PENDING = "pending"
+INGEST_INDEXING = "indexing"
+INGEST_READY = "ready"
+INGEST_ERROR = "error"
+
+
+def compute_domain_status(ingest_statuses: list[str]) -> str:
+    """Aggregate Domain.status from document ingest_status values.
+
+    Rules (Phase 2):
+    - 0 docs → ``empty``
+    - any ``indexing`` or ``pending`` → ``indexing``
+    - else any ``error`` → ``error``
+    - else any ``ready`` → ``ready``
+    - else → ``empty``
+    """
+    if not ingest_statuses:
+        return "empty"
+    if any(s in (INGEST_INDEXING, INGEST_PENDING) for s in ingest_statuses):
+        return "indexing"
+    if any(s == INGEST_ERROR for s in ingest_statuses):
+        return "error"
+    if any(s == INGEST_READY for s in ingest_statuses):
+        return "ready"
+    return "empty"
+
+
+def _owned_domain(session, owner_id: uuid.UUID, domain_id: uuid.UUID) -> Domain | None:
+    return session.execute(
+        select(Domain).where(Domain.id == domain_id, Domain.owner_id == owner_id)
+    ).scalar_one_or_none()
+
+
+def _doc_count(session, domain_id: uuid.UUID) -> int:
+    return int(
+        session.execute(
+            select(func.count())
+            .select_from(DomainDocument)
+            .where(DomainDocument.domain_id == domain_id)
+        ).scalar_one()
+    )
+
+
+def _apply_domain_aggregates(session, domain: Domain) -> None:
+    statuses = list(
+        session.execute(
+            select(DomainDocument.ingest_status).where(DomainDocument.domain_id == domain.id)
+        ).scalars()
+    )
+    domain.status = compute_domain_status(statuses)
+
+
+def document_to_dict(doc: DomainDocument) -> dict:
+    return {
+        "document_id": str(doc.id),
+        "domain_id": str(doc.domain_id),
+        "filename": doc.filename,
+        "content_type": doc.content_type,
+        "byte_size": doc.byte_size,
+        "ingest_status": doc.ingest_status,
+        "error_message": doc.error_message,
+        "version": doc.version,
+        "created_at": doc.created_at.isoformat(),
+        "updated_at": doc.updated_at.isoformat(),
+    }
+
+
+def domain_to_dict(domain: Domain, *, doc_count: int) -> dict:
     return {
         "domain_id": str(domain.id),
         "name": domain.name,
         "template": domain.template,
         "config": domain.config or {},
         "status": domain.status,
-        "doc_count": 0,  # Phase 2 wires real counts
+        "doc_count": doc_count,
         "created_at": domain.created_at.isoformat(),
         "updated_at": domain.updated_at.isoformat(),
     }
@@ -138,7 +206,7 @@ def list_domains(owner_id: uuid.UUID) -> list[dict]:
             .scalars()
             .all()
         )
-        return [domain_to_dict(r) for r in rows]
+        return [domain_to_dict(r, doc_count=_doc_count(session, r.id)) for r in rows]
 
 
 def create_domain(owner_id: uuid.UUID, name: str, template: str) -> dict:
@@ -158,7 +226,7 @@ def create_domain(owner_id: uuid.UUID, name: str, template: str) -> dict:
         )
         session.add(row)
         session.flush()
-        return domain_to_dict(row)
+        return domain_to_dict(row, doc_count=_doc_count(session, row.id))
 
 
 def get_domain(owner_id: uuid.UUID, domain_id: uuid.UUID) -> dict | None:
@@ -166,7 +234,7 @@ def get_domain(owner_id: uuid.UUID, domain_id: uuid.UUID) -> dict | None:
         row = session.execute(
             select(Domain).where(Domain.id == domain_id, Domain.owner_id == owner_id)
         ).scalar_one_or_none()
-        return None if row is None else domain_to_dict(row)
+        return None if row is None else domain_to_dict(row, doc_count=_doc_count(session, row.id))
 
 
 def update_domain(
@@ -192,7 +260,79 @@ def update_domain(
             # Fresh dict so JSONB dirty-tracking works (same pattern as gate config patches).
             row.config = dict(config)
         session.flush()
-        return domain_to_dict(row)
+        return domain_to_dict(row, doc_count=_doc_count(session, row.id))
+
+
+def list_documents(owner_id: uuid.UUID, domain_id: uuid.UUID) -> list[dict] | None:
+    with session_scope() as session:
+        domain = _owned_domain(session, owner_id, domain_id)
+        if domain is None:
+            return None
+        rows = (
+            session.execute(
+                select(DomainDocument)
+                .where(DomainDocument.domain_id == domain_id)
+                .order_by(DomainDocument.created_at, DomainDocument.id)
+            )
+            .scalars()
+            .all()
+        )
+        return [document_to_dict(r) for r in rows]
+
+
+def create_document(
+    owner_id: uuid.UUID, domain_id: uuid.UUID, filename: str, data: bytes
+) -> dict:
+    if len(data) > domain_files_cp.MAX_UPLOAD_BYTES:
+        raise ValueError("file exceeds 10 MiB limit")
+    ext = domain_files_cp.extension_of(filename)
+    content_type = domain_files_cp.content_type_for_ext(ext)
+    with session_scope() as session:
+        domain = _owned_domain(session, owner_id, domain_id)
+        if domain is None:
+            raise LookupError("domain not found")
+        doc = DomainDocument(
+            domain_id=domain.id,
+            filename=domain_files_cp.safe_filename(filename),
+            content_type=content_type,
+            storage_path="pending",
+            byte_size=len(data),
+            ingest_status=INGEST_PENDING,
+        )
+        session.add(doc)
+        session.flush()
+        rel = domain_files_cp.relative_storage_path(
+            owner_id, domain.id, doc.id, doc.filename
+        )
+        domain_files_cp.save_bytes(rel, data)
+        doc.storage_path = rel
+        _apply_domain_aggregates(session, domain)
+        session.flush()
+        return document_to_dict(doc)
+
+
+def delete_document(
+    owner_id: uuid.UUID, domain_id: uuid.UUID, document_id: uuid.UUID
+) -> bool:
+    with session_scope() as session:
+        domain = _owned_domain(session, owner_id, domain_id)
+        if domain is None:
+            return False
+        doc = session.execute(
+            select(DomainDocument).where(
+                DomainDocument.id == document_id,
+                DomainDocument.domain_id == domain_id,
+            )
+        ).scalar_one_or_none()
+        if doc is None:
+            return False
+        rel = doc.storage_path
+        session.delete(doc)  # cascades chunks via FK
+        session.flush()
+        _apply_domain_aggregates(session, domain)
+        session.flush()
+    domain_files_cp.delete_stored(rel)
+    return True
 
 
 def delete_domain(owner_id: uuid.UUID, domain_id: uuid.UUID) -> bool:
@@ -202,6 +342,7 @@ def delete_domain(owner_id: uuid.UUID, domain_id: uuid.UUID) -> bool:
         ).scalar_one_or_none()
         if row is None:
             return False
-        session.delete(row)
+        session.delete(row)  # cascades domain_documents / domain_chunks
         session.flush()
-        return True
+    domain_files_cp.delete_domain_tree(owner_id, domain_id)
+    return True

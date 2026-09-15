@@ -1618,3 +1618,76 @@ export async function deleteDomain(domainId: string): Promise<void> {
   const res = await fetch(apiUrl(`/api/domains/${domainId}`), { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /api/domains/${domainId} -> ${res.status}`);
 }
+
+export interface DomainDocumentSummary {
+  document_id: string;
+  domain_id: string;
+  filename: string;
+  content_type: string;
+  byte_size: number;
+  ingest_status: "pending" | "indexing" | "ready" | "error" | string;
+  error_message: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listDomainDocuments(domainId: string): Promise<DomainDocumentSummary[]> {
+  const data = await getJSON<{ documents: DomainDocumentSummary[] }>(
+    `/api/domains/${domainId}/documents`,
+  );
+  return data.documents;
+}
+
+export async function uploadDomainDocument(
+  domainId: string,
+  file: File,
+): Promise<DomainDocumentSummary> {
+  const body = new FormData();
+  body.append("file", file);
+  const res = await fetch(apiUrl(`/api/domains/${domainId}/documents`), {
+    method: "POST",
+    body,
+  });
+  if (!res.ok) {
+    let detail = `POST /api/domains/${domainId}/documents -> ${res.status}`;
+    try {
+      const j = (await res.json()) as { detail?: unknown };
+      if (typeof j.detail === "string") detail = j.detail;
+      else if (j.detail && typeof j.detail === "object" && "message" in (j.detail as object)) {
+        detail = String((j.detail as { message: string }).message);
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  return (await res.json()) as DomainDocumentSummary;
+}
+
+export async function deleteDomainDocument(domainId: string, documentId: string): Promise<void> {
+  const res = await fetch(apiUrl(`/api/domains/${domainId}/documents/${documentId}`), {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new ApiError(res.status, `DELETE document -> ${res.status}`);
+}
+
+export async function ingestDomain(
+  domainId: string,
+): Promise<{ domain_id: string; workflow_id: string; status: string }> {
+  const res = await fetch(apiUrl(`/api/domains/${domainId}/ingest`), { method: "POST" });
+  if (!res.ok) {
+    let detail = `POST ingest -> ${res.status}`;
+    try {
+      const j = (await res.json()) as { detail?: unknown };
+      if (typeof j.detail === "string") detail = j.detail;
+      else if (j.detail && typeof j.detail === "object" && "message" in (j.detail as object)) {
+        detail = String((j.detail as { message: string }).message);
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  return (await res.json()) as { domain_id: string; workflow_id: string; status: string };
+}

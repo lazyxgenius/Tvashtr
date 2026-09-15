@@ -75,3 +75,15 @@ def test_list_get_update_delete_owner_scoped(client):
     assert updated["config"]["retrieval"]["top_k"] == 3
     assert domains_cp.delete_domain(auth_user_id(), uuid.UUID(a["domain_id"])) is True
     assert domains_cp.get_domain(auth_user_id(), uuid.UUID(a["domain_id"])) is None
+
+
+from tvashtr.control_plane.domains import compute_domain_status
+
+
+def test_compute_domain_status_rules():
+    assert compute_domain_status([]) == "empty"
+    assert compute_domain_status(["pending"]) == "indexing"
+    assert compute_domain_status(["indexing", "ready"]) == "indexing"
+    assert compute_domain_status(["ready", "error"]) == "error"
+    assert compute_domain_status(["ready", "ready"]) == "ready"
+    assert compute_domain_status(["error"]) == "error"

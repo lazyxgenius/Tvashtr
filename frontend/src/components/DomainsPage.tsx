@@ -3,17 +3,22 @@ import { Plus } from "lucide-react";
 
 import {
   deleteDomain,
+  deleteDomainDocument,
   getDomain,
+  ingestDomain,
+  listDomainDocuments,
   listDomains,
   updateDomain,
+  uploadDomainDocument,
   type DomainDetail,
+  type DomainDocumentSummary,
   type DomainSummary,
 } from "../lib/api";
 import { labelForDomainTemplate } from "../lib/domains";
 import { DomainConfigForm } from "./DomainConfigForm";
 import { NewDomainDialog } from "./NewDomainDialog";
 
-type DetailTab = "overview" | "config";
+type DetailTab = "overview" | "documents" | "config";
 
 export function DomainsPage() {
   const [domains, setDomains] = useState<DomainSummary[]>([]);
@@ -21,6 +26,7 @@ export function DomainsPage() {
   const [picking, setPicking] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<DomainDetail | null>(null);
+  const [documents, setDocuments] = useState<DomainDocumentSummary[]>([]);
   const [tab, setTab] = useState<DetailTab>("overview");
   const [busy, setBusy] = useState(false);
   const mountedRef = useRef(true);
@@ -51,6 +57,7 @@ export function DomainsPage() {
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
+      setDocuments([]);
       return;
     }
     let cancelled = false;
@@ -60,6 +67,13 @@ export function DomainsPage() {
       })
       .catch(() => {
         if (!cancelled) setError("Couldn't load domain.");
+      });
+    listDomainDocuments(selectedId)
+      .then((rows) => {
+        if (!cancelled) setDocuments(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Couldn't load documents.");
       });
     return () => {
       cancelled = true;
@@ -98,6 +112,15 @@ export function DomainsPage() {
           <button
             type="button"
             role="tab"
+            aria-selected={tab === "documents"}
+            className={`tv-domains__tab${tab === "documents" ? " tv-domains__tab--active" : ""}`}
+            onClick={() => setTab("documents")}
+          >
+            Documents
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={tab === "config"}
             className={`tv-domains__tab${tab === "config" ? " tv-domains__tab--active" : ""}`}
             onClick={() => setTab("config")}
@@ -118,7 +141,7 @@ export function DomainsPage() {
               </div>
               <div>
                 <dt>Documents</dt>
-                <dd>{detail.doc_count} (ingest arrives in a later phase)</dd>
+                <dd>{detail.doc_count}</dd>
               </div>
               <div>
                 <dt>Embedding model</dt>
@@ -130,8 +153,8 @@ export function DomainsPage() {
               </div>
             </dl>
             <p className="tv-domains__hint">
-              Upload, chat, and agent query land in later phases. Configure chunking and retrieval
-              under Config; set provider keys under Engines before ingest.
+              Upload and ingest documents under Documents. Chat arrives in Phase 3. Configure
+              chunking and retrieval under Config; set provider keys under Engines before ingest.
             </p>
             <button
               type="button"
@@ -155,6 +178,123 @@ export function DomainsPage() {
             >
               Delete domain
             </button>
+          </section>
+        )}
+        {tab === "documents" && (
+          <section className="tv-domains__panel" aria-label="Documents">
+            <div className="tv-domains__docs-actions">
+              <label
+                className="tv-btn tv-btn--ghost"
+                aria-disabled={busy}
+                style={busy ? { pointerEvents: "none", opacity: 0.6 } : undefined}
+              >
+                Upload
+                <input
+                  type="file"
+                  accept=".pdf,.md,.txt,.html,application/pdf,text/plain,text/markdown,text/html"
+                  hidden
+                  disabled={busy}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!f || busy) return;
+                    void (async () => {
+                      setBusy(true);
+                      try {
+                        await uploadDomainDocument(detail.domain_id, f);
+                        setDocuments(await listDomainDocuments(detail.domain_id));
+                        setDetail(await getDomain(detail.domain_id));
+                        await refresh();
+                        setError(null);
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : "Upload failed");
+                      } finally {
+                        if (mountedRef.current) setBusy(false);
+                      }
+                    })();
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                className="tv-btn"
+                disabled={busy}
+                onClick={() => {
+                  void (async () => {
+                    setBusy(true);
+                    try {
+                      await ingestDomain(detail.domain_id);
+                      const deadline = Date.now() + 30_000;
+                      while (mountedRef.current && Date.now() < deadline) {
+                        const rows = await listDomainDocuments(detail.domain_id);
+                        if (!mountedRef.current) return;
+                        setDocuments(rows);
+                        setDetail(await getDomain(detail.domain_id));
+                        await refresh();
+                        const stillGoing = rows.some(
+                          (d) =>
+                            d.ingest_status === "pending" || d.ingest_status === "indexing",
+                        );
+                        if (!stillGoing) break;
+                        await new Promise((r) => setTimeout(r, 2000));
+                      }
+                      setError(null);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Ingest failed");
+                    } finally {
+                      if (mountedRef.current) setBusy(false);
+                    }
+                  })();
+                }}
+              >
+                Ingest
+              </button>
+            </div>
+            {error && (
+              <div className="tv-dash__error" role="alert">
+                {error}
+              </div>
+            )}
+            {documents.length === 0 ? (
+              <p className="tv-domains__empty">
+                No documents yet. Upload a pdf, md, txt, or html file (max 10 MiB).
+              </p>
+            ) : (
+              <ul className="tv-domains__docs-list">
+                {documents.map((doc) => (
+                  <li key={doc.document_id} className="tv-domains__docs-row">
+                    <span className="tv-domains__docs-name">{doc.filename}</span>
+                    <span className="tv-domains__docs-status">{doc.ingest_status}</span>
+                    {doc.error_message ? (
+                      <span className="tv-domains__docs-err">{doc.error_message}</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="tv-btn tv-btn--ghost"
+                      disabled={busy}
+                      onClick={() => {
+                        if (!window.confirm("Delete this document? This cannot be undone.")) {
+                          return;
+                        }
+                        void (async () => {
+                          setBusy(true);
+                          try {
+                            await deleteDomainDocument(detail.domain_id, doc.document_id);
+                            setDocuments(await listDomainDocuments(detail.domain_id));
+                            setDetail(await getDomain(detail.domain_id));
+                            await refresh();
+                          } finally {
+                            if (mountedRef.current) setBusy(false);
+                          }
+                        })();
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
         {tab === "config" && (
@@ -181,8 +321,8 @@ export function DomainsPage() {
           <div>
             <h1 className="tv-dash__page-title">Domains</h1>
             <p className="tv-dash__page-lede">
-              Config-driven knowledge corpora — create a domain, tune retrieval config, then ingest
-              in a later phase.
+              Config-driven knowledge corpora — create a domain, upload docs, ingest with your
+              Engines keys.
             </p>
           </div>
           <button type="button" className="tv-btn" onClick={() => setPicking(true)}>

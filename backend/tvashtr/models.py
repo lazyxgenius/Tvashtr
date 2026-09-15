@@ -626,6 +626,64 @@ class Domain(Base):
     )
 
 
+
+class DomainDocument(Base):
+    """One uploaded file belonging to a PolyRAG Domain (Phase 2).
+
+    Distinct from :class:`Document` (PRD work products). Raw bytes live on the
+    filesystem under ``settings.domain_files_dir``; ``storage_path`` is the
+    relative path under that root. NEVER store provider secrets here.
+    """
+
+    __tablename__ = "domain_documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    domain_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(Text, nullable=False)
+    # Relative path under settings.domain_files_dir
+    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    # pending | indexing | ready | error
+    ingest_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="pending", default="pending"
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class DomainChunk(Base):
+    """One embedded text chunk for a DomainDocument (Phase 2).
+
+    ``embedding`` is ``vector(1536)`` — pinned to text-embedding-3-small like NodeMemory.
+    """
+
+    __tablename__ = "domain_chunks"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    domain_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("domain_documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class GithubInstallation(Base):
     """One GitHub App installation linked to an account (M-h1a, migration ``0029``).
 
