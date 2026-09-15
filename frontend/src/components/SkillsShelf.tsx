@@ -286,7 +286,7 @@ export function SkillsShelf() {
               </button>
               <button
                 type="button"
-                className="tv-dash__prov-x"
+                className="tv-dash__prov-remove"
                 aria-label={`Remove ${s.name}`}
                 onClick={() => void handleRemove(s.id)}
               >

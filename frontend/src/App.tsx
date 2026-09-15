@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, LogOut, Play } from "lucide-react";
 
 import { TeamCanvas } from "./canvas/TeamCanvas";
-import { ABCompare } from "./components/ABCompare";
 import { BackendDot } from "./components/BackendDot";
 import { CancelRunButton } from "./components/CancelRunButton";
 import { LaunchPanel } from "./components/LaunchPanel";
@@ -32,7 +31,10 @@ import {
   getTeams,
   getTeamValidity,
   type HumanTask,
+  listProviders,
+  listSubscriptionStatuses,
   type NodePosition,
+  type ProviderCredential,
   resolveTask,
   type RunRow,
   runTeam,
@@ -41,6 +43,11 @@ import {
   type TaskDecision,
   type TeamGraphData,
 } from "./lib/api";
+import {
+  missingProvidersForModels,
+  type SubscriptionProviderId,
+  type SubscriptionStatus,
+} from "./lib/engines";
 import type { EdgeConfirm } from "./canvas/EdgeRoleEditor";
 import { nextDropPosition, withLayout } from "./lib/topology";
 import { isRunTerminal } from "./lib/status";
@@ -121,9 +128,13 @@ export default function App({
   // node + bumps it, so the author drawer scrolls to + flashes its Model field; a normal card/selection
   // open (`handleSelectNodeId`) clears it, so only a chip click focuses the Model field.
   const [modelFocus, setModelFocus] = useState<{ nodeId: string; n: number } | null>(null);
-  // The view mode (§14.3): the existing single-run canvas, or the A/B comparison. Plain state,
-  // no router — the single-run state/poll stay alive underneath so switching back is lossless.
-  const [mode, setMode] = useState<"single" | "ab">("single");
+  // Credential preflight for Run (UX): null until the first successful providers load so we
+  // don't flash-disable the CTA; once loaded, missing BYOK (and no Desktop subscription cover)
+  // blocks launch and points at Engines.
+  const [credentialGate, setCredentialGate] = useState<{
+    byok: Set<string>;
+    subs: Partial<Record<SubscriptionProviderId, boolean>>;
+  } | null>(null);
   // F-canvas-fidelity-1 Part B: the header profile menu (avatar → the email + Log out). Local UI state.
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -131,6 +142,39 @@ export default function App({
   // the existing live run view takes over (graph/run/tasks polled as before).
   const authoring = runId === null;
   const terminal = isRunTerminal(run, workflowStatus);
+
+  // Load BYOK + subscription coverage while authoring so Run can gate on missing providers.
+  useEffect(() => {
+    if (!authoring) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = window.tvashtrDesktop;
+        const engines = d && typeof d === "object" && d.engines ? d.engines : null;
+        const [providers, rows] = await Promise.all([
+          listProviders(),
+          engines?.getStatus
+            ? engines.getStatus()
+            : listSubscriptionStatuses().catch(() => [] as SubscriptionStatus[]),
+        ]);
+        if (cancelled) return;
+        const byok = new Set(
+          (Array.isArray(providers) ? providers : []).map((p: ProviderCredential) => p.provider),
+        );
+        const subs: Partial<Record<SubscriptionProviderId, boolean>> = {};
+        for (const row of Array.isArray(rows) ? rows : []) {
+          subs[row.provider] = row.connected === true;
+        }
+        setCredentialGate({ byok, subs });
+      } catch {
+        // Leave gate null — don't block Run on a transient credentials fetch failure.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authoring, currentTeamId]);
+
   const inFlight = runId !== null && !terminal;
   // Tasks acted on this run — suppress them so a drawer card can't briefly resurrect
   // on the immediate re-poll (which can catch the backend a beat before the task
@@ -554,34 +598,30 @@ export default function App({
   const teamRunnable = validity === null || validity.runnable;
   const validityErrors = validity?.errors ?? [];
 
+  const launchTarget =
+    document.documentElement.dataset.tvashtrDesktop === "true" ? "local" : "hosted";
+  const agentModels = (teamGraph?.nodes ?? [])
+    .filter((n) => n.kind === "agent" || n.kind === "completion")
+    .map((n) => n.model);
+  const missingProviders =
+    credentialGate === null
+      ? []
+      : missingProvidersForModels({
+          models: agentModels,
+          byokProviders: credentialGate.byok,
+          subscriptionConnected: credentialGate.subs,
+          launchTarget,
+        });
+  const providersReady = missingProviders.length === 0;
+  // Providers unknown (still loading / fetch failed) → don't block; only block once we know gaps.
+  const canLaunch = teamRunnable && (credentialGate === null || providersReady);
+
   // F-canvas-fidelity-1 Part C: the toolbar spend chip — the run's total cost (prefer the run's
   // authoritative total; else sum the polled cost rows), "$0.00" while nothing is running.
   const runCost = run?.cost_total_usd ?? costs.reduce((sum, c) => sum + c.cost_usd, 0);
   const spendLabel = `$${runCost.toFixed(2)}`;
   // Part B: the avatar shows the first letter of the account's email.
   const avatarInitial = user?.email?.trim().charAt(0).toUpperCase() || "?";
-  // Part C: the Single | A/B view-mode toggle. Rendered next to Run while authoring AND on its own in
-  // A/B mode (so you can switch back); hidden mid-run (the design's run-mode toolbar carries no toggle).
-  const viewToggle = (
-    <div className="tv-seg" role="group" aria-label="View mode">
-      <button
-        type="button"
-        aria-pressed={mode === "single"}
-        className={`tv-seg__btn${mode === "single" ? " tv-seg__btn--active" : ""}`}
-        onClick={() => setMode("single")}
-      >
-        Single run
-      </button>
-      <button
-        type="button"
-        aria-pressed={mode === "ab"}
-        className={`tv-seg__btn${mode === "ab" ? " tv-seg__btn--active" : ""}`}
-        onClick={() => setMode("ab")}
-      >
-        A/B compare
-      </button>
-    </div>
-  );
 
   return (
     <>
@@ -664,53 +704,64 @@ export default function App({
             <ArrowLeft size={16} strokeWidth={1.8} aria-hidden />
           </button>
         )}
-        {/* Author: Run this team, THEN the Single | A/B toggle (design order). Run mode: Edit + Cancel
-            + the run banner. A/B mode: just the toggle (so you can switch back). */}
-        {mode === "single" ? (
-          authoring ? (
-            <>
-              <span style={{ position: "relative", display: "inline-flex" }}>
+        {/* Author: Run this team (or Configure providers when keys are missing). Run mode: Edit + Cancel
+            + the run banner. */}
+        {authoring ? (
+          <>
+            <span style={{ position: "relative", display: "inline-flex" }}>
+              {!providersReady && credentialGate !== null ? (
+                <button
+                  className="tv-btn"
+                  type="button"
+                  onClick={() => onBackToDashboard?.()}
+                  disabled={!onBackToDashboard}
+                  title="Add API keys or connect a subscription under Engines on the Dashboard"
+                >
+                  <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden />
+                  Configure providers
+                </button>
+              ) : (
                 <button
                   className="tv-btn"
                   onClick={() => setLaunchOpen(true)}
-                  disabled={starting || currentTeamId === null || !teamRunnable}
-                  title={teamRunnable ? undefined : "Fix the team before running (see the issues)."}
+                  disabled={starting || currentTeamId === null || !canLaunch}
+                  title={
+                    !teamRunnable
+                      ? "Fix the team before running (see the issues)."
+                      : undefined
+                  }
                 >
                   <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden />
                   {starting ? "Starting…" : "Run this team"}
                 </button>
-                {launchOpen && currentTeamId !== null && (
-                  <LaunchPanel
-                    teamNodes={teamGraph?.nodes ?? []}
-                    starting={starting}
-                    onLaunch={(opts) => void handleLaunch(opts)}
-                    onClose={() => setLaunchOpen(false)}
-                    hosted={config?.hosted_mode ?? false}
-                    githubInstallUrl={config?.github_install_url ?? ""}
-                    githubManageUrl={config?.github_manage_url ?? ""}
-                  />
-                )}
-              </span>
-              {viewToggle}
-            </>
-          ) : (
-            <>
-              <button className="tv-btn tv-btn--ghost" onClick={handleEditTeam} disabled={inFlight}>
-                {inFlight ? "Running…" : "Edit this team"}
-              </button>
-              {inFlight && (
-                <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />
               )}
-              <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
-              <RunWarnings warnings={graph?.resolution_warnings ?? []} />
-            </>
-          )
+              {launchOpen && currentTeamId !== null && canLaunch && (
+                <LaunchPanel
+                  teamNodes={teamGraph?.nodes ?? []}
+                  starting={starting}
+                  onLaunch={(opts) => void handleLaunch(opts)}
+                  onClose={() => setLaunchOpen(false)}
+                  hosted={config?.hosted_mode ?? false}
+                  githubInstallUrl={config?.github_install_url ?? ""}
+                  githubManageUrl={config?.github_manage_url ?? ""}
+                />
+              )}
+            </span>
+          </>
         ) : (
-          viewToggle
+          <>
+            <button className="tv-btn tv-btn--ghost" onClick={handleEditTeam} disabled={inFlight}>
+              {inFlight ? "Running…" : "Edit this team"}
+            </button>
+            {inFlight && (
+              <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />
+            )}
+            <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
+            <RunWarnings warnings={graph?.resolution_warnings ?? []} />
+          </>
         )}
-        {/* The validity warning (why Run is disabled) — kept as the only blocked-launch signal, styled
-            compact so it doesn't fight the clean toolbar. The always-on hint line was removed. */}
-        {mode === "single" && authoring && !teamRunnable && (
+        {/* Blocked-launch signals: topology validity and/or missing provider credentials. */}
+        {authoring && !teamRunnable && (
           <div className="tv-validity" role="status">
             <span className="tv-validity__lead">Can’t run yet:</span>
             <ul className="tv-validity__list">
@@ -723,10 +774,33 @@ export default function App({
             </ul>
           </div>
         )}
-        {mode === "single" && error && (
+        {authoring && teamRunnable && !providersReady && credentialGate !== null && (
+          <div className="tv-validity" role="status" data-testid="missing-providers">
+            <span className="tv-validity__lead">Missing providers:</span>
+            <ul className="tv-validity__list">
+              {missingProviders.map((p) => (
+                <li key={p}>
+                  No API key for “{p}”
+                  {launchTarget === "local" ? " (and no covering Desktop subscription)" : ""}
+                </li>
+              ))}
+            </ul>
+            {onBackToDashboard && (
+              <button
+                type="button"
+                className="tv-btn tv-btn--ghost"
+                style={{ marginLeft: "0.5rem" }}
+                onClick={() => onBackToDashboard()}
+              >
+                Open Engines
+              </button>
+            )}
+          </div>
+        )}
+        {error && (
           <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>{error}</span>
         )}
-        {mode === "single" && authoring && teamError && (
+        {authoring && teamError && (
           <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
             Couldn't load your team — is the backend running?
           </span>
@@ -743,78 +817,72 @@ export default function App({
       </div>
 
       <main className="flex min-h-0 flex-1">
-        {mode === "single" ? (
-          <>
-            {/* Part A: no author-mode team rail — the canvas is full-width while authoring (the team
-                library lives on the Dashboard). A left panel appears ONLY during a run (the tasks drawer). */}
-            {!authoring && (
-              <TasksDrawer
-                blockers={pendingBlockers}
-                nudges={pendingNudges}
-                onResolve={(taskId, decision) => void handleResolve(taskId, decision)}
-                onAcknowledge={(taskId) => void handleAcknowledge(taskId)}
-                onFocusNode={setFocusNodeId}
-                busy={acting}
+        {/* Part A: no author-mode team rail — the canvas is full-width while authoring (the team
+            library lives on the Dashboard). A left panel appears ONLY during a run (the tasks drawer). */}
+        {!authoring && (
+          <TasksDrawer
+            blockers={pendingBlockers}
+            nudges={pendingNudges}
+            onResolve={(taskId, decision) => void handleResolve(taskId, decision)}
+            onAcknowledge={(taskId) => void handleAcknowledge(taskId)}
+            onFocusNode={setFocusNodeId}
+            busy={acting}
+          />
+        )}
+        <div className="relative min-w-0 flex-1">
+          <TeamCanvas
+            blockedNodes={blockedNodes}
+            blockedReason={error ?? ""}
+            graph={authoring ? teamAsGraph : graph}
+            run={run}
+            workflowStatus={workflowStatus}
+            tasks={authoring ? EMPTY_TASKS : tasks}
+            focusNodeId={focusNodeId}
+            panelOpen={authoring ? selectedNodeId !== null : selectedRunNodeId !== null}
+            onSelectNode={setSelectedRunNodeId}
+            editable={authoring}
+            teamNodes={teamGraph?.nodes ?? []}
+            validity={validity}
+            onAddNode={(body) => void handleAddNode(body)}
+            onAddDownstream={(fromId, body) => void handleAddDownstream(fromId, body)}
+            onCreateEdge={(c, source, target) => void handleCreateEdge(c, source, target)}
+            onDeleteNodes={(ids) => void handleDeleteNodes(ids)}
+            onDeleteEdges={(ids) => void handleDeleteEdges(ids)}
+            onMoveNode={handleMoveNode}
+            onSelectNodeId={handleSelectNodeId}
+            onOpenModel={handleOpenModel}
+            busy={editBusy}
+          />
+        </div>
+        {authoring
+          ? selectedNodeId &&
+            currentTeamId && (
+              <TeamNodePanel
+                key={selectedNodeId}
+                teamId={currentTeamId}
+                node={selectedTeamNode}
+                edges={teamGraph?.edges ?? []}
+                nodes={teamGraph?.nodes ?? []}
+                isStartNode={selectedTeamNode?.id === startNodeId}
+                panelMode={panelMode}
+                onTogglePanelMode={togglePanelMode}
+                focusModel={focusModel}
+                onSaved={() => loadTeam(currentTeamId)}
+                onClose={() => handleSelectNodeId(null)}
+                onManageMemory={onBackToDashboard}
               />
-            )}
-            <div className="relative min-w-0 flex-1">
-              <TeamCanvas
-                blockedNodes={blockedNodes}
-                blockedReason={error ?? ""}
-                graph={authoring ? teamAsGraph : graph}
+            )
+          : selectedRunNode && (
+              <SidePanel
+                node={selectedRunNode}
+                runId={runId}
                 run={run}
                 workflowStatus={workflowStatus}
-                tasks={authoring ? EMPTY_TASKS : tasks}
-                focusNodeId={focusNodeId}
-                panelOpen={authoring ? selectedNodeId !== null : selectedRunNodeId !== null}
-                onSelectNode={setSelectedRunNodeId}
-                editable={authoring}
-                teamNodes={teamGraph?.nodes ?? []}
-                validity={validity}
-                onAddNode={(body) => void handleAddNode(body)}
-                onAddDownstream={(fromId, body) => void handleAddDownstream(fromId, body)}
-                onCreateEdge={(c, source, target) => void handleCreateEdge(c, source, target)}
-                onDeleteNodes={(ids) => void handleDeleteNodes(ids)}
-                onDeleteEdges={(ids) => void handleDeleteEdges(ids)}
-                onMoveNode={handleMoveNode}
-                onSelectNodeId={handleSelectNodeId}
-                onOpenModel={handleOpenModel}
-                busy={editBusy}
+                panelMode={panelMode}
+                onTogglePanelMode={togglePanelMode}
+                onClose={() => setSelectedRunNodeId(null)}
               />
-            </div>
-            {authoring
-              ? selectedNodeId &&
-                currentTeamId && (
-                  <TeamNodePanel
-                    key={selectedNodeId}
-                    teamId={currentTeamId}
-                    node={selectedTeamNode}
-                    edges={teamGraph?.edges ?? []}
-                    nodes={teamGraph?.nodes ?? []}
-                    isStartNode={selectedTeamNode?.id === startNodeId}
-                    panelMode={panelMode}
-                    onTogglePanelMode={togglePanelMode}
-                    focusModel={focusModel}
-                    onSaved={() => loadTeam(currentTeamId)}
-                    onClose={() => handleSelectNodeId(null)}
-                    onManageMemory={onBackToDashboard}
-                  />
-                )
-              : selectedRunNode && (
-                  <SidePanel
-                    node={selectedRunNode}
-                    runId={runId}
-                    run={run}
-                    workflowStatus={workflowStatus}
-                    panelMode={panelMode}
-                    onTogglePanelMode={togglePanelMode}
-                    onClose={() => setSelectedRunNodeId(null)}
-                  />
-                )}
-          </>
-        ) : (
-          <ABCompare />
-        )}
+            )}
       </main>
     </>
   );

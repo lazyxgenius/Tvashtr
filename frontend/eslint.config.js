@@ -6,7 +6,7 @@
 //
 // The whole point of the TYPE-CHECKED tier (typescript-eslint, `projectService` form so it
 // picks up tsconfig.json automatically) is `no-floating-promises` / `no-misused-promises`:
-// they catch real async bugs in the polling code (App.tsx / EventFeed / ABCompare) and the
+// they catch real async bugs in the polling code (App.tsx / EventFeed) and the
 // Playwright awaits in e2e/. We do NOT downgrade to the plain non-type-checked tier.
 import js from "@eslint/js";
 import reactHooks from "eslint-plugin-react-hooks";

@@ -28,24 +28,39 @@ describe("NewTeamDialog", () => {
     const { onOpenTeam } = renderDialog();
     m.createTeam.mockResolvedValue({
       team_graph_id: "new1",
-      name: "New team",
+      name: "Launch squad",
       created_at: "x",
       node_count: 1,
       last_run: null,
       spend_usd: 0,
     });
 
+    fireEvent.change(screen.getByLabelText("Team name"), { target: { value: "Launch squad" } });
     fireEvent.click(screen.getByRole("button", { name: "Create team" }));
 
-    // Defaults: the Blank starting point + the prefilled name.
-    await waitFor(() => expect(m.createTeam).toHaveBeenCalledWith("blank", "New team"));
+    await waitFor(() => expect(m.createTeam).toHaveBeenCalledWith("blank", "Launch squad"));
     await waitFor(() => expect(onOpenTeam).toHaveBeenCalledWith("new1"));
+  });
+
+  it("does not default the name to New team and refuses a blank name", async () => {
+    renderDialog();
+    const input = screen.getByLabelText<HTMLInputElement>("Team name");
+    expect(input.value).toBe("");
+
+    fireEvent.click(screen.getByRole("button", { name: "Create team" }));
+    expect(m.createTeam).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/name/i);
+
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "Create team" }));
+    expect(m.createTeam).not.toHaveBeenCalled();
   });
 
   it("surfaces an error and re-enables the button when create() fails (the mounted guard path)", async () => {
     const { onOpenTeam } = renderDialog();
     m.createTeam.mockRejectedValue(new Error("network down"));
 
+    fireEvent.change(screen.getByLabelText("Team name"), { target: { value: "Will fail" } });
     fireEvent.click(screen.getByRole("button", { name: "Create team" }));
 
     // Still mounted, so `if (mountedRef.current)` lets the catch's set-states through: the error

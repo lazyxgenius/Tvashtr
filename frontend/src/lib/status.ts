@@ -7,7 +7,7 @@ import type { HumanTask, RunRow } from "./api";
 export type NodeStatus = "idle" | "running" | "done" | "stopped" | "failed";
 
 export const WORKFLOW_FAILED = new Set(["ERROR", "CANCELLED", "MAX_RECOVERY_ATTEMPTS_EXCEEDED"]);
-// Exported so the A/B comparison module (§14.3) derives a side's terminality from the SAME
+// Exported so any run-status surface derives terminality from the SAME
 // sets the single-run poll-stop uses — one source of truth for "can this still change?".
 export const WORKFLOW_TERMINAL = new Set([
   "SUCCESS",
@@ -136,7 +136,7 @@ export function deriveTerminalState(terminalKind: string, backendStatus: string)
  * per-round verdict view (P1.5c §14.1). Pure and total: `approved` reads positive (sage),
  * `changes_requested` reads attention (coral), anything else (a non-reviewer outcome, or a
  * still-open `null` round) reads neutral. Only the LABEL is surfaced today — the reasons
- * ("why B sent it back") need a new column and arrive with the §14.2 A/B work.
+ * ("why B sent it back") would need a new column if we resurface compare later.
  */
 export type VerdictTone = "approved" | "changes" | "neutral";
 export function reviewerVerdictLabel(outcome: string | null): { label: string; tone: VerdictTone } {

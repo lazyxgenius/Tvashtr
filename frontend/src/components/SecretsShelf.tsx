@@ -76,25 +76,31 @@ export function SecretsShelf() {
             account, encrypted. We never show a value back.
           </p>
         </div>
-        <div className="tv-dash__prov-add">
-          <input
-            className="tv-launch__input"
-            aria-label="Secret name"
-            placeholder="GITHUB_TOKEN"
-            value={nameInput}
-            onChange={(e) => setNameInput(e.target.value)}
-          />
-          <input
-            className="tv-launch__input"
-            type="password"
-            aria-label="Secret value"
-            placeholder="value"
-            value={valueInput}
-            onChange={(e) => setValueInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void handleAdd();
-            }}
-          />
+        <div className="tv-dash__prov-add tv-dash__prov-add--labeled">
+          <label className="tv-field">
+            <span className="tv-field__label">Name</span>
+            <input
+              className="tv-launch__input"
+              aria-label="Secret name"
+              placeholder="GITHUB_TOKEN"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+            />
+          </label>
+          <label className="tv-field">
+            <span className="tv-field__label">Value</span>
+            <input
+              className="tv-launch__input"
+              type="password"
+              aria-label="Secret value"
+              placeholder="secret value"
+              value={valueInput}
+              onChange={(e) => setValueInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleAdd();
+              }}
+            />
+          </label>
           <button
             className="tv-btn tv-btn--primary"
             onClick={() => void handleAdd()}
@@ -116,7 +122,7 @@ export function SecretsShelf() {
               <span className="tv-dash__prov-name">{s.name}</span>
               <span className="tv-dash__prov-last4">••••</span>
               <button
-                className="tv-dash__prov-x"
+                className="tv-dash__prov-remove"
                 aria-label={`Remove ${s.name}`}
                 onClick={() => void handleRemove(s.name)}
               >

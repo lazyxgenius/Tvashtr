@@ -881,7 +881,9 @@ export interface TeamSummary {
   name: string;
   created_at: string;
   node_count: number;
-  last_run: { status: string; at: string; run_id: string } | null;
+  // `error` is optional: the list payload today is `{status, at, run_id}`; when a last-run
+  // failure reason is present we surface it on the dashboard recovery strip.
+  last_run: { status: string; at: string; run_id: string; error?: string | null } | null;
   spend_usd: number;
 }
 
@@ -1240,50 +1242,6 @@ export const getRunStatus = (runId: string): Promise<RunStatus> =>
   getJSON<RunStatus>(`/api/runs/${runId}`);
 
 export const getHealth = (): Promise<Health> => getJSON<Health>("/health");
-
-// ---- A/B comparison (§14.3 — the "which team config ships better" read surface) ----
-
-// One reviewer round on the review_loop side: the verdict label + the persisted reasons.
-export interface ABReviewRound {
-  iteration: number;
-  outcome: string | null; // approved | changes_requested
-  outcome_detail: string | null; // the reasons (on changes_requested), else null
-}
-
-// One side of an A/B pair (A = two_node / no review, B = review_loop / agent-Reviewer).
-export interface ABSide {
-  pair_label: string; // "A" | "B"
-  team_shape: string; // "two_node" | "review_loop" (derived from the run's graph)
-  run_id: string;
-  status: string; // run.status (completed | failed | rejected | cancelled | over_budget | running…)
-  workflow_status: string; // DBOS workflow status, or "NOT_FOUND"
-  ship_tag: string | null;
-  ship_commit_sha: string | null;
-  cost_total_usd: number | null;
-  idea: string;
-  review_rounds: ABReviewRound[]; // [] for the two_node side
-}
-
-export interface ABComparison {
-  pair_id: string;
-  sides: ABSide[]; // ordered A then B; may be a single side (a partial-launch / failed pair, §15)
-}
-
-// Launch an A/B pair on the default idea (empty body → the cheap pinned skeleton). Returns the
-// pair_id the comparison view then polls. Mirrors the single-run launch POST shape.
-export async function startABRuns(): Promise<string> {
-  const res = await fetch("/api/ab-runs", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({}),
-  });
-  if (!res.ok) throw new Error(`POST /api/ab-runs -> ${res.status}`);
-  const data = (await res.json()) as { pair_id: string };
-  return data.pair_id;
-}
-
-export const getABComparison = (pairId: string): Promise<ABComparison> =>
-  getJSON<ABComparison>(`/api/ab-runs/${pairId}`);
 
 // ---- Tasks-for-Human (the gate: approve / reject / cancel) ----
 

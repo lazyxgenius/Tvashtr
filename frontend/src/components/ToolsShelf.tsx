@@ -236,19 +236,20 @@ export function ToolsShelf() {
   const rowNoun = isLocal ? "Environment variable" : "Header";
 
   return (
-    <section className="tv-dash__panel tv-dash__prov" aria-label="Your tool library">
-      <div className="tv-dash__prov-head">
-        <div className="tv-dash__prov-lede">
-          <div className="tv-dash__prov-title">
-            <Wrench size={16} strokeWidth={1.7} />
-            <h2>Tool library</h2>
-          </div>
-          <p className="tv-dash__prov-sub">
-            Reusable MCP servers — define one here, then reference it from any node&rsquo;s Tools
-            section. Edit it once and every node that uses it picks up the change on its next run.
-          </p>
+    <section className="tv-dash__panel tv-dash__library" aria-label="Your tool library">
+      <div className="tv-dash__library-head">
+        <div className="tv-dash__prov-title">
+          <Wrench size={16} strokeWidth={1.7} />
+          <h2>Tool library</h2>
         </div>
-        <div className="tv-dash__prov-add" style={{ display: "grid", gap: "0.4rem" }}>
+        <p className="tv-dash__prov-sub">
+          Reusable MCP servers — define one here, then reference it from any node&rsquo;s Tools
+          section. Edit it once and every node that uses it picks up the change on its next run.
+        </p>
+      </div>
+      <div className="tv-dash__library-form">
+        <label className="tv-field">
+          <span className="tv-field__label">Name</span>
           <input
             className="tv-launch__input"
             aria-label="Tool name"
@@ -256,6 +257,9 @@ export function ToolsShelf() {
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
           />
+        </label>
+        <div className="tv-field">
+          <span className="tv-field__label">Transport</span>
           <div className="tv-seg" role="group" aria-label="Transport">
             <button
               type="button"
@@ -272,6 +276,9 @@ export function ToolsShelf() {
               Remote
             </button>
           </div>
+        </div>
+        <label className="tv-field">
+          <span className="tv-field__label">{isLocal ? "Command" : "URL"}</span>
           <input
             className="tv-launch__input"
             aria-label={isLocal ? "Command" : "URL"}
@@ -279,7 +286,10 @@ export function ToolsShelf() {
             value={target}
             onChange={(e) => onTarget(e.target.value)}
           />
-          {isLocal && (
+        </label>
+        {isLocal && (
+          <label className="tv-field">
+            <span className="tv-field__label">Arguments</span>
             <input
               className="tv-launch__input"
               aria-label="Arguments"
@@ -287,76 +297,71 @@ export function ToolsShelf() {
               value={argsText}
               onChange={(e) => onArgs(e.target.value)}
             />
+          </label>
+        )}
+        <div className="tv-field tv-dash__library-span">
+          {rows.length > 0 && (
+            <span className="tv-field__label">
+              {isLocal ? "Environment (use ${SECRET} refs)" : "Headers (use ${SECRET} refs)"}
+            </span>
           )}
-          <div style={{ display: "grid", gap: "0.3rem" }}>
-            {rows.length > 0 && (
-              <span style={{ fontSize: "0.78rem", opacity: 0.7 }}>
-                {isLocal ? "Environment (use ${SECRET} refs)" : "Headers (use ${SECRET} refs)"}
-              </span>
-            )}
-            {rows.map((row, i) => (
-              <div key={i} style={{ display: "flex", gap: "0.3rem" }}>
-                <input
-                  className="tv-launch__input"
-                  style={{ flex: 1 }}
-                  aria-label={`${rowNoun} name ${i + 1}`}
-                  placeholder={isLocal ? "NAME" : "Header-Name"}
-                  value={row.key}
-                  onChange={(e) => onRow(i, { key: e.target.value })}
-                />
-                <input
-                  className="tv-launch__input"
-                  style={{ flex: 1 }}
-                  aria-label={`${rowNoun} value ${i + 1}`}
-                  placeholder="${SECRET} or value"
-                  value={row.value}
-                  onChange={(e) => onRow(i, { value: e.target.value })}
-                />
-                <button
-                  type="button"
-                  className="tv-btn tv-btn--ghost tv-btn--sm"
-                  aria-label={`Remove ${rowNoun.toLowerCase()} ${i + 1}`}
-                  onClick={() => removeRow(i)}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            <div>
-              <button type="button" className="tv-btn tv-btn--ghost tv-btn--sm" onClick={addRow}>
-                {isLocal ? "Add variable" : "Add header"}
+          {rows.map((row, i) => (
+            <div key={i} className="tv-dash__library-kv">
+              <input
+                className="tv-launch__input"
+                aria-label={`${rowNoun} name ${i + 1}`}
+                placeholder={isLocal ? "NAME" : "Header-Name"}
+                value={row.key}
+                onChange={(e) => onRow(i, { key: e.target.value })}
+              />
+              <input
+                className="tv-launch__input"
+                aria-label={`${rowNoun} value ${i + 1}`}
+                placeholder="${SECRET} or value"
+                value={row.value}
+                onChange={(e) => onRow(i, { value: e.target.value })}
+              />
+              <button
+                type="button"
+                className="tv-btn tv-btn--ghost tv-btn--sm"
+                aria-label={`Remove ${rowNoun.toLowerCase()} ${i + 1}`}
+                onClick={() => removeRow(i)}
+              >
+                ×
               </button>
             </div>
-          </div>
-          <details>
-            <summary style={{ cursor: "pointer", fontSize: "0.82rem", opacity: 0.8 }}>
-              Advanced (raw JSON)
-            </summary>
-            <textarea
-              className="tv-node-prompt"
-              aria-label="Server config JSON"
-              rows={4}
-              spellCheck={false}
-              placeholder='{ "command": "uvx", "args": ["mcp-server-fetch"] }'
-              value={configText}
-              onChange={(e) => onAdvanced(e.target.value)}
-              style={{ marginTop: "0.3rem", width: "100%" }}
-            />
-          </details>
-          <div style={{ display: "flex", gap: "0.4rem" }}>
-            <button
-              className="tv-btn tv-btn--primary"
-              onClick={() => void handleSave()}
-              disabled={busy}
-            >
-              {editingId ? "Save tool" : "Add tool"}
+          ))}
+          <div>
+            <button type="button" className="tv-btn tv-btn--ghost tv-btn--sm" onClick={addRow}>
+              {isLocal ? "Add variable" : "Add header"}
             </button>
-            {editingId && (
-              <button className="tv-btn tv-btn--ghost" onClick={resetForm} disabled={busy}>
-                Cancel
-              </button>
-            )}
           </div>
+        </div>
+        <details className="tv-dash__library-span tv-dash__library-advanced">
+          <summary>Advanced (raw JSON)</summary>
+          <textarea
+            className="tv-node-prompt"
+            aria-label="Server config JSON"
+            rows={4}
+            spellCheck={false}
+            placeholder='{ "command": "uvx", "args": ["mcp-server-fetch"] }'
+            value={configText}
+            onChange={(e) => onAdvanced(e.target.value)}
+          />
+        </details>
+        <div className="tv-dash__library-span tv-dash__library-actions">
+          <button
+            className="tv-btn tv-btn--primary"
+            onClick={() => void handleSave()}
+            disabled={busy}
+          >
+            {editingId ? "Save tool" : "Add tool"}
+          </button>
+          {editingId && (
+            <button className="tv-btn tv-btn--ghost" onClick={resetForm} disabled={busy}>
+              Cancel
+            </button>
+          )}
         </div>
       </div>
       {!loading && tools.length === 0 ? (
@@ -379,7 +384,7 @@ export function ToolsShelf() {
               </button>
               <button
                 type="button"
-                className="tv-dash__prov-x"
+                className="tv-dash__prov-remove"
                 aria-label={`Remove ${t.name}`}
                 onClick={() => void handleRemove(t.id)}
               >

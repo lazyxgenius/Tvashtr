@@ -96,4 +96,33 @@ describe("EnginesShelf", () => {
     fireEvent.click(screen.getByRole("button", { name: /Add key/i }));
     await waitFor(() => expect(api.addProvider).toHaveBeenCalledWith("openrouter", "sk-test-1234"));
   });
+
+  it("separates Subscriptions from API keys and promotes quit-stops-runs on Desktop", async () => {
+    window.tvashtrDesktop = {
+      engines: {
+        getStatus: vi.fn().mockResolvedValue([]),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        refresh: vi.fn(),
+      },
+    };
+    vi.mocked(api.listProviders).mockResolvedValue([]);
+    vi.mocked(api.listSubscriptionStatuses).mockResolvedValue([]);
+    render(<EnginesShelf />);
+    expect(await screen.findByRole("heading", { name: "Subscriptions" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "API keys" })).toBeInTheDocument();
+    expect(screen.getByText(/stop when Desktop quits/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Bring your own keys/i })).not.toBeInTheDocument();
+  });
+
+  it("shows explicit Provider and API key labels", async () => {
+    vi.mocked(api.listProviders).mockResolvedValue([]);
+    vi.mocked(api.listSubscriptionStatuses).mockResolvedValue([]);
+    render(<EnginesShelf />);
+    await screen.findByRole("region", { name: /Engines/i });
+    expect(screen.getByLabelText("Provider")).toBeInTheDocument();
+    expect(screen.getByLabelText("API key")).toBeInTheDocument();
+    expect(screen.getByText("Provider")).toBeInTheDocument();
+    expect(screen.getByText("API key")).toBeInTheDocument();
+  });
 });

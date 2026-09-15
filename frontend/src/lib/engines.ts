@@ -74,3 +74,35 @@ export function credentialTreatment(opts: {
   if (opts.subscriptionConnected) return "subscription";
   return "none";
 }
+
+/** BYOK provider slug from a model id (leading ``provider/`` segment). Matches api.providerOf. */
+export function byokProviderOf(model: string): string {
+  return model.split("/")[0]?.trim().toLowerCase() ?? "";
+}
+
+/**
+ * Provider slugs required by node models that have neither a BYOK key nor a covering
+ * Desktop subscription. Hosted launches still need BYOK even if a subscription is mirrored
+ * connected (subscriptions only run locally). Sorted unique — empty means the team can launch.
+ */
+export function missingProvidersForModels(opts: {
+  models: readonly (string | null | undefined)[];
+  byokProviders: ReadonlySet<string>;
+  subscriptionConnected: Readonly<Partial<Record<SubscriptionProviderId, boolean>>>;
+  launchTarget: "local" | "hosted";
+}): string[] {
+  const missing = new Set<string>();
+  for (const raw of opts.models) {
+    const model = (raw ?? "").trim();
+    if (!model) continue;
+    const provider = byokProviderOf(model);
+    if (!provider) continue;
+    if (opts.byokProviders.has(provider)) continue;
+    const subId = subscriptionProviderForModel(model);
+    const subConnected = subId ? opts.subscriptionConnected[subId] === true : false;
+    // Match TeamNodePanel soft-warning: subscription covers missing BYOK only on Desktop local.
+    if (opts.launchTarget === "local" && subConnected) continue;
+    missing.add(provider);
+  }
+  return [...missing].sort();
+}

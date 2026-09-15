@@ -447,4 +447,73 @@ describe("Dashboard", () => {
     const option = document.querySelector('#tv-provider-list option[value="deepseek"]');
     expect(option).not.toBeNull();
   });
+
+  // ---- Failed-team recovery (UX polish #2) ----------------------------------------------------
+
+  it("failed team shows View last run / Retry and the last-run error when the payload has one", async () => {
+    const { onOpenTeam, onOpenRun } = setup({
+      teams: [
+        team({
+          last_run: {
+            status: "failed",
+            at: "2026-03-14T00:00:00Z",
+            run_id: "r-fail",
+            error: "No API key for openrouter",
+          },
+        }),
+      ],
+    });
+
+    expect(await screen.findByText("No API key for openrouter")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "View last run of My team" }));
+    expect(onOpenRun).toHaveBeenCalledWith("r-fail", "t1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry My team" }));
+    expect(onOpenTeam).toHaveBeenCalledWith("t1");
+  });
+
+  it("failed status pill opens the last run", async () => {
+    const { onOpenRun } = setup({
+      teams: [
+        team({
+          last_run: { status: "failed", at: "2026-03-14T00:00:00Z", run_id: "r-fail" },
+        }),
+      ],
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Failed — view last run of My team" }),
+    );
+    expect(onOpenRun).toHaveBeenCalledWith("r-fail", "t1");
+  });
+
+  it("completed teams do not show failed-recovery actions", async () => {
+    setup({
+      teams: [team({ last_run: { status: "completed", at: "x", run_id: "r1" } })],
+    });
+    expect(await screen.findByText("Completed")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /View last run/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Retry /i })).not.toBeInTheDocument();
+  });
+
+  // ---- Distinguishing team names (UX polish #3) ----------------------------------------------
+
+  it("shows a secondary id snippet so two identically named teams are distinguishable", async () => {
+    setup({
+      teams: [
+        team({
+          team_graph_id: "aaaaaaaa-1111-1111-1111-111111111111",
+          name: "New team",
+        }),
+        team({
+          team_graph_id: "bbbbbbbb-2222-2222-2222-222222222222",
+          name: "New team",
+        }),
+      ],
+    });
+    expect(await screen.findAllByRole("button", { name: "Open New team" })).toHaveLength(2);
+    expect(screen.getByText(/aaaaaaaa/)).toBeInTheDocument();
+    expect(screen.getByText(/bbbbbbbb/)).toBeInTheDocument();
+  });
 });

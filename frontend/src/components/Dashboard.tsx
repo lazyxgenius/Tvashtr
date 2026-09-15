@@ -24,6 +24,7 @@ import {
   type TeamSummary,
 } from "../lib/api";
 import { RUN_TERMINAL, runStatusPill } from "../lib/status";
+import { formatRelativeTime } from "../lib/time";
 import { useModalDialog } from "../lib/useModalDialog";
 import { BackendDot } from "./BackendDot";
 import { EnginesShelf } from "./EnginesShelf";
@@ -51,6 +52,28 @@ function formatCreated(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// First 8 hex chars of a UUID, enough to tell two "New team" rows apart.
+function shortTeamId(id: string): string {
+  return id.replace(/-/g, "").slice(0, 8);
+}
+
+// Secondary label under the team name: updated/created time + id snippet.
+function teamMetaLabel(t: TeamSummary): string {
+  const stampIso = t.last_run?.at ?? t.created_at;
+  const rel = formatRelativeTime(stampIso);
+  const stamp = rel || formatCreated(stampIso);
+  const kind = t.last_run ? "Updated" : "Created";
+  return `${kind} ${stamp} · ${shortTeamId(t.team_graph_id)}`;
+}
+
+function lastRunErrorText(t: TeamSummary): string | null {
+  if (t.last_run?.status !== "failed") return null;
+  const extra = t.last_run.error?.trim();
+  if (extra) return extra;
+  const when = formatRelativeTime(t.last_run.at);
+  return when ? `Last run failed ${when}.` : "Last run failed.";
 }
 
 /**
@@ -134,7 +157,6 @@ export function Dashboard({
   useEffect(() => {
     void load();
   }, [load]);
-
 
   const handleDeleteTeam = useCallback(
     async (teamId: string) => {
@@ -346,7 +368,9 @@ export function Dashboard({
                 </div>
                 <ul className="tv-dash__rows">
                   {teams.map((t) => {
-                    const pill = runStatusPill(t.last_run?.status ?? null);
+                    const lastRun = t.last_run;
+                    const failed = lastRun?.status === "failed";
+                    const pill = runStatusPill(lastRun?.status ?? null);
                     const renaming = renamingId === t.team_graph_id;
                     const expanded = expandedId === t.team_graph_id;
                     return (
@@ -411,15 +435,32 @@ export function Dashboard({
                                 </button>
                               </span>
                             ) : (
-                              <span className="tv-dash__team-name">{t.name}</span>
+                              <span className="tv-dash__team-copy">
+                                <span className="tv-dash__team-name">{t.name}</span>
+                                <span className="tv-dash__team-meta">{teamMetaLabel(t)}</span>
+                              </span>
                             )}
                           </div>
                           <div className="tv-dash__tcell tv-dash__tcell--num">{t.node_count}</div>
                           <div className="tv-dash__tcell">
-                            <span className={`tv-pill tv-pill--${pill.tone}`}>
-                              <span className="tv-pill__dot" />
-                              {pill.label}
-                            </span>
+                            {failed ? (
+                              <button
+                                type="button"
+                                className={`tv-pill tv-pill--${pill.tone} tv-dash__status-btn`}
+                                onClick={() =>
+                                  lastRun && onOpenRun?.(lastRun.run_id, t.team_graph_id)
+                                }
+                                aria-label={`Failed — view last run of ${t.name}`}
+                              >
+                                <span className="tv-pill__dot" />
+                                {pill.label}
+                              </button>
+                            ) : (
+                              <span className={`tv-pill tv-pill--${pill.tone}`}>
+                                <span className="tv-pill__dot" />
+                                {pill.label}
+                              </span>
+                            )}
                           </div>
                           <div className="tv-dash__tcell tv-dash__tcell--spend">
                             ${(t.spend_usd ?? 0).toFixed(2)}
@@ -441,7 +482,7 @@ export function Dashboard({
                             )}
                             <button
                               type="button"
-                              className="tv-dash__trow-del"
+                              className="tv-dash__trow-del tv-dash__trow-del--quiet"
                               onClick={() => setConfirmTeam(t)}
                               disabled={busy}
                               aria-label={`Delete ${t.name}`}
@@ -450,6 +491,35 @@ export function Dashboard({
                             </button>
                           </div>
                         </div>
+                        {failed && (
+                          <div
+                            className="tv-dash__recover"
+                            role="group"
+                            aria-label={`Recover ${t.name}`}
+                          >
+                            <p className="tv-dash__recover-msg">{lastRunErrorText(t)}</p>
+                            <div className="tv-dash__recover-acts">
+                              <button
+                                type="button"
+                                className="tv-btn tv-btn--sm"
+                                onClick={() =>
+                                  lastRun && onOpenRun?.(lastRun.run_id, t.team_graph_id)
+                                }
+                                aria-label={`View last run of ${t.name}`}
+                              >
+                                View last run
+                              </button>
+                              <button
+                                type="button"
+                                className="tv-btn tv-btn--sm tv-btn--ghost"
+                                onClick={() => onOpenTeam(t.team_graph_id)}
+                                aria-label={`Retry ${t.name}`}
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          </div>
+                        )}
                         {expanded && (
                           <div className="tv-dash__runs">
                             {runsLoading ? (

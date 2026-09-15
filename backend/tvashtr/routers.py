@@ -1059,6 +1059,7 @@ _AB_CONFIGS: tuple[tuple[str, str], ...] = (("A", "two_node"), ("B", "review_loo
 _TEAM_BUILDERS = {"two_node": build_two_node_team, "review_loop": build_review_loop_team}
 
 
+# FE product surface removed (feat/ux-polish-remove-ab); keep endpoints for deploy/API compat.
 @router.post("/api/ab-runs")
 def create_ab_runs(
     body: ABRunRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
