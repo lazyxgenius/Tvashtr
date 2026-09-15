@@ -9,8 +9,10 @@
  * GitHub OAuth stays INSIDE Electron (loadURL), not the OS browser, so the loopback
  * callback + proxied Set-Cookie land on the same partition as the SPA.
  */
-const { app, BrowserWindow, shell, ipcMain } = require("electron");
+const { app, BrowserWindow, shell, ipcMain, safeStorage } = require("electron");
 const path = require("path");
+const { createRegistry } = require("./harness/registry.cjs");
+const { createStatusStore, sanitizeStatus } = require("./harness/statusStore.cjs");
 
 const DESKTOP_ROOT = path.join(__dirname, "..");
 
@@ -26,6 +28,11 @@ let apiBaseOrigin = "https://tvashtr.fly.dev";
 
 const PROVIDERS = ["claude", "grok", "codex"];
 
+/** No-op until Task 9 wires local subscription runs. */
+const localRuns = {
+  stopAll() {},
+};
+
 function emptyStatus(provider) {
   return {
     provider,
@@ -37,11 +44,68 @@ function emptyStatus(provider) {
   };
 }
 
+/**
+ * Strip non-status keys before any IPC return to the renderer.
+ * @param {unknown} row
+ * @param {string} provider
+ */
+function toRendererStatus(row, provider) {
+  const cleaned = sanitizeStatus(row) || emptyStatus(provider);
+  if (cleaned.provider !== provider) cleaned.provider = provider;
+  return cleaned;
+}
+
 function registerEngineIpc() {
-  ipcMain.handle("tvashtr:engines:getStatus", async () => PROVIDERS.map(emptyStatus));
-  ipcMain.handle("tvashtr:engines:connect", async (_e, provider) => emptyStatus(provider));
-  ipcMain.handle("tvashtr:engines:disconnect", async (_e, provider) => emptyStatus(provider));
-  ipcMain.handle("tvashtr:engines:refresh", async (_e, provider) => emptyStatus(provider));
+  const store = createStatusStore({
+    userDataDir: app.getPath("userData"),
+    safeStorage,
+  });
+  const registry = createRegistry();
+
+  ipcMain.handle("tvashtr:engines:getStatus", async () => {
+    const out = [];
+    for (const provider of PROVIDERS) {
+      const harness = registry.get(provider);
+      if (harness) {
+        const status = toRendererStatus(await harness.toStatus(), provider);
+        store.write(provider, status);
+        out.push(status);
+      } else {
+        const stored = store.read(provider);
+        out.push(stored ? toRendererStatus(stored, provider) : emptyStatus(provider));
+      }
+    }
+    return out;
+  });
+
+  ipcMain.handle("tvashtr:engines:connect", async (_e, provider) => {
+    const id = String(provider || "");
+    const harness = registry.get(id);
+    if (!harness) {
+      return emptyStatus(id || "claude");
+    }
+    const status = toRendererStatus(await harness.connect(), id);
+    store.write(id, status);
+    return status;
+  });
+
+  ipcMain.handle("tvashtr:engines:disconnect", async (_e, provider) => {
+    const id = String(provider || "");
+    store.clear(id);
+    return emptyStatus(id);
+  });
+
+  ipcMain.handle("tvashtr:engines:refresh", async (_e, provider) => {
+    const id = String(provider || "");
+    const harness = registry.get(id);
+    if (!harness) {
+      const stored = store.read(id);
+      return stored ? toRendererStatus(stored, id) : emptyStatus(id);
+    }
+    const status = toRendererStatus(await harness.toStatus(), id);
+    store.write(id, status);
+    return status;
+  });
 }
 
 
@@ -233,6 +297,11 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  try {
+    localRuns.stopAll();
+  } catch {
+    /* ignore */
+  }
   if (localServer) {
     try {
       localServer.close();
