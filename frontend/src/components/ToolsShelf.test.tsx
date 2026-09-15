@@ -178,7 +178,7 @@ describe("ToolsShelf (M-tools C7.C)", () => {
     await waitFor(() => screen.getByText("remotesrv"));
     fireEvent.click(screen.getByRole("button", { name: "Edit remotesrv" }));
     // transport flips to Remote and the field becomes URL, pre-filled from server_config
-    expect(screen.getByRole("button", { name: "Remote" }).className).toContain("is-active");
+    expect(screen.getByRole("button", { name: "Remote" }).className).toContain("tv-seg__btn--active");
     expect(screen.getByLabelText<HTMLInputElement>("URL").value).toBe("https://ex/mcp");
   });
 

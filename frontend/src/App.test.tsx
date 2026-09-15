@@ -541,8 +541,10 @@ describe("App — F-canvas-fidelity-1 screen shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Open Engines" }));
     expect(onBack).toHaveBeenCalledTimes(1);
+    expect(onBack).toHaveBeenLastCalledWith("engines");
 
     await user.click(configure);
     expect(onBack).toHaveBeenCalledTimes(2);
+    expect(onBack).toHaveBeenLastCalledWith("engines");
   });
 });
