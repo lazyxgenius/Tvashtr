@@ -10,6 +10,9 @@ vi.mock("../lib/api", () => ({
   listProviders: vi.fn(),
   addProvider: vi.fn(),
   removeProvider: vi.fn(),
+  listSubscriptionStatuses: vi.fn().mockResolvedValue([]),
+  putSubscriptionStatus: vi.fn(),
+  deleteSubscriptionStatus: vi.fn(),
   // M-runnable: the provider datalist derives from the served catalogue; this mock stands in for it.
   providerSuggestions: vi.fn(() => [
     "openrouter",
@@ -101,7 +104,7 @@ describe("Dashboard", () => {
   it("shows the empty-state prompts for a fresh account (no teams, no providers)", async () => {
     setup({ teams: [], providers: [] });
     expect(await screen.findByText(/Create your first team/i)).toBeInTheDocument();
-    expect(screen.getByText(/Add your provider API keys/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /Engines/i })).toBeInTheDocument();
   });
 
   it("lists the account's teams + providers, and opens a team on click", async () => {
@@ -164,7 +167,7 @@ describe("Dashboard", () => {
 
   it("adds a provider key (calls addProvider, then refreshes the list)", async () => {
     setup({ providers: [] });
-    await screen.findByText(/Add your provider API keys/i);
+    await screen.findByRole("region", { name: /Engines/i });
     m.addProvider.mockResolvedValue({ provider: "openai", key_last4: "7890" });
     m.listProviders.mockResolvedValueOnce([
       { provider: "openai", key_last4: "7890", created_at: "x" },
@@ -440,7 +443,7 @@ describe("Dashboard", () => {
   // suggest the one provider a default run most needs.
   it("offers deepseek — the default agent model — in the provider datalist (M-legible)", async () => {
     setup({ providers: [] });
-    await screen.findByText(/Add your provider API keys/i);
+    await screen.findByRole("region", { name: /Engines/i });
     const option = document.querySelector('#tv-provider-list option[value="deepseek"]');
     expect(option).not.toBeNull();
   });

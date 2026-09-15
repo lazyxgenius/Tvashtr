@@ -1702,6 +1702,92 @@ body,
   color: var(--text-secondary);
 }
 
+
+.tv-engines {
+  padding: 20px var(--space-6);
+}
+.tv-engines__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.tv-engines__title-row h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 19px;
+}
+.tv-engines__sub {
+  margin: 6px 0 16px;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  max-width: 520px;
+}
+.tv-engines__tier-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: 12px 0 8px;
+}
+.tv-engines__cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+@media (max-width: 900px) {
+  .tv-engines__cards {
+    grid-template-columns: 1fr;
+  }
+}
+.tv-engines__card {
+  border: 1px solid var(--line-300);
+  background: var(--cream-50, var(--cream-100));
+  border-radius: 12px;
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 132px;
+}
+.tv-engines__card--connected {
+  border-color: var(--sage-500);
+}
+.tv-engines__card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.tv-engines__card-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+}
+.tv-engines__pill {
+  font-size: 11px;
+  color: var(--ink-600);
+}
+.tv-engines__hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.tv-engines__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  flex-wrap: wrap;
+}
+.tv-engines__footnote {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.tv-engines__byok {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-200);
+}
+
 /* The New-team / delete pop-ups — a centered card over the shared .tv-scrim (dimmed dashboard). */
 .tv-dash__dialog {
   position: fixed;
