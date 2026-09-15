@@ -2,7 +2,7 @@
 
 Files live under ``settings.domain_files_dir``:
 ``{dir}/{owner_id}/{domain_id}/{document_id}/{safe_filename}``.
-No object storage in Phase 2. Fly prod may mount ``/data/domain-files`` via env.
+No object storage in Phase 2. Fly multi-replica prod MUST use a shared volume (``TVASHTR_DOMAIN_FILES_DIR=/data/domain-files``).
 """
 
 from __future__ import annotations

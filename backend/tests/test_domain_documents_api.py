@@ -79,3 +79,69 @@ def test_foreign_domain_documents_404():
         ).status_code
         == 404
     )
+
+
+def test_upload_rejects_via_content_length_before_body():
+    """I2: Content-Length above 10 MiB → 422 without relying on full body buffer alone."""
+    import anyio
+    from io import BytesIO
+
+    from starlette.datastructures import Headers, UploadFile
+
+    from tvashtr.control_plane.domain_files import MAX_UPLOAD_BYTES
+    from tvashtr.routers import _read_domain_upload_capped
+
+    class _CountingBytesIO(BytesIO):
+        def __init__(self, data: bytes = b""):
+            super().__init__(data)
+            self.reads = 0
+
+        def read(self, size: int = -1) -> bytes:
+            self.reads += 1
+            return super().read(size)
+
+    stream = _CountingBytesIO(b"should-not-be-read")
+    upload = UploadFile(
+        file=stream,
+        filename="huge.txt",
+        headers=Headers({"content-length": str(MAX_UPLOAD_BYTES + 1)}),
+    )
+
+    async def _run():
+        try:
+            await _read_domain_upload_capped(upload)
+            return None
+        except ValueError as exc:
+            return str(exc)
+
+    err = anyio.run(_run)
+    assert err == "file exceeds 10 MiB limit"
+    assert stream.reads == 0
+
+
+def test_upload_caps_stream_without_content_length():
+    """I2: stream past MAX_UPLOAD_BYTES + 1 without Content-Length → ValueError."""
+    import anyio
+    from io import BytesIO
+
+    from starlette.datastructures import Headers, UploadFile
+
+    from tvashtr.control_plane.domain_files import MAX_UPLOAD_BYTES
+    from tvashtr.routers import _read_domain_upload_capped
+
+    payload = b"y" * (MAX_UPLOAD_BYTES + 1)
+    upload = UploadFile(
+        file=BytesIO(payload),
+        filename="big.txt",
+        headers=Headers({}),
+    )
+
+    async def _run():
+        try:
+            await _read_domain_upload_capped(upload)
+            return None
+        except ValueError as exc:
+            return str(exc)
+
+    err = anyio.run(_run)
+    assert err == "file exceeds 10 MiB limit"

@@ -43,7 +43,9 @@ def mark_docs_indexing_step(owner_id: str, domain_id: str) -> list[str]:
             session.execute(
                 select(DomainDocument).where(
                     DomainDocument.domain_id == did,
-                    DomainDocument.ingest_status.in_([INGEST_PENDING, INGEST_ERROR]),
+                    DomainDocument.ingest_status.in_(
+                        [INGEST_PENDING, INGEST_ERROR, INGEST_INDEXING]
+                    ),
                 )
             )
             .scalars()
@@ -116,7 +118,10 @@ def ingest_one_document_step(owner_id: str, domain_id: str, document_id: str) ->
                 select(DomainDocument).where(DomainDocument.id == doc_id)
             ).scalar_one()
             session.execute(delete(DomainChunk).where(DomainChunk.document_id == doc_id))
-            if pieces and len(vectors) != len(pieces):
+            if not pieces:
+                doc.ingest_status = INGEST_ERROR
+                doc.error_message = "no extractable text"
+            elif len(vectors) != len(pieces):
                 doc.ingest_status = INGEST_ERROR
                 doc.error_message = "embedding provider returned unexpected vector count"
             else:
@@ -182,7 +187,7 @@ def refresh_domain_status_step(owner_id: str, domain_id: str) -> str:
 
 @DBOS.workflow()
 def ingest_domain(owner_id: str, domain_id: str) -> dict:
-    """Durable ingest for all pending/error documents on a domain."""
+    """Durable ingest for pending/error/indexing documents on a domain."""
     wf = DBOS.workflow_id
     DBOS.logger.info(f"ingest_domain start wf={wf} domain={domain_id}")
     doc_ids = mark_docs_indexing_step(owner_id, domain_id)

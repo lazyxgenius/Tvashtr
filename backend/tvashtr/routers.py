@@ -90,6 +90,7 @@ from tvashtr.control_plane.domains import (
     list_documents as list_domain_documents,
     update_domain,
 )
+from tvashtr.control_plane.domain_files import MAX_UPLOAD_BYTES
 from tvashtr.control_plane.domain_ingest import ingest_domain, normalize_embedding_model
 from tvashtr.documents.service import (
     add_version,
@@ -2483,15 +2484,37 @@ def get_domain_documents(
     return {"documents": rows}
 
 
+async def _read_domain_upload_capped(file: UploadFile) -> bytes:
+    """Read upload bytes with a hard cap — reject before buffering unbounded bodies."""
+    cl = file.headers.get("content-length")
+    if cl is not None:
+        try:
+            declared = int(cl)
+        except ValueError:
+            declared = None
+        else:
+            if declared > MAX_UPLOAD_BYTES:
+                raise ValueError("file exceeds 10 MiB limit")
+    buf = bytearray()
+    while True:
+        chunk = await file.read(64 * 1024)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > MAX_UPLOAD_BYTES:
+            raise ValueError("file exceeds 10 MiB limit")
+    return bytes(buf)
+
+
 @router.post("/api/domains/{domain_id}/documents")
 async def post_domain_document(
     domain_id: str,
     current_user: Annotated[UserOut, Depends(get_current_user)],
     file: UploadFile = File(...),
 ) -> dict:
-    raw = await file.read()
     name = file.filename or "upload.txt"
     try:
+        raw = await _read_domain_upload_capped(file)
         return create_document(
             uuid.UUID(current_user.id), _parse_domain_id(domain_id), name, raw
         )
