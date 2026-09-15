@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from tvashtr.db import session_scope
 from tvashtr.models import DomainChunk, DomainDocument
@@ -173,3 +173,58 @@ def apply_rerank(chunks: list[dict], query: str, rerank: dict) -> list[dict]:
     (caller already expanded candidate_k when enabled).
     """
     return chunks
+
+
+def retrieve_lexical_chunks(
+    domain_id: uuid.UUID, query: str, top_k: int
+) -> list[dict]:
+    """Return up to ``top_k`` ready chunks ranked by ``ts_rank`` descending.
+
+    Uses ``plainto_tsquery('english', query)`` against generated ``text_tsv``.
+    Does not require a non-null embedding.
+    """
+    try:
+        k = int(top_k) if top_k is not None else 8
+    except (TypeError, ValueError):
+        k = 8
+    k = max(1, k)
+    q = (query or "").strip()
+    if not q:
+        return []
+    tsq = func.plainto_tsquery("english", q)
+    rank = func.ts_rank(DomainChunk.text_tsv, tsq)
+    with session_scope() as session:
+        stmt = (
+            select(DomainChunk, DomainDocument.filename, rank.label("rank"))
+            .join(DomainDocument, DomainDocument.id == DomainChunk.document_id)
+            .where(
+                DomainChunk.domain_id == domain_id,
+                DomainDocument.ingest_status == "ready",
+                DomainChunk.text_tsv.op("@@")(tsq),
+            )
+            .order_by(rank.desc())
+            .limit(k)
+        )
+        rows = session.execute(stmt).all()
+        out: list[dict] = []
+        for chunk, filename, raw_rank in rows:
+            score = None
+            if raw_rank is not None:
+                try:
+                    score = float(raw_rank)
+                    if not math.isfinite(score):
+                        score = None
+                except (TypeError, ValueError):
+                    score = None
+            out.append(
+                {
+                    "chunk_id": str(chunk.id),
+                    "document_id": str(chunk.document_id),
+                    "filename": filename,
+                    "ordinal": int(chunk.ordinal),
+                    "text": chunk.text,
+                    "score": score,
+                }
+            )
+        return out
+
