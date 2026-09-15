@@ -234,6 +234,10 @@ class UpdateTeamNodeRequest(BaseModel):
     config so a partial edit preserves the rest. ``prompt``/``model``/``capability`` do not apply to
     a control primitive and are ignored.
 
+    For a **domain_query** node (PolyRAG Phase 4a): optional ``domain_id`` (bound corpus; clear with
+    null/empty via ``model_fields_set``) and ``prompt`` (the ``{idea}`` template). ``model`` /
+    ``capability`` do not apply.
+
     For a **terminal** node (M-endpoint-editable): ``terminal_kind`` (``ship`` / ``stop``) — the
     single source of truth for the endpoint disposition. When sent, it is written into
     ``config["terminal_kind"]`` AND synced onto ``role_name`` so a flipped endpoint is
@@ -293,6 +297,8 @@ class UpdateTeamNodeRequest(BaseModel):
     # ``dict | None`` is what rejects a non-object schema with 422.
     fallback_model: str | None = None
     multimodal: bool | None = None
+    # PolyRAG Phase 4a: domain_query bound corpus id — model_fields_set clear/set.
+    domain_id: str | None = None  # domain_query — model_fields_set clear/set
 
 
 class CreateTeamRequest(BaseModel):
@@ -332,13 +338,15 @@ class CreateNodeRequest(BaseModel):
     """Add a node to a library team's canvas (P1.8d topology editing). ``node_kind`` is the canvas
     vocabulary the palette offers: ``thinker`` (a ``completion`` node) / ``worker`` (an ``agent``
     node, ``openhands`` engine) — the P1.8c capability pair — plus the control primitives ``gate``
-    and ``terminal``. ``preset`` (optional, thinker/worker only) seeds a pre-filled-but-editable
-    role node from the ``teams.py`` prompt constants (PM / Architect / Engineer / Reviewer); without
-    it a blank primitive is dropped (empty ``prompt``). ``terminal_kind`` is REQUIRED for a terminal
-    (ship vs stop is a real choice); ``title``/``description`` configure a gate. ``position`` is the
-    canvas drop point (defaults to the origin, then auto-layout/drag persists real coords)."""
+    and ``terminal``, and PolyRAG ``domain_query`` (corpus-bound Q&A; no model/engine). ``preset``
+    (optional, thinker/worker only) seeds a pre-filled-but-editable role node from the ``teams.py``
+    prompt constants (PM / Architect / Engineer / Reviewer); without it a blank primitive is dropped
+    (empty ``prompt``). ``terminal_kind`` is REQUIRED for a terminal (ship vs stop is a real choice);
+    ``title``/``description`` configure a gate; ``domain_id``/``prompt`` configure a domain_query
+    (default prompt ``{idea}``). ``position`` is the canvas drop point (defaults to the origin, then
+    auto-layout/drag persists real coords)."""
 
-    node_kind: Literal["thinker", "worker", "gate", "terminal"]
+    node_kind: Literal["thinker", "worker", "gate", "terminal", "domain_query"]
     preset: Literal["pm", "architect", "engineer", "reviewer"] | None = None
     prompt: str | None = None
     model: str | None = None
@@ -346,6 +354,7 @@ class CreateNodeRequest(BaseModel):
     title: str | None = None
     description: str | None = None
     terminal_kind: Literal["ship", "stop"] | None = None
+    domain_id: str | None = None  # domain_query only
 
 
 class CreateEdgeRequest(BaseModel):
@@ -2754,6 +2763,22 @@ def update_team_node(
             node.config = cfg
             session.flush()
             return _node_base_dict(node)
+        if node.kind == "domain_query":
+            cfg = dict(node.config or {})
+            if "domain_id" in body.model_fields_set:
+                if body.domain_id is None or body.domain_id == "":
+                    cfg["domain_id"] = None
+                else:
+                    try:
+                        uuid.UUID(str(body.domain_id))
+                    except ValueError as exc:
+                        raise HTTPException(status_code=400, detail="invalid domain_id") from exc
+                    cfg["domain_id"] = str(body.domain_id)
+                node.config = cfg
+            if "prompt" in body.model_fields_set and body.prompt is not None:
+                node.prompt = body.prompt
+            session.flush()
+            return _node_base_dict(node)
         # ---- agent / completion: the prompt/model[/capability/tools] editor ----
         if body.prompt is None or body.model is None:
             raise HTTPException(
@@ -2979,6 +3004,24 @@ def _build_node(
                 "title": body.title or "Approve before continuing?",
                 "description": body.description or "Approve to continue; reject to stop the run.",
             },
+        )
+    if body.node_kind == "domain_query":
+        domain_id = body.domain_id
+        if domain_id is not None:
+            try:
+                uuid.UUID(str(domain_id))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="invalid domain_id") from exc
+        return AgentNode(
+            team_graph_id=graph_id,
+            role_name="domain_query",
+            kind="domain_query",
+            model=None,
+            engine=None,
+            prompt=body.prompt if body.prompt is not None else "{idea}",
+            position=position,
+            edits_allowed=False,
+            config={"domain_id": str(domain_id) if domain_id else None},
         )
     # terminal
     if body.terminal_kind is None:
