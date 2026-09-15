@@ -90,6 +90,7 @@ from tvashtr.control_plane.domains import (
     list_documents as list_domain_documents,
     update_domain,
 )
+from tvashtr.control_plane.domain_ingest import ingest_domain, normalize_embedding_model
 from tvashtr.documents.service import (
     add_version,
     get_document_with_versions,
@@ -2514,6 +2515,43 @@ def delete_domain_document_endpoint(
     if not ok:
         raise HTTPException(status_code=404, detail="document not found")
     return {"document_id": document_id, "deleted": True}
+
+
+@router.post("/api/domains/{domain_id}/ingest")
+def post_domain_ingest(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    owner_id = uuid.UUID(current_user.id)
+    did = _parse_domain_id(domain_id)
+    row = get_domain(owner_id, did)
+    if row is None:
+        raise HTTPException(status_code=404, detail="domain not found")
+    model = normalize_embedding_model(
+        str(
+            (row.get("config") or {})
+            .get("embedding", {})
+            .get("model")
+            or "text-embedding-3-small"
+        )
+    )
+    provider = provider_for_model(model)
+    if provider not in held_provider_slugs(owner_id):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": (
+                    f"you have no API key for: {provider} — needed to embed domain documents. "
+                    "Add a key under Engines before ingesting."
+                ),
+                "missing_providers": [provider],
+            },
+        )
+    handle = DBOS.start_workflow(ingest_domain, str(owner_id), str(did))
+    return {
+        "domain_id": str(did),
+        "workflow_id": str(handle.workflow_id),
+        "status": "indexing",
+    }
 
 
 
