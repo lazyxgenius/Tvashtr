@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from dbos import DBOS, SetWorkflowID
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel, model_validator
 from sqlalchemy import func, select, update
 
@@ -81,10 +81,13 @@ from tvashtr.control_plane.teams import (
 from tvashtr.control_plane.worktree import repo_inspect, repo_subpaths, subpath_is_tracked_dir
 from tvashtr.control_plane.domains import (
     create_domain,
+    create_document,
     delete_domain,
+    delete_document,
     get_domain,
     list_domain_templates,
     list_domains,
+    list_documents as list_domain_documents,
     update_domain,
 )
 from tvashtr.documents.service import (
@@ -2460,6 +2463,57 @@ def delete_domain_endpoint(
     if not ok:
         raise HTTPException(status_code=404, detail="domain not found")
     return {"domain_id": str(did), "deleted": True}
+
+
+def _parse_doc_id(document_id: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(document_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid document id") from exc
+
+
+@router.get("/api/domains/{domain_id}/documents")
+def get_domain_documents(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    rows = list_domain_documents(uuid.UUID(current_user.id), _parse_domain_id(domain_id))
+    if rows is None:
+        raise HTTPException(status_code=404, detail="domain not found")
+    return {"documents": rows}
+
+
+@router.post("/api/domains/{domain_id}/documents")
+async def post_domain_document(
+    domain_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    file: UploadFile = File(...),
+) -> dict:
+    raw = await file.read()
+    name = file.filename or "upload.txt"
+    try:
+        return create_document(
+            uuid.UUID(current_user.id), _parse_domain_id(domain_id), name, raw
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="domain not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.delete("/api/domains/{domain_id}/documents/{document_id}")
+def delete_domain_document_endpoint(
+    domain_id: str,
+    document_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    ok = delete_document(
+        uuid.UUID(current_user.id),
+        _parse_domain_id(domain_id),
+        _parse_doc_id(document_id),
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="document not found")
+    return {"document_id": document_id, "deleted": True}
 
 
 
