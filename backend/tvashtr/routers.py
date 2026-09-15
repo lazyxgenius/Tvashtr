@@ -8,13 +8,13 @@ API to ORM/gateway types.
 import logging
 import os
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from dbos import DBOS, SetWorkflowID
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlalchemy import func, select, update
 
 from tvashtr import db
@@ -94,6 +94,7 @@ from tvashtr.models import (
     Document,
     DocumentVersion,
     Edge,
+    EngineSubscriptionStatus,
     GithubInstallation,
     HumanTask,
     ProviderCredential,
@@ -1674,6 +1675,126 @@ def delete_provider(
         ).scalar_one_or_none()
         if cred is not None:
             session.delete(cred)
+    return Response(status_code=204)
+
+
+# ---- Engine subscription statuses (status-only Desktop mirror; NEVER store secrets) ----
+
+
+_SUBSCRIPTION_PROVIDERS = ("claude", "grok", "codex")
+_SECRET_KEYS = frozenset(
+    {"api_key", "token", "cookies", "cookie", "secret", "authorization", "password"}
+)
+
+
+class UpsertSubscriptionRequest(BaseModel):
+    connected: bool
+    state: str | None = None
+    account_hint: str | None = None
+    source: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_secrets(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            bad = _SECRET_KEYS.intersection({str(k).lower() for k in data})
+            if bad:
+                raise ValueError(f"subscription status must not include secrets: {sorted(bad)}")
+        return data
+
+
+def _subscription_to_dict(provider: str, row: EngineSubscriptionStatus | None) -> dict:
+    if row is None:
+        return {
+            "provider": provider,
+            "connected": False,
+            "state": "disconnected",
+            "account_hint": None,
+            "source": None,
+            "checked_at": None,
+        }
+    return {
+        "provider": row.provider,
+        "connected": bool(row.connected),
+        "state": row.state,
+        "account_hint": row.account_hint,
+        "source": row.source,
+        "checked_at": row.checked_at.isoformat() if row.checked_at else None,
+    }
+
+
+@router.get("/api/engines/subscriptions")
+def list_engine_subscriptions(
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    owner_id = uuid.UUID(current_user.id)
+    with db.session_scope() as session:
+        rows = {
+            r.provider: r
+            for r in session.execute(
+                select(EngineSubscriptionStatus).where(
+                    EngineSubscriptionStatus.owner_id == owner_id
+                )
+            )
+            .scalars()
+            .all()
+        }
+        return {
+            "subscriptions": [
+                _subscription_to_dict(p, rows.get(p)) for p in _SUBSCRIPTION_PROVIDERS
+            ]
+        }
+
+
+@router.put("/api/engines/subscriptions/{provider}")
+def upsert_engine_subscription(
+    provider: str,
+    body: UpsertSubscriptionRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    canonical = provider.strip().lower()
+    if canonical not in _SUBSCRIPTION_PROVIDERS:
+        raise HTTPException(status_code=404, detail="unknown subscription provider")
+    state = (body.state or ("connected" if body.connected else "disconnected")).strip()
+    if body.source is not None and body.source not in ("harness", "oauth"):
+        raise HTTPException(status_code=422, detail="source must be harness or oauth")
+    owner_id = uuid.UUID(current_user.id)
+    now = datetime.now(timezone.utc)
+    with db.session_scope() as session:
+        row = session.execute(
+            select(EngineSubscriptionStatus).where(
+                EngineSubscriptionStatus.owner_id == owner_id,
+                EngineSubscriptionStatus.provider == canonical,
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            row = EngineSubscriptionStatus(owner_id=owner_id, provider=canonical)
+            session.add(row)
+        row.connected = body.connected
+        row.state = state
+        row.account_hint = body.account_hint
+        row.source = body.source
+        row.checked_at = now
+        session.flush()
+        return _subscription_to_dict(canonical, row)
+
+
+@router.delete("/api/engines/subscriptions/{provider}", status_code=204)
+def delete_engine_subscription(
+    provider: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> Response:
+    canonical = provider.strip().lower()
+    if canonical not in _SUBSCRIPTION_PROVIDERS:
+        raise HTTPException(status_code=404, detail="unknown subscription provider")
+    with db.session_scope() as session:
+        row = session.execute(
+            select(EngineSubscriptionStatus).where(
+                EngineSubscriptionStatus.owner_id == uuid.UUID(current_user.id),
+                EngineSubscriptionStatus.provider == canonical,
+            )
+        ).scalar_one_or_none()
+        if row is not None:
+            session.delete(row)
     return Response(status_code=204)
 
 

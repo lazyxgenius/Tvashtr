@@ -564,6 +564,41 @@ class ProviderCredential(Base):
     )
 
 
+
+class EngineSubscriptionStatus(Base):
+    """Secret-free mirror of a Desktop subscription engine connection (Approach A).
+
+    Desktop is source of truth; this row is for web shelf display only. NEVER store
+    tokens, cookies, or API keys here — PUT handlers must reject secret-bearing bodies.
+    """
+
+    __tablename__ = "engine_subscription_statuses"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_id", "provider", name="uq_engine_subscription_statuses_owner_provider"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)  # claude | grok | codex
+    connected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
+    state: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="disconnected", default="disconnected"
+    )
+    account_hint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str | None] = mapped_column(Text, nullable=True)  # harness | oauth
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class GithubInstallation(Base):
     """One GitHub App installation linked to an account (M-h1a, migration ``0029``).
 
