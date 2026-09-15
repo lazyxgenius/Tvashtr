@@ -404,4 +404,97 @@ describe("DomainsPage Chat tab", () => {
       expect(m.askDomain).toHaveBeenCalledWith("d1", "What is the refund policy?"),
     );
   });
+
+  it("surfaces listDomainMessages failure as chat error", async () => {
+    const user = userEvent.setup();
+    m.listDomainMessages.mockRejectedValue(new Error("network"));
+    render(<DomainsPage />);
+    await user.click(await screen.findByRole("button", { name: /Support docs/i }));
+    await user.click(await screen.findByRole("tab", { name: /^Chat$/i }));
+    expect(await screen.findByText(/Couldn't load chat messages/i)).toBeTruthy();
+    expect(screen.queryByText(/How long for refunds/i)).toBeNull();
+  });
+
+  it("clears messages when switching domains on Chat", async () => {
+    const user = userEvent.setup();
+    const detail2 = {
+      ...detail,
+      domain_id: "d2",
+      name: "Other domain",
+    };
+    m.listDomains.mockResolvedValue([
+      {
+        domain_id: "d1",
+        name: "Support docs",
+        template: "support",
+        config: detail.config,
+        status: "ready",
+        doc_count: 1,
+        created_at: detail.created_at,
+        updated_at: detail.updated_at,
+      },
+      {
+        domain_id: "d2",
+        name: "Other domain",
+        template: "support",
+        config: detail.config,
+        status: "ready",
+        doc_count: 0,
+        created_at: detail.created_at,
+        updated_at: detail.updated_at,
+      },
+    ]);
+    m.getDomain.mockImplementation(async (id: string) =>
+      id === "d2" ? detail2 : detail,
+    );
+    let resolveD2: (v: unknown) => void = () => {};
+    const d2Promise = new Promise((resolve) => {
+      resolveD2 = resolve;
+    });
+    m.listDomainMessages.mockImplementation(async (id: string) => {
+      if (id === "d1") {
+        return [
+          {
+            message_id: "u1",
+            domain_id: "d1",
+            role: "user",
+            content: "How long for refunds?",
+            citations: null,
+            latency_ms: null,
+            cost_usd: null,
+            created_at: "2026-09-15T01:00:00Z",
+          },
+        ];
+      }
+      await d2Promise;
+      return [
+        {
+          message_id: "u2",
+          domain_id: "d2",
+          role: "user",
+          content: "Only on other domain",
+          citations: null,
+          latency_ms: null,
+          cost_usd: null,
+          created_at: "2026-09-15T02:00:00Z",
+        },
+      ];
+    });
+
+    render(<DomainsPage />);
+    await user.click(await screen.findByRole("button", { name: /Support docs/i }));
+    await user.click(await screen.findByRole("tab", { name: /^Chat$/i }));
+    expect(await screen.findByText(/How long for refunds/i)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: /← Domains/i }));
+    await user.click(await screen.findByRole("button", { name: /Other domain/i }));
+    await user.click(await screen.findByRole("tab", { name: /^Chat$/i }));
+
+    // Prior domain thread must not linger while d2 load is pending.
+    await waitFor(() => {
+      expect(screen.queryByText(/How long for refunds/i)).toBeNull();
+    });
+    resolveD2(undefined);
+    expect(await screen.findByText(/Only on other domain/i)).toBeTruthy();
+  });
 });

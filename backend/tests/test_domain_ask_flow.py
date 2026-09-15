@@ -119,3 +119,92 @@ def test_ask_domain_empty_corpus(monkeypatch):
     with pytest.raises(DomainAskError) as ei:
         ask_domain(owner_id, did, "Anything?")
     assert ei.value.code == "empty_corpus"
+
+
+def _seed_ready_chunk(did: uuid.UUID) -> None:
+    with session_scope() as session:
+        doc = DomainDocument(
+            domain_id=did,
+            filename="faq.txt",
+            content_type="text/plain",
+            storage_path=f"x/{did}/d/faq.txt",
+            byte_size=12,
+            ingest_status="ready",
+        )
+        session.add(doc)
+        session.flush()
+        session.add(
+            DomainChunk(
+                domain_id=did,
+                document_id=doc.id,
+                ordinal=0,
+                text="Refunds take 5 business days.",
+                embedding=[0.0] * 1536,
+            )
+        )
+        session.flush()
+
+
+def _patch_gateway(monkeypatch, *, latency_ms, cost_usd):
+    emb = EmbeddingResult(
+        vectors=[[0.0] * 1536],
+        model="openai/text-embedding-3-small",
+        prompt_tokens=1,
+        total_tokens=1,
+        cost_usd=0.0,
+        raw_provider="openai",
+        latency_ms=1.0,
+    )
+    cmp = CompletionResult(
+        text="Answer [1].",
+        model_requested="openai/gpt-4o-mini",
+        model_used="openai/gpt-4o-mini",
+        prompt_tokens=10,
+        completion_tokens=5,
+        total_tokens=15,
+        cost_usd=cost_usd,
+        raw_provider="openai",
+        latency_ms=latency_ms,
+    )
+    monkeypatch.setattr(
+        "tvashtr.control_plane.domain_ask.held_provider_slugs",
+        lambda oid: {"openai"},
+    )
+    monkeypatch.setattr(
+        "tvashtr.control_plane.domain_ask.resolve_owner_api_key",
+        lambda oid, model: "sk-test",
+    )
+    monkeypatch.setattr("tvashtr.control_plane.domain_ask.embed", lambda req: emb)
+    monkeypatch.setattr("tvashtr.control_plane.domain_ask.complete", lambda req: cmp)
+
+
+def test_ask_domain_sanitizes_nonfinite_latency_cost(monkeypatch):
+    _c, owner_id, did = _register()
+    _seed_ready_chunk(did)
+    _patch_gateway(monkeypatch, latency_ms=float("nan"), cost_usd=float("inf"))
+    result = ask_domain(owner_id, did, "How long?")
+    assert result["latency_ms"] is None
+    assert result["cost_usd"] is None
+    from tvashtr.control_plane.domain_ask import list_domain_messages
+
+    msgs = list_domain_messages(owner_id, did)
+    assert msgs is not None
+    asst = [m for m in msgs if m["role"] == "assistant"][-1]
+    assert asst["latency_ms"] is None
+    assert asst["cost_usd"] is None
+
+
+def test_ask_domain_bad_top_k_defaults_without_500(monkeypatch):
+    _c, owner_id, did = _register()
+    _seed_ready_chunk(did)
+    with session_scope() as session:
+        domain = session.get(Domain, did)
+        assert domain is not None
+        cfg = dict(domain.config or {})
+        cfg["retrieval"] = {**(cfg.get("retrieval") or {}), "top_k": "oops"}
+        domain.config = cfg
+        session.flush()
+    _patch_gateway(monkeypatch, latency_ms=10.0, cost_usd=0.001)
+    result = ask_domain(owner_id, did, "How long?")
+    assert "Answer" in result["answer"]
+    assert result["latency_ms"] == 10

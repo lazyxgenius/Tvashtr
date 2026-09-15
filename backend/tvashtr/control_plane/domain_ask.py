@@ -130,6 +130,35 @@ def list_domain_messages(owner_id: uuid.UUID, domain_id: uuid.UUID) -> list[dict
 
 
 
+
+def coerce_retrieval_top_k(config: dict | None, default: int = 8) -> int:
+    """Return a positive int top_k from domain config; default on bad/missing values."""
+    raw = ((config or {}).get("retrieval") or {})
+    if not isinstance(raw, dict):
+        return default
+    val = raw.get("top_k", default)
+    if val is None or val is False:
+        return default
+    try:
+        k = int(val)
+    except (TypeError, ValueError):
+        return default
+    return k if k >= 1 else default
+
+
+def _finite_or_none(value) -> float | None:
+    """Return float(value) when finite; else None (NaN/inf/non-numeric → None)."""
+    if value is None:
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(f):
+        return None
+    return f
+
+
 class DomainAskError(Exception):
     def __init__(self, code: str, detail: str | dict):
         self.code = code
@@ -151,7 +180,7 @@ def ask_domain(owner_id: uuid.UUID, domain_id: uuid.UUID, question: str) -> dict
         ready_n = count_ready_chunks(session, domain_id)
         if ready_n < 1:
             raise DomainAskError("empty_corpus", "ingest documents before asking")
-        top_k = int((cfg.get("retrieval") or {}).get("top_k") or 8)
+        top_k = coerce_retrieval_top_k(cfg)
         emb_model = normalize_embedding_model(
             str((cfg.get("embedding") or {}).get("model") or "text-embedding-3-small")
         )
@@ -214,12 +243,17 @@ def ask_domain(owner_id: uuid.UUID, domain_id: uuid.UUID, question: str) -> dict
         raise DomainAskError("gateway", f"generation failed: {e}") from e
 
     wall_ms = int((time.perf_counter() - started) * 1000)
-    latency_ms = int(completion.latency_ms) if completion.latency_ms else wall_ms
-    cost_val: Decimal | None = None
-    try:
-        cost_val = Decimal(str(completion.cost_usd))
-    except Exception:  # noqa: BLE001
-        cost_val = None
+    raw_lat = completion.latency_ms
+    if raw_lat is None or raw_lat == 0:
+        latency_ms: int | None = wall_ms
+    else:
+        lat_f = _finite_or_none(raw_lat)
+        # Finite → int; non-finite NaN/inf → None (never int(nan)).
+        latency_ms = int(lat_f) if lat_f is not None else None
+    cost_f = _finite_or_none(completion.cost_usd)
+    cost_val: Decimal | None = (
+        Decimal(str(cost_f)) if cost_f is not None else None
+    )
 
     citations = citations_from_chunks(chunks)
     # Cosine of zero/degenerate vectors can yield NaN; JSONB rejects it.

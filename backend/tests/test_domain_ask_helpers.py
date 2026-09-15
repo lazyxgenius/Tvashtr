@@ -7,6 +7,7 @@ import pytest
 
 from tvashtr.control_plane.domain_ask import (
     build_ask_messages,
+    coerce_retrieval_top_k,
     missing_ask_providers,
     resolve_domain_generation_model,
 )
@@ -90,3 +91,14 @@ def test_missing_ask_providers_reports_both():
             "anthropic/claude-3-5-sonnet-20241022",
         )
     assert missing == ["anthropic", "openai"]
+
+
+def test_coerce_retrieval_top_k_defaults_on_bad_config():
+    assert coerce_retrieval_top_k({}) == 8
+    assert coerce_retrieval_top_k({"retrieval": {"top_k": 12}}) == 12
+    assert coerce_retrieval_top_k({"retrieval": {"top_k": "oops"}}) == 8
+    assert coerce_retrieval_top_k({"retrieval": {"top_k": None}}) == 8
+    assert coerce_retrieval_top_k({"retrieval": {"top_k": 0}}) == 8
+    assert coerce_retrieval_top_k({"retrieval": {"top_k": -3}}) == 8
+    assert coerce_retrieval_top_k({"retrieval": "dense"}) == 8
+    assert coerce_retrieval_top_k(None) == 8

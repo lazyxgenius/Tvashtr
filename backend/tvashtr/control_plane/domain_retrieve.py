@@ -29,7 +29,11 @@ def retrieve_domain_chunks(
     ``embedding`` is non-null are considered. Mirrors ``memory_retrieval`` use of
     ``embedding.cosine_distance(qvec)``.
     """
-    k = max(1, int(top_k or 8))
+    try:
+        k = int(top_k) if top_k is not None else 8
+    except (TypeError, ValueError):
+        k = 8
+    k = max(1, k)
     qvec = query_embedding
     with session_scope() as session:
         dist = DomainChunk.embedding.cosine_distance(qvec)

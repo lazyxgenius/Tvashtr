@@ -88,14 +88,22 @@ export function DomainsPage() {
   }, [selectedId]);
 
   useEffect(() => {
-    if (!selectedId || tab !== "chat") return;
+    if (!selectedId || tab !== "chat") {
+      return;
+    }
+    // Clear prior domain thread immediately on domain/tab change.
+    setMessages([]);
+    setChatError(null);
     let cancelled = false;
     listDomainMessages(selectedId)
       .then((rows) => {
         if (!cancelled) setMessages(rows);
       })
       .catch(() => {
-        if (!cancelled) setMessages([]);
+        if (!cancelled) {
+          setMessages([]);
+          setChatError("Couldn't load chat messages.");
+        }
       });
     return () => {
       cancelled = true;
