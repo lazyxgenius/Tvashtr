@@ -9,7 +9,7 @@
  * GitHub OAuth stays INSIDE Electron (loadURL), not the OS browser, so the loopback
  * callback + proxied Set-Cookie land on the same partition as the SPA.
  */
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, ipcMain } = require("electron");
 const path = require("path");
 
 const DESKTOP_ROOT = path.join(__dirname, "..");
@@ -22,6 +22,28 @@ let mainWindow = null;
 let localOrigin = "http://127.0.0.1:5178";
 /** @type {string} */
 let apiBaseOrigin = "https://tvashtr.fly.dev";
+
+
+const PROVIDERS = ["claude", "grok", "codex"];
+
+function emptyStatus(provider) {
+  return {
+    provider,
+    connected: false,
+    state: "disconnected",
+    account_hint: null,
+    source: null,
+    checked_at: null,
+  };
+}
+
+function registerEngineIpc() {
+  ipcMain.handle("tvashtr:engines:getStatus", async () => PROVIDERS.map(emptyStatus));
+  ipcMain.handle("tvashtr:engines:connect", async (_e, provider) => emptyStatus(provider));
+  ipcMain.handle("tvashtr:engines:disconnect", async (_e, provider) => emptyStatus(provider));
+  ipcMain.handle("tvashtr:engines:refresh", async (_e, provider) => emptyStatus(provider));
+}
+
 
 function envFlag(name, fallback = false) {
   const v = process.env[name];
@@ -190,6 +212,7 @@ async function boot() {
 }
 
 app.whenReady().then(() => {
+  registerEngineIpc();
   boot().catch((err) => {
     console.error("[tvashtr-desktop] failed to start:", err);
     app.exit(1);

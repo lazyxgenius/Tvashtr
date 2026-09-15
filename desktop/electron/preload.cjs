@@ -1,9 +1,14 @@
-// Thin bridge: mark this renderer as the desktop shell so the shared FE can
-// optionally hide web-only chrome later. Keep the surface minimal — no IPC yet.
-const { contextBridge } = require("electron");
+const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("tvashtrDesktop", true);
+const engines = {
+  getStatus: () => ipcRenderer.invoke("tvashtr:engines:getStatus"),
+  connect: (provider) => ipcRenderer.invoke("tvashtr:engines:connect", provider),
+  disconnect: (provider) => ipcRenderer.invoke("tvashtr:engines:disconnect", provider),
+  refresh: (provider) => ipcRenderer.invoke("tvashtr:engines:refresh", provider),
+};
+
+contextBridge.exposeInMainWorld("tvashtrDesktop", { engines });
 contextBridge.exposeInMainWorld("tvashtrDesktopInfo", {
   shell: "electron",
-  version: 1,
+  version: 2,
 });
