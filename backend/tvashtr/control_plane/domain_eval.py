@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import func, select
 
+from tvashtr.control_plane.domain_ask import (
+    DomainAskError,
+    coerce_retrieval_top_k,
+    retrieve_domain,
+)
+from tvashtr.control_plane.domain_retrieve import coerce_retrieval_mode
 from tvashtr.control_plane.domains import _owned_domain
 from tvashtr.db import session_scope
 from tvashtr.models import DomainEvalCase, DomainEvalRun
@@ -165,3 +173,90 @@ def delete_eval_case(
         session.delete(row)
         session.flush()
         return True
+
+
+def latest_eval_run_for_owner(
+    owner_id: uuid.UUID, domain_id: uuid.UUID
+) -> tuple[bool, dict | None]:
+    """Return (domain_owned, run_or_none)."""
+    with session_scope() as session:
+        if _owned_domain(session, owner_id, domain_id) is None:
+            return False, None
+        row = session.execute(
+            select(DomainEvalRun)
+            .where(DomainEvalRun.domain_id == domain_id)
+            .order_by(DomainEvalRun.created_at.desc(), DomainEvalRun.id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        return True, (eval_run_to_dict(row) if row else None)
+
+
+def run_domain_eval(owner_id: uuid.UUID, domain_id: uuid.UUID) -> dict:
+    with session_scope() as session:
+        domain = _owned_domain(session, owner_id, domain_id)
+        if domain is None:
+            raise LookupError("domain not found")
+        cfg = dict(domain.config or {})
+        top_k = coerce_retrieval_top_k(cfg)
+        mode = coerce_retrieval_mode(cfg)
+        cases = (
+            session.execute(
+                select(DomainEvalCase)
+                .where(DomainEvalCase.domain_id == domain_id)
+                .order_by(DomainEvalCase.ordinal, DomainEvalCase.created_at, DomainEvalCase.id)
+            )
+            .scalars()
+            .all()
+        )
+        if not cases:
+            raise ValueError("no eval cases — add golden questions before running eval")
+        if len(cases) > MAX_EVAL_CASES:
+            raise ValueError(f"eval case limit is {MAX_EVAL_CASES}")
+        case_snapshots = [
+            {
+                "id": c.id,
+                "question": c.question,
+                "expected_citation_doc_ids": list(c.expected_citation_doc_ids or []),
+                "expected_keywords": list(c.expected_keywords or []),
+            }
+            for c in cases
+        ]
+        run = DomainEvalRun(domain_id=domain_id, status="running")
+        session.add(run)
+        session.flush()
+        run_id = run.id
+
+    per_case: list[dict] = []
+    for snap in case_snapshots:
+        entry: dict[str, Any] = {
+            "case_id": str(snap["id"]),
+            "question": snap["question"],
+            "hit": None,
+            "keyword_hit": None,
+            "citation_doc_ids": [],
+            "latency_ms": None,
+            "error": None,
+        }
+        try:
+            result = retrieve_domain(owner_id, domain_id, snap["question"])
+            cites = list(result.get("citations") or [])
+            entry["citation_doc_ids"] = [str(c.get("document_id") or "") for c in cites]
+            entry["latency_ms"] = result.get("latency_ms")
+            entry["hit"] = score_hit_at_k(snap["expected_citation_doc_ids"], cites)
+            entry["keyword_hit"] = score_keyword_hit(snap["expected_keywords"], cites)
+        except DomainAskError as e:
+            detail = e.detail
+            entry["error"] = (
+                detail.get("message") if isinstance(detail, dict) else str(detail)
+            )
+        per_case.append(entry)
+
+    scores = aggregate_eval_scores(per_case, top_k=top_k, retrieval_mode=mode)
+    with session_scope() as session:
+        run = session.get(DomainEvalRun, run_id)
+        assert run is not None
+        run.status = "completed"
+        run.scores = scores
+        run.completed_at = datetime.now(timezone.utc)
+        session.flush()
+        return eval_run_to_dict(run)
