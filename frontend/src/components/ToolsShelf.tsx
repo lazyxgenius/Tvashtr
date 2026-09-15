@@ -236,7 +236,7 @@ export function ToolsShelf() {
   const rowNoun = isLocal ? "Environment variable" : "Header";
 
   return (
-    <section className="tv-dash__panel tv-dash__library" aria-label="Your tool library">
+    <section className="tv-dash__panel tv-dash__library tv-tools-section" aria-label="Your tool library">
       <div className="tv-dash__library-head">
         <div className="tv-dash__prov-title">
           <Wrench size={16} strokeWidth={1.7} />
@@ -263,14 +263,14 @@ export function ToolsShelf() {
           <div className="tv-seg" role="group" aria-label="Transport">
             <button
               type="button"
-              className={isLocal ? "tv-seg__btn is-active" : "tv-seg__btn"}
+              className={isLocal ? "tv-seg__btn tv-seg__btn--active" : "tv-seg__btn"}
               onClick={() => onTransport("local")}
             >
               Local
             </button>
             <button
               type="button"
-              className={!isLocal ? "tv-seg__btn is-active" : "tv-seg__btn"}
+              className={!isLocal ? "tv-seg__btn tv-seg__btn--active" : "tv-seg__btn"}
               onClick={() => onTransport("remote")}
             >
               Remote

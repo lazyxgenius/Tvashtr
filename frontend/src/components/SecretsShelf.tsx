@@ -64,51 +64,51 @@ export function SecretsShelf() {
   };
 
   return (
-    <section className="tv-dash__panel tv-dash__prov" aria-label="Your MCP secrets">
-      <div className="tv-dash__prov-head">
-        <div className="tv-dash__prov-lede">
-          <div className="tv-dash__prov-title">
-            <KeyRound size={16} strokeWidth={1.7} />
-            <h2>MCP secrets</h2>
-          </div>
-          <p className="tv-dash__prov-sub">
-            The values a node&rsquo;s tools reference as <code>${"{NAME}"}</code> — stored per
-            account, encrypted. We never show a value back.
-          </p>
+    <section className="tv-dash__panel tv-dash__prov tv-tools-section" aria-label="Your MCP secrets">
+      <div className="tv-tools-section__head">
+        <div className="tv-dash__prov-title">
+          <KeyRound size={16} strokeWidth={1.7} />
+          <h2>MCP secrets</h2>
         </div>
-        <div className="tv-dash__prov-add tv-dash__prov-add--labeled">
-          <label className="tv-field">
-            <span className="tv-field__label">Name</span>
-            <input
-              className="tv-launch__input"
-              aria-label="Secret name"
-              placeholder="GITHUB_TOKEN"
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-            />
-          </label>
-          <label className="tv-field">
-            <span className="tv-field__label">Value</span>
-            <input
-              className="tv-launch__input"
-              type="password"
-              aria-label="Secret value"
-              placeholder="secret value"
-              value={valueInput}
-              onChange={(e) => setValueInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void handleAdd();
-              }}
-            />
-          </label>
-          <button
-            className="tv-btn tv-btn--primary"
-            onClick={() => void handleAdd()}
-            disabled={busy}
-          >
-            Add secret
-          </button>
-        </div>
+        <p className="tv-dash__prov-sub">
+          The values a node&rsquo;s tools reference as <code>${"{NAME}"}</code> — stored per
+          account, encrypted. We never show a value back.
+        </p>
+      </div>
+      <div className="tv-tools-section__form tv-dash__prov-add--labeled">
+        <label className="tv-field">
+          <span className="tv-field__label">Name</span>
+          <input
+            className="tv-launch__input"
+            aria-label="Secret name"
+            placeholder="e.g. GITHUB_TOKEN"
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
+          />
+          <span className="tv-field__hint">Referenced in tool configs as ${"{NAME}"}.</span>
+        </label>
+        <label className="tv-field">
+          <span className="tv-field__label">Value</span>
+          <input
+            className="tv-launch__input"
+            type="password"
+            aria-label="Secret value"
+            placeholder="Paste the secret value"
+            value={valueInput}
+            onChange={(e) => setValueInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleAdd();
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          className="tv-btn tv-btn--sm"
+          onClick={() => void handleAdd()}
+          disabled={busy}
+        >
+          Add secret
+        </button>
       </div>
       {!loading && secrets.length === 0 ? (
         <p className="tv-dash__prov-empty">

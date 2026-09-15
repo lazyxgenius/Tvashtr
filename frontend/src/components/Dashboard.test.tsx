@@ -100,24 +100,78 @@ function setup(
   return { onOpenTeam, onOpenRun, onLogout };
 }
 
+function goEngines() {
+  fireEvent.click(screen.getByRole("button", { name: "Engines" }));
+}
+
+function goTools() {
+  fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+}
+
+function goHome() {
+  fireEvent.click(screen.getByRole("button", { name: "Home" }));
+}
+
 describe("Dashboard", () => {
-  it("shows the empty-state prompts for a fresh account (no teams, no providers)", async () => {
+  it("shows the empty-state prompts for a fresh account (no teams); Engines lives on its own page", async () => {
     setup({ teams: [], providers: [] });
     expect(await screen.findByText(/Create your first team/i)).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /Engines/i })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /Engines/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /MCP secrets/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /tool library/i })).not.toBeInTheDocument();
+    goEngines();
+    expect(await screen.findByRole("region", { name: /Engines/i })).toBeInTheDocument();
   });
 
-  it("lists the account's teams + providers, and opens a team on click", async () => {
+  it("lists the account's teams on Home and opens a team on click", async () => {
     const { onOpenTeam } = setup({
       teams: [team({ last_run: { status: "completed", at: "x", run_id: "r1" }, spend_usd: 1.5 })],
       providers: [{ provider: "openrouter", key_last4: "9abc", created_at: "x" }],
     });
-    // Provider shown as `provider · •••• last4`, secret never present.
-    expect(await screen.findByText("openrouter")).toBeInTheDocument();
-    expect(screen.getByText(/•••• 9abc/)).toBeInTheDocument();
-
+    expect(await screen.findByText("My team")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open My team" }));
     expect(onOpenTeam).toHaveBeenCalledWith("t1");
+  });
+
+  it("nav switches Home / Engines / Tools; Home never mounts Engines or Tools shelves", async () => {
+    setup({
+      teams: [team()],
+      providers: [{ provider: "openrouter", key_last4: "9abc", created_at: "x" }],
+    });
+    expect(await screen.findByText("My team")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /Engines/i })).not.toBeInTheDocument();
+
+    goEngines();
+    expect(await screen.findByRole("region", { name: /Engines/i })).toBeInTheDocument();
+    expect(screen.getByText("openrouter")).toBeInTheDocument();
+    expect(screen.queryByText("My team")).not.toBeInTheDocument();
+
+    goTools();
+    expect(await screen.findByRole("region", { name: /MCP secrets/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /tool library/i })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /Engines/i })).not.toBeInTheDocument();
+
+    goHome();
+    expect(await screen.findByText("My team")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /Engines/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /MCP secrets/i })).not.toBeInTheDocument();
+  });
+
+  it("initialView=engines lands on the Engines page (Open Engines deep-link)", async () => {
+    m.getTeams.mockResolvedValue([]);
+    m.listProviders.mockResolvedValue([]);
+    m.getTemplates.mockResolvedValue([]);
+    m.getTeamRuns.mockResolvedValue([]);
+    render(
+      <Dashboard
+        user={USER}
+        onLogout={vi.fn()}
+        onOpenTeam={vi.fn()}
+        initialView="engines"
+      />,
+    );
+    expect(await screen.findByRole("region", { name: /Engines/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Create your first team/i)).not.toBeInTheDocument();
   });
 
   it("maps each team's latest-run status to a pill + shows its spend, and the stat strip totals", async () => {
@@ -167,6 +221,7 @@ describe("Dashboard", () => {
 
   it("adds a provider key (calls addProvider, then refreshes the list)", async () => {
     setup({ providers: [] });
+    goEngines();
     await screen.findByRole("region", { name: /Engines/i });
     m.addProvider.mockResolvedValue({ provider: "openai", key_last4: "7890" });
     m.listProviders.mockResolvedValueOnce([
@@ -183,6 +238,7 @@ describe("Dashboard", () => {
 
   it("removes a provider (calls removeProvider)", async () => {
     setup({ providers: [{ provider: "groq", key_last4: "1111", created_at: "x" }] });
+    goEngines();
     const removeBtn = await screen.findByRole("button", { name: "Remove groq" });
     m.listProviders.mockResolvedValueOnce([]);
     fireEvent.click(removeBtn);
@@ -443,6 +499,7 @@ describe("Dashboard", () => {
   // suggest the one provider a default run most needs.
   it("offers deepseek — the default agent model — in the provider datalist (M-legible)", async () => {
     setup({ providers: [] });
+    goEngines();
     await screen.findByRole("region", { name: /Engines/i });
     const option = document.querySelector('#tv-provider-list option[value="deepseek"]');
     expect(option).not.toBeNull();

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, LogOut, Play } from "lucide-react";
 
 import { TeamCanvas } from "./canvas/TeamCanvas";
+import type { DashView } from "./components/AppShell";
 import { BackendDot } from "./components/BackendDot";
 import { CancelRunButton } from "./components/CancelRunButton";
 import { LaunchPanel } from "./components/LaunchPanel";
@@ -71,7 +72,8 @@ interface AppProps {
   // run_id) instead of the team's authoring view. Seeds `runId`, which is what makes `authoring`
   // false; the existing poll then fills in the run + its graph exactly as a fresh launch does.
   initialRunId?: string | null;
-  onBackToDashboard?: () => void;
+  /** Return to the dashboard; pass "engines" / "tools" to land on that page (Open Engines). */
+  onBackToDashboard?: (view?: DashView) => void;
   config?: Config | null;
 }
 
@@ -697,7 +699,7 @@ export default function App({
           <button
             type="button"
             className="tv-toolbar__back"
-            onClick={onBackToDashboard}
+            onClick={() => onBackToDashboard()}
             aria-label="Back to dashboard"
             title="Back to dashboard"
           >
@@ -713,7 +715,7 @@ export default function App({
                 <button
                   className="tv-btn"
                   type="button"
-                  onClick={() => onBackToDashboard?.()}
+                  onClick={() => onBackToDashboard?.("engines")}
                   disabled={!onBackToDashboard}
                   title="Add API keys or connect a subscription under Engines on the Dashboard"
                 >
@@ -790,7 +792,7 @@ export default function App({
                 type="button"
                 className="tv-btn tv-btn--ghost"
                 style={{ marginLeft: "0.5rem" }}
-                onClick={() => onBackToDashboard()}
+                onClick={() => onBackToDashboard("engines")}
               >
                 Open Engines
               </button>
@@ -869,7 +871,9 @@ export default function App({
                 focusModel={focusModel}
                 onSaved={() => loadTeam(currentTeamId)}
                 onClose={() => handleSelectNodeId(null)}
-                onManageMemory={onBackToDashboard}
+                onManageMemory={
+                  onBackToDashboard ? () => onBackToDashboard("tools") : undefined
+                }
               />
             )
           : selectedRunNode && (

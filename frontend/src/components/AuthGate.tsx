@@ -9,7 +9,7 @@ import {
   logout,
   setUnauthorizedHandler,
 } from "../lib/api";
-import { Dashboard } from "./Dashboard";
+import { Dashboard, type DashView } from "./Dashboard";
 import { LandingPage } from "./LandingPage";
 import { type AuthMode, AuthWizard } from "./AuthWizard";
 
@@ -33,6 +33,8 @@ export function AuthGate() {
   const [loginMode, setLoginMode] = useState<AuthMode>("login");
   // Logged-in sub-view: the dashboard by default; opening a team routes to the canvas for that team.
   const [openTeamId, setOpenTeamId] = useState<string | null>(null);
+  // Which dashboard page to show when returning from the canvas (Open Engines → "engines").
+  const [dashView, setDashView] = useState<DashView>("home");
   // The dashboard's per-team run-history drill-down can open ONE run directly. It carries the team
   // too, so the canvas lands on the right team with that run's view already seeded — going "back"
   // from there is the ordinary authoring view of the same team.
@@ -133,9 +135,10 @@ export function AuthGate() {
         onLogout={() => void handleLogout()}
         teamId={openTeamId}
         initialRunId={openRunId}
-        onBackToDashboard={() => {
+        onBackToDashboard={(view) => {
           setOpenTeamId(null);
           setOpenRunId(null);
+          setDashView(view ?? "home");
         }}
         config={config}
       />
@@ -144,6 +147,7 @@ export function AuthGate() {
   return (
     <Dashboard
       user={user}
+      initialView={dashView}
       onLogout={() => void handleLogout()}
       onOpenTeam={(teamId) => {
         setOpenRunId(null); // opening a team is the authoring view, never a stale run
