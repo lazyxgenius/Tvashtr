@@ -37,6 +37,7 @@ const OUTCOME_LABELS: Record<string, string> = {
   approved: "Approved",
   changes_requested: "Changes requested",
   over_budget: "Over budget",
+  answered: "Answered",
 };
 
 function outcomeLabel(outcome: string | null): string {
@@ -87,8 +88,23 @@ export function LastRun({
                 <span className="tv-verdict__label">{label}</span>
               </div>
               {r.outcome_detail && <p className="tv-verdict__reasons">{r.outcome_detail}</p>}
+              {Array.isArray(r.context_manifest?.citations) &&
+                r.context_manifest.citations.length > 0 && (
+                  <ul className="tv-verdict__citations">
+                    {r.context_manifest.citations.map((c, i) => (
+                      <li key={c.chunk_id ?? i}>
+                        <span className="tv-verdict__cite-file">{c.filename ?? "source"}</span>
+                        {c.excerpt ? (
+                          <span className="tv-verdict__cite-excerpt">{c.excerpt}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               {r.cost && <p className="tv-verdict__cost">{costSummary(r.cost)}</p>}
-              {r.context_manifest && <ContextManifestTable manifest={r.context_manifest} />}
+              {r.context_manifest && Array.isArray(r.context_manifest.parts) && (
+                <ContextManifestTable manifest={r.context_manifest} />
+              )}
             </li>
           );
         })}
