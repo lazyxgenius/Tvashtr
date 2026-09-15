@@ -1,4 +1,4 @@
-import type { ContextManifest, InvocationCost } from "../lib/api";
+import type { ContextManifest, DomainCitation, InvocationCost } from "../lib/api";
 import { reviewerVerdictLabel } from "../lib/status";
 import { titleCase } from "../lib/text";
 import { formatRelativeTime } from "../lib/time";
@@ -19,7 +19,13 @@ export interface LastRunRound {
   // the node's `invocations` (which carry both from the /graph contract); the AUTHORING caller
   // passes NEITHER, so its render stays byte-identical. Present ⇒ a cost line / the manifest table.
   cost?: InvocationCost | null;
-  context_manifest?: ContextManifest | null;
+  context_manifest?: (ContextManifest & {
+    citations?: DomainCitation[];
+    domain_id?: string;
+    latency_ms?: number | null;
+    model?: string | null;
+    message_id?: string | null;
+  }) | null;
 }
 
 // Humanized labels for the per-round "Last run" outcomes. The reviewer outcomes (approved /

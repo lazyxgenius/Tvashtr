@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   ClipboardCheck,
   DraftingCompass,
   OctagonX,
@@ -55,6 +56,12 @@ export const PALETTE_PRIMITIVES: PaletteChip[] = [
     title: "An ending that stops without shipping",
     body: { node_kind: "terminal", terminal_kind: "stop" },
     Icon: OctagonX,
+  },
+  {
+    label: "Query domain",
+    title: "Ask a Domain with citations (PolyRAG)",
+    body: { node_kind: "domain_query", prompt: "{idea}" },
+    Icon: BookOpen,
   },
 ];
 
