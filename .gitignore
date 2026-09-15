@@ -59,3 +59,4 @@ artifacts/
 # The saved PROD Playwright storageState. This is a LIVE SESSION CREDENTIAL for the deployed app:
 # never print it, never commit it. Recreate with `make demo-proof-login`.
 .playwright/
+.superpowers/

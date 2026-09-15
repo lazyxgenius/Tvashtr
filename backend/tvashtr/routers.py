@@ -8,13 +8,13 @@ API to ORM/gateway types.
 import logging
 import os
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from dbos import DBOS, SetWorkflowID
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlalchemy import func, select, update
 
 from tvashtr import db
@@ -94,6 +94,7 @@ from tvashtr.models import (
     Document,
     DocumentVersion,
     Edge,
+    EngineSubscriptionStatus,
     GithubInstallation,
     HumanTask,
     ProviderCredential,
@@ -653,16 +654,58 @@ def _missing_provider_credentials(
     return sorted(missing), nodes
 
 
-def _missing_credentials_detail(providers: list[str], nodes: list[str]) -> dict:
+_MODEL_PROVIDER_TO_SUB = {
+    "anthropic": "claude",
+    "xai": "grok",
+    "grok": "grok",
+    "openai": "codex",
+}
+
+
+def _connected_subscription_ids(owner_id: uuid.UUID) -> set[str]:
+    """Engine providers the owner has a connected status-only subscription mirror for.
+
+    Used only to choose clearer Fly preflight copy when BYOK is missing but a Desktop
+    subscription would cover the same provider — never accepted as a Fly credential.
+    """
+    with db.session_scope() as session:
+        rows = session.execute(
+            select(EngineSubscriptionStatus.provider).where(
+                EngineSubscriptionStatus.owner_id == owner_id,
+                EngineSubscriptionStatus.connected.is_(True),
+            )
+        ).all()
+        return {r[0] for r in rows}
+
+
+def _missing_credentials_detail(
+    providers: list[str], nodes: list[str], *, subscription_only: bool = False
+) -> dict:
     """The 422 refusal payload for a launch the owner has no key for — names the missing PROVIDERS
     (the existing ``missing_providers`` contract) AND the offending NODES (M-runnable), with both in
     the human ``message`` the FE launch banner renders, so the user learns WHICH nodes to fix rather
-    than only which provider is missing."""
-    node_phrase = " — needed by " + ", ".join(nodes) if nodes else ""
+    than only which provider is missing.
+
+    When every missing BYOK provider is coverable by a connected subscription mirror, set
+    ``subscription_only`` so the message points at API key or Desktop local run — never treat the
+    mirror as a Fly credential.
+    """
+    if subscription_only:
+        msg = (
+            "Hosted runs need an API key for: "
+            + ", ".join(providers)
+            + (" — needed by " + ", ".join(nodes) if nodes else "")
+            + ". Your subscription covers local Desktop runs — add a key or run locally on Desktop."
+        )
+    else:
+        msg = "you have no API key for: " + ", ".join(providers) + (
+            " — needed by " + ", ".join(nodes) if nodes else ""
+        )
     return {
-        "message": "you have no API key for: " + ", ".join(providers) + node_phrase,
+        "message": msg,
         "missing_providers": providers,
         "missing_nodes": nodes,
+        "subscription_only": subscription_only,
     }
 
 
@@ -952,9 +995,13 @@ def create_run(
         uuid.UUID(current_user.id), team_graph_id
     )
     if missing:
+        subs = _connected_subscription_ids(uuid.UUID(current_user.id))
+        subscription_only = all(_MODEL_PROVIDER_TO_SUB.get(p) in subs for p in missing)
         raise HTTPException(
             status_code=422,
-            detail=_missing_credentials_detail(missing, missing_nodes),
+            detail=_missing_credentials_detail(
+                missing, missing_nodes, subscription_only=subscription_only
+            ),
         )
 
     # M-live: and the model must still EXIST. A slug its provider retired used to sail through
@@ -1047,9 +1094,13 @@ def create_ab_runs(
         # run starts if the owner lacks a provider key the config needs (422).
         missing, missing_nodes = _missing_provider_credentials(owner_id, team_graph_id)
         if missing:
+            subs = _connected_subscription_ids(owner_id)
+            subscription_only = all(_MODEL_PROVIDER_TO_SUB.get(p) in subs for p in missing)
             raise HTTPException(
                 status_code=422,
-                detail=_missing_credentials_detail(missing, missing_nodes),
+                detail=_missing_credentials_detail(
+                    missing, missing_nodes, subscription_only=subscription_only
+                ),
             )
         # M-live: the same servability pre-flight per side, so the A/B instrument is not a hole
         # through which a retired model still reaches a real run.
@@ -1674,6 +1725,126 @@ def delete_provider(
         ).scalar_one_or_none()
         if cred is not None:
             session.delete(cred)
+    return Response(status_code=204)
+
+
+# ---- Engine subscription statuses (status-only Desktop mirror; NEVER store secrets) ----
+
+
+_SUBSCRIPTION_PROVIDERS = ("claude", "grok", "codex")
+_SECRET_KEYS = frozenset(
+    {"api_key", "token", "cookies", "cookie", "secret", "authorization", "password"}
+)
+
+
+class UpsertSubscriptionRequest(BaseModel):
+    connected: bool
+    state: str | None = None
+    account_hint: str | None = None
+    source: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_secrets(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            bad = _SECRET_KEYS.intersection({str(k).lower() for k in data})
+            if bad:
+                raise ValueError(f"subscription status must not include secrets: {sorted(bad)}")
+        return data
+
+
+def _subscription_to_dict(provider: str, row: EngineSubscriptionStatus | None) -> dict:
+    if row is None:
+        return {
+            "provider": provider,
+            "connected": False,
+            "state": "disconnected",
+            "account_hint": None,
+            "source": None,
+            "checked_at": None,
+        }
+    return {
+        "provider": row.provider,
+        "connected": bool(row.connected),
+        "state": row.state,
+        "account_hint": row.account_hint,
+        "source": row.source,
+        "checked_at": row.checked_at.isoformat() if row.checked_at else None,
+    }
+
+
+@router.get("/api/engines/subscriptions")
+def list_engine_subscriptions(
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    owner_id = uuid.UUID(current_user.id)
+    with db.session_scope() as session:
+        rows = {
+            r.provider: r
+            for r in session.execute(
+                select(EngineSubscriptionStatus).where(
+                    EngineSubscriptionStatus.owner_id == owner_id
+                )
+            )
+            .scalars()
+            .all()
+        }
+        return {
+            "subscriptions": [
+                _subscription_to_dict(p, rows.get(p)) for p in _SUBSCRIPTION_PROVIDERS
+            ]
+        }
+
+
+@router.put("/api/engines/subscriptions/{provider}")
+def upsert_engine_subscription(
+    provider: str,
+    body: UpsertSubscriptionRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    canonical = provider.strip().lower()
+    if canonical not in _SUBSCRIPTION_PROVIDERS:
+        raise HTTPException(status_code=404, detail="unknown subscription provider")
+    state = (body.state or ("connected" if body.connected else "disconnected")).strip()
+    if body.source is not None and body.source not in ("harness", "oauth"):
+        raise HTTPException(status_code=422, detail="source must be harness or oauth")
+    owner_id = uuid.UUID(current_user.id)
+    now = datetime.now(timezone.utc)
+    with db.session_scope() as session:
+        row = session.execute(
+            select(EngineSubscriptionStatus).where(
+                EngineSubscriptionStatus.owner_id == owner_id,
+                EngineSubscriptionStatus.provider == canonical,
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            row = EngineSubscriptionStatus(owner_id=owner_id, provider=canonical)
+            session.add(row)
+        row.connected = body.connected
+        row.state = state
+        row.account_hint = body.account_hint
+        row.source = body.source
+        row.checked_at = now
+        session.flush()
+        return _subscription_to_dict(canonical, row)
+
+
+@router.delete("/api/engines/subscriptions/{provider}", status_code=204)
+def delete_engine_subscription(
+    provider: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> Response:
+    canonical = provider.strip().lower()
+    if canonical not in _SUBSCRIPTION_PROVIDERS:
+        raise HTTPException(status_code=404, detail="unknown subscription provider")
+    with db.session_scope() as session:
+        row = session.execute(
+            select(EngineSubscriptionStatus).where(
+                EngineSubscriptionStatus.owner_id == uuid.UUID(current_user.id),
+                EngineSubscriptionStatus.provider == canonical,
+            )
+        ).scalar_one_or_none()
+        if row is not None:
+            session.delete(row)
     return Response(status_code=204)
 
 

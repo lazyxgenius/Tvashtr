@@ -7,10 +7,10 @@ Status: scaffold on the local box (Electron shell). Cloud Agents were unavailabl
 1. **Architecture option 2** — Electron desktop shell + existing backend APIs. No separate desktop backend.
 2. **v1 hosted client only** — control plane is `https://tvashtr.fly.dev`. No shipping a local FastAPI stack inside the desktop app for v1.
 3. **UI reuse + thin chrome** — load the existing React/Vite frontend inside Electron. Do **not** build a parallel desktop-specific product UI.
-4. **Dual-engine credentials (later)** —
-   - **Hosted runs (now):** API keys / BYOK via the existing account settings (same as web).
-   - **Subscription engines (later):** Claude / ChatGPT / Grok harness or OAuth — stub only in v1; not implemented.
-5. **Secrets hygiene** — no real `.env` keys in the desktop tree; no committing secrets.
+4. **Dual-engine credentials (Approach A)** —
+   - **Hosted Fly microVM:** BYOK / API keys via `/api/providers` only. Subscription status never satisfies hosted preflight.
+   - **Local Desktop subscription:** Claude (deep) → Grok/Codex (Claude-shaped detect/status shells pending real CLI validation); status in OS `safeStorage`; prefer-subscription for local runs. Status-only mirror to Fly — **no tokens/cookies**.
+5. **Secrets hygiene** — no real `.env` keys in the desktop tree; no committing secrets; subscription credentials never leave the Desktop host.
 
 ## Why Electron
 
@@ -72,33 +72,43 @@ Email/password login already works through the same proxy once `Secure` is strip
 - Changing Fly secrets / live GitHub App config from this box (operator registers callbacks manually)
 - Session handoff tokens / opening OAuth in the OS browser
 
-## Desktop detection
+## Dual-engine credentials (Approach A)
 
-`desktop/electron/preload.cjs` exposes:
+| Engine path | Behavior |
+|-------------|----------|
+| Hosted Fly microVM | BYOK / API keys via `/api/providers` only. Subscription status never satisfies hosted preflight. |
+| Local Desktop subscription | Claude → Grok → Codex harness adapters in `desktop/electron/harness/`. Status in OS `safeStorage`. Status-only mirror: `GET/PUT/DELETE /api/engines/subscriptions`. **No tokens/cookies to Fly.** |
+| Prefer-subscription | Automatic for local Desktop runs when connected; BYOK for hosted. |
+| Continuity | Quitting Desktop stops local/subscription runs. Fly BYOK runs can continue. |
 
-```js
-window.tvashtrDesktop === true
-window.tvashtrDesktopInfo // { shell: "electron", version: 1 }
-```
+### Grok / Codex harness shells (detect/status only)
 
-Optional FE use: hide marketing CTAs or “open in browser” affordances later. v1 does not require large FE changes.
+Claude is the **deep** subscription path (CLI detect + `auth status` / `whoami` / login validated against Claude Code).
 
-## Dual-engine credentials (stub)
+**Grok** and **Codex** adapters in `desktop/electron/harness/` are **detect/status shells**: they reuse a Claude-shaped CLI auth probe (`auth status` / `whoami` / login) so Connect IPC and the Engines shelf work end-to-end. They are **not** production-proven against real provider CLIs yet — treat auth results as provisional until each provider’s CLI contract is confirmed. Prefer follow-up adapters once docs are verified; do not claim production-grade Grok/Codex auth for this slice.
 
-| Engine path | v1 | Later |
-|-------------|----|-------|
-| Hosted Fly runs | Account BYOK / provider keys via existing `/api/providers` UI | unchanged |
-| Claude / ChatGPT / Grok **subscriptions** | Not wired | Harness or OAuth tokens in OS-secure storage; never in git |
 
-Desktop may eventually call `safeStorage` / keytar; not in this slice.
+### Desktop IPC
+
+`window.tvashtrDesktop` is a truthy object:
+
+- `engines.getStatus()` / `connect(provider)` / `disconnect(provider)` / `refresh(provider)`
+- `runs.startLocal` / `stopLocal` / `subscribeLogs` (skeleton)
+
+`window.tvashtrDesktopInfo.version` ≥ 2.
+
+FE detection: prefer truthiness (`if (window.tvashtrDesktop)`), not `=== true`.
+
+Same Engines shelf UI on web + Desktop; Connect is enabled only on Desktop (web cards show mirrored status, disabled).
 
 ## Explicitly not done in v1
 
 - macOS `.dmg` / notarization / auto-update
-- Subscription OAuth / harness login
+- OAuth secondary Connect — only where a provider documents a desktop-safe path (harness-first is primary)
 - Auth cookie hardening beyond proxy Domain+Secure strip (e.g. partitioned cookies, custom Electron session partition policies)
 - Pushing from this Linux box if `gh` / git remotes lack credentials
-- Loading a fully offline backend
+- Loading a fully offline backend / full OpenHarness local stack
+- Shipping subscription secrets or cookies to Fly
 
 ## Layout
 
@@ -107,7 +117,8 @@ desktop/
   README.md
   package.json
   electron/main.cjs      # BrowserWindow + lifecycle
-  electron/preload.cjs   # window.tvashtrDesktop
+  electron/preload.cjs   # window.tvashtrDesktop object bridge
+  electron/harness/      # Claude / Grok / Codex subscription adapters
   scripts/local-server.cjs
   scripts/build.mjs
   scripts/dev.mjs

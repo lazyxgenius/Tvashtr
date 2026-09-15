@@ -1,5 +1,13 @@
 // Typed client for the Tvashtr control-plane HTTP surface (proxied to :8000 by Vite).
 
+import type {
+  SubscriptionProviderId,
+  SubscriptionSource,
+  SubscriptionStatus,
+} from "./engines";
+
+export type { SubscriptionProviderId, SubscriptionStatus } from "./engines";
+
 // Absolute API origin when set at build time. Empty = same-origin relative paths (preferred).
 // Desktop v1 leaves this empty and reverse-proxies /api → https://tvashtr.fly.dev from localhost
 // so session cookies stay first-party. See docs/desktop-v1.md.
@@ -395,6 +403,45 @@ export async function removeProvider(provider: string): Promise<void> {
   const res = await fetch(`/api/providers/${encodeURIComponent(provider)}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /api/providers/${provider} -> ${res.status}`);
 }
+
+// ---- Subscription status (mirror: status-only, no secrets in PUT bodies) ----
+
+export async function listSubscriptionStatuses(): Promise<SubscriptionStatus[]> {
+  const data = await getJSON<{ subscriptions: SubscriptionStatus[] }>(
+    "/api/engines/subscriptions",
+  );
+  return data.subscriptions;
+}
+
+export async function putSubscriptionStatus(
+  provider: SubscriptionProviderId,
+  body: {
+    connected: boolean;
+    state?: SubscriptionStatus["state"];
+    account_hint?: string | null;
+    source?: SubscriptionSource | null;
+  },
+): Promise<SubscriptionStatus> {
+  const res = await fetch(`/api/engines/subscriptions/${encodeURIComponent(provider)}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, `PUT /api/engines/subscriptions/${provider} -> ${res.status}`);
+  }
+  return (await res.json()) as SubscriptionStatus;
+}
+
+export async function deleteSubscriptionStatus(provider: SubscriptionProviderId): Promise<void> {
+  const res = await fetch(`/api/engines/subscriptions/${encodeURIComponent(provider)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, `DELETE /api/engines/subscriptions/${provider} -> ${res.status}`);
+  }
+}
+
 
 // ---- MCP secrets (M-tools C7.A): the account's ${NAME} store for MCP tool_config ----
 

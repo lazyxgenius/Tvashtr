@@ -68,6 +68,9 @@ beforeEach(() => {
       }
       return Promise.resolve(jsonOk({ provider, key_last4: last4 }));
     }
+    if (url === "/api/engines/subscriptions" && method === "GET") {
+      return Promise.resolve(jsonOk({ subscriptions: [] }));
+    }
     return Promise.resolve(jsonOk(node({ prompt: "edited" })));
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -75,6 +78,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  delete document.documentElement.dataset.tvashtrDesktop;
+  delete (window as Window & { tvashtrDesktop?: unknown }).tvashtrDesktop;
 });
 
 describe("TeamNodePanel — edit prompt + model + edits toggle, dirty-aware Save", () => {
@@ -1110,5 +1115,55 @@ describe("TeamNodePanel — edit-time model validation hint (soft, never blocks 
     await waitFor(() =>
       expect(screen.queryByTestId("model-validity-hint")).not.toBeInTheDocument(),
     );
+  });
+});
+
+describe("TeamNodePanel — prefer-subscription treatment pills", () => {
+  it("shows via subscription (local) when Desktop + Claude connected for anthropic model", async () => {
+    document.documentElement.dataset.tvashtrDesktop = "true";
+    window.tvashtrDesktop = {
+      engines: {
+        getStatus: async () => [
+          {
+            provider: "claude",
+            connected: true,
+            state: "connected",
+            account_hint: "a@b.c",
+            source: "harness",
+            checked_at: "x",
+          },
+        ],
+        connect: async () => ({}) as never,
+        disconnect: async () => ({}) as never,
+        refresh: async () => ({}) as never,
+      },
+    };
+    providersState = [];
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ model: "anthropic/claude-3-5-sonnet", kind: "agent" })}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect(await screen.findByText(/via subscription \(local\)/i)).toBeInTheDocument();
+  });
+
+  it("shows via API key when BYOK configured without prefer-sub local win", async () => {
+    delete document.documentElement.dataset.tvashtrDesktop;
+    delete (window as Window & { tvashtrDesktop?: unknown }).tvashtrDesktop;
+    providersState = [{ provider: "anthropic", key_last4: "1234", created_at: "x" }];
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node({ model: "anthropic/claude-3-5-sonnet", kind: "agent" })}
+        isStartNode={false}
+        onSaved={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect(await screen.findByText(/via API key/i)).toBeInTheDocument();
   });
 });

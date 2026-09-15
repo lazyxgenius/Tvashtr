@@ -5,7 +5,6 @@ import {
   ChevronRight,
   DollarSign,
   GitBranch,
-  KeyRound,
   LogOut,
   Pencil,
   Play,
@@ -16,15 +15,10 @@ import {
 } from "lucide-react";
 
 import {
-  addProvider,
   type AuthUser,
   deleteTeam,
   getTeamRuns,
   getTeams,
-  listProviders,
-  type ProviderCredential,
-  providerSuggestions,
-  removeProvider,
   renameTeam,
   type TeamRunRow,
   type TeamSummary,
@@ -32,15 +26,12 @@ import {
 import { RUN_TERMINAL, runStatusPill } from "../lib/status";
 import { useModalDialog } from "../lib/useModalDialog";
 import { BackendDot } from "./BackendDot";
+import { EnginesShelf } from "./EnginesShelf";
 import { MemoryShelf } from "./MemoryShelf";
 import { NewTeamDialog } from "./NewTeamDialog";
 import { SecretsShelf } from "./SecretsShelf";
 import { SkillsShelf } from "./SkillsShelf";
 import { ToolsShelf } from "./ToolsShelf";
-
-// M-runnable: the datalist suggestions under the free-text provider field are DERIVED from the
-// backend-served provider catalogue (`providerSuggestions()`), never a hardcoded list — so there is
-// one source of truth and nothing to keep in sync. Any provider/model leading-slug is still accepted.
 
 // A friendly handle from the email's local-part (no new PII) — "ava@studio.dev" → "Ava".
 function handleFromEmail(email: string): string {
@@ -66,8 +57,7 @@ function formatCreated(iso: string): string {
  * The post-login dashboard (F2c reskin) — the authed default, NOT the canvas. ONE unified teams
  * table where each team carries its latest run's status + its lifetime spend ("a run is a team that
  * ran"): open a team → the canvas; delete a team → stop its run + remove it (F2-delete). A real stat
- * strip (Teams / Active runs / Total spend), the New-team template picker, and the BYOK providers
- * shelf. Opening (or creating) a team routes to the canvas via `onOpenTeam`.
+ * strip (Teams / Active runs / Total spend), the New-team template picker, and the Engines shelf (subscriptions + BYOK). Opening (or creating) a team routes to the canvas via `onOpenTeam`.
  */
 export function Dashboard({
   user,
@@ -84,15 +74,9 @@ export function Dashboard({
   onOpenRun?: (runId: string, teamId: string) => void;
 }) {
   const [teams, setTeams] = useState<TeamSummary[]>([]);
-  const [providers, setProviders] = useState<ProviderCredential[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
-
-  // Add-provider form.
-  const [providerInput, setProviderInput] = useState("");
-  const [keyInput, setKeyInput] = useState("");
-  const [addError, setAddError] = useState<string | null>(null);
 
   // UI: the account menu, the New-team picker, and the delete-confirm target.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -106,7 +90,7 @@ export function Dashboard({
   const renameInputRef = useRef<HTMLInputElement | null>(null);
 
   // Run-history drill-down: which row is expanded, and that team's runs. Fetched ON EXPAND (never
-  // on mount) so the dashboard's first paint still costs exactly two requests, and held for one
+  // on mount) so the dashboard's first paint still costs one teams request (engines load in EnginesShelf), and held for one
   // team at a time so an open panel can never show another team's history.
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [teamRuns, setTeamRuns] = useState<TeamRunRow[]>([]);
@@ -136,10 +120,9 @@ export function Dashboard({
 
   const load = useCallback(async () => {
     try {
-      const [t, p] = await Promise.all([getTeams(), listProviders()]);
+      const t = await getTeams();
       if (!mountedRef.current) return;
       setTeams(t);
-      setProviders(p);
       setError(false);
     } catch {
       if (mountedRef.current) setError(true);
@@ -152,40 +135,6 @@ export function Dashboard({
     void load();
   }, [load]);
 
-  const handleAddProvider = useCallback(async () => {
-    const provider = providerInput.trim();
-    const key = keyInput.trim();
-    if (!provider || !key) {
-      setAddError("Enter a provider and an API key.");
-      return;
-    }
-    setBusy(true);
-    setAddError(null);
-    try {
-      await addProvider(provider, key);
-      setProviderInput("");
-      setKeyInput("");
-      const p = await listProviders();
-      if (mountedRef.current) setProviders(p);
-    } catch {
-      if (mountedRef.current) setAddError("Couldn't save that key — is the backend running?");
-    } finally {
-      if (mountedRef.current) setBusy(false);
-    }
-  }, [providerInput, keyInput]);
-
-  const handleRemoveProvider = useCallback(async (provider: string) => {
-    setBusy(true);
-    try {
-      await removeProvider(provider);
-      const p = await listProviders();
-      if (mountedRef.current) setProviders(p);
-    } catch {
-      if (mountedRef.current) setError(true);
-    } finally {
-      if (mountedRef.current) setBusy(false);
-    }
-  }, []);
 
   const handleDeleteTeam = useCallback(
     async (teamId: string) => {
@@ -550,83 +499,7 @@ export function Dashboard({
             )}
           </section>
 
-          <section className="tv-dash__panel tv-dash__prov" aria-label="Your providers">
-            <div className="tv-dash__prov-head">
-              <div className="tv-dash__prov-lede">
-                <div className="tv-dash__prov-title">
-                  <KeyRound size={16} strokeWidth={1.7} />
-                  <h2>Provider keys</h2>
-                </div>
-                <p className="tv-dash__prov-sub">
-                  Bring your own keys — stored per account, encrypted. We only ever show the last 4
-                  digits.
-                </p>
-              </div>
-              <div className="tv-dash__prov-add">
-                <input
-                  className="tv-launch__input"
-                  list="tv-provider-list"
-                  placeholder="provider (e.g. openrouter)"
-                  aria-label="Provider"
-                  value={providerInput}
-                  onChange={(e) => setProviderInput(e.target.value)}
-                />
-                <datalist id="tv-provider-list">
-                  {providerSuggestions().map((p) => (
-                    <option key={p} value={p} />
-                  ))}
-                </datalist>
-                <input
-                  className="tv-launch__input"
-                  type="password"
-                  placeholder="paste API key"
-                  aria-label="API key"
-                  value={keyInput}
-                  onChange={(e) => setKeyInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void handleAddProvider();
-                  }}
-                />
-                <button
-                  type="button"
-                  className="tv-btn tv-btn--sm"
-                  onClick={() => void handleAddProvider()}
-                  disabled={busy}
-                >
-                  Add key
-                </button>
-              </div>
-            </div>
-            {!loading && providers.length === 0 ? (
-              <p className="tv-dash__prov-empty">
-                Add your provider API keys so your teams can run.
-              </p>
-            ) : (
-              <ul className="tv-dash__prov-list">
-                {providers.map((p) => (
-                  <li className="tv-dash__prov-chip" key={p.provider}>
-                    <span className="tv-dash__prov-dot" />
-                    <span className="tv-dash__prov-name">{p.provider}</span>
-                    <span className="tv-dash__prov-last4">•••• {p.key_last4}</span>
-                    <button
-                      type="button"
-                      className="tv-dash__prov-remove"
-                      onClick={() => void handleRemoveProvider(p.provider)}
-                      disabled={busy}
-                      aria-label={`Remove ${p.provider}`}
-                    >
-                      <X size={15} strokeWidth={1.8} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {addError && (
-              <div className="tv-dash__error" role="alert">
-                {addError}
-              </div>
-            )}
-          </section>
+          <EnginesShelf />
           <SecretsShelf />
           <ToolsShelf />
           <SkillsShelf />

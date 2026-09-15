@@ -462,6 +462,12 @@ export function LaunchPanel({
           </div>
         )}
 
+        {document.documentElement.dataset.tvashtrDesktop === "true" && (
+          <p className="tv-launch__note" role="note">
+            Local subscription runs stop when you quit Desktop. Hosted BYOK runs can continue on Fly.
+          </p>
+        )}
+
         <div className="tv-launch__actions">
           <button type="button" className="tv-btn" onClick={launch} disabled={runDisabled}>
             {starting ? "Starting…" : "Run"}

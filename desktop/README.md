@@ -63,4 +63,6 @@ OAuth stays inside the Electron window; the local proxy forwards the callback to
 
 ## Desktop detection
 
-`preload.cjs` exposes `window.tvashtrDesktop === true` (and `window.tvashtrDesktopInfo`). The FE rewrites `github_install_url` for loopback OAuth when that flag is set.
+`preload.cjs` exposes `window.tvashtrDesktop` as a truthy object bridge (`engines.*`, `runs.*`) and `window.tvashtrDesktopInfo` (`version` ≥ 2). FE detection: prefer truthiness (`if (window.tvashtrDesktop)`), not `=== true`. The FE rewrites `github_install_url` for loopback OAuth when the bridge is present.
+
+See [`../docs/desktop-v1.md`](../docs/desktop-v1.md#dual-engine-credentials-approach-a) for Approach A dual-engine / subscription Connect.

@@ -9,8 +9,11 @@
  * GitHub OAuth stays INSIDE Electron (loadURL), not the OS browser, so the loopback
  * callback + proxied Set-Cookie land on the same partition as the SPA.
  */
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, ipcMain, safeStorage } = require("electron");
 const path = require("path");
+const { createRegistry } = require("./harness/registry.cjs");
+const { createStatusStore, sanitizeStatus } = require("./harness/statusStore.cjs");
+const { createLocalRunSupervisor } = require("./harness/localRuns.cjs");
 
 const DESKTOP_ROOT = path.join(__dirname, "..");
 
@@ -22,6 +25,103 @@ let mainWindow = null;
 let localOrigin = "http://127.0.0.1:5178";
 /** @type {string} */
 let apiBaseOrigin = "https://tvashtr.fly.dev";
+
+
+const PROVIDERS = ["claude", "grok", "codex"];
+
+/** Local subscription-run supervisor (skeleton); stopped on before-quit. */
+let localRunSupervisor = createLocalRunSupervisor({
+  sendLog(payload) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("tvashtr:runs:log", payload);
+    }
+  },
+});
+
+function emptyStatus(provider) {
+  return {
+    provider,
+    connected: false,
+    state: "disconnected",
+    account_hint: null,
+    source: null,
+    checked_at: null,
+  };
+}
+
+/**
+ * Strip non-status keys before any IPC return to the renderer.
+ * @param {unknown} row
+ * @param {string} provider
+ */
+function toRendererStatus(row, provider) {
+  const cleaned = sanitizeStatus(row) || emptyStatus(provider);
+  if (cleaned.provider !== provider) cleaned.provider = provider;
+  return cleaned;
+}
+
+function registerEngineIpc() {
+  const store = createStatusStore({
+    userDataDir: app.getPath("userData"),
+    safeStorage,
+  });
+  const registry = createRegistry();
+
+  ipcMain.handle("tvashtr:engines:getStatus", async () => {
+    const out = [];
+    for (const provider of PROVIDERS) {
+      const harness = registry.get(provider);
+      if (harness) {
+        const status = toRendererStatus(await harness.toStatus(), provider);
+        store.write(provider, status);
+        out.push(status);
+      } else {
+        const stored = store.read(provider);
+        out.push(stored ? toRendererStatus(stored, provider) : emptyStatus(provider));
+      }
+    }
+    return out;
+  });
+
+  ipcMain.handle("tvashtr:engines:connect", async (_e, provider) => {
+    const id = String(provider || "");
+    const harness = registry.get(id);
+    if (!harness) {
+      return emptyStatus(id || "claude");
+    }
+    const status = toRendererStatus(await harness.connect(), id);
+    store.write(id, status);
+    return status;
+  });
+
+  ipcMain.handle("tvashtr:engines:disconnect", async (_e, provider) => {
+    const id = String(provider || "");
+    store.clear(id);
+    return emptyStatus(id);
+  });
+
+  ipcMain.handle("tvashtr:engines:refresh", async (_e, provider) => {
+    const id = String(provider || "");
+    const harness = registry.get(id);
+    if (!harness) {
+      const stored = store.read(id);
+      return stored ? toRendererStatus(stored, id) : emptyStatus(id);
+    }
+    const status = toRendererStatus(await harness.toStatus(), id);
+    store.write(id, status);
+    return status;
+  });
+}
+
+function registerRunsIpc() {
+  ipcMain.handle("tvashtr:runs:startLocal", async (_e, payload) => {
+    return localRunSupervisor.startLocal(payload || {});
+  });
+  ipcMain.handle("tvashtr:runs:stopLocal", async (_e, localRunId) => {
+    await localRunSupervisor.stopLocal(localRunId);
+  });
+}
+
 
 function envFlag(name, fallback = false) {
   const v = process.env[name];
@@ -190,6 +290,8 @@ async function boot() {
 }
 
 app.whenReady().then(() => {
+  registerEngineIpc();
+  registerRunsIpc();
   boot().catch((err) => {
     console.error("[tvashtr-desktop] failed to start:", err);
     app.exit(1);
@@ -209,13 +311,27 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => {
-  if (localServer) {
+/** Prevent re-entrant before-quit while we await stopAll (app.exit skips this handler). */
+let quittingAfterStopAll = false;
+
+app.on("before-quit", (event) => {
+  if (quittingAfterStopAll) return;
+  event.preventDefault();
+  quittingAfterStopAll = true;
+  (async () => {
     try {
-      localServer.close();
+      await localRunSupervisor.stopAll();
     } catch {
       /* ignore */
     }
-    localServer = null;
-  }
+    if (localServer) {
+      try {
+        localServer.close();
+      } catch {
+        /* ignore */
+      }
+      localServer = null;
+    }
+    app.exit(0);
+  })();
 });

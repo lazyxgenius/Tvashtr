@@ -14,7 +14,33 @@ interface ImportMeta {
 }
 
 interface Window {
-  /** Set by Electron preload when running inside Tvashtr Desktop. */
-  tvashtrDesktop?: boolean;
+  /**
+   * Set by Electron preload when running inside Tvashtr Desktop.
+   * Truthy object (v2+) or legacy boolean `true` (v1). Prefer truthiness checks.
+   */
+  tvashtrDesktop?: boolean | TvashtrDesktopBridge;
   tvashtrDesktopInfo?: { shell: string; version: number };
+}
+
+interface TvashtrDesktopBridge {
+  engines: {
+    getStatus: () => Promise<import("./lib/engines").SubscriptionStatus[]>;
+    connect: (
+      provider: import("./lib/engines").SubscriptionProviderId,
+    ) => Promise<import("./lib/engines").SubscriptionStatus>;
+    disconnect: (
+      provider: import("./lib/engines").SubscriptionProviderId,
+    ) => Promise<import("./lib/engines").SubscriptionStatus>;
+    refresh: (
+      provider: import("./lib/engines").SubscriptionProviderId,
+    ) => Promise<import("./lib/engines").SubscriptionStatus>;
+  };
+  runs?: {
+    startLocal: (payload: {
+      teamGraphId: string;
+      idea: string;
+    }) => Promise<{ localRunId: string }>;
+    stopLocal: (localRunId: string) => Promise<void>;
+    subscribeLogs: (localRunId: string, cb: (line: string) => void) => () => void;
+  };
 }
