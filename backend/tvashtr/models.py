@@ -12,6 +12,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Computed,
     DateTime,
     ForeignKey,
     Identity,
@@ -24,7 +25,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -677,6 +678,10 @@ class DomainChunk(Base):
     )
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    text_tsv: Mapped[object | None] = mapped_column(
+        TSVECTOR,
+        Computed("to_tsvector('english', coalesce(text, ''))", persisted=True),
+    )
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

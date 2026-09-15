@@ -14,3 +14,11 @@ def test_domain_files_dir_default(monkeypatch):
     get_settings.cache_clear()
     assert get_settings().domain_files_dir == "/tmp/tvashtr-domain-files"
     get_settings.cache_clear()
+
+
+def test_domain_chunk_has_text_tsv():
+    from sqlalchemy.dialects.postgresql import TSVECTOR
+
+    assert "text_tsv" in DomainChunk.__table__.c
+    col = DomainChunk.__table__.c.text_tsv
+    assert isinstance(col.type, TSVECTOR)
