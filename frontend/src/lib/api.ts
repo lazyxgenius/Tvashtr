@@ -1691,3 +1691,62 @@ export async function ingestDomain(
   }
   return (await res.json()) as { domain_id: string; workflow_id: string; status: string };
 }
+
+export interface DomainCitation {
+  document_id: string;
+  filename: string;
+  chunk_id: string;
+  ordinal: number;
+  excerpt: string;
+  score?: number | null;
+}
+
+export interface DomainMessageSummary {
+  message_id: string;
+  domain_id: string;
+  role: "user" | "assistant" | string;
+  content: string;
+  citations: DomainCitation[] | null;
+  latency_ms: number | null;
+  cost_usd: number | null;
+  created_at: string | null;
+}
+
+export interface DomainAskResult {
+  answer: string;
+  citations: DomainCitation[];
+  message_id: string;
+  user_message_id: string;
+  latency_ms: number | null;
+  cost_usd?: number | null;
+  model?: string;
+}
+
+export async function listDomainMessages(domainId: string): Promise<DomainMessageSummary[]> {
+  const data = await getJSON<{ messages: DomainMessageSummary[] }>(
+    `/api/domains/${domainId}/messages`,
+  );
+  return data.messages;
+}
+
+export async function askDomain(domainId: string, question: string): Promise<DomainAskResult> {
+  const res = await fetch(apiUrl(`/api/domains/${domainId}/ask`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+  if (!res.ok) {
+    let detail = `POST /api/domains/${domainId}/ask -> ${res.status}`;
+    try {
+      const j = (await res.json()) as { detail?: unknown };
+      if (typeof j.detail === "string") detail = j.detail;
+      else if (j.detail && typeof j.detail === "object" && "message" in (j.detail as object)) {
+        detail = String((j.detail as { message: string }).message);
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  return (await res.json()) as DomainAskResult;
+}
