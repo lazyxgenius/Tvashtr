@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select
 
+import tvashtr.control_plane.domain_ingest  # noqa: F401  — register DBOS workflow
 from tvashtr import db
 from tvashtr.auth import auth_router, get_current_user
 from tvashtr.config import get_settings
