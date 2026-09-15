@@ -123,7 +123,6 @@ describe("rewriteGithubInstallUrlForDesktop", () => {
     "&redirect_uri=https%3A%2F%2Ftvashtr.fly.dev%2Fapi%2Fauth%2Fgithub%2Fcallback";
 
   afterEach(() => {
-    // @ts-expect-error test cleanup
     delete window.tvashtrDesktop;
   });
 
