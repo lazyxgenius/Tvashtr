@@ -1778,3 +1778,103 @@ export async function askDomain(domainId: string, question: string): Promise<Dom
   }
   return (await res.json()) as DomainAskResult;
 }
+
+export interface DomainEvalCase {
+  case_id: string;
+  domain_id: string;
+  question: string;
+  expected_answer: string | null;
+  expected_citation_doc_ids: string[];
+  expected_keywords: string[];
+  ordinal: number;
+  created_at: string | null;
+}
+
+export interface DomainEvalCaseCreate {
+  question: string;
+  expected_answer?: string | null;
+  expected_citation_doc_ids?: string[];
+  expected_keywords?: string[];
+  ordinal?: number;
+}
+
+export interface DomainEvalPerCaseScore {
+  case_id: string;
+  question: string;
+  hit: boolean | null;
+  keyword_hit: boolean | null;
+  citation_doc_ids: string[];
+  latency_ms: number | null;
+  error: string | null;
+}
+
+export interface DomainEvalScores {
+  cases_total: number;
+  cases_scored_hit: number;
+  cases_scored_keyword: number;
+  hit_at_k: number | null;
+  keyword_hit: number | null;
+  top_k: number;
+  retrieval_mode: string;
+  per_case: DomainEvalPerCaseScore[];
+}
+
+export interface DomainEvalRun {
+  run_id: string;
+  domain_id: string;
+  status: string;
+  scores: DomainEvalScores | null;
+  error_message: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export async function listDomainEvalCases(domainId: string): Promise<DomainEvalCase[]> {
+  const data = await getJSON<{ cases: DomainEvalCase[] }>(
+    `/api/domains/${domainId}/eval/cases`,
+  );
+  return data.cases;
+}
+
+export async function createDomainEvalCase(
+  domainId: string,
+  body: DomainEvalCaseCreate,
+): Promise<DomainEvalCase> {
+  const res = await fetch(apiUrl(`/api/domains/${domainId}/eval/cases`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`POST eval case -> ${res.status}`);
+  return (await res.json()) as DomainEvalCase;
+}
+
+export async function deleteDomainEvalCase(domainId: string, caseId: string): Promise<void> {
+  const res = await fetch(apiUrl(`/api/domains/${domainId}/eval/cases/${caseId}`), {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(`DELETE eval case -> ${res.status}`);
+}
+
+export async function getLatestDomainEvalRun(domainId: string): Promise<DomainEvalRun> {
+  return getJSON<DomainEvalRun>(`/api/domains/${domainId}/eval/runs/latest`);
+}
+
+export async function runDomainEval(domainId: string): Promise<DomainEvalRun> {
+  const res = await fetch(apiUrl(`/api/domains/${domainId}/eval`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    let detail = `POST eval -> ${res.status}`;
+    try {
+      const j = (await res.json()) as { detail?: unknown };
+      if (typeof j.detail === "string") detail = j.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  return (await res.json()) as DomainEvalRun;
+}
