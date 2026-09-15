@@ -96,6 +96,7 @@ from tvashtr.control_plane.domain_ask import (
     DomainAskError,
     ask_domain,
     list_domain_messages,
+    retrieve_domain,
 )
 from tvashtr.documents.service import (
     add_version,
@@ -324,6 +325,11 @@ class UpdateDomainRequest(BaseModel):
 
 class DomainAskRequest(BaseModel):
     question: str
+
+
+class DomainRetrieveRequest(BaseModel):
+    query: str
+    top_k: int | None = None
 
 
 class RenameTeamRequest(BaseModel):
@@ -2614,6 +2620,32 @@ def post_domain_ask(
         if e.code == "gateway":
             raise HTTPException(status_code=502, detail=e.detail) from e
         raise HTTPException(status_code=422, detail=e.detail) from e
+
+
+@router.post("/api/domains/{domain_id}/retrieve")
+def post_domain_retrieve(
+    domain_id: str,
+    body: DomainRetrieveRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    owner_id = uuid.UUID(current_user.id)
+    did = _parse_domain_id(domain_id)
+    row = get_domain(owner_id, did)
+    if row is None:
+        raise HTTPException(status_code=404, detail="domain not found")
+    try:
+        result = retrieve_domain(owner_id, did, body.query, top_k=body.top_k)
+    except DomainAskError as e:
+        if e.code == "not_found":
+            raise HTTPException(status_code=404, detail="domain not found") from e
+        if e.code == "gateway":
+            raise HTTPException(status_code=502, detail=e.detail) from e
+        raise HTTPException(status_code=422, detail=e.detail) from e
+    return {
+        "domain_id": str(did),
+        "citations": result["citations"],
+        "latency_ms": result.get("latency_ms"),
+    }
 
 
 @router.get("/api/domains/{domain_id}/messages")
