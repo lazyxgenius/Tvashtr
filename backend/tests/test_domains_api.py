@@ -88,3 +88,49 @@ def test_foreign_domain_404():
 def test_invalid_id_400():
     c = _fresh()
     assert c.get("/api/domains/not-a-uuid").status_code == 400
+
+
+def test_unauthenticated_domains_401():
+    c = TestClient(app)
+    c.cookies.clear()
+    assert c.get("/api/domains").status_code == 401
+    assert (
+        c.post("/api/domains", json={"template": "blank", "name": "X"}).status_code == 401
+    )
+
+
+def test_patch_rejects_secret_keys_in_config():
+    c = _fresh()
+    row = c.post("/api/domains", json={"template": "blank", "name": "Secrets"}).json()
+    did = row["domain_id"]
+    base = dict(row["config"])
+    # Top-level secret key
+    poison_top = {**base, "api_key": "sk-leak"}
+    assert c.patch(f"/api/domains/{did}", json={"config": poison_top}).status_code == 422
+    # Nested under embedding
+    poison_embed = {
+        **base,
+        "embedding": {**base["embedding"], "api_key": "sk-nested"},
+    }
+    assert c.patch(f"/api/domains/{did}", json={"config": poison_embed}).status_code == 422
+    # Nested under generation (case-insensitive)
+    poison_gen = {
+        **base,
+        "generation": {**base["generation"], "API_KEY": "sk-case"},
+    }
+    assert c.patch(f"/api/domains/{did}", json={"config": poison_gen}).status_code == 422
+
+
+def test_patch_rejects_invalid_v1_config_shape():
+    c = _fresh()
+    row = c.post("/api/domains", json={"template": "blank", "name": "Shape"}).json()
+    did = row["domain_id"]
+    # Missing required keys
+    assert c.patch(f"/api/domains/{did}", json={"config": {}}).status_code == 422
+    # Unknown top-level key
+    bad = dict(row["config"])
+    bad["rerank"] = {"model": "x"}
+    assert c.patch(f"/api/domains/{did}", json={"config": bad}).status_code == 422
+    # Missing one required section
+    incomplete = {k: v for k, v in row["config"].items() if k != "generation"}
+    assert c.patch(f"/api/domains/{did}", json={"config": incomplete}).status_code == 422

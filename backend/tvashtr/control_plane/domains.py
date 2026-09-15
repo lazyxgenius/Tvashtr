@@ -10,6 +10,45 @@ from sqlalchemy import select
 from tvashtr.db import session_scope
 from tvashtr.models import Domain
 
+
+_SECRET_KEYS = frozenset(
+    {"api_key", "token", "cookies", "cookie", "secret", "authorization", "password"}
+)
+_V1_CONFIG_KEYS = frozenset({"chunking", "embedding", "retrieval", "generation"})
+
+
+def _reject_secret_keys(obj: object, *, path: str = "config") -> None:
+    """Recursively reject denylisted secret-bearing keys (case-insensitive)."""
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            key_str = str(key)
+            if key_str.lower() in _SECRET_KEYS:
+                raise ValueError(
+                    f"domain config must not include secrets: {key_str!r} at {path}"
+                )
+            _reject_secret_keys(value, path=f"{path}.{key_str}")
+    elif isinstance(obj, list):
+        for i, item in enumerate(obj):
+            _reject_secret_keys(item, path=f"{path}[{i}]")
+
+
+def validate_domain_config(config: dict) -> None:
+    """Enforce Phase 1 v1 shape + secret denylist. Raises ValueError → API 422."""
+    if not isinstance(config, dict):
+        raise ValueError("domain config must be an object")
+    keys = set(config.keys())
+    missing = _V1_CONFIG_KEYS - keys
+    if missing:
+        raise ValueError(f"domain config missing required keys: {sorted(missing)}")
+    extra = keys - _V1_CONFIG_KEYS
+    if extra:
+        raise ValueError(f"domain config has unknown top-level keys: {sorted(extra)}")
+    for section in _V1_CONFIG_KEYS:
+        if not isinstance(config[section], dict):
+            raise ValueError(f"domain config.{section} must be an object")
+    _reject_secret_keys(config)
+
+
 DOMAIN_TEMPLATE_KEYS: tuple[str, ...] = (
     "financial",
     "legal",
@@ -149,6 +188,7 @@ def update_domain(
                 raise ValueError("a domain name is required")
             row.name = cleaned
         if config is not None:
+            validate_domain_config(config)
             # Fresh dict so JSONB dirty-tracking works (same pattern as gate config patches).
             row.config = dict(config)
         session.flush()
