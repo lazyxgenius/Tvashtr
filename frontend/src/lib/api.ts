@@ -881,7 +881,9 @@ export interface TeamSummary {
   name: string;
   created_at: string;
   node_count: number;
-  last_run: { status: string; at: string; run_id: string } | null;
+  // `error` is optional: the list payload today is `{status, at, run_id}`; when a last-run
+  // failure reason is present we surface it on the dashboard recovery strip.
+  last_run: { status: string; at: string; run_id: string; error?: string | null } | null;
   spend_usd: number;
 }
 

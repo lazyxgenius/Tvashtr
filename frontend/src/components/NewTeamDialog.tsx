@@ -26,7 +26,7 @@ export function NewTeamDialog({
   onOpenTeam: (teamId: string) => void;
   onClose: () => void;
 }) {
-  const [name, setName] = useState("New team");
+  const [name, setName] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selected, setSelected] = useState<string>(BLANK_CARD.template);
   const [creating, setCreating] = useState(false);
@@ -61,10 +61,15 @@ export function NewTeamDialog({
   const cards = [BLANK_CARD, ...templates];
 
   const create = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("Give this team a name so you can tell it apart.");
+      return;
+    }
     setCreating(true);
     setError(null);
     try {
-      const created = await createTeam(selected, name.trim() || "New team");
+      const created = await createTeam(selected, trimmed);
       onOpenTeam(created.team_graph_id);
     } catch {
       if (mountedRef.current) {
@@ -98,8 +103,16 @@ export function NewTeamDialog({
               className="tv-launch__input"
               value={name}
               aria-label="Team name"
-              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Launch squad"
+              autoComplete="off"
+              onChange={(e) => {
+                setName(e.target.value);
+                if (error) setError(null);
+              }}
             />
+            <span className="tv-field__hint">
+              Required — so this isn’t another indistinguishable “New team”.
+            </span>
           </label>
 
           <div className="tv-field">
