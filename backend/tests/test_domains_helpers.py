@@ -87,3 +87,46 @@ def test_compute_domain_status_rules():
     assert compute_domain_status(["ready", "error"]) == "error"
     assert compute_domain_status(["ready", "ready"]) == "ready"
     assert compute_domain_status(["error"]) == "error"
+
+
+def test_default_config_includes_rerank_knobs():
+    cfg = domains_cp.default_config_for_template("blank")
+    assert cfg["retrieval"]["mode"] == "dense"
+    assert cfg["retrieval"]["rerank"] == {
+        "enabled": False,
+        "model": None,
+        "top_n": 20,
+    }
+
+
+def test_validate_rejects_unknown_retrieval_mode():
+    cfg = domains_cp.default_config_for_template("blank")
+    cfg["retrieval"]["mode"] = "colbert"
+    try:
+        domains_cp.validate_domain_config(cfg)
+        raise AssertionError("expected ValueError")
+    except ValueError as e:
+        assert "mode" in str(e).lower()
+
+
+def test_validate_accepts_hybrid_and_rerank():
+    cfg = domains_cp.default_config_for_template("legal")
+    cfg["retrieval"]["mode"] = "hybrid"
+    cfg["retrieval"]["rerank"] = {"enabled": True, "model": None, "top_n": 16}
+    domains_cp.validate_domain_config(cfg)
+
+
+def test_validate_rejects_bad_rerank():
+    cfg = domains_cp.default_config_for_template("blank")
+    cfg["retrieval"]["rerank"] = "yes"
+    try:
+        domains_cp.validate_domain_config(cfg)
+        raise AssertionError("expected ValueError")
+    except ValueError:
+        pass
+    cfg["retrieval"]["rerank"] = {"enabled": True, "top_n": 0}
+    try:
+        domains_cp.validate_domain_config(cfg)
+        raise AssertionError("expected ValueError")
+    except ValueError:
+        pass

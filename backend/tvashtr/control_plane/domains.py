@@ -49,6 +49,42 @@ def validate_domain_config(config: dict) -> None:
             raise ValueError(f"domain config.{section} must be an object")
     _reject_secret_keys(config)
 
+    retrieval = config["retrieval"]
+    mode = retrieval.get("mode")
+    if mode is not None and str(mode).strip() != "":
+        if str(mode).strip().lower() not in {"dense", "lexical", "hybrid"}:
+            raise ValueError(
+                "domain config.retrieval.mode must be dense, lexical, or hybrid"
+            )
+    rerank = retrieval.get("rerank")
+    if rerank is not None:
+        if not isinstance(rerank, dict):
+            raise ValueError("domain config.retrieval.rerank must be an object")
+        extra = set(rerank) - {"enabled", "model", "top_n"}
+        if extra:
+            raise ValueError(
+                f"domain config.retrieval.rerank has unknown keys: {sorted(extra)}"
+            )
+        if "enabled" in rerank and not isinstance(rerank["enabled"], bool):
+            raise ValueError("domain config.retrieval.rerank.enabled must be a boolean")
+        if "model" in rerank and rerank["model"] is not None and not isinstance(
+            rerank["model"], str
+        ):
+            raise ValueError(
+                "domain config.retrieval.rerank.model must be a string or null"
+            )
+        if "top_n" in rerank:
+            try:
+                n = int(rerank["top_n"])
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    "domain config.retrieval.rerank.top_n must be an integer >= 1"
+                ) from e
+            if n < 1:
+                raise ValueError(
+                    "domain config.retrieval.rerank.top_n must be an integer >= 1"
+                )
+
 
 DOMAIN_TEMPLATE_KEYS: tuple[str, ...] = (
     "financial",
@@ -86,7 +122,11 @@ def default_config_for_template(template: str) -> dict:
     base = {
         "chunking": {"strategy": "fixed", "size": 800, "overlap": 100},
         "embedding": {"model": "text-embedding-3-small"},
-        "retrieval": {"top_k": 8, "mode": "dense"},
+        "retrieval": {
+            "top_k": 8,
+            "mode": "dense",
+            "rerank": {"enabled": False, "model": None, "top_n": 20},
+        },
         "generation": {"model": None},
     }
     if template == "legal":

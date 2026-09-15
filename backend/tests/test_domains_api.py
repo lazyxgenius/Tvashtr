@@ -134,3 +134,28 @@ def test_patch_rejects_invalid_v1_config_shape():
     # Missing one required section
     incomplete = {k: v for k, v in row["config"].items() if k != "generation"}
     assert c.patch(f"/api/domains/{did}", json={"config": incomplete}).status_code == 422
+
+
+def test_patch_accepts_hybrid_mode_and_rerank():
+    c = _fresh()
+    row = c.post("/api/domains", json={"template": "blank", "name": "Hyb"}).json()
+    cfg = dict(row["config"])
+    cfg["retrieval"] = {
+        "top_k": 6,
+        "mode": "hybrid",
+        "rerank": {"enabled": True, "model": None, "top_n": 16},
+    }
+    patched = c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg})
+    assert patched.status_code == 200, patched.text
+    ret = patched.json()["config"]["retrieval"]
+    assert ret["mode"] == "hybrid"
+    assert ret["rerank"]["enabled"] is True
+    assert ret["rerank"]["top_n"] == 16
+
+
+def test_patch_rejects_unknown_retrieval_mode():
+    c = _fresh()
+    row = c.post("/api/domains", json={"template": "blank", "name": "BadMode"}).json()
+    cfg = dict(row["config"])
+    cfg["retrieval"] = {"top_k": 8, "mode": "colbert"}
+    assert c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg}).status_code == 422
