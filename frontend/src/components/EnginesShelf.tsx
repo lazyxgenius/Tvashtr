@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { KeyRound, X } from "lucide-react";
+import { X } from "lucide-react";
 
 import {
   addProvider,
@@ -145,9 +145,7 @@ export function EnginesShelf() {
   }, []);
 
   const setStatusFor = useCallback((status: SubscriptionStatus) => {
-    setSubscriptions((prev) =>
-      prev.map((s) => (s.provider === status.provider ? status : s)),
-    );
+    setSubscriptions((prev) => prev.map((s) => (s.provider === status.provider ? status : s)));
   }, []);
 
   const handleConnect = useCallback(
@@ -256,116 +254,122 @@ export function EnginesShelf() {
         Subscriptions run on your machine. API keys power hosted Fly runs.
       </p>
 
-      <div className="tv-engines__tier-label">Subscriptions</div>
-      <div className="tv-engines__cards">
-        {subscriptions.map((s) => {
-          const name = displayNameForSubscription(s.provider);
-          const cardBusy = actionBusy === s.provider;
-          const connected = s.state === "connected" || s.connected;
-          return (
-            <div
-              key={s.provider}
-              className={`tv-engines__card${connected ? " tv-engines__card--connected" : ""}`}
-            >
-              <div className="tv-engines__card-head">
-                <span className="tv-engines__card-name">{name}</span>
-                <span className="tv-engines__pill">{pillLabel(s.state)}</span>
-              </div>
-              {s.account_hint && <p className="tv-engines__hint">{s.account_hint}</p>}
-              {s.state === "needs_install" && isDesktop && (
-                <p className="tv-engines__hint">
-                  <a href={INSTALL_URLS[s.provider]} target="_blank" rel="noreferrer">
-                    Install {name} CLI
-                  </a>
-                </p>
-              )}
-              <div className="tv-engines__actions">
-                {s.state === "needs_install" && isDesktop ? (
-                  <button
-                    type="button"
-                    className="tv-btn tv-btn--sm"
-                    disabled={cardBusy}
-                    onClick={() => void handleRefresh(s.provider)}
-                    aria-label={`I've installed it — Refresh ${name}`}
-                  >
-                    I&rsquo;ve installed it — Refresh
-                  </button>
-                ) : connected && isDesktop ? (
-                  <>
+      <section className="tv-engines__section" aria-labelledby="tv-engines-subs">
+        <h3 id="tv-engines-subs" className="tv-engines__section-title">
+          Subscriptions
+        </h3>
+        <div className="tv-engines__callout" role="note">
+          {isDesktop
+            ? "Subscription runs stop when Desktop quits."
+            : "Subscription engines run on your machine — open Tvashtr Desktop to connect."}
+        </div>
+        <div className="tv-engines__cards">
+          {subscriptions.map((s) => {
+            const name = displayNameForSubscription(s.provider);
+            const cardBusy = actionBusy === s.provider;
+            const connected = s.state === "connected" || s.connected;
+            return (
+              <div
+                key={s.provider}
+                className={`tv-engines__card${connected ? " tv-engines__card--connected" : ""}`}
+              >
+                <div className="tv-engines__card-head">
+                  <span className="tv-engines__card-name">{name}</span>
+                  <span className="tv-engines__pill">{pillLabel(s.state)}</span>
+                </div>
+                {s.account_hint && <p className="tv-engines__hint">{s.account_hint}</p>}
+                {s.state === "needs_install" && isDesktop && (
+                  <p className="tv-engines__hint">
+                    <a href={INSTALL_URLS[s.provider]} target="_blank" rel="noreferrer">
+                      Install {name} CLI
+                    </a>
+                  </p>
+                )}
+                <div className="tv-engines__actions">
+                  {s.state === "needs_install" && isDesktop ? (
                     <button
                       type="button"
                       className="tv-btn tv-btn--sm"
                       disabled={cardBusy}
-                      onClick={() => void handleDisconnect(s.provider)}
-                      aria-label={`Disconnect ${name}`}
+                      onClick={() => void handleRefresh(s.provider)}
+                      aria-label={`I've installed it — Refresh ${name}`}
                     >
-                      Disconnect
+                      I&rsquo;ve installed it — Refresh
                     </button>
+                  ) : connected && isDesktop ? (
+                    <>
+                      <button
+                        type="button"
+                        className="tv-btn tv-btn--sm"
+                        disabled={cardBusy}
+                        onClick={() => void handleDisconnect(s.provider)}
+                        aria-label={`Disconnect ${name}`}
+                      >
+                        Disconnect
+                      </button>
+                      <button
+                        type="button"
+                        className="tv-btn tv-btn--sm tv-btn--ghost"
+                        disabled={cardBusy}
+                        onClick={() => void handleRefresh(s.provider)}
+                        aria-label={`Refresh ${name}`}
+                      >
+                        Refresh
+                      </button>
+                    </>
+                  ) : (
                     <button
                       type="button"
-                      className="tv-btn tv-btn--sm tv-btn--ghost"
-                      disabled={cardBusy}
-                      onClick={() => void handleRefresh(s.provider)}
-                      aria-label={`Refresh ${name}`}
+                      className="tv-btn tv-btn--sm"
+                      disabled={!isDesktop || cardBusy}
+                      onClick={() => void handleConnect(s.provider)}
+                      aria-label={`Connect ${name}`}
                     >
-                      Refresh
+                      Connect
                     </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    className="tv-btn tv-btn--sm"
-                    disabled={!isDesktop || cardBusy}
-                    onClick={() => void handleConnect(s.provider)}
-                    aria-label={`Connect ${name}`}
-                  >
-                    Connect
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-      {isDesktop ? (
-        <p className="tv-engines__footnote">Subscription runs stop when Desktop quits.</p>
-      ) : (
-        <p className="tv-engines__footnote">
-          Subscription engines run on your machine — open Tvashtr Desktop to connect.
-        </p>
-      )}
+            );
+          })}
+        </div>
+      </section>
 
-      <div className="tv-engines__byok">
-        <div className="tv-engines__tier-label">API keys</div>
-        <div className="tv-dash__prov-head">
-          <div className="tv-dash__prov-lede">
-            <div className="tv-dash__prov-title">
-              <KeyRound size={16} strokeWidth={1.7} />
-              <h2>Bring your own keys</h2>
-            </div>
-            <p className="tv-dash__prov-sub">
-              Stored per account, encrypted. We only ever show the last 4 digits. Powers hosted Fly
-              runs.
-            </p>
-          </div>
-          <div className="tv-dash__prov-add">
+      <section
+        className="tv-engines__section tv-engines__section--byok"
+        aria-labelledby="tv-engines-keys"
+      >
+        <h3 id="tv-engines-keys" className="tv-engines__section-title">
+          API keys
+        </h3>
+        <p className="tv-engines__section-lede">
+          Stored per account, encrypted. We only ever show the last 4 digits. Powers hosted Fly
+          runs.
+        </p>
+        <div className="tv-engines__byok-form">
+          <label className="tv-field">
+            <span className="tv-field__label">Provider</span>
             <input
               className="tv-launch__input"
               list="tv-provider-list"
-              placeholder="provider (e.g. openrouter)"
+              placeholder="e.g. openrouter"
               aria-label="Provider"
               value={providerInput}
               onChange={(e) => setProviderInput(e.target.value)}
             />
-            <datalist id="tv-provider-list">
-              {providerSuggestions().map((p) => (
-                <option key={p} value={p} />
-              ))}
-            </datalist>
+            <span className="tv-field__hint">Must match the model slug prefix (openrouter/…).</span>
+          </label>
+          <datalist id="tv-provider-list">
+            {providerSuggestions().map((p) => (
+              <option key={p} value={p} />
+            ))}
+          </datalist>
+          <label className="tv-field">
+            <span className="tv-field__label">API key</span>
             <input
               className="tv-launch__input"
               type="password"
-              placeholder="paste API key"
+              placeholder="Paste the secret key"
               aria-label="API key"
               value={keyInput}
               onChange={(e) => setKeyInput(e.target.value)}
@@ -373,27 +377,27 @@ export function EnginesShelf() {
                 if (e.key === "Enter") void handleAddProvider();
               }}
             />
-            <button
-              type="button"
-              className="tv-btn tv-btn--sm"
-              onClick={() => void handleAddProvider()}
-              disabled={busy}
-            >
-              Add key
-            </button>
-          </div>
+          </label>
+          <button
+            type="button"
+            className="tv-btn tv-btn--sm"
+            onClick={() => void handleAddProvider()}
+            disabled={busy}
+          >
+            Add key
+          </button>
         </div>
         {!loading && providers.length === 0 ? (
-          <p className="tv-dash__prov-empty">
-            Add API keys so hosted runs can use your providers.
-          </p>
+          <p className="tv-dash__prov-empty">Add API keys so hosted runs can use your providers.</p>
         ) : (
           <ul className="tv-dash__prov-list">
             {providers.map((p) => (
-              <li className="tv-dash__prov-chip" key={p.provider}>
+              <li className="tv-dash__prov-chip tv-dash__prov-chip--key" key={p.provider}>
                 <span className="tv-dash__prov-dot" />
                 <span className="tv-dash__prov-name">{p.provider}</span>
-                <span className="tv-dash__prov-last4">•••• {p.key_last4}</span>
+                <span className="tv-dash__prov-last4" title={`Saved key ending in ${p.key_last4}`}>
+                  Saved · •••• {p.key_last4}
+                </span>
                 <button
                   type="button"
                   className="tv-dash__prov-remove"
@@ -412,7 +416,7 @@ export function EnginesShelf() {
             {addError}
           </div>
         )}
-      </div>
+      </section>
     </section>
   );
 }

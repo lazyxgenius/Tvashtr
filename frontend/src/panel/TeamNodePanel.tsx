@@ -981,9 +981,9 @@ export function TeamNodePanel({
             </datalist>
           </div>
           {treatment === "subscription" && (
-            <span className="tv-engines-pill">via subscription (local)</span>
+            <span className="tv-engines__pill">via subscription (local)</span>
           )}
-          {treatment === "byok" && <span className="tv-engines-pill">via API key</span>}
+          {treatment === "byok" && <span className="tv-engines__pill">via API key</span>}
 
           {addOpen && (
             <div className="tv-node-addprov">

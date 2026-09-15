@@ -1383,6 +1383,12 @@ body,
   border: var(--border-width) solid var(--border-hairline);
   color: var(--ink-700);
 }
+.tv-dash__team-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
 .tv-dash__team-name {
   font-size: 14px;
   font-weight: var(--fw-medium);
@@ -1390,6 +1396,49 @@ body,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.tv-dash__team-meta {
+  font-size: 12px;
+  font-family: var(--font-code);
+  color: var(--ink-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv-dash__status-btn {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  cursor: pointer;
+  font: inherit;
+}
+.tv-dash__trow-del--quiet {
+  color: var(--stone-400);
+  opacity: 0.7;
+}
+.tv-dash__trow:hover .tv-dash__trow-del--quiet,
+.tv-dash__trow-del--quiet:focus-visible {
+  opacity: 1;
+  color: var(--ink-600);
+}
+.tv-dash__recover {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 var(--space-6) 12px calc(var(--space-6) + 40px);
+  background: var(--red-100);
+}
+.tv-dash__recover-msg {
+  margin: 0;
+  font-size: 13px;
+  color: color-mix(in srgb, var(--red-500) 70%, var(--ink-900));
+}
+.tv-dash__recover-acts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .tv-dash__tcell--num {
   text-align: right;
@@ -1625,9 +1674,9 @@ body,
 }
 .tv-dash__prov-sub {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.5;
-  color: var(--text-tertiary);
+  color: var(--ink-500);
 }
 .tv-dash__prov-add {
   display: flex;
@@ -1660,9 +1709,13 @@ body,
   gap: 10px;
   padding: 9px 13px;
   border-radius: var(--radius-lg);
-  border: var(--border-width) solid var(--border-hairline);
-  background: var(--surface-page);
+  border: var(--border-width) solid var(--border-strong);
+  background: var(--cream-50);
   white-space: nowrap;
+}
+.tv-dash__prov-chip--key {
+  padding: 10px 14px;
+  box-shadow: var(--shadow-xs);
 }
 .tv-dash__prov-dot {
   width: 7px;
@@ -1678,8 +1731,8 @@ body,
 }
 .tv-dash__prov-last4 {
   font-family: var(--font-code);
-  font-size: 12px;
-  color: var(--text-tertiary);
+  font-size: 12.5px;
+  color: var(--ink-600);
 }
 .tv-dash__prov-remove {
   display: flex;
@@ -1701,7 +1754,6 @@ body,
   color: var(--text-secondary);
 }
 
-
 .tv-engines {
   padding: 20px var(--space-6);
 }
@@ -1717,17 +1769,72 @@ body,
   font-size: 19px;
 }
 .tv-engines__sub {
-  margin: 6px 0 16px;
-  font-size: 12.5px;
-  color: var(--text-tertiary);
-  max-width: 520px;
+  margin: 6px 0 18px;
+  font-size: 13px;
+  color: var(--ink-500);
+  max-width: 560px;
 }
-.tv-engines__tier-label {
-  font-size: 11px;
+.tv-engines__section {
+  margin-top: 4px;
+}
+.tv-engines__section-title {
+  margin: 0 0 10px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--text-tertiary);
-  margin: 12px 0 8px;
+  color: var(--ink-700);
+}
+.tv-engines__section-lede {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-500);
+  max-width: 560px;
+}
+.tv-engines__callout {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-700);
+  background: var(--blue-100);
+  border: 1px solid var(--blue-500);
+  border-radius: var(--radius-md);
+}
+.tv-engines__section--byok {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-400);
+}
+.tv-engines__byok-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  gap: 12px 14px;
+  align-items: end;
+}
+.tv-engines__byok-form .tv-field {
+  min-width: 0;
+}
+.tv-engines__byok-form .tv-btn {
+  height: 38px;
+  align-self: end;
+}
+.tv-engines__byok-form .tv-launch__input {
+  width: 100%;
+  max-width: none;
+}
+@media (max-width: 720px) {
+  .tv-engines__byok-form {
+    grid-template-columns: 1fr;
+  }
+}
+.tv-engines .tv-launch__input::placeholder,
+.tv-dash__library .tv-launch__input::placeholder,
+.tv-dash__prov-add--labeled .tv-launch__input::placeholder {
+  color: var(--ink-500);
+  opacity: 0.8;
 }
 .tv-engines__cards {
   display: grid;
@@ -1740,7 +1847,7 @@ body,
   }
 }
 .tv-engines__card {
-  border: 1px solid var(--line-300);
+  border: 1px solid var(--line-400);
   background: var(--cream-50, var(--cream-100));
   border-radius: 12px;
   padding: 14px 14px 12px;
@@ -1761,14 +1868,26 @@ body,
 .tv-engines__card-name {
   font-family: var(--font-display);
   font-size: 16px;
+  color: var(--ink-900);
 }
-.tv-engines__pill {
+.tv-engines__pill,
+.tv-engines-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
   font-size: 11px;
-  color: var(--ink-600);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-700);
+  background: var(--panel-300);
+  border: 1px solid var(--line-400);
+  border-radius: 999px;
+  white-space: nowrap;
 }
 .tv-engines__hint {
-  font-size: 12px;
-  color: var(--text-tertiary);
+  font-size: 12.5px;
+  color: var(--ink-500);
 }
 .tv-engines__actions {
   display: flex;
@@ -1776,15 +1895,64 @@ body,
   margin-top: auto;
   flex-wrap: wrap;
 }
-.tv-engines__footnote {
-  margin-top: 10px;
-  font-size: 12px;
-  color: var(--text-tertiary);
+
+.tv-dash__library {
+  padding: 20px var(--space-6);
 }
-.tv-engines__byok {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line-200);
+.tv-dash__library-head {
+  max-width: none;
+  margin-bottom: 16px;
+}
+.tv-dash__library-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px 20px;
+  align-items: start;
+}
+.tv-dash__library-span {
+  grid-column: 1 / -1;
+}
+.tv-dash__library-kv {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.tv-dash__library-kv .tv-launch__input {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+.tv-dash__library-advanced summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-500);
+}
+.tv-dash__library-advanced .tv-node-prompt {
+  margin-top: 8px;
+  width: 100%;
+}
+.tv-dash__library-actions {
+  display: flex;
+  gap: 8px;
+}
+.tv-dash__library-form .tv-launch__input {
+  width: 100%;
+  max-width: none;
+}
+@media (max-width: 720px) {
+  .tv-dash__library-form {
+    grid-template-columns: 1fr;
+  }
+}
+.tv-dash__prov-add--labeled {
+  align-items: end;
+}
+.tv-dash__prov-add--labeled .tv-field {
+  flex: 1;
+  min-width: 150px;
+}
+.tv-dash__prov-add--labeled .tv-launch__input {
+  max-width: none;
 }
 
 /* The New-team / delete pop-ups — a centered card over the shared .tv-scrim (dimmed dashboard). */

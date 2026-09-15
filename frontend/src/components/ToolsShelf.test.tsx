@@ -192,4 +192,13 @@ describe("ToolsShelf (M-tools C7.C)", () => {
     const raw = screen.getByLabelText<HTMLTextAreaElement>("Server config JSON");
     expect(JSON.parse(raw.value)).toEqual({ url: "uvx" });
   });
+
+  it("lays the add-tool form out in a library grid, not a skinny head rail", () => {
+    render(<ToolsShelf />);
+    const form = document.querySelector(".tv-dash__library-form");
+    expect(form).not.toBeNull();
+    expect(form?.closest(".tv-dash__prov-head")).toBeNull();
+    expect(screen.getByText("Name")).toBeInTheDocument();
+    expect(screen.getByText("Command")).toBeInTheDocument();
+  });
 });
