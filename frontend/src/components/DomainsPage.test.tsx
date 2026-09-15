@@ -12,12 +12,20 @@ vi.mock("../lib/api", () => ({
   getDomain: vi.fn(),
   updateDomain: vi.fn(),
   deleteDomain: vi.fn(),
+  listDomainDocuments: vi.fn(),
+  uploadDomainDocument: vi.fn(),
+  deleteDomainDocument: vi.fn(),
+  ingestDomain: vi.fn(),
 }));
 
 const m = api as unknown as {
   listDomains: Mock;
   getDomainTemplates: Mock;
   getDomain: Mock;
+  listDomainDocuments: Mock;
+  uploadDomainDocument: Mock;
+  deleteDomainDocument: Mock;
+  ingestDomain: Mock;
 };
 
 describe("DomainsPage list", () => {
@@ -26,6 +34,7 @@ describe("DomainsPage list", () => {
     m.getDomainTemplates.mockResolvedValue([
       { template: "blank", name: "Blank", description: "Default config" },
     ]);
+    m.listDomainDocuments.mockResolvedValue([]);
   });
 
   it("shows empty state and opens new-domain dialog", async () => {
@@ -104,9 +113,11 @@ describe("DomainsPage delete confirm", () => {
       },
     ]);
     m.getDomain.mockResolvedValue(detail);
+    m.listDomainDocuments.mockResolvedValue([]);
     (api.deleteDomain as Mock).mockResolvedValue(undefined);
     m.listDomains.mockClear();
     m.getDomain.mockClear();
+    m.listDomainDocuments.mockClear();
     (api.deleteDomain as Mock).mockClear();
   });
 
@@ -147,5 +158,75 @@ describe("DomainsPage delete confirm", () => {
     expect(confirmSpy).toHaveBeenCalled();
     await waitFor(() => expect(api.deleteDomain).toHaveBeenCalledWith("d1"));
     confirmSpy.mockRestore();
+  });
+});
+
+describe("DomainsPage Documents tab", () => {
+  beforeEach(() => {
+    m.listDomains.mockResolvedValue([]);
+    m.getDomainTemplates.mockResolvedValue([
+      { template: "blank", name: "Blank", description: "Default config" },
+    ]);
+    m.listDomainDocuments.mockResolvedValue([]);
+    m.ingestDomain.mockResolvedValue(undefined);
+  });
+
+  it("shows Documents tab with ingest and no Chat tab", async () => {
+    const user = userEvent.setup();
+    m.listDomains.mockResolvedValue([
+      {
+        domain_id: "d1",
+        name: "Support docs",
+        template: "support",
+        config: { embedding: { model: "text-embedding-3-small" } },
+        status: "empty",
+        doc_count: 0,
+        created_at: "2026-09-15T00:00:00Z",
+        updated_at: "2026-09-15T00:00:00Z",
+      },
+    ]);
+    m.getDomain.mockResolvedValue({
+      domain_id: "d1",
+      name: "Support docs",
+      template: "support",
+      config: {
+        chunking: { strategy: "fixed", size: 600, overlap: 100 },
+        embedding: { model: "text-embedding-3-small" },
+        retrieval: { top_k: 8, mode: "dense" },
+        generation: { model: null },
+      },
+      status: "indexing",
+      doc_count: 1,
+      created_at: "2026-09-15T00:00:00Z",
+      updated_at: "2026-09-15T00:00:00Z",
+    });
+    m.listDomainDocuments.mockResolvedValue([
+      {
+        document_id: "doc1",
+        domain_id: "d1",
+        filename: "notes.txt",
+        content_type: "text/plain",
+        byte_size: 5,
+        ingest_status: "pending",
+        error_message: null,
+        version: 1,
+        created_at: "2026-09-15T00:00:00Z",
+        updated_at: "2026-09-15T00:00:00Z",
+      },
+    ]);
+    m.ingestDomain.mockResolvedValue({
+      domain_id: "d1",
+      workflow_id: "wf1",
+      status: "indexing",
+    });
+
+    render(<DomainsPage />);
+    await user.click(await screen.findByRole("button", { name: /Support docs/i }));
+    await user.click(await screen.findByRole("tab", { name: /Documents/i }));
+    expect(await screen.findByText("notes.txt")).toBeTruthy();
+    expect(screen.getByText(/pending/i)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /Ingest/i }));
+    await waitFor(() => expect(m.ingestDomain).toHaveBeenCalledWith("d1"));
+    expect(screen.queryByRole("tab", { name: /Chat/i })).toBeNull();
   });
 });
