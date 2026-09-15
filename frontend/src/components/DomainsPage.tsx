@@ -2,23 +2,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 
 import {
+  askDomain,
   deleteDomain,
   deleteDomainDocument,
   getDomain,
   ingestDomain,
   listDomainDocuments,
+  listDomainMessages,
   listDomains,
   updateDomain,
   uploadDomainDocument,
   type DomainDetail,
   type DomainDocumentSummary,
+  type DomainMessageSummary,
   type DomainSummary,
 } from "../lib/api";
 import { labelForDomainTemplate } from "../lib/domains";
 import { DomainConfigForm } from "./DomainConfigForm";
 import { NewDomainDialog } from "./NewDomainDialog";
 
-type DetailTab = "overview" | "documents" | "config";
+type DetailTab = "overview" | "documents" | "chat" | "config";
 
 export function DomainsPage() {
   const [domains, setDomains] = useState<DomainSummary[]>([]);
@@ -29,6 +32,10 @@ export function DomainsPage() {
   const [documents, setDocuments] = useState<DomainDocumentSummary[]>([]);
   const [tab, setTab] = useState<DetailTab>("overview");
   const [busy, setBusy] = useState(false);
+  const [messages, setMessages] = useState<DomainMessageSummary[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -80,6 +87,21 @@ export function DomainsPage() {
     };
   }, [selectedId]);
 
+  useEffect(() => {
+    if (!selectedId || tab !== "chat") return;
+    let cancelled = false;
+    listDomainMessages(selectedId)
+      .then((rows) => {
+        if (!cancelled) setMessages(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setMessages([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, tab]);
+
   if (selectedId && detail) {
     return (
       <div className="tv-domains">
@@ -121,6 +143,15 @@ export function DomainsPage() {
           <button
             type="button"
             role="tab"
+            aria-selected={tab === "chat"}
+            className={`tv-domains__tab${tab === "chat" ? " tv-domains__tab--active" : ""}`}
+            onClick={() => setTab("chat")}
+          >
+            Chat
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={tab === "config"}
             className={`tv-domains__tab${tab === "config" ? " tv-domains__tab--active" : ""}`}
             onClick={() => setTab("config")}
@@ -153,8 +184,9 @@ export function DomainsPage() {
               </div>
             </dl>
             <p className="tv-domains__hint">
-              Upload and ingest documents under Documents. Chat arrives in Phase 3. Configure
-              chunking and retrieval under Config; set provider keys under Engines before ingest.
+              Upload and ingest documents under Documents. Ask questions under Chat after ingest.
+              Configure chunking and retrieval under Config; set provider keys under Engines before
+              ingest.
             </p>
             <button
               type="button"
@@ -295,6 +327,74 @@ export function DomainsPage() {
                 ))}
               </ul>
             )}
+          </section>
+        )}
+        {tab === "chat" && detail && (
+          <section className="tv-domains__panel" aria-label="Chat">
+            <div className="tv-domains__chat-log" role="log" aria-live="polite">
+              {messages.length === 0 ? (
+                <p className="tv-domains__hint">
+                  Ask a question about ingested documents. Answers include citations.
+                </p>
+              ) : (
+                messages.map((msg) => (
+                  <div
+                    key={msg.message_id}
+                    className={`tv-domains__chat-bubble tv-domains__chat-bubble--${msg.role}`}
+                  >
+                    <div className="tv-domains__chat-role">{msg.role}</div>
+                    <div className="tv-domains__chat-content">{msg.content}</div>
+                    {msg.role === "assistant" && msg.citations && msg.citations.length > 0 && (
+                      <ul className="tv-domains__citations">
+                        {msg.citations.map((c) => (
+                          <li key={`${c.chunk_id}-${c.ordinal}`}>
+                            <span className="tv-domains__cite-source">{c.filename}</span>
+                            <span className="tv-domains__cite-excerpt">{c.excerpt}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {msg.role === "assistant" && msg.latency_ms != null && (
+                      <div className="tv-domains__chat-meta">{msg.latency_ms} ms</div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+            {chatError && <p className="tv-domains__docs-err">{chatError}</p>}
+            <form
+              className="tv-domains__chat-composer"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!detail || !chatDraft.trim() || chatBusy) return;
+                setChatBusy(true);
+                setChatError(null);
+                try {
+                  await askDomain(detail.domain_id, chatDraft.trim());
+                  setChatDraft("");
+                  setMessages(await listDomainMessages(detail.domain_id));
+                } catch (err) {
+                  setChatError(err instanceof Error ? err.message : String(err));
+                } finally {
+                  setChatBusy(false);
+                }
+              }}
+            >
+              <label className="tv-domains__chat-label" htmlFor="domain-chat-input">
+                Ask the domain
+              </label>
+              <textarea
+                id="domain-chat-input"
+                className="tv-domains__chat-input"
+                rows={3}
+                value={chatDraft}
+                disabled={chatBusy}
+                onChange={(ev) => setChatDraft(ev.target.value)}
+              />
+              <button type="submit" disabled={chatBusy || !chatDraft.trim()}>
+                Ask
+              </button>
+            </form>
           </section>
         )}
         {tab === "config" && (

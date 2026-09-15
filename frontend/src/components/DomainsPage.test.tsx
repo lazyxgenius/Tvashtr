@@ -16,6 +16,8 @@ vi.mock("../lib/api", () => ({
   uploadDomainDocument: vi.fn(),
   deleteDomainDocument: vi.fn(),
   ingestDomain: vi.fn(),
+  listDomainMessages: vi.fn(),
+  askDomain: vi.fn(),
 }));
 
 const m = api as unknown as {
@@ -26,6 +28,8 @@ const m = api as unknown as {
   uploadDomainDocument: Mock;
   deleteDomainDocument: Mock;
   ingestDomain: Mock;
+  listDomainMessages: Mock;
+  askDomain: Mock;
 };
 
 describe("DomainsPage list", () => {
@@ -35,6 +39,23 @@ describe("DomainsPage list", () => {
       { template: "blank", name: "Blank", description: "Default config" },
     ]);
     m.listDomainDocuments.mockResolvedValue([]);
+    m.listDomainMessages.mockResolvedValue([]);
+    m.askDomain.mockResolvedValue({
+      answer: "Cited answer",
+      citations: [
+        {
+          document_id: "doc1",
+          filename: "faq.txt",
+          chunk_id: "c1",
+          ordinal: 0,
+          excerpt: "Refunds take 5 days",
+          score: 0.9,
+        },
+      ],
+      message_id: "m1",
+      user_message_id: "m0",
+      latency_ms: 12,
+    });
   });
 
   it("shows empty state and opens new-domain dialog", async () => {
@@ -169,9 +190,26 @@ describe("DomainsPage Documents tab", () => {
     ]);
     m.listDomainDocuments.mockResolvedValue([]);
     m.ingestDomain.mockResolvedValue(undefined);
+    m.listDomainMessages.mockResolvedValue([]);
+    m.askDomain.mockResolvedValue({
+      answer: "Cited answer",
+      citations: [
+        {
+          document_id: "doc1",
+          filename: "faq.txt",
+          chunk_id: "c1",
+          ordinal: 0,
+          excerpt: "Refunds take 5 days",
+          score: 0.9,
+        },
+      ],
+      message_id: "m1",
+      user_message_id: "m0",
+      latency_ms: 12,
+    });
   });
 
-  it("shows Documents tab with ingest and no Chat tab", async () => {
+  it("shows Documents tab with ingest and Chat tab", async () => {
     const user = userEvent.setup();
     m.listDomains.mockResolvedValue([
       {
@@ -257,6 +295,113 @@ describe("DomainsPage Documents tab", () => {
       ),
     );
     expect(m.listDomainDocuments.mock.calls.length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByRole("tab", { name: /Chat/i })).toBeNull();
+    expect(screen.getByRole("tab", { name: /^Chat$/i })).toBeTruthy();
+  });
+});
+
+describe("DomainsPage Chat tab", () => {
+  const detail = {
+    domain_id: "d1",
+    name: "Support docs",
+    template: "support",
+    config: {
+      chunking: { strategy: "fixed", size: 600, overlap: 100 },
+      embedding: { model: "text-embedding-3-small" },
+      retrieval: { top_k: 8, mode: "dense" },
+      generation: { model: null },
+    },
+    status: "ready",
+    doc_count: 1,
+    created_at: "2026-09-15T00:00:00Z",
+    updated_at: "2026-09-15T00:00:00Z",
+  };
+
+  beforeEach(() => {
+    m.listDomains.mockResolvedValue([
+      {
+        domain_id: "d1",
+        name: "Support docs",
+        template: "support",
+        config: detail.config,
+        status: "ready",
+        doc_count: 1,
+        created_at: detail.created_at,
+        updated_at: detail.updated_at,
+      },
+    ]);
+    m.getDomain.mockResolvedValue(detail);
+    m.listDomainDocuments.mockResolvedValue([]);
+    m.listDomainMessages.mockResolvedValue([
+      {
+        message_id: "u1",
+        domain_id: "d1",
+        role: "user",
+        content: "How long for refunds?",
+        citations: null,
+        latency_ms: null,
+        cost_usd: null,
+        created_at: "2026-09-15T01:00:00Z",
+      },
+      {
+        message_id: "a1",
+        domain_id: "d1",
+        role: "assistant",
+        content: "About 5 business days.",
+        citations: [
+          {
+            document_id: "doc1",
+            filename: "faq.txt",
+            chunk_id: "c1",
+            ordinal: 0,
+            excerpt: "Refunds take 5 business days.",
+          },
+        ],
+        latency_ms: 40,
+        cost_usd: null,
+        created_at: "2026-09-15T01:00:01Z",
+      },
+    ]);
+    m.askDomain.mockResolvedValue({
+      answer: "Cited answer",
+      citations: [
+        {
+          document_id: "doc1",
+          filename: "faq.txt",
+          chunk_id: "c1",
+          ordinal: 0,
+          excerpt: "Refunds take 5 days",
+          score: 0.9,
+        },
+      ],
+      message_id: "m1",
+      user_message_id: "m0",
+      latency_ms: 12,
+    });
+  });
+
+  it("shows Chat tab and loads messages", async () => {
+    const user = userEvent.setup();
+    render(<DomainsPage />);
+    await user.click(await screen.findByRole("button", { name: /Support docs/i }));
+    const chatTab = await screen.findByRole("tab", { name: /^Chat$/i });
+    await user.click(chatTab);
+    await waitFor(() => expect(m.listDomainMessages).toHaveBeenCalledWith("d1"));
+    expect(await screen.findByText(/How long for refunds/i)).toBeTruthy();
+    expect(screen.getByText(/About 5 business days/i)).toBeTruthy();
+    expect(screen.getByText(/faq\.txt/i)).toBeTruthy();
+  });
+
+  it("sends a question via composer", async () => {
+    const user = userEvent.setup();
+    m.listDomainMessages.mockResolvedValue([]);
+    render(<DomainsPage />);
+    await user.click(await screen.findByRole("button", { name: /Support docs/i }));
+    await user.click(await screen.findByRole("tab", { name: /^Chat$/i }));
+    const input = await screen.findByLabelText(/Ask the domain/i);
+    await user.type(input, "What is the refund policy?");
+    await user.click(screen.getByRole("button", { name: /^Ask$/i }));
+    await waitFor(() =>
+      expect(m.askDomain).toHaveBeenCalledWith("d1", "What is the refund policy?"),
+    );
   });
 });
