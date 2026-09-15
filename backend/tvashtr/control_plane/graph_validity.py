@@ -157,6 +157,13 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> dict:
                     "This worker has no outgoing connection — add a 'Then →' or a branch edge.",
                     node_id=nid,
                 )
+        elif kind == "domain_query":
+            if next_node(redges, nid, None) is None:
+                err(
+                    "no_exit",
+                    "This Query domain node has no outgoing connection — add a 'Then →' edge.",
+                    node_id=nid,
+                )
         elif kind == "gate":
             if next_node(redges, nid, "approved") is None:
                 err(
@@ -172,6 +179,19 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> dict:
                     "it goes when rejected.",
                     node_id=nid,
                 )
+
+    for nid in sorted(reachable):
+        n = nodes_by_id[nid]
+        if n.get("kind") != "domain_query":
+            continue
+        cfg = n.get("config") or {}
+        did = cfg.get("domain_id") if isinstance(cfg, dict) else None
+        if not did:
+            err(
+                "domain_query_no_domain",
+                "Select a Domain on this Query domain node before running.",
+                node_id=nid,
+            )
 
     # --- BLOCK 3b: every reachable non-terminal node can reach a terminal (no dead-end). ---
     for nid in sorted(reachable):
@@ -253,7 +273,7 @@ def graph_dicts(session, graph_id) -> tuple[list[dict], list[dict]]:
         .all()
     )
     edges = session.execute(select(Edge).where(Edge.team_graph_id == graph_id)).scalars().all()
-    node_dicts = [{"id": str(n.id), "kind": n.kind} for n in nodes]
+    node_dicts = [{"id": str(n.id), "kind": n.kind, "config": n.config} for n in nodes]
     edge_dicts = [
         {
             "id": str(e.id),

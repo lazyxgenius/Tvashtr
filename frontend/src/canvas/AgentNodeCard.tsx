@@ -310,11 +310,29 @@ function TerminalCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData
   );
 }
 
-/** The custom team-node, dispatched by `kind`: gate → checkpoint, terminal → endpoint, and
- *  agent/completion → the paper role card. Every variant carries the same 8-handle scheme. */
+/** Phase 4a: compact Query-domain card — eyebrow + title + domain-selected blurb. */
+function DomainQueryCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) {
+  const cfg = (d.config || {}) as { domain_id?: string | null };
+  return (
+    <div className={`rf-node rf-node--domain-query${flagClasses(d)}`} title={d.errorMessage}>
+      <NodeHandles />
+      <NodeAffordances nodeId={nodeId} hovered={d.hovered} />
+      <div className="rf-node__eyebrow">Query domain</div>
+      <div className="rf-node__title">Domain ask</div>
+      <div className="rf-node__blurb">
+        {cfg.domain_id ? "Domain selected" : "Select a Domain"}
+      </div>
+      <StatusPill status={d.status} />
+    </div>
+  );
+}
+
+/** The custom team-node, dispatched by `kind`: gate → checkpoint, terminal → endpoint,
+ *  domain_query → Query domain card, and agent/completion → the paper role card. */
 export function AgentNodeCard({ id, data }: NodeProps) {
   const d = data as unknown as AgentNodeData;
   if (d.kind === "gate") return <GateCard nodeId={id} data={d} />;
   if (d.kind === "terminal") return <TerminalCard nodeId={id} data={d} />;
+  if (d.kind === "domain_query") return <DomainQueryCard nodeId={id} data={d} />;
   return <AgentCard nodeId={id} data={d} />;
 }

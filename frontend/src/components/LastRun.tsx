@@ -1,4 +1,4 @@
-import type { ContextManifest, InvocationCost } from "../lib/api";
+import type { ContextManifest, DomainCitation, InvocationCost } from "../lib/api";
 import { reviewerVerdictLabel } from "../lib/status";
 import { titleCase } from "../lib/text";
 import { formatRelativeTime } from "../lib/time";
@@ -19,7 +19,13 @@ export interface LastRunRound {
   // the node's `invocations` (which carry both from the /graph contract); the AUTHORING caller
   // passes NEITHER, so its render stays byte-identical. Present ⇒ a cost line / the manifest table.
   cost?: InvocationCost | null;
-  context_manifest?: ContextManifest | null;
+  context_manifest?: (ContextManifest & {
+    citations?: DomainCitation[];
+    domain_id?: string;
+    latency_ms?: number | null;
+    model?: string | null;
+    message_id?: string | null;
+  }) | null;
 }
 
 // Humanized labels for the per-round "Last run" outcomes. The reviewer outcomes (approved /
@@ -31,6 +37,7 @@ const OUTCOME_LABELS: Record<string, string> = {
   approved: "Approved",
   changes_requested: "Changes requested",
   over_budget: "Over budget",
+  answered: "Answered",
 };
 
 function outcomeLabel(outcome: string | null): string {
@@ -81,8 +88,23 @@ export function LastRun({
                 <span className="tv-verdict__label">{label}</span>
               </div>
               {r.outcome_detail && <p className="tv-verdict__reasons">{r.outcome_detail}</p>}
+              {Array.isArray(r.context_manifest?.citations) &&
+                r.context_manifest.citations.length > 0 && (
+                  <ul className="tv-verdict__citations">
+                    {r.context_manifest.citations.map((c, i) => (
+                      <li key={c.chunk_id ?? i}>
+                        <span className="tv-verdict__cite-file">{c.filename ?? "source"}</span>
+                        {c.excerpt ? (
+                          <span className="tv-verdict__cite-excerpt">{c.excerpt}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               {r.cost && <p className="tv-verdict__cost">{costSummary(r.cost)}</p>}
-              {r.context_manifest && <ContextManifestTable manifest={r.context_manifest} />}
+              {r.context_manifest && Array.isArray(r.context_manifest.parts) && (
+                <ContextManifestTable manifest={r.context_manifest} />
+              )}
             </li>
           );
         })}

@@ -42,7 +42,10 @@ export interface GateConfig {
 export interface TerminalConfig {
   terminal_kind: "ship" | "stop";
 }
-export type NodeConfig = GateConfig | TerminalConfig | Record<string, unknown>;
+export interface DomainQueryConfig {
+  domain_id: string | null;
+}
+export type NodeConfig = GateConfig | TerminalConfig | DomainQueryConfig | Record<string, unknown>;
 
 // M-ledger C6: the per-round context-budget snapshot for a worker round — each context part with
 // its token size, the round total, the budget, and whether the spec was offloaded to a doc handle
@@ -82,7 +85,14 @@ export interface NodeInvocation {
   // M-ledger C6 (additive): the round's context-budget snapshot (worker rounds) + its token/$ cost.
   // Both `null` for rounds the backend links no ledger row to (thinker / gate / terminal / a
   // zero-usage reviewer round).
-  context_manifest: ContextManifest | null;
+  // Phase 4a: domain_query closes may attach citations / domain metadata on the same shape.
+  context_manifest: (ContextManifest & {
+    citations?: DomainCitation[];
+    domain_id?: string;
+    latency_ms?: number | null;
+    model?: string | null;
+    message_id?: string | null;
+  }) | null;
   cost: InvocationCost | null;
 }
 
@@ -1148,11 +1158,28 @@ export async function updateTerminalNode(
   return (await res.json()) as TeamGraphNode;
 }
 
+// Phase 4a: persist an edited domain_query node's selected domain + prompt. Same PATCH endpoint;
+// the backend branches on node.kind.
+export async function updateDomainQueryNode(
+  teamId: string,
+  nodeId: string,
+  body: { domain_id?: string | null; prompt?: string },
+): Promise<TeamGraphNode> {
+  const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok)
+    throw new Error(`PATCH domain_query /api/teams/${teamId}/nodes/${nodeId} -> ${res.status}`);
+  return (await res.json()) as TeamGraphNode;
+}
+
 // ---- Topology editing (P1.8d): node/edge CRUD + position persistence + the validity verdict ----
 
 // The canvas vocabulary the palette drops + the four edge roles the inline editor offers. Each maps
 // server-side onto the (kind, engine) / (edge_type, conditions) the executor routes on.
-export type NodeKind = "thinker" | "worker" | "gate" | "terminal";
+export type NodeKind = "thinker" | "worker" | "gate" | "terminal" | "domain_query";
 export type EdgeRole = "forward" | "branch" | "loop_back" | "escalation";
 export type RolePreset = "pm" | "architect" | "engineer" | "reviewer";
 
@@ -1165,6 +1192,7 @@ export interface CreateNodeBody {
   title?: string; // gate
   description?: string; // gate
   terminal_kind?: "ship" | "stop"; // terminal (required)
+  domain_id?: string | null; // domain_query
 }
 
 // One holistic-validity finding (mirrors the backend `validate_graph` shape exactly). `node_id` /
