@@ -13,6 +13,7 @@ const { app, BrowserWindow, shell, ipcMain, safeStorage } = require("electron");
 const path = require("path");
 const { createRegistry } = require("./harness/registry.cjs");
 const { createStatusStore, sanitizeStatus } = require("./harness/statusStore.cjs");
+const { createLocalRunSupervisor } = require("./harness/localRuns.cjs");
 
 const DESKTOP_ROOT = path.join(__dirname, "..");
 
@@ -28,10 +29,14 @@ let apiBaseOrigin = "https://tvashtr.fly.dev";
 
 const PROVIDERS = ["claude", "grok", "codex"];
 
-/** No-op until Task 9 wires local subscription runs. */
-const localRuns = {
-  stopAll() {},
-};
+/** Local subscription-run supervisor (skeleton); stopped on before-quit. */
+let localRunSupervisor = createLocalRunSupervisor({
+  sendLog(payload) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("tvashtr:runs:log", payload);
+    }
+  },
+});
 
 function emptyStatus(provider) {
   return {
@@ -105,6 +110,15 @@ function registerEngineIpc() {
     const status = toRendererStatus(await harness.toStatus(), id);
     store.write(id, status);
     return status;
+  });
+}
+
+function registerRunsIpc() {
+  ipcMain.handle("tvashtr:runs:startLocal", async (_e, payload) => {
+    return localRunSupervisor.startLocal(payload || {});
+  });
+  ipcMain.handle("tvashtr:runs:stopLocal", async (_e, localRunId) => {
+    await localRunSupervisor.stopLocal(localRunId);
   });
 }
 
@@ -277,6 +291,7 @@ async function boot() {
 
 app.whenReady().then(() => {
   registerEngineIpc();
+  registerRunsIpc();
   boot().catch((err) => {
     console.error("[tvashtr-desktop] failed to start:", err);
     app.exit(1);
@@ -298,7 +313,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   try {
-    localRuns.stopAll();
+    void localRunSupervisor.stopAll();
   } catch {
     /* ignore */
   }
