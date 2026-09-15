@@ -79,6 +79,14 @@ from tvashtr.control_plane.teams import (
     seed_library_if_empty,
 )
 from tvashtr.control_plane.worktree import repo_inspect, repo_subpaths, subpath_is_tracked_dir
+from tvashtr.control_plane.domains import (
+    create_domain,
+    delete_domain,
+    get_domain,
+    list_domain_templates,
+    list_domains,
+    update_domain,
+)
 from tvashtr.documents.service import (
     add_version,
     get_document_with_versions,
@@ -287,6 +295,17 @@ class CreateTeamRequest(BaseModel):
     template: str
     name: str
 
+
+
+
+class CreateDomainRequest(BaseModel):
+    template: str
+    name: str
+
+
+class UpdateDomainRequest(BaseModel):
+    name: str | None = None
+    config: dict | None = None
 
 class RenameTeamRequest(BaseModel):
     """Rename a library team: the new ``name``. Trimmed + required — enforced in
@@ -2367,6 +2386,81 @@ def create_team(
     except KeyError as exc:
         raise HTTPException(status_code=400, detail="unknown template") from exc
     return get_team_summary(team_graph_id)
+
+
+@router.get("/api/domain-templates")
+def get_domain_templates(
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    return {"templates": list_domain_templates()}
+
+
+@router.get("/api/domains")
+def get_domains(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    return {"domains": list_domains(uuid.UUID(current_user.id))}
+
+
+@router.post("/api/domains")
+def post_domain(
+    body: CreateDomainRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    owner_id = uuid.UUID(current_user.id)
+    try:
+        return create_domain(owner_id, body.name, body.template)
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail="unknown template") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _parse_domain_id(domain_id: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(domain_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid domain id") from exc
+
+
+@router.get("/api/domains/{domain_id}")
+def get_domain_endpoint(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    row = get_domain(uuid.UUID(current_user.id), _parse_domain_id(domain_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="domain not found")
+    return row
+
+
+@router.patch("/api/domains/{domain_id}")
+def patch_domain(
+    domain_id: str,
+    body: UpdateDomainRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    try:
+        row = update_domain(
+            uuid.UUID(current_user.id),
+            _parse_domain_id(domain_id),
+            name=body.name,
+            config=body.config,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="domain not found")
+    return row
+
+
+@router.delete("/api/domains/{domain_id}")
+def delete_domain_endpoint(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    did = _parse_domain_id(domain_id)
+    ok = delete_domain(uuid.UUID(current_user.id), did)
+    if not ok:
+        raise HTTPException(status_code=404, detail="domain not found")
+    return {"domain_id": str(did), "deleted": True}
+
 
 
 def _latest_invocation_by_origin(
