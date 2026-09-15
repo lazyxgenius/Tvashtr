@@ -20,6 +20,7 @@ dependencies = [
     "openhands-tools==1.28.1",
     "openhands-workspace==1.28.1",
     "pgvector>=0.5.0",
+    "pypdf>=5.0",
 ]
 
 [project.optional-dependencies]
