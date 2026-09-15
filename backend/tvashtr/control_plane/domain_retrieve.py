@@ -228,3 +228,54 @@ def retrieve_lexical_chunks(
             )
         return out
 
+
+
+def retrieve_for_query(
+    domain_id: uuid.UUID,
+    query: str,
+    *,
+    query_embedding: list[float] | None,
+    top_k: int,
+    mode: str = DEFAULT_RETRIEVAL_MODE,
+    rerank: dict | None = None,
+) -> list[dict]:
+    """Shared retrieve path for Chat / Query node / HTTP retrieve / MCP.
+
+    dense | lexical | hybrid (RRF). When rerank.enabled, fetch candidate_k then
+    passthrough-rerank and slice to top_k.
+    """
+    try:
+        k_final = int(top_k) if top_k is not None else 8
+    except (TypeError, ValueError):
+        k_final = 8
+    k_final = max(1, k_final)
+    mode_n = str(mode or DEFAULT_RETRIEVAL_MODE).strip().lower()
+    if mode_n not in RETRIEVAL_MODES:
+        mode_n = DEFAULT_RETRIEVAL_MODE
+    rr = rerank if isinstance(rerank, dict) else {}
+    rr = {
+        "enabled": bool(rr.get("enabled")),
+        "model": rr.get("model") if isinstance(rr.get("model"), str) else None,
+        "top_n": rr.get("top_n", 20),
+    }
+    k_cand = candidate_k(k_final, rr)
+    lists: list[list[dict]] = []
+    if mode_n in ("dense", "hybrid"):
+        if query_embedding is None:
+            dense_hits: list[dict] = []
+        else:
+            dense_hits = retrieve_domain_chunks(domain_id, query_embedding, k_cand)
+        if mode_n == "dense":
+            lists = [dense_hits]
+        else:
+            lists.append(dense_hits)
+    if mode_n in ("lexical", "hybrid"):
+        lists.append(retrieve_lexical_chunks(domain_id, query, k_cand))
+    if mode_n == "hybrid":
+        fused = rrf_fuse(lists)
+    elif lists:
+        fused = lists[0]
+    else:
+        fused = []
+    fused = apply_rerank(fused, query, rr)
+    return fused[:k_final]
