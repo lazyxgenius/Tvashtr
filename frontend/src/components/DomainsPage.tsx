@@ -183,16 +183,21 @@ export function DomainsPage() {
         {tab === "documents" && (
           <section className="tv-domains__panel" aria-label="Documents">
             <div className="tv-domains__docs-actions">
-              <label className="tv-btn tv-btn--ghost">
+              <label
+                className="tv-btn tv-btn--ghost"
+                aria-disabled={busy}
+                style={busy ? { pointerEvents: "none", opacity: 0.6 } : undefined}
+              >
                 Upload
                 <input
                   type="file"
                   accept=".pdf,.md,.txt,.html,application/pdf,text/plain,text/markdown,text/html"
                   hidden
+                  disabled={busy}
                   onChange={(e) => {
                     const f = e.target.files?.[0];
                     e.target.value = "";
-                    if (!f) return;
+                    if (!f || busy) return;
                     void (async () => {
                       setBusy(true);
                       try {
@@ -219,9 +224,20 @@ export function DomainsPage() {
                     setBusy(true);
                     try {
                       await ingestDomain(detail.domain_id);
-                      setDocuments(await listDomainDocuments(detail.domain_id));
-                      setDetail(await getDomain(detail.domain_id));
-                      await refresh();
+                      const deadline = Date.now() + 30_000;
+                      while (mountedRef.current && Date.now() < deadline) {
+                        const rows = await listDomainDocuments(detail.domain_id);
+                        if (!mountedRef.current) return;
+                        setDocuments(rows);
+                        setDetail(await getDomain(detail.domain_id));
+                        await refresh();
+                        const stillGoing = rows.some(
+                          (d) =>
+                            d.ingest_status === "pending" || d.ingest_status === "indexing",
+                        );
+                        if (!stillGoing) break;
+                        await new Promise((r) => setTimeout(r, 2000));
+                      }
                       setError(null);
                     } catch (err) {
                       setError(err instanceof Error ? err.message : "Ingest failed");

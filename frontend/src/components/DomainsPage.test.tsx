@@ -200,24 +200,43 @@ describe("DomainsPage Documents tab", () => {
       created_at: "2026-09-15T00:00:00Z",
       updated_at: "2026-09-15T00:00:00Z",
     });
-    m.listDomainDocuments.mockResolvedValue([
-      {
-        document_id: "doc1",
+    const pendingDoc = {
+      document_id: "doc1",
+      domain_id: "d1",
+      filename: "notes.txt",
+      content_type: "text/plain",
+      byte_size: 5,
+      ingest_status: "pending" as const,
+      error_message: null,
+      version: 1,
+      created_at: "2026-09-15T00:00:00Z",
+      updated_at: "2026-09-15T00:00:00Z",
+    };
+    const readyDoc = { ...pendingDoc, ingest_status: "ready" as const };
+    m.listDomainDocuments.mockResolvedValue([pendingDoc]);
+    m.ingestDomain.mockImplementation(async () => {
+      // Simulate workflow finishing so poll loop exits without 30s wait.
+      m.listDomainDocuments.mockResolvedValue([readyDoc]);
+      m.getDomain.mockResolvedValue({
         domain_id: "d1",
-        filename: "notes.txt",
-        content_type: "text/plain",
-        byte_size: 5,
-        ingest_status: "pending",
-        error_message: null,
-        version: 1,
+        name: "Support docs",
+        template: "support",
+        config: {
+          chunking: { strategy: "fixed", size: 600, overlap: 100 },
+          embedding: { model: "text-embedding-3-small" },
+          retrieval: { top_k: 8, mode: "dense" },
+          generation: { model: null },
+        },
+        status: "ready",
+        doc_count: 1,
         created_at: "2026-09-15T00:00:00Z",
         updated_at: "2026-09-15T00:00:00Z",
-      },
-    ]);
-    m.ingestDomain.mockResolvedValue({
-      domain_id: "d1",
-      workflow_id: "wf1",
-      status: "indexing",
+      });
+      return {
+        domain_id: "d1",
+        workflow_id: "wf1",
+        status: "indexing",
+      };
     });
 
     render(<DomainsPage />);
@@ -225,8 +244,19 @@ describe("DomainsPage Documents tab", () => {
     await user.click(await screen.findByRole("tab", { name: /Documents/i }));
     expect(await screen.findByText("notes.txt")).toBeTruthy();
     expect(screen.getByText(/pending/i)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /Ingest/i }));
+    const ingestBtn = screen.getByRole("button", { name: /Ingest/i });
+    const uploadInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    expect(uploadInput.disabled).toBe(false);
+    await user.click(ingestBtn);
     await waitFor(() => expect(m.ingestDomain).toHaveBeenCalledWith("d1"));
+    await waitFor(() =>
+      expect(document.querySelector(".tv-domains__docs-status")?.textContent).toBe(
+        "ready",
+      ),
+    );
+    expect(m.listDomainDocuments.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole("tab", { name: /Chat/i })).toBeNull();
   });
 });
