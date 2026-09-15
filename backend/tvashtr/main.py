@@ -31,10 +31,17 @@ from tvashtr.control_plane.hello_durable import hello_durable
 from tvashtr.control_plane.teams import public_provider_catalogue
 from tvashtr.control_plane.workspace_reaper import sweep_orphaned_workspaces
 from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
+from tvashtr.mcp.domains import get_domains_mcp
 from tvashtr.models import SpikeHelloEvent
 from tvashtr.routers import router as api_router
 
 settings = get_settings()
+
+# Phase 4b: Domains MCP (streamable HTTP). path="/" so the mount root is the MCP endpoint
+# (client URL ends at /mcp/domains). http_app() is unavailable on this FastMCP version.
+_domains_mcp = get_domains_mcp()
+_domains_mcp.settings.streamable_http_path = "/"
+_domains_mcp_http = _domains_mcp.streamable_http_app()
 
 
 @asynccontextmanager
@@ -48,30 +55,37 @@ async def _lifespan(app: FastAPI):
     owned by a LIVE run in another process (via the host-side registry) and reaps only genuine
     orphans (unknown or dead owner). Skipped only under ``local`` mode (the fast dev/test
     targets opt in with ``TVASHTR_AGENT_SANDBOX=local``); a no-op (warn only) if docker is
-    unavailable — so startup stays ``openhands``-free and robust on any host."""
-    if settings.agent_sandbox_mode == "docker":
-        sweep_orphaned_agent_containers()
-    elif settings.agent_sandbox_mode == "fly":
-        # M-h2b: the same idea one substrate up. A ``kill -9`` mid-hosted-run leaves a Fly app that
-        # BILLS until something deletes it, and nothing in-process survives to do so. Sweeping here
-        # — before DBOS recovery, for the same reason the docker sweep is here — means the next boot
-        # is what cleans up the last crash. Reads liveness from the ``runs`` table (Fly apps outlive
-        # any single process), so a run legitimately parked at a gate is SPARED, and never touches
-        # an app that is not ours. Never raises: startup must not fail over cost hygiene.
-        sweep_orphaned_fly_apps()
-    # M-clonegc: the same reconcile one substrate down — orphaned hosted-GitHub clones on local
-    # disk. NOT mode-gated, unlike the two sweeps above: a clone is created by any run with a
-    # ``github_repo``, whatever the sandbox is, so the backstop has to run wherever the backend
-    # runs. Self-hosted / greenfield deployments never create the root, and the sweep returns 0
-    # without touching the disk — which is what keeps those paths byte-identical to before.
-    sweep_orphaned_clones()
-    # M-wsgc: the same reconcile for the per-run agent workspaces. NOT mode-gated either, and for a
-    # stronger version of the clone sweep's reason: a workspace is created by EVERY run that reaches
-    # an agent step, in every sandbox mode, so this is the one sweep that always has something to
-    # reconcile. Before DBOS recovery for the usual reason — a workspace belonging to a run that is
-    # about to be RECOVERED must be spared, and the reaper reads that liveness from ``runs``.
-    sweep_orphaned_workspaces()
-    yield
+    unavailable — so startup stays ``openhands``-free and robust on any host.
+
+    Phase 4b: wraps the Domains MCP streamable-HTTP session manager so tool calls on
+    ``/mcp/domains`` have a live task group for the life of the process."""
+    # Starlette sub-app has no ``.lifespan`` helper (unlike newer FastMCP ``http_app``); enter the
+    # router lifespan context that runs ``session_manager.run()``.
+    async with _domains_mcp_http.router.lifespan_context(_domains_mcp_http):
+        if settings.agent_sandbox_mode == "docker":
+            sweep_orphaned_agent_containers()
+        elif settings.agent_sandbox_mode == "fly":
+            # M-h2b: same idea one substrate up. A ``kill -9`` mid-hosted-run leaves a Fly app that
+            # BILLS until something deletes it, and nothing in-process survives to do so. Sweeping
+            # here — before DBOS recovery, for the same reason the docker sweep is here — means the
+            # next boot cleans up the last crash. Reads liveness from the ``runs`` table (Fly apps
+            # outlive any single process), so a run legitimately parked at a gate is SPARED, and
+            # never touches an app that is not ours. Never raises: startup must not fail over cost
+            # hygiene.
+            sweep_orphaned_fly_apps()
+        # M-clonegc: the same reconcile one substrate down — orphaned hosted-GitHub clones on local
+        # disk. NOT mode-gated, unlike the two sweeps above: a clone is created by any run with a
+        # ``github_repo``, whatever the sandbox is, so the backstop has to run wherever the backend
+        # runs. Self-hosted / greenfield deployments never create the root, and the sweep returns 0
+        # without touching the disk — which is what keeps those paths byte-identical to before.
+        sweep_orphaned_clones()
+        # M-wsgc: same reconcile for per-run agent workspaces. NOT mode-gated either, and for a
+        # stronger version of the clone sweep's reason: a workspace is created by EVERY run that
+        # reaches an agent step, in every sandbox mode, so this is the one sweep that always has
+        # something to reconcile. Before DBOS recovery for the usual reason — a workspace belonging
+        # to a run about to be RECOVERED must be spared; the reaper reads liveness from ``runs``.
+        sweep_orphaned_workspaces()
+        yield
 
 
 app = FastAPI(title="Tvashtr Control Plane", version="0.0.1", lifespan=_lifespan)
@@ -268,6 +282,9 @@ def mount_frontend(app: FastAPI, dist_dir: str) -> bool:
 
     return True
 
+
+# Phase 4b: Domains MCP streamable HTTP — before SPA catch-all so /mcp/domains is not swallowed.
+app.mount("/mcp/domains", _domains_mcp_http)
 
 # LAST, deliberately (see mount_frontend): every API router above is already registered, so the
 # catch-all can only ever see paths nothing else claimed.
