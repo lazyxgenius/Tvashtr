@@ -63,6 +63,15 @@ from tvashtr.control_plane.context_compiler import (
     resolve_writes_to,
 )
 from tvashtr.control_plane.credentials import NoCredentialError, resolve_owner_api_key
+from tvashtr.control_plane import domain_ask as domain_ask_mod
+from tvashtr.control_plane.domain_ask import DomainAskError
+from tvashtr.control_plane.domain_query_node import (
+    domain_query_manifest,
+    format_domain_ask_error,
+    render_domain_query_prompt,
+    truncate_outcome_detail,
+)
+from tvashtr.control_plane.node_library import owner_for_run
 from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.guardrails import (
     GUARDRAIL_GATE_KINDS,
@@ -1509,6 +1518,34 @@ def mark_run_failed_step(run_id: str) -> None:
         session.execute(update(Run).where(Run.id == uuid.UUID(run_id)).values(status="failed"))
 
 
+
+@DBOS.step()
+def domain_query_step(run_id: str, domain_id: str, question: str) -> dict:
+    """Sync cited Domain ask for a canvas Query-domain node. Reuses ``ask_domain``.
+
+    Returns ``{status: completed|failed, answer?, citations?, error?, manifest?}``.
+    """
+    owner_id = owner_for_run(run_id)
+    if owner_id is None:
+        return {"status": "failed", "error": "run has no owner — cannot query a domain"}
+    try:
+        did = uuid.UUID(str(domain_id))
+    except (ValueError, TypeError):
+        return {"status": "failed", "error": "Query domain node has an invalid domain_id"}
+    try:
+        result = domain_ask_mod.ask_domain(owner_id, did, question)
+    except DomainAskError as exc:
+        return {"status": "failed", "error": format_domain_ask_error(exc)}
+    except Exception as exc:  # noqa: BLE001 — surface unexpected failures like other nodes
+        return {"status": "failed", "error": f"domain query failed: {exc}"}
+    return {
+        "status": "completed",
+        "answer": result.get("answer") or "",
+        "citations": result.get("citations") or [],
+        "manifest": domain_query_manifest(result, str(did)),
+    }
+
+
 @DBOS.step()
 def distill_run_memory_step(run_id: str) -> None:
     """M-memory S2: distil durable memory from the finished run (the WRITE half of the memory loop).
@@ -2041,6 +2078,61 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             if apply_budget_hook(run_id, node_id=current, iteration=n):
                 return _finalize_over_budget(run_id, pm_document_id)
             current = next_node(edges, current, route_label)
+
+
+        elif kind == "domain_query":
+            n = iters_by_node.get(current, 0) + 1
+            iters_by_node[current] = n
+            open_invocation_step(run_id, current, n)
+            cfg = node.get("config") or {}
+            domain_id = cfg.get("domain_id") if isinstance(cfg, dict) else None
+            if not domain_id:
+                reason = "Select a Domain on this Query domain node before running."
+                close_invocation_step(run_id, current, n, "failed", None, outcome_detail=reason)
+                mark_run_failed_step(run_id)
+                return {
+                    "run_id": run_id,
+                    "status": "failed",
+                    "document_id": pm_document_id,
+                    "error": reason,
+                }
+            try:
+                question = render_domain_query_prompt(node.get("prompt"), idea)
+            except ValueError as exc:
+                reason = str(exc)
+                close_invocation_step(run_id, current, n, "failed", None, outcome_detail=reason)
+                mark_run_failed_step(run_id)
+                return {
+                    "run_id": run_id,
+                    "status": "failed",
+                    "document_id": pm_document_id,
+                    "error": reason,
+                }
+            result = domain_query_step(run_id, str(domain_id), question)
+            if result.get("status") != "completed":
+                reason = result.get("error") or "domain query failed"
+                close_invocation_step(
+                    run_id, current, n, "failed", None, outcome_detail=reason
+                )
+                mark_run_failed_step(run_id)
+                DBOS.logger.error(f"run_team domain_query failed run_id={run_id}: {reason}")
+                return {
+                    "run_id": run_id,
+                    "status": "failed",
+                    "document_id": pm_document_id,
+                    "error": reason,
+                }
+            close_invocation_step(
+                run_id,
+                current,
+                n,
+                "done",
+                "answered",
+                outcome_detail=truncate_outcome_detail(result.get("answer") or ""),
+                context_manifest=result.get("manifest"),
+            )
+            current = next_node(edges, current, None)
+            continue
 
         elif kind == "gate":
             # A checkpoint node with two dispositions on ``config.gate_kind``:
