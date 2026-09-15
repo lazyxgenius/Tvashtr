@@ -61,7 +61,7 @@ def test_retrieve_domain_returns_citations(monkeypatch):
                         emb.vectors = [[0.1, 0.2]]
                         with patch("tvashtr.control_plane.domain_ask.embed", return_value=emb):
                             with patch(
-                                "tvashtr.control_plane.domain_ask.retrieve_domain_chunks",
+                                "tvashtr.control_plane.domain_ask.retrieve_for_query",
                                 return_value=chunks,
                             ) as ret:
                                 out = retrieve_domain(oid, did, "SLA?")
@@ -70,7 +70,8 @@ def test_retrieve_domain_returns_citations(monkeypatch):
     assert out["citations"][0]["excerpt"]
     assert out["latency_ms"] is not None
     ret.assert_called_once()
-    assert ret.call_args.args[2] == 3  # top_k from config
+    assert ret.call_args.kwargs["top_k"] == 3
+    assert ret.call_args.kwargs["mode"] == "dense"
 
 
 def test_retrieve_domain_missing_providers_dict():
@@ -90,3 +91,71 @@ def test_retrieve_domain_missing_providers_dict():
                         retrieve_domain(oid, did, "q")
                     assert ei.value.code == "missing_providers"
                     assert "openai" in ei.value.detail["message"]
+
+
+def test_retrieve_domain_lexical_skips_embed():
+    oid, did = uuid.uuid4(), uuid.uuid4()
+    domain = MagicMock()
+    domain.config = {
+        "embedding": {"model": "text-embedding-3-small"},
+        "retrieval": {"top_k": 2, "mode": "lexical"},
+    }
+    chunks = [
+        {
+            "chunk_id": "c1",
+            "document_id": "d1",
+            "filename": "a.md",
+            "ordinal": 0,
+            "text": "SLA is 99.9%",
+            "score": 0.2,
+        }
+    ]
+    with patch("tvashtr.control_plane.domain_ask.session_scope") as scope:
+        sess = MagicMock()
+        scope.return_value.__enter__.return_value = sess
+        with patch("tvashtr.control_plane.domain_ask._owned_domain", return_value=domain):
+            with patch("tvashtr.control_plane.domain_ask.count_ready_chunks", return_value=2):
+                with patch("tvashtr.control_plane.domain_ask.embed") as emb:
+                    with patch(
+                        "tvashtr.control_plane.domain_ask.retrieve_for_query",
+                        return_value=chunks,
+                    ) as ret:
+                        out = retrieve_domain(oid, did, "SLA?")
+    emb.assert_not_called()
+    assert out["citations"][0]["filename"] == "a.md"
+    ret.assert_called_once()
+    assert ret.call_args.kwargs["mode"] == "lexical"
+    assert ret.call_args.kwargs["query_embedding"] is None
+
+
+def test_retrieve_domain_lexical_no_embed_key_ok():
+    oid, did = uuid.uuid4(), uuid.uuid4()
+    domain = MagicMock()
+    domain.config = {
+        "embedding": {"model": "text-embedding-3-small"},
+        "retrieval": {"mode": "lexical", "top_k": 2},
+    }
+    with patch("tvashtr.control_plane.domain_ask.session_scope") as scope:
+        sess = MagicMock()
+        scope.return_value.__enter__.return_value = sess
+        with patch("tvashtr.control_plane.domain_ask._owned_domain", return_value=domain):
+            with patch("tvashtr.control_plane.domain_ask.count_ready_chunks", return_value=1):
+                with patch(
+                    "tvashtr.control_plane.domain_ask.held_provider_slugs",
+                    return_value=set(),
+                ):
+                    with patch(
+                        "tvashtr.control_plane.domain_ask.retrieve_for_query",
+                        return_value=[
+                            {
+                                "chunk_id": "c",
+                                "document_id": "d",
+                                "filename": "a.md",
+                                "ordinal": 0,
+                                "text": "hi",
+                                "score": 0.1,
+                            }
+                        ],
+                    ):
+                        out = retrieve_domain(oid, did, "hi")
+    assert out["citations"]

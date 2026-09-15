@@ -20,7 +20,9 @@ from tvashtr.control_plane.credentials import (
 from tvashtr.control_plane.domain_ingest import normalize_embedding_model
 from tvashtr.control_plane.domain_retrieve import (
     citations_from_chunks,
-    retrieve_domain_chunks,
+    coerce_rerank_config,
+    coerce_retrieval_mode,
+    retrieve_for_query,
 )
 from tvashtr.control_plane.domains import _owned_domain
 from tvashtr.control_plane.teams import account_default_model
@@ -56,10 +58,12 @@ def resolve_domain_generation_model(owner_id: uuid.UUID, config: dict) -> str:
 
 
 def missing_ask_providers(
-    owner_id: uuid.UUID, embed_model: str, gen_model: str
+    owner_id: uuid.UUID, embed_model: str | None, gen_model: str
 ) -> list[str]:
     held = held_provider_slugs(owner_id)
-    needed = {provider_for_model(embed_model), provider_for_model(gen_model)}
+    needed = {provider_for_model(gen_model)}
+    if embed_model:
+        needed.add(provider_for_model(embed_model))
     return sorted(p for p in needed if p not in held)
 
 
@@ -190,7 +194,12 @@ def ask_domain(owner_id: uuid.UUID, domain_id: uuid.UUID, question: str) -> dict
     except ValueError as e:
         raise DomainAskError("no_model", str(e)) from e
 
-    missing = missing_ask_providers(owner_id, emb_model, gen_model)
+    mode = coerce_retrieval_mode(cfg)
+    rerank_cfg = coerce_rerank_config(cfg)
+    needs_embed = mode in ("dense", "hybrid")
+    missing = missing_ask_providers(
+        owner_id, emb_model if needs_embed else None, gen_model
+    )
     if missing:
         raise DomainAskError(
             "missing_providers",
@@ -198,16 +207,22 @@ def ask_domain(owner_id: uuid.UUID, domain_id: uuid.UUID, question: str) -> dict
                 "message": (
                     "you have no API key for: "
                     + ", ".join(missing)
-                    + " — needed to embed the question and generate an answer. "
-                    "Add keys under Engines before asking."
+                    + (
+                        " — needed to embed the question and generate an answer. "
+                        if needs_embed
+                        else " — needed to generate an answer. "
+                    )
+                    + "Add keys under Engines before asking."
                 ),
                 "missing_providers": missing,
             },
         )
 
     try:
-        embed_key = resolve_owner_api_key(owner_id, emb_model)
         chat_key = resolve_owner_api_key(owner_id, gen_model)
+        embed_key = None
+        if needs_embed:
+            embed_key = resolve_owner_api_key(owner_id, emb_model)
     except NoCredentialError as e:
         raise DomainAskError(
             "missing_providers",
@@ -221,16 +236,26 @@ def ask_domain(owner_id: uuid.UUID, domain_id: uuid.UUID, question: str) -> dict
         ) from e
 
     started = time.perf_counter()
-    try:
-        emb_result = embed(
-            EmbeddingRequest(model=emb_model, input=[q], api_key=embed_key)
-        )
-    except GatewayError as e:
-        raise DomainAskError("gateway", f"embedding failed: {e}") from e
-    if not emb_result.vectors:
-        raise DomainAskError("gateway", "embedding provider returned no vectors")
+    query_embedding = None
+    if needs_embed:
+        try:
+            emb_result = embed(
+                EmbeddingRequest(model=emb_model, input=[q], api_key=embed_key)
+            )
+        except GatewayError as e:
+            raise DomainAskError("gateway", f"embedding failed: {e}") from e
+        if not emb_result.vectors:
+            raise DomainAskError("gateway", "embedding provider returned no vectors")
+        query_embedding = emb_result.vectors[0]
 
-    chunks = retrieve_domain_chunks(domain_id, emb_result.vectors[0], top_k)
+    chunks = retrieve_for_query(
+        domain_id,
+        q,
+        query_embedding=query_embedding,
+        top_k=top_k,
+        mode=mode,
+        rerank=rerank_cfg,
+    )
     if not chunks:
         raise DomainAskError("empty_corpus", "ingest documents before asking")
 
@@ -312,7 +337,7 @@ def retrieve_domain(
     query: str,
     top_k: int | None = None,
 ) -> dict:
-    """Embed + dense retrieve + citations. No generation / no DomainMessage writes.
+    """Retrieve citations via retrieve_for_query. No generation / no DomainMessage writes.
 
     Raises DomainAskError with the same codes as ask where applicable
     (``bad_request``, ``not_found``, ``empty_corpus``, ``missing_providers``, ``gateway``).
@@ -343,46 +368,59 @@ def retrieve_domain(
         except (TypeError, ValueError):
             pass
 
-    missing = missing_retrieve_providers(owner_id, emb_model)
-    if missing:
-        raise DomainAskError(
-            "missing_providers",
-            {
-                "message": (
-                    "you have no API key for: "
-                    + ", ".join(missing)
-                    + " — needed to embed the query. "
-                    "Add keys under Engines before retrieving."
-                ),
-                "missing_providers": missing,
-            },
-        )
-
-    try:
-        embed_key = resolve_owner_api_key(owner_id, emb_model)
-    except NoCredentialError as e:
-        raise DomainAskError(
-            "missing_providers",
-            {
-                "message": (
-                    f"you have no API key for: {e.provider} — needed for domain retrieve. "
-                    "Add a key under Engines before retrieving."
-                ),
-                "missing_providers": [e.provider],
-            },
-        ) from e
-
+    mode = coerce_retrieval_mode(cfg)
+    rerank_cfg = coerce_rerank_config(cfg)
+    needs_embed = mode in ("dense", "hybrid")
+    query_embedding = None
     started = time.perf_counter()
-    try:
-        emb_result = embed(
-            EmbeddingRequest(model=emb_model, input=[q], api_key=embed_key)
-        )
-    except GatewayError as e:
-        raise DomainAskError("gateway", f"embedding failed: {e}") from e
-    if not emb_result.vectors:
-        raise DomainAskError("gateway", "embedding provider returned no vectors")
+    if needs_embed:
+        missing = missing_retrieve_providers(owner_id, emb_model)
+        if missing:
+            raise DomainAskError(
+                "missing_providers",
+                {
+                    "message": (
+                        "you have no API key for: "
+                        + ", ".join(missing)
+                        + " — needed to embed the query. "
+                        "Add keys under Engines before retrieving."
+                    ),
+                    "missing_providers": missing,
+                },
+            )
 
-    chunks = retrieve_domain_chunks(domain_id, emb_result.vectors[0], effective_k)
+        try:
+            embed_key = resolve_owner_api_key(owner_id, emb_model)
+        except NoCredentialError as e:
+            raise DomainAskError(
+                "missing_providers",
+                {
+                    "message": (
+                        f"you have no API key for: {e.provider} — needed for domain retrieve. "
+                        "Add a key under Engines before retrieving."
+                    ),
+                    "missing_providers": [e.provider],
+                },
+            ) from e
+
+        try:
+            emb_result = embed(
+                EmbeddingRequest(model=emb_model, input=[q], api_key=embed_key)
+            )
+        except GatewayError as e:
+            raise DomainAskError("gateway", f"embedding failed: {e}") from e
+        if not emb_result.vectors:
+            raise DomainAskError("gateway", "embedding provider returned no vectors")
+        query_embedding = emb_result.vectors[0]
+
+    chunks = retrieve_for_query(
+        domain_id,
+        q,
+        query_embedding=query_embedding,
+        top_k=effective_k,
+        mode=mode,
+        rerank=rerank_cfg,
+    )
     if not chunks:
         raise DomainAskError("empty_corpus", "ingest documents before asking")
 
