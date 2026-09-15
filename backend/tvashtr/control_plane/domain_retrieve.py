@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import uuid
 
 from sqlalchemy import func, select
@@ -125,6 +126,58 @@ def coerce_rerank_config(config: dict | None) -> dict:
         except (TypeError, ValueError):
             pass
     return {"enabled": enabled, "model": model, "top_n": top_n}
+
+
+GRAPH_EXPAND_MAX = 4
+GRAPH_MENTION_CAP = 12
+DEFAULT_GRAPH: dict = {"enabled": False}
+
+_MENTION_STOP = frozenset(
+    {
+        "the", "a", "an", "and", "or", "of", "in", "on", "for", "to", "is", "are",
+        "was", "were", "be", "by", "as", "at", "from", "with", "this", "that",
+        "it", "its", "we", "you", "they", "he", "she", "not", "but", "if",
+    }
+)
+
+# Capitalized / camelCase runs + ALLCAPS acronyms (len>=2); allow inner caps (OpenAI)
+_MENTION_RE = re.compile(
+    r"\b(?:[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)*)\b"
+)
+
+
+def coerce_graph_config(config: dict | None) -> dict:
+    raw = (config or {}).get("retrieval") or {}
+    block = raw.get("graph") if isinstance(raw, dict) else None
+    enabled = False
+    if isinstance(block, dict):
+        enabled = bool(block.get("enabled"))
+    return {"enabled": enabled}
+
+
+def extract_mentions(text: str) -> list[str]:
+    if not text or not str(text).strip():
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for m in _MENTION_RE.findall(text):
+        tok = m.strip()
+        if len(tok) < 2:
+            continue
+        # Drop if entire match is stopwords (e.g. "The")
+        parts = tok.split()
+        if all(p.lower() in _MENTION_STOP for p in parts):
+            continue
+        # Prefer splitting multi-word runs into tokens for matching breadth
+        for part in parts:
+            if len(part) < 2 or part.lower() in _MENTION_STOP:
+                continue
+            if part not in seen:
+                seen.add(part)
+                out.append(part)
+            if len(out) >= GRAPH_MENTION_CAP:
+                return out
+    return out
 
 
 def candidate_k(top_k: int, rerank: dict) -> int:
