@@ -18,6 +18,11 @@ vi.mock("../lib/api", () => ({
   ingestDomain: vi.fn(),
   listDomainMessages: vi.fn(),
   askDomain: vi.fn(),
+  listDomainEvalCases: vi.fn(),
+  createDomainEvalCase: vi.fn(),
+  deleteDomainEvalCase: vi.fn(),
+  getLatestDomainEvalRun: vi.fn(),
+  runDomainEval: vi.fn(),
 }));
 
 const m = api as unknown as {
@@ -30,6 +35,11 @@ const m = api as unknown as {
   ingestDomain: Mock;
   listDomainMessages: Mock;
   askDomain: Mock;
+  listDomainEvalCases: Mock;
+  createDomainEvalCase: Mock;
+  deleteDomainEvalCase: Mock;
+  getLatestDomainEvalRun: Mock;
+  runDomainEval: Mock;
 };
 
 describe("DomainsPage list", () => {
@@ -55,6 +65,28 @@ describe("DomainsPage list", () => {
       message_id: "m1",
       user_message_id: "m0",
       latency_ms: 12,
+    });
+    m.listDomainEvalCases.mockResolvedValue([]);
+    m.getLatestDomainEvalRun.mockRejectedValue(new Error("no eval runs yet"));
+    m.createDomainEvalCase.mockResolvedValue({
+      case_id: "c1",
+      domain_id: "d1",
+      question: "Q?",
+      expected_answer: null,
+      expected_citation_doc_ids: [],
+      expected_keywords: [],
+      ordinal: 0,
+      created_at: "2026-09-15T00:00:00Z",
+    });
+    m.deleteDomainEvalCase.mockResolvedValue(undefined);
+    m.runDomainEval.mockResolvedValue({
+      run_id: "r1",
+      domain_id: "d1",
+      status: "completed",
+      scores: null,
+      error_message: null,
+      created_at: "2026-09-15T00:00:00Z",
+      completed_at: "2026-09-15T00:00:01Z",
     });
   });
 
@@ -100,6 +132,7 @@ describe("DomainsPage list", () => {
     await waitFor(() => expect(m.getDomain).toHaveBeenCalledWith("d1"));
     expect(await screen.findByRole("tab", { name: /Overview/i })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Config/i })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /Eval/i })).toBeTruthy();
   });
 });
 
@@ -207,6 +240,8 @@ describe("DomainsPage Documents tab", () => {
       user_message_id: "m0",
       latency_ms: 12,
     });
+    m.listDomainEvalCases.mockResolvedValue([]);
+    m.getLatestDomainEvalRun.mockRejectedValue(new Error("no eval runs yet"));
   });
 
   it("shows Documents tab with ingest and Chat tab", async () => {

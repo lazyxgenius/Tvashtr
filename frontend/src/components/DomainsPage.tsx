@@ -19,9 +19,10 @@ import {
 } from "../lib/api";
 import { labelForDomainTemplate } from "../lib/domains";
 import { DomainConfigForm } from "./DomainConfigForm";
+import { DomainEvalPanel } from "./DomainEvalPanel";
 import { NewDomainDialog } from "./NewDomainDialog";
 
-type DetailTab = "overview" | "documents" | "chat" | "config";
+type DetailTab = "overview" | "documents" | "chat" | "config" | "eval";
 
 export function DomainsPage() {
   const [domains, setDomains] = useState<DomainSummary[]>([]);
@@ -156,6 +157,15 @@ export function DomainsPage() {
             onClick={() => setTab("chat")}
           >
             Chat
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "eval"}
+            className={`tv-domains__tab${tab === "eval" ? " tv-domains__tab--active" : ""}`}
+            onClick={() => setTab("eval")}
+          >
+            Eval
           </button>
           <button
             type="button"
@@ -404,6 +414,9 @@ export function DomainsPage() {
               </button>
             </form>
           </section>
+        )}
+        {tab === "eval" && detail && (
+          <DomainEvalPanel domainId={detail.domain_id} />
         )}
         {tab === "config" && (
           <section className="tv-domains__panel" aria-label="Config">
