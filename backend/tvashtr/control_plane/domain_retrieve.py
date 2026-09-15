@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import uuid
 
 from sqlalchemy import select
@@ -50,6 +51,8 @@ def retrieve_domain_chunks(
             if distance is not None:
                 try:
                     score = float(1.0 - float(distance))
+                    if not math.isfinite(score):
+                        score = None
                 except (TypeError, ValueError):
                     score = None
             out.append(
