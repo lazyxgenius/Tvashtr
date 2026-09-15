@@ -22,8 +22,8 @@ import {
 /** Hardcoded install docs — do not pull extra keys over IPC. */
 const INSTALL_URLS: Record<SubscriptionProviderId, string> = {
   claude: "https://docs.anthropic.com/en/docs/claude-code/overview",
-  grok: "https://docs.x.ai/",
-  codex: "https://github.com/openai/codex",
+  grok: "https://docs.x.ai/build/cli/reference",
+  codex: "https://developers.openai.com/codex",
 };
 
 function desktopEngines(): TvashtrDesktopBridge["engines"] | null {

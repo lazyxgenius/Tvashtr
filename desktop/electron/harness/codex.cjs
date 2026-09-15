@@ -1,15 +1,27 @@
 /**
- * Codex harness adapter — detect/status shell.
- * Assumes Claude-like CLI auth verbs (`auth status` / `whoami` / login) for Connect IPC.
- * Not production-proven against a real Codex CLI yet; Claude remains the deep path.
+ * Codex harness adapter (@openai/codex).
+ *
+ * Real CLI auth contract (see https://developers.openai.com/codex/auth):
+ * - Detect: which/where → codex
+ * - Probe: `codex login status` — exit 0 ⇒ authenticated; parse stdout for
+ *   account/method hint (email, "ChatGPT", or "API key")
+ * - Login: `codex login` (browser OAuth). Prefer this for Desktop Connect.
+ *   If TVASHTR_HARNESS_DEVICE_AUTH=1, use `codex login --device-auth` (headless).
+ *   Login is spawn/detached fire-and-forget (interactive browser) then re-probe —
+ *   never treat it as a 15s blocking execFile success path.
  */
 const { promisify } = require("util");
 const childProcess = require("child_process");
 const defaultExecFile = promisify(childProcess.execFile);
+const defaultSpawn = childProcess.spawn;
 
-const INSTALL_URL = "https://github.com/openai/codex";
+const INSTALL_URL = "https://developers.openai.com/codex";
 
-function createCodexHarness({ execFile = defaultExecFile } = {}) {
+function createCodexHarness({
+  execFile = defaultExecFile,
+  spawn = defaultSpawn,
+  env = process.env,
+} = {}) {
   async function run(cmd, args) {
     try {
       const { stdout, stderr } = await execFile(cmd, args, {
@@ -43,30 +55,46 @@ function createCodexHarness({ execFile = defaultExecFile } = {}) {
   }
 
   function parseHint(text) {
+    const email = text.match(/([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
+    if (email) return email[1];
+    if (/\bChatGPT\b/i.test(text)) return "ChatGPT";
+    if (/\bAPI\s*key\b/i.test(text)) return "API key";
     const m =
       text.match(/Logged in as\s+(\S+)/i) ||
       text.match(/account:\s*(\S+)/i) ||
-      text.match(/([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
+      text.match(/method:\s*(\S+)/i);
     return m ? m[1] : null;
   }
 
   async function probeAuth(binaryPath) {
     const bin = binaryPath || "codex";
-    for (const args of [["auth", "status"], ["whoami"]]) {
-      const res = await run(bin, args);
-      if (res.code === 0) {
-        return {
-          authenticated: true,
-          accountHint: parseHint(res.stdout + "\n" + res.stderr),
-        };
-      }
+    const res = await run(bin, ["login", "status"]);
+    if (res.code === 0) {
+      return {
+        authenticated: true,
+        accountHint: parseHint(res.stdout + "\n" + res.stderr),
+      };
     }
     return { authenticated: false, accountHint: null };
   }
 
+  function loginArgs() {
+    if (String(env.TVASHTR_HARNESS_DEVICE_AUTH || "") === "1") {
+      return ["login", "--device-auth"];
+    }
+    return ["login"];
+  }
+
+  /** Fire-and-forget: interactive browser login must not block on execFile. */
   async function startLogin(binaryPath) {
     const bin = binaryPath || "codex";
-    await run(bin, ["auth", "login"]);
+    const args = loginArgs();
+    const child = spawn(bin, args, {
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env, ...env },
+    });
+    if (child && typeof child.unref === "function") child.unref();
   }
 
   async function toStatus() {

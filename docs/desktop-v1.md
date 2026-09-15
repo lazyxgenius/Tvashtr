@@ -9,7 +9,7 @@ Status: scaffold on the local box (Electron shell). Cloud Agents were unavailabl
 3. **UI reuse + thin chrome** — load the existing React/Vite frontend inside Electron. Do **not** build a parallel desktop-specific product UI.
 4. **Dual-engine credentials (Approach A)** —
    - **Hosted Fly microVM:** BYOK / API keys via `/api/providers` only. Subscription status never satisfies hosted preflight.
-   - **Local Desktop subscription:** Claude (deep) → Grok/Codex (Claude-shaped detect/status shells pending real CLI validation); status in OS `safeStorage`; prefer-subscription for local runs. Status-only mirror to Fly — **no tokens/cookies**.
+   - **Local Desktop subscription:** Claude (deep) → Grok/Codex (real CLI auth contracts); status in OS `safeStorage`; prefer-subscription for local runs. Status-only mirror to Fly — **no tokens/cookies**.
 5. **Secrets hygiene** — no real `.env` keys in the desktop tree; no committing secrets; subscription credentials never leave the Desktop host.
 
 ## Why Electron
@@ -81,11 +81,30 @@ Email/password login already works through the same proxy once `Secure` is strip
 | Prefer-subscription | Automatic for local Desktop runs when connected; BYOK for hosted. |
 | Continuity | Quitting Desktop stops local/subscription runs. Fly BYOK runs can continue. |
 
-### Grok / Codex harness shells (detect/status only)
+### Grok / Codex harness CLI auth contracts
 
-Claude is the **deep** subscription path (CLI detect + `auth status` / `whoami` / login validated against Claude Code).
+Claude remains the **deep** subscription path (CLI detect + `auth status` / `whoami` / login validated against Claude Code).
 
-**Grok** and **Codex** adapters in `desktop/electron/harness/` are **detect/status shells**: they reuse a Claude-shaped CLI auth probe (`auth status` / `whoami` / login) so Connect IPC and the Engines shelf work end-to-end. They are **not** production-proven against real provider CLIs yet — treat auth results as provisional until each provider’s CLI contract is confirmed. Prefer follow-up adapters once docs are verified; do not claim production-grade Grok/Codex auth for this slice.
+**Codex** (`@openai/codex`) — see [Codex auth docs](https://developers.openai.com/codex/auth):
+
+| Step | Command / rule |
+|------|----------------|
+| Detect | `which` / `where` → `codex` |
+| Probe | `codex login status` — exit **0** ⇒ authenticated; parse stdout for email / `ChatGPT` / `API key` |
+| Login | `codex login` (browser OAuth; detached spawn). If `TVASHTR_HARNESS_DEVICE_AUTH=1` → `codex login --device-auth` |
+| Install | https://developers.openai.com/codex |
+
+**Grok** (`grok` / `@xai-official/grok`) — see [xAI CLI reference](https://docs.x.ai/build/cli/reference):
+
+| Step | Command / rule |
+|------|----------------|
+| Detect | `which` / `where` → `grok` |
+| Probe (primary) | `grok models` — exit 0 even when logged out; stdout/stderr containing `You are not authenticated` ⇒ unauthenticated; otherwise exit 0 ⇒ authenticated |
+| Probe (fallbacks) | Non-empty `XAI_API_KEY` ⇒ `account_hint: "api-key"`; else `$GROK_HOME/auth.json` or `~/.grok/auth.json` with session-like fields ⇒ authenticated (`account_hint` from safe fields or `"session"`). **Never** surface raw tokens |
+| Login | `grok login` (detached spawn). If `TVASHTR_HARNESS_DEVICE_AUTH=1` → `grok login --device-auth` |
+| Install | https://docs.x.ai/build/cli/reference |
+
+Login for both is fire-and-forget (detached spawn) then re-probe — interactive browser OAuth is **not** a blocking 15s `execFile` success path.
 
 
 ### Desktop IPC
