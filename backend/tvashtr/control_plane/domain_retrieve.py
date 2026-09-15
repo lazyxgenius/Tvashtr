@@ -87,3 +87,89 @@ def citations_from_chunks(chunks: list[dict]) -> list[dict]:
             item["score"] = c["score"]
         cites.append(item)
     return cites
+
+
+RETRIEVAL_MODES = ("dense", "lexical", "hybrid")
+DEFAULT_RETRIEVAL_MODE = "dense"
+RRF_K = 60
+DEFAULT_RERANK: dict = {"enabled": False, "model": None, "top_n": 20}
+
+
+def coerce_retrieval_mode(
+    config: dict | None, default: str = DEFAULT_RETRIEVAL_MODE
+) -> str:
+    raw = (config or {}).get("retrieval") or {}
+    if not isinstance(raw, dict):
+        return default
+    mode = str(raw.get("mode") or default).strip().lower()
+    return mode if mode in RETRIEVAL_MODES else default
+
+
+def coerce_rerank_config(config: dict | None) -> dict:
+    raw = (config or {}).get("retrieval") or {}
+    block = raw.get("rerank") if isinstance(raw, dict) else None
+    enabled = False
+    model = None
+    top_n = 20
+    if isinstance(block, dict):
+        enabled = bool(block.get("enabled"))
+        m = block.get("model")
+        if isinstance(m, str) and m.strip():
+            model = m.strip()
+        else:
+            model = None
+        try:
+            n = int(block.get("top_n", 20))
+            if n >= 1:
+                top_n = n
+        except (TypeError, ValueError):
+            pass
+    return {"enabled": enabled, "model": model, "top_n": top_n}
+
+
+def candidate_k(top_k: int, rerank: dict) -> int:
+    try:
+        k = int(top_k)
+    except (TypeError, ValueError):
+        k = 8
+    k = max(1, k)
+    if not rerank or not rerank.get("enabled"):
+        return k
+    try:
+        n = int(rerank.get("top_n") or k)
+    except (TypeError, ValueError):
+        n = k
+    return max(k, max(1, n))
+
+
+def rrf_fuse(ranked_lists: list[list[dict]], k: int = RRF_K) -> list[dict]:
+    """Reciprocal Rank Fusion. First-seen chunk fields win; score := RRF sum."""
+    k = k if isinstance(k, int) and k >= 1 else RRF_K
+    scores: dict[str, float] = {}
+    by_id: dict[str, dict] = {}
+    for ranked in ranked_lists:
+        if not ranked:
+            continue
+        for rank, item in enumerate(ranked, start=1):
+            cid = str(item.get("chunk_id") or "")
+            if not cid:
+                continue
+            scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank)
+            if cid not in by_id:
+                by_id[cid] = dict(item)
+    fused = []
+    for cid, sc in scores.items():
+        row = dict(by_id[cid])
+        row["score"] = sc
+        fused.append(row)
+    fused.sort(key=lambda r: float(r.get("score") or 0.0), reverse=True)
+    return fused
+
+
+def apply_rerank(chunks: list[dict], query: str, rerank: dict) -> list[dict]:
+    """v1 passthrough. Reserved hook: a future LiteLLM rerank may use rerank['model'].
+
+    Today no first-party rerank API exists in-repo — always return chunks unchanged
+    (caller already expanded candidate_k when enabled).
+    """
+    return chunks
