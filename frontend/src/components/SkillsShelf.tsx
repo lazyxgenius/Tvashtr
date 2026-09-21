@@ -6,7 +6,9 @@ import {
   deleteSkillLibraryItem,
   type LibrarySkillItemSource,
   listSkillLibrary,
+  listSkillPresets,
   type SkillLibraryItem,
+  type SkillPresetEntry,
   updateSkillLibraryItem,
 } from "../lib/api";
 
@@ -34,6 +36,7 @@ function badgeOf(source: LibrarySkillItemSource): string {
 
 export function SkillsShelf() {
   const [skills, setSkills] = useState<SkillLibraryItem[]>([]);
+  const [presets, setPresets] = useState<SkillPresetEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +62,9 @@ export function SkillsShelf() {
       .then((s) => mounted.current && setSkills(s))
       .catch(() => {})
       .finally(() => mounted.current && setLoading(false));
+    listSkillPresets()
+      .then((p) => mounted.current && setPresets(p))
+      .catch(() => {});
     return () => {
       mounted.current = false;
     };
@@ -149,6 +155,20 @@ export function SkillsShelf() {
       await reload();
     } catch {
       if (mounted.current) setError("Couldn't remove the skill.");
+    }
+  };
+
+  const addFromPreset = async (entry: SkillPresetEntry) => {
+    if (!entry.attachable) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await createSkillLibraryItem(entry.name, entry.source);
+      await reload();
+    } catch {
+      if (mounted.current) setError("Couldn't add the skill preset.");
+    } finally {
+      if (mounted.current) setBusy(false);
     }
   };
 
@@ -266,6 +286,29 @@ export function SkillsShelf() {
           </div>
         </div>
       </div>
+      {presets.length > 0 && (
+        <ul className="tv-dash__prov-list" aria-label="Built-in skill presets">
+          {presets.map((entry) => {
+            const inLibrary = skills.some((s) => s.name === entry.name);
+            return (
+              <li className="tv-dash__prov-chip" key={`preset-${entry.key}`}>
+                <span className="tv-mcp-badge">{entry.badge}</span>
+                <span className="tv-dash__prov-name">{entry.title}</span>
+                <span className="tv-field__hint">{entry.description}</span>
+                <button
+                  type="button"
+                  className="tv-btn tv-btn--sm"
+                  aria-label={`Add ${entry.name} from presets`}
+                  disabled={busy || inLibrary}
+                  onClick={() => void addFromPreset(entry)}
+                >
+                  {inLibrary ? "in library" : "Add to library"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {!loading && skills.length === 0 ? (
         <p className="tv-dash__prov-empty">
           Add a reusable skill so any node can reference it from its Skills section.

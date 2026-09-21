@@ -5,6 +5,7 @@ import {
   createSkillLibraryItem,
   deleteSkillLibraryItem,
   listSkillLibrary,
+  listSkillPresets,
   updateSkillLibraryItem,
 } from "../lib/api";
 import { SkillsShelf } from "./SkillsShelf";
@@ -12,14 +13,34 @@ import { SkillsShelf } from "./SkillsShelf";
 // M-tools C7.C — the account Skill library shelf. Mock the CRUD client (no network).
 vi.mock("../lib/api", () => ({
   listSkillLibrary: vi.fn(),
+  listSkillPresets: vi.fn(),
   createSkillLibraryItem: vi.fn(),
   updateSkillLibraryItem: vi.fn(),
   deleteSkillLibraryItem: vi.fn(),
 }));
 const mList = listSkillLibrary as unknown as ReturnType<typeof vi.fn>;
+const mPresets = listSkillPresets as unknown as ReturnType<typeof vi.fn>;
 const mCreate = createSkillLibraryItem as unknown as ReturnType<typeof vi.fn>;
 const mUpdate = updateSkillLibraryItem as unknown as ReturnType<typeof vi.fn>;
 const mDelete = deleteSkillLibraryItem as unknown as ReturnType<typeof vi.fn>;
+
+const PRESETS = [
+  {
+    key: "caveman",
+    name: "caveman",
+    title: "Caveman (terse)",
+    description: "Vendored ultra-compressed output style.",
+    access: "free" as const,
+    badge: "Free",
+    attachable: true,
+    source: {
+      type: "inline" as const,
+      name: "caveman",
+      content: "Respond terse like smart caveman.",
+      mode: "always" as const,
+    },
+  },
+];
 
 const ROW = {
   id: "s1",
@@ -30,6 +51,7 @@ const ROW = {
 
 beforeEach(() => {
   mList.mockResolvedValue([]);
+  mPresets.mockResolvedValue(PRESETS);
   mCreate.mockResolvedValue({ id: "s1", name: "house-style" });
   mUpdate.mockResolvedValue({ id: "s1", name: "house-style" });
   mDelete.mockResolvedValue(undefined);
@@ -41,8 +63,12 @@ describe("SkillsShelf (M-tools C7.C)", () => {
     mList.mockResolvedValue([ROW]);
     render(<SkillsShelf />);
     await waitFor(() => expect(screen.getByText("house-style")).toBeInTheDocument());
-    // scope to the rows list — "Inline" is also the source-type toggle label in the add form
-    expect(within(screen.getByRole("list")).getByText("Inline")).toBeInTheDocument();
+    // scope to the account library rows list (presets list is separate)
+    const libraryList = screen
+      .getAllByRole("list")
+      .find((el) => el.getAttribute("aria-label") !== "Built-in skill presets");
+    expect(libraryList).toBeTruthy();
+    expect(within(libraryList!).getByText("Inline")).toBeInTheDocument();
   });
 
   it("adds an inline skill (name + content + mode)", async () => {
@@ -97,5 +123,23 @@ describe("SkillsShelf (M-tools C7.C)", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Remove house-style" }));
     await waitFor(() => expect(mDelete).toHaveBeenCalledWith("s1"));
+  });
+});
+
+describe("SkillsShelf built-in presets", () => {
+  it("renders Free badge for caveman and Add to library upserts inline source", async () => {
+    mCreate.mockResolvedValue({ id: "c1", name: "caveman" });
+    render(<SkillsShelf />);
+    await waitFor(() => expect(screen.getByLabelText("Built-in skill presets")).toBeInTheDocument());
+    expect(screen.getByText("Free")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add caveman from presets" }));
+    await waitFor(() =>
+      expect(mCreate).toHaveBeenCalledWith("caveman", {
+        type: "inline",
+        name: "caveman",
+        content: "Respond terse like smart caveman.",
+        mode: "always",
+      }),
+    );
   });
 });
