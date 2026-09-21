@@ -1,15 +1,39 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { listSkillLibrary } from "../lib/api";
+import { createSkillLibraryItem, listSkillLibrary, listSkillPresets } from "../lib/api";
 import { SkillsSection } from "./SkillsSection";
 
-// C7.C: SkillsSection now fetches the account's library skills (the "Add from library" picker +
-// resolving a referenced id to a name). Mock it — a fixture-signature update (new dependency).
-vi.mock("../lib/api", () => ({ listSkillLibrary: vi.fn() }));
+vi.mock("../lib/api", () => ({
+  listSkillLibrary: vi.fn(),
+  listSkillPresets: vi.fn(),
+  createSkillLibraryItem: vi.fn(),
+}));
 const mockLibrary = listSkillLibrary as unknown as ReturnType<typeof vi.fn>;
+const mockPresets = listSkillPresets as unknown as ReturnType<typeof vi.fn>;
+const mockCreate = createSkillLibraryItem as unknown as ReturnType<typeof vi.fn>;
 
-beforeEach(() => mockLibrary.mockResolvedValue([]));
+beforeEach(() => {
+  mockLibrary.mockResolvedValue([]);
+  mockPresets.mockResolvedValue([
+    {
+      key: "caveman",
+      name: "caveman",
+      title: "Caveman (terse)",
+      description: "Vendored ultra-compressed output style.",
+      access: "free",
+      badge: "Free",
+      attachable: true,
+      source: {
+        type: "inline",
+        name: "caveman",
+        content: "Respond terse like smart caveman.",
+        mode: "always",
+      },
+    },
+  ]);
+  mockCreate.mockResolvedValue({ id: "preset-1", name: "caveman" });
+});
 afterEach(() => vi.clearAllMocks());
 
 // M-tools C7.B: the real per-node Skills editor (replaces the C7.0 JSON-textarea stub). Authors the
@@ -157,5 +181,26 @@ describe("SkillsSection (M-tools C7.B)", () => {
     );
     // the library row (second, resolving to the same name "DUP") is the overridden one
     await waitFor(() => expect(screen.getByText("overridden")).toBeInTheDocument());
+  });
+});
+
+describe("SkillsSection presets", () => {
+  it("Add from presets lists caveman and attaches via skill library", async () => {
+    const onChange = vi.fn();
+    render(<SkillsSection value={null} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add from presets" }));
+    await waitFor(() => screen.getByRole("button", { name: "Add caveman from presets" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add caveman from presets" }));
+    await waitFor(() =>
+      expect(mockCreate).toHaveBeenCalledWith("caveman", {
+        type: "inline",
+        name: "caveman",
+        content: "Respond terse like smart caveman.",
+        mode: "always",
+      }),
+    );
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith([{ type: "library", id: "preset-1" }]),
+    );
   });
 });

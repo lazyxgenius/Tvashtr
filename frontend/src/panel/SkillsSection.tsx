@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-import type { SkillLibraryItem, SkillSource } from "../lib/api";
-import { listSkillLibrary } from "../lib/api";
+import type { SkillLibraryItem, SkillPresetEntry, SkillSource } from "../lib/api";
+import { createSkillLibraryItem, listSkillLibrary, listSkillPresets } from "../lib/api";
 
 /**
  * M-tools C7.B + C7.C — the per-node **Skills** editor. Renders for BOTH thinker and worker nodes (a
@@ -93,12 +93,18 @@ export function SkillsSection({
 
   // C7.C: the account's library skills — to resolve a referenced id to its name + power the picker.
   const [librarySkills, setLibrarySkills] = useState<SkillLibraryItem[]>([]);
+  const [presets, setPresets] = useState<SkillPresetEntry[]>([]);
   const [showPicker, setShowPicker] = useState(false);
+  const [showPresets, setShowPresets] = useState(false);
+  const [presetBusy, setPresetBusy] = useState(false);
 
   useEffect(() => {
     let live = true;
     listSkillLibrary()
       .then((s) => live && setLibrarySkills(s))
+      .catch(() => {});
+    listSkillPresets()
+      .then((p) => live && setPresets(p))
       .catch(() => {});
     return () => {
       live = false;
@@ -151,6 +157,38 @@ export function SkillsSection({
     if (referencedIds.has(id)) return;
     emit([...sources, { type: "library", id }]);
     setShowPicker(false);
+  };
+
+  const addFromPreset = async (entry: SkillPresetEntry) => {
+    if (!entry.attachable) return;
+    setPresetBusy(true);
+    try {
+      let item = librarySkills.find((s) => s.name === entry.name) ?? null;
+      let id = item?.id;
+      if (!id) {
+        const created = await createSkillLibraryItem(entry.name, entry.source);
+        id = created.id;
+        setLibrarySkills((prev) =>
+          prev.some((s) => s.id === id)
+            ? prev
+            : [
+                ...prev,
+                {
+                  id: created.id,
+                  name: created.name,
+                  source: entry.source,
+                  created_at: "",
+                },
+              ],
+        );
+      }
+      addLibraryRef(id);
+      setShowPresets(false);
+    } catch {
+      // keep editor usable if the library upsert fails
+    } finally {
+      setPresetBusy(false);
+    }
   };
 
   const toggleProjectRules = () => {
@@ -321,6 +359,54 @@ export function SkillsSection({
         >
           Add repo
         </button>
+      </div>
+
+      {/* Add from built-in presets */}
+      <div
+        className="tv-skills__add"
+        style={{ display: "grid", gap: "0.4rem", marginTop: "0.5rem" }}
+      >
+        <button
+          type="button"
+          className="tv-btn tv-btn--sm"
+          aria-label="Add from presets"
+          disabled={presetBusy}
+          onClick={() => setShowPresets((v) => !v)}
+        >
+          Add from presets
+        </button>
+        {showPresets && (
+          <ul
+            aria-label="Skill presets picker"
+            style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.35rem" }}
+          >
+            {presets.length === 0 ? (
+              <li className="tv-field__hint">No presets available.</li>
+            ) : (
+              presets.map((entry) => {
+                const alreadyName = librarySkills.some((s) => s.name === entry.name);
+                const alreadyRef = librarySkills.some(
+                  (s) => s.name === entry.name && referencedIds.has(s.id),
+                );
+                return (
+                  <li key={`preset-${entry.key}`} style={rowStyle}>
+                    <span className="tv-mcp-badge">{entry.badge}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>{entry.title}</span>
+                    <button
+                      type="button"
+                      className="tv-btn tv-btn--sm"
+                      aria-label={`Add ${entry.name} from presets`}
+                      disabled={presetBusy || alreadyRef}
+                      onClick={() => void addFromPreset(entry)}
+                    >
+                      {alreadyRef ? "added" : alreadyName ? "Attach" : "Add"}
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        )}
       </div>
 
       {/* Add from the account library */}
