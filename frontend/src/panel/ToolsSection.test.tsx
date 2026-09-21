@@ -1,19 +1,43 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { listSecrets, listToolLibrary } from "../lib/api";
+import {
+  createToolLibraryItem,
+  listSecrets,
+  listToolCatalog,
+  listToolLibrary,
+} from "../lib/api";
 import { ToolsSection } from "./ToolsSection";
 
-// ToolsSection fetches the account's secret NAMES (unstored `${NAME}` flag) AND, since C7.C, the
-// account's library tools (the "Add from library" picker + resolving a referenced id to a name).
-// Mock both (a fixture-signature update — the component gained the C7.C library dependency).
-vi.mock("../lib/api", () => ({ listSecrets: vi.fn(), listToolLibrary: vi.fn() }));
+// ToolsSection fetches secret NAMES, library tools, and (catalog MVP) the built-in tool catalog.
+vi.mock("../lib/api", () => ({
+  listSecrets: vi.fn(),
+  listToolLibrary: vi.fn(),
+  listToolCatalog: vi.fn(),
+  createToolLibraryItem: vi.fn(),
+}));
 const mockList = listSecrets as unknown as ReturnType<typeof vi.fn>;
 const mockLibrary = listToolLibrary as unknown as ReturnType<typeof vi.fn>;
+const mockCatalog = listToolCatalog as unknown as ReturnType<typeof vi.fn>;
+const mockCreate = createToolLibraryItem as unknown as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   mockList.mockResolvedValue([]);
   mockLibrary.mockResolvedValue([]);
+  mockCatalog.mockResolvedValue([
+    {
+      key: "fetch",
+      name: "fetch",
+      title: "Web fetch",
+      description: "Fetch HTTP URLs",
+      access: "free",
+      secret_names: [],
+      badge: "Free",
+      attachable: true,
+      server_config: { command: "uvx", args: ["mcp-server-fetch"] },
+    },
+  ]);
+  mockCreate.mockResolvedValue({ id: "new-fetch", name: "fetch" });
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -142,5 +166,55 @@ describe("ToolsSection (M-tools C7.A)", () => {
     await waitFor(() => screen.getByRole("button", { name: "Remove reference fetch" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove reference fetch" }));
     expect(onChange).toHaveBeenCalledWith({ tvashtr: { library: [] } });
+  });
+});
+
+describe("ToolsSection catalog MVP", () => {
+  it("Domains checkbox sets tvashtr.domains true from null", () => {
+    const onChange = vi.fn();
+    render(<ToolsSection value={null} onChange={onChange} />);
+    fireEvent.click(screen.getByLabelText("Enable Domains MCP"));
+    expect(onChange).toHaveBeenCalledWith({ tvashtr: { domains: true } });
+  });
+
+  it("unchecking Domains with nothing else clears to null", () => {
+    const onChange = vi.fn();
+    render(<ToolsSection value={{ tvashtr: { domains: true } }} onChange={onChange} />);
+    fireEvent.click(screen.getByLabelText("Enable Domains MCP")); // was on → off
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("Attach fetch creates library item then references it", async () => {
+    const onChange = vi.fn();
+    render(<ToolsSection value={null} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Attach fetch" }));
+    await waitFor(() =>
+      expect(mockCreate).toHaveBeenCalledWith("fetch", {
+        command: "uvx",
+        args: ["mcp-server-fetch"],
+      }),
+    );
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith({ tvashtr: { library: ["new-fetch"] } }),
+    );
+  });
+
+  it("Attach fetch reuses an existing library fetch without create", async () => {
+    mockLibrary.mockResolvedValue([
+      {
+        id: "existing-fetch",
+        name: "fetch",
+        server_config: { command: "uvx", args: ["mcp-server-fetch"] },
+        created_at: "x",
+      },
+    ]);
+    const onChange = vi.fn();
+    render(<ToolsSection value={null} onChange={onChange} />);
+    await waitFor(() => expect(mockLibrary).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Attach fetch" }));
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith({ tvashtr: { library: ["existing-fetch"] } }),
+    );
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 });

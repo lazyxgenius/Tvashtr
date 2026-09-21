@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 
-import type { ToolLibraryItem } from "../lib/api";
-import { listSecrets, listToolLibrary } from "../lib/api";
+import type { ToolCatalogEntry, ToolLibraryItem } from "../lib/api";
+import {
+  createToolLibraryItem,
+  listSecrets,
+  listToolCatalog,
+  listToolLibrary,
+} from "../lib/api";
 
 /**
  * M-tools C7.A + C7.C — the per-node **Tools** (MCP) editor. A worker node gets a real editor:
@@ -52,6 +57,10 @@ function refsOf(cfg: Cfg): string[] {
   return [...names];
 }
 // C7.C: the ids of the account-library servers this node REFERENCES (stored beside the allow-list).
+
+function domainsOf(cfg: Cfg): boolean {
+  return asRecord(asRecord(cfg)["tvashtr"])["domains"] === true;
+}
 function librariesOf(cfg: Cfg): string[] {
   const lib = asRecord(asRecord(cfg)["tvashtr"])["library"];
   return Array.isArray(lib) ? lib.filter((x): x is string => typeof x === "string") : [];
@@ -62,6 +71,8 @@ export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value
   const [open, setOpen] = useState(true);
   const [secretNames, setSecretNames] = useState<string[]>([]);
   const [libraryTools, setLibraryTools] = useState<ToolLibraryItem[]>([]);
+  const [catalog, setCatalog] = useState<ToolCatalogEntry[]>([]);
+  const [attachBusy, setAttachBusy] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [addName, setAddName] = useState("");
   const [addKind, setAddKind] = useState<"local" | "remote">("local");
@@ -83,6 +94,9 @@ export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value
     let live = true;
     listToolLibrary()
       .then((t) => live && setLibraryTools(t))
+      .catch(() => {});
+    listToolCatalog()
+      .then((c) => live && setCatalog(c))
       .catch(() => {});
     return () => {
       live = false;
@@ -153,6 +167,70 @@ export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value
     apply({ ...base, tvashtr: { ...meta, library: librariesOf(cfg).filter((x) => x !== id) } });
   };
 
+  const setDomains = (enabled: boolean) => {
+    const base = asRecord(cfg);
+    const meta = { ...asRecord(base["tvashtr"]) };
+    if (enabled) {
+      apply({ ...base, tvashtr: { ...meta, domains: true } });
+      return;
+    }
+    delete meta.domains;
+    const nextServers = serversOf(cfg);
+    const hasServers = Object.keys(nextServers).length > 0;
+    const hasLibrary = (Array.isArray(meta.library) ? meta.library : []).length > 0;
+    const hasServerMeta = Object.keys(asRecord(meta.servers)).length > 0;
+    const metaEmpty = Object.keys(meta).length === 0;
+    if (!hasServers && !hasLibrary && !hasServerMeta && metaEmpty) {
+      apply(null);
+      return;
+    }
+    const next: Record<string, unknown> = { ...base };
+    if (hasServers) next.mcpServers = nextServers;
+    else delete next.mcpServers;
+    if (metaEmpty) delete next.tvashtr;
+    else next.tvashtr = meta;
+    apply(Object.keys(next).length === 0 ? null : next);
+  };
+
+  const attachFetch = async () => {
+    const fetchEntry =
+      catalog.find((e) => e.key === "fetch" && e.attachable) ??
+      ({
+        key: "fetch",
+        name: "fetch",
+        server_config: { command: "uvx", args: ["mcp-server-fetch"] },
+        attachable: true,
+      } as ToolCatalogEntry);
+    // Prefer an existing library row named fetch (avoid a redundant upsert when already present).
+    const existing = libraryTools.find((t) => t.name === fetchEntry.name);
+    setAttachBusy(true);
+    try {
+      let id = existing?.id;
+      if (!id) {
+        const created = await createToolLibraryItem(fetchEntry.name, fetchEntry.server_config);
+        id = created.id;
+        setLibraryTools((prev) =>
+          prev.some((t) => t.id === id)
+            ? prev
+            : [
+                ...prev,
+                {
+                  id: created.id,
+                  name: created.name,
+                  server_config: fetchEntry.server_config,
+                  created_at: "",
+                },
+              ],
+        );
+      }
+      addLibraryRef(id);
+    } catch {
+      // Shelf/network errors stay silent here; the drawer still works without the attach.
+    } finally {
+      setAttachBusy(false);
+    }
+  };
+
   const serverNames = Object.keys(servers);
   const inlineNameSet = new Set(serverNames);
   const libraryIds = librariesOf(cfg);
@@ -175,6 +253,27 @@ export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value
         MCP servers — paste an <code>mcp.json</code>, add one below, or reference one from your
         account library. Secrets stay as <code>${"{NAME}"}</code> references, resolved at run time.
       </span>
+
+      <div className="tv-mcp-add" style={{ marginBottom: "0.5rem" }}>
+        <label className="tv-mcp-toggle">
+          <input
+            type="checkbox"
+            aria-label="Enable Domains MCP"
+            checked={domainsOf(cfg)}
+            onChange={(e) => setDomains(e.currentTarget.checked)}
+          />
+          <span>Domains MCP</span>
+        </label>
+        <button
+          type="button"
+          className="tv-btn tv-btn--ghost"
+          aria-label="Attach fetch"
+          disabled={attachBusy}
+          onClick={() => void attachFetch()}
+        >
+          Attach fetch
+        </button>
+      </div>
 
       {(serverNames.length > 0 || referencedRows.length > 0) && (
         <ul className="tv-mcp-list">
