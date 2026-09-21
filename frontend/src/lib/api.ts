@@ -876,6 +876,44 @@ export async function deleteSkillLibraryItem(id: string): Promise<void> {
   const res = await fetch(`/api/skill-library/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /api/skill-library/${id} -> ${res.status}`);
 }
+
+// ===== Free tools & skills catalog (static built-ins; opt-in via library attach) ================
+export type CatalogAccess = "free" | "needs_secret" | "needs_github_app";
+
+export interface ToolCatalogEntry {
+  key: string;
+  name: string;
+  title: string;
+  description: string;
+  access: CatalogAccess;
+  secret_names: string[];
+  badge: string;
+  attachable: boolean;
+  server_config: Record<string, unknown>;
+}
+
+export interface SkillPresetEntry {
+  key: string;
+  name: string;
+  title: string;
+  description: string;
+  access: CatalogAccess;
+  badge: string;
+  attachable: boolean;
+  source: InlineSkillSource;
+}
+
+export async function listToolCatalog(): Promise<ToolCatalogEntry[]> {
+  const data = await getJSON<{ tools: ToolCatalogEntry[] }>("/api/tool-catalog");
+  return data.tools;
+}
+
+export async function listSkillPresets(): Promise<SkillPresetEntry[]> {
+  const data = await getJSON<{ skills: SkillPresetEntry[] }>("/api/skill-presets");
+  return data.skills;
+}
+// ===== end free catalog block ==================================================================
+
 // ===== end M-tools C7.C library block ==========================================================
 
 export interface TeamGraphData {

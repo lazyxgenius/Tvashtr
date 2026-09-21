@@ -4,7 +4,9 @@ import { Wrench, X } from "lucide-react";
 import {
   createToolLibraryItem,
   deleteToolLibraryItem,
+  listToolCatalog,
   listToolLibrary,
+  type ToolCatalogEntry,
   type ToolLibraryItem,
   updateToolLibraryItem,
 } from "../lib/api";
@@ -73,6 +75,7 @@ function rowsOfBlock(block: unknown): SecretRow[] {
 
 export function ToolsShelf() {
   const [tools, setTools] = useState<ToolLibraryItem[]>([]);
+  const [catalog, setCatalog] = useState<ToolCatalogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +100,9 @@ export function ToolsShelf() {
       .then((t) => mounted.current && setTools(t))
       .catch(() => {})
       .finally(() => mounted.current && setLoading(false));
+    listToolCatalog()
+      .then((c) => mounted.current && setCatalog(c))
+      .catch(() => {});
     return () => {
       mounted.current = false;
     };
@@ -232,6 +238,20 @@ export function ToolsShelf() {
     }
   };
 
+  const addFromCatalog = async (entry: ToolCatalogEntry) => {
+    if (!entry.attachable) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await createToolLibraryItem(entry.name, entry.server_config);
+      await reload();
+    } catch {
+      if (mounted.current) setError("Couldn't add the catalog tool.");
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  };
+
   const isLocal = transport === "local";
   const rowNoun = isLocal ? "Environment variable" : "Header";
 
@@ -247,6 +267,33 @@ export function ToolsShelf() {
           section. Edit it once and every node that uses it picks up the change on its next run.
         </p>
       </div>
+      {catalog.length > 0 && (
+        <ul className="tv-dash__prov-list" aria-label="Built-in tool catalog">
+          {catalog.map((entry) => {
+            const inLibrary = tools.some((t) => t.name === entry.name);
+            return (
+              <li className="tv-dash__prov-chip" key={`cat-${entry.key}`}>
+                <span className="tv-mcp-badge">{entry.badge}</span>
+                <span className="tv-dash__prov-name">{entry.title}</span>
+                <span className="tv-field__hint">{entry.description}</span>
+                {entry.attachable ? (
+                  <button
+                    type="button"
+                    className="tv-btn tv-btn--sm"
+                    aria-label={`Add ${entry.name} from catalog`}
+                    disabled={busy || inLibrary}
+                    onClick={() => void addFromCatalog(entry)}
+                  >
+                    {inLibrary ? "in library" : "Add to library"}
+                  </button>
+                ) : (
+                  <span className="tv-field__hint">Install the GitHub App to use hosted repos.</span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
       <div className="tv-dash__library-form">
         <label className="tv-field">
           <span className="tv-field__label">Name</span>

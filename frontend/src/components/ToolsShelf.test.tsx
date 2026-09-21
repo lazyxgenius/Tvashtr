@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createToolLibraryItem,
   deleteToolLibraryItem,
+  listToolCatalog,
   listToolLibrary,
   updateToolLibraryItem,
 } from "../lib/api";
@@ -12,19 +13,62 @@ import { ToolsShelf, buildServerConfig } from "./ToolsShelf";
 // M-tools C7.C — the account Tool library shelf. Mock the CRUD client (no network).
 vi.mock("../lib/api", () => ({
   listToolLibrary: vi.fn(),
+  listToolCatalog: vi.fn(),
   createToolLibraryItem: vi.fn(),
   updateToolLibraryItem: vi.fn(),
   deleteToolLibraryItem: vi.fn(),
 }));
 const mList = listToolLibrary as unknown as ReturnType<typeof vi.fn>;
+const mCatalog = listToolCatalog as unknown as ReturnType<typeof vi.fn>;
 const mCreate = createToolLibraryItem as unknown as ReturnType<typeof vi.fn>;
 const mUpdate = updateToolLibraryItem as unknown as ReturnType<typeof vi.fn>;
 const mDelete = deleteToolLibraryItem as unknown as ReturnType<typeof vi.fn>;
+
+const CATALOG = [
+  {
+    key: "fetch",
+    name: "fetch",
+    title: "Web fetch",
+    description: "Fetch HTTP URLs",
+    access: "free" as const,
+    secret_names: [] as string[],
+    badge: "Free",
+    attachable: true,
+    server_config: { command: "uvx", args: ["mcp-server-fetch"] },
+  },
+  {
+    key: "github",
+    name: "github",
+    title: "GitHub (PAT)",
+    description: "GitHub via PAT",
+    access: "needs_secret" as const,
+    secret_names: ["GITHUB_TOKEN"],
+    badge: "Needs ${GITHUB_TOKEN}",
+    attachable: true,
+    server_config: {
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-github"],
+      env: { GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}" },
+    },
+  },
+  {
+    key: "github-app",
+    name: "github-app",
+    title: "GitHub App repos",
+    description: "Hosted GitHub App",
+    access: "needs_github_app" as const,
+    secret_names: [] as string[],
+    badge: "Needs GitHub App",
+    attachable: false,
+    server_config: {},
+  },
+];
 
 const ROW = { id: "t1", name: "fetch", server_config: { command: "uvx" }, created_at: "x" };
 
 beforeEach(() => {
   mList.mockResolvedValue([]);
+  mCatalog.mockResolvedValue(CATALOG);
   mCreate.mockResolvedValue({ id: "t1", name: "fetch" });
   mUpdate.mockResolvedValue({ id: "t1", name: "fetch" });
   mDelete.mockResolvedValue(undefined);
@@ -200,5 +244,27 @@ describe("ToolsShelf (M-tools C7.C)", () => {
     expect(form?.closest(".tv-dash__prov-head")).toBeNull();
     expect(screen.getByText("Name")).toBeInTheDocument();
     expect(screen.getByText("Command")).toBeInTheDocument();
+  });
+});
+
+describe("ToolsShelf built-in catalog", () => {
+  it("renders Free / Needs ${SECRET} / Needs GitHub App badges", async () => {
+    render(<ToolsShelf />);
+    await waitFor(() => expect(screen.getByLabelText("Built-in tool catalog")).toBeInTheDocument());
+    expect(screen.getByText("Free")).toBeInTheDocument();
+    expect(screen.getByText("Needs ${GITHUB_TOKEN}")).toBeInTheDocument();
+    expect(screen.getByText("Needs GitHub App")).toBeInTheDocument();
+  });
+
+  it("Add to library upserts fetch via createToolLibraryItem", async () => {
+    render(<ToolsShelf />);
+    await waitFor(() => screen.getByRole("button", { name: "Add fetch from catalog" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add fetch from catalog" }));
+    await waitFor(() =>
+      expect(mCreate).toHaveBeenCalledWith("fetch", {
+        command: "uvx",
+        args: ["mcp-server-fetch"],
+      }),
+    );
   });
 });
