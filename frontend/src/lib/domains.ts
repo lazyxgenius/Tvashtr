@@ -33,6 +33,10 @@ export interface DomainRerankConfig {
   top_n: number;
 }
 
+export interface DomainGraphConfig {
+  enabled: boolean;
+}
+
 /** Phase 1 v1 config shape (matches backend defaults). */
 export interface DomainConfig {
   chunking: { strategy: string; size: number; overlap: number };
@@ -41,6 +45,7 @@ export interface DomainConfig {
     top_k: number;
     mode: RetrievalMode | string;
     rerank?: DomainRerankConfig;
+    graph?: DomainGraphConfig;
   };
   generation: { model: string | null };
 }

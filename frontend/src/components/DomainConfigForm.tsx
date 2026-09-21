@@ -14,6 +14,7 @@ function withRerank(cfg: DomainConfig): DomainConfig {
         model: rr?.model ?? null,
         top_n: Number(rr?.top_n) > 0 ? Number(rr?.top_n) : 20,
       },
+      graph: { enabled: Boolean(cfg.retrieval.graph?.enabled) },
     },
   };
 }
@@ -249,6 +250,27 @@ export function DomainConfigForm({
                 })
               }
             />
+          </label>
+          <label className="tv-field">
+            <span className="tv-field__label">Graph-lite mention expansion</span>
+            <input
+              type="checkbox"
+              aria-label="Graph-lite mention expansion"
+              checked={Boolean(cfg.retrieval.graph?.enabled)}
+              onChange={(e) =>
+                setCfg({
+                  ...cfg,
+                  retrieval: {
+                    ...cfg.retrieval,
+                    graph: { enabled: e.target.checked },
+                  },
+                })
+              }
+            />
+            <span className="tv-field__hint">
+              When enabled, retrieve may append up to 4 neighbor chunks that share capitalized
+              mentions with the top hits. No Neo4j / no entity ingest. Default off.
+            </span>
           </label>
           <label className="tv-field">
             <span className="tv-field__label">Generation model</span>

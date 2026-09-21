@@ -55,4 +55,25 @@ describe("DomainConfigForm", () => {
     await user.click(screen.getByRole("button", { name: /Save config/i }));
     expect(screen.getByRole("alert")).toBeTruthy();
   });
+
+  it("toggles graph-lite mention expansion into saved config", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DomainConfigForm
+        initial={{
+          ...sample,
+          retrieval: { ...sample.retrieval, graph: { enabled: false } },
+        }}
+        onSave={onSave}
+      />,
+    );
+    const box = screen.getByRole("checkbox", { name: /Graph-lite mention expansion/i });
+    expect(box).not.toBeChecked();
+    await user.click(box);
+    await user.click(screen.getByRole("button", { name: /Save config/i }));
+    expect(onSave).toHaveBeenCalled();
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.retrieval.graph.enabled).toBe(true);
+  });
 });
