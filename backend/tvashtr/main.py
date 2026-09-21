@@ -29,6 +29,10 @@ from tvashtr.control_plane.clone_reaper import sweep_orphaned_clones
 from tvashtr.control_plane.fly_reaper import sweep_orphaned_fly_apps
 from tvashtr.control_plane.hello_durable import hello_durable
 from tvashtr.control_plane.teams import public_provider_catalogue
+from tvashtr.control_plane.tool_skill_catalog import (
+    public_skill_presets,
+    public_tool_catalogue,
+)
 from tvashtr.control_plane.workspace_reaper import sweep_orphaned_workspaces
 from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
 from tvashtr.mcp.domains import get_domains_mcp
@@ -180,6 +184,19 @@ def config() -> ConfigResponse:
             ProviderCatalogueEntry(**entry) for entry in public_provider_catalogue()
         ],
     )
+
+
+@app.get("/api/tool-catalog")
+def tool_catalog() -> dict:
+    """PUBLIC built-in MCP tool catalogue (static; no secrets). FE shelves derive Free /
+    Needs ``${SECRET}`` / Needs GitHub App badges from ``access`` / ``badge``."""
+    return {"tools": public_tool_catalogue()}
+
+
+@app.get("/api/skill-presets")
+def skill_presets() -> dict:
+    """PUBLIC skill presets (vendored inline; opt-in via skill library attach)."""
+    return {"skills": public_skill_presets()}
 
 
 @app.post(
