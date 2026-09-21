@@ -179,3 +179,24 @@ def test_retrieve_for_query_unknown_mode_is_dense():
         )
     dense.assert_called_once()
     lex.assert_not_called()
+
+
+def test_retrieve_for_query_graph_omitted_does_not_expand():
+    """Smoke: graph default/omitted leaves dense path unchanged (Phase 7)."""
+    did = uuid.uuid4()
+    dense_hits = [_chunk("a", "Acme Corp", 0.9)]
+    with patch(
+        "tvashtr.control_plane.domain_retrieve.retrieve_domain_chunks",
+        return_value=dense_hits,
+    ), patch(
+        "tvashtr.control_plane.domain_retrieve.expand_chunks_by_shared_mentions",
+    ) as exp:
+        out = retrieve_for_query(
+            did,
+            "q",
+            query_embedding=[0.1, 0.2],
+            top_k=1,
+            mode="dense",
+        )
+    assert out == dense_hits[:1]
+    exp.assert_not_called()

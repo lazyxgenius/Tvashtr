@@ -20,6 +20,7 @@ from tvashtr.control_plane.credentials import (
 from tvashtr.control_plane.domain_ingest import normalize_embedding_model
 from tvashtr.control_plane.domain_retrieve import (
     citations_from_chunks,
+    coerce_graph_config,
     coerce_rerank_config,
     coerce_retrieval_mode,
     retrieve_for_query,
@@ -196,6 +197,7 @@ def ask_domain(owner_id: uuid.UUID, domain_id: uuid.UUID, question: str) -> dict
 
     mode = coerce_retrieval_mode(cfg)
     rerank_cfg = coerce_rerank_config(cfg)
+    graph_cfg = coerce_graph_config(cfg)
     needs_embed = mode in ("dense", "hybrid")
     missing = missing_ask_providers(
         owner_id, emb_model if needs_embed else None, gen_model
@@ -255,6 +257,7 @@ def ask_domain(owner_id: uuid.UUID, domain_id: uuid.UUID, question: str) -> dict
         top_k=top_k,
         mode=mode,
         rerank=rerank_cfg,
+        graph=graph_cfg,
     )
     if not chunks:
         raise DomainAskError("empty_corpus", "ingest documents before asking")
@@ -370,6 +373,7 @@ def retrieve_domain(
 
     mode = coerce_retrieval_mode(cfg)
     rerank_cfg = coerce_rerank_config(cfg)
+    graph_cfg = coerce_graph_config(cfg)
     needs_embed = mode in ("dense", "hybrid")
     query_embedding = None
     started = time.perf_counter()
@@ -420,6 +424,7 @@ def retrieve_domain(
         top_k=effective_k,
         mode=mode,
         rerank=rerank_cfg,
+        graph=graph_cfg,
     )
     if not chunks:
         raise DomainAskError("empty_corpus", "ingest documents before asking")

@@ -6,7 +6,7 @@ import math
 import re
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from tvashtr.db import session_scope
 from tvashtr.models import DomainChunk, DomainDocument
@@ -180,6 +180,105 @@ def extract_mentions(text: str) -> list[str]:
     return out
 
 
+
+def rank_mention_neighbors(
+    candidates: list[dict],
+    mentions: list[str],
+    *,
+    max_expand: int,
+) -> list[dict]:
+    """Rank candidates by shared-mention strength; return up to ``max_expand`` neighbors."""
+    try:
+        cap = int(max_expand)
+    except (TypeError, ValueError):
+        cap = GRAPH_EXPAND_MAX
+    cap = max(0, min(cap, GRAPH_EXPAND_MAX))
+    if cap == 0 or not candidates or not mentions:
+        return []
+    scored: list[tuple[int, int, int, str, dict]] = []
+    n_mentions = max(1, len(mentions))
+    for cand in candidates:
+        body = cand.get("text") or ""
+        shared = sum(1 for m in mentions if m in body)
+        if shared <= 0:
+            continue
+        occ = sum(body.count(m) for m in mentions)
+        try:
+            ordinal = int(cand.get("ordinal") if cand.get("ordinal") is not None else 0)
+        except (TypeError, ValueError):
+            ordinal = 0
+        cid = str(cand.get("chunk_id") or "")
+        row = dict(cand)
+        score = 0.5 * (shared / n_mentions)
+        if not math.isfinite(score):
+            score = 0.0
+        row["score"] = float(score)
+        # Distinct shared first; occurrence breaks ties (n1 two Acmes > n2 one).
+        scored.append((shared, occ, ordinal, cid, row))
+    scored.sort(key=lambda t: (-t[0], -t[1], t[2], t[3]))
+    return [t[4] for t in scored[:cap]]
+
+
+def expand_chunks_by_shared_mentions(
+    domain_id: uuid.UUID,
+    seed_chunks: list[dict],
+    *,
+    max_expand: int = GRAPH_EXPAND_MAX,
+) -> list[dict]:
+    """Append ready same-domain chunks that share capitalized mentions with seeds."""
+    try:
+        cap = int(max_expand)
+    except (TypeError, ValueError):
+        cap = GRAPH_EXPAND_MAX
+    cap = max(0, min(cap, GRAPH_EXPAND_MAX))
+    if cap == 0 or not seed_chunks:
+        return []
+    mentions: list[str] = []
+    seen_m: set[str] = set()
+    for s in seed_chunks:
+        for m in extract_mentions(s.get("text") or ""):
+            if m not in seen_m:
+                seen_m.add(m)
+                mentions.append(m)
+            if len(mentions) >= GRAPH_MENTION_CAP:
+                break
+        if len(mentions) >= GRAPH_MENTION_CAP:
+            break
+    if not mentions:
+        return []
+    seed_ids = {str(s.get("chunk_id") or "") for s in seed_chunks}
+    seed_ids.discard("")
+    mention_conds = [DomainChunk.text.contains(m) for m in mentions]
+    with session_scope() as session:
+        stmt = (
+            select(DomainChunk, DomainDocument.filename)
+            .join(DomainDocument, DomainDocument.id == DomainChunk.document_id)
+            .where(
+                DomainChunk.domain_id == domain_id,
+                DomainDocument.ingest_status == "ready",
+                or_(*mention_conds),
+            )
+            .limit(50)
+        )
+        rows = session.execute(stmt).all()
+        candidates: list[dict] = []
+        for chunk, filename in rows:
+            cid = str(chunk.id)
+            if cid in seed_ids:
+                continue
+            candidates.append(
+                {
+                    "chunk_id": cid,
+                    "document_id": str(chunk.document_id),
+                    "filename": filename,
+                    "ordinal": int(chunk.ordinal),
+                    "text": chunk.text,
+                }
+            )
+    return rank_mention_neighbors(candidates, mentions, max_expand=cap)
+
+
+
 def candidate_k(top_k: int, rerank: dict) -> int:
     try:
         k = int(top_k)
@@ -291,11 +390,13 @@ def retrieve_for_query(
     top_k: int,
     mode: str = DEFAULT_RETRIEVAL_MODE,
     rerank: dict | None = None,
+    graph: dict | None = None,
 ) -> list[dict]:
     """Shared retrieve path for Chat / Query node / HTTP retrieve / MCP.
 
     dense | lexical | hybrid (RRF). When rerank.enabled, fetch candidate_k then
-    passthrough-rerank and slice to top_k.
+    passthrough-rerank and slice to top_k. When graph.enabled, append mention
+    neighbors (up to GRAPH_EXPAND_MAX) after the seed slice.
     """
     try:
         k_final = int(top_k) if top_k is not None else 8
@@ -331,4 +432,11 @@ def retrieve_for_query(
     else:
         fused = []
     fused = apply_rerank(fused, query, rr)
-    return fused[:k_final]
+    seeds = fused[:k_final]
+    g = graph if isinstance(graph, dict) else {}
+    if bool(g.get("enabled")):
+        neighbors = expand_chunks_by_shared_mentions(
+            domain_id, seeds, max_expand=GRAPH_EXPAND_MAX
+        )
+        return seeds + neighbors
+    return seeds
