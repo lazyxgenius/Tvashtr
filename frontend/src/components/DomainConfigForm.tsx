@@ -1,6 +1,12 @@
 import { useMemo, useState } from "react";
 
-import { parseDomainConfig, type DomainConfig } from "../lib/domains";
+import {
+  EMBEDDING_PRESETS,
+  normalizeEmbeddingModel,
+  parseDomainConfig,
+  providerOfEmbedding,
+  type DomainConfig,
+} from "../lib/domains";
 
 function withRerank(cfg: DomainConfig): DomainConfig {
   const rr = cfg.retrieval.rerank;
@@ -136,14 +142,35 @@ export function DomainConfigForm({
           </label>
           <label className="tv-field">
             <span className="tv-field__label">Embedding model</span>
-            <input
+            <select
               className="tv-launch__input"
               aria-label="Embedding model"
-              value={cfg.embedding.model}
+              value={normalizeEmbeddingModel(cfg.embedding.model)}
               onChange={(e) =>
                 setCfg({ ...cfg, embedding: { ...cfg.embedding, model: e.target.value } })
               }
-            />
+            >
+              {EMBEDDING_PRESETS.map((p) => (
+                <option key={p.id} value={p.slug}>
+                  {p.label}
+                </option>
+              ))}
+              {/* Keep unknown saved slugs selectable so we do not silently rewrite on open. */}
+              {!EMBEDDING_PRESETS.some(
+                (p) => p.slug === normalizeEmbeddingModel(cfg.embedding.model),
+              ) && (
+                <option value={normalizeEmbeddingModel(cfg.embedding.model)}>
+                  Custom: {normalizeEmbeddingModel(cfg.embedding.model)}
+                </option>
+              )}
+            </select>
+            <span className="tv-field__hint">
+              1536-dim only (pgvector). Provider{" "}
+              <strong>{providerOfEmbedding(cfg.embedding.model)}</strong> — add that
+              provider&apos;s API key under Dashboard → Engines before ingest/Ask. OpenRouter
+              preset uses your OpenRouter key (still OpenAI upstream billing via OpenRouter; not
+              covered by SuperGrok/subscription).
+            </span>
           </label>
           <label className="tv-field">
             <span className="tv-field__label">Top K</span>

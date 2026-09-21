@@ -76,4 +76,18 @@ describe("DomainConfigForm", () => {
     const saved = onSave.mock.calls[0][0];
     expect(saved.retrieval.graph.enabled).toBe(true);
   });
+
+  it("picks OpenRouter embedding preset and saves the slug", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<DomainConfigForm initial={sample} onSave={onSave} />);
+    const emb = screen.getByLabelText("Embedding model");
+    expect(emb.tagName).toBe("SELECT");
+    await user.selectOptions(emb, "openrouter/openai/text-embedding-3-small");
+    expect(screen.getByText(/Dashboard → Engines/i)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /Save config/i }));
+    expect(onSave).toHaveBeenCalled();
+    const arg = onSave.mock.calls[0][0];
+    expect(arg.embedding.model).toBe("openrouter/openai/text-embedding-3-small");
+  });
 });
