@@ -45,6 +45,8 @@ import {
   type TeamGraphData,
 } from "./lib/api";
 import {
+  missingCredentialCtaTitle,
+  missingProviderBannerDetail,
   missingProvidersForModels,
   type SubscriptionProviderId,
   type SubscriptionStatus,
@@ -717,7 +719,7 @@ export default function App({
                   type="button"
                   onClick={() => onBackToDashboard?.("engines")}
                   disabled={!onBackToDashboard}
-                  title="Add API keys or connect a subscription under Engines on the Dashboard"
+                  title={missingCredentialCtaTitle(launchTarget)}
                 >
                   <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden />
                   Configure providers
@@ -781,10 +783,7 @@ export default function App({
             <span className="tv-validity__lead">Missing providers:</span>
             <ul className="tv-validity__list">
               {missingProviders.map((p) => (
-                <li key={p}>
-                  No API key for “{p}”
-                  {launchTarget === "local" ? " (and no covering Desktop subscription)" : ""}
-                </li>
+                <li key={p}>{missingProviderBannerDetail(p, launchTarget)}</li>
               ))}
             </ul>
             {onBackToDashboard && (

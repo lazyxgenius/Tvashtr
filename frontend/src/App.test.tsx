@@ -535,9 +535,18 @@ describe("App — F-canvas-fidelity-1 screen shell", () => {
     await screen.findByText("Product manager");
 
     // Primary CTA becomes Configure providers; Run this team is gone.
+    // Hosted (no Desktop dataset): CTA must require API keys — subscriptions cannot satisfy Fly runs.
     const configure = await screen.findByRole("button", { name: "Configure providers" });
+    expect(configure).toHaveAttribute(
+      "title",
+      "Add an API key under Engines on the Dashboard (subscriptions only work on local Desktop)",
+    );
     expect(screen.queryByRole("button", { name: "Run this team" })).toBeNull();
-    expect(screen.getByTestId("missing-providers")).toHaveTextContent(/openai/i);
+    const banner = screen.getByTestId("missing-providers");
+    expect(banner).toHaveTextContent(/openai/i);
+    expect(banner).toHaveTextContent(/hosted runs need an API key/i);
+    expect(banner).toHaveTextContent(/subscriptions are Desktop-only/i);
+    expect(banner).not.toHaveTextContent(/or connect a subscription/i);
 
     await user.click(screen.getByRole("button", { name: "Open Engines" }));
     expect(onBack).toHaveBeenCalledTimes(1);

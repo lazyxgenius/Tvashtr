@@ -6,6 +6,8 @@ import {
   modelProvidersForSubscription,
   credentialTreatment,
   missingProvidersForModels,
+  missingCredentialCtaTitle,
+  missingProviderBannerDetail,
 } from "./engines";
 
 describe("engines mapping", () => {
@@ -93,5 +95,33 @@ describe("missingProvidersForModels", () => {
         launchTarget: "hosted",
       }),
     ).toEqual([]);
+  });
+});
+
+describe("missingCredentialCtaTitle / banner detail", () => {
+  it("hosted CTA requires API keys and excludes subscription as a fix", () => {
+    const title = missingCredentialCtaTitle("hosted");
+    expect(title).toMatch(/API key/i);
+    expect(title).toMatch(/Engines/i);
+    expect(title).toMatch(/Desktop/i);
+    expect(title).not.toMatch(/or connect a subscription/i);
+  });
+
+  it("local CTA still offers API keys or a Desktop subscription", () => {
+    expect(missingCredentialCtaTitle("local")).toBe(
+      "Add API keys or connect a subscription under Engines on the Dashboard",
+    );
+  });
+
+  it("hosted banner line says API keys are required; subscriptions are Desktop-only", () => {
+    expect(missingProviderBannerDetail("openai", "hosted")).toBe(
+      "No API key for “openai” (hosted runs need an API key; subscriptions are Desktop-only)",
+    );
+  });
+
+  it("local banner line mentions covering Desktop subscription", () => {
+    expect(missingProviderBannerDetail("openai", "local")).toBe(
+      "No API key for “openai” (and no covering Desktop subscription)",
+    );
   });
 });

@@ -106,3 +106,27 @@ export function missingProvidersForModels(opts: {
   }
   return [...missing].sort();
 }
+
+/**
+ * Run CTA tooltip when the team is blocked on missing credentials.
+ * Hosted/Fly cannot use Desktop subscriptions — only BYOK API keys satisfy runs there.
+ */
+export function missingCredentialCtaTitle(launchTarget: "local" | "hosted"): string {
+  if (launchTarget === "hosted") {
+    return "Add an API key under Engines on the Dashboard (subscriptions only work on local Desktop)";
+  }
+  return "Add API keys or connect a subscription under Engines on the Dashboard";
+}
+
+/**
+ * One Missing-providers banner line for a BYOK slug the team still needs.
+ */
+export function missingProviderBannerDetail(
+  provider: string,
+  launchTarget: "local" | "hosted",
+): string {
+  if (launchTarget === "local") {
+    return `No API key for “${provider}” (and no covering Desktop subscription)`;
+  }
+  return `No API key for “${provider}” (hosted runs need an API key; subscriptions are Desktop-only)`;
+}
