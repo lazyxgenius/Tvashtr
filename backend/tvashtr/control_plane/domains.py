@@ -85,6 +85,18 @@ def validate_domain_config(config: dict) -> None:
                     "domain config.retrieval.rerank.top_n must be an integer >= 1"
                 )
 
+    graph = retrieval.get("graph")
+    if graph is not None:
+        if not isinstance(graph, dict):
+            raise ValueError("domain config.retrieval.graph must be an object")
+        extra = set(graph) - {"enabled"}
+        if extra:
+            raise ValueError(
+                f"domain config.retrieval.graph has unknown keys: {sorted(extra)}"
+            )
+        if "enabled" in graph and not isinstance(graph["enabled"], bool):
+            raise ValueError("domain config.retrieval.graph.enabled must be a boolean")
+
 
 DOMAIN_TEMPLATE_KEYS: tuple[str, ...] = (
     "financial",
@@ -126,6 +138,7 @@ def default_config_for_template(template: str) -> dict:
             "top_k": 8,
             "mode": "dense",
             "rerank": {"enabled": False, "model": None, "top_n": 20},
+            "graph": {"enabled": False},
         },
         "generation": {"model": None},
     }

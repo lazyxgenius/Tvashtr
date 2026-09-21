@@ -130,3 +130,34 @@ def test_validate_rejects_bad_rerank():
         raise AssertionError("expected ValueError")
     except ValueError:
         pass
+
+
+def test_default_config_includes_graph_disabled():
+    cfg = domains_cp.default_config_for_template("blank")
+    assert cfg["retrieval"]["graph"] == {"enabled": False}
+
+
+def test_validate_accepts_graph_enabled():
+    cfg = domains_cp.default_config_for_template("blank")
+    cfg["retrieval"]["graph"] = {"enabled": True}
+    domains_cp.validate_domain_config(cfg)  # no raise
+
+
+def test_validate_rejects_graph_non_object():
+    cfg = domains_cp.default_config_for_template("blank")
+    cfg["retrieval"]["graph"] = True
+    try:
+        domains_cp.validate_domain_config(cfg)
+        raise AssertionError("expected ValueError")
+    except ValueError as e:
+        assert "graph" in str(e).lower()
+
+
+def test_validate_rejects_graph_unknown_keys():
+    cfg = domains_cp.default_config_for_template("blank")
+    cfg["retrieval"]["graph"] = {"enabled": True, "neo4j": "x"}
+    try:
+        domains_cp.validate_domain_config(cfg)
+        raise AssertionError("expected ValueError")
+    except ValueError as e:
+        assert "graph" in str(e).lower()

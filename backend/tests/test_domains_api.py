@@ -159,3 +159,28 @@ def test_patch_rejects_unknown_retrieval_mode():
     cfg = dict(row["config"])
     cfg["retrieval"] = {"top_k": 8, "mode": "colbert"}
     assert c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg}).status_code == 422
+
+
+def test_patch_accepts_graph_enabled():
+    c = _fresh()
+    row = c.post("/api/domains", json={"template": "blank", "name": "GraphOn"}).json()
+    cfg = dict(row["config"])
+    cfg["retrieval"] = {
+        **cfg.get("retrieval", {}),
+        "top_k": cfg.get("retrieval", {}).get("top_k", 8),
+        "mode": cfg.get("retrieval", {}).get("mode", "dense"),
+        "graph": {"enabled": True},
+    }
+    patched = c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg})
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["config"]["retrieval"]["graph"]["enabled"] is True
+
+
+def test_patch_rejects_invalid_graph():
+    c = _fresh()
+    row = c.post("/api/domains", json={"template": "blank", "name": "GraphBad"}).json()
+    cfg = dict(row["config"])
+    cfg["retrieval"] = {**cfg.get("retrieval", {}), "graph": True}
+    assert c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg}).status_code == 422
+    cfg["retrieval"] = {**cfg.get("retrieval", {}), "graph": {"enabled": True, "neo4j": "x"}}
+    assert c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg}).status_code == 422
