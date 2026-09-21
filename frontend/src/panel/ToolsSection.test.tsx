@@ -184,8 +184,9 @@ describe("ToolsSection catalog MVP", () => {
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
-  it("Attach fetch creates library item then references it", async () => {
+  it("Attach fetch uses the fallback when the catalog is empty", async () => {
     const onChange = vi.fn();
+    mockCatalog.mockResolvedValue([]);
     render(<ToolsSection value={null} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "Attach fetch" }));
     await waitFor(() =>

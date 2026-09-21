@@ -28,6 +28,18 @@ type Cfg = Record<string, unknown> | null;
 
 const REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
+const FETCH_CATALOG_FALLBACK: ToolCatalogEntry = {
+  key: "fetch",
+  name: "fetch",
+  title: "Web fetch",
+  description: "Fetch HTTP URLs via stdio ``uvx mcp-server-fetch``. No login.",
+  access: "free",
+  secret_names: [],
+  badge: "Free",
+  attachable: true,
+  server_config: { command: "uvx", args: ["mcp-server-fetch"] },
+};
+
 function asRecord(v: unknown): Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
@@ -193,14 +205,7 @@ export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value
   };
 
   const attachFetch = async () => {
-    const fetchEntry =
-      catalog.find((e) => e.key === "fetch" && e.attachable) ??
-      ({
-        key: "fetch",
-        name: "fetch",
-        server_config: { command: "uvx", args: ["mcp-server-fetch"] },
-        attachable: true,
-      } as ToolCatalogEntry);
+    const fetchEntry = catalog.find((e) => e.key === "fetch" && e.attachable) ?? FETCH_CATALOG_FALLBACK;
     // Prefer an existing library row named fetch (avoid a redundant upsert when already present).
     const existing = libraryTools.find((t) => t.name === fetchEntry.name);
     setAttachBusy(true);
