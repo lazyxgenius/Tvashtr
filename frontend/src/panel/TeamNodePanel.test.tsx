@@ -71,6 +71,22 @@ beforeEach(() => {
     if (url === "/api/engines/subscriptions" && method === "GET") {
       return Promise.resolve(jsonOk({ subscriptions: [] }));
     }
+    // ToolsSection mounts with the agent editor and GETs these; empty lists keep it quiet.
+    if (url === "/api/secrets" && method === "GET") {
+      return Promise.resolve(jsonOk({ secrets: [] }));
+    }
+    if (url === "/api/tool-library" && method === "GET") {
+      return Promise.resolve(jsonOk({ tools: [] }));
+    }
+    if (url === "/api/tool-catalog" && method === "GET") {
+      return Promise.resolve(jsonOk({ tools: [] }));
+    }
+    if (url === "/api/skill-library" && method === "GET") {
+      return Promise.resolve(jsonOk({ skills: [] }));
+    }
+    if (url === "/api/skill-presets" && method === "GET") {
+      return Promise.resolve(jsonOk({ skills: [] }));
+    }
     return Promise.resolve(jsonOk(node({ prompt: "edited" })));
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -787,6 +803,50 @@ describe("TeamNodePanel — M-tools C7.0 tools + skills sections", () => {
     // U3: a completion/edits-off node shows the SAME real Tools editor — the worker-only note is gone.
     expect(screen.getByLabelText("Tools JSON")).toBeInTheDocument();
     expect(screen.queryByText(/switch this node to Worker/i)).toBeNull();
+  });
+
+  it("clears the Unsaved changes banner after a successful ToolsSection save (Domains MCP)", async () => {
+    // Regression: dirty compared draft toolConfig to live node.tool_config via JSON.stringify.
+    // After Save the parent refetch can lag (or JSONB key order can differ), so the banner stuck
+    // even though the PATCH succeeded. Baselines must reset on successful Save.
+    const user = userEvent.setup();
+    const onSaved = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node()}
+        isStartNode={false}
+        onSaved={onSaved}
+        onClose={() => {}}
+      />,
+    );
+    await screen.findByRole("combobox", { name: "Provider" });
+
+    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText("Enable Domains MCP"));
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeEnabled();
+    await user.click(save);
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(patchCall()).toBeDefined());
+    const body = JSON.parse(patchCall()![1].body as string) as Record<string, unknown>;
+    expect(body.tool_config).toEqual({ tvashtr: { domains: true } });
+
+    // Banner clears even though the `node` prop was NOT updated (parent refetch not simulated) —
+    // proving the save-path baseline reset, not prop-equality, owns the clear.
+    await waitFor(() =>
+      expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText(/Saved — this drives the next run/i)).toBeInTheDocument();
+    expect(save).toBeDisabled();
+
+    // Intentional dirty detection still works after the baseline reset.
+    await user.click(screen.getByLabelText("Enable Domains MCP")); // on → off
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    expect(save).toBeEnabled();
   });
 });
 

@@ -195,6 +195,13 @@ export function TeamNodePanel({
     node?.tool_config ?? null,
   );
   const [skills, setSkills] = useState<unknown[] | null>(node?.skills ?? null);
+  // Dirty baselines for tools/skills (JSON snapshots). Seeded from the node; reset to the draft on
+  // successful Save so the banner clears even when the parent refetch is slow or JSONB key order
+  // differs from the editor's object (JSON.stringify vs node.tool_config alone is not enough).
+  const [toolConfigSaved, setToolConfigSaved] = useState(() =>
+    JSON.stringify(node?.tool_config ?? null),
+  );
+  const [skillsSaved, setSkillsSaved] = useState(() => JSON.stringify(node?.skills ?? null));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -334,10 +341,10 @@ export function TeamNodePanel({
       model !== (node.model ?? "") ||
       editsAllowed !== initialEditsAllowed ||
       memoryRememberEnabled !== initialMemoryRemember ||
-      // M-tools C7.0: compare the JSON of the inline tools/skills (structural equality) so editing
-      // them enables Save exactly like prompt/model/capability.
-      JSON.stringify(toolConfig ?? null) !== JSON.stringify(node.tool_config ?? null) ||
-      JSON.stringify(skills ?? null) !== JSON.stringify(node.skills ?? null) ||
+      // M-tools C7.0: compare drafts to the last-saved JSON baselines (not live node props) so a
+      // successful Save clears dirty even if the parent refetch lags or JSONB reorders keys.
+      JSON.stringify(toolConfig ?? null) !== toolConfigSaved ||
+      JSON.stringify(skills ?? null) !== skillsSaved ||
       // M-docs: writes_to/reads_from are authorable fields — editing either enables Save.
       writesTo !== initialWritesTo ||
       readsFromText !== initialReadsFromText ||
@@ -412,6 +419,9 @@ export function TeamNodePanel({
         // Session A: an EMPTY object sends none of the three keys (byte-identical PATCH).
         capabilities,
       );
+      // Clear the tools/skills dirty banner immediately — don't wait for parent refetch equality.
+      setToolConfigSaved(JSON.stringify(toolConfig ?? null));
+      setSkillsSaved(JSON.stringify(skills ?? null));
       setSaved(true);
       await onSaved();
     } catch {
