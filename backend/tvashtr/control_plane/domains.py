@@ -8,6 +8,10 @@ from copy import deepcopy
 from sqlalchemy import func, select
 
 from tvashtr.control_plane import domain_files as domain_files_cp
+from tvashtr.control_plane.domain_embedding import (
+    is_allowed_embedding_model,
+    normalize_embedding_model,
+)
 from tvashtr.db import session_scope
 from tvashtr.models import Domain, DomainDocument
 
@@ -48,6 +52,24 @@ def validate_domain_config(config: dict) -> None:
         if not isinstance(config[section], dict):
             raise ValueError(f"domain config.{section} must be an object")
     _reject_secret_keys(config)
+
+    embedding = config["embedding"]
+    emb_extra = set(embedding) - {"model"}
+    if emb_extra:
+        raise ValueError(
+            f"domain config.embedding has unknown keys: {sorted(emb_extra)}"
+        )
+    if "model" not in embedding:
+        raise ValueError("domain config.embedding.model is required")
+    if embedding["model"] is not None and not isinstance(embedding["model"], str):
+        raise ValueError("domain config.embedding.model must be a string")
+    emb_model = normalize_embedding_model(str(embedding.get("model") or ""))
+    if not is_allowed_embedding_model(emb_model):
+        raise ValueError(
+            "domain config.embedding.model must be a 1536-dim allowlisted slug "
+            f"(got {emb_model!r}); see EMBEDDING_PRESETS / OpenAI or "
+            "openrouter/openai/text-embedding-3-small"
+        )
 
     retrieval = config["retrieval"]
     mode = retrieval.get("mode")

@@ -23,6 +23,10 @@ def test_normalize_embedding_model():
         normalize_embedding_model("openai/text-embedding-3-small")
         == "openai/text-embedding-3-small"
     )
+    assert (
+        normalize_embedding_model("openrouter/openai/text-embedding-3-small")
+        == "openrouter/openai/text-embedding-3-small"
+    )
 
 
 def _fresh_client() -> TestClient:

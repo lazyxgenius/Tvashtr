@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 
 from tvashtr.control_plane.credentials import NoCredentialError, resolve_owner_api_key
 from tvashtr.control_plane.domain_chunking import chunk_text
+from tvashtr.control_plane.domain_embedding import normalize_embedding_model
 from tvashtr.control_plane.domain_files import absolute_path, extension_of, extract_text
 from tvashtr.control_plane.domains import (
     INGEST_ERROR,
@@ -23,12 +24,7 @@ from tvashtr.gateway import EmbeddingRequest, GatewayError, embed
 from tvashtr.metering import record_embedding_cost
 from tvashtr.models import DomainChunk, DomainDocument
 
-
-def normalize_embedding_model(model: str) -> str:
-    m = (model or "").strip() or "text-embedding-3-small"
-    if "/" not in m:
-        return f"openai/{m}"
-    return m
+# normalize_embedding_model re-exported for domain_ask / tests (canonical: domain_embedding).
 
 
 @DBOS.step()
