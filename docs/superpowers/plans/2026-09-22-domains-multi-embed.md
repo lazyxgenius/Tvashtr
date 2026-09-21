@@ -77,17 +77,17 @@
 - [x] Write this plan; commit.
 
 ### Task 2 — Backend allowlist + normalize (TDD)
-- [ ] Red: tests for normalize bare/openai/openrouter; reject unknown models in validate.
-- [ ] Green: `ALLOWED_EMBEDDING_MODELS`, presets, validate_domain_config embedding section.
-- [ ] Commit.
+- [x] Red: tests for normalize bare/openai/openrouter; reject unknown models in validate.
+- [x] Green: `ALLOWED_EMBEDDING_MODELS`, presets, validate_domain_config embedding section.
+- [x] Commit.
 
 ### Task 3 — FE picker (TDD)
-- [ ] Red/green: DomainConfigForm select presets; help text; save OpenRouter slug.
-- [ ] Commit.
+- [x] Red/green: DomainConfigForm select presets; help text; save OpenRouter slug.
+- [x] Commit.
 
 ### Task 4 — Regression
-- [ ] Run domain ingest/ask/retrieve/helpers + DomainConfigForm tests.
-- [ ] Commit any fixes; report SHAs.
+- [x] Run domain ingest/ask/retrieve/helpers + DomainConfigForm tests.
+- [x] Commit any fixes; report SHAs.
 
 ---
 

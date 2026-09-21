@@ -184,3 +184,24 @@ def test_patch_rejects_invalid_graph():
     assert c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg}).status_code == 422
     cfg["retrieval"] = {**cfg.get("retrieval", {}), "graph": {"enabled": True, "neo4j": "x"}}
     assert c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg}).status_code == 422
+
+def test_patch_accepts_openrouter_embedding_slug():
+    c = _fresh()
+    row = c.post("/api/domains", json={"template": "blank", "name": "OREmbed"}).json()
+    cfg = dict(row["config"])
+    cfg["embedding"] = {"model": "openrouter/openai/text-embedding-3-small"}
+    patched = c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg})
+    assert patched.status_code == 200, patched.text
+    assert (
+        patched.json()["config"]["embedding"]["model"]
+        == "openrouter/openai/text-embedding-3-small"
+    )
+
+
+def test_patch_rejects_non_allowlisted_embedding_model():
+    c = _fresh()
+    row = c.post("/api/domains", json={"template": "blank", "name": "BadEmb"}).json()
+    cfg = dict(row["config"])
+    cfg["embedding"] = {"model": "openrouter/thenlper/gte-base"}
+    assert c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg}).status_code == 422
+
