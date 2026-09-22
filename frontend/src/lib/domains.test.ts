@@ -9,6 +9,7 @@ import {
   domainsEvalGoldenSetsHint,
   domainsEvalGraphGuidedHint,
   domainsGraphLiteConfigHint,
+  domainsMcpAccountToolsHint,
   domainsMcpToggleHint,
   domainsQueryNodeHint,
   embeddingSwitchNeedsReingest,
@@ -117,6 +118,13 @@ describe("domains ask discoverability copy (#5)", () => {
     expect(copy).toMatch(/Domains MCP/i);
     expect(copy).toMatch(/agent|thinker|worker|tool/i);
     expect(copy).toMatch(/Chat|Query domain/i);
+  });
+
+  it("account Tools shelf hint points to node Tools for Domains MCP", () => {
+    const copy = domainsMcpAccountToolsHint();
+    expect(copy).toMatch(/Domains MCP/i);
+    expect(copy).toMatch(/node|Tools panel|team/i);
+    expect(copy).toMatch(/not here|library/i);
   });
 });
 

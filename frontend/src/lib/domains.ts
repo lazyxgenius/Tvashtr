@@ -193,7 +193,7 @@ export function embeddingSwitchNeedsReingest(fromModel: string, toModel: string)
 
 /**
  * E2E gap #5 — Chat/Ask vs Query domain vs Domains MCP discoverability.
- * Short copy for Guided path / Domains Chat / ToolsSection / Query node drawer.
+ * Short copy for Guided path / Overview / Domains Chat / ToolsSection / Query node drawer / Tools shelf.
  */
 
 /** Guided path “When to use what” blurb — three access paths, one sentence each. */
@@ -226,6 +226,14 @@ export function domainsMcpToggleHint(): string {
   return (
     "Domains MCP lets this agent call domain ask/retrieve as tools during a run. " +
     "Prefer Chat/Ask to explore yourself, or a Query domain node for a fixed canvas step."
+  );
+}
+
+/** Account Tools shelf one-liner — Domains MCP is on node Tools, not the library. */
+export function domainsMcpAccountToolsHint(): string {
+  return (
+    "Domains MCP is enabled on each team node's Tools panel (not here). " +
+    "This shelf holds reusable MCP servers you reference from those panels."
   );
 }
 

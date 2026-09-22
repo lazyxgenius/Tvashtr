@@ -17,7 +17,11 @@ import {
   type DomainMessageSummary,
   type DomainSummary,
 } from "../lib/api";
-import { domainsChatAskHint, labelForDomainTemplate } from "../lib/domains";
+import {
+  domainsAskWhenToUseWhat,
+  domainsChatAskHint,
+  labelForDomainTemplate,
+} from "../lib/domains";
 import { DomainConfigForm } from "./DomainConfigForm";
 import { DomainEvalPanel } from "./DomainEvalPanel";
 import { DomainGuidedPath } from "./DomainGuidedPath";
@@ -216,6 +220,14 @@ export function DomainsPage({
                 </dd>
               </div>
             </dl>
+            <aside
+              className="tv-domains__when"
+              role="note"
+              aria-label="When to use what"
+            >
+              <strong className="tv-domains__when-title">When to use what</strong>
+              <p className="tv-domains__hint">{domainsAskWhenToUseWhat()}</p>
+            </aside>
             <p className="tv-domains__hint">
               Upload and ingest documents under Documents. Ask questions under Chat after ingest.
               Configure chunking, embedding, and generation under Config; set provider keys under
@@ -365,11 +377,12 @@ export function DomainsPage({
         )}
         {tab === "chat" && detail && (
           <section className="tv-domains__panel" aria-label="Chat">
+            <p className="tv-domains__hint tv-domains__chat-ask-hint" role="note">
+              {domainsChatAskHint()}
+            </p>
             <div className="tv-domains__chat-log" role="log" aria-live="polite">
               {messages.length === 0 ? (
-                <p className="tv-domains__hint">
-                  {domainsChatAskHint()}
-                </p>
+                <p className="tv-domains__empty">No messages yet. Ask a question below.</p>
               ) : (
                 messages.map((msg) => (
                   <div

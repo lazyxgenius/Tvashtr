@@ -10,6 +10,7 @@ import {
   type ToolLibraryItem,
   updateToolLibraryItem,
 } from "../lib/api";
+import { domainsMcpAccountToolsHint } from "../lib/domains";
 
 /**
  * M-tools C7.C — the account's central **Tool library** shelf, beside the Providers/Secrets shelves.
@@ -265,6 +266,9 @@ export function ToolsShelf() {
         <p className="tv-dash__prov-sub">
           Reusable MCP servers — define one here, then reference it from any node&rsquo;s Tools
           section. Edit it once and every node that uses it picks up the change on its next run.
+        </p>
+        <p className="tv-field__hint" role="note" aria-label="Domains MCP location">
+          {domainsMcpAccountToolsHint()}
         </p>
       </div>
       {catalog.length > 0 && (

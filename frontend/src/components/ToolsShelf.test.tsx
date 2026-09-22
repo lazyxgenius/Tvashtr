@@ -124,6 +124,13 @@ describe("buildServerConfig (pure)", () => {
 });
 
 describe("ToolsShelf (M-tools C7.C)", () => {
+  it("points operators to node Tools for Domains MCP", () => {
+    render(<ToolsShelf />);
+    const note = screen.getByRole("note", { name: /Domains MCP location/i });
+    expect(note.textContent).toMatch(/Domains MCP/i);
+    expect(note.textContent).toMatch(/node|Tools panel/i);
+  });
+
   // ── existing behaviors (unchanged) ──
   it("lists the account's existing library tools with a transport badge", async () => {
     mList.mockResolvedValue([ROW]);

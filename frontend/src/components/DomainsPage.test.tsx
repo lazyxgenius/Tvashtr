@@ -147,6 +147,89 @@ describe("DomainsPage list", () => {
   });
 });
 
+describe("DomainsPage ask discoverability visibility", () => {
+  const detail = {
+    domain_id: "d1",
+    name: "Support docs",
+    template: "support",
+    config: {
+      chunking: { strategy: "fixed", size: 600, overlap: 100 },
+      embedding: { model: "text-embedding-3-small" },
+      retrieval: { top_k: 8, mode: "dense" },
+      generation: { model: null },
+    },
+    status: "ready",
+    doc_count: 1,
+    created_at: "2026-09-15T00:00:00Z",
+    updated_at: "2026-09-15T00:00:00Z",
+  };
+
+  beforeEach(() => {
+    m.listDomains.mockResolvedValue([
+      {
+        domain_id: "d1",
+        name: "Support docs",
+        template: "support",
+        config: detail.config,
+        status: "ready",
+        doc_count: 1,
+        created_at: detail.created_at,
+        updated_at: detail.updated_at,
+      },
+    ]);
+    m.getDomain.mockResolvedValue(detail);
+    m.listDomainDocuments.mockResolvedValue([]);
+    m.listDomainMessages.mockResolvedValue([]);
+  });
+
+  it("Overview always shows When to use what (Chat/Ask vs Query domain vs Domains MCP)", async () => {
+    const user = userEvent.setup();
+    render(<DomainsPage />);
+    await user.click(await screen.findByRole("button", { name: /Support docs/i }));
+    // Collapse Guided path so Overview must carry the discoverability copy itself.
+    await user.click(screen.getByRole("button", { name: /^Hide$/i }));
+    const overview = await screen.findByRole("region", { name: /^Overview$/i });
+    expect(overview.textContent).toMatch(/When to use what/i);
+    expect(overview.textContent).toMatch(/Chat\/Ask/i);
+    expect(overview.textContent).toMatch(/Query domain/i);
+    expect(overview.textContent).toMatch(/Domains MCP/i);
+  });
+
+  it("Chat shows ask hint under header even when messages already exist", async () => {
+    const user = userEvent.setup();
+    m.listDomainMessages.mockResolvedValue([
+      {
+        message_id: "u1",
+        domain_id: "d1",
+        role: "user",
+        content: "How long for refunds?",
+        citations: null,
+        latency_ms: null,
+        cost_usd: null,
+        created_at: "2026-09-15T01:00:00Z",
+      },
+      {
+        message_id: "a1",
+        domain_id: "d1",
+        role: "assistant",
+        content: "About 5 business days.",
+        citations: null,
+        latency_ms: 40,
+        cost_usd: null,
+        created_at: "2026-09-15T01:00:01Z",
+      },
+    ]);
+    render(<DomainsPage />);
+    await user.click(await screen.findByRole("button", { name: /Support docs/i }));
+    await user.click(await screen.findByRole("tab", { name: /^Chat$/i }));
+    expect(await screen.findByText(/How long for refunds/i)).toBeTruthy();
+    const chat = screen.getByRole("region", { name: /^Chat$/i });
+    expect(chat.textContent).toMatch(/Chat\/Ask is for you/i);
+    expect(chat.textContent).toMatch(/Query domain/i);
+    expect(chat.textContent).toMatch(/Domains MCP/i);
+  });
+});
+
 describe("DomainsPage delete confirm", () => {
   const detail = {
     domain_id: "d1",
