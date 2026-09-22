@@ -6,6 +6,9 @@ import {
   GENERATION_PRESETS,
   domainsAskWhenToUseWhat,
   domainsChatAskHint,
+  domainsEvalGoldenSetsHint,
+  domainsEvalGraphGuidedHint,
+  domainsGraphLiteConfigHint,
   domainsMcpToggleHint,
   domainsQueryNodeHint,
   embeddingSwitchNeedsReingest,
@@ -114,5 +117,28 @@ describe("domains ask discoverability copy (#5)", () => {
     expect(copy).toMatch(/Domains MCP/i);
     expect(copy).toMatch(/agent|thinker|worker|tool/i);
     expect(copy).toMatch(/Chat|Query domain/i);
+  });
+});
+
+describe("domains eval / graph-lite operator path copy (#7)", () => {
+  it("Eval golden-sets hint names Eval scoring and Config graph-lite", () => {
+    const copy = domainsEvalGoldenSetsHint();
+    expect(copy).toMatch(/golden|Eval/i);
+    expect(copy).toMatch(/hit@k|keyword_hit/i);
+    expect(copy).toMatch(/graph-lite|Config/i);
+  });
+
+  it("Guided-path eval/graph hint points operators to Eval tab + Config toggle", () => {
+    const copy = domainsEvalGraphGuidedHint();
+    expect(copy).toMatch(/Eval/i);
+    expect(copy).toMatch(/golden/i);
+    expect(copy).toMatch(/graph-lite|Graph-lite/i);
+    expect(copy).toMatch(/Config/i);
+  });
+
+  it("Config graph-lite hint: mention expansion + Eval to measure", () => {
+    const copy = domainsGraphLiteConfigHint();
+    expect(copy).toMatch(/mention|neighbor|chunk/i);
+    expect(copy).toMatch(/Eval/i);
   });
 });

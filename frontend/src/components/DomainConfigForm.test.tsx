@@ -77,6 +77,14 @@ describe("DomainConfigForm", () => {
     expect(saved.retrieval.graph.enabled).toBe(true);
   });
 
+  it("graph-lite hint points operators to Eval tab (#7)", () => {
+    render(<DomainConfigForm initial={sample} onSave={vi.fn()} />);
+    const box = screen.getByRole("checkbox", { name: /Graph-lite mention expansion/i });
+    const label = box.closest("label");
+    expect(label?.textContent).toMatch(/Eval/i);
+    expect(label?.textContent).toMatch(/mention|neighbor|chunk/i);
+  });
+
   it("picks OpenRouter embedding preset and saves the slug", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);

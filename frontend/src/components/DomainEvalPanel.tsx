@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { domainsEvalGoldenSetsHint } from "../lib/domains";
 import {
   createDomainEvalCase,
   deleteDomainEvalCase,
@@ -40,10 +41,7 @@ export function DomainEvalPanel({ domainId }: { domainId: string }) {
 
   return (
     <section className="tv-domains__panel" aria-label="Eval">
-      <p className="tv-muted">
-        Golden questions scored with deterministic hit@k and keyword_hit via retrieve (no LLM
-        judge). Cap 50 cases.
-      </p>
+      <p className="tv-muted">{domainsEvalGoldenSetsHint()}</p>
       {error && <p role="alert">{error}</p>}
       <div className="tv-domains__eval-scores" aria-label="Latest scores">
         <div>hit@k: {fmtScore(latest?.scores?.hit_at_k)}</div>

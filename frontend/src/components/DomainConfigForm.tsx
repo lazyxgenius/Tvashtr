@@ -10,6 +10,7 @@ import {
   embeddingSwitchNeedsReingest,
   generationPresetSelectValue,
   isCustomGenerationSelect,
+  domainsGraphLiteConfigHint,
   type DomainConfig,
 } from "../lib/domains";
 
@@ -318,10 +319,7 @@ export function DomainConfigForm({
                 })
               }
             />
-            <span className="tv-field__hint">
-              When enabled, retrieve may append up to 4 neighbor chunks that share capitalized
-              mentions with the top hits. No Neo4j / no entity ingest. Default off.
-            </span>
+            <span className="tv-field__hint">{domainsGraphLiteConfigHint()}</span>
           </label>
           <label className="tv-field">
             <span className="tv-field__label">Generation model</span>

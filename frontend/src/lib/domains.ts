@@ -228,3 +228,35 @@ export function domainsMcpToggleHint(): string {
     "Prefer Chat/Ask to explore yourself, or a Query domain node for a fixed canvas step."
   );
 }
+
+/**
+ * E2E gap #7 — Eval golden sets + graph-lite operator path polish.
+ * Short copy for Guided path / Eval tab / Config graph toggle — no new architecture.
+ */
+
+/** Eval tab lede — golden sets scoring + where graph-lite lives. */
+export function domainsEvalGoldenSetsHint(): string {
+  return (
+    "Eval holds golden Q&A cases scored with deterministic hit@k and keyword_hit via retrieve " +
+    "(no LLM judge; cap 50). Optional graph-lite mention expansion is on the Config tab — " +
+    "toggle it, then re-run Eval to compare scores."
+  );
+}
+
+/** Guided path step hint — Eval tab + Config graph-lite location. */
+export function domainsEvalGraphGuidedHint(): string {
+  return (
+    "After ingest: Eval tab — add golden questions and Run eval. " +
+    "Optional Graph-lite mention expansion is on Config (checkbox under retrieval) — " +
+    "same retrieve path Chat / Query domain / Domains MCP use."
+  );
+}
+
+/** Config tab graph-lite field hint — expansion behavior + Eval to measure. */
+export function domainsGraphLiteConfigHint(): string {
+  return (
+    "When enabled, retrieve may append up to 4 neighbor chunks that share capitalized " +
+    "mentions with the top hits. No Neo4j / no entity ingest. Default off. " +
+    "Use the Eval tab golden sets to measure whether expansion helps."
+  );
+}

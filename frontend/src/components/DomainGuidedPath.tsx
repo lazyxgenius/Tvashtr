@@ -1,12 +1,13 @@
 import { useState } from "react";
 
-import { domainsAskWhenToUseWhat } from "../lib/domains";
+import { domainsAskWhenToUseWhat, domainsEvalGraphGuidedHint } from "../lib/domains";
 
 type GuidedContext = "list" | "detail";
 
 /**
  * Lightweight Idea → Domains → Team happy-path panel (#2).
  * Sits on existing Domains pages — no new routes/wizard architecture.
+ * #7 adds Eval golden sets + graph-lite discoverability step.
  */
 export function DomainGuidedPath({
   context = "list",
@@ -15,6 +16,7 @@ export function DomainGuidedPath({
   onCreateTeam,
   onGoConfig,
   onGoDocuments,
+  onGoEval,
 }: {
   context?: GuidedContext;
   onNewDomain?: () => void;
@@ -22,6 +24,7 @@ export function DomainGuidedPath({
   onCreateTeam?: () => void;
   onGoConfig?: () => void;
   onGoDocuments?: () => void;
+  onGoEval?: () => void;
 }) {
   const [open, setOpen] = useState(true);
 
@@ -96,6 +99,25 @@ export function DomainGuidedPath({
                 Open Documents
               </button>
             )}
+          </li>
+
+          <li className="tv-domains__guided-step">
+            <div className="tv-domains__guided-step-body">
+              <strong>Eval golden sets &amp; graph-lite</strong>
+              <span className="tv-domains__guided-hint">{domainsEvalGraphGuidedHint()}</span>
+            </div>
+            <div className="tv-domains__guided-actions">
+              {context === "detail" && onGoEval && (
+                <button type="button" className="tv-btn tv-btn--ghost" onClick={onGoEval}>
+                  Open Eval
+                </button>
+              )}
+              {context === "detail" && onGoConfig && (
+                <button type="button" className="tv-btn tv-btn--ghost" onClick={onGoConfig}>
+                  Open Config
+                </button>
+              )}
+            </div>
           </li>
 
           <li className="tv-domains__guided-step">

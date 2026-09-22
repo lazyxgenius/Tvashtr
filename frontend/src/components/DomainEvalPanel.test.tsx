@@ -83,4 +83,12 @@ describe("DomainEvalPanel", () => {
     await waitFor(() => expect(m.runDomainEval).toHaveBeenCalledWith("d1"));
     expect(screen.getByLabelText("Latest scores").textContent).toMatch(/keyword_hit/i);
   });
+
+  it("shows Eval / graph-lite operator path copy (#7)", async () => {
+    render(<DomainEvalPanel domainId="d1" />);
+    await waitFor(() => expect(m.listDomainEvalCases).toHaveBeenCalled());
+    const panel = screen.getByRole("region", { name: /Eval/i });
+    expect(panel.textContent).toMatch(/hit@k|keyword_hit/i);
+    expect(panel.textContent).toMatch(/graph-lite|Config/i);
+  });
 });

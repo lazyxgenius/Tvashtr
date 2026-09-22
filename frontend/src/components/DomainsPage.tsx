@@ -143,6 +143,7 @@ export function DomainsPage({
           onCreateTeam={onCreateTeam}
           onGoConfig={() => setTab("config")}
           onGoDocuments={() => setTab("documents")}
+          onGoEval={() => setTab("eval")}
         />
         <div className="tv-domains__tabs" role="tablist" aria-label="Domain sections">
           <button
