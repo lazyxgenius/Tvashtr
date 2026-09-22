@@ -90,12 +90,23 @@ describe("DomainsPage list", () => {
     });
   });
 
-  it("shows empty state and opens new-domain dialog", async () => {
+  it("shows empty state, guided path, and opens new-domain dialog", async () => {
     const user = userEvent.setup();
     render(<DomainsPage />);
     expect(await screen.findByText(/No domains yet/i)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /New domain/i }));
+    expect(screen.getByRole("region", { name: /Guided path/i })).toBeTruthy();
+    // Header + guided-path both offer New domain — either opens the dialog.
+    await user.click(screen.getAllByRole("button", { name: /^New domain$/i })[0]);
     expect(screen.getByRole("dialog", { name: /New domain/i })).toBeTruthy();
+  });
+
+  it("guided path New team CTA fires onCreateTeam", async () => {
+    const user = userEvent.setup();
+    const onCreateTeam = vi.fn();
+    render(<DomainsPage onCreateTeam={onCreateTeam} />);
+    await screen.findByRole("region", { name: /Guided path/i });
+    await user.click(screen.getByRole("button", { name: /^New team$/i }));
+    expect(onCreateTeam).toHaveBeenCalled();
   });
 
   it("lists domains and opens detail on click", async () => {

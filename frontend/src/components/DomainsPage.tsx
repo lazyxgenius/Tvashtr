@@ -20,11 +20,18 @@ import {
 import { labelForDomainTemplate } from "../lib/domains";
 import { DomainConfigForm } from "./DomainConfigForm";
 import { DomainEvalPanel } from "./DomainEvalPanel";
+import { DomainGuidedPath } from "./DomainGuidedPath";
 import { NewDomainDialog } from "./NewDomainDialog";
 
 type DetailTab = "overview" | "documents" | "chat" | "config" | "eval";
 
-export function DomainsPage() {
+export function DomainsPage({
+  onOpenEngines,
+  onCreateTeam,
+}: {
+  onOpenEngines?: () => void;
+  onCreateTeam?: () => void;
+} = {}) {
   const [domains, setDomains] = useState<DomainSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
@@ -130,6 +137,13 @@ export function DomainsPage() {
             {labelForDomainTemplate(detail.template)} · {detail.status}
           </p>
         </header>
+        <DomainGuidedPath
+          context="detail"
+          onOpenEngines={onOpenEngines}
+          onCreateTeam={onCreateTeam}
+          onGoConfig={() => setTab("config")}
+          onGoDocuments={() => setTab("documents")}
+        />
         <div className="tv-domains__tabs" role="tablist" aria-label="Domain sections">
           <button
             type="button"
@@ -203,8 +217,9 @@ export function DomainsPage() {
             </dl>
             <p className="tv-domains__hint">
               Upload and ingest documents under Documents. Ask questions under Chat after ingest.
-              Configure chunking and retrieval under Config; set provider keys under Engines before
-              ingest.
+              Configure chunking, embedding, and generation under Config; set provider keys under
+              Engines before ingest. Use a team node&apos;s Tools → Domains MCP (or Attach fetch)
+              so agents can query this domain.
             </p>
             <button
               type="button"
@@ -452,6 +467,12 @@ export function DomainsPage() {
           </button>
         </div>
       </header>
+      <DomainGuidedPath
+        context="list"
+        onNewDomain={() => setPicking(true)}
+        onOpenEngines={onOpenEngines}
+        onCreateTeam={onCreateTeam}
+      />
       {error && (
         <div className="tv-dash__error" role="alert">
           {error}

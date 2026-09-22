@@ -589,7 +589,13 @@ export function Dashboard({
 
         {view === "domains" && (
           <div className="tv-dash__stack">
-            <DomainsPage />
+            <DomainsPage
+              onOpenEngines={() => setView("engines")}
+              onCreateTeam={() => {
+                setView("home");
+                setPicking(true);
+              }}
+            />
           </div>
         )}
 
