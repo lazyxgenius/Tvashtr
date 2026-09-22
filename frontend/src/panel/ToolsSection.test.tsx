@@ -218,4 +218,13 @@ describe("ToolsSection catalog MVP", () => {
     );
     expect(mockCreate).not.toHaveBeenCalled();
   });
+
+  it("shows Domains MCP discoverability hint (#5)", () => {
+    render(<ToolsSection value={null} onChange={vi.fn()} />);
+    expect(screen.getByLabelText("Enable Domains MCP")).toBeInTheDocument();
+    const hint = screen.getByTestId("domains-mcp-hint");
+    expect(hint.textContent).toMatch(/Domains MCP/i);
+    expect(hint.textContent).toMatch(/agent|thinker|worker/i);
+    expect(hint.textContent).toMatch(/Chat|Query domain/i);
+  });
 });

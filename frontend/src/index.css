@@ -2521,6 +2521,17 @@ body,
   gap: 0.35rem;
   flex-shrink: 0;
 }
+
+.tv-domains__guided-when {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--tv-border, rgba(255, 255, 255, 0.08));
+}
+.tv-domains__guided-when-title {
+  display: block;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
 .tv-domains__reingest-warn {
   margin-top: 0.75rem;
 }

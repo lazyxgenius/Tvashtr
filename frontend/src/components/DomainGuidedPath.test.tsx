@@ -49,4 +49,13 @@ describe("DomainGuidedPath", () => {
     await user.click(screen.getByRole("button", { name: /^New domain$/i }));
     expect(onNewDomain).toHaveBeenCalled();
   });
+
+  it("shows When to use what discoverability blurb (#5)", () => {
+    render(<DomainGuidedPath />);
+    const note = screen.getByRole("note", { name: /When to use what/i });
+    expect(note).toBeTruthy();
+    expect(note.textContent).toMatch(/Chat\/Ask/i);
+    expect(note.textContent).toMatch(/Query domain/i);
+    expect(note.textContent).toMatch(/Domains MCP/i);
+  });
 });

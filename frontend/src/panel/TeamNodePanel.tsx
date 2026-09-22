@@ -28,6 +28,7 @@ import {
   type SubscriptionProviderId,
   type SubscriptionStatus,
 } from "../lib/engines";
+import { domainsQueryNodeHint } from "../lib/domains";
 import { applyEmitContract, emitContract } from "../lib/topology";
 import { DrawerShell, type PanelMode } from "./DrawerShell";
 import { glyphForNode } from "./nodeGlyph";
@@ -901,6 +902,9 @@ export function TeamNodePanel({
         onClose={onClose}
       >
         <div className="tv-scroll tv-node-edit">
+          <p className="tv-field__hint" data-testid="domains-query-hint">
+            {domainsQueryNodeHint()}
+          </p>
           <label className="tv-field">
             <span className="tv-field__label">Domain</span>
             <select

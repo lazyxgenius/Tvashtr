@@ -73,4 +73,30 @@ describe("TeamNodePanel domain_query", () => {
       ),
     );
   });
+
+  it("shows Query domain discoverability hint (#5)", async () => {
+    const node = {
+      id: "n-dq",
+      role_name: "domain_query",
+      kind: "domain_query",
+      model: null,
+      engine: null,
+      prompt: "{idea}",
+      position: { x: 0, y: 0 },
+      config: { domain_id: null },
+    };
+    render(
+      <TeamNodePanel
+        teamId="team-1"
+        node={node as any}
+        edges={[]}
+        isStartNode={false}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    const hint = await screen.findByTestId("domains-query-hint");
+    expect(hint.textContent).toMatch(/Query domain/i);
+    expect(hint.textContent).toMatch(/Chat|Domains MCP/i);
+  });
 });

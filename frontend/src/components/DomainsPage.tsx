@@ -17,7 +17,7 @@ import {
   type DomainMessageSummary,
   type DomainSummary,
 } from "../lib/api";
-import { labelForDomainTemplate } from "../lib/domains";
+import { domainsChatAskHint, labelForDomainTemplate } from "../lib/domains";
 import { DomainConfigForm } from "./DomainConfigForm";
 import { DomainEvalPanel } from "./DomainEvalPanel";
 import { DomainGuidedPath } from "./DomainGuidedPath";
@@ -367,7 +367,7 @@ export function DomainsPage({
             <div className="tv-domains__chat-log" role="log" aria-live="polite">
               {messages.length === 0 ? (
                 <p className="tv-domains__hint">
-                  Ask a question about ingested documents. Answers include citations.
+                  {domainsChatAskHint()}
                 </p>
               ) : (
                 messages.map((msg) => (

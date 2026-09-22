@@ -7,6 +7,7 @@ import {
   listToolCatalog,
   listToolLibrary,
 } from "../lib/api";
+import { domainsMcpToggleHint } from "../lib/domains";
 
 /**
  * M-tools C7.A + C7.C — the per-node **Tools** (MCP) editor. A worker node gets a real editor:
@@ -279,6 +280,9 @@ export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value
           Attach fetch
         </button>
       </div>
+      <span className="tv-field__hint" data-testid="domains-mcp-hint">
+        {domainsMcpToggleHint()}
+      </span>
 
       {(serverNames.length > 0 || referencedRows.length > 0) && (
         <ul className="tv-mcp-list">

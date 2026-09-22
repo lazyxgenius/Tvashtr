@@ -190,3 +190,41 @@ export function embeddingSwitchNeedsReingest(fromModel: string, toModel: string)
     providerOfEmbedding(fromModel) !== providerOfEmbedding(toModel)
   );
 }
+
+/**
+ * E2E gap #5 — Chat/Ask vs Query domain vs Domains MCP discoverability.
+ * Short copy for Guided path / Domains Chat / ToolsSection / Query node drawer.
+ */
+
+/** Guided path “When to use what” blurb — three access paths, one sentence each. */
+export function domainsAskWhenToUseWhat(): string {
+  return (
+    "When to use what: Chat/Ask on this domain for interactive cited Q&A while you explore. " +
+    "Canvas Query domain for a fixed ask step inside a team run. " +
+    "Domains MCP on a thinker/worker Tools panel so the agent can ask/retrieve on demand during a run."
+  );
+}
+
+/** Domains detail → Chat empty / lede hint. */
+export function domainsChatAskHint(): string {
+  return (
+    "Chat/Ask is for you — interactive questions with citations while curating this domain. " +
+    "For a fixed step in a team run use Canvas Query domain; for agent-driven tools enable Domains MCP."
+  );
+}
+
+/** Canvas Query domain node drawer hint. */
+export function domainsQueryNodeHint(): string {
+  return (
+    "Query domain is a fixed canvas step: one cited ask in the team flow (answer + citations on the run log). " +
+    "Use Domains Chat/Ask to explore interactively; enable Domains MCP when an agent should decide when to query."
+  );
+}
+
+/** ToolsSection Domains MCP toggle hint. */
+export function domainsMcpToggleHint(): string {
+  return (
+    "Domains MCP lets this agent call domain ask/retrieve as tools during a run. " +
+    "Prefer Chat/Ask to explore yourself, or a Query domain node for a fixed canvas step."
+  );
+}

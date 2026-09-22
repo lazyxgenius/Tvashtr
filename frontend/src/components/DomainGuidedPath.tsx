@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { domainsAskWhenToUseWhat } from "../lib/domains";
+
 type GuidedContext = "list" | "detail";
 
 /**
@@ -44,6 +46,7 @@ export function DomainGuidedPath({
       </header>
 
       {open && (
+        <>
         <ol className="tv-domains__guided-steps">
           <li className="tv-domains__guided-step">
             <div className="tv-domains__guided-step-body">
@@ -120,6 +123,15 @@ export function DomainGuidedPath({
             )}
           </li>
         </ol>
+        <aside
+          className="tv-domains__guided-when"
+          role="note"
+          aria-label="When to use what"
+        >
+          <strong className="tv-domains__guided-when-title">When to use what</strong>
+          <p className="tv-domains__guided-hint">{domainsAskWhenToUseWhat()}</p>
+        </aside>
+        </>
       )}
     </section>
   );

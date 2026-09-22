@@ -4,6 +4,10 @@ import {
   DOMAIN_TEMPLATE_ORDER,
   EMBEDDING_PRESETS,
   GENERATION_PRESETS,
+  domainsAskWhenToUseWhat,
+  domainsChatAskHint,
+  domainsMcpToggleHint,
+  domainsQueryNodeHint,
   embeddingSwitchNeedsReingest,
   labelForDomainTemplate,
   normalizeEmbeddingModel,
@@ -79,5 +83,36 @@ describe("embeddingSwitchNeedsReingest", () => {
         "openai/text-embedding-3-small",
       ),
     ).toBe(false);
+  });
+});
+
+describe("domains ask discoverability copy (#5)", () => {
+  it("when-to-use-what blurb names Chat/Ask, Query domain, and Domains MCP", () => {
+    const copy = domainsAskWhenToUseWhat();
+    expect(copy).toMatch(/Chat|Ask/i);
+    expect(copy).toMatch(/Query domain/i);
+    expect(copy).toMatch(/Domains MCP/i);
+    expect(copy).toMatch(/team|agent|canvas|run/i);
+  });
+
+  it("Chat/Ask hint: explore/curate interactively; not a team-run step", () => {
+    const copy = domainsChatAskHint();
+    expect(copy).toMatch(/Chat|Ask/i);
+    expect(copy).toMatch(/cit(e|ation)/i);
+    expect(copy).toMatch(/Query domain|Domains MCP/i);
+  });
+
+  it("Query domain hint: fixed canvas step in a team run", () => {
+    const copy = domainsQueryNodeHint();
+    expect(copy).toMatch(/Query domain/i);
+    expect(copy).toMatch(/canvas|team|run|flow|step/i);
+    expect(copy).toMatch(/Chat|Domains MCP/i);
+  });
+
+  it("Domains MCP hint: agent-driven ask/retrieve during a run", () => {
+    const copy = domainsMcpToggleHint();
+    expect(copy).toMatch(/Domains MCP/i);
+    expect(copy).toMatch(/agent|thinker|worker|tool/i);
+    expect(copy).toMatch(/Chat|Query domain/i);
   });
 });
