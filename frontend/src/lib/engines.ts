@@ -174,3 +174,16 @@ export function enginesApiKeysEmpty(): string {
     "(Desktop Connect does not satisfy hosted)."
   );
 }
+
+/**
+ * Desktop Engines card hint when CLI detect returns needs_install.
+ * Dock-launched apps often miss Terminal npm-global PATH.
+ */
+export function enginesNeedsInstallHint(displayName: string): string {
+  return (
+    `${displayName} CLI was not found on the PATH this Desktop app sees ` +
+    `(Dock launch ≠ Terminal). Install the CLI, ensure it is on your PATH ` +
+    `(npm global bin / Homebrew), then quit and reopen Tvashtr and Refresh.`
+  );
+}
+

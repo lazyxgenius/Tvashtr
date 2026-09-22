@@ -15,6 +15,7 @@ import {
   displayNameForSubscription,
   enginesApiKeysEmpty,
   enginesApiKeysLede,
+  enginesNeedsInstallHint,
   enginesShelfSubtitle,
   enginesSubscriptionsCallout,
   SUBSCRIPTION_PROVIDERS,
@@ -280,6 +281,7 @@ export function EnginesShelf() {
                 {s.account_hint && <p className="tv-engines__hint">{s.account_hint}</p>}
                 {s.state === "needs_install" && isDesktop && (
                   <p className="tv-engines__hint">
+                    {enginesNeedsInstallHint(name)}{" "}
                     <a href={INSTALL_URLS[s.provider]} target="_blank" rel="noreferrer">
                       Install {name} CLI
                     </a>

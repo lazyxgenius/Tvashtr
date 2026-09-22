@@ -8,6 +8,7 @@ import {
   missingProvidersForModels,
   missingCredentialCtaTitle,
   missingProviderBannerDetail,
+  enginesNeedsInstallHint,
   enginesShelfSubtitle,
   enginesSubscriptionsCallout,
   enginesApiKeysLede,
@@ -172,5 +173,17 @@ describe("engines shelf hosted-vs-subscription copy (#4)", () => {
     expect(copy).toMatch(/hosted/i);
     expect(copy).toMatch(/Connect|subscription/i);
     expect(copy).toMatch(/do(?:es)? not satisfy hosted|not satisfy hosted/i);
+  });
+});
+
+describe("enginesNeedsInstallHint (Desktop PATH / Dock)", () => {
+  it("explains Dock PATH ≠ Terminal and Refresh after quit/reopen", () => {
+    const copy = enginesNeedsInstallHint("Grok");
+    expect(copy).toMatch(/Grok CLI/i);
+    expect(copy).toMatch(/PATH/i);
+    expect(copy).toMatch(/Dock/i);
+    expect(copy).toMatch(/Terminal/i);
+    expect(copy).toMatch(/Refresh/i);
+    expect(copy).toMatch(/quit|reopen/i);
   });
 });

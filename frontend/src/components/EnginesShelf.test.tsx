@@ -156,4 +156,35 @@ describe("EnginesShelf", () => {
     expect(screen.getByText(/stop when Desktop quits/i)).toBeInTheDocument();
     expect(screen.getAllByText(/local Desktop/i).length).toBeGreaterThanOrEqual(1);
   });
+
+
+  it("Desktop needs_install explains Dock PATH ≠ Terminal", async () => {
+    window.tvashtrDesktop = {
+      engines: {
+        getStatus: vi.fn().mockResolvedValue([
+          {
+            provider: "grok",
+            connected: false,
+            state: "needs_install",
+            account_hint: null,
+            source: null,
+            checked_at: "2026-09-22T00:00:00Z",
+          },
+        ]),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        refresh: vi.fn(),
+      },
+    };
+    vi.mocked(api.listProviders).mockResolvedValue([]);
+    vi.mocked(api.listSubscriptionStatuses).mockResolvedValue([]);
+    render(<EnginesShelf />);
+    expect(await screen.findByText(/Needs install/i)).toBeInTheDocument();
+    expect(screen.getByText(/Dock launch/i)).toBeInTheDocument();
+    expect(screen.getByText(/Terminal/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Install Grok CLI/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /I've installed it — Refresh Grok/i }),
+    ).toBeInTheDocument();
+  });
 });

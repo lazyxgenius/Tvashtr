@@ -85,7 +85,12 @@ async function run() {
     }
     throw new Error("no");
   };
-  const st2 = await createCodexHarness({ execFile: execMissing }).toStatus();
+  const st2 = await createCodexHarness({
+    execFile: execMissing,
+    npmGlobalBin: null,
+    pathExists: async () => false,
+    listDir: async () => [],
+  }).toStatus();
   assert.strictEqual(st2.state, "needs_install");
   assert.strictEqual(st2.connected, false);
 

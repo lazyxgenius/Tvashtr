@@ -2,7 +2,7 @@
  * Codex harness adapter (@openai/codex).
  *
  * Real CLI auth contract (see https://developers.openai.com/codex/auth):
- * - Detect: which/where → codex
+ * - Detect: enriched PATH which/where + absolute candidates → codex
  * - Probe: `codex login status` — exit 0 ⇒ authenticated; parse stdout for
  *   account/method hint (email, "ChatGPT", or "API key")
  * - Login: `codex login` (browser OAuth). Prefer this for Desktop Connect.
@@ -14,6 +14,7 @@ const { promisify } = require("util");
 const childProcess = require("child_process");
 const defaultExecFile = promisify(childProcess.execFile);
 const defaultSpawn = childProcess.spawn;
+const { detectCliBinary } = require("./pathDetect.cjs");
 
 const INSTALL_URL = "https://developers.openai.com/codex";
 
@@ -21,6 +22,11 @@ function createCodexHarness({
   execFile = defaultExecFile,
   spawn = defaultSpawn,
   env = process.env,
+  homedir,
+  platform = process.platform,
+  pathExists,
+  listDir,
+  npmGlobalBin,
 } = {}) {
   async function run(cmd, args) {
     try {
@@ -43,15 +49,15 @@ function createCodexHarness({
   }
 
   async function detect() {
-    const whichCmd = process.platform === "win32" ? "where" : "which";
-    const res = await run(whichCmd, ["codex"]);
-    if (res.code !== 0) return { installed: false, binaryPath: null };
-    const binaryPath =
-      res.stdout
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .find(Boolean) || null;
-    return { installed: Boolean(binaryPath), binaryPath };
+    return detectCliBinary("codex", {
+      execFile,
+      env,
+      homedir,
+      platform,
+      pathExists,
+      listDir,
+      npmGlobalBin,
+    });
   }
 
   function parseHint(text) {

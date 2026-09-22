@@ -1,10 +1,19 @@
 const { promisify } = require("util");
 const childProcess = require("child_process");
 const defaultExecFile = promisify(childProcess.execFile);
+const { detectCliBinary } = require("./pathDetect.cjs");
 
 const INSTALL_URL = "https://docs.anthropic.com/en/docs/claude-code/overview";
 
-function createClaudeHarness({ execFile = defaultExecFile } = {}) {
+function createClaudeHarness({
+  execFile = defaultExecFile,
+  env = process.env,
+  homedir,
+  platform = process.platform,
+  pathExists,
+  listDir,
+  npmGlobalBin,
+} = {}) {
   async function run(cmd, args) {
     try {
       const { stdout, stderr } = await execFile(cmd, args, {
@@ -26,15 +35,15 @@ function createClaudeHarness({ execFile = defaultExecFile } = {}) {
   }
 
   async function detect() {
-    const whichCmd = process.platform === "win32" ? "where" : "which";
-    const res = await run(whichCmd, ["claude"]);
-    if (res.code !== 0) return { installed: false, binaryPath: null };
-    const binaryPath =
-      res.stdout
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .find(Boolean) || null;
-    return { installed: Boolean(binaryPath), binaryPath };
+    return detectCliBinary("claude", {
+      execFile,
+      env,
+      homedir,
+      platform,
+      pathExists,
+      listDir,
+      npmGlobalBin,
+    });
   }
 
   function parseHint(text) {

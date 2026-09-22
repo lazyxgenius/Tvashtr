@@ -2,7 +2,7 @@
  * Grok harness adapter (grok / @xai-official/grok).
  *
  * Real CLI auth contract (see https://docs.x.ai/build/cli/reference):
- * - Detect: which/where → grok
+ * - Detect: enriched PATH which/where + absolute candidates → grok
  * - No official `login status`. Probe in order:
  *   1. Primary: `grok models` — exits 0 even when logged out; stdout/stderr
  *      containing "You are not authenticated" ⇒ unauthenticated. Exit 0 without
@@ -22,6 +22,7 @@ const childProcess = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { detectCliBinary } = require("./pathDetect.cjs");
 
 const defaultExecFile = promisify(childProcess.execFile);
 const defaultReadFile = promisify(fs.readFile);
@@ -73,6 +74,10 @@ function createGrokHarness({
   readFile = defaultReadFile,
   homedir = () => os.homedir(),
   env = process.env,
+  platform = process.platform,
+  pathExists,
+  listDir,
+  npmGlobalBin,
 } = {}) {
   async function run(cmd, args) {
     try {
@@ -95,15 +100,15 @@ function createGrokHarness({
   }
 
   async function detect() {
-    const whichCmd = process.platform === "win32" ? "where" : "which";
-    const res = await run(whichCmd, ["grok"]);
-    if (res.code !== 0) return { installed: false, binaryPath: null };
-    const binaryPath =
-      res.stdout
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .find(Boolean) || null;
-    return { installed: Boolean(binaryPath), binaryPath };
+    return detectCliBinary("grok", {
+      execFile,
+      env,
+      homedir,
+      platform,
+      pathExists,
+      listDir,
+      npmGlobalBin,
+    });
   }
 
   function authFilePath() {
