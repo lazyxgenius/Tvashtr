@@ -58,3 +58,23 @@ The job runs on `macos-latest`, builds the unsigned DMG, and uploads it to a Git
 - Auto-update (electron-updater)
 - Intel (`x64`) DMG
 - Windows / Linux installers
+
+## Enabling the GitHub Actions workflow (one-time)
+
+Our bot token cannot push files under `.github/workflows/` (needs `workflow` scope).
+Copy the checked-in template, then tag:
+
+```bash
+git fetch && git checkout feat/domains-eval-graph-polish && git pull
+mkdir -p .github/workflows
+cp docs/ci/desktop-mac-release.yml .github/workflows/desktop-mac-release.yml
+git add .github/workflows/desktop-mac-release.yml
+git commit -m "ci(desktop): enable unsigned Mac DMG Releases workflow"
+git push origin feat/domains-eval-graph-polish
+
+git tag desktop-v0.1.0
+git push origin desktop-v0.1.0
+# watch: https://github.com/lazyxgenius/Tvashtr/actions
+```
+
+Then fly-deploy this tip so landing **Download for Mac** is live.
