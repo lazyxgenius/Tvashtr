@@ -8,6 +8,10 @@ import {
   missingProvidersForModels,
   missingCredentialCtaTitle,
   missingProviderBannerDetail,
+  enginesShelfSubtitle,
+  enginesSubscriptionsCallout,
+  enginesApiKeysLede,
+  enginesApiKeysEmpty,
 } from "./engines";
 
 describe("engines mapping", () => {
@@ -123,5 +127,50 @@ describe("missingCredentialCtaTitle / banner detail", () => {
     expect(missingProviderBannerDetail("openai", "local")).toBe(
       "No API key for “openai” (and no covering Desktop subscription)",
     );
+  });
+});
+
+describe("engines shelf hosted-vs-subscription copy (#4)", () => {
+  it("shelf subtitle: hosted needs API keys; Connect does not satisfy hosted; local Desktop can use subs", () => {
+    const copy = enginesShelfSubtitle();
+    expect(copy).toMatch(/hosted/i);
+    expect(copy).toMatch(/fly\.dev/i);
+    expect(copy).toMatch(/API key/i);
+    expect(copy).toMatch(/Domains ingest\/Ask/i);
+    expect(copy).toMatch(/Connect|subscription/i);
+    expect(copy).toMatch(/do(?:es)? not satisfy hosted|not satisfy hosted/i);
+    expect(copy).toMatch(/[Dd]esktop/);
+  });
+
+  it("subscriptions callout on web: open Desktop; subs do not satisfy hosted", () => {
+    const copy = enginesSubscriptionsCallout(false);
+    expect(copy).toMatch(/Desktop/i);
+    expect(copy).toMatch(/connect/i);
+    expect(copy).toMatch(/do(?:es)? not satisfy hosted|not satisfy hosted/i);
+    expect(copy).toMatch(/API key/i);
+  });
+
+  it("subscriptions callout on Desktop: local-only + quit warning; not for hosted", () => {
+    const copy = enginesSubscriptionsCallout(true);
+    expect(copy).toMatch(/local/i);
+    expect(copy).toMatch(/quit/i);
+    expect(copy).toMatch(/do(?:es)? not satisfy hosted|not satisfy hosted/i);
+    expect(copy).toMatch(/API key/i);
+  });
+
+  it("API keys lede: required for hosted Domains + team runs; also work on Desktop", () => {
+    const copy = enginesApiKeysLede();
+    expect(copy).toMatch(/encrypted/i);
+    expect(copy).toMatch(/hosted/i);
+    expect(copy).toMatch(/Domains ingest\/Ask/i);
+    expect(copy).toMatch(/Desktop/i);
+  });
+
+  it("API keys empty state: hosted needs keys; Connect does not satisfy hosted", () => {
+    const copy = enginesApiKeysEmpty();
+    expect(copy).toMatch(/API key/i);
+    expect(copy).toMatch(/hosted/i);
+    expect(copy).toMatch(/Connect|subscription/i);
+    expect(copy).toMatch(/do(?:es)? not satisfy hosted|not satisfy hosted/i);
   });
 });

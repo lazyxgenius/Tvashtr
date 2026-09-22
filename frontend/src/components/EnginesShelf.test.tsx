@@ -125,4 +125,35 @@ describe("EnginesShelf", () => {
     expect(screen.getByText("Provider")).toBeInTheDocument();
     expect(screen.getByText("API key")).toBeInTheDocument();
   });
+
+  it("explains hosted needs API keys and Connect does not satisfy hosted (#4)", async () => {
+    vi.mocked(api.listProviders).mockResolvedValue([]);
+    vi.mocked(api.listSubscriptionStatuses).mockResolvedValue([]);
+    render(<EnginesShelf />);
+    await screen.findByRole("region", { name: /Engines/i });
+    expect(screen.getAllByText(/Hosted \(fly\.dev\)/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Domains ingest\/Ask/i).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/do not satisfy hosted/i).length).toBeGreaterThanOrEqual(2);
+    expect(
+      screen.getByText(/Desktop Connect does not satisfy hosted/i),
+    ).toBeInTheDocument();
+  });
+
+  it("Desktop subscriptions callout keeps quit warning and hosted-not-covered (#4)", async () => {
+    window.tvashtrDesktop = {
+      engines: {
+        getStatus: vi.fn().mockResolvedValue([]),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        refresh: vi.fn(),
+      },
+    };
+    vi.mocked(api.listProviders).mockResolvedValue([]);
+    vi.mocked(api.listSubscriptionStatuses).mockResolvedValue([]);
+    render(<EnginesShelf />);
+    await screen.findByRole("heading", { name: "Subscriptions" });
+    expect(screen.getAllByText(/do not satisfy hosted/i).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/stop when Desktop quits/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/local Desktop/i).length).toBeGreaterThanOrEqual(1);
+  });
 });

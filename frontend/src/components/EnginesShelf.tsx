@@ -13,6 +13,10 @@ import {
 } from "../lib/api";
 import {
   displayNameForSubscription,
+  enginesApiKeysEmpty,
+  enginesApiKeysLede,
+  enginesShelfSubtitle,
+  enginesSubscriptionsCallout,
   SUBSCRIPTION_PROVIDERS,
   type SubscriptionCardState,
   type SubscriptionProviderId,
@@ -250,18 +254,14 @@ export function EnginesShelf() {
       <div className="tv-engines__title-row">
         <h2>Engines</h2>
       </div>
-      <p className="tv-engines__sub">
-        Subscriptions run on your machine. API keys power hosted Fly runs.
-      </p>
+      <p className="tv-engines__sub">{enginesShelfSubtitle()}</p>
 
       <section className="tv-engines__section" aria-labelledby="tv-engines-subs">
         <h3 id="tv-engines-subs" className="tv-engines__section-title">
           Subscriptions
         </h3>
         <div className="tv-engines__callout" role="note">
-          {isDesktop
-            ? "Subscription runs stop when Desktop quits."
-            : "Subscription engines run on your machine — open Tvashtr Desktop to connect."}
+          {enginesSubscriptionsCallout(isDesktop)}
         </div>
         <div className="tv-engines__cards">
           {subscriptions.map((s) => {
@@ -342,10 +342,7 @@ export function EnginesShelf() {
         <h3 id="tv-engines-keys" className="tv-engines__section-title">
           API keys
         </h3>
-        <p className="tv-engines__section-lede">
-          Stored per account, encrypted. We only ever show the last 4 digits. Powers hosted Fly
-          runs.
-        </p>
+        <p className="tv-engines__section-lede">{enginesApiKeysLede()}</p>
         <div className="tv-engines__byok-form">
           <label className="tv-field">
             <span className="tv-field__label">Provider</span>
@@ -388,7 +385,7 @@ export function EnginesShelf() {
           </button>
         </div>
         {!loading && providers.length === 0 ? (
-          <p className="tv-dash__prov-empty">Add API keys so hosted runs can use your providers.</p>
+          <p className="tv-dash__prov-empty">{enginesApiKeysEmpty()}</p>
         ) : (
           <ul className="tv-dash__prov-list">
             {providers.map((p) => (

@@ -130,3 +130,47 @@ export function missingProviderBannerDetail(
   }
   return `No API key for “${provider}” (hosted runs need an API key; subscriptions are Desktop-only)`;
 }
+
+/**
+ * Engines shelf subtitle — hosted (fly.dev) vs local Desktop credential clarity (#4).
+ * Domains ingest/Ask and hosted team runs need API keys; Connect does not satisfy hosted.
+ */
+export function enginesShelfSubtitle(): string {
+  return (
+    "Hosted (fly.dev) Domains ingest/Ask and hosted team runs need API keys under Engines. " +
+    "Desktop Connect/subscriptions do not satisfy hosted. " +
+    "On local Desktop, subscriptions can cover some models; API keys still work."
+  );
+}
+
+/** Subscriptions section callout — web vs Desktop wording; always clarifies hosted needs keys. */
+export function enginesSubscriptionsCallout(isDesktop: boolean): string {
+  if (isDesktop) {
+    return (
+      "Connect covers some models for local Desktop runs only — subscriptions do not satisfy hosted. " +
+      "Add API keys below for fly.dev Domains ingest/Ask and hosted team runs. " +
+      "Subscription runs stop when Desktop quits."
+    );
+  }
+  return (
+    "Subscription engines run on your machine — open Tvashtr Desktop to Connect. " +
+    "They do not satisfy hosted (fly.dev) Domains ingest/Ask or hosted team runs; add API keys below."
+  );
+}
+
+/** API keys section lede — required for hosted; also valid on Desktop. */
+export function enginesApiKeysLede(): string {
+  return (
+    "Stored per account, encrypted. We only ever show the last 4 digits. " +
+    "Required for hosted (fly.dev) Domains ingest/Ask and hosted team runs; " +
+    "also work on local Desktop alongside subscriptions."
+  );
+}
+
+/** Empty BYOK list hint. */
+export function enginesApiKeysEmpty(): string {
+  return (
+    "Add API keys for hosted Domains ingest/Ask and Fly team runs " +
+    "(Desktop Connect does not satisfy hosted)."
+  );
+}
