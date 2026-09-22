@@ -2,10 +2,14 @@ import { useMemo, useState } from "react";
 
 import {
   EMBEDDING_PRESETS,
+  GENERATION_PRESETS,
   normalizeEmbeddingModel,
   parseDomainConfig,
   dimOfEmbedding,
   providerOfEmbedding,
+  embeddingSwitchNeedsReingest,
+  generationPresetSelectValue,
+  isCustomGenerationSelect,
   type DomainConfig,
 } from "../lib/domains";
 
@@ -50,6 +54,14 @@ export function DomainConfigForm({
   const [jsonText, setJsonText] = useState(() => JSON.stringify(seed, null, 2));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [customGen, setCustomGen] = useState(
+    () => generationPresetSelectValue(seed.generation.model) === "__custom__",
+  );
+
+  const needsReingest = embeddingSwitchNeedsReingest(
+    seed.embedding.model,
+    cfg.embedding.model,
+  );
 
   const save = async () => {
     setError(null);
@@ -67,6 +79,14 @@ export function DomainConfigForm({
         setError("Invalid JSON.");
         return;
       }
+    }
+    if (
+      embeddingSwitchNeedsReingest(seed.embedding.model, next.embedding.model) &&
+      !window.confirm(
+        "Saving this embedding change will clear ready embeddings and require re-ingest of all documents. Continue?",
+      )
+    ) {
+      return;
     }
     setSaving(true);
     try {
@@ -305,18 +325,60 @@ export function DomainConfigForm({
           </label>
           <label className="tv-field">
             <span className="tv-field__label">Generation model</span>
-            <input
+            <select
               className="tv-launch__input"
               aria-label="Generation model"
-              value={cfg.generation.model ?? ""}
-              placeholder="null = account default later"
-              onChange={(e) =>
+              value={
+                customGen
+                  ? "__custom__"
+                  : generationPresetSelectValue(cfg.generation.model)
+              }
+              onChange={(e) => {
+                const v = e.target.value;
+                if (isCustomGenerationSelect(v)) {
+                  setCustomGen(true);
+                  return;
+                }
+                setCustomGen(false);
                 setCfg({
                   ...cfg,
-                  generation: { model: e.target.value.trim() ? e.target.value : null },
-                })
-              }
-            />
+                  generation: { model: v.trim() ? v : null },
+                });
+              }}
+            >
+              {GENERATION_PRESETS.map((p) => (
+                <option key={p.id} value={p.slug ?? ""}>
+                  {p.label}
+                </option>
+              ))}
+              <option value="__custom__">Custom…</option>
+              {!customGen &&
+                cfg.generation.model &&
+                !GENERATION_PRESETS.some((p) => p.slug === cfg.generation.model) && (
+                  <option value={cfg.generation.model}>
+                    Custom: {cfg.generation.model}
+                  </option>
+                )}
+            </select>
+            {customGen && (
+              <input
+                className="tv-launch__input"
+                style={{ marginTop: "0.4rem" }}
+                aria-label="Custom generation model"
+                placeholder="provider/model slug"
+                value={cfg.generation.model ?? ""}
+                onChange={(e) =>
+                  setCfg({
+                    ...cfg,
+                    generation: { model: e.target.value.trim() ? e.target.value : null },
+                  })
+                }
+              />
+            )}
+            <span className="tv-field__hint">
+              Used by Domain Chat / Ask. Add that provider&apos;s API key under Dashboard →
+              Engines. Leave Account default to use the account thinker model.
+            </span>
           </label>
         </div>
       ) : (
@@ -330,6 +392,18 @@ export function DomainConfigForm({
             onChange={(e) => setJsonText(e.target.value)}
           />
         </label>
+      )}
+
+      {needsReingest && mode === "form" && (
+        <div
+          className="tv-dash__error tv-domains__reingest-warn"
+          role="alert"
+          aria-label="Re-ingest required"
+        >
+          <strong>Re-ingest required.</strong> Saving this embedding provider/dim change will{" "}
+          <strong>clear embeddings</strong> for ready documents and mark them pending. You must
+          re-ingest after Save.
+        </div>
       )}
 
       {error && (

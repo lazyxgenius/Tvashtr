@@ -80,20 +80,23 @@ describe("DomainConfigForm", () => {
   it("picks OpenRouter embedding preset and saves the slug", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<DomainConfigForm initial={sample} onSave={onSave} />);
     const emb = screen.getByLabelText("Embedding model");
     expect(emb.tagName).toBe("SELECT");
     await user.selectOptions(emb, "openrouter/openai/text-embedding-3-small");
-    expect(screen.getByText(/Dashboard → Engines/i)).toBeTruthy();
+    expect(screen.getAllByText(/Dashboard → Engines/i).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: /Save config/i }));
     expect(onSave).toHaveBeenCalled();
     const arg = onSave.mock.calls[0][0];
     expect(arg.embedding.model).toBe("openrouter/openai/text-embedding-3-small");
+    confirmSpy.mockRestore();
   });
 
   it("picks Groq embedding preset showing 768-dim and saves the slug", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<DomainConfigForm initial={sample} onSave={onSave} />);
     const emb = screen.getByLabelText("Embedding model");
     expect(emb.tagName).toBe("SELECT");
@@ -101,11 +104,55 @@ describe("DomainConfigForm", () => {
     // Option + hint both mention 768 / groq — assert via label text + hint.
     expect(emb).toHaveValue("groq/nomic-embed-text-v1_5");
     expect(screen.getByText(/needs a/i)).toBeTruthy();
-    expect(screen.getByText(/Dashboard → Engines/i)).toBeTruthy();
+    expect(screen.getAllByText(/Dashboard → Engines/i).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: /Save config/i }));
     expect(onSave).toHaveBeenCalled();
     const arg = onSave.mock.calls[0][0];
     expect(arg.embedding.model).toBe("groq/nomic-embed-text-v1_5");
+    confirmSpy.mockRestore();
   });
 
 });
+
+  it("picks Groq generation preset and saves the slug", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<DomainConfigForm initial={sample} onSave={onSave} />);
+    const gen = screen.getByLabelText("Generation model");
+    expect(gen.tagName).toBe("SELECT");
+    await user.selectOptions(gen, "groq/openai/gpt-oss-120b");
+    await user.click(screen.getByRole("button", { name: /Save config/i }));
+    expect(onSave).toHaveBeenCalled();
+    const arg = onSave.mock.calls[0][0];
+    expect(arg.generation.model).toBe("groq/openai/gpt-oss-120b");
+  });
+
+  it("warns when switching embed dim and confirms before save", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<DomainConfigForm initial={sample} onSave={onSave} />);
+    const emb = screen.getByLabelText("Embedding model");
+    await user.selectOptions(emb, "groq/nomic-embed-text-v1_5");
+    expect(
+      screen.getByRole("alert", { name: /re-ingest/i }),
+    ).toBeTruthy();
+    expect(screen.getByText(/clear embeddings/i)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /Save config/i }));
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(String(confirmSpy.mock.calls[0][0])).toMatch(/re-ingest/i);
+    expect(onSave).toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("cancels save when re-ingest confirm is declined", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<DomainConfigForm initial={sample} onSave={onSave} />);
+    await user.selectOptions(screen.getByLabelText("Embedding model"), "groq/nomic-embed-text-v1_5");
+    await user.click(screen.getByRole("button", { name: /Save config/i }));
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(onSave).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
