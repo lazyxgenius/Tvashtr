@@ -7,10 +7,10 @@ Status: scaffold on the local box (Electron shell). Cloud Agents were unavailabl
 1. **Architecture option 2** — Electron desktop shell + existing backend APIs. No separate desktop backend.
 2. **v1 hosted client only** — control plane is `https://tvashtr.fly.dev`. No shipping a local FastAPI stack inside the desktop app for v1.
 3. **UI reuse + thin chrome** — load the existing React/Vite frontend inside Electron. Do **not** build a parallel desktop-specific product UI.
-4. **Dual-engine credentials (Approach A)** —
-   - **Hosted Fly microVM:** BYOK / API keys via `/api/providers` only. Subscription status never satisfies hosted preflight.
-   - **Local Desktop subscription:** Claude (deep) → Grok/Codex (real CLI auth contracts); status in OS `safeStorage`; prefer-subscription for local runs. Status-only mirror to Fly — **no tokens/cookies**.
-5. **Secrets hygiene** — no real `.env` keys in the desktop tree; no committing secrets; subscription credentials never leave the Desktop host.
+4. **Dual-engine credentials (later)** —
+   - **Hosted runs (now):** API keys / BYOK via the existing account settings (same as web).
+   - **Subscription engines (later):** Claude / ChatGPT / Grok harness or OAuth — stub only in v1; not implemented.
+5. **Secrets hygiene** — no real `.env` keys in the desktop tree; no committing secrets.
 
 ## Why Electron
 
@@ -72,62 +72,38 @@ Email/password login already works through the same proxy once `Secure` is strip
 - Changing Fly secrets / live GitHub App config from this box (operator registers callbacks manually)
 - Session handoff tokens / opening OAuth in the OS browser
 
-## Dual-engine credentials (Approach A)
+## Desktop detection
 
-| Engine path | Behavior |
-|-------------|----------|
-| Hosted Fly microVM | BYOK / API keys via `/api/providers` only. Subscription status never satisfies hosted preflight. |
-| Local Desktop subscription | Claude → Grok → Codex harness adapters in `desktop/electron/harness/`. Status in OS `safeStorage`. Status-only mirror: `GET/PUT/DELETE /api/engines/subscriptions`. **No tokens/cookies to Fly.** |
-| Prefer-subscription | Automatic for local Desktop runs when connected; BYOK for hosted. |
-| Continuity | Quitting Desktop stops local/subscription runs. Fly BYOK runs can continue. |
+`desktop/electron/preload.cjs` exposes:
 
-### Grok / Codex harness CLI auth contracts
+```js
+window.tvashtrDesktop === true
+window.tvashtrDesktopInfo // { shell: "electron", version: 1 }
+```
 
-Claude remains the **deep** subscription path (CLI detect + `auth status` / `whoami` / login validated against Claude Code).
+Optional FE use: hide marketing CTAs or “open in browser” affordances later. v1 does not require large FE changes.
 
-**Codex** (`@openai/codex`) — see [Codex auth docs](https://developers.openai.com/codex/auth):
+## Dual-engine credentials (stub)
 
-| Step | Command / rule |
-|------|----------------|
-| Detect | `which` / `where` → `codex` |
-| Probe | `codex login status` — exit **0** ⇒ authenticated; parse stdout for email / `ChatGPT` / `API key` |
-| Login | `codex login` (browser OAuth; detached spawn). If `TVASHTR_HARNESS_DEVICE_AUTH=1` → `codex login --device-auth` |
-| Install | https://developers.openai.com/codex |
+| Engine path | v1 | Later |
+|-------------|----|-------|
+| Hosted Fly runs | Account BYOK / provider keys via existing `/api/providers` UI | unchanged |
+| Claude / ChatGPT / Grok **subscriptions** | Not wired | Harness or OAuth tokens in OS-secure storage; never in git |
 
-**Grok** (`grok` / `@xai-official/grok`) — see [xAI CLI reference](https://docs.x.ai/build/cli/reference):
+Desktop may eventually call `safeStorage` / keytar; not in this slice.
 
-| Step | Command / rule |
-|------|----------------|
-| Detect | `which` / `where` → `grok` |
-| Probe (primary) | `grok models` — exit 0 even when logged out; stdout/stderr containing `You are not authenticated` ⇒ unauthenticated; otherwise exit 0 ⇒ authenticated |
-| Probe (fallbacks) | Non-empty `XAI_API_KEY` ⇒ `account_hint: "api-key"`; else `$GROK_HOME/auth.json` or `~/.grok/auth.json` with session-like fields ⇒ authenticated (`account_hint` from safe fields or `"session"`). **Never** surface raw tokens |
-| Login | `grok login` (detached spawn). If `TVASHTR_HARNESS_DEVICE_AUTH=1` → `grok login --device-auth` |
-| Install | https://docs.x.ai/build/cli/reference |
+## Distribution (Option 3)
 
-Login for both is fire-and-forget (detached spawn) then re-probe — interactive browser OAuth is **not** a blocking 15s `execFile` success path.
-
-
-### Desktop IPC
-
-`window.tvashtrDesktop` is a truthy object:
-
-- `engines.getStatus()` / `connect(provider)` / `disconnect(provider)` / `refresh(provider)`
-- `runs.startLocal` / `stopLocal` / `subscribeLogs` (skeleton)
-
-`window.tvashtrDesktopInfo.version` ≥ 2.
-
-FE detection: prefer truthiness (`if (window.tvashtrDesktop)`), not `=== true`.
-
-Same Engines shelf UI on web + Desktop; Connect is enabled only on Desktop (web cards show mirrored status, disabled).
+Unsigned Mac `.dmg` via GitHub Releases + landing **Download for Mac** CTA.
+See [`desktop-dmg-releases.md`](./desktop-dmg-releases.md).
 
 ## Explicitly not done in v1
 
-- macOS `.dmg` / notarization / auto-update
-- OAuth secondary Connect — only where a provider documents a desktop-safe path (harness-first is primary)
+- Apple notarization / Developer ID signing / auto-update
+- Subscription OAuth / harness login
 - Auth cookie hardening beyond proxy Domain+Secure strip (e.g. partitioned cookies, custom Electron session partition policies)
 - Pushing from this Linux box if `gh` / git remotes lack credentials
-- Loading a fully offline backend / full OpenHarness local stack
-- Shipping subscription secrets or cookies to Fly
+- Loading a fully offline backend
 
 ## Layout
 
@@ -136,8 +112,7 @@ desktop/
   README.md
   package.json
   electron/main.cjs      # BrowserWindow + lifecycle
-  electron/preload.cjs   # window.tvashtrDesktop object bridge
-  electron/harness/      # Claude / Grok / Codex subscription adapters
+  electron/preload.cjs   # window.tvashtrDesktop
   scripts/local-server.cjs
   scripts/build.mjs
   scripts/dev.mjs

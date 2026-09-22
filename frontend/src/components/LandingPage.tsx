@@ -2,16 +2,19 @@ import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import "../landing.css";
 import type { AuthMode } from "./AuthWizard";
+import { DESKTOP_MAC_DMG_URL } from "../lib/desktopDownload";
 
 /* ============================================================
    F4 — the premium logged-out landing, rebuilt from
    design/Tvashtr Frontend Overhaul/Landing.dc.html.
 
-   FE-only + STATIC: it owns no data and no auth. The CTAs call
+   FE-only + STATIC: it owns no data and no auth. Auth CTAs call
    back into `onGetStarted(mode)` (the preserved M-accounts Slice B
-   contract), which AuthGate routes to the login/register screen —
-   the only way into the product. Both auth modes stay reachable:
-   "Sign in" -> login, "Start building"/"Get started" -> register.
+   contract), which AuthGate routes to the login/register screen.
+   Both auth modes stay reachable: "Sign in" -> login,
+   "Start building"/"Get started" -> register.
+   Option 3 also exposes a "Download for Mac" link to the unsigned
+   GitHub Releases .dmg (does not enter the product; Gatekeeper note).
 
    Two scroll-reactive centrepieces live in landing.css:
    1. the hero stage parallaxes on document scroll; a JS fit-scale
@@ -437,7 +440,19 @@ export function LandingPage({ onGetStarted }: { onGetStarted: (mode: AuthMode) =
                 <a className="tv-lp__cta tv-lp__cta--ghost" href="#how">
                   See how it works
                 </a>
+                <a
+                  className="tv-lp__cta tv-lp__cta--ghost"
+                  href={DESKTOP_MAC_DMG_URL}
+                  data-testid="desktop-mac-download"
+                >
+                  Download for Mac
+                  <Icon id="package" size={16} stroke={1.8} />
+                </a>
               </div>
+              <p className="tv-lp__download-note">
+                Unsigned .dmg via GitHub Releases — right-click → Open on first launch
+                (not Apple-notarized).
+              </p>
               <div className="tv-lp__chips">
                 {TRUST_CHIPS.map((c) => (
                   <span className="tv-lp__chip" key={c.label}>
@@ -708,14 +723,24 @@ export function LandingPage({ onGetStarted }: { onGetStarted: (mode: AuthMode) =
                 Bring your keys, point it at a repo, and compose a team that ships. Nothing here yet
                 — start a thread and it&rsquo;ll appear on the loom.
               </p>
-              <button
-                type="button"
-                className="tv-lp__cta tv-lp__cta--primary tv-lp__cta--lg"
-                onClick={() => onGetStarted("register")}
-              >
-                Get started
-                <Icon id="arrow" size={16} stroke={1.9} />
-              </button>
+              <div className="tv-lp__cta-row tv-lp__cta-row--closing">
+                <button
+                  type="button"
+                  className="tv-lp__cta tv-lp__cta--primary tv-lp__cta--lg"
+                  onClick={() => onGetStarted("register")}
+                >
+                  Get started
+                  <Icon id="arrow" size={16} stroke={1.9} />
+                </button>
+                <a
+                  className="tv-lp__cta tv-lp__cta--ghost tv-lp__cta--lg"
+                  href={DESKTOP_MAC_DMG_URL}
+                  data-testid="desktop-mac-download-closing"
+                >
+                  Download for Mac
+                  <Icon id="package" size={16} stroke={1.8} />
+                </a>
+              </div>
             </div>
           </div>
         </section>

@@ -31,10 +31,23 @@ describe("LandingPage", () => {
     expect(screen.getByRole("heading", { name: /start weaving/i })).toBeInTheDocument();
   });
 
-  it("has NO canvas / team / auth surface (the CTAs are the only way in)", () => {
+  it("has NO canvas / team / auth surface (auth CTAs + Mac download are the only entry points)", () => {
     render(<LandingPage onGetStarted={vi.fn()} />);
     expect(screen.queryByLabelText("Email")).toBeNull();
     expect(screen.queryByText(/the living canvas/i)).toBeNull();
+  });
+
+  it("exposes Download for Mac CTAs pointing at the unsigned GitHub Releases DMG", () => {
+    render(<LandingPage onGetStarted={vi.fn()} />);
+    const links = screen.getAllByRole("link", { name: /download for mac/i });
+    expect(links.length).toBeGreaterThanOrEqual(2);
+    for (const link of links) {
+      expect(link).toHaveAttribute(
+        "href",
+        "https://github.com/lazyxgenius/Tvashtr/releases/latest/download/Tvashtr-mac.dmg",
+      );
+    }
+    expect(screen.getByText(/unsigned \.dmg via github releases/i)).toBeInTheDocument();
   });
 
   it("routes the primary CTA to register and 'Sign in' to login (both auth modes reachable)", () => {

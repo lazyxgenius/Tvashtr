@@ -17,6 +17,7 @@ See [`../docs/desktop-v1.md`](../docs/desktop-v1.md) for architecture decisions.
 | `npm run build` | Builds `../frontend` into `desktop/dist-fe` (Vite). Leaves `VITE_API_BASE` empty; API is reached via the local reverse proxy at runtime. |
 | `npm run start` | Serves `dist-fe` on `127.0.0.1`, proxies `/api` + `/health` → `TVASHTR_API_BASE` (default `https://tvashtr.fly.dev`), opens Electron. |
 | `npm run dev` | Starts Vite on `:5173` with `TVASHTR_API_PROXY_TARGET` → fly.dev, then opens Electron on that origin. |
+| `npm run pack:mac` | `build` + unsigned arm64 `.dmg` via electron-builder (`release/Tvashtr-mac.dmg`). Mac host or CI. |
 
 ### Environment
 
@@ -40,7 +41,19 @@ npm start
 npm run dev
 ```
 
-No `.dmg` / notarization in v1 — `electron .` / `npm start` only.
+### Packaged Mac DMG (unsigned — Option 3)
+
+On a Mac (or via GitHub Actions `desktop-mac-release.yml`):
+
+```bash
+cd desktop
+npm ci
+npm run pack:mac   # → release/Tvashtr-mac.dmg
+```
+
+Publish: tag `desktop-v*` and push (workflow uploads the DMG to GitHub Releases).
+Landing CTA: **Download for Mac** → `…/releases/latest/download/Tvashtr-mac.dmg`.
+First launch: right-click → Open (unsigned; not notarized). See [`../docs/desktop-dmg-releases.md`](../docs/desktop-dmg-releases.md).
 
 ## Linux smoke (headless)
 
@@ -63,6 +76,4 @@ OAuth stays inside the Electron window; the local proxy forwards the callback to
 
 ## Desktop detection
 
-`preload.cjs` exposes `window.tvashtrDesktop` as a truthy object bridge (`engines.*`, `runs.*`) and `window.tvashtrDesktopInfo` (`version` ≥ 2). FE detection: prefer truthiness (`if (window.tvashtrDesktop)`), not `=== true`. The FE rewrites `github_install_url` for loopback OAuth when the bridge is present.
-
-See [`../docs/desktop-v1.md`](../docs/desktop-v1.md#dual-engine-credentials-approach-a) for Approach A dual-engine / subscription Connect.
+`preload.cjs` exposes `window.tvashtrDesktop === true` (and `window.tvashtrDesktopInfo`). The FE rewrites `github_install_url` for loopback OAuth when that flag is set.

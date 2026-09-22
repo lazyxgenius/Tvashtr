@@ -297,6 +297,18 @@
   border-radius: 12px;
   font-size: 15.5px;
 }
+
+.tv-lp__download-note {
+  margin: 14px 0 0;
+  max-width: 36em;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+.tv-lp__cta-row--closing {
+  justify-content: center;
+}
+
 .tv-lp__chips {
   display: flex;
   flex-wrap: wrap;

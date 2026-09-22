@@ -8,7 +8,9 @@
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
     "start": "node scripts/start.mjs",
-    "electron": "electron ."
+    "electron": "electron .",
+    "dist:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --publish never",
+    "pack:mac": "npm run build && npm run dist:mac"
   },
   "dependencies": {
     "express": "^4.21.2",
@@ -16,9 +18,48 @@
   },
   "devDependencies": {
     "electron": "^35.1.2",
+    "electron-builder": "^25.1.8",
     "wait-on": "^8.0.3"
   },
   "engines": {
     "node": ">=20"
+  },
+  "build": {
+    "appId": "dev.tvashtr.desktop",
+    "productName": "Tvashtr",
+    "copyright": "Copyright © Tvashtr",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "scripts/local-server.cjs",
+      "dist-fe/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.cjs"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "artifactName": "Tvashtr-mac.${ext}"
+    },
+    "dmg": {
+      "title": "Tvashtr",
+      "writeUpdateInfo": false
+    },
+    "publish": null
   }
 }
