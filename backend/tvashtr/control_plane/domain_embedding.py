@@ -26,6 +26,8 @@ EMBEDDING_CATALOGUE: dict[str, dict[str, object]] = {
     "openrouter/openai/text-embedding-3-small": {"provider": "openrouter", "dim": 1536},
     "openrouter/openai/text-embedding-ada-002": {"provider": "openrouter", "dim": 1536},
     # Groq Nomic Embed v1.5 — native 768 (Engines key: groq). Never pad to 1536.
+    # LiteLLM has no native groq embedding route; gateway.embed rewrites to
+    # openai/<id> + api_base=https://api.groq.com/openai/v1 (underscore→dot id).
     "groq/nomic-embed-text-v1_5": {"provider": "groq", "dim": 768},
 }
 

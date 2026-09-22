@@ -88,3 +88,40 @@ def test_embed_raises_gateway_error_on_provider_failure(monkeypatch):
     monkeypatch.setattr(gw.litellm, "embedding", boom)
     with pytest.raises(GatewayError):
         embed(EmbeddingRequest(model="openai/x", input=["hi"]))
+
+
+def test_embed_rewrites_groq_slug_to_openai_compat_api_base(monkeypatch):
+    """LiteLLM has no native groq embedding route — rewrite to OpenAI-compat Groq base.
+
+    Catalogue slug keeps underscore (``v1_5``); official Groq id uses a dot (``v1.5``).
+    Metering / result.model / raw_provider must stay on the original ``groq/...`` slug.
+    """
+    captured = {}
+
+    def fake_embedding(*, model, input, **kwargs):
+        captured["model"] = model
+        captured["input"] = input
+        captured["api_base"] = kwargs.get("api_base")
+        captured["api_key"] = kwargs.get("api_key", "<<absent>>")
+        return _canned_embedding(dim=768, model=model)
+
+    monkeypatch.setattr(gw.litellm, "embedding", fake_embedding)
+    monkeypatch.setattr(gw.litellm, "completion_cost", lambda **kw: 0.0)
+
+    result = embed(
+        EmbeddingRequest(
+            model="groq/nomic-embed-text-v1_5",
+            input=["domain chunk"],
+            api_key="owner-groq-key",
+        )
+    )
+
+    assert captured["model"] == "openai/nomic-embed-text-v1.5"
+    assert captured["api_base"] == "https://api.groq.com/openai/v1"
+    assert captured["api_key"] == "owner-groq-key"
+    assert captured["input"] == ["domain chunk"]
+    # Attribution stays groq from the original catalogue slug (not openai/).
+    assert result.model == "groq/nomic-embed-text-v1_5"
+    assert result.raw_provider == "groq"
+    assert len(result.vectors[0]) == 768
+

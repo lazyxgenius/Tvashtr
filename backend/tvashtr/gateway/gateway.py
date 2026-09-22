@@ -226,6 +226,37 @@ def complete(request: CompletionRequest) -> CompletionResult:
     ) from last_error
 
 
+# Official Groq embedding model ids use a dot in the version (e.g. nomic-embed-text-v1.5).
+# Our catalogue keeps the underscore slug for back-compat; rewrite before the HTTP call.
+_GROQ_EMBED_MODEL_IDS: dict[str, str] = {
+    "nomic-embed-text-v1_5": "nomic-embed-text-v1.5",
+}
+_GROQ_OPENAI_COMPAT_BASE = "https://api.groq.com/openai/v1"
+
+
+def _embedding_litellm_kwargs(request: EmbeddingRequest) -> dict:
+    """Build litellm.embedding kwargs, rewriting Groq slugs LiteLLM cannot route natively.
+
+    LiteLLM has no ``groq`` embedding provider map (chat/stt only). Route Groq embeds via the
+    OpenAI-compatible endpoint: ``openai/<bare>`` + ``api_base`` Groq, while callers / metering
+    still see the original ``groq/...`` slug (provider attribution stays groq).
+    """
+    model = request.model
+    kwargs: dict = {"input": request.input}
+    if request.api_key is not None:
+        kwargs["api_key"] = request.api_key
+
+    if model.startswith("groq/"):
+        bare = model[len("groq/") :]
+        bare = _GROQ_EMBED_MODEL_IDS.get(bare, bare)
+        kwargs["model"] = f"openai/{bare}"
+        kwargs["api_base"] = _GROQ_OPENAI_COMPAT_BASE
+        return kwargs
+
+    kwargs["model"] = model
+    return kwargs
+
+
 def embed(request: EmbeddingRequest) -> EmbeddingResult:
     """Embed a batch of texts through the requested model (M-memory S1).
 
@@ -238,10 +269,11 @@ def embed(request: EmbeddingRequest) -> EmbeddingResult:
     dimension-pinned choice (the ``vector(1536)`` column matches ``text-embedding-3-small``), so a
     silent fail-over to a different-dimension model would corrupt the store. Any provider failure
     raises ``GatewayError``.
+
+    Groq catalogue slugs (``groq/...``) are rewritten to LiteLLM's OpenAI-compatible Groq
+    embeddings route — see :func:`_embedding_litellm_kwargs`. Metering still attributes **groq**.
     """
-    kwargs: dict = {"model": request.model, "input": request.input}
-    if request.api_key is not None:
-        kwargs["api_key"] = request.api_key
+    kwargs = _embedding_litellm_kwargs(request)
 
     started = time.perf_counter()
     try:
@@ -265,6 +297,7 @@ def embed(request: EmbeddingRequest) -> EmbeddingResult:
         prompt_tokens=prompt_tokens,
         total_tokens=total_tokens,
         cost_usd=_cost_of(response),
+        # Original slug (not the openai/ rewrite) so metering stays provider=groq.
         raw_provider=_provider_of(request.model),
         latency_ms=latency_ms,
     )
