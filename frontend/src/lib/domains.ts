@@ -125,3 +125,68 @@ export function parseDomainConfig(raw: unknown): DomainConfig | null {
   if (!c.chunking || !c.embedding || !c.retrieval || !c.generation) return null;
   return c;
 }
+
+/** Generation chat presets (Domain Config Ask model; mirrors Engines catalogue defaults). */
+export interface GenerationPreset {
+  id: string;
+  label: string;
+  /** null = leave unset; ask_domain falls back to account thinker default. */
+  slug: string | null;
+  provider: string | null;
+  notes: string;
+}
+
+export const GENERATION_PRESETS: GenerationPreset[] = [
+  {
+    id: "account-default",
+    label: "Account default",
+    slug: null,
+    provider: null,
+    notes: "Uses the account thinker default / settings when Ask runs.",
+  },
+  {
+    id: "groq-gpt-oss-120b",
+    label: "Groq gpt-oss-120b",
+    slug: "groq/openai/gpt-oss-120b",
+    provider: "groq",
+    notes: "Requires a groq Engines key.",
+  },
+  {
+    id: "openai-gpt-4o-mini",
+    label: "OpenAI gpt-4o-mini",
+    slug: "openai/gpt-4o-mini",
+    provider: "openai",
+    notes: "Requires an openai Engines key.",
+  },
+  {
+    id: "openrouter-gpt-4o-mini",
+    label: "OpenRouter → gpt-4o-mini",
+    slug: "openrouter/openai/gpt-4o-mini",
+    provider: "openrouter",
+    notes: "Requires an openrouter Engines key.",
+  },
+];
+
+const CUSTOM_GENERATION = "__custom__";
+
+/** Select value for the generation preset picker (null slug → empty string). */
+export function generationPresetSelectValue(model: string | null): string {
+  if (model == null || model === "") return "";
+  if (GENERATION_PRESETS.some((p) => p.slug === model)) return model;
+  return CUSTOM_GENERATION;
+}
+
+export function isCustomGenerationSelect(value: string): boolean {
+  return value === CUSTOM_GENERATION;
+}
+
+/**
+ * True when saving the new embed slug would clear ready embeddings / force re-ingest
+ * (provider or dim differs from the currently saved model).
+ */
+export function embeddingSwitchNeedsReingest(fromModel: string, toModel: string): boolean {
+  return (
+    dimOfEmbedding(fromModel) !== dimOfEmbedding(toModel) ||
+    providerOfEmbedding(fromModel) !== providerOfEmbedding(toModel)
+  );
+}
