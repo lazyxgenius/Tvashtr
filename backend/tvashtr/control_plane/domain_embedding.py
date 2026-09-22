@@ -8,8 +8,8 @@ fail-closes when ``len(vec) != expected_dim(model)``.
 
 OpenRouter free catalogue embeds (384/768/1024) are excluded unless explicitly
 listed. Gemini ``gemini-embedding-001`` (768 via ``output_dimensionality``) and
-Hugging Face free Inference ``all-MiniLM-L6-v2`` (384, rate-limited) are the non-1536
-presets. Groq hosted nomic embed is unavailable (docs/API list none; removed).
+Hugging Face free Inference ``BAAI/bge-small-en-v1.5`` (384, rate-limited
+feature-extraction via hf-inference) are the non-1536 presets. Groq hosted nomic embed is unavailable (docs/API list none; removed).
 """
 
 from __future__ import annotations
@@ -31,9 +31,12 @@ EMBEDDING_CATALOGUE: dict[str, dict[str, object]] = {
     # ``dimensions`` → Google ``outputDimensionality`` (Engines key: gemini).
     # Docs: https://ai.google.dev/gemini-api/docs/embeddings (text-embedding-004 shut down).
     "gemini/gemini-embedding-001": {"provider": "gemini", "dim": 768},
-    # HF free Inference (rate-limited / cold starts). Engines key: huggingface (LiteLLM HF_TOKEN).
-    # Slug form: huggingface/<org>/<model> — docs.litellm.ai/docs/providers/huggingface
-    "huggingface/sentence-transformers/all-MiniLM-L6-v2": {
+    # HF free Inference feature-extraction (rate-limited / cold starts).
+    # Engines key: huggingface (LiteLLM HF_TOKEN). Prefer models with pipeline_tag
+    # feature-extraction on hf-inference — NOT sentence-transformers/* (LiteLLM routes
+    # those to sentence-similarity and cannot return single-text embed vectors).
+    # Slug: huggingface/<org>/<model> — docs.litellm.ai/docs/providers/huggingface
+    "huggingface/BAAI/bge-small-en-v1.5": {
         "provider": "huggingface",
         "dim": 384,
     },
@@ -93,16 +96,18 @@ EMBEDDING_PRESETS: tuple[EmbeddingPreset, ...] = (
         ),
     },
     {
-        "id": "hf-minilm-l6-v2",
-        "label": "Hugging Face MiniLM-L6-v2 (384, free/rate-limited)",
-        "slug": "huggingface/sentence-transformers/all-MiniLM-L6-v2",
+        "id": "hf-bge-small-en-v1.5",
+        "label": "Hugging Face BGE-small-en-v1.5 (384, free/rate-limited)",
+        "slug": "huggingface/BAAI/bge-small-en-v1.5",
         "provider": "huggingface",
         "dim": 384,
         "notes": (
-            "Free HF Inference embed (native 384-dim). Add a free huggingface token "
-            "under Engines (create at huggingface.co — not a paid API key). Rate "
-            "limits and cold starts apply; for testing. Prefer Gemini or OpenRouter "
-            "for steadier throughput."
+            "Free HF Inference feature-extraction embed (BAAI/bge-small-en-v1.5, native "
+            "384-dim). Add a free huggingface token under Engines (create at "
+            "huggingface.co — Inference Providers permission). Rate limits and cold "
+            "starts apply; for testing. Prefer Gemini or OpenRouter for steadier "
+            "throughput. Avoid sentence-transformers/* slugs — LiteLLM maps them to "
+            "sentence-similarity, not embeddings."
         ),
     },
 )

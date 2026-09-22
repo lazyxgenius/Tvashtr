@@ -119,25 +119,25 @@ describe("DomainConfigForm", () => {
     confirmSpy.mockRestore();
   });
 
-  it("picks Hugging Face MiniLM embedding preset showing 384-dim and saves the slug", async () => {
+  it("picks Hugging Face BGE-small embedding preset showing 384-dim and saves the slug", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<DomainConfigForm initial={sample} onSave={onSave} />);
     const emb = screen.getByLabelText("Embedding model");
-    await user.selectOptions(emb, "huggingface/sentence-transformers/all-MiniLM-L6-v2");
-    expect(emb).toHaveValue("huggingface/sentence-transformers/all-MiniLM-L6-v2");
+    await user.selectOptions(emb, "huggingface/BAAI/bge-small-en-v1.5");
+    expect(emb).toHaveValue("huggingface/BAAI/bge-small-en-v1.5");
     // Option label and dim hint both mention 384 — assert via the selected option text.
     expect(
       Array.from((emb as HTMLSelectElement).options).some(
-        (o) => o.value === "huggingface/sentence-transformers/all-MiniLM-L6-v2" && /384/.test(o.text),
+        (o) => o.value === "huggingface/BAAI/bge-small-en-v1.5" && /384/.test(o.text),
       ),
     ).toBe(true);
     expect(screen.getAllByText(/huggingface/i).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: /Save config/i }));
     expect(onSave).toHaveBeenCalled();
     const arg = onSave.mock.calls[0][0];
-    expect(arg.embedding.model).toBe("huggingface/sentence-transformers/all-MiniLM-L6-v2");
+    expect(arg.embedding.model).toBe("huggingface/BAAI/bge-small-en-v1.5");
     confirmSpy.mockRestore();
   });
 

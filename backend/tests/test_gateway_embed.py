@@ -156,7 +156,7 @@ def test_embed_hf_rate_limit_maps_to_clear_message(monkeypatch):
     with pytest.raises(GatewayError) as ei:
         embed(
             EmbeddingRequest(
-                model="huggingface/sentence-transformers/all-MiniLM-L6-v2",
+                model="huggingface/BAAI/bge-small-en-v1.5",
                 input=["hi"],
                 api_key="hf_test",
             )
@@ -183,25 +183,63 @@ def test_embed_non_hf_rate_limit_keeps_generic_gateway_error(monkeypatch):
     assert "Hugging Face free tier" not in str(ei.value)
 
 
-def test_embed_hf_forwards_api_key_without_dimensions(monkeypatch):
+def test_embed_hf_forwards_api_key_feature_extraction_no_dimensions(monkeypatch):
     captured = {}
 
     def fake_embedding(*, model, input, **kwargs):
         captured["model"] = model
         captured["api_key"] = kwargs.get("api_key", "<<absent>>")
         captured["dimensions"] = kwargs.get("dimensions", "<<absent>>")
+        captured["input_type"] = kwargs.get("input_type", "<<absent>>")
         return _canned_embedding(dim=384, model=model)
 
     monkeypatch.setattr(gw.litellm, "embedding", fake_embedding)
     monkeypatch.setattr(gw.litellm, "completion_cost", lambda **kw: 0.0)
     result = embed(
         EmbeddingRequest(
-            model="huggingface/sentence-transformers/all-MiniLM-L6-v2",
+            model="huggingface/BAAI/bge-small-en-v1.5",
             input=["chunk"],
             api_key="hf_owner",
         )
     )
-    assert captured["model"] == "huggingface/sentence-transformers/all-MiniLM-L6-v2"
+    assert captured["model"] == "huggingface/BAAI/bge-small-en-v1.5"
     assert captured["api_key"] == "hf_owner"
     assert captured["dimensions"] == "<<absent>>"
+    assert captured["input_type"] == "feature-extraction"
     assert len(result.vectors[0]) == 384
+
+
+def test_embed_openai_does_not_force_input_type(monkeypatch):
+    captured = {}
+
+    def fake_embedding(*, model, input, **kwargs):
+        captured["input_type"] = kwargs.get("input_type", "<<absent>>")
+        return _canned_embedding()
+
+    monkeypatch.setattr(gw.litellm, "embedding", fake_embedding)
+    monkeypatch.setattr(gw.litellm, "completion_cost", lambda **kw: 0.0)
+    embed(EmbeddingRequest(model="openai/text-embedding-3-small", input=["hi"]))
+    assert captured["input_type"] == "<<absent>>"
+
+
+def test_embed_hf_unsupported_model_maps_to_clear_message(monkeypatch):
+    """HF router 400 'Model not supported by provider hf-inference' → actionable copy."""
+
+    class Unsupported(Exception):
+        status_code = 400
+
+    def boom(*, model, input, **kwargs):
+        raise Unsupported("Model not supported by provider hf-inference")
+
+    monkeypatch.setattr(gw.litellm, "embedding", boom)
+    with pytest.raises(GatewayError) as ei:
+        embed(
+            EmbeddingRequest(
+                model="huggingface/BAAI/bge-small-en-v1.5",
+                input=["hi"],
+                api_key="hf_test",
+            )
+        )
+    msg = str(ei.value)
+    assert "does not support this embedding model" in msg
+    assert "BGE-small" in msg or "Gemini" in msg or "OpenRouter" in msg

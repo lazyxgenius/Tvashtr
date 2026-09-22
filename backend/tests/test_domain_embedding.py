@@ -47,9 +47,9 @@ def test_normalize_preserves_openai_openrouter_gemini_and_hf_slugs():
     )
     assert (
         normalize_embedding_model(
-            "huggingface/sentence-transformers/all-MiniLM-L6-v2"
+            "huggingface/BAAI/bge-small-en-v1.5"
         )
-        == "huggingface/sentence-transformers/all-MiniLM-L6-v2"
+        == "huggingface/BAAI/bge-small-en-v1.5"
     )
 
 
@@ -57,7 +57,7 @@ def test_catalogue_covers_presets_provider_and_dim():
     assert DEFAULT_EMBEDDING_SLUG in ALLOWED_EMBEDDING_MODELS
     assert "openrouter/openai/text-embedding-3-small" in ALLOWED_EMBEDDING_MODELS
     assert "gemini/gemini-embedding-001" in ALLOWED_EMBEDDING_MODELS
-    hf = "huggingface/sentence-transformers/all-MiniLM-L6-v2"
+    hf = "huggingface/BAAI/bge-small-en-v1.5"
     assert hf in ALLOWED_EMBEDDING_MODELS
     assert EMBEDDING_CATALOGUE["gemini/gemini-embedding-001"]["provider"] == "gemini"
     assert EMBEDDING_CATALOGUE["gemini/gemini-embedding-001"]["dim"] == 768
@@ -79,10 +79,14 @@ def test_catalogue_covers_presets_provider_and_dim():
     gem = next(p for p in public_embedding_presets() if p["id"] == "gemini-embedding-001")
     assert gem["dim"] == 768
     assert gem["provider"] == "gemini"
-    hf_p = next(p for p in public_embedding_presets() if p["id"] == "hf-minilm-l6-v2")
+    hf_p = next(p for p in public_embedding_presets() if p["id"] == "hf-bge-small-en-v1.5")
     assert hf_p["dim"] == 384
     assert hf_p["provider"] == "huggingface"
+    assert hf_p["slug"] == "huggingface/BAAI/bge-small-en-v1.5"
+    assert "bge" in hf_p["label"].lower()
     assert "free" in hf_p["label"].lower() or "rate" in hf_p["label"].lower()
+    # MiniLM is sentence-similarity-only via LiteLLM — must not remain selectable.
+    assert "sentence-transformers/all-MiniLM" not in ALLOWED_EMBEDDING_MODELS
     assert not any(p["id"] == "groq-nomic-v1_5" for p in public_embedding_presets())
 
 
@@ -91,7 +95,7 @@ def test_expected_dim_openai_1536_gemini_768_and_hf_384():
     assert expected_dim("openai/text-embedding-3-small") == 1536
     assert expected_dim("openrouter/openai/text-embedding-3-small") == 1536
     assert expected_dim("gemini/gemini-embedding-001") == 768
-    assert expected_dim("huggingface/sentence-transformers/all-MiniLM-L6-v2") == 384
+    assert expected_dim("huggingface/BAAI/bge-small-en-v1.5") == 384
 
 
 def test_expected_dim_rejects_unknown():
@@ -108,7 +112,7 @@ def test_is_allowed_accepts_catalogue_rejects_unknown():
     assert is_allowed_embedding_model("openrouter/openai/text-embedding-3-small")
     assert is_allowed_embedding_model("gemini/gemini-embedding-001")
     assert is_allowed_embedding_model(
-        "huggingface/sentence-transformers/all-MiniLM-L6-v2"
+        "huggingface/BAAI/bge-small-en-v1.5"
     )
     # OpenRouter free embeds are not in catalogue — must reject
     assert not is_allowed_embedding_model("openrouter/liquid/lfm-2.5-embedding-350m:free")
@@ -123,7 +127,7 @@ def test_validate_accepts_openrouter_gemini_and_hf_embed_slugs():
     domains_cp.validate_domain_config(cfg)  # no raise
     cfg["embedding"]["model"] = "gemini/gemini-embedding-001"
     domains_cp.validate_domain_config(cfg)  # no raise
-    cfg["embedding"]["model"] = "huggingface/sentence-transformers/all-MiniLM-L6-v2"
+    cfg["embedding"]["model"] = "huggingface/BAAI/bge-small-en-v1.5"
     domains_cp.validate_domain_config(cfg)  # no raise
 
 
@@ -160,6 +164,6 @@ def test_provider_for_model_openrouter_gemini_and_hf_embed():
     assert provider_for_model("openai/text-embedding-3-small") == "openai"
     assert provider_for_model("gemini/gemini-embedding-001") == "gemini"
     assert (
-        provider_for_model("huggingface/sentence-transformers/all-MiniLM-L6-v2")
+        provider_for_model("huggingface/BAAI/bge-small-en-v1.5")
         == "huggingface"
     )
