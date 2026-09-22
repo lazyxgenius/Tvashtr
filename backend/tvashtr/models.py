@@ -664,7 +664,9 @@ class DomainDocument(Base):
 class DomainChunk(Base):
     """One embedded text chunk for a DomainDocument (Phase 2).
 
-    ``embedding`` is ``vector(1536)`` — pinned to text-embedding-3-small like NodeMemory.
+    ``embedding`` is unbound ``vector`` so Domains can store multi-dim catalogues
+    (OpenAI/OpenRouter 1536, Groq Nomic 768). Never pad/truncate — ingest
+    fail-closes on dim mismatch. ``node_memories.embedding`` stays ``vector(1536)``.
     """
 
     __tablename__ = "domain_chunks"
@@ -682,7 +684,7 @@ class DomainChunk(Base):
         TSVECTOR,
         Computed("to_tsvector('english', coalesce(text, ''))", persisted=True),
     )
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(), nullable=True)
     meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

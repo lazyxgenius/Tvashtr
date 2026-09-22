@@ -5,15 +5,16 @@ from __future__ import annotations
 import uuid
 from copy import deepcopy
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from tvashtr.control_plane import domain_files as domain_files_cp
 from tvashtr.control_plane.domain_embedding import (
+    expected_dim,
     is_allowed_embedding_model,
     normalize_embedding_model,
 )
 from tvashtr.db import session_scope
-from tvashtr.models import Domain, DomainDocument
+from tvashtr.models import Domain, DomainChunk, DomainDocument
 
 
 _SECRET_KEYS = frozenset(
@@ -312,6 +313,33 @@ def get_domain(owner_id: uuid.UUID, domain_id: uuid.UUID) -> dict | None:
         return None if row is None else domain_to_dict(row, doc_count=_doc_count(session, row.id))
 
 
+def _clear_ready_embeddings_for_dim_change(session, domain: Domain) -> None:
+    """Clear chunk embeddings and force re-ingest when embedding dim changes.
+
+    Same-dim model switches leave ready embeddings intact (compatible vectors).
+    """
+    session.execute(
+        update(DomainChunk)
+        .where(DomainChunk.domain_id == domain.id)
+        .values(embedding=None)
+    )
+    docs = (
+        session.execute(
+            select(DomainDocument).where(DomainDocument.domain_id == domain.id)
+        )
+        .scalars()
+        .all()
+    )
+    for doc in docs:
+        if doc.ingest_status == INGEST_READY:
+            doc.ingest_status = INGEST_PENDING
+            doc.error_message = "embedding model dimension changed — re-ingest required"
+        elif doc.ingest_status == INGEST_INDEXING:
+            doc.ingest_status = INGEST_PENDING
+            doc.error_message = "embedding model dimension changed — re-ingest required"
+    _apply_domain_aggregates(session, domain)
+
+
 def update_domain(
     owner_id: uuid.UUID,
     domain_id: uuid.UUID,
@@ -332,8 +360,22 @@ def update_domain(
             row.name = cleaned
         if config is not None:
             validate_domain_config(config)
+            old_model = normalize_embedding_model(
+                str(((row.config or {}).get("embedding") or {}).get("model") or "")
+            )
+            new_model = normalize_embedding_model(
+                str((config.get("embedding") or {}).get("model") or "")
+            )
+            dim_changed = False
+            try:
+                dim_changed = expected_dim(old_model) != expected_dim(new_model)
+            except ValueError:
+                # Old model unknown (pre-catalogue) — treat as change if new differs.
+                dim_changed = old_model != new_model
             # Fresh dict so JSONB dirty-tracking works (same pattern as gate config patches).
             row.config = dict(config)
+            if dim_changed:
+                _clear_ready_embeddings_for_dim_change(session, row)
         session.flush()
         return domain_to_dict(row, doc_count=_doc_count(session, row.id))
 

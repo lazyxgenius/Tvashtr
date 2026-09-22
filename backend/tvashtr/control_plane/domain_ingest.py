@@ -9,7 +9,7 @@ from sqlalchemy import delete, select
 
 from tvashtr.control_plane.credentials import NoCredentialError, resolve_owner_api_key
 from tvashtr.control_plane.domain_chunking import chunk_text
-from tvashtr.control_plane.domain_embedding import normalize_embedding_model
+from tvashtr.control_plane.domain_embedding import expected_dim, normalize_embedding_model
 from tvashtr.control_plane.domain_files import absolute_path, extension_of, extract_text
 from tvashtr.control_plane.domains import (
     INGEST_ERROR,
@@ -123,9 +123,10 @@ def ingest_one_document_step(owner_id: str, domain_id: str, document_id: str) ->
             else:
                 for ordinal, piece in enumerate(pieces):
                     vec = vectors[ordinal]
-                    if len(vec) != 1536:
+                    want = expected_dim(emb_model)
+                    if len(vec) != want:
                         doc.ingest_status = INGEST_ERROR
-                        doc.error_message = f"embedding dim {len(vec)} != 1536"
+                        doc.error_message = f"embedding dim {len(vec)} != {want}"
                         break
                     session.add(
                         DomainChunk(
