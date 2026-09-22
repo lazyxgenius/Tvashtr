@@ -86,6 +86,15 @@ export const EMBEDDING_PRESETS: EmbeddingPreset[] = [
     notes:
       "Google AI Studio embed (output_dimensionality=768). Add a gemini Engines key. text-embedding-004 is shut down. Switching dims clears ready embeddings and forces re-ingest.",
   },
+  {
+    id: "hf-minilm-l6-v2",
+    label: "Hugging Face MiniLM-L6-v2 (384, free/rate-limited)",
+    slug: "huggingface/sentence-transformers/all-MiniLM-L6-v2",
+    provider: "huggingface",
+    dim: 384,
+    notes:
+      "Free HF Inference embed (native 384-dim). Add a free huggingface token under Engines (create at huggingface.co — not a paid API key). Rate limits and cold starts apply; for testing. Prefer Gemini or OpenRouter for steadier throughput.",
+  },
 ];
 
 /** Normalize bare model names to openai/… LiteLLM slugs (FE mirror of backend). */

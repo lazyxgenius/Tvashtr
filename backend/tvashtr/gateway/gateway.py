@@ -234,6 +234,11 @@ _GEMINI_EMBED_DIMS: dict[str, int] = {
 }
 _GEMINI_EMBED_L2_NORMALIZE: frozenset[str] = frozenset(_GEMINI_EMBED_DIMS)
 
+# User-facing copy when free HF Inference returns 429 (rate limit / capacity).
+HF_FREE_EMBED_RATE_LIMIT_MSG = (
+    "Hugging Face free tier rate limit — wait or upgrade HF plan / use Gemini or OpenRouter"
+)
+
 
 def _embedding_litellm_kwargs(request: EmbeddingRequest) -> dict:
     """Build litellm.embedding kwargs (provider-specific embedding options).
@@ -274,6 +279,7 @@ def embed(request: EmbeddingRequest) -> EmbeddingResult:
 
     Gemini catalogue slugs pass ``dimensions`` (and L2-normalize truncated
     ``gemini-embedding-001`` vectors) — see :func:`_embedding_litellm_kwargs`.
+    Hugging Face free Inference 429s map to a clear rate-limit message.
     """
     kwargs = _embedding_litellm_kwargs(request)
 
@@ -281,6 +287,8 @@ def embed(request: EmbeddingRequest) -> EmbeddingResult:
     try:
         response = litellm.embedding(**kwargs)
     except Exception as exc:  # noqa: BLE001 — surface any provider error as a GatewayError
+        if request.model.startswith("huggingface/") and _is_rate_limit(exc):
+            raise GatewayError(HF_FREE_EMBED_RATE_LIMIT_MSG) from exc
         raise GatewayError(f"embedding failed for model {request.model!r}: {exc}") from exc
     latency_ms = (time.perf_counter() - started) * 1000.0
 

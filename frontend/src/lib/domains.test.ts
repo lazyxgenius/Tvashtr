@@ -49,6 +49,16 @@ describe("embedding presets", () => {
     expect(providerOfEmbedding(slug)).toBe("openrouter");
     expect(EMBEDDING_PRESETS.some((p) => p.slug === slug && p.dim === 1536)).toBe(true);
   });
+
+  it("includes Hugging Face MiniLM 384 free/rate-limited preset", () => {
+    const slug = "huggingface/sentence-transformers/all-MiniLM-L6-v2";
+    expect(normalizeEmbeddingModel(slug)).toBe(slug);
+    expect(providerOfEmbedding(slug)).toBe("huggingface");
+    const preset = EMBEDDING_PRESETS.find((p) => p.slug === slug);
+    expect(preset?.dim).toBe(384);
+    expect(preset?.provider).toBe("huggingface");
+    expect(preset?.label.toLowerCase()).toMatch(/free|rate/);
+  });
 });
 
 describe("generation presets", () => {

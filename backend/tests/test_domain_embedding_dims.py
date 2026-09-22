@@ -25,6 +25,7 @@ def test_expected_dim_catalogue_values():
     assert expected_dim("openai/text-embedding-3-small") == 1536
     assert expected_dim("openrouter/openai/text-embedding-3-small") == 1536
     assert expected_dim("gemini/gemini-embedding-001") == 768
+    assert expected_dim("huggingface/sentence-transformers/all-MiniLM-L6-v2") == 384
 
 
 def test_ingest_accepts_gemini_768_and_rejects_wrong_dim(client, monkeypatch, tmp_path):

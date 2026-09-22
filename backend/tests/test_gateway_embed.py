@@ -141,3 +141,67 @@ def test_embed_openai_does_not_force_dimensions(monkeypatch):
     embed(EmbeddingRequest(model="openai/text-embedding-3-small", input=["hi"]))
     assert captured["dimensions"] == "<<absent>>"
 
+
+
+def test_embed_hf_rate_limit_maps_to_clear_message(monkeypatch):
+    """HF free Inference 429 → actionable GatewayError (not opaque litellm wrap)."""
+
+    class RateLimited(Exception):
+        status_code = 429
+
+    def boom(*, model, input, **kwargs):
+        raise RateLimited("Rate limit exceeded: 429")
+
+    monkeypatch.setattr(gw.litellm, "embedding", boom)
+    with pytest.raises(GatewayError) as ei:
+        embed(
+            EmbeddingRequest(
+                model="huggingface/sentence-transformers/all-MiniLM-L6-v2",
+                input=["hi"],
+                api_key="hf_test",
+            )
+        )
+    msg = str(ei.value)
+    assert "Hugging Face free tier rate limit" in msg
+    assert "wait or upgrade HF plan" in msg
+    assert "Gemini" in msg or "OpenRouter" in msg
+
+
+def test_embed_non_hf_rate_limit_keeps_generic_gateway_error(monkeypatch):
+    """OpenAI/Gemini 429s stay on the generic embedding-failed path (no HF copy)."""
+
+    class RateLimited(Exception):
+        status_code = 429
+
+    def boom(*, model, input, **kwargs):
+        raise RateLimited("Rate limit exceeded: 429")
+
+    monkeypatch.setattr(gw.litellm, "embedding", boom)
+    with pytest.raises(GatewayError) as ei:
+        embed(EmbeddingRequest(model="openai/text-embedding-3-small", input=["hi"]))
+    assert "embedding failed" in str(ei.value).lower()
+    assert "Hugging Face free tier" not in str(ei.value)
+
+
+def test_embed_hf_forwards_api_key_without_dimensions(monkeypatch):
+    captured = {}
+
+    def fake_embedding(*, model, input, **kwargs):
+        captured["model"] = model
+        captured["api_key"] = kwargs.get("api_key", "<<absent>>")
+        captured["dimensions"] = kwargs.get("dimensions", "<<absent>>")
+        return _canned_embedding(dim=384, model=model)
+
+    monkeypatch.setattr(gw.litellm, "embedding", fake_embedding)
+    monkeypatch.setattr(gw.litellm, "completion_cost", lambda **kw: 0.0)
+    result = embed(
+        EmbeddingRequest(
+            model="huggingface/sentence-transformers/all-MiniLM-L6-v2",
+            input=["chunk"],
+            api_key="hf_owner",
+        )
+    )
+    assert captured["model"] == "huggingface/sentence-transformers/all-MiniLM-L6-v2"
+    assert captured["api_key"] == "hf_owner"
+    assert captured["dimensions"] == "<<absent>>"
+    assert len(result.vectors[0]) == 384

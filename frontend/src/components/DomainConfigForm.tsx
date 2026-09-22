@@ -190,11 +190,12 @@ export function DomainConfigForm({
               Dim <strong>{dimOfEmbedding(cfg.embedding.model)}</strong> (pgvector unbound;
               never padded). Provider{" "}
               <strong>{providerOfEmbedding(cfg.embedding.model)}</strong> — add that
-              provider&apos;s API key under Dashboard → Engines before ingest/Ask. Gemini preset
-              needs a <strong>gemini</strong> Engines key (768-dim gemini-embedding-001). OpenRouter
-              preset uses your OpenRouter key (still OpenAI upstream billing via OpenRouter; not
-              covered by SuperGrok/subscription). Switching dims clears ready embeddings and forces
-              re-ingest.
+              provider&apos;s API key under Dashboard → Engines before ingest/Ask. Hugging Face
+              MiniLM preset needs a free <strong>huggingface</strong> Engines token (384-dim,
+              rate-limited). Gemini preset needs a <strong>gemini</strong> Engines key (768-dim
+              gemini-embedding-001). OpenRouter preset uses your OpenRouter key (still OpenAI
+              upstream billing via OpenRouter; not covered by SuperGrok/subscription). Switching
+              dims clears ready embeddings and forces re-ingest.
             </span>
           </label>
           <label className="tv-field">

@@ -47,6 +47,7 @@ ENV_PROVIDER_MAP: tuple[tuple[tuple[str, ...], str], ...] = (
     (("GROQ_CLOUD_API_KEY", "GROQ_API_KEY"), "groq"),
     (("NVIDIA_BUILD_API_KEY", "NVIDIA_NIM_API_KEY"), "nvidia_nim"),
     (("DEEPSEEK_API_KEY",), "deepseek"),
+    (("HF_TOKEN", "HUGGINGFACE_API_KEY"), "huggingface"),
 )
 
 

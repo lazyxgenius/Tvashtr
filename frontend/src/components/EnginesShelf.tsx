@@ -354,7 +354,7 @@ export function EnginesShelf() {
               value={providerInput}
               onChange={(e) => setProviderInput(e.target.value)}
             />
-            <span className="tv-field__hint">Must match the model slug prefix (openrouter/…, groq/…). Domains Groq embeddings need a <strong>groq</strong> key.</span>
+            <span className="tv-field__hint">Must match the model slug prefix (openrouter/…, huggingface/…). Domains HF MiniLM embeds need a free <strong>huggingface</strong> token (create at huggingface.co). Gemini embeds need <strong>gemini</strong>.</span>
           </label>
           <datalist id="tv-provider-list">
             {providerSuggestions().map((p) => (
