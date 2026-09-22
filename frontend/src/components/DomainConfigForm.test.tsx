@@ -156,3 +156,17 @@ describe("DomainConfigForm", () => {
     expect(onSave).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
+
+  it("saves Account default generation as null", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DomainConfigForm
+        initial={{ ...sample, generation: { model: "groq/openai/gpt-oss-120b" } }}
+        onSave={onSave}
+      />,
+    );
+    await user.selectOptions(screen.getByLabelText("Generation model"), "");
+    await user.click(screen.getByRole("button", { name: /Save config/i }));
+    expect(onSave.mock.calls[0][0].generation.model).toBeNull();
+  });
