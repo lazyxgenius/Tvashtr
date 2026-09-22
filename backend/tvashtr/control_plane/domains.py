@@ -66,9 +66,9 @@ def validate_domain_config(config: dict) -> None:
     emb_model = normalize_embedding_model(str(embedding.get("model") or ""))
     if not is_allowed_embedding_model(emb_model):
         raise ValueError(
-            "domain config.embedding.model must be a 1536-dim allowlisted slug "
-            f"(got {emb_model!r}); see EMBEDDING_PRESETS / OpenAI or "
-            "openrouter/openai/text-embedding-3-small"
+            "domain config.embedding.model must be an allowlisted slug "
+            f"(got {emb_model!r}); see EMBEDDING_PRESETS / "
+            "openai|openrouter 1536 or groq/nomic-embed-text-v1_5 (768)"
         )
 
     retrieval = config["retrieval"]

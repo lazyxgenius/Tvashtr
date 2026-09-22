@@ -1,13 +1,13 @@
-"""Domains embedding model catalogue — 1536-dim allowlist + normalize.
+"""Domains embedding model catalogue — multi-dim allowlist + normalize.
 
-Approach B (multi-provider LiteLLM/BYOK). pgvector column is fixed at 1536; only
-models verified to emit 1536 dims are allowed. Keys resolve via
-``provider_for_model`` + Engines BYOK (``resolve_owner_api_key``).
+Approach B (multi-provider LiteLLM/BYOK). ``domain_chunks.embedding`` is an
+unbound pgvector ``vector`` column; each catalogue slug declares its native
+``dim``. Keys resolve via ``provider_for_model`` + Engines BYOK
+(``resolve_owner_api_key``). Never pad or truncate returned vectors — ingest
+fail-closes when ``len(vec) != expected_dim(model)``.
 
-There is no zero-key free remote 1536 path on OpenRouter — free catalogue embeds
-are 384/768/1024. The cheap path without an OpenAI Engines key is
-``openrouter/openai/text-embedding-3-small`` (OpenRouter BYOK; still OpenAI
-upstream weights, billed on OpenRouter credits).
+OpenRouter free catalogue embeds (384/768/1024) are excluded unless explicitly
+listed. Groq ``nomic-embed-text-v1_5`` is the first non-1536 preset (768).
 """
 
 from __future__ import annotations
@@ -18,16 +18,18 @@ from typing import TypedDict
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_EMBEDDING_SLUG = "openai/text-embedding-3-small"
 
-# Verified native 1536 LiteLLM slugs only.
-ALLOWED_EMBEDDING_MODELS: frozenset[str] = frozenset(
-    {
-        "openai/text-embedding-3-small",
-        "openai/text-embedding-ada-002",
-        # OpenRouter BYOK path to the same 1536 OpenAI model (Engines key: openrouter).
-        "openrouter/openai/text-embedding-3-small",
-        "openrouter/openai/text-embedding-ada-002",
-    }
-)
+# slug → {provider, dim}. Single source of truth for allowlist + expected dims.
+EMBEDDING_CATALOGUE: dict[str, dict[str, object]] = {
+    "openai/text-embedding-3-small": {"provider": "openai", "dim": 1536},
+    "openai/text-embedding-ada-002": {"provider": "openai", "dim": 1536},
+    # OpenRouter BYOK path to the same 1536 OpenAI model (Engines key: openrouter).
+    "openrouter/openai/text-embedding-3-small": {"provider": "openrouter", "dim": 1536},
+    "openrouter/openai/text-embedding-ada-002": {"provider": "openrouter", "dim": 1536},
+    # Groq Nomic Embed v1.5 — native 768 (Engines key: groq). Never pad to 1536.
+    "groq/nomic-embed-text-v1_5": {"provider": "groq", "dim": 768},
+}
+
+ALLOWED_EMBEDDING_MODELS: frozenset[str] = frozenset(EMBEDDING_CATALOGUE)
 
 
 class EmbeddingPreset(TypedDict):
@@ -68,6 +70,17 @@ EMBEDDING_PRESETS: tuple[EmbeddingPreset, ...] = (
             "not covered by SuperGrok/subscription."
         ),
     },
+    {
+        "id": "groq-nomic-v1_5",
+        "label": "Groq nomic-embed-text-v1.5 (768)",
+        "slug": "groq/nomic-embed-text-v1_5",
+        "provider": "groq",
+        "dim": 768,
+        "notes": (
+            "Native 768-dim via Groq. Add a groq API key under Engines. Switching "
+            "to/from a 1536 model clears ready embeddings and forces re-ingest."
+        ),
+    },
 )
 
 
@@ -80,8 +93,19 @@ def normalize_embedding_model(model: str) -> str:
 
 
 def is_allowed_embedding_model(model: str) -> bool:
-    """True if ``model`` normalizes to a catalogue 1536-safe slug."""
+    """True if ``model`` normalizes to a catalogue slug."""
     return normalize_embedding_model(model) in ALLOWED_EMBEDDING_MODELS
+
+
+def expected_dim(model: str) -> int:
+    """Native embedding dimension for a catalogue slug. Raises if not allowlisted."""
+    slug = normalize_embedding_model(model)
+    entry = EMBEDDING_CATALOGUE.get(slug)
+    if entry is None:
+        raise ValueError(
+            f"embedding model {slug!r} is not allowlisted; cannot resolve expected dim"
+        )
+    return int(entry["dim"])  # type: ignore[arg-type]
 
 
 def public_embedding_presets() -> list[dict]:
