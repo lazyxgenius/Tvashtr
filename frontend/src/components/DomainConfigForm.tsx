@@ -4,6 +4,7 @@ import {
   EMBEDDING_PRESETS,
   normalizeEmbeddingModel,
   parseDomainConfig,
+  dimOfEmbedding,
   providerOfEmbedding,
   type DomainConfig,
 } from "../lib/domains";
@@ -152,7 +153,7 @@ export function DomainConfigForm({
             >
               {EMBEDDING_PRESETS.map((p) => (
                 <option key={p.id} value={p.slug}>
-                  {p.label}
+                  {p.label} — {p.dim}-dim
                 </option>
               ))}
               {/* Keep unknown saved slugs selectable so we do not silently rewrite on open. */}
@@ -165,11 +166,14 @@ export function DomainConfigForm({
               )}
             </select>
             <span className="tv-field__hint">
-              1536-dim only (pgvector). Provider{" "}
+              Dim <strong>{dimOfEmbedding(cfg.embedding.model)}</strong> (pgvector unbound;
+              never padded). Provider{" "}
               <strong>{providerOfEmbedding(cfg.embedding.model)}</strong> — add that
-              provider&apos;s API key under Dashboard → Engines before ingest/Ask. OpenRouter
-              preset uses your OpenRouter key (still OpenAI upstream billing via OpenRouter; not
-              covered by SuperGrok/subscription).
+              provider&apos;s API key under Dashboard → Engines before ingest/Ask. Groq preset
+              needs a <strong>groq</strong> Engines key (768-dim Nomic). OpenRouter preset uses
+              your OpenRouter key (still OpenAI upstream billing via OpenRouter; not covered by
+              SuperGrok/subscription). Switching dims clears ready embeddings and forces
+              re-ingest.
             </span>
           </label>
           <label className="tv-field">

@@ -67,25 +67,25 @@
 ## Tasks
 
 ### Task 1 — Plan commit
-- [ ] Write this plan; commit.
+- [x] Write this plan; commit.
 
 ### Task 2 — Catalogue + expected_dim (TDD)
-- [ ] Red/green: Groq in allowlist; `expected_dim` 768/1536; validate accepts Groq; reject unknown.
+- [x] Red/green: Groq in allowlist; `expected_dim` 768/1536; validate accepts Groq; reject unknown.
 
 ### Task 3 — Alembic + ORM unbound vector
-- [ ] Mig 0038; `DomainChunk` → `Vector()`; `node_memories` untouched.
+- [x] Mig 0038; `DomainChunk` → `Vector()`; `node_memories` untouched.
 
 ### Task 4 — Ingest dim assert (TDD)
-- [ ] Fail closed on wrong dim; accept matching dim for Groq 768 and OpenAI 1536.
+- [x] Fail closed on wrong dim; accept matching dim for Groq 768 and OpenAI 1536.
 
 ### Task 5 — Cross-dim PATCH (TDD)
-- [ ] OpenAI→Groq clears embeddings + marks ready → pending; same-dim switch does not.
+- [x] OpenAI→Groq clears embeddings + marks ready → pending; same-dim switch does not.
 
 ### Task 6 — FE (TDD)
-- [ ] Groq preset dim 768; Engines help mentions groq; OpenRouter path still works.
+- [x] Groq preset dim 768; Engines help mentions groq; OpenRouter path still works.
 
 ### Task 7 — Regression + report
-- [ ] Domain embedding/ingest/helpers + DomainConfigForm/Engines tests; SHAs; residual risks.
+- [x] Domain embedding/ingest/helpers + DomainConfigForm/Engines tests; SHAs; residual risks.
 
 ---
 

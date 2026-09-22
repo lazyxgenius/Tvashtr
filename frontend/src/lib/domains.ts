@@ -38,7 +38,7 @@ export interface DomainGraphConfig {
 }
 
 
-/** 1536-dim embedding presets (mirrors backend domain_embedding.EMBEDDING_PRESETS). */
+/** Embedding presets (mirrors backend domain_embedding.EMBEDDING_PRESETS; multi-dim). */
 export interface EmbeddingPreset {
   id: string;
   label: string;
@@ -77,6 +77,15 @@ export const EMBEDDING_PRESETS: EmbeddingPreset[] = [
     notes:
       "Cheapest 1536 path without an OpenAI Engines key. Add an OpenRouter key under Engines. Still OpenAI upstream via OpenRouter billing — not covered by SuperGrok/subscription.",
   },
+  {
+    id: "groq-nomic-v1_5",
+    label: "Groq nomic-embed-text-v1.5 (768)",
+    slug: "groq/nomic-embed-text-v1_5",
+    provider: "groq",
+    dim: 768,
+    notes:
+      "Native 768-dim via Groq. Add a groq API key under Engines. Switching to/from a 1536 model clears ready embeddings and forces re-ingest.",
+  },
 ];
 
 /** Normalize bare model names to openai/… LiteLLM slugs (FE mirror of backend). */
@@ -88,6 +97,13 @@ export function normalizeEmbeddingModel(model: string): string {
 
 export function providerOfEmbedding(model: string): string {
   return normalizeEmbeddingModel(model).split("/")[0]?.toLowerCase() || "openai";
+}
+
+
+export function dimOfEmbedding(model: string): number {
+  const slug = normalizeEmbeddingModel(model);
+  const preset = EMBEDDING_PRESETS.find((p) => p.slug === slug);
+  return preset?.dim ?? 1536;
 }
 
 /** Phase 1 v1 config shape (matches backend defaults). */
