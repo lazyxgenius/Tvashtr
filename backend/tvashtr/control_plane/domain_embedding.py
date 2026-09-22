@@ -7,7 +7,8 @@ unbound pgvector ``vector`` column; each catalogue slug declares its native
 fail-closes when ``len(vec) != expected_dim(model)``.
 
 OpenRouter free catalogue embeds (384/768/1024) are excluded unless explicitly
-listed. Groq ``nomic-embed-text-v1_5`` is the first non-1536 preset (768).
+listed. Gemini ``gemini-embedding-001`` (768 via ``output_dimensionality``) is the
+non-1536 preset. Groq hosted nomic embed is unavailable (docs/API list none; removed).
 """
 
 from __future__ import annotations
@@ -25,10 +26,10 @@ EMBEDDING_CATALOGUE: dict[str, dict[str, object]] = {
     # OpenRouter BYOK path to the same 1536 OpenAI model (Engines key: openrouter).
     "openrouter/openai/text-embedding-3-small": {"provider": "openrouter", "dim": 1536},
     "openrouter/openai/text-embedding-ada-002": {"provider": "openrouter", "dim": 1536},
-    # Groq Nomic Embed v1.5 — native 768 (Engines key: groq). Never pad to 1536.
-    # LiteLLM has no native groq embedding route; gateway.embed rewrites to
-    # openai/<id> + api_base=https://api.groq.com/openai/v1 (underscore→dot id).
-    "groq/nomic-embed-text-v1_5": {"provider": "groq", "dim": 768},
+    # Gemini AI Studio gemini-embedding-001 — Matryoshka; we pin 768 via LiteLLM
+    # ``dimensions`` → Google ``outputDimensionality`` (Engines key: gemini).
+    # Docs: https://ai.google.dev/gemini-api/docs/embeddings (text-embedding-004 shut down).
+    "gemini/gemini-embedding-001": {"provider": "gemini", "dim": 768},
 }
 
 ALLOWED_EMBEDDING_MODELS: frozenset[str] = frozenset(EMBEDDING_CATALOGUE)
@@ -73,14 +74,15 @@ EMBEDDING_PRESETS: tuple[EmbeddingPreset, ...] = (
         ),
     },
     {
-        "id": "groq-nomic-v1_5",
-        "label": "Groq nomic-embed-text-v1.5 (768)",
-        "slug": "groq/nomic-embed-text-v1_5",
-        "provider": "groq",
+        "id": "gemini-embedding-001",
+        "label": "Gemini gemini-embedding-001 (768)",
+        "slug": "gemini/gemini-embedding-001",
+        "provider": "gemini",
         "dim": 768,
         "notes": (
-            "Native 768-dim via Groq. Add a groq API key under Engines. Switching "
-            "to/from a 1536 model clears ready embeddings and forces re-ingest."
+            "Google AI Studio embed with output_dimensionality=768. Add a gemini "
+            "Engines key. text-embedding-004 is shut down. Switching to/from a "
+            "1536 model clears ready embeddings and forces re-ingest."
         ),
     },
 )

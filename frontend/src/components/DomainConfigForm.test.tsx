@@ -101,26 +101,23 @@ describe("DomainConfigForm", () => {
     confirmSpy.mockRestore();
   });
 
-  it("picks Groq embedding preset showing 768-dim and saves the slug", async () => {
+  it("picks Gemini embedding preset showing 768-dim and saves the slug", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<DomainConfigForm initial={sample} onSave={onSave} />);
     const emb = screen.getByLabelText("Embedding model");
     expect(emb.tagName).toBe("SELECT");
-    await user.selectOptions(emb, "groq/nomic-embed-text-v1_5");
-    // Option + hint both mention 768 / groq — assert via label text + hint.
-    expect(emb).toHaveValue("groq/nomic-embed-text-v1_5");
+    await user.selectOptions(emb, "gemini/gemini-embedding-001");
+    expect(emb).toHaveValue("gemini/gemini-embedding-001");
     expect(screen.getByText(/needs a/i)).toBeTruthy();
     expect(screen.getAllByText(/Dashboard → Engines/i).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: /Save config/i }));
     expect(onSave).toHaveBeenCalled();
     const arg = onSave.mock.calls[0][0];
-    expect(arg.embedding.model).toBe("groq/nomic-embed-text-v1_5");
+    expect(arg.embedding.model).toBe("gemini/gemini-embedding-001");
     confirmSpy.mockRestore();
   });
-
-});
 
   it("picks Groq generation preset and saves the slug", async () => {
     const user = userEvent.setup();
@@ -141,7 +138,7 @@ describe("DomainConfigForm", () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<DomainConfigForm initial={sample} onSave={onSave} />);
     const emb = screen.getByLabelText("Embedding model");
-    await user.selectOptions(emb, "groq/nomic-embed-text-v1_5");
+    await user.selectOptions(emb, "gemini/gemini-embedding-001");
     expect(
       screen.getByRole("alert", { name: /re-ingest/i }),
     ).toBeTruthy();
@@ -158,7 +155,7 @@ describe("DomainConfigForm", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<DomainConfigForm initial={sample} onSave={onSave} />);
-    await user.selectOptions(screen.getByLabelText("Embedding model"), "groq/nomic-embed-text-v1_5");
+    await user.selectOptions(screen.getByLabelText("Embedding model"), "gemini/gemini-embedding-001");
     await user.click(screen.getByRole("button", { name: /Save config/i }));
     expect(confirmSpy).toHaveBeenCalled();
     expect(onSave).not.toHaveBeenCalled();
@@ -178,3 +175,4 @@ describe("DomainConfigForm", () => {
     await user.click(screen.getByRole("button", { name: /Save config/i }));
     expect(onSave.mock.calls[0][0].generation.model).toBeNull();
   });
+});

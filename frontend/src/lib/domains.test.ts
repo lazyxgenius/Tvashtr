@@ -62,11 +62,11 @@ describe("generation presets", () => {
 });
 
 describe("embeddingSwitchNeedsReingest", () => {
-  it("is true when dim changes (openai 1536 → groq 768)", () => {
+  it("is true when dim changes (openai 1536 → gemini 768)", () => {
     expect(
       embeddingSwitchNeedsReingest(
         "openai/text-embedding-3-small",
-        "groq/nomic-embed-text-v1_5",
+        "gemini/gemini-embedding-001",
       ),
     ).toBe(true);
   });

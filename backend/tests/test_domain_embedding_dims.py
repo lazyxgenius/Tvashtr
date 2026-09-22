@@ -24,10 +24,10 @@ def _blank_cfg(model: str) -> dict:
 def test_expected_dim_catalogue_values():
     assert expected_dim("openai/text-embedding-3-small") == 1536
     assert expected_dim("openrouter/openai/text-embedding-3-small") == 1536
-    assert expected_dim("groq/nomic-embed-text-v1_5") == 768
+    assert expected_dim("gemini/gemini-embedding-001") == 768
 
 
-def test_ingest_accepts_groq_768_and_rejects_wrong_dim(client, monkeypatch, tmp_path):
+def test_ingest_accepts_gemini_768_and_rejects_wrong_dim(client, monkeypatch, tmp_path):
     monkeypatch.setenv("TVASHTR_DOMAIN_FILES_DIR", str(tmp_path))
     get_settings.cache_clear()
 
@@ -35,17 +35,17 @@ def test_ingest_accepts_groq_768_and_rejects_wrong_dim(client, monkeypatch, tmp_
     created = domains_cp.create_domain(owner, "Groq dim", "blank")
     domain_id = uuid.UUID(created["domain_id"])
     domains_cp.update_domain(
-        owner, domain_id, config=_blank_cfg("groq/nomic-embed-text-v1_5")
+        owner, domain_id, config=_blank_cfg("gemini/gemini-embedding-001")
     )
 
     doc = domains_cp.create_document(
-        owner, domain_id, "notes.txt", b"hello groq nomic embed world"
+        owner, domain_id, "notes.txt", b"hello gemini embed world"
     )
     doc_id = doc["document_id"]
 
     class Ok768:
         vectors = [[0.01] * 768]
-        model = "groq/nomic-embed-text-v1_5"
+        model = "gemini/gemini-embedding-001"
         prompt_tokens = 1
         total_tokens = 1
         cost_usd = 0.0
@@ -55,7 +55,7 @@ def test_ingest_accepts_groq_768_and_rejects_wrong_dim(client, monkeypatch, tmp_
     )
     monkeypatch.setattr(
         "tvashtr.control_plane.domain_ingest.resolve_owner_api_key",
-        lambda oid, model: "gsk-test",
+        lambda oid, model: "gemini-test-key",
     )
     monkeypatch.setattr(
         "tvashtr.control_plane.domain_ingest.record_embedding_cost",
@@ -77,7 +77,7 @@ def test_ingest_accepts_groq_768_and_rejects_wrong_dim(client, monkeypatch, tmp_
 
     class Bad1536:
         vectors = [[0.01] * 1536]
-        model = "groq/nomic-embed-text-v1_5"
+        model = "gemini/gemini-embedding-001"
         prompt_tokens = 1
         total_tokens = 1
         cost_usd = 0.0
@@ -153,9 +153,9 @@ def test_cross_dim_patch_clears_ready_embeddings(client):
         assert chunk.embedding is not None
         assert len(chunk.embedding) == 1536
 
-    # Cross-dim (OpenRouter 1536 → Groq 768) MUST clear + force re-ingest
+    # Cross-dim (OpenRouter 1536 → Gemini 768) MUST clear + force re-ingest
     domains_cp.update_domain(
-        owner, domain_id, config=_blank_cfg("groq/nomic-embed-text-v1_5")
+        owner, domain_id, config=_blank_cfg("gemini/gemini-embedding-001")
     )
     with session_scope() as session:
         d = session.execute(

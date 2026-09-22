@@ -90,19 +90,20 @@ def test_embed_raises_gateway_error_on_provider_failure(monkeypatch):
         embed(EmbeddingRequest(model="openai/x", input=["hi"]))
 
 
-def test_embed_rewrites_groq_slug_to_openai_compat_api_base(monkeypatch):
-    """LiteLLM has no native groq embedding route — rewrite to OpenAI-compat Groq base.
+def test_embed_gemini_passes_dimensions_and_l2_normalizes(monkeypatch):
+    """Gemini AI Studio ``gemini-embedding-001`` needs ``dimensions`` + L2 for truncated dims.
 
-    Catalogue slug keeps underscore (``v1_5``); official Groq id uses a dot (``v1.5``).
-    Metering / result.model / raw_provider must stay on the original ``groq/...`` slug.
+    Docs: https://ai.google.dev/gemini-api/docs/embeddings — recommend 768/1536/3072;
+    ``gemini-embedding-001`` requires manual L2 normalize when dim != 3072.
     """
     captured = {}
 
     def fake_embedding(*, model, input, **kwargs):
         captured["model"] = model
         captured["input"] = input
-        captured["api_base"] = kwargs.get("api_base")
+        captured["dimensions"] = kwargs.get("dimensions")
         captured["api_key"] = kwargs.get("api_key", "<<absent>>")
+        # Unnormalized 768 vector (magnitude != 1)
         return _canned_embedding(dim=768, model=model)
 
     monkeypatch.setattr(gw.litellm, "embedding", fake_embedding)
@@ -110,18 +111,33 @@ def test_embed_rewrites_groq_slug_to_openai_compat_api_base(monkeypatch):
 
     result = embed(
         EmbeddingRequest(
-            model="groq/nomic-embed-text-v1_5",
+            model="gemini/gemini-embedding-001",
             input=["domain chunk"],
-            api_key="owner-groq-key",
+            api_key="owner-gemini-key",
         )
     )
 
-    assert captured["model"] == "openai/nomic-embed-text-v1.5"
-    assert captured["api_base"] == "https://api.groq.com/openai/v1"
-    assert captured["api_key"] == "owner-groq-key"
+    assert captured["model"] == "gemini/gemini-embedding-001"
+    assert captured["dimensions"] == 768
+    assert captured["api_key"] == "owner-gemini-key"
     assert captured["input"] == ["domain chunk"]
-    # Attribution stays groq from the original catalogue slug (not openai/).
-    assert result.model == "groq/nomic-embed-text-v1_5"
-    assert result.raw_provider == "groq"
+    assert result.model == "gemini/gemini-embedding-001"
+    assert result.raw_provider == "gemini"
     assert len(result.vectors[0]) == 768
+    # L2-normalized: unit length
+    mag = sum(x * x for x in result.vectors[0]) ** 0.5
+    assert abs(mag - 1.0) < 1e-6
+
+
+def test_embed_openai_does_not_force_dimensions(monkeypatch):
+    captured = {}
+
+    def fake_embedding(*, model, input, **kwargs):
+        captured["dimensions"] = kwargs.get("dimensions", "<<absent>>")
+        return _canned_embedding()
+
+    monkeypatch.setattr(gw.litellm, "embedding", fake_embedding)
+    monkeypatch.setattr(gw.litellm, "completion_cost", lambda **kw: 0.0)
+    embed(EmbeddingRequest(model="openai/text-embedding-3-small", input=["hi"]))
+    assert captured["dimensions"] == "<<absent>>"
 

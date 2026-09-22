@@ -78,13 +78,13 @@ export const EMBEDDING_PRESETS: EmbeddingPreset[] = [
       "Cheapest 1536 path without an OpenAI Engines key. Add an OpenRouter key under Engines. Still OpenAI upstream via OpenRouter billing — not covered by SuperGrok/subscription.",
   },
   {
-    id: "groq-nomic-v1_5",
-    label: "Groq nomic-embed-text-v1.5 (768)",
-    slug: "groq/nomic-embed-text-v1_5",
-    provider: "groq",
+    id: "gemini-embedding-001",
+    label: "Gemini gemini-embedding-001 (768)",
+    slug: "gemini/gemini-embedding-001",
+    provider: "gemini",
     dim: 768,
     notes:
-      "Native 768-dim via Groq. Add a groq API key under Engines. Switching to/from a 1536 model clears ready embeddings and forces re-ingest.",
+      "Google AI Studio embed (output_dimensionality=768). Add a gemini Engines key. text-embedding-004 is shut down. Switching dims clears ready embeddings and forces re-ingest.",
   },
 ];
 

@@ -69,7 +69,7 @@ def validate_domain_config(config: dict) -> None:
         raise ValueError(
             "domain config.embedding.model must be an allowlisted slug "
             f"(got {emb_model!r}); see EMBEDDING_PRESETS / "
-            "openai|openrouter 1536 or groq/nomic-embed-text-v1_5 (768)"
+            "openai|openrouter 1536 or gemini/gemini-embedding-001 (768)"
         )
 
     retrieval = config["retrieval"]

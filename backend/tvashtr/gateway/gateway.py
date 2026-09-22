@@ -226,35 +226,37 @@ def complete(request: CompletionRequest) -> CompletionResult:
     ) from last_error
 
 
-# Official Groq embedding model ids use a dot in the version (e.g. nomic-embed-text-v1.5).
-# Our catalogue keeps the underscore slug for back-compat; rewrite before the HTTP call.
-_GROQ_EMBED_MODEL_IDS: dict[str, str] = {
-    "nomic-embed-text-v1_5": "nomic-embed-text-v1.5",
+# Gemini AI Studio Matryoshka embeds: catalogue pins dim; LiteLLM ``dimensions`` maps to
+# Google ``outputDimensionality``. Citation: https://ai.google.dev/gemini-api/docs/embeddings
+# ``gemini-embedding-001`` requires manual L2 normalize when dim != 3072 (same doc).
+_GEMINI_EMBED_DIMS: dict[str, int] = {
+    "gemini/gemini-embedding-001": 768,
 }
-_GROQ_OPENAI_COMPAT_BASE = "https://api.groq.com/openai/v1"
+_GEMINI_EMBED_L2_NORMALIZE: frozenset[str] = frozenset(_GEMINI_EMBED_DIMS)
 
 
 def _embedding_litellm_kwargs(request: EmbeddingRequest) -> dict:
-    """Build litellm.embedding kwargs, rewriting Groq slugs LiteLLM cannot route natively.
+    """Build litellm.embedding kwargs (provider-specific embedding options).
 
-    LiteLLM has no ``groq`` embedding provider map (chat/stt only). Route Groq embeds via the
-    OpenAI-compatible endpoint: ``openai/<bare>`` + ``api_base`` Groq, while callers / metering
-    still see the original ``groq/...`` slug (provider attribution stays groq).
+    Gemini catalogue slugs get ``dimensions`` so vectors match ``expected_dim``. OpenAI /
+    OpenRouter paths are unchanged (no dimensions kwarg).
     """
     model = request.model
-    kwargs: dict = {"input": request.input}
+    kwargs: dict = {"model": model, "input": request.input}
     if request.api_key is not None:
         kwargs["api_key"] = request.api_key
 
-    if model.startswith("groq/"):
-        bare = model[len("groq/") :]
-        bare = _GROQ_EMBED_MODEL_IDS.get(bare, bare)
-        kwargs["model"] = f"openai/{bare}"
-        kwargs["api_base"] = _GROQ_OPENAI_COMPAT_BASE
-        return kwargs
-
-    kwargs["model"] = model
+    dim = _GEMINI_EMBED_DIMS.get(model)
+    if dim is not None:
+        kwargs["dimensions"] = dim
     return kwargs
+
+
+def _l2_normalize(vec: list[float]) -> list[float]:
+    mag = sum(x * x for x in vec) ** 0.5
+    if mag <= 0.0:
+        return vec
+    return [x / mag for x in vec]
 
 
 def embed(request: EmbeddingRequest) -> EmbeddingResult:
@@ -270,8 +272,8 @@ def embed(request: EmbeddingRequest) -> EmbeddingResult:
     silent fail-over to a different-dimension model would corrupt the store. Any provider failure
     raises ``GatewayError``.
 
-    Groq catalogue slugs (``groq/...``) are rewritten to LiteLLM's OpenAI-compatible Groq
-    embeddings route — see :func:`_embedding_litellm_kwargs`. Metering still attributes **groq**.
+    Gemini catalogue slugs pass ``dimensions`` (and L2-normalize truncated
+    ``gemini-embedding-001`` vectors) — see :func:`_embedding_litellm_kwargs`.
     """
     kwargs = _embedding_litellm_kwargs(request)
 
@@ -286,6 +288,8 @@ def embed(request: EmbeddingRequest) -> EmbeddingResult:
     for item in getattr(response, "data", None) or []:
         raw = item["embedding"] if isinstance(item, dict) else getattr(item, "embedding", [])
         vectors.append([float(x) for x in raw])
+    if request.model in _GEMINI_EMBED_L2_NORMALIZE:
+        vectors = [_l2_normalize(v) for v in vectors]
 
     usage = getattr(response, "usage", None)
     prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
@@ -297,7 +301,6 @@ def embed(request: EmbeddingRequest) -> EmbeddingResult:
         prompt_tokens=prompt_tokens,
         total_tokens=total_tokens,
         cost_usd=_cost_of(response),
-        # Original slug (not the openai/ rewrite) so metering stays provider=groq.
         raw_provider=_provider_of(request.model),
         latency_ms=latency_ms,
     )
