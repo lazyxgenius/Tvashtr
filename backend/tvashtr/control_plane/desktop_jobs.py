@@ -13,7 +13,11 @@ Invariants:
 * idempotent on ``(run_id, "{node_id}:{iteration}")`` — a DBOS recovery re-execution finds the
   SAME job (never a second dispatch), and a patch already on disk is never applied twice;
 * secret-free — no body carrying a token/cookie/api-key-like field is accepted, and nothing from a
-  vendor login is ever stored (only status, prompts, CLI output, the patch).
+  vendor login is ever stored (only status, prompts, CLI output, the patch);
+* machine-aware (M-subs-prod) — prod runs several Fly machines, each with its own disk, and the run
+  workspace lives only on the machine executing the workflow. A job records that machine's
+  ``FLY_MACHINE_ID``; the snapshot (the ONE runner call that reads the disk) is served only there.
+  Claim, events and result touch Postgres alone, so any machine may answer them.
 """
 
 import io
@@ -92,6 +96,19 @@ class SnapshotTooLarge(Exception):
 
 class PatchApplyError(Exception):
     pass
+
+
+class WorkspaceElsewhere(Exception):
+    """The job's workspace is on another Fly machine (``machine_id``) — replay the request there."""
+
+    def __init__(self, machine_id: str):
+        super().__init__(f"the run workspace is on machine {machine_id}")
+        self.machine_id = machine_id
+
+
+def this_machine_id() -> str | None:
+    """The Fly machine this process runs on (Fly sets ``FLY_MACHINE_ID``), or ``None`` off Fly."""
+    return os.environ.get("FLY_MACHINE_ID") or None
 
 
 def _now() -> datetime:
@@ -201,29 +218,43 @@ def enqueue_job(
     workspace_dir: str,
     sidecars: list[str],
 ) -> str:
-    """Queue a node job, or return the EXISTING one for this (run, node, iteration)."""
+    """Queue a node job, or return the EXISTING one for this (run, node, iteration).
+
+    The caller runs inside the run's workflow, i.e. on the machine whose disk holds
+    ``workspace_dir``, so the job records THIS machine. Re-entering for an existing job means DBOS
+    recovered the workflow (possibly onto another machine, where ``ensure_run_workspace`` has just
+    re-materialized the workspace): a still-active job's workspace + machine follow it there, so the
+    runner's next snapshot is served from the live copy. A finished job is never touched."""
     if provider not in RUNNER_SUBSCRIPTIONS:
         raise ValueError(f"no Desktop runner for subscription {provider!r}")
     attempt_key = f"{node_id}:{iteration}"
+    machine_id = this_machine_id()
     with session_scope() as session:
+        stmt = pg_insert(DesktopNodeJob).values(
+            id=uuid.uuid4(),
+            owner_id=owner_id,
+            run_id=run_id,
+            node_id=node_id,
+            attempt_key=attempt_key,
+            invocation_id=invocation_id,
+            provider=provider,
+            model=model,
+            instruction=instruction,
+            workspace_dir=workspace_dir,
+            workspace_machine_id=machine_id,
+            sidecars=list(sidecars),
+            status="queued",
+            created_at=_now(),
+        )
         session.execute(
-            pg_insert(DesktopNodeJob)
-            .values(
-                id=uuid.uuid4(),
-                owner_id=owner_id,
-                run_id=run_id,
-                node_id=node_id,
-                attempt_key=attempt_key,
-                invocation_id=invocation_id,
-                provider=provider,
-                model=model,
-                instruction=instruction,
-                workspace_dir=workspace_dir,
-                sidecars=list(sidecars),
-                status="queued",
-                created_at=_now(),
+            stmt.on_conflict_do_update(
+                constraint="uq_desktop_node_jobs_run_attempt",
+                set_={
+                    "workspace_dir": stmt.excluded.workspace_dir,
+                    "workspace_machine_id": stmt.excluded.workspace_machine_id,
+                },
+                where=DesktopNodeJob.status.in_(_ACTIVE_JOB_STATUSES),
             )
-            .on_conflict_do_nothing(constraint="uq_desktop_node_jobs_run_attempt")
         )
         return str(
             session.execute(
@@ -408,12 +439,20 @@ def mark_applied(job_id: str, files_changed: list[str]) -> None:
 
 def build_snapshot(owner_id: uuid.UUID, job_id: str) -> bytes:
     """A gzipped tarball of the job's workspace (everything but ``.git``) — the base the runner's
-    temporary copy starts from."""
+    temporary copy starts from.
+
+    Raises :class:`WorkspaceElsewhere` when the job names ANOTHER Fly machine than this one. The
+    recorded machine is authoritative even if a directory exists here: the path is per-run, so a
+    copy on this disk can only be a stale one left by an earlier machine hop."""
     with session_scope() as session:
         job = _owned_job(session, owner_id, job_id)
         if job.status != "claimed":
             raise JobConflict(f"job is {job.status}")
         workspace = job.workspace_dir
+        holder = job.workspace_machine_id
+    here = this_machine_id()
+    if holder and here and holder != here:
+        raise WorkspaceElsewhere(holder)
     root = Path(workspace)
     if not root.is_dir():
         raise JobConflict("the run workspace is not on this server")

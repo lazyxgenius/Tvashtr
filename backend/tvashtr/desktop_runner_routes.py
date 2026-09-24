@@ -8,6 +8,7 @@ subscription status mirror, widened for these richer bodies.
 
 * ``POST /api/desktop-runner/claim``            — heartbeat + the owner's next job (or ``null``)
 * ``GET  /api/desktop-runner/jobs/{id}/snapshot`` — the job's workspace as a gzipped tarball
+  (``fly-replay``-ed to the Fly machine that holds it — M-subs-prod)
 * ``POST /api/desktop-runner/jobs/{id}/events``   — the CLI's output → the node's run log
 * ``POST /api/desktop-runner/jobs/{id}/result``   — final text + outcome + a ``git diff --binary``
 """
@@ -15,7 +16,7 @@ subscription status mirror, widened for these richer bodies.
 import uuid
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from tvashtr.auth import UserOut, get_current_user
@@ -92,10 +93,34 @@ def runner_claim(body: ClaimRequest, current_user: CurrentUser) -> dict:
     return {"job": desktop_jobs.claim_next(owner_id, body.providers)}
 
 
+# Fly's dynamic request routing (https://docs.fly.io/networking/dynamic-request-routing/): the proxy
+# replays the request on that machine instance; if it can't be reached within the timeout, the
+# ORIGINAL request comes back here with a ``fly-replay-failed`` header (``fallback=force_self``).
+_REPLAY_TIMEOUT = "10s"
+
+
+def _replay_to(machine_id: str) -> str:
+    return f"instance={machine_id};timeout={_REPLAY_TIMEOUT};fallback=force_self"
+
+
 @router.get("/api/desktop-runner/jobs/{job_id}/snapshot")
-def runner_snapshot(job_id: str, current_user: CurrentUser) -> Response:
+def runner_snapshot(job_id: str, request: Request, current_user: CurrentUser) -> Response:
     try:
         data = desktop_jobs.build_snapshot(uuid.UUID(current_user.id), job_id)
+    except desktop_jobs.WorkspaceElsewhere as exc:
+        # Prod runs several Fly machines with separate disks; only the one executing the run holds
+        # its workspace. A 409 either way, so a runner reached WITHOUT Fly's proxy retries it. Never
+        # replay a fallback (Fly forbids it) or an already-replayed request (the job moved since —
+        # the runner's retry re-routes from scratch instead of ping-ponging between machines).
+        if "fly-replay-failed" in request.headers or "fly-replay-src" in request.headers:
+            raise HTTPException(
+                status_code=409, detail="the machine holding the run workspace is unreachable"
+            ) from exc
+        raise HTTPException(
+            status_code=409,
+            detail="the run workspace is on another server",
+            headers={"fly-replay": _replay_to(exc.machine_id)},
+        ) from exc
     except desktop_jobs.JobNotFound as exc:
         raise HTTPException(status_code=404, detail="unknown job") from exc
     except desktop_jobs.JobConflict as exc:

@@ -348,3 +348,58 @@ def test_recovery_re_execution_never_redispatches_or_double_applies(tmp_path):
             .all()
         )
         assert len(jobs) == 1, "no second dispatch"
+
+
+def test_recovery_onto_another_fly_machine_serves_and_patches_the_new_workspace(
+    tmp_path, monkeypatch
+):
+    """M-subs-prod: machine A queued the job and died; DBOS recovers the workflow onto machine B,
+    whose ``ensure_run_workspace`` re-materialized the workspace, and the adapter re-enters for the
+    same (run, node, iteration). The runner's snapshot must come from B's copy (A's is gone) and
+    the patch must land in B's workspace — one job, never a second dispatch."""
+    c, owner = _account()
+    run_id = _run_for(owner)
+    c.post("/api/desktop-runner/claim", json={"providers": []})
+    ws_a = tmp_path / "a"
+    ws_a.mkdir()
+    monkeypatch.setenv("FLY_MACHINE_ID", "machine-a")
+    job_id = desktop_jobs.enqueue_job(  # what machine A's adapter did before it died
+        owner_id=owner,
+        run_id=run_id,
+        node_id="n1",
+        iteration=1,
+        invocation_id=7,
+        provider="claude",
+        model="anthropic/claude-sonnet-5",
+        instruction="Create hello.txt and REPORT.md",
+        workspace_dir=str(ws_a / "ws"),
+        sidecars=[],
+    )
+    assert _claim(c)["id"] == job_id  # the runner claimed it before A died
+
+    monkeypatch.setenv("FLY_MACHINE_ID", "machine-b")
+    ws_b = _workspace(tmp_path)  # B's re-materialized copy
+    t, box = _run_adapter_in_thread(_task(ws_b, run_id, owner))
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        with db.session_scope() as session:
+            if session.get(DesktopNodeJob, uuid.UUID(job_id)).workspace_machine_id == "machine-b":
+                break
+        time.sleep(0.05)
+    snap = c.get(f"/api/desktop-runner/jobs/{job_id}/snapshot")
+    assert snap.status_code == 200, snap.text
+    assert "fly-replay" not in snap.headers
+    c.post(
+        f"/api/desktop-runner/jobs/{job_id}/result",
+        json={
+            "status": "completed",
+            "final_text": "done",
+            "patch": _patch_creating(tmp_path, {"hello.txt": "hi\n"}),
+        },
+    )
+    t.join(10)
+    assert box["result"].status == "completed", box["result"].error
+    assert (ws_b / "hello.txt").read_text() == "hi\n"
+    with db.session_scope() as session:
+        rows = session.execute(select(DesktopNodeJob).where(DesktopNodeJob.run_id == run_id))
+        assert len(rows.scalars().all()) == 1, "no second dispatch"

@@ -617,7 +617,9 @@ class DesktopNodeJob(Base):
     row instead of dispatching twice), the Desktop runner claims it, streams events, and posts the
     result + a git patch back. ``status``: ``queued`` → ``claimed`` → ``completed`` | ``failed``;
     ``expired`` when the Desktop went offline or the run ended. ``workspace_dir`` is a server path
-    and never leaves the server. NOTHING from a vendor login is ever stored here.
+    and never leaves the server. ``workspace_machine_id`` is the ``FLY_MACHINE_ID`` whose disk holds
+    that path (NULL off Fly) — M-subs-prod, so a snapshot request landing on another machine is
+    ``fly-replay``-ed there. NOTHING from a vendor login is ever stored here.
     """
 
     __tablename__ = "desktop_node_jobs"
@@ -635,6 +637,7 @@ class DesktopNodeJob(Base):
     model: Mapped[str] = mapped_column(Text, nullable=False)
     instruction: Mapped[str] = mapped_column(Text, nullable=False)
     workspace_dir: Mapped[str] = mapped_column(Text, nullable=False)
+    workspace_machine_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     sidecars: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     status: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="queued", default="queued"

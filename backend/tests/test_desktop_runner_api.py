@@ -306,3 +306,154 @@ def test_enqueue_is_idempotent_on_run_node_iteration(tmp_path):
             )
             == 1
         )
+
+
+# --------------------------------------------------------------------- M-subs-prod: many machines
+#
+# Prod runs more than one Fly machine, each with its OWN disk. The run workspace lives only on the
+# machine executing the run's workflow, but Fly's proxy may hand the runner's snapshot GET to any
+# machine. These tests simulate two machines in one process: ``FLY_MACHINE_ID`` says which machine
+# is answering, and moving the workspace dir away is "this machine's disk does not have it".
+
+_REPLAY_TO_A = "instance=machine-a;timeout=10s;fallback=force_self"
+
+
+def _two_machine_job(tmp_path, monkeypatch) -> tuple[TestClient, str, "object"]:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "README.md").write_text("# demo\n")
+    monkeypatch.setenv("FLY_MACHINE_ID", "machine-a")  # the workflow (and workspace) machine
+    c, owner = _account()
+    job_id = _job(owner, _run_for(owner), ws)
+    c.post("/api/desktop-runner/claim", json={"providers": ["claude"]})
+    return c, job_id, ws
+
+
+def test_snapshot_on_the_wrong_fly_machine_is_replayed_to_the_workspace_holder(
+    tmp_path, monkeypatch
+):
+    c, job_id, ws = _two_machine_job(tmp_path, monkeypatch)
+    # Fly's proxy lands the runner's GET on machine B, whose disk never held the workspace.
+    monkeypatch.setenv("FLY_MACHINE_ID", "machine-b")
+    ws.rename(tmp_path / "only-on-machine-a")
+
+    resp = c.get(f"/api/desktop-runner/jobs/{job_id}/snapshot")
+    assert resp.headers.get("fly-replay") == _REPLAY_TO_A, (resp.status_code, resp.text)
+    assert resp.status_code == 409, "off-proxy the runner sees a retryable conflict"
+
+
+def test_snapshot_on_the_holding_machine_streams_the_tarball(tmp_path, monkeypatch):
+    c, job_id, _ = _two_machine_job(tmp_path, monkeypatch)
+    resp = c.get(f"/api/desktop-runner/jobs/{job_id}/snapshot")  # still machine-a
+    assert resp.status_code == 200, resp.text
+    assert "fly-replay" not in resp.headers
+    with tarfile.open(fileobj=io.BytesIO(resp.content), mode="r:gz") as tar:
+        assert any(n.lstrip("./") == "README.md" for n in tar.getnames())
+
+
+def test_snapshot_off_fly_keeps_todays_path(tmp_path, monkeypatch):
+    monkeypatch.delenv("FLY_MACHINE_ID", raising=False)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "README.md").write_text("# demo\n")
+    c, owner = _account()
+    job_id = _job(owner, _run_for(owner), ws)
+    c.post("/api/desktop-runner/claim", json={"providers": ["claude"]})
+    with db.session_scope() as session:
+        assert session.get(DesktopNodeJob, uuid.UUID(job_id)).workspace_machine_id is None
+
+    assert c.get(f"/api/desktop-runner/jobs/{job_id}/snapshot").status_code == 200
+    ws.rename(tmp_path / "gone")
+    resp = c.get(f"/api/desktop-runner/jobs/{job_id}/snapshot")
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "the run workspace is not on this server"
+    assert "fly-replay" not in resp.headers
+
+
+def test_a_replayed_or_fallback_snapshot_request_is_never_replayed_again(tmp_path, monkeypatch):
+    c, job_id, ws = _two_machine_job(tmp_path, monkeypatch)
+    monkeypatch.setenv("FLY_MACHINE_ID", "machine-b")
+    ws.rename(tmp_path / "only-on-machine-a")
+    # Fly's fallback: machine A was unreachable, so the proxy hands the ORIGINAL request back here.
+    # Fly's docs: "Fallback requests cannot themselves issue fly-replay responses."
+    failed = c.get(
+        f"/api/desktop-runner/jobs/{job_id}/snapshot",
+        headers={"fly-replay-failed": "instance=machine-a;replay_source=machine-b"},
+    )
+    # A request that was ALREADY replayed here (the job moved meanwhile) must not ping-pong.
+    replayed = c.get(
+        f"/api/desktop-runner/jobs/{job_id}/snapshot",
+        headers={"fly-replay-src": "instance=machine-c;region=sin;t=1"},
+    )
+    for resp in (failed, replayed):
+        assert resp.status_code == 409, resp.text
+        assert "fly-replay" not in resp.headers
+
+
+def test_enqueue_records_the_fly_machine_holding_the_workspace(tmp_path, monkeypatch):
+    monkeypatch.setenv("FLY_MACHINE_ID", "machine-a")
+    _, owner = _account()
+    job_id = _job(owner, _run_for(owner), tmp_path)
+    with db.session_scope() as session:
+        assert session.get(DesktopNodeJob, uuid.UUID(job_id)).workspace_machine_id == "machine-a"
+
+
+def test_recovery_onto_another_machine_moves_the_jobs_machine_and_workspace(tmp_path, monkeypatch):
+    """DBOS recovers the waiting workflow onto machine B: ``ensure_run_workspace`` re-materializes
+    the clone THERE and the adapter re-enqueues the same (run, node, iteration). The job must now
+    point at B before the runner fetches — or every snapshot would be replayed to a machine that
+    no longer holds (or runs) anything."""
+    c, owner = _account()
+    run_id = _run_for(owner)
+    monkeypatch.setenv("FLY_MACHINE_ID", "machine-a")
+    old_ws = tmp_path / "ws-on-a"
+    old_ws.mkdir()
+    job_id = _job(owner, run_id, old_ws)
+    c.post("/api/desktop-runner/claim", json={"providers": ["claude"]})
+
+    monkeypatch.setenv("FLY_MACHINE_ID", "machine-b")
+    new_ws = tmp_path / "ws-on-b"
+    new_ws.mkdir()
+    (new_ws / "README.md").write_text("# re-materialized on b\n")
+    old_ws.rename(tmp_path / "machine-a-is-gone")
+    assert _job(owner, run_id, new_ws) == job_id, "recovery finds the SAME job"
+    with db.session_scope() as session:
+        job = session.get(DesktopNodeJob, uuid.UUID(job_id))
+        assert (job.workspace_machine_id, job.workspace_dir) == ("machine-b", str(new_ws))
+        assert job.status == "claimed", "re-pointing never re-queues or re-dispatches"
+
+    resp = c.get(f"/api/desktop-runner/jobs/{job_id}/snapshot")  # lands on B: served, no replay
+    assert resp.status_code == 200, resp.text
+    assert "fly-replay" not in resp.headers
+    monkeypatch.setenv("FLY_MACHINE_ID", "machine-a")  # lands on A: replayed to B
+    resp = c.get(f"/api/desktop-runner/jobs/{job_id}/snapshot")
+    assert resp.headers.get("fly-replay") == "instance=machine-b;timeout=10s;fallback=force_self"
+
+
+def test_a_finished_job_is_never_re_pointed(tmp_path, monkeypatch):
+    c, owner = _account()
+    run_id = _run_for(owner)
+    monkeypatch.setenv("FLY_MACHINE_ID", "machine-a")
+    job_id = _job(owner, run_id, tmp_path)
+    c.post("/api/desktop-runner/claim", json={"providers": ["claude"]})
+    c.post(
+        f"/api/desktop-runner/jobs/{job_id}/result",
+        json={"status": "completed", "final_text": "done", "patch": ""},
+    )
+    monkeypatch.setenv("FLY_MACHINE_ID", "machine-b")
+    assert _job(owner, run_id, tmp_path / "elsewhere") == job_id
+    with db.session_scope() as session:
+        job = session.get(DesktopNodeJob, uuid.UUID(job_id))
+        assert (job.workspace_machine_id, job.workspace_dir) == ("machine-a", str(tmp_path))
+        assert (job.status, job.result_text) == ("completed", "done")
+
+
+def test_a_stale_copy_on_the_wrong_machine_is_never_served(tmp_path, monkeypatch):
+    """The workspace path is per-run, so a directory at that path on a machine the job does NOT
+    name can only be a stale copy from an earlier machine hop — serving it would hand the CLI an
+    old base and ship a patch against the wrong files."""
+    c, job_id, _ = _two_machine_job(tmp_path, monkeypatch)
+    monkeypatch.setenv("FLY_MACHINE_ID", "machine-b")  # the dir still exists at the same path
+    resp = c.get(f"/api/desktop-runner/jobs/{job_id}/snapshot")
+    assert resp.status_code == 409, resp.text
+    assert resp.headers.get("fly-replay") == _REPLAY_TO_A
