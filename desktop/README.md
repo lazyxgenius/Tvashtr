@@ -76,4 +76,17 @@ OAuth stays inside the Electron window; the local proxy forwards the callback to
 
 ## Desktop detection
 
-`preload.cjs` exposes `window.tvashtrDesktop === true` (and `window.tvashtrDesktopInfo`). The FE rewrites `github_install_url` for loopback OAuth when that flag is set.
+`preload.cjs` exposes a truthy `window.tvashtrDesktop` object (`engines.*`) and `window.tvashtrDesktopInfo` (`version: 3`). The FE rewrites `github_install_url` for loopback OAuth when that flag is set.
+
+## Subscription engines (Claude / Grok on this computer)
+
+Tvashtr Desktop runs a team's Claude and Grok nodes with **your own installed `claude` / `grok`
+CLI and your own sign-in** — Tvashtr never sees or stores your login. Connect on the Engines page
+opens the vendor's own login in Terminal. See [`../docs/desktop-v1.md`](../docs/desktop-v1.md#subscription-engines--the-desktop-runner-m-subs-desktop).
+
+| Command | What it does |
+|---------|----------------|
+| `npm test` | All desktop tests (`scripts/*.test.cjs`, node's built-in runner). |
+| `node scripts/live-subscription-gate.mjs run` | LIVE gate against a LOCAL backend (`TVASHTR_API_BASE=http://localhost:8000`): Engines → team → Run → PR. |
+| `node scripts/live-subscription-gate.mjs offline` | Quit Desktop mid-node → the node fails "Tvashtr Desktop went offline". |
+

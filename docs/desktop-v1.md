@@ -9,7 +9,7 @@ Status: scaffold on the local box (Electron shell). Cloud Agents were unavailabl
 3. **UI reuse + thin chrome** — load the existing React/Vite frontend inside Electron. Do **not** build a parallel desktop-specific product UI.
 4. **Dual-engine credentials (later)** —
    - **Hosted runs (now):** API keys / BYOK via the existing account settings (same as web).
-   - **Subscription engines (later):** Claude / ChatGPT / Grok harness or OAuth — stub only in v1; not implemented.
+   - **Subscription engines:** Claude / Grok nodes run on the user's own installed CLI via the Desktop runner (see below); Codex is status-only.
 5. **Secrets hygiene** — no real `.env` keys in the desktop tree; no committing secrets.
 
 ## Why Electron
@@ -77,20 +77,42 @@ Email/password login already works through the same proxy once `Secure` is strip
 `desktop/electron/preload.cjs` exposes:
 
 ```js
-window.tvashtrDesktop === true
-window.tvashtrDesktopInfo // { shell: "electron", version: 1 }
+window.tvashtrDesktop // truthy object: { engines: { getStatus, connect, disconnect, refresh, onStatus } }
+window.tvashtrDesktopInfo // { shell: "electron", version: 3 }
 ```
+
+Check it by truthiness (`if (window.tvashtrDesktop)`), never `=== true`.
 
 Optional FE use: hide marketing CTAs or “open in browser” affordances later. v1 does not require large FE changes.
 
-## Dual-engine credentials (stub)
+## Subscription engines — the Desktop runner (M-subs-desktop)
 
-| Engine path | v1 | Later |
-|-------------|----|-------|
-| Hosted Fly runs | Account BYOK / provider keys via existing `/api/providers` UI | unchanged |
-| Claude / ChatGPT / Grok **subscriptions** | Not wired | Harness or OAuth tokens in OS-secure storage; never in git |
+Tvashtr Desktop runs a team's **Claude** and **Grok** nodes with the user's OWN installed CLI and
+the user's own sign-in — the way October Desktop does it. Analogy: a GitHub Actions self-hosted
+runner. The hosted control plane still owns the team graph (routing, gates, documents, loop caps,
+PR shipping); only a subscription node's "hands" run on the user's machine.
 
-Desktop may eventually call `safeStorage` / keytar; not in this slice.
+| Piece | Where | What it does |
+|-------|-------|--------------|
+| Engines cards | `frontend/src/components/EnginesShelf.tsx` | Status asked of each CLI (`claude auth status --json`, `grok models`). **Connect** opens the vendor's own login in Terminal (`claude auth login`, `grok login`); the card re-checks when the window regains focus. Disclosure shown on the cards and once per Desktop launch. |
+| Status mirror | `PUT /api/engines/subscriptions/{p}` | Pushed by the Electron main process at launch and on connect / refresh / disconnect. Status only — never a token. |
+| Runner | `desktop/electron/runner/` | Polls `POST /api/desktop-runner/claim` (each poll is the heartbeat), unpacks the job's workspace snapshot in a temp dir, runs the CLI headless, streams its output as run events, posts back the final text + a `git diff --binary`. One job per provider at a time. Quitting Desktop kills in-flight CLIs. |
+| Engine adapter | `backend/tvashtr/engines/desktop_runner_adapter.py` | Queues the node job (idempotent on run/node/iteration), waits, applies the patch; a Desktop that stops checking in fails the node: *"Tvashtr Desktop went offline — reopen it and retry."* |
+| Launch rule | `control_plane/credential_gate.py` ⇄ `frontend/src/lib/engines.ts` | One rule, one shared case file (`credentialGate.cases.json`): on a **Desktop** launch a FRESH connected Claude/Grok subscription (mirror connected AND the runner polled within ~2 min) covers its provider in place of an API key. **Hosted launches still need an API key.** |
+
+Compliance model (brief `prompts/m-subs-desktop.md` §3.0): Tvashtr never reads `~/.claude*`,
+`~/.grok/` (other than finding the executable in its `bin`), `~/.codex/auth.json` or the Keychain;
+never uses `setup-token` / `CLAUDE_CODE_OAUTH_TOKEN`; every CLI child gets a clean env with
+`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `XAI_API_KEY`,
+`OPENAI_API_KEY`, `CLAUDECODE` and `CLAUDE_CODE_*` removed (`desktop/electron/harness/spawnEnv.cjs`).
+
+Headless commands (verified with `--help` + live runs):
+
+- Claude Code: `claude -p --output-format stream-json --verbose --model <m> --permission-mode acceptEdits --permission-prompts none --restricted --safe-mode --no-session-persistence` (prompt on stdin). Its `init` event reports `apiKeySource: none` on a subscription login.
+- Grok Build: `grok --prompt-file <f> --output-format streaming-json -m <m> --cwd <dir> --tools read_file,search_replace,write,list_dir,grep,todo_write --allow Edit --allow Read --allow Grep --sandbox workspace`.
+
+Live gate: `node desktop/scripts/live-subscription-gate.mjs run|offline` (Playwright `_electron`,
+local backend only — see the script header). Codex: status/Connect only; it does not run nodes yet.
 
 ## Distribution (Option 3)
 
@@ -100,7 +122,7 @@ See [`desktop-dmg-releases.md`](./desktop-dmg-releases.md).
 ## Explicitly not done in v1
 
 - Apple notarization / Developer ID signing / auto-update
-- Subscription OAuth / harness login
+- A Tvashtr-owned "Sign in with Claude/Grok" (by design — sign-in happens only inside the vendor's own CLI)
 - Auth cookie hardening beyond proxy Domain+Secure strip (e.g. partitioned cookies, custom Electron session partition policies)
 - Pushing from this Linux box if `gh` / git remotes lack credentials
 - Loading a fully offline backend
