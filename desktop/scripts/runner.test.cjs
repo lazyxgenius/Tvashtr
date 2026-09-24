@@ -198,3 +198,59 @@ test("a 409 (job already expired) is not retried", async () => {
   await runner.tickOnce();
   assert.ok(calls <= 2, `retried a 409 ${calls} times`);
 });
+
+// M-subs-prod: prod runs several Fly machines, each with its own disk. A snapshot GET that reaches
+// a machine without the run's workspace answers 409 (Fly's proxy normally replays it to the right
+// machine first; the 409 is what's left if that couldn't happen yet — e.g. the job is moving).
+function snapshot409() {
+  const e = new Error("GET /api/desktop-runner/jobs/x/snapshot -> 409");
+  e.status = 409;
+  return e;
+}
+
+test("a snapshot 409 (workspace on another machine) is retried, then the job runs", async () => {
+  const api = fakeApi([job("job-snap", "claude", "anthropic/claude-sonnet-5")]);
+  let calls = 0;
+  const realSnapshot = api.snapshot;
+  api.snapshot = async (jobId) => {
+    calls += 1;
+    if (calls <= 2) throw snapshot409();
+    return realSnapshot(jobId);
+  };
+  const { runner } = runnerFor(api, { snapshotRetryMs: 10 });
+  await runner.tickOnce();
+  assert.equal(calls, 3);
+  assert.equal(api.results.length, 1);
+  assert.equal(api.results[0].status, "completed", api.results[0].error);
+});
+
+test("a snapshot that keeps 409-ing fails the job after a few tries", async () => {
+  const api = fakeApi([job("job-snap-x", "claude", "anthropic/claude-sonnet-5")]);
+  let calls = 0;
+  api.snapshot = async () => {
+    calls += 1;
+    throw snapshot409();
+  };
+  const { runner, workRoot } = runnerFor(api, { snapshotRetryMs: 10 });
+  await runner.tickOnce();
+  assert.ok(calls >= 3 && calls <= 6, `tried ${calls} times`);
+  assert.equal(api.results.length, 1);
+  assert.equal(api.results[0].status, "failed");
+  assert.match(api.results[0].error, /workspace from Tvashtr \(409 after 6 tries\)/);
+  assert.deepEqual(fs.readdirSync(workRoot), []);
+});
+
+test("a snapshot 404 (not this user's job) is not retried", async () => {
+  const api = fakeApi([job("job-snap-404", "claude", "anthropic/claude-sonnet-5")]);
+  let calls = 0;
+  api.snapshot = async () => {
+    calls += 1;
+    const e = new Error("GET … -> 404");
+    e.status = 404;
+    throw e;
+  };
+  const { runner } = runnerFor(api, { snapshotRetryMs: 10 });
+  await runner.tickOnce();
+  assert.equal(calls, 1);
+  assert.equal(api.results[0].status, "failed");
+});

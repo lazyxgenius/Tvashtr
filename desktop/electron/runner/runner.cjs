@@ -47,6 +47,32 @@ async function postResultWithRetry(api, jobId, body, { attempts = 6, delayMs = 2
   throw lastErr;
 }
 
+/**
+ * GET the job's workspace snapshot, retrying a 409. Prod runs several Fly machines, each with its
+ * own disk, and only the one executing the run holds its workspace: Fly's proxy replays the GET
+ * there (`fly-replay`), and a 409 is what's left when that couldn't happen yet — the holder was
+ * briefly unreachable, or the run is being recovered onto another machine, which re-creates the
+ * workspace and re-points the job (a re-clone takes a while, hence ~25 s in all). The job's
+ * heartbeat keeps flowing meanwhile. Any other status fails at once.
+ */
+async function snapshotWithRetry(api, jobId, { attempts = 6, delayMs = 5000, log, cancelled }) {
+  for (let i = 1; ; i += 1) {
+    try {
+      return await api.snapshot(jobId);
+    } catch (e) {
+      if (!(e && e.status === 409) || cancelled()) throw e;
+      if (i >= attempts) {
+        throw new Error(
+          `couldn't get this run's workspace from Tvashtr (409 after ${attempts} tries) — ` +
+            "the server running it may be restarting; retry the run",
+        );
+      }
+      log(`[runner] snapshot for ${jobId} got 409 (attempt ${i}/${attempts}) — retrying`);
+      await sleep(delayMs);
+    }
+  }
+}
+
 function safeId(id) {
   return String(id).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 80) || "job";
 }
@@ -66,6 +92,8 @@ function safeId(id) {
  *   flushMs?: number,
  *   log?: (msg: string) => void,
  *   onPollOk?: () => void,
+ *   resultRetryMs?: number,
+ *   snapshotRetryMs?: number,
  * }} deps
  */
 function createRunner({
@@ -83,6 +111,7 @@ function createRunner({
   log = () => {},
   onPollOk = () => {},
   resultRetryMs = 2000,
+  snapshotRetryMs = 5000,
 }) {
   let stopped = false;
   let looping = false;
@@ -142,7 +171,11 @@ function createRunner({
       fs.mkdirSync(ws, { recursive: true });
       const env = await childEnv();
       const name = DISPLAY[job.provider] || job.provider;
-      const tarball = await api.snapshot(job.id);
+      const tarball = await snapshotWithRetry(api, job.id, {
+        delayMs: snapshotRetryMs,
+        log,
+        cancelled: () => entry.cancelled || stopped,
+      });
       if (entry.cancelled) return;
       const base = await workspaceOps.materialize({
         tarball,
