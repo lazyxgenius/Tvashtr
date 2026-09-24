@@ -670,8 +670,17 @@ def test_the_boot_sweep_actually_runs_during_lifespan_startup():
     The three sibling sweeps are patched out rather than left live: the container sweep in
     particular is host-global, and a test must never reap another checkout's running agent."""
     import asyncio
+    from contextlib import asynccontextmanager
 
     from tvashtr import main
+
+    # The Domains MCP session manager (mounted inside the lifespan) can only run ONCE per process,
+    # and the suite's session ``client`` already ran it — so re-entering the real one here failed
+    # whenever this test ran after that fixture (pre-existing order dependence). It is not what this
+    # test is about: stub it, like the sibling sweeps.
+    @asynccontextmanager
+    async def _no_mcp_lifespan(_app):
+        yield
 
     calls: list[str] = []
     with (
@@ -679,6 +688,7 @@ def test_the_boot_sweep_actually_runs_during_lifespan_startup():
         patch.object(main, "sweep_orphaned_clones", side_effect=lambda: calls.append("clone")),
         patch.object(main, "sweep_orphaned_agent_containers", side_effect=lambda: None),
         patch.object(main, "sweep_orphaned_fly_apps", side_effect=lambda: None),
+        patch.object(main._domains_mcp_http.router, "lifespan_context", _no_mcp_lifespan),
     ):
 
         async def drive() -> list[str]:

@@ -36,6 +36,10 @@ vi.mock("../lib/api", () => ({
   // C7.C: the dashboard now mounts the Tool + Skill library shelves, which fetch on mount.
   listToolLibrary: vi.fn().mockResolvedValue([]),
   listSkillLibrary: vi.fn().mockResolvedValue([]),
+  // The free tool / skill catalog strips (feat/free-tools-skills-catalog) fetch on mount too — the
+  // mock lacked them, so the Engines/Tools nav test failed on "No listToolCatalog export".
+  listToolCatalog: vi.fn().mockResolvedValue([]),
+  listSkillPresets: vi.fn().mockResolvedValue([]),
   // M-memory S5a: the Memory shelf fetches its facts + review-mode on mount.
   listMemories: vi.fn().mockResolvedValue([]),
   getReviewMode: vi.fn().mockResolvedValue(false),

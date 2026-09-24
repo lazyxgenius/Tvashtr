@@ -105,6 +105,26 @@ def _lift_hosted_run_ceilings(monkeypatch):
     monkeypatch.setattr(settings, "hosted_max_runs_per_owner_per_day", 10_000)
 
 
+@pytest.fixture(autouse=True)
+def _offline_provider_model_lists(monkeypatch):
+    """The offline suite never asks a real provider which models it serves. The launch pre-flight's
+    servability check (M-live) calls ``provider_models._default_http_get`` — live, it made the suite
+    depend on the network AND on the provider's current catalogue (NVIDIA dropping
+    ``minimaxai/minimax-m3`` turned a library-launch test red with no code change). Unreachable ⇒
+    the check fails OPEN, exactly as in production when a provider is down. Tests that exercise the
+    check install their own getter (their ``monkeypatch.setattr`` runs after this fixture)."""
+    from tvashtr.control_plane import provider_models
+
+    provider_models.reset_cache()
+
+    def _offline(url, headers, timeout):  # noqa: ARG001
+        raise OSError("offline test suite: no live provider model lists")
+
+    monkeypatch.setattr(provider_models, "_default_http_get", _offline, raising=True)
+    yield
+    provider_models.reset_cache()
+
+
 @pytest.fixture(scope="session")
 def client():
     # M-accounts Slice A: every /api/* route now requires a tv_session cookie. Registering a unique
