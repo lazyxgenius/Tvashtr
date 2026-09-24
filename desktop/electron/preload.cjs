@@ -5,22 +5,17 @@ const engines = {
   connect: (provider) => ipcRenderer.invoke("tvashtr:engines:connect", provider),
   disconnect: (provider) => ipcRenderer.invoke("tvashtr:engines:disconnect", provider),
   refresh: (provider) => ipcRenderer.invoke("tvashtr:engines:refresh", provider),
-};
-
-const runs = {
-  startLocal: (payload) => ipcRenderer.invoke("tvashtr:runs:startLocal", payload),
-  stopLocal: (localRunId) => ipcRenderer.invoke("tvashtr:runs:stopLocal", localRunId),
-  subscribeLogs: (localRunId, cb) => {
-    const handler = (_e, payload) => {
-      if (payload?.localRunId === localRunId) cb(String(payload.line ?? ""));
-    };
-    ipcRenderer.on("tvashtr:runs:log", handler);
-    return () => ipcRenderer.removeListener("tvashtr:runs:log", handler);
+  // M-subs-desktop: the main process re-asks a CLI when the window regains focus after Connect
+  // opened the vendor login in Terminal — cards subscribe so they flip to Connected on their own.
+  onStatus: (cb) => {
+    const handler = (_e, status) => cb(status);
+    ipcRenderer.on("tvashtr:engines:status", handler);
+    return () => ipcRenderer.removeListener("tvashtr:engines:status", handler);
   },
 };
 
-contextBridge.exposeInMainWorld("tvashtrDesktop", { engines, runs });
+contextBridge.exposeInMainWorld("tvashtrDesktop", { engines });
 contextBridge.exposeInMainWorld("tvashtrDesktopInfo", {
   shell: "electron",
-  version: 2,
+  version: 3,
 });

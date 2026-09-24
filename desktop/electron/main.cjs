@@ -9,11 +9,16 @@
  * GitHub OAuth stays INSIDE Electron (loadURL), not the OS browser, so the loopback
  * callback + proxied Set-Cookie land on the same partition as the SPA.
  */
-const { app, BrowserWindow, shell, ipcMain, safeStorage } = require("electron");
+const { app, BrowserWindow, shell, ipcMain, safeStorage, session } = require("electron");
+const fs = require("fs");
 const path = require("path");
 const { createRegistry } = require("./harness/registry.cjs");
 const { createStatusStore, sanitizeStatus } = require("./harness/statusStore.cjs");
-const { createLocalRunSupervisor } = require("./harness/localRuns.cjs");
+const { listCandidateDirs } = require("./harness/pathDetect.cjs");
+const { createRunnerApi } = require("./runner/api.cjs");
+const { createStatusSync } = require("./runner/statusSync.cjs");
+const { bootEngines } = require("./runner/engineBoot.cjs");
+const { createRunner } = require("./runner/runner.cjs");
 
 const DESKTOP_ROOT = path.join(__dirname, "..");
 
@@ -29,14 +34,11 @@ let apiBaseOrigin = "https://tvashtr.fly.dev";
 
 const PROVIDERS = ["claude", "grok", "codex"];
 
-/** Local subscription-run supervisor (skeleton); stopped on before-quit. */
-let localRunSupervisor = createLocalRunSupervisor({
-  sendLog(payload) {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("tvashtr:runs:log", payload);
-    }
-  },
-});
+/** How long after Connect a window-focus re-probe still counts as "finishing a login". */
+const LOGIN_REPROBE_WINDOW_MS = 30 * 60 * 1000;
+
+/** @type {ReturnType<typeof createRunner> | null} */
+let runner = null;
 
 function emptyStatus(provider) {
   return {
@@ -60,68 +62,137 @@ function toRendererStatus(row, provider) {
   return cleaned;
 }
 
+/**
+ * M-subs-desktop: engines + the Desktop runner.
+ *
+ * - Status is asked of each user's OWN CLI once at launch (bootEngines), then only on Connect /
+ *   Refresh / window focus after a Connect — never on a timer (A3). getStatus returns the cache.
+ * - Every status change is pushed to the secret-free server mirror (A3) — launch included.
+ * - Connect opens the vendor's own login in Terminal and returns at once (§3.0).
+ * - The runner polls the control plane for this user's subscription node jobs while the app is
+ *   open; its polls are the heartbeat the server's freshness check reads.
+ */
 function registerEngineIpc() {
-  const store = createStatusStore({
-    userDataDir: app.getPath("userData"),
-    safeStorage,
+  const userData = app.getPath("userData");
+  const store = createStatusStore({ userDataDir: userData, safeStorage });
+  const registry = createRegistry({ loginScriptDir: path.join(userData, "login") });
+  const api = createRunnerApi({
+    baseUrl: () => localOrigin,
+    cookieHeader: async () => {
+      const cookies = await session.defaultSession.cookies.get({ url: localOrigin });
+      const parts = cookies.map((c) => `${c.name}=${c.value}`);
+      return parts.length ? parts.join("; ") : null;
+    },
   });
-  const registry = createRegistry();
+  const statusSync = createStatusSync({ api, log: (m) => console.log(m) });
+  /** @type {Map<string, number>} provider -> when Connect opened the vendor login */
+  const pendingLogins = new Map();
+
+  const cached = (provider) => {
+    const stored = store.read(provider);
+    return stored ? toRendererStatus(stored, provider) : emptyStatus(provider);
+  };
+  const notifyRenderer = (status) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("tvashtr:engines:status", status);
+    }
+  };
+  const record = async (provider, raw) => {
+    const status = toRendererStatus(raw, provider);
+    store.write(provider, status);
+    await statusSync.push(status);
+    notifyRenderer(status);
+    return status;
+  };
+  const probe = async (provider) => {
+    const harness = registry.get(provider);
+    if (!harness) return cached(provider);
+    return record(provider, await harness.toStatus());
+  };
+
+  const booted = bootEngines({
+    providers: PROVIDERS,
+    registry,
+    store: { write: (p, st) => store.write(p, toRendererStatus(st, p)) },
+    statusSync,
+    log: (m) => console.log(m),
+  }).catch((err) => console.error("[tvashtr-desktop] engine boot failed:", err));
 
   ipcMain.handle("tvashtr:engines:getStatus", async () => {
-    const out = [];
-    for (const provider of PROVIDERS) {
-      const harness = registry.get(provider);
-      if (harness) {
-        const status = toRendererStatus(await harness.toStatus(), provider);
-        store.write(provider, status);
-        out.push(status);
-      } else {
-        const stored = store.read(provider);
-        out.push(stored ? toRendererStatus(stored, provider) : emptyStatus(provider));
-      }
-    }
-    return out;
+    await booted;
+    return PROVIDERS.map(cached);
   });
 
   ipcMain.handle("tvashtr:engines:connect", async (_e, provider) => {
     const id = String(provider || "");
     const harness = registry.get(id);
-    if (!harness) {
-      return emptyStatus(id || "claude");
-    }
-    const status = toRendererStatus(await harness.connect(), id);
-    store.write(id, status);
+    if (!harness) return emptyStatus(id || "claude");
+    const status = await record(id, await harness.connect());
+    if (!status.connected && status.state !== "needs_install") pendingLogins.set(id, Date.now());
     return status;
   });
 
   ipcMain.handle("tvashtr:engines:disconnect", async (_e, provider) => {
     const id = String(provider || "");
+    pendingLogins.delete(id);
     store.clear(id);
-    return emptyStatus(id);
+    await statusSync.clear(id);
+    const status = emptyStatus(id);
+    notifyRenderer(status);
+    return status;
   });
 
   ipcMain.handle("tvashtr:engines:refresh", async (_e, provider) => {
     const id = String(provider || "");
-    const harness = registry.get(id);
-    if (!harness) {
-      const stored = store.read(id);
-      return stored ? toRendererStatus(stored, id) : emptyStatus(id);
-    }
-    const status = toRendererStatus(await harness.toStatus(), id);
-    store.write(id, status);
+    const status = await probe(id);
+    if (status.connected) pendingLogins.delete(id);
     return status;
   });
-}
 
-function registerRunsIpc() {
-  ipcMain.handle("tvashtr:runs:startLocal", async (_e, payload) => {
-    return localRunSupervisor.startLocal(payload || {});
+  // After Connect opened Terminal, re-ask the CLI when the user comes back to Tvashtr.
+  app.on("browser-window-focus", () => {
+    const now = Date.now();
+    for (const [id, startedAt] of [...pendingLogins]) {
+      if (now - startedAt > LOGIN_REPROBE_WINDOW_MS) {
+        pendingLogins.delete(id);
+        continue;
+      }
+      void probe(id)
+        .then((st) => {
+          if (st.connected) pendingLogins.delete(id);
+        })
+        .catch(() => {});
+    }
   });
-  ipcMain.handle("tvashtr:runs:stopLocal", async (_e, localRunId) => {
-    await localRunSupervisor.stopLocal(localRunId);
+
+  const binaryCache = new Map();
+  const workRoot = path.join(userData, "runner-jobs");
+  fs.rmSync(workRoot, { recursive: true, force: true }); // leftovers of a crashed session
+  runner = createRunner({
+    api,
+    workRoot,
+    baseEnv: process.env,
+    pathDirs: () => listCandidateDirs({ npmGlobalBin: null }),
+    connectedProviders: () =>
+      PROVIDERS.filter((p) => {
+        const st = store.read(p);
+        return Boolean(st && st.connected === true);
+      }),
+    binaryFor: async (provider) => {
+      if (!binaryCache.has(provider)) {
+        const harness = registry.get(provider);
+        const det = harness ? await harness.detect() : { installed: false, binaryPath: null };
+        if (!det.installed) return null;
+        binaryCache.set(provider, det.binaryPath);
+      }
+      return binaryCache.get(provider);
+    },
+    log: (m) => console.log(m),
+    onPollOk: () => {
+      if (statusSync.hasPending()) void statusSync.replayPending();
+    },
   });
 }
-
 
 function envFlag(name, fallback = false) {
   const v = process.env[name];
@@ -291,11 +362,14 @@ async function boot() {
 
 app.whenReady().then(() => {
   registerEngineIpc();
-  registerRunsIpc();
-  boot().catch((err) => {
-    console.error("[tvashtr-desktop] failed to start:", err);
-    app.exit(1);
-  });
+  boot()
+    .then(() => {
+      if (runner) runner.start();
+    })
+    .catch((err) => {
+      console.error("[tvashtr-desktop] failed to start:", err);
+      app.exit(1);
+    });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -320,7 +394,9 @@ app.on("before-quit", (event) => {
   quittingAfterStopAll = true;
   (async () => {
     try {
-      await localRunSupervisor.stopAll();
+      // In-flight subscription jobs are killed and NOT reported; the control plane fails that node
+      // with "Tvashtr Desktop went offline — reopen it and retry." once its heartbeat goes stale.
+      if (runner) await runner.stop();
     } catch {
       /* ignore */
     }

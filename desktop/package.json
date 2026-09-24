@@ -2,13 +2,14 @@
   "name": "tvashtr-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Tvashtr Desktop v1 — Electron shell around the existing React/Vite frontend (hosted API).",
+  "description": "Tvashtr Desktop v1 \u2014 Electron shell around the existing React/Vite frontend (hosted API).",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
     "start": "node scripts/start.mjs",
     "electron": "electron .",
+    "test": "node scripts/run-tests.cjs",
     "dist:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --publish never",
     "pack:mac": "npm run build && npm run dist:mac"
   },
@@ -27,7 +28,7 @@
   "build": {
     "appId": "dev.tvashtr.desktop",
     "productName": "Tvashtr",
-    "copyright": "Copyright © Tvashtr",
+    "copyright": "Copyright \u00a9 Tvashtr",
     "directories": {
       "output": "release",
       "buildResources": "build"
