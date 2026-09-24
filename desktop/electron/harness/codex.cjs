@@ -9,12 +9,15 @@
  *   If TVASHTR_HARNESS_DEVICE_AUTH=1, use `codex login --device-auth` (headless).
  *   Login is spawn/detached fire-and-forget (interactive browser) then re-probe —
  *   never treat it as a 15s blocking execFile success path.
+ * - M-subs-desktop: every spawn (which, status, login) uses the shared clean env + enriched PATH
+ *   (no API keys, no inherited Claude Code session vars). Behaviour otherwise unchanged.
  */
 const { promisify } = require("util");
 const childProcess = require("child_process");
 const defaultExecFile = promisify(childProcess.execFile);
 const defaultSpawn = childProcess.spawn;
 const { detectCliBinary } = require("./pathDetect.cjs");
+const { resolveCliEnv } = require("./spawnEnv.cjs");
 
 const INSTALL_URL = "https://developers.openai.com/codex";
 
@@ -28,11 +31,16 @@ function createCodexHarness({
   listDir,
   npmGlobalBin,
 } = {}) {
+  const childEnv = () =>
+    resolveCliEnv({ env, homedir, platform, listDir, npmGlobalBin: npmGlobalBin ?? null });
+
   async function run(cmd, args) {
+    const runEnv = await childEnv();
     try {
       const { stdout, stderr } = await execFile(cmd, args, {
         timeout: 15000,
         encoding: "utf8",
+        env: runEnv,
       });
       return { stdout: String(stdout || ""), stderr: String(stderr || ""), code: 0 };
     } catch (e) {
@@ -98,7 +106,7 @@ function createCodexHarness({
     const child = spawn(bin, args, {
       detached: true,
       stdio: "ignore",
-      env: { ...process.env, ...env },
+      env: await childEnv(),
     });
     if (child && typeof child.unref === "function") child.unref();
   }

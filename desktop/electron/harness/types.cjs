@@ -1,5 +1,5 @@
 /** @typedef {"claude"|"grok"|"codex"} SubscriptionProviderId */
-/** @typedef {"disconnected"|"checking"|"needs_install"|"needs_login"|"connected"|"error"} SubscriptionCardState */
+/** @typedef {"disconnected"|"checking"|"needs_install"|"needs_login"|"api_key"|"connected"|"error"} SubscriptionCardState */
 
 /**
  * @typedef {object} EngineStatus

@@ -18,6 +18,26 @@ const defaultReaddir = promisify(fs.readdir);
 const FIXED_UNIX_DIRS = ["/usr/local/bin", "/opt/homebrew/bin"];
 
 /**
+ * Bin dirs the vendors' OWN installers use, relative to $HOME (M-subs-desktop A1): the xAI Grok
+ * installer (`~/.grok/bin`), Claude Code's native installer (`~/.local/bin`) and its older local
+ * install (`~/.claude/local`). Under ~/.grok and ~/.claude these bin dirs are the ONLY paths this
+ * app ever touches — and only to find/run the executable, never to read any other file.
+ */
+const VENDOR_BIN_DIRS = Object.freeze([
+  [".local", "bin"],
+  [".grok", "bin"],
+  [".claude", "local"],
+]);
+
+/** Child env for `which` / `npm`: the shared clean env (lazy require — spawnEnv needs this module). */
+function cleanEnvWithPath(env, pathValue, platform) {
+  const { buildChildEnv } = require("./spawnEnv.cjs");
+  const out = buildChildEnv(env, { pathDirs: [], platform });
+  out.PATH = pathValue;
+  return out;
+}
+
+/**
  * @param {object} opts
  * @param {() => string} [opts.homedir]
  * @param {NodeJS.ProcessEnv} [opts.env]
@@ -43,7 +63,7 @@ async function listCandidateDirs({
     dirs.push(...FIXED_UNIX_DIRS);
   }
 
-  dirs.push(path.join(home, ".local", "bin"));
+  for (const rel of VENDOR_BIN_DIRS) dirs.push(path.join(home, ...rel));
   dirs.push(path.join(home, ".npm-global", "bin"));
   dirs.push(path.join(home, ".volta", "bin"));
 
@@ -121,10 +141,7 @@ async function resolveNpmGlobalBin({
   platform = process.platform,
   pathEnv = null,
 } = {}) {
-  const runEnv = {
-    ...env,
-    PATH: pathEnv || env.PATH || env.Path || "",
-  };
+  const runEnv = cleanEnvWithPath(env, pathEnv || env.PATH || env.Path || "", platform);
   const tryNpm = async (args) => {
     try {
       const { stdout } = await execFile("npm", args, {
@@ -205,7 +222,7 @@ async function detectCliBinary(
       const { stdout } = await execFile(whichCmd, [name], {
         timeout: 15000,
         encoding: "utf8",
-        env: { ...env, PATH: pathValue },
+        env: cleanEnvWithPath(env, pathValue, platform),
       });
       return parseWhichStdout(stdout);
     } catch (e) {
@@ -265,6 +282,7 @@ function uniquePreserve(items) {
 
 module.exports = {
   FIXED_UNIX_DIRS,
+  VENDOR_BIN_DIRS,
   listCandidateDirs,
   listBinaryCandidates,
   enrichPathString,

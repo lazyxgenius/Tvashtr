@@ -1,189 +1,98 @@
 /**
- * Run: node desktop/scripts/harness-grok.test.cjs
+ * Grok harness contract (M-subs-desktop A2/F5): status comes from `grok models` only — no
+ * auth-file read, no XAI_API_KEY shortcut; Connect opens `grok login` in Terminal.
  *
- * Real Grok CLI contract: primary `grok models` probe; XAI_API_KEY / auth.json
- * fallbacks; `grok login` [--device-auth] via detached spawn. Never expose tokens.
+ * Run: node --test desktop/scripts/harness-grok.test.cjs
  */
-const assert = require("assert");
-const path = require("path");
+const test = require("node:test");
+const assert = require("node:assert/strict");
 const { createGrokHarness } = require("../electron/harness/grok.cjs");
 const { createRegistry } = require("../electron/harness/registry.cjs");
 
-function makeSpawnRecorder() {
-  const calls = [];
-  const spawn = (cmd, args, opts) => {
-    calls.push({ cmd, args, opts });
-    return { unref() {} };
-  };
-  return { spawn, calls };
-}
-
-function whichOk(cmd, args) {
-  if (cmd === "which" && args[0] === "grok") return { stdout: "/usr/local/bin/grok\n", code: 0 };
-  return null;
-}
-
-async function run() {
-  // --- primary: grok models authenticated (exit 0, no "not authenticated") ---
-  const execModelsOk = async (cmd, args) => {
-    const w = whichOk(cmd, args);
-    if (w) return w;
+function execModels(stdout, code = 0) {
+  return async (cmd, args) => {
+    if (cmd === "which" && args[0] === "grok") return { stdout: "/usr/local/bin/grok\n" };
     if (args[0] === "models") {
-      return { stdout: "grok-3\ngrok-2\nLogged in as ada@x.ai\n", code: 0 };
-    }
-    const err = new Error("unexpected " + cmd + " " + args.join(" "));
-    err.code = 1;
-    throw err;
-  };
-  const stModels = await createGrokHarness({
-    execFile: execModelsOk,
-    env: {},
-    readFile: async () => {
-      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-    },
-  }).toStatus();
-  assert.strictEqual(stModels.provider, "grok");
-  assert.strictEqual(stModels.connected, true);
-  assert.strictEqual(stModels.state, "connected");
-  assert.strictEqual(stModels.account_hint, "ada@x.ai");
-  assert.strictEqual(stModels.source, "harness");
-
-  // --- models says not authenticated (exit 0 but message) → needs_login ---
-  const execNotAuth = async (cmd, args) => {
-    const w = whichOk(cmd, args);
-    if (w) return w;
-    if (args[0] === "models") {
-      return { stdout: "You are not authenticated. Run grok login.\n", code: 0 };
-    }
-    const err = new Error("unexpected");
-    err.code = 1;
-    throw err;
-  };
-  const stNot = await createGrokHarness({
-    execFile: execNotAuth,
-    env: {},
-    readFile: async () => {
-      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-    },
-  }).toStatus();
-  assert.strictEqual(stNot.state, "needs_login");
-  assert.strictEqual(stNot.connected, false);
-
-  // --- XAI_API_KEY fallback when models says not authenticated ---
-  const stKey = await createGrokHarness({
-    execFile: execNotAuth,
-    env: { XAI_API_KEY: "xai-secret-should-never-leak" },
-    readFile: async () => {
-      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-    },
-  }).toStatus();
-  assert.strictEqual(stKey.state, "connected");
-  assert.strictEqual(stKey.account_hint, "api-key");
-  assert.ok(!JSON.stringify(stKey).includes("xai-secret"));
-
-  // --- auth.json session fallback ---
-  const authPath = path.join("/tmp/fake-grok-home", "auth.json");
-  const stSession = await createGrokHarness({
-    execFile: execNotAuth,
-    env: { GROK_HOME: "/tmp/fake-grok-home" },
-    homedir: () => "/tmp/unused-home",
-    readFile: async (p) => {
-      assert.strictEqual(p, authPath);
-      return JSON.stringify({
-        access_token: "tok_SECRET_raw",
-        refresh_token: "ref_SECRET",
-        email: "user@x.ai",
-      });
-    },
-  }).toStatus();
-  assert.strictEqual(stSession.state, "connected");
-  assert.strictEqual(stSession.account_hint, "user@x.ai");
-  const dumped = JSON.stringify(stSession);
-  assert.ok(!dumped.includes("tok_SECRET"), "must never expose access_token");
-  assert.ok(!dumped.includes("ref_SECRET"), "must never expose refresh_token");
-
-  // auth.json without safe hint → "session"
-  const stSessOnly = await createGrokHarness({
-    execFile: execNotAuth,
-    env: { GROK_HOME: "/tmp/fake-grok-home" },
-    readFile: async () => JSON.stringify({ token: "abc123SECRET" }),
-  }).toStatus();
-  assert.strictEqual(stSessOnly.state, "connected");
-  assert.strictEqual(stSessOnly.account_hint, "session");
-  assert.ok(!JSON.stringify(stSessOnly).includes("abc123SECRET"));
-
-  // --- missing install ---
-  const execMissing = async (cmd, args) => {
-    if (cmd === "which" && args[0] === "grok") {
-      const e = new Error("not found");
-      e.code = 1;
+      if (code === 0) return { stdout };
+      const e = new Error("exit");
+      e.code = code;
+      e.stdout = stdout;
       throw e;
     }
+    const err = new Error(`unexpected ${cmd} ${args.join(" ")}`);
+    err.code = 1;
+    throw err;
+  };
+}
+
+test("`grok models` without the not-authenticated phrase → connected", async () => {
+  const st = await createGrokHarness({
+    execFile: execModels("Default model: grok-4.7\n\nAvailable models:\n  * grok-4.7\n"),
+    env: {},
+    npmGlobalBin: null,
+  }).toStatus();
+  assert.equal(st.provider, "grok");
+  assert.equal(st.connected, true);
+  assert.equal(st.state, "connected");
+  assert.equal(st.account_hint, "Grok subscription");
+});
+
+test("`grok models` saying 'You are not authenticated' (exit 0) → needs_login", async () => {
+  const st = await createGrokHarness({
+    execFile: execModels("You are not authenticated.\n\nDefault model: grok-4.7\n"),
+    env: {},
+    npmGlobalBin: null,
+  }).toStatus();
+  assert.equal(st.state, "needs_login");
+  assert.equal(st.connected, false);
+});
+
+test("a failing `grok models` → needs_login", async () => {
+  const st = await createGrokHarness({ execFile: execModels("boom", 2), env: {}, npmGlobalBin: null }).toStatus();
+  assert.equal(st.state, "needs_login");
+});
+
+test("missing install → needs_install", async () => {
+  const execMissing = async (cmd) => {
+    const e = new Error("not found");
+    e.code = 1;
+    if (cmd === "which") throw e;
     throw new Error("no");
   };
-  const st2 = await createGrokHarness({
+  const st = await createGrokHarness({
     execFile: execMissing,
     env: {},
     npmGlobalBin: null,
     pathExists: async () => false,
     listDir: async () => [],
+    homedir: () => "/nonexistent-home",
   }).toStatus();
-  assert.strictEqual(st2.state, "needs_install");
-  assert.strictEqual(st2.connected, false);
+  assert.equal(st.state, "needs_install");
+});
 
-  // --- connect triggers `login` via detached spawn ---
-  const { spawn, calls: spawnCalls } = makeSpawnRecorder();
-  const execLoginProbe = async (cmd, args) => {
-    const w = whichOk(cmd, args);
-    if (w) return w;
-    if (args[0] === "models") {
-      return { stdout: "You are not authenticated\n", code: 0 };
-    }
-    const e = new Error("login should use spawn not execFile");
-    e.code = 1;
-    throw e;
-  };
+test("Connect opens `grok login` (or --device-auth when asked) in Terminal", async () => {
+  const opened = [];
+  const openTerminal = async (req) => opened.push(req);
   await createGrokHarness({
-    execFile: execLoginProbe,
-    spawn,
+    execFile: execModels("You are not authenticated\n"),
     env: {},
-    readFile: async () => {
-      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-    },
+    npmGlobalBin: null,
+    openTerminal,
   }).connect();
-  assert.strictEqual(spawnCalls.length, 1);
-  assert.strictEqual(spawnCalls[0].cmd, "/usr/local/bin/grok");
-  assert.deepStrictEqual(spawnCalls[0].args, ["login"]);
-  assert.strictEqual(spawnCalls[0].opts.detached, true);
-
-  // --- device-auth env ---
-  const { spawn: spawnDev, calls: spawnDevCalls } = makeSpawnRecorder();
   await createGrokHarness({
-    execFile: execLoginProbe,
-    spawn: spawnDev,
+    execFile: execModels("You are not authenticated\n"),
     env: { TVASHTR_HARNESS_DEVICE_AUTH: "1" },
-    readFile: async () => {
-      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-    },
+    npmGlobalBin: null,
+    openTerminal,
   }).connect();
-  assert.deepStrictEqual(spawnDevCalls[0].args, ["login", "--device-auth"]);
+  assert.equal(opened[0].binaryPath, "/usr/local/bin/grok");
+  assert.deepEqual(opened[0].args, ["login"]);
+  assert.deepEqual(opened[1].args, ["login", "--device-auth"]);
+});
 
-  // INSTALL_URL
-  assert.strictEqual(
-    createGrokHarness({ execFile: execMissing }).INSTALL_URL,
-    "https://docs.x.ai/build/cli/reference"
-  );
-
-  // --- registry ---
-  const reg = createRegistry({ execFile: execModelsOk, env: {} });
-  assert.ok(reg.get("grok"));
-  assert.strictEqual(reg.get("grok").id, "grok");
-  assert.deepStrictEqual(reg.list(), ["claude", "grok", "codex"]);
-
-  console.log("harness-grok.test.cjs OK");
-}
-
-run().catch((e) => {
-  console.error(e);
-  process.exit(1);
+test("INSTALL_URL + registry order", () => {
+  assert.equal(createGrokHarness({}).INSTALL_URL, "https://docs.x.ai/build/cli/reference");
+  const reg = createRegistry({ env: {} });
+  assert.equal(reg.get("grok").id, "grok");
+  assert.deepEqual(reg.list(), ["claude", "grok", "codex"]);
 });
