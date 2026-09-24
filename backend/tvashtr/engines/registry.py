@@ -33,4 +33,10 @@ def resolve_adapter(engine_name: str) -> EngineAdapter:
         )
 
         return OpenHandsFlyAdapter()
+    if engine_name == "desktop-runner":
+        # M-subs-desktop: a subscription node of a desktop-targeted run — queued for the owner's
+        # Tvashtr Desktop, which runs it with the owner's own CLI sign-in (no SDK import at all).
+        from tvashtr.engines.desktop_runner_adapter import DesktopRunnerAdapter  # lazy import
+
+        return DesktopRunnerAdapter()
     raise ValueError(f"unknown engine: {engine_name!r}")

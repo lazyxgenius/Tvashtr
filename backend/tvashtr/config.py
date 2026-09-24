@@ -611,6 +611,43 @@ class Settings(BaseSettings):
         ),
     )
 
+    # --- M-subs-desktop: the owner's Tvashtr Desktop runs subscription nodes ---------------------
+    # A connected subscription mirror counts for a Desktop launch only while the owner's Desktop
+    # runner has polled within this window (A3 freshness, ~2 min).
+    desktop_runner_fresh_seconds: float = Field(
+        default=120.0,
+        gt=0,
+        validation_alias=AliasChoices(
+            "TVASHTR_DESKTOP_RUNNER_FRESH_SECONDS", "desktop_runner_fresh_seconds"
+        ),
+    )
+    # A node job whose Desktop stops checking in for this long fails with "Tvashtr Desktop went
+    # offline — reopen it and retry." (a claimed job: its own event heartbeat; a queued job: the
+    # runner's poll). The runner heartbeats every ~10 s while a CLI runs.
+    desktop_runner_offline_seconds: float = Field(
+        default=120.0,
+        gt=0,
+        validation_alias=AliasChoices(
+            "TVASHTR_DESKTOP_RUNNER_OFFLINE_SECONDS", "desktop_runner_offline_seconds"
+        ),
+    )
+    # How often the waiting adapter re-reads its job row.
+    desktop_runner_poll_seconds: float = Field(
+        default=1.0,
+        gt=0,
+        validation_alias=AliasChoices(
+            "TVASHTR_DESKTOP_RUNNER_POLL_SECONDS", "desktop_runner_poll_seconds"
+        ),
+    )
+    # Workspace snapshots larger than this are refused (the job fails readably instead).
+    desktop_snapshot_max_bytes: int = Field(
+        default=200 * 1024 * 1024,
+        gt=0,
+        validation_alias=AliasChoices(
+            "TVASHTR_DESKTOP_SNAPSHOT_MAX_BYTES", "desktop_snapshot_max_bytes"
+        ),
+    )
+
     def agent_llm_base_url(self, sandbox_mode: str) -> str:
         """The proxy base URL the agent's LLM points at, chosen by THIS run's sandbox
         mode. ``docker`` -> ``host.docker.internal`` (the agent-server container is on

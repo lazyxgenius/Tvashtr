@@ -34,6 +34,22 @@ class EngineEvent:
 
 
 @dataclass(frozen=True)
+class DesktopJobSpec:
+    """Where a subscription node's job goes (M-subs-desktop): the owner's Tvashtr Desktop runs it
+    with the owner's OWN installed CLI and its own sign-in. Engine-neutral identifiers only — the
+    ``desktop-runner`` adapter keys its job on ``(run_id, node_id, iteration)`` (DBOS-safe), writes
+    its log lines to ``invocation_id``, and hands it only to ``owner_id``'s Desktop. ``provider`` is
+    the subscription engine (``claude`` / ``grok``). No credential of any kind rides here."""
+
+    run_id: str
+    node_id: str
+    iteration: int
+    invocation_id: int | None
+    owner_id: str
+    provider: str
+
+
+@dataclass(frozen=True)
 class AgentTask:
     """A unit of work handed to an engine: an instruction plus the local working
     directory the agent may touch. ``model`` is an optional override; when None
@@ -93,6 +109,10 @@ class AgentTask:
     mcp_config: dict | None = None
     skills: list | None = None  # opaque list of Skill objects (the adapter knows the type)
     session_key: str | None = None  # M-unify U2: per-node sandbox-reuse key; None ⇒ no reuse
+    # M-subs-desktop: set ONLY for a subscription node of a desktop-targeted run (the
+    # ``desktop-runner`` adapter reads it); ``None`` (the default) ⇒ every other adapter/path is
+    # byte-for-byte unchanged — the same additive, defaulted-field discipline as the fields above.
+    desktop: DesktopJobSpec | None = None
 
 
 @dataclass(frozen=True)

@@ -27,7 +27,13 @@ from tvashtr.control_plane import (
     memory_review,
     provider_models,
 )
+from tvashtr.control_plane import desktop_jobs
 from tvashtr.control_plane.context_compiler import resolve_fallback_model, resolve_multimodal
+from tvashtr.control_plane.credential_gate import (
+    RUNNER_SUBSCRIPTIONS,
+    desktop_routed_subscriptions,
+    missing_providers_for_launch,
+)
 from tvashtr.control_plane.credentials import (
     NoCredentialError,
     encrypt_secret,
@@ -185,6 +191,11 @@ class CreateRunRequest(BaseModel):
     # mutually exclusive with ``repo_path`` (the free-text path door is fenced off in hosted mode).
     # Omitted (every self-hosted / greenfield caller) ⇒ the create is byte-for-byte unchanged.
     github_repo: str | None = None
+    # M-subs-desktop: the launch came from Tvashtr Desktop. Its Claude/Grok nodes may then run on
+    # the owner's OWN Desktop with the owner's own CLI sign-in (a FRESH connected subscription
+    # counts in place of an API key — see ``credential_gate``). False (every existing caller) ⇒ the
+    # hosted pre-flight + run are byte-for-byte unchanged.
+    desktop_target: bool = False
 
 
 class AskMessage(BaseModel):
@@ -706,14 +717,71 @@ def _missing_provider_credentials(
                 AgentNode.team_graph_id == uuid.UUID(team_graph_id)
             )
         ).all()
-    needed = {provider_for_model(m) for _rn, m in rows if m}
-    if not needed:
+    models = [m for _rn, m in rows if m]
+    if not models:
         return [], []
-    missing = needed - held_provider_slugs(owner_id)
+    # M-subs-desktop: the ONE shared launch rule (hosted: only a BYOK key covers a provider) — the
+    # same function the desktop pre-flight uses and the FE Run gate mirrors case-for-case.
+    missing = missing_providers_for_launch(
+        models, byok=held_provider_slugs(owner_id), fresh_subscriptions=set(), desktop_target=False
+    )
     if not missing:
         return [], []
     nodes = sorted({rn for rn, m in rows if m and provider_for_model(m) in missing})
-    return sorted(missing), nodes
+    return missing, nodes
+
+
+def _desktop_launch_credentials(
+    owner_id: uuid.UUID, team_graph_id: str
+) -> tuple[list[str], list[str], list[str], set[str]]:
+    """M-subs-desktop: the DESKTOP launch pre-flight — ``(missing_providers, missing_nodes,
+    routed_subscriptions, fresh_subscriptions)``. A FRESH connected subscription (mirror connected
+    AND the owner's Desktop runner polled recently, A3) covers its provider in place of an API key,
+    and is preferred over a held key: its nodes run on the owner's Desktop."""
+    with db.session_scope() as session:
+        rows = session.execute(
+            select(AgentNode.role_name, AgentNode.model).where(
+                AgentNode.team_graph_id == uuid.UUID(team_graph_id)
+            )
+        ).all()
+    models = [m for _rn, m in rows if m]
+    fresh = desktop_jobs.fresh_subscription_ids(owner_id)
+    missing = missing_providers_for_launch(
+        models, byok=held_provider_slugs(owner_id), fresh_subscriptions=fresh, desktop_target=True
+    )
+    nodes = sorted({rn for rn, m in rows if m and provider_for_model(m) in missing})
+    routed = desktop_routed_subscriptions(models, fresh_subscriptions=fresh, desktop_target=True)
+    return missing, nodes, routed, fresh
+
+
+def _desktop_missing_detail(
+    owner_id: uuid.UUID, providers: list[str], nodes: list[str]
+) -> dict:
+    """The 422 for a Desktop launch that still lacks a credential — says what would fix it."""
+    stale = sorted(
+        _MODEL_PROVIDER_TO_SUB[p]
+        for p in providers
+        if _MODEL_PROVIDER_TO_SUB.get(p) in RUNNER_SUBSCRIPTIONS
+        and _MODEL_PROVIDER_TO_SUB[p] in _connected_subscription_ids(owner_id)
+    )
+    msg = "you have no API key for: " + ", ".join(providers) + (
+        " — needed by " + ", ".join(nodes) if nodes else ""
+    )
+    if stale:
+        msg += (
+            ". Tvashtr Desktop hasn't checked in recently for your "
+            + ", ".join(s.capitalize() for s in stale)
+            + " subscription — make sure Tvashtr Desktop is open and signed in, then retry."
+        )
+    else:
+        msg += ". Connect Claude or Grok in Tvashtr Desktop (Engines) or add an API key."
+    return {
+        "message": msg,
+        "missing_providers": providers,
+        "missing_nodes": nodes,
+        "subscription_only": False,
+        "desktop_target": True,
+    }
 
 
 _MODEL_PROVIDER_TO_SUB = {
@@ -771,7 +839,9 @@ def _missing_credentials_detail(
     }
 
 
-def _unservable_node_models(owner_id: uuid.UUID, team_graph_id: str) -> tuple[list[str], list[str]]:
+def _unservable_node_models(
+    owner_id: uuid.UUID, team_graph_id: str, skip_providers: frozenset[str] = frozenset()
+) -> tuple[list[str], list[str]]:
     """M-live: the sorted distinct node models the PROVIDER ITSELF no longer serves, AND the sorted
     role names of the nodes carrying them. The sibling of :func:`_missing_provider_credentials`.
 
@@ -797,6 +867,9 @@ def _unservable_node_models(owner_id: uuid.UUID, team_graph_id: str) -> tuple[li
 
     unservable: set[str] = set()
     for model in models:
+        if provider_for_model(model) in skip_providers:
+            # M-subs-desktop: a node that runs on the owner's own CLI — the CLI decides its models.
+            continue
         try:
             api_key = resolve_owner_api_key(owner_id, model)
         except NoCredentialError:
@@ -1053,23 +1126,43 @@ def create_run(
     # the brownfield validate-before-launch discipline (a keyless account can't run; the seeded
     # operator with imported keys passes). On the clone path this checks the clone (== the source's
     # models); a 422 leaves only a harmless non-library orphan clone, never a started run.
-    missing, missing_nodes = _missing_provider_credentials(
-        uuid.UUID(current_user.id), team_graph_id
-    )
-    if missing:
-        subs = _connected_subscription_ids(uuid.UUID(current_user.id))
-        subscription_only = all(_MODEL_PROVIDER_TO_SUB.get(p) in subs for p in missing)
-        raise HTTPException(
-            status_code=422,
-            detail=_missing_credentials_detail(
-                missing, missing_nodes, subscription_only=subscription_only
-            ),
+    desktop_routed: list[str] = []
+    if body.desktop_target:
+        # M-subs-desktop: a Desktop launch — a FRESH connected Claude/Grok subscription covers its
+        # provider (and its nodes then run on the owner's own Desktop via the owner's own CLI).
+        missing, missing_nodes, desktop_routed, _fresh = _desktop_launch_credentials(
+            uuid.UUID(current_user.id), team_graph_id
         )
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=_desktop_missing_detail(
+                    uuid.UUID(current_user.id), missing, missing_nodes
+                ),
+            )
+    else:
+        missing, missing_nodes = _missing_provider_credentials(
+            uuid.UUID(current_user.id), team_graph_id
+        )
+        if missing:
+            subs = _connected_subscription_ids(uuid.UUID(current_user.id))
+            subscription_only = all(_MODEL_PROVIDER_TO_SUB.get(p) in subs for p in missing)
+            raise HTTPException(
+                status_code=422,
+                detail=_missing_credentials_detail(
+                    missing, missing_nodes, subscription_only=subscription_only
+                ),
+            )
 
     # M-live: and the model must still EXIST. A slug its provider retired used to sail through
     # here and die mid-run with an opaque error (NVIDIA's 410 on meta/llama-3.3-70b-instruct).
-    # Strictly after the credential check — see _unservable_node_models.
-    dead_models, dead_nodes = _unservable_node_models(uuid.UUID(current_user.id), team_graph_id)
+    # Strictly after the credential check — see _unservable_node_models. (M-subs-desktop: providers
+    # whose nodes run on the owner's own CLI are not probed — the CLI decides its own models.)
+    dead_models, dead_nodes = _unservable_node_models(
+        uuid.UUID(current_user.id),
+        team_graph_id,
+        frozenset(p for p, sub in _MODEL_PROVIDER_TO_SUB.items() if sub in desktop_routed),
+    )
     if dead_models:
         raise HTTPException(
             status_code=422,
@@ -1104,6 +1197,9 @@ def create_run(
                 # scoped-mount Slice 1: the optional sub-path scope (None for greenfield /
                 # whole-repo brownfield ⇒ identical column default).
                 subpath=subpath,
+                # M-subs-desktop: the launch-time routing (hosted ⇒ False / None, the defaults).
+                desktop_target=body.desktop_target,
+                desktop_subscriptions=desktop_routed if body.desktop_target else None,
             )
         )
 
@@ -1816,7 +1912,12 @@ class UpsertSubscriptionRequest(BaseModel):
         return data
 
 
-def _subscription_to_dict(provider: str, row: EngineSubscriptionStatus | None) -> dict:
+def _subscription_to_dict(
+    provider: str, row: EngineSubscriptionStatus | None, runner_fresh: bool = False
+) -> dict:
+    """``runner_fresh`` (M-subs-desktop A3): this subscription counts for a Desktop launch RIGHT
+    NOW — connected, runnable by Tvashtr Desktop, and the owner's Desktop runner polled recently.
+    The FE Run gate reads exactly this, so it agrees with the server pre-flight."""
     if row is None:
         return {
             "provider": provider,
@@ -1825,6 +1926,7 @@ def _subscription_to_dict(provider: str, row: EngineSubscriptionStatus | None) -
             "account_hint": None,
             "source": None,
             "checked_at": None,
+            "runner_fresh": False,
         }
     return {
         "provider": row.provider,
@@ -1833,6 +1935,9 @@ def _subscription_to_dict(provider: str, row: EngineSubscriptionStatus | None) -
         "account_hint": row.account_hint,
         "source": row.source,
         "checked_at": row.checked_at.isoformat() if row.checked_at else None,
+        "runner_fresh": bool(
+            runner_fresh and row.connected and row.provider in RUNNER_SUBSCRIPTIONS
+        ),
     }
 
 
@@ -1852,9 +1957,10 @@ def list_engine_subscriptions(
             .scalars()
             .all()
         }
+        fresh = desktop_jobs.runner_fresh(owner_id)
         return {
             "subscriptions": [
-                _subscription_to_dict(p, rows.get(p)) for p in _SUBSCRIPTION_PROVIDERS
+                _subscription_to_dict(p, rows.get(p), fresh) for p in _SUBSCRIPTION_PROVIDERS
             ]
         }
 
@@ -1889,7 +1995,7 @@ def upsert_engine_subscription(
         row.source = body.source
         row.checked_at = now
         session.flush()
-        return _subscription_to_dict(canonical, row)
+        return _subscription_to_dict(canonical, row, desktop_jobs.runner_fresh(owner_id))
 
 
 @router.delete("/api/engines/subscriptions/{provider}", status_code=204)
@@ -3538,3 +3644,10 @@ def list_github_repos(current_user: Annotated[UserOut, Depends(get_current_user)
             )
             continue
     return {"repos": repos, "installation_count": len(installation_ids)}
+
+
+# M-subs-desktop: the Desktop runner's secret-free, owner-scoped endpoints (claim / snapshot /
+# events / result) ride the same session-gated router as the rest of the product surface.
+from tvashtr.desktop_runner_routes import router as _desktop_runner_router  # noqa: E402
+
+router.include_router(_desktop_runner_router)

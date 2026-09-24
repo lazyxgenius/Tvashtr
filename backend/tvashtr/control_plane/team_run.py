@@ -62,6 +62,7 @@ from tvashtr.control_plane.context_compiler import (
     resolve_remember_enabled,
     resolve_writes_to,
 )
+from tvashtr.control_plane.credential_gate import subscription_for_model
 from tvashtr.control_plane.credentials import NoCredentialError, resolve_owner_api_key
 from tvashtr.control_plane import domain_ask as domain_ask_mod
 from tvashtr.control_plane.domain_ask import DomainAskError
@@ -103,7 +104,7 @@ from tvashtr.documents.service import (
     get_latest_version,
     latest_content_by_name,
 )
-from tvashtr.engines.base import AgentTask
+from tvashtr.engines.base import AgentTask, DesktopJobSpec
 from tvashtr.engines.registry import resolve_adapter
 from tvashtr.engines.run_event_sink import make_run_event_sink
 from tvashtr.engines.sandbox_cache import close_run_sandboxes, session_key_for
@@ -143,6 +144,27 @@ def _owner_api_key(run_id: str, model: str) -> str:
             "fallback). Every run must be owned by construction."
         )
     return resolve_owner_api_key(owner_id, model)
+
+
+def _desktop_route(run_id: str, model: str | None) -> tuple[str, str] | None:
+    """M-subs-desktop: ``(subscription, owner_id)`` when THIS node runs on the owner's Tvashtr
+    Desktop — the run was launched from Desktop AND the launch pre-flight routed this model's
+    subscription (``runs.desktop_subscriptions``, decided once at launch → replay-stable). ``None``
+    for every hosted run and every other node, which keep their engine path byte-for-byte."""
+    if not model:
+        return None
+    with session_scope() as session:
+        row = session.execute(
+            select(Run.desktop_target, Run.desktop_subscriptions, Run.owner_id).where(
+                Run.id == uuid.UUID(run_id)
+            )
+        ).one_or_none()
+    if row is None or not row.desktop_target:
+        return None
+    sub = subscription_for_model(model)
+    if sub and sub in (row.desktop_subscriptions or []):
+        return sub, str(row.owner_id)
+    return None
 
 
 def _resolve_model_and_key(run_id: str, model: str, fallback_model: str | None) -> tuple[str, str]:
@@ -1187,7 +1209,12 @@ def agent_run_step(
     # virtual key (``vkey``) exactly as before (the proxy holds upstream keys; budget enforced
     # mid-call). Resolved AFTER the forced short-circuit so the offline forced harness never
     # resolves a key. ``model`` is set on every agent node by the builders; default-model guards.
-    if get_settings().litellm_proxy_enabled:
+    # M-subs-desktop: a subscription node of a desktop-targeted run runs on the owner's own Desktop
+    # with the owner's own CLI sign-in — NO API key is resolved, minted or passed for it.
+    desktop_route = _desktop_route(run_id, model)
+    if desktop_route is not None:
+        agent_api_key = None
+    elif get_settings().litellm_proxy_enabled:
         agent_api_key = vkey
     else:
         # Per-node capabilities (Session A): the host-side failover seam. ``_resolve_model_and_key``
@@ -1227,11 +1254,28 @@ def agent_run_step(
         # don't thread it) ⇒ ``session_key`` None ⇒ NO reuse: byte-for-byte the
         # build-and-teardown-per-run path.
         session_key=session_key_for(run_id, node_id) if node_id is not None else None,
+        desktop=(
+            DesktopJobSpec(
+                run_id=run_id,
+                node_id=node_id if node_id is not None else f"invocation-{invocation_id}",
+                iteration=iteration,
+                invocation_id=invocation_id,
+                owner_id=desktop_route[1],
+                provider=desktop_route[0],
+            )
+            if desktop_route is not None
+            else None
+        ),
     )
     # Select local vs Docker-sandboxed engine from the configured sandbox mode (P1.3a). The
     # EngineAdapter contract + AgentRunResult shape are identical across modes; the adapter is
-    # role-neutral — it just runs the AgentTask's instruction in its workspace.
-    engine_name = _engine_for_sandbox_mode(get_settings().agent_sandbox_mode)
+    # role-neutral — it just runs the AgentTask's instruction in its workspace. M-subs-desktop: a
+    # desktop-routed node goes to the owner's Desktop instead (never the Fly/OpenHands path).
+    engine_name = (
+        "desktop-runner"
+        if desktop_route is not None
+        else _engine_for_sandbox_mode(get_settings().agent_sandbox_mode)
+    )
     adapter = resolve_adapter(engine_name)  # lazy openhands import happens here
     try:
         result = adapter.run(task, on_event=make_run_event_sink(run_id, invocation_id))

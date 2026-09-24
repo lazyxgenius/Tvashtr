@@ -386,6 +386,15 @@ class Run(Base):
     # state the A/B instrument adds — there is no separate pair entity in v1.
     pair_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
     pair_label: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # M-subs-desktop (migration ``0039``): a launch from Tvashtr Desktop. ``desktop_target`` marks
+    # the run desktop-targeted; ``desktop_subscriptions`` is the list of subscription engines
+    # (``claude`` / ``grok``) the launch pre-flight found FRESH-connected, i.e. whose nodes run on
+    # the owner's own Desktop via their own CLI sign-in (decided ONCE at launch → replay-stable).
+    # Both default to "not desktop", so every existing row + hosted caller is unchanged.
+    desktop_target: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
+    desktop_subscriptions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -598,6 +607,62 @@ class EngineSubscriptionStatus(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class DesktopNodeJob(Base):
+    """One subscription node execution handed to the owner's Tvashtr Desktop (M-subs-desktop).
+
+    The ``desktop-runner`` engine adapter enqueues it (idempotent on ``(run_id, attempt_key)`` —
+    ``attempt_key`` is ``"{node_id}:{iteration}"``, so a DBOS recovery re-execution finds the SAME
+    row instead of dispatching twice), the Desktop runner claims it, streams events, and posts the
+    result + a git patch back. ``status``: ``queued`` → ``claimed`` → ``completed`` | ``failed``;
+    ``expired`` when the Desktop went offline or the run ended. ``workspace_dir`` is a server path
+    and never leaves the server. NOTHING from a vendor login is ever stored here.
+    """
+
+    __tablename__ = "desktop_node_jobs"
+    __table_args__ = (
+        UniqueConstraint("run_id", "attempt_key", name="uq_desktop_node_jobs_run_attempt"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    run_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    node_id: Mapped[str] = mapped_column(Text, nullable=False)
+    attempt_key: Mapped[str] = mapped_column(Text, nullable=False)
+    invocation_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)  # claude | grok
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    instruction: Mapped[str] = mapped_column(Text, nullable=False)
+    workspace_dir: Mapped[str] = mapped_column(Text, nullable=False)
+    sidecars: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="queued", default="queued"
+    )
+    result_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    patch: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    usage: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    files_changed: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DesktopRunnerHeartbeat(Base):
+    """When the owner's Tvashtr Desktop runner last polled (M-subs-desktop A3 freshness): a
+    connected subscription mirror counts for a Desktop launch only while this is recent.
+    ``providers`` is what the runner offered to run on that poll (status data, not a secret)."""
+
+    __tablename__ = "desktop_runner_heartbeats"
+
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    providers: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
 
 class Domain(Base):
