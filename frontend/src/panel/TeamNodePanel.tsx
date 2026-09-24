@@ -24,6 +24,7 @@ import {
 } from "../lib/api";
 import {
   credentialTreatment,
+  subscriptionCoverLabel,
   subscriptionProviderForModel,
   type SubscriptionProviderId,
   type SubscriptionStatus,
@@ -1118,7 +1119,9 @@ export function TeamNodePanel({
             </datalist>
           </div>
           {treatment === "subscription" && (
-            <span className="tv-engines__pill">via subscription (local)</span>
+            <span className="tv-engines__pill">
+              {subId ? subscriptionCoverLabel(subId) : "via your subscription · runs on this computer"}
+            </span>
           )}
           {treatment === "byok" && <span className="tv-engines__pill">via API key</span>}
 

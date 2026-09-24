@@ -1944,6 +1944,36 @@ body,
   border: 1px solid var(--blue-500);
   border-radius: var(--radius-md);
 }
+/* M-subs-desktop §3.0: the subscription disclosure (cards + the once-per-launch Desktop notice). */
+.tv-engines__disclosure {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-500);
+}
+.tv-desktop-disclosure {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  width: min(720px, calc(100vw - 32px));
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-700);
+  background: var(--blue-100);
+  border: 1px solid var(--blue-500);
+  border-radius: var(--radius-md);
+}
+.tv-desktop-disclosure p {
+  margin: 0;
+  flex: 1;
+}
 .tv-engines__section--byok {
   margin-top: 22px;
   padding-top: 18px;

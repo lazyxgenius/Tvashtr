@@ -5,6 +5,8 @@ export type SubscriptionCardState =
   | "checking"
   | "needs_install"
   | "needs_login"
+  // M-subs-desktop (A2): the CLI is signed in with an API key — shown, never counted as a subscription.
+  | "api_key"
   | "connected"
   | "error";
 
@@ -17,6 +19,26 @@ export interface SubscriptionStatus {
   account_hint: string | null;
   source: SubscriptionSource | null;
   checked_at: string | null;
+  // M-subs-desktop (A3): from the server mirror — connected AND the user's Tvashtr Desktop runner
+  // polled recently. The Run gate counts a subscription only when this is true (same as the server).
+  runner_fresh?: boolean;
+}
+
+/** The subscription engines Tvashtr Desktop can run a node with (Codex: not yet). */
+export const RUNNER_SUBSCRIPTIONS: readonly SubscriptionProviderId[] = ["claude", "grok"] as const;
+
+/**
+ * Shown on the Engines subscription cards and once at Desktop launch (M-subs-desktop §3.0).
+ * Exact wording — the compliance model rests on it.
+ */
+export const SUBSCRIPTION_DISCLOSURE =
+  "Tvashtr runs your own installed Claude Code / Grok on this computer. You sign in inside that " +
+  "tool — Tvashtr never sees or stores your login. Usage counts against your own plan and follows " +
+  "Anthropic's / xAI's terms. Tvashtr isn't affiliated with or endorsed by Anthropic or xAI.";
+
+/** Node picker label for a model the user's subscription covers on Desktop (§3.4). */
+export function subscriptionCoverLabel(provider: SubscriptionProviderId): string {
+  return `via your ${displayNameForSubscription(provider)} subscription · runs on this computer`;
 }
 
 export const SUBSCRIPTION_PROVIDERS: readonly SubscriptionProviderId[] = [
@@ -66,13 +88,13 @@ export function credentialTreatment(opts: {
   launchTarget: "local" | "hosted";
 }): "subscription" | "byok" | "none" {
   const sub = subscriptionProviderForModel(opts.model);
-  if (!sub) {
+  // M-subs-desktop: only an engine Tvashtr Desktop can run, and only on a Desktop launch, ever runs
+  // a node on the user's subscription — hosted runs always use the API key.
+  if (!sub || !RUNNER_SUBSCRIPTIONS.includes(sub)) {
     return opts.byokConfigured ? "byok" : "none";
   }
   if (opts.launchTarget === "local" && opts.subscriptionConnected) return "subscription";
-  if (opts.byokConfigured) return "byok";
-  if (opts.subscriptionConnected) return "subscription";
-  return "none";
+  return opts.byokConfigured ? "byok" : "none";
 }
 
 /** BYOK provider slug from a model id (leading ``provider/`` segment). Matches api.providerOf. */
@@ -81,9 +103,13 @@ export function byokProviderOf(model: string): string {
 }
 
 /**
- * Provider slugs required by node models that have neither a BYOK key nor a covering
- * Desktop subscription. Hosted launches still need BYOK even if a subscription is mirrored
- * connected (subscriptions only run locally). Sorted unique — empty means the team can launch.
+ * THE launch credential rule (M-subs-desktop) — the same rule the server pre-flight runs, asserted
+ * case-for-case against `credentialGate.cases.json` on both sides. Provider slugs required by node
+ * models that have neither a BYOK key nor a covering subscription. A subscription covers only on a
+ * Desktop (`local`) launch, only for an engine Tvashtr Desktop can run (Claude, Grok), and only when
+ * `subscriptionConnected[sub]` is true — callers pass the server mirror's `connected && runner_fresh`
+ * so the button agrees with `POST /api/runs`. Hosted launches always need a key. Sorted unique —
+ * empty means the team can launch.
  */
 export function missingProvidersForModels(opts: {
   models: readonly (string | null | undefined)[];
@@ -99,9 +125,12 @@ export function missingProvidersForModels(opts: {
     if (!provider) continue;
     if (opts.byokProviders.has(provider)) continue;
     const subId = subscriptionProviderForModel(model);
-    const subConnected = subId ? opts.subscriptionConnected[subId] === true : false;
-    // Match TeamNodePanel soft-warning: subscription covers missing BYOK only on Desktop local.
-    if (opts.launchTarget === "local" && subConnected) continue;
+    const covers =
+      opts.launchTarget === "local" &&
+      subId !== null &&
+      RUNNER_SUBSCRIPTIONS.includes(subId) &&
+      opts.subscriptionConnected[subId] === true;
+    if (covers) continue;
     missing.add(provider);
   }
   return [...missing].sort();

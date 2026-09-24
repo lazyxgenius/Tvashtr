@@ -523,6 +523,9 @@ export interface RunTeamOptions {
   // with `repo_path` server-side. Included in the POST body ONLY when set, so a self-hosted /
   // greenfield launch omits it entirely (the prior request contract is byte-for-byte preserved).
   github_repo?: string;
+  // M-subs-desktop: a launch from Tvashtr Desktop — its Claude/Grok nodes may run on this computer
+  // with the user's own CLI sign-in. Included ONLY when true (web launches are byte-for-byte).
+  desktop_target?: boolean;
 }
 
 // Clone-on-launch (P1.8b): "Run this team" launches a run on a fresh deep-clone of the persistent
@@ -541,6 +544,7 @@ export async function runTeam(teamGraphId: string, opts: RunTeamOptions = {}): P
     base_ref?: string;
     subpath?: string;
     github_repo?: string;
+    desktop_target?: boolean;
   } = {
     team_graph_id: teamGraphId,
   };
@@ -552,6 +556,7 @@ export async function runTeam(teamGraphId: string, opts: RunTeamOptions = {}): P
   // M-h1b: the hosted GitHub repo target threads through ONLY when set — a self-hosted/greenfield
   // launch omits it, so its request body is byte-for-byte the prior contract.
   if (opts.github_repo) body.github_repo = opts.github_repo;
+  if (opts.desktop_target === true) body.desktop_target = true;
   const res = await fetch("/api/runs", {
     method: "POST",
     headers: { "content-type": "application/json" },

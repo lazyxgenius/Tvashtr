@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import sharedGate from "./credentialGate.cases.json";
 import {
+  RUNNER_SUBSCRIPTIONS,
+  SUBSCRIPTION_DISCLOSURE,
+  subscriptionCoverLabel,
   SUBSCRIPTION_PROVIDERS,
   subscriptionProviderForModel,
   modelProvidersForSubscription,
@@ -69,15 +73,26 @@ describe("missingProvidersForModels", () => {
     ).toEqual(["openrouter"]);
   });
 
-  it("treats a Desktop subscription as covering the mapped BYOK slug", () => {
+  it("treats a fresh Desktop subscription as covering the mapped BYOK slug", () => {
     expect(
       missingProvidersForModels({
-        models: ["openai/gpt-4o-mini", "anthropic/claude-sonnet-4"],
+        models: ["xai/grok-4.7", "anthropic/claude-sonnet-4"],
         byokProviders: new Set(),
-        subscriptionConnected: { codex: true, claude: true },
+        subscriptionConnected: { grok: true, claude: true },
         launchTarget: "local",
       }),
     ).toEqual([]);
+  });
+
+  it("a Codex subscription cannot run nodes on Desktop yet — openai still needs a key", () => {
+    expect(
+      missingProvidersForModels({
+        models: ["openai/gpt-4o-mini"],
+        byokProviders: new Set(),
+        subscriptionConnected: { codex: true },
+        launchTarget: "local",
+      }),
+    ).toEqual(["openai"]);
   });
 
   it("still requires BYOK on hosted even when a subscription is connected", () => {
@@ -185,5 +200,46 @@ describe("enginesNeedsInstallHint (Desktop PATH / Dock)", () => {
     expect(copy).toMatch(/Terminal/i);
     expect(copy).toMatch(/Refresh/i);
     expect(copy).toMatch(/quit|reopen/i);
+  });
+});
+
+// M-subs-desktop: the ONE launch credential rule. These exact cases are ALSO asserted against the
+// server pre-flight (backend/tests/test_credential_gate.py) — the Run button and POST /api/runs
+// cannot disagree.
+describe("shared launch credential rule (FE ⇄ server)", () => {
+  for (const c of sharedGate.cases) {
+    it(c.name, () => {
+      const fresh: Partial<Record<"claude" | "grok" | "codex", boolean>> = {};
+      for (const p of c.fresh) fresh[p as "claude" | "grok" | "codex"] = true;
+      expect(
+        missingProvidersForModels({
+          models: c.models,
+          byokProviders: new Set(c.byok),
+          subscriptionConnected: fresh,
+          launchTarget: c.target as "local" | "hosted",
+        }),
+      ).toEqual(c.missing);
+    });
+  }
+
+  it("only Claude and Grok can run on Tvashtr Desktop", () => {
+    expect(RUNNER_SUBSCRIPTIONS).toEqual(["claude", "grok"]);
+  });
+});
+
+describe("subscription copy (M-subs-desktop §3.0/§3.4)", () => {
+  it("labels a covered node as running on this computer via the subscription", () => {
+    expect(subscriptionCoverLabel("claude")).toBe(
+      "via your Claude subscription · runs on this computer",
+    );
+    expect(subscriptionCoverLabel("grok")).toBe(
+      "via your Grok subscription · runs on this computer",
+    );
+  });
+
+  it("carries the exact compliance disclosure", () => {
+    expect(SUBSCRIPTION_DISCLOSURE).toBe(
+      "Tvashtr runs your own installed Claude Code / Grok on this computer. You sign in inside that tool — Tvashtr never sees or stores your login. Usage counts against your own plan and follows Anthropic's / xAI's terms. Tvashtr isn't affiliated with or endorsed by Anthropic or xAI.",
+    );
   });
 });

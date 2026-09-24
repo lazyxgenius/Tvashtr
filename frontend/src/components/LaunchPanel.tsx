@@ -464,7 +464,8 @@ export function LaunchPanel({
 
         {document.documentElement.dataset.tvashtrDesktop === "true" && (
           <p className="tv-launch__note" role="note">
-            Local subscription runs stop when you quit Desktop. Hosted BYOK runs can continue on Fly.
+            Claude and Grok nodes run on this computer with your own installed CLI — keep Tvashtr
+            Desktop open until the run finishes. Nodes on an API key run in the cloud as usual.
           </p>
         )}
 

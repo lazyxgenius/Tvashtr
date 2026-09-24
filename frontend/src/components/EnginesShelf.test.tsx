@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as api from "../lib/api";
@@ -187,4 +187,95 @@ describe("EnginesShelf", () => {
       screen.getByRole("button", { name: /I've installed it — Refresh Grok/i }),
     ).toBeInTheDocument();
   });
+
+  // ---- M-subs-desktop ----
+
+  const desktopBridge = (over: Partial<TvashtrDesktopBridge["engines"]> = {}) => {
+    let push: ((s: unknown) => void) | null = null;
+    const engines = {
+      getStatus: vi.fn().mockResolvedValue([]),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      refresh: vi.fn(),
+      onStatus: vi.fn((cb: (s: unknown) => void) => {
+        push = cb;
+        return () => {
+          push = null;
+        };
+      }),
+      ...over,
+    };
+    window.tvashtrDesktop = { engines } as unknown as TvashtrDesktopBridge;
+    return { engines, emit: (s: unknown) => push?.(s) };
+  };
+
+  it("shows the compliance disclosure on the subscription cards (web and Desktop)", async () => {
+    vi.mocked(api.listProviders).mockResolvedValue([]);
+    vi.mocked(api.listSubscriptionStatuses).mockResolvedValue([]);
+    render(<EnginesShelf />);
+    expect(
+      await screen.findByText(/Tvashtr never sees or stores your login/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/isn't affiliated with or endorsed by Anthropic or xAI/i)).toBeInTheDocument();
+  });
+
+  it("Connect opens the vendor login in Terminal and says how to finish", async () => {
+    const { engines } = desktopBridge({
+      connect: vi.fn().mockResolvedValue({ ...disconnected("claude"), state: "needs_login" }),
+    });
+    vi.mocked(api.listProviders).mockResolvedValue([]);
+    vi.mocked(api.listSubscriptionStatuses).mockResolvedValue([]);
+    render(<EnginesShelf />);
+    fireEvent.click(await screen.findByRole("button", { name: /Connect Claude/i }));
+    await waitFor(() => expect(engines.connect).toHaveBeenCalledWith("claude"));
+    expect(
+      await screen.findByText(/Finish signing in to Claude in the Terminal window/i),
+    ).toBeInTheDocument();
+    // The main process owns the mirror now (A3) — the renderer never writes it.
+    expect(api.putSubscriptionStatus).not.toHaveBeenCalled();
+    expect(api.deleteSubscriptionStatus).not.toHaveBeenCalled();
+  });
+
+  it("flips to Connected when the main process re-checks after the Terminal login", async () => {
+    const { emit } = desktopBridge();
+    vi.mocked(api.listProviders).mockResolvedValue([]);
+    vi.mocked(api.listSubscriptionStatuses).mockResolvedValue([]);
+    render(<EnginesShelf />);
+    await screen.findByRole("button", { name: /Connect Claude/i });
+    act(() => {
+      emit({
+        provider: "claude",
+        connected: true,
+        state: "connected",
+        account_hint: "Claude Pro",
+        source: "harness",
+        checked_at: "2026-09-24T00:00:00Z",
+      });
+    });
+    expect(await screen.findByText("Claude Pro")).toBeInTheDocument();
+    expect(screen.getAllByText("Connected").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("a Claude CLI signed in with an API key is shown — and not counted as a subscription", async () => {
+    desktopBridge({
+      getStatus: vi.fn().mockResolvedValue([
+        {
+          provider: "claude",
+          connected: false,
+          state: "api_key",
+          account_hint: "Signed in with an API key",
+          source: "harness",
+          checked_at: "2026-09-24T00:00:00Z",
+        },
+      ]),
+    });
+    vi.mocked(api.listProviders).mockResolvedValue([]);
+    vi.mocked(api.listSubscriptionStatuses).mockResolvedValue([]);
+    render(<EnginesShelf />);
+    expect(await screen.findByText("On an API key")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Claude Code is signed in with an API key, not your Claude subscription/i),
+    ).toBeInTheDocument();
+  });
 });
+

@@ -1179,7 +1179,7 @@ describe("TeamNodePanel — edit-time model validation hint (soft, never blocks 
 });
 
 describe("TeamNodePanel — prefer-subscription treatment pills", () => {
-  it("shows via subscription (local) when Desktop + Claude connected for anthropic model", async () => {
+  it("shows 'via your Claude subscription · runs on this computer' on Desktop + Claude connected", async () => {
     document.documentElement.dataset.tvashtrDesktop = "true";
     window.tvashtrDesktop = {
       engines: {
@@ -1208,7 +1208,9 @@ describe("TeamNodePanel — prefer-subscription treatment pills", () => {
         onClose={() => {}}
       />,
     );
-    expect(await screen.findByText(/via subscription \(local\)/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText("via your Claude subscription · runs on this computer"),
+    ).toBeInTheDocument();
   });
 
   it("shows via API key when BYOK configured without prefer-sub local win", async () => {

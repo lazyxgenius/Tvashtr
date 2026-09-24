@@ -34,13 +34,10 @@ interface TvashtrDesktopBridge {
     refresh: (
       provider: import("./lib/engines").SubscriptionProviderId,
     ) => Promise<import("./lib/engines").SubscriptionStatus>;
-  };
-  runs?: {
-    startLocal: (payload: {
-      teamGraphId: string;
-      idea: string;
-    }) => Promise<{ localRunId: string }>;
-    stopLocal: (localRunId: string) => Promise<void>;
-    subscribeLogs: (localRunId: string, cb: (line: string) => void) => () => void;
+    /**
+     * M-subs-desktop: the main process re-asks a CLI when the window regains focus after Connect
+     * opened the vendor login in Terminal, and pushes the new status here. Returns an unsubscribe.
+     */
+    onStatus?: (cb: (status: import("./lib/engines").SubscriptionStatus) => void) => () => void;
   };
 }

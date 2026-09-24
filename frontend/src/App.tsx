@@ -153,13 +153,12 @@ export default function App({
     let cancelled = false;
     (async () => {
       try {
-        const d = window.tvashtrDesktop;
-        const engines = d && typeof d === "object" && d.engines ? d.engines : null;
+        // M-subs-desktop: the gate reads the SERVER mirror — a subscription covers only while it is
+        // connected AND this user's Tvashtr Desktop runner has checked in (`runner_fresh`), which is
+        // exactly what the server pre-flight accepts. One rule, so Run and POST /api/runs agree.
         const [providers, rows] = await Promise.all([
           listProviders(),
-          engines?.getStatus
-            ? engines.getStatus()
-            : listSubscriptionStatuses().catch(() => [] as SubscriptionStatus[]),
+          listSubscriptionStatuses().catch(() => [] as SubscriptionStatus[]),
         ]);
         if (cancelled) return;
         const byok = new Set(
@@ -167,7 +166,7 @@ export default function App({
         );
         const subs: Partial<Record<SubscriptionProviderId, boolean>> = {};
         for (const row of Array.isArray(rows) ? rows : []) {
-          subs[row.provider] = row.connected === true;
+          subs[row.provider] = row.connected === true && row.runner_fresh === true;
         }
         setCredentialGate({ byok, subs });
       } catch {
@@ -440,7 +439,13 @@ export default function App({
       setBlockedNodes([]);
       resetRunState();
       try {
-        const id = await runTeam(currentTeamId, opts);
+        // M-subs-desktop: a Desktop launch tells the server so its Claude/Grok nodes can run on this
+        // computer with the user's own CLI sign-in (the web app never sends it).
+        const isDesktopLaunch = document.documentElement.dataset.tvashtrDesktop === "true";
+        const id = await runTeam(
+          currentTeamId,
+          isDesktopLaunch ? { ...opts, desktop_target: true } : opts,
+        );
         const g = await getGraph(id);
         setGraph(g);
         setRunId(id);

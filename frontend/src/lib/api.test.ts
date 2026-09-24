@@ -495,6 +495,18 @@ describe("getRunDocuments (M-docs run-view picker)", () => {
 });
 
 describe("runTeam — POST body shaping (greenfield byte-for-byte)", () => {
+  it("adds desktop_target ONLY for a Desktop launch (M-subs-desktop)", async () => {
+    const on = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "rd" })));
+    vi.stubGlobal("fetch", on);
+    await runTeam("team-1", { desktop_target: true });
+    expect(bodyOf(on.mock.calls[0])).toEqual({ team_graph_id: "team-1", desktop_target: true });
+
+    const off = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "rh" })));
+    vi.stubGlobal("fetch", off);
+    await runTeam("team-1", { desktop_target: false });
+    expect(bodyOf(off.mock.calls[0])).toEqual({ team_graph_id: "team-1" });
+  });
+
   it("posts ONLY { team_graph_id } when called with no opts", async () => {
     const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "r1" })));
     vi.stubGlobal("fetch", fetchMock);

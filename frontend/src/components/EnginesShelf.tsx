@@ -3,12 +3,10 @@ import { X } from "lucide-react";
 
 import {
   addProvider,
-  deleteSubscriptionStatus,
   listProviders,
   listSubscriptionStatuses,
   type ProviderCredential,
   providerSuggestions,
-  putSubscriptionStatus,
   removeProvider,
 } from "../lib/api";
 import {
@@ -18,6 +16,7 @@ import {
   enginesNeedsInstallHint,
   enginesShelfSubtitle,
   enginesSubscriptionsCallout,
+  SUBSCRIPTION_DISCLOSURE,
   SUBSCRIPTION_PROVIDERS,
   type SubscriptionCardState,
   type SubscriptionProviderId,
@@ -69,6 +68,8 @@ function pillLabel(state: SubscriptionCardState): string {
       return "Needs install";
     case "needs_login":
       return "Needs login";
+    case "api_key":
+      return "On an API key";
     case "error":
       return "Error";
     case "disconnected":
@@ -77,22 +78,8 @@ function pillLabel(state: SubscriptionCardState): string {
   }
 }
 
-function mirrorPut(status: SubscriptionStatus): void {
-  void putSubscriptionStatus(status.provider, {
-    connected: status.connected,
-    state: status.state,
-    account_hint: status.account_hint,
-    source: status.source,
-  }).catch(() => {
-    /* ignore mirror failures */
-  });
-}
-
-function mirrorDelete(provider: SubscriptionProviderId): void {
-  void deleteSubscriptionStatus(provider).catch(() => {
-    /* ignore mirror failures */
-  });
-}
+// M-subs-desktop (A3): the Electron MAIN process pushes every status change to the server mirror
+// (at launch and on connect / refresh / disconnect), so this card never writes the mirror itself.
 
 /**
  * Engines shelf — subscription cards (Desktop Connect) + restyled BYOK API keys.
@@ -109,6 +96,10 @@ export function EnginesShelf() {
   const [providerInput, setProviderInput] = useState("");
   const [keyInput, setKeyInput] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
+  // Providers whose Connect just opened the vendor's own login in Terminal (M-subs-desktop §3.0).
+  const [loginOpened, setLoginOpened] = useState<Partial<Record<SubscriptionProviderId, boolean>>>(
+    {},
+  );
   const mounted = useRef(true);
 
   const isDesktop = desktopEngines() !== null;
@@ -151,7 +142,19 @@ export function EnginesShelf() {
 
   const setStatusFor = useCallback((status: SubscriptionStatus) => {
     setSubscriptions((prev) => prev.map((s) => (s.provider === status.provider ? status : s)));
+    if (status.connected) setLoginOpened((prev) => ({ ...prev, [status.provider]: false }));
   }, []);
+
+  // The main process re-asks the CLI when the window regains focus after a Terminal login.
+  useEffect(() => {
+    const engines = desktopEngines();
+    if (!engines?.onStatus) return;
+    return engines.onStatus((status) => {
+      if (mounted.current && status && SUBSCRIPTION_PROVIDERS.includes(status.provider)) {
+        setStatusFor(status);
+      }
+    });
+  }, [setStatusFor]);
 
   const handleConnect = useCallback(
     async (provider: SubscriptionProviderId) => {
@@ -162,7 +165,9 @@ export function EnginesShelf() {
         const status = await engines.connect(provider);
         if (!mounted.current) return;
         setStatusFor(status);
-        mirrorPut(status);
+        if (!status.connected && status.state !== "needs_install") {
+          setLoginOpened((prev) => ({ ...prev, [provider]: true }));
+        }
       } catch {
         /* leave prior status */
       } finally {
@@ -181,7 +186,6 @@ export function EnginesShelf() {
         const status = await engines.disconnect(provider);
         if (!mounted.current) return;
         setStatusFor(status);
-        mirrorDelete(provider);
       } catch {
         /* leave prior status */
       } finally {
@@ -200,11 +204,6 @@ export function EnginesShelf() {
         const status = await engines.refresh(provider);
         if (!mounted.current) return;
         setStatusFor(status);
-        if (status.connected) {
-          mirrorPut(status);
-        } else {
-          mirrorDelete(provider);
-        }
       } catch {
         /* leave prior status */
       } finally {
@@ -264,6 +263,9 @@ export function EnginesShelf() {
         <div className="tv-engines__callout" role="note">
           {enginesSubscriptionsCallout(isDesktop)}
         </div>
+        <p className="tv-engines__disclosure" role="note" aria-label="How subscriptions work">
+          {SUBSCRIPTION_DISCLOSURE}
+        </p>
         <div className="tv-engines__cards">
           {subscriptions.map((s) => {
             const name = displayNameForSubscription(s.provider);
@@ -279,6 +281,18 @@ export function EnginesShelf() {
                   <span className="tv-engines__pill">{pillLabel(s.state)}</span>
                 </div>
                 {s.account_hint && <p className="tv-engines__hint">{s.account_hint}</p>}
+                {s.state === "api_key" && (
+                  <p className="tv-engines__hint">
+                    {name === "Claude" ? "Claude Code" : name} is signed in with an API key, not
+                    your {name} subscription — Connect to sign in with your subscription.
+                  </p>
+                )}
+                {loginOpened[s.provider] && !connected && isDesktop && (
+                  <p className="tv-engines__hint" role="status">
+                    Finish signing in to {name} in the Terminal window that just opened, then come
+                    back — Tvashtr checks again automatically.
+                  </p>
+                )}
                 {s.state === "needs_install" && isDesktop && (
                   <p className="tv-engines__hint">
                     {enginesNeedsInstallHint(name)}{" "}
