@@ -25,28 +25,11 @@ import { cx, useDismiss } from "../../design-system/components/utils";
 import { checkBackend, useBackendStatus } from "../../lib/backendStatus";
 import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
 import { type Route, sectionOf } from "../../lib/nav";
+import type { NavBadges } from "../../lib/workspaceStatus";
 import { formatRelativeTimeWords } from "../../lib/time";
 import "./shell.css";
 
-/** Counts shown as nav badges. Anything undefined is simply not shown. */
-export interface NavBadges {
-  /** Home: items in "Needs you". */
-  home?: number;
-  /** Engines: (team × surface) pairs that can't run yet. */
-  enginesToFix?: number;
-  /** Engines › Overview shows "New" before anything is set up. */
-  enginesFirstTime?: boolean;
-  /** Engines › Subscriptions: "{connected} of {total}". */
-  subscriptions?: { connected: number; total: number };
-  /** Engines › API keys: saved keys. */
-  apiKeys?: number;
-  tools?: number;
-  skills?: number;
-  /** Toolkit › Memory: memories waiting in the Inbox ("N new"). */
-  memoryInbox?: number;
-  /** Toolkit › Secrets: referenced secrets with no value ("N missing"). */
-  secretsMissing?: number;
-}
+export type { NavBadges };
 
 export interface ShellUser {
   email: string;

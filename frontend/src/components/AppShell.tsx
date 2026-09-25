@@ -20,6 +20,7 @@ export function AppShell({
   brand,
   barRight,
   navFooter,
+  bare = false,
   children,
 }: {
   view: DashView;
@@ -27,8 +28,11 @@ export function AppShell({
   brand: ReactNode;
   barRight?: ReactNode;
   navFooter?: ReactNode;
+  /** Render only the page body — the new dashboard Shell draws the chrome around it. */
+  bare?: boolean;
   children: ReactNode;
 }) {
+  if (bare) return <>{children}</>;
   return (
     <div className="tv-dash tv-shell">
       <header className="tv-dash__bar">

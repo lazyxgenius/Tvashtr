@@ -201,6 +201,10 @@ export interface Health {
 export interface AuthUser {
   id: string;
   email: string;
+  /** GitHub handle for accounts linked via GitHub sign-in, else null. */
+  github_login?: string | null;
+  /** github_login, else the email's local part capitalised ("Good morning, {display_name}."). */
+  display_name?: string | null;
 }
 
 // M-h1a: the PUBLIC client bootstrap (GET /api/config) — the posture the AuthWizard needs BEFORE

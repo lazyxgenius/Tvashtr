@@ -92,6 +92,7 @@ export function Dashboard({
   onOpenTeam,
   onOpenRun,
   initialView = "home",
+  embedded = false,
 }: {
   user: AuthUser;
   onLogout: () => void;
@@ -102,6 +103,8 @@ export function Dashboard({
   onOpenRun?: (runId: string, teamId: string) => void;
   /** Landing page inside the dashboard shell (canvas "Open Engines" → "engines"). */
   initialView?: DashView;
+  /** Inside the new dashboard Shell: render the page body only (no header or nav). */
+  embedded?: boolean;
 }) {
   const [view, setView] = useState<DashView>(initialView);
   useEffect(() => {
@@ -261,6 +264,7 @@ export function Dashboard({
 
   return (
     <AppShell
+      bare={embedded}
       view={view}
       onNavigate={setView}
       brand={

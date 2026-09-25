@@ -5,8 +5,7 @@ import { AuthGate } from "./AuthGate";
 
 // Mock the heavy authed surfaces so this test targets AuthGate's ROUTING (which screen renders), not
 // the canvas/dashboard data + poll surfaces. The landing + login screens stay real (presentational).
-vi.mock("../App", () => ({ default: () => <div>APP STUB</div> }));
-vi.mock("./Dashboard", () => ({ Dashboard: () => <div>DASHBOARD STUB</div> }));
+vi.mock("../pages/Workspace", () => ({ Workspace: () => <div>DASHBOARD STUB</div> }));
 
 function stubMe(status: number, body: unknown = {}) {
   const fetchMock = vi.fn(() =>

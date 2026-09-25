@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import App from "../App";
+import { ToastProvider } from "../design-system/components";
 import {
   type AuthUser,
   type Config,
@@ -9,7 +9,7 @@ import {
   logout,
   setUnauthorizedHandler,
 } from "../lib/api";
-import { Dashboard, type DashView } from "./Dashboard";
+import { Workspace } from "../pages/Workspace";
 import { LandingPage } from "./LandingPage";
 import { type AuthMode, AuthWizard } from "./AuthWizard";
 
@@ -18,9 +18,8 @@ import { type AuthMode, AuthWizard } from "./AuthWizard";
  *
  * - Logged OUT: the LANDING page by default (product pitch + CTAs); a CTA switches to the
  *   login/register screen (Slice B — the canvas is never the logged-out default).
- * - Logged IN: the DASHBOARD by default (teams / runs / providers); opening a team routes to the
- *   canvas (`<App/>`) for that team, with a back-to-dashboard control. (Slice A landed login here on
- *   the canvas; Slice B inserts the landing page in front and the dashboard behind.)
+ * - Logged IN: the `Workspace` — the dashboard pages and each team's canvas, chosen by the page
+ *   address (`lib/nav.ts`), so back/forward and refresh keep the place.
  *
  * It also registers the api 401 seam so an expired session mid-use drops the whole app back to the
  * landing page, and threads the identity + a logout handler into the authed surfaces.
@@ -31,14 +30,6 @@ export function AuthGate() {
   // Logged-out sub-view: the landing page by default; a CTA switches to the login screen.
   const [unauthView, setUnauthView] = useState<"landing" | "login">("landing");
   const [loginMode, setLoginMode] = useState<AuthMode>("login");
-  // Logged-in sub-view: the dashboard by default; opening a team routes to the canvas for that team.
-  const [openTeamId, setOpenTeamId] = useState<string | null>(null);
-  // Which dashboard page to show when returning from the canvas (Open Engines → "engines").
-  const [dashView, setDashView] = useState<DashView>("home");
-  // The dashboard's per-team run-history drill-down can open ONE run directly. It carries the team
-  // too, so the canvas lands on the right team with that run's view already seeded — going "back"
-  // from there is the ordinary authoring view of the same team.
-  const [openRunId, setOpenRunId] = useState<string | null>(null);
   // M-h1a: the public backend posture (hosted vs self-hosted) — drives which door the AuthWizard shows.
   const [config, setConfig] = useState<Config | null>(null);
 
@@ -49,7 +40,6 @@ export function AuthGate() {
       setUser(null);
       setStatus("unauthed");
       setUnauthView("landing");
-      setOpenTeamId(null);
     });
     return () => setUnauthorizedHandler(null);
   }, []);
@@ -89,7 +79,6 @@ export function AuthGate() {
   const handleAuthed = (me: AuthUser) => {
     setUser(me);
     setStatus("authed");
-    setOpenTeamId(null); // land on the dashboard
   };
 
   const handleLogout = async () => {
@@ -101,7 +90,6 @@ export function AuthGate() {
       setUser(null);
       setStatus("unauthed");
       setUnauthView("landing");
-      setOpenTeamId(null);
     }
   };
 
@@ -127,36 +115,9 @@ export function AuthGate() {
     }
     return <LandingPage onGetStarted={startAuth} />;
   }
-  // Authed: the dashboard, or the canvas for an opened team.
-  if (openTeamId) {
-    return (
-      <App
-        user={user}
-        onLogout={() => void handleLogout()}
-        teamId={openTeamId}
-        initialRunId={openRunId}
-        onBackToDashboard={(view) => {
-          setOpenTeamId(null);
-          setOpenRunId(null);
-          setDashView(view ?? "home");
-        }}
-        config={config}
-      />
-    );
-  }
   return (
-    <Dashboard
-      user={user}
-      initialView={dashView}
-      onLogout={() => void handleLogout()}
-      onOpenTeam={(teamId) => {
-        setOpenRunId(null); // opening a team is the authoring view, never a stale run
-        setOpenTeamId(teamId);
-      }}
-      onOpenRun={(runId, teamId) => {
-        setOpenRunId(runId);
-        setOpenTeamId(teamId);
-      }}
-    />
+    <ToastProvider>
+      <Workspace user={user} config={config} onLogout={() => void handleLogout()} />
+    </ToastProvider>
   );
 }

@@ -366,3 +366,21 @@
   gap: 8px;
   flex: none;
 }
+
+/* ---- Keyboard shortcuts dialog (HmF-Account-2) ---- */
+.sh-keys__row {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-200);
+  font-size: 13.5px;
+  color: var(--ink-800);
+}
+.sh-keys__kbd {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line-300);
+  font-family: var(--font-code);
+  font-size: 12px;
+}

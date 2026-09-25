@@ -250,6 +250,7 @@ export function Dialog({
   children,
   footer,
   width = 500,
+  closeButton = true,
 }: {
   open: boolean;
   title: string;
@@ -257,6 +258,8 @@ export function Dialog({
   children: ReactNode;
   footer?: ReactNode;
   width?: number;
+  /** Show the ✕ in the corner (dialogs that end on a single [Done] leave it out). */
+  closeButton?: boolean;
 }) {
   const ref = useModalDialog<HTMLDivElement>(open, onClose);
   if (!open) return null;
@@ -276,9 +279,11 @@ export function Dialog({
           <h2 className="ds-dialog__title" style={{ flex: 1 }}>
             {title}
           </h2>
-          <IconButton size="sm" aria-label="Close" onClick={onClose}>
-            <X size={16} strokeWidth={1.8} aria-hidden />
-          </IconButton>
+          {closeButton && (
+            <IconButton size="sm" aria-label="Close" onClick={onClose}>
+              <X size={16} strokeWidth={1.8} aria-hidden />
+            </IconButton>
+          )}
         </div>
         {children}
         {footer && <div className="ds-dialog__actions">{footer}</div>}
