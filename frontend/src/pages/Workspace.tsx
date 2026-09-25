@@ -91,7 +91,7 @@ export function Workspace({
         onShowShortcuts={() => setShortcutsOpen(true)}
         onLogout={onLogout}
       >
-        <WorkspacePage route={route} />
+        <WorkspacePage route={route} user={user} />
       </Shell>
       <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
@@ -99,10 +99,10 @@ export function Workspace({
   );
 }
 
-function WorkspacePage({ route }: { route: Route }) {
+function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
   switch (route.page) {
     case "home":
-      return <HomePage />;
+      return <HomePage user={user} />;
     case "domains":
       return (
         <DomainsPage
