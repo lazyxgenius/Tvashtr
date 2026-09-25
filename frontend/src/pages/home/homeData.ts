@@ -64,9 +64,10 @@ async function loadActive(): Promise<void> {
   try {
     const page = await listRunsPage({ status: "active", progress: true, limit: 50 });
     const before = state.active.data ?? [];
-    const now = page.runs;
-    const nowIds = new Set(now.map((r) => r.run_id));
     const endedIds = new Set(state.ended.map((e) => e.row.run_id));
+    // A run we saw end (e.g. just stopped) stays ended even if a slower response still lists it.
+    const now = page.runs.filter((r) => !endedIds.has(r.run_id));
+    const nowIds = new Set(now.map((r) => r.run_id));
     const vanished = before.filter((r) => !nowIds.has(r.run_id) && !endedIds.has(r.run_id));
     set({ active: { data: now, loading: false, error: false } });
     for (const row of vanished) void noteEnded(row);
@@ -275,6 +276,7 @@ export function useAddKeysHandler(fn: (req: AddKeysRequest) => void): void {
 export function __resetHomeDataForTests(): void {
   if (timer) clearTimeout(timer);
   timer = null;
+  window.removeEventListener("focus", onFocus);
   subscribers = 0;
   state = { inbox: EMPTY, active: EMPTY, spend: EMPTY, ended: [], version: 0 };
   listeners.clear();
