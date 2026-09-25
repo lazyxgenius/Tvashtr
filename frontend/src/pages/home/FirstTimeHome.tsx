@@ -185,7 +185,7 @@ export function FirstTimeHome({ progress }: { progress: GetStartedProgress }) {
         </div>
         <Button variant="secondary" onClick={() => openNewTeam()}>
           <Plus className="hm-inline-icon" size={15} strokeWidth={1.6} aria-hidden />
-          New team
+          <span>New team</span>
         </Button>
       </div>
       <div className="hm-cols">
