@@ -233,34 +233,31 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
         "subscription": None,
         "byok_probed": False,
     },
-    # PROBED 2026-09-08 (full transcript in ``STATE.md``). Both seats land on the same slug: it is
-    # the ONLY nvidia_nim candidate that passed BOTH matrices, and it passed the worker gates 3/3 on
-    # re-probe. Its first-run ``W1: FAIL — empty content`` was transient (a 95s stall), which is why
-    # a single observation was not allowed to decide a catalogue entry. Rejected here, and the
-    # rejections are real: ``moonshotai/kimi-k2.6`` 404s (not entitled), and
-    # ``minimaxai/minimax-m3`` passed all four WORKER gates but truncates as a thinker
-    # (T2 RateLimitError, then a fragment) — it is kept as a worker quick-pick, not a default.
+    # PROBED 2026-09-08 (full transcript in ``STATE.md``). THINKER: ``openai/gpt-oss-20b`` is
+    # the only nvidia_nim candidate that passed the thinker matrix, and it serves the PM live in
+    # every run to date. Rejected: ``moonshotai/kimi-k2.6`` 404s (not entitled).
+    #
+    # WORKER: NONE, deliberately (2026-09-25). NIM has no usable worker model today:
+    # * ``minimaxai/minimax-m3`` — the worker default since M-seat — is RETIRED: on 2026-09-25
+    #   NIM's ``/v1/models`` no longer lists it and a chat call answers HTTP 410, so the launch
+    #   pre-flight refused every team whose worker seat resolved to it.
+    # * ``openai/gpt-oss-20b`` passes all four probe gates 3/3 and then fails the REAL loop
+    #   DETERMINISTICALLY — runs 647f9c86 and 98427784, each on the Engineer's FIRST request with
+    #   zero completed calls. Offering it as a worker quick-pick handed users a slug proven to
+    #   break the Engineer, so it is no longer a worker preset either.
+    # So the worker seat YIELDS to the next held provider in ``_PROVIDER_DEFAULT_ORDER`` (for an
+    # account holding NIM + OpenAI: Engineer/Reviewer on OpenAI's worker default, the PM on NIM).
+    # A NIM-only account is told at launch to add a worker-capable key instead of meeting a dead
+    # model. Re-open this seat only for a slug that passes ``scripts/seat_probe.py`` AND a live
+    # loop.
     "nvidia_nim": {
         "thinker_default": "nvidia_nim/openai/gpt-oss-20b",
-        # WORKER: `openai/gpt-oss-20b` passes all four probe gates 3/3 and then fails the REAL
-        # brownfield loop DETERMINISTICALLY — twice, on runs 647f9c86 and 98427784, each time on the
-        # Engineer's FIRST request with zero completed calls and an empty-bodied
-        # `Nvidia_nimException`. That is the fifth gate only the full loop exposes, and the probe
-        # cannot see it. `minimaxai/minimax-m3` is the other NIM candidate that passed all four
-        # worker gates, so promoting it is an EVIDENCED swap between two probed models, not a
-        # hand-pick — and `_PROVIDER_DEFAULT_ORDER` is untouched. gpt-oss-20b stays a worker preset
-        # (it is genuinely worker-capable by every check we can automate) and keeps the thinker
-        # seat, which it serves live in every run to date.
-        "worker_default": "nvidia_nim/minimaxai/minimax-m3",
+        "worker_default": None,
         "thinker_presets": ["nvidia_nim/openai/gpt-oss-20b"],
-        "worker_presets": [
-            "nvidia_nim/minimaxai/minimax-m3",
-            "nvidia_nim/openai/gpt-oss-20b",
-        ],
+        "worker_presets": [],
         "label": "NVIDIA NIM",
         "model_labels": {
             "nvidia_nim/openai/gpt-oss-20b": "gpt-oss-20b",
-            "nvidia_nim/minimaxai/minimax-m3": "MiniMax M3",
         },
         "subscription": None,
         "byok_probed": True,

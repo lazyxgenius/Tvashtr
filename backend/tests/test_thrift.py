@@ -346,17 +346,29 @@ def test_a_two_provider_account_gets_nvidia_primary_and_openrouter_as_the_fallba
             # is now per SEAT, so the expectation is read from the catalogue for THIS node's seat
             # instead of being one hardcoded string for all of them. Still exact, still per node.
             capability = capability_of(node["kind"])
-            assert node["model"] == catalogue_default("nvidia_nim", capability), (
-                builder.__name__,
-                node["role"],
-                capability,
-            )
-            assert node["config"].get("fallback_model") == catalogue_default(
-                "openrouter", capability
-            ), (builder.__name__, node["role"], capability)
-            # and the providers themselves are the point: free primary, paid fallback.
-            assert node["model"].startswith("nvidia_nim/")
-            assert node["config"]["fallback_model"].startswith("openrouter/")
+            if catalogue_default("nvidia_nim", capability) is not None:
+                assert node["model"] == catalogue_default("nvidia_nim", capability), (
+                    builder.__name__,
+                    node["role"],
+                    capability,
+                )
+                assert node["config"].get("fallback_model") == catalogue_default(
+                    "openrouter", capability
+                ), (builder.__name__, node["role"], capability)
+                # and the providers themselves are the point: free primary, paid fallback.
+                assert node["model"].startswith("nvidia_nim/")
+                assert node["config"]["fallback_model"].startswith("openrouter/")
+            else:
+                # 2026-09-25: nvidia_nim declares NO worker seat (minimax-m3 retired, HTTP 410;
+                # gpt-oss-20b breaks the real worker loop), so a WORKER yields to openrouter — the
+                # only held provider that serves it — and, with nowhere left to fail over to, it
+                # carries no fallback key at all (never NIM, never the primary again).
+                assert node["model"] == catalogue_default("openrouter", capability), (
+                    builder.__name__,
+                    node["role"],
+                    capability,
+                )
+                assert "fallback_model" not in node["config"], (builder.__name__, node["role"])
         # A gate or terminal carries no model, so it must never acquire a fallback either.
         for node in nodes:
             if node["model"] is None:

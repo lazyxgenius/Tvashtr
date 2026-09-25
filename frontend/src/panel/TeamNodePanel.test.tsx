@@ -355,7 +355,7 @@ describe("TeamNodePanel — provider-gated model picker (Slice C)", () => {
     render(
       <TeamNodePanel
         teamId="t1"
-        node={engineer("openai/gpt-4o-mini")}
+        node={engineer("nvidia_nim/openai/gpt-oss-20b")}
         isStartNode={false}
         onSaved={vi.fn().mockResolvedValue(undefined)}
         onClose={() => {}}
@@ -363,20 +363,21 @@ describe("TeamNodePanel — provider-gated model picker (Slice C)", () => {
     );
     // The Provider select is populated from listProviders (openai + nvidia_nim) and reflects the node.
     const provider = await screen.findByRole<HTMLSelectElement>("combobox", { name: "Provider" });
-    await waitFor(() => expect(provider).toHaveValue("openai"));
-    expect(screen.getByRole("option", { name: "nvidia_nim" })).toBeInTheDocument();
+    await waitFor(() => expect(provider).toHaveValue("nvidia_nim"));
+    expect(screen.getByRole("option", { name: "openai" })).toBeInTheDocument();
 
     // Switching the provider rewrites node.model's leading segment to that provider's default FOR
     // THIS NODE'S SEAT (M-seat). The node under test is an engineer — a worker — so this is
-    // nvidia's probed worker default, not whatever slug the provider happens to lead with.
-    await user.selectOptions(provider, "nvidia_nim");
+    // openai's WORKER default (gpt-4.1-mini), not its thinker default (gpt-4o-mini). (It switches
+    // TO openai because nvidia_nim has no worker seat since 2026-09-25.)
+    await user.selectOptions(provider, "openai");
     const model = screen.getByRole<HTMLInputElement>("combobox", { name: "Model" });
-    expect(model.value).toBe("nvidia_nim/minimaxai/minimax-m3");
+    expect(model.value).toBe("openai/gpt-4.1-mini");
 
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(patchCall()).toBeDefined());
     const saved = JSON.parse(patchCall()![1].body as string) as { model: string };
-    expect(saved.model).toBe("nvidia_nim/minimaxai/minimax-m3");
+    expect(saved.model).toBe("openai/gpt-4.1-mini");
   });
 
   it("inline 'Add a provider' reuses addProvider, refetches, and selects the new provider", async () => {
@@ -837,9 +838,7 @@ describe("TeamNodePanel — M-tools C7.0 tools + skills sections", () => {
 
     // Banner clears even though the `node` prop was NOT updated (parent refetch not simulated) —
     // proving the save-path baseline reset, not prop-equality, owns the clear.
-    await waitFor(() =>
-      expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument());
     expect(screen.getByText(/Saved — this drives the next run/i)).toBeInTheDocument();
     expect(save).toBeDisabled();
 
@@ -1183,19 +1182,20 @@ describe("TeamNodePanel — prefer-subscription treatment pills", () => {
     document.documentElement.dataset.tvashtrDesktop = "true";
     window.tvashtrDesktop = {
       engines: {
-        getStatus: async () => [
-          {
-            provider: "claude",
-            connected: true,
-            state: "connected",
-            account_hint: "a@b.c",
-            source: "harness",
-            checked_at: "x",
-          },
-        ],
-        connect: async () => ({}) as never,
-        disconnect: async () => ({}) as never,
-        refresh: async () => ({}) as never,
+        getStatus: () =>
+          Promise.resolve([
+            {
+              provider: "claude",
+              connected: true,
+              state: "connected",
+              account_hint: "a@b.c",
+              source: "harness",
+              checked_at: "x",
+            },
+          ]),
+        connect: () => Promise.resolve({} as never),
+        disconnect: () => Promise.resolve({} as never),
+        refresh: () => Promise.resolve({} as never),
       },
     };
     providersState = [];
