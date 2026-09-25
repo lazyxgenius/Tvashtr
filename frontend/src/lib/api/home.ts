@@ -117,14 +117,28 @@ const KNOWN_KINDS = new Set([
   "memories",
 ]);
 
-/** GET /api/inbox — oldest first. Unknown kinds (a newer server) are skipped, never rendered. */
-export async function getInbox(surface: InboxSurface = "website"): Promise<Inbox> {
-  const data = await apiRequest<Partial<Inbox>>(
+let inboxInFlight: { surface: InboxSurface; promise: Promise<Inbox> } | null = null;
+
+/**
+ * GET /api/inbox — oldest first. Unknown kinds (a newer server) are skipped, never rendered.
+ * Callers that ask while a request is already on its way share it: Home, the nav badge and ⌘K
+ * all read the inbox, and on Home's first paint they'd otherwise each fetch it.
+ */
+export function getInbox(surface: InboxSurface = "website"): Promise<Inbox> {
+  if (inboxInFlight && inboxInFlight.surface === surface) return inboxInFlight.promise;
+  const promise = apiRequest<Partial<Inbox>>(
     "GET",
     `/api/inbox${surface === "desktop" ? "?surface=desktop" : ""}`,
-  );
-  const items = (data.items ?? []).filter((i) => KNOWN_KINDS.has(i.kind));
-  return { count: items.length, items };
+  )
+    .then((data) => {
+      const items = (data.items ?? []).filter((i) => KNOWN_KINDS.has(i.kind));
+      return { count: items.length, items };
+    })
+    .finally(() => {
+      if (inboxInFlight?.promise === promise) inboxInFlight = null;
+    });
+  inboxInFlight = { surface, promise };
+  return promise;
 }
 
 /** Dismiss or snooze an item (a snooze needs `until`, an absolute future time). */
@@ -227,4 +241,5 @@ export function getHomeConfig(): Promise<HomeConfig> {
 /** Test seam. */
 export function __resetHomeConfigForTests(): void {
   configPromise = null;
+  inboxInFlight = null;
 }

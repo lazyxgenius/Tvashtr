@@ -130,6 +130,11 @@
 
 /* ---- IconButton ---- */
 .ds-iconbtn {
+  /* Icon-only: the design system's IconButton keeps the browser's native button font (it has no
+     text, so this is invisible — it keeps the design and the app measuring alike). */
+  font:
+    400 13.3333px Arial,
+    sans-serif;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -916,7 +921,8 @@
   font-family: var(--font-display);
   font-weight: var(--fw-display);
   font-size: 22px;
-  line-height: 1.25;
+  /* The design's titles inherit the page's 1.6 (35.2px): the body starts 12px below that box. */
+  line-height: 1.6;
   color: var(--ink-900);
 }
 .ds-dialog__body {
@@ -964,7 +970,8 @@
   font-family: var(--font-display);
   font-weight: var(--fw-display);
   font-size: 22px;
-  line-height: 1.25;
+  /* The design's titles inherit the page's 1.6 (35.2px): the body starts 12px below that box. */
+  line-height: 1.6;
   color: var(--ink-900);
 }
 .ds-sheet__subtitle {

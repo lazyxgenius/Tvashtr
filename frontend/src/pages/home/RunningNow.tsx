@@ -152,7 +152,22 @@ export function RunningNow() {
       </section>
     );
   }
-  if (rows.length === 0) return null;
+  if (rows.length === 0) {
+    // The empty state HmF-FirstTime-7 draws.
+    return (
+      <section
+        id={SECTION_IDS.runningNow}
+        className="hm-section hm-target"
+        tabIndex={-1}
+        aria-label="Running now"
+      >
+        <div className="hm-section__head">
+          <h2 className="hm-section__title">Running now</h2>
+        </div>
+        <div className="hm-run-empty">Nothing is running. Start a run above, or open a team.</div>
+      </section>
+    );
+  }
 
   const confirmStop = async () => {
     if (!stopping) return;

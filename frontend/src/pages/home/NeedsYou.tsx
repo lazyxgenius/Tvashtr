@@ -120,10 +120,10 @@ export function NeedsYou() {
   const [reviewing, setReviewing] = useState<InboxApproval | null>(null);
   const surface = isDesktopApp() ? "desktop" : "website";
 
-  /** After an item leaves: the last one gets "All caught up." (HOME-52). */
+  /** After an item leaves: the last one gets a plain "All caught up." (HOME-52, HmF-AllClear-1). */
   const say = (opts: ToastOptions) => {
     const left = getHomeData().inbox.data?.count ?? 0;
-    toast(left === 0 ? { ...opts, message: "All caught up." } : opts);
+    toast(left === 0 ? { message: "All caught up." } : opts);
   };
 
   const hide = async (

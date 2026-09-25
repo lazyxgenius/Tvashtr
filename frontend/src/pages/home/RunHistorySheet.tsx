@@ -114,7 +114,7 @@ export function RunHistorySheet({
           return (
             <li key={r.run_id} className="hm-history__row">
               <button type="button" className="hm-history__idea" onClick={() => open(r.run_id)}>
-                {r.idea}
+                <span>{r.idea}</span>
               </button>
               <Badge variant={look.variant} dot>
                 {look.label}

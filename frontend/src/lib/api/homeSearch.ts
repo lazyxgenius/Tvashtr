@@ -1,10 +1,11 @@
 /**
  * The small reads the ⌘K palette and the get-started checklist need: a page of the account's runs
  * (`GET /api/runs`, runs.md) and the Needs-you items (`GET /api/inbox`). Only the fields those two
- * use are typed here; Home's own run and inbox sections have their full clients.
+ * use are typed here; the requests go through Home's full clients (`runs.ts`, `home.ts`).
  */
-import { apiUrl } from "../api";
-import { reportFetchFailed, reportFetchOk } from "../backendStatus";
+import { isDesktopApp } from "../desktopRepos";
+import { getInbox } from "./home";
+import { listRunsPage } from "./runs";
 
 export interface RunBrief {
   run_id: string;
@@ -30,35 +31,15 @@ export interface InboxBrief {
   task?: { id: number; kind: string; title?: string } | null;
 }
 
-async function getJSON<T>(url: string): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(apiUrl(url));
-  } catch (err) {
-    reportFetchFailed();
-    throw err;
-  }
-  if (res.status >= 502 && res.status <= 504) reportFetchFailed();
-  else reportFetchOk();
-  if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
-  return (await res.json()) as T;
-}
-
 /** The newest runs (optionally matching `q` in the idea or team name). */
 export async function listRunsBrief(
   opts: { q?: string; limit?: number } = {},
 ): Promise<RunBrief[]> {
-  const params = new URLSearchParams();
-  if (opts.q) params.set("q", opts.q);
-  params.set("limit", String(opts.limit ?? 50));
-  const body = await getJSON<{ runs?: RunBrief[] }>(`/api/runs?${params.toString()}`);
-  return body.runs ?? [];
+  const page = await listRunsPage({ q: opts.q, limit: opts.limit ?? 50 });
+  return page.runs;
 }
 
-/** Home's Needs-you items, oldest first. */
+/** Home's Needs-you items, oldest first (shares an in-flight request with Home and the badge). */
 export async function getInboxBrief(): Promise<InboxBrief[]> {
-  const surface =
-    document.documentElement.dataset.tvashtrDesktop === "true" ? "desktop" : "website";
-  const body = await getJSON<{ items?: InboxBrief[] }>(`/api/inbox?surface=${surface}`);
-  return body.items ?? [];
+  return (await getInbox(isDesktopApp() ? "desktop" : "website")).items;
 }

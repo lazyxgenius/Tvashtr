@@ -1,271 +1,96 @@
 // Home › Teams, New team, ⌘K, account menu and first time (slice F1b) — website and Desktop.
-// Fixtures mirror the design's sample data (HmF-TeamTabs / TeamFind / TeamMenu / NewTeam / CmdK /
-// Account / FirstTime artboards). The Home sections above Teams belong to slice F1a, so until they
-// land the Teams section sits higher on the page than in the design; `alignTeams` pads it down so
-// the "Teams" title lands where the design draws it (y=198 in the scrolled HmF-Team* artboards)
-// and positions stay comparable.
-const now = Date.now();
-const ago = (min) => new Date(now - min * 60_000).toISOString();
+// Fixtures (shared with home-runs.mjs) mirror the design's sample data (HmF-TeamTabs / TeamFind /
+// TeamMenu / NewTeam / CmdK / Account / FirstTime artboards) and render the whole Home page, so the
+// Teams section sits where the design draws it. The HmF-Team* artboards are the page scrolled by
+// 800px (the design's `margin-top: -800px`); `teamSteps` scrolls the main column the same way.
+import {
+  COPY,
+  TEAMS,
+  TEMPLATES,
+  ago,
+  chip,
+  homeRoutes,
+  morning,
+  recent,
+  run,
+  runsRoute,
+  team,
+} from "./home-fixtures.mjs";
 
-const node = (role, label, kind) => ({
-  id: `${role}-${label}`,
-  kind:
-    kind ??
-    (role === "gate"
-      ? "gate"
-      : role === "ship"
-        ? "terminal"
-        : role === "pm" || role === "architect"
-          ? "thinker"
-          : "worker"),
-  role,
-  label,
-});
-const PM = node("pm", "PM");
-const ARCH = node("architect", "Architect");
-const GATE = node("gate", "Approval");
-const ENG = node("engineer", "Engineer");
-const REV = node("reviewer", "Reviewer");
-const SHIP = node("ship", "Ship");
-const WRITER = node("worker", "Writer");
-
-const team = (id, name, extra) => ({
-  team_graph_id: id,
-  name,
-  created_at: ago(60 * 24 * 20),
-  node_count: 5,
-  last_run: null,
-  spend_usd: 0,
-  run_count: 0,
-  active_run_count: 0,
-  awaiting_run_count: 0,
-  template_key: null,
-  template_name: null,
-  duplicated_from: null,
-  ...extra,
-});
-
-const run = (id, status, idea, minAgo, extra = {}) => ({
-  status,
-  at: ago(minAgo + 5),
-  run_id: id,
-  idea,
-  updated_at: ago(minAgo),
-  pr_url: null,
-  ...extra,
-});
-
-const TEAMS = [
-  team("t-ind", "Indicator sprint team", {
-    last_run: run(
-      "r-rsi",
-      "awaiting_human",
-      "Add an RSI indicator with tests",
-      26,
-    ),
-    last_active_at: ago(1),
-    spend_usd: 4.82,
-    run_count: 7,
-    awaiting_run_count: 1,
-    shape: {
-      nodes: [PM, ARCH, GATE, ENG, REV, SHIP],
-      loops: [{ from: 4, to: 3 }],
-    },
-  }),
-  team("t-docs", "Docs team", {
-    last_run: {
-      ...run("r-docs", "running", "Write the API reference for /runs", 2),
-      at: ago(11),
-    },
-    last_active_at: ago(2),
-    spend_usd: 1.37,
-    run_count: 3,
-    active_run_count: 1,
-    shape: { nodes: [PM, WRITER, SHIP], loops: [] },
-  }),
-  team("t-bug", "Bugfix squad", {
-    last_run: run("r-flaky", "failed", "Fix the flaky login test", 11 * 60),
-    last_active_at: ago(11 * 60),
-    spend_usd: 0.64,
-    run_count: 4,
-    shape: { nodes: [PM, ENG, REV, SHIP], loops: [{ from: 2, to: 1 }] },
-  }),
-  team("t-full", "Full feature squad", {
-    last_run: run(
-      "r-csv",
-      "completed",
-      "Add CSV export to reports",
-      2 * 24 * 60,
-    ),
-    last_active_at: ago(2 * 24 * 60),
-    spend_usd: 9.1,
-    run_count: 9,
-    shape: {
-      nodes: [PM, ARCH, GATE, ENG, REV, { ...GATE, id: "gate-2" }, SHIP],
-      loops: [{ from: 4, to: 3 }],
-    },
-  }),
-  team("t-land", "Landing page team", {
-    created_at: ago(60 * 24),
-    // The design lists it last; its "last active" is backdated so the sort agrees.
-    last_active_at: ago(60 * 24 * 3),
-    template_key: "two_node",
-    template_name: "PM → Engineer",
-    shape: { nodes: [PM, ENG, SHIP], loops: [] },
-  }),
-];
-
-const COPY = team("t-ind-copy", "Indicator sprint team (copy)", {
-  created_at: ago(0),
-  last_active_at: ago(0),
-  template_key: "plan_review",
-  template_name: "PM → Architect → Engineer ⇄ Reviewer",
-  duplicated_from: { team_graph_id: "t-ind", name: "Indicator sprint team" },
-  shape: TEAMS[0].shape,
-});
-
-const TEMPLATES = {
-  templates: [
-    {
-      template: "two_node",
-      name: "PM → Engineer",
-      description:
-        "A PM writes the spec; an Engineer builds and ships it. No review step.",
-      shape: { nodes: [PM, ENG, SHIP], loops: [] },
-    },
-    {
-      template: "review_loop",
-      name: "PM → Engineer ⇄ Reviewer",
-      description:
-        "Adds a Reviewer that runs the tests and loops back for fixes.",
-      shape: { nodes: [PM, ENG, REV, SHIP], loops: [{ from: 2, to: 1 }] },
-    },
-    {
-      template: "plan_review",
-      name: "PM → Architect → Engineer ⇄ Reviewer",
-      description:
-        "Two thinkers plan it, then a build-and-review loop ships it.",
-      shape: { nodes: [PM, ARCH, ENG, REV, SHIP], loops: [{ from: 3, to: 2 }] },
-    },
-    {
-      template: "full_squad",
-      name: "Full feature squad",
-      description:
-        "Plan, you approve, build and test in a loop, you approve the ship.",
-      shape: {
-        nodes: [PM, ARCH, GATE, ENG, REV, GATE, SHIP],
-        loops: [{ from: 4, to: 3 }],
-      },
-    },
-  ],
-  blank: {
-    template: "blank",
-    name: "Blank",
-    description:
-      "An empty canvas: one thinker into Ship. Wire the rest yourself.",
-    shape: { nodes: [PM, SHIP], loops: [] },
-  },
-};
-
-const RUNS = [
+// HmF-FirstTime-7's team and run: Landing page team shipped one run ($0.84, PR #1).
+const PRICING_RUN = run(
+  "r-pricing",
+  "t-land",
+  "Landing page team",
+  "Add a pricing section to the landing page",
+  "completed",
+  "completed",
+  60,
   {
-    run_id: "r-rsi",
-    idea: "Add an RSI indicator with tests",
-    status: "awaiting_human",
-    created_at: ago(40),
-    updated_at: ago(26),
-    team: { id: "t-ind", name: "Indicator sprint team" },
+    pr_url: "https://github.com/lazyxgenius/trade_mcp/pull/1",
+    pr_number: 1,
+    spent_usd: 0.84,
   },
+);
+// HmF-FirstTime-5's run: Landing page team's first run, just started.
+const LANDING_RUNNING = run(
+  "r-pricing",
+  "t-land",
+  "Landing page team",
+  "Add a pricing section to the landing page",
+  "running",
+  "running",
+  0,
   {
-    run_id: "r-docs",
-    idea: "Write the API reference for /runs",
-    status: "running",
-    created_at: ago(11),
-    updated_at: ago(2),
-    team: { id: "t-docs", name: "Docs team" },
+    progress: [
+      chip("p", "PM", "pm", "completion", "active"),
+      chip("e", "Engineer", "engineer", "agent", "idle"),
+      chip("s", "Ship", "ship", "terminal", "idle"),
+    ],
   },
-  {
-    run_id: "r-flaky",
-    idea: "Fix the flaky login test",
-    status: "failed",
-    created_at: ago(700),
-    updated_at: ago(660),
-    team: { id: "t-bug", name: "Bugfix squad" },
-  },
-  {
-    run_id: "r-csv",
-    idea: "Add CSV export to reports",
+);
+const LANDING_DONE = {
+  ...TEAMS[4],
+  last_run: {
     status: "completed",
-    created_at: ago(2900),
-    updated_at: ago(2880),
-    pr_url: "https://github.com/lazyxgenius/trade_mcp/pull/42",
-    pr_number: 42,
-    team: { id: "t-full", name: "Full feature squad" },
+    at: ago(65),
+    run_id: "r-pricing",
+    idea: "Add a pricing section to the landing page",
+    updated_at: ago(60),
+    pr_url: "https://github.com/lazyxgenius/trade_mcp/pull/1",
   },
-  {
-    run_id: "r-macd",
-    idea: "Add MACD to the registry",
-    status: "completed",
-    created_at: ago(4400),
-    updated_at: ago(4320),
-    pr_url: "https://github.com/lazyxgenius/trade_mcp/pull/39",
-    pr_number: 39,
-    team: { id: "t-ind", name: "Indicator sprint team" },
-  },
-];
-
-const INBOX = {
-  count: 4,
-  items: [
-    { key: "memories", kind: "memories", since: ago(4000), count: 2 },
-    {
-      key: "setup:t-ind:website",
-      kind: "setup_gap",
-      since: ago(3000),
-      team: { id: "t-ind", name: "Indicator sprint team" },
-      target: "website",
-    },
-    {
-      key: "run_failed:r-flaky",
-      kind: "run_failed",
-      since: ago(660),
-      team: { id: "t-bug", name: "Bugfix squad" },
-      run: {
-        id: "r-flaky",
-        idea: "Fix the flaky login test",
-        status: "failed",
-      },
-    },
-    {
-      key: "gate:812",
-      kind: "approval",
-      since: ago(26),
-      team: { id: "t-ind", name: "Indicator sprint team" },
-      run: {
-        id: "r-rsi",
-        idea: "Add an RSI indicator with tests",
-        status: "awaiting_human",
-      },
-      task: { id: 812, kind: "prd_approval", title: "Approve the PRD" },
-    },
-  ],
+  run_count: 1,
+  spend_usd: 0.84,
+  last_active_at: ago(60),
 };
 
 function routesFor({
   hidden = true,
   teams = TEAMS,
-  runs = RUNS,
+  runs = recent,
   providers = [
     { provider: "anthropic", key_last4: "abcd", created_at: ago(9000) },
   ],
   templates = TEMPLATES,
+  spendWeek = null,
+  active,
 } = {}) {
   const state = { teams: [...teams] };
-  return {
+  // The first-time frames: no Needs-you items, nothing running.
+  const firstTime = runs.length <= 1 && teams.length <= 1;
+  return homeRoutes({
     "GET /api/teams": () => ({ json: { teams: state.teams } }),
     "POST /api/teams/:id/duplicate": () => {
       state.teams = [...state.teams, COPY];
       return { status: 201, json: COPY };
+    },
+    "PATCH /api/teams/:id": (req) => {
+      const id = new URL(req.url()).pathname.split("/").pop();
+      const { name } = JSON.parse(req.postData() ?? "{}");
+      state.teams = state.teams.map((t) =>
+        t.team_graph_id === id ? { ...t, name } : t,
+      );
+      return { json: state.teams.find((t) => t.team_graph_id === id) };
     },
     "DELETE /api/teams/:id": (req) => {
       const id = new URL(req.url()).pathname.split("/").pop();
@@ -278,55 +103,56 @@ function routesFor({
     },
     "GET /api/templates": templates,
     "GET /api/account/preferences": { get_started_hidden: hidden },
-    "GET /api/runs": (req) => {
-      const q = (new URL(req.url()).searchParams.get("q") ?? "").toLowerCase();
-      const list = q
-        ? runs.filter((r) =>
-            `${r.idea} ${r.team?.name}`.toLowerCase().includes(q),
-          )
-        : runs;
-      return { json: { runs: list, next_cursor: null } };
-    },
+    "PATCH /api/account/preferences": { get_started_hidden: true },
+    "GET /api/runs": runsRoute({
+      active: active ?? (firstTime ? [] : undefined),
+      list: runs,
+    }),
     "GET /api/providers": { providers },
-    "GET /api/engines/subscriptions": { subscriptions: [] },
-    "GET /api/inbox": INBOX,
-    "GET /api/domains": {
-      domains: [
-        {
-          domain_id: "d-ind",
-          name: "Indicators",
-          template: "x",
-          config: {},
-          status: "ready",
-          doc_count: 3,
-          created_at: ago(9000),
-          updated_at: ago(9000),
-        },
-      ],
-    },
-  };
+    ...(firstTime ? { "GET /api/inbox": { count: 0, items: [] } } : {}),
+    ...(spendWeek !== null
+      ? {
+          "GET /api/spend": {
+            tz: "UTC",
+            month: {
+              label: "September",
+              start: ago(30000),
+              total_usd: spendWeek,
+            },
+            week: { start: ago(4000), total_usd: spendWeek },
+            by_team: [
+              {
+                team_id: "t-land",
+                name: "Landing page team",
+                total_usd: spendWeek,
+              },
+            ],
+            other_usd: 0,
+            default_run_budget_usd: 5,
+          },
+        }
+      : {}),
+  });
 }
 
-/** Pad (or scroll) the Teams section so its title sits at the design's y. */
-async function alignTeams(page, y = 198) {
+/** The HmF-Team* artboards show the page shifted up by 800px — the design does it with
+ *  `margin-top: -800px` on the main column (the page is shorter than 800px + the window, so a
+ *  real scroll can't get there); do the same. */
+async function scrollToTeams(page, y = 800) {
   await page.waitForSelector(".hm-teams__title");
-  await page.evaluate((target) => {
-    const title = document.querySelector(".hm-teams__title");
-    const section = document.querySelector(".hm-teams");
-    const main = document.querySelector(".sh-main");
-    main.scrollTop = 0;
-    section.style.marginTop = "";
-    const dy = target - title.getBoundingClientRect().top;
-    if (dy >= 0) section.style.marginTop = `${dy}px`;
-    else main.scrollTop = -dy;
+  await page.waitForSelector(".hm-spend__total");
+  await page.evaluate((top) => {
+    document.querySelector(".sh-main").scrollTop = 0;
+    document.querySelector(".sh-main__inner").style.marginTop = `-${top}px`;
   }, y);
+  await page.waitForTimeout(150);
 }
 
 const moreFor = (page, name) =>
   page.getByRole("button", { name: `More actions for ${name}` });
 
 const teamSteps = (extra) => async (page) => {
-  await alignTeams(page);
+  await scrollToTeams(page);
   if (extra) await extra(page);
 };
 
@@ -336,7 +162,7 @@ const base = (name, steps, opts = {}) => [
     path: "/#/home",
     routes: routesFor(opts.routes),
     steps,
-    init: opts.init,
+    init: opts.init ? `${morning}\n(${opts.init})();` : morning,
   },
   ...(opts.desktop
     ? [
@@ -346,7 +172,7 @@ const base = (name, steps, opts = {}) => [
           routes: routesFor(opts.routes),
           steps,
           desktop: true,
-          init: opts.init,
+          init: opts.init ? `${morning}\n(${opts.init})();` : morning,
         },
       ]
     : []),
@@ -358,6 +184,15 @@ export default [
   ...base(
     "tabs-needs",
     teamSteps((page) => page.getByRole("tab", { name: /Needs you/ }).click()),
+  ),
+  // HmF-TeamTabs-3 (Running) and -4 (Not run yet)
+  ...base(
+    "tabs-running",
+    teamSteps((page) => page.getByRole("tab", { name: /Running/ }).click()),
+  ),
+  ...base(
+    "tabs-notrun",
+    teamSteps((page) => page.getByRole("tab", { name: /Not run yet/ }).click()),
   ),
   // HmF-TeamFind-1 (no match), -2 (sort open), -4 (list)
   ...base(
@@ -410,7 +245,7 @@ export default [
       await page.getByRole("menuitem", { name: "Duplicate" }).click();
       await page.waitForSelector('[data-team-id="t-ind-copy"]');
       await page.waitForTimeout(900); // let the scroll-to-the-copy finish
-      await alignTeams(page);
+      await scrollToTeams(page);
     }),
   ),
   ...base(
@@ -431,14 +266,31 @@ export default [
       });
     }),
   ),
+  // HmF-TeamMenu-2 is Home back at the top with the team picked in the composer.
   ...base(
     "menu-run",
-    teamSteps((page) =>
-      page
+    teamSteps(async (page) => {
+      await page
         .locator('[data-team-id="t-ind"]')
         .getByRole("button", { name: "Run" })
-        .click(),
-    ),
+        .click();
+      await page.evaluate(() => {
+        document.querySelector(".sh-main__inner").style.marginTop = "";
+        document.querySelector(".sh-main").scrollTop = 0;
+      });
+      await page.waitForTimeout(300);
+    }),
+  ),
+  // HmF-TeamMenu-5 (renamed)
+  ...base(
+    "menu-renamed",
+    teamSteps(async (page) => {
+      await moreFor(page, "Indicator sprint team").click();
+      await page.getByRole("menuitem", { name: "Rename" }).click();
+      await page.getByLabel("Team name").fill("Indicators squad");
+      await page.getByRole("button", { name: "Save name" }).click();
+      await page.waitForSelector('text="Indicators squad"');
+    }),
   ),
   // HmF-NewTeam-1 (open), -2 (blank name), -3 (filled + review loop), -4 (creating), -6 (templates failed)
   ...base(
@@ -532,7 +384,8 @@ export default [
     routes: {
       hidden: false,
       teams: [TEAMS[4]],
-      runs: [{ ...RUNS[0], team: { id: "t-land", name: "Landing page team" } }],
+      runs: [LANDING_RUNNING],
+      active: [LANDING_RUNNING],
     },
     init: () => window.localStorage.setItem("tv.home.getStarted.shown", "1"),
   }),
@@ -542,7 +395,7 @@ export default [
       teams: [TEAMS[4]],
       runs: [
         {
-          ...RUNS[3],
+          ...recent[3],
           pr_url: "https://github.com/lazyxgenius/trade_mcp/pull/1",
           pr_number: 1,
         },
@@ -550,7 +403,27 @@ export default [
     },
     init: () => window.localStorage.setItem("tv.home.getStarted.shown", "1"),
   }),
-  ...base("first-hidden", (page) => alignTeams(page, 635), {
-    routes: { hidden: true, teams: [TEAMS[3]] },
-  }),
+  // HmF-FirstTime-7: all four steps done → Hide checklist → the normal Home with the one team,
+  // its one shipped run and nothing running.
+  ...base(
+    "first-hidden",
+    async (page) => {
+      await page.waitForSelector(".hm-gs__title");
+      await page
+        .getByRole("button", { name: "Hide checklist" })
+        .first()
+        .click();
+      await page.waitForSelector(".hm-teams__title");
+      await page.waitForTimeout(300);
+    },
+    {
+      routes: {
+        hidden: false,
+        teams: [LANDING_DONE],
+        runs: [PRICING_RUN],
+        spendWeek: 0.84,
+      },
+      init: () => window.localStorage.setItem("tv.home.getStarted.shown", "1"),
+    },
+  ),
 ];
