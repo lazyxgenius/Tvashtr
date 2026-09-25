@@ -124,10 +124,33 @@ def clear_session_cookie(response: Response) -> None:
 
 class UserOut(BaseModel):
     """The minimal public identity returned by the auth endpoints and ``get_current_user`` —
-    enough for the endpoints today and for ownership in a later slice."""
+    enough for the endpoints today and for ownership in a later slice.
+
+    Revamp (P13/G-12): ``github_login`` (``None`` for an email/password account) and
+    ``display_name`` — what Home greets the user by (see :func:`display_name_for`)."""
 
     id: str
     email: str
+    github_login: str | None = None
+    display_name: str = ""
+
+
+def display_name_for(email: str, github_login: str | None) -> str:
+    """The GitHub login when the account has one, else the email's local part with its first
+    letter capitalised (``lazyx@example.com`` → ``Lazyx``)."""
+    if github_login:
+        return github_login
+    local = email.split("@", 1)[0]
+    return local[:1].upper() + local[1:]
+
+
+def _user_out(user: User) -> UserOut:
+    return UserOut(
+        id=str(user.id),
+        email=user.email,
+        github_login=user.github_login,
+        display_name=display_name_for(user.email, user.github_login),
+    )
 
 
 def get_current_user(request: Request) -> UserOut:
@@ -149,7 +172,7 @@ def get_current_user(request: Request) -> UserOut:
         user = session.get(User, pk)
         if user is None:
             raise HTTPException(status_code=401, detail="Not authenticated")
-        return UserOut(id=str(user.id), email=user.email)
+        return _user_out(user)
 
 
 def _normalize_email(email: str) -> str:
@@ -182,7 +205,7 @@ def register(body: _Credentials, response: Response) -> UserOut:
         session.flush()  # populate user.id before the scope commits/closes
         user_id = str(user.id)
     set_session_cookie(response, user_id)
-    return UserOut(id=user_id, email=email)
+    return UserOut(id=user_id, email=email, display_name=display_name_for(email, None))
 
 
 @auth_router.post("/login", response_model=UserOut)
@@ -194,9 +217,9 @@ def login(body: _Credentials, response: Response) -> UserOut:
         user = session.scalar(select(User).where(User.email == email))
         if user is None or not verify_password(body.password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid email or password.")
-        user_id = str(user.id)
-    set_session_cookie(response, user_id)
-    return UserOut(id=user_id, email=email)
+        out = _user_out(user)
+    set_session_cookie(response, out.id)
+    return out
 
 
 @auth_router.post("/logout", status_code=204)

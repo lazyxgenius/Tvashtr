@@ -18,18 +18,27 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dbos import DBOS
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, union, update
 from sqlalchemy.orm import aliased
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane.credentials import held_provider_slugs
+from tvashtr.control_plane import desktop_jobs
+from tvashtr.control_plane.credential_gate import (
+    RUNNER_SUBSCRIPTIONS,
+    desktop_routed_subscriptions,
+    missing_providers_for_launch,
+    subscription_for_model,
+)
+from tvashtr.control_plane.credentials import held_provider_slugs, provider_for_model
 from tvashtr.db import session_scope
 from tvashtr.models import (
     AgentInvocation,
     AgentNode,
     CostRecord,
+    DesktopNodeJob,
     Edge,
     EngineerRunAttempt,
+    EngineSubscriptionStatus,
     HumanTask,
     Run,
     RunEvent,
@@ -1406,60 +1415,74 @@ def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
     src_id = uuid.UUID(source_team_graph_id)
     with session_scope() as session:
         source = session.execute(select(TeamGraph).where(TeamGraph.id == src_id)).scalar_one()
-        nodes = (
-            session.execute(select(AgentNode).where(AgentNode.team_graph_id == src_id))
-            .scalars()
-            .all()
-        )
-        edges = session.execute(select(Edge).where(Edge.team_graph_id == src_id)).scalars().all()
-
         # Distinct name so the clone never collides with PERSISTENT_TEAM_NAME (which would corrupt
         # the get-or-create lookup) and is legible as a run snapshot in the team list.
-        clone = TeamGraph(name=name or f"{source.name} (run snapshot)")
-        session.add(clone)
-        session.flush()
-
-        id_map: dict[uuid.UUID, uuid.UUID] = {}
-        for n in nodes:
-            new_node = AgentNode(
-                team_graph_id=clone.id,
-                role_name=n.role_name,
-                kind=n.kind,
-                model=n.model,
-                engine=n.engine,
-                prompt=n.prompt,
-                position=deepcopy(n.position),
-                config=deepcopy(n.config),
-                # M-tools C7.0: the inline tools + skills ride the clone snapshot exactly as
-                # config/prompt/model do (deepcopy, since they are JSONB dict/list values). NULL on
-                # every node today, so the clone is byte-for-byte unchanged.
-                tool_config=deepcopy(n.tool_config),
-                skills=deepcopy(n.skills),
-                # M-unify U1: carry the capability toggle onto the run snapshot EXPLICITLY (not via
-                # the kind-mapped ORM default) so a node PATCH-toggled OFF-kind (e.g. an edits-off
-                # worker) clones faithfully — the run executes the authored capability.
-                edits_allowed=n.edits_allowed,
-                # M2: link the clone back to its origin authored node so the authoring endpoint can
-                # read "what did THIS authored node do last run" — correct even for duplicates.
-                cloned_from_node_id=n.id,
-            )
-            session.add(new_node)
-            session.flush()
-            id_map[n.id] = new_node.id
-
-        session.add_all(
-            [
-                Edge(
-                    team_graph_id=clone.id,
-                    source_node_id=id_map[e.source_node_id],
-                    target_node_id=id_map[e.target_node_id],
-                    edge_type=e.edge_type,
-                    conditions=deepcopy(e.conditions),
-                )
-                for e in edges
-            ]
+        clone_id = _copy_graph(
+            session, src_id, name=name or f"{source.name} (run snapshot)", link_origin=True
         )
-        return str(clone.id)
+        return str(clone_id)
+
+
+def _copy_graph(
+    session, src_id: uuid.UUID, *, name: str, link_origin: bool, **graph_fields
+) -> uuid.UUID:
+    """Copy a team graph's nodes and edges into a NEW ``TeamGraph`` (within ``session``) and return
+    its id — the one copier behind the run snapshot (:func:`clone_team_graph`) and Duplicate
+    (:func:`duplicate_library_team`), so a new node column is copied by both or neither.
+
+    ``link_origin`` stamps each copied node's ``cloned_from_node_id`` with its source node (a run
+    snapshot); a duplicate leaves it NULL so it never reads as a run of the source team.
+    ``graph_fields`` are extra ``TeamGraph`` columns (``is_library``, ``owner_id``, …)."""
+    nodes = (
+        session.execute(select(AgentNode).where(AgentNode.team_graph_id == src_id)).scalars().all()
+    )
+    edges = session.execute(select(Edge).where(Edge.team_graph_id == src_id)).scalars().all()
+
+    clone = TeamGraph(name=name, **graph_fields)
+    session.add(clone)
+    session.flush()
+
+    id_map: dict[uuid.UUID, uuid.UUID] = {}
+    for n in nodes:
+        new_node = AgentNode(
+            team_graph_id=clone.id,
+            role_name=n.role_name,
+            kind=n.kind,
+            model=n.model,
+            engine=n.engine,
+            prompt=n.prompt,
+            position=deepcopy(n.position),
+            config=deepcopy(n.config),
+            # M-tools C7.0: the inline tools + skills ride the clone snapshot exactly as
+            # config/prompt/model do (deepcopy, since they are JSONB dict/list values). NULL on
+            # every node today, so the clone is byte-for-byte unchanged.
+            tool_config=deepcopy(n.tool_config),
+            skills=deepcopy(n.skills),
+            # M-unify U1: carry the capability toggle onto the run snapshot EXPLICITLY (not via
+            # the kind-mapped ORM default) so a node PATCH-toggled OFF-kind (e.g. an edits-off
+            # worker) clones faithfully — the run executes the authored capability.
+            edits_allowed=n.edits_allowed,
+            # M2: link the clone back to its origin authored node so the authoring endpoint can
+            # read "what did THIS authored node do last run" — correct even for duplicates.
+            cloned_from_node_id=n.id if link_origin else None,
+        )
+        session.add(new_node)
+        session.flush()
+        id_map[n.id] = new_node.id
+
+    session.add_all(
+        [
+            Edge(
+                team_graph_id=clone.id,
+                source_node_id=id_map[e.source_node_id],
+                target_node_id=id_map[e.target_node_id],
+                edge_type=e.edge_type,
+                conditions=deepcopy(e.conditions),
+            )
+            for e in edges
+        ]
+    )
+    return clone.id
 
 
 # ---- The team library (P1.8b): first-class, multiple persistent teams from curated templates ----
@@ -1469,135 +1492,409 @@ def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
 class TeamTemplate:
     """One curated starter template: a stable ``key``, its display ``name``/``description``, and the
     byte-intact builder that materializes it. The ``teams.py`` builders ARE the library the user
-    drops from — code, not rows; user-authored/shareable templates are the Phase-4 marketplace."""
+    drops from — code, not rows; user-authored/shareable templates are the Phase-4 marketplace.
+
+    ``roles``/``loops`` declare the template's pipeline strip statically (the same format
+    ``graph_validity.team_shape`` derives from a stored team — a test pins the two together),
+    because running the builder to read it would write rows."""
 
     key: str
     name: str
     description: str
     builder: Callable[..., str]
+    roles: tuple[str, ...] = ()
+    loops: tuple[tuple[int, int], ...] = ()
 
 
 # Ordered catalog the New-team picker reads (the FE renders from this, never a hardcoded list).
+# Names and descriptions are the redesign's copy (TEAMS-43).
 _TEMPLATE_CATALOG: tuple[TeamTemplate, ...] = (
     TeamTemplate(
         "two_node",
         "PM → Engineer",
         "A PM writes the spec; an Engineer builds and ships it. No review step.",
         build_two_node_team,
+        roles=("pm", "gate", "engineer", "ship"),
     ),
     TeamTemplate(
         "review_loop",
-        "PM → Engineer ↔ Reviewer",
-        "Adds a Reviewer that runs the tests and loops back for fixes until it passes "
-        "(or the cap trips).",
+        "PM → Engineer ⇄ Reviewer",
+        "Adds a Reviewer that runs the tests and loops back for fixes.",
         build_review_loop_team,
+        roles=("pm", "gate", "engineer", "reviewer", "ship"),
+        loops=((3, 2),),
     ),
     TeamTemplate(
         "plan_review",
-        "PM → Architect → Engineer ↔ Reviewer",
-        "Two thinkers plan it — a PM drafts the spec, an Architect adds the technical design — "
-        "then a build-and-review loop ships it once the tests pass (or the cap trips).",
+        "PM → Architect → Engineer ⇄ Reviewer",
+        "Two thinkers plan it, then a build-and-review loop ships it.",
         build_plan_review_team,
+        roles=("pm", "architect", "gate", "engineer", "reviewer", "ship"),
+        loops=((4, 3),),
     ),
     TeamTemplate(
         "full_squad",
         "Full feature squad",
-        "The works — a PM and Architect plan the feature, you approve the plan, an Engineer and "
-        "Reviewer build and test in a loop, then you approve the ship. Two thinkers, two workers, "
-        "two human checkpoints.",
+        "Plan, you approve, build and test in a loop, you approve the ship.",
         build_full_squad_team,
+        roles=("pm", "architect", "gate", "engineer", "reviewer", "gate", "ship"),
+        loops=((4, 3),),
     ),
 )
 _TEMPLATES_BY_KEY: dict[str, TeamTemplate] = {t.key: t for t in _TEMPLATE_CATALOG}
 
+# The Blank starting point (``POST /api/teams {template: "blank"}``) — not a catalog builder, so
+# the FE keeps its own card (it must render when the catalog fails to load); served for its copy and
+# strip.
+BLANK_TEMPLATE_KEY = "blank"
+_BLANK_NAME = "Blank"
+_BLANK_DESCRIPTION = "An empty canvas: one thinker into Ship. Wire the rest yourself."
+_BLANK_ROLES = ("thinker", "ship")
+# The auto-seeded "My team" (no longer created by ``GET /api/teams``) — it has no template name.
+SEED_TEMPLATE_KEY = "seed"
+
+# ``team_graphs.template_key`` → the name a team card shows
+# ("Created yesterday from PM → Engineer").
+_TEMPLATE_NAMES: dict[str, str] = {
+    BLANK_TEMPLATE_KEY: _BLANK_NAME,
+    **{t.key: t.name for t in _TEMPLATE_CATALOG},
+}
+
+
+def _template_dict(key: str, name: str, description: str, roles, loops=()) -> dict:
+    # graph_validity imports team_run, which imports this module (via domain_ask) — import late.
+    from tvashtr.control_plane.graph_validity import shape_from_roles
+
+    return {
+        "template": key,
+        "name": name,
+        "description": description,
+        "shape": shape_from_roles(roles, loops),
+    }
+
 
 def list_templates() -> list[dict]:
-    """The starter templates as ``{template, name, description}`` (what the picker reads)."""
+    """The starter templates as ``{template, name, description, shape}`` (what the picker reads)."""
     return [
-        {"template": t.key, "name": t.name, "description": t.description} for t in _TEMPLATE_CATALOG
+        _template_dict(t.key, t.name, t.description, t.roles, t.loops) for t in _TEMPLATE_CATALOG
     ]
 
 
-def _run_rollup_by_origin(session, library_team_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
-    """Map each LIBRARY team id -> ``{"last_run": {...} | None, "spend_usd": float}`` from its runs.
+def blank_template() -> dict:
+    """The Blank starting point in the same shape as :func:`list_templates` items."""
+    return _template_dict(BLANK_TEMPLATE_KEY, _BLANK_NAME, _BLANK_DESCRIPTION, _BLANK_ROLES)
 
-    A run points at an immutable CLONE of a library team (``runs.team_graph_id`` = the clone), whose
-    nodes carry ``cloned_from_node_id`` back to the origin library-team nodes. So a run joins to its
-    library team via clone node -> ``cloned_from_node_id`` -> origin node -> origin team (the SAME
-    link ``_latest_invocation_by_origin`` uses). ``last_run`` = the most recent run (max created_at)
-    across ALL clones of the team; ``spend_usd`` = the SUM of ``runs.cost_total_usd`` (NULL as 0)
-    across them. Batched over all ids at once (NO N+1); a clone has many nodes so the run join fans
-    out, so a ``DISTINCT`` collapses it to one row per (team, run) before aggregating (spend is not
-    multiplied by node count). Owner-isolation rides on the caller passing only that owner's
-    library-team ids. Read-only (SELECTs over runs + agent_nodes)."""
+
+# ---- The team summary (the Home team cards) ----------------------------------------------------
+
+# Run statuses per filter group — the vocabulary of Home's Recent runs filter and the history sheet.
+_STATUS_GROUPS: dict[str, str] = {
+    "pending": "running",
+    "running": "running",
+    "awaiting_human": "needs_you",
+    "completed": "completed",
+    "failed": "failed",
+    "cancelled": "stopped",
+    "rejected": "stopped",
+    "over_budget": "stopped",
+}
+_ACTIVE_RUN_STATUSES = ("pending", "running")
+_AWAITING_RUN_STATUS = "awaiting_human"
+
+
+def run_status_group(status: str | None) -> str | None:
+    """A run status's filter group: ``running`` (pending/running), ``needs_you`` (awaiting_human),
+    ``completed``, ``failed`` or ``stopped`` (cancelled/rejected/over_budget); ``None`` if
+    unknown."""
+    return _STATUS_GROUPS.get(status or "")
+
+
+def run_spent_usd_expr():
+    """What a run has actually spent, as a SQL expression over ``Run``: the LIVE sum of its
+    ``cost_records`` (joined on ``workflow_id``, so in-flight, failed and cancelled runs count),
+    falling back to the stored ``cost_total_usd`` for a run with no ledger rows, else 0."""
+    live = (
+        select(func.sum(CostRecord.cost_usd))
+        .where(CostRecord.workflow_id == Run.workflow_id)
+        .scalar_subquery()
+    )
+    return func.coalesce(live, Run.cost_total_usd, 0)
+
+
+def _team_run_links(library_team_ids: list[uuid.UUID]):
+    """One ``(team_id, run_id)`` row per run of each library team, as a subquery.
+
+    A run names its library team in ``runs.library_team_id`` (set at launch; backfilled by migration
+    0041). A run WITHOUT it falls back to the older link: it executes a CLONE of the team, whose
+    nodes carry ``cloned_from_node_id`` back to the origin library-team nodes (clone node → origin
+    node → origin team). That join fans out one row per clone node, so the ``UNION`` (which
+    de-duplicates) collapses it to one row per run."""
+    direct = select(Run.library_team_id.label("team_id"), Run.id.label("run_id")).where(
+        Run.library_team_id.in_(library_team_ids)
+    )
+    clone = aliased(AgentNode)  # a node of the run's cloned (run-snapshot) graph
+    origin = aliased(AgentNode)  # the library-team node it was cloned from
+    legacy = (
+        select(origin.team_graph_id.label("team_id"), Run.id.label("run_id"))
+        .select_from(Run)
+        .join(clone, clone.team_graph_id == Run.team_graph_id)
+        .join(origin, origin.id == clone.cloned_from_node_id)
+        .where(Run.library_team_id.is_(None), origin.team_graph_id.in_(library_team_ids))
+    )
+    return union(direct, legacy).subquery()
+
+
+def _run_rollup_by_origin(session, library_team_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    """Map each LIBRARY team id -> its run rollup: ``last_run`` (the newest run's ``{status, at,
+    run_id, idea, updated_at, pr_url}`` or ``None``), ``spend_usd`` (what its runs actually spent —
+    see :func:`run_spent_usd_expr`), ``run_count``, ``active_run_count`` (pending/running),
+    ``awaiting_run_count`` (awaiting_human) and ``last_run_activity`` (the newest ``updated_at``).
+
+    Batched over all ids at once (two queries, NO N+1). Owner-isolation rides on the caller passing
+    only that owner's library-team ids. Read-only."""
     rollup: dict[uuid.UUID, dict] = {
-        tid: {"last_run": None, "spend_usd": 0.0} for tid in library_team_ids
+        tid: {
+            "last_run": None,
+            "spend_usd": 0.0,
+            "run_count": 0,
+            "active_run_count": 0,
+            "awaiting_run_count": 0,
+            "last_run_activity": None,
+        }
+        for tid in library_team_ids
     }
     if not library_team_ids:
         return rollup
 
-    clone = aliased(AgentNode)  # a node of the run's cloned (run-snapshot) graph
-    origin = aliased(AgentNode)  # the library-team node it was cloned from
-    # One de-duped row per (library team, run): a clone's nodes all point back to origin nodes in
-    # the same library team, so DISTINCT over the run's columns collapses the fan-out to one row.
+    links = _team_run_links(library_team_ids)
     per_run = (
         select(
-            origin.team_graph_id.label("team_id"),
+            links.c.team_id,
             Run.id.label("run_id"),
             Run.status.label("status"),
+            Run.idea.label("idea"),
             Run.created_at.label("created_at"),
-            func.coalesce(Run.cost_total_usd, 0).label("cost"),
+            Run.updated_at.label("updated_at"),
+            Run.pr_url.label("pr_url"),
+            run_spent_usd_expr().label("spent"),
         )
-        .select_from(Run)
-        .join(clone, clone.team_graph_id == Run.team_graph_id)
-        .join(origin, origin.id == clone.cloned_from_node_id)
-        .where(origin.team_graph_id.in_(library_team_ids))
-        .distinct()
+        .select_from(links)
+        .join(Run, Run.id == links.c.run_id)
         .subquery()
     )
 
-    # Latest run per team — Postgres DISTINCT ON (team) with the newest created_at first.
-    for team_id, run_id, status, created_at in session.execute(
-        select(per_run.c.team_id, per_run.c.run_id, per_run.c.status, per_run.c.created_at)
+    # Latest run per team — Postgres DISTINCT ON (team), newest created_at first (id breaks ties the
+    # same way the history list does, so its first row is always this run).
+    for team_id, run_id, status, idea, created_at, updated_at, pr_url in session.execute(
+        select(
+            per_run.c.team_id,
+            per_run.c.run_id,
+            per_run.c.status,
+            per_run.c.idea,
+            per_run.c.created_at,
+            per_run.c.updated_at,
+            per_run.c.pr_url,
+        )
         .distinct(per_run.c.team_id)
-        .order_by(per_run.c.team_id, per_run.c.created_at.desc())
+        .order_by(per_run.c.team_id, per_run.c.created_at.desc(), per_run.c.run_id)
     ).all():
         rollup[team_id]["last_run"] = {
             "status": status,
             "at": created_at.isoformat(),
             "run_id": str(run_id),
+            "idea": idea,
+            "updated_at": updated_at.isoformat(),
+            "pr_url": pr_url,
         }
 
-    # Total spend per team — SUM over the de-duped per-run rows (NULL cost already coalesced to 0).
-    for team_id, total in session.execute(
-        select(per_run.c.team_id, func.coalesce(func.sum(per_run.c.cost), 0)).group_by(
-            per_run.c.team_id
-        )
+    for team_id, count, active, awaiting, spent, activity in session.execute(
+        select(
+            per_run.c.team_id,
+            func.count(),
+            func.count().filter(per_run.c.status.in_(_ACTIVE_RUN_STATUSES)),
+            func.count().filter(per_run.c.status == _AWAITING_RUN_STATUS),
+            func.coalesce(func.sum(per_run.c.spent), 0),
+            func.max(per_run.c.updated_at),
+        ).group_by(per_run.c.team_id)
     ).all():
-        rollup[team_id]["spend_usd"] = float(total)
-
+        rollup[team_id].update(
+            run_count=count,
+            active_run_count=active,
+            awaiting_run_count=awaiting,
+            spend_usd=float(spent),
+            last_run_activity=activity,
+        )
     return rollup
 
 
-def _team_summary(session, graph: TeamGraph, rollup: dict | None = None) -> dict:
-    """One library team as a list/summary row: identity + node count + its run rollup — ``last_run``
-    (the most recent run's ``{status, at, run_id}``, or ``None`` if never run) + ``spend_usd`` (the
-    total across the team's runs, ``0`` if never run). ``rollup`` is the batched map that
-    :func:`list_library_teams` computes ONCE so the list is not N+1; single-team callers omit it and
-    it is computed for just this team. Read-only."""
-    node_count = session.execute(
-        select(func.count()).select_from(AgentNode).where(AgentNode.team_graph_id == graph.id)
-    ).scalar_one()
-    if rollup is None:
-        rollup = _run_rollup_by_origin(session, [graph.id])
-    run_rollup = rollup.get(graph.id, {"last_run": None, "spend_usd": 0.0})
+def _readiness_inputs(session, owner_id: uuid.UUID | None) -> dict:
+    """The account-wide inputs of the launch credential rule, read once per summary batch: the
+    providers the owner holds a key for, the subscriptions whose mirror says connected (Desktop-
+    runnable ones only), and which of those count for a Desktop launch right now (the Desktop runner
+    polled recently — ``desktop_jobs.runner_fresh``, the freshness the launch pre-flight uses)."""
+    if owner_id is None:
+        return {"held": set(), "connected": set(), "fresh": set()}
+    connected = {
+        p
+        for p in session.execute(
+            select(EngineSubscriptionStatus.provider).where(
+                EngineSubscriptionStatus.owner_id == owner_id,
+                EngineSubscriptionStatus.connected.is_(True),
+            )
+        ).scalars()
+        if p in RUNNER_SUBSCRIPTIONS
+    }
+    fresh = connected if connected and desktop_jobs.runner_fresh(owner_id) else set()
+    return {"held": held_provider_slugs(owner_id), "connected": connected, "fresh": fresh}
+
+
+def _team_readiness(nodes: list[AgentNode], inputs: dict) -> dict:
+    """Can this team launch? Per target, with the SAME shared rule ``POST /api/runs`` enforces
+    (``credential_gate.missing_providers_for_launch``):
+
+    * ``website`` — only API keys count;
+    * ``desktop`` — a fresh connected Claude/Grok subscription also covers its provider, and those
+      nodes run on the owner's Desktop (``routed_subscriptions``);
+    * ``subscriptions_connected`` — the connected Desktop subscriptions (mirror, ignoring runner
+      freshness) this team's models would use: "Desktop runs still work with your Claude plan".
+
+    ``missing_nodes`` are the role names of the nodes that need a missing provider (as in the
+    launch 422)."""
+    models = [n.model for n in nodes if n.model]
+    held, fresh = inputs["held"], inputs["fresh"]
+
+    def needing(missing: list[str]) -> list[str]:
+        return sorted(
+            {n.role_name for n in nodes if n.model and provider_for_model(n.model) in missing}
+        )
+
+    website = missing_providers_for_launch(
+        models, byok=held, fresh_subscriptions=set(), desktop_target=False
+    )
+    desktop = missing_providers_for_launch(
+        models, byok=held, fresh_subscriptions=fresh, desktop_target=True
+    )
+    return {
+        "website": {
+            "ready": not website,
+            "missing_providers": website,
+            "missing_nodes": needing(website),
+        },
+        "desktop": {
+            "ready": not desktop,
+            "missing_providers": desktop,
+            "missing_nodes": needing(desktop),
+            "routed_subscriptions": desktop_routed_subscriptions(
+                models, fresh_subscriptions=fresh, desktop_target=True
+            ),
+        },
+        "subscriptions_connected": sorted(
+            {
+                sub
+                for m in models
+                if (sub := subscription_for_model(m)) is not None and sub in inputs["connected"]
+            }
+        ),
+    }
+
+
+def _summary_context(session, graphs: list[TeamGraph]) -> dict:
+    """Everything the summaries of ``graphs`` need, fetched in a fixed number of queries whatever
+    the number of teams (NO N+1): the run rollup, every node and edge of every team (for the node
+    count, the strip and readiness), the names of the teams they were duplicated from, and each
+    owner's readiness inputs."""
+    ids = [g.id for g in graphs]
+    nodes_by_team: dict[uuid.UUID, list[AgentNode]] = {tid: [] for tid in ids}
+    edges_by_team: dict[uuid.UUID, list[Edge]] = {tid: [] for tid in ids}
+    sources: dict[uuid.UUID, str] = {}
+    if ids:
+        for node in session.execute(
+            select(AgentNode).where(AgentNode.team_graph_id.in_(ids)).order_by(AgentNode.id)
+        ).scalars():
+            nodes_by_team[node.team_graph_id].append(node)
+        for edge in session.execute(select(Edge).where(Edge.team_graph_id.in_(ids))).scalars():
+            edges_by_team[edge.team_graph_id].append(edge)
+        source_ids = {g.duplicated_from_id for g in graphs if g.duplicated_from_id is not None}
+        if source_ids:
+            sources = dict(
+                session.execute(
+                    select(TeamGraph.id, TeamGraph.name).where(
+                        TeamGraph.id.in_(source_ids), TeamGraph.is_library.is_(True)
+                    )
+                ).all()
+            )
+    return {
+        "rollup": _run_rollup_by_origin(session, ids),
+        "nodes": nodes_by_team,
+        "edges": edges_by_team,
+        "sources": sources,
+        "readiness": {
+            owner: _readiness_inputs(session, owner) for owner in {g.owner_id for g in graphs}
+        },
+    }
+
+
+def _team_summary(session, graph: TeamGraph, ctx: dict | None = None) -> dict:
+    """One library team as a list/summary row (the Home team card). Keys:
+
+    * identity: ``team_graph_id``, ``name``, ``created_at``, ``node_count``;
+    * runs: ``last_run`` (``{status, at, run_id, idea, updated_at, pr_url}`` — ``at`` is the run's
+      created_at — or ``None``), ``spend_usd`` (live, every run counted), ``run_count``,
+      ``active_run_count``, ``awaiting_run_count``, ``last_active_at`` (newest run activity, else
+      the team's created_at);
+    * origin: ``template_key``, ``template_name`` (``None`` for seeded/legacy teams),
+      ``duplicated_from`` (``{team_graph_id, name}`` — ``name`` is ``None`` once the source is
+      deleted — or ``None``);
+    * ``shape`` (the pipeline strip, ``graph_validity.team_shape``) and ``readiness``
+      (:func:`_team_readiness`).
+
+    ``ctx`` is the batched :func:`_summary_context`; single-team callers omit it. Read-only."""
+    from tvashtr.control_plane.graph_validity import team_shape  # late: see _template_dict
+
+    if ctx is None:
+        ctx = _summary_context(session, [graph])
+    run_rollup = ctx["rollup"][graph.id]
+    nodes = ctx["nodes"][graph.id]
+    edges = ctx["edges"][graph.id]
+    activity = run_rollup["last_run_activity"]
+    duplicated_from = None
+    if graph.duplicated_from_id is not None:
+        duplicated_from = {
+            "team_graph_id": str(graph.duplicated_from_id),
+            "name": ctx["sources"].get(graph.duplicated_from_id),
+        }
+    shape = team_shape(
+        [
+            {"id": str(n.id), "kind": n.kind, "role_name": n.role_name, "config": n.config}
+            for n in nodes
+        ],
+        [
+            {
+                "id": str(e.id),
+                "source_node_id": str(e.source_node_id),
+                "target_node_id": str(e.target_node_id),
+                "edge_type": e.edge_type,
+                "conditions": e.conditions,
+            }
+            for e in edges
+        ],
+    )
     return {
         "team_graph_id": str(graph.id),
         "name": graph.name,
         "created_at": graph.created_at.isoformat(),
-        "node_count": node_count,
+        "node_count": len(nodes),
         "last_run": run_rollup["last_run"],
         "spend_usd": run_rollup["spend_usd"],
+        "run_count": run_rollup["run_count"],
+        "active_run_count": run_rollup["active_run_count"],
+        "awaiting_run_count": run_rollup["awaiting_run_count"],
+        "last_active_at": (activity or graph.created_at).isoformat(),
+        "template_key": graph.template_key,
+        "template_name": _TEMPLATE_NAMES.get(graph.template_key or ""),
+        "duplicated_from": duplicated_from,
+        "shape": shape,
+        "readiness": _team_readiness(nodes, ctx["readiness"][graph.owner_id]),
     }
 
 
@@ -1605,7 +1902,8 @@ def list_library_teams(owner_id: uuid.UUID) -> list[dict]:
     """The OWNER's managed shelf — their ``is_library = true`` teams, ordered ``(created_at, id)``,
     each as a summary (M-accounts Slice B: owner-scoped). Library teams ONLY: run-snapshot clones,
     A/B graphs, and smoke graphs default ``is_library = false`` (``owner_id`` NULL) so they never
-    appear here; and another account's library teams are filtered out by ``owner_id``."""
+    appear here; and another account's library teams are filtered out by ``owner_id``. Batched: a
+    fixed number of queries however many teams there are."""
     with session_scope() as session:
         graphs = (
             session.execute(
@@ -1616,8 +1914,8 @@ def list_library_teams(owner_id: uuid.UUID) -> list[dict]:
             .scalars()
             .all()
         )
-        rollup = _run_rollup_by_origin(session, [g.id for g in graphs])
-        return [_team_summary(session, g, rollup) for g in graphs]
+        ctx = _summary_context(session, list(graphs))
+        return [_team_summary(session, g, ctx) for g in graphs]
 
 
 def get_team_summary(team_graph_id: str) -> dict:
@@ -1678,6 +1976,8 @@ def create_team_from_template(template_key: str, name: str, owner_id: uuid.UUID)
         graph.name = name
         graph.is_library = True
         graph.owner_id = owner_id
+        # Revamp: remember the starting point ("Created yesterday from PM → Engineer").
+        graph.template_key = template_key
     return team_graph_id
 
 
@@ -1691,7 +1991,9 @@ def create_blank_team(name: str, owner_id: uuid.UUID) -> str:
     settings = get_settings()
     held_providers = held_provider_slugs(owner_id)
     with session_scope() as session:
-        graph = TeamGraph(name=name, is_library=True, owner_id=owner_id)
+        graph = TeamGraph(
+            name=name, is_library=True, owner_id=owner_id, template_key=BLANK_TEMPLATE_KEY
+        )
         session.add(graph)
         session.flush()
 
@@ -1728,10 +2030,12 @@ def create_blank_team(name: str, owner_id: uuid.UUID) -> str:
 
 
 def seed_library_if_empty(owner_id: uuid.UUID) -> None:
-    """Ensure the OWNER's library is never empty (M-accounts Slice B: per-account anti-dead-zone,
-    §13 S2): if the owner has zero library teams, create one from the ``review_loop`` template named
-    ``"My team"`` — so a fresh account (or one whose last team was deleted) still lands ≥1 team for
-    the canvas to open to."""
+    """If the OWNER has zero library teams, create one from the ``review_loop`` template named
+    ``"My team"`` (``template_key = "seed"``, so it never counts as a team the user made).
+
+    Revamp (G-13): ``GET /api/teams`` no longer calls this — Home's first-time view replaced the
+    "never empty" posture, and deleting the last team must not bring one back. Kept for callers
+    that still want a starter team."""
     with session_scope() as session:
         count = session.execute(
             select(func.count())
@@ -1739,7 +2043,58 @@ def seed_library_if_empty(owner_id: uuid.UUID) -> None:
             .where(TeamGraph.is_library.is_(True), TeamGraph.owner_id == owner_id)
         ).scalar_one()
     if count == 0:
-        create_team_from_template("review_loop", "My team", owner_id)
+        team_id = create_team_from_template("review_loop", "My team", owner_id)
+        with session_scope() as session:
+            session.execute(
+                update(TeamGraph)
+                .where(TeamGraph.id == uuid.UUID(team_id))
+                .values(template_key=SEED_TEMPLATE_KEY)
+            )
+
+
+def duplicate_library_team(
+    team_id: uuid.UUID, owner_id: uuid.UUID, name: str | None = None
+) -> dict | None:
+    """Copy one of the owner's library teams into a NEW library team and return its summary, or
+    ``None`` if there is no such team of theirs (the endpoint 404s — a run snapshot or another
+    account's team is not probeable).
+
+    The copy has the same nodes (prompt, model, engine, position, config, tools, skills, edits
+    toggle) and edges, a fresh id for each, ``template_key`` of the source and
+    ``duplicated_from_id`` = the source. It copies NO runs, and no node-tier memories (those stay
+    with the source's agents; repo and account memories still apply). Its nodes carry no
+    ``cloned_from_node_id``, so it never reads as a run of the source.
+
+    ``name`` defaults to ``"{source name} (copy)"``; a given name is trimmed and must not be blank
+    (``ValueError``, the endpoint's 422)."""
+    cleaned = None
+    if name is not None:
+        cleaned = name.strip()
+        if not cleaned:
+            raise ValueError("a team name is required")
+    with session_scope() as session:
+        source = session.execute(
+            select(TeamGraph).where(
+                TeamGraph.id == team_id,
+                TeamGraph.is_library.is_(True),
+                TeamGraph.owner_id == owner_id,
+            )
+        ).scalar_one_or_none()
+        if source is None:
+            return None
+        copy_id = _copy_graph(
+            session,
+            source.id,
+            name=cleaned or f"{source.name} (copy)",
+            link_origin=False,
+            is_library=True,
+            owner_id=owner_id,
+            template_key=source.template_key,
+            duplicated_from_id=source.id,
+        )
+        session.flush()
+        copy = session.get(TeamGraph, copy_id)
+        return _team_summary(session, copy)
 
 
 # ── F2-delete: stop-a-run + team teardown ───────────────────────────────────────────────────────
@@ -1782,45 +2137,37 @@ def _team_run_teardown_targets(
     session, library_team_id: uuid.UUID
 ) -> list[tuple[uuid.UUID, uuid.UUID]]:
     """Every run of a library team, paired with its clone-graph id as
-    ``(run_id, clone_team_graph_id)``. Uses the SAME clone→origin link the summary does: a run's
-    clone node ``cloned_from_node_id`` points back to an origin library-team node. A clone has many
-    nodes, so the join fans out; ``DISTINCT`` collapses it to one row per run."""
-    clone = aliased(AgentNode)  # a node of the run's clone (run-snapshot) graph
-    origin = aliased(AgentNode)  # the library-team node it was cloned from
+    ``(run_id, clone_team_graph_id)``. Uses the SAME run→team link the summary does
+    (:func:`_team_run_links`: ``runs.library_team_id``, else the clone→origin node join)."""
+    links = _team_run_links([library_team_id])
     rows = session.execute(
-        select(Run.id, Run.team_graph_id)
-        .select_from(Run)
-        .join(clone, clone.team_graph_id == Run.team_graph_id)
-        .join(origin, origin.id == clone.cloned_from_node_id)
-        .where(origin.team_graph_id == library_team_id)
-        .distinct()
+        select(Run.id, Run.team_graph_id).select_from(links).join(Run, Run.id == links.c.run_id)
     ).all()
     return [(run_id, clone_graph_id) for run_id, clone_graph_id in rows]
 
 
+def _pr_number(pr_url: str | None) -> int | None:
+    """``https://github.com/o/r/pull/42`` → 42 (``None`` for no PR or an unexpected url)."""
+    if not pr_url:
+        return None
+    head, sep, tail = pr_url.rstrip("/").rpartition("/pull/")
+    return int(tail) if sep and head and tail.isdigit() else None
+
+
 def list_team_runs(team_id: uuid.UUID, owner_id: uuid.UUID) -> list[dict] | None:
-    """Every run of one of the owner's library teams, NEWEST FIRST — the dashboard's per-team
-    history drill-down. ``None`` if there is no such team of theirs; ``[]`` for a team that exists
-    but has never run.
+    """Every run of one of the owner's library teams, NEWEST FIRST — the per-team run history.
+    ``None`` if there is no such team of theirs; ``[]`` for a team that exists but has never run.
 
     Those two answers are deliberately DISTINCT rather than both empty: ``None`` is "not your team"
     (the endpoint 404s, so a foreign team is not probeable) while ``[]`` is "your team, no history
-    yet" (a 200 the drill-down renders as an empty state). Collapsing them would make a foreign
-    team indistinguishable from an unrun one — and would silently show a user an empty panel for a
-    team they are not allowed to see, instead of an honest 404.
+    yet" (a 200 the history renders as an empty state).
 
-    Uses the SAME clone→origin link :func:`_run_rollup_by_origin` and
-    :func:`_team_run_teardown_targets` use — a run points at an immutable CLONE of the library team,
-    whose nodes carry ``cloned_from_node_id`` back to the origin library-team nodes. A clone has
-    MANY
-    nodes, so that join fans out to one row per node; ``DISTINCT`` collapses it to one row per run
-    (without it a 6-node team would report every run six times). ``created_at DESC`` orders,
-    with ``Run.id`` as a deterministic tie-break so two runs created in the same instant do not
-    reorder between reads. Both ordering columns are in the select list, as ``SELECT DISTINCT``
-    requires.
-
-    Read-only (SELECTs over ``runs`` + ``agent_nodes``) — migration-free by construction. The first
-    row is by definition the summary's ``last_run``, computed by the same join."""
+    Each row: ``run_id``, ``status``, ``idea``, ``created_at``, ``cost_total_usd`` (the stored
+    final cost, NULL as 0 — unchanged), plus ``updated_at``, ``status_group``
+    (:func:`run_status_group`), ``pr_url``, ``pr_number`` and ``spent_usd`` (what the run actually
+    spent, live — :func:`run_spent_usd_expr`). Runs are found by the same link the summary uses
+    (:func:`_team_run_links`), so the first row is always the summary's ``last_run``. ``created_at
+    DESC`` orders, with ``Run.id`` as a deterministic tie-break. Read-only."""
     with session_scope() as session:
         owned = session.execute(
             select(TeamGraph.id).where(
@@ -1832,21 +2179,20 @@ def list_team_runs(team_id: uuid.UUID, owner_id: uuid.UUID) -> list[dict] | None
         if owned is None:
             return None
 
-        clone = aliased(AgentNode)  # a node of the run's clone (run-snapshot) graph
-        origin = aliased(AgentNode)  # the library-team node it was cloned from
+        links = _team_run_links([team_id])
         rows = session.execute(
             select(
                 Run.id,
                 Run.status,
                 Run.idea,
                 Run.created_at,
+                Run.updated_at,
+                Run.pr_url,
                 func.coalesce(Run.cost_total_usd, 0).label("cost"),
+                run_spent_usd_expr().label("spent"),
             )
-            .select_from(Run)
-            .join(clone, clone.team_graph_id == Run.team_graph_id)
-            .join(origin, origin.id == clone.cloned_from_node_id)
-            .where(origin.team_graph_id == team_id)
-            .distinct()
+            .select_from(links)
+            .join(Run, Run.id == links.c.run_id)
             .order_by(Run.created_at.desc(), Run.id)
         ).all()
         return [
@@ -1856,8 +2202,13 @@ def list_team_runs(team_id: uuid.UUID, owner_id: uuid.UUID) -> list[dict] | None
                 "idea": idea,
                 "created_at": created_at.isoformat(),
                 "cost_total_usd": float(cost),
+                "updated_at": updated_at.isoformat(),
+                "status_group": run_status_group(status),
+                "pr_url": pr_url,
+                "pr_number": _pr_number(pr_url),
+                "spent_usd": float(spent),
             }
-            for run_id, status, idea, created_at, cost in rows
+            for run_id, status, idea, created_at, updated_at, pr_url, cost, spent in rows
         ]
 
 
@@ -1868,7 +2219,9 @@ def delete_library_team_and_runs(library_team_id: uuid.UUID) -> None:
     cancel every non-terminal one via the SHARED cancel core, then in ONE transaction tear each run
     down in FK-safe order: its run-scoped rows (``cost_records`` by ``workflow_id``;
     ``run_events`` / ``agent_invocations`` / ``human_tasks`` / ``engineer_run_attempts`` by
-    ``run_id``), the ``Run`` row, THEN its clone ``TeamGraph`` (nodes/edges cascade); finally the
+    ``run_id``; ``desktop_node_jobs`` by ``run_id``, so a Desktop job's stored instruction is not
+    orphaned and a runner still holding one gets a 404 on its next call), the ``Run`` row, THEN its
+    clone ``TeamGraph`` (nodes/edges cascade); finally the
     library team (nodes/edges cascade). The Run precedes its clone graph so ``runs.team_graph_id``
     (no ``ondelete``) is never left dangling. One transaction for the deletes ⇒ a failure can't
     half-delete; the cancels run before it (each in its own txn), so nothing nests."""
@@ -1886,6 +2239,7 @@ def delete_library_team_and_runs(library_team_id: uuid.UUID) -> None:
             session.execute(delete(AgentInvocation).where(AgentInvocation.run_id == rid))
             session.execute(delete(HumanTask).where(HumanTask.run_id == rid))
             session.execute(delete(EngineerRunAttempt).where(EngineerRunAttempt.run_id == rid))
+            session.execute(delete(DesktopNodeJob).where(DesktopNodeJob.run_id == rid))
             session.execute(delete(Run).where(Run.id == run_id))
             session.execute(delete(TeamGraph).where(TeamGraph.id == clone_graph_id))
         session.execute(delete(TeamGraph).where(TeamGraph.id == library_team_id))

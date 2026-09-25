@@ -14,6 +14,7 @@ import uuid
 
 from conftest import auth_user_id
 from dbos._context import get_local_dbos_context
+from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
 
 from tvashtr import routers
@@ -27,6 +28,7 @@ from tvashtr.control_plane.teams import (
     seed_library_if_empty,
 )
 from tvashtr.db import session_scope
+from tvashtr.main import app
 from tvashtr.models import AgentNode, Edge, Run, TeamGraph
 
 # Roles that are NOT prompt-editable agents (control primitives the node-update endpoint rejects).
@@ -177,30 +179,30 @@ def test_promote_my_team_data_step_flips_only_my_team():
     assert _is_library(other_id) is False
 
 
-# --- Seam 3: GET /api/teams (list only library teams + seed-if-empty) ----------------------------
+# --- Seam 3: GET /api/teams (list only library teams; never seeds) -------------------------------
 
 
-def test_get_teams_seeds_when_empty_and_is_idempotent(client):
-    """The list is NEVER empty: clear every library team, then ``GET /api/teams`` seeds exactly one
-    (``review_loop`` named ``"My team"``); a second call does NOT seed again."""
-    # Clear the shelf (safe — runs reference clones, never library teams).
-    with session_scope() as session:
-        for g in (
-            session.execute(select(TeamGraph).where(TeamGraph.is_library.is_(True))).scalars().all()
-        ):
-            session.delete(g)
-    assert list_library_teams(auth_user_id()) == []
+def test_get_teams_does_not_seed_an_empty_library(client):
+    """Revamp G-13 (was ``test_get_teams_seeds_when_empty_and_is_idempotent``): an account with no
+    teams lists NONE — ``GET /api/teams`` no longer auto-creates "My team" (Home's first-time view
+    offers the templates instead), and deleting the last team does not bring one back."""
+    fresh = TestClient(app)
+    fresh.cookies.clear()
+    email = f"noseed-{uuid.uuid4().hex}@tvashtr.local"
+    assert (
+        fresh.post(
+            "/api/auth/register", json={"email": email, "password": "noseed-password"}
+        ).status_code
+        == 200
+    )
 
-    teams = client.get("/api/teams").json()["teams"]
-    assert len(teams) == 1
-    seeded = teams[0]
-    assert seeded["name"] == "My team"
-    assert seeded["node_count"] == len(_REVIEW_LOOP_ROLES)  # 7 — seeded from review_loop
-    assert set(_nodes(seeded["team_graph_id"])) == _REVIEW_LOOP_ROLES
-
-    # Idempotent: a second list does not seed a second "My team".
-    again = client.get("/api/teams").json()["teams"]
-    assert len(again) == 1 and again[0]["team_graph_id"] == seeded["team_graph_id"]
+    assert fresh.get("/api/teams").json() == {"teams": []}
+    created = fresh.post("/api/teams", json={"template": "two_node", "name": "Only team"}).json()
+    assert [t["team_graph_id"] for t in fresh.get("/api/teams").json()["teams"]] == [
+        created["team_graph_id"]
+    ]
+    assert fresh.delete(f"/api/teams/{created['team_graph_id']}").status_code == 200
+    assert fresh.get("/api/teams").json() == {"teams": []}
 
 
 def test_get_teams_lists_only_library_teams(client):
@@ -556,3 +558,17 @@ def test_seed_library_if_empty_is_a_noop_when_nonempty():
     before = len(list_library_teams(auth_user_id()))
     seed_library_if_empty(auth_user_id())
     assert len(list_library_teams(auth_user_id())) == before
+
+
+def test_seed_library_if_empty_marks_the_seeded_team(client):
+    """A seeded "My team" carries ``template_key = "seed"`` (no template name), so it never counts
+    as a team the user made."""
+    fresh = TestClient(app)
+    fresh.cookies.clear()
+    email = f"seed-{uuid.uuid4().hex}@tvashtr.local"
+    resp = fresh.post("/api/auth/register", json={"email": email, "password": "seed-password"})
+    owner = uuid.UUID(resp.json()["id"])
+    seed_library_if_empty(owner)
+    (team,) = list_library_teams(owner)
+    assert team["name"] == "My team"
+    assert team["template_key"] == "seed" and team["template_name"] is None
