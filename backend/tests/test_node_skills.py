@@ -395,3 +395,64 @@ def test_node_skills_has_no_module_level_openhands_import():
             assert not (node.module or "").startswith("openhands"), (
                 f"module-level 'from {node.module} import ...' violates INVARIANT 1"
             )
+
+
+# ---------------------------------------------------------------------------------------------
+# Revamp (B-TOOLKIT): per-agent mode override on library refs; repo mode / resolved_sha / comma
+# filters
+# ---------------------------------------------------------------------------------------------
+
+
+def _library_skill(owner: uuid.UUID, source: dict) -> str:
+    from tvashtr.control_plane import node_library
+
+    return str(node_library.create_owner_skill(owner, f"s-{uuid.uuid4().hex[:8]}", source))
+
+
+def test_library_ref_mode_override_replaces_the_library_mode(client):
+    owner = _make_user()
+    run_id = _make_owned_run(owner)
+    sid = _library_skill(owner, {"type": "inline", "name": "hs", "content": "C", "mode": "always"})
+    (plain,) = build_skills([{"type": "library", "id": sid}], "/w", run_id)
+    assert plain.trigger is None and plain.is_agentskills_format is False
+    (agent,) = build_skills([{"type": "library", "id": sid, "mode": "agent"}], "/w", run_id)
+    assert agent.trigger is None and agent.is_agentskills_format is True
+    (trig,) = build_skills(
+        [{"type": "library", "id": sid, "mode": "trigger", "triggers": "auth, secrets"}],
+        "/w",
+        run_id,
+    )
+    assert trig.trigger.keywords == ["auth", "secrets"]
+    assert trig.is_agentskills_format is False
+
+
+def test_library_ref_with_an_unknown_mode_is_skipped_and_warned(client, monkeypatch):
+    owner = _make_user()
+    run_id = _make_owned_run(owner)
+    sid = _library_skill(owner, {"type": "inline", "name": "hs", "content": "C"})
+    warned: list = []
+    monkeypatch.setattr(node_skills, "_emit_skill_warning", lambda *a: warned.append(a))
+    assert build_skills([{"type": "library", "id": sid, "mode": "bogus"}], "/w", run_id) == []
+    assert warned and "unknown skill mode" in warned[0][2]
+
+
+def test_repo_resolved_sha_wins_over_ref_and_comma_filter_and_mode(
+    tmp_path, _isolated_skills_cache
+):
+    repo, sha = _make_skill_repo(tmp_path, {"greet": "G", "farewell": "F", "other": "O"})
+    out = build_skills(
+        [
+            {
+                "type": "repo",
+                "url": repo,
+                "ref": "no-such-branch",
+                "resolved_sha": sha,
+                "filter": "greet, fare*",
+                "mode": "always",
+            }
+        ],
+        "/w",
+        _RUN,
+    )
+    assert {s.name for s in out} == {"greet", "farewell"}
+    assert all(s.trigger is None and s.is_agentskills_format is False for s in out)

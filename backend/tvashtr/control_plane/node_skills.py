@@ -16,11 +16,14 @@ and takes the identical ``AgentContext`` path (M-unify, amendment 1).
 Each source object is one of (see :data:`SkillSource` in ``frontend/src/lib/api.ts`` for the twin):
 
 * ``{"type": "inline", "name", "content", "mode": "always"|"trigger"|"agent", "triggers"?: [...]}``
-* ``{"type": "repo", "url", "ref", "filter"?}`` — a GitHub repo cloned at the PINNED ref
+* ``{"type": "repo", "url", "ref", "filter"?, "mode"?, "triggers"?, "resolved_sha"?}`` — a GitHub
+  repo cloned at the PINNED ref (``resolved_sha`` wins when set; ``filter`` is comma-separated
+  globs; ``mode`` sets how every loaded skill loads)
 * ``{"type": "project_rules"}`` — adopt the run's own workspace rules (``CLAUDE.md`` etc. + the
   modern ``.cursor/rules/*.mdc`` files the SDK's ``load_project_skills`` does NOT read)
-* ``{"type": "library", "id": "<uuid>"}`` — (C7.C) a LIVE ref to the owner's ``skill_library``;
-  its stored source (inline/repo/project_rules) is fetched fresh + resolved one level at run time
+* ``{"type": "library", "id": "<uuid>", "mode"?, "triggers"?}`` — (C7.C) a LIVE ref to the owner's
+  ``skill_library``; its stored source (inline/repo/project_rules) is fetched fresh + resolved one
+  level at run time; an optional ``mode``/``triggers`` is this agent's load-mode override
 
 A source that fails to resolve (bad repo, unreadable rules, unknown type) is SKIPPED — the run
 continues — and records a warning through C7.A's recorder via the lazy shim
@@ -37,6 +40,7 @@ from __future__ import annotations
 import fnmatch
 import glob
 import os
+import re
 
 # =================================================================================================
 # The resolution-warning recorder shim (SHARED CONTRACT S1 — owned by C7.A; C7.B emits through it)
@@ -146,7 +150,35 @@ def _resolve_library_source(source: dict, workspace_dir: str | None, run_id: str
     if not isinstance(lib_source, dict):
         _emit_skill_warning(run_id, f"library:{lib_id}", "referenced library skill not found")
         return []
-    return _resolve_source_one_level(lib_source, workspace_dir)
+    resolved = _resolve_source_one_level(lib_source, workspace_dir)
+    # Revamp: the ref may carry a PER-AGENT load-mode override ({"type":"library","id","mode"?,
+    # "triggers"?}) — "Each agent can change this in its own Skills & tools tab". It replaces the
+    # library skill's own mode for this node only.
+    if source.get("mode"):
+        resolved = [_with_mode(s, source.get("mode"), source.get("triggers")) for s in resolved]
+    return resolved
+
+
+def _trigger_words(value: object) -> list[str]:
+    """Trigger words from a list or a comma-separated string, trimmed, empties dropped."""
+    items = value.split(",") if isinstance(value, str) else value if isinstance(value, list) else []
+    return [str(t).strip() for t in items if str(t).strip()]
+
+
+def _with_mode(skill, mode: object, triggers: object):
+    """A copy of ``skill`` loading in ``mode`` — the same three SDK disclosure behaviours as an
+    inline source (always → always active; trigger → keyword-gated; agent → progressive
+    disclosure). An unknown mode raises, so the caller skips the source + warns."""
+    from openhands.sdk.skills import KeywordTrigger
+
+    if mode == "always":
+        return skill.model_copy(update={"trigger": None, "is_agentskills_format": False})
+    if mode == "trigger":
+        trigger = KeywordTrigger(keywords=_trigger_words(triggers))
+        return skill.model_copy(update={"trigger": trigger, "is_agentskills_format": False})
+    if mode == "agent":
+        return skill.model_copy(update={"trigger": None, "is_agentskills_format": True})
+    raise ValueError(f"unknown skill mode: {mode!r}")
 
 
 def _dedup_by_name(resolved: list) -> list:
@@ -193,10 +225,18 @@ def _resolve_inline(source: dict):
     raise ValueError(f"unknown inline mode: {mode!r}")
 
 
+_FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
 def _resolve_repo(source: dict) -> list:
     """repo → clone at the PINNED ref via the SDK loader, then apply ``filter``. Subsumes
     marketplaces (a marketplace is a repo + manifest). ``load_public_skills`` never raises — it
-    returns ``[]`` on any failure — so an empty result is treated as a resolution failure."""
+    returns ``[]`` on any failure — so an empty result is treated as a resolution failure.
+
+    Revamp: ``resolved_sha`` (a full commit SHA recorded when the skills were added from GitHub)
+    wins over ``ref`` so runs stay repeatable ("Skills update when you change the version");
+    ``filter`` is a comma-separated list of globs (any match keeps a skill); an optional
+    ``mode``/``triggers`` sets how every loaded skill loads (default: each file's own format)."""
     from openhands.sdk.skills import load_public_skills
 
     url = source.get("url")
@@ -205,13 +245,18 @@ def _resolve_repo(source: dict) -> list:
         raise ValueError("repo skill needs a url")
     if not ref:
         raise ValueError("repo skill needs a ref (pins reproducibility)")
+    sha = source.get("resolved_sha")
+    pin = sha if isinstance(sha, str) and _FULL_SHA.match(sha) else str(ref)
     # marketplace_path=None → load ALL skills in the repo's skills/ dir (no manifest required).
-    loaded = load_public_skills(repo_url=str(url), ref=str(ref), marketplace_path=None)
+    loaded = load_public_skills(repo_url=str(url), ref=pin, marketplace_path=None)
     filt = source.get("filter")
-    if filt:
-        loaded = [s for s in loaded if fnmatch.fnmatch(s.name, str(filt))]
+    patterns = [p.strip() for p in str(filt).split(",") if p.strip()] if filt else []
+    if patterns:
+        loaded = [s for s in loaded if any(fnmatch.fnmatch(s.name, p) for p in patterns)]
     if not loaded:
-        raise ValueError(f"repo produced no skills (url={url!r}, ref={ref!r}, filter={filt!r})")
+        raise ValueError(f"repo produced no skills (url={url!r}, ref={pin!r}, filter={filt!r})")
+    if source.get("mode"):
+        loaded = [_with_mode(s, source.get("mode"), source.get("triggers")) for s in loaded]
     return loaded
 
 

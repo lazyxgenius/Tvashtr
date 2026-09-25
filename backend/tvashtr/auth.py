@@ -355,7 +355,7 @@ def _desktop_frontend_origin_from_request(request: Request) -> str | None:
 @auth_router.get("/github/callback")
 def github_callback(
     request: Request,
-    code: str,
+    code: str | None = None,
     installation_id: str | None = None,
     setup_action: str | None = None,
 ) -> RedirectResponse:
@@ -375,6 +375,14 @@ def github_callback(
     settings = get_settings()
     if not settings.hosted_mode:
         raise HTTPException(status_code=404, detail="Not found")
+    if not code:
+        # Revamp (Toolkit › Browse "Install GitHub App"): an App whose Setup URL is this callback
+        # but which does not request user authorization on install returns ``?installation_id`` +
+        # ``?setup_action`` with NO ``code``. Without a code nothing proves who installed it, so
+        # nothing is recorded (``/api/github/status`` backfills installations App-side) and the
+        # session is left as it is — just send the browser back to the app, which re-reads status.
+        frontend = _desktop_frontend_origin_from_request(request) or settings.frontend_origin
+        return RedirectResponse(url=frontend, status_code=302)
     desktop_redirect_uri = _desktop_redirect_uri_from_request(request)
     try:
         user_token = github_app.exchange_code_for_user_token(

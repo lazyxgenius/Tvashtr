@@ -26,9 +26,37 @@ def test_catalogue_includes_secret_and_github_app_shelf_copy():
     assert by_key["github"]["access"] == "needs_secret"
     assert by_key["github"]["secret_names"] == ["GITHUB_TOKEN"]
     assert by_key["github"]["attachable"] is True
-    assert "${GITHUB_TOKEN}" in by_key["github"]["server_config"]["env"]["GITHUB_PERSONAL_ACCESS_TOKEN"]
+    # Revamp (spec §4.2 Q8): the GitHub entry is the REMOTE GitHub MCP with a bearer secret ref.
+    assert by_key["github"]["server_config"] == {
+        "url": "https://api.githubcopilot.com/mcp/",
+        "headers": {"Authorization": "Bearer ${GITHUB_TOKEN}"},
+    }
+    assert by_key["github"]["badge"] == "Needs GITHUB_TOKEN"
     assert by_key["github-app"]["access"] == "needs_github_app"
     assert by_key["github-app"]["attachable"] is False
+    assert by_key["github-app"]["description"] == (
+        "Hosted runs use your Tvashtr GitHub App installation. Install the App, then launch "
+        "against an App repo."
+    )
+
+
+def test_catalogue_uses_the_browse_design_copy():
+    fetch = next(e for e in public_tool_catalogue() if e["key"] == "fetch")
+    assert fetch["badge"] == "Free · no login"
+    assert fetch["description"] == (
+        "Fetch web pages over HTTP. Runs locally with uvx mcp-server-fetch."
+    )
+    by_key = {p["key"]: p for p in public_skill_presets()}
+    assert by_key["caveman"]["description"] == (
+        "Ultra-compressed output style that keeps technical substance."
+    )
+    assert by_key["tdd"]["description"] == (
+        "Red → green → refactor. Smallest code that makes the failing test pass."
+    )
+    assert by_key["yagni"]["description"] == (
+        "Smallest change that solves the asked problem, no speculative extras."
+    )
+    assert all(p["badge"] == "Free" for p in by_key.values())
 
 
 def test_access_badge_copy():
