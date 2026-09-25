@@ -1,7 +1,8 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
-import { shippedFile } from "./_shipReadback";
+import { openComposerFromCanvas, launchFromComposer } from "./_composer";
 import { openMyTeam } from "./_myTeam";
+import { shippedFile } from "./_shipReadback";
 
 // DEFAULT_IDEA's deliverable line (backend/tvashtr/routers.py) — the line the shipped file must
 // NOT be, proving the human's mid-run edit (not the PM's original spec) drove what shipped.
@@ -19,7 +20,8 @@ async function runStatus(request: APIRequestContext, runId: string): Promise<str
 /**
  * Post M-accounts: the canvas is behind login. Register a fresh account (cookie lands on
  * `page.request` — the standalone `request` fixture is a SEPARATE unauthenticated context),
- * seed the deepseek BYOK key the launch pre-flight requires, and open the seeded "My team".
+ * seed the deepseek BYOK key the launch pre-flight requires, then create + open the review_loop
+ * "My team" (new accounts start with no team).
  */
 async function openSeededTeam(page: import("@playwright/test").Page): Promise<void> {
   const email = `steering+${Date.now()}@tvashtr.local`;
@@ -50,19 +52,15 @@ test("J3 live steering: a human rewrites the PRD at the gate through the real Ti
   await openSeededTeam(page);
 
   // 1. Launch the persistent team via the UI control (P1.8b: the canvas opens to the editable team
-  //    and "Run this team" clones+launches it — a review_loop, so it still pauses at the PRD gate).
-  //    Wait for the team to load so the control is enabled; capture run_id from the POST response.
-  //    Auth reads use page.request (shares the register cookie).
+  //    and a launch clones+launches it — a review_loop, so it still pauses at the PRD gate). Revamp
+  //    round 1: "Run this team" opens Home's composer with the team picked; Launch there with the
+  //    backend's skeleton idea (the greeting.txt line the steer must replace), then "Open run" back
+  //    to the run's canvas. Auth reads use page.request (shares the register cookie).
   const api = page.request;
-  const startResp = page.waitForResponse(
-    (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
-  );
   const runControl = page.getByRole("button", { name: "Run this team" });
   await expect(runControl).toBeEnabled({ timeout: 30_000 });
-  await runControl.click();
-  // Slice 2: "Run this team" opens the launch panel; its Run fires the (greenfield) launch.
-  await page.getByRole("button", { name: "Run", exact: true }).click();
-  const runId = ((await (await startResp).json()) as { run_id: string }).run_id;
+  await openComposerFromCanvas(page, "My team");
+  const { runId } = await launchFromComposer(page);
   expect(runId, "the Start control returns a run_id").toBeTruthy();
   console.log(`[steering-e2e] run_id = ${runId}`);
 

@@ -3,11 +3,16 @@ import path from "node:path";
 
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
+import { runFromCanvas } from "./_composer";
+import { registerFresh } from "./_home";
+import { seedProviderKeys } from "./_keys";
+
 // Live FE proof for the per-node work-brief (Option A, §6.2): drive a real review_loop run through
 // the UI, then click the THINKER (PM) node and the WORKER (Engineer) node in the RUN view and assert
 // each node's panel surfaces its own "Last run" brief — screenshotting both as operator artifacts.
 // Uses targeted locators (data-id) + element screenshots, NOT a whole-tree snapshot (the React Flow
-// a11y tree wedges the MCP snapshot — gotcha).
+// a11y tree wedges the MCP snapshot — gotcha). Revamp round 1: a fresh account (with its own deepseek
+// key) makes the team in Home's New team dialog and launches through Home's composer, then "Open run".
 
 const TERMINAL_BAD = ["failed", "rejected", "cancelled", "over_budget"];
 const SHOTS_DIR = process.env.TVASHTR_WB_SHOTS_DIR ?? "/tmp/tvashtr_work_brief_shots";
@@ -23,42 +28,42 @@ async function runStatus(request: APIRequestContext, runId: string): Promise<str
 
 test("work-brief: the run-view panel surfaces each node's 'Last run' brief (thinker + worker)", async ({
   page,
-  request,
 }) => {
-  // A real PM (completion) + a real Engineer agent x2 (forced loop-back) on the live NIM model.
+  // A real PM (completion) + a real Engineer agent (the UI-driven run uses FORCE_REVISIONS=0).
   test.setTimeout(24 * 60 * 1000);
   fs.mkdirSync(SHOTS_DIR, { recursive: true });
 
-  await page.goto("/");
+  // Sign in as a fresh account with a deepseek key, so the template's nodes default to deepseek
+  // models (the page's request context carries the session cookie).
+  await registerFresh(page, "work-brief");
+  await seedProviderKeys(page, ["deepseek"]);
+  const request = page.request;
 
-  // 1. Create a fresh review_loop team (deterministic regardless of prior DB state) and run it.
+  // 1. Create a fresh review_loop team from Home's New team dialog.
   const TEAM_NAME = `Work-brief E2E ${Date.now()}`;
-  await page.getByRole("button", { name: /New team/ }).click();
-  const picker = page.getByLabel("New team from a template");
+  await page.getByRole("button", { name: "New team", exact: true }).first().click();
+  const picker = page.getByRole("dialog", { name: "New team" });
   await expect(picker).toBeVisible({ timeout: 30_000 });
-  await picker.getByText("PM → Engineer ↔ Reviewer").click();
-  await picker.getByRole("textbox").fill(TEAM_NAME);
+  await picker
+    .locator("button.hm-tplcard", {
+      has: page.locator(".hm-tplcard__name", { hasText: /^PM → Engineer ⇄ Reviewer$/ }),
+    })
+    .click();
+  await picker.getByLabel("Name", { exact: true }).fill(TEAM_NAME);
   await picker.getByRole("button", { name: "Create team" }).click();
   console.log(`[work-brief-e2e] created review_loop team "${TEAM_NAME}"`);
 
-  // (No model edit needed: the review_loop template already seeds the Engineer with the proven NIM
-  // agent model — the §6.1 API checker proved this template runs to completion on NIM. Editing the
-  // model to that same value would leave the dirty-aware Save button DISABLED and hang the click.)
+  // (No model edit needed: the template seeds every model-bearing node with the account's held
+  // provider's defaults. Editing the model to that same value would leave the dirty-aware Save button
+  // DISABLED and hang the click.)
   const engineerNode = page.locator(".react-flow__node", { hasText: "Engineer" }).first();
   await expect(engineerNode).toBeVisible({ timeout: 30_000 });
 
-  // 2. "Run this team" -> capture run_id; the app switches to the run view.
-  const startResp = page.waitForResponse(
-    (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "Run this team" }).click();
-  // Slice 2: "Run this team" opens the launch panel; its Run fires the (greenfield) launch.
-  await page.getByRole("button", { name: "Run", exact: true }).click();
-  const runId = ((await (await startResp).json()) as { run_id: string }).run_id;
-  expect(runId, "Run-this-team returns a run_id").toBeTruthy();
+  // 2. "Run this team" -> Home's composer -> Launch -> run_id; "Open run" -> the run view.
+  const { runId } = await runFromCanvas(page, { teamName: TEAM_NAME });
   console.log(`[work-brief-e2e] run_id = ${runId}`);
 
-  // 3. Run hands-off (auto-approve gates + forced revision -> Engineer x2) to ship.
+  // 3. Run hands-off (auto-approve gates; the script's FORCE_REVISIONS=0 approves round 1) to ship.
   const deadline = Date.now() + 20 * 60 * 1000;
   let status = "";
   while (Date.now() < deadline) {

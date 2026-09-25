@@ -3,13 +3,18 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-// M-tools C7.C frontend self-sign-off. Drives the REAL app (register -> dashboard shelves -> new team
-// -> a WORKER node drawer) and screenshots:
-//   (a) the account Tool + Skill LIBRARY shelves, each holding a defined item;
+import { registerFresh, shellNav } from "./_home";
+
+// M-tools C7.C frontend self-sign-off. Drives the REAL app (register -> Toolkit › Tools + Skills ->
+// Home's New team -> a WORKER node drawer) and screenshots:
+//   (a) the account Tool + Skill LIBRARY shelves (Toolkit › Tools / Skills), each holding a defined
+//       item;
 //   (b) the Tools section "Add from library" pick -> a Library-badged reference row;
 //   (c) the same in the Skills section;
 //   (d) the "overridden" tag when an inline server shares a name with a library reference.
 // Targeted selectors only (no whole-tree a11y snapshot — it wedges on the React Flow canvas).
+// Revamp round 1: the account registers through the API (the sign-up wizard is not under test and
+// hides its email form in the hosted posture) and the shelves live on Toolkit's pages.
 
 const SHOTS = process.env.TVASHTR_C7C_SHOTS_DIR ?? "/tmp/tvashtr_c7c_shots";
 
@@ -19,56 +24,57 @@ test("M-tools C7.C: library shelves + Add-from-library pickers + overridden tag"
   test.setTimeout(3 * 60 * 1000);
   fs.mkdirSync(SHOTS, { recursive: true });
 
-  // Register a fresh account through the AuthWizard (mirrors tools-c7a.spec.ts).
-  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 30000 });
-  await page.getByRole("button", { name: "Get started" }).first().click();
-  await page.getByLabel("Email").fill(`c7c+${Date.now()}@tvashtr.local`);
-  await page.getByLabel("Password").fill("e2e-password-123");
-  await page.getByRole("button", { name: "Create account" }).click();
-  for (let i = 0; i < 4; i++) {
-    if (await page.getByRole("button", { name: /New team/ }).count()) break;
-    const opt = page
-      .getByRole("button")
-      .filter({ hasNotText: /Continue|Back|Sign in|Enter Tvashtr|New team|Log/i })
-      .first();
-    if (await opt.count()) await opt.click().catch(() => {});
-    const go = page.getByRole("button", { name: /Continue|Enter Tvashtr|Finish|Done/i }).first();
-    if (await go.count()) await go.click().catch(() => {});
-    await page.waitForTimeout(1200);
-  }
-  await expect(page.getByRole("button", { name: /New team/ })).toBeVisible({ timeout: 30_000 });
+  // Register a fresh account (the page shares the cookie) → the signed-in shell.
+  await registerFresh(page, "c7c");
+  const nav = shellNav(page);
 
-  // (a) Add a tool to the Tool library shelf + a skill to the Skill library shelf, then screenshot.
-  await page.getByRole("heading", { name: "Tool library" }).scrollIntoViewIfNeeded();
-  await page.getByLabel("Tool name").fill("fetch");
-  await page.getByLabel("Server config JSON").fill('{"command":"uvx","args":["mcp-server-fetch"]}');
-  await page.getByRole("button", { name: "Add tool" }).click();
-  await expect(page.locator(".tv-dash__prov-name", { hasText: "fetch" }).first()).toBeVisible({
+  // (a) Add a tool on Toolkit › Tools (its raw-JSON form sits under "Advanced (raw JSON)") and a
+  //     skill on Toolkit › Skills, then screenshot each shelf. Each name is matched EXACTLY so a
+  //     built-in catalog/preset entry can't satisfy the check.
+  await nav.getByRole("button", { name: /^Toolkit/ }).click();
+  await expect(page).toHaveURL(/#\/toolkit\/tools$/);
+  const toolShelf = page.locator("section[aria-label='Your tool library']");
+  await expect(toolShelf.getByRole("heading", { name: "Tool library" })).toBeVisible({
+    timeout: 30_000,
+  });
+  await toolShelf.getByLabel("Tool name").fill("fetch");
+  await toolShelf.getByText("Advanced (raw JSON)").click();
+  await toolShelf
+    .getByLabel("Server config JSON")
+    .fill('{"command":"uvx","args":["mcp-server-fetch"]}');
+  await toolShelf.getByRole("button", { name: "Add tool" }).click();
+  await expect(toolShelf.locator(".tv-dash__prov-name", { hasText: /^fetch$/ })).toBeVisible({
     timeout: 15_000,
   });
+  await page.screenshot({ path: path.join(SHOTS, "a-tool-library.png") });
 
-  await page.getByLabel("Skill name").fill("house-style");
-  await page.getByLabel("Skill content").fill("Prefer small, well-tested diffs.");
-  await page.getByRole("button", { name: "Add skill" }).click();
-  await expect(page.locator(".tv-dash__prov-name", { hasText: "house-style" }).first()).toBeVisible(
+  await nav.getByRole("button", { name: /^Skills/ }).click();
+  await expect(page).toHaveURL(/#\/toolkit\/skills$/);
+  const skillShelf = page.locator("section[aria-label='Your skill library']");
+  await skillShelf.getByLabel("Skill name").fill("house-style");
+  await skillShelf.getByLabel("Skill content").fill("Prefer small, well-tested diffs.");
+  await skillShelf.getByRole("button", { name: "Add skill" }).click();
+  await expect(skillShelf.locator(".tv-dash__prov-name", { hasText: /^house-style$/ })).toBeVisible(
     { timeout: 15_000 },
   );
-
-  await page.getByRole("heading", { name: "Tool library" }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(SHOTS, "a-library-shelves.png") });
   console.log("[c7c-e2e] (a) captured the Tool + Skill library shelves");
 
-  // New team (PM thinker + Engineer worker), open the Engineer worker node.
+  // New team from Home's dialog (PM thinker + Engineer worker), open the Engineer worker node.
+  await nav.getByRole("button", { name: /^Home/ }).click();
   const createResp = page.waitForResponse(
     (r) => r.url().endsWith("/api/teams") && r.request().method() === "POST",
   );
-  await page
-    .getByRole("button", { name: /New team/ })
-    .first()
+  await page.getByRole("button", { name: "New team", exact: true }).first().click();
+  const picker = page.getByRole("dialog", { name: "New team" });
+  await expect(picker).toBeVisible({ timeout: 30_000 });
+  await picker
+    .locator("button.hm-tplcard", {
+      has: page.locator(".hm-tplcard__name", { hasText: /^PM → Engineer$/ }),
+    })
     .click();
-  await page.getByRole("button", { name: /^PM → Engineer A PM writes/ }).click();
-  await page.getByLabel("Team name").fill(`C7C ${Date.now()}`);
-  await page.getByRole("button", { name: "Create team" }).click();
+  await picker.getByLabel("Name", { exact: true }).fill(`C7C ${Date.now()}`);
+  await picker.getByRole("button", { name: "Create team" }).click();
   await createResp;
 
   const eng = page.locator(".react-flow__node", { hasText: "Engineer" }).first();
@@ -112,6 +118,7 @@ test("M-tools C7.C: library shelves + Add-from-library pickers + overridden tag"
   console.log("[c7c-e2e] (c) captured the Skills Library-badged row");
 
   for (const f of [
+    "a-tool-library.png",
     "a-library-shelves.png",
     "b-tools-library-row.png",
     "c-skills-library-row.png",

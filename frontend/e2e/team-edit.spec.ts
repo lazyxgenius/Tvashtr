@@ -1,7 +1,8 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
-import { shippedFile } from "./_shipReadback";
+import { runFromCanvas } from "./_composer";
 import { openMyTeam } from "./_myTeam";
+import { shippedFile } from "./_shipReadback";
 
 // DEFAULT_IDEA's deliverable line (backend/tvashtr/routers.py) — the template default the shipped
 // file must NOT be, proving the human's AUTHORED Engineer prompt (not the template) drove the build.
@@ -20,7 +21,8 @@ async function runStatus(request: APIRequestContext, runId: string): Promise<str
 }
 
 /**
- * Post M-accounts: register (cookie on page.request), seed deepseek BYOK, open seeded My team.
+ * Post M-accounts: register (cookie on page.request), seed deepseek BYOK, then create + open the
+ * review_loop "My team" (new accounts start with no team).
  * The standalone `request` fixture is unauthenticated — always use page.request for owner reads.
  */
 async function openSeededTeam(page: import("@playwright/test").Page): Promise<void> {
@@ -80,14 +82,9 @@ test("P1.8b authoring: a human edits the Engineer node's prompt on the canvas, a
   await expect(panel.getByText(/Saved/)).toBeVisible({ timeout: 30_000 });
   console.log(`[team-edit-e2e] saved the edited Engineer prompt + model (${AGENT_MODEL})`);
 
-  // 3. "Run this team" -> capture the run_id from the POST /api/runs response.
-  const startResp = page.waitForResponse(
-    (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "Run this team" }).click();
-  // Slice 2: "Run this team" opens the launch panel; its Run fires the (greenfield) launch.
-  await page.getByRole("button", { name: "Run", exact: true }).click();
-  const runId = ((await (await startResp).json()) as { run_id: string }).run_id;
+  // 3. "Run this team" -> Home's composer (this team picked) -> Launch with the backend's skeleton
+  //    idea -> capture the run_id from the POST /api/runs response; "Open run" -> the run view.
+  const { runId } = await runFromCanvas(page, { teamName: "My team" });
   expect(runId, "the Run-this-team control returns a run_id").toBeTruthy();
   console.log(`[team-edit-e2e] run_id = ${runId}`);
 

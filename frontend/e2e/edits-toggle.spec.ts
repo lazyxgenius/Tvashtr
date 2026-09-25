@@ -2,11 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
+
+import { composer, openComposerFromCanvas } from "./_composer";
 import { openMyTeam } from "./_myTeam";
 
 // Live FE proof for M-unify U3 (the edits surface). NO agent run, NO real LLM, .env-INDEPENDENT: it
-// REGISTERS a fresh account (whose seeded starter team is the review_loop "My team") and drives the
-// authoring canvas + node drawer. Four checks, each with a screenshot (targeted selectors — NOT a
+// REGISTERS a fresh account, creates the review_loop "My team" (new accounts start with no team) and
+// drives the authoring canvas + node drawer. Four checks, each with a screenshot (targeted selectors — NOT a
 // full a11y snapshot, which wedges on the React Flow canvas, §4). Authenticated API reads go through
 // `page.request` (it shares the page's session cookie).
 //
@@ -14,9 +16,12 @@ import { openMyTeam } from "./_myTeam";
 //      Save → PERSISTS (edits_allowed=false via the team-graph API) and the card RE-LABELS "Edits off";
 //   B) the START node (PM) Edits toggle is LOCKED off;
 //   C) the Tools editor is present on an EDITS-OFF node (the Reviewer) — no worker-only note;
-//   D) the pre-launch AMBER advisory flags the edits-off Engineer whose prompt says "implement".
+//   D) "Run this team" opens Home's composer with the team picked — and, since bc8d69e, the composer
+//      no longer shows the old launch panel's edits-off action-verb note (the design draws no such
+//      note; node configuration is the agent panel's job), so Check D pins that the edited team
+//      reaches the composer with no advisory note at all.
 //
-// Piece 4 (the Reviewer template ships edits-off) is asserted up front via the seeded team graph.
+// Piece 4 (the Reviewer template ships edits-off) is asserted up front via the team graph.
 
 const SHOTS_DIR = process.env.TVASHTR_EDITS_TOGGLE_SHOTS_DIR ?? "/tmp/tvashtr_edits_toggle_shots";
 
@@ -28,7 +33,7 @@ interface GNode {
   prompt: string | null;
 }
 
-test("M-unify U3: edits toggle persists + re-labels, tools on every node, amber advisory, start locked", async ({
+test("M-unify U3: edits toggle persists + re-labels, tools on every node, Run opens the composer, start locked", async ({
   page,
 }) => {
   test.setTimeout(3 * 60 * 1000);
@@ -43,14 +48,18 @@ test("M-unify U3: edits toggle persists + re-labels, tools on every node, amber 
     data: { email, password: "edits-toggle-pass" },
   });
   expect(reg.ok(), "register a fresh account").toBeTruthy();
+  // A keyless account's canvas shows "Configure providers" in place of "Run this team" (Check D
+  // clicks Run). Hold a DUMMY deepseek key before the team is made — deepseek serves both seats, so
+  // every node the defaults stamp is covered. No run is launched, so the key is never used.
+  const key = await page.request.post("/api/providers", {
+    data: { provider: "deepseek", api_key: "dummy-deepseek-key-0000" },
+  });
+  expect(key.ok(), "store a dummy deepseek key").toBeTruthy();
 
-  // The seeded starter team's id — for the authenticated team-graph persistence assertions.
-  const teams = (
-    (await (await page.request.get("/api/teams")).json()) as {
-      teams: { team_graph_id: string; name: string }[];
-    }
-  ).teams;
-  const teamId = teams[0].team_graph_id;
+  // Create + open the review_loop "My team" (the template the old seed used) → its canvas; keep its
+  // id for the authenticated team-graph persistence assertions.
+  const teamId = await openMyTeam(page);
+  await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
   const graphNodes = async (): Promise<GNode[]> =>
     ((await (await page.request.get(`/api/teams/${teamId}/graph`)).json()) as { nodes: GNode[] })
       .nodes;
@@ -63,10 +72,6 @@ test("M-unify U3: edits toggle persists + re-labels, tools on every node, amber 
   );
   expect(byRole(seeded, "engineer")?.edits_allowed, "the Engineer stays edits-on").toBe(true);
   console.log("[edits-toggle-e2e] piece 4 OK — seeded Reviewer edits-off, Engineer edits-on");
-
-  // Load the app AUTHENTICATED → the dashboard, then open the seeded team → the canvas (authoring).
-  await openMyTeam(page);
-  await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
 
   // ── CHECK A — flip the Engineer (a non-start worker) Edits allowed → Not allowed + author an
   //    action-verb prompt, Save; assert it PERSISTED + the canvas RE-LABELS the card "Edits off".
@@ -123,24 +128,23 @@ test("M-unify U3: edits toggle persists + re-labels, tools on every node, amber 
   await page.screenshot({ path: path.join(SHOTS_DIR, "checkC-tools-on-edits-off.png") });
   console.log("[edits-toggle-e2e] CHECK C PASS — Tools editor present on the edits-off Reviewer");
 
-  // ── CHECK D — the pre-launch AMBER advisory flags the edits-off Engineer ("implement" prompt).
-  await page.getByRole("button", { name: "Run this team" }).click();
-  const launch = page.getByRole("dialog", { name: "Launch run" });
-  await expect(launch).toBeVisible({ timeout: 30_000 });
-  const warn = launch.getByRole("note", { name: "Edits-off action-verb advisory" });
-  await expect(warn).toBeVisible({ timeout: 30_000 });
-  await expect(warn).toContainText("engineer");
-  await expect(warn).toContainText("implement");
-  await page.screenshot({ path: path.join(SHOTS_DIR, "checkD-amber-advisory.png") });
+  // ── CHECK D — "Run this team" opens Home's composer with the edited team picked. The old launch
+  //    panel's edits-off action-verb advisory was dropped from the composer on purpose (bc8d69e: it
+  //    fired on our own review_loop template and no composer artboard draws it), so the composer
+  //    shows NO advisory note for this greenfield launch.
+  await openComposerFromCanvas(page, "My team");
+  await expect(composer(page).getByRole("note")).toHaveCount(0);
+  await expect(composer(page)).not.toContainText("implement");
+  await page.screenshot({ path: path.join(SHOTS_DIR, "checkD-composer-no-advisory.png") });
   console.log(
-    "[edits-toggle-e2e] CHECK D PASS — amber advisory names the edits-off Engineer + verb",
+    "[edits-toggle-e2e] CHECK D PASS — Run opens the composer with My team picked; no retired advisory",
   );
 
   for (const f of [
     "checkA-engineer-edits-off.png",
     "checkB-start-locked.png",
     "checkC-tools-on-edits-off.png",
-    "checkD-amber-advisory.png",
+    "checkD-composer-no-advisory.png",
   ]) {
     expect(fs.existsSync(path.join(SHOTS_DIR, f)), `screenshot ${f} written`).toBe(true);
   }

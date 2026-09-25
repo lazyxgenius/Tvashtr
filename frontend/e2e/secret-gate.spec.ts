@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
+import { openTeamViaPalette, registerFresh } from "./_home";
+
 // Live FE proof for M-rails C8: a gate node's drawer is now EDITABLE and can be flipped to the
 // `secret_leak_scan` guardrail. Register a fresh account, create a team that has a gate (the
 // review_loop's PRD gate), open the gate on the canvas, pick "Secret leak scan" in the Gate type
@@ -23,23 +25,14 @@ test("secret-gate: a gate is editable on the canvas and flips to the secret_leak
   test.setTimeout(3 * 60 * 1000);
   fs.mkdirSync(SHOTS_DIR, { recursive: true });
 
-  // --- Register a fresh account (M-accounts Slice A gates the whole app). Register via the API —
+  // --- Register a fresh account (M-accounts Slice A gates the whole app) through the API —
   //     `page.request` shares the browser's cookie jar, so the tv_session cookie it sets carries to
-  //     the page — then load the app authenticated, straight to the dashboard (this skips the F3
-  //     interactive sign-up wizard, which is UX not under test). ---
-  const email = `secret-gate+${Date.now()}@tvashtr.local`;
-  const reg = await page.request.post("/api/auth/register", {
-    data: { email, password: "e2e-password-123" },
-  });
-  expect(reg.ok(), `register ${email} -> ${reg.status()}`).toBeTruthy();
-  await page.goto("/");
-  const newTeamBtn = page.getByRole("button", { name: /New team/ });
-  await expect(newTeamBtn).toBeVisible({ timeout: 30_000 });
+  //     the page — then load the signed-in shell (the sign-up wizard is UX not under test). ---
+  const email = await registerFresh(page, "secret-gate");
   console.log(`[secret-gate-e2e] registered ${email}`);
 
   // --- Create a review_loop team (it carries a PRD gate) via the API, then OPEN it from the
-  //     dashboard so the canvas renders it (the picker UX itself isn't under test). ---
-  expect(newTeamBtn, "the dashboard rendered (authenticated)").toBeTruthy();
+  //     shell's search palette so the canvas renders it (the picker UX itself isn't under test). ---
   const teamName = `Secret-gate E2E ${Date.now()}`;
   const createRes = await page.request.post("/api/teams", {
     data: { template: "review_loop", name: teamName },
@@ -48,8 +41,8 @@ test("secret-gate: a gate is editable on the canvas and flips to the secret_leak
   const teamId = ((await createRes.json()) as { team_graph_id: string }).team_graph_id;
   console.log(`[secret-gate-e2e] created team ${teamId}`);
 
-  await page.reload();
-  await page.getByRole("button", { name: `Open ${teamName}` }).click();
+  await openTeamViaPalette(page, teamName);
+  await expect(page).toHaveURL(new RegExp(`#/teams/${teamId}$`));
 
   const graphOf = async (): Promise<Graph> =>
     (await (await page.request.get(`/api/teams/${teamId}/graph`)).json()) as Graph;

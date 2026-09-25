@@ -45,6 +45,9 @@ if [[ -f "$ROOT/.env" ]]; then
 fi
 
 export TVASHTR_AGENT_SANDBOX=local
+# The email/password sign-in this spec drives exists only in the self-hosted posture; .env may
+# set TVASHTR_HOSTED_MODE=true, so pin it off for this backend.
+export TVASHTR_HOSTED_MODE=false
 export TVASHTR_MEMORY_SHELF_SHOTS_DIR="$SHOTS_DIR"
 export TVASHTR_SEED_EMAIL="${TVASHTR_SEED_EMAIL:-operator@tvashtr.local}"
 export TVASHTR_SEED_PASSWORD="${TVASHTR_SEED_PASSWORD:-tvashtr-dev}"

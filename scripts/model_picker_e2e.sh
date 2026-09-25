@@ -2,15 +2,15 @@
 #
 # Live M-accounts Slice B model-picker E2E — the provider-gated picker + the recommendation hint (.env-FREE).
 #
-#   1. A logged-out visit shows the LANDING page (no canvas, no "create team" surface).
-#   2. A landing CTA opens register; a brand-new account lands on the empty DASHBOARD.
-#   3. Add a provider API key on the dashboard (shows `provider · •••• last4`, secret never shown).
-#   4. Open a team from the dashboard -> the canvas; back-to-dashboard returns.
+#   1. Register a fresh account (API), seed its own dummy provider creds, create + open "My team".
+#   2. The Engineer's Provider select lists the held providers; its Model is a full slug.
+#   3. The panel's inline "Add a provider" lands in the same store Engines › API keys reads.
+#   4. The same-model reviewer hint shows on the Reviewer and not on the PM.
 #
 # Orchestration mirrors scripts/auth_e2e.sh (Postgres + migrate + seed + a real backend on the LOCAL
 # sandbox + the Vite dev server + a headless Playwright run). NO agent run is driven — it needs NO
-# NVIDIA key; just Postgres + a real backend + Vite + Playwright. The dashboard's seeded starter team
-# is what the journey opens to reach the canvas.
+# NVIDIA key; just Postgres + a real backend + Vite + Playwright. New accounts start with no team, so
+# the spec creates the review_loop "My team" to reach the canvas.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

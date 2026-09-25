@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
+
+import { registerFresh, shellNav } from "./_home";
 import { openMyTeam } from "./_myTeam";
 
 // Live FE proof for M-accounts Slice C: the provider-gated per-node model picker + the recommendation
@@ -10,6 +12,9 @@ import { openMyTeam } from "./_myTeam";
 // /api/providers endpoint (the same encrypt-at-rest table the dashboard uses) — so it passes
 // identically whether the operator's .env provider keys are present or deleted. Targeted selectors +
 // a screenshot per check (NOT a full a11y snapshot — that wedges on the React Flow canvas, §4).
+// Revamp round 1: the account registers through the API (the email sign-up form is hidden in the
+// hosted posture .env sets), the team is created (new accounts start with none), and the saved keys
+// are read back on Engines › API keys (the old dashboard's providers section).
 
 const SHOTS_DIR = process.env.TVASHTR_MODEL_PICKER_SHOTS_DIR ?? "/tmp/tvashtr_model_picker_shots";
 const SEEDED = ["openrouter", "nvidia_nim", "openai"];
@@ -20,14 +25,12 @@ test("model picker: provider-gated picker + inline add + the same-model reviewer
   test.setTimeout(2 * 60 * 1000);
   fs.mkdirSync(SHOTS_DIR, { recursive: true });
 
-  // Register a fresh account → the dashboard (a seeded starter team, zero providers).
-  await page.goto("/");
-  await page.getByRole("button", { name: "Create your own team" }).click();
-  const email = `picker+${Date.now()}@tvashtr.local`;
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("model-picker-pass");
-  await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page.getByText("Add your provider API keys")).toBeVisible({ timeout: 30_000 });
+  // Register a fresh account → Home (no team, zero providers).
+  await registerFresh(page, "picker");
+  const held = (await (await page.request.get("/api/providers")).json()) as {
+    providers: unknown[];
+  };
+  expect(held.providers, "a fresh account holds no provider keys").toEqual([]);
 
   // Seed THIS account's own dummy encrypted creds via the authenticated API (no .env, no real key).
   for (const provider of SEEDED) {
@@ -37,7 +40,7 @@ test("model picker: provider-gated picker + inline add + the same-model reviewer
     expect(resp.ok()).toBeTruthy();
   }
 
-  // Open the seeded team → the canvas (authoring view).
+  // Create + open the review_loop "My team" → the canvas (authoring view).
   const myTeamId = await openMyTeam(page);
   await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
   console.log("[model-picker-e2e] CHECK 1 PASS — registered, seeded providers, opened the canvas");
@@ -63,11 +66,20 @@ test("model picker: provider-gated picker + inline add + the same-model reviewer
   await panel.getByRole("button", { name: "Add" }).click();
   await expect(provider.getByRole("option", { name: "groq" })).toHaveCount(1, { timeout: 30_000 });
   await page.screenshot({ path: path.join(SHOTS_DIR, "check3-inline-add.png") });
-  // Persisted: back on the dashboard, the providers section lists groq too.
-  await page.getByRole("button", { name: "← Dashboard" }).click();
-  await expect(page.getByText("groq")).toBeVisible({ timeout: 30_000 });
+  // Persisted: back in the shell, Engines › API keys lists groq too.
+  await page.getByRole("button", { name: "Back to dashboard" }).click();
+  await shellNav(page)
+    .getByRole("button", { name: /^Engines/ })
+    .click();
+  await shellNav(page)
+    .getByRole("button", { name: /^API keys/ })
+    .click();
+  const keys = page.locator("section[aria-labelledby='tv-engines-keys']");
+  await expect(keys.locator(".tv-dash__prov-name", { hasText: /^groq$/ })).toBeVisible({
+    timeout: 30_000,
+  });
   console.log(
-    "[model-picker-e2e] CHECK 3 PASS — inline-added groq appears in the panel + dashboard",
+    "[model-picker-e2e] CHECK 3 PASS — inline-added groq appears in the panel + Engines › API keys",
   );
 
   // CHECK 4 — the recommendation hint: the Reviewer shares the Engineer's model → hint VISIBLE; a
