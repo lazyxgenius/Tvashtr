@@ -18,7 +18,6 @@ vi.mock("../App", () => ({
   ),
 }));
 vi.mock("./home/HomePage", () => ({ HomePage: () => <div>HOME BODY</div> }));
-vi.mock("../components/Dashboard", () => ({ Dashboard: () => <div>HOME BODY</div> }));
 vi.mock("../components/EnginesShelf", () => ({ EnginesShelf: () => <div>ENGINES BODY</div> }));
 
 const user = { id: "u1", email: "lazyx@tvashtr.dev", display_name: "Lazyx" };

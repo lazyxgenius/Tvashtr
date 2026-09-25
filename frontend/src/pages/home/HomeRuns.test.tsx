@@ -178,7 +178,9 @@ describe("Start a run", () => {
     mockApi(homeRoutes());
     renderHome();
     await screen.findByText("Ready on the website");
-    await userEvent.click(screen.getByRole("button", { name: /Docs team/ }));
+    // Scoped to the composer: the Teams section below lists the same team names.
+    const composer = screen.getByRole("region", { name: "Start a run" });
+    await userEvent.click(within(composer).getByRole("button", { name: /Docs team/ }));
     const list = screen.getByRole("listbox", { name: "Your teams" });
     expect(within(list).getByRole("option", { name: /Indicator sprint team/ })).toHaveTextContent(
       "Website: needs 2 keys",
@@ -346,7 +348,11 @@ describe("Needs you", () => {
       await screen.findByText("Retrying the failed run with the same idea and repo."),
     ).toBeInTheDocument();
     expect(await ideaBox()).toHaveValue("Fix the flaky login test");
-    expect(screen.getByRole("button", { name: /Bugfix squad/ })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Start a run" })).getByRole("button", {
+        name: /Bugfix squad/,
+      }),
+    ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Launch" }));
     await waitFor(() => expect(posts(calls, "/api/runs")).toHaveLength(1));
     expect(posts(calls, "/api/runs")[0].body).toMatchObject({

@@ -164,8 +164,21 @@ export function browserTimeZone(): string {
   }
 }
 
-export function getSpend(tz: string = browserTimeZone()): Promise<Spend> {
-  return apiRequest<Spend>("GET", `/api/spend?tz=${encodeURIComponent(tz)}`);
+function isSpend(body: unknown): body is Spend {
+  const s = body as Partial<Spend> | null;
+  return (
+    typeof s?.month?.total_usd === "number" &&
+    typeof s.week?.total_usd === "number" &&
+    Array.isArray(s.by_team)
+  );
+}
+
+/** Spend for Home. An answer in any other shape counts as a failed load (the header leaves the
+ * figure out, the card shows its error) rather than crashing the page. */
+export async function getSpend(tz: string = browserTimeZone()): Promise<Spend> {
+  const body = await apiRequest<unknown>("GET", `/api/spend?tz=${encodeURIComponent(tz)}`);
+  if (!isSpend(body)) throw new Error("Unexpected answer from /api/spend");
+  return body;
 }
 
 // ---- The parts of /api/config Home reads ----
