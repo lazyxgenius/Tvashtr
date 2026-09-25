@@ -59,6 +59,8 @@
 }
 .sh-search kbd {
   margin-left: auto;
+  /* The design's kbd inherits the page line-height (22px tall box at 11px). */
+  line-height: 18px;
   padding: 1px 6px;
   border-radius: 5px;
   border: 1px solid var(--line-300);
