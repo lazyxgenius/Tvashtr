@@ -469,6 +469,7 @@
 }
 .hm-run--new {
   border-color: var(--coral-200);
+  background: var(--coral-100);
 }
 .hm-run__top {
   display: flex;
