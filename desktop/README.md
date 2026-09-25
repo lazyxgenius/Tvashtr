@@ -76,7 +76,14 @@ OAuth stays inside the Electron window; the local proxy forwards the callback to
 
 ## Desktop detection
 
-`preload.cjs` exposes a truthy `window.tvashtrDesktop` object (`engines.*`) and `window.tvashtrDesktopInfo` (`version: 3`). The FE rewrites `github_install_url` for loopback OAuth when that flag is set.
+`preload.cjs` exposes a truthy `window.tvashtrDesktop` object (`engines.*`, `navigation.*`, `repos.*`, `app.*`) and `window.tvashtrDesktopInfo` (`version: 5`, `platform`). The FE rewrites `github_install_url` for loopback OAuth when that flag is set. Every bridge method is specified in [`../docs/superpowers/plans/api/desktop-bridge.md`](../docs/superpowers/plans/api/desktop-bridge.md).
+
+## Deep links (`tvashtr://`)
+
+The packaged app registers `tvashtr://` and runs as a single instance: a link (or a second launch)
+focuses the running window. Only Home, Engines, Toolkit pages and `teams/<uuid>` are accepted
+(`electron/deepLink.cjs`). Dev runs don't claim the scheme unless `TVASHTR_DESKTOP_REGISTER_PROTOCOL=1`;
+to try one there, pass the link as an argument: `npx electron . "tvashtr://engines/keys"`.
 
 ## Subscription engines (Claude / Grok on this computer)
 
