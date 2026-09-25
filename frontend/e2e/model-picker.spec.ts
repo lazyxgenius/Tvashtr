@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
+import { openMyTeam } from "./_myTeam";
 
 // Live FE proof for M-accounts Slice C: the provider-gated per-node model picker + the recommendation
 // hint. NO agent run, NO real LLM. .env-INDEPENDENT: it registers a FRESH account (zero providers, no
@@ -37,8 +38,7 @@ test("model picker: provider-gated picker + inline add + the same-model reviewer
   }
 
   // Open the seeded team → the canvas (authoring view).
-  await page.reload();
-  await page.getByRole("button", { name: /My team/ }).click();
+  const myTeamId = await openMyTeam(page);
   await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
   console.log("[model-picker-e2e] CHECK 1 PASS — registered, seeded providers, opened the canvas");
 
@@ -72,7 +72,7 @@ test("model picker: provider-gated picker + inline add + the same-model reviewer
 
   // CHECK 4 — the recommendation hint: the Reviewer shares the Engineer's model → hint VISIBLE; a
   // thinker (the PM) → hint ABSENT (the discriminating pair).
-  await page.getByRole("button", { name: /My team/ }).click();
+  await page.goto(`/#/teams/${myTeamId}`);
   await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
   await page.locator(".react-flow__node", { hasText: "Reviewer" }).first().click();
   const reviewerPanel = page.getByLabel("Reviewer editor");

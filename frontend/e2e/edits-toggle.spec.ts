@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
+import { openMyTeam } from "./_myTeam";
 
 // Live FE proof for M-unify U3 (the edits surface). NO agent run, NO real LLM, .env-INDEPENDENT: it
 // REGISTERS a fresh account (whose seeded starter team is the review_loop "My team") and drives the
@@ -64,8 +65,7 @@ test("M-unify U3: edits toggle persists + re-labels, tools on every node, amber 
   console.log("[edits-toggle-e2e] piece 4 OK — seeded Reviewer edits-off, Engineer edits-on");
 
   // Load the app AUTHENTICATED → the dashboard, then open the seeded team → the canvas (authoring).
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open My team" }).click();
+  await openMyTeam(page);
   await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
 
   // ── CHECK A — flip the Engineer (a non-start worker) Edits allowed → Not allowed + author an

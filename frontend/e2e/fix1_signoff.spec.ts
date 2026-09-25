@@ -1,4 +1,5 @@
 import { type Page, expect, test } from "@playwright/test";
+import { openMyTeam } from "./_myTeam";
 
 // P1.8d-fix1 self-sign-off (scripted-Playwright FALLBACK for the Playwright MCP, whose CDP backend
 // wedged on the React Flow canvas's huge accessibility tree). Same six high-reliability load/console/
@@ -55,12 +56,8 @@ test("check1: selecting the multi-node 'My team' renders its nodes with NO rende
   page,
 }) => {
   test.setTimeout(90_000);
-  await page.goto("/");
-  // 'My team' auto-selects on mount; click it explicitly to exercise the select path that hung.
-  await page
-    .getByRole("button", { name: /My team/ })
-    .first()
-    .click();
+  // No team is seeded any more: create "My team" and open it (the select path that hung).
+  await openMyTeam(page);
   // (a) the team's nodes actually render — NOT the empty "Nothing on the loom yet" state.
   await expect.poll(() => nodeCount(page), { timeout: 30_000 }).toBeGreaterThan(1);
   await expect(page.getByText("Nothing on the loom yet")).toHaveCount(0);

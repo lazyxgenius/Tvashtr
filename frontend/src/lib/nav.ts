@@ -21,6 +21,8 @@ import { useCallback, useSyncExternalStore } from "react";
 export type EnginesTab = "overview" | "subscriptions" | "keys";
 export type MemoryTab = "inbox" | "active" | "archive";
 export type NodeTab = "setup" | "skills" | "memory" | "runs" | "docs";
+/** The dashboard section the canvas's back / "Open Engines · Toolkit" controls return to. */
+export type DashView = "home" | "domains" | "engines" | "tools";
 
 export type Route =
   | { page: "home" }

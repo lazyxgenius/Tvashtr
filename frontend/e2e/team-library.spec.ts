@@ -35,7 +35,7 @@ async function registerAndSeed(page: import("@playwright/test").Page): Promise<v
   expect(seed.ok(), "seed the deepseek provider key (pre-flight needs it)").toBeTruthy();
   await page.goto("/");
   // Dashboard after cookie register: New team is available (landing is skipped).
-  await expect(page.getByRole("button", { name: "New team", exact: true })).toBeVisible({
+  await expect(page.getByRole("button", { name: "New team", exact: true }).first()).toBeVisible({
     timeout: 30_000,
   });
   console.log(`[team-library-e2e] registered ${email} and landed on the dashboard`);
@@ -56,11 +56,11 @@ test("P1.8b team library: create a team from a template, edit its Engineer node,
   const api = page.request;
 
   // 1. Open the New-team picker (F2c dialog aria-label "New team"), pick review_loop, name it, create.
-  await page.getByRole("button", { name: "New team", exact: true }).click();
+  await page.getByRole("button", { name: "New team", exact: true }).first().click();
   const picker = page.getByRole("dialog", { name: "New team" });
   await expect(picker).toBeVisible({ timeout: 30_000 });
-  await picker.getByText("PM → Engineer ↔ Reviewer").click();
-  await picker.getByLabel("Team name").fill(TEAM_NAME);
+  await picker.getByText("PM → Engineer ⇄ Reviewer").click();
+  await picker.getByLabel("Name", { exact: true }).fill(TEAM_NAME);
   await picker.getByRole("button", { name: "Create team" }).click();
   console.log(`[team-library-e2e] created team "${TEAM_NAME}" from the review_loop template`);
 

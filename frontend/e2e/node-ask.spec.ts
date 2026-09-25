@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { type APIRequestContext, expect, test } from "@playwright/test";
+import { openMyTeam } from "./_myTeam";
 
 // Live FE proof for Mode A ("Ask the node"): register a fresh account, seed its deepseek key, create
 // a review_loop team from the template and drive a REAL run to completion (LOCAL sandbox, forced
@@ -41,8 +42,7 @@ test("node-ask: the Ask tab answers a question about what a node did", async ({ 
 
   // 2. Open the fresh account's seeded review_loop "My team" -> canvas (every model-bearing node is
   //    deepseek since the backend seeded it under the deepseek env).
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open My team" }).click();
+  await openMyTeam(page);
   await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
   const engineerNode = page.locator(".react-flow__node", { hasText: "Engineer" }).first();
   await expect(engineerNode).toBeVisible({ timeout: 30_000 });

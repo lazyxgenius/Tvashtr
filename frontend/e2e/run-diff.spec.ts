@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { type APIRequestContext, expect, test } from "@playwright/test";
+import { openMyTeam } from "./_myTeam";
 
 // Live FE proof for the run-view "Changes" tab (M-changes): register a fresh account, seed its
 // deepseek key (seed.py omits deepseek + the launch pre-flight 422s a keyless launch), create a
@@ -42,8 +43,7 @@ test("run-diff: the Changes tab renders the run's changed file(s)", async ({ pag
 
   // 2. Open the fresh account's seeded review_loop "My team" -> canvas (the proven fresh-account
   //    flow; every model-bearing node is deepseek since the backend seeded it under the deepseek env).
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open My team" }).click();
+  await openMyTeam(page);
   await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
   const engineerNode = page.locator(".react-flow__node", { hasText: "Engineer" }).first();
   await expect(engineerNode).toBeVisible({ timeout: 30_000 });
