@@ -105,6 +105,8 @@ from tvashtr.documents.service import (
     find_or_create_run_document,
     get_latest_version,
     latest_content_by_name,
+    latest_version_by_name,
+    latest_version_of,
 )
 from tvashtr.engines.base import AgentTask, DesktopJobSpec
 from tvashtr.engines.registry import resolve_adapter
@@ -460,6 +462,18 @@ def node_emits_outcome(edges: list[dict], node_id: str) -> bool:
     )
 
 
+def _authored_node_uuid(node_id: str) -> uuid.UUID:
+    """The AUTHORED node behind an executing node: its ``cloned_from_node_id`` (a run executes a
+    clone of the library team), else the node's own id when it is not a clone. Stamped on the
+    document versions a node writes (``document_versions.author_node_id``) so a version names the
+    agent the user actually edits."""
+    with session_scope() as session:
+        origin = session.execute(
+            select(AgentNode.cloned_from_node_id).where(AgentNode.id == uuid.UUID(node_id))
+        ).scalar_one_or_none()
+    return origin if origin is not None else uuid.UUID(node_id)
+
+
 @DBOS.step()
 def record_entry_spec_step(
     run_id: str,
@@ -480,7 +494,11 @@ def record_entry_spec_step(
     LATER
     entry invocation (a refine round): append the report as the next version — idempotent on
     ``{run_id}:spec:{node_id}:{iteration}`` (the old thinker-refine key shape). Returns the spec
-    document id (created or existing)."""
+    document id (created or existing).
+
+    Revamp: each version carries a deterministic change note ("First draft" / "Revised in round
+    {n}") and the authored node that wrote it. The return value is unchanged."""
+    author_node_id = _authored_node_uuid(node_id)
     if spec_document_id is None:
         # M-docs: stamp the entry's document run-scoped (``run_id`` — closes the orphaned-documents
         # leak + makes it CASCADE-delete with the run) + NAMED (``name``, default "spec"; the
@@ -494,6 +512,8 @@ def record_entry_spec_step(
             idempotency_key=f"{run_id}:pm-prd-v1",
             run_id=uuid.UUID(run_id),
             name=name,
+            note="First draft",
+            author_node_id=author_node_id,
         )
         with session_scope() as session:
             session.execute(
@@ -505,6 +525,8 @@ def record_entry_spec_step(
         report,
         created_by="agent:entry",
         idempotency_key=f"{run_id}:spec:{node_id}:{iteration}",
+        note=f"Revised in round {iteration}",
+        author_node_id=author_node_id,
     )
     return spec_document_id
 
@@ -556,6 +578,52 @@ def read_named_documents_step(run_id: str, names: list[str]) -> list[dict]:
 
 
 @DBOS.step()
+def read_latest_prd_versioned_step(run_id: str) -> dict:
+    """Revamp B-DOCS — :func:`read_latest_prd_step` plus WHICH version was read:
+    ``{"content", "document_id", "version_no", "name"}``. A NEW recorded step (the old one keeps
+    its return shape, because in-flight workflows replay its recorded ``str`` output); the walk
+    calls this one so the agent's context manifest can record the spec version it was given. Same
+    invariant as the old step: the run has a spec with at least one version, else a clear error."""
+    with session_scope() as session:
+        run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
+        document_id = run.pm_document_id
+    if document_id is None:
+        raise RuntimeError(f"read_latest_prd_versioned_step: run {run_id} has no pm_document_id")
+    latest = latest_version_of(document_id)
+    if latest is None:
+        raise RuntimeError(
+            f"read_latest_prd_versioned_step: document {document_id} has no versions"
+        )
+    return {**latest, "name": latest["name"] or "spec"}
+
+
+@DBOS.step()
+def read_named_documents_versioned_step(run_id: str, names: list[str]) -> list[dict]:
+    """Revamp B-DOCS — :func:`read_named_documents_step` plus WHICH version of each document was
+    read: ``[{"name", "content", "document_id", "version_no"}]`` in the requested order, a missing
+    name skipped. A NEW recorded step, for the same replay reason as
+    :func:`read_latest_prd_versioned_step`."""
+    rid = uuid.UUID(run_id)
+    out: list[dict] = []
+    for name in names:
+        latest = latest_version_by_name(rid, name)
+        if latest is not None:
+            out.append({"name": name, **latest})
+    return out
+
+
+def _read_ref(read: dict, spec_document_id: str | None) -> dict:
+    """One entry of the context manifest's ``documents`` list — which document version an agent
+    was given (never the content)."""
+    return {
+        "name": read["name"],
+        "document_id": read["document_id"],
+        "version_no": read["version_no"],
+        "is_shared_spec": read["document_id"] == spec_document_id,
+    }
+
+
+@DBOS.step()
 def write_named_document_step(
     run_id: str, node_id: str, iteration: int, report: str, name: str
 ) -> None:
@@ -565,7 +633,8 @@ def write_named_document_step(
     insert-or-returns, never a duplicate version or a second document for the name). Unlike the
     entry's :func:`record_entry_spec_step` it does NOT touch ``Run.pm_document_id`` — only the entry
     owns the run's primary spec pointer. The document is created ``title="Document: {name}"`` +
-    ``doc_type=name`` so the run-view picker labels it legibly."""
+    ``doc_type=name`` so the run-view picker labels it legibly. Revamp: the version's note is
+    "Round {n}" and it records the authored node that wrote it."""
     find_or_create_run_document(
         run_id=uuid.UUID(run_id),
         name=name,
@@ -574,6 +643,8 @@ def write_named_document_step(
         content=report,
         created_by=f"agent:{node_id}",
         idempotency_key=f"{run_id}:doc:{name}:{node_id}:{iteration}",
+        note=f"Round {iteration}",
+        author_node_id=_authored_node_uuid(node_id),
     )
 
 
@@ -1077,6 +1148,7 @@ def agent_run_step(
     memory: list | None = None,
     read_documents: list | None = None,
     fallback_model: str | None = None,
+    read_versions: list | None = None,
 ) -> dict:
     """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
     ``reviewer_agent_run_step``. M-unify U1: it is now the SINGLE path EVERY AgentNode executes
@@ -1166,6 +1238,11 @@ def agent_run_step(
         read_documents=read_documents,
     )
     manifest = compiled.manifest()
+    # Revamp B-DOCS: which document versions this agent was given (``[{name, document_id,
+    # version_no, is_shared_spec}]``), recorded by the walk's versioned read steps. Absent when
+    # it read no document (the entry's first round), so that manifest is unchanged.
+    if read_versions:
+        manifest["documents"] = list(read_versions)
 
     # C2 input budget: a compiled input over budget FAILS PRE-CALL — no attempt row, no adapter, no
     # mid-agent context crash. Surface it through the SAME ``status != "completed"`` return shape
@@ -1927,12 +2004,23 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # reads_from ⇒ P1.7a: re-source the PRD LIVE at every agent-node entry via a recorded
             # step — EXCEPT the entry's FIRST invocation, which has no spec yet (``pm_document_id is
             # None``): it CREATES the spec from its REPORT.md, so it runs with ``spec=None``.
+            # Revamp B-DOCS: the VERSIONED read steps also say which version was read, recorded
+            # into this agent's context manifest (``read_versions``). The content threaded into the
+            # compiler is exactly what the old steps returned.
             read_documents: list | None = None
+            read_versions: list[dict] = []
             if reads_from:
-                read_documents = read_named_documents_step(run_id, reads_from) or None
+                versioned = read_named_documents_versioned_step(run_id, reads_from)
+                read_documents = [{"name": d["name"], "content": d["content"]} for d in versioned]
+                read_documents = read_documents or None
+                read_versions = [_read_ref(d, pm_document_id) for d in versioned]
                 spec = None
+            elif pm_document_id is not None:
+                prd = read_latest_prd_versioned_step(run_id)
+                spec = prd["content"]
+                read_versions = [_read_ref(prd, pm_document_id)]
             else:
-                spec = read_latest_prd_step(run_id) if pm_document_id is not None else None
+                spec = None
             # Whether this node BRANCHES the walk on a routing label is a fact about the authored
             # topology (a conditional out-edge), not a role — it harvests a verdict iff ``emits``.
             emits = node_emits_outcome(edges, current)
@@ -1976,6 +2064,8 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             docs_kwargs: dict = {}
             if read_documents:
                 docs_kwargs["read_documents"] = read_documents
+            if read_versions:
+                docs_kwargs["read_versions"] = read_versions
             # Per-node capabilities (Session A): the auto-failover slug, resolved off the SAME
             # JSONB (replay-stable off the recorded graph dict) and threaded ONLY when the node
             # authored one — an absent fallback omits the kwarg, so the call is byte-identical.

@@ -29,10 +29,28 @@ from tvashtr.models import EngineerRunAttempt, Run
 # --- 1. the save-version endpoint ------------------------------------------------------------
 
 
-def test_post_document_version_appends_next_version(client):
-    doc = create_document_with_initial_version(
-        "Mini-PRD", "prd", "the original PRD", "agent:pm", f"test:{uuid4().hex}:v1"
+def _owned_run_document(content: str):
+    """A run-scoped document on a live run the shared ``client`` account owns — the document
+    endpoints are owner-scoped (spec §3.6), so a run-less document would 404."""
+    run_id = uuid.uuid4()
+    with session_scope() as session:
+        session.add(
+            Run(
+                id=run_id,
+                team_graph_id=uuid.UUID(build_two_node_team()),
+                owner_id=auth_user_id(),
+                idea="steer",
+                workflow_id=str(run_id),
+                status="running",
+            )
+        )
+    return create_document_with_initial_version(
+        "Mini-PRD", "prd", content, "agent:pm", f"{run_id}:pm-prd-v1", run_id=run_id, name="spec"
     )
+
+
+def test_post_document_version_appends_next_version(client):
+    doc = _owned_run_document("the original PRD")
 
     resp = client.post(f"/api/documents/{doc.id}/versions", json={"content": "the edited PRD"})
     assert resp.status_code == 200
@@ -41,7 +59,7 @@ def test_post_document_version_appends_next_version(client):
     assert body["version_no"] == 2
     assert body["content"] == "the edited PRD"
     assert body["document_id"] == str(doc.id)
-    assert set(body) == {"document_id", "version_no", "content", "created_at"}
+    assert {"document_id", "version_no", "content", "created_at"} <= set(body)
 
     # A SECOND POST appends again (fresh idempotency key per request -> never dedups a save).
     resp2 = client.post(f"/api/documents/{doc.id}/versions", json={"content": "edited again"})
