@@ -1875,6 +1875,13 @@ body,
   background: var(--cream-50);
   white-space: nowrap;
 }
+/* Catalog entries carry a sentence of copy: let it wrap inside the card instead of overflowing. */
+.tv-dash__prov-chip--catalog {
+  max-width: 100%;
+  box-sizing: border-box;
+  flex-wrap: wrap;
+  white-space: normal;
+}
 .tv-dash__prov-chip--key {
   padding: 10px 14px;
   box-shadow: var(--shadow-xs);

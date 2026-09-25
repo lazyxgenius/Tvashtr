@@ -276,7 +276,7 @@ export function ToolsShelf() {
           {catalog.map((entry) => {
             const inLibrary = tools.some((t) => t.name === entry.name);
             return (
-              <li className="tv-dash__prov-chip" key={`cat-${entry.key}`}>
+              <li className="tv-dash__prov-chip tv-dash__prov-chip--catalog" key={`cat-${entry.key}`}>
                 <span className="tv-mcp-badge">{entry.badge}</span>
                 <span className="tv-dash__prov-name">{entry.title}</span>
                 <span className="tv-field__hint">{entry.description}</span>

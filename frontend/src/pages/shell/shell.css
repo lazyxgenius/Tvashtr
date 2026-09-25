@@ -386,3 +386,11 @@
   font-family: var(--font-code);
   font-size: 12px;
 }
+
+/* The previous Home body, shown inside the shell until the new Home lands: the shell already pads
+   the page, so drop the old page's own padding and width cap. */
+.sh-main .tv-dash__main {
+  padding: 0;
+  margin: 0;
+  max-width: none;
+}
