@@ -361,6 +361,231 @@ def set_tool_agents(owner_id: uuid.UUID, tool_id: object, node_ids: object) -> d
             raise ToolkitError(404, "Agent not found.") from None
 
 
+# ---- skills --------------------------------------------------------------------------------------
+
+SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+SKILL_NAME_RULE = "Use lowercase letters, numbers and single hyphens, like house-style."
+SKILL_SOURCE_TYPES = ("inline", "repo", "project_rules")
+SKILL_MODES = ("always", "trigger", "agent")
+SKILL_CONFLICTS = ("error", "replace")
+_FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+def skill_name_taken(name: str) -> str:
+    return f"You already have a skill called {name}."
+
+
+def check_skill_name(name: str) -> str:
+    """The trimmed name, or a 422: kebab-case, at most 64 characters (the SKILL.md rule)."""
+    name = (name or "").strip()
+    if not name:
+        raise ToolkitError(422, "A skill name is required.")
+    if len(name) > 64 or not SKILL_NAME_RE.match(name):
+        raise ToolkitError(422, SKILL_NAME_RULE)
+    return name
+
+
+def trigger_words(value: object) -> list[str]:
+    """Trigger words from a list or a comma-separated string, trimmed, empties dropped."""
+    if isinstance(value, str):
+        items = value.split(",")
+    elif isinstance(value, list):
+        items = value
+    else:
+        items = []
+    return [str(t).strip() for t in items if str(t).strip()]
+
+
+def _check_mode(out: dict) -> None:
+    """Validate (and normalise) an optional ``mode`` + ``triggers`` pair in place."""
+    mode = out.get("mode")
+    if mode is None:
+        out.pop("mode", None)
+    elif mode not in SKILL_MODES:
+        raise ToolkitError(422, "Pick how the skill loads: always, trigger or agent.")
+    if "triggers" in out or mode == "trigger":
+        out["triggers"] = trigger_words(out.get("triggers"))
+    if mode == "trigger" and not out["triggers"]:
+        raise ToolkitError(422, "Add at least one trigger word.")
+
+
+def check_skill_source(source: object, row_name: str) -> dict:
+    """A normalised copy of a library skill source, or a 422 :class:`ToolkitError`.
+
+    * inline — non-empty ``content``; ``name`` defaults to the row name; ``mode`` defaults to
+      ``always``; a ``trigger`` mode needs at least one trigger word.
+    * repo — a GitHub repo URL (stored as ``https://github.com/<o>/<r>``); ``ref`` defaults to
+      ``main``; optional comma-separated ``filter``, ``mode``/``triggers`` and a full-SHA
+      ``resolved_sha``.
+    * project_rules — as is. A ``library`` source (nesting) is rejected."""
+    stype = source.get("type") if isinstance(source, dict) else None
+    if stype not in SKILL_SOURCE_TYPES:
+        raise ToolkitError(422, "A skill source must be inline, repo, or project_rules.")
+    out = copy.deepcopy(source)
+    if stype == "inline":
+        content = out.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ToolkitError(422, "Add the SKILL.md content.")
+        if not isinstance(out.get("name"), str) or not out["name"].strip():
+            out["name"] = row_name
+        out["mode"] = out.get("mode") or "always"
+        _check_mode(out)
+    elif stype == "repo":
+        from tvashtr.control_plane.skill_repo import parse_github_repo, repo_url
+
+        parsed = parse_github_repo(out.get("url"))
+        if parsed is None:
+            raise ToolkitError(422, "Use a GitHub repo URL, like https://github.com/org/skills.")
+        out["url"] = repo_url(*parsed)
+        ref = out.get("ref")
+        out["ref"] = ref.strip() if isinstance(ref, str) and ref.strip() else "main"
+        filt = out.get("filter")
+        if isinstance(filt, list):
+            filt = ",".join(str(f) for f in filt)
+        if isinstance(filt, str) and filt.strip():
+            out["filter"] = ", ".join(p.strip() for p in filt.split(",") if p.strip())
+        else:
+            out.pop("filter", None)
+        sha = out.get("resolved_sha")
+        if sha is not None and not (isinstance(sha, str) and _FULL_SHA.match(sha)):
+            raise ToolkitError(422, "resolved_sha must be a full 40-character commit SHA.")
+        _check_mode(out)
+    return out
+
+
+def skill_item(row: SkillLibraryItem, users: list[dict]) -> dict:
+    """One skill as every skill endpoint returns it (legacy ``{id, name, source, created_at}`` plus
+    ``updated_at`` and ``usage``)."""
+    agents, teams = tool_usage.usage_counts(users)
+    return {
+        "id": str(row.id),
+        "name": row.name,
+        "source": row.source,
+        "created_at": row.created_at.isoformat(),
+        "updated_at": row.updated_at.isoformat(),
+        "usage": {"agents": agents, "teams": teams},
+    }
+
+
+def _owner_skills(session: Session, owner_id: uuid.UUID) -> list[SkillLibraryItem]:
+    return list(
+        session.execute(
+            select(SkillLibraryItem)
+            .where(SkillLibraryItem.owner_id == owner_id)
+            .order_by(SkillLibraryItem.created_at, SkillLibraryItem.name)
+        ).scalars()
+    )
+
+
+def list_skills(owner_id: uuid.UUID) -> list[dict]:
+    """The owner's skills, oldest first (the legacy order; the UI sorts by name)."""
+    with session_scope() as session:
+        usage = tool_usage.skill_usage(session, owner_id)
+        return [skill_item(s, usage.get(s.id, [])) for s in _owner_skills(session, owner_id)]
+
+
+def get_skill(owner_id: uuid.UUID, skill_id: object, *, with_agents: bool = False) -> dict:
+    """One skill (404 when not the owner's); ``with_agents`` adds ``used_by`` (the rows behind
+    ``usage`` — "<Role> · <Team>" badges and the delete-impact sentence)."""
+    with session_scope() as session:
+        row = get_owner_skill_row(session, owner_id, skill_id)
+        users = tool_usage.skill_usage(session, owner_id).get(row.id, [])
+        item = skill_item(row, users)
+        if with_agents:
+            item["used_by"] = users
+        return item
+
+
+def create_skill(owner_id: uuid.UUID, name: str, source: object, on_conflict: str) -> dict:
+    """``POST /api/skill-library``: create-only by default (409 on a taken name);
+    ``on_conflict=replace`` keeps the old upsert for the preset path. Returns the full item."""
+    if on_conflict not in SKILL_CONFLICTS:
+        raise ToolkitError(422, "on_conflict must be error or replace.")
+    name = check_skill_name(name)
+    clean = check_skill_source(source, name)
+    try:
+        skill_id = node_library.create_owner_skill(owner_id, name, clean, on_conflict=on_conflict)
+    except node_library.SkillNameTaken:
+        raise ToolkitError(409, skill_name_taken(name)) from None
+    return get_skill(owner_id, skill_id)
+
+
+def update_skill(
+    owner_id: uuid.UUID, skill_id: object, name: str | None, source: object | None
+) -> dict:
+    """``PATCH /api/skill-library/{id}`` with a partial body: a new name follows the rule (an
+    unchanged legacy name is allowed), a clash is 409, a source is validated like POST. A rename
+    without a new source keeps an inline source's ``name`` in step when it matched the row."""
+    with session_scope() as session:
+        row = get_owner_skill_row(session, owner_id, skill_id)
+        current_name, current_source, rid = row.name, row.source, row.id
+    new_name = current_name
+    if name is not None and name.strip() != current_name:
+        new_name = check_skill_name(name)
+    if source is not None:
+        new_source = check_skill_source(source, new_name)
+    else:
+        new_source = copy.deepcopy(current_source)
+        if (
+            new_name != current_name
+            and isinstance(new_source, dict)
+            and new_source.get("type") == "inline"
+            and new_source.get("name") == current_name
+        ):
+            new_source["name"] = new_name
+    try:
+        if not node_library.update_owner_skill(owner_id, rid, new_name, new_source):
+            raise ToolkitError(404, SKILL_NOT_FOUND)
+    except node_library.SkillNameTaken:
+        raise ToolkitError(409, skill_name_taken(new_name)) from None
+    return get_skill(owner_id, rid)
+
+
+def delete_skill(owner_id: uuid.UUID, skill_id: object) -> dict:
+    """Delete a skill and strip it from every agent (idempotent). ``{removed_from_agents}``."""
+    return {"removed_from_agents": node_library.delete_owner_skill(owner_id, skill_id)}
+
+
+def duplicate_skill(owner_id: uuid.UUID, skill_id: object) -> dict:
+    """``POST /api/skill-library/{id}/duplicate``: a copy named ``<name>-copy`` (``-copy-2``…),
+    no agents. An inline source named after the row is renamed with it (the resolver de-dups by
+    name, so a copy must not collide with its original on one agent)."""
+    with session_scope() as session:
+        row = get_owner_skill_row(session, owner_id, skill_id)
+        taken = {s.name for s in _owner_skills(session, owner_id)}
+        new_name = free_name(row.name, taken)
+        new_source = copy.deepcopy(row.source)
+        if (
+            isinstance(new_source, dict)
+            and new_source.get("type") == "inline"
+            and new_source.get("name") == row.name
+        ):
+            new_source["name"] = new_name
+        copy_row = SkillLibraryItem(owner_id=owner_id, name=new_name, source=new_source)
+        session.add(copy_row)
+        session.flush()
+        new_id = copy_row.id
+    return get_skill(owner_id, new_id)
+
+
+def skill_agents(owner_id: uuid.UUID, skill_id: object) -> dict:
+    """``GET /api/skill-library/{id}/agents`` — the ``GET /api/agents?skill_id=`` payload."""
+    return list_agents(owner_id, skill_id=str(skill_id))
+
+
+def set_skill_agents(owner_id: uuid.UUID, skill_id: object, node_ids: object) -> dict:
+    """``PUT /api/skill-library/{id}/agents``: exactly ``node_ids`` reference the skill afterwards
+    (404 for a skill or agent that isn't the owner's)."""
+    if not isinstance(node_ids, list):
+        raise ToolkitError(422, "node_ids must be a list.")
+    with session_scope() as session:
+        row = get_owner_skill_row(session, owner_id, skill_id)
+        try:
+            return tool_usage.set_skill_agents(session, owner_id, row, node_ids)
+        except LookupError:
+            raise ToolkitError(404, "Agent not found.") from None
+
+
 # ---- secrets -------------------------------------------------------------------------------------
 
 SECRET_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]{0,127}$")

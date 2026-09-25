@@ -211,7 +211,8 @@ def test_skill_library_endpoints_roundtrip_and_reject_library_typed_source(clien
         ).status_code
         == 422
     )
-    assert client.delete(f"/api/skill-library/{sid}").status_code == 204
+    # revamp: 200 {removed_from_agents} (was a bare 204)
+    assert client.delete(f"/api/skill-library/{sid}").json() == {"removed_from_agents": 0}
 
 
 # ============================================================================================= #

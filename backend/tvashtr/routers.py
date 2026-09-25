@@ -45,12 +45,6 @@ from tvashtr.control_plane.credentials import (
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
 from tvashtr.control_plane.mcp_secrets import delete_owner_mcp_secret
-from tvashtr.control_plane.node_library import (
-    create_owner_skill,
-    delete_owner_skill,
-    list_owner_skills,
-    update_owner_skill,
-)
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.control_plane.run_diff import compute_run_diff
 from tvashtr.control_plane.run_explain import build_system_prompt
@@ -2077,16 +2071,11 @@ class SkillLibraryBody(BaseModel):
     source: dict
 
 
-_LIBRARY_SKILL_SOURCE_TYPES = {"inline", "repo", "project_rules"}
+class SkillLibraryPatchBody(BaseModel):
+    """``PATCH /api/skill-library/{id}`` body (revamp): either field may be omitted."""
 
-
-def _skill_library_to_dict(item: dict) -> dict:
-    return {
-        "id": str(item["id"]),
-        "name": item["name"],
-        "source": item["source"],
-        "created_at": item["created_at"].isoformat(),
-    }
+    name: str | None = None
+    source: dict | None = None
 
 
 class ToolLibraryPatchBody(BaseModel):
@@ -2143,57 +2132,49 @@ def remove_tool_library(
 
 @router.get("/api/skill-library")
 def list_skill_library(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
-    """The current account's library skills (``{id, name, source, created_at}``), oldest first."""
-    items = list_owner_skills(uuid.UUID(current_user.id))
-    return {"skills": [_skill_library_to_dict(s) for s in items]}
+    """The current account's library skills, oldest first: ``{id, name, source, created_at,
+    updated_at, usage:{agents, teams}}``."""
+    return {"skills": toolkit.list_skills(uuid.UUID(current_user.id))}
 
 
 @router.post("/api/skill-library")
 def add_skill_library(
-    body: SkillLibraryBody, current_user: Annotated[UserOut, Depends(get_current_user)]
+    body: SkillLibraryBody,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    on_conflict: str = "error",
 ) -> dict:
-    """Add (or REPLACE) a library skill. 422 on an empty name or a source whose ``type`` is not one
-    of inline/repo/project_rules (a ``library`` source is rejected — no nesting). Returns
-    ``{id, name}``."""
-    name = body.name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="A skill name is required.")
-    stype = body.source.get("type") if isinstance(body.source, dict) else None
-    if stype not in _LIBRARY_SKILL_SOURCE_TYPES:
-        raise HTTPException(
-            status_code=422, detail="A skill source must be inline, repo, or project_rules."
-        )
-    item_id = create_owner_skill(uuid.UUID(current_user.id), name, body.source)
-    return {"id": str(item_id), "name": name}
+    """CREATE-ONLY by default (revamp): 409 "You already have a skill called <name>."; pass
+    ``?on_conflict=replace`` for the old upsert (the preset path). 422 on the kebab-case name rule
+    or an invalid source (inline needs content; a mode must be always/trigger/agent and a trigger
+    mode needs a word; a repo needs a GitHub URL; a ``library`` source is rejected — no nesting).
+    Returns the full item."""
+    try:
+        return toolkit.create_skill(uuid.UUID(current_user.id), body.name, body.source, on_conflict)
+    except toolkit.ToolkitError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
 
 
 @router.patch("/api/skill-library/{item_id}")
 def edit_skill_library(
     item_id: str,
-    body: SkillLibraryBody,
+    body: SkillLibraryPatchBody,
     current_user: Annotated[UserOut, Depends(get_current_user)],
 ) -> dict:
-    """Update the owner's library skill by id. 422 as POST; 404 if not the owner's."""
-    name = body.name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="A skill name is required.")
-    stype = body.source.get("type") if isinstance(body.source, dict) else None
-    if stype not in _LIBRARY_SKILL_SOURCE_TYPES:
-        raise HTTPException(
-            status_code=422, detail="A skill source must be inline, repo, or project_rules."
-        )
-    if not update_owner_skill(uuid.UUID(current_user.id), item_id, name, body.source):
-        raise HTTPException(status_code=404, detail="skill not found in your library")
-    return {"id": item_id, "name": name}
+    """Update the owner's library skill by id (partial body). 422 as POST (an unchanged legacy
+    name is allowed), 409 on a name clash (was a 500), 404 if not the owner's. Full item back."""
+    try:
+        return toolkit.update_skill(uuid.UUID(current_user.id), item_id, body.name, body.source)
+    except toolkit.ToolkitError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
 
 
-@router.delete("/api/skill-library/{item_id}", status_code=204)
+@router.delete("/api/skill-library/{item_id}")
 def remove_skill_library(
     item_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
-) -> Response:
-    """Remove the owner's library skill by id (204, idempotent + owner-scoped)."""
-    delete_owner_skill(uuid.UUID(current_user.id), item_id)
-    return Response(status_code=204)
+) -> dict:
+    """Remove the owner's library skill by id (idempotent + owner-scoped) and strip its refs from
+    every agent. Returns ``{removed_from_agents}`` (was a bare 204 before the revamp)."""
+    return toolkit.delete_skill(uuid.UUID(current_user.id), item_id)
 
 
 # ---- Agentic memory (M-memory S1): the owner-scoped memory store behind /api/memories ----

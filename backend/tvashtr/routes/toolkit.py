@@ -69,6 +69,45 @@ def list_agents(
         raise _http(exc) from None
 
 
+# ---- skills --------------------------------------------------------------------------------------
+
+
+@router.get("/api/skill-library/{skill_id}")
+def get_skill(skill_id: str, current_user: CurrentUser) -> dict:
+    """One skill (the list item) plus ``used_by`` — the "<Role> · <Team>" rows."""
+    try:
+        return toolkit.get_skill(_owner(current_user), skill_id, with_agents=True)
+    except ToolkitError as exc:
+        raise _http(exc) from None
+
+
+@router.post("/api/skill-library/{skill_id}/duplicate", status_code=201)
+def duplicate_skill(skill_id: str, current_user: CurrentUser) -> dict:
+    """Copy a skill as ``<name>-copy`` (``-copy-2``… when taken); the copy has no agents."""
+    try:
+        return toolkit.duplicate_skill(_owner(current_user), skill_id)
+    except ToolkitError as exc:
+        raise _http(exc) from None
+
+
+@router.get("/api/skill-library/{skill_id}/agents")
+def get_skill_agents(skill_id: str, current_user: CurrentUser) -> dict:
+    """Same payload as ``GET /api/agents?skill_id=``."""
+    try:
+        return toolkit.skill_agents(_owner(current_user), skill_id)
+    except ToolkitError as exc:
+        raise _http(exc) from None
+
+
+@router.put("/api/skill-library/{skill_id}/agents")
+def set_skill_agents(skill_id: str, body: AgentsBody, current_user: CurrentUser) -> dict:
+    """Exactly ``node_ids`` reference the skill afterwards (a kept ref keeps its mode override)."""
+    try:
+        return toolkit.set_skill_agents(_owner(current_user), skill_id, body.node_ids)
+    except ToolkitError as exc:
+        raise _http(exc) from None
+
+
 # ---- secrets -------------------------------------------------------------------------------------
 
 
