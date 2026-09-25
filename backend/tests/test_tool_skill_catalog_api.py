@@ -15,8 +15,8 @@ def test_tool_catalog_serves_fetch_and_access_badges():
         "command": "uvx",
         "args": ["mcp-server-fetch"],
     }
-    assert by_key["fetch"]["badge"] == "Free"
-    assert by_key["github"]["badge"] == "Needs ${GITHUB_TOKEN}"
+    assert by_key["fetch"]["badge"] == "Free · no login"  # revamp Browse card copy
+    assert by_key["github"]["badge"] == "Needs GITHUB_TOKEN"
     assert by_key["github-app"]["badge"] == "Needs GitHub App"
     assert by_key["github-app"]["attachable"] is False
 

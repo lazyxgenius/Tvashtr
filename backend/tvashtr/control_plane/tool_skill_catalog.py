@@ -24,8 +24,10 @@ TOOL_CATALOGUE: dict[str, dict] = {
         "key": "fetch",
         "name": "fetch",
         "title": "Web fetch",
-        "description": "Fetch HTTP URLs via stdio ``uvx mcp-server-fetch``. No login.",
+        "description": "Fetch web pages over HTTP. Runs locally with uvx mcp-server-fetch.",
         "access": "free",
+        # Tool card badge (Browse design); access_badge("free") stays "Free" for presets.
+        "badge": "Free · no login",
         "secret_names": [],
         "attachable": True,
         "server_config": {"command": "uvx", "args": ["mcp-server-fetch"]},
@@ -33,15 +35,19 @@ TOOL_CATALOGUE: dict[str, dict] = {
     "github": {
         "key": "github",
         "name": "github",
-        "title": "GitHub (PAT)",
-        "description": "GitHub MCP via a personal access token stored as an MCP secret.",
+        # Revamp (spec 4.2 Q8): the remote GitHub MCP server, not the stdio PAT server.
+        "title": "GitHub",
+        "description": (
+            "GitHub's remote MCP server: issues, pull requests and code. "
+            "Uses a token saved as GITHUB_TOKEN."
+        ),
         "access": "needs_secret",
+        "badge": "Needs GITHUB_TOKEN",
         "secret_names": ["GITHUB_TOKEN"],
         "attachable": True,
         "server_config": {
-            "command": "npx",
-            "args": ["-y", "@modelcontextprotocol/server-github"],
-            "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"},
+            "url": "https://api.githubcopilot.com/mcp/",
+            "headers": {"Authorization": "Bearer ${GITHUB_TOKEN}"},
         },
     },
     "github-app": {
@@ -49,7 +55,7 @@ TOOL_CATALOGUE: dict[str, dict] = {
         "name": "github-app",
         "title": "GitHub App repos",
         "description": (
-            "Hosted runs use your Tvashtr GitHub App installation — install the App, "
+            "Hosted runs use your Tvashtr GitHub App installation. Install the App, "
             "then launch against an App repo."
         ),
         "access": "needs_github_app",
@@ -82,7 +88,7 @@ SKILL_PRESETS: dict[str, dict] = {
     "caveman": _inline_preset(
         "caveman",
         "Caveman (terse)",
-        "Vendored ultra-compressed output style that keeps technical substance.",
+        "Ultra-compressed output style that keeps technical substance.",
         "caveman",
     ),
     "tdd": _inline_preset(
@@ -94,7 +100,7 @@ SKILL_PRESETS: dict[str, dict] = {
     "yagni": _inline_preset(
         "yagni",
         "YAGNI",
-        "Smallest change that solves the asked problem — no speculative extras.",
+        "Smallest change that solves the asked problem, no speculative extras.",
         "yagni",
     ),
 }
@@ -125,7 +131,7 @@ def public_tool_catalogue() -> list[dict]:
                 "description": entry["description"],
                 "access": entry["access"],
                 "secret_names": secrets,
-                "badge": access_badge(entry["access"], secrets),
+                "badge": entry.get("badge") or access_badge(entry["access"], secrets),
                 "attachable": bool(entry["attachable"]),
                 "server_config": dict(entry["server_config"] or {}),
             }
