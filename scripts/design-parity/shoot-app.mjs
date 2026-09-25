@@ -62,7 +62,7 @@ for (const sc of scenarios) {
   await routeFonts(context);
   const routes = { ...DEFAULT_ROUTES, ...(sc.routes ?? {}) };
   const missing = new Set();
-  await context.route(/\/(api\/|health)/, async (route) => {
+  await context.route((url) => /^\/(api\/|health$)/.test(url.pathname), async (route) => {
     const req = route.request();
     const u = new URL(req.url());
     const hit = match(routes, req.method(), u.pathname, u.search);
