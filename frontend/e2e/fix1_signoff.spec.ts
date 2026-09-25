@@ -2,6 +2,7 @@ import fs from "node:fs";
 
 import { type Page, expect, test } from "@playwright/test";
 
+import { paletteAdd } from "./_canvas";
 import { openTeamViaPalette, registerFresh } from "./_home";
 import { openMyTeam } from "./_myTeam";
 
@@ -126,7 +127,7 @@ test("check3: an invalid graph greys out Run with reasons + flags the node, then
   await expect(runBtn).toBeEnabled({ timeout: 30_000 });
 
   // Drop an UNCONNECTED worker → a second entry point → invalid.
-  await page.getByRole("button", { name: "Worker", exact: true }).click();
+  await paletteAdd(page, "Worker");
   await expect(page.getByText(/Can.t run yet/)).toBeVisible({ timeout: 30_000 });
   await expect(runBtn).toBeDisabled();
   // a reasons list renders and the offending node is flagged (invalid/orphan red-ring class).
@@ -169,11 +170,11 @@ test("check4: the palette drops a primitive (Worker) and a pre-filled preset (En
   await expect.poll(() => nodeCount(page), { timeout: 30_000 }).toBe(2); // blank skeleton: thinker→Ship
 
   // Primitive: a Worker chip adds a node.
-  await page.getByRole("button", { name: "Worker", exact: true }).click();
+  await paletteAdd(page, "Worker");
   await expect.poll(() => nodeCount(page), { timeout: 30_000 }).toBe(3);
 
   // Preset: an Engineer chip adds a node pre-filled with the ENGINEER prompt (verified at the source).
-  await page.getByRole("button", { name: "Engineer", exact: true }).click();
+  await paletteAdd(page, "Engineer");
   await expect.poll(() => nodeCount(page), { timeout: 30_000 }).toBe(4);
   const g = (await (await request.get(`/api/teams/${teamId}/graph`)).json()) as Graph;
   const engineer = g.nodes.find((n) => n.role_name === "engineer");

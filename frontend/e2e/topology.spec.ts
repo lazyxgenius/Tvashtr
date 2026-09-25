@@ -1,5 +1,6 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
+import { paletteAdd } from "./_canvas";
 import { runFromCanvas } from "./_composer";
 import { registerFresh } from "./_home";
 import { seedProviderKeys } from "./_keys";
@@ -111,7 +112,7 @@ test("P1.8d: an invalid graph greys out Run with the reason and the server refus
   await expect(page.getByRole("button", { name: "Run this team" })).toBeEnabled({
     timeout: 30_000,
   });
-  await page.getByRole("button", { name: "Worker", exact: true }).click();
+  await paletteAdd(page, "Worker");
 
   // The Run gate greys out with the per-issue reason, and the server agrees (validate → not runnable).
   await expect(page.getByText(/Can.t run yet/)).toBeVisible({ timeout: 30_000 });
@@ -151,7 +152,7 @@ test("P1.8d: author root thinker → Engineer → Ship from a blank team, Run it
   });
 
   // Drop an Engineer worker from the canvas palette (a pre-filled worker preset).
-  await page.getByRole("button", { name: "Engineer", exact: true }).click();
+  await paletteAdd(page, "Engineer");
   await expect
     .poll(async () => (await graphOf(request, teamId)).nodes.length, { timeout: 30_000 })
     .toBe(3);

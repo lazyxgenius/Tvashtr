@@ -44,7 +44,7 @@ test("J3 live steering: a human rewrites the PRD at the gate through the real Ti
   page,
 }) => {
   // A real PM + Engineer + Reviewer chain on the live agent — give it room.
-  test.setTimeout(22 * 60 * 1000);
+  test.setTimeout(32 * 60 * 1000); // 12 min to the PRD gate + 18 min to ship, on a slow provider
 
   // Unique so the assertion can't pass on a stale workspace from a prior run.
   const SENTINEL = `Steered by a human mid-run via Tvashtr ${Date.now()}`;
@@ -67,7 +67,9 @@ test("J3 live steering: a human rewrites the PRD at the gate through the real Ti
   // 2. Wait until it pauses at the PRD gate (awaiting_human). The gate blocks indefinitely, so
   //    there is no timing race — we can take as long as the PM step needs.
   await expect
-    .poll(() => runStatus(api, runId), { timeout: 6 * 60 * 1000, intervals: [2000] })
+    // 12 min: a PM drafting on a slow provider (DeepSeek, 2026-09-26: 120s request timeouts and
+    // retries, ~6 min per PM call) must still reach the gate; the assertion itself is unchanged.
+    .poll(() => runStatus(api, runId), { timeout: 12 * 60 * 1000, intervals: [2000] })
     .toBe("awaiting_human");
   console.log("[steering-e2e] paused at the PRD gate (awaiting_human)");
 

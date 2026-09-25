@@ -53,7 +53,7 @@ test("model picker: provider-gated picker + inline add + the same-model reviewer
   const provider = panel.getByLabel("Provider", { exact: true });
   await expect(provider.getByRole("option", { name: "openrouter" })).toHaveCount(1);
   await expect(provider.getByRole("option", { name: "nvidia_nim" })).toHaveCount(1);
-  const engineerModel = await panel.getByLabel("Model").inputValue();
+  const engineerModel = await panel.getByLabel("Model", { exact: true }).inputValue(); // not "Fallback model"
   expect(engineerModel.length).toBeGreaterThan(0);
   expect(engineerModel).toContain("/"); // a full provider/model slug
   await page.screenshot({ path: path.join(SHOTS_DIR, "check2-engineer-picker.png") });
@@ -63,7 +63,7 @@ test("model picker: provider-gated picker + inline add + the same-model reviewer
   await provider.selectOption("__add_provider__");
   await panel.getByLabel("New provider", { exact: true }).fill("groq"); // exact: not "…API key"
   await panel.getByLabel("New provider API key").fill("dummy-groq-key-9999");
-  await panel.getByRole("button", { name: "Add" }).click();
+  await panel.getByRole("button", { name: "Add", exact: true }).click(); // not "Add skill", "Add repo", …
   await expect(provider.getByRole("option", { name: "groq" })).toHaveCount(1, { timeout: 30_000 });
   await page.screenshot({ path: path.join(SHOTS_DIR, "check3-inline-add.png") });
   // Persisted: back in the shell, Engines › API keys lists groq too.
