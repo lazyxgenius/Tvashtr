@@ -144,11 +144,15 @@ def test_config_hosted_exposes_install_url_but_no_secret(client, monkeypatch):
     assert body["github_manage_url"] == "https://github.com/apps/tvashtr/installations/new"
     # M-runnable: the provider catalogue is now part of the payload; still an EXACT key set, so no
     # unexpected (secret) key can slip in — the two no-leak assertions below still guard the rest.
+    # Revamp (Engines) added the provider directory, the embedding presets and the default budget.
     assert set(body) == {
         "hosted_mode",
         "github_install_url",
         "github_manage_url",
         "provider_catalogue",
+        "provider_directory",
+        "embedding_presets",
+        "default_run_budget_usd",
     }
     assert CLIENT_SECRET_SENTINEL not in resp.text
     assert PRIVATE_KEY_PEM not in resp.text

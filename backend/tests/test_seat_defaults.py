@@ -164,12 +164,17 @@ def test_the_public_catalogue_serves_both_seats():
     served = public_provider_catalogue()
     assert served, "the public catalogue must not be empty"
     for entry in served:
+        # Revamp added the picker's display metadata; still an EXACT key set.
         assert set(entry) == {
             "provider",
             "thinker_default",
             "worker_default",
             "thinker_presets",
             "worker_presets",
+            "label",
+            "model_labels",
+            "subscription",
+            "byok_probed",
         }
         provider = entry["provider"]
         assert entry["thinker_default"] == catalogue_default(provider, "thinker")

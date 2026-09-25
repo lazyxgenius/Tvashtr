@@ -26,8 +26,10 @@ from tvashtr.auth import auth_router, get_current_user
 from tvashtr.config import get_settings
 from tvashtr.control_plane import github_app
 from tvashtr.control_plane.clone_reaper import sweep_orphaned_clones
+from tvashtr.control_plane.domain_embedding import public_embedding_presets
 from tvashtr.control_plane.fly_reaper import sweep_orphaned_fly_apps
 from tvashtr.control_plane.hello_durable import hello_durable
+from tvashtr.control_plane.provider_directory import public_provider_directory
 from tvashtr.control_plane.teams import public_provider_catalogue
 from tvashtr.control_plane.tool_skill_catalog import (
     public_skill_presets,
@@ -173,6 +175,35 @@ class ProviderCatalogueEntry(BaseModel):
     worker_default: str | None
     thinker_presets: list[str]
     worker_presets: list[str]
+    # Revamp: display metadata for the model picker (see ``teams.PROVIDER_CATALOGUE``).
+    label: str
+    model_labels: dict[str, str]
+    subscription: str | None
+    byok_probed: bool
+
+
+class ProviderDirectoryEntry(BaseModel):
+    """One provider the Engines Add-key picker lists (``control_plane.provider_directory``)."""
+
+    provider: str
+    monogram: str
+    name: str
+    label: str
+    example_model: str | None
+    subscription: str | None
+    embeddings: bool
+    hint: str | None
+
+
+class EmbeddingPresetEntry(BaseModel):
+    """One Domains embedding preset (``domain_embedding.EMBEDDING_PRESETS``)."""
+
+    id: str
+    label: str
+    slug: str
+    provider: str
+    dim: int
+    notes: str
 
 
 class ConfigResponse(BaseModel):
@@ -183,6 +214,11 @@ class ConfigResponse(BaseModel):
     # The FE derives its model quick-picks + provider suggestions from it, so a slug lives in one
     # place (``control_plane.teams.PROVIDER_CATALOGUE``). Public, like the rest of this response.
     provider_catalogue: list[ProviderCatalogueEntry]
+    # Revamp (Engines): every provider an API key can be added for, with picker copy; the Domains
+    # embedding presets; and the operator's default per-run budget (``null`` = uncapped).
+    provider_directory: list[ProviderDirectoryEntry]
+    embedding_presets: list[EmbeddingPresetEntry]
+    default_run_budget_usd: float | None
 
 
 @app.get("/api/config", response_model=ConfigResponse)
@@ -197,6 +233,7 @@ def config() -> ConfigResponse:
     agent loop. Exposes ONLY public fields — the client secret and private key are never
     serializable here."""
     settings = get_settings()
+    budget = settings.default_run_budget_usd
     return ConfigResponse(
         hosted_mode=settings.hosted_mode,
         github_install_url=github_app.build_install_url() if settings.hosted_mode else "",
@@ -204,6 +241,11 @@ def config() -> ConfigResponse:
         provider_catalogue=[
             ProviderCatalogueEntry(**entry) for entry in public_provider_catalogue()
         ],
+        provider_directory=[
+            ProviderDirectoryEntry(**entry) for entry in public_provider_directory()
+        ],
+        embedding_presets=[EmbeddingPresetEntry(**p) for p in public_embedding_presets()],
+        default_run_budget_usd=float(budget) if budget is not None else None,
     )
 
 
