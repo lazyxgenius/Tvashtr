@@ -5,9 +5,12 @@ DBOS workflow, idempotent metering, versioned document, and the HTTP surface —
 is exercised deterministically without a live provider call.
 """
 
+import uuid
+
 from dbos import DBOS
 
 from tvashtr.control_plane import doc_writer
+from tvashtr.documents.service import get_document_with_versions
 from tvashtr.gateway import CompletionResult
 
 _MODEL = "openrouter/meta-llama/llama-3.1-8b-instruct"
@@ -47,17 +50,20 @@ def test_generate_doc_end_to_end(client, monkeypatch):
     assert body["costs"][0]["total_tokens"] == 50
     assert body["costs"][0]["model_used"] == _MODEL
 
-    # Document endpoint: a single immutable version 1 by the agent.
-    doc = client.get(f"/api/documents/{document_id}").json()
-    assert doc["doc_type"] == "prd"
-    assert len(doc["versions"]) == 1
-    assert doc["versions"][0]["version_no"] == 1
-    assert doc["versions"][0]["created_by"] == "agent:doc_writer"
-    assert "PRD sentence one." in doc["versions"][0]["content"]
-
-    # The document is listed, and costs are filterable by workflow_id.
+    # The document: a single immutable version 1 by the agent. It belongs to no run, so no
+    # account owns it — the owner-scoped document endpoints 404 it and leave it out of the list
+    # (spec §3.6); read it through the service layer instead.
+    doc = get_document_with_versions(uuid.UUID(document_id))
+    assert doc.doc_type == "prd"
+    assert len(doc.versions) == 1
+    assert doc.versions[0].version_no == 1
+    assert doc.versions[0].created_by == "agent:doc_writer"
+    assert "PRD sentence one." in doc.versions[0].content
+    assert client.get(f"/api/documents/{document_id}").status_code == 404
     listed = client.get("/api/documents").json()["documents"]
-    assert any(d["id"] == document_id for d in listed)
+    assert all(d["id"] != document_id for d in listed)
+
+    # Costs are filterable by workflow_id.
     filtered = client.get(f"/api/costs?workflow_id={wf_id}").json()["costs"]
     assert len(filtered) == 1
 

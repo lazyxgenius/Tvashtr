@@ -8,12 +8,12 @@ governs metering. Each helper owns its own transaction via ``session_scope``.
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from tvashtr.db import session_scope
-from tvashtr.models import Document, DocumentVersion
+from tvashtr.models import Document, DocumentVersion, Run
 
 
 def create_document(title: str, doc_type: str) -> Document:
@@ -253,9 +253,50 @@ def get_document_with_versions(document_id: uuid.UUID) -> Document | None:
 
 
 def list_documents() -> list[Document]:
-    """Return all documents (metadata only), oldest first."""
+    """Return all documents (metadata only), oldest first. NOT owner-scoped — internal use only;
+    the HTTP list goes through :func:`list_documents_for_owner`."""
     with session_scope() as session:
         return list(session.execute(select(Document).order_by(Document.created_at)).scalars().all())
+
+
+def owned_by(owner_id: uuid.UUID):
+    """The SQL predicate "this document belongs to ``owner_id``". A document is owned through its
+    run: ``documents.run_id → runs.owner_id``, or — for a legacy pre-0028 document with no
+    ``run_id`` — the run whose ``pm_document_id`` points at it. A document with neither (the
+    ``doc_writer`` proof workflow) belongs to nobody, so no account can reach it over HTTP."""
+    owned_runs = select(Run.id).where(Run.owner_id == owner_id)
+    legacy_specs = select(Run.pm_document_id).where(
+        Run.owner_id == owner_id, Run.pm_document_id.is_not(None)
+    )
+    return or_(
+        Document.run_id.in_(owned_runs),
+        and_(Document.run_id.is_(None), Document.id.in_(legacy_specs)),
+    )
+
+
+def list_documents_for_owner(owner_id: uuid.UUID) -> list[Document]:
+    """Every document ``owner_id`` owns (metadata only), oldest first — ``GET /api/documents``."""
+    with session_scope() as session:
+        return list(
+            session.execute(
+                select(Document).where(owned_by(owner_id)).order_by(Document.created_at)
+            )
+            .scalars()
+            .all()
+        )
+
+
+def get_owned_document_with_versions(
+    document_id: uuid.UUID, owner_id: uuid.UUID
+) -> Document | None:
+    """The document with its versions (in version order) iff ``owner_id`` owns it, else ``None`` —
+    the callers turn ``None`` into a 404 so another account's document is not even probeable."""
+    with session_scope() as session:
+        return session.execute(
+            select(Document)
+            .where(Document.id == document_id, owned_by(owner_id))
+            .options(selectinload(Document.versions))
+        ).scalar_one_or_none()
 
 
 def list_documents_for_run(run_id: uuid.UUID) -> list[Document]:

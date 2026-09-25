@@ -113,8 +113,8 @@ from tvashtr.control_plane.domain_eval import (
 )
 from tvashtr.documents.service import (
     add_version,
-    get_document_with_versions,
-    list_documents,
+    get_owned_document_with_versions,
+    list_documents_for_owner,
     list_documents_for_run,
 )
 from tvashtr.gateway import CompletionRequest, GatewayError, complete, multimodal_supported
@@ -545,18 +545,23 @@ def get_generate_doc(workflow_id: str) -> dict:
 
 
 @router.get("/api/documents")
-def get_documents() -> dict:
-    return {"documents": [_document_meta(d) for d in list_documents()]}
+def get_documents(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
+    """The current account's documents only (owned through their run) — spec §3.6."""
+    owner_id = uuid.UUID(current_user.id)
+    return {"documents": [_document_meta(d) for d in list_documents_for_owner(owner_id)]}
 
 
 @router.get("/api/documents/{document_id}")
-def get_document(document_id: str) -> dict:
+def get_document(
+    document_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """One document + its versions. 404 unless the current account owns it (spec §3.6)."""
     try:
         doc_uuid = uuid.UUID(document_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid document id") from exc
 
-    doc = get_document_with_versions(doc_uuid)
+    doc = get_owned_document_with_versions(doc_uuid, uuid.UUID(current_user.id))
     if doc is None:
         raise HTTPException(status_code=404, detail="document not found")
 
@@ -566,20 +571,25 @@ def get_document(document_id: str) -> dict:
 
 
 @router.post("/api/documents/{document_id}/versions")
-def add_document_version(document_id: str, body: AddDocumentVersionRequest) -> dict:
+def add_document_version(
+    document_id: str,
+    body: AddDocumentVersionRequest,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
     """Append a human-edited version to an existing document (P1.7a live-document steering):
     the saved edit becomes a fresh ``DocumentVersion`` that the running agents re-source on
     their next read (the document, not agent memory, is the source of truth — J3).
 
     Mirrors ``GET /api/documents/{id}``: 400 on a malformed id, 404 if the document doesn't
-    exist. A fresh ``idempotency_key`` per request -> every POST is a NEW version (no dedup
-    across distinct human saves). Returns the new version row."""
+    exist or belongs to another account (spec §3.6). A fresh ``idempotency_key`` per request ->
+    every POST is a NEW version (no dedup across distinct human saves). Returns the new version
+    row."""
     try:
         doc_uuid = uuid.UUID(document_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid document id") from exc
 
-    if get_document_with_versions(doc_uuid) is None:
+    if get_owned_document_with_versions(doc_uuid, uuid.UUID(current_user.id)) is None:
         raise HTTPException(status_code=404, detail="document not found")
 
     version = add_version(
