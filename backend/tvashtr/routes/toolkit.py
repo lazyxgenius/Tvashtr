@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from tvashtr.auth import UserOut, get_current_user
-from tvashtr.control_plane import toolkit
+from tvashtr.control_plane import skill_repo, toolkit
 from tvashtr.control_plane.toolkit import ToolkitError
 
 router = APIRouter()
@@ -70,6 +70,55 @@ def list_agents(
 
 
 # ---- skills --------------------------------------------------------------------------------------
+
+
+class SkillScanBody(BaseModel):
+    """``POST /api/skill-library/scan``: a GitHub repo URL and an optional branch/tag/commit."""
+
+    url: str
+    ref: str | None = None
+
+
+class SkillImportBody(BaseModel):
+    """``POST /api/skill-library/import``: the scan's ``url``/``ref``/``sha`` and the chosen skill
+    names."""
+
+    url: str
+    ref: str | None = None
+    sha: str
+    skills: list[str]
+    mode: str = "agent"
+    triggers: list[str] | str | None = None
+    on_conflict: str = "skip"
+
+
+@router.post("/api/skill-library/scan")
+def scan_skill_repo(body: SkillScanBody, current_user: CurrentUser) -> dict:
+    """The skills a GitHub repo holds at ``ref`` (default branch when omitted), with the resolved
+    commit SHA. Private repos work through the account's GitHub App installation."""
+    try:
+        return skill_repo.scan_repo(_owner(current_user), body.url, body.ref)
+    except ToolkitError as exc:
+        raise _http(exc) from None
+
+
+@router.post("/api/skill-library/import")
+def import_skill_repo(body: SkillImportBody, current_user: CurrentUser) -> dict:
+    """One library skill per chosen name, pinned to the scanned commit →
+    ``{added:[item…], skipped:[name…]}``."""
+    try:
+        return skill_repo.import_skills(
+            _owner(current_user),
+            body.url,
+            body.ref,
+            body.sha,
+            body.skills,
+            body.mode,
+            body.triggers,
+            body.on_conflict,
+        )
+    except ToolkitError as exc:
+        raise _http(exc) from None
 
 
 @router.get("/api/skill-library/{skill_id}")
