@@ -172,7 +172,33 @@ const openHistory = (teamName) => async (page) => {
 };
 const teamRuns = homeRoutes()["GET /api/teams/:id/runs"];
 
+// Flipped by the backend-1 scenario once the page has loaded.
+const backend = { down: false };
+
 const flows = [
+  // HmF-Backend-1: the page loaded, then the backend went away (every request now gets a 503 from
+  // the proxy); the header and the stale-data banner say so and Home keeps what it showed.
+  {
+    name: "backend-1",
+    routes: Object.fromEntries(
+      Object.entries(
+        homeRoutes({ "GET /health": { status: "ok", db: "ok" } }),
+      ).map(([key, reply]) => [
+        key,
+        async (req) => {
+          if (backend.down)
+            return { status: 503, json: { detail: "unavailable" } };
+          return typeof reply === "function" ? reply(req) : { json: reply };
+        },
+      ]),
+    ),
+    steps: async (page) => {
+      await page.waitForSelector(".hm-spend__total");
+      backend.down = true;
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await page.waitForSelector("text=Can’t reach backend");
+    },
+  },
   {
     name: "history-1",
     routes: {
