@@ -112,6 +112,40 @@ def test_desktop_offline_github_and_generic_reasons():
     assert ctx["code"] == "over_context" and ctx["message"].startswith("PM ran out of context: ")
 
 
+def test_provider_refusals_read_as_one_sentence():
+    raw = (
+        "Conversation run failed for id=7d95: litellm.APIError: APIError: "
+        "OpenrouterException - 403 Forbidden"
+    )
+    out = run_failure.humanise("agent_error", raw, role="PM")
+    assert out["code"] == "agent_error"
+    assert out["message"] == (
+        "PM's openrouter key was refused (403 Forbidden). Check it under Engines."
+    )
+    rate = run_failure.humanise(
+        "agent_error",
+        "x: litellm.RateLimitError: RateLimitError: XaiException - 429 Too Many Requests",
+        role="Engineer",
+    )
+    assert rate["message"] == (
+        "xai is rate-limiting Engineer (429 Too Many Requests). Try again in a few minutes."
+    )
+    down = run_failure.humanise(
+        "agent_error",
+        "x: litellm.InternalServerError: InternalServerError: OpenAIException - Connection error.",
+        role="Reviewer",
+    )
+    assert down["message"] == "Reviewer couldn't reach openai. Try again in a few minutes."
+    other = run_failure.humanise(
+        "agent_error",
+        "x: litellm.BadRequestError: BadRequestError: AnthropicException - model not found",
+        role="PM",
+    )
+    assert other["message"] == "PM: anthropic returned an error (model not found)."
+    # Engine text that isn't a provider refusal keeps the first line, as before.
+    assert run_failure.humanise("agent_error", "boom\nmore", role="PM")["message"] == "PM: boom"
+
+
 def test_node_label_uses_title_gate_kind_and_role_slug():
     assert run_failure.node_label("engineer", "agent", None) == "Engineer"
     assert run_failure.node_label("pm", "completion", {"title": "Product manager"}) == (

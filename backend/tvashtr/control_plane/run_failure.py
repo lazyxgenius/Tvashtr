@@ -32,6 +32,11 @@ UNKNOWN = "unknown"
 # ``credentials.NoCredentialError``'s message: "owner <uuid> has no credential for provider 'xai'".
 _NO_CREDENTIAL = re.compile(r"has no credential for provider '([^']+)'")
 _GITHUB_PREFIX = "github delivery failed:"
+# A model provider's refusal as LiteLLM words it inside the engine's error, e.g.
+# "litellm.APIError: APIError: OpenrouterException - 403 Forbidden".
+_PROVIDER_ERROR = re.compile(r"litellm\.(\w+):.*?\b(\w+?)Exception - (.+)$", re.DOTALL)
+_PROVIDER_REFUSED = ("AuthenticationError", "PermissionDeniedError")
+_PROVIDER_UNREACHABLE = ("APIConnectionError", "Timeout", "ServiceUnavailableError")
 _MAX_MESSAGE = 240
 
 # Built-in role slugs → the label the UI shows. Anything else is humanised from the slug.
@@ -136,8 +141,27 @@ def humanise(
             "message": f"{who} ran out of context: {line}",
             "provider": None,
         }
+    provider_error = _provider_message(text, who)
+    if provider_error:
+        return {"code": code or AGENT_ERROR, "message": provider_error, "provider": None}
     message = line if role is None else f"{role}: {line}"
     return {"code": code or AGENT_ERROR, "message": message, "provider": None}
+
+
+def _provider_message(text: str, who: str) -> str | None:
+    """One sentence for a model provider's refusal (bad key, rate limit, unreachable), else None."""
+    match = _PROVIDER_ERROR.search(text)
+    if not match:
+        return None
+    error_class, provider = match.group(1), match.group(2).lower()
+    detail = _first_line(match.group(3))
+    if error_class in _PROVIDER_REFUSED or detail.startswith(("401", "403")):
+        return f"{who}'s {provider} key was refused ({detail}). Check it under Engines."
+    if error_class == "RateLimitError" or detail.startswith("429"):
+        return f"{provider} is rate-limiting {who} ({detail}). Try again in a few minutes."
+    if error_class in _PROVIDER_UNREACHABLE or "connection error" in detail.lower():
+        return f"{who} couldn't reach {provider}. Try again in a few minutes."
+    return f"{who}: {provider} returned an error ({detail})."
 
 
 def describe_run_failure(
