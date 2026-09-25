@@ -2,7 +2,7 @@
 #
 # Live FE E2E for M-unify U3 (the edits surface) — drives the authoring canvas + node drawer through
 # the real UI. Pure authoring: NO agent run, NO real LLM, so (unlike the sibling live e2e scripts) it
-# needs NO NVIDIA/DeepSeek key (it holds a dummy one). It REGISTERS a fresh account, creates the
+# needs NO NVIDIA/DeepSeek key. It REGISTERS a fresh account, creates the
 # review_loop "My team" (new accounts start with no team) and checks:
 #   A) flip a non-start node (Engineer) Edits allowed → Not allowed + an action-verb prompt, Save →
 #      persists (edits_allowed=false) + the card re-labels "Edits off";

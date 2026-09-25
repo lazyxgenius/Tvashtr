@@ -271,8 +271,14 @@ def test_preview_entry_agent_before_any_run(owner, no_model_calls):
 def test_preview_reviewer_uses_the_latest_run_and_spec(owner, no_model_calls):
     c, owner_id, tid, nodes = owner
     seeded = _seed_run(owner_id, tid)
+    # Idempotency keys are unique across ALL document versions
+    # (uq_document_versions_idempotency_key), so a literal key dedupes against the previous run's
+    # row on a persistent test DB and the version never reaches 2. Scope it to this run's spec.
     add_version(
-        uuid.UUID(seeded["spec_id"]), "PRD: RSI v2", created_by="human", idempotency_key="h-v2"
+        uuid.UUID(seeded["spec_id"]),
+        "PRD: RSI v2",
+        created_by="human",
+        idempotency_key=f"h-v2-{seeded['spec_id']}",
     )
     body = _preview(c, tid, nodes["reviewer"]["id"]).json()
     assert body["source_run"]["run_id"] == seeded["run_id"]
