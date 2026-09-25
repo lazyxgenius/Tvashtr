@@ -113,12 +113,9 @@ export function HomeHeader() {
         </p>
       </div>
       <div className="hm-head__actions">
-        <Button
-          variant="secondary"
-          iconLeft={<Plus size={15} strokeWidth={1.6} aria-hidden />}
-          onClick={() => openNewTeam()}
-        >
-          New team
+        <Button variant="secondary" className="hm-btn-inline" onClick={() => openNewTeam()}>
+          <Plus size={15} strokeWidth={1.6} aria-hidden />
+          <span>New team</span>
         </Button>
       </div>
     </div>

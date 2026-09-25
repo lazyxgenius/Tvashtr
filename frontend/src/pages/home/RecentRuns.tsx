@@ -144,14 +144,14 @@ export function RecentRuns() {
   const label = FILTERS.find((f) => f.value === filter)?.label ?? "All runs";
 
   return (
-    <section className="hm-card" aria-label="Recent runs">
+    <section className="hm-card hm-card--open" aria-label="Recent runs">
       <div className="hm-card__head">
         <h2 className="hm-section__title hm-section__title--side">Recent runs</h2>
         <span className="hm-recent__filter">
           <Popover
             open={open}
             onClose={() => setOpen(false)}
-            width={150}
+            width={162}
             role="listbox"
             label="Filter runs"
             className="hm-pop--filter"

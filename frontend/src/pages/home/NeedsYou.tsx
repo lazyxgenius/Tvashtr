@@ -278,7 +278,7 @@ export function NeedsYou() {
   const items = inbox.data?.items ?? [];
 
   const more = (title: string, entries: MenuEntry[]) => (
-    <Menu label={`More for ${title}`} items={entries} width={220} />
+    <Menu label={`More for ${title}`} items={entries} width={232} />
   );
 
   const rowFor = (item: InboxItem): ReactNode => {
@@ -516,7 +516,7 @@ export function NeedsYou() {
   return (
     <section
       id={SECTION_IDS.needsYou}
-      className="hm-card hm-target"
+      className="hm-card hm-card--open hm-target"
       tabIndex={-1}
       aria-label="Needs you"
     >

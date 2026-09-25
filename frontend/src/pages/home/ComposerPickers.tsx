@@ -87,7 +87,7 @@ export function TeamPicker({
     <Popover
       open={open}
       onClose={close}
-      width={460}
+      width={474}
       label="Pick a team"
       className="hm-pop"
       trigger={
@@ -97,7 +97,6 @@ export function TeamPicker({
           className="hm-picker hm-picker--team"
           aria-haspopup="listbox"
           aria-expanded={open}
-          aria-label={selected ? `Team: ${selected.name}` : "Pick a team"}
           onClick={() => (open ? close() : setOpen(true))}
         >
           {selected ? (
@@ -402,7 +401,7 @@ export function TargetPicker({
     <Popover
       open={open}
       onClose={close}
-      width={360}
+      width={374}
       label={desktop ? "Pick a folder" : "Pick a repo"}
       className="hm-pop"
       trigger={
@@ -484,7 +483,7 @@ export function OptionsPopover({
     <Popover
       open={open}
       onClose={() => setOpen(false)}
-      width={300}
+      width={322}
       label="Run options"
       className="hm-pop hm-pop--options"
       trigger={

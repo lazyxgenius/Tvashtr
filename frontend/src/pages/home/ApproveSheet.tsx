@@ -163,13 +163,9 @@ export function ApproveSheet({
         subtitle={`${teamName} · “${item.run.idea}”`}
         onClose={onClose}
         footerNote={
-          <Button
-            variant="ghost"
-            size="sm"
-            iconLeft={<Maximize2 size={13} strokeWidth={1.6} aria-hidden />}
-            onClick={onOpenRun}
-          >
-            Open run
+          <Button variant="ghost" size="sm" className="hm-btn-inline" onClick={onOpenRun}>
+            <Maximize2 size={13} strokeWidth={1.6} aria-hidden />
+            <span>Open run</span>
           </Button>
         }
         footer={

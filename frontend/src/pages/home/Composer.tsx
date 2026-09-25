@@ -101,7 +101,7 @@ export function Composer() {
 
   // ---- focus / prefill hooks other sections use ----
   const focusIdea = useCallback(() => {
-    sectionRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    sectionRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
     ideaRef.current?.focus({ preventScroll: true });
   }, []);
   useEffect(() => {
@@ -447,7 +447,7 @@ export function Composer() {
     <section
       ref={sectionRef}
       id={SECTION_IDS.composer}
-      className="hm-card hm-composer"
+      className="hm-card hm-card--open hm-composer"
       aria-label="Start a run"
     >
       <div className="hm-composer__body">
@@ -463,13 +463,20 @@ export function Composer() {
             Retrying the failed run with the same idea and repo.
           </div>
         )}
+        <span id="hm-idea-label" className="hm-sr-only">
+          What should the team build?
+        </span>
         <textarea
           ref={ideaRef}
           className={ideaError ? "hm-idea hm-idea--error" : "hm-idea"}
           rows={1}
-          aria-label="What should the team build?"
+          aria-labelledby="hm-idea-label"
           aria-invalid={ideaError || undefined}
-          placeholder="What should the team build? For example: Add an RSI indicator with tests"
+          placeholder={
+            idea
+              ? undefined
+              : "What should the team build? For example: Add an RSI indicator with tests"
+          }
           value={idea}
           onChange={(e) => {
             setIdea(e.target.value);
@@ -616,7 +623,7 @@ export function Composer() {
           </span>
           <Button
             variant="primary"
-            iconLeft={<PlayIcon />}
+            className="hm-btn-inline"
             loading={launching}
             onClick={() => void launch()}
             title={
@@ -625,7 +632,8 @@ export function Composer() {
                 : undefined
             }
           >
-            {launching ? "Launching…" : "Launch"}
+            {!launching && <PlayIcon />}
+            <span>{launching ? "Launching…" : "Launch"}</span>
           </Button>
         </div>
       </div>

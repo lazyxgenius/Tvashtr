@@ -27,3 +27,11 @@
   padding: 0;
   overflow: hidden;
 }
+
+/* Below 1200px (and Desktop's 1024 minimum): one column, Recent runs + Spend under Teams (Q17). */
+@media (max-width: 1199px) {
+  .hm-cols {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+}
