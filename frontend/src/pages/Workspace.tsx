@@ -17,6 +17,7 @@ import { CommandPalette } from "./home/CommandPalette";
 import { HomePage } from "./home/HomePage";
 import { Shell } from "./shell/Shell";
 import { ShortcutsDialog } from "./shell/ShortcutsDialog";
+import "./badgeLoaders";
 
 /** Where the canvas's "back" and "Open Engines / Toolkit" controls land. */
 function dashViewRoute(view: DashView | undefined): Route {
