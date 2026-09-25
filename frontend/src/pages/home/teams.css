@@ -294,7 +294,7 @@
 }
 
 /* Empty states (HmF-TeamFind-1; the error / no-teams / empty-tab ones are not designed) */
-.hm-teams__empty {
+.hm-teams .hm-teams__empty {
   display: flex;
   flex-direction: column;
   align-items: center;
