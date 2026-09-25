@@ -1,0 +1,816 @@
+/* ============================================================
+   Home › Teams, New team, ⌘K and first time (slice F1b) — exact values from the Home-Main,
+   HmF-TeamTabs/TeamFind/TeamMenu/NewTeam/CmdK/FirstTime artboards. Kept apart from home.css so
+   the Home sections built in parallel don't collide in one file.
+   ============================================================ */
+
+/* ---- Pipeline strip (TEAMS-14). The design's chips are content-box (22px + a 1px border =
+   24px), so say so against Tailwind's border-box reset. ---- */
+.hm-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.hm-strip__chip {
+  box-sizing: content-box;
+  flex: none;
+  border-radius: 7px;
+  background: var(--panel-300);
+  border: 1px solid var(--line-300);
+  color: var(--ink-600);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.hm-strip__chip--22 {
+  width: 22px;
+  height: 22px;
+}
+.hm-strip__chip--20 {
+  width: 20px;
+  height: 20px;
+}
+.hm-strip__chip--18 {
+  width: 18px;
+  height: 18px;
+}
+.hm-strip__chip--14 {
+  width: 14px;
+  height: 14px;
+}
+.hm-strip__chev {
+  display: inline-flex;
+  color: var(--ink-400);
+}
+.hm-strip__loop {
+  font-size: 11px;
+  color: var(--ink-400);
+}
+
+/* ---- Teams section ---- */
+.hm-teams {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hm-teams__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hm-teams__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 20px;
+  color: var(--ink-900);
+}
+.hm-teams__tools {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.hm-teams__tools .hm-teams__search {
+  width: 180px;
+}
+.hm-sort {
+  width: 168px;
+  height: 36px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--line-300);
+  border-radius: 8px;
+  background: var(--surface-page);
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-900);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hm-sort[aria-expanded="true"] {
+  border-color: var(--coral-200);
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.35);
+}
+.hm-sort:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.hm-sort__k {
+  color: var(--ink-500);
+}
+.hm-sort__chev {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--ink-500);
+}
+/* 168px of options inside 5px padding (180px wide), 2px left of the button, as drawn. */
+.hm-sort__list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: -2px;
+  width: 168px;
+  box-sizing: content-box;
+  padding: 5px;
+  border-radius: 10px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  box-shadow: var(--shadow-pop);
+}
+.hm-sort__opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-900);
+  text-align: left;
+  cursor: pointer;
+}
+.hm-sort__opt[aria-selected="true"],
+.hm-sort__opt:hover,
+.hm-sort__opt:focus-visible {
+  outline: none;
+  background: var(--panel-300);
+}
+.hm-sort__tick {
+  width: 14px;
+  display: inline-flex;
+  color: var(--coral-700);
+}
+
+.hm-teams__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.hm-team {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+  cursor: pointer;
+  min-width: 0;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.6s;
+}
+.hm-team:hover {
+  border-color: var(--line-300);
+}
+.hm-team--flash {
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.35);
+}
+.hm-team--skeleton {
+  cursor: default;
+  min-height: 118px;
+}
+.hm-skel {
+  display: block;
+  border-radius: 6px;
+  background: var(--panel-300);
+}
+.hm-team__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+.hm-team__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-900);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hm-team__badge {
+  margin-left: auto;
+}
+.hm-team__last {
+  font-size: 12.5px;
+  color: var(--ink-600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hm-team__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-200);
+  font-size: 12px;
+  color: var(--ink-500);
+}
+/* The ⋯ menu's items inherit the page's 1.6 line-height in the design (37px rows). */
+.hm-teams .ds-menu__item {
+  line-height: 1.6;
+}
+.hm-team__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.hm-rename {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.hm-rename__field {
+  flex: 1;
+  min-width: 0;
+}
+/* The design's Save / Cancel icon buttons render 28px wide in this row. */
+.hm-rename .ds-iconbtn {
+  width: 28px;
+}
+
+/* List view (HmF-TeamFind-4) */
+.hm-tlist {
+  width: 100%;
+  border-collapse: collapse;
+}
+.hm-tlist th {
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+  border-bottom: 1px solid var(--line-200);
+}
+.hm-tlist td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-200);
+  font-size: 13px;
+  color: var(--ink-800);
+  vertical-align: middle;
+}
+.hm-trow {
+  cursor: pointer;
+}
+.hm-trow:hover td {
+  background: var(--cream-200);
+}
+.hm-trow__team {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hm-trow__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.hm-trow__last {
+  display: block;
+  max-width: 170px;
+  font-size: 12.5px;
+  color: var(--ink-600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hm-trow__counts {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* Empty states (HmF-TeamFind-1; the error / no-teams / empty-tab ones are not designed) */
+.hm-teams .hm-teams__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 56px 24px;
+}
+.hm-teams__empty-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--panel-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-600);
+}
+.hm-teams__empty-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--ink-900);
+}
+.hm-teams__empty-lede {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-600);
+  max-width: 460px;
+}
+.hm-teams__empty-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.hm-teams__none {
+  padding: 18px 16px;
+  font-size: 13.5px;
+  color: var(--ink-500);
+}
+
+/* The delete dialog's impact strip (HmF-TeamMenu-7) */
+.hm-impact {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fbf3e6;
+  border: 1px solid var(--amber-100);
+  font-size: 13px;
+  color: #6b4a1f;
+}
+.hm-impact svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+/* ---- New team dialog (HmF-NewTeam-*): 720px, 90px from the top ---- */
+/* 720px of content (766px wide) whose content starts 360px left of centre, as drawn. */
+.ds-dialog.hm-newteam {
+  top: 90px;
+  left: max(16px, calc(50% - 360px));
+  width: 720px;
+  max-height: calc(100vh - 156px);
+  overflow-y: auto;
+  transform: none;
+  animation: hm-drop-in 0.18s var(--ease-out);
+}
+@keyframes hm-drop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.hm-newteam__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.hm-newteam__head {
+  display: flex;
+  align-items: center;
+}
+.hm-newteam__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 24px;
+  color: var(--ink-900);
+}
+.hm-newteam__close {
+  margin-left: auto;
+}
+.hm-newteam__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-900);
+}
+.hm-newteam__alert {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8e7e2;
+  border: 1px solid #e5b3a9;
+  font-size: 13px;
+  color: #8f3b2f;
+}
+.hm-newteam__alert svg {
+  flex: none;
+}
+.hm-newteam__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.hm-tplcard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-300);
+  border-radius: 12px;
+  background: var(--surface-card);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hm-tplcard:hover:not([disabled]) {
+  border-color: var(--border-strong);
+}
+.hm-tplcard:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.hm-tplcard[aria-pressed="true"] {
+  border-color: var(--coral-500);
+  background: var(--coral-100);
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.2);
+}
+.hm-tplcard__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.hm-tplcard__desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-600);
+}
+.hm-newteam__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hm-newteam__note {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.hm-newteam__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- ⌘K palette (HmF-CmdK-*): 640px, 110px from the top ---- */
+.hm-cmdk {
+  position: fixed;
+  z-index: 71;
+  top: 110px;
+  left: max(16px, calc(50% - 320px));
+  width: 640px;
+  max-width: calc(100vw - 34px);
+  box-sizing: content-box;
+  border-radius: 16px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  font-family: var(--font-ui);
+  animation: hm-drop-in 0.14s var(--ease-out);
+}
+.hm-cmdk:focus {
+  outline: none;
+}
+.hm-cmdk__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line-200);
+  color: var(--ink-500);
+}
+.hm-cmdk__bar svg {
+  flex: none;
+}
+.hm-cmdk__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink-900);
+}
+.hm-cmdk__input::placeholder {
+  color: var(--ink-400);
+}
+.hm-cmdk__input:focus {
+  outline: none;
+}
+.hm-cmdk__esc {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-500);
+  font-family: var(--font-code);
+}
+.hm-cmdk__list {
+  padding: 8px;
+  max-height: min(440px, calc(100vh - 260px));
+  overflow-y: auto;
+}
+.hm-cmdk__group {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.hm-cmdk__opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.hm-cmdk__opt[aria-selected="true"] {
+  background: var(--panel-300);
+}
+.hm-cmdk__icon {
+  display: inline-flex;
+  color: var(--ink-600);
+}
+.hm-cmdk__label {
+  font-size: 13.5px;
+  color: var(--ink-900);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hm-cmdk__hint {
+  font-size: 12px;
+  color: var(--ink-500);
+  white-space: nowrap;
+}
+.hm-cmdk__end {
+  margin-left: auto;
+}
+.hm-cmdk__kbd {
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--line-300);
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--ink-600);
+}
+.hm-cmdk__none {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--ink-600);
+}
+.hm-cmdk__foot {
+  display: flex;
+  gap: 14px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line-200);
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+
+/* ---- First-time Home (Home-FirstTime, HmF-FirstTime-*) ---- */
+.hm-ft-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+.hm-ft-head__title {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 32px;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+.hm-ft-head__lede {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-600);
+}
+.hm-gs__top {
+  padding: 16px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hm-gs__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hm-gs__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 22px;
+  color: var(--ink-900);
+}
+.hm-gs__count {
+  font-size: 13px;
+  color: var(--ink-500);
+}
+.hm-gs__hide {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-500);
+  cursor: pointer;
+}
+.hm-gs__hide:hover {
+  color: var(--ink-800);
+}
+.hm-gs__bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--panel-300);
+}
+.hm-gs__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--sage-500);
+}
+.hm-gs__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.hm-gs__step {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line-200);
+}
+.hm-gs__step--current {
+  background: var(--coral-100);
+}
+/* content-box like the design: 26px + a 1.5px border each side */
+.hm-gs__num {
+  box-sizing: content-box;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-300);
+  color: var(--ink-500);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+.hm-gs__num--current {
+  border-color: var(--coral-500);
+  color: var(--coral-700);
+}
+.hm-gs__num--done {
+  border: 0;
+  background: var(--sage-500);
+  color: var(--cream-100);
+}
+.hm-gs__step-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.hm-gs__step-title--done {
+  color: var(--ink-500);
+  text-decoration: line-through;
+}
+.hm-gs__step-desc {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.hm-gs__done {
+  font-size: 12.5px;
+  color: #52613e;
+}
+.hm-gs__ok {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line-200);
+  background: var(--sage-100);
+}
+.hm-gs__ok-icon {
+  display: inline-flex;
+  color: #52613e;
+}
+.hm-gs__ok-text {
+  flex: 1;
+  font-size: 13.5px;
+  color: #3f4d2f;
+}
+.hm-gs__ok-text a {
+  font-weight: 600;
+  color: #3f4d2f;
+}
+.hm-ft-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hm-ft-templates__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 20px;
+  color: var(--ink-900);
+}
+.hm-ft-tpl {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.hm-ft-tpl__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.hm-ft-tpl__desc {
+  flex: 1;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-600);
+}
+.hm-how {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hm-how__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 18px;
+  color: var(--ink-900);
+}
+.hm-how__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hm-how__item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+}
+.hm-how__num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--panel-300);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.hm-how__item-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.hm-how__item-desc {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-600);
+}
+
+/* Buttons whose icon sits inside the label ("▷Run", "+New team"), as the design draws them:
+   inline, on the text baseline (Tailwind's reset would make the svg a block). */
+.hm-inline-icon {
+  display: inline;
+  vertical-align: baseline;
+}

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
 import App from "../App";
-import type { DashView } from "../components/AppShell";
 import { DomainsPage } from "../components/DomainsPage";
 import { EnginesShelf } from "../components/EnginesShelf";
 import { MemoryShelf } from "../components/MemoryShelf";
@@ -10,7 +9,7 @@ import { SkillsShelf } from "../components/SkillsShelf";
 import { ToolsShelf } from "../components/ToolsShelf";
 import type { AuthUser, Config } from "../lib/api";
 import { requestHomeAction } from "../lib/homeActions";
-import { type Route, navigate, useNav } from "../lib/nav";
+import { type DashView, type Route, navigate, useNav } from "../lib/nav";
 import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
 import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
 import { CommandPalette } from "./home/CommandPalette";

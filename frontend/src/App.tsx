@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, LogOut, Play } from "lucide-react";
 
 import { TeamCanvas } from "./canvas/TeamCanvas";
-import type { DashView } from "./components/AppShell";
+import type { DashView } from "./lib/nav";
 import { BackendDot } from "./components/BackendDot";
 import { CancelRunButton } from "./components/CancelRunButton";
 import { RunBanner } from "./components/RunBanner";

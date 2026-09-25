@@ -7,7 +7,7 @@
  * Navigation is by address (lib/nav.ts): a nav item navigates; the active item is derived from the
  * current Route. Engines and Toolkit expand into their sub-pages while you are inside them.
  */
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   ChevronDown,
@@ -15,6 +15,7 @@ import {
   Home as HomeIcon,
   KeyRound,
   Keyboard,
+  ListChecks,
   LogOut,
   Search,
   Wrench,
@@ -24,9 +25,10 @@ import { Avatar, Button, Logo } from "../../design-system/components";
 import { cx, useDismiss } from "../../design-system/components/utils";
 import { checkBackend, useBackendStatus } from "../../lib/backendStatus";
 import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
-import { type Route, sectionOf } from "../../lib/nav";
+import { navigate, type Route, sectionOf } from "../../lib/nav";
 import type { NavBadges } from "../../lib/workspaceStatus";
 import { formatRelativeTimeWords } from "../../lib/time";
+import { loadGetStarted, setGetStartedHidden, useGetStarted } from "../home/getStarted";
 import "./shell.css";
 
 export type { NavBadges };
@@ -278,6 +280,11 @@ function AccountMenu({
   const wrap = useRef<HTMLSpanElement>(null);
   useDismiss(open, () => setOpen(false), wrap);
   const name = displayName(user);
+  // TEAMS-56: while the get-started checklist is hidden, the menu offers to bring it back.
+  const { hidden: checklistHidden } = useGetStarted();
+  useEffect(() => {
+    if (open) void loadGetStarted();
+  }, [open]);
   const onDesktop = typeof window !== "undefined" && Boolean(window.tvashtrDesktop);
   return (
     <span className="ds-anchor" ref={wrap}>
@@ -329,6 +336,22 @@ function AccountMenu({
             <span>Keyboard shortcuts</span>
             <span className="sh-account__hint">?</span>
           </button>
+          {checklistHidden === true && (
+            <button
+              type="button"
+              className="sh-account__item"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                void setGetStartedHidden(false)
+                  .then(() => navigate({ page: "home" }))
+                  .catch(() => undefined);
+              }}
+            >
+              <ListChecks size={15} strokeWidth={1.7} aria-hidden />
+              <span>Show get-started checklist</span>
+            </button>
+          )}
           <div className="sh-account__sep" role="separator" />
           <button
             type="button"
@@ -407,6 +430,8 @@ export function Shell({
   onLogout: () => void;
   children: ReactNode;
 }) {
+  // First-time Home hides the nav badges (TEAMS-2, TEAMS-70).
+  const { firstTime } = useGetStarted();
   return (
     <div className="sh">
       <header className="sh-head">
@@ -429,7 +454,7 @@ export function Shell({
         </div>
       </header>
       <div className="sh-body">
-        <Nav route={route} badges={badges} onNavigate={onNavigate} />
+        <Nav route={route} badges={firstTime ? {} : badges} onNavigate={onNavigate} />
         <main className={cx("sh-main", route.page === "home" && "sh-main--home")}>
           <div className="sh-main__inner">
             <OfflineBanner />

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetBackendStatusForTests } from "../../lib/backendStatus";
 import type { Route } from "../../lib/nav";
+import { __resetGetStartedForTests, setFirstTime } from "../home/getStarted";
 import { type NavBadges, Shell } from "./Shell";
 
 function renderShell(
@@ -34,6 +35,7 @@ function renderShell(
 
 beforeEach(() => {
   __resetBackendStatusForTests();
+  __resetGetStartedForTests();
   vi.stubGlobal(
     "fetch",
     vi.fn(() =>
@@ -138,5 +140,38 @@ describe("Shell", () => {
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(screen.getByText("Connected")).toBeInTheDocument();
+  });
+
+  it("offers to bring back a hidden get-started checklist (TEAMS-56)", async () => {
+    const patches: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === "/api/account/preferences") {
+          if (init?.method === "PATCH") patches.push(JSON.parse(init.body as string));
+          const hidden = init?.method !== "PATCH";
+          return Promise.resolve(
+            new Response(JSON.stringify({ get_started_hidden: hidden }), { status: 200 }),
+          );
+        }
+        return Promise.resolve(new Response(JSON.stringify({ status: "ok", db: "ok" })));
+      }),
+    );
+    window.location.hash = "#/engines";
+    renderShell({ page: "engines", tab: "overview" });
+    await userEvent.click(screen.getByRole("button", { name: "Account" }));
+    const item = await screen.findByRole("menuitem", { name: "Show get-started checklist" });
+    await userEvent.click(item);
+    await waitFor(() => expect(patches).toEqual([{ get_started_hidden: false }]));
+    await waitFor(() => expect(window.location.hash).toBe("#/home"));
+    window.location.hash = "";
+  });
+
+  it("hides the nav badges while Home shows the first-time checklist", () => {
+    setFirstTime(true);
+    renderShell({ page: "home" }, { home: 4, enginesToFix: 2 });
+    const nav = screen.getByRole("navigation", { name: "Dashboard" });
+    expect(within(nav).getByRole("button", { name: "Home" })).toBeInTheDocument();
+    expect(within(nav).queryByText("2 to fix")).toBeNull();
   });
 });

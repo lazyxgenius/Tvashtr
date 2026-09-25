@@ -662,6 +662,9 @@
   font-family: inherit;
   font-size: var(--fs-body-sm);
   font-weight: var(--fw-medium);
+  /* The design's tab is a plain <button>, whose line-height stays "normal" (a pill tab is 31px
+     tall); Tailwind's reset would make it inherit the body's 1.6 (36px). */
+  line-height: normal;
   color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
@@ -893,9 +896,10 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  /* The design's dialogs are content-box: 500px of content inside 22px padding (546px wide). */
   width: 500px;
-  max-width: calc(100vw - 32px);
-  box-sizing: border-box;
+  max-width: calc(100vw - 78px);
+  box-sizing: content-box;
   padding: 22px;
   border-radius: 16px;
   background: var(--surface-card);

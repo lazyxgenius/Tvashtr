@@ -1070,96 +1070,8 @@ body,
   color: var(--text-secondary);
 }
 
-/* ---- Dashboard (F2c reskin) — the post-login default: greeting + a real stat strip + ONE unified
-   teams table (each team's latest-run status + lifetime spend) + the BYOK provider shelf. Ported
-   from Dashboard.dc.html to the .tv-dash__* convention; token-driven, extends base tokens only. ---- */
-.tv-dash {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  background: var(--surface-page);
-}
-
-/* ---- Dashboard split nav (AppShell): left rail + main column ---- */
-.tv-shell {
-  overflow: hidden; /* body scrolls inside main, not the shell */
-}
-.tv-shell__body {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-.tv-shell__nav {
-  flex: none;
-  width: 200px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: 18px 12px 20px;
-  border-right: var(--border-width) solid var(--border-hairline);
-  background: var(--surface-card);
-  overflow-y: auto;
-}
-.tv-shell__nav-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.tv-shell__nav-btn {
-  appearance: none;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border: var(--border-width) solid transparent;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--ink-700);
-  font-family: var(--font-ui);
-  font-size: 13.5px;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background var(--dur-fast) var(--ease-standard),
-    color var(--dur-fast) var(--ease-standard),
-    border-color var(--dur-fast) var(--ease-standard);
-}
-.tv-shell__nav-btn:hover {
-  background: var(--panel-300);
-  color: var(--ink-900);
-}
-.tv-shell__nav-btn--active {
-  background: var(--coral-100);
-  color: var(--coral-700);
-  border-color: var(--coral-200);
-}
-.tv-shell__nav-btn:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-.tv-shell__nav-foot {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: var(--border-width) solid var(--line-400);
-}
-.tv-shell__main {
-  flex: 1;
-  min-width: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-.tv-shell .tv-dash__main {
-  max-width: 1100px;
-}
+/* ---- .tv-dash__* — shared by the dashboard pages not yet rebuilt (Domains, the Engines / Toolkit
+   shelves, New domain). The old Home dashboard and its nav are gone (pages/home, pages/shell). ---- */
 .tv-dash__page-head {
   margin-bottom: 8px;
 }
@@ -1177,9 +1089,6 @@ body,
   line-height: 1.5;
   color: var(--ink-500);
   max-width: 560px;
-}
-.tv-dash__tools-page {
-  gap: 28px;
 }
 .tv-tools-section {
   padding: 20px var(--space-6) 22px;
@@ -1209,50 +1118,9 @@ body,
   .tv-tools-section__form {
     grid-template-columns: 1fr;
   }
-  .tv-shell__nav {
-    width: 160px;
-  }
-}
-.tv-dash__tools-page .tv-dash__library,
-.tv-dash__tools-page .tv-dash__prov,
-.tv-dash__tools-page .tv-dash__panel {
-  margin-top: 0;
-}
-.tv-dash__tools-page > .tv-dash__panel {
-  padding: 20px var(--space-6) 22px;
 }
 
 /* Frosted-glass sticky app bar — translucent cream over whatever scrolls beneath. */
-.tv-dash__bar {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: 13px var(--space-6);
-  border-bottom: var(--border-width) solid var(--border-hairline);
-  background: var(--surface-overlay);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-}
-.tv-dash__brand {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-}
-.tv-dash__wordmark {
-  font-family: var(--font-display);
-  font-size: 20px;
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
-}
-.tv-dash__bar-right {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
 .tv-dash__error {
   margin: var(--space-3) var(--space-6) 0;
   padding: var(--space-2) var(--space-3);
@@ -1263,23 +1131,8 @@ body,
 }
 
 /* The centered content column. */
-.tv-dash__main {
-  flex: 1;
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 34px var(--space-6) 80px;
-}
 
 /* Greeting + the primary New-team action. */
-.tv-dash__greet {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-5);
-  flex-wrap: wrap;
-  margin-bottom: 26px;
-}
 .tv-dash__hello {
   margin: 0 0 6px;
   font-family: var(--font-display);
@@ -1288,65 +1141,8 @@ body,
   letter-spacing: -0.02em;
   color: var(--text-primary);
 }
-.tv-dash__lede {
-  margin: 0;
-  font-size: var(--fs-body-sm);
-  color: var(--text-secondary);
-}
 
 /* The stat strip — three real chips (Teams / Active runs / Total spend). */
-.tv-dash__stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-  margin-bottom: 30px;
-}
-.tv-dash__stat {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px 20px;
-  border-radius: var(--radius-xl);
-  border: var(--border-width) solid var(--border-hairline);
-  background: var(--surface-card);
-}
-.tv-dash__stat-ic {
-  display: inline-flex;
-  width: 42px;
-  height: 42px;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-lg);
-  background: var(--panel-300);
-  color: var(--ink-700);
-}
-.tv-dash__stat-ic--runs {
-  background: var(--coral-100);
-  color: var(--coral-700);
-  border: var(--border-width) solid var(--coral-200);
-}
-.tv-dash__stat-ic--spend {
-  background: var(--sage-100);
-  color: color-mix(in srgb, var(--sage-500) 66%, var(--ink-900));
-}
-.tv-dash__stat-num {
-  font-family: var(--font-display);
-  font-size: 26px;
-  line-height: 1;
-  color: var(--text-primary);
-}
-.tv-dash__stat-label {
-  margin-top: 3px;
-  font-size: 12.5px;
-  color: var(--text-secondary);
-}
-
-.tv-dash__stack {
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-}
 
 /* A section card (teams table / providers). */
 .tv-dash__panel {
@@ -1355,370 +1151,26 @@ body,
   background: var(--surface-card);
   overflow: hidden;
 }
-.tv-dash__panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: 18px var(--space-6) 14px;
-}
-.tv-dash__panel-title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 21px;
-  color: var(--text-primary);
-}
 
 /* The unified teams table (grid) — expander / Team / Nodes / Status / Spend / Created / actions. */
-.tv-dash__thead,
-.tv-dash__trow {
-  display: grid;
-  grid-template-columns: 24px minmax(200px, 1fr) 64px 148px 92px 116px 68px;
-  gap: 16px;
-  align-items: center;
-}
-.tv-dash__thead {
-  padding: 9px var(--space-6);
-  border-top: var(--border-width) solid var(--border-hairline);
-  border-bottom: var(--border-width) solid var(--border-hairline);
-  background: var(--surface-page);
-}
-.tv-dash__th {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-.tv-dash__th--num {
-  text-align: right;
-}
-.tv-dash__rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
 /* The list item wraps the row AND its expanded run-history panel, so the panel spans the full
    width instead of being squeezed into a grid cell. The row keeps the grid + the hover surface;
    the separator moves out to the item so an open panel stays visually attached to its row. */
-.tv-dash__titem {
-  border-bottom: var(--border-width) solid var(--border-faint);
-}
-.tv-dash__titem:last-child {
-  border-bottom: none;
-}
-.tv-dash__trow {
-  position: relative;
-  padding: 14px var(--space-6);
-}
-.tv-dash__trow:hover {
-  background: var(--surface-page);
-}
 /* The full-row click surface (opens the team) sits BEHIND the cells; the delete button sits in
    FRONT — so a row click opens and a delete click deletes, with no nested interactive elements. */
-.tv-dash__trow-open {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  padding: 0;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-}
-.tv-dash__trow-open:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-  border-radius: var(--radius-md);
-}
-.tv-dash__tcell {
-  position: relative;
-  z-index: 1;
-  min-width: 0;
-  pointer-events: none;
-  font-size: var(--fs-body-sm);
-  color: var(--text-secondary);
-}
-.tv-dash__team {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  min-width: 0;
-}
-.tv-dash__team-ic {
-  display: flex;
-  width: 34px;
-  height: 34px;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  background: var(--panel-300);
-  border: var(--border-width) solid var(--border-hairline);
-  color: var(--ink-700);
-}
-.tv-dash__team-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-.tv-dash__team-name {
-  font-size: 14px;
-  font-weight: var(--fw-medium);
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tv-dash__team-meta {
-  font-size: 12px;
-  font-family: var(--font-code);
-  color: var(--ink-500);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tv-dash__status-btn {
-  position: relative;
-  z-index: 2;
-  pointer-events: auto;
-  cursor: pointer;
-  font: inherit;
-}
-.tv-dash__trow-del--quiet {
-  color: var(--stone-400);
-  opacity: 0.7;
-}
-.tv-dash__trow:hover .tv-dash__trow-del--quiet,
-.tv-dash__trow-del--quiet:focus-visible {
-  opacity: 1;
-  color: var(--ink-600);
-}
-.tv-dash__recover {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 0 var(--space-6) 12px calc(var(--space-6) + 40px);
-  background: var(--red-100);
-}
-.tv-dash__recover-msg {
-  margin: 0;
-  font-size: 13px;
-  color: color-mix(in srgb, var(--red-500) 70%, var(--ink-900));
-}
-.tv-dash__recover-acts {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.tv-dash__tcell--num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.tv-dash__tcell--spend {
-  font-family: var(--font-code);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
-}
-.tv-dash__tcell--created {
-  font-size: 12.5px;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-.tv-dash__trow-del {
-  position: relative;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  flex: none;
-  margin-left: auto;
-  color: var(--ink-600);
-  background: transparent;
-  border: var(--border-width) solid transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition:
-    background var(--dur-fast) var(--ease-standard),
-    color var(--dur-fast) var(--ease-standard);
-}
-.tv-dash__trow-del:hover {
-  background: var(--red-100);
-  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
-}
-.tv-dash__trow-del:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
 
 /* ---- Row actions: rename + delete, sharing the trailing column -------------------------------
    Both sit IN FRONT of the full-row open surface (z-index 2, like the delete button always has),
    so a click on either acts on the row rather than opening the team. */
-.tv-dash__trow-acts {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 2px;
-}
-.tv-dash__trow-act {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  flex: none;
-  color: var(--ink-600);
-  background: transparent;
-  border: var(--border-width) solid transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition:
-    background var(--dur-fast) var(--ease-standard),
-    color var(--dur-fast) var(--ease-standard);
-}
-.tv-dash__trow-act:hover {
-  background: var(--surface-sunken, var(--surface-page));
-  color: var(--text-primary);
-}
-.tv-dash__trow-act:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
 
 /* ---- The run-history expander (leading chevron) ---------------------------------------------- */
-.tv-dash__trow-exp {
-  position: relative;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  color: var(--text-tertiary);
-  background: transparent;
-  border: var(--border-width) solid transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition:
-    background var(--dur-fast) var(--ease-standard),
-    color var(--dur-fast) var(--ease-standard);
-}
-.tv-dash__trow-exp:hover {
-  background: var(--surface-sunken, var(--surface-page));
-  color: var(--text-primary);
-}
-.tv-dash__trow-exp:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
 
 /* ---- Inline rename editor (replaces the name in the Team cell) -------------------------------
    `pointer-events: auto` re-enables input inside `.tv-dash__tcell`, which is inert by default so
    clicks fall through to the row-open surface. While renaming that surface is not rendered. */
-.tv-dash__rename {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  pointer-events: auto;
-}
-.tv-dash__rename-input {
-  min-width: 0;
-  flex: 1 1 auto;
-  height: 30px;
-  padding: 0 8px;
-  font-size: var(--fs-body-sm);
-}
-.tv-dash__rename-act {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  flex: none;
-  color: var(--ink-600);
-  background: transparent;
-  border: var(--border-width) solid transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-.tv-dash__rename-act:hover {
-  background: var(--surface-sunken, var(--surface-page));
-  color: var(--text-primary);
-}
-.tv-dash__rename-act:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
 
 /* ---- The per-team run-history drill-down panel ------------------------------------------------
    Inset and sunken so it reads as belonging to the row above it rather than as a sibling row. */
-.tv-dash__runs {
-  padding: 4px var(--space-6) 12px calc(var(--space-6) + 40px);
-  background: var(--surface-page);
-}
-.tv-dash__runs-empty {
-  margin: 0;
-  padding: 8px 0;
-  font-size: var(--fs-body-sm);
-  color: var(--text-secondary);
-}
-.tv-dash__runs-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.tv-dash__runrow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 148px 92px 116px;
-  gap: 16px;
-  align-items: center;
-  width: 100%;
-  padding: 7px 8px;
-  text-align: left;
-  background: transparent;
-  border: var(--border-width) solid transparent;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-.tv-dash__runrow:hover {
-  background: var(--surface-card, #fff);
-}
-.tv-dash__runrow:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-.tv-dash__runrow-idea {
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--fs-body-sm);
-  color: var(--text-primary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tv-dash__runrow-spend,
-.tv-dash__runrow-at {
-  font-size: 12.5px;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-.tv-dash__empty {
-  margin: 0;
-  padding: var(--space-6);
-  font-size: var(--fs-body-sm);
-  color: var(--text-secondary);
-}
 
 /* Providers shelf — the BYOK section (behavior unchanged, reskinned to the mockup). */
 .tv-dash__prov {
@@ -2118,21 +1570,6 @@ body,
   flex: none;
   padding: var(--space-4) var(--space-5) var(--space-5);
   border-top: var(--border-width) solid var(--border-hairline);
-}
-.tv-dash__dialog-text {
-  margin: 0;
-  font-size: var(--fs-body-sm);
-  line-height: var(--lh-relaxed);
-  color: var(--text-secondary);
-}
-.tv-dash__dialog-warn {
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  background: var(--coral-100);
-  color: var(--coral-700);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-medium);
 }
 
 /* Template cards in the New-team picker. */

@@ -1,6 +1,7 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
 import { shippedFile } from "./_shipReadback";
+import { openMyTeam } from "./_myTeam";
 
 // DEFAULT_IDEA's deliverable line (backend/tvashtr/routers.py) — the template default the shipped
 // file must NOT be, proving the human's AUTHORED Engineer prompt (not the template) drove the build.
@@ -34,8 +35,7 @@ async function openSeededTeam(page: import("@playwright/test").Page): Promise<vo
     data: { provider: "deepseek", api_key: key },
   });
   expect(seed.ok(), "seed the deepseek provider key (pre-flight needs it)").toBeTruthy();
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open My team" }).click();
+  await openMyTeam(page);
   await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
   console.log(`[team-edit-e2e] registered ${email} and opened seeded My team`);
 }

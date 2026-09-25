@@ -1066,7 +1066,7 @@ export function providersForCapability(capability: Capability): string[] {
 // non-component module, so the component file exports only components — Fast Refresh stays happy.)
 export const LARGE_REPO_FILE_THRESHOLD = 300;
 
-// The user's library teams (the rail). Seeded server-side so it is never empty.
+// The user's library teams, oldest first. Empty for a new account (nothing is auto-created).
 export async function getTeams(): Promise<TeamSummary[]> {
   const data = await getJSON<{ teams: TeamSummary[] }>("/api/teams");
   return data.teams;
@@ -1090,8 +1090,7 @@ export async function createTeam(template: string, name: string): Promise<TeamSu
   return (await res.json()) as TeamSummary;
 }
 
-// Delete a library team. The backend cascades its nodes/edges; runs are unaffected (they point at
-// immutable clone snapshots, never the library team).
+// Delete a library team. This also stops and deletes its runs (and their Desktop jobs).
 export async function deleteTeam(teamId: string): Promise<void> {
   const res = await fetch(`/api/teams/${teamId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /api/teams/${teamId} -> ${res.status}`);

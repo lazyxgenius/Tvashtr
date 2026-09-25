@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
+import { openMyTeam } from "./_myTeam";
 
 // Live FE proof for the M-brownfield scoped-mount Slice 2 SCOPE PICKER. NO agent run, NO real LLM,
 // .env-INDEPENDENT: it REGISTERS a fresh account (whose seeded starter team is the review_loop "My
@@ -57,8 +58,7 @@ test("scope-picker: inspect populates base-branch + Scope dropdowns; picking a p
     expect(reg.ok(), "register a fresh account").toBeTruthy();
 
     // Load authenticated → the dashboard → open the seeded team → the canvas.
-    await page.goto("/");
-    await page.getByRole("button", { name: "Open My team" }).click();
+    await openMyTeam(page);
     await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
 
     // CHECK 1 — clicking "Run this team" OPENS the launch panel (it does NOT fire the run).
