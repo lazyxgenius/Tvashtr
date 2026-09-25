@@ -458,6 +458,18 @@ def node_emits_outcome(edges: list[dict], node_id: str) -> bool:
     )
 
 
+def _authored_node_uuid(node_id: str) -> uuid.UUID:
+    """The AUTHORED node behind an executing node: its ``cloned_from_node_id`` (a run executes a
+    clone of the library team), else the node's own id when it is not a clone. Stamped on the
+    document versions a node writes (``document_versions.author_node_id``) so a version names the
+    agent the user actually edits."""
+    with session_scope() as session:
+        origin = session.execute(
+            select(AgentNode.cloned_from_node_id).where(AgentNode.id == uuid.UUID(node_id))
+        ).scalar_one_or_none()
+    return origin if origin is not None else uuid.UUID(node_id)
+
+
 @DBOS.step()
 def record_entry_spec_step(
     run_id: str,
@@ -478,7 +490,11 @@ def record_entry_spec_step(
     LATER
     entry invocation (a refine round): append the report as the next version — idempotent on
     ``{run_id}:spec:{node_id}:{iteration}`` (the old thinker-refine key shape). Returns the spec
-    document id (created or existing)."""
+    document id (created or existing).
+
+    Revamp: each version carries a deterministic change note ("First draft" / "Revised in round
+    {n}") and the authored node that wrote it. The return value is unchanged."""
+    author_node_id = _authored_node_uuid(node_id)
     if spec_document_id is None:
         # M-docs: stamp the entry's document run-scoped (``run_id`` — closes the orphaned-documents
         # leak + makes it CASCADE-delete with the run) + NAMED (``name``, default "spec"; the
@@ -492,6 +508,8 @@ def record_entry_spec_step(
             idempotency_key=f"{run_id}:pm-prd-v1",
             run_id=uuid.UUID(run_id),
             name=name,
+            note="First draft",
+            author_node_id=author_node_id,
         )
         with session_scope() as session:
             session.execute(
@@ -503,6 +521,8 @@ def record_entry_spec_step(
         report,
         created_by="agent:entry",
         idempotency_key=f"{run_id}:spec:{node_id}:{iteration}",
+        note=f"Revised in round {iteration}",
+        author_node_id=author_node_id,
     )
     return spec_document_id
 
@@ -563,7 +583,8 @@ def write_named_document_step(
     insert-or-returns, never a duplicate version or a second document for the name). Unlike the
     entry's :func:`record_entry_spec_step` it does NOT touch ``Run.pm_document_id`` — only the entry
     owns the run's primary spec pointer. The document is created ``title="Document: {name}"`` +
-    ``doc_type=name`` so the run-view picker labels it legibly."""
+    ``doc_type=name`` so the run-view picker labels it legibly. Revamp: the version's note is
+    "Round {n}" and it records the authored node that wrote it."""
     find_or_create_run_document(
         run_id=uuid.UUID(run_id),
         name=name,
@@ -572,6 +593,8 @@ def write_named_document_step(
         content=report,
         created_by=f"agent:{node_id}",
         idempotency_key=f"{run_id}:doc:{name}:{node_id}:{iteration}",
+        note=f"Round {iteration}",
+        author_node_id=_authored_node_uuid(node_id),
     )
 
 

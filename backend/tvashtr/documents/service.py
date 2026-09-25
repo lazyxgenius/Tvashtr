@@ -7,13 +7,55 @@ governs metering. Each helper owns its own transaction via ``session_scope``.
 """
 
 import uuid
+from dataclasses import dataclass
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from tvashtr.db import session_scope
 from tvashtr.models import Document, DocumentVersion, Run
+
+
+@dataclass(frozen=True)
+class LatestVersionInfo:
+    """A detached snapshot of a document's newest version (safe to use after the session closes)."""
+
+    version_no: int
+    created_by: str
+    author_node_id: uuid.UUID | None
+
+
+class StaleVersionError(Exception):
+    """:func:`add_version` was told which version the writer started from (``expected_base``) and
+    the document has moved on since — someone else saved a newer version in between. Carries the
+    newest version so the caller can say who saved it."""
+
+    def __init__(self, latest: LatestVersionInfo | None) -> None:
+        super().__init__("document has a newer version than the edit's base")
+        self.latest = latest
+
+
+def _touch(session, document_id: uuid.UUID) -> None:
+    """Bump ``documents.updated_at`` in the writer's transaction. The column's ORM ``onupdate``
+    never fires, because appending a version inserts a ``DocumentVersion`` only — so every version
+    writer calls this explicitly. ``now()`` is the transaction start, the same instant the new
+    version's ``created_at`` gets."""
+    session.execute(
+        update(Document).where(Document.id == document_id).values(updated_at=func.now())
+    )
+
+
+def _latest_info(session, document_id: uuid.UUID) -> LatestVersionInfo | None:
+    row = session.execute(
+        select(
+            DocumentVersion.version_no, DocumentVersion.created_by, DocumentVersion.author_node_id
+        )
+        .where(DocumentVersion.document_id == document_id)
+        .order_by(DocumentVersion.version_no.desc())
+        .limit(1)
+    ).first()
+    return None if row is None else LatestVersionInfo(row[0], row[1], row[2])
 
 
 def create_document(title: str, doc_type: str) -> Document:
@@ -34,6 +76,8 @@ def create_document_with_initial_version(
     idempotency_key: str,
     run_id: uuid.UUID | None = None,
     name: str | None = None,
+    note: str | None = None,
+    author_node_id: uuid.UUID | None = None,
 ) -> Document:
     """Create a Document **and** its version-1 DocumentVersion in ONE transaction,
     idempotent on ``idempotency_key``.
@@ -46,6 +90,9 @@ def create_document_with_initial_version(
     run-scoped + named. Both default ``None`` — the ``doc_writer`` proof workflow keeps calling this
     byte-identically (an un-scoped, un-named legacy doc); the entry/PM writer passes them so its
     "spec" document cascade-deletes with the run and is find-or-createable by name.
+
+    Revamp (``0041``): ``note`` (the version's change note) and ``author_node_id`` (the AUTHORED
+    node that wrote it) are optional; both default ``None`` (derived at read time).
     """
     with session_scope() as session:
         existing = session.execute(
@@ -66,6 +113,8 @@ def create_document_with_initial_version(
                 content=content,
                 created_by=created_by,
                 idempotency_key=idempotency_key,
+                note=note,
+                author_node_id=author_node_id,
             )
         )
         try:
@@ -93,6 +142,8 @@ def find_or_create_run_document(
     content: str,
     created_by: str,
     idempotency_key: str,
+    note: str | None = None,
+    author_node_id: uuid.UUID | None = None,
 ) -> Document:
     """M-docs: find or create the ``(run_id, name)`` document, then append ``content`` as its next
     version — idempotent on ``idempotency_key``. The find-or-create the executor uses to route a
@@ -139,6 +190,8 @@ def find_or_create_run_document(
                 content=content,
                 created_by=created_by,
                 idempotency_key=idempotency_key,
+                note=note,
+                author_node_id=author_node_id,
             )
         )
         try:
@@ -153,6 +206,7 @@ def find_or_create_run_document(
                     select(Document).where(Document.id == won.document_id)
                 ).scalar_one()
             raise  # genuine (document_id, version_no) contention, not an idempotent retry
+        _touch(session, document.id)
         session.refresh(document)
         return document
 
@@ -170,6 +224,10 @@ def add_version(
     content: str,
     created_by: str,
     idempotency_key: str,
+    *,
+    note: str | None = None,
+    author_node_id: uuid.UUID | None = None,
+    expected_base: int | None = None,
 ) -> DocumentVersion:
     """Append the next version to a document — idempotent on ``idempotency_key``.
 
@@ -177,6 +235,13 @@ def add_version(
     The ``version_no`` is the document's current max + 1. The unique-violation
     race (two writers, same key) is handled by catching ``IntegrityError`` and
     re-reading the winning row.
+
+    Revamp: ``note`` / ``author_node_id`` are stored on the new row; ``documents.updated_at`` is
+    bumped in the same transaction. ``expected_base`` (a human live edit) is the version number
+    the writer started from: when the document's newest version is not that one — checked in the
+    SAME transaction as the insert, with the document row locked — nothing is written and
+    :class:`StaleVersionError` is raised. A concurrent agent insert that wins the
+    ``(document_id, version_no)`` race is reported the same way.
     """
     with session_scope() as session:
         existing = session.execute(
@@ -185,17 +250,24 @@ def add_version(
         if existing is not None:
             return existing
 
+        if expected_base is not None:
+            # Serialize human saves on this document (agents rely on the unique constraint).
+            session.execute(select(Document.id).where(Document.id == document_id).with_for_update())
         max_no = session.execute(
             select(func.max(DocumentVersion.version_no)).where(
                 DocumentVersion.document_id == document_id
             )
         ).scalar()
+        if expected_base is not None and (max_no or 0) != expected_base:
+            raise StaleVersionError(_latest_info(session, document_id))
         version = DocumentVersion(
             document_id=document_id,
             version_no=(max_no or 0) + 1,
             content=content,
             created_by=created_by,
             idempotency_key=idempotency_key,
+            note=note,
+            author_node_id=author_node_id,
         )
         session.add(version)
         try:
@@ -207,7 +279,10 @@ def add_version(
             ).scalar_one_or_none()
             if won is not None:
                 return won
+            if expected_base is not None:
+                raise StaleVersionError(_latest_info(session, document_id)) from None
             raise  # genuine version_no contention, not an idempotent retry
+        _touch(session, document_id)
         session.refresh(version)
         return version
 
