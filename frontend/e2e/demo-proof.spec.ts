@@ -15,6 +15,13 @@
  * output ceiling that keeps the run alive) are true THROUGH THE PRODUCT'S OWN UI, and the team the
  * UI creates ships a real pull request against a real repository.
  *
+ * Revamp round 1: the old dashboard and the canvas's LaunchPanel are gone. C1 lands on Home inside
+ * the new shell, C2 reads the keys on Engines › API keys, C3/C4 use Home's "New team" dialog, C9
+ * launches through Home's "Start a run" composer (the canvas's "Run this team" opens it with the
+ * team picked), C10 approves every gate by clicking through Home's "Needs you" → Review →
+ * "Approve and continue" (the run view's task drawer when Home shows its first-time layout, which
+ * has no Needs you), and C12 deletes the team from Home's Teams section.
+ *
  * React Flow gotcha: Playwright's full-tree accessibility snapshot chokes on the canvas. Every
  * canvas assertion below is a targeted locator query plus a screenshot — never a whole-tree snapshot.
  */
@@ -133,13 +140,6 @@ async function openNodeDrawer(page: Page, roleTitle: string): Promise<void> {
 
 /** The slices of the API payloads this harness reads. Typed so `String(...)` never stringifies an
  * object by accident (the eslint `no-base-to-string` rule earns its keep here). */
-interface TeamRow {
-  team_graph_id: string;
-  name: string;
-}
-interface RunRow {
-  run_id: string;
-}
 interface RunSnapshot {
   workflow_status?: string;
   run?: { status?: string; pr_url?: string };
@@ -181,11 +181,13 @@ test.describe("M-proof", () => {
       "\n============================================================\n" +
         "  ACTION NEEDED — a browser window is open.\n" +
         "  1. Click 'Continue with GitHub' and finish the GitHub sign-in.\n" +
-        "  2. Wait until the Tvashtr dashboard appears. Then leave it alone.\n" +
+        "  2. Wait until Tvashtr's Home appears. Then leave it alone.\n" +
         "  This harness is watching and will save the session by itself.\n" +
         "============================================================\n",
     );
-    await expect(page.locator(".tv-dash__hello")).toBeVisible({ timeout: LOGIN_TIMEOUT_MS });
+    await expect(page.getByRole("navigation", { name: "Dashboard" })).toBeVisible({
+      timeout: LOGIN_TIMEOUT_MS,
+    });
 
     const me = await context.request.get("/api/auth/me");
     expect(me.status(), "/api/auth/me after sign-in").toBe(200);
@@ -243,18 +245,31 @@ test.describe("M-proof", () => {
       }
 
       await page.goto("/");
-      await expect(page.locator(".tv-dash__error")).toHaveCount(0);
-      const hello = page.locator(".tv-dash__hello");
-      await expect(hello).toBeVisible({ timeout: 30_000 });
-      await expect(hello).toContainText("Good to see you,");
-      console.log(`[C1] PASS — dashboard for ${(await hello.innerText()).trim()} (leg=${LEG})`);
-      await shot(page, 1, "dashboard");
+      const nav = page.getByRole("navigation", { name: "Dashboard" });
+      await expect(nav).toBeVisible({ timeout: 30_000 });
+      await expect(nav.getByRole("button", { name: /^Home/ })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      const hello = page.locator("h1.hm-head__title, h1.hm-ft-head__title");
+      await expect(hello).toHaveText(/^(Good (morning|afternoon|evening)|Welcome to Tvashtr)/, {
+        timeout: 30_000,
+      });
+      console.log(`[C1] PASS — Home for ${(await hello.innerText()).trim()} (leg=${LEG})`);
+      await shot(page, 1, "home");
 
-      // ---- C2: provider keys ------------------------------------------------------------------
-      const providersPanel = page.locator("section[aria-label='Your providers']");
-      await expect(providersPanel).toBeVisible();
-      await expect(providersPanel).toContainText("Provider keys");
-      const held = (await providersPanel.locator(".tv-dash__prov-name").allInnerTexts())
+      // ---- C2: provider keys (Engines › API keys) --------------------------------------------
+      await nav.getByRole("button", { name: /^Engines/ }).click();
+      await nav.getByRole("button", { name: /^API keys/ }).click();
+      await expect(page).toHaveURL(/#\/engines\/keys$/);
+      const keysPanel = page.locator("section[aria-labelledby='tv-engines-keys']");
+      await expect(keysPanel).toBeVisible({ timeout: 30_000 });
+      await expect(keysPanel).toContainText("API keys");
+      await expect
+        .poll(async () => keysPanel.locator(".tv-dash__prov-name").count(), { timeout: 20_000 })
+        .toBeGreaterThan(0)
+        .catch(() => undefined);
+      const held = (await keysPanel.locator(".tv-dash__prov-name").allInnerTexts())
         .map((s) => s.trim())
         .filter(Boolean);
       console.log(`[C2] held providers (${held.length}): ${held.join(", ") || "(none)"}`);
@@ -266,8 +281,8 @@ test.describe("M-proof", () => {
         needsHuman(
           `${LEG} account fails the C2 provider bar: ${why}. Held: ` +
             `[${held.join(", ") || "none"}]. M-proof needs >=2 keys including nvidia_nim. ` +
-            "Add the missing key through the product's own Providers panel — the harness must " +
-            "never handle raw credentials.",
+            "Add the missing key through the product's own Engines › API keys page — the harness " +
+            "must never handle raw credentials.",
         );
       }
       const rows = await providerCatalogue(api);
@@ -296,42 +311,51 @@ test.describe("M-proof", () => {
       console.log("[C2] PASS — seat expectations derived from GET /api/config");
       await shot(page, 2, "providers");
 
-      // ---- C3: the new-team dialog ------------------------------------------------------------
-      await page.getByRole("button", { name: "New team", exact: true }).click();
-      const dialog = page.locator("div[role='dialog'][aria-label='New team']");
+      // ---- C3: Home's New team dialog ----------------------------------------------------------
+      await nav.getByRole("button", { name: /^Home/ }).click();
+      await expect(page).toHaveURL(/#\/(home)?$/);
+      await page.getByRole("button", { name: "New team", exact: true }).first().click();
+      const dialog = page.getByRole("dialog", { name: "New team" });
       await expect(dialog).toBeVisible();
-      await expect(dialog).not.toContainText("Couldn't load the starter templates");
-      const templates = (await dialog.locator(".tv-dash__template-name").allInnerTexts()).map((s) =>
+      await expect(
+        dialog.getByRole("group", { name: "Starting point" }).locator(".hm-tplcard"),
+      ).toHaveCount(5, { timeout: 30_000 });
+      await expect(dialog).not.toContainText("Couldn’t load the starter templates");
+      const templates = (await dialog.locator(".hm-tplcard__name").allInnerTexts()).map((s) =>
         s.trim(),
       );
       console.log(`[C3] templates: ${templates.join(" | ")}`);
       for (const want of [
         "Blank",
         "PM → Engineer",
-        "PM → Engineer ↔ Reviewer",
-        "PM → Architect → Engineer ↔ Reviewer",
+        "PM → Engineer ⇄ Reviewer",
+        "PM → Architect → Engineer ⇄ Reviewer",
         "Full feature squad",
       ]) {
         expect(templates, `template card '${want}'`).toContain(want);
       }
-      console.log("[C3] PASS — the dialog renders all five starter templates");
+      console.log("[C3] PASS — the dialog renders Blank and all four starter templates");
       await shot(page, 3, "new-team-dialog");
 
       // ---- C4: create the team ----------------------------------------------------------------
-      await dialog.locator("input[aria-label='Team name']").fill(teamName);
-      await dialog
-        .locator("button", {
-          has: page.locator(".tv-dash__template-name", { hasText: /^PM → Engineer ↔ Reviewer$/ }),
-        })
-        .first()
-        .click();
+      await dialog.getByLabel("Name", { exact: true }).fill(teamName);
+      const reviewLoop = dialog.locator("button.hm-tplcard", {
+        has: page.locator(".hm-tplcard__name", { hasText: /^PM → Engineer ⇄ Reviewer$/ }),
+      });
+      await reviewLoop.click();
+      await expect(reviewLoop).toHaveAttribute("aria-pressed", "true");
+      const created = page.waitForResponse(
+        (r) => r.url().endsWith("/api/teams") && r.request().method() === "POST",
+      );
       await dialog.getByRole("button", { name: "Create team", exact: true }).click();
+      const createdRes = await created;
+      expect(createdRes.ok(), `POST /api/teams -> ${createdRes.status()}`).toBeTruthy();
+      const createdTeam = (await createdRes.json()) as { team_graph_id: string; name: string };
+      expect(createdTeam.name, "the created team's name").toBe(teamName);
+      teamId = String(createdTeam.team_graph_id);
       await expect(dialog).toHaveCount(0, { timeout: 30_000 });
+      await expect(page).toHaveURL(new RegExp(`#/teams/${teamId}$`), { timeout: 30_000 });
       await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 30_000 });
-      const teams = await jsonOf<{ teams?: TeamRow[] }>(api, "/api/teams");
-      const mine = (teams.teams ?? []).find((t) => t.name === teamName);
-      expect(mine, `team '${teamName}' in GET /api/teams`).toBeTruthy();
-      teamId = String(mine!.team_graph_id);
       console.log(`[C4] PASS — created '${teamName}' (${teamId}) from review_loop; canvas open`);
       await shot(page, 4, "canvas-created");
 
@@ -412,90 +436,147 @@ test.describe("M-proof", () => {
       console.log("[C8] PASS — the caveman stamp did not leak onto the thinker");
       await shot(page, 8, "caveman-not-thinker");
 
-      // ---- C9: launch at a real repo ----------------------------------------------------------
+      // ---- C9: launch at a real repo, through Home's composer ----------------------------------
+      // The canvas's Run opens Home's "Start a run" composer with this team picked.
       await page.getByRole("button", { name: "Run this team", exact: true }).click();
-      const launch = page.locator("div[role='dialog'][aria-label='Launch run']");
-      await expect(launch).toBeVisible();
-      await launch.locator("textarea[aria-label='Feature request']").fill(IDEA);
-      const toggle = launch.locator("div[role='group'][aria-label='Work on a GitHub repo']");
-      if ((await toggle.count()) === 0) {
+      const composer = page.locator("section[aria-label='Start a run']");
+      await expect(composer).toBeVisible({ timeout: 30_000 });
+      await expect(page).toHaveURL(/#\/(home)?$/);
+      await expect(composer.locator(".hm-picker--team")).toContainText(teamName, {
+        timeout: 30_000,
+      });
+      await composer.getByRole("textbox", { name: "What should the team build?" }).fill(IDEA);
+      await composer.locator(".hm-picker--repo").click();
+      const repoPop = page.getByRole("dialog", { name: "Pick a repo" });
+      await expect(repoPop).toBeVisible();
+      if ((await repoPop.getByRole("textbox", { name: "Search repos" }).count()) === 0) {
         needsHuman(
-          "the launch panel shows the self-hosted 'Work on a local repo' toggle, not the hosted " +
-            "GitHub one — this leg is not running in hosted mode, so no pull request can be " +
-            "opened. Local leg: set TVASHTR_HOSTED_MODE=true on the backend.",
+          "the composer's target picker offers no GitHub repo search — this leg is not running in " +
+            "hosted mode, so no pull request can be opened. Local leg: set " +
+            "TVASHTR_HOSTED_MODE=true on the backend.",
         );
       }
-      await toggle.getByRole("button", { name: "On", exact: true }).click();
-      const select = launch.locator("select[aria-label='Repository']");
-      await expect(select, "the hosted repo picker").toBeVisible({ timeout: 60_000 });
-      const offered = (await select.locator("option").allInnerTexts()).map((s) =>
-        s.replace(/ · private$/, "").trim(),
-      );
+      await expect(repoPop).not.toContainText("Loading repositories…", { timeout: 60_000 });
+      const repoList = repoPop.getByRole("listbox", { name: "Repos" });
+      const offered = (
+        await repoList.locator("button[role='option'] .hm-picker__code").allInnerTexts()
+      )
+        .map((s) => s.trim())
+        .filter(Boolean);
       console.log(`[C9] repos offered (${offered.length}): ${offered.join(", ")}`);
       if (!offered.includes(REPO)) {
-        const manage = await launch.locator("a").allInnerTexts();
+        const manage = await repoPop.locator("a").allInnerTexts();
         needsHuman(
           `TVASHTR_PROOF_REPO='${REPO}' is not among the repos this GitHub App installation ` +
-            `grants. Offered: [${offered.join(", ")}]. Grant it (the panel's install/manage door: ` +
-            `${manage.join(" / ") || "'Add repositories'"}) or set TVASHTR_PROOF_REPO to one above.`,
+            `grants. Offered: [${offered.join(", ")}]. Grant it (the picker's install/manage door: ` +
+            `${manage.join(" / ") || "'Add repositories on GitHub'"}) or set TVASHTR_PROOF_REPO to ` +
+            "one above.",
         );
       }
-      await select.selectOption(REPO);
-      const base = launch.locator("input[aria-label='Base branch']");
-      await expect(base, "the read-only base branch").toBeVisible();
+      await repoList
+        .locator("button[role='option']", {
+          has: page.locator(".hm-picker__code", { hasText: new RegExp(`^${REPO}$`) }),
+        })
+        .click();
+      await expect(repoPop).toHaveCount(0);
+      await expect(composer.locator(".hm-picker--repo")).toContainText(REPO);
+      await composer.getByRole("button", { name: "Options", exact: true }).click();
+      const options = page.getByRole("dialog", { name: "Run options" });
+      const base = options.getByLabel("Base branch");
+      await expect(base, "the base branch").toBeVisible();
       const baseBranch = await base.inputValue();
       expect(baseBranch.length, "base branch must render non-empty").toBeGreaterThan(0);
       console.log(`[C9] target ${REPO} @ base branch '${baseBranch}'`);
-      await shot(page, 9, "launch-panel");
-      await launch.getByRole("button", { name: "Run", exact: true }).click();
-      await expect(launch).toHaveCount(0, { timeout: 60_000 });
+      await shot(page, 9, "composer");
+      await composer.getByRole("button", { name: "Options", exact: true }).click();
+      await expect(options).toHaveCount(0);
 
-      let runId = "";
-      await expect
-        .poll(
-          async () => {
-            const j = await jsonOf<{ runs?: RunRow[] }>(api, `/api/teams/${teamId}/runs`);
-            const first = (j.runs ?? [])[0];
-            if (first?.run_id) runId = first.run_id;
-            return runId;
-          },
-          { timeout: 90_000, intervals: [1000] },
-        )
-        .not.toBe("");
+      const launched = page.waitForResponse(
+        (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
+        { timeout: 120_000 },
+      );
+      await composer.getByRole("button", { name: "Launch", exact: true }).click();
+      const launchRes = await launched;
+      expect(
+        launchRes.ok(),
+        `POST /api/runs -> ${launchRes.status()} ${await launchRes.text()}`,
+      ).toBeTruthy();
+      const sent = (launchRes.request().postDataJSON() ?? {}) as Record<string, unknown>;
+      expect(sent.team_graph_id, "the composer launched THIS team").toBe(teamId);
+      expect(sent.github_repo, "the composer launched at the picked repo").toBe(REPO);
+      expect(sent.base_ref, "the composer sent the base branch").toBe(baseBranch);
+      const runId = ((await launchRes.json()) as { run_id: string }).run_id;
+      expect(runId, "the launch returns a run_id").toBeTruthy();
+      await expect(
+        page.getByRole("status").filter({ hasText: `Run started on ${teamName}.` }),
+      ).toBeVisible({ timeout: 30_000 });
       runIdForReport = runId;
-      console.log(`[C9] PASS — run ${runId} launched against ${REPO}`);
+      console.log(`[C9] PASS — run ${runId} launched against ${REPO} from Home's composer`);
 
       // ---- C10 + C11: approve the real gates through the UI, then a terminal run + a real PR ---
+      // Home's Needs you lists each gate; Review opens the approve sheet. An account still on the
+      // first-time Home has no Needs you, so there the gate is approved in the run view instead.
       let gatesSeen = 0;
       let gatesApproved = 0;
       let escalationsApproved = 0;
       const gateTitles: string[] = [];
       let snapshot: RunSnapshot = {};
       const deadline = Date.now() + RUN_TIMEOUT_MS;
+      const needsYou = page.locator("section[aria-label='Needs you']");
+      const firstTime = (await needsYou.count()) === 0;
+      if (firstTime) {
+        console.log("[C10] Home shows its first-time layout (no Needs you) — using the run view");
+        await page.goto(`/#/teams/${teamId}/runs/${runId}`);
+      }
+
+      const noteGate = async (title: string) => {
+        gatesSeen += 1;
+        gateTitles.push(title);
+        console.log(`[C10] gate ${gatesSeen} awaiting approval: '${title}' — clicking Approve`);
+        await shot(
+          page,
+          10,
+          `gate-${gatesSeen}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        );
+      };
 
       while (Date.now() < deadline) {
         snapshot = await jsonOf<RunSnapshot>(api, `/api/runs/${runId}`);
         const wf = snapshot.workflow_status ?? "";
         if (TERMINAL_WF.has(wf)) break;
 
-        const card = page
-          .locator("article.tv-task")
-          .filter({ hasText: "Awaiting your approval" })
-          .first();
-        if ((await card.count()) > 0) {
-          const title = (await card.locator(".tv-task__title").first().innerText()).trim();
-          gatesSeen += 1;
-          gateTitles.push(title);
-          console.log(`[C10] gate ${gatesSeen} awaiting approval: '${title}' — clicking Approve`);
-          await shot(
-            page,
-            10,
-            `gate-${gatesSeen}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
-          );
-          await card.getByRole("button", { name: "Approve", exact: true }).click();
-          gatesApproved += 1;
-          if (/escalat/i.test(title)) escalationsApproved += 1;
-          await expect(card).toHaveCount(0, { timeout: 60_000 });
+        if (!firstTime) {
+          const row = needsYou
+            .locator("li.hm-inbox__item")
+            .filter({ hasText: teamName })
+            .filter({ has: page.getByRole("button", { name: "Review", exact: true }) })
+            .first();
+          if ((await row.count()) > 0) {
+            const title = (await row.locator(".hm-inbox__title").innerText()).trim();
+            await row.getByRole("button", { name: "Review", exact: true }).click();
+            const sheet = page.getByRole("dialog", { name: title });
+            await expect(sheet).toBeVisible({ timeout: 15_000 });
+            await expect(sheet).toContainText(teamName);
+            await noteGate(title);
+            await sheet.getByRole("button", { name: "Approve and continue", exact: true }).click();
+            gatesApproved += 1;
+            if (/escalat/i.test(title)) escalationsApproved += 1;
+            await expect(sheet).toHaveCount(0, { timeout: 60_000 });
+            await expect(row).toHaveCount(0, { timeout: 60_000 });
+          }
+        } else {
+          const card = page
+            .locator("article.tv-task")
+            .filter({ hasText: "Awaiting your approval" })
+            .first();
+          if ((await card.count()) > 0) {
+            const title = (await card.locator(".tv-task__title").first().innerText()).trim();
+            await noteGate(title);
+            await card.getByRole("button", { name: "Approve", exact: true }).click();
+            gatesApproved += 1;
+            if (/escalat/i.test(title)) escalationsApproved += 1;
+            await expect(card).toHaveCount(0, { timeout: 60_000 });
+          }
         }
         await page.waitForTimeout(4000);
       }
@@ -552,12 +633,15 @@ test.describe("M-proof", () => {
           `escalation_gates_approved=${escalationsApproved} reviewer_rounds=${reviewerRounds}`,
       );
       console.log(`GATE_TITLES(${LEG}): ${gateTitles.join(" | ") || "(none)"}`);
+      await page.goto(`/#/teams/${teamId}/runs/${runId}`);
+      await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 30_000 });
       await shot(page, 11, "terminal-run-pr");
     } finally {
       // ---- C12: cleanup — delete the team, never the PR (the PR is the artifact) --------------
       try {
         await page.goto("/");
-        await expect(page.locator(".tv-dash__hello")).toBeVisible({ timeout: 30_000 });
+        const teamsSection = page.locator("section[aria-label='Teams']");
+        await expect(teamsSection).toBeVisible({ timeout: 30_000 });
         // Sweep every demo-proof-* team, not just this run's: a crashed earlier run leaves one
         // behind and this harness is permanent, so residue would accumulate forever. The ONE
         // exception is THIS run when it failed (see `runSucceeded` above) — deleting it would
@@ -566,27 +650,42 @@ test.describe("M-proof", () => {
           console.log(
             `[C12] PRESERVED '${teamName}' (team ${teamId || "unknown"}, run ` +
               `${runIdForReport || "not launched"}) — the run did not reach a real PR, so its ` +
-              "invocations are kept for diagnosis. Delete it from the dashboard when done.",
+              "invocations are kept for diagnosis. Delete it from Home's Teams when done.",
           );
         }
-        const stale = page
-          .getByRole("button", { name: /^Delete demo-proof-/ })
-          .and(page.locator(runSucceeded ? "button" : `button:not([aria-label$="${teamName}"])`));
+        await teamsSection.getByRole("textbox", { name: "Search teams" }).fill("demo-proof-");
+        const stale = teamsSection
+          .getByRole("button", { name: /^More actions for demo-proof-/ })
+          .and(
+            page.locator(
+              runSucceeded ? "button" : `button:not([aria-label="More actions for ${teamName}"])`,
+            ),
+          );
         await expect
           .poll(async () => (await stale.count()) > 0, { timeout: 20_000, intervals: [500] })
           .toBe(true)
           .catch(() => undefined);
         let removed = 0;
         while ((await stale.count()) > 0) {
-          const name = (await stale.first().getAttribute("aria-label"))!.replace(/^Delete /, "");
+          const name = (await stale.first().getAttribute("aria-label"))!.replace(
+            /^More actions for /,
+            "",
+          );
           await stale.first().click();
-          const confirm = page.locator(`div[role='dialog'][aria-label='Delete ${name}']`);
+          await page
+            .getByRole("menu", { name: `More actions for ${name}` })
+            .getByRole("menuitem", { name: "Delete team" })
+            .click();
+          const confirm = page.getByRole("alertdialog", { name: `Delete ${name}?` });
           await expect(confirm).toBeVisible({ timeout: 15_000 });
           if (removed === 0) await shot(page, 12, "delete-confirm");
-          await confirm.getByRole("button", { name: "Delete", exact: true }).click();
+          await confirm.getByRole("button", { name: "Delete team", exact: true }).click();
           await expect(confirm).toHaveCount(0, { timeout: 30_000 });
+          await expect(
+            teamsSection.getByRole("button", { name: `More actions for ${name}`, exact: true }),
+          ).toHaveCount(0, { timeout: 30_000 });
           removed += 1;
-          console.log(`[C12] deleted '${name}' through the dashboard UI`);
+          console.log(`[C12] deleted '${name}' through Home's Teams section`);
         }
         console.log(
           `[C12] PASS — ${removed} demo-proof team(s) cleaned up; the PR is kept` +

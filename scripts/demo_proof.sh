@@ -130,7 +130,7 @@ for v in GITHUB_APP_ID GITHUB_APP_CLIENT_ID GITHUB_APP_CLIENT_SECRET GITHUB_APP_
   [[ -n "${!v:-}" ]] || skip "$v is not set in .env — the hosted repo picker and the PR need the GitHub App"
 done
 
-# Hosted posture (the launch panel's GitHub repo picker) on the cheap LOCAL sandbox. Gates are
+# Hosted posture (the composer's GitHub repo picker) on the cheap LOCAL sandbox. Gates are
 # approved by a real click and the Reviewer runs for real: unset both harness short-circuits.
 export TVASHTR_HOSTED_MODE=true
 export TVASHTR_AGENT_SANDBOX=local
