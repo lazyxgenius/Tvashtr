@@ -598,10 +598,17 @@ def add_document_version(document_id: str, body: AddDocumentVersionRequest) -> d
 
 
 @router.get("/api/costs")
-def get_costs(workflow_id: str | None = None) -> dict:
-    """Return cost rows — all of them, or just those for ``workflow_id``."""
+def get_costs(
+    current_user: Annotated[UserOut, Depends(get_current_user)], workflow_id: str | None = None
+) -> dict:
+    """Return the current account's cost rows — all of them, or just those for ``workflow_id``.
+    Owner-scoped (revamp): only rows of the caller's own runs; ledger rows with no run (embeddings,
+    the doc-writer spike) belong to no account and are never returned."""
+    owned_runs = select(Run.workflow_id).where(Run.owner_id == uuid.UUID(current_user.id))
     with db.session_scope() as session:
-        stmt = select(CostRecord).order_by(CostRecord.id)
+        stmt = (
+            select(CostRecord).where(CostRecord.workflow_id.in_(owned_runs)).order_by(CostRecord.id)
+        )
         if workflow_id is not None:
             stmt = stmt.where(CostRecord.workflow_id == workflow_id)
         rows = session.execute(stmt).scalars().all()
