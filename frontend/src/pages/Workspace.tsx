@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 
 import App from "../App";
 import type { DashView } from "../components/AppShell";
-import { Dashboard } from "../components/Dashboard";
 import { DomainsPage } from "../components/DomainsPage";
 import { EnginesShelf } from "../components/EnginesShelf";
 import { MemoryShelf } from "../components/MemoryShelf";
@@ -14,6 +13,8 @@ import { requestHomeAction } from "../lib/homeActions";
 import { type Route, navigate, useNav } from "../lib/nav";
 import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
 import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
+import { CommandPalette } from "./home/CommandPalette";
+import { HomePage } from "./home/HomePage";
 import { Shell } from "./shell/Shell";
 import { ShortcutsDialog } from "./shell/ShortcutsDialog";
 
@@ -47,8 +48,7 @@ export function Workspace({
   const { route } = useNav();
   const badges = useNavBadges();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  // The ⌘K palette (F1 Home) mounts against this flag.
-  const [, setSearchOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const onCanvas = route.page === "team";
 
   useEffect(() => {
@@ -90,34 +90,18 @@ export function Workspace({
         onShowShortcuts={() => setShortcutsOpen(true)}
         onLogout={onLogout}
       >
-        <WorkspacePage route={route} user={user} onLogout={onLogout} />
+        <WorkspacePage route={route} />
       </Shell>
+      <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </>
   );
 }
 
-function WorkspacePage({
-  route,
-  user,
-  onLogout,
-}: {
-  route: Route;
-  user: AuthUser;
-  onLogout: () => void;
-}) {
-  const openTeam = (teamId: string) => navigate({ page: "team", teamId });
+function WorkspacePage({ route }: { route: Route }) {
   switch (route.page) {
     case "home":
-      return (
-        <Dashboard
-          embedded
-          user={user}
-          onLogout={onLogout}
-          onOpenTeam={openTeam}
-          onOpenRun={(runId, teamId) => navigate({ page: "team", teamId, runId })}
-        />
-      );
+      return <HomePage />;
     case "domains":
       return (
         <DomainsPage

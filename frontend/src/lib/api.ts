@@ -940,8 +940,52 @@ export interface TeamSummary {
   node_count: number;
   // `error` is optional: the list payload today is `{status, at, run_id}`; when a last-run
   // failure reason is present we surface it on the dashboard recovery strip.
-  last_run: { status: string; at: string; run_id: string; error?: string | null } | null;
+  last_run: {
+    status: string;
+    at: string;
+    run_id: string;
+    error?: string | null;
+    idea?: string;
+    /** Last activity on that run. */
+    updated_at?: string;
+    pr_url?: string | null;
+  } | null;
+  /** All-time spend of the team's runs (live ledger sum). */
   spend_usd: number;
+  // Revamp fields (B-TEAMS, docs/superpowers/plans/api/teams.md) — optional so older fixtures and
+  // callers keep compiling.
+  run_count?: number;
+  active_run_count?: number;
+  awaiting_run_count?: number;
+  last_active_at?: string;
+  template_key?: string | null;
+  template_name?: string | null;
+  duplicated_from?: { team_graph_id: string; name: string | null } | null;
+  shape?: TeamShape;
+  readiness?: TeamReadiness;
+}
+
+/** The pipeline strip: the main path start → Ship; `loops` are indices into `nodes` (draw ⇄). */
+export interface TeamShape {
+  nodes: {
+    id: string;
+    kind: "thinker" | "worker" | "gate" | "terminal" | "domain_query";
+    role: string;
+    label: string;
+  }[];
+  loops: { from: number; to: number }[];
+}
+
+/** Can the team launch, per target — the same rule POST /api/runs enforces. */
+export interface TeamReadiness {
+  website: { ready: boolean; missing_providers: string[]; missing_nodes: string[] };
+  desktop: {
+    ready: boolean;
+    missing_providers: string[];
+    missing_nodes: string[];
+    routed_subscriptions: string[];
+  };
+  subscriptions_connected: string[];
 }
 
 // One row in a team's run-history drill-down (`GET /api/teams/{id}/runs`) — every run the team has
