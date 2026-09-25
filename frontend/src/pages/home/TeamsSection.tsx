@@ -64,8 +64,7 @@ function SortPicker({ value, onChange }: { value: TeamSort; onChange: (s: TeamSo
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="hm-sort__k">Sort:</span>
-        {SORT_LABELS[value]}
+        <span className="hm-sort__k">Sort:</span> {SORT_LABELS[value]}
         <span className="hm-sort__chev" aria-hidden="true">
           <ChevronDown size={14} strokeWidth={1.6} />
         </span>

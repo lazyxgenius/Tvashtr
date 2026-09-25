@@ -109,11 +109,13 @@
 /* ---- Account menu ---- */
 .sh-account {
   position: absolute;
-  right: 0;
-  top: calc(100% + 12px);
+  /* HmF-Account-1: a 250px content box (items are 250 wide), 56px from the top, overhanging
+     the avatar by 14px on the right. */
+  right: -14px;
+  top: calc(100% + 10px);
   z-index: 50;
   width: 250px;
-  box-sizing: border-box;
+  box-sizing: content-box;
   padding: 6px;
   border-radius: 12px;
   background: var(--surface-card);

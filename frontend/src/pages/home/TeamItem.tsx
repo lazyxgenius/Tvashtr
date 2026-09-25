@@ -31,7 +31,8 @@ function TeamMenu({ team, actions }: { team: TeamSummary; actions: TeamItemActio
   return (
     <Menu
       label={`More actions for ${team.name}`}
-      width={220}
+      // 220px of content inside 5px padding and a 1px border, as drawn
+      width={232}
       items={[
         {
           key: "open",
@@ -180,12 +181,9 @@ export function TeamCard({
       <div className="hm-team__foot">
         <span>{cardCounts(team)}</span>
         <span className="hm-team__actions">
-          <Button
-            variant="ghost"
-            size="sm"
-            iconLeft={<Play size={12} strokeWidth={1.6} aria-hidden />}
-            onClick={() => actions.run(team)}
-          >
+          {/* The icon sits inside the label (no gap), as the design draws "▷Run". */}
+          <Button variant="ghost" size="sm" onClick={() => actions.run(team)}>
+            <Play className="hm-inline-icon" size={12} strokeWidth={1.6} aria-hidden />
             Run
           </Button>
           <TeamMenu team={team} actions={actions} />

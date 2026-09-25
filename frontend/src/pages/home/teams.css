@@ -63,7 +63,6 @@
   font-family: var(--font-display);
   font-weight: 400;
   font-size: 20px;
-  line-height: normal;
   color: var(--ink-900);
 }
 .hm-teams__tools {
@@ -108,13 +107,14 @@
   display: inline-flex;
   color: var(--ink-500);
 }
+/* 168px of options inside 5px padding (180px wide), 2px left of the button, as drawn. */
 .hm-sort__list {
   position: absolute;
   z-index: 40;
   top: calc(100% + 4px);
-  left: 0;
+  left: -2px;
   width: 168px;
-  box-sizing: border-box;
+  box-sizing: content-box;
   padding: 5px;
   border-radius: 10px;
   background: var(--surface-card);
@@ -216,6 +216,10 @@
   font-size: 12px;
   color: var(--ink-500);
 }
+/* The ⋯ menu's items inherit the page's 1.6 line-height in the design (37px rows). */
+.hm-teams .ds-menu__item {
+  line-height: 1.6;
+}
 .hm-team__actions {
   margin-left: auto;
   display: flex;
@@ -231,6 +235,10 @@
 .hm-rename__field {
   flex: 1;
   min-width: 0;
+}
+/* The design's Save / Cancel icon buttons render 28px wide in this row. */
+.hm-rename .ds-iconbtn {
+  width: 28px;
 }
 
 /* List view (HmF-TeamFind-4) */
@@ -336,7 +344,6 @@
   background: #fbf3e6;
   border: 1px solid var(--amber-100);
   font-size: 13px;
-  line-height: normal;
   color: #6b4a1f;
 }
 .hm-impact svg {
@@ -345,22 +352,24 @@
 }
 
 /* ---- New team dialog (HmF-NewTeam-*): 720px, 90px from the top ---- */
+/* 720px of content (766px wide) whose content starts 360px left of centre, as drawn. */
 .ds-dialog.hm-newteam {
   top: 90px;
+  left: max(16px, calc(50% - 360px));
   width: 720px;
-  max-height: calc(100vh - 110px);
+  max-height: calc(100vh - 156px);
   overflow-y: auto;
-  transform: translateX(-50%);
+  transform: none;
   animation: hm-drop-in 0.18s var(--ease-out);
 }
 @keyframes hm-drop-in {
   from {
     opacity: 0;
-    transform: translateX(-50%) scale(0.985);
+    transform: scale(0.985);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) scale(1);
+    transform: scale(1);
   }
 }
 .hm-newteam__form {
@@ -377,7 +386,6 @@
   font-family: var(--font-display);
   font-weight: 400;
   font-size: 24px;
-  line-height: normal;
   color: var(--ink-900);
 }
 .hm-newteam__close {
@@ -461,11 +469,10 @@
   position: fixed;
   z-index: 71;
   top: 110px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: max(16px, calc(50% - 320px));
   width: 640px;
-  max-width: calc(100vw - 32px);
-  box-sizing: border-box;
+  max-width: calc(100vw - 34px);
+  box-sizing: content-box;
   border-radius: 16px;
   background: var(--surface-card);
   border: 1px solid var(--border-hairline);
@@ -590,14 +597,12 @@
   font-family: var(--font-display);
   font-weight: 400;
   font-size: 32px;
-  line-height: normal;
   letter-spacing: -0.02em;
   color: var(--ink-900);
 }
 .hm-ft-head__lede {
   margin: 0;
   font-size: 14px;
-  line-height: normal;
   color: var(--ink-600);
 }
 .hm-gs__top {
@@ -616,7 +621,6 @@
   font-family: var(--font-display);
   font-weight: 400;
   font-size: 22px;
-  line-height: normal;
   color: var(--ink-900);
 }
 .hm-gs__count {
@@ -733,7 +737,6 @@
   font-family: var(--font-display);
   font-weight: 400;
   font-size: 20px;
-  line-height: normal;
   color: var(--ink-900);
 }
 .hm-ft-tpl {
@@ -767,7 +770,6 @@
   font-family: var(--font-display);
   font-weight: 400;
   font-size: 18px;
-  line-height: normal;
   color: var(--ink-900);
 }
 .hm-how__list {
@@ -804,4 +806,11 @@
   font-size: 12.5px;
   line-height: 1.45;
   color: var(--ink-600);
+}
+
+/* Buttons whose icon sits inside the label ("▷Run", "+New team"), as the design draws them:
+   inline, on the text baseline (Tailwind's reset would make the svg a block). */
+.hm-inline-icon {
+  display: inline;
+  vertical-align: baseline;
 }

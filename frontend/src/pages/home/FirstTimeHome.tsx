@@ -182,11 +182,8 @@ export function FirstTimeHome({ progress }: { progress: GetStartedProgress }) {
             Build a team of agents, run it on your repo, and review the pull request it opens.
           </p>
         </div>
-        <Button
-          variant="secondary"
-          iconLeft={<Plus size={15} strokeWidth={1.6} aria-hidden />}
-          onClick={() => openNewTeam()}
-        >
+        <Button variant="secondary" onClick={() => openNewTeam()}>
+          <Plus className="hm-inline-icon" size={15} strokeWidth={1.6} aria-hidden />
           New team
         </Button>
       </div>
