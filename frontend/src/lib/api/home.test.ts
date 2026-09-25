@@ -1,10 +1,13 @@
+import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { __resetBackendStatusForTests, useBackendStatus } from "../backendStatus";
 import { __resetHomeConfigForTests, getInbox } from "./home";
 
 afterEach(() => {
   vi.unstubAllGlobals();
   __resetHomeConfigForTests();
+  __resetBackendStatusForTests();
 });
 
 describe("getInbox", () => {
@@ -42,5 +45,20 @@ describe("getInbox", () => {
       ),
     );
     expect((await getInbox("desktop")).count).toBe(1);
+  });
+
+  it("counts a gateway error as the backend being unreachable", async () => {
+    // /health never answers here, so only the inbox request can change the status.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url === "/health"
+          ? new Promise<Response>(() => {})
+          : Promise.resolve(new Response("{}", { status: 503 })),
+      ),
+    );
+    const { result } = renderHook(() => useBackendStatus());
+    await expect(getInbox("website")).rejects.toThrow();
+    await waitFor(() => expect(result.current.state).toBe("offline"));
   });
 });

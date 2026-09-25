@@ -53,7 +53,9 @@ export async function apiRequest<T>(method: string, path: string, body?: unknown
     reportFetchFailed();
     throw e;
   }
-  reportFetchOk();
+  // A gateway error (the proxy is up, the app behind it isn't) counts as unreachable.
+  if (res.status >= 502 && res.status <= 504) reportFetchFailed();
+  else reportFetchOk();
   if (res.status === 401) void getMe().catch(() => undefined);
   if (!res.ok) {
     const parsed = (await res.json().catch(() => null)) as { detail?: unknown } | null;
