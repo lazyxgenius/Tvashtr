@@ -31,6 +31,8 @@ from tvashtr.control_plane import (
 )
 from tvashtr.control_plane import desktop_jobs
 from tvashtr.control_plane import toolkit
+from tvashtr.control_plane import local_repo
+from tvashtr.control_plane.local_repo import LocalRepoTarget
 from tvashtr.control_plane.context_compiler import resolve_fallback_model, resolve_multimodal
 from tvashtr.control_plane.credential_gate import (
     RUNNER_SUBSCRIPTIONS,
@@ -181,6 +183,9 @@ class CreateRunRequest(BaseModel):
     # Revamp P8: the finished run this launch retries (one of the caller's; 422 otherwise). The
     # failed run then leaves Home's "Needs you".
     retry_of_run_id: str | None = None
+    # Revamp P10: a folder on the user's computer, uploaded by Tvashtr Desktop as a git bundle
+    # (``POST /api/desktop/repo-snapshots``). Desktop launches only; not with github_repo/repo_path.
+    local_repo: LocalRepoTarget | None = None
 
 
 class AskMessage(BaseModel):
@@ -681,6 +686,8 @@ def _run_to_dict(run: Run) -> dict:
         # Revamp P3: status_group, target, pr_number, budget_cap_usd, desktop_target,
         # library_team_id, retry_of_run_id (additive; GET /api/runs/{id} adds the computed ones).
         **run_views.run_fields(run),
+        # Revamp P10: the Desktop folder a local-folder run worked on (NULL for every other run).
+        "local_repo_label": run.local_repo_label,
     }
 
 
@@ -1047,6 +1054,10 @@ def create_run(
         raise HTTPException(status_code=422, detail="github_repo is hosted mode only")
     if hosted and repo_path is not None:
         raise HTTPException(status_code=422, detail="repo_path is not accepted in hosted mode")
+    # Revamp P10: validate a Desktop folder's snapshot (claimed below, with the Run insert).
+    local = None
+    if body.local_repo is not None:
+        local = local_repo.check_launch(uuid.UUID(current_user.id), body)
 
     if github_repo is not None:
         # Hosted GitHub run: AUTHORISE the repo against THIS owner's installation(s) — a user can
@@ -1124,6 +1135,8 @@ def create_run(
                     "subpath": subpath,
                 },
             )
+    elif local is not None:
+        base_ref, subpath = local.base_ref, local.subpath  # repo_path is set by the clone step
     else:
         # Greenfield (no repo to scope): ignore any supplied sub-path (store NULL).
         subpath = None
@@ -1245,8 +1258,12 @@ def create_run(
                 desktop_subscriptions=desktop_routed if body.desktop_target else None,
                 library_team_id=library_team_id,
                 retry_of_run_id=retry_of,
+                local_repo_label=local.label if local else None,
+                local_snapshot_id=local.snapshot_id if local else None,
             )
         )
+        if local is not None:
+            local_repo.claim_snapshot(session, local, uuid.UUID(run_id))
 
     with SetWorkflowID(run_id):
         DBOS.start_workflow(run_team, idea)
