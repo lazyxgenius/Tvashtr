@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { reportFetchFailed, reportFetchOk } from "../../lib/backendStatus";
 import {
   type Call,
   DOCS_RUN,
@@ -58,6 +59,19 @@ describe("Home greeting", () => {
     ).toBeInTheDocument();
     // Running now hides when empty (HOME-79).
     expect(screen.queryByRole("region", { name: "Running now" })).toBeNull();
+  });
+});
+
+describe("Backend unreachable", () => {
+  it("keeps the sections and says so when the backend comes back", async () => {
+    mockApi(homeRoutes());
+    renderHome();
+    expect(await screen.findByRole("link", { name: "4 things need you" })).toBeInTheDocument();
+    act(() => reportFetchFailed());
+    // Stale data stays on screen while offline.
+    expect(screen.getByRole("link", { name: "4 things need you" })).toBeInTheDocument();
+    act(() => reportFetchOk());
+    expect(await screen.findByText("Reconnected. Everything is up to date.")).toBeInTheDocument();
   });
 });
 

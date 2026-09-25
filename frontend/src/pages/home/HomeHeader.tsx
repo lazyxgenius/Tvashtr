@@ -78,25 +78,30 @@ export function HomeHeader() {
   ).length;
   const week = spend.data?.week.total_usd;
 
+  // A count that couldn't be loaded is left out rather than shown as zero.
   const parts: ReactNode[] = [];
-  parts.push(
-    needs > 0 ? (
-      <SummaryLink key="needs" target={SECTION_IDS.needsYou} tone="amber">
-        {needs === 1 ? "1 thing needs you" : `${needs} things need you`}
-      </SummaryLink>
-    ) : (
-      <span key="needs">Nothing needs you</span>
-    ),
-  );
-  parts.push(
-    inProgress > 0 ? (
-      <SummaryLink key="running" target={SECTION_IDS.runningNow}>
-        {inProgress === 1 ? "1 run in progress" : `${inProgress} runs in progress`}
-      </SummaryLink>
-    ) : (
-      <span key="running">nothing running</span>
-    ),
-  );
+  if (inbox.data) {
+    parts.push(
+      needs > 0 ? (
+        <SummaryLink key="needs" target={SECTION_IDS.needsYou} tone="amber">
+          {needs === 1 ? "1 thing needs you" : `${needs} things need you`}
+        </SummaryLink>
+      ) : (
+        <span key="needs">Nothing needs you</span>
+      ),
+    );
+  }
+  if (active.data) {
+    parts.push(
+      inProgress > 0 ? (
+        <SummaryLink key="running" target={SECTION_IDS.runningNow}>
+          {inProgress === 1 ? "1 run in progress" : `${inProgress} runs in progress`}
+        </SummaryLink>
+      ) : (
+        <span key="running">nothing running</span>
+      ),
+    );
+  }
   if (week !== undefined) {
     parts.push(
       <SummaryLink key="spend" target={SECTION_IDS.spend}>
