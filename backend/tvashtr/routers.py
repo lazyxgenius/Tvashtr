@@ -43,6 +43,7 @@ from tvashtr.control_plane.credentials import (
 )
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
+from tvashtr.control_plane.node_templates import NODE_TEMPLATES
 from tvashtr.control_plane.mcp_secrets import (
     delete_owner_mcp_secret,
     list_owner_mcp_secret_names,
@@ -63,10 +64,6 @@ from tvashtr.control_plane.run_diff import compute_run_diff
 from tvashtr.control_plane.run_explain import build_system_prompt
 from tvashtr.control_plane.team_run import run_team
 from tvashtr.control_plane.teams import (
-    ARCHITECT_PROMPT,
-    ENGINEER_PROMPT,
-    PM_PROMPT,
-    REVIEWER_PROMPT,
     account_default_model,
     build_review_loop_team,
     build_two_node_team,
@@ -318,6 +315,10 @@ class UpdateTeamNodeRequest(BaseModel):
     multimodal: bool | None = None
     # PolyRAG Phase 4a: domain_query bound corpus id — model_fields_set clear/set.
     domain_id: str | None = None  # domain_query — model_fields_set clear/set
+    # B-NODES: ``False`` = the node reads NOTHING by default (no spec) when ``reads_from`` is empty;
+    # ``True``/absent = today's default (the latest spec). Stored as ``config["reads_default"]``;
+    # an explicit null clears it back to the default.
+    reads_default: bool | None = None
 
 
 class CreateTeamRequest(BaseModel):
@@ -1750,6 +1751,11 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                 {
                     # Shared canvas fields (now incl. the additive P1.8b ``prompt``)...
                     **_node_base_dict(n),
+                    # B-NODES: the AUTHORED node this run-snapshot node was cloned from (NULL for
+                    # a graph that is not a clone) — maps the run view back to the team canvas.
+                    "origin_node_id": (
+                        str(n.cloned_from_node_id) if n.cloned_from_node_id is not None else None
+                    ),
                     # ...plus the run-only live state: each node's ``status`` + ``iteration`` from
                     # its latest ``AgentInvocation`` (default ``"idle"``/``0`` until reached).
                     "status": (
@@ -1765,6 +1771,7 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                     # REASONS (NULL unless a `changes_requested` close supplied them).
                     "invocations": [
                         {
+                            "invocation_id": inv.id,  # B-NODES (additive)
                             "iteration": inv.iteration,
                             "status": inv.status,
                             "outcome": inv.outcome,
@@ -2888,6 +2895,8 @@ def _latest_invocation_by_origin(
             AgentInvocation.run_id,
             AgentInvocation.iteration,
             AgentInvocation.started_at,
+            AgentInvocation.status,
+            AgentInvocation.ended_at,
         )
         .select_from(AgentInvocation)
         .join(AgentNode, AgentInvocation.node_id == AgentNode.id)
@@ -2902,8 +2911,20 @@ def _latest_invocation_by_origin(
             "run_id": run_id,
             "iteration": iteration,
             "started_at": started_at.isoformat(),
+            # B-NODES (additive): a failed round has ``outcome=None`` — ``status`` tells them apart.
+            "status": status,
+            "ended_at": ended_at.isoformat() if ended_at else None,
         }
-        for origin_id, outcome, outcome_detail, run_id, iteration, started_at in rows
+        for (
+            origin_id,
+            outcome,
+            outcome_detail,
+            run_id,
+            iteration,
+            started_at,
+            status,
+            ended_at,
+        ) in rows
     }
 
 
@@ -2932,6 +2953,7 @@ def get_team_graph(
         last_run_by_origin = _latest_invocation_by_origin(session, [n.id for n in nodes])
         return {
             "team_graph_id": str(graph.id),
+            "name": graph.name,  # B-NODES (additive): the toolbar's team name
             "nodes": [
                 {**_node_base_dict(n), "last_run": last_run_by_origin.get(n.id)} for n in nodes
             ],
@@ -2978,6 +3000,7 @@ def update_team_node(
                 cfg["terminal_kind"] = body.terminal_kind
                 node.config = cfg
                 node.role_name = body.terminal_kind
+            _apply_node_identity(node, body)
             session.flush()
             return _node_base_dict(node)
         if node.kind == "gate":
@@ -3017,13 +3040,21 @@ def update_team_node(
                 node.config = cfg
             if "prompt" in body.model_fields_set and body.prompt is not None:
                 node.prompt = body.prompt
+            _apply_node_identity(node, body)
             session.flush()
             return _node_base_dict(node)
         # ---- agent / completion: the prompt/model[/capability/tools] editor ----
-        if body.prompt is None or body.model is None:
+        # B-NODES: ``prompt``/``model`` are applied only when SENT (so the Remember switch can save
+        # alone); sent as null is still refused, and so is blank instructions. A blank model is
+        # allowed (a new agent "needs a model"; validate_graph blocks the run with ``no_model``).
+        if ("prompt" in body.model_fields_set and body.prompt is None) or (
+            "model" in body.model_fields_set and body.model is None
+        ):
             raise HTTPException(
                 status_code=422, detail="prompt and model are required for an agent node"
             )
+        if body.prompt is not None and not body.prompt.strip():
+            raise HTTPException(status_code=422, detail="Instructions can’t be empty.")
         # P1.8c: an optional capability flip (thinker <-> worker) is a paired kind+engine write.
         # The ONLY invariant the executor needs is that the root stays a thinker (it writes the
         # shared spec the rest of the team reads); making the root a worker would leave no spec for
@@ -3035,8 +3066,17 @@ def update_team_node(
                     detail="the first node scopes the work — it must stay a thinker",
                 )
             node.kind, node.engine = _capability_to_columns(body.capability)
-        node.prompt = body.prompt
-        node.model = body.model
+        if body.prompt is not None:
+            node.prompt = body.prompt
+        if body.model is not None:
+            node.model = body.model.strip()
+        # B-NODES: the entry agent writes the shared spec the team reads, so it stays read-only.
+        if (
+            "edits_allowed" in body.model_fields_set
+            and body.edits_allowed
+            and node.id == _team_root_node_id(session, graph.id)
+        ):
+            raise HTTPException(status_code=409, detail=ENTRY_AGENT_READ_ONLY_DETAIL)
         # M-unify U1: the edits toggle. An EXPLICIT ``edits_allowed`` WINS (``model_fields_set``);
         # else a ``capability`` (kind) change SYNCS it to ``kind == 'agent'`` (the FE drives kind
         # via
@@ -3087,8 +3127,77 @@ def update_team_node(
                 if key in body.model_fields_set:
                     cfg[key] = getattr(body, key)
             node.config = cfg
+        # B-NODES: ``reads_default`` (False = reads nothing when ``reads_from`` is empty; null
+        # clears back to the default spec), then the display name + tagline.
+        if "reads_default" in body.model_fields_set:
+            cfg = dict(node.config or {})
+            if body.reads_default is None:
+                cfg.pop("reads_default", None)
+            else:
+                cfg["reads_default"] = bool(body.reads_default)
+            node.config = cfg
+        _apply_node_identity(node, body)
         session.flush()
         return _node_base_dict(node)
+
+
+ENTRY_AGENT_READ_ONLY_DETAIL = (
+    "The first agent writes the shared spec the team reads, so it stays read-only."
+)
+_NODE_TITLE_MAX = 60
+_NODE_DESCRIPTION_MAX = 120
+
+
+def _clean_node_title(title: str | None) -> str | None:
+    """B-NODES: a node's display name — trimmed, 1–60 chars. ``None`` passes through (clears)."""
+    if title is None:
+        return None
+    cleaned = title.strip()
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="An agent name is required.")
+    if len(cleaned) > _NODE_TITLE_MAX:
+        raise HTTPException(
+            status_code=422, detail=f"Keep the name to {_NODE_TITLE_MAX} characters or fewer."
+        )
+    return cleaned
+
+
+def _clean_node_description(description: str | None) -> str | None:
+    """B-NODES: a node's one-line tagline — trimmed, ≤120 chars; blank or ``None`` clears."""
+    if description is None:
+        return None
+    cleaned = description.strip()
+    if len(cleaned) > _NODE_DESCRIPTION_MAX:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Keep the description to {_NODE_DESCRIPTION_MAX} characters or fewer.",
+        )
+    return cleaned or None
+
+
+def _apply_node_identity(node: AgentNode, body: UpdateTeamNodeRequest) -> None:
+    """B-NODES: merge a sent ``title`` / ``description`` into ``config.title`` /
+    ``config.description`` (a fresh dict so the JSONB column is flagged dirty). Omitted ⇒ unchanged;
+    sent null (or a blank description) ⇒ the key is removed. ``role_name`` is never touched —
+    memory distillation and trajectories key on it. Gates keep their own title/description branch
+    (their title is the approval card copy and is required there)."""
+    sent = body.model_fields_set
+    if "title" not in sent and "description" not in sent:
+        return
+    cfg = dict(node.config or {})
+    if "title" in sent:
+        title = _clean_node_title(body.title)
+        if title is None:
+            cfg.pop("title", None)
+        else:
+            cfg["title"] = title
+    if "description" in sent:
+        description = _clean_node_description(body.description)
+        if description is None:
+            cfg.pop("description", None)
+        else:
+            cfg["description"] = description
+    node.config = cfg
 
 
 @router.delete("/api/teams/{team_id}")
@@ -3170,12 +3279,9 @@ def get_team_runs(
 # The pre-filled role presets the canvas palette drops (thinker/worker only) — seeded from the
 # byte-intact ``teams.py`` prompt constants. Node-granularity drop-and-edit (the team-granularity
 # version shipped as the P1.8b rail picker); the §13-S2 anti-dead-zone answer at node level.
-_NODE_PRESETS: dict[str, dict] = {
-    "pm": {"node_kind": "thinker", "role_name": "pm", "prompt": PM_PROMPT},
-    "architect": {"node_kind": "thinker", "role_name": "architect", "prompt": ARCHITECT_PROMPT},
-    "engineer": {"node_kind": "worker", "role_name": "engineer", "prompt": ENGINEER_PROMPT},
-    "reviewer": {"node_kind": "worker", "role_name": "reviewer", "prompt": REVIEWER_PROMPT},
-}
+# B-NODES: the rows now live in ``control_plane.node_templates`` (shared with
+# ``GET /api/node-templates``); this is the create-node view of them, keyed by preset.
+_NODE_PRESETS: dict[str, dict] = {t["key"]: t for t in NODE_TEMPLATES}
 
 # The four edge roles (FE plain-language) -> the executor's ``(edge_type, conditions)`` — the exact
 # shapes ``team_run``'s routers distinguish (forward = catch-all, branch = ``{when}``, loop-back =
@@ -3207,17 +3313,25 @@ def _build_node(
         if preset is None or preset["node_kind"] != body.node_kind:
             raise HTTPException(status_code=400, detail="preset does not match node_kind")
 
+    # B-NODES: the display name + tagline (``config.title`` / ``config.description``) — sent values
+    # win, a preset seeds its template's; ``None`` when neither (config stays NULL as before). A
+    # model sent as "" creates a blank agent that "needs a model" (``no_model`` blocks the run).
+    identity = _create_identity_config(body, preset)
+    blank_model = body.model is not None and not body.model.strip()
     if body.node_kind == "thinker":
         return AgentNode(
             team_graph_id=graph_id,
             role_name=preset["role_name"] if preset else "thinker",
             kind="completion",
-            model=body.model
-            or account_default_model(held, "thinker")
-            or get_settings().default_model,
+            model=""
+            if blank_model
+            else (
+                body.model or account_default_model(held, "thinker") or get_settings().default_model
+            ),
             engine=None,
             prompt=preset["prompt"] if preset else (body.prompt if body.prompt is not None else ""),
             position=position,
+            config=identity,
         )
     if body.node_kind == "worker":
         legacy_default = reviewer_model() if body.preset == "reviewer" else engineer_model()
@@ -3225,10 +3339,13 @@ def _build_node(
             team_graph_id=graph_id,
             role_name=preset["role_name"] if preset else "worker",
             kind="agent",
-            model=body.model or account_default_model(held, "worker") or legacy_default,
+            model=""
+            if blank_model
+            else (body.model or account_default_model(held, "worker") or legacy_default),
             engine="openhands",
             prompt=preset["prompt"] if preset else (body.prompt if body.prompt is not None else ""),
             position=position,
+            config=identity,
         )
     if body.node_kind == "gate":
         return AgentNode(
@@ -3261,7 +3378,7 @@ def _build_node(
             prompt=body.prompt if body.prompt is not None else "{idea}",
             position=position,
             edits_allowed=False,
-            config={"domain_id": str(domain_id) if domain_id else None},
+            config={"domain_id": str(domain_id) if domain_id else None, **(identity or {})},
         )
     # terminal
     if body.terminal_kind is None:
@@ -3274,8 +3391,27 @@ def _build_node(
         engine=None,
         prompt=None,
         position=position,
-        config={"terminal_kind": body.terminal_kind},
+        config={"terminal_kind": body.terminal_kind, **(identity or {})},
     )
+
+
+def _create_identity_config(body: CreateNodeRequest, preset: dict | None) -> dict | None:
+    """B-NODES: the ``config.title`` / ``config.description`` a new (non-gate) node starts with —
+    the sent values (validated like the PATCH), else the preset template's; ``None`` if neither."""
+    if body.node_kind == "gate":
+        return None
+    title = _clean_node_title(body.title) if body.title is not None else None
+    description = _clean_node_description(body.description)
+    if preset is not None:
+        title = title or preset["title"]
+        if body.description is None:
+            description = preset["description"]
+    identity = {}
+    if title:
+        identity["title"] = title
+    if description:
+        identity["description"] = description
+    return identity or None
 
 
 def _edge_columns(body: CreateEdgeRequest) -> tuple[str, dict | None]:
