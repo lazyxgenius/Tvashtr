@@ -6,15 +6,20 @@ account's tool/skill/agent is a 404. This router is included BEFORE ``routers.py
 so literal paths such as ``/api/tool-library/import`` are never shadowed by an ``{item_id}`` route.
 """
 
+import logging
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from tvashtr import db
 from tvashtr.auth import UserOut, get_current_user
-from tvashtr.control_plane import skill_repo, toolkit
+from tvashtr.config import get_settings
+from tvashtr.control_plane import github_app, skill_repo, toolkit
 from tvashtr.control_plane.toolkit import ToolkitError
+
+logger = logging.getLogger("tvashtr.routes.toolkit")
 
 router = APIRouter()
 
@@ -155,6 +160,43 @@ def set_skill_agents(skill_id: str, body: AgentsBody, current_user: CurrentUser)
         return toolkit.set_skill_agents(_owner(current_user), skill_id, body.node_ids)
     except ToolkitError as exc:
         raise _http(exc) from None
+
+
+# ---- GitHub App status ---------------------------------------------------------------------------
+
+
+@router.get("/api/github/status")
+def github_status(current_user: CurrentUser) -> dict:
+    """The GitHub App card's state without listing every repo: ``{hosted, installed,
+    installation_count, repo_count}``. Owner-scoped like ``GET /api/github/repos`` (including its
+    one-shot App-side backfill for an account with zero installation rows); a dead installation is
+    skipped, never a 500. Self-hosted (``hosted_mode`` off) answers without calling GitHub."""
+    if not get_settings().hosted_mode:
+        return {"hosted": False, "installed": False, "installation_count": 0, "repo_count": 0}
+    from tvashtr.routers import _backfill_github_installations, _owner_installation_ids
+
+    owner_id = _owner(current_user)
+    with db.session_scope() as session:
+        installation_ids = _owner_installation_ids(session, owner_id)
+    if not installation_ids:
+        try:
+            _backfill_github_installations()
+        except Exception:
+            logger.exception("github installation backfill failed; reporting not installed")
+        with db.session_scope() as session:
+            installation_ids = _owner_installation_ids(session, owner_id)
+    repo_count = 0
+    for installation_id in installation_ids:
+        try:
+            repo_count += toolkit.count_installation_repositories(installation_id)
+        except github_app.GithubAppError:
+            logger.exception("counting repos failed for installation_id=%s", installation_id)
+    return {
+        "hosted": True,
+        "installed": bool(installation_ids),
+        "installation_count": len(installation_ids),
+        "repo_count": repo_count,
+    }
 
 
 # ---- secrets -------------------------------------------------------------------------------------

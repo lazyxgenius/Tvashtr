@@ -695,6 +695,22 @@ def list_agents(
         return {"teams": tool_usage.list_agents(session, owner_id, tool=tool, skill=skill)}
 
 
+# ---- GET /api/github/status ----------------------------------------------------------------------
+
+
+def count_installation_repositories(installation_id: int) -> int:
+    """How many repos an installation can access — one ``per_page=1`` call reading GitHub's
+    ``total_count`` instead of listing every repo just for a badge."""
+    from tvashtr.control_plane import github_app
+
+    token = github_app.get_installation_token(installation_id)
+    result = github_app._http(
+        "GET", f"{github_app._GITHUB_API}/installation/repositories?per_page=1", token=token
+    )
+    total = result.get("total_count") if isinstance(result, dict) else None
+    return int(total) if isinstance(total, int) else 0
+
+
 # ---- GET /api/toolkit/summary --------------------------------------------------------------------
 
 
