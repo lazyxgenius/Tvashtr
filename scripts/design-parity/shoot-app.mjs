@@ -62,7 +62,9 @@ for (const sc of scenarios) {
   await routeFonts(context);
   const routes = { ...DEFAULT_ROUTES, ...(sc.routes ?? {}) };
   const missing = new Set();
-  await context.route(/\/(api\/|health)/, async (route) => {
+  // Anchored to the path start: Vite serves source modules like /src/lib/api/teams.ts, which
+  // must not be answered from the fixtures.
+  await context.route(/^https?:\/\/[^/]+\/(api\/|health)/, async (route) => {
     const req = route.request();
     const u = new URL(req.url());
     const hit = match(routes, req.method(), u.pathname, u.search);
