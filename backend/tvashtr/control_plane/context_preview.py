@@ -24,6 +24,7 @@ from tvashtr.control_plane.context_compiler import (
     resolve_remember_enabled,
 )
 from tvashtr.control_plane.credential_gate import subscription_for_model
+from tvashtr.control_plane.memory import repo_key_for_run
 from tvashtr.control_plane.memory_retrieval import retrieve_for_node
 from tvashtr.control_plane.node_history import NodeHistoryNotFound, require_team_node
 from tvashtr.control_plane.node_library import resolve_owner_skill_source
@@ -257,7 +258,11 @@ def preview_node_context(
                 spec_source = {"label": "No spec yet"}
                 spec_placeholder = True
 
-        repo_key = (run.github_repo or run.repo_path) if run is not None else None
+        repo_key = (
+            repo_key_for_run(run.github_repo, run.repo_path, run.local_repo_label)
+            if run is not None
+            else None
+        )
         brownfield = run is not None and bool(run.repo_path or run.github_repo)
         skill_rows = _preview_skills(session, skills, owner_id)
 

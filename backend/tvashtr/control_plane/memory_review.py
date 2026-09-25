@@ -298,7 +298,7 @@ def ingest_run_remembers(run_id: str, workspace: str) -> dict:
             if run is None or run.owner_id is None:
                 return {"written": 0, "captures": len(captures), "skipped": "no-owner"}
             owner_id = run.owner_id
-            repo_key = repo_key_for_run(run.github_repo, run.repo_path)
+            repo_key = repo_key_for_run(run.github_repo, run.repo_path, run.local_repo_label)
         review_mode = _owner_review_mode(owner_id)
         # An owner with no OpenAI key embeds with the OPERATOR key (off-ledger), as distillation
         # and manual memories do — so Desktop subscription users' captures still land.

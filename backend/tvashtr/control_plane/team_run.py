@@ -741,7 +741,7 @@ def retrieve_memory_step(run_id: str, node_id: str, iteration: int, query: str) 
         with session_scope() as session:
             run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
             owner_id = run.owner_id
-            repo_key = repo_key_for_run(run.github_repo, run.repo_path)
+            repo_key = repo_key_for_run(run.github_repo, run.repo_path, run.local_repo_label)
             authored = session.execute(
                 select(AgentNode.cloned_from_node_id).where(AgentNode.id == uuid.UUID(node_id))
             ).scalar_one_or_none()

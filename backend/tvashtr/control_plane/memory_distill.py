@@ -805,7 +805,7 @@ def distill_run(run_id: str) -> dict:
         if run is None:
             return {"written": 0, "skipped": "no-run"}
         owner_id = run.owner_id
-        repo_key = repo_key_for_run(run.github_repo, run.repo_path)
+        repo_key = repo_key_for_run(run.github_repo, run.repo_path, run.local_repo_label)
         status = run.status
         idea = run.idea
     if owner_id is None:  # a legacy/un-owned run cannot own owner-scoped memory

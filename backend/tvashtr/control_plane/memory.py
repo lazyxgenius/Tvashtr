@@ -69,12 +69,16 @@ _CLONES_MARKER = "/.tvashtr_clones/"
 _WINDOWS_PATH = re.compile(r"^[A-Za-z]:/")
 
 
-def repo_key_for_run(github_repo: str | None, repo_path: str | None) -> str | None:
-    """The memory ``repo_key`` for a run: the GitHub ``owner/name`` for a hosted run, else the local
-    ``repo_path`` (``None`` for a greenfield run). Hosted runs work in a per-run clone directory, so
-    keying by ``repo_path`` gave every run a unique key and repo memories never carried over. Every
-    memory write site (distillation, agent-remember) and run-time retrieval use this one rule."""
-    return github_repo or repo_path or None
+def repo_key_for_run(
+    github_repo: str | None, repo_path: str | None, local_repo_label: str | None = None
+) -> str | None:
+    """The memory ``repo_key`` for a run: the GitHub ``owner/name`` for a hosted run; for a Desktop
+    folder run, the folder's label on the user's computer (``~/code/trade_mcp``); else the local
+    ``repo_path`` (``None`` for a greenfield run). Hosted and folder runs work in a per-run clone
+    directory, so keying by ``repo_path`` gave every run a unique key and repo memories never
+    carried over. Every memory write site (distillation, agent-remember) and run-time retrieval use
+    this one rule."""
+    return github_repo or local_repo_label or repo_path or None
 
 
 def repo_label(repo_key: str | None) -> str | None:
@@ -417,9 +421,11 @@ def _source_run_repo_key(session, owner_id: uuid.UUID, row: NodeMemory) -> str |
     if rid is None:
         return None
     run = session.execute(
-        select(Run.github_repo, Run.repo_path).where(Run.id == rid, Run.owner_id == owner_id)
+        select(Run.github_repo, Run.repo_path, Run.local_repo_label).where(
+            Run.id == rid, Run.owner_id == owner_id
+        )
     ).one_or_none()
-    return repo_key_for_run(run[0], run[1]) if run is not None else None
+    return repo_key_for_run(run[0], run[1], run[2]) if run is not None else None
 
 
 def _resolve_scope(

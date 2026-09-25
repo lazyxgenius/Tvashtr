@@ -198,6 +198,10 @@ def test_repo_key_for_run_prefers_the_github_repo():
     assert repo_key_for_run("octo/trade_mcp", clone) == "octo/trade_mcp"
     assert repo_key_for_run(None, "/Users/me/code/app") == "/Users/me/code/app"
     assert repo_key_for_run(None, None) is None
+    # A Desktop folder run clones into a new server directory every time; its memories key on the
+    # folder's label on the user's computer, which stays the same run to run.
+    assert repo_key_for_run(None, "/data/local/run-1", "~/code/trade_mcp") == "~/code/trade_mcp"
+    assert repo_label("~/code/trade_mcp") == "trade_mcp"
 
 
 def test_repo_label_rules():
