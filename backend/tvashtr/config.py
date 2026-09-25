@@ -647,6 +647,15 @@ class Settings(BaseSettings):
             "TVASHTR_DESKTOP_SNAPSHOT_MAX_BYTES", "desktop_snapshot_max_bytes"
         ),
     )
+    # Revamp P10: the largest ``git bundle`` Tvashtr Desktop may upload for a local-folder run
+    # (``POST /api/desktop/repo-snapshots``). Bundles live in Postgres, so this bounds a row.
+    local_repo_bundle_max_bytes: int = Field(
+        default=200 * 1024 * 1024,
+        gt=0,
+        validation_alias=AliasChoices(
+            "TVASHTR_LOCAL_REPO_BUNDLE_MAX_BYTES", "local_repo_bundle_max_bytes"
+        ),
+    )
 
     def agent_llm_base_url(self, sandbox_mode: str) -> str:
         """The proxy base URL the agent's LLM points at, chosen by THIS run's sandbox
