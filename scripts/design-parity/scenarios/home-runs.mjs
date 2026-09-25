@@ -463,6 +463,7 @@ const baseRoutes = (over = {}) => ({
     nodes: [{ id: "p", role_name: "pm", kind: "completion", config: null }],
     edges: [],
   },
+  "GET /api/teams/:id/graph": { team_graph_id: "t", nodes: [], edges: [] },
   "GET /api/teams/:id/runs": {
     runs: [
       {
@@ -521,32 +522,25 @@ const baseRoutes = (over = {}) => ({
 });
 
 // The design says "Good morning" and has "Indicator sprint team" in the composer.
-const morning = () => {
+// The page's clock is frozen at the moment these fixtures were built (so "26m" stays "26m" however
+// long a sweep takes), reads 9am ("Good morning"), and the composer starts on Indicator sprint team.
+// Init scripts are serialized, so this is a string with the fixture time inlined.
+const morning = `(() => {
+  const offset = ${now} - Date.now();
+  const realNow = Date.now.bind(Date);
+  Date.now = () => realNow() + offset;
   Date.prototype.getHours = function getHours() {
     return 9;
   };
   try {
-    localStorage.setItem(
-      "tvashtr.home.lastTeam",
-      "0f7c2d1e-0000-4000-8000-000000000001",
-    );
+    localStorage.setItem("tvashtr.home.lastTeam", "0f7c2d1e-0000-4000-8000-000000000001");
   } catch {
     /* ignore */
   }
-};
+})();`;
 // Desktop: the planned repos bridge with the design's two recent folders.
-const desktopRepos = () => {
-  Date.prototype.getHours = function getHours() {
-    return 9;
-  };
-  try {
-    localStorage.setItem(
-      "tvashtr.home.lastTeam",
-      "0f7c2d1e-0000-4000-8000-000000000001",
-    );
-  } catch {
-    /* ignore */
-  }
+const desktopRepos = `${morning}
+(() => {
   const folders = [
     {
       path: "/Users/lazyx/code/trade_mcp",
@@ -586,7 +580,7 @@ const desktopRepos = () => {
     return true;
   };
   if (!attach()) document.addEventListener("DOMContentLoaded", attach);
-};
+})();`;
 
 // Click like a person: at the element's centre, without Playwright's scroll-into-view (which
 // scrolls the dashboard's main column for elements inside the unclipped Home cards).
