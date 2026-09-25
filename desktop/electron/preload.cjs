@@ -17,5 +17,7 @@ const engines = {
 contextBridge.exposeInMainWorld("tvashtrDesktop", { engines });
 contextBridge.exposeInMainWorld("tvashtrDesktopInfo", {
   shell: "electron",
-  version: 3,
+  version: 4,
+  // v4: the renderer draws the design's dark title strip only where main.cjs hid the system one.
+  platform: process.platform,
 });

@@ -19,6 +19,7 @@ const { createRunnerApi } = require("./runner/api.cjs");
 const { createStatusSync } = require("./runner/statusSync.cjs");
 const { bootEngines } = require("./runner/engineBoot.cjs");
 const { createRunner } = require("./runner/runner.cjs");
+const { mainWindowOptions } = require("./windowOptions.cjs");
 
 const DESKTOP_ROOT = path.join(__dirname, "..");
 
@@ -301,20 +302,12 @@ function attachNavigationGuards(win) {
 }
 
 function createWindow(startUrl) {
-  mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1024,
-    minHeight: 680,
-    title: "Tvashtr",
-    backgroundColor: "#0b0f14",
-    webPreferences: {
+  mainWindow = new BrowserWindow(
+    mainWindowOptions({
+      platform: process.platform,
       preload: path.join(__dirname, "preload.cjs"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
+    }),
+  );
 
   attachNavigationGuards(mainWindow);
 

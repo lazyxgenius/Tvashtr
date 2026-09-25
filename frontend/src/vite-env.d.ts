@@ -19,7 +19,7 @@ interface Window {
    * Truthy object (v2+) or legacy boolean `true` (v1). Prefer truthiness checks.
    */
   tvashtrDesktop?: boolean | TvashtrDesktopBridge;
-  tvashtrDesktopInfo?: { shell: string; version: number };
+  tvashtrDesktopInfo?: { shell: string; version: number; platform?: string };
 }
 
 interface TvashtrDesktopBridge {
