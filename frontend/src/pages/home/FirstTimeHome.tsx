@@ -13,8 +13,9 @@ import { RunningNow } from "./RunningNow";
 import type { GetStartedProgress, GetStartedSteps } from "./useGetStartedProgress";
 import "./teams.css";
 
-/** The first-time copy for Full feature squad is shorter than the dialog's (TEAMS-73). */
+/** The first-time template copy is shorter than the dialog's for two of them (Home-FirstTime). */
 const FIRST_TIME_COPY: Record<string, string> = {
+  two_node: "A PM writes the spec; an Engineer builds and ships it.",
   full_squad: "Plan, you approve, build and test, you approve the ship.",
 };
 

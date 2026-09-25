@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type MouseEvent, useEffect, useId, useRef, useState } from "react";
 import { Check, History, Layers, Maximize2, Pencil, Play, Trash, X } from "lucide-react";
 
 import { Badge, Button, IconButton, Input, Menu } from "../../design-system/components";
@@ -84,6 +84,7 @@ function RenameEditor({ team, actions }: { team: TeamSummary; actions: TeamItemA
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const errorId = useId();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -117,20 +118,29 @@ function RenameEditor({ team, actions }: { team: TeamSummary; actions: TeamItemA
 
   return (
     <div className="hm-rename">
-      <div className="hm-rename__field">
+      {/* The error line is ours (not Input's `error`), so the input isn't remounted — and
+          doesn't lose focus — when the error appears. */}
+      <div className="ds-field hm-rename__field">
         <Input
           ref={inputRef}
           size="sm"
           aria-label="Team name"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
+          className={error ? "ds-input--error" : undefined}
           value={value}
-          error={error ?? undefined}
-          disabled={busy}
+          readOnly={busy}
           onChange={(e) => {
             setValue(e.target.value);
             if (error) setError(null);
           }}
           onKeyDown={onKeyDown}
         />
+        {error && (
+          <span id={errorId} className="ds-field__help ds-field__help--error" role="alert">
+            {error}
+          </span>
+        )}
       </div>
       <IconButton size="sm" aria-label="Save name" onClick={() => void save()} disabled={busy}>
         <Check size={14} strokeWidth={1.6} aria-hidden />
