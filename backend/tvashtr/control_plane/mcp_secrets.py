@@ -13,6 +13,7 @@ Openhands-free + litellm-free at import (only ``uuid`` + sqlalchemy + the app's 
 import uuid
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 from tvashtr.control_plane.credentials import decrypt_secret, encrypt_secret
 from tvashtr.db import session_scope
@@ -48,6 +49,68 @@ def set_owner_mcp_secret(owner_id: uuid.UUID, name: str, value: str) -> None:
             existing.secret_encrypted = secret
         else:
             session.add(McpSecret(owner_id=owner_id, name=name, secret_encrypted=secret))
+
+
+class SecretExists(Exception):
+    """The owner already has a secret with this name (``uq_mcp_secrets_owner_name``)."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.name = name
+
+
+def _row_dict(row: McpSecret) -> dict:
+    """A secret's NON-secret fields — never the value, never the ciphertext."""
+    return {"name": row.name, "created_at": row.created_at, "updated_at": row.updated_at}
+
+
+def create_owner_mcp_secret(owner_id: uuid.UUID, name: str, value: str) -> dict:
+    """CREATE-ONLY add (revamp): raises :class:`SecretExists` when the name is taken (replacing is
+    :func:`replace_owner_mcp_secret`). Returns ``{name, created_at, updated_at}``."""
+    secret = encrypt_secret(value)
+    with session_scope() as session:
+        existing = session.execute(
+            select(McpSecret.id).where(McpSecret.owner_id == owner_id, McpSecret.name == name)
+        ).first()
+        if existing is not None:
+            raise SecretExists(name)
+        row = McpSecret(owner_id=owner_id, name=name, secret_encrypted=secret)
+        session.add(row)
+        try:
+            session.flush()
+        except IntegrityError:
+            raise SecretExists(name) from None
+        session.refresh(row)
+        return _row_dict(row)
+
+
+def replace_owner_mcp_secret(owner_id: uuid.UUID, name: str, value: str) -> dict | None:
+    """Replace an EXISTING secret's value (the old value is gone). ``None`` when the owner has no
+    secret of that name. Returns ``{name, created_at, updated_at}`` with the bumped
+    ``updated_at``."""
+    secret = encrypt_secret(value)
+    with session_scope() as session:
+        row = session.execute(
+            select(McpSecret).where(McpSecret.owner_id == owner_id, McpSecret.name == name)
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        row.secret_encrypted = secret
+        session.flush()
+        session.refresh(row)
+        return _row_dict(row)
+
+
+def list_owner_mcp_secrets(owner_id: uuid.UUID) -> list[dict]:
+    """The owner's secrets as ``{name, created_at, updated_at}`` (never the values), oldest
+    first."""
+    with session_scope() as session:
+        rows = session.execute(
+            select(McpSecret)
+            .where(McpSecret.owner_id == owner_id)
+            .order_by(McpSecret.created_at, McpSecret.name)
+        ).scalars()
+        return [_row_dict(r) for r in rows]
 
 
 def list_owner_mcp_secret_names(owner_id: uuid.UUID) -> list[str]:

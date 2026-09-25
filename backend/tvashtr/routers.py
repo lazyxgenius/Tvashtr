@@ -44,11 +44,7 @@ from tvashtr.control_plane.credentials import (
 )
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
-from tvashtr.control_plane.mcp_secrets import (
-    delete_owner_mcp_secret,
-    list_owner_mcp_secret_names,
-    set_owner_mcp_secret,
-)
+from tvashtr.control_plane.mcp_secrets import delete_owner_mcp_secret
 from tvashtr.control_plane.node_library import (
     create_owner_skill,
     delete_owner_skill,
@@ -2019,8 +2015,8 @@ def delete_engine_subscription(
 
 class AddSecretRequest(BaseModel):
     """``POST /api/secrets`` body: a ``${NAME}`` key (e.g. ``GITHUB_TOKEN``) + its plaintext value.
-    The server encrypts the value (Fernet) and upserts on ``(owner, name)`` — adding the same name
-    again REPLACES the stored value. The value is NEVER returned by any endpoint."""
+    The server encrypts the value (Fernet). CREATE-ONLY since the revamp: a taken name is a 409 and
+    replacing is ``PUT /api/secrets/{name}``. The value is NEVER returned by any endpoint."""
 
     name: str
     value: str
@@ -2028,27 +2024,24 @@ class AddSecretRequest(BaseModel):
 
 @router.get("/api/secrets")
 def list_secrets(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
-    """The NAMES of the current account's MCP secrets (never the values), oldest first — feeds the
-    account Secrets shelf and ToolsSection's pre-launch missing-secret check."""
-    names = list_owner_mcp_secret_names(uuid.UUID(current_user.id))
-    return {"secrets": [{"name": n} for n in names]}
+    """The current account's MCP secrets (never the values), oldest first:
+    ``secrets[]`` = stored rows ``{name, created_at, updated_at, used_by_tools}`` (``name`` is what
+    ToolsSection treats as "present") and ``missing[]`` = names library tools reference that have
+    no stored value ``{name, used_by_tools}``."""
+    return toolkit.list_secrets(uuid.UUID(current_user.id))
 
 
 @router.post("/api/secrets")
 def add_secret(
     body: AddSecretRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
 ) -> dict:
-    """Add (or REPLACE) an MCP ``${NAME}`` secret for the account. Encrypts it (Fernet)
-    and upserts on ``(owner, name)``. 422 on an empty name/value. Returns ``{name}`` — never the
-    value."""
-    name = body.name.strip()
-    value = body.value.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="A secret name is required.")
-    if not value:
-        raise HTTPException(status_code=422, detail="A secret value is required.")
-    set_owner_mcp_secret(uuid.UUID(current_user.id), name, value)
-    return {"name": name}
+    """Add an MCP ``${NAME}`` secret (create-only). 422 on the ``^[A-Z_][A-Z0-9_]{0,127}$`` name
+    rule or an empty value; 409 "<NAME> already exists. Use Replace value on it instead."
+    Returns ``{name, created_at, updated_at}`` — never the value."""
+    try:
+        return toolkit.create_secret(uuid.UUID(current_user.id), body.name, body.value)
+    except toolkit.ToolkitError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
 
 
 @router.delete("/api/secrets/{name}", status_code=204)

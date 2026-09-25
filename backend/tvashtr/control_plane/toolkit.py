@@ -17,7 +17,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from tvashtr.control_plane import node_library, tool_usage
+from tvashtr.control_plane import mcp_secrets, node_library, tool_usage
 from tvashtr.control_plane.node_library import _as_uuid
 from tvashtr.control_plane.node_tools import _secret_refs
 from tvashtr.db import session_scope
@@ -359,6 +359,100 @@ def set_tool_agents(owner_id: uuid.UUID, tool_id: object, node_ids: object) -> d
             return tool_usage.set_tool_agents(session, owner_id, row, node_ids)
         except LookupError:
             raise ToolkitError(404, "Agent not found.") from None
+
+
+# ---- secrets -------------------------------------------------------------------------------------
+
+SECRET_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]{0,127}$")
+_SECRET_EXAMPLE = "NOTION_TOKEN"
+
+
+def suggest_secret_name(raw: str) -> str:
+    """The input upper-cased with each run of other characters turned into ``_`` ("notion-token"
+    → NOTION_TOKEN), or the example name when that still isn't valid."""
+    upper = (raw or "").strip().upper()
+    out = []
+    for ch in upper:
+        ok = ch.isascii() and (ch.isalnum() or ch == "_")
+        if ok:
+            out.append(ch)
+        elif not out or out[-1] != "_":
+            out.append("_")
+    suggestion = "".join(out).strip("_")[:128]
+    return suggestion if SECRET_NAME_RE.match(suggestion) else _SECRET_EXAMPLE
+
+
+def check_secret_name(name: str) -> str:
+    name = (name or "").strip()
+    if not name:
+        raise ToolkitError(422, "A secret name is required.")
+    if not SECRET_NAME_RE.match(name):
+        raise ToolkitError(
+            422, f"Use capital letters, numbers and _, like {suggest_secret_name(name)}."
+        )
+    return name
+
+
+def _check_secret_value(value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        raise ToolkitError(422, "A secret value is required.")
+    return value
+
+
+def _secret_out(row: dict) -> dict:
+    return {
+        "name": row["name"],
+        "created_at": row["created_at"].isoformat(),
+        "updated_at": row["updated_at"].isoformat(),
+    }
+
+
+def list_secrets(owner_id: uuid.UUID) -> dict:
+    """``GET /api/secrets``: stored secrets (never values) with the library tools that use each,
+    plus ``missing`` — names tools reference that have no stored value (a deleted-but-still-used
+    secret shows up here)."""
+    with session_scope() as session:
+        tools = list(
+            session.execute(
+                select(ToolLibraryItem).where(ToolLibraryItem.owner_id == owner_id)
+            ).scalars()
+        )
+    rows = mcp_secrets.list_owner_mcp_secrets(owner_id)
+    stored = {r["name"] for r in rows}
+    users: dict[str, list[dict]] = {}
+    for tool in sorted(tools, key=lambda t: t.name):
+        for ref in secret_refs(tool.server_config):
+            users.setdefault(ref, []).append({"id": str(tool.id), "name": tool.name})
+    return {
+        "secrets": [{**_secret_out(r), "used_by_tools": users.get(r["name"], [])} for r in rows],
+        "missing": [
+            {"name": n, "used_by_tools": t} for n, t in missing_secrets(tools, stored).items()
+        ],
+    }
+
+
+def create_secret(owner_id: uuid.UUID, name: str, value: str) -> dict:
+    """Create-only ``POST /api/secrets``: 422 on the name rule / an empty value, 409 when the name
+    exists. Returns ``{name, created_at, updated_at}`` — never the value."""
+    name = check_secret_name(name)
+    value = _check_secret_value(value)
+    try:
+        return _secret_out(mcp_secrets.create_owner_mcp_secret(owner_id, name, value))
+    except mcp_secrets.SecretExists:
+        raise ToolkitError(
+            409, f"{name} already exists. Use Replace value on it instead."
+        ) from None
+
+
+def replace_secret(owner_id: uuid.UUID, name: str, value: str) -> dict:
+    """``PUT /api/secrets/{name}``: replace an existing value (404 when absent). Legacy names that
+    break today's rule can still be replaced."""
+    value = _check_secret_value(value)
+    row = mcp_secrets.replace_owner_mcp_secret(owner_id, name, value)
+    if row is None:
+        raise ToolkitError(404, f"No secret named {name}.")
+    return _secret_out(row)
 
 
 # ---- GET /api/agents -----------------------------------------------------------------------------

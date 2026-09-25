@@ -33,6 +33,12 @@ class ToolImportBody(BaseModel):
     on_conflict: str = "error"
 
 
+class SecretValueBody(BaseModel):
+    """``PUT /api/secrets/{name}``: the new plaintext value (encrypted; never returned)."""
+
+    value: str
+
+
 CurrentUser = Annotated[UserOut, Depends(get_current_user)]
 
 
@@ -59,6 +65,19 @@ def list_agents(
     ``tool_id`` / ``skill_id`` (``enabled``) and whether an inline item overrides it."""
     try:
         return toolkit.list_agents(_owner(current_user), tool_id=tool_id, skill_id=skill_id)
+    except ToolkitError as exc:
+        raise _http(exc) from None
+
+
+# ---- secrets -------------------------------------------------------------------------------------
+
+
+@router.put("/api/secrets/{name}")
+def replace_secret(name: str, body: SecretValueBody, current_user: CurrentUser) -> dict:
+    """Replace an existing secret's value → ``{name, created_at, updated_at}`` (404 when absent,
+    422 on an empty value). The old value is gone; tools pick up the new one on their next run."""
+    try:
+        return toolkit.replace_secret(_owner(current_user), name, body.value)
     except ToolkitError as exc:
         raise _http(exc) from None
 
