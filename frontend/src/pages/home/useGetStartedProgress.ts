@@ -64,17 +64,20 @@ export function useGetStartedProgress(
     void loadGetStarted();
   }, []);
 
-  // Reload when the team list changes (a team was just made) and when the tab comes back.
+  // Only an account that hasn't hidden the checklist needs the steps. Reload them when the team
+  // list changes (a team was just made) and when the tab comes back.
+  const wanted = hidden === false;
   useEffect(() => {
-    void load();
-  }, [load, teams.length]);
+    if (wanted) void load();
+  }, [wanted, load, teams.length]);
   useEffect(() => {
+    if (!wanted) return;
     const onVisible = () => {
       if (document.visibilityState === "visible") void load();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [load]);
+  }, [wanted, load]);
 
   const list = runs ?? [];
   const firstResult =
@@ -89,7 +92,8 @@ export function useGetStartedProgress(
     run: list.length > 0,
     review: firstResult !== null,
   };
-  const ready = hidden !== null && runs !== null && engine !== null && !teamsLoading;
+  const ready =
+    hidden === true || (hidden === false && runs !== null && engine !== null && !teamsLoading);
   const firstTime = ready && hidden === false && (list.length === 0 || checklistWasShown());
 
   useEffect(() => {
