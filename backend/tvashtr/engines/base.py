@@ -113,6 +113,10 @@ class AgentTask:
     # ``desktop-runner`` adapter reads it); ``None`` (the default) ⇒ every other adapter/path is
     # byte-for-byte unchanged — the same additive, defaulted-field discipline as the fields above.
     desktop: DesktopJobSpec | None = None
+    # B-NODES: the node's Images opt-in, set by the Control Plane ONLY when the chosen model accepts
+    # image input. ``True`` ⇒ the adapter builds the agent's LLM with vision explicitly enabled;
+    # ``False`` (the default) ⇒ the LLM is built exactly as before (byte-identical).
+    multimodal: bool = False
 
 
 @dataclass(frozen=True)

@@ -559,6 +559,8 @@ class OpenHandsAdapter:
                     # low-balance key on a request that would have cost cents. The condenser's
                     # ``model_copy`` below inherits it.
                     max_output_tokens=settings.agent_max_output_tokens,
+                    # B-NODES: the node's Images opt-in turns vision on; unset ⇒ byte-identical.
+                    **({"disable_vision": False} if task.multimodal else {}),
                 )
                 # M-ctx0 (C1): the in-transcript summarizing condenser (keep_first=2 / max_size=80)
                 # via a model_copy under its OWN usage_id (fresh meter). On a REUSED Conversation

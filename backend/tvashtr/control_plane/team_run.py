@@ -57,7 +57,9 @@ from tvashtr.control_plane.context_compiler import (
     compile_context,
     resolve_context_budget,
     resolve_fallback_model,
+    resolve_multimodal,
     resolve_output_schema,
+    resolve_reads_default,
     resolve_reads_from,
     resolve_remember_enabled,
     resolve_writes_to,
@@ -86,7 +88,7 @@ from tvashtr.control_plane.memory_retrieval import (
     memory_query,
     retrieve_for_node,
 )
-from tvashtr.control_plane.node_skills import build_skills
+from tvashtr.control_plane.node_skills import build_skills, inject_skills_into_prompt
 from tvashtr.control_plane.node_tools import build_mcp_config
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.control_plane.run_diff import compute_run_diff
@@ -224,6 +226,56 @@ def _output_schema_violation(output: str | None, schema: dict | None) -> str | N
         return "output is not valid JSON"
     violation = _schema_violation(parsed, schema, "")
     return None if violation is None else f"output fails schema at {violation}"
+
+
+def _verdict_schema_violation(workspace: str, schema: dict) -> str | None:
+    """B-NODES: the advisory output-format check for a VERDICT-emitting node — its output is the
+    raw ``REVIEW_VERDICT.json`` it wrote (read BEFORE :func:`_harvest_verdict` removes it). A
+    missing file is itself a miss. Same validator as :func:`_output_schema_violation`."""
+    path = Path(workspace) / "REVIEW_VERDICT.json"
+    if not path.exists():
+        return "no REVIEW_VERDICT.json to check against the output format"
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "REVIEW_VERDICT.json could not be read to check against the output format"
+    return _output_schema_violation(raw, schema)
+
+
+def _tool_names(tool_config: dict | None) -> list[str]:
+    """B-NODES: the tools a node carries, for the Desktop "tools aren't used" warning — its inline
+    MCP server names, plus its library tools and the Domains opt-in. ``[]`` ⇒ no tools."""
+    if not isinstance(tool_config, dict):
+        return []
+    servers = tool_config.get("mcpServers")
+    names = sorted(servers) if isinstance(servers, dict) else []
+    extra = tool_config.get("tvashtr") if isinstance(tool_config.get("tvashtr"), dict) else {}
+    library = extra.get("library")
+    if isinstance(library, list) and library:
+        names.append(f"{len(library)} library tool(s)")
+    if extra.get("domains") is True:
+        names.append("domains")
+    return names
+
+
+def _desktop_instruction(
+    run_id: str, instruction: str, skills: list | None, tool_config: dict | None
+) -> str:
+    """B-NODES: a Desktop-routed (subscription) node's job carries only its instruction, so its
+    resolved skills are FOLDED INTO the instruction (the thinker bridge — always-on and agent-mode
+    skills prepended, triggered ones when a trigger word appears; repo rules are not adopted), and a
+    ``tools`` run warning records that its MCP tools / Domains are not used there (v1)."""
+    names = _tool_names(tool_config)
+    if names:
+        record_resolution_warning(
+            run_id,
+            "tools",
+            ", ".join(names),
+            "tools aren't used by Desktop subscription agents yet — this agent ran without them",
+        )
+    if not skills:
+        return instruction
+    return inject_skills_into_prompt(skills, instruction, run_id)
 
 
 # M-h1b — a hosted-GitHub clone lands in a deterministic per-run dir (so a resume is idempotent),
@@ -1048,6 +1100,33 @@ def _worker_brief(files_changed: list[str]) -> str:
     return f"Built the feature — changed {k} file(s): {listed}"
 
 
+def _multimodal_usable(run_id: str, model: str | None, desktop: bool) -> bool:
+    """B-NODES: can this node's Images opt-in actually take effect? ``False`` (with an advisory
+    ``multimodal`` run warning) on a Desktop subscription job — the runner sends text only — or on
+    a model the gateway reports as text-only."""
+    slug = model or get_settings().default_model
+    if desktop:
+        record_resolution_warning(
+            run_id,
+            "multimodal",
+            slug,
+            "images aren't sent to Desktop subscription agents yet — the Images setting has no "
+            "effect there",
+        )
+        return False
+    from tvashtr.gateway import multimodal_supported  # lazy: keeps the import surface unchanged
+
+    if not multimodal_supported(slug):
+        record_resolution_warning(
+            run_id,
+            "multimodal",
+            slug,
+            f"model {slug!r} does not accept image input — the Images setting has no effect",
+        )
+        return False
+    return True
+
+
 @DBOS.step()
 def agent_run_step(
     run_id: str,
@@ -1072,6 +1151,9 @@ def agent_run_step(
     memory: list | None = None,
     read_documents: list | None = None,
     fallback_model: str | None = None,
+    multimodal: bool = False,
+    output_schema: dict | None = None,
+    output_schema_name: str | None = None,
 ) -> dict:
     """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
     ``reviewer_agent_run_step``. M-unify U1: it is now the SINGLE path EVERY AgentNode executes
@@ -1214,6 +1296,8 @@ def agent_run_step(
     desktop_route = _desktop_route(run_id, model)
     if desktop_route is not None:
         agent_api_key = None
+        # B-NODES: the Desktop job carries only the instruction — fold the skills in, warn on tools.
+        instruction = _desktop_instruction(run_id, instruction, skills, tool_config)
     elif get_settings().litellm_proxy_enabled:
         agent_api_key = vkey
     else:
@@ -1224,6 +1308,11 @@ def agent_run_step(
         model, agent_api_key = _resolve_model_and_key(
             run_id, model or get_settings().default_model, fallback_model
         )
+    # B-NODES: the Images (``multimodal``) opt-in reaches the agent's LLM config only where it can
+    # work — a vision-capable model on a hosted engine. Anywhere else it is a no-op, recorded as an
+    # advisory run warning rather than silently ignored.
+    if multimodal:
+        multimodal = _multimodal_usable(run_id, model, desktop_route is not None)
 
     task = AgentTask(
         instruction=instruction,
@@ -1246,8 +1335,10 @@ def agent_run_step(
         # Both are stubs today — build_mcp_config(None)->{} (the adapter builds NO MCP tools) and
         # build_skills(None)->[] (=> agent_context=None in the adapter), so a NULL-columns node is
         # byte-for-byte inert. ``workspace`` is this worker's own dir (the workspace_dir arg).
-        mcp_config=build_mcp_config(tool_config, run_id),
-        skills=build_skills(skills, workspace, run_id),
+        # B-NODES: a Desktop-routed node uses neither (its skills were folded into the instruction
+        # above and its tools recorded as unused), so neither is resolved for it.
+        mcp_config=build_mcp_config(tool_config, run_id) if desktop_route is None else {},
+        skills=build_skills(skills, workspace, run_id) if desktop_route is None else [],
         # M-unify U2: the per-node sandbox-reuse key. The Control Plane passes only the KEY (never
         # a live handle) — the adapter reuses this node's warm container + continues its
         # Conversation across the node's own rounds. ``node_id`` None (older/test call sites that
@@ -1266,6 +1357,7 @@ def agent_run_step(
             if desktop_route is not None
             else None
         ),
+        multimodal=multimodal,
     )
     # Select local vs Docker-sandboxed engine from the configured sandbox mode (P1.3a). The
     # EngineAdapter contract + AgentRunResult shape are identical across modes; the adapter is
@@ -1402,6 +1494,14 @@ def agent_run_step(
         report_path.read_text(encoding="utf-8", errors="replace") if report_path.exists() else None
     )
     if emits_outcome:
+        # B-NODES: an authored output format is checked against the raw verdict file (advisory —
+        # a RunWarning, never a failure) before the harvest removes it.
+        if output_schema is not None:
+            violation = _verdict_schema_violation(workspace, output_schema)
+            if violation is not None:
+                record_resolution_warning(
+                    run_id, "output_schema", output_schema_name or "verdict", violation
+                )
         verdict = _harvest_verdict(workspace)
         label, reasons = verdict["outcome"], verdict["reasons"]
     else:
@@ -1889,6 +1989,8 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             if reads_from:
                 read_documents = read_named_documents_step(run_id, reads_from) or None
                 spec = None
+            elif not resolve_reads_default(node["config"]):
+                spec = None  # B-NODES: ``reads_default=false`` — this node reads nothing
             else:
                 spec = read_latest_prd_step(run_id) if pm_document_id is not None else None
             # Whether this node BRANCHES the walk on a routing label is a fact about the authored
@@ -1941,6 +2043,14 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             node_fallback_model = resolve_fallback_model(node["config"])
             if node_fallback_model:
                 capability_kwargs["fallback_model"] = node_fallback_model
+            # B-NODES: the Images opt-in, and (for a verdict-emitting node) its output format —
+            # each threaded ONLY when authored, so every other call stays byte-identical.
+            if resolve_multimodal(node["config"]):
+                capability_kwargs["multimodal"] = True
+            output_schema = resolve_output_schema(node["config"])
+            if output_schema is not None and emits:
+                capability_kwargs["output_schema"] = output_schema
+                capability_kwargs["output_schema_name"] = node["role_name"]
             result = agent_run_step(
                 run_id,
                 node["prompt"],
@@ -2084,9 +2194,16 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # ``RunWarning`` (surfaced in the run inspector's ``resolution_warnings``) and the walk
             # CONTINUES — v1 deliberately never fails a run on a schema result; a hard gate is the
             # separate ``output_schema_check`` GUARDRAIL node. No schema ⇒ no check ⇒ identical.
-            output_schema = resolve_output_schema(node["config"])
-            if output_schema is not None and kind == "completion":
-                violation = _output_schema_violation(result.get("report"), output_schema)
+            # B-NODES: every kind is checked — a non-emitting node's output is its REPORT.md (a
+            # missing one is itself a miss); an emitting node's verdict file was checked inside
+            # ``agent_run_step`` before the harvest removed it.
+            if output_schema is not None and not emits:
+                report = result.get("report")
+                violation = (
+                    _output_schema_violation(report, output_schema)
+                    if report is not None
+                    else "no REPORT.md to check against the output format"
+                )
                 if violation is not None:
                     record_resolution_warning(run_id, "output_schema", node["role_name"], violation)
 
