@@ -13,11 +13,12 @@ const { app, BrowserWindow, shell, ipcMain, safeStorage, session } = require("el
 const fs = require("fs");
 const path = require("path");
 const { createRegistry } = require("./harness/registry.cjs");
-const { createStatusStore, sanitizeStatus } = require("./harness/statusStore.cjs");
+const { createStatusStore } = require("./harness/statusStore.cjs");
+const { createEnginePrefs } = require("./harness/enginePrefs.cjs");
 const { listCandidateDirs } = require("./harness/pathDetect.cjs");
 const { createRunnerApi } = require("./runner/api.cjs");
 const { createStatusSync } = require("./runner/statusSync.cjs");
-const { bootEngines } = require("./runner/engineBoot.cjs");
+const { createEngineController } = require("./runner/engineController.cjs");
 const { createRunner } = require("./runner/runner.cjs");
 const { mainWindowOptions } = require("./windowOptions.cjs");
 
@@ -35,135 +36,56 @@ let apiBaseOrigin = "https://tvashtr.fly.dev";
 
 const PROVIDERS = ["claude", "grok", "codex"];
 
-/** How long after Connect a window-focus re-probe still counts as "finishing a login". */
-const LOGIN_REPROBE_WINDOW_MS = 30 * 60 * 1000;
-
 /** @type {ReturnType<typeof createRunner> | null} */
 let runner = null;
 
-function emptyStatus(provider) {
-  return {
-    provider,
-    connected: false,
-    state: "disconnected",
-    account_hint: null,
-    source: null,
-    checked_at: null,
-  };
-}
-
 /**
- * Strip non-status keys before any IPC return to the renderer.
- * @param {unknown} row
- * @param {string} provider
- */
-function toRendererStatus(row, provider) {
-  const cleaned = sanitizeStatus(row) || emptyStatus(provider);
-  if (cleaned.provider !== provider) cleaned.provider = provider;
-  return cleaned;
-}
-
-/**
- * M-subs-desktop: engines + the Desktop runner.
+ * M-subs-desktop: engines + the Desktop runner. The status logic (launch probe, sticky Disconnect,
+ * Connect re-probe on focus, cancelConnect, Refresh that never rejects) is in
+ * runner/engineController.cjs; this only wires it to IPC and Electron.
  *
- * - Status is asked of each user's OWN CLI once at launch (bootEngines), then only on Connect /
- *   Refresh / window focus after a Connect — never on a timer (A3). getStatus returns the cache.
- * - Every status change is pushed to the secret-free server mirror (A3) — launch included.
- * - Connect opens the vendor's own login in Terminal and returns at once (§3.0).
- * - The runner polls the control plane for this user's subscription node jobs while the app is
- *   open; its polls are the heartbeat the server's freshness check reads.
+ * The runner polls the control plane for this user's subscription node jobs while the app is
+ * open; its polls are the heartbeat the server's freshness check reads.
  */
 function registerEngineIpc() {
   const userData = app.getPath("userData");
   const store = createStatusStore({ userDataDir: userData, safeStorage });
+  const prefs = createEnginePrefs({ userDataDir: userData, providers: PROVIDERS });
   const registry = createRegistry({ loginScriptDir: path.join(userData, "login") });
-  const api = createRunnerApi({
-    baseUrl: () => localOrigin,
-    cookieHeader: async () => {
-      const cookies = await session.defaultSession.cookies.get({ url: localOrigin });
-      const parts = cookies.map((c) => `${c.name}=${c.value}`);
-      return parts.length ? parts.join("; ") : null;
-    },
-  });
+  const api = createRunnerApi({ baseUrl: () => localOrigin, cookieHeader: sessionCookieHeader });
   const statusSync = createStatusSync({ api, log: (m) => console.log(m) });
-  /** @type {Map<string, number>} provider -> when Connect opened the vendor login */
-  const pendingLogins = new Map();
-
-  const cached = (provider) => {
-    const stored = store.read(provider);
-    return stored ? toRendererStatus(stored, provider) : emptyStatus(provider);
-  };
-  const notifyRenderer = (status) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("tvashtr:engines:status", status);
-    }
-  };
-  const record = async (provider, raw) => {
-    const status = toRendererStatus(raw, provider);
-    store.write(provider, status);
-    await statusSync.push(status);
-    notifyRenderer(status);
-    return status;
-  };
-  const probe = async (provider) => {
-    const harness = registry.get(provider);
-    if (!harness) return cached(provider);
-    return record(provider, await harness.toStatus());
-  };
-
-  const booted = bootEngines({
+  const engines = createEngineController({
     providers: PROVIDERS,
     registry,
-    store: { write: (p, st) => store.write(p, toRendererStatus(st, p)) },
+    store,
+    prefs,
     statusSync,
+    notify: (status) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("tvashtr:engines:status", status);
+      }
+    },
     log: (m) => console.log(m),
-  }).catch((err) => console.error("[tvashtr-desktop] engine boot failed:", err));
+  });
+
+  const booted = engines
+    .boot()
+    .catch((err) => console.error("[tvashtr-desktop] engine boot failed:", err));
 
   ipcMain.handle("tvashtr:engines:getStatus", async () => {
     await booted;
-    return PROVIDERS.map(cached);
+    return engines.getStatus();
   });
-
-  ipcMain.handle("tvashtr:engines:connect", async (_e, provider) => {
-    const id = String(provider || "");
-    const harness = registry.get(id);
-    if (!harness) return emptyStatus(id || "claude");
-    const status = await record(id, await harness.connect());
-    if (!status.connected && status.state !== "needs_install") pendingLogins.set(id, Date.now());
-    return status;
-  });
-
-  ipcMain.handle("tvashtr:engines:disconnect", async (_e, provider) => {
-    const id = String(provider || "");
-    pendingLogins.delete(id);
-    store.clear(id);
-    await statusSync.clear(id);
-    const status = emptyStatus(id);
-    notifyRenderer(status);
-    return status;
-  });
-
-  ipcMain.handle("tvashtr:engines:refresh", async (_e, provider) => {
-    const id = String(provider || "");
-    const status = await probe(id);
-    if (status.connected) pendingLogins.delete(id);
-    return status;
-  });
+  ipcMain.handle("tvashtr:engines:connect", (_e, provider) => engines.connect(provider));
+  ipcMain.handle("tvashtr:engines:disconnect", (_e, provider) => engines.disconnect(provider));
+  ipcMain.handle("tvashtr:engines:refresh", (_e, provider) => engines.refresh(provider));
+  ipcMain.handle("tvashtr:engines:cancelConnect", (_e, provider) =>
+    engines.cancelConnect(provider),
+  );
 
   // After Connect opened Terminal, re-ask the CLI when the user comes back to Tvashtr.
   app.on("browser-window-focus", () => {
-    const now = Date.now();
-    for (const [id, startedAt] of [...pendingLogins]) {
-      if (now - startedAt > LOGIN_REPROBE_WINDOW_MS) {
-        pendingLogins.delete(id);
-        continue;
-      }
-      void probe(id)
-        .then((st) => {
-          if (st.connected) pendingLogins.delete(id);
-        })
-        .catch(() => {});
-    }
+    void engines.onWindowFocus();
   });
 
   const binaryCache = new Map();
@@ -174,11 +96,7 @@ function registerEngineIpc() {
     workRoot,
     baseEnv: process.env,
     pathDirs: () => listCandidateDirs({ npmGlobalBin: null }),
-    connectedProviders: () =>
-      PROVIDERS.filter((p) => {
-        const st = store.read(p);
-        return Boolean(st && st.connected === true);
-      }),
+    connectedProviders: () => engines.connectedProviders(),
     binaryFor: async (provider) => {
       if (!binaryCache.has(provider)) {
         const harness = registry.get(provider);
@@ -193,6 +111,13 @@ function registerEngineIpc() {
       if (statusSync.hasPending()) void statusSync.replayPending();
     },
   });
+}
+
+/** The `tv_session` cookie the UI holds for the loopback origin (runner + repo uploads). */
+async function sessionCookieHeader() {
+  const cookies = await session.defaultSession.cookies.get({ url: localOrigin });
+  const parts = cookies.map((c) => `${c.name}=${c.value}`);
+  return parts.length ? parts.join("; ") : null;
 }
 
 function envFlag(name, fallback = false) {
