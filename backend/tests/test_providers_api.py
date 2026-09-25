@@ -89,7 +89,8 @@ def test_add_provider_422_on_empty_key(client):
 def test_fresh_account_has_no_providers_and_no_runs():
     c, _ = _fresh_account()
     assert c.get("/api/providers").json() == {"providers": []}
-    assert c.get("/api/runs").json() == {"runs": []}
+    # Revamp P3: the list is paged, so it also carries ``next_cursor``.
+    assert c.get("/api/runs").json() == {"runs": [], "next_cursor": None}
 
 
 def test_runs_list_is_owner_scoped_and_newest_first():
@@ -115,7 +116,8 @@ def test_runs_list_is_owner_scoped_and_newest_first():
         ids
     )  # both present; newest-first when timestamps differ
     assert len(runs) == 2  # owner-scoped: only THIS fresh account's runs
-    assert set(runs[0]) == {"run_id", "idea", "status", "created_at", "repo_path"}
+    # Revamp P3: every original summary key is still there (the row gained more).
+    assert set(runs[0]) >= {"run_id", "idea", "status", "created_at", "repo_path"}
 
 
 def test_create_run_refused_when_owner_lacks_a_provider_credential():

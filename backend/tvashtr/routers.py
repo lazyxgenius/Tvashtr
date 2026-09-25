@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from dbos import DBOS, SetWorkflowID
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, model_validator
 from sqlalchemy import func, select, update
 
@@ -26,6 +26,7 @@ from tvashtr.control_plane import (
     memory_distill,
     memory_review,
     provider_models,
+    run_views,
 )
 from tvashtr.control_plane import desktop_jobs
 from tvashtr.control_plane.context_compiler import resolve_fallback_model, resolve_multimodal
@@ -668,6 +669,9 @@ def _run_to_dict(run: Run) -> dict:
         "pair_label": run.pair_label,
         "created_at": run.created_at.isoformat(),
         "updated_at": run.updated_at.isoformat(),
+        # Revamp P3: status_group, target, pr_number, budget_cap_usd, desktop_target,
+        # library_team_id, retry_of_run_id (additive; GET /api/runs/{id} adds the computed ones).
+        **run_views.run_fields(run),
     }
 
 
@@ -1407,6 +1411,8 @@ def get_run(run_id: str, current_user: Annotated[UserOut, Depends(get_current_us
         )
         costs = [_cost_to_dict(r) for r in cost_rows]
         run_dict = _run_to_dict(run)
+        # Revamp P3: team, live spent_usd, awaiting, failure.
+        run_dict.update(run_views.run_extras(session, [run])[run.id])
 
     return {
         "run_id": run_id,
@@ -2425,33 +2431,43 @@ def set_memory_review_mode(
     return {"review_mode": body.review_mode}
 
 
-def _run_summary(run: Run) -> dict:
-    """A run as the dashboard's 'previous runs' list shows it (no costs/graph — loaded on open)."""
-    return {
-        "run_id": str(run.id),
-        "idea": run.idea,
-        "status": run.status,
-        "created_at": run.created_at.isoformat(),
-        "repo_path": run.repo_path,
-    }
-
-
 @router.get("/api/runs")
-def list_runs(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
-    """The current account's runs as summaries (newest first) — the dashboard's 'previous runs'.
-    Owner-scoped: only ``runs.owner_id == current_user`` rows; A-B / snapshot runs the user launched
-    are theirs too (all created with their owner_id)."""
-    with db.session_scope() as session:
-        rows = (
-            session.execute(
-                select(Run)
-                .where(Run.owner_id == uuid.UUID(current_user.id))
-                .order_by(Run.created_at.desc())
-            )
-            .scalars()
-            .all()
+def list_runs(
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    status: str = "all",
+    team_id: str | None = None,
+    q: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=run_views.MAX_LIMIT)] = run_views.DEFAULT_LIMIT,
+    cursor: str | None = None,
+    include: str | None = None,
+) -> dict:
+    """The current account's runs, newest first, one page at a time (revamp P3 / G-6).
+    Owner-scoped: only ``runs.owner_id == current_user`` rows. ``status`` is a group (``all``,
+    ``active``, ``running``, ``needs_you``, ``completed``, ``failed``, ``stopped``); ``team_id``
+    filters by library team; ``q`` matches the idea or the team name; ``include=progress`` adds the
+    per-node progress chips. Each row keeps the old summary keys and adds team, target, PR, live
+    spend, budget, awaiting and failure (see ``run_views``)."""
+    team_uuid = None
+    if team_id is not None:
+        try:
+            team_uuid = uuid.UUID(team_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="invalid team_id") from exc
+    includes = {part.strip() for part in (include or "").split(",") if part.strip()}
+    if includes - {"progress"}:
+        raise HTTPException(status_code=422, detail="include accepts only: progress")
+    try:
+        return run_views.list_owner_runs(
+            uuid.UUID(current_user.id),
+            status=status,
+            team_id=team_uuid,
+            q=q,
+            limit=limit,
+            cursor=cursor,
+            include_progress="progress" in includes,
         )
-        return {"runs": [_run_summary(r) for r in rows]}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 # ---- The team library (P1.8b): first-class, multiple persistent teams + a template library ----
