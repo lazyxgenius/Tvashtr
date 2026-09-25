@@ -89,9 +89,16 @@ test("the dashboard shell: addresses, nav, refresh, back, shortcuts, account, ca
   // Home, then a new team → its canvas at #/teams/<id>.
   await nav.getByRole("button", { name: /^Home/ }).click();
   await expect(page).toHaveURL(/#\/(home)?$/);
-  await page.getByRole("button", { name: "New team", exact: true }).click();
+  // ⌘K opens the search-and-actions palette; Escape closes it.
+  await page.getByRole("button", { name: "Search teams, runs and actions" }).click();
+  const palette = page.getByRole("dialog", { name: "Search and actions" });
+  await expect(palette).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(palette).toHaveCount(0);
+
+  await page.getByRole("button", { name: "New team", exact: true }).first().click();
   const newTeam = page.getByRole("dialog", { name: "New team" });
-  await newTeam.getByLabel("Team name").fill("Shell e2e team");
+  await newTeam.getByLabel("Name", { exact: true }).fill("Shell e2e team");
   await newTeam.getByRole("button", { name: "Create team" }).click();
   await expect(page).toHaveURL(/#\/teams\/[0-9a-f-]{36}$/, { timeout: 30_000 });
   await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
@@ -104,7 +111,7 @@ test("the dashboard shell: addresses, nav, refresh, back, shortcuts, account, ca
   await page.getByRole("button", { name: "Back to dashboard" }).click();
   await expect(nav).toBeVisible();
   await expect(page).toHaveURL(/#\/(home)?$/);
-  await expect(page.getByText("Shell e2e team")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Shell e2e team").first()).toBeVisible({ timeout: 30_000 });
 
   // Log out from the account menu → landing; log in again → back in the shell.
   await page.getByRole("button", { name: "Account" }).click();
