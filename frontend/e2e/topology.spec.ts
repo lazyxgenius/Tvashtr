@@ -1,5 +1,9 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
+import { runFromCanvas } from "./_composer";
+import { registerFresh } from "./_home";
+import { seedProviderKeys } from "./_keys";
+
 // P1.8d topology editing — author your own wiring. Two proofs:
 //   (1) From a BLANK team, author a runnable graph from scratch (root thinker → Engineer worker →
 //       Ship) using the canvas (the palette adds the worker; the edges are wired through the same
@@ -9,6 +13,9 @@ import { type APIRequestContext, expect, test } from "@playwright/test";
 //       the reason, AND the server refuses create_run with a 422 carrying the structured errors.
 // The pure connect/role logic (which role a source may emit, loop detection, the emit-contract) is
 // proven in the vitest unit suite (src/lib/topology.test.ts); this is the live wiring + run proof.
+// Revamp round 1: each test signs in as a fresh account, the Blank team comes from Home's New team
+// dialog, and the run launches through Home's composer (the canvas's "Run this team" opens it).
+// Authenticated API calls go through `page.request` (the bare `request` fixture has no session).
 
 // The PM behaviour the root thinker needs to restate the pinned skeleton deliverable (kept in step
 // with teams.PM_PROMPT — the blank thinker ships an empty prompt, so we author one here).
@@ -68,23 +75,34 @@ async function newBlankTeam(page: import("@playwright/test").Page, name: string)
   const createResp = page.waitForResponse(
     (r) => r.url().endsWith("/api/teams") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: /New team/ }).click();
-  const picker = page.getByLabel("New team from a template");
+  await page.getByRole("button", { name: "New team", exact: true }).first().click();
+  const picker = page.getByRole("dialog", { name: "New team" });
   await expect(picker).toBeVisible({ timeout: 30_000 });
-  await picker.getByText("Blank team").click();
-  await picker.getByRole("textbox").fill(name);
+  await picker
+    .locator("button.hm-tplcard", {
+      has: page.locator(".hm-tplcard__name", { hasText: /^Blank$/ }),
+    })
+    .click();
+  await picker.getByLabel("Name", { exact: true }).fill(name);
   await picker.getByRole("button", { name: "Create team" }).click();
   const teamId = ((await (await createResp).json()) as { team_graph_id: string }).team_graph_id;
   expect(teamId, "the Blank-team picker creates a team and returns its id").toBeTruthy();
+  await expect(page).toHaveURL(new RegExp(`#/teams/${teamId}$`), { timeout: 30_000 });
   return teamId;
 }
 
 test("P1.8d: an invalid graph greys out Run with the reason and the server refuses the launch (422)", async ({
   page,
-  request,
 }) => {
   test.setTimeout(2 * 60 * 1000);
-  await page.goto("/");
+  await registerFresh(page, "topology-invalid");
+  // A keyless account's canvas shows "Configure providers" in place of "Run this team"; hold a DUMMY
+  // deepseek key (it serves both seats; this test never starts a run, so it is never used).
+  const key = await page.request.post("/api/providers", {
+    data: { provider: "deepseek", api_key: "dummy-deepseek-key-0000" },
+  });
+  expect(key.ok(), "store a dummy deepseek key").toBeTruthy();
+  const request = page.request;
   const teamId = await newBlankTeam(page, `E2E invalid ${Date.now()}`);
   console.log(`[topology-e2e] created blank team ${teamId}`);
 
@@ -113,10 +131,13 @@ test("P1.8d: an invalid graph greys out Run with the reason and the server refus
 
 test("P1.8d: author root thinker → Engineer → Ship from a blank team, Run it, and it ships", async ({
   page,
-  request,
 }) => {
   test.setTimeout(5 * 60 * 1000);
-  await page.goto("/");
+  // The thinker is authored onto openai/gpt-4o-mini and the Engineer preset defaults to the held
+  // provider's worker model, so the account holds both keys (from .env) before the team is made.
+  await registerFresh(page, "topology-run");
+  await seedProviderKeys(page, ["deepseek", "openai"]);
+  const request = page.request;
   const teamId = await newBlankTeam(page, `E2E topology ${Date.now()}`);
   console.log(`[topology-e2e] created blank team ${teamId}`);
 
@@ -149,24 +170,16 @@ test("P1.8d: author root thinker → Engineer → Ship from a blank team, Run it
   await expect.poll(() => isRunnable(request, teamId), { timeout: 30_000 }).toBe(true);
   console.log("[topology-e2e] authored thinker → Engineer → Ship; the graph validates runnable");
 
-  // Reload so the UI reflects the authored graph, select the team in the rail, and confirm Run is
-  // enabled (the UI mirrors the server verdict).
+  // Reload so the UI reflects the authored graph (the canvas address keeps the team open), and
+  // confirm Run is enabled (the UI mirrors the server verdict).
   await page.reload();
-  await page
-    .getByRole("button", { name: new RegExp(`E2E topology`) })
-    .first()
-    .click();
+  await expect(page).toHaveURL(new RegExp(`#/teams/${teamId}$`));
   const runBtn = page.getByRole("button", { name: "Run this team" });
   await expect(runBtn).toBeEnabled({ timeout: 30_000 });
 
-  // RUN through the UI → capture the run id from the launch, then poll for completion + a ship.
-  const runResp = page.waitForResponse(
-    (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
-  );
-  await runBtn.click();
-  // Slice 2: "Run this team" opens the launch panel; its Run fires the (greenfield) launch.
-  await page.getByRole("button", { name: "Run", exact: true }).click();
-  const runId = ((await (await runResp).json()) as { run_id: string }).run_id;
+  // RUN through the UI → Home's composer (the backend's skeleton idea) → capture the run id from
+  // the launch, then poll for completion + a ship.
+  const { runId } = await runFromCanvas(page);
   expect(runId, "the UI launches the authored team").toBeTruthy();
   console.log(`[topology-e2e] launched run ${runId} — polling for the ship…`);
 

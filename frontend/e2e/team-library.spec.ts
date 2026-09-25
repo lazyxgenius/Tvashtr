@@ -1,5 +1,6 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
+import { runFromCanvas } from "./_composer";
 import { shippedFile } from "./_shipReadback";
 
 // DEFAULT_IDEA's deliverable line (backend/tvashtr/routers.py) — the template default the shipped
@@ -59,7 +60,11 @@ test("P1.8b team library: create a team from a template, edit its Engineer node,
   await page.getByRole("button", { name: "New team", exact: true }).first().click();
   const picker = page.getByRole("dialog", { name: "New team" });
   await expect(picker).toBeVisible({ timeout: 30_000 });
-  await picker.getByText("PM → Engineer ⇄ Reviewer").click();
+  await picker
+    .locator("button.hm-tplcard", {
+      has: page.locator(".hm-tplcard__name", { hasText: /^PM → Engineer ⇄ Reviewer$/ }),
+    })
+    .click();
   await picker.getByLabel("Name", { exact: true }).fill(TEAM_NAME);
   await picker.getByRole("button", { name: "Create team" }).click();
   console.log(`[team-library-e2e] created team "${TEAM_NAME}" from the review_loop template`);
@@ -89,14 +94,9 @@ test("P1.8b team library: create a team from a template, edit its Engineer node,
   await expect(panel.getByText(/Saved/)).toBeVisible({ timeout: 30_000 });
   console.log(`[team-library-e2e] saved the edited Engineer prompt + model (${AGENT_MODEL})`);
 
-  // 4. "Run this team" -> capture the run_id from the POST /api/runs response.
-  const startResp = page.waitForResponse(
-    (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "Run this team" }).click();
-  // Slice 2: "Run this team" opens the launch panel; its Run fires the (greenfield) launch.
-  await page.getByRole("button", { name: "Run", exact: true }).click();
-  const runId = ((await (await startResp).json()) as { run_id: string }).run_id;
+  // 4. "Run this team" -> Home's composer (this team picked) -> Launch with the backend's skeleton
+  //    idea -> capture the run_id from the POST /api/runs response; "Open run" -> the run view.
+  const { runId } = await runFromCanvas(page, { teamName: TEAM_NAME });
   expect(runId, "the Run-this-team control returns a run_id").toBeTruthy();
   console.log(`[team-library-e2e] run_id = ${runId}`);
 

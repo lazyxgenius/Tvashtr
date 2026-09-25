@@ -3,8 +3,10 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-// Live FE sign-off for the M-memory S5a account **Memory shelf** (the 4th Dashboard shelf). Logs in
-// as the SEEDED operator (whose .env OpenAI key was imported by the seed, so POST /api/memories can
+import { shellNav } from "./_home";
+
+// Live FE sign-off for the M-memory S5a account **Memory shelf** (on Toolkit › Memory since revamp
+// round 1). Logs in as the SEEDED operator (whose .env OpenAI key was imported by the seed, so POST /api/memories can
 // embed), then drives the six acceptance checks — each with a screenshot. Targeted role/label
 // selectors only (the Dashboard is not a React Flow canvas, but the discipline still holds). NO agent
 // run is driven; the one pending fact is seeded directly by scripts/memory_shelf_e2e.sh.
@@ -34,18 +36,28 @@ test("memory shelf: add / pin / edit / review-toggle / confirm-pending / delete"
   const shelf = page.locator('section[aria-label="Your agent memory"]');
   const shot = (name: string) => shelf.screenshot({ path: path.join(SHOTS_DIR, name) });
 
-  // ---- Log in as the seeded operator → the Dashboard. The reskinned AuthGate shows a landing whose
-  // nav "Sign in" CTA opens the AuthWizard in login mode (its submit is also "Sign in"); the landing
-  // is replaced by the wizard, so there is never more than one "Sign in" button on screen at once. ----
+  // ---- Sign in as the seeded operator → Home, then Toolkit › Memory. The landing's nav "Sign in"
+  // CTA opens the AuthWizard in login mode (its submit is also "Sign in"); the landing is replaced by
+  // the wizard, so there is never more than one "Sign in" button on screen at once. The email form
+  // exists only in the self-hosted posture, so scripts/memory_shelf_e2e.sh pins
+  // TVASHTR_HOSTED_MODE=false. ----
   await page.goto("/");
   await page.getByRole("button", { name: "Sign in" }).click(); // landing nav CTA → login mode
   await page.getByLabel("Email").fill(SEED_EMAIL);
   await page.getByLabel("Password").fill(SEED_PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click(); // the AuthWizard submit
-  // Sign-in ends on a "success" step; onAuthed (→ the dashboard) fires only on "Enter Tvashtr".
+  // Sign-in ends on a "success" step; onAuthed (→ Home) fires only on "Enter Tvashtr".
   await page.getByRole("button", { name: "Enter Tvashtr" }).click();
+  await shellNav(page)
+    .getByRole("button", { name: /^Toolkit/ })
+    .click();
+  await shellNav(page)
+    .getByRole("button", { name: /^Memory/ })
+    .click();
+  await expect(page).toHaveURL(/#\/toolkit\/memory/);
 
-  // The Memory shelf heading is the "logged in + dashboard loaded" marker (it is always mounted).
+  // The Memory shelf heading is the "signed in + Toolkit › Memory loaded" marker (a reload keeps the
+  // page's address, so the checks below reload in place).
   await expect(shelf.getByRole("heading", { name: "Memory" })).toBeVisible({ timeout: 30_000 });
 
   // ---- CHECK 1 — add an Account-tier fact via the form → it appears with its polarity badge. ----

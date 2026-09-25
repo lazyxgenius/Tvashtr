@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { type APIRequestContext, expect, test } from "@playwright/test";
+import { runFromCanvas } from "./_composer";
 import { openMyTeam } from "./_myTeam";
 
 // Live FE proof for Mode A ("Ask the node"): register a fresh account, seed its deepseek key, create
@@ -48,13 +49,9 @@ test("node-ask: the Ask tab answers a question about what a node did", async ({ 
   await expect(engineerNode).toBeVisible({ timeout: 30_000 });
   console.log("[node-ask-e2e] opened the seeded review_loop 'My team'");
 
-  // 3. Run this team -> launch panel -> Run (greenfield) -> capture run_id.
-  const startResp = page.waitForResponse(
-    (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "Run this team" }).click();
-  await page.getByRole("button", { name: "Run", exact: true }).click();
-  const runId = ((await (await startResp).json()) as { run_id: string }).run_id;
+  // 3. Run this team -> Home's composer -> Launch (greenfield, the backend's skeleton idea) ->
+  //    capture run_id; "Open run" -> the run view (revamp round 1: the one launch surface).
+  const { runId } = await runFromCanvas(page, { teamName: "My team" });
   expect(runId, "Run-this-team returns a run_id").toBeTruthy();
   console.log(`[node-ask-e2e] run_id = ${runId}`);
 

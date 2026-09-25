@@ -1,4 +1,8 @@
+import fs from "node:fs";
+
 import { type Page, expect, test } from "@playwright/test";
+
+import { openTeamViaPalette, registerFresh } from "./_home";
 import { openMyTeam } from "./_myTeam";
 
 // P1.8d-fix1 self-sign-off (scripted-Playwright FALLBACK for the Playwright MCP, whose CDP backend
@@ -8,9 +12,15 @@ import { openMyTeam } from "./_myTeam";
 //
 // Every check also carries the render-loop guard: any "Maximum update depth exceeded" console error
 // or uncaught page exception during an authoring interaction fails the check (the hang's signature).
+//
+// Revamp round 1: each check signs in as a fresh account (new accounts start with no team), and a
+// team is opened the way a user reaches it from anywhere in the shell — the header's search palette.
+// A reload keeps the canvas address, so the team reopens by itself. No driver script: run it against
+// any live backend + Vite (e.g. the stack scripts/accounts_e2e.sh boots) with
+// `TVASHTR_E2E_BASE_URL=http://127.0.0.1:5173 npx playwright test e2e/fix1_signoff.spec.ts`.
 
-const SHOTS =
-  "/private/tmp/claude-501/-Users-adimac-Desktop-Tvashtr/6244d7e6-995d-45a5-8ad1-7258fd16a42c/scratchpad/signoff";
+const SHOTS = process.env.TVASHTR_FIX1_SHOTS_DIR ?? "/tmp/tvashtr_fix1_signoff_shots";
+fs.mkdirSync(SHOTS, { recursive: true });
 
 let consoleErrors: string[] = [];
 let pageErrors: string[] = [];
@@ -36,14 +46,19 @@ async function nodeCount(page: Page): Promise<number> {
   return page.locator(".react-flow__node").count();
 }
 
-// Select a rail team by its UNIQUE full name (timestamped) — prior-run teams of the same prefix
-// accumulate in the rail, so a prefix match + `.first()` would act on the wrong team.
-const re = (s: string): RegExp => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+// A keyless account's canvas shows "Configure providers" in place of "Run this team". The checks
+// that assert Run's state hold a DUMMY deepseek key first (deepseek serves both seats, so every node
+// the defaults stamp is covered; no run is launched, so the key is never used).
+async function holdDummyKey(page: Page): Promise<void> {
+  const res = await page.request.post("/api/providers", {
+    data: { provider: "deepseek", api_key: "dummy-deepseek-key-0000" },
+  });
+  expect(res.ok(), "store a dummy deepseek key").toBeTruthy();
+}
+
+// Open a team by its UNIQUE full name (timestamped) from the shell's search palette.
 async function selectTeam(page: Page, name: string): Promise<void> {
-  await page
-    .getByRole("button", { name: re(name) })
-    .first()
-    .click();
+  await openTeamViaPalette(page, name);
 }
 
 interface Graph {
@@ -56,6 +71,7 @@ test("check1: selecting the multi-node 'My team' renders its nodes with NO rende
   page,
 }) => {
   test.setTimeout(90_000);
+  await registerFresh(page, "fix1-check1");
   // No team is seeded any more: create "My team" and open it (the select path that hung).
   await openMyTeam(page);
   // (a) the team's nodes actually render — NOT the empty "Nothing on the loom yet" state.
@@ -76,13 +92,13 @@ test("check1: selecting the multi-node 'My team' renders its nodes with NO rende
 // ── Check 2 ────────────────────────────────────────────────────────────────────────────────────
 test("check2: the review_loop team renders the bounded rework arc (.rf-edge--rework)", async ({
   page,
-  request,
 }) => {
   test.setTimeout(90_000);
+  await registerFresh(page, "fix1-check2");
+  const request = page.request;
   const name = `signoff-rework ${Date.now()}`;
   const r = await request.post("/api/teams", { data: { template: "review_loop", name } });
   expect(r.ok(), "create review_loop team").toBeTruthy();
-  await page.goto("/");
   await selectTeam(page, name);
   await expect.poll(() => nodeCount(page), { timeout: 30_000 }).toBeGreaterThan(1);
   // exactly the calm dashed loop-back arc — the P1.8b regression guard.
@@ -95,13 +111,14 @@ test("check2: the review_loop team renders the bounded rework arc (.rf-edge--rew
 // ── Check 3 ────────────────────────────────────────────────────────────────────────────────────
 test("check3: an invalid graph greys out Run with reasons + flags the node, then re-enables when fixed", async ({
   page,
-  request,
 }) => {
   test.setTimeout(120_000);
+  await registerFresh(page, "fix1-check3");
+  await holdDummyKey(page);
+  const request = page.request;
   const name = `signoff-gate ${Date.now()}`;
   const r = await request.post("/api/teams", { data: { template: "blank", name } });
   const teamId = ((await r.json()) as { team_graph_id: string }).team_graph_id;
-  await page.goto("/");
   await selectTeam(page, name);
 
   // A blank team is valid → Run enabled.
@@ -126,8 +143,8 @@ test("check3: an invalid graph greys out Run with reasons + flags the node, then
   const worker = g.nodes.find((n) => n.kind === "agent");
   expect(worker, "the dropped worker exists").toBeTruthy();
   await request.delete(`/api/teams/${teamId}/nodes/${worker!.id}`);
-  await page.reload();
-  await selectTeam(page, name);
+  await page.reload(); // the canvas address survives a reload — the same team reopens
+  await expect(page).toHaveURL(new RegExp(`#/teams/${teamId}$`));
   await expect(page.getByRole("button", { name: "Run this team" })).toBeEnabled({
     timeout: 30_000,
   });
@@ -141,13 +158,13 @@ test("check3: an invalid graph greys out Run with reasons + flags the node, then
 // ── Check 4 ────────────────────────────────────────────────────────────────────────────────────
 test("check4: the palette drops a primitive (Worker) and a pre-filled preset (Engineer)", async ({
   page,
-  request,
 }) => {
   test.setTimeout(120_000);
+  await registerFresh(page, "fix1-check4");
+  const request = page.request;
   const name = `signoff-palette ${Date.now()}`;
   const r = await request.post("/api/teams", { data: { template: "blank", name } });
   const teamId = ((await r.json()) as { team_graph_id: string }).team_graph_id;
-  await page.goto("/");
   await selectTeam(page, name);
   await expect.poll(() => nodeCount(page), { timeout: 30_000 }).toBe(2); // blank skeleton: thinker→Ship
 
@@ -172,12 +189,17 @@ test("check5: New → Blank team renders the 2-node thinker→Ship skeleton and 
   page,
 }) => {
   test.setTimeout(90_000);
-  await page.goto("/");
-  await page.getByRole("button", { name: /New team/ }).click();
-  const picker = page.getByLabel("New team from a template");
+  await registerFresh(page, "fix1-check5");
+  await holdDummyKey(page);
+  await page.getByRole("button", { name: "New team", exact: true }).first().click();
+  const picker = page.getByRole("dialog", { name: "New team" });
   await expect(picker).toBeVisible({ timeout: 30_000 });
-  await picker.getByText("Blank team").click();
-  await picker.getByRole("textbox").fill(`signoff-blank ${Date.now()}`);
+  await picker
+    .locator("button.hm-tplcard", {
+      has: page.locator(".hm-tplcard__name", { hasText: /^Blank$/ }),
+    })
+    .click();
+  await picker.getByLabel("Name", { exact: true }).fill(`signoff-blank ${Date.now()}`);
   await picker.getByRole("button", { name: "Create team" }).click();
   // the minimal valid skeleton: 2 nodes (root thinker → Ship), and Run is enabled (valid).
   await expect.poll(() => nodeCount(page), { timeout: 30_000 }).toBe(2);
@@ -192,13 +214,13 @@ test("check5: New → Blank team renders the 2-node thinker→Ship skeleton and 
 // ── Check 6 ────────────────────────────────────────────────────────────────────────────────────
 test("check6: dragging a node persists its position across a reload (not reset to 0,0)", async ({
   page,
-  request,
 }) => {
   test.setTimeout(120_000);
+  await registerFresh(page, "fix1-check6");
+  const request = page.request;
   const name = `signoff-layout ${Date.now()}`;
   const r = await request.post("/api/teams", { data: { template: "blank", name } });
   const teamId = ((await r.json()) as { team_graph_id: string }).team_graph_id;
-  await page.goto("/");
   await selectTeam(page, name);
   const node = page.locator(".react-flow__node").first();
   await expect(node).toBeVisible({ timeout: 30_000 });
@@ -233,8 +255,8 @@ test("check6: dragging a node persists its position across a reload (not reset t
   };
   const moved = persisted.nodes.find((x) => x.id === draggedId)!;
 
-  await page.reload();
-  await selectTeam(page, name);
+  await page.reload(); // the canvas address survives a reload — the same team reopens
+  await expect(page).toHaveURL(new RegExp(`#/teams/${teamId}$`));
   const reloaded = page.locator(`.react-flow__node[data-id="${draggedId}"]`);
   await expect(reloaded).toBeVisible({ timeout: 30_000 });
   const transform = await reloaded.evaluate((el) => (el as HTMLElement).style.transform);

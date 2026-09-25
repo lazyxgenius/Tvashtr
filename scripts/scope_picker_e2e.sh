@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 #
-# Live M-brownfield scoped-mount Slice 2 SCOPE-PICKER E2E — the launch panel's Scope dropdown + the
-# extended repo-inspect round-trip.
+# Live M-brownfield scoped-mount Slice 2 SCOPE-PICKER E2E — the composer's Scope select (Home's
+# "Start a run", the one launch surface since revamp round 1) + the extended repo-inspect round-trip.
 #
-#   Register a fresh account, open the seeded team, click "Run this team" (assert the panel OPENS),
-#   flip "work on a local repo" On, type a REAL multi-package fixture git repo path the spec creates,
-#   and assert the base-branch dropdown AND the new Scope dropdown populate from the LIVE POST
-#   /api/repo/inspect round-trip (which now returns `subpaths`); pick a package and assert the launch
-#   POST /api/runs body carries `subpath`. A screenshot per check.
+#   Register a fresh account, create "My team", click "Run this team" (assert the composer OPENS),
+#   type a REAL multi-package fixture git repo path the spec creates into the repo picker, and assert
+#   Options › Base branch AND the Scope select fill from the LIVE POST /api/repo/inspect round-trip
+#   (which returns `subpaths`); pick a package, Launch, and assert the POST /api/runs body carries
+#   `subpath`. A screenshot per check.
 #
 # Orchestration mirrors scripts/launch_panel_e2e.sh (a real backend + the Vite dev server + a headless
-# Playwright run) — but this gate drives NO agent run (the keyless fresh account 422s the create
-# pre-flight, so no LLM/key is needed), and it runs on ISOLATED ports (backend :8001, Vite :5174) so
+# Playwright run) — but this gate drives NO agent run (the spec answers the launch POST itself with a
+# 422 after reading its body, so no LLM/real key is needed), and it runs on ISOLATED ports (backend :8001, Vite :5174) so
 # it never collides with a sibling worktree. Postgres is the SHARED container (this worktree's own DB
 # is isolated via .env DATABASE_URL → tvashtr_scope), so we do NOT `docker compose up` a second one.
 set -euo pipefail
@@ -38,6 +38,9 @@ fi
 
 # The panel + inspect gate drives no agent loop; LOCAL sandbox keeps the backend cheap.
 export TVASHTR_AGENT_SANDBOX=local
+# The free-text repo path + POST /api/repo/inspect this spec drives exist only in the
+# self-hosted posture; .env may set TVASHTR_HOSTED_MODE=true, so pin it off for this backend.
+export TVASHTR_HOSTED_MODE=false
 export TVASHTR_SCOPE_SHOTS_DIR="$SHOTS_DIR"
 # Vite (:5174) proxies /api + /health to THIS worktree's backend (:8001), not the default :8000.
 export TVASHTR_API_PROXY_TARGET="$BASE"

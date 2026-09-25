@@ -3,11 +3,17 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-// M-tools C7.A frontend self-sign-off. Drives the REAL app (register -> AuthWizard -> new team ->
-// open a WORKER node) and screenshots: (a) the real Tools (MCP) editor, (b) the pre-launch
+import { registerFresh, shellNav } from "./_home";
+
+// M-tools C7.A frontend self-sign-off. Drives the REAL app (register -> Toolkit › Secrets -> Home's
+// New team -> open a WORKER node) and screenshots: (a) the real Tools (MCP) editor, (b) the pre-launch
 // "Needs ${GITHUB_TOKEN}" note, (c) the run-inspector warning banner (the exact .tv-runwarn DOM
 // RunWarnings renders, styled by the live panel.css), and (d) the account MCP Secrets shelf.
 // Targeted selectors only (no whole-tree a11y snapshot — that wedges on the React Flow canvas).
+// Revamp round 1: the account registers through the API (the sign-up wizard is not under test and
+// hides its email form in the hosted posture), and the Secrets shelf lives on Toolkit › Secrets. No
+// driver script: run it against any live backend + Vite (e.g. the stack scripts/accounts_e2e.sh boots)
+// with `TVASHTR_E2E_BASE_URL=http://127.0.0.1:5173 npx playwright test e2e/tools-c7a.spec.ts`.
 
 const SHOTS = process.env.TVASHTR_TOOLS_SHOTS_DIR ?? "/tmp/tvashtr_tools_shots";
 
@@ -17,44 +23,37 @@ test("M-tools C7.A: real Tools editor + pre-launch ${NAME} note + run banner + S
   test.setTimeout(3 * 60 * 1000);
   fs.mkdirSync(SHOTS, { recursive: true });
 
-  // Register a fresh account through the AuthWizard.
-  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 30000 });
-  await page.getByRole("button", { name: "Get started" }).first().click();
-  await page.getByLabel("Email").fill(`tools-c7a+${Date.now()}@tvashtr.local`);
-  await page.getByLabel("Password").fill("e2e-password-123");
-  await page.getByRole("button", { name: "Create account" }).click();
+  // Register a fresh account (the page shares the cookie) → the signed-in shell.
+  await registerFresh(page, "tools-c7a");
 
-  // Advance through the role/building questions to the dashboard (pick an option + Continue).
-  for (let i = 0; i < 4; i++) {
-    if (await page.getByRole("button", { name: /New team/ }).count()) break;
-    const opt = page
-      .getByRole("button")
-      .filter({ hasNotText: /Continue|Back|Sign in|Enter Tvashtr|New team|Log/i })
-      .first();
-    if (await opt.count()) await opt.click().catch(() => {});
-    const go = page.getByRole("button", { name: /Continue|Enter Tvashtr|Finish|Done/i }).first();
-    if (await go.count()) await go.click().catch(() => {});
-    await page.waitForTimeout(1200);
-  }
-  await expect(page.getByRole("button", { name: /New team/ })).toBeVisible({ timeout: 30_000 });
-
-  // (d) The account MCP Secrets shelf, live on the dashboard beside Provider keys.
-  await expect(page.getByRole("heading", { name: "MCP secrets" })).toBeVisible();
+  // (d) The account MCP Secrets shelf, on Toolkit › Secrets.
+  await shellNav(page)
+    .getByRole("button", { name: /^Toolkit/ })
+    .click();
+  await shellNav(page)
+    .getByRole("button", { name: /^Secrets/ })
+    .click();
+  await expect(page).toHaveURL(/#\/toolkit\/secrets$/);
+  await expect(page.getByRole("heading", { name: "MCP secrets" })).toBeVisible({ timeout: 30_000 });
   await page.getByRole("heading", { name: "MCP secrets" }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(SHOTS, "d-secrets-shelf.png") });
   console.log("[tools-c7a-e2e] (d) captured the account MCP Secrets shelf");
 
-  // New team from the PM → Engineer template (a PM thinker + an Engineer worker).
+  // New team from Home's dialog, PM → Engineer template (a PM thinker + an Engineer worker).
+  await shellNav(page).getByRole("button", { name: /^Home/ }).click();
   const createResp = page.waitForResponse(
     (r) => r.url().endsWith("/api/teams") && r.request().method() === "POST",
   );
-  await page
-    .getByRole("button", { name: /New team/ })
-    .first()
+  await page.getByRole("button", { name: "New team", exact: true }).first().click();
+  const picker = page.getByRole("dialog", { name: "New team" });
+  await expect(picker).toBeVisible({ timeout: 30_000 });
+  await picker
+    .locator("button.hm-tplcard", {
+      has: page.locator(".hm-tplcard__name", { hasText: /^PM → Engineer$/ }),
+    })
     .click();
-  await page.getByRole("button", { name: /^PM → Engineer A PM writes/ }).click();
-  await page.getByLabel("Team name").fill(`Tools C7A ${Date.now()}`);
-  await page.getByRole("button", { name: "Create team" }).click();
+  await picker.getByLabel("Name", { exact: true }).fill(`Tools C7A ${Date.now()}`);
+  await picker.getByRole("button", { name: "Create team" }).click();
   await createResp;
 
   // Open the Engineer (a worker) node -> the panel with the real Tools section.

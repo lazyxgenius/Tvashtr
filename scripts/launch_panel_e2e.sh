@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 #
-# Live M-brownfield Slice 2 launch-panel E2E — the launch panel + the repo-inspect round-trip.
+# Live launch-surface E2E (was the M-brownfield Slice 2 launch panel; revamp round 1 made Home's
+# "Start a run" composer the one launch surface) + the repo-inspect round-trip.
 #
-#   Open the app, click "Run this team" (assert the launch panel OPENS, not a run), flip "work on a
-#   local repo", type a REAL tiny fixture git repo path the spec creates (assert the base-branch
-#   dropdown populates from the live POST /api/repo/inspect round-trip), and confirm the greenfield
-#   path (toggle Off) still launches a run (POST body == { team_graph_id }). A screenshot per check.
+#   Sign in as a fresh account, create a team from Home, click "Run this team" (assert the composer
+#   OPENS with the team picked, not a run), type a REAL tiny fixture git repo path the spec creates
+#   into the repo picker (assert Options › Base branch fills from the live POST /api/repo/inspect
+#   round-trip), and confirm the greenfield path ("No repo") still launches a run (the POST body
+#   carries no repo target) that "Open run" shows. A screenshot per check.
 #
 # Orchestration mirrors scripts/authoring_brief_e2e.sh (Postgres + migrate + a real backend + the
-# Vite dev server + a headless Playwright run) — but this gate drives NO agent run, so it needs NO
-# NVIDIA key and runs on the LOCAL sandbox.
+# Vite dev server + a headless Playwright run) — but this gate drives NO agent run to completion (the
+# greenfield run is cancelled at once and holds only a dummy key), so it needs NO real key and runs on
+# the LOCAL sandbox.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,6 +38,9 @@ fi
 # The panel + inspect gate drives no agent loop; LOCAL sandbox keeps the backend cheap, and the
 # greenfield launch is cancelled by the spec so no run lingers.
 export TVASHTR_AGENT_SANDBOX=local
+# The free-text repo path + POST /api/repo/inspect this spec drives exist only in the
+# self-hosted posture; .env may set TVASHTR_HOSTED_MODE=true, so pin it off for this backend.
+export TVASHTR_HOSTED_MODE=false
 export TVASHTR_LAUNCH_SHOTS_DIR="$SHOTS_DIR"
 
 PG_USER="${POSTGRES_USER:-tvashtr}"
