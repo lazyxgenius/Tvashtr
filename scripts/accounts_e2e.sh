@@ -3,14 +3,14 @@
 # Live M-accounts Slice B accounts E2E — the full account journey, account-based + provider-keyed.
 #
 #   1. A logged-out visit shows the LANDING page (no canvas, no "create team" surface).
-#   2. A landing CTA opens register; a brand-new account lands on the empty DASHBOARD.
-#   3. Add a provider API key on the dashboard (shows `provider · •••• last4`, secret never shown).
-#   4. Open a team from the dashboard -> the canvas; back-to-dashboard returns.
+#   2. A landing CTA opens register; a brand-new account lands on the first-time HOME.
+#   3. Add a provider API key on Engines › API keys (shows `provider` + `•••• last4`, secret never shown).
+#   4. New team from Home -> the canvas; the back arrow returns to Home, which lists it.
 #
 # Orchestration mirrors scripts/auth_e2e.sh (Postgres + migrate + seed + a real backend on the LOCAL
 # sandbox + the Vite dev server + a headless Playwright run). NO agent run is driven — it needs NO
-# NVIDIA key; just Postgres + a real backend + Vite + Playwright. The dashboard's seeded starter team
-# is what the journey opens to reach the canvas.
+# NVIDIA key; just Postgres + a real backend + Vite + Playwright. New accounts start with no team, so
+# the journey creates one from Home to reach the canvas.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -36,6 +36,9 @@ fi
 # The accounts journey drives no agent loop; LOCAL sandbox keeps the backend cheap. The seed creds
 # are the dev defaults (overridable) and are exported so both the seed step and the spec see them.
 export TVASHTR_AGENT_SANDBOX=local
+# The email/password sign-up this spec drives exists only in the self-hosted posture; .env may set
+# TVASHTR_HOSTED_MODE=true (GitHub-only sign-in), so pin it off for this backend.
+export TVASHTR_HOSTED_MODE=false
 export TVASHTR_ACCOUNTS_SHOTS_DIR="$SHOTS_DIR"
 export TVASHTR_SEED_EMAIL="${TVASHTR_SEED_EMAIL:-operator@tvashtr.local}"
 export TVASHTR_SEED_PASSWORD="${TVASHTR_SEED_PASSWORD:-tvashtr-dev}"
@@ -118,7 +121,7 @@ set -e
 
 hr
 if [[ "$PW_EXIT" == "0" ]]; then
-  echo "ACCOUNTS E2E PASSED (landing -> register -> empty dashboard -> add a key -> open a team -> canvas)"
+  echo "ACCOUNTS E2E PASSED (landing -> register -> first-time Home -> add a key -> new team -> canvas -> Home)"
   echo "screenshots:"
   ls -la "$SHOTS_DIR"/*.png 2>/dev/null || echo "  (no screenshots found in $SHOTS_DIR)"
 else

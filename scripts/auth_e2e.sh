@@ -36,6 +36,9 @@ fi
 # The auth gate drives no agent loop; LOCAL sandbox keeps the backend cheap. Seed creds are the
 # dev defaults (overridable) and are exported so BOTH the seed step and the Playwright spec see them.
 export TVASHTR_AGENT_SANDBOX=local
+# The email/password sign-up this spec drives exists only in the self-hosted posture; .env may set
+# TVASHTR_HOSTED_MODE=true (GitHub-only sign-in), so pin it off for this backend.
+export TVASHTR_HOSTED_MODE=false
 export TVASHTR_AUTH_SHOTS_DIR="$SHOTS_DIR"
 export TVASHTR_SEED_EMAIL="${TVASHTR_SEED_EMAIL:-operator@tvashtr.local}"
 export TVASHTR_SEED_PASSWORD="${TVASHTR_SEED_PASSWORD:-tvashtr-dev}"
@@ -118,7 +121,7 @@ set -e
 
 hr
 if [[ "$PW_EXIT" == "0" ]]; then
-  echo "AUTH E2E PASSED (login required; register→canvas; logout→login; seeded-login→canvas)"
+  echo "AUTH E2E PASSED (landing when out; register→Home; logout→landing; seeded sign-in→Home)"
   echo "screenshots:"
   ls -la "$SHOTS_DIR"/*.png 2>/dev/null || echo "  (no screenshots found in $SHOTS_DIR)"
 else

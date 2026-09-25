@@ -2,12 +2,13 @@
 #
 # Live P1.8c capability-authoring E2E — flip a node's capability on the canvas, through the real UI.
 #
-#   Open the app -> "+ New team" -> pick the thinker_chain template (PM → Architect → Engineer) ->
-#   name it -> the new team becomes current -> click its Architect agent node -> flip the Capability
-#   toggle thinker → worker -> Save (PATCH the node-update endpoint) -> assert (a) GET the team graph
-#   shows the Architect now kind=agent + engine=openhands (the flip PERSISTED), (b) the canvas
-#   re-labels the node as a Worker, and (c) the PM (start node) toggle is disabled/locked. This is
-#   the toggle-plumbing + start-lock proof; the "a graph with a non-start thinker runs correctly"
+#   Sign in as a fresh account -> Home's "New team" -> the plan_review template (PM -> Architect ->
+#   Engineer <-> Reviewer) -> name it -> its canvas opens -> click the Architect (a non-start thinker)
+#   -> flip its Edits toggle (M-unify U3: the node's one capability distinction) from "Not allowed"
+#   to "Edits allowed" -> Save (PATCH the node-update endpoint) -> assert (a) GET the team graph shows
+#   the Architect now edits_allowed=true (the flip PERSISTED), (b) the canvas card re-labels
+#   "Edits on", and (c) the PM (start node) toggle is disabled/locked. This is the toggle-plumbing +
+#   start-lock proof; the "a graph with a non-start thinker runs correctly"
 #   proof is carried by the offline keystone (test_thinker_chain.py) + `make thinker-chain-e2e`.
 #
 # Orchestration mirrors scripts/team_library_e2e.sh (Postgres + migrate + a real backend + the Vite
@@ -115,7 +116,7 @@ PW_EXIT=$?
 
 hr
 if [[ "$PW_EXIT" == "0" ]]; then
-  echo "CAPABILITY-EDIT E2E PASSED (flipped the Architect thinker→worker; persisted + re-labelled; PM locked)"
+  echo "CAPABILITY-EDIT E2E PASSED (flipped the Architect to Edits allowed; persisted + re-labelled; PM locked)"
 else
   echo "CAPABILITY-EDIT E2E FAILED (exit $PW_EXIT)"
 fi

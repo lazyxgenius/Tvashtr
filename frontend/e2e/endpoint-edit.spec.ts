@@ -3,13 +3,15 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
+import { openTeamViaPalette, registerFresh } from "./_home";
+
 // Live FE proof for M-endpoint-editable: a terminal (Ship) endpoint's drawer is EDITABLE and can
-// be flipped to Stop. Register a fresh account, create a blank team (thinker → Ship), open the
-// Ship endpoint on the canvas, click Stop, Save, assert config.terminal_kind + role_name persisted
+// be flipped to Stop. Register a fresh account, create a blank team (thinker → Ship), open it from
+// the shell's search palette, click Stop, Save, assert config.terminal_kind + role_name persisted
 // via a live /api/teams/{id}/graph read, and that the canvas card re-renders as Stop with its
-// in-edge still attached. Reload proves durability. Targeted selectors + node-by-id clicks (NOT a
-// whole-tree a11y snapshot — that wedges on the React Flow canvas, HANDOVER §4). NO agent run /
-// NO provider key.
+// in-edge still attached. A reload of the canvas address and a re-open from Home prove durability.
+// Targeted selectors + node-by-id clicks (NOT a whole-tree a11y snapshot — that wedges on the React
+// Flow canvas, HANDOVER §4). NO agent run / NO provider key.
 
 const SHOTS_DIR = process.env.TVASHTR_ENDPOINT_EDIT_SHOTS_DIR ?? "/tmp/tvashtr_endpoint_edit_shots";
 
@@ -33,19 +35,12 @@ test("endpoint-edit: a Ship terminal flips to Stop in the drawer, persists, keep
   test.setTimeout(3 * 60 * 1000);
   fs.mkdirSync(SHOTS_DIR, { recursive: true });
 
-  // --- Register a fresh account (M-accounts Slice A). Register via the API so the cookie carries
-  //     to the page, then load the app authenticated. ---
-  const email = `endpoint-edit+${Date.now()}@tvashtr.local`;
-  const reg = await page.request.post("/api/auth/register", {
-    data: { email, password: "e2e-password-123" },
-  });
-  expect(reg.ok(), `register ${email} -> ${reg.status()}`).toBeTruthy();
-  await page.goto("/");
-  const newTeamBtn = page.getByRole("button", { name: /New team/ });
-  await expect(newTeamBtn).toBeVisible({ timeout: 30_000 });
+  // --- Register a fresh account through the API (the cookie carries to the page) and open the
+  //     signed-in shell. ---
+  const email = await registerFresh(page, "endpoint-edit");
   console.log(`[endpoint-edit-e2e] registered ${email}`);
 
-  // --- Create a blank team (thinker → Ship) via the API, then OPEN it from the dashboard. ---
+  // --- Create a blank team (thinker → Ship) via the API, then OPEN it from the search palette. ---
   const teamName = `Endpoint-edit E2E ${Date.now()}`;
   const createRes = await page.request.post("/api/teams", {
     data: { template: "blank", name: teamName },
@@ -54,8 +49,8 @@ test("endpoint-edit: a Ship terminal flips to Stop in the drawer, persists, keep
   const teamId = ((await createRes.json()) as { team_graph_id: string }).team_graph_id;
   console.log(`[endpoint-edit-e2e] created team ${teamId}`);
 
-  await page.reload();
-  await page.getByRole("button", { name: `Open ${teamName}` }).click();
+  await openTeamViaPalette(page, teamName);
+  await expect(page).toHaveURL(new RegExp(`#/teams/${teamId}$`));
 
   const graphOf = async (): Promise<Graph> =>
     (await (await page.request.get(`/api/teams/${teamId}/graph`)).json()) as Graph;
@@ -128,11 +123,10 @@ test("endpoint-edit: a Ship terminal flips to Stop in the drawer, persists, keep
   await page.screenshot({ path: path.join(SHOTS_DIR, "check4-canvas-stop-edges.png") });
   console.log("[endpoint-edit-e2e] CHECK 4 PASS — canvas shows Stop; in-edges unchanged");
 
-  // CHECK 5 — reload (drops in-memory selection → dashboard) + re-open the team: still Stop.
+  // CHECK 5 — reload keeps the canvas address (the page reopens the same team): still Stop. Then
+  //           back to Home and re-open the team from the palette: still Stop.
   await page.reload();
-  await expect(page.getByRole("button", { name: `Open ${teamName}` })).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page).toHaveURL(new RegExp(`#/teams/${teamId}$`));
   // API durability first (independent of FE selection).
   await expect
     .poll(
@@ -144,12 +138,17 @@ test("endpoint-edit: a Ship terminal flips to Stop in the drawer, persists, keep
       { timeout: 15_000 },
     )
     .toBe("stop");
-  await page.getByRole("button", { name: `Open ${teamName}` }).click();
+  const reloaded = page.locator(`.react-flow__node[data-id="${ship.id}"]`);
+  await expect(reloaded).toBeVisible({ timeout: 30_000 });
+  await expect(reloaded.getByText("Stop", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back to dashboard" }).click();
+  await expect(page).toHaveURL(/#\/(home)?$/, { timeout: 30_000 });
+  await openTeamViaPalette(page, teamName);
   const reopened = page.locator(`.react-flow__node[data-id="${ship.id}"]`);
   await expect(reopened).toBeVisible({ timeout: 30_000 });
   await expect(reopened.getByText("Stop", { exact: true })).toBeVisible();
   await page.screenshot({ path: path.join(SHOTS_DIR, "check5-reload-stop.png") });
-  console.log("[endpoint-edit-e2e] CHECK 5 PASS — still Stop after reload + re-open");
+  console.log("[endpoint-edit-e2e] CHECK 5 PASS — still Stop after reload + re-open from Home");
 
   for (const f of [
     "check1-canvas-ship.png",
