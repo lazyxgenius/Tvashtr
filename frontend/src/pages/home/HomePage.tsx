@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useToast } from "../../design-system/components";
 import { getTeams, type TeamSummary } from "../../lib/api";
 import { reportFetchFailed, reportFetchOk } from "../../lib/backendStatus";
 import { type HomeAction, useHomeActionHandler } from "../../lib/homeActions";
 import { Composer } from "./Composer";
+import { FirstTimeHome } from "./FirstTimeHome";
 import { HomeHeader } from "./HomeHeader";
 import { HomeContext, type HomeContextValue } from "./homeContext";
 import { NeedsYou } from "./NeedsYou";
@@ -12,6 +14,7 @@ import { RecentRuns } from "./RecentRuns";
 import { RunningNow } from "./RunningNow";
 import { SpendCard } from "./SpendCard";
 import { TeamsSection } from "./TeamsSection";
+import { useGetStartedProgress } from "./useGetStartedProgress";
 import "./home.css";
 
 /**
@@ -27,6 +30,8 @@ export function HomePage() {
   const [newTeam, setNewTeam] = useState<{ templateKey?: string } | null>(null);
   const [historyTeamId, setHistoryTeamId] = useState<string | null>(null);
   const composerFocus = useRef<(() => void) | null>(null);
+  const toast = useToast();
+  const getStarted = useGetStartedProgress(teams, teamsLoading);
 
   const reloadTeams = useCallback(async () => {
     try {
@@ -51,6 +56,17 @@ export function HomePage() {
 
   const focusComposer = useCallback(() => composerFocus.current?.(), []);
 
+  // Pick the composer's team; with `toast`, say so ("{team} picked. Say what to build.").
+  const pickTeamForRun = useCallback(
+    (teamId: string, opts?: { toast?: boolean }) => {
+      setComposerTeamId(teamId);
+      composerFocus.current?.();
+      const name = teams.find((t) => t.team_graph_id === teamId)?.name;
+      if (opts?.toast && name) toast({ message: `${name} picked. Say what to build.` });
+    },
+    [teams, toast],
+  );
+
   const value = useMemo<HomeContextValue>(
     () => ({
       teams,
@@ -58,10 +74,7 @@ export function HomePage() {
       teamsError,
       reloadTeams,
       composerTeamId,
-      pickTeamForRun: (teamId) => {
-        setComposerTeamId(teamId);
-        composerFocus.current?.();
-      },
+      pickTeamForRun,
       focusComposer,
       registerComposerFocus: (focus) => {
         composerFocus.current = focus;
@@ -71,7 +84,16 @@ export function HomePage() {
       historyTeamId,
       setHistoryTeamId,
     }),
-    [teams, teamsLoading, teamsError, reloadTeams, composerTeamId, focusComposer, historyTeamId],
+    [
+      teams,
+      teamsLoading,
+      teamsError,
+      reloadTeams,
+      composerTeamId,
+      pickTeamForRun,
+      focusComposer,
+      historyTeamId,
+    ],
   );
 
   useHomeActionHandler((action: HomeAction) => {
@@ -79,14 +101,29 @@ export function HomePage() {
       setNewTeam({ templateKey: action.templateKey });
     } else if (teams.length === 0 && !teamsLoading) {
       setNewTeam({});
+    } else if (action.teamId) {
+      pickTeamForRun(action.teamId, { toast: true });
     } else {
-      if (action.teamId) setComposerTeamId(action.teamId);
       focusComposer();
     }
   });
 
   return (
     <HomeContext.Provider value={value}>
+      {getStarted.firstTime ? <FirstTimeHome progress={getStarted} /> : <HomeMain />}
+      <NewTeamDialog
+        open={newTeam !== null}
+        initialTemplate={newTeam?.templateKey}
+        onClose={() => setNewTeam(null)}
+      />
+    </HomeContext.Provider>
+  );
+}
+
+/** The normal Home layout (Home-Main). */
+function HomeMain() {
+  return (
+    <>
       <HomeHeader />
       <Composer />
       <div className="hm-cols">
@@ -100,11 +137,6 @@ export function HomePage() {
           <SpendCard />
         </div>
       </div>
-      <NewTeamDialog
-        open={newTeam !== null}
-        initialTemplate={newTeam?.templateKey}
-        onClose={() => setNewTeam(null)}
-      />
-    </HomeContext.Provider>
+    </>
   );
 }
