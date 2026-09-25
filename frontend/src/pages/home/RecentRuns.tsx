@@ -213,7 +213,7 @@ export function RecentRuns() {
                 />
                 <div className="hm-recent__body">
                   <button type="button" className="hm-recent__idea" onClick={() => openRun(r)}>
-                    {r.idea}
+                    <span>{r.idea}</span>
                   </button>
                   <div className="hm-recent__meta">
                     {r.team?.name ?? "Run"} · {formatRelativeTime(r.created_at)}

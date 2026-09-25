@@ -57,8 +57,12 @@ describe("Home greeting", () => {
         /You’re all caught up\. Approvals, failed runs and setup gaps show up here\./,
       ),
     ).toBeInTheDocument();
-    // Running now hides when empty (HOME-79).
-    expect(screen.queryByRole("region", { name: "Running now" })).toBeNull();
+    // Running now shows its empty state (HmF-FirstTime-7).
+    expect(
+      within(screen.getByRole("region", { name: "Running now" })).getByText(
+        "Nothing is running. Start a run above, or open a team.",
+      ),
+    ).toBeInTheDocument();
   });
 });
 

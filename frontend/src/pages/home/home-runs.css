@@ -533,6 +533,14 @@
   background: var(--coral-500);
 }
 
+.hm-run-empty {
+  padding: 14px 16px;
+  border: 1px dashed var(--line-300);
+  border-radius: 14px;
+  font-size: 13.5px;
+  color: var(--ink-600);
+}
+
 /* ---- Pipeline chips ---- */
 .hm-chips {
   display: flex;
@@ -1041,19 +1049,7 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-/* Icon-only ⋯ / Close buttons: the design runtime renders them with the browser's native button
-   font. There is no text inside, so this only keeps the parity measurement comparing like with like. */
-.hm-inbox__actions .ds-iconbtn,
-.ds-sheet[aria-label="Add an API key"] .ds-sheet__head .ds-iconbtn,
-.ds-sheet[aria-label="Run history"] .ds-sheet__head .ds-iconbtn,
-.ds-sheet[aria-label^="Approve"] .ds-sheet__head .ds-iconbtn,
-.ds-sheet[aria-label="Decide on the escalation"] .ds-sheet__head .ds-iconbtn {
-  font:
-    400 13.3333px Arial,
-    sans-serif;
-}
-
-/* Launch advisories carried over from the old launch panel (large repo, edits-off asks). */
+/* The large-repo note carried over from the old launch panel. */
 .hm-advice {
   display: flex;
   flex-direction: column;
@@ -1064,10 +1060,4 @@
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--ink-700);
-}
-.hm-advice b {
-  font-weight: 600;
-}
-.hm-advice code {
-  font-family: var(--font-code);
 }
