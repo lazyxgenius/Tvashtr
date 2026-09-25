@@ -48,7 +48,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import clone_reaper, github_app, workspace_reaper
+from tvashtr.control_plane import clone_reaper, github_app, run_failure, workspace_reaper
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.budget_nudge import maybe_emit_budget_nudge_step
 from tvashtr.control_plane.context_compiler import (
@@ -95,6 +95,7 @@ from tvashtr.control_plane.worktree import (
     add_worktree,
     build_repo_grounding,
     is_work_tree,
+    resolve_start_point,
 )
 from tvashtr.db import session_scope
 from tvashtr.documents.service import (
@@ -773,7 +774,10 @@ def _materialize_run_workspace(run_id: str) -> str:
                     .scalar_one()
                     .repo_path
                 )
-        branch = add_worktree(repo_path, workspace, run_id, base_ref)
+        # Revamp P6: a hosted run may now target a non-default branch, which a fresh clone holds
+        # only as ``origin/<branch>`` — cut from that. A local-folder run is unchanged.
+        start = resolve_start_point(repo_path, base_ref) if github_repo else base_ref
+        branch = add_worktree(repo_path, workspace, run_id, start)
         with session_scope() as session:
             session.execute(
                 update(Run).where(Run.id == uuid.UUID(run_id)).values(ship_branch=branch)
@@ -1557,10 +1561,47 @@ def finalize_run_step(run_id: str, status: str = "completed") -> dict:
 
 
 @DBOS.step()
-def mark_run_failed_step(run_id: str) -> None:
-    with session_scope() as session:
-        session.execute(update(Run).where(Run.id == uuid.UUID(run_id)).values(status="failed"))
+def mark_run_failed_step(
+    run_id: str,
+    *,
+    code: str | None = None,
+    message: str | None = None,
+    node_id: str | None = None,
+) -> None:
+    """Mark the run ``failed`` with a readable reason (revamp P9) and its cost so far (G-2).
 
+    Every fail site passes its ``code``, the raw ``message`` (the engine/step reason) and the
+    run-graph ``node_id`` that failed; :func:`run_failure.humanise` turns them into the stored
+    ``failure_code`` / ``failure_message`` (e.g. "Engineer has no xai key on the website"). The
+    keywords are optional so a replay of an older recorded call stays valid, and the step still
+    returns ``None`` (its recorded output is unchanged). ``cost_total_usd`` is written like
+    ``finalize_run_step`` does, so a failed run's spend is no longer counted as $0."""
+    run_uuid = uuid.UUID(run_id)
+    total = running_cost(run_id)
+    with session_scope() as session:
+        desktop_target = bool(
+            session.execute(select(Run.desktop_target).where(Run.id == run_uuid)).scalar_one()
+        )
+        node = None
+        if node_id:
+            node = session.execute(
+                select(AgentNode.role_name, AgentNode.kind, AgentNode.config).where(
+                    AgentNode.id == uuid.UUID(node_id)
+                )
+            ).one_or_none()
+        role = run_failure.node_label(node.role_name, node.kind, node.config) if node else None
+        failure = run_failure.humanise(code, message, role=role, desktop_target=desktop_target)
+        session.execute(
+            update(Run)
+            .where(Run.id == run_uuid)
+            .values(
+                status="failed",
+                cost_total_usd=total,
+                failure_code=failure["code"],
+                failure_message=failure["message"],
+                failed_node_id=uuid.UUID(node_id) if node_id else None,
+            )
+        )
 
 
 @DBOS.step()
@@ -1997,7 +2038,16 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     outcome_detail=result.get("error"),
                     context_manifest=result.get("context_manifest"),
                 )
-                mark_run_failed_step(run_id)
+                mark_run_failed_step(
+                    run_id,
+                    code=(
+                        run_failure.OVER_CONTEXT
+                        if result["status"] == "over_context"
+                        else run_failure.AGENT_ERROR
+                    ),
+                    message=result.get("error"),
+                    node_id=current,
+                )
                 DBOS.logger.error(
                     f"run_team agent node failed run_id={run_id}: {result.get('error')}"
                 )
@@ -2055,7 +2105,9 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                         outcome_detail=reason,
                         context_manifest=result.get("context_manifest"),
                     )
-                    mark_run_failed_step(run_id)
+                    mark_run_failed_step(
+                        run_id, code=run_failure.NO_SPEC, message=reason, node_id=current
+                    )
                     DBOS.logger.error(f"run_team entry node produced no REPORT.md run_id={run_id}")
                     return {
                         "run_id": run_id,
@@ -2123,7 +2175,6 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 return _finalize_over_budget(run_id, pm_document_id)
             current = next_node(edges, current, route_label)
 
-
         elif kind == "domain_query":
             n = iters_by_node.get(current, 0) + 1
             iters_by_node[current] = n
@@ -2133,7 +2184,9 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             if not domain_id:
                 reason = "Select a Domain on this Query domain node before running."
                 close_invocation_step(run_id, current, n, "failed", None, outcome_detail=reason)
-                mark_run_failed_step(run_id)
+                mark_run_failed_step(
+                    run_id, code=run_failure.DOMAIN_QUERY, message=reason, node_id=current
+                )
                 return {
                     "run_id": run_id,
                     "status": "failed",
@@ -2145,7 +2198,9 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             except ValueError as exc:
                 reason = str(exc)
                 close_invocation_step(run_id, current, n, "failed", None, outcome_detail=reason)
-                mark_run_failed_step(run_id)
+                mark_run_failed_step(
+                    run_id, code=run_failure.DOMAIN_QUERY, message=reason, node_id=current
+                )
                 return {
                     "run_id": run_id,
                     "status": "failed",
@@ -2155,10 +2210,10 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             result = domain_query_step(run_id, str(domain_id), question)
             if result.get("status") != "completed":
                 reason = result.get("error") or "domain query failed"
-                close_invocation_step(
-                    run_id, current, n, "failed", None, outcome_detail=reason
+                close_invocation_step(run_id, current, n, "failed", None, outcome_detail=reason)
+                mark_run_failed_step(
+                    run_id, code=run_failure.DOMAIN_QUERY, message=reason, node_id=current
                 )
-                mark_run_failed_step(run_id)
                 DBOS.logger.error(f"run_team domain_query failed run_id={run_id}: {reason}")
                 return {
                     "run_id": run_id,
@@ -2234,7 +2289,9 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     pr_url = push_and_open_pr_step(run_id, workspace, ship.get("ship_branch"))
                 except Exception as exc:  # noqa: BLE001 — surface the reason; do NOT report completed
                     reason = f"github delivery failed: {exc}"
-                    mark_run_failed_step(run_id)
+                    mark_run_failed_step(
+                        run_id, code=run_failure.GITHUB_DELIVERY, message=reason, node_id=current
+                    )
                     close_invocation_step(run_id, current, 1, "failed", reason)
                     DBOS.logger.error(f"run_team hosted ship failed run_id={run_id}: {reason}")
                     return {
@@ -2282,7 +2339,12 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
         else:
             # Defensive: an unknown node kind ends the walk safely as a clear failure (never
             # loop forever). Unreachable with the hardcoded builders.
-            mark_run_failed_step(run_id)
+            mark_run_failed_step(
+                run_id,
+                code=run_failure.INVALID_GRAPH,
+                message=f"unknown node kind {kind!r}",
+                node_id=current,
+            )
             DBOS.logger.error(f"run_team unknown node kind {kind!r} at {current} run_id={run_id}")
             return {
                 "run_id": run_id,
@@ -2293,7 +2355,9 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
 
     # Defensive: the walk fell off the end without reaching a terminal (a malformed graph —
     # an outcome that matched no out-edge). Don't silently "succeed"; finalize failed.
-    mark_run_failed_step(run_id)
+    mark_run_failed_step(
+        run_id, code=run_failure.INVALID_GRAPH, message="walk ended with no terminal node"
+    )
     DBOS.logger.error(f"run_team walked off the end with no terminal node run_id={run_id}")
     return {
         "run_id": run_id,

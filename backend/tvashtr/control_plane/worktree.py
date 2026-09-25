@@ -158,6 +158,31 @@ def branch_name_for(run_id: str) -> str:
     return f"tvashtr/{run_id}"
 
 
+def resolve_start_point(repo_path: str, base_ref: str | None) -> str | None:
+    """The commit-ish to cut a worktree from for ``base_ref`` in a CLONE (revamp P6).
+
+    A fresh ``git clone`` has a local branch only for the default branch; every other branch exists
+    only as ``origin/<branch>``, which ``git worktree add -b <new> <ws> <branch>`` cannot resolve.
+    So: the local branch when there is one, else ``origin/<base_ref>`` when that exists, else
+    ``base_ref`` unchanged (a tag or sha)."""
+    if not base_ref:
+        return base_ref
+    local = _git(
+        repo_path, "rev-parse", "--verify", "--quiet", f"refs/heads/{base_ref}", check=False
+    )
+    if local.returncode == 0:
+        return base_ref
+    remote = _git(
+        repo_path,
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        f"refs/remotes/origin/{base_ref}",
+        check=False,
+    )
+    return f"origin/{base_ref}" if remote.returncode == 0 else base_ref
+
+
 def add_worktree(repo_path: str, workspace: str, run_id: str, base_ref: str | None) -> str:
     """Add an isolated ``git worktree`` of ``repo_path`` at ``workspace`` on branch
     ``tvashtr/<run_id>``, cut from ``base_ref``. Returns the branch name. **Idempotent on resume**

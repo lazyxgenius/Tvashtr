@@ -31,6 +31,7 @@ from tvashtr.control_plane.credential_gate import (
 )
 from tvashtr.control_plane.credentials import held_provider_slugs, provider_for_model
 from tvashtr.db import session_scope
+from tvashtr.metering import running_cost
 from tvashtr.models import (
     AgentInvocation,
     AgentNode,
@@ -2120,11 +2121,14 @@ def cancel_run_core(run_id: str) -> None:
         if run is None or run.status in blocked:
             return
     DBOS.cancel_workflow(run_id)
+    # Revamp G-2: a stopped run keeps what it spent (like ``finalize_run_step``), so team and
+    # account spend stop counting cancelled runs as $0.
+    spent = running_cost(run_id)
     with session_scope() as session:
         session.execute(
             update(Run)
             .where(Run.workflow_id == run_id, Run.status.notin_(blocked))
-            .values(status="cancelled")
+            .values(status="cancelled", cost_total_usd=spent)
         )
         session.execute(
             update(HumanTask)

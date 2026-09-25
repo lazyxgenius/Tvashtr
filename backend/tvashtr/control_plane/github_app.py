@@ -58,7 +58,12 @@ _installation_token_cache: dict[int, tuple[str, float]] = {}
 class GithubAppError(RuntimeError):
     """A GitHub App credential / API failure whose message is SAFE to log or surface: it carries an
     HTTP status and a short non-secret hint ONLY — never a key, token, client secret, or a response
-    body that could echo one."""
+    body that could echo one. ``status`` is the HTTP status when GitHub answered (else ``None``),
+    so a caller can tell "no such branch" (404) from an outage."""
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 def _require(value: str, name: str) -> str:
@@ -122,7 +127,9 @@ def _http(
             return json.loads(resp.read().decode() or "{}")
     except urllib.error.HTTPError as exc:
         # STATUS ONLY — deliberately drop exc.read() (it can echo the presented token/secret).
-        raise GithubAppError(f"GitHub {method} {_safe_path(url)} -> HTTP {exc.code}") from None
+        raise GithubAppError(
+            f"GitHub {method} {_safe_path(url)} -> HTTP {exc.code}", status=exc.code
+        ) from None
     except urllib.error.URLError as exc:
         raise GithubAppError(
             f"GitHub {method} {_safe_path(url)} unreachable: {exc.reason}"
@@ -445,6 +452,95 @@ def find_repo_in_installations(
             if repo.get("full_name") == full_name:
                 return installation_id, repo
     return None
+
+
+# ---- Branches and folders of a repo (revamp P6: the hosted launch's Base branch + Scope) ---------
+
+# Branch listing cap: 3 pages of 100. A repo with more is rare; a branch past the cap is still
+# found by :func:`get_branch_sha`.
+_MAX_BRANCH_PAGES = 3
+# The Scope picker offers at most this many top-level folders (mirrors ``worktree.repo_subpaths``).
+_MAX_SUBPATHS = 100
+
+
+def list_branches(installation_id: int, full_name: str) -> tuple[list[dict], bool]:
+    """``([{"name", "sha"}, …], truncated)`` — the repo's branches in GitHub's order, capped at
+    ``_MAX_BRANCH_PAGES`` pages of 100 (``truncated`` says the cap was hit)."""
+    token = get_installation_token(installation_id)
+    branches: list[dict] = []
+    for page in range(1, _MAX_BRANCH_PAGES + 1):
+        result = _http(
+            "GET",
+            f"{_GITHUB_API}/repos/{full_name}/branches?per_page=100&page={page}",
+            token=token,
+        )
+        batch = result if isinstance(result, list) else []
+        for item in batch:
+            if isinstance(item, dict) and item.get("name"):
+                commit = item.get("commit") if isinstance(item.get("commit"), dict) else {}
+                branches.append({"name": item["name"], "sha": commit.get("sha")})
+        if len(batch) < 100:
+            return branches, False
+    return branches, True
+
+
+def get_branch_sha(installation_id: int, full_name: str, branch: str) -> str | None:
+    """The head commit sha of ``branch``, or ``None`` when the repo has no such branch."""
+    token = get_installation_token(installation_id)
+    try:
+        result = _http(
+            "GET",
+            f"{_GITHUB_API}/repos/{full_name}/branches/{quote(branch, safe='')}",
+            token=token,
+        )
+    except GithubAppError as exc:
+        if exc.status == 404:
+            return None
+        raise
+    commit = result.get("commit") if isinstance(result, dict) else None
+    return commit.get("sha") if isinstance(commit, dict) else None
+
+
+def tree_subpaths(installation_id: int, full_name: str, sha: str) -> tuple[list[dict], bool]:
+    """``([{"path", "file_count"}, …], truncated)`` — the TOP-LEVEL folders of the tree at ``sha``,
+    each with the number of files anywhere under it (the shape of ``worktree.repo_subpaths``),
+    sorted by path. ``truncated`` is GitHub's own flag for a tree too large to list whole."""
+    token = get_installation_token(installation_id)
+    result = _http(
+        "GET",
+        f"{_GITHUB_API}/repos/{full_name}/git/trees/{quote(sha, safe='')}?recursive=1",
+        token=token,
+    )
+    entries = result.get("tree", []) if isinstance(result, dict) else []
+    counts: dict[str, int] = {}
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict) or entry.get("type") != "blob":
+            continue
+        path = entry.get("path") or ""
+        if "/" not in path:
+            continue  # a top-level file is not a scope
+        top = path.split("/", 1)[0]
+        counts[top] = counts.get(top, 0) + 1
+    subpaths = [{"path": p, "file_count": counts[p]} for p in sorted(counts)][:_MAX_SUBPATHS]
+    return subpaths, bool(result.get("truncated")) if isinstance(result, dict) else False
+
+
+def path_is_dir(installation_id: int, full_name: str, ref: str, path: str) -> bool:
+    """Whether ``path`` is a folder of the repo at ``ref`` (a branch name or sha). Git tracks no
+    empty folders, so a folder always holds at least one file."""
+    token = get_installation_token(installation_id)
+    try:
+        result = _http(
+            "GET",
+            f"{_GITHUB_API}/repos/{full_name}/contents/{quote(path, safe='/')}"
+            f"?ref={quote(ref, safe='')}",
+            token=token,
+        )
+    except GithubAppError as exc:
+        if exc.status == 404:
+            return False
+        raise
+    return isinstance(result, list)
 
 
 def list_open_pull_requests(installation_id: int, full_name: str, *, head: str) -> list[dict]:

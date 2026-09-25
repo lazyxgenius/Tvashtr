@@ -58,8 +58,10 @@ def test_generate_doc_end_to_end(client, monkeypatch):
     # The document is listed, and costs are filterable by workflow_id.
     listed = client.get("/api/documents").json()["documents"]
     assert any(d["id"] == document_id for d in listed)
+    # Revamp: /api/costs is owner-scoped to the caller's RUNS. The spike workflow is not a run, so
+    # its row belongs to no account and is not listed (the status endpoint above still shows it).
     filtered = client.get(f"/api/costs?workflow_id={wf_id}").json()["costs"]
-    assert len(filtered) == 1
+    assert filtered == []
 
 
 def test_generate_doc_status_unknown_workflow(client):
