@@ -200,6 +200,8 @@ def test_graph_endpoint_node_invocations_are_ordered_per_round_history(client):
         "cost",
         "started_at",
         "ended_at",
+        # B-NODES (additive): the invocation's id (the focus view's rounds rail keys on it).
+        "invocation_id",
     }
     assert rounds[0]["context_manifest"] is None and rounds[0]["cost"] is None
     assert rounds[0]["outcome_detail"] == "missing tests for the edge case"

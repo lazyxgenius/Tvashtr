@@ -488,6 +488,13 @@ def resolve_reads_from(node_config: dict | None) -> list[str]:
     return [item.strip() for item in value if isinstance(item, str) and item.strip()]
 
 
+def resolve_reads_default(node_config: dict | None) -> bool:
+    """B-NODES: whether a node with NO ``reads_from`` still reads the run's default spec — the
+    ``config["reads_default"]`` bool, default ``True`` (today's behaviour). Only an explicit
+    ``False`` turns it off ("reads nothing"); ``reads_from`` names always win over it."""
+    return (node_config or {}).get("reads_default") is not False
+
+
 def resolve_fallback_model(node_config: dict | None) -> str | None:
     """Per-node capabilities (Session A): the AUTO-FAILOVER model slug — the top-level
     ``config["fallback_model"]`` string in a node's EXISTING ``config`` JSONB (additive, NO

@@ -21,7 +21,7 @@ from collections import defaultdict
 
 from sqlalchemy import select
 
-from tvashtr.control_plane.team_run import escalation_target, next_node
+from tvashtr.control_plane.team_run import escalation_target, next_node, node_emits_outcome
 from tvashtr.models import AgentNode, Edge
 
 
@@ -252,6 +252,44 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> dict:
                     edge_id=e["id"],
                 )
 
+    # --- B-NODES: per-agent readiness. Checked only when the node dict CARRIES the field
+    # (graph_dicts does; a hand-built dict without ``model``/``prompt`` is not judged on it). ---
+    agent_kinds = ("completion", "agent")
+    for nid in sorted(reachable):
+        n = nodes_by_id[nid]
+        if n.get("kind") not in agent_kinds:
+            continue
+        if "model" in n and not str(n.get("model") or "").strip():
+            err(
+                "no_model",
+                "This agent needs a model before the team can run.",
+                node_id=nid,
+            )
+        if "prompt" in n and not str(n.get("prompt") or "").strip():
+            warn(
+                "no_instructions",
+                "This agent has no instructions yet — write them, or start from a template.",
+                node_id=nid,
+            )
+    # An agent that branches on a verdict cannot author a document (its pull carries only the
+    # verdict), so the executor ignores its ``writes_to`` — say so at edit time.
+    for nid in sorted(nodes_by_id):
+        n = nodes_by_id[nid]
+        cfg = n.get("config") if isinstance(n.get("config"), dict) else {}
+        writes_to = cfg.get("writes_to")
+        if (
+            n.get("kind") in agent_kinds
+            and isinstance(writes_to, str)
+            and writes_to.strip()
+            and node_emits_outcome(redges, nid)
+        ):
+            warn(
+                "writes_on_emitting_node",
+                "This agent routes on a verdict, so it can’t write a document — its verdict "
+                "goes to Runs. Remove its Writes, or move it to an agent that doesn’t branch.",
+                node_id=nid,
+            )
+
     # --- WARN: orphan (unreachable) nodes. Only when a single entry exists — otherwise the
     # root errors above already explain why nothing is reachable. ---
     if len(root_ids) == 1:
@@ -443,7 +481,10 @@ def graph_dicts(session, graph_id) -> tuple[list[dict], list[dict]]:
         .all()
     )
     edges = session.execute(select(Edge).where(Edge.team_graph_id == graph_id)).scalars().all()
-    node_dicts = [{"id": str(n.id), "kind": n.kind, "config": n.config} for n in nodes]
+    node_dicts = [
+        {"id": str(n.id), "kind": n.kind, "config": n.config, "model": n.model, "prompt": n.prompt}
+        for n in nodes
+    ]
     edge_dicts = [
         {
             "id": str(e.id),

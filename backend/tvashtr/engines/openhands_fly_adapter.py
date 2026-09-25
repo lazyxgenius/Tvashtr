@@ -537,6 +537,8 @@ class OpenHandsFlyAdapter:
                     # low-balance key on a request that would have cost cents. The condenser's
                     # ``model_copy`` below inherits it.
                     max_output_tokens=settings.agent_max_output_tokens,
+                    # B-NODES: the node's Images opt-in turns vision on; unset ⇒ byte-identical.
+                    **({"disable_vision": False} if task.multimodal else {}),
                 )
                 condenser_llm = llm.model_copy(update={"usage_id": "tvashtr-condenser"})
                 condenser_llm.reset_metrics()
