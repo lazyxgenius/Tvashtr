@@ -17,6 +17,7 @@ Openhands-free at import (only cryptography + sqlalchemy + the app's own modules
 (``team_run.py``) can import it without breaching the import boundary.
 """
 
+import re
 import uuid
 
 from cryptography.fernet import Fernet
@@ -67,6 +68,26 @@ def provider_for_model(model: str) -> str:
     *more correct* than the pre-Slice-B agent catch-all that lumped ``openai/…`` into
     ``OPENROUTER_API_KEY``. Pure + unit-tested."""
     return model.split("/", 1)[0].strip().lower()
+
+
+# Revamp (Engines, "Other" provider): what a saved key's provider slug may look like once
+# canonicalized — a model prefix such as ``mistral`` or ``nvidia_nim``, never free text.
+_PROVIDER_SLUG_RE = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}")
+PROVIDER_SLUG_ERROR = "Use just the model prefix — the part before the slash, like mistral."
+
+
+def validate_provider_slug(raw: str) -> str:
+    """Canonicalize a provider slug (:func:`provider_for_model`) and require the model-prefix
+    shape. Returns the canonical slug; raises ``ValueError(PROVIDER_SLUG_ERROR)`` otherwise.
+
+    Canonicalizing first keeps the long-standing leniency (``OpenRouter`` and ``mistral/large``
+    save as ``openrouter`` and ``mistral``); the pattern then refuses what can never be a prefix
+    (spaces, punctuation, a leading ``_``). An empty value is the caller's "a provider is required"
+    case and is refused here too."""
+    provider = provider_for_model(raw or "")
+    if not _PROVIDER_SLUG_RE.fullmatch(provider):
+        raise ValueError(PROVIDER_SLUG_ERROR)
+    return provider
 
 
 def held_provider_slugs(owner_id: uuid.UUID) -> set[str]:

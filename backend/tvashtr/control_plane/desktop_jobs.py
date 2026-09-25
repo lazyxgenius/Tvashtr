@@ -158,10 +158,27 @@ def runner_last_seen(owner_id: uuid.UUID) -> tuple[datetime | None, list[str]]:
         return row.last_seen_at, list(row.providers or [])
 
 
-def runner_fresh(owner_id: uuid.UUID) -> bool:
-    seen, _ = runner_last_seen(owner_id)
+def _is_fresh(seen: datetime | None) -> bool:
     window = timedelta(seconds=get_settings().desktop_runner_fresh_seconds)
     return seen is not None and _now() - seen <= window
+
+
+def runner_fresh(owner_id: uuid.UUID) -> bool:
+    seen, _ = runner_last_seen(owner_id)
+    return _is_fresh(seen)
+
+
+def runner_status(owner_id: uuid.UUID) -> dict:
+    """The owner's Desktop check-in, independent of any subscription (revamp, Engines):
+    ``{fresh, last_seen_at, providers}``. ``fresh`` is the same A3 window :func:`runner_fresh`
+    applies; ``providers`` is what the runner offered on its LAST poll (kept when stale, so the UI
+    can still name them). Status data only — nothing from a vendor login."""
+    seen, providers = runner_last_seen(owner_id)
+    return {
+        "fresh": _is_fresh(seen),
+        "last_seen_at": seen.isoformat() if seen is not None else None,
+        "providers": providers,
+    }
 
 
 def fresh_subscription_ids(owner_id: uuid.UUID) -> set[str]:

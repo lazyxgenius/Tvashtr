@@ -36,7 +36,9 @@ def test_add_provider_returns_last4_never_the_secret(client):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body == {"provider": "provadd", "key_last4": "7890"}  # slug lower-cased; only last4
+    # Revamp added the timestamps + the replace flag; still an EXACT key set, no secret field.
+    assert set(body) == {"provider", "key_last4", "created_at", "updated_at", "replaced"}
+    assert body["provider"] == "provadd" and body["key_last4"] == "7890"  # lower-cased; last4 only
     assert "api_key" not in body and "secret" not in body and "secret_encrypted" not in body
 
 
@@ -68,7 +70,8 @@ def test_list_providers_never_exposes_the_secret(client):
     client.post("/api/providers", json={"provider": "provsecret", "api_key": "sk-hidden-5678"})
     providers = client.get("/api/providers").json()["providers"]
     row = next(p for p in providers if p["provider"] == "provsecret")
-    assert set(row) == {"provider", "key_last4", "created_at"}  # exactly these — no secret field
+    # exactly these — no secret field (revamp added updated_at)
+    assert set(row) == {"provider", "key_last4", "created_at", "updated_at"}
     assert row["key_last4"] == "5678"
 
 

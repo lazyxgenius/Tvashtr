@@ -40,6 +40,7 @@ from tvashtr.control_plane.credentials import (
     held_provider_slugs,
     provider_for_model,
     resolve_owner_api_key,
+    validate_provider_slug,
 )
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
@@ -1805,11 +1806,13 @@ class AddProviderRequest(BaseModel):
 
 def _provider_to_dict(cred: ProviderCredential) -> dict:
     """A provider credential as the dashboard shows it — ``provider · •••• last4`` — NEVER the
-    secret (``secret_encrypted`` is decrypted only at run time, in the executor)."""
+    secret (``secret_encrypted`` is decrypted only at run time, in the executor). ``updated_at``
+    (revamp) is when the CURRENT key was saved — a replace keeps ``created_at``."""
     return {
         "provider": cred.provider,
         "key_last4": cred.key_last4,
         "created_at": cred.created_at.isoformat(),
+        "updated_at": cred.updated_at.isoformat(),
     }
 
 
@@ -1835,12 +1838,17 @@ def add_provider(
     body: AddProviderRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
 ) -> dict:
     """Add (or REPLACE) the current account's key for a provider. Lower-cases/trims the slug,
-    encrypts the key, and upserts on ``(owner, provider)``. 422 on an empty provider/key. Returns
-    ``{provider, key_last4}`` — never the secret."""
+    encrypts the key, and upserts on ``(owner, provider)``. 422 on an empty provider/key, and
+    (revamp) on a slug that is not a model prefix once canonicalized. Returns
+    ``{provider, key_last4, created_at, updated_at, replaced}`` — never the secret."""
     provider = provider_for_model(body.provider)  # leading-slug + lower/trim — the canonical form
     api_key = body.api_key.strip()
     if not provider:
         raise HTTPException(status_code=422, detail="A provider is required.")
+    try:
+        provider = validate_provider_slug(provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not api_key:
         raise HTTPException(status_code=422, detail="An API key is required.")
     owner_id = uuid.UUID(current_user.id)
@@ -1856,16 +1864,18 @@ def add_provider(
         if existing is not None:
             existing.secret_encrypted = secret
             existing.key_last4 = last4
+            row = existing
         else:
-            session.add(
-                ProviderCredential(
-                    owner_id=owner_id,
-                    provider=provider,
-                    secret_encrypted=secret,
-                    key_last4=last4,
-                )
+            row = ProviderCredential(
+                owner_id=owner_id,
+                provider=provider,
+                secret_encrypted=secret,
+                key_last4=last4,
             )
-    return {"provider": provider, "key_last4": last4}
+            session.add(row)
+        session.flush()
+        session.refresh(row)  # the server-side created_at / updated_at of the saved row
+        return {**_provider_to_dict(row), "replaced": existing is not None}
 
 
 @router.delete("/api/providers/{provider}", status_code=204)
@@ -1891,6 +1901,11 @@ def delete_provider(
 
 
 _SUBSCRIPTION_PROVIDERS = ("claude", "grok", "codex")
+# Revamp (Engines): the states Tvashtr Desktop reports (``desktop/electron/harness``). "checking" is
+# a UI-only transient and is never stored.
+_SUBSCRIPTION_STATES = frozenset(
+    {"disconnected", "needs_install", "needs_login", "api_key", "connected", "error"}
+)
 _SECRET_KEYS = frozenset(
     {"api_key", "token", "cookies", "cookie", "secret", "authorization", "password"}
 )
@@ -1957,11 +1972,15 @@ def list_engine_subscriptions(
             .scalars()
             .all()
         }
-        fresh = desktop_jobs.runner_fresh(owner_id)
+        # Revamp (Engines): the Desktop check-in itself, independent of any subscription, so the
+        # web can say "Tvashtr Desktop is open on your computer · checked in <t>".
+        runner = desktop_jobs.runner_status(owner_id)
+        fresh = runner["fresh"]
         return {
             "subscriptions": [
                 _subscription_to_dict(p, rows.get(p), fresh) for p in _SUBSCRIPTION_PROVIDERS
-            ]
+            ],
+            "runner": runner,
         }
 
 
@@ -1975,6 +1994,11 @@ def upsert_engine_subscription(
     if canonical not in _SUBSCRIPTION_PROVIDERS:
         raise HTTPException(status_code=404, detail="unknown subscription provider")
     state = (body.state or ("connected" if body.connected else "disconnected")).strip()
+    if state not in _SUBSCRIPTION_STATES:
+        raise HTTPException(
+            status_code=422,
+            detail="state must be one of: " + ", ".join(sorted(_SUBSCRIPTION_STATES)),
+        )
     if body.source is not None and body.source not in ("harness", "oauth"):
         raise HTTPException(status_code=422, detail="source must be harness or oauth")
     owner_id = uuid.UUID(current_user.id)
