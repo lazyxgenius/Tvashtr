@@ -238,6 +238,9 @@ export function Composer() {
           setBranchesTruncated(false);
           setSubpaths((r.subpaths ?? []).map((s) => s.path));
           setTrackedFiles(r.tracked_file_count);
+          // A typed path carries no branch of its own: start from the repo's checked-out branch,
+          // as a Desktop folder does (and as the old launch panel did).
+          if (!target.branch && r.current_branch) setBaseRef(r.current_branch);
         })
         .catch(() => undefined);
     } else {

@@ -112,6 +112,48 @@ describe("Start a run", () => {
     expect(await ideaBox()).toHaveValue("");
   });
 
+  it("a typed local path fills Base branch with the inspected repo's current branch", async () => {
+    // Self-hosted website (Q15): the repo picker takes a path on the server's disk. The old launch
+    // panel filled the branch from the inspect answer; the composer must too, and must launch on it.
+    const routes = homeRoutes({
+      "POST /api/repo/inspect": {
+        is_git: true,
+        current_branch: "trunk",
+        branches: ["dev", "trunk"],
+        subpaths: [],
+        tracked_file_count: 3,
+      },
+      "POST /api/runs": { run_id: "r-local" },
+    });
+    routes["GET /api/config"] = {
+      ...(routes["GET /api/config"] as Record<string, unknown>),
+      hosted_mode: false,
+    };
+    const calls = mockApi(routes);
+    renderHome();
+    await screen.findByText("Ready on the website");
+    await userEvent.click(await screen.findByRole("button", { name: /No repo · fresh app/ }));
+    const picker = await screen.findByRole("dialog", { name: "Pick a repo" });
+    await userEvent.type(
+      within(picker).getByLabelText("Repository path"),
+      "/srv/repos/demo{enter}",
+    );
+    await waitFor(() => expect(posts(calls, "/api/repo/inspect")).toHaveLength(1));
+
+    await userEvent.click(screen.getByRole("button", { name: "Options" }));
+    const options = await screen.findByRole("dialog", { name: "Run options" });
+    await waitFor(() => expect(within(options).getByLabelText("Base branch")).toHaveValue("trunk"));
+    await userEvent.click(screen.getByRole("button", { name: "Options" }));
+
+    await userEvent.type(await ideaBox(), "Add a Stochastic RSI indicator with tests");
+    await userEvent.click(screen.getByRole("button", { name: "Launch" }));
+    await waitFor(() => expect(posts(calls, "/api/runs")).toHaveLength(1));
+    expect(posts(calls, "/api/runs")[0].body).toMatchObject({
+      repo_path: "/srv/repos/demo",
+      base_ref: "trunk",
+    });
+  });
+
   it("stops a launch with missing keys and walks through the Add-an-API-key sheets", async () => {
     localStorage.setItem("tvashtr.home.lastTeam", "t-ind");
     const calls = mockApi(
