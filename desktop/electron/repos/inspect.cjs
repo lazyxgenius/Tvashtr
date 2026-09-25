@@ -83,7 +83,11 @@ async function inspectRepo(dir, { git, home }) {
     }
   };
   if (!top.trim() || real(top.trim()) !== real(repo)) {
-    const shown = top.trim() ? displayPath(real(top.trim()), home) : "a parent folder";
+    // Resolve home the same way as the top: git answers with the real path, so a home folder that
+    // sits behind a symlink (macOS's /var → /private/var) would otherwise never be shortened to ~.
+    const shown = top.trim()
+      ? displayPath(real(top.trim()), home ? real(home) : home)
+      : "a parent folder";
     return {
       is_git: false,
       error: `This folder is inside the git repository at ${shown}. Choose that folder instead.`,
