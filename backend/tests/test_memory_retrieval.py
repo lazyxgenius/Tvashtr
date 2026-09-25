@@ -218,16 +218,48 @@ def test_empty_scope_returns_empty_without_embedding(owner):
     assert calls == []  # nothing in scope ⇒ no cold candidate ⇒ no embed
 
 
-def test_forced_embed_error_is_best_effort_empty(owner):
-    # A cold candidate exists (so the embed IS attempted) + a pinned one; the embed raises →
-    # the whole retrieval is best-effort empty (NO raise) so the node runs with no memory part.
-    _seed(owner, content="pinned", pinned=True)
-    _seed(owner, content="cold", embedding=_emb(1.0))
+def test_forced_embed_error_keeps_hot_and_ranks_cold_by_recency(owner):
+    # Revamp (MEM-37): a cold candidate exists (so the embed IS attempted) + a pinned one; the embed
+    # raises → NO raise, the pinned fact is still injected FIRST, and cold falls back to a
+    # confirmations-then-recency order (no similarity is available).
+    pinned = _seed(owner, content="pinned", pinned=True)
+    older = _seed(owner, content="cold older", embedding=_emb(1.0))
+    newer = _seed(owner, content="cold newer", embedding=_emb(0.0, 1.0))
 
     def boom(_q: str) -> list[float]:
         raise RuntimeError("embedding provider down")
 
-    assert retrieve_for_node(owner, None, None, "q", embed_query=boom) == []
+    got = [f["id"] for f in retrieve_for_node(owner, None, None, "q", embed_query=boom)]
+    assert got[0] == pinned
+    assert set(got) == {pinned, older, newer}
+
+
+def test_keyless_owner_embed_error_still_injects_pinned_only_when_k_is_zero(owner):
+    # The run path's embed resolves the owner's key lazily; a keyless owner raises there. With k=0
+    # the cold fallback contributes nothing, so exactly the pinned facts survive.
+    pinned = _seed(owner, content="pinned rule", pinned=True, polarity="require")
+    _seed(owner, content="cold", embedding=_emb(1.0))
+
+    def no_key(_q: str) -> list[float]:
+        raise LookupError("owner has no openai key")
+
+    got = retrieve_for_node(owner, None, None, "q", embed_query=no_key, k=0)
+    assert [f["id"] for f in got] == [pinned]
+
+
+def test_node_only_notes_apply_on_every_repo_and_greenfield(owner):
+    # Revamp (FOCUS-58 / OQ-18): a node-only note (node_id set, repo_key NULL) reaches THAT agent on
+    # any repo and on a greenfield run — never another agent.
+    authored = uuid.uuid4()
+    note = _seed(owner, content="agent-wide note", node_id=authored, pinned=True)
+    _seed(owner, content="other agent note", node_id=uuid.uuid4(), pinned=True)
+    acct = _seed(owner, content="account", pinned=True)
+    for repo in ("/repos/one", "octo/two", None):
+        got = retrieve_for_node(owner, repo, authored, "q", embed_query=lambda _q: _QUERY_VEC)
+        assert {f["id"] for f in got} == {note, acct}, repo
+    # No authored node ⇒ node-only notes never apply.
+    got = retrieve_for_node(owner, "/repos/one", None, "q", embed_query=lambda _q: _QUERY_VEC)
+    assert {f["id"] for f in got} == {acct}
 
 
 def test_active_only_superseded_rows_excluded(owner):

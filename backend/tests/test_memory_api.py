@@ -113,11 +113,15 @@ def test_create_node_tier(client):
     assert row["embedding_dim"] == 1536
 
 
-def test_invalid_tier_node_without_repo_is_422(client):
-    resp = client.post(
-        "/api/memories", json={"content": "orphan node fact", "node_id": str(uuid.uuid4())}
-    )
-    assert resp.status_code == 422, resp.text
+def test_node_only_tier_without_repo_is_allowed(client):
+    # Revamp (FOCUS-58 / OQ-18): a node_id without a repo_key is the node-only tier ("Not
+    # repo-specific" agent notes) — it used to be rejected 422.
+    node = str(uuid.uuid4())
+    resp = client.post("/api/memories", json={"content": "agent-wide note", "node_id": node})
+    assert resp.status_code == 200, resp.text
+    row = resp.json()
+    assert row["tier"] == "node"
+    assert row["repo_key"] is None and row["node_id"] == node
 
 
 def test_empty_content_is_422(client):

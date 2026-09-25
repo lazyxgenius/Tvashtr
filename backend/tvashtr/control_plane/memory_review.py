@@ -27,8 +27,8 @@ from sqlalchemy import select
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane.context_compiler import REMEMBER_FILENAME
-from tvashtr.control_plane.credentials import resolve_owner_api_key
-from tvashtr.control_plane.memory import _parse_uuid, _to_dict
+from tvashtr.control_plane.credentials import NoCredentialError, resolve_owner_api_key
+from tvashtr.control_plane.memory import _enrich, _parse_uuid, _to_dict, repo_key_for_run
 from tvashtr.control_plane.memory_distill import (
     DUP_THRESHOLD,
     _as_list,
@@ -55,6 +55,8 @@ _REMEMBER_REL_PATH = Path(REMEMBER_FILENAME)
 # rejection (return None ⇒ 404). promote resurrects a quarantined or tombstoned fact.
 _REJECTABLE = ("pending_review", "active")
 _PROMOTABLE = ("pending_review", "rejected")
+# requeue sends a kept, merged or discarded fact back to the Inbox (see :func:`requeue`).
+_REQUEUEABLE = ("active", "superseded", "rejected", "pending_review")
 
 
 def reject(owner_id: uuid.UUID, memory_id: str) -> dict | None:
@@ -79,7 +81,7 @@ def reject(owner_id: uuid.UUID, memory_id: str) -> dict | None:
         row.invalid_at = datetime.now(UTC)
         session.flush()
         session.refresh(row)
-        return _to_dict(row)
+        return _enrich(session, owner_id, [_to_dict(row)])[0]
 
 
 def promote(owner_id: uuid.UUID, memory_id: str) -> dict | None:
@@ -134,7 +136,8 @@ def promote(owner_id: uuid.UUID, memory_id: str) -> dict | None:
                 row.superseded_by = best.id
                 session.flush()
                 session.refresh(best)
-                return {**_to_dict(best), "action": "promote_merged"}
+                merged = _enrich(session, owner_id, [_to_dict(best)])[0]
+                return {**merged, "action": "promote_merged", "merged_id": str(row.id)}
             if {row_sign, best_sign} == {"pos", "neg"}:
                 # OPPOSITE-sign active fact ⇒ supersede it (retire) + activate the promoted row.
                 best.status = "superseded"
@@ -144,14 +147,96 @@ def promote(owner_id: uuid.UUID, memory_id: str) -> dict | None:
                 row.invalid_at = None
                 session.flush()
                 session.refresh(row)
-                return {**_to_dict(row), "action": "promote_supersede", "superseded": str(best.id)}
+                kept = _enrich(session, owner_id, [_to_dict(row)])[0]
+                return {**kept, "action": "promote_supersede", "superseded": str(best.id)}
 
         # No consolidating match ⇒ plain activation.
         row.status = "active"
         row.invalid_at = None
         session.flush()
         session.refresh(row)
-        return {**_to_dict(row), "action": "promote"}
+        return {**_enrich(session, owner_id, [_to_dict(row)])[0], "action": "promote"}
+
+
+def requeue(owner_id: uuid.UUID, memory_id: str) -> dict | None:
+    """Send the owner's memory back to the Inbox (``pending_review``) — the Undo of Keep and of
+    Discard. Pass the id that was promoted or rejected (for a merge that is the promote response's
+    ``merged_id``, not its ``id``). Reverses each outcome exactly:
+
+    * ``promote`` (row ``active``) ⇒ ``pending_review``.
+    * ``promote_supersede`` (row ``active``, it retired an opposite-sign fact) ⇒ ``pending_review``
+      AND every fact it superseded (``superseded_by`` = this row, ``status='superseded'``) goes back
+      to ``active`` (``invalid_at`` / ``superseded_by`` cleared).
+    * ``promote_merged`` (row ``superseded`` into a same-sign active dup X) ⇒ ``pending_review``,
+      ``invalid_at`` / ``superseded_by`` cleared, and X's ``confirmation_count`` drops by one
+      (never below 1). A row superseded by an OPPOSITE-sign fact only returns to review; the fact
+      that replaced it is left alone.
+    * ``reject`` (row ``rejected``) ⇒ ``pending_review``, ``invalid_at`` cleared.
+    * already ``pending_review`` ⇒ unchanged (idempotent, ``action: "already_pending"``).
+
+    Returns the enriched row + ``action`` (``requeue`` / ``already_pending``), ``restored`` (ids
+    re-activated) and ``unmerged_from`` (the dup whose confirmation was taken back, or ``None``).
+    Owner-scoped — ``None`` (⇒ 404) for an unknown/malformed id or another owner's row."""
+    mid = _parse_uuid(memory_id)
+    if mid is None:
+        return None
+    with session_scope() as session:
+        row = session.execute(
+            select(NodeMemory).where(
+                NodeMemory.id == mid,
+                NodeMemory.owner_id == owner_id,
+                NodeMemory.status.in_(_REQUEUEABLE),
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        if row.status == "pending_review":
+            current = _enrich(session, owner_id, [_to_dict(row)])[0]
+            return {**current, "action": "already_pending", "restored": [], "unmerged_from": None}
+
+        restored: list[str] = []
+        unmerged_from: str | None = None
+        if row.status == "active":
+            # Undo a supersede: the facts this one retired come back.
+            retired = (
+                session.execute(
+                    select(NodeMemory).where(
+                        NodeMemory.owner_id == owner_id,
+                        NodeMemory.superseded_by == row.id,
+                        NodeMemory.status == "superseded",
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for old in retired:
+                old.status = "active"
+                old.invalid_at = None
+                old.superseded_by = None
+                restored.append(str(old.id))
+        elif row.status == "superseded" and row.superseded_by is not None:
+            # Undo a merge: take the confirmation back from the same-sign dup it merged into.
+            dup = session.execute(
+                select(NodeMemory).where(
+                    NodeMemory.id == row.superseded_by, NodeMemory.owner_id == owner_id
+                )
+            ).scalar_one_or_none()
+            if dup is not None and _polarity_sign(dup.polarity) == _polarity_sign(row.polarity):
+                dup.confirmation_count = max(1, (dup.confirmation_count or 1) - 1)
+                unmerged_from = str(dup.id)
+
+        row.status = "pending_review"
+        row.invalid_at = None
+        row.superseded_by = None
+        session.flush()
+        session.refresh(row)
+        requeued = _enrich(session, owner_id, [_to_dict(row)])[0]
+        return {
+            **requeued,
+            "action": "requeue",
+            "restored": restored,
+            "unmerged_from": unmerged_from,
+        }
 
 
 # ------------------------------------------------------------------ agent-remember ingest ----
@@ -213,11 +298,16 @@ def ingest_run_remembers(run_id: str, workspace: str) -> dict:
             if run is None or run.owner_id is None:
                 return {"written": 0, "captures": len(captures), "skipped": "no-owner"}
             owner_id = run.owner_id
-            repo_key = run.repo_path
+            repo_key = repo_key_for_run(run.github_repo, run.repo_path)
         review_mode = _owner_review_mode(owner_id)
+        # An owner with no OpenAI key embeds with the OPERATOR key (off-ledger), as distillation
+        # and manual memories do — so Desktop subscription users' captures still land.
+        on_ledger = True
         try:
             owner_key = resolve_owner_api_key(owner_id, settings.embedding_model)
-        except Exception:  # noqa: BLE001 — a keyless owner can't embed; skip (best-effort)
+        except NoCredentialError:
+            owner_key, on_ledger = None, False
+        except Exception:  # noqa: BLE001 — an unreadable key can't embed; skip (best-effort)
             logger.warning("agent-remember ingest skipped: no key run=%s", run_id, exc_info=True)
             return {"written": 0, "captures": len(captures), "skipped": "no-key"}
         written = remember_facts(
@@ -228,6 +318,7 @@ def ingest_run_remembers(run_id: str, workspace: str) -> dict:
             review_mode=review_mode,
             owner_key=owner_key,
             embed_model=settings.embedding_model,
+            on_ledger=on_ledger,
         )
         logger.info(
             "agent-remember ingest run=%s captures=%d written=%d",

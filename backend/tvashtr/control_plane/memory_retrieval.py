@@ -67,16 +67,21 @@ def memory_query(idea: str, node_prompt: str, prd_text: str | None) -> str:
 def _scope_filter(repo_key: str | None, authored_node_id: uuid.UUID | None):
     """The tier scope for THIS node as a SQLAlchemy predicate over ``NodeMemory`` (owner/status
     applied by the caller): **account** (``repo_key`` NULL, ``node_id`` NULL) ∪ **repo** (this
-    ``repo_key``, ``node_id`` NULL) ∪ **node** (this ``repo_key`` + this authored ``node_id``).
-    A GREENFIELD run (``repo_key`` NULL) ⇒ account ONLY — a greenfield run has no repo, so the repo
-    and node tiers cannot apply."""
+    ``repo_key``, ``node_id`` NULL) ∪ **node** (this ``repo_key`` + this authored ``node_id``) ∪
+    **node-only** (``repo_key`` NULL + this authored ``node_id`` — the agent's "Not repo-specific"
+    notes, which apply on every repo and on greenfield runs). A GREENFIELD run (``repo_key`` NULL)
+    has no repo, so the repo and repo-bound node tiers cannot apply."""
     account = and_(NodeMemory.repo_key.is_(None), NodeMemory.node_id.is_(None))
-    if repo_key is None:
-        return account
-    conds = [account, and_(NodeMemory.repo_key == repo_key, NodeMemory.node_id.is_(None))]
+    conds = [account]
     if authored_node_id is not None:
-        conds.append(and_(NodeMemory.repo_key == repo_key, NodeMemory.node_id == authored_node_id))
-    return or_(*conds)
+        conds.append(and_(NodeMemory.repo_key.is_(None), NodeMemory.node_id == authored_node_id))
+    if repo_key is not None:
+        conds.append(and_(NodeMemory.repo_key == repo_key, NodeMemory.node_id.is_(None)))
+        if authored_node_id is not None:
+            conds.append(
+                and_(NodeMemory.repo_key == repo_key, NodeMemory.node_id == authored_node_id)
+            )
+    return or_(*conds) if len(conds) > 1 else account
 
 
 def _fact(row: NodeMemory) -> dict:
@@ -116,10 +121,12 @@ def retrieve_for_node(
     tier-scoped (:func:`_scope_filter`). Returns ``[{id, polarity, content}]`` (``id`` as str), HOT
     then COLD-by-similarity.
 
-    **Best-effort**: never raises — ANY failure returns ``[]`` (a retrieval problem must never crash
-    or change a run). ``embed_query`` is called at most once, ONLY when cold candidates exist, so an
-    empty in-scope set (every greenfield run + the whole offline suite) needs no network and injects
-    nothing (byte-identical to no-memory)."""
+    **Best-effort**: never raises. A failing ``embed_query`` (a provider error, or an owner with no
+    key) keeps every HOT fact and ranks COLD by confirmations then recency instead of similarity —
+    pinned notes always reach the agent. Any other failure returns ``[]`` (a retrieval problem must
+    never crash or change a run). ``embed_query`` is called at most once, ONLY when cold
+    candidates exist, so an empty in-scope set (every greenfield run + the whole offline suite)
+    needs no network and injects nothing (byte-identical to no-memory)."""
     try:
         scope = _scope_filter(repo_key, authored_node_id)
         # 1. HOT — every pinned in-scope row (materialised to plain dicts inside the session). Also
@@ -153,18 +160,41 @@ def retrieve_for_node(
         #    candidates (no embed, no network) — what keeps the empty path inert + offline-safe.
         cold: list[dict] = []
         if has_cold:
-            qvec = embed_query(query)
+            cold_filter = (
+                NodeMemory.owner_id == owner_id,
+                NodeMemory.status == "active",
+                scope,
+                NodeMemory.pinned.is_(False),
+                NodeMemory.embedding.isnot(None),
+            )
+            try:
+                qvec = embed_query(query)
+            except Exception:  # noqa: BLE001 — a failed embed (e.g. no key) must not drop HOT
+                logger.warning(
+                    "memory retrieval query embed failed (owner=%s repo=%s): pinned facts kept, "
+                    "cold ranked by recency",
+                    owner_id,
+                    repo_key,
+                    exc_info=True,
+                )
+                with session_scope() as session:
+                    recent = (
+                        select(NodeMemory)
+                        .where(*cold_filter)
+                        .order_by(
+                            NodeMemory.confirmation_count.desc(),
+                            NodeMemory.created_at.desc(),
+                            NodeMemory.id,
+                        )
+                        .limit(k)
+                    )
+                    cold = [_fact(r) for r in session.execute(recent).scalars().all()]
+                return _apply_budget(hot, cold, token_budget)
             if qvec is not None:
                 with session_scope() as session:
                     ranked = (
                         select(NodeMemory)
-                        .where(
-                            NodeMemory.owner_id == owner_id,
-                            NodeMemory.status == "active",
-                            scope,
-                            NodeMemory.pinned.is_(False),
-                            NodeMemory.embedding.isnot(None),
-                        )
+                        .where(*cold_filter)
                         .order_by(NodeMemory.embedding.cosine_distance(qvec))
                         .limit(k)
                     )
