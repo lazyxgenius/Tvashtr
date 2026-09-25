@@ -17,6 +17,10 @@ for e in a: by_text[e["text"].lower()].append(e)
 issues, matched, unmatched = [], 0, []
 for e in d:
     cands = by.get(e["key"]) or by_text.get(e["text"].lower())
+    # A design text (a div) may be a control in the app (a textarea's value, a row's button) while
+    # the same words also appear as plain text elsewhere — let the nearest of either win.
+    if e["kind"] == "txt" and by.get(e["key"]):
+        cands = cands + [c for c in by_text.get(e["text"].lower(), []) if c["kind"] == "ctl"]
     if not cands:
         unmatched.append(e); continue
     m = min(cands, key=lambda c: abs(c["y"] - e["y"]) + abs(c["x"] - e["x"]))
