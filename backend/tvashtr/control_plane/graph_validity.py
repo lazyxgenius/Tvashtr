@@ -400,6 +400,38 @@ def team_shape(nodes: list[dict], edges: list[dict]) -> dict:
     return {"nodes": shaped, "loops": [{"from": a, "to": b} for a, b in loops]}
 
 
+_ROLE_TO_SHAPE_KIND = {
+    "pm": "thinker",
+    "architect": "thinker",
+    "thinker": "thinker",
+    "engineer": "worker",
+    "reviewer": "worker",
+    "worker": "worker",
+    "gate": "gate",
+    "ship": "terminal",
+    "stop": "terminal",
+    "domain_query": "domain_query",
+}
+
+
+def shape_from_roles(roles: tuple[str, ...], loops: tuple[tuple[int, int], ...] = ()) -> dict:
+    """A strip in the :func:`team_shape` format for a graph that is not stored — the starter
+    templates declare theirs statically (running a builder would write rows). Node ids are
+    ``None``."""
+    return {
+        "nodes": [
+            {
+                "id": None,
+                "kind": _ROLE_TO_SHAPE_KIND[role],
+                "role": role,
+                "label": _ROLE_LABELS[role],
+            }
+            for role in roles
+        ],
+        "loops": [{"from": a, "to": b} for a, b in loops],
+    }
+
+
 def graph_dicts(session, graph_id) -> tuple[list[dict], list[dict]]:
     """Load a team graph's nodes + edges (within ``session``) into the serialized dict shape
     :func:`validate_graph` consumes — the same node/edge fields the canvas reads. The DB-touching

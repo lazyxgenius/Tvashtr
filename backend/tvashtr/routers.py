@@ -68,6 +68,7 @@ from tvashtr.control_plane.teams import (
     PM_PROMPT,
     REVIEWER_PROMPT,
     account_default_model,
+    blank_template,
     build_review_loop_team,
     build_two_node_team,
     cancel_run_core,
@@ -82,7 +83,6 @@ from tvashtr.control_plane.teams import (
     list_templates,
     rename_library_team,
     reviewer_model,
-    seed_library_if_empty,
 )
 from tvashtr.control_plane.worktree import repo_inspect, repo_subpaths, subpath_is_tracked_dir
 from tvashtr.control_plane.domains import (
@@ -2502,20 +2502,23 @@ def _require_library_team(session, team_id: str, owner_id: uuid.UUID) -> TeamGra
 
 @router.get("/api/templates")
 def get_templates() -> dict:
-    """The curated starter templates the New-team picker offers (``{template, name, description}``);
-    the FE renders the picker from this, never a hardcoded list."""
-    return {"templates": list_templates()}
+    """The curated starter templates the New-team picker offers (``{template, name, description,
+    shape}``); the FE renders the picker from this, never a hardcoded list. ``blank`` is the Blank
+    starting point in the same shape (not in the list — the FE keeps its own Blank card so it can
+    still offer it when this call fails)."""
+    return {"templates": list_templates(), "blank": blank_template()}
 
 
 @router.get("/api/teams")
 def get_teams(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
-    """The CURRENT account's library teams as summaries (id / name / created_at / node_count),
-    oldest first (M-accounts Slice B: per-owner). Seeds one team if THIS account's library is empty
-    so a fresh account still lands ≥1 team (the §13 S2 anti-dead-zone posture, per-owner). Library
-    teams ONLY + owner-scoped: run-snapshot clones / A-B / smoke graphs and other accounts' teams
-    never appear."""
+    """The CURRENT account's library teams as summaries (``_team_summary``), oldest first
+    (M-accounts Slice B: per-owner). Library teams ONLY + owner-scoped: run-snapshot clones / A-B /
+    smoke graphs and other accounts' teams never appear.
+
+    Revamp (G-13): an account with no teams gets ``{"teams": []}`` — nothing is auto-seeded any
+    more (Home's first-time view offers the templates, and deleting the last team must stay
+    deleted)."""
     owner_id = uuid.UUID(current_user.id)
-    seed_library_if_empty(owner_id)
     return {"teams": list_library_teams(owner_id)}
 
 
@@ -2525,13 +2528,18 @@ def create_team(
 ) -> dict:
     """Create a new library team OWNED by the current account — from a starter template
     (drop-and-edit), or, when ``template == "blank"`` (P1.8d), from the minimal valid skeleton (root
-    thinker → Ship) the user wires up from scratch. 400 on an unknown ``template`` key. Returns the
-    new team's summary; the FE then loads its graph + makes it current."""
+    thinker → Ship) the user wires up from scratch. The name is trimmed; a blank one is 422 "A team
+    name is required." (checked first); an unknown ``template`` key is 400. The template key is
+    stored on the team (``template_key``). Returns the new team's summary; the FE then loads its
+    graph + makes it current."""
     owner_id = uuid.UUID(current_user.id)
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="A team name is required.")
     if body.template == "blank":
-        return get_team_summary(create_blank_team(body.name, owner_id))
+        return get_team_summary(create_blank_team(name, owner_id))
     try:
-        team_graph_id = create_team_from_template(body.template, body.name, owner_id)
+        team_graph_id = create_team_from_template(body.template, name, owner_id)
     except KeyError as exc:
         raise HTTPException(status_code=400, detail="unknown template") from exc
     return get_team_summary(team_graph_id)
