@@ -95,6 +95,7 @@ from tvashtr.control_plane.worktree import (
     add_worktree,
     build_repo_grounding,
     is_work_tree,
+    resolve_start_point,
 )
 from tvashtr.db import session_scope
 from tvashtr.documents.service import (
@@ -773,7 +774,10 @@ def _materialize_run_workspace(run_id: str) -> str:
                     .scalar_one()
                     .repo_path
                 )
-        branch = add_worktree(repo_path, workspace, run_id, base_ref)
+        # Revamp P6: a hosted run may now target a non-default branch, which a fresh clone holds
+        # only as ``origin/<branch>`` — cut from that. A local-folder run is unchanged.
+        start = resolve_start_point(repo_path, base_ref) if github_repo else base_ref
+        branch = add_worktree(repo_path, workspace, run_id, start)
         with session_scope() as session:
             session.execute(
                 update(Run).where(Run.id == uuid.UUID(run_id)).values(ship_branch=branch)

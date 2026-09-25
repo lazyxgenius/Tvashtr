@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 
 from tvashtr.auth import UserOut, get_current_user
-from tvashtr.control_plane import inbox, spend
+from tvashtr.control_plane import github_app, github_targets, inbox, spend
 
 router = APIRouter()
 
@@ -64,3 +64,51 @@ def get_spend(current_user: CurrentUser, tz: str = "UTC") -> dict:
         return spend.owner_spend(uuid.UUID(current_user.id), tz)
     except spend.UnknownTimeZoneError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+_GITHUB_UNREACHABLE = "Couldn't reach GitHub. Try again in a moment."
+
+
+def _owned_repo(current_user: UserOut, owner: str, repo: str) -> tuple[int, dict]:
+    try:
+        match = github_targets.owner_repo(uuid.UUID(current_user.id), f"{owner}/{repo}")
+    except github_app.GithubAppError as exc:
+        raise HTTPException(status_code=502, detail=_GITHUB_UNREACHABLE) from exc
+    if match is None:
+        raise HTTPException(status_code=404, detail="repo not found")
+    return match
+
+
+@router.get("/api/github/repos/{owner}/{repo}/branches")
+def get_github_branches(owner: str, repo: str, current_user: CurrentUser) -> dict:
+    """The branches of one of the caller's GitHub App repos (default branch first, capped at 300)
+    — the composer's Base branch option. 404 unless an installation the caller owns reaches it."""
+    installation_id, found = _owned_repo(current_user, owner, repo)
+    try:
+        return github_targets.branches_for(installation_id, found)
+    except github_app.GithubAppError as exc:
+        raise HTTPException(status_code=502, detail=_GITHUB_UNREACHABLE) from exc
+
+
+@router.get("/api/github/repos/{owner}/{repo}/subpaths")
+def get_github_subpaths(
+    owner: str, repo: str, current_user: CurrentUser, ref: str | None = None
+) -> dict:
+    """The top-level folders (with file counts) of one of the caller's GitHub App repos on ``ref``
+    (default: its default branch) — the composer's Scope option. 404 for a repo the caller can't
+    reach, 422 for an unknown branch."""
+    installation_id, found = _owned_repo(current_user, owner, repo)
+    try:
+        result = github_targets.subpaths_for(installation_id, found, ref)
+    except github_app.GithubAppError as exc:
+        raise HTTPException(status_code=502, detail=_GITHUB_UNREACHABLE) from exc
+    if result is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "unknown_ref",
+                "message": f"ref is not a branch of {owner}/{repo}",
+                "ref": ref,
+            },
+        )
+    return result

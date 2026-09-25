@@ -22,6 +22,7 @@ from tvashtr.auth import UserOut, _store_installation, get_current_user
 from tvashtr.config import get_settings
 from tvashtr.control_plane import (
     github_app,
+    github_targets,
     memory,
     memory_distill,
     memory_review,
@@ -197,6 +198,9 @@ class CreateRunRequest(BaseModel):
     # counts in place of an API key — see ``credential_gate``). False (every existing caller) ⇒ the
     # hosted pre-flight + run are byte-for-byte unchanged.
     desktop_target: bool = False
+    # Revamp P8: the finished run this launch retries (one of the caller's; 422 otherwise). The
+    # failed run then leaves Home's "Needs you".
+    retry_of_run_id: str | None = None
 
 
 class AskMessage(BaseModel):
@@ -1011,8 +1015,19 @@ def create_run(
 
     M-h3: the hosted RUN CEILINGS are checked FIRST — before the idea resolves, before any target
     validation, and long before a Run row or a team clone exists. A launch refused for capacity
-    should cost nothing and leave nothing behind."""
+    should cost nothing and leave nothing behind. (An out-of-range ``budget_cap_usd`` is refused
+    before them, like any other malformed body.)"""
+    budget_problem = run_views.budget_problem(body.budget_cap_usd)
+    if budget_problem:
+        raise HTTPException(status_code=422, detail=budget_problem)
     _enforce_run_ceilings(uuid.UUID(current_user.id))
+    retry_of = None
+    if body.retry_of_run_id is not None:
+        retry_of, retry_problem = run_views.retry_problem(
+            uuid.UUID(current_user.id), body.retry_of_run_id
+        )
+        if retry_problem:
+            raise HTTPException(status_code=422, detail=retry_problem)
     idea = resolve_run_idea(body.idea)
 
     # Validate the brownfield target FIRST (before any team graph is built), so a rejected launch
@@ -1059,8 +1074,25 @@ def create_run(
                     "github_repo": github_repo,
                 },
             )
-        base_ref = match[1].get("default_branch") or "main"
-        subpath = None  # no hosted scope picker — whole-repo is the validated default (Tvashtr-67)
+        # Revamp P6: honour the chosen base branch and scope (checked against the repo itself);
+        # an absent base_ref is the repo's default branch, an absent subpath the whole repo.
+        default_branch = match[1].get("default_branch") or "main"
+        base_ref = (base_ref or "").strip() or default_branch
+        subpath = (subpath or "").strip().strip("/") or None
+        try:
+            target_problem = github_targets.target_problem(
+                match[0],
+                github_repo,
+                base_ref=base_ref,
+                default_branch=default_branch,
+                subpath=subpath,
+            )
+        except github_app.GithubAppError as exc:
+            raise HTTPException(
+                status_code=502, detail="Couldn't reach GitHub. Try again in a moment."
+            ) from exc
+        if target_problem:
+            raise HTTPException(status_code=422, detail=target_problem)
     elif repo_path is not None:
         info = repo_inspect(repo_path)
         if not info["is_git"]:
@@ -1097,6 +1129,7 @@ def create_run(
     else:
         # Greenfield (no repo to scope): ignore any supplied sub-path (store NULL).
         subpath = None
+    library_team_id = None  # revamp P11: the library team this run was launched from
     if body.team_graph_id is not None:
         # Clone-on-launch (P1.8b): deep-clone the authored team into a fresh run-scoped snapshot and
         # run THAT, so the user's edited prompts/models drive the run. The run owns the immutable
@@ -1115,6 +1148,7 @@ def create_run(
             # can't launch (or even probe) another account's team (404, not 400, on a foreign id).
             if source is None or source.owner_id != uuid.UUID(current_user.id):
                 raise HTTPException(status_code=404, detail="unknown team_graph_id")
+            library_team_id = gid if source.is_library else None
             nodes, edges = graph_dicts(session, gid)
         verdict = validate_graph(nodes, edges)
         if not verdict["runnable"]:
@@ -1211,6 +1245,8 @@ def create_run(
                 # M-subs-desktop: the launch-time routing (hosted ⇒ False / None, the defaults).
                 desktop_target=body.desktop_target,
                 desktop_subscriptions=desktop_routed if body.desktop_target else None,
+                library_team_id=library_team_id,
+                retry_of_run_id=retry_of,
             )
         )
 
