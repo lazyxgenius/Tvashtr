@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 
+import { isTopOverlay, pushOverlay, removeOverlay } from "./overlayStack";
+
 // The elements a keyboard user can Tab through — the standard focus-trap set. `:not([disabled])`
 // prunes disabled controls; the `[tabindex="-1"]` exclusion + the `tabIndex` filter drop nodes that
 // are programmatically focusable but not tabbable.
@@ -26,6 +28,7 @@ function focusableWithin(container: HTMLElement): HTMLElement[] {
  *   - closes on Escape via `onClose`,
  *   - restores focus to the previously-focused element when it deactivates or unmounts.
  * When inactive it is completely inert: no listener, no focus change (a docked panel stays untouched).
+ * Nested dialogs stack: only the top-most one reacts to Escape and Tab.
  *
  * Returns the ref to attach to the dialog container element — `<div ref={ref}>` / `<aside ref={ref}>`.
  */
@@ -44,6 +47,9 @@ export function useModalDialog<T extends HTMLElement = HTMLElement>(
     if (!container) return;
 
     const previouslyFocused = document.activeElement as HTMLElement | null;
+    // Nested overlays (a Templates dialog over the focus view, a ⋯ menu inside a sheet) stack: only
+    // the top-most one handles Escape and Tab (see overlayStack).
+    const token = pushOverlay();
 
     // Move focus into the dialog.
     const initial = focusableWithin(container);
@@ -51,6 +57,8 @@ export function useModalDialog<T extends HTMLElement = HTMLElement>(
     else container.focus();
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // A dialog opened on top of this one owns the keyboard until it closes.
+      if (!isTopOverlay(token)) return;
       if (e.key === "Escape") {
         e.preventDefault();
         onCloseRef.current();
@@ -83,6 +91,7 @@ export function useModalDialog<T extends HTMLElement = HTMLElement>(
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
+      removeOverlay(token);
       // Restore focus to whatever was focused before the dialog opened.
       if (previouslyFocused && previouslyFocused.isConnected) previouslyFocused.focus();
     };

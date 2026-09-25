@@ -103,4 +103,27 @@ describe("useModalDialog", () => {
 
     document.body.removeChild(outside);
   });
+
+  it("stacks: with two dialogs open, Escape closes only the top one", () => {
+    const onOuter = vi.fn();
+    const onInner = vi.fn();
+    function Nested() {
+      const outer = useModalDialog<HTMLDivElement>(true, onOuter);
+      const inner = useModalDialog<HTMLDivElement>(true, onInner);
+      return (
+        <>
+          <div ref={outer}>
+            <button type="button">outer</button>
+          </div>
+          <div ref={inner}>
+            <button type="button">inner</button>
+          </div>
+        </>
+      );
+    }
+    render(<Nested />);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(onInner).toHaveBeenCalledTimes(1);
+    expect(onOuter).not.toHaveBeenCalled();
+  });
 });
