@@ -181,6 +181,24 @@ def capability_of(kind: str) -> str:
     return "worker" if kind == "agent" else "thinker"
 
 
+#
+# Revamp (Engines + the agent panel's model picker) adds DISPLAY metadata to every entry — none of
+# it is read by the default walk, so it changes no stamped model:
+#
+# * ``label`` — the vendor's display name ("Uses your xAI API key", "Paste your Anthropic API key");
+# * ``model_labels`` — a friendly name for every slug the entry declares ("Grok 4.7");
+# * ``subscription`` — the Desktop subscription engine that can run this provider's models on the
+#   owner's own computer (``claude``/``grok``; ``None`` otherwise). It mirrors
+#   ``credential_gate.MODEL_PROVIDER_TO_SUB`` restricted to ``RUNNER_SUBSCRIPTIONS`` (pinned by a
+#   test), so the picker and the launch gate can never disagree about which models a plan covers;
+# * ``byok_probed`` — whether the seat presets were proven with an API key by
+#   ``scripts/seat_probe.py``. ``False`` means the slugs are offered on other evidence (the
+#   Desktop runner's CLIs for ``anthropic``/``xai``; M-runnable's seed for ``openrouter``), so the
+#   picker can say so honestly instead of claiming "proven to run a full build".
+#
+# ``anthropic`` and ``xai`` are deliberately ABSENT from ``_PROVIDER_DEFAULT_ORDER`` below: nothing
+# probed them on the BYOK path, so they are never stamped as an account default or fallback — they
+# are offered in the picker, and a user chooses them by hand.
 PROVIDER_CATALOGUE: dict[str, dict] = {
     # UNPROBED — the operator holds no OpenRouter key (its credits ran out, and the variable is gone
     # from ``.env``), so no gate could be run against it. Declaring ``None`` here would retire a
@@ -196,6 +214,14 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
             "openrouter/google/gemini-flash-1.5",
         ],
         "worker_presets": ["openrouter/openai/gpt-4o-mini"],
+        "label": "OpenRouter",
+        "model_labels": {
+            "openrouter/openai/gpt-4o-mini": "GPT-4o mini",
+            "openrouter/meta-llama/llama-3.1-8b-instruct": "Llama 3.1 8B Instruct",
+            "openrouter/google/gemini-flash-1.5": "Gemini 1.5 Flash",
+        },
+        "subscription": None,
+        "byok_probed": False,
     },
     # PROBED 2026-09-08 (full transcript in ``STATE.md``). Both seats land on the same slug: it is
     # the ONLY nvidia_nim candidate that passed BOTH matrices, and it passed the worker gates 3/3 on
@@ -221,6 +247,13 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
             "nvidia_nim/minimaxai/minimax-m3",
             "nvidia_nim/openai/gpt-oss-20b",
         ],
+        "label": "NVIDIA NIM",
+        "model_labels": {
+            "nvidia_nim/openai/gpt-oss-20b": "gpt-oss-20b",
+            "nvidia_nim/minimaxai/minimax-m3": "MiniMax M3",
+        },
+        "subscription": None,
+        "byok_probed": True,
     },
     # PROBED 2026-09-08. The two seats genuinely differ here, first-pass in preference order each:
     # ``gpt-4.1-mini`` took the worker seat (W1-W4, 11s) and ``gpt-4o-mini`` the thinker seat
@@ -231,6 +264,15 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
         "worker_default": "openai/gpt-4.1-mini",
         "thinker_presets": ["openai/gpt-4o-mini"],
         "worker_presets": ["openai/gpt-4.1-mini"],
+        "label": "OpenAI",
+        "model_labels": {
+            "openai/gpt-4o-mini": "GPT-4o mini",
+            "openai/gpt-4.1-mini": "GPT-4.1 mini",
+        },
+        # Codex is a subscription for openai models, but Tvashtr Desktop cannot run nodes on it
+        # (``RUNNER_SUBSCRIPTIONS``), so it never covers a node here.
+        "subscription": None,
+        "byok_probed": True,
     },
     # PROBED 2026-09-08 — and the clearest case in the table for why the seats are separate.
     # ``gemini-2.5-flash`` passes ALL FOUR worker gates (W3: a real agent step whose file landed in
@@ -246,6 +288,10 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
         "worker_default": "gemini/gemini-2.5-flash",
         "thinker_presets": [],
         "worker_presets": ["gemini/gemini-2.5-flash"],
+        "label": "Gemini",
+        "model_labels": {"gemini/gemini-2.5-flash": "Gemini 2.5 Flash"},
+        "subscription": None,
+        "byok_probed": True,
     },
     # PROBED 2026-09-08. One model, both seats. The worker gates took 232s because Groq's free tier
     # 429s on tokens (``rate_limit_exceeded``) and the BYOK retry envelope rode it out rather than
@@ -255,6 +301,10 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
         "worker_default": "groq/openai/gpt-oss-120b",
         "thinker_presets": ["groq/openai/gpt-oss-120b"],
         "worker_presets": ["groq/openai/gpt-oss-120b"],
+        "label": "Groq",
+        "model_labels": {"groq/openai/gpt-oss-120b": "gpt-oss-120b"},
+        "subscription": None,
+        "byok_probed": True,
     },
     # PROBED 2026-09-08. Both seats, first candidate, clean (W1-W4 in 11s; T2 1675 chars).
     # ``deepseek-reasoner`` was a preset before this milestone and is GONE: no gate ever covered it,
@@ -264,6 +314,38 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
         "worker_default": "deepseek/deepseek-chat",
         "thinker_presets": ["deepseek/deepseek-chat"],
         "worker_presets": ["deepseek/deepseek-chat"],
+        "label": "DeepSeek",
+        "model_labels": {"deepseek/deepseek-chat": "DeepSeek Chat"},
+        "subscription": None,
+        "byok_probed": True,
+    },
+    # Revamp: NOT probed on the BYOK path (``byok_probed: False``). These are the models Tvashtr
+    # Desktop runs today through the owner's own CLI sign-in — Claude Code for ``anthropic/*``,
+    # the Grok CLI for ``xai/*`` (``desktop/electron/runner/cliCommand.cjs``) — and both node kinds
+    # route there (``team_run._desktop_route`` covers thinker and worker alike), so both seats offer
+    # them. They are NOT in ``_PROVIDER_DEFAULT_ORDER``: offered, never auto-stamped.
+    "anthropic": {
+        "thinker_default": "anthropic/claude-sonnet-5",
+        "worker_default": "anthropic/claude-sonnet-5",
+        "thinker_presets": ["anthropic/claude-sonnet-5", "anthropic/claude-sonnet-4"],
+        "worker_presets": ["anthropic/claude-sonnet-5", "anthropic/claude-sonnet-4"],
+        "label": "Anthropic",
+        "model_labels": {
+            "anthropic/claude-sonnet-5": "Claude Sonnet 5",
+            "anthropic/claude-sonnet-4": "Claude Sonnet 4",
+        },
+        "subscription": "claude",
+        "byok_probed": False,
+    },
+    "xai": {
+        "thinker_default": "xai/grok-4.7",
+        "worker_default": "xai/grok-4.7",
+        "thinker_presets": ["xai/grok-4.7"],
+        "worker_presets": ["xai/grok-4.7"],
+        "label": "xAI",
+        "model_labels": {"xai/grok-4.7": "Grok 4.7"},
+        "subscription": "grok",
+        "byok_probed": False,
     },
 }
 # The deterministic preference order when the account holds several mapped providers.
@@ -343,7 +425,10 @@ def public_provider_catalogue() -> list[dict]:
 
     M-seat serves BOTH seats. The picker needs the split as much as the builders do: offering a
     worker node a thinker-only quick-pick invites, by hand, the exact failure the defaults now
-    avoid."""
+    avoid.
+
+    Revamp adds the display metadata (``label``, ``model_labels``, ``subscription``,
+    ``byok_probed``). Read with ``.get`` so a synthetic catalogue a test swaps in still serves."""
     return [
         {
             "provider": p,
@@ -351,6 +436,10 @@ def public_provider_catalogue() -> list[dict]:
             "worker_default": e["worker_default"],
             "thinker_presets": list(e["thinker_presets"]),
             "worker_presets": list(e["worker_presets"]),
+            "label": e.get("label") or p,
+            "model_labels": dict(e.get("model_labels") or {}),
+            "subscription": e.get("subscription"),
+            "byok_probed": bool(e.get("byok_probed", False)),
         }
         for p, e in PROVIDER_CATALOGUE.items()
     ]

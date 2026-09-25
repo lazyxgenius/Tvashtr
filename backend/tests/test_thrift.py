@@ -382,8 +382,8 @@ def test_the_stamped_fallback_never_names_the_primary_s_own_provider():
     """
     from tvashtr.control_plane.credentials import provider_for_model
     from tvashtr.control_plane.teams import (
+        _PROVIDER_DEFAULT_ORDER,
         CAPABILITIES,
-        PROVIDER_CATALOGUE,
         account_fallback_model,
         catalogue_default,
     )
@@ -391,9 +391,11 @@ def test_the_stamped_fallback_never_names_the_primary_s_own_provider():
 
     # M-seat: the property must hold in EACH seat independently. A capability-blind walk could skip
     # a provider for the primary and then hand that same provider back as the fallback, which is
-    # precisely the collapse this asserts against.
+    # precisely the collapse this asserts against. Revamp: the walk's candidates are the providers
+    # in the preference order — the catalogue also OFFERS providers that are never stamped as a
+    # default (``anthropic``/``xai``), which the walk skips by design.
     for capability in CAPABILITIES:
-        held = {p for p in PROVIDER_CATALOGUE if catalogue_default(p, capability) is not None}
+        held = {p for p in _PROVIDER_DEFAULT_ORDER if catalogue_default(p, capability) is not None}
         while len(held) >= 2:
             primary = primary_of(held, capability)
             fallback = account_fallback_model(held, capability)
