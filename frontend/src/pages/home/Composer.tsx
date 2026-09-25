@@ -18,7 +18,6 @@ import {
   type RepoList,
   type Target,
   budgetError,
-  editsOffAsks,
   largeRepoNote,
   launchProblem,
   missingKeysSentence,
@@ -80,7 +79,12 @@ export function Composer() {
   const [config, setConfig] = useState<HomeConfig | null>(null);
   const [idea, setIdea] = useState("");
   const [ideaError, setIdeaError] = useState(false);
-  const [retryOf, setRetryOf] = useState<{ runId: string; teamId: string | null } | null>(null);
+  // Retry borrows the composer: `backTo` is the team it had before, restored after the launch.
+  const [retryOf, setRetryOf] = useState<{
+    runId: string;
+    teamId: string | null;
+    backTo: string | null;
+  } | null>(null);
   const [target, setTarget] = useState<Target>({ kind: "none" });
   const [targetTouched, setTargetTouched] = useState(false);
   const [baseRef, setBaseRef] = useState("");
@@ -303,7 +307,9 @@ export function Composer() {
     setIdea(p.idea);
     setIdeaError(false);
     setProblem(null);
-    setRetryOf(p.retryOfRunId ? { runId: p.retryOfRunId, teamId: p.teamId } : null);
+    setRetryOf(
+      p.retryOfRunId ? { runId: p.retryOfRunId, teamId: p.teamId, backTo: composerTeamId } : null,
+    );
     if (p.target) {
       let next: Target | null = null;
       if (p.target.kind === "github") {
@@ -445,6 +451,8 @@ export function Composer() {
       });
       setIdea("");
       setRetryOf(null);
+      // After a retry the composer goes back to the team it had (HmF-Retry-4).
+      if (retryOf?.backTo && retryOf.backTo !== teamId) pickTeamForRun(retryOf.backTo);
       void refreshHome();
       void reloadTeams();
     } catch (e) {
@@ -478,7 +486,6 @@ export function Composer() {
   }
 
   const where = desktop ? "on this computer" : "on the website";
-  const asks = editsOffAsks(teamNodes);
   const largeNote = adviceDismissed
     ? null
     : largeRepoNote(trackedFiles, Boolean(subpath), subpaths.length > 0, teamNodes);
@@ -676,26 +683,14 @@ export function Composer() {
             <span>{launching ? "Launching…" : "Launch"}</span>
           </Button>
         </div>
-        {(largeNote || asks.length > 0) && (
+        {largeNote && (
           <div className="hm-advice" role="note">
-            {largeNote && (
-              <span>
-                {largeNote}{" "}
-                <button
-                  type="button"
-                  className="hm-linkbtn"
-                  onClick={() => setAdviceDismissed(true)}
-                >
-                  Dismiss
-                </button>
-              </span>
-            )}
-            {asks.map((a) => (
-              <span key={a.node}>
-                <b>{a.node}</b> can’t write files (edits off) but its prompt asks it to{" "}
-                <code>{a.verb}</code> — did you mean to allow edits?
-              </span>
-            ))}
+            <span>
+              {largeNote}{" "}
+              <button type="button" className="hm-linkbtn" onClick={() => setAdviceDismissed(true)}>
+                Dismiss
+              </button>
+            </span>
           </div>
         )}
       </div>

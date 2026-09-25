@@ -190,50 +190,7 @@ export function targetBranch(t: Target, baseRef: string): string | null {
   return null;
 }
 
-// ---- Advisories carried over from the old launch panel (never blocking) ----
-
-const ACTION_VERBS = [
-  "implement",
-  "build",
-  "create",
-  "write",
-  "edit",
-  "modify",
-  "add",
-  "fix",
-  "refactor",
-  "delete",
-  "rename",
-  "generate",
-  "update",
-  "change",
-  "remove",
-  "rewrite",
-];
-// A sentence that negates ("do NOT modify …") or is about the node's own report / verdict / spec
-// (which an edits-off node legitimately writes) is not a misconfiguration.
-const NEGATOR = /\b(?:not|never|without|avoid|don't|dont|cannot|can't|cant)\b/;
-const DELIVERABLE = /\b(?:report(?:\.md)?|review_verdict(?:\.json)?|verdict|prd|spec)\b/;
-
-/** The first file-editing verb an edits-off node's prompt positively asks for, else null. */
-export function askedActionVerb(prompt: string | null): string | null {
-  if (!prompt) return null;
-  for (const sentence of prompt.toLowerCase().split(/[.!?\n]+/)) {
-    if (NEGATOR.test(sentence) || DELIVERABLE.test(sentence)) continue;
-    for (const verb of ACTION_VERBS) {
-      if (new RegExp(`\\b${verb}\\b`).test(sentence)) return verb;
-    }
-  }
-  return null;
-}
-
-/** Edits-off nodes whose prompt asks them to change files ("did you mean to allow edits?"). */
-export function editsOffAsks(nodes: TeamGraphNode[]): { node: string; verb: string }[] {
-  return nodes
-    .filter((n) => !(n.edits_allowed ?? n.kind === "agent"))
-    .map((n) => ({ node: n.role_name, verb: askedActionVerb(n.prompt) }))
-    .filter((x): x is { node: string; verb: string } => x.verb !== null);
-}
+// ---- The large-repo note (analysis §5: keep the old launch panel's advisory inline) ----
 
 /** The large-repo note: only for a whole-repo run on a repo above the threshold. */
 export function largeRepoNote(
