@@ -17,6 +17,7 @@ from tvashtr.control_plane import team_run
 from tvashtr.control_plane.document_views import derive_note
 from tvashtr.control_plane.shipping import init_workspace_repo
 from tvashtr.control_plane.teams import (
+    build_review_loop_team,
     build_thinker_chain_team,
     build_two_node_team,
     clone_team_graph,
@@ -29,7 +30,7 @@ from tvashtr.documents.service import (
     list_documents_for_run,
 )
 from tvashtr.engines.base import AgentRunResult
-from tvashtr.models import AgentNode, Document, DocumentVersion, Run
+from tvashtr.models import AgentInvocation, AgentNode, Document, DocumentVersion, Run
 
 # ============================ helpers =====================================================
 
@@ -440,3 +441,109 @@ def test_saving_on_a_finished_run_is_a_409(client):
     assert client.post(f"/api/documents/{doc.id}/versions", json={"content": "ok"}).status_code == (
         200
     )
+
+
+# ============================ versions read → context manifest ============================
+
+
+def _manifests(run_id: str) -> dict[tuple[str, int], dict | None]:
+    with session_scope() as session:
+        rows = session.execute(
+            select(AgentNode.role_name, AgentInvocation.iteration, AgentInvocation.context_manifest)
+            .join(AgentNode, AgentNode.id == AgentInvocation.node_id)
+            .where(AgentInvocation.run_id == run_id)
+        ).all()
+    return {(role, it): manifest for role, it, manifest in rows}
+
+
+def test_versioned_read_steps_are_recorded_steps():
+    markers = ("__wrapped__", "dbos_func_decorator_info", "dbos_function_name")
+    assert all(hasattr(team_run.read_latest_prd_versioned_step, m) for m in markers)
+    assert all(hasattr(team_run.read_named_documents_versioned_step, m) for m in markers)
+
+
+def test_versioned_read_steps_return_content_and_version(client):
+    run_id = _seed_run(build_two_node_team())
+    doc = _spec_on(run_id, "PRD v1")
+    add_version(doc.id, "PRD v2", created_by="human", idempotency_key=f"human-edit:{doc.id}:v")
+
+    assert team_run.read_latest_prd_versioned_step(run_id) == {
+        "content": "PRD v2",
+        "document_id": str(doc.id),
+        "version_no": 2,
+        "name": "spec",
+    }
+    assert team_run.read_named_documents_versioned_step(run_id, ["ghost", "spec"]) == [
+        {"name": "spec", "content": "PRD v2", "document_id": str(doc.id), "version_no": 2}
+    ]
+    # The old steps keep their return shape (in-flight workflows replay them).
+    assert team_run.read_latest_prd_step(run_id) == "PRD v2"
+    assert team_run.read_named_documents_step(run_id, ["spec"]) == [
+        {"name": "spec", "content": "PRD v2"}
+    ]
+
+
+def test_manifest_records_the_document_versions_each_agent_read(client, monkeypatch, tmp_path):
+    run_id, _library, _clone = _run_chain(monkeypatch, tmp_path)
+    docs = {d.name: str(d.id) for d in list_documents_for_run(uuid.UUID(run_id))}
+    manifests = _manifests(run_id)
+
+    assert "documents" not in manifests[("pm", 1)]  # the entry's first round reads nothing
+    spec_v1 = {
+        "name": "spec",
+        "document_id": docs["spec"],
+        "version_no": 1,
+        "is_shared_spec": True,
+    }
+    assert manifests[("architect", 1)]["documents"] == [spec_v1]
+    assert manifests[("engineer", 1)]["documents"] == [
+        spec_v1,
+        {"name": "design", "document_id": docs["design"], "version_no": 1, "is_shared_spec": False},
+    ]
+
+
+class _SteeredAdapter:
+    """The entry writes the PRD; the Engineer's first round is followed by a human edit (v2)."""
+
+    name = "openhands"
+
+    def __init__(self, run_id: str) -> None:
+        self.run_id = run_id
+        self.rounds = 0
+
+    def run(self, task, on_event=None):
+        ws = Path(task.workspace_dir)
+        if "REPORT-ONLY NODE" in task.instruction:
+            (ws / "REPORT.md").write_text("PRD: v1", encoding="utf-8")
+            return AgentRunResult(
+                status="completed", summary="r", events=[], files_changed=["REPORT.md"]
+            )
+        self.rounds += 1
+        if self.rounds == 1:
+            with session_scope() as session:
+                doc_id = session.get(Run, uuid.UUID(self.run_id)).pm_document_id
+            add_version(
+                doc_id, "PRD: v2", created_by="human", idempotency_key=f"human-edit:{doc_id}"
+            )
+        (ws / "greeting.txt").write_text(f"round {self.rounds}\n", encoding="utf-8")
+        return AgentRunResult(
+            status="completed", summary="ok", events=[], files_changed=["greeting.txt"]
+        )
+
+
+def test_manifest_shows_a_live_edit_reaching_the_next_round(client, monkeypatch, tmp_path):
+    monkeypatch.setenv("TVASHTR_FORCE_REVISIONS", "1")
+    monkeypatch.setenv("TVASHTR_AUTO_APPROVE_GATES", "1")
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    init_workspace_repo(str(ws))
+    monkeypatch.setattr(team_run, "engineer_setup_step", lambda run_id: str(ws))
+    run_id = _seed_run(clone_team_graph(build_review_loop_team()))
+    adapter = _SteeredAdapter(run_id)
+    monkeypatch.setattr(team_run, "resolve_adapter", lambda name: adapter)
+    with SetWorkflowID(run_id):
+        assert DBOS.start_workflow(team_run.run_team, "x").get_result()["status"] == "completed"
+
+    manifests = _manifests(run_id)
+    assert [d["version_no"] for d in manifests[("engineer", 1)]["documents"]] == [1]
+    assert [d["version_no"] for d in manifests[("engineer", 2)]["documents"]] == [2]

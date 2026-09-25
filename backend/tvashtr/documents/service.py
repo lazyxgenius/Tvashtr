@@ -317,6 +317,44 @@ def latest_content_by_name(run_id: uuid.UUID, name: str) -> str | None:
         ).scalar_one_or_none()
 
 
+def latest_version_by_name(run_id: uuid.UUID, name: str) -> dict | None:
+    """Revamp: like :func:`latest_content_by_name` but also says WHICH version it is —
+    ``{"document_id", "version_no", "content"}`` of the ``(run_id, name)`` document's newest
+    version, or ``None`` when there is no such document (or it has no versions yet)."""
+    with session_scope() as session:
+        row = session.execute(
+            select(DocumentVersion.document_id, DocumentVersion.version_no, DocumentVersion.content)
+            .join(Document, Document.id == DocumentVersion.document_id)
+            .where(Document.run_id == run_id, Document.name == name)
+            .order_by(DocumentVersion.version_no.desc())
+            .limit(1)
+        ).first()
+    if row is None:
+        return None
+    return {"document_id": str(row[0]), "version_no": row[1], "content": row[2]}
+
+
+def latest_version_of(document_id: uuid.UUID) -> dict | None:
+    """Revamp: the document's newest version as ``{"document_id", "version_no", "content",
+    "name"}`` (``name`` is the document's run-scoped name), or ``None`` when it has no versions."""
+    with session_scope() as session:
+        row = session.execute(
+            select(DocumentVersion.version_no, DocumentVersion.content, Document.name)
+            .join(Document, Document.id == DocumentVersion.document_id)
+            .where(DocumentVersion.document_id == document_id)
+            .order_by(DocumentVersion.version_no.desc())
+            .limit(1)
+        ).first()
+    if row is None:
+        return None
+    return {
+        "document_id": str(document_id),
+        "version_no": row[0],
+        "content": row[1],
+        "name": row[2],
+    }
+
+
 def get_document_with_versions(document_id: uuid.UUID) -> Document | None:
     """Return a document with its versions eagerly loaded in version order."""
     with session_scope() as session:
