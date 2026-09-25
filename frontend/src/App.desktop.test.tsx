@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
@@ -7,9 +7,9 @@ import type { TeamGraphData, TeamGraphNode } from "./lib/api";
 import type { SubscriptionStatus } from "./lib/engines";
 
 // M-subs-desktop: on Tvashtr Desktop a node on an anthropic/… or xai/… model runs on the user's OWN
-// Claude/Grok CLI. The FE gate lets Run through when a fresh subscription covers the node — and the
-// launch must then TELL the server it is desktop-targeted, or the server's hosted preflight refuses
-// it (422 subscription_only) and the run never reaches the user's CLI (F1).
+// Claude/Grok CLI. The FE gate lets Run through when a fresh subscription covers the node; Run then
+// opens Home's composer, whose Desktop launch tells the server it is desktop-targeted (else the
+// hosted preflight refuses it with 422 subscription_only and the run never reaches the user's CLI).
 
 function jsonOk(body: unknown): Response {
   return { ok: true, status: 200, json: () => Promise.resolve(body) } as unknown as Response;
@@ -134,31 +134,28 @@ afterEach(() => {
 });
 
 describe("App — Desktop subscription launch (M-subs-desktop F1)", () => {
-  it("posts desktop_target so a subscription-only team reaches the user's CLI", async () => {
+  it("lets a subscription-only team Run and hands the launch to Home's composer", async () => {
+    // The launch itself (with desktop_target) now happens in Home's Start a run composer — see
+    // pages/home/HomeRuns.test.tsx "marks a Desktop launch with desktop_target".
     render(
       <StrictMode>
         <App />
       </StrictMode>,
     );
     const run = await screen.findByRole("button", { name: "Run this team" });
+    await waitFor(() => expect(run).toBeEnabled());
     await act(async () => {
       fireEvent.click(run);
       await Promise.resolve();
     });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run" }));
-      await Promise.resolve();
-    });
+    expect(window.location.hash).toBe("#/home");
     const post = fetchMock.mock.calls.find(
       (c) =>
         urlOf(c[0] as RequestInfo | URL) === "/api/runs" &&
         (c[1] as RequestInit | undefined)?.method === "POST",
     );
-    expect(post).toBeTruthy();
-    expect(JSON.parse((post![1] as RequestInit).body as string)).toEqual({
-      team_graph_id: "team-1",
-      desktop_target: true,
-    });
+    expect(post).toBeUndefined();
+    window.location.hash = "";
   });
 
   it("blocks Run when the Desktop runner has not checked in (subscription not fresh)", async () => {

@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ApiDetailError } from "../../lib/api/runs";
+import type { TeamGraphNode } from "../../lib/api";
 import {
+  askedActionVerb,
   budgetError,
   defaultTeamId,
+  editsOffAsks,
+  largeRepoNote,
   launchProblem,
   missingKeysSentence,
   parseBudget,
@@ -85,6 +89,33 @@ describe("composer rules", () => {
     ).toBe("Couldn’t reach the server. Try again in a moment.");
     expect(missingKeysSentence("Bugfix squad", ["xai"])).toBe(
       "Bugfix squad uses xai models, and there’s no API key for it.",
+    );
+  });
+
+  it("keeps the old launch panel's advisories", () => {
+    expect(askedActionVerb("Review the diff. Do not modify files.")).toBeNull();
+    expect(askedActionVerb("Write a file named REVIEW_VERDICT.json")).toBeNull();
+    expect(askedActionVerb("Read the code, then fix the failing test.")).toBe("fix");
+    const node = (over: Partial<TeamGraphNode>): TeamGraphNode => ({
+      id: "n",
+      role_name: "reviewer",
+      kind: "agent",
+      model: null,
+      engine: null,
+      prompt: null,
+      position: { x: 0, y: 0 },
+      config: null,
+      ...over,
+    });
+    const nodes = [
+      node({ role_name: "reviewer", edits_allowed: false, prompt: "Fix any typo you find." }),
+      node({ role_name: "engineer", edits_allowed: true, prompt: "Implement it." }),
+    ];
+    expect(editsOffAsks(nodes)).toEqual([{ node: "reviewer", verb: "fix" }]);
+    expect(largeRepoNote(120, false, true, nodes)).toBeNull();
+    expect(largeRepoNote(900, true, true, nodes)).toBeNull();
+    expect(largeRepoNote(900, false, true, nodes)).toBe(
+      "Large repo (~900 files). Working on existing code this size is harder — scope the run to a package in Options, or use a bigger-context model on your worker node(s): reviewer, engineer.",
     );
   });
 });

@@ -1052,3 +1052,22 @@
     400 13.3333px Arial,
     sans-serif;
 }
+
+/* Launch advisories carried over from the old launch panel (large repo, edits-off asks). */
+.hm-advice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-700);
+}
+.hm-advice b {
+  font-weight: 600;
+}
+.hm-advice code {
+  font-family: var(--font-code);
+}

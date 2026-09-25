@@ -1,7 +1,7 @@
 import { CircleCheck, TriangleAlert, Undo } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { getGithubRepos, inspectRepo } from "../../lib/api";
+import { type TeamGraphNode, getGithubRepos, getTeamGraph, inspectRepo } from "../../lib/api";
 import { type HomeConfig, getHomeConfig } from "../../lib/api/home";
 import { type LaunchBody, getRepoBranches, getRepoSubpaths, launchRun } from "../../lib/api/runs";
 import {
@@ -18,6 +18,8 @@ import {
   type RepoList,
   type Target,
   budgetError,
+  editsOffAsks,
+  largeRepoNote,
   launchProblem,
   missingKeysSentence,
   parseBudget,
@@ -92,6 +94,10 @@ export function Composer() {
   const [folders, setFolders] = useState<DesktopFolder[]>([]);
   const [problem, setProblem] = useState<LaunchProblem | null>(null);
   const [launching, setLaunching] = useState(false);
+  const [teamNodes, setTeamNodes] = useState<TeamGraphNode[]>([]);
+  const [trackedFiles, setTrackedFiles] = useState<number | null>(null);
+  const [adviceDismissed, setAdviceDismissed] = useState(false);
+  const pendingFocus = useRef(false);
   const ideaRef = useRef<HTMLTextAreaElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
 
@@ -102,9 +108,20 @@ export function Composer() {
 
   // ---- focus / prefill hooks other sections use ----
   const focusIdea = useCallback(() => {
+    if (!ideaRef.current) {
+      // Asked before the composer finished loading (e.g. the canvas's Run): focus once it's there.
+      pendingFocus.current = true;
+      return;
+    }
     sectionRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
-    ideaRef.current?.focus({ preventScroll: true });
+    ideaRef.current.focus({ preventScroll: true });
   }, []);
+  useEffect(() => {
+    if (!teamsLoading && pendingFocus.current) {
+      pendingFocus.current = false;
+      focusIdea();
+    }
+  }, [teamsLoading, focusIdea]);
   useEffect(() => {
     registerComposerFocus(focusIdea);
     return () => registerComposerFocus(null);
@@ -184,6 +201,8 @@ export function Composer() {
     setSubpaths([]);
     setSubpath("");
     setBranchesTruncated(true);
+    setTrackedFiles(null);
+    setAdviceDismissed(false);
     if (target.kind === "github") {
       setBaseRef(target.defaultBranch);
       getRepoBranches(target.repo)
@@ -202,6 +221,7 @@ export function Composer() {
           setBranches(r.branches);
           setBranchesTruncated(false);
           setSubpaths(r.subpaths.map((s) => s.path));
+          setTrackedFiles(r.tracked_file_count);
           if (!target.branch && r.current_branch) setBaseRef(r.current_branch);
         })
         .catch(() => undefined);
@@ -213,6 +233,7 @@ export function Composer() {
           setBranches(r.branches);
           setBranchesTruncated(false);
           setSubpaths((r.subpaths ?? []).map((s) => s.path));
+          setTrackedFiles(r.tracked_file_count);
         })
         .catch(() => undefined);
     } else {
@@ -237,6 +258,19 @@ export function Composer() {
       live = false;
     };
   }, [scopeRepo, scopeRef]);
+
+  // The chosen team's nodes feed the two advisories the old launch panel showed.
+  useEffect(() => {
+    setTeamNodes([]);
+    if (!composerTeamId) return;
+    let live = true;
+    getTeamGraph(composerTeamId)
+      .then((g) => live && setTeamNodes(g.nodes))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [composerTeamId]);
 
   // Changing the team ends retry mode (HOME-67).
   useEffect(() => {
@@ -444,6 +478,10 @@ export function Composer() {
   }
 
   const where = desktop ? "on this computer" : "on the website";
+  const asks = editsOffAsks(teamNodes);
+  const largeNote = adviceDismissed
+    ? null
+    : largeRepoNote(trackedFiles, Boolean(subpath), subpaths.length > 0, teamNodes);
 
   return (
     <section
@@ -638,6 +676,28 @@ export function Composer() {
             <span>{launching ? "Launching…" : "Launch"}</span>
           </Button>
         </div>
+        {(largeNote || asks.length > 0) && (
+          <div className="hm-advice" role="note">
+            {largeNote && (
+              <span>
+                {largeNote}{" "}
+                <button
+                  type="button"
+                  className="hm-linkbtn"
+                  onClick={() => setAdviceDismissed(true)}
+                >
+                  Dismiss
+                </button>
+              </span>
+            )}
+            {asks.map((a) => (
+              <span key={a.node}>
+                <b>{a.node}</b> can’t write files (edits off) but its prompt asks it to{" "}
+                <code>{a.verb}</code> — did you mean to allow edits?
+              </span>
+            ))}
+          </div>
+        )}
       </div>
       <AddKeySheet directory={config?.provider_directory ?? []} desktop={desktop} />
     </section>

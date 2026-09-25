@@ -5,7 +5,6 @@ import { TeamCanvas } from "./canvas/TeamCanvas";
 import type { DashView } from "./components/AppShell";
 import { BackendDot } from "./components/BackendDot";
 import { CancelRunButton } from "./components/CancelRunButton";
-import { LaunchPanel } from "./components/LaunchPanel";
 import { RunBanner } from "./components/RunBanner";
 import { RunWarnings } from "./components/RunWarnings";
 import { TasksDrawer } from "./components/TasksDrawer";
@@ -13,7 +12,6 @@ import { SidePanel } from "./panel/SidePanel";
 import { TeamNodePanel } from "./panel/TeamNodePanel";
 import {
   acknowledgeTask,
-  ApiError,
   type AuthUser,
   cancelRun,
   type Config,
@@ -38,8 +36,6 @@ import {
   type ProviderCredential,
   resolveTask,
   type RunRow,
-  runTeam,
-  type RunTeamOptions,
   saveTeamPositions,
   type TaskDecision,
   type TeamGraphData,
@@ -53,6 +49,7 @@ import {
 } from "./lib/engines";
 import type { EdgeConfirm } from "./canvas/EdgeRoleEditor";
 import { nextDropPosition, withLayout } from "./lib/topology";
+import { requestHomeAction } from "./lib/homeActions";
 import { isRunTerminal } from "./lib/status";
 
 // P1.8d-fix1: a STABLE empty task list for the authoring view. A fresh `[]` literal at the call site
@@ -76,6 +73,7 @@ interface AppProps {
   initialRunId?: string | null;
   /** Return to the dashboard; pass "engines" / "tools" to land on that page (Open Engines). */
   onBackToDashboard?: (view?: DashView) => void;
+  /** The public config (the old launch panel read it; launching now happens on Home). */
   config?: Config | null;
 }
 
@@ -85,7 +83,6 @@ export default function App({
   teamId,
   initialRunId,
   onBackToDashboard,
-  config,
 }: AppProps = {}) {
   const [runId, setRunId] = useState<string | null>(initialRunId ?? null);
   const [graph, setGraph] = useState<GraphData | null>(null);
@@ -106,17 +103,11 @@ export default function App({
   // is gated on `validity.runnable`; the offending nodes/edges are flagged on the canvas.
   const [validity, setValidity] = useState<GraphValidity | null>(null);
   const [editBusy, setEditBusy] = useState(false);
-  const [starting, setStarting] = useState(false);
-  // M-brownfield Slice 2: "Run this team" opens the launch panel (it no longer fires the run
-  // directly); the panel's Run calls `handleLaunch` with the assembled options.
-  const [launchOpen, setLaunchOpen] = useState(false);
   const [acting, setActing] = useState(false);
-  // M-legible: the launch error is the backend's REAL reason (or the generic network message), not a
-  // bare boolean — a 422/429 means the backend answered, so we render what it said. `null` = no error.
+  // An error to show beside the toolbar (launching moved to Home's composer, so this is only ever
+  // cleared here now; kept for the canvas' blocked-reason plumbing).
   const [error, setError] = useState<string | null>(null);
-  // M-live: the role names the launch pre-flight refused on. The banner shows the reason; this puts
-  // it on the offending node cards too, so the eye lands on what to fix rather than on the message.
-  const [blockedNodes, setBlockedNodes] = useState<string[]>([]);
+  const blockedNodes: string[] = [];
   // Run-view selection is by NODE ID (Option A): a topology-edited team can carry duplicate role
   // names (e.g. two blank thinkers), so the run panel keys on the unique node id — the run-view twin
   // of the authoring `selectedNodeId` below.
@@ -425,45 +416,6 @@ export default function App({
     setFocusNodeId(null);
   }, []);
 
-  // The launch (M-brownfield Slice 2): clone the CURRENT team into a fresh run-scoped snapshot and
-  // launch it with the panel's options (idea + optional brownfield repo target); the existing live
-  // run view then takes over (same poll surface as before). `currentTeamId` survives
-  // `resetRunState`, so returning to authoring lands back on the same team. A no-field `opts` posts
-  // exactly `{ team_graph_id }` — the greenfield launch is byte-for-byte unchanged.
-  const handleLaunch = useCallback(
-    async (opts: RunTeamOptions) => {
-      if (!currentTeamId) return;
-      setLaunchOpen(false);
-      setStarting(true);
-      setError(null);
-      setBlockedNodes([]);
-      resetRunState();
-      try {
-        // M-subs-desktop: a Desktop launch tells the server so its Claude/Grok nodes can run on this
-        // computer with the user's own CLI sign-in (the web app never sends it).
-        const isDesktopLaunch = document.documentElement.dataset.tvashtrDesktop === "true";
-        const id = await runTeam(
-          currentTeamId,
-          isDesktopLaunch ? { ...opts, desktop_target: true } : opts,
-        );
-        const g = await getGraph(id);
-        setGraph(g);
-        setRunId(id);
-      } catch (e) {
-        // M-legible: a backend answer (ApiError — 422 invalid graph, 429 ceiling, …) carries the
-        // real reason; only a genuine network failure (no status) keeps the "is the backend running?"
-        // guess.
-        setError(
-          e instanceof ApiError ? e.message : "Couldn't start the run — is the backend running?",
-        );
-        setBlockedNodes(e instanceof ApiError ? e.missingNodes : []);
-      } finally {
-        setStarting(false);
-      }
-    },
-    [currentTeamId, resetRunState],
-  );
-
   // Return to the authoring view (after a run finishes) to edit the current team and run again.
   // Refetches its graph so any edits made elsewhere are reflected.
   const handleEditTeam = useCallback(() => {
@@ -732,8 +684,12 @@ export default function App({
               ) : (
                 <button
                   className="tv-btn"
-                  onClick={() => setLaunchOpen(true)}
-                  disabled={starting || currentTeamId === null || !canLaunch}
+                  // One launch surface (spec §4.6, Q18): Run opens Home's "Start a run" composer
+                  // with this team picked.
+                  onClick={() =>
+                    currentTeamId && requestHomeAction({ kind: "new-run", teamId: currentTeamId })
+                  }
+                  disabled={currentTeamId === null || !canLaunch}
                   title={
                     !teamRunnable
                       ? "Fix the team before running (see the issues)."
@@ -741,19 +697,8 @@ export default function App({
                   }
                 >
                   <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden />
-                  {starting ? "Starting…" : "Run this team"}
+                  Run this team
                 </button>
-              )}
-              {launchOpen && currentTeamId !== null && canLaunch && (
-                <LaunchPanel
-                  teamNodes={teamGraph?.nodes ?? []}
-                  starting={starting}
-                  onLaunch={(opts) => void handleLaunch(opts)}
-                  onClose={() => setLaunchOpen(false)}
-                  hosted={config?.hosted_mode ?? false}
-                  githubInstallUrl={config?.github_install_url ?? ""}
-                  githubManageUrl={config?.github_manage_url ?? ""}
-                />
               )}
             </span>
           </>
