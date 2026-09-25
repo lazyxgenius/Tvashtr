@@ -152,7 +152,7 @@ def with_tool_ref(tool_config: dict | None, tool_id: uuid.UUID, name: str) -> di
         servers = {k: v for k, v in servers.items() if k != name}
         meta["servers"] = servers
     config["tvashtr"] = meta
-    return config
+    return _tidy_tool_config(config) or {}
 
 
 def without_tool_ref(tool_config: dict | None, tool_id: uuid.UUID, name: str) -> dict | None:
@@ -279,6 +279,125 @@ def skill_usage(session: Session, owner_id: uuid.UUID) -> dict[uuid.UUID, list[d
             if skill_ref(node.skills, sid) is not None:
                 usage[sid].append(usage_row(node, team))
     return usage
+
+
+# ---- mutations (same transaction as the caller's library write) ----------------------------------
+
+
+def strip_tool_refs(session: Session, owner_id: uuid.UUID, tool_id: uuid.UUID, name: str) -> int:
+    """Remove every ref to a library tool (and its ``servers[name]`` switch) from the owner's
+    library-team agents — called when the tool is deleted, so no agent keeps a dangling id. Returns
+    how many agents were EFFECTIVELY using it (the "N agents lose it" count)."""
+    removed = 0
+    for node, _team in owner_agent_nodes(session, owner_id):
+        if not tool_referenced(node.tool_config, tool_id):
+            continue
+        if tool_effective(node.tool_config, tool_id, name):
+            removed += 1
+        node.tool_config = without_tool_ref(node.tool_config, tool_id, name)
+    return removed
+
+
+def carry_tool_switch(
+    session: Session, owner_id: uuid.UUID, tool_id: uuid.UUID, old: str, new: str
+) -> None:
+    """On a rename, move each referencing agent's ``servers[old]`` switch to ``servers[new]`` so an
+    agent that switched the tool off doesn't silently get it back. A node whose ``servers[old]``
+    belongs to its own inline server of that name is left alone."""
+    for node, _team in owner_agent_nodes(session, owner_id):
+        if not tool_referenced(node.tool_config, tool_id) or tool_overridden(node.tool_config, old):
+            continue
+        moved = with_renamed_switch(node.tool_config, old, new)
+        if moved is not None:
+            node.tool_config = moved
+
+
+def strip_skill_refs(session: Session, owner_id: uuid.UUID, skill_id: uuid.UUID) -> int:
+    """Remove every ``{"type":"library","id":skill_id}`` ref from the owner's library-team agents
+    (the skill is being deleted). Returns how many agents referenced it."""
+    removed = 0
+    for node, _team in owner_agent_nodes(session, owner_id):
+        if skill_ref(node.skills, skill_id) is None:
+            continue
+        removed += 1
+        node.skills = without_skill_ref(node.skills, skill_id)
+    return removed
+
+
+def _select_nodes(
+    session: Session, owner_id: uuid.UUID, node_ids: list[str]
+) -> tuple[list[tuple[AgentNode, TeamGraph]], set[uuid.UUID]]:
+    """The owner's candidate agents plus the parsed wanted set; ``LookupError`` when a wanted id is
+    not one of the owner's library-team agents (another account's node is indistinguishable from an
+    absent one)."""
+    rows = owner_agent_nodes(session, owner_id)
+    known = {node.id for node, _ in rows}
+    wanted: set[uuid.UUID] = set()
+    for raw in node_ids:
+        nid = _as_uuid(raw)
+        if nid is None or nid not in known:
+            raise LookupError(str(raw))
+        wanted.add(nid)
+    return rows, wanted
+
+
+def _users_payload(users: list[dict], skipped: list[dict]) -> dict:
+    agent_count, team_count = usage_counts(users)
+    return {
+        "agents": users,
+        "agent_count": agent_count,
+        "team_count": team_count,
+        "skipped": skipped,
+    }
+
+
+def set_tool_agents(
+    session: Session, owner_id: uuid.UUID, tool: ToolLibraryItem, node_ids: list[str]
+) -> dict:
+    """Make ``node_ids`` exactly the set of the owner's agents that use ``tool`` (``PUT
+    /api/tool-library/{id}/agents``). A listed agent gets the ref and its switch on; an unlisted
+    agent that uses it loses the ref and its switch (unchecking = removing, spec Q4). A listed
+    agent with an inline server of the same name is skipped — the inline server would win."""
+    rows, wanted = _select_nodes(session, owner_id, node_ids)
+    skipped: list[dict] = []
+    for node, _team in rows:
+        if node.id in wanted:
+            if tool_overridden(node.tool_config, tool.name):
+                skipped.append(
+                    {
+                        "node_id": str(node.id),
+                        "reason": f"an inline server named {tool.name} overrides it",
+                    }
+                )
+                continue
+            if not tool_effective(node.tool_config, tool.id, tool.name):
+                node.tool_config = with_tool_ref(node.tool_config, tool.id, tool.name)
+        elif tool_effective(node.tool_config, tool.id, tool.name):
+            node.tool_config = without_tool_ref(node.tool_config, tool.id, tool.name)
+    users = [
+        usage_row(node, team)
+        for node, team in rows
+        if tool_effective(node.tool_config, tool.id, tool.name)
+    ]
+    return _users_payload(users, skipped)
+
+
+def set_skill_agents(
+    session: Session, owner_id: uuid.UUID, skill: SkillLibraryItem, node_ids: list[str]
+) -> dict:
+    """Make ``node_ids`` exactly the set of the owner's agents that reference ``skill`` (``PUT
+    /api/skill-library/{id}/agents``). A kept ref keeps its per-agent load-mode override."""
+    rows, wanted = _select_nodes(session, owner_id, node_ids)
+    for node, _team in rows:
+        has_ref = skill_ref(node.skills, skill.id) is not None
+        if node.id in wanted and not has_ref:
+            node.skills = with_skill_ref(node.skills, skill.id)
+        elif node.id not in wanted and has_ref:
+            node.skills = without_skill_ref(node.skills, skill.id)
+    users = [
+        usage_row(node, team) for node, team in rows if skill_ref(node.skills, skill.id) is not None
+    ]
+    return _users_payload(users, [])
 
 
 # ---- the "Turn on for agents" candidate list -----------------------------------------------------

@@ -168,9 +168,10 @@ def test_tool_library_endpoints_roundtrip_and_owner_scope(client):
         == 404
     )
     assert all(t["id"] != str(foreign) for t in client.get("/api/tool-library").json()["tools"])
-    # delete (204, idempotent)
-    assert client.delete(f"/api/tool-library/{item_id}").status_code == 204
-    assert client.delete(f"/api/tool-library/{item_id}").status_code == 204
+    # delete (revamp: 200 {removed_from_agents}, still idempotent)
+    resp = client.delete(f"/api/tool-library/{item_id}")
+    assert resp.status_code == 200 and resp.json() == {"removed_from_agents": 0}
+    assert client.delete(f"/api/tool-library/{item_id}").status_code == 200
 
 
 def test_tool_library_rejects_empty_name_and_non_object_config(client):

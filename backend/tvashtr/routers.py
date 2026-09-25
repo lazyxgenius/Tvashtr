@@ -28,6 +28,7 @@ from tvashtr.control_plane import (
     provider_models,
 )
 from tvashtr.control_plane import desktop_jobs
+from tvashtr.control_plane import toolkit
 from tvashtr.control_plane.context_compiler import resolve_fallback_model, resolve_multimodal
 from tvashtr.control_plane.credential_gate import (
     RUNNER_SUBSCRIPTIONS,
@@ -50,13 +51,9 @@ from tvashtr.control_plane.mcp_secrets import (
 )
 from tvashtr.control_plane.node_library import (
     create_owner_skill,
-    create_owner_tool,
     delete_owner_skill,
-    delete_owner_tool,
     list_owner_skills,
-    list_owner_tools,
     update_owner_skill,
-    update_owner_tool,
 )
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.control_plane.run_diff import compute_run_diff
@@ -2072,7 +2069,7 @@ def delete_secret(
 class ToolLibraryBody(BaseModel):
     """``POST``/``PATCH`` body for a library tool: a ``name`` (the ``mcpServers`` key) + a
     ``server_config`` object (the single server's config — ``{command,args,env}`` stdio or
-    ``{url,headers,type}`` http/sse). Upserts on ``(owner, name)``."""
+    ``{url,headers,type}`` http/sse). ``POST`` is create-only (409 on a taken name)."""
 
     name: str
     server_config: dict
@@ -2090,15 +2087,6 @@ class SkillLibraryBody(BaseModel):
 _LIBRARY_SKILL_SOURCE_TYPES = {"inline", "repo", "project_rules"}
 
 
-def _tool_library_to_dict(item: dict) -> dict:
-    return {
-        "id": str(item["id"]),
-        "name": item["name"],
-        "server_config": item["server_config"],
-        "created_at": item["created_at"].isoformat(),
-    }
-
-
 def _skill_library_to_dict(item: dict) -> dict:
     return {
         "id": str(item["id"]),
@@ -2108,55 +2096,56 @@ def _skill_library_to_dict(item: dict) -> dict:
     }
 
 
+class ToolLibraryPatchBody(BaseModel):
+    """``PATCH /api/tool-library/{id}`` body (revamp): either field may be omitted."""
+
+    name: str | None = None
+    server_config: dict | None = None
+
+
 @router.get("/api/tool-library")
 def list_tool_library(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
-    """The current account's library tools (``{id, name, server_config, created_at}``), oldest
-    first."""
-    items = list_owner_tools(uuid.UUID(current_user.id))
-    return {"tools": [_tool_library_to_dict(t) for t in items]}
+    """The current account's library tools, oldest first: ``{id, name, server_config, created_at,
+    updated_at, secret_refs, missing_secrets, status, used_by:{agent_count, team_count}}``."""
+    return {"tools": toolkit.list_tools(uuid.UUID(current_user.id))}
 
 
 @router.post("/api/tool-library")
 def add_tool_library(
     body: ToolLibraryBody, current_user: Annotated[UserOut, Depends(get_current_user)]
 ) -> dict:
-    """Add (or REPLACE — upsert on ``(owner, name)``) a library tool. 422 on an empty name or an
-    empty/non-object ``server_config``. Returns ``{id, name}``."""
-    name = body.name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="A tool name is required.")
-    if not isinstance(body.server_config, dict) or not body.server_config:
-        raise HTTPException(status_code=422, detail="A server config object is required.")
-    item_id = create_owner_tool(uuid.UUID(current_user.id), name, body.server_config)
-    return {"id": str(item_id), "name": name}
+    """CREATE-ONLY (revamp): 422 on the name rule or a config without exactly one of a command or
+    an http(s) URL; 409 "You already have a tool named <name>." Returns the full item."""
+    try:
+        return toolkit.create_tool(uuid.UUID(current_user.id), body.name, body.server_config)
+    except toolkit.ToolkitError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
 
 
 @router.patch("/api/tool-library/{item_id}")
 def edit_tool_library(
     item_id: str,
-    body: ToolLibraryBody,
+    body: ToolLibraryPatchBody,
     current_user: Annotated[UserOut, Depends(get_current_user)],
 ) -> dict:
-    """Update the owner's library tool by id. 422 as POST; 404 if not the owner's. Returns
-    ``{id, name}``. Editing an item propagates LIVE to every referencing node's next run."""
-    name = body.name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="A tool name is required.")
-    if not isinstance(body.server_config, dict) or not body.server_config:
-        raise HTTPException(status_code=422, detail="A server config object is required.")
-    if not update_owner_tool(uuid.UUID(current_user.id), item_id, name, body.server_config):
-        raise HTTPException(status_code=404, detail="tool not found in your library")
-    return {"id": item_id, "name": name}
+    """Update the owner's library tool by id (partial body). 422 as POST (an unchanged legacy name
+    is allowed), 409 on a name clash, 404 if not the owner's. A rename carries each agent's on/off
+    switch. Returns the full item; edits propagate LIVE to every referencing node's next run."""
+    try:
+        return toolkit.update_tool(
+            uuid.UUID(current_user.id), item_id, body.name, body.server_config
+        )
+    except toolkit.ToolkitError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
 
 
-@router.delete("/api/tool-library/{item_id}", status_code=204)
+@router.delete("/api/tool-library/{item_id}")
 def remove_tool_library(
     item_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
-) -> Response:
-    """Remove the owner's tool by id (204, idempotent + owner-scoped). A node still holding a
-    dangling reference to it simply skips + warns on its next run."""
-    delete_owner_tool(uuid.UUID(current_user.id), item_id)
-    return Response(status_code=204)
+) -> dict:
+    """Remove the owner's tool by id (idempotent + owner-scoped) and strip it from every agent that
+    referenced it. Returns ``{removed_from_agents}`` (was a bare 204 before the revamp)."""
+    return toolkit.delete_tool(uuid.UUID(current_user.id), item_id)
 
 
 @router.get("/api/skill-library")
