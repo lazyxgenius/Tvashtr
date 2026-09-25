@@ -41,6 +41,7 @@ from tvashtr.control_plane.credentials import (
     provider_for_model,
     resolve_owner_api_key,
 )
+from tvashtr.control_plane import document_views
 from tvashtr.control_plane.doc_writer import generate_doc
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
 from tvashtr.control_plane.mcp_secrets import (
@@ -111,12 +112,7 @@ from tvashtr.control_plane.domain_eval import (
     list_eval_cases,
     run_domain_eval,
 )
-from tvashtr.documents.service import (
-    add_version,
-    get_owned_document_with_versions,
-    list_documents_for_owner,
-    list_documents_for_run,
-)
+from tvashtr.documents.service import list_documents_for_owner
 from tvashtr.gateway import CompletionRequest, GatewayError, complete, multimodal_supported
 from tvashtr.metering import record_cost
 from tvashtr.models import (
@@ -124,7 +120,6 @@ from tvashtr.models import (
     AgentNode,
     CostRecord,
     Document,
-    DocumentVersion,
     Edge,
     EngineSubscriptionStatus,
     GithubInstallation,
@@ -233,9 +228,15 @@ class ResolveTaskRequest(BaseModel):
 
 class AddDocumentVersionRequest(BaseModel):
     """A human edit to a document (P1.7a live-document steering): the new full content,
-    appended as the next version that the running agents pick up on their next read."""
+    appended as the next version that the running agents pick up on their next read.
+
+    Revamp: ``base_version_no`` is the version the editor was opened on — when it is no longer the
+    newest the save is refused with a 409 ``stale_version`` (omit it to skip the check). ``note``
+    is the change note (default "Edited while the run was live")."""
 
     content: str
+    base_version_no: int | None = None
+    note: str | None = None
 
 
 class UpdateTeamNodeRequest(BaseModel):
@@ -500,16 +501,6 @@ def _edge_to_dict(e: Edge) -> dict:
     }
 
 
-def _version_to_dict(version: DocumentVersion) -> dict:
-    return {
-        "id": str(version.id),
-        "version_no": version.version_no,
-        "content": version.content,
-        "created_by": version.created_by,
-        "created_at": version.created_at.isoformat(),
-    }
-
-
 @router.post("/api/spike/generate-doc", response_model=StartResponse)
 def start_generate_doc(body: GenerateDocRequest) -> StartResponse:
     """Start the generate_doc workflow in the background; return its id."""
@@ -561,12 +552,9 @@ def get_document(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid document id") from exc
 
-    doc = get_owned_document_with_versions(doc_uuid, uuid.UUID(current_user.id))
-    if doc is None:
+    payload = document_views.owned_document(doc_uuid, uuid.UUID(current_user.id))
+    if payload is None:
         raise HTTPException(status_code=404, detail="document not found")
-
-    payload = _document_meta(doc)
-    payload["versions"] = [_version_to_dict(v) for v in doc.versions]
     return payload
 
 
@@ -582,28 +570,39 @@ def add_document_version(
 
     Mirrors ``GET /api/documents/{id}``: 400 on a malformed id, 404 if the document doesn't
     exist or belongs to another account (spec §3.6). A fresh ``idempotency_key`` per request ->
-    every POST is a NEW version (no dedup across distinct human saves). Returns the new version
-    row."""
+    every POST is a NEW version (no dedup across distinct human saves). Returns the full new
+    version (``id``, ``author``, ``note``, …). 409 ``run_finished`` once the run is terminal; 409
+    ``stale_version`` when ``base_version_no`` is not the newest version."""
     try:
         doc_uuid = uuid.UUID(document_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid document id") from exc
 
-    if get_owned_document_with_versions(doc_uuid, uuid.UUID(current_user.id)) is None:
-        raise HTTPException(status_code=404, detail="document not found")
-
-    version = add_version(
-        doc_uuid,
-        body.content,
-        created_by="human",
-        idempotency_key=f"human-edit:{doc_uuid}:{uuid.uuid4().hex}",
-    )
-    return {
-        "document_id": str(version.document_id),
-        "version_no": version.version_no,
-        "content": version.content,
-        "created_at": version.created_at.isoformat(),
-    }
+    try:
+        return document_views.add_human_version(
+            doc_uuid,
+            uuid.UUID(current_user.id),
+            body.content,
+            base_version_no=body.base_version_no,
+            note=body.note,
+        )
+    except document_views.DocumentNotFound as exc:
+        raise HTTPException(status_code=404, detail="document not found") from exc
+    except document_views.RunFinished as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "run_finished", "message": document_views.RUN_FINISHED_MESSAGE},
+        ) from exc
+    except document_views.StaleVersion as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "stale_version",
+                "message": document_views.stale_message(exc),
+                "latest_version_no": exc.latest_version_no,
+                "latest_author": exc.latest_author,
+            },
+        ) from exc
 
 
 @router.get("/api/costs")
@@ -1434,12 +1433,16 @@ def get_run_documents(
     the run-view document PICKER. Owner-scoped (404 unless the run belongs to the current user), the
     same guard as :func:`get_run`. Each item is a ``_document_meta`` dict; the FE opens any one by
     id via the existing ``GET /api/documents/{id}`` + the shared TipTap editor. An empty list for a
-    run that produced no run-scoped documents (e.g. a pre-0028 run)."""
+    run that produced no run-scoped documents (e.g. a pre-0028 run).
+
+    Revamp: each item also carries ``is_shared_spec``, ``version_count``, ``latest_version``,
+    ``written_by`` and ``read_by``; the response gains a ``run`` summary."""
     with db.session_scope() as session:
         run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
         run_uuid = run.id
-    documents = [_document_meta(d) for d in list_documents_for_run(run_uuid)]
-    return {"run_id": run_id, "documents": documents}
+    payload = document_views.run_documents(run_uuid)
+    payload["run_id"] = run_id
+    return payload
 
 
 def _cost_by_invocation(session, run_id: str) -> dict[int, dict]:
