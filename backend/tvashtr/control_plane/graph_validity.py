@@ -262,6 +262,144 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> dict:
     return {"errors": errors, "warnings": warnings, "runnable": len(errors) == 0}
 
 
+# ---- The pipeline strip (revamp G-1): a team's main path from its start node to Ship ----
+
+# Role names the built-in templates and the node presets use; anything else is labelled by kind.
+_PRESET_ROLE_LABELS = {
+    "pm": "PM",
+    "architect": "Architect",
+    "engineer": "Engineer",
+    "reviewer": "Reviewer",
+}
+_KIND_TO_SHAPE_KIND = {"completion": "thinker", "agent": "worker"}
+_ROLE_LABELS = {
+    **_PRESET_ROLE_LABELS,
+    "thinker": "Thinker",
+    "worker": "Worker",
+    "gate": "Approval",
+    "ship": "Ship",
+    "stop": "Stop",
+    "domain_query": "Domain",
+}
+
+
+def _shape_role(node: dict) -> str:
+    """The strip's role for a node: a preset role name (``pm``/``architect``/``engineer``/
+    ``reviewer``), else the node's kind (``thinker``/``worker``/``gate``/``ship``/``stop``/
+    ``domain_query``)."""
+    role_name = str(node.get("role_name") or "").lower()
+    kind = node.get("kind")
+    if kind in ("completion", "agent") and role_name in _PRESET_ROLE_LABELS:
+        return role_name
+    if kind == "terminal":
+        cfg = node.get("config") or {}
+        return "stop" if cfg.get("terminal_kind") == "stop" else "ship"
+    return _KIND_TO_SHAPE_KIND.get(kind, kind or "thinker")
+
+
+def _shape_label(node: dict, role: str) -> str:
+    """A thinker/worker/domain node's own display name (``config.title``) when it has one; a gate's
+    ``config.title`` is its approval prompt, not a name, so gates always read "Approval"."""
+    cfg = node.get("config") or {}
+    title = cfg.get("title") if isinstance(cfg, dict) else None
+    if node.get("kind") in ("completion", "agent", "domain_query") and isinstance(title, str):
+        if title.strip():
+            return title.strip()
+    return _ROLE_LABELS.get(role, role.replace("_", " ").capitalize())
+
+
+def team_shape(nodes: list[dict], edges: list[dict]) -> dict:
+    """The team's pipeline strip: its MAIN PATH from the start node to Ship, plus the rework loops
+    on it. PURE (no DB) so it unit-tests trivially and runs on any node/edge dicts (nodes carry
+    ``id``/``kind``/``role_name``/``config``; edges carry ``source_node_id``/``target_node_id``/
+    ``edge_type``/``conditions``).
+
+    * Start at the root — the node no edge targets (the lowest id when there are several, the same
+      rule as the canvas's start-node lock).
+    * Follow forward and branch edges (never ``escalation`` edges, never a ``loop_limit`` rework
+      edge), preferring the edge whose target can still reach a Ship terminal; among those an
+      ``approved`` branch, then an unconditional edge, then the lowest target id.
+    * Stop terminals and escalation-only targets never appear; the walk ends at Ship (or where the
+      graph ends).
+    * A ``loop_limit`` edge between two nodes on the path is a loop: ``{"from": i, "to": j}``,
+      indices into ``nodes``.
+
+    Returns ``{"nodes": [{"id", "kind", "role", "label"}], "loops": [{"from", "to"}]}`` where
+    ``kind`` is ``thinker|worker|gate|terminal|domain_query``."""
+    nodes_by_id = {str(n["id"]): n for n in nodes}
+    redges = _routing_edges(edges)
+    if not nodes_by_id:
+        return {"nodes": [], "loops": []}
+
+    targets = {e["target"] for e in redges}
+    roots = sorted(nid for nid in nodes_by_id if nid not in targets)
+    if not roots:
+        return {"nodes": [], "loops": []}
+
+    def is_stop(nid: str) -> bool:
+        return _shape_role(nodes_by_id[nid]) == "stop"
+
+    main_edges = [
+        e
+        for e in redges
+        if e["edge_type"] != "escalation"
+        and not _is_loop_back(e)
+        and e["source"] in nodes_by_id
+        and e["target"] in nodes_by_id
+    ]
+    # Nodes that can reach a Ship terminal over main-path edges (reverse BFS from every Ship).
+    rev: dict[str, list[str]] = defaultdict(list)
+    for e in main_edges:
+        rev[e["target"]].append(e["source"])
+    reaches_ship = {
+        nid for nid, n in nodes_by_id.items() if n.get("kind") == "terminal" and not is_stop(nid)
+    }
+    stack = list(reaches_ship)
+    while stack:
+        cur = stack.pop()
+        for src in rev[cur]:
+            if src not in reaches_ship:
+                reaches_ship.add(src)
+                stack.append(src)
+
+    def preference(e: dict) -> tuple:
+        when = (e["conditions"] or {}).get("when")
+        branch_rank = 0 if when == "approved" else (1 if when is None else 2)
+        return (0 if e["target"] in reaches_ship else 1, branch_rank, e["target"])
+
+    path: list[str] = []
+    cur: str | None = roots[0]
+    while cur is not None and cur not in path:
+        path.append(cur)
+        if nodes_by_id[cur].get("kind") == "terminal":
+            break
+        candidates = [e for e in main_edges if e["source"] == cur and not is_stop(e["target"])]
+        cur = min(candidates, key=preference)["target"] if candidates else None
+
+    index = {nid: i for i, nid in enumerate(path)}
+    loops = sorted(
+        {
+            (index[e["source"]], index[e["target"]])
+            for e in redges
+            if _is_loop_back(e) and e["source"] in index and e["target"] in index
+        }
+    )
+    shaped = []
+    for nid in path:
+        node = nodes_by_id[nid]
+        role = _shape_role(node)
+        kind = node.get("kind")
+        shaped.append(
+            {
+                "id": nid,
+                "kind": _KIND_TO_SHAPE_KIND.get(kind, kind),
+                "role": role,
+                "label": _shape_label(node, role),
+            }
+        )
+    return {"nodes": shaped, "loops": [{"from": a, "to": b} for a, b in loops]}
+
+
 def graph_dicts(session, graph_id) -> tuple[list[dict], list[dict]]:
     """Load a team graph's nodes + edges (within ``session``) into the serialized dict shape
     :func:`validate_graph` consumes — the same node/edge fields the canvas reads. The DB-touching
