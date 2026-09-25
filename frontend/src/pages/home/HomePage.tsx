@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { getTeams, type TeamSummary } from "../../lib/api";
+import { type AuthUser, getTeams, type TeamSummary } from "../../lib/api";
 import { reportFetchFailed, reportFetchOk } from "../../lib/backendStatus";
 import { type HomeAction, useHomeActionHandler } from "../../lib/homeActions";
 import { Composer } from "./Composer";
+import { defaultTeamId } from "./composerModel";
 import { HomeHeader } from "./HomeHeader";
 import { HomeContext, type HomeContextValue } from "./homeContext";
 import { NeedsYou } from "./NeedsYou";
@@ -19,7 +20,7 @@ import "./home.css";
  * the left, Recent runs / Spend on the right (330px). Sections live in their own files; this page
  * owns the shared state they coordinate through (`HomeContext`).
  */
-export function HomePage() {
+export function HomePage({ user = null }: { user?: AuthUser | null } = {}) {
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
   const [teamsError, setTeamsError] = useState(false);
@@ -35,7 +36,7 @@ export function HomePage() {
       setTeams(list);
       setTeamsError(false);
       setComposerTeamId((cur) =>
-        cur && list.some((t) => t.team_graph_id === cur) ? cur : (list[0]?.team_graph_id ?? null),
+        cur && list.some((t) => t.team_graph_id === cur) ? cur : defaultTeamId(list),
       );
     } catch {
       reportFetchFailed();
@@ -70,8 +71,18 @@ export function HomePage() {
       openRunHistory: (teamId) => setHistoryTeamId(teamId),
       historyTeamId,
       setHistoryTeamId,
+      user,
     }),
-    [teams, teamsLoading, teamsError, reloadTeams, composerTeamId, focusComposer, historyTeamId],
+    [
+      teams,
+      teamsLoading,
+      teamsError,
+      reloadTeams,
+      composerTeamId,
+      focusComposer,
+      historyTeamId,
+      user,
+    ],
   );
 
   useHomeActionHandler((action: HomeAction) => {

@@ -3,4 +3,10 @@
  * One line per area: `registerBadgeLoader("<area>", async () => ({ …counts }))` — see
  * `lib/workspaceStatus.ts`.
  */
-export {};
+import { getInbox } from "../lib/api/home";
+import { isDesktopApp } from "../lib/desktopRepos";
+import { registerBadgeLoader } from "../lib/workspaceStatus";
+
+registerBadgeLoader("home", async () => ({
+  home: (await getInbox(isDesktopApp() ? "desktop" : "website")).count,
+}));

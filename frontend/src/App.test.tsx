@@ -220,40 +220,15 @@ function runStatusCalls(): number {
 describe("App — poll lifecycle (keystone)", () => {
   it("polls the live graph to the canvas under StrictMode and STOPS once terminal", async () => {
     vi.useFakeTimers();
+    // Runs are launched from Home's composer now; the canvas opens a run by its address
+    // (#/teams/<team>/runs/<run>), which mounts App on that run.
     render(
       <StrictMode>
-        <App />
+        <App teamId="team-1" initialRunId={RUN_ID} />
       </StrictMode>,
     );
-
-    // Let the persistent team load so "Run this team" is enabled (the launch needs its id).
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
-    });
-
-    // Run the team: "Run this team" now OPENS the launch panel (Slice 2); the panel's Run fires the
-    // greenfield launch -> POST /api/runs -> getGraph -> the poll effect arms. (Sync acts for the
-    // clicks; the async advance flushes the handleLaunch fetch microtasks.)
-    act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Run this team" }));
-    });
-    act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Run" }));
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-
-    // Greenfield launch posts ONLY { team_graph_id } — byte-for-byte the prior behavior (the brief's
-    // hard contract: empty idea + toggle off ⇒ the server default idea, the API smokes untouched).
-    const postCall = fetchMock.mock.calls.find(
-      (c) =>
-        urlOf(c[0] as RequestInfo | URL) === "/api/runs" &&
-        (c[1] as RequestInit | undefined)?.method === "POST",
-    );
-    expect(postCall).toBeTruthy();
-    expect(JSON.parse((postCall![1] as RequestInit).body as string)).toEqual({
-      team_graph_id: "team-1",
     });
 
     // The canvas left the empty landing state (a graph is mounted).
@@ -386,6 +361,28 @@ describe("App — F1c sticky dock⇄pop-up panelMode (Decision 1)", () => {
 
 // ---- F-canvas-fidelity-1: the canvas SCREEN SHELL (Part A rail / Part B header / Part C toolbar) ----
 
+describe("App — Run opens Home's composer", () => {
+  it("asks Home for a new run on this team instead of launching from the canvas", async () => {
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    const run = await screen.findByRole("button", { name: "Run this team" });
+    await waitFor(() => expect(run).toBeEnabled());
+    fireEvent.click(run);
+    expect(window.location.hash).toBe("#/home");
+    expect(
+      fetchMock.mock.calls.some(
+        (c) =>
+          urlOf(c[0] as RequestInfo | URL) === "/api/runs" &&
+          (c[1] as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toBe(false);
+    window.location.hash = "";
+  });
+});
+
 describe("App — F-canvas-fidelity-1 screen shell", () => {
   it("Part A: NO 'Your teams' rail while authoring; the tasks drawer appears once a run starts", async () => {
     vi.useFakeTimers();
@@ -407,7 +404,7 @@ describe("App — F-canvas-fidelity-1 screen shell", () => {
         resolved_at: null,
       },
     ];
-    render(
+    const { unmount } = render(
       <StrictMode>
         <App />
       </StrictMode>,
@@ -421,14 +418,14 @@ describe("App — F-canvas-fidelity-1 screen shell", () => {
     expect(screen.getByRole("button", { name: "Run this team" })).toBeInTheDocument();
     expect(screen.queryByText("Your teams")).toBeNull();
     expect(screen.queryByText("Tasks for Human")).toBeNull();
+    unmount();
 
-    // Launch a run (fireEvent under fake timers, like the keystone) → the run view takes over.
-    act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Run this team" }));
-    });
-    act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Run" }));
-    });
+    // Open a run (Home launches it; its address mounts App on the run) → the run view takes over.
+    render(
+      <StrictMode>
+        <App teamId="team-1" initialRunId={RUN_ID} />
+      </StrictMode>,
+    );
     // Advance past a poll interval so the run's pending task is fetched and delivered to the drawer.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);

@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-import type { TeamSummary } from "../../lib/api";
+import type { AuthUser, TeamSummary } from "../../lib/api";
 
 /**
  * What the Home sections share (spec §4.5 "HomeActions"): the team list, the composer's chosen
@@ -27,6 +27,8 @@ export interface HomeContextValue {
   /** The team Recent runs is filtered to (null = all runs). */
   historyTeamId: string | null;
   setHistoryTeamId: (teamId: string | null) => void;
+  /** The signed-in user (the greeting's name); absent in isolated tests. */
+  user?: AuthUser | null;
 }
 
 export const HomeContext = createContext<HomeContextValue | null>(null);

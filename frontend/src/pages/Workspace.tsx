@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 
 import App from "../App";
 import type { DashView } from "../components/AppShell";
-import { Dashboard } from "../components/Dashboard";
 import { DomainsPage } from "../components/DomainsPage";
 import { EnginesShelf } from "../components/EnginesShelf";
 import { MemoryShelf } from "../components/MemoryShelf";
@@ -92,7 +91,7 @@ export function Workspace({
         onShowShortcuts={() => setShortcutsOpen(true)}
         onLogout={onLogout}
       >
-        <WorkspacePage route={route} user={user} onLogout={onLogout} />
+        <WorkspacePage route={route} user={user} />
       </Shell>
       <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
@@ -100,32 +99,10 @@ export function Workspace({
   );
 }
 
-/** Flipped when the new Home sections land. */
-const HOME_READY = false;
-
-function WorkspacePage({
-  route,
-  user,
-  onLogout,
-}: {
-  route: Route;
-  user: AuthUser;
-  onLogout: () => void;
-}) {
+function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
   switch (route.page) {
     case "home":
-      // Stand-in until the new Home sections (slices F1a/F1b) are merged: the previous Home body.
-      return HOME_READY ? (
-        <HomePage />
-      ) : (
-        <Dashboard
-          embedded
-          user={user}
-          onLogout={onLogout}
-          onOpenTeam={(teamId) => navigate({ page: "team", teamId })}
-          onOpenRun={(runId, teamId) => navigate({ page: "team", teamId, runId })}
-        />
-      );
+      return <HomePage user={user} />;
     case "domains":
       return (
         <DomainsPage

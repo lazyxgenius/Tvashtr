@@ -1,4 +1,142 @@
-/** Greeting, summary links and New team (Home-Main header) — placeholder until slice F1a builds it. */
+import { Plus } from "lucide-react";
+import { type MouseEvent, type ReactNode, useEffect, useRef } from "react";
+
+import { useBackendStatus } from "../../lib/backendStatus";
+import { Button, useToast } from "../../design-system/components";
+import { useHome } from "./homeContext";
+import { refreshHome, useHomeData } from "./homeData";
+import { SECTION_IDS, greetingFor, money, scrollToSection } from "./homeFormat";
+import "./home-runs.css";
+
+function nameOf(user: { email: string; display_name?: string | null } | null | undefined): string {
+  if (!user) return "";
+  if (user.display_name) return user.display_name;
+  const local = user.email.split("@")[0] ?? "";
+  return local ? local.charAt(0).toUpperCase() + local.slice(1) : "";
+}
+
+function SummaryLink({
+  target,
+  tone = "plain",
+  children,
+}: {
+  target: string;
+  tone?: "plain" | "amber";
+  children: ReactNode;
+}) {
+  const go = (e: MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    scrollToSection(target);
+  };
+  return (
+    <a
+      href="#"
+      className={tone === "amber" ? "hm-head__link hm-head__link--amber" : "hm-head__link"}
+      onClick={go}
+    >
+      {children}
+    </a>
+  );
+}
+
+/**
+ * The greeting (Home-Main): "Good morning, {name}." and the summary line — "{n} things need you ·
+ * {n} run(s) in progress · ${x} spent this week" — each part a link that scrolls to and focuses its
+ * section (HOME-7/8), plus the New team button (HOME-9).
+ */
 export function HomeHeader() {
-  return null;
+  const { user, openNewTeam, reloadTeams } = useHome();
+  const { inbox, active, spend } = useHomeData();
+  const toast = useToast();
+  const backend = useBackendStatus().state;
+  const lastBackend = useRef(backend);
+
+  // Back online after "Can't reach backend" (HmF-Backend-2): refresh, then say so.
+  useEffect(() => {
+    const was = lastBackend.current;
+    lastBackend.current = backend;
+    if (was !== "offline" || backend !== "connected") return;
+    void Promise.all([refreshHome(), reloadTeams()]).then(() =>
+      toast({ message: "Reconnected. Everything is up to date." }),
+    );
+  }, [backend, reloadTeams, toast]);
+  const name = nameOf(user);
+  const loading = inbox.loading && active.loading && spend.loading;
+
+  if (loading) {
+    return (
+      <div className="hm-skel-head" aria-busy="true" aria-label="Loading Home">
+        <div className="hm-skel-bar" style={{ width: 320, height: 30 }} />
+        <div className="hm-skel-bar" style={{ width: 260, height: 12 }} />
+      </div>
+    );
+  }
+
+  const needs = inbox.data?.count ?? 0;
+  const inProgress = (active.data ?? []).filter(
+    (r) => r.status === "pending" || r.status === "running",
+  ).length;
+  const week = spend.data?.week.total_usd;
+
+  // A count that couldn't be loaded is left out rather than shown as zero.
+  const parts: ReactNode[] = [];
+  if (inbox.data) {
+    parts.push(
+      needs > 0 ? (
+        <SummaryLink key="needs" target={SECTION_IDS.needsYou} tone="amber">
+          {needs === 1 ? "1 thing needs you" : `${needs} things need you`}
+        </SummaryLink>
+      ) : (
+        <span key="needs">Nothing needs you</span>
+      ),
+    );
+  }
+  if (active.data) {
+    parts.push(
+      inProgress > 0 ? (
+        <SummaryLink key="running" target={SECTION_IDS.runningNow}>
+          {inProgress === 1 ? "1 run in progress" : `${inProgress} runs in progress`}
+        </SummaryLink>
+      ) : (
+        <span key="running">nothing running</span>
+      ),
+    );
+  }
+  if (week !== undefined) {
+    parts.push(
+      <SummaryLink key="spend" target={SECTION_IDS.spend}>
+        {money(week)} spent this week
+      </SummaryLink>,
+    );
+  }
+
+  return (
+    <div className="hm-head">
+      <div>
+        <h1 className="hm-head__title">
+          {greetingFor()}
+          {name ? `, ${name}.` : "."}
+        </h1>
+        <p className="hm-head__summary">
+          {parts.map((p, i) => (
+            <span key={i}>
+              {i > 0 && (
+                <>
+                  {" "}
+                  <span className="hm-head__sep">·</span>{" "}
+                </>
+              )}
+              {p}
+            </span>
+          ))}
+        </p>
+      </div>
+      <div className="hm-head__actions">
+        <Button variant="secondary" className="hm-btn-inline" onClick={() => openNewTeam()}>
+          <Plus size={15} strokeWidth={1.6} aria-hidden />
+          <span>New team</span>
+        </Button>
+      </div>
+    </div>
+  );
 }
