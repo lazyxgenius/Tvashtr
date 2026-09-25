@@ -12,11 +12,13 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Computed,
     DateTime,
     ForeignKey,
     Identity,
     Integer,
+    LargeBinary,
     Numeric,
     Text,
     UniqueConstraint,
@@ -149,6 +151,11 @@ class DocumentVersion(Base):
     version_no: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
+    # Revamp (migration ``0041``): a deterministic change note ("First draft", "Round 2", "Edited
+    # while the run was live") and the AUTHORED node that wrote the version (plain uuid; NULL for a
+    # human edit and for legacy rows, whose note is derived from ``idempotency_key`` at read time).
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    author_node_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -212,6 +219,12 @@ class TeamGraph(Base):
     owner_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id"), nullable=True, index=True
     )
+    # Revamp (migration ``0041``): the template key a library team was created from
+    # (``blank`` / ``two_node`` / ``review_loop`` / ``plan_review`` / ``full_squad`` / ``seed``) and
+    # the library team it was duplicated from (a PLAIN uuid, like ``cloned_from_node_id``). Both
+    # NULL on legacy rows and on run-snapshot clones.
+    template_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duplicated_from_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -395,6 +408,22 @@ class Run(Base):
         Boolean, nullable=False, server_default=false(), default=False
     )
     desktop_subscriptions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Revamp (migration ``0041``). ``library_team_id``: the library team this run was launched from
+    # (``team_graph_id`` is the run's private clone) — SET NULL when that team is deleted.
+    # ``retry_of_run_id``: the failed run this one retries. ``failure_*``: a readable reason for a
+    # ``failed`` run (code, message, the authored node that failed). ``local_*``: a Desktop
+    # local-folder run's source (the folder label shown in the UI, the uploaded snapshot).
+    library_team_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_graphs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    retry_of_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True
+    )
+    failure_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    failure_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    failed_node_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    local_repo_label: Mapped[str | None] = mapped_column(Text, nullable=True)
+    local_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -540,6 +569,11 @@ class User(Base):
     # GitHub account carries a placeholder ``password_hash`` (it can never password-login).
     github_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     github_login: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Revamp (migration ``0041``): per-account UI preferences, a whitelisted JSON object
+    # (``control_plane.preferences``) — e.g. ``{"get_started_hidden": true}``.
+    preferences: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=dict
+    )
 
 
 class ProviderCredential(Base):
@@ -572,7 +606,6 @@ class ProviderCredential(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
-
 
 
 class EngineSubscriptionStatus(Base):
@@ -693,7 +726,6 @@ class Domain(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
-
 
 
 class DomainDocument(Base):
@@ -833,9 +865,7 @@ class DomainEvalRun(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class GithubInstallation(Base):
@@ -1058,6 +1088,10 @@ class NodeMemory(Base):
     # Provenance — NULL for a manual add; S2 sets these to the distilling run/invocation.
     source_run_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_invocation_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Revamp (migration ``0041``): the AUTHORED node that learned this fact (even for a repo-tier
+    # fact, which has no ``node_id``) and when a human last edited its content, force or scope.
+    source_node_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # A pinned fact is "hot" — always injected later (S3), never filtered by top-K retrieval.
     pinned: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=false(), default=False
@@ -1072,3 +1106,58 @@ class NodeMemory(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class InboxDismissal(Base):
+    """A Home "Needs you" item the owner dismissed or snoozed (revamp, migration ``0041``).
+
+    ``item_key`` identifies the item (``gate:<task id>``, ``run_failed:<run id>``,
+    ``setup:<team id>:website``, ``memories``). ``fingerprint`` is recorded at dismiss time so new
+    information (another pending memory, a different set of missing keys) brings the item back.
+    """
+
+    __tablename__ = "inbox_dismissals"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "item_key", name="uq_inbox_dismissals_owner_key"),
+        CheckConstraint("action IN ('dismissed', 'snoozed')", name="ck_inbox_dismissals_action"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    item_key: Mapped[str] = mapped_column(Text, nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    snooze_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class RepoSnapshot(Base):
+    """A git bundle for a Desktop local-folder run (revamp, migration ``0041``).
+
+    ``kind='source'``: the user's base branch, uploaded by Desktop before launch; the run clones it,
+    then it is marked ``consumed_at`` and purged. ``kind='result'``: the run's ``tvashtr/<run_id>``
+    branch, stored at Ship for Desktop to fetch back into the user's folder. Kept in Postgres (not
+    a machine-local disk) so whichever backend machine runs the workflow can read it.
+    """
+
+    __tablename__ = "repo_snapshots"
+    __table_args__ = (
+        CheckConstraint("kind IN ('source', 'result')", name="ck_repo_snapshots_kind"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    label: Mapped[str | None] = mapped_column(Text, nullable=True)
+    base_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

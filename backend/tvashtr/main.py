@@ -38,6 +38,14 @@ from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
 from tvashtr.mcp.domains import get_domains_mcp
 from tvashtr.models import SpikeHelloEvent
 from tvashtr.routers import router as api_router
+from tvashtr.routes import account as revamp_account
+from tvashtr.routes import documents as revamp_documents
+from tvashtr.routes import engines as revamp_engines
+from tvashtr.routes import home as revamp_home
+from tvashtr.routes import local_repo as revamp_local_repo
+from tvashtr.routes import memory_extra as revamp_memory
+from tvashtr.routes import nodes as revamp_nodes
+from tvashtr.routes import toolkit as revamp_toolkit
 
 settings = get_settings()
 
@@ -107,6 +115,19 @@ app.include_router(auth_router)
 # P0.2 gateway + document-layer endpoints (generate-doc, documents, costs). M-accounts Slice A: the
 # whole product surface now requires a session — one router-level dependency gates EVERY endpoint in
 # routers.py. /api/auth/* (above) and /health (below) stay open.
+# Frontend revamp (spec §3.4): one router module per area, included BEFORE ``routers.py`` so a new
+# literal path (e.g. ``/api/tool-library/import``) is never shadowed by an older ``{id}`` route.
+for _revamp_router in (
+    revamp_engines.router,
+    revamp_toolkit.router,
+    revamp_home.router,
+    revamp_account.router,
+    revamp_nodes.router,
+    revamp_documents.router,
+    revamp_memory.router,
+    revamp_local_repo.router,
+):
+    app.include_router(_revamp_router, dependencies=[Depends(get_current_user)])
 app.include_router(api_router, dependencies=[Depends(get_current_user)])
 
 

@@ -51,17 +51,21 @@ vitest + Testing Library, Playwright · Electron 35, `node --test`.
       overlays, utils, `ds.css`, 12 tests). Imported from `index.css`.
 - [x] **0.2 Desktop title bar** — `desktop/electron/windowOptions.cjs` (+ `window-options.test.cjs`),
       preload `tvashtrDesktopInfo` v4 with `platform`, `components/DesktopTitleBar.tsx` (+ test).
-- [ ] **0.3 Design-parity harness** in `frontend/scripts/design-parity/`: `shoot-design.mjs`,
+- [x] **0.3 Design-parity harness** in `frontend/scripts/design-parity/`: `shoot-design.mjs`,
       `shoot-app.mjs`, `measure.js`, `fonts-route.mjs`, `parity.py`, `compare.py`, README. Reads the
       design export from `$DESIGN_DIR`. Fixture scenarios per area in `scenarios/`.
-- [ ] **0.4 Dialog stack** — `useModalDialog` handles Escape/Tab only for the top-most open dialog
+- [x] **0.4 Dialog stack** — `useModalDialog` handles Escape/Tab only for the top-most open dialog
       (module-level stack). Test: two nested dialogs, Escape closes only the top one.
-- [ ] **0.5 Commit** Phase 0 + the spec, analyses and this plan.
+- [x] **0.5 Commit** Phase 0 + the spec, analyses and this plan.
 
 ## Phase 1a — Schema (lead)
 
-`backend/alembic/versions/0041_revamp_schema.py` (revises `0040_desktop_job_machine`) and the matching
-`models.py` columns. Then bump `.claude/hooks/protect-migrations.sh` to freeze `0001`–`0040`.
+✅ Done. `backend/alembic/versions/0041_revamp_schema.py` (revises `0040_desktop_job_machine`), the
+matching `models.py` columns + `InboxDismissal` / `RepoSnapshot`, `tests/test_revamp_schema.py`, the
+migration hook now freezes `0001`–`0040`, and an empty router module per area under
+`backend/tvashtr/routes/` is already registered in `main.py` (so slices only edit their own module).
+Each slice gets its own migrated database (`tvashtr_<slice>`) via `DATABASE_URL`, because DBOS in one
+test process would otherwise recover another process's in-flight workflows.
 
 | Table | Change | Used by |
 |---|---|---|
