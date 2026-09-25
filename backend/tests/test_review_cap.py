@@ -116,6 +116,10 @@ def _stub_agent(monkeypatch, workspace: Path) -> list[tuple[int, str | None]]:
 
     monkeypatch.setattr(team_run, "engineer_setup_step", _fake_engineer_setup_step)
     monkeypatch.setattr(team_run, "agent_run_step", _fake_agent_run_step)
+    # Memory isn't under test here. Left real, each agent step embeds its query whenever the shared
+    # test account already holds embedded memories (earlier memory tests leave some), and with no
+    # network each embed retries for seconds — enough to miss the escalation wait below.
+    monkeypatch.setattr(team_run, "retrieve_memory_step", lambda *args, **kwargs: [])
     return engineer_calls
 
 
