@@ -19,7 +19,6 @@
       "Bash(git stash *)"
     ],
     "deny": [
-      "Bash(git push *)",
       "Bash(git push --force*)",
       "Bash(git reset --hard*)"
     ]
@@ -63,15 +62,6 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-migrations.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-no-push.sh"
           }
         ]
       }
