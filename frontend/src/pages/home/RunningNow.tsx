@@ -31,7 +31,15 @@ function chipsOf(row: RunListRow): { chips: PipelineChip[]; loopBefore: Set<numb
   return { chips, loopBefore };
 }
 
-function RunCard({ row, onStop }: { row: RunListRow; onStop: (row: RunListRow) => void }) {
+function RunCard({
+  row,
+  fresh,
+  onStop,
+}: {
+  row: RunListRow;
+  fresh: boolean;
+  onStop: (row: RunListRow) => void;
+}) {
   const look = runStatusLook(row.status);
   const live = LIVE.has(row.status);
   const teamId = row.team?.id ?? row.library_team_id;
@@ -39,7 +47,10 @@ function RunCard({ row, onStop }: { row: RunListRow; onStop: (row: RunListRow) =
   const pct = cap && cap > 0 ? Math.min(100, Math.round((row.spent_usd / cap) * 100)) : 0;
   const { chips, loopBefore } = chipsOf(row);
   return (
-    <article className="hm-run" aria-label={`${row.team?.name ?? "Run"}: ${row.idea}`}>
+    <article
+      className={fresh ? "hm-run hm-run--new" : "hm-run"}
+      aria-label={`${row.team?.name ?? "Run"}: ${row.idea}`}
+    >
       <div className="hm-run__top">
         <span className="hm-run__team">{row.team?.name ?? "Run"}</span>
         <Badge variant={look.variant} dot>
@@ -106,7 +117,7 @@ function RunCard({ row, onStop }: { row: RunListRow; onStop: (row: RunListRow) =
  * while Home is open stays for a minute with its final badge; the section hides when empty.
  */
 export function RunningNow() {
-  const { active, ended } = useHomeData();
+  const { active, ended, justLaunched } = useHomeData();
   const { reloadTeams } = useHome();
   const toast = useToast();
   const [stopping, setStopping] = useState<RunListRow | null>(null);
@@ -174,7 +185,7 @@ export function RunningNow() {
       </div>
       <div className="hm-grid2">
         {rows.map((r) => (
-          <RunCard key={r.run_id} row={r} onStop={setStopping} />
+          <RunCard key={r.run_id} row={r} fresh={r.run_id === justLaunched} onStop={setStopping} />
         ))}
       </div>
       <ConfirmDialog

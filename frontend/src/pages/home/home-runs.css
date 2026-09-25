@@ -467,6 +467,9 @@
   background: var(--surface-card);
   min-width: 0;
 }
+.hm-run--new {
+  border-color: var(--coral-200);
+}
 .hm-run__top {
   display: flex;
   align-items: center;

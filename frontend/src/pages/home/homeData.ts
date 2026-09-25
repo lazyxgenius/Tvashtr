@@ -33,12 +33,21 @@ export interface HomeData {
   ended: EndedRun[];
   /** Bumped after every action, so lists with their own paging (Recent runs) refetch. */
   version: number;
+  /** The run just launched from Home — its Running now card is highlighted (HmF-Launch-7). */
+  justLaunched: string | null;
 }
 
 const EMPTY: Loadable<never> = { data: null, loading: true, error: false };
 const ENDED_MS = 60_000;
 
-let state: HomeData = { inbox: EMPTY, active: EMPTY, spend: EMPTY, ended: [], version: 0 };
+let state: HomeData = {
+  inbox: EMPTY,
+  active: EMPTY,
+  spend: EMPTY,
+  ended: [],
+  version: 0,
+  justLaunched: null,
+};
 const listeners = new Set<() => void>();
 
 function set(patch: Partial<HomeData>): void {
@@ -102,6 +111,11 @@ export async function refreshHome(opts: { bump?: boolean } = {}): Promise<void> 
   if (opts.bump !== false) set({ version: state.version + 1 });
   pruneEnded();
   await Promise.all([loadInbox(), loadActive(), loadSpend()]);
+}
+
+/** Remember the run Home just launched (its card is highlighted until the next launch). */
+export function noteLaunched(runId: string): void {
+  set({ justLaunched: runId });
 }
 
 /** Keep a finished run's card in Running now, muted, for a minute. */
@@ -278,7 +292,14 @@ export function __resetHomeDataForTests(): void {
   timer = null;
   window.removeEventListener("focus", onFocus);
   subscribers = 0;
-  state = { inbox: EMPTY, active: EMPTY, spend: EMPTY, ended: [], version: 0 };
+  state = {
+    inbox: EMPTY,
+    active: EMPTY,
+    spend: EMPTY,
+    ended: [],
+    version: 0,
+    justLaunched: null,
+  };
   listeners.clear();
   prefillHandler = null;
   addKeysHandler = null;

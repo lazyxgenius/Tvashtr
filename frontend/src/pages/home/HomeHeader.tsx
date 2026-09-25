@@ -1,9 +1,10 @@
 import { Plus } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import { type MouseEvent, type ReactNode, useEffect, useRef } from "react";
 
-import { Button } from "../../design-system/components";
+import { useBackendStatus } from "../../lib/backendStatus";
+import { Button, useToast } from "../../design-system/components";
 import { useHome } from "./homeContext";
-import { useHomeData } from "./homeData";
+import { refreshHome, useHomeData } from "./homeData";
 import { SECTION_IDS, greetingFor, money, scrollToSection } from "./homeFormat";
 import "./home-runs.css";
 
@@ -44,8 +45,21 @@ function SummaryLink({
  * section (HOME-7/8), plus the New team button (HOME-9).
  */
 export function HomeHeader() {
-  const { user, openNewTeam } = useHome();
+  const { user, openNewTeam, reloadTeams } = useHome();
   const { inbox, active, spend } = useHomeData();
+  const toast = useToast();
+  const backend = useBackendStatus().state;
+  const lastBackend = useRef(backend);
+
+  // Back online after "Can't reach backend" (HmF-Backend-2): refresh, then say so.
+  useEffect(() => {
+    const was = lastBackend.current;
+    lastBackend.current = backend;
+    if (was !== "offline" || backend !== "connected") return;
+    void Promise.all([refreshHome(), reloadTeams()]).then(() =>
+      toast({ message: "Reconnected. Everything is up to date." }),
+    );
+  }, [backend, reloadTeams, toast]);
   const name = nameOf(user);
   const loading = inbox.loading && active.loading && spend.loading;
 

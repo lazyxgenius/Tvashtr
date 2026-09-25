@@ -30,6 +30,7 @@ import { OptionsPopover, TargetPicker, TeamPicker } from "./ComposerPickers";
 import { useHome } from "./homeContext";
 import {
   type ComposerPrefill,
+  noteLaunched,
   refreshHome,
   requestAddKeys,
   useComposerPrefillHandler,
@@ -390,6 +391,7 @@ export function Composer() {
         void bridge?.recent?.add?.(target.path);
       }
       const runId = await launchRun(body);
+      noteLaunched(runId);
       const teamId = selected.team_graph_id;
       const teamName = selected.name;
       rememberLastTeam(teamId);
@@ -632,7 +634,7 @@ export function Composer() {
                 : undefined
             }
           >
-            {!launching && <PlayIcon />}
+            <PlayIcon />
             <span>{launching ? "Launching…" : "Launch"}</span>
           </Button>
         </div>
