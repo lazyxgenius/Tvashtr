@@ -19,7 +19,6 @@
       "Bash(git stash *)"
     ],
     "deny": [
-      "Bash(git push *)",
       "Bash(git push --force*)",
       "Bash(git reset --hard*)"
     ]
@@ -67,7 +66,6 @@
         ]
       },
       {
-        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
