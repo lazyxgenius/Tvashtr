@@ -47,9 +47,9 @@ from typing import Literal
 from sqlalchemy import or_, select
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane.credentials import resolve_owner_api_key
+from tvashtr.control_plane.credentials import NoCredentialError, resolve_owner_api_key
+from tvashtr.control_plane.memory import _enrich, is_valid_polarity, repo_key_for_run
 from tvashtr.control_plane.memory import _to_dict as _memory_to_dict
-from tvashtr.control_plane.memory import is_valid_polarity
 from tvashtr.control_plane.run_explain import build_system_prompt
 from tvashtr.db import session_scope
 from tvashtr.gateway import CompletionRequest, EmbeddingRequest, complete, embed
@@ -308,6 +308,44 @@ def _role_authored_ids(run_id: str) -> dict[str, uuid.UUID]:
     return out
 
 
+def _role_provenance(run_id: str) -> dict[str, tuple[int, uuid.UUID]]:
+    """``role_name`` → ``(last invocation id, AUTHORED node id)`` for each node that ran — the
+    provenance a distilled fact records (``source_invocation_id`` gives the round,
+    ``source_node_id`` the agent that learned it). The last invocation = the highest iteration."""
+    out: dict[str, tuple[int, int, uuid.UUID]] = {}
+    with session_scope() as session:
+        rows = session.execute(
+            select(
+                AgentNode.role_name,
+                AgentNode.id,
+                AgentNode.cloned_from_node_id,
+                AgentInvocation.id,
+                AgentInvocation.iteration,
+            )
+            .join(AgentInvocation, AgentInvocation.node_id == AgentNode.id)
+            .where(AgentInvocation.run_id == run_id)
+        ).all()
+    for role, nid, cloned, inv_id, iteration in rows:
+        if not role:
+            continue
+        seen = out.get(role)
+        if seen is None or (iteration, inv_id) > (seen[1], seen[0]):
+            out[role] = (inv_id, iteration, cloned or nid)
+    return {role: (inv_id, authored) for role, (inv_id, _it, authored) in out.items()}
+
+
+def _learner(
+    cand: "_Candidate", provenance: dict[str, tuple[int, uuid.UUID]]
+) -> tuple[int | None, uuid.UUID | None]:
+    """The ``(source_invocation_id, source_node_id)`` for a candidate: its ``node_role``'s last
+    invocation, or the only role that ran when the run had just one; else unknown."""
+    if cand.node_role and cand.node_role in provenance:
+        return provenance[cand.node_role]
+    if len(provenance) == 1:
+        return next(iter(provenance.values()))
+    return None, None
+
+
 @dataclass
 class _Fact:
     id: uuid.UUID
@@ -350,7 +388,8 @@ Return ONLY a JSON object of the form {"facts": [ ... ]}. Each fact object:
   "content": a SHORT, self-contained imperative lesson (<=160 chars); no run ids or trivia.
   "tier": "account" (a cross-repo preference of THIS user) | "repo" (about THIS repository) |
           "node" (specific to one agent node)
-  "node_role": REQUIRED only when tier="node" — the role_name of the node it applies to
+  "node_role": the role_name of the node the lesson came from — REQUIRED when tier="node" (the
+        node it applies to); include it for other tiers too when one node taught it
   "polarity": the DIRECTIVE FORCE (RFC-2119):
       "require"=MUST do, "prefer"=SHOULD do, "allow"=MAY / explicitly permitted,
       "context"=neutral fact, no directive (DEFAULT), "avoid"=SHOULD NOT, "forbid"=MUST NOT
@@ -437,8 +476,10 @@ def _run_distiller(
     run_id: str,
     owner_key: str | None,
     model: str,
+    on_ledger: bool = True,
 ) -> list[dict]:
-    """Call the distiller LLM, meter it ON THE RUN, return the parsed candidate ops."""
+    """Call the distiller LLM, meter it ON THE RUN (off-ledger when ``on_ledger`` is False — the
+    operator key paid for it), return the parsed candidate ops."""
     messages = _build_messages(
         idea=idea, outcome_class=outcome_class, status=status, trail=trail, existing=existing
     )
@@ -451,18 +492,23 @@ def _run_distiller(
             api_key=owner_key,
         )
     )
-    record_cost(result, workflow_id=run_id, idempotency_key=f"{run_id}:memory-distill")
+    record_cost(
+        result,
+        workflow_id=run_id if on_ledger else None,
+        idempotency_key=f"{run_id}:memory-distill",
+    )
     return _parse_ops(result.text)
 
 
 def _embed_on_run(
-    content: str, *, run_id: str, owner_key: str | None, model: str
+    content: str, *, run_id: str, owner_key: str | None, model: str, on_ledger: bool = True
 ) -> list[float] | None:
-    """Embed one candidate's content with the RUN OWNER's key, metered ON THE RUN."""
+    """Embed one candidate's content with the RUN OWNER's key, metered ON THE RUN (or with the
+    operator key, off-ledger, when ``on_ledger`` is False)."""
     result = embed(EmbeddingRequest(model=model, input=[content], api_key=owner_key))
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
     record_embedding_cost(
-        workflow_id=run_id,
+        workflow_id=run_id if on_ledger else None,
         idempotency_key=f"{run_id}:memory-distill-embed:{digest}",
         model=result.model,
         prompt_tokens=result.prompt_tokens,
@@ -540,6 +586,8 @@ def _insert(
     vector: list[float] | None,
     owner_id: uuid.UUID,
     run_id: str,
+    source_invocation_id: int | None = None,
+    source_node_id: uuid.UUID | None = None,
 ) -> NodeMemory:
     row = NodeMemory(
         owner_id=owner_id,
@@ -551,6 +599,8 @@ def _insert(
         status=status,
         confirmation_count=1,
         source_run_id=run_id,
+        source_invocation_id=source_invocation_id,
+        source_node_id=source_node_id,
         pinned=False,
     )
     session.add(row)
@@ -567,6 +617,8 @@ def _apply_one(
     owner_id: uuid.UUID,
     run_id: str,
     review_mode: bool = False,
+    source_invocation_id: int | None = None,
+    source_node_id: uuid.UUID | None = None,
 ) -> dict | None:
     """Consolidate ONE gated candidate against the store + write it, in its own session (isolated).
 
@@ -636,6 +688,8 @@ def _apply_one(
                     vector=vector,
                     owner_id=owner_id,
                     run_id=run_id,
+                    source_invocation_id=source_invocation_id,
+                    source_node_id=source_node_id,
                 )
                 session.flush()  # assign new.id before referencing it
                 if review_mode:
@@ -662,6 +716,8 @@ def _apply_one(
             vector=vector,
             owner_id=owner_id,
             run_id=run_id,
+            source_invocation_id=source_invocation_id,
+            source_node_id=source_node_id,
         )
         session.flush()
         session.refresh(new)
@@ -679,6 +735,8 @@ def _consolidate_and_write(
     owner_key: str | None,
     embed_model: str,
     review_mode: bool = False,
+    provenance: dict[str, tuple[int, uuid.UUID]] | None = None,
+    on_ledger: bool = True,
 ) -> list[dict]:
     """Embed, consolidate + write each gated candidate — each independently (best-effort: one
     candidate failing never sinks the others, and never touches
@@ -689,11 +747,16 @@ def _consolidate_and_write(
     for cand in candidates:
         try:
             repo_key, node_id = _resolve_scope(cand, run_repo_key, role_map)
+            inv_id, learner = _learner(cand, provenance or {})
             status = _status_for(cand.sign, outcome_class, review_mode)
             vector: list[float] | None = None
             try:
                 vector = _embed_on_run(
-                    cand.content, run_id=run_id, owner_key=owner_key, model=embed_model
+                    cand.content,
+                    run_id=run_id,
+                    owner_key=owner_key,
+                    model=embed_model,
+                    on_ledger=on_ledger,
                 )
             except Exception:  # noqa: BLE001 — an embed failure still writes the fact (vector NULL)
                 logger.warning("distill embed failed run=%s", run_id, exc_info=True)
@@ -706,6 +769,8 @@ def _consolidate_and_write(
                 owner_id=owner_id,
                 run_id=run_id,
                 review_mode=review_mode,
+                source_invocation_id=inv_id,
+                source_node_id=learner,
             )
             if result is not None:
                 written.append(result)
@@ -740,7 +805,7 @@ def distill_run(run_id: str) -> dict:
         if run is None:
             return {"written": 0, "skipped": "no-run"}
         owner_id = run.owner_id
-        repo_key = run.repo_path
+        repo_key = repo_key_for_run(run.github_repo, run.repo_path)
         status = run.status
         idea = run.idea
     if owner_id is None:  # a legacy/un-owned run cannot own owner-scoped memory
@@ -751,12 +816,20 @@ def distill_run(run_id: str) -> dict:
     outcome_class = classify_terminal(status, reason)
     trail = _assemble_run_trail(run_id)
     role_map = _role_authored_ids(run_id)
+    provenance = _role_provenance(run_id)
     existing = _fetch_in_scope(owner_id, repo_key)
 
-    # Distiller model + embedding model are BOTH openai-provider, so one owner key serves both.
+    # Distiller model + embedding model are BOTH openai-provider, so one owner key serves both. An
+    # owner with no OpenAI key (common for Desktop subscription users) falls back to the OPERATOR
+    # key (``api_key=None`` ⇒ the ``.env`` key), exactly as a manual memory add embeds — and, like
+    # it, is metered OFF-LEDGER (the operator paid, not the owner's provider account).
+    key_source = "owner"
     try:
         owner_key = resolve_owner_api_key(owner_id, settings.memory_distiller_model)
-    except Exception:  # noqa: BLE001 — a keyless owner can't be metered; skip (best-effort)
+    except NoCredentialError:
+        owner_key, key_source = None, "operator"
+        logger.info("distill run=%s uses the operator key (owner has no OpenAI key)", run_id)
+    except Exception:  # noqa: BLE001 — an unreadable key can't be metered; skip (best-effort)
         logger.warning(
             "distill skipped: owner has no key for %s run=%s",
             settings.memory_distiller_model,
@@ -774,6 +847,7 @@ def distill_run(run_id: str) -> dict:
         run_id=run_id,
         owner_key=owner_key,
         model=settings.memory_distiller_model,
+        on_ledger=key_source == "owner",
     )
     candidates = _gate(ops, outcome_class)
     written = _consolidate_and_write(
@@ -786,6 +860,8 @@ def distill_run(run_id: str) -> dict:
         owner_key=owner_key,
         embed_model=settings.embedding_model,
         review_mode=review_mode,
+        provenance=provenance,
+        on_ledger=key_source == "owner",
     )
     logger.info(
         "distilled run=%s outcome=%s candidates=%d written=%d",
@@ -799,6 +875,7 @@ def distill_run(run_id: str) -> dict:
         "candidates": len(candidates),
         "written": len(written),
         "facts": written,
+        "key": key_source,
     }
 
 
@@ -819,7 +896,7 @@ def list_run_memories(owner_id: uuid.UUID, run_id: str) -> list[dict]:
             .scalars()
             .all()
         )
-        return [_memory_to_dict(r) for r in rows]
+        return _enrich(session, owner_id, [_memory_to_dict(r) for r in rows])
 
 
 # ------------------------------------------------------------------ S4: agent-remember ----
@@ -866,6 +943,7 @@ def remember_facts(
     review_mode: bool,
     owner_key: str | None,
     embed_model: str,
+    on_ledger: bool = True,
 ) -> list[dict]:
     """M-memory S4 agent-remember — consolidate + write a node's DELIBERATE mid-run captures.
 
@@ -891,4 +969,5 @@ def remember_facts(
         owner_key=owner_key,
         embed_model=embed_model,
         review_mode=review_mode,
+        on_ledger=on_ledger,
     )

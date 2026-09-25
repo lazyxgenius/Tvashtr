@@ -2240,6 +2240,10 @@ class UpdateMemoryRequest(BaseModel):
     content: str | None = None
     pinned: bool | None = None
     polarity: str | None = None
+    # Revamp (MEM-13): move the memory to "account" / "repo" / "agent". ``repo_key`` travels only
+    # with a scope (an explicit null on scope=agent makes it "Not repo-specific").
+    scope: str | None = None
+    repo_key: str | None = None
 
 
 @router.post("/api/memories")
@@ -2319,8 +2323,10 @@ def update_memory_endpoint(
             content=content,
             pinned=body.pinned,
             polarity=body.polarity,
+            scope=body.scope,
+            repo_key=body.repo_key if "repo_key" in body.model_fields_set else memory.UNSET,
         )
-    except memory.InvalidPolarityError as exc:
+    except (memory.InvalidPolarityError, memory.InvalidTierError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except GatewayError as exc:
         raise HTTPException(status_code=502, detail="the embedding call failed") from exc

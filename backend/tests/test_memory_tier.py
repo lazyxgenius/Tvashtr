@@ -26,16 +26,23 @@ def test_node_tier_when_repo_key_and_node_id():
     assert memory_tier("/Users/x/repo", _NODE) == "node"
 
 
-def test_invalid_tier_node_without_repo_raises():
-    with pytest.raises(InvalidTierError):
-        memory_tier(None, _NODE)
+def test_node_only_tier_when_node_id_without_repo():
+    # Revamp (FOCUS-58 / OQ-18): an agent's "Not repo-specific" note — node_id set, repo_key NULL —
+    # is a valid node tier (it used to raise InvalidTierError).
+    assert memory_tier(None, _NODE) == "node"
 
 
 def test_is_valid_tier_matrix():
     assert is_valid_tier(None, None) is True
     assert is_valid_tier("/r", None) is True
     assert is_valid_tier("/r", _NODE) is True
-    assert is_valid_tier(None, _NODE) is False  # the one invalid combination
+    assert is_valid_tier(None, _NODE) is True  # the node-only tier is valid since the revamp
+
+
+def test_invalid_tier_error_is_still_importable_for_scope_errors():
+    assert issubclass(InvalidTierError, ValueError)
+    with pytest.raises(InvalidTierError):
+        raise InvalidTierError("This memory has no repo to scope to.")
 
 
 def test_tier_is_exact_not_loose():

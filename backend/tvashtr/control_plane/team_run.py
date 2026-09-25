@@ -81,6 +81,7 @@ from tvashtr.control_plane.guardrails import (
 )
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
+from tvashtr.control_plane.memory import repo_key_for_run
 from tvashtr.control_plane.memory_retrieval import (
     embed_query_metered,
     memory_query,
@@ -597,7 +598,7 @@ def retrieve_memory_step(run_id: str, node_id: str, iteration: int, query: str) 
         with session_scope() as session:
             run = session.execute(select(Run).where(Run.id == uuid.UUID(run_id))).scalar_one()
             owner_id = run.owner_id
-            repo_key = run.repo_path
+            repo_key = repo_key_for_run(run.github_repo, run.repo_path)
             authored = session.execute(
                 select(AgentNode.cloned_from_node_id).where(AgentNode.id == uuid.UUID(node_id))
             ).scalar_one_or_none()
