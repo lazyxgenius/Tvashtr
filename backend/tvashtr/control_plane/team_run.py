@@ -48,7 +48,13 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import clone_reaper, github_app, run_failure, workspace_reaper
+from tvashtr.control_plane import (
+    clone_reaper,
+    github_app,
+    local_repo,
+    run_failure,
+    workspace_reaper,
+)
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.budget_nudge import maybe_emit_budget_nudge_step
 from tvashtr.control_plane.context_compiler import (
@@ -263,6 +269,19 @@ def clone_github_repo_step(run_id: str) -> None:
     durable and must not block ``POST /api/runs``. The 1h token is scrubbed off ``.git/config``
     in :func:`github_app.clone_repo` — never persisted."""
     _materialize_hosted_clone(run_id)
+
+
+@DBOS.step()
+def clone_local_snapshot_step(run_id: str) -> dict:
+    """Revamp P10 — the Desktop-folder sibling of :func:`clone_github_repo_step`. For a run launched
+    on a folder (``local_snapshot_id`` set) clone its uploaded ``git bundle`` into the run's clone
+    dir, check out ``base_ref`` and SET ``repo_path`` — before ``load_graph_step``, so from there
+    the run is an ordinary brownfield run. Marks the snapshot consumed and empties its bytes.
+
+    Called only for folder runs (``run_team`` gates it on the immutable ``local_snapshot_id``), so
+    every other run's recorded step sequence is unchanged. Returns ``{"ok", "repo_path"}`` or
+    ``{"ok": False, "reason"}`` — it never raises, so ``run_team`` fails the run readably."""
+    return local_repo.materialize_folder_clone(run_id)
 
 
 def _materialize_hosted_clone(run_id: str) -> None:
@@ -1543,6 +1562,15 @@ def push_and_open_pr_step(run_id: str, repo_dir: str, branch: str | None) -> str
 
 
 @DBOS.step()
+def store_ship_bundle_step(run_id: str, repo_dir: str, branch: str | None) -> dict:
+    """Revamp P10 — a Desktop-folder run's Ship delivery, in place of the PR: store a ``git bundle``
+    of ``branch`` (``tvashtr/<run_id>``) as the run's result snapshot, which Desktop fetches into
+    the user's folder (``GET /api/runs/{id}/ship-bundle``). Raises on failure — the caller fails
+    the run, as for a PR that never opened. Returns ``{snapshot_id, size_bytes, branch}``."""
+    return local_repo.store_result_bundle(run_id, repo_dir, branch)
+
+
+@DBOS.step()
 def finalize_run_step(run_id: str, status: str = "completed") -> dict:
     """Mark the run terminal and total its cost rows (idempotent aggregate).
 
@@ -2285,13 +2313,22 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 # finalizing completed — a per-run throwaway clone's commit that never reached
                 # GitHub shipped nothing, so a failure here fails the run VISIBLY (naming the
                 # reason), never a silent completed with no PR. A local/greenfield ship is a no-op.
+                # Revamp P10: a Desktop-folder run gets a result bundle back instead of a PR.
+                folder_run = local_repo.is_folder_run(run_id)
                 try:
-                    pr_url = push_and_open_pr_step(run_id, workspace, ship.get("ship_branch"))
+                    if folder_run:
+                        store_ship_bundle_step(run_id, workspace, ship.get("ship_branch"))
+                        pr_url = None
+                    else:
+                        pr_url = push_and_open_pr_step(run_id, workspace, ship.get("ship_branch"))
                 except Exception as exc:  # noqa: BLE001 — surface the reason; do NOT report completed
-                    reason = f"github delivery failed: {exc}"
-                    mark_run_failed_step(
-                        run_id, code=run_failure.GITHUB_DELIVERY, message=reason, node_id=current
+                    reason = (
+                        f"Couldn't package the result branch for your folder: {exc}"
+                        if folder_run
+                        else f"github delivery failed: {exc}"
                     )
+                    code = local_repo.FOLDER_DELIVERY if folder_run else run_failure.GITHUB_DELIVERY
+                    mark_run_failed_step(run_id, code=code, message=reason, node_id=current)
                     close_invocation_step(run_id, current, 1, "failed", reason)
                     DBOS.logger.error(f"run_team hosted ship failed run_id={run_id}: {reason}")
                     return {
@@ -2383,6 +2420,15 @@ def run_team(idea: str) -> dict:
         # M-h1b: for a HOSTED-GitHub run, clone the repo + set repo_path BEFORE load_graph_step
         # snapshots it, so the walk sees a brownfield repo_path. No-op for local/greenfield runs.
         clone_github_repo_step(run_id)
+        # Revamp P10: a Desktop-folder run clones its uploaded bundle here instead. Gated on the
+        # immutable ``local_snapshot_id`` so no other run gains a step (replay-stable).
+        if local_repo.is_folder_run(run_id):
+            cloned = clone_local_snapshot_step(run_id)
+            if not cloned["ok"]:
+                reason = cloned["reason"]
+                mark_run_failed_step(run_id, code=local_repo.FOLDER_CLONE_FAILED, message=reason)
+                DBOS.logger.error(f"run_team folder clone failed run_id={run_id}: {reason}")
+                return {"run_id": run_id, "status": "failed", "document_id": None, "error": reason}
         graph = load_graph_step(run_id)
         return run_graph(run_id, graph, idea)
     finally:
