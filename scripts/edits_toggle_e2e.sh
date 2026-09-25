@@ -8,8 +8,7 @@
 #      persists (edits_allowed=false) + the card re-labels "Edits off";
 #   B) the start node (PM) Edits toggle is locked off;
 #   C) the Tools editor is present on an edits-off node (the Reviewer);
-#   D) "Run this team" opens Home's composer with the team picked, with no advisory note (the old
-#      launch panel's edits-off advisory was dropped from the composer in bc8d69e);
+#   (the old Check D, the launch panel's edits-off advisory, was retired with it in bc8d69e);
 #   plus the seeded Reviewer ships edits-off (piece 4).
 #
 # Orchestration mirrors scripts/capability_edit_e2e.sh (Postgres + migrate + backend + Vite + headless
@@ -126,7 +125,7 @@ set -e
 
 hr
 if [[ "$PW_EXIT" == "0" ]]; then
-  echo "EDITS-TOGGLE E2E PASSED (edits toggle persists + re-labels; tools on every node; amber advisory; start locked)"
+  echo "EDITS-TOGGLE E2E PASSED (edits toggle persists + re-labels; tools on every node; start locked)"
   echo "screenshots: $TVASHTR_EDITS_TOGGLE_SHOTS_DIR"
 else
   echo "EDITS-TOGGLE E2E FAILED (exit $PW_EXIT)"

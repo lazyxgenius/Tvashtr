@@ -3,12 +3,11 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-import { composer, openComposerFromCanvas } from "./_composer";
 import { openMyTeam } from "./_myTeam";
 
 // Live FE proof for M-unify U3 (the edits surface). NO agent run, NO real LLM, .env-INDEPENDENT: it
 // REGISTERS a fresh account, creates the review_loop "My team" (new accounts start with no team) and
-// drives the authoring canvas + node drawer. Four checks, each with a screenshot (targeted selectors — NOT a
+// drives the authoring canvas + node drawer. Three checks, each with a screenshot (targeted selectors — NOT a
 // full a11y snapshot, which wedges on the React Flow canvas, §4). Authenticated API reads go through
 // `page.request` (it shares the page's session cookie).
 //
@@ -16,10 +15,8 @@ import { openMyTeam } from "./_myTeam";
 //      Save → PERSISTS (edits_allowed=false via the team-graph API) and the card RE-LABELS "Edits off";
 //   B) the START node (PM) Edits toggle is LOCKED off;
 //   C) the Tools editor is present on an EDITS-OFF node (the Reviewer) — no worker-only note;
-//   D) "Run this team" opens Home's composer with the team picked — and, since bc8d69e, the composer
-//      no longer shows the old launch panel's edits-off action-verb note (the design draws no such
-//      note; node configuration is the agent panel's job), so Check D pins that the edited team
-//      reaches the composer with no advisory note at all.
+// (The old Check D — the launch panel's edits-off action-verb advisory — is gone: the composer
+// dropped that note on purpose to match the design, bc8d69e, and the architect ruled the check out.)
 //
 // Piece 4 (the Reviewer template ships edits-off) is asserted up front via the team graph.
 
@@ -33,7 +30,7 @@ interface GNode {
   prompt: string | null;
 }
 
-test("M-unify U3: edits toggle persists + re-labels, tools on every node, Run opens the composer, start locked", async ({
+test("M-unify U3: edits toggle persists + re-labels, tools on every node, start locked", async ({
   page,
 }) => {
   test.setTimeout(3 * 60 * 1000);
@@ -48,14 +45,6 @@ test("M-unify U3: edits toggle persists + re-labels, tools on every node, Run op
     data: { email, password: "edits-toggle-pass" },
   });
   expect(reg.ok(), "register a fresh account").toBeTruthy();
-  // A keyless account's canvas shows "Configure providers" in place of "Run this team" (Check D
-  // clicks Run). Hold a DUMMY deepseek key before the team is made — deepseek serves both seats, so
-  // every node the defaults stamp is covered. No run is launched, so the key is never used.
-  const key = await page.request.post("/api/providers", {
-    data: { provider: "deepseek", api_key: "dummy-deepseek-key-0000" },
-  });
-  expect(key.ok(), "store a dummy deepseek key").toBeTruthy();
-
   // Create + open the review_loop "My team" (the template the old seed used) → its canvas; keep its
   // id for the authenticated team-graph persistence assertions.
   const teamId = await openMyTeam(page);
@@ -128,23 +117,10 @@ test("M-unify U3: edits toggle persists + re-labels, tools on every node, Run op
   await page.screenshot({ path: path.join(SHOTS_DIR, "checkC-tools-on-edits-off.png") });
   console.log("[edits-toggle-e2e] CHECK C PASS — Tools editor present on the edits-off Reviewer");
 
-  // ── CHECK D — "Run this team" opens Home's composer with the edited team picked. The old launch
-  //    panel's edits-off action-verb advisory was dropped from the composer on purpose (bc8d69e: it
-  //    fired on our own review_loop template and no composer artboard draws it), so the composer
-  //    shows NO advisory note for this greenfield launch.
-  await openComposerFromCanvas(page, "My team");
-  await expect(composer(page).getByRole("note")).toHaveCount(0);
-  await expect(composer(page)).not.toContainText("implement");
-  await page.screenshot({ path: path.join(SHOTS_DIR, "checkD-composer-no-advisory.png") });
-  console.log(
-    "[edits-toggle-e2e] CHECK D PASS — Run opens the composer with My team picked; no retired advisory",
-  );
-
   for (const f of [
     "checkA-engineer-edits-off.png",
     "checkB-start-locked.png",
     "checkC-tools-on-edits-off.png",
-    "checkD-composer-no-advisory.png",
   ]) {
     expect(fs.existsSync(path.join(SHOTS_DIR, f)), `screenshot ${f} written`).toBe(true);
   }
