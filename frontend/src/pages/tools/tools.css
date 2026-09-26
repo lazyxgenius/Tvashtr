@@ -342,15 +342,22 @@
   white-space: nowrap;
 }
 
-/* ---- Breadcrumb (tool page) ---- */
 /* ---- The tool page (Toolkit-ToolDetail, TkF-Detail-*) ---- */
 .tk-crumbs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   font-size: 13px;
   line-height: 1.6;
   color: var(--ink-500);
+}
+.tk-crumbs__list {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tk-crumbs__item {
+  display: inline-flex;
+  align-items: center;
 }
 .tk-crumbs__link {
   font-size: 13px;
@@ -365,8 +372,15 @@
   box-shadow: var(--shadow-focus);
   border-radius: 4px;
 }
+/* A level after the first carries its separator: the design's 6px gap, the 13px chevron, 6px. */
 .tk-crumbs__here {
+  gap: 6px;
+  padding-left: 6px;
   color: var(--ink-900);
+}
+.tk-crumbs__here svg {
+  flex: none;
+  color: var(--ink-500);
 }
 .tk-dhead {
   display: flex;

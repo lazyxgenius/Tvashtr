@@ -134,13 +134,19 @@ export function ToolDetailPage({ toolId }: { toolId: string }) {
   return (
     <>
       <nav className="tk-crumbs" aria-label="Breadcrumb">
-        <a className="tk-crumbs__link" href={routeToHash(LIST)}>
-          Tools
-        </a>
-        <ChevronRight size={13} strokeWidth={1.6} aria-hidden />
-        <span className="tk-crumbs__here" aria-current="page">
-          {load.state === "ready" ? load.tool.name : "…"}
-        </span>
+        {/* The WAI-ARIA breadcrumb pattern: a list; each level after the first carries its own
+            separator (it is hidden from assistive tech, the list says where one level ends). */}
+        <ol className="tk-crumbs__list">
+          <li className="tk-crumbs__item">
+            <a className="tk-crumbs__link" href={routeToHash(LIST)}>
+              Tools
+            </a>
+          </li>
+          <li className="tk-crumbs__item tk-crumbs__here" aria-current="page">
+            <ChevronRight size={13} strokeWidth={1.6} aria-hidden />
+            {load.state === "ready" ? load.tool.name : "…"}
+          </li>
+        </ol>
       </nav>
       {load.state === "ready" ? (
         <ToolEditor key={load.tool.id} saved={load.tool} onSaved={setTool} />

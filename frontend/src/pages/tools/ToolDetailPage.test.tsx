@@ -102,6 +102,12 @@ describe("ToolDetailPage", () => {
     await open();
 
     const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+    // The WAI-ARIA breadcrumb pattern: an ordered list, one item per level.
+    expect(
+      within(within(crumbs).getByRole("list"))
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["Tools", "github"]);
     expect(within(crumbs).getByRole("link", { name: "Tools" })).toHaveAttribute(
       "href",
       "#/toolkit/tools",
