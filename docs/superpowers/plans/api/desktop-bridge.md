@@ -246,7 +246,7 @@ Main runs PKCE (`electron/auth/desktopSignIn.cjs`); the page never sees a code o
     minutes." · `cancelled` "You cancelled on GitHub. Nothing was changed." · `expired` "This
     sign-in has expired. Sign in again." · `exchange_failed` the server's `detail` (e.g. "This
     sign-in belongs to another app window. Sign in again.") or "Couldn't finish signing in. Sign
-    in again."
+    in again." (also for a `?error=failed` return link: GitHub refused the code at the callback)
 - `getLaunchContext(): Promise<{openedFromWeb: {login, host} | null, lastUser: {login,
   displayName} | null}>` — `openedFromWeb` is the last `from=web` hint (cleared on sign-in and
   `forgetUser`); a label only, never proof of identity.
@@ -261,7 +261,7 @@ The exchange: main `POST <loopback>/api/auth/desktop/exchange {code, verifier}` 
 ## Deep links (DB-2)
 
 - `tvashtr://auth/done?code=<[A-Za-z0-9_.-]{1,1500}>&state=<[A-Za-z0-9_-]{16,64}>` and
-  `?error=cancelled|expired&state=` go to main's sign-in only (never queued for the page); a state
+  `?error=cancelled|expired|failed&state=` go to main's sign-in only (never queued for the page); a state
   that isn't the pending sign-in's is ignored. The bare `tvashtr://auth/done` only focuses the
   window. Any other shape is ignored.
 - Every allowed page link may carry `from=web&login=<[A-Za-z0-9-]{1,39}>&host=<api host>`; when

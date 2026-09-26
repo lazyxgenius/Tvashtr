@@ -6,10 +6,10 @@ Backend for `docs/superpowers/specs/2026-09-25-revamp-analysis/desktop-app.md` �
 `control_plane/provider_directory.py`; the GitHub callback's desktop branch is in `auth.py`.
 No schema. Everything is additive: no existing key or behaviour changed.
 
-Status (2026-09-26): SHIPPED — browser sign-in (start / callback branch / return page /
-exchange), `GET /api/desktop/release`, job release, `provider_directory[].serves_models`.
-NOT YET BUILT (the First-team step's group, G5, builds them): the `spec_only` template,
-`use_plans` on `POST /api/teams`, `GET /api/templates?for=desktop`.
+Status (2026-09-27): SHIPPED — browser sign-in (start / callback branch / return page /
+exchange), `GET /api/desktop/release`, job release, `provider_directory[].serves_models`, the
+`spec_only` template, `use_plans` on `POST /api/teams`, `GET /api/templates?for=desktop`.
+Desktop setup does NOT offer `spec_only` yet (see "The Spec only team").
 
 ---
 
@@ -40,7 +40,7 @@ New optional query params `state` and `error`. When `state` verifies as a deskto
 | `error` present (e.g. `access_denied`, the user cancelled on GitHub) or no `code` | 200 return page "Sign-in cancelled" / "Nothing was changed. Go back to Tvashtr Desktop."; link `tvashtr://auth/done?error=cancelled&state=<s>`; no cookie |
 | the desktop state is older than 15 minutes | 200 return page "This sign-in expired" / "This sign-in has expired. Sign in again."; link `tvashtr://auth/done?error=expired&state=<s>`; no cookie |
 | `code` present | the normal GitHub find-or-link + installations, the browser gets `tv_session`, then 200 return page "You're signed in" / "Go back to Tvashtr Desktop to continue. You can close this tab."; link `tvashtr://auth/done?code=<code>&state=<s>` |
-| GitHub exchange fails | 400 `{"detail":"GitHub sign-in failed."}` (unchanged) |
+| GitHub exchange fails | 400 return page "Sign-in didn’t finish" / "GitHub didn’t sign you in. Go back to Tvashtr Desktop and try again."; link `tvashtr://auth/done?error=failed&state=<s>`; no cookie (Desktop shows "Sign-in didn't finish" at once). The website's callback (no desktop state) still answers 400 `{"detail":"GitHub sign-in failed."}` |
 
 Without a desktop state (absent, forged, foreign) the callback behaves exactly as before (302 to
 the website).
@@ -108,7 +108,10 @@ Desktop is quitting or restarting to update: hand its claimed job back to the qu
 Effect: `claimed → queued`, `claimed_at` and `heartbeat_at` set to null, one node run-log
 message `{"source":"tvashtr","text":"Tvashtr Desktop restarted — this step starts again when it's
 back."}`. The relaunched runner re-claims it with the unchanged `POST /api/desktop-runner/claim`
-(the provider is no longer blocked). If Desktop doesn't come back within
+(the provider is no longer blocked). Each claim writes its runner events in its own seq band
+(`100 + k × 1 000 000 + seq` for the k-th claim, since the runner restarts `seq` at 0) and the
+release note is the last seq of the released claim's band, so the node's log reads: first
+attempt, note, second attempt — nothing dropped. If Desktop doesn't come back within
 `desktop_runner_offline_seconds`, the node fails with "Tvashtr Desktop went offline — reopen it
 and retry." as before.
 
@@ -169,4 +172,6 @@ verdict-emitting, reviews the spec against the idea) → Stop, on `approved` and
 No Ship node: no code change, no PR. KNOWN GAPS (walk changes in `team_run.py`, outside this
 slice): a run ends `rejected` at the Stop terminal even when approved (pinned by a strict xfail in
 `tests/test_desktop_templates.py`), and there is no rework loop (a loop back to the entry PM
-leaves the team without a start node).
+leaves the team without a start node). Because of both, Desktop setup's First team step leaves
+the designed "Spec only" card out (a first run would read Stopped); the template stays served and
+creatable for when the walk supports it.
