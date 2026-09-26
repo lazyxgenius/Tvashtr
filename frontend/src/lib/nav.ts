@@ -19,6 +19,11 @@
  *   #/teams/<teamId>/runs/<runId>
  *   #/teams/<teamId>/docs/<documentId>?v=<n>&compare=<m>
  *   #/setup/engines|project|team          (Tvashtr Desktop only; the website goes Home)
+ *
+ * The public website (website.md WEB-1; `isPublicRoute`; Tvashtr Desktop sends them all Home):
+ *   #/welcome[?s=product|how|domains|two-ways|faq]
+ *   #/download[/started][?os=mac|windows|linux]
+ *   #/signin[/done][?error=cancelled|failed|expired&next=<app address>]
  */
 import { useCallback, useSyncExternalStore } from "react";
 
@@ -31,6 +36,11 @@ export type NodeTab = "setup" | "skills" | "memory" | "runs" | "docs";
 export type DashView = "home" | "domains" | "engines" | "tools";
 /** Tvashtr Desktop's first-run setup steps (desktop-app.md DT-17). */
 export type SetupStep = "engines" | "project" | "team";
+/** The landing's scroll targets (website.md WEB-7). */
+export type SiteSection = "product" | "how" | "domains" | "two-ways" | "faq";
+/** The download page's platform, when the address names one (`?os=`, WEB-32). */
+export type DownloadOs = "mac" | "windows" | "linux";
+export type SignInError = "cancelled" | "failed" | "expired";
 
 export type Route =
   | { page: "home" }
@@ -56,6 +66,10 @@ export type Route =
   | { page: "secrets" }
   // Desktop only: the first-run setup (DT-17).
   | { page: "setup"; step: SetupStep }
+  // The public website (WEB-1). `next`: the app address to return to after sign-in.
+  | { page: "welcome"; section?: SiteSection }
+  | { page: "download"; started?: boolean; os?: DownloadOs }
+  | { page: "signin"; done?: boolean; error?: SignInError; next?: string }
   | {
       page: "team";
       teamId: string;
@@ -73,6 +87,28 @@ const CONNECT_TARGETS: ConnectTarget[] = ["claude", "grok"];
 const MEMORY_TABS: MemoryTab[] = ["inbox", "active", "archive"];
 const NODE_TABS: NodeTab[] = ["setup", "skills", "memory", "runs", "docs"];
 const SETUP_STEPS: SetupStep[] = ["engines", "project", "team"];
+const SITE_SECTIONS: SiteSection[] = ["product", "how", "domains", "two-ways", "faq"];
+const DOWNLOAD_OS: DownloadOs[] = ["mac", "windows", "linux"];
+const SIGNIN_ERRORS: SignInError[] = ["cancelled", "failed", "expired"];
+// The server keeps the same shape (control_plane/web_signin.py): never `//host` or a scheme.
+const APP_ADDRESS_RE = /^\/(?!\/)[A-Za-z0-9/_?=&.%-]{0,300}$/;
+
+function pick<T extends string>(values: readonly T[], v: string | null): T | undefined {
+  return values.includes(v as T) ? (v as T) : undefined;
+}
+
+/** `value` when it is an app (not public) address like `/teams/<id>?node=x`, else undefined. */
+export function appAddress(value: string | null | undefined): string | undefined {
+  if (!value || !APP_ADDRESS_RE.test(value)) return undefined;
+  return isPublicRoute(parseRoute(`#${value}`)) ? undefined : value;
+}
+
+export type PublicRoute = Extract<Route, { page: "welcome" | "download" | "signin" }>;
+
+/** A page of the public website (WEB-1): never shown inside Tvashtr Desktop (WEB-3). */
+export function isPublicRoute(route: Route): route is PublicRoute {
+  return route.page === "welcome" || route.page === "download" || route.page === "signin";
+}
 
 function onDesktop(): boolean {
   return (
@@ -146,6 +182,26 @@ export function parseRoute(hash: string): Route {
         page: "setup",
         step: SETUP_STEPS.includes(b as SetupStep) ? (b as SetupStep) : "engines",
       };
+    case "welcome": {
+      const section = pick(SITE_SECTIONS, q.get("s"));
+      return section ? { page: "welcome", section } : { page: "welcome" };
+    }
+    case "download": {
+      const route: Extract<Route, { page: "download" }> = { page: "download" };
+      if (b === "started") route.started = true;
+      const os = pick(DOWNLOAD_OS, q.get("os"));
+      if (os) route.os = os;
+      return route;
+    }
+    case "signin": {
+      const route: Extract<Route, { page: "signin" }> = { page: "signin" };
+      if (b === "done") route.done = true;
+      const error = pick(SIGNIN_ERRORS, q.get("error"));
+      if (error) route.error = error;
+      const next = appAddress(q.get("next"));
+      if (next) route.next = next;
+      return route;
+    }
     case "teams": {
       if (!b) return HOME;
       const route: Extract<Route, { page: "team" }> = { page: "team", teamId: b };
@@ -196,6 +252,17 @@ export function routeToHash(route: Route): string {
       return "#/toolkit/secrets";
     case "setup":
       return `#/setup/${route.step}`;
+    case "welcome":
+      return route.section ? `#/welcome?s=${route.section}` : "#/welcome";
+    case "download":
+      return `#/download${route.started ? "/started" : ""}${route.os ? `?os=${route.os}` : ""}`;
+    case "signin": {
+      const q = new URLSearchParams();
+      if (route.error) q.set("error", route.error);
+      if (route.next) q.set("next", route.next);
+      const qs = q.toString();
+      return `#/signin${route.done ? "/done" : ""}${qs ? `?${qs}` : ""}`;
+    }
     case "team": {
       let path = `#/teams/${enc(route.teamId)}`;
       if (route.runId) path += `/runs/${enc(route.runId)}`;
@@ -221,6 +288,9 @@ export function sectionOf(route: Route): "home" | "domains" | "engines" | "toolk
     case "team":
       return route.page;
     case "setup":
+    case "welcome":
+    case "download":
+    case "signin":
       return "home";
     default:
       return "toolkit";

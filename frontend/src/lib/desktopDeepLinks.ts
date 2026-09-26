@@ -28,12 +28,24 @@ function isGecko(): boolean {
   return typeof navigator !== "undefined" && /\bfirefox\//i.test(navigator.userAgent);
 }
 
-/** Hand the link to the browser (call it inside the click, so the browser lets it through). The
- *  page stays where it is: the browser asks whether to open the app, and shows nothing that leaves
- *  the page when the app isn't installed — Chrome and Safari keep the page for a top-level link,
- *  Firefox gets it through one reusable hidden frame. */
+/** The website's "open Tvashtr": Home, plus who is signed in here as a display hint (desktop-app.md
+ *  §6 — never a token; Desktop keeps it only when `host` is its own API host). */
+export function desktopHomeLink(githubLogin?: string | null): string {
+  if (!githubLogin) return "tvashtr://home";
+  const hint = new URLSearchParams({ from: "web", login: githubLogin, host: window.location.host });
+  return `tvashtr://home?${hint.toString()}`;
+}
+
+/** Open (or focus) Tvashtr Desktop on Subscriptions, optionally pointing at one card. */
 export function openTvashtrDesktop(connect?: ConnectTarget | null): void {
-  const link = desktopLink(connect);
+  openDesktopLink(desktopLink(connect));
+}
+
+/** Hand a `tvashtr://` link to the browser (call it inside the click, so the browser lets it
+ *  through). The page stays where it is: the browser asks whether to open the app, and shows
+ *  nothing that leaves the page when the app isn't installed — Chrome and Safari keep the page for
+ *  a top-level link, Firefox gets it through one reusable hidden frame. */
+export function openDesktopLink(link: string): void {
   if (!isGecko()) {
     window.location.href = link;
     return;
