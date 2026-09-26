@@ -261,6 +261,38 @@ describe("save toast (ENG-58, ENG-60, OQ-7)", () => {
     );
   });
 
+  it("never says a team can run while one of its agents has no model", () => {
+    const usage = {
+      ...USAGE,
+      teams: USAGE.teams.map((t) =>
+        t.team_id === "t-ind"
+          ? {
+              ...t,
+              nodes: [
+                ...t.nodes,
+                {
+                  node_id: "n-new",
+                  role_name: "agent",
+                  title: "New agent",
+                  kind: "agent",
+                  model: null,
+                  provider: null,
+                  fallback_model: null,
+                  fallback_provider: null,
+                },
+              ],
+            }
+          : t,
+      ),
+    };
+    const both = after("xai", { keys: [...KEYS, key("anthropic", "wQ3f")], usage });
+    expect(saveToast(both, "xai", false)).toEqual({ message: "xai key saved.", action: null });
+    expect(saveToast(both, "xai", false, { row: true })).toEqual({
+      message: "xai key saved.",
+      action: null,
+    });
+  });
+
   it("never offers a key for a model no agent can use; a NIM node is fixed by another model", () => {
     const usage = {
       ...USAGE,

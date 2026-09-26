@@ -169,6 +169,45 @@ describe("subscription states in the Desktop cell (ENG-13)", () => {
   });
 });
 
+describe("an agent with no model yet (no_model)", () => {
+  // The canvas allows a blank agent; the launch gate refuses the team until it has a model
+  // ("This agent needs a model before the team can run.").
+  const withBlank = (...blank: ReturnType<typeof node>[]) => ({
+    ...USAGE,
+    teams: USAGE.teams.map((t) =>
+      t.team_id === "t-docs" ? { ...t, nodes: [...t.nodes, ...blank] } : t,
+    ),
+  });
+
+  it("is never ready on either surface, and counts in N to fix", () => {
+    const i = sampleInputs({ usage: withBlank(node("n-res", "researcher", null)) });
+    const docs = teamVerdicts(i).find((v) => v.teamId === "t-docs");
+    expect(docs?.website).toEqual({ ready: false, text: "Website: give Researcher a model" });
+    expect(docs?.desktop).toEqual({ ready: false, text: "Desktop: give Researcher a model" });
+    expect(toFixCount(i)).toBe(4);
+    expect(engineBadges(i).enginesToFix).toBe(4);
+  });
+
+  it("names every blank agent once, after the key fixes, and never adds a provider row", () => {
+    const i = sampleInputs({
+      usage: withBlank(node("n-a", "agent", null, "Editor"), node("n-b", "agent", "  ", "Critic")),
+    });
+    expect(teamVerdicts(i).find((v) => v.teamId === "t-docs")?.website.text).toBe(
+      "Website: give Editor and Critic models",
+    );
+    expect(providerRows(i).map((r) => r.provider)).toEqual(["anthropic", "xai", "deepseek"]);
+    const ind = sampleInputs({
+      usage: {
+        ...USAGE,
+        teams: [{ ...USAGE.teams[0], nodes: [...USAGE.teams[0].nodes, node("n-x", "qa", null)] }],
+      },
+    });
+    expect(teamVerdicts(ind)[0].website.text).toBe(
+      "Website: add anthropic, xai keys, give Qa a model",
+    );
+  });
+});
+
 describe("NVIDIA NIM serves no seat (area rule)", () => {
   const nimTeam = {
     team_id: "t-nim",
@@ -235,14 +274,17 @@ describe("Used by", () => {
     expect(alsoSaved(i).providers).toEqual(["nvidia_nim"]);
   });
 
-  it("a node with no model uses no provider", () => {
+  it("a node with no model uses no provider, and its team can't run until it has one", () => {
     const usage = {
       ...USAGE,
       teams: [{ team_id: "t1", name: "Blank", nodes: [node("n1", "engineer", null)] }],
     };
     const i = sampleInputs({ usage });
     expect(providerRows(i)).toEqual([]);
-    expect(teamVerdicts(i)[0].website.ready).toBe(true);
+    expect(teamVerdicts(i)[0].website).toEqual({
+      ready: false,
+      text: "Website: give Engineer a model",
+    });
   });
 });
 

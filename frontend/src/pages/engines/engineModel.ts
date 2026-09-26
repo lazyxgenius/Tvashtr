@@ -369,7 +369,22 @@ export function teamsUsing(usage: EngineUsage, provider: string): UsageTeam[] {
   return usage.teams.filter((t) => t.nodes.some((n) => nodeProvider(n) === provider));
 }
 
-/** One surface's verdict for one team. */
+/** "give Researcher a model" / "give Editor and Critic models" for the team's agents with no model
+ *  yet (the launch gate's `no_model`: "This agent needs a model before the team can run."), or
+ *  null when every agent has one. */
+function giveModels(team: UsageTeam): string | null {
+  const labels: string[] = [];
+  for (const n of team.nodes) {
+    if (n.model && n.model.trim()) continue;
+    const label = roleLabel(n.role_name, n.title);
+    if (!labels.includes(label)) labels.push(label);
+  }
+  if (!labels.length) return null;
+  if (labels.length === 1) return `give ${labels[0]} a model`;
+  return `give ${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]} models`;
+}
+
+/** One surface's verdict for one team. A team with an agent that has no model is never ready. */
 export function teamVerdict(i: EngineInputs, team: UsageTeam, target: "local" | "hosted"): Verdict {
   const noSeat = providersServingNoSeat(i.catalogue);
   const missing = missingFor(i, team, target);
@@ -391,6 +406,8 @@ export function teamVerdict(i: EngineInputs, team: UsageTeam, target: "local" | 
   }
   if (keys.length) parts.push(addKeys(keys));
   parts.push(...changes);
+  const models = giveModels(team);
+  if (models) parts.push(models);
   const label = target === "local" ? "Desktop" : "Website";
   return parts.length
     ? { ready: false, text: `${label}: ${parts.join(", ")}` }
