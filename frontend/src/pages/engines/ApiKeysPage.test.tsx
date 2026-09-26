@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../../design-system/components";
 import { useNavBadges } from "../../lib/workspaceStatus";
 import { ApiKeysPage } from "./ApiKeysPage";
+import { EnginesPage } from "./EnginesPage";
 import { EnginesDataProvider } from "./enginesData";
 import {
   KEYS,
@@ -53,6 +54,38 @@ function openMenu(provider: string) {
   fireEvent.click(screen.getByRole("button", { name: `More actions for ${provider}` }));
   return within(screen.getByRole("menu", { name: `More actions for ${provider}` }));
 }
+
+describe("arriving from Domains (ENG-6)", () => {
+  // jsdom has no scrollIntoView: install a recorder for these tests only.
+  let scrolled: Element[] = [];
+  beforeEach(() => {
+    scrolled = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+  });
+  afterEach(() => {
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
+  });
+
+  it("scrolls the Domains embeddings section into view once the page has loaded", async () => {
+    mockEnginesApi();
+    render(
+      <ToastProvider>
+        <EnginesPage tab="keys" embeddings />
+      </ToastProvider>,
+    );
+    const section = await screen.findByRole("region", { name: "Domains embeddings" });
+    await waitFor(() => expect(scrolled).toEqual([section]));
+  });
+
+  it("stays at the top on a plain visit", async () => {
+    mockEnginesApi();
+    renderEngines("keys");
+    await screen.findByRole("region", { name: "Domains embeddings" });
+    expect(scrolled).toEqual([]);
+  });
+});
 
 describe("API keys page (Eng-Keys)", () => {
   it("shows the lede, the banner, the keys newest first and the embeddings suggestion", async () => {

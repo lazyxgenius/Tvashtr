@@ -30,10 +30,25 @@ vi.mock("../App", () => ({
 }));
 vi.mock("./home/HomePage", () => ({ HomePage: () => <div>HOME BODY</div> }));
 vi.mock("./engines/EnginesPage", () => ({
-  EnginesPage: ({ tab, connect }: { tab: string; connect?: string }) => (
-    <div data-tab={tab} data-connect={connect}>
+  EnginesPage: ({
+    tab,
+    connect,
+    embeddings,
+  }: {
+    tab: string;
+    connect?: string;
+    embeddings?: boolean;
+  }) => (
+    <div data-tab={tab} data-connect={connect} data-embeddings={String(Boolean(embeddings))}>
       ENGINES BODY
     </div>
+  ),
+}));
+vi.mock("../components/DomainsPage", () => ({
+  DomainsPage: ({ onOpenEngines }: { onOpenEngines?: () => void }) => (
+    <button type="button" onClick={onOpenEngines}>
+      Domains Open Engines
+    </button>
   ),
 }));
 
@@ -62,6 +77,15 @@ afterEach(() => {
 });
 
 describe("Workspace", () => {
+  it("Domains' Open Engines lands on API keys at the Domains embeddings section (ENG-6)", async () => {
+    renderAt("#/domains");
+    await userEvent.click(await screen.findByRole("button", { name: "Domains Open Engines" }));
+    const engines = await screen.findByText("ENGINES BODY");
+    expect(window.location.hash).toBe("#/engines/keys?embeddings=1");
+    expect(engines).toHaveAttribute("data-tab", "keys");
+    expect(engines).toHaveAttribute("data-embeddings", "true");
+  });
+
   it("Tvashtr Desktop: a tvashtr:// link moves the page (connect only highlights a card)", async () => {
     let deliver: (t: TvashtrDeepLinkTarget) => void = () => undefined;
     window.tvashtrDesktop = {

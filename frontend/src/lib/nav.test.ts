@@ -19,6 +19,7 @@ describe("parseRoute / routeToHash", () => {
       "#/engines/subscriptions?connect=grok",
       { page: "engines", tab: "subscriptions", connect: "grok" },
     ],
+    ["#/engines/keys?embeddings=1", { page: "engines", tab: "keys", embeddings: true }],
     ["#/toolkit/tools", { page: "tools", view: "installed" }],
     ["#/toolkit/tools/browse", { page: "tools", view: "browse" }],
     ["#/toolkit/tools/abc-123", { page: "tool", toolId: "abc-123" }],
@@ -57,6 +58,8 @@ describe("parseRoute / routeToHash", () => {
     expect(parseRoute("#/engines/keys?fix=1")).toEqual({ page: "engines", tab: "keys" });
     // Only Subscriptions highlights a card, and only Claude or Grok (Codex never connects).
     expect(parseRoute("#/engines/keys?connect=grok")).toEqual({ page: "engines", tab: "keys" });
+    // Only API keys scrolls to the Domains embeddings section (ENG-6).
+    expect(parseRoute("#/engines?embeddings=1")).toEqual({ page: "engines", tab: "overview" });
     expect(parseRoute("#/engines/subscriptions?connect=codex")).toEqual({
       page: "engines",
       tab: "subscriptions",

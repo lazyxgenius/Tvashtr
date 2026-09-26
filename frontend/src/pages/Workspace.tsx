@@ -109,12 +109,20 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
     case "domains":
       return (
         <DomainsPage
-          onOpenEngines={() => navigate({ page: "engines", tab: "overview" })}
+          // Domains is blocked on an embeddings key: API keys at that section (ENG-6).
+          onOpenEngines={() => navigate({ page: "engines", tab: "keys", embeddings: true })}
           onCreateTeam={() => requestHomeAction({ kind: "new-team" })}
         />
       );
     case "engines":
-      return <EnginesPage tab={route.tab} fix={route.fix} connect={route.connect} />;
+      return (
+        <EnginesPage
+          tab={route.tab}
+          fix={route.fix}
+          connect={route.connect}
+          embeddings={route.embeddings}
+        />
+      );
     case "tools":
     case "tool":
       return <ToolsShelf />;

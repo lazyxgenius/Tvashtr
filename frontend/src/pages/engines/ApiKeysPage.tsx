@@ -305,11 +305,27 @@ function KeysTable({
 
 // ---- Domains embeddings (ENG-59, OQ-7) ----
 
-function EmbeddingsCard({ onAdd }: { onAdd: (provider: string) => void }) {
+function EmbeddingsCard({
+  onAdd,
+  show,
+}: {
+  onAdd: (provider: string) => void;
+  /** Arrived from Domains (ENG-6): bring this section into view. */
+  show: boolean;
+}) {
   const { inputs } = useEngines();
   const section = embeddingsSection(inputs);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (show) ref.current?.scrollIntoView?.({ block: "start" });
+  }, [show]);
   return (
-    <section className="eng-card" id="engines-embeddings" aria-labelledby="eng-embeddings-title">
+    <section
+      ref={ref}
+      className="eng-card"
+      id="engines-embeddings"
+      aria-labelledby="eng-embeddings-title"
+    >
       <div className="eng-embed">
         <span className="eng-embed__icon">
           <BookOpen size={18} strokeWidth={1.6} aria-hidden />
@@ -355,7 +371,10 @@ function useNow(keys: readonly SavedKey[]): Date {
   return now;
 }
 
-export function ApiKeysPage({ onAddKey }: ApiKeysActions) {
+export function ApiKeysPage({
+  onAddKey,
+  showEmbeddings = false,
+}: ApiKeysActions & { showEmbeddings?: boolean }) {
   const engines = useEngines();
   const { status, inputs } = engines;
   const [usageFor, setUsageFor] = useState<string | null>(null);
@@ -408,7 +427,7 @@ export function ApiKeysPage({ onAddKey }: ApiKeysActions) {
         onReplace={setReplaceFor}
         onRemove={setRemoveFor}
       />
-      <EmbeddingsCard onAdd={(p) => onAddKey(p, { embeddings: true })} />
+      <EmbeddingsCard onAdd={(p) => onAddKey(p, { embeddings: true })} show={showEmbeddings} />
       <ReplaceKeyDialog provider={replaceFor} onClose={() => setReplaceFor(null)} />
       <RemoveKeyDialog provider={removeFor} onClose={() => setRemoveFor(null)} />
     </section>

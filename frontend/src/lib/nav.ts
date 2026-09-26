@@ -10,6 +10,7 @@
  *   #/engines · #/engines/subscriptions · #/engines/keys
  *   #/engines?fix=1 (Overview with the rows that need a fix highlighted — the canvas's Open Engines)
  *   #/engines/subscriptions?connect=claude|grok (that card highlighted — a `tvashtr://` deep link)
+ *   #/engines/keys?embeddings=1 (API keys scrolled to Domains embeddings — Domains' Open Engines)
  *   #/toolkit/tools · #/toolkit/tools/browse · #/toolkit/tools/<id>
  *   #/toolkit/skills · #/toolkit/skills/presets · #/toolkit/skills/new · #/toolkit/skills/<id>
  *   #/toolkit/memory/inbox|active|archive
@@ -33,7 +34,14 @@ export type Route =
   | { page: "domains" }
   // `fix`: arrived from a blocked run ("Open Engines") — Overview highlights the rows to fix.
   // `connect`: Subscriptions only — highlight that card (the website's "Open in Desktop").
-  | { page: "engines"; tab: EnginesTab; fix?: boolean; connect?: ConnectTarget }
+  // `embeddings`: API keys only — arrived from Domains, show the Domains embeddings section.
+  | {
+      page: "engines";
+      tab: EnginesTab;
+      fix?: boolean;
+      connect?: ConnectTarget;
+      embeddings?: boolean;
+    }
   | { page: "tools"; view: "installed" | "browse" }
   | { page: "tool"; toolId: string }
   | { page: "skills"; view: "mine" | "presets" }
@@ -89,6 +97,9 @@ export function parseRoute(hash: string): Route {
       const connect = q.get("connect");
       if (tab === "subscriptions" && CONNECT_TARGETS.includes(connect as ConnectTarget)) {
         return { page: "engines", tab, connect: connect as ConnectTarget };
+      }
+      if (tab === "keys" && q.get("embeddings") === "1") {
+        return { page: "engines", tab, embeddings: true };
       }
       return tab === "overview" && q.get("fix") === "1"
         ? { page: "engines", tab, fix: true }
@@ -146,6 +157,7 @@ export function routeToHash(route: Route): string {
       if (route.tab === "subscriptions" && route.connect) {
         return `#/engines/subscriptions?connect=${route.connect}`;
       }
+      if (route.tab === "keys" && route.embeddings) return "#/engines/keys?embeddings=1";
       if (route.tab !== "overview") return `#/engines/${route.tab}`;
       return route.fix ? "#/engines?fix=1" : "#/engines";
     case "tools":

@@ -33,10 +33,12 @@ function EnginesTabs({
   tab,
   fix,
   connect,
+  embeddings,
 }: {
   tab: EnginesTab;
   fix: boolean;
   connect: ConnectTarget | null;
+  embeddings: boolean;
 }) {
   const [sheet, setSheet] = useState<(AddKeyRequest & { seq: number }) | null>(null);
   const [desktop, setDesktop] = useState<(DesktopDialog & { seq: number }) | null>(null);
@@ -125,7 +127,7 @@ function EnginesTabs({
           onGetDesktop={getDesktop}
         />
       )}
-      {tab === "keys" && <ApiKeysPage onAddKey={addKey} />}
+      {tab === "keys" && <ApiKeysPage onAddKey={addKey} showEmbeddings={embeddings} />}
       <AddKeySheet
         request={sheet}
         onClose={() => setSheet(null)}
@@ -153,15 +155,23 @@ export function EnginesPage({
   tab,
   fix = false,
   connect = null,
+  embeddings = false,
 }: {
   tab: EnginesTab;
   fix?: boolean;
   /** `#/engines/subscriptions?connect=…` (a `tvashtr://` link): highlight that card. */
   connect?: ConnectTarget | null;
+  /** `#/engines/keys?embeddings=1` (Domains' Open Engines): scroll to Domains embeddings. */
+  embeddings?: boolean;
 }) {
   return (
     <EnginesDataProvider>
-      <EnginesTabs tab={tab} fix={fix} connect={tab === "subscriptions" ? connect : null} />
+      <EnginesTabs
+        tab={tab}
+        fix={fix}
+        connect={tab === "subscriptions" ? connect : null}
+        embeddings={tab === "keys" && embeddings}
+      />
     </EnginesDataProvider>
   );
 }
