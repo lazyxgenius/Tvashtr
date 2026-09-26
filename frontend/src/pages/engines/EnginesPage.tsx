@@ -86,24 +86,22 @@ function EnginesTabs({
     });
   }, []);
 
-  /** A row's Add key opens the sheet with that provider (ENG-15); a row's Connect on Desktop signs
-   *  in from the row (ENG-16); the website's Open in Desktop opens Desktop on that subscription
-   *  (OQ-2); re-checking and setting up a subscription happen on Subscriptions. */
-  const connectRow = rowConnect.connect;
+  /** A row's Add key opens the sheet with that provider (ENG-15); a row's Connect / Refresh on
+   *  Desktop signs in / re-checks from the row (ENG-16, ENG-13); the website's Open in Desktop opens
+   *  Desktop on that subscription (OQ-2); setting up a subscription happens on Subscriptions. */
+  const { connect: connectRow, refresh: refreshRow } = rowConnect;
   const cellAction = useCallback(
     (action: CellAction) => {
+      const onDesktop = action.sub && surface === "desktop" ? action.sub : null;
       if (action.kind === "add-key") addKey(action.provider, { row: true });
       else if (action.kind === "open-desktop") openDesktop(connectTargetOf(action.sub));
-      else if (
-        action.kind === "connect" &&
-        action.sub &&
-        surface === "desktop" &&
-        enginesBridge()?.connect
-      )
-        connectRow(action.sub);
+      else if (action.kind === "connect" && onDesktop && enginesBridge()?.connect)
+        connectRow(onDesktop);
+      else if (action.kind === "refresh" && onDesktop && enginesBridge()?.refresh)
+        refreshRow(onDesktop);
       else goSubscriptions();
     },
-    [addKey, openDesktop, connectRow, surface],
+    [addKey, openDesktop, connectRow, refreshRow, surface],
   );
 
   return (

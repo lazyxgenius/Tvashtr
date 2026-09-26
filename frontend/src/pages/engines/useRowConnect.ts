@@ -8,6 +8,10 @@
  * cell says so), or — asked again after the Terminal opened — still not signed in (the user came
  * back without finishing: the cell offers Connect again). The website never gets here: its row
  * button is "Open in Desktop" (OQ-2).
+ *
+ * A row's Refresh ("Couldn’t check Grok", ENG-13) re-checks the same way: "Checking…" until the
+ * bridge answers, then the answer (connected: the Refresh toast and the flash; a failure: "Couldn’t
+ * check Grok. Try again.").
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -21,11 +25,17 @@ import type {
 import { enginesBridge } from "./engineBridge";
 import { rowsCoveredBy } from "./engineModel";
 import { useEngines } from "./enginesData";
-import { CONNECT_FAILED, rowConnectedToast, terminalOpenedToast } from "./subscriptionModel";
+import {
+  CONNECT_FAILED,
+  refreshFailed,
+  refreshToast,
+  rowConnectedToast,
+  terminalOpenedToast,
+} from "./subscriptionModel";
 
 interface Pending {
-  /** Waiting for the bridge to open Terminal, then for the sign-in there. */
-  phase: "starting" | "signing-in";
+  /** Waiting for the bridge to open Terminal, then for the sign-in there; or for a re-check. */
+  phase: "starting" | "signing-in" | "refreshing";
   from: SubscriptionCardState | null;
   /** When the CLI was asked at Connect: a later "not signed in" is the user coming back. */
   since: string | null;
@@ -50,6 +60,7 @@ export interface RowConnect {
   /** Subscriptions whose rows say "Checking…". */
   checking: SubscriptionProviderId[];
   connect: (sub: SubscriptionProviderId) => void;
+  refresh: (sub: SubscriptionProviderId) => void;
 }
 
 /** `onConnected(providers)`: the rows to flash once the subscription is connected. */
@@ -59,9 +70,13 @@ export function useRowConnect(onConnected: (providers: string[]) => void): RowCo
   const [pending, setPending] = useState<PendingMap>({});
   const subsRef = useRef(subs);
   subsRef.current = subs;
+  const inputsRef = useRef(inputs);
+  inputsRef.current = inputs;
 
   useEffect(() => {
     for (const [sub, p] of Object.entries(pending) as [SubscriptionProviderId, Pending][]) {
+      // A re-check ends with the bridge's answer (below), whatever the status says meanwhile.
+      if (p.phase === "refreshing") continue;
       const s = subs.find((r) => r.provider === sub);
       if (!s) continue;
       if (s.connected) {
@@ -105,5 +120,30 @@ export function useRowConnect(onConnected: (providers: string[]) => void): RowCo
     [setSubscription, toast],
   );
 
-  return { checking: Object.keys(pending) as SubscriptionProviderId[], connect };
+  const refresh = useCallback(
+    (sub: SubscriptionProviderId) => {
+      const prev = subsRef.current.find((s) => s.provider === sub) ?? null;
+      setPending((m) => ({ ...m, [sub]: { phase: "refreshing", from: null, since: null } }));
+      void (async () => {
+        let next: SubscriptionStatus | null;
+        try {
+          next = toSubscriptionStatus(await enginesBridge()?.refresh?.(sub));
+        } catch {
+          next = null;
+        }
+        setPending((m) => without(m, sub));
+        if (!next) {
+          toast({ message: refreshFailed(sub), tone: "error" });
+          return;
+        }
+        setSubscription(next);
+        const message = prev ? refreshToast(prev, next) : null;
+        if (message) toast({ message });
+        if (next.connected) onConnected(rowsCoveredBy(inputsRef.current, sub));
+      })();
+    },
+    [setSubscription, toast, onConnected],
+  );
+
+  return { checking: Object.keys(pending) as SubscriptionProviderId[], connect, refresh };
 }

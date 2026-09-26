@@ -342,6 +342,48 @@ describe("A row's Add key (EnF-OvAddKey-1..5)", () => {
   });
 });
 
+describe("A row's Refresh on Desktop (ENG-13)", () => {
+  const errored = () => [SUBS[0], sub("grok", "error"), SUBS[2]];
+
+  it("re-checks from the row: Checking…, then the answer, without leaving Overview", async () => {
+    mockEnginesApi();
+    const desktop = installDesktop(errored());
+    let answer: (s: ReturnType<typeof sub>) => void = () => undefined;
+    desktop.engines.refresh.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    renderEngines();
+    await loaded();
+    expect(within(row("xai")).getByText("Couldn’t check Grok")).toBeInTheDocument();
+    fireEvent.click(within(row("xai")).getByRole("button", { name: "Refresh" }));
+    expect(desktop.engines.refresh).toHaveBeenCalledWith("grok");
+    expect(window.location.hash).toBe("");
+    expect(within(row("xai")).getByText("Checking…")).toBeInTheDocument();
+    expect(within(row("xai")).queryByRole("button", { name: "Refresh" })).toBeNull();
+
+    act(() => answer(sub("grok", "connected")));
+    await waitFor(() =>
+      expect(within(row("xai")).getByText("Grok subscription")).toBeInTheDocument(),
+    );
+    expect(flashed("xai")).toBe(true);
+    expect(await screen.findByText("Grok is connected. Checked just now.")).toBeInTheDocument();
+  });
+
+  it("a failed re-check says so and offers Refresh again", async () => {
+    mockEnginesApi();
+    const desktop = installDesktop(errored());
+    desktop.engines.refresh.mockRejectedValueOnce(new Error("no bridge answer"));
+    renderEngines();
+    await loaded();
+    fireEvent.click(within(row("xai")).getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText("Couldn’t check Grok. Try again.")).toBeInTheDocument();
+    expect(within(row("xai")).getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+    expect(within(row("xai")).getByText("Couldn’t check Grok")).toBeInTheDocument();
+  });
+});
+
 describe("A row's Connect on Desktop (EnF-OvConnect-1..3)", () => {
   const later = (s: ReturnType<typeof sub>, at: string) => ({ ...s, checked_at: at });
 
