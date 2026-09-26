@@ -36,10 +36,26 @@
 # note DmF-Filter-2: the design draws the open Show trigger in a 40px row; the app keeps the row 44px so nothing below
 #   moves when it opens (4px, under the tolerance) — the same as DmF-Find-3.
 # note Filter-3: the needs-attention row is tinted coral-100 (as DmF-Fail-1 draws it, DM-44); this frame leaves it plain.
+# G3 (New domain dialog + the no-key path; scenarios domains-new.mjs). The dialog is fixed 90px (step 2: 110px) from the
+#   window top as the frames draw it, so on web only the page behind it moves up 30px.
+# note Dm-NewDialog / DmF-NoKey-*: behind the dialog the design lists Support docs first with footer "Updated 2 hours ago"
+#   and Vendor contracts second with "Updated just now"; the app sorts by last activity (DM-8), so these scenarios swap
+#   the two domains' last activity — same order as the frame, and the two footer strings trade places (2 only moved).
+# note DmF-First-2 / DmF-First-3: 'You’ll need an API key for a reading model…' + 'Check Engines' not found — DM-20 hides the
+#   empty page's key hint once the account holds a reading key, and the dialog in the same frame says "key saved"
+#   (the frame shows both; the scenario holds an openai key, as the dialog requires).
+# note DmF-NoKey-2: 'sk-proj-••••••••••••••••••4f2a' not found — the design's sample key value in an Input with no
+#   placeholder; the app's key field keeps its "Paste the key" placeholder (parity keys an input by its placeholder), and
+#   the frame's coral ring wrapper shrinks that Input to 221px (every other key-sheet board draws it 471px). The scenario
+#   focuses the empty field (the ring). The sheet is Home's AddKeySheet in its Domains copy.
+# note DmF-First-2 / DmF-First-3 / DmF-NoKey-1 / DmF-NoKey-3 / DmF-NoKey-4: the coral rings are focus (the scenario focuses
+#   the ringed control); DmF-NoKey-3's key-saved line + toast come from a real save (POST then GET /api/providers).
 Dm-List web: matched 57/58 design items · 0 with size/type drift · 55 only moved · 1 not found in app
 Dm-List desktop: matched 58/58 design items · 0 with size/type drift · 17 only moved · 0 not found in app
 Dm-ListEmpty web: matched 35/36 design items · 0 with size/type drift · 33 only moved · 1 not found in app
 Dm-ListEmpty desktop: matched 36/36 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+Dm-NewDialog web: matched 91/92 design items · 0 with size/type drift · 55 only moved · 1 not found in app
+Dm-NewDialog desktop: matched 92/92 design items · 0 with size/type drift · 3 only moved · 0 not found in app
 Dm-Sources web: matched 96/98 design items · 0 with size/type drift · 94 only moved · 2 not found in app
 Dm-Sources desktop: matched 97/98 design items · 0 with size/type drift · 1 only moved · 1 not found in app
 DmF-Filter-1 web: matched 62/63 design items · 0 with size/type drift · 60 only moved · 1 not found in app
@@ -56,10 +72,22 @@ DmF-Find-3 web: matched 66/67 design items · 1 with size/type drift · 63 only 
 DmF-Find-3 desktop: matched 67/67 design items · 0 with size/type drift · 17 only moved · 0 not found in app
 DmF-First-1 web: matched 35/36 design items · 0 with size/type drift · 33 only moved · 1 not found in app
 DmF-First-1 desktop: matched 36/36 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DmF-First-2 web: matched 67/70 design items · 0 with size/type drift · 31 only moved · 3 not found in app
+DmF-First-2 desktop: matched 68/70 design items · 0 with size/type drift · 1 only moved · 2 not found in app
+DmF-First-3 web: matched 58/61 design items · 0 with size/type drift · 31 only moved · 3 not found in app
+DmF-First-3 desktop: matched 59/61 design items · 0 with size/type drift · 1 only moved · 2 not found in app
 DmF-First-4 web: matched 67/68 design items · 0 with size/type drift · 65 only moved · 1 not found in app
 DmF-First-4 desktop: matched 68/68 design items · 0 with size/type drift · 1 only moved · 0 not found in app
 DmF-First-5 web: matched 62/64 design items · 0 with size/type drift · 58 only moved · 2 not found in app
 DmF-First-5 desktop: matched 63/64 design items · 0 with size/type drift · 40 only moved · 1 not found in app
+DmF-NoKey-1 web: matched 93/94 design items · 0 with size/type drift · 55 only moved · 1 not found in app
+DmF-NoKey-1 desktop: matched 94/94 design items · 0 with size/type drift · 3 only moved · 0 not found in app
+DmF-NoKey-2 web: matched 107/109 design items · 0 with size/type drift · 55 only moved · 2 not found in app
+DmF-NoKey-2 desktop: matched 108/109 design items · 0 with size/type drift · 3 only moved · 1 not found in app
+DmF-NoKey-3 web: matched 92/93 design items · 0 with size/type drift · 55 only moved · 1 not found in app
+DmF-NoKey-3 desktop: matched 93/93 design items · 0 with size/type drift · 3 only moved · 0 not found in app
+DmF-NoKey-4 web: matched 93/94 design items · 0 with size/type drift · 55 only moved · 1 not found in app
+DmF-NoKey-4 desktop: matched 94/94 design items · 0 with size/type drift · 3 only moved · 0 not found in app
 DmF-Preview-1 web: matched 96/98 design items · 0 with size/type drift · 94 only moved · 2 not found in app
 DmF-Preview-1 desktop: matched 97/98 design items · 0 with size/type drift · 1 only moved · 1 not found in app
 DmF-Preview-2 web: matched 117/119 design items · 0 with size/type drift · 94 only moved · 2 not found in app
