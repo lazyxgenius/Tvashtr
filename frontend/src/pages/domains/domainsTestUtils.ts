@@ -4,7 +4,12 @@
  */
 import { vi } from "vitest";
 
-import type { DomainListItem } from "../../lib/api/domains";
+import type {
+  DomainDetailView,
+  DomainFile,
+  DomainFilesList,
+  DomainListItem,
+} from "../../lib/api/domains";
 
 export const NOW = new Date("2026-09-26T12:00:00Z");
 
@@ -156,4 +161,67 @@ export function mockApi(routes: Record<string, Reply>): MockCall[] {
     }),
   );
   return calls;
+}
+
+/** `GET /api/domains/{id}`: a list item plus the detail keys (first read done, key saved). */
+export function detailView(
+  item: DomainListItem,
+  over: Partial<DomainDetailView> = {},
+): DomainDetailView {
+  return {
+    ...item,
+    setup: {
+      key: true,
+      files_read: true,
+      tested: item.quality.cases > 0,
+      used: item.usage.uses > 0,
+    },
+    answer_model: {
+      configured: null,
+      resolved: "openai/gpt-4o-mini",
+      label: "OpenAI gpt-4o-mini",
+      provider: "openai",
+      key_saved: true,
+    },
+    last_question_at: null,
+    ...over,
+  };
+}
+
+/** One `GET …/documents` item (ready unless `phase` says otherwise). */
+export function fileItem(name: string, over: Partial<DomainFile> = {}): DomainFile {
+  const ext = name.split(".").pop();
+  const phase = over.phase ?? "ready";
+  const pieces = over.pieces === undefined ? (phase === "ready" ? 42 : null) : over.pieces;
+  return {
+    document_id: `doc-${name.replace(/\W+/g, "-")}`,
+    filename: name,
+    byte_size: 18 * 1024,
+    created_at: "2026-09-12T10:00:00Z",
+    version: 1,
+    kind: ext === "pdf" ? "PDF" : ext === "html" ? "HTML" : ext === "txt" ? "TXT" : "MD",
+    phase,
+    pieces,
+    pieces_total: pieces ?? 0,
+    pieces_done: pieces ?? 0,
+    progress: null,
+    problem: null,
+    matched: null,
+    ...over,
+  };
+}
+
+/** A `GET …/documents` answer for `files` (counts from their phases). */
+export function filesList(files: DomainFile[]): DomainFilesList {
+  const counts = { all: files.length, ready: 0, reading: 0, needs_attention: 0 };
+  for (const f of files) {
+    if (f.phase === "ready") counts.ready += 1;
+    else if (f.phase === "needs_attention") counts.needs_attention += 1;
+    else counts.reading += 1;
+  }
+  return {
+    documents: files,
+    counts,
+    total_pieces: files.reduce((n, f) => n + (f.pieces ?? 0), 0),
+  };
 }

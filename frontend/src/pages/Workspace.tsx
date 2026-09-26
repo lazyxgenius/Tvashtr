@@ -105,7 +105,13 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
       return <HomePage user={user} />;
     case "domains":
       return route.domainId ? (
-        <DomainDetailPage key={route.domainId} domainId={route.domainId} />
+        <DomainDetailPage
+          key={route.domainId}
+          domainId={route.domainId}
+          tab={route.tab}
+          file={route.file}
+          piece={route.piece}
+        />
       ) : (
         <DomainsListPage />
       );

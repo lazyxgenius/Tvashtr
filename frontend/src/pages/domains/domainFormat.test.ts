@@ -1,18 +1,37 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  detailBadge,
+  filesFooter,
   filesLine,
   filterDomains,
   footerLine,
+  formatAdded,
   formatShortDate,
+  formatSize,
   formatUpdated,
+  kindName,
+  metaLine,
+  pieceExcerpt,
   pieceSizeLabel,
   qualityLine,
+  setupSteps,
+  showOptions,
   sortDomains,
   stateBadge,
+  summaryItems,
+  uploadProblem,
   usageLine,
 } from "./domainFormat";
-import { NOW, domainItem, hoursAgo, sampleDomains } from "./domainsTestUtils";
+import {
+  NOW,
+  detailView,
+  domainItem,
+  fileItem,
+  filesList,
+  hoursAgo,
+  sampleDomains,
+} from "./domainsTestUtils";
 
 const [support, vendor, research, q3] = sampleDomains();
 
@@ -155,5 +174,211 @@ describe("search and sort (DM-7, DM-8)", () => {
       "Support docs",
       "Q3 filings",
     ]);
+  });
+});
+
+// ---- The detail page and Sources tab (G2) ----
+
+const detail = (over: Parameters<typeof detailView>[1] = {}) => detailView(support, over);
+const firstRead = detailView(
+  domainItem({
+    name: "Support docs",
+    state: "reading",
+    created_at: new Date(NOW.getTime() - 20_000).toISOString(),
+    files: { total: 3, ready: 1, reading: 1, waiting: 1, waiting_for_key: 0, needs_attention: 0 },
+    pieces: 42,
+  }),
+  { setup: { key: true, files_read: false, tested: false, used: false } },
+);
+
+describe("detail header (DM-32, DM-33)", () => {
+  it("badges each state", () => {
+    expect(detailBadge(detail()).label).toBe("Ready");
+    expect(detailBadge(firstRead)).toEqual({
+      variant: "info",
+      dot: true,
+      label: "Reading 3 files",
+    });
+    const later = detail({
+      state: "reading",
+      files: { ...support.files, total: 16, ready: 14, reading: 1, waiting: 1 },
+    });
+    expect(detailBadge(later).label).toBe("Reading 2 files");
+    const attention = detail({
+      state: "needs_attention",
+      files: { ...support.files, ready: 13, needs_attention: 1 },
+    });
+    expect(detailBadge(attention)).toEqual({
+      variant: "warning",
+      dot: true,
+      label: "1 file needs attention",
+    });
+    const full = detail({
+      state: "rereading",
+      pieces: 0,
+      files: { ...support.files, ready: 0, reading: 1, waiting: 13 },
+    });
+    expect(detailBadge(full).label).toBe("Ask paused while re-reading");
+    expect(detailBadge(detail({ state: "waiting_for_key" })).label).toBe(
+      "Waiting for an openai key",
+    );
+    expect(detailBadge(detail({ state: "empty" }))).toEqual({
+      variant: "neutral",
+      dot: false,
+      label: "Empty",
+    });
+  });
+
+  it("writes the meta line", () => {
+    expect(metaLine(detail(), NOW)).toBe(
+      "14 files · 1,212 pieces · read with OpenAI text-embedding-3-small · updated 2 hours ago",
+    );
+    // During the first read the pieces wait for the read to finish; a new domain says so.
+    expect(metaLine(firstRead, NOW)).toBe(
+      "3 files · read with OpenAI text-embedding-3-small · created just now",
+    );
+    const full = detail({ state: "rereading", files: { ...support.files, ready: 0, waiting: 14 } });
+    expect(metaLine(full, NOW)).toContain("reading with OpenAI text-embedding-3-small");
+  });
+});
+
+describe("strips (DM-34, DM-37)", () => {
+  it("summarises a read domain", () => {
+    expect(summaryItems(detail()).map((i) => i.text)).toEqual([
+      "Reading key saved (openai)",
+      "14 of 14 files read",
+      "12 test questions · 83% found the right file",
+      "Used 3 times in 2 teams",
+    ]);
+    const bare = detailView(
+      domainItem({
+        name: "New",
+        state: "ready",
+        files: {
+          total: 3,
+          ready: 3,
+          reading: 0,
+          waiting: 0,
+          waiting_for_key: 0,
+          needs_attention: 0,
+        },
+        reading_model: { ...support.reading_model, key_saved: false },
+      }),
+    );
+    expect(summaryItems(bare)).toEqual([
+      { tone: "warn", text: "No openai key" },
+      { tone: "done", text: "3 of 3 files read" },
+      { tone: "todo", text: "No test questions yet" },
+      { tone: "todo", text: "Not used yet" },
+    ]);
+  });
+
+  it("walks the four setup steps", () => {
+    expect(setupSteps(firstRead)).toEqual([
+      { number: 1, title: "Reading key", icon: "done", body: "openai key saved" },
+      { number: 2, title: "Add files", icon: "spin", body: "Reading 3 files…" },
+      {
+        number: 3,
+        icon: "step",
+        title: "Test it",
+        body: "Ask a question when reading finishes",
+      },
+      {
+        number: 4,
+        icon: "step",
+        title: "Use it in a team",
+        body: "As a fixed step, or give an agent access",
+      },
+    ]);
+    const noKey = detailView(
+      domainItem({
+        name: "New",
+        reading_model: { ...support.reading_model, key_saved: false },
+        files: {
+          total: 2,
+          ready: 0,
+          reading: 0,
+          waiting: 0,
+          waiting_for_key: 2,
+          needs_attention: 0,
+        },
+      }),
+      { setup: { key: false, files_read: false, tested: false, used: false } },
+    );
+    const [key, files] = setupSteps(noKey);
+    expect(key).toMatchObject({ icon: "warn", body: "No openai key", addKey: true });
+    expect(files).toMatchObject({ icon: "step", body: "2 files waiting for the key" });
+  });
+});
+
+describe("Sources table words (DM-41…DM-47)", () => {
+  it("formats sizes and dates", () => {
+    expect(formatSize(18 * 1024)).toBe("18 KB");
+    expect(formatSize(880 * 1024)).toBe("880 KB");
+    expect(formatSize(1.2 * 1024 * 1024)).toBe("1.2 MB");
+    expect(formatSize(14.2 * 1024 * 1024)).toBe("14.2 MB");
+    expect(formatSize(200)).toBe("1 KB");
+    expect(formatAdded(new Date(NOW.getTime() - 30_000).toISOString(), NOW)).toBe("Just now");
+    expect(formatAdded("2026-09-12T10:00:00Z", NOW)).toBe("Sep 12");
+    expect(kindName("MD")).toBe("Markdown");
+    expect(kindName("TXT")).toBe("Text");
+  });
+
+  it("offers the Show filter with counts", () => {
+    expect(showOptions({ all: 14, ready: 13, reading: 0, needs_attention: 1 })).toEqual([
+      { value: "all", label: "All files", count: 14 },
+      { value: "ready", label: "Ready", count: 13 },
+      { value: "reading", label: "Reading", count: 0 },
+      { value: "needs_attention", label: "Needs attention", count: 1 },
+    ]);
+  });
+
+  it("writes every footer", () => {
+    const list = filesList([fileItem("a.md", { pieces: 700 }), fileItem("b.md", { pieces: 512 })]);
+    const base = { files: support.files, list, shown: 2, query: "", filter: "all" as const };
+    expect(filesFooter({ ...base, firstRead: false })).toEqual({
+      text: "2 files · 1,212 pieces",
+      showAll: false,
+    });
+    expect(filesFooter({ ...base, query: "refund", firstRead: false }).text).toBe(
+      "2 of 2 files match “refund”",
+    );
+    expect(filesFooter({ ...base, shown: 1, filter: "needs_attention", firstRead: false })).toEqual(
+      { text: "1 file needs attention · ", showAll: true },
+    );
+    expect(filesFooter({ ...base, shown: 1, filter: "ready", firstRead: false }).text).toBe(
+      "Showing 1 of 2 files · 1,212 pieces",
+    );
+    const reading = { ...support.files, total: 3, ready: 1, reading: 1, waiting: 1 };
+    const three = filesList([fileItem("a.md"), fileItem("b.md"), fileItem("c.md")]);
+    expect(
+      filesFooter({ ...base, files: reading, list: three, shown: 3, firstRead: true }).text,
+    ).toBe("3 files · reading 1 of 3");
+    expect(
+      filesFooter({ ...base, files: reading, list: three, shown: 3, firstRead: false }).text,
+    ).toBe("3 files · reading 1, waiting 1");
+    const attention = { ...support.files, total: 3, ready: 2, needs_attention: 1 };
+    expect(
+      filesFooter({ ...base, files: attention, list: three, shown: 3, firstRead: false }).text,
+    ).toBe("3 files · 1 needs attention");
+  });
+
+  it("cuts piece excerpts where the design puts its ellipses", () => {
+    const text = `Refunds apply to the subscription price only. ${"x".repeat(300)}`;
+    expect(pieceExcerpt(text, 2)).toBe("…Refunds apply to the subscription price only.…");
+    expect(pieceExcerpt("# Short piece.", 1)).toBe("# Short piece.");
+    const long = `${"word ".repeat(20)}needle ${"tail ".repeat(40)}`;
+    expect(pieceExcerpt(long, 1, "needle").startsWith("…")).toBe(true);
+    expect(pieceExcerpt(long, 1, "needle")).toContain("needle");
+  });
+
+  it("checks files before uploading (DM-48)", () => {
+    expect(uploadProblem({ name: "notes.md", size: 1000 })).toBeNull();
+    expect(uploadProblem({ name: "video-guide.pdf", size: 14.2 * 1024 * 1024 })).toBe(
+      "video-guide.pdf is 14.2 MB. The limit is 10 MB.",
+    );
+    expect(uploadProblem({ name: "deck.pptx", size: 10 })).toBe(
+      "deck.pptx wasn’t added. Only PDF, Markdown, text or HTML files can be read.",
+    );
   });
 });

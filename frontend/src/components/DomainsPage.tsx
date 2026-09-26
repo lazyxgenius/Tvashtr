@@ -27,13 +27,14 @@ import { DomainEvalPanel } from "./DomainEvalPanel";
 import { DomainGuidedPath } from "./DomainGuidedPath";
 import { NewDomainDialog } from "./NewDomainDialog";
 
-type DetailTab = "overview" | "documents" | "chat" | "config" | "eval";
+export type DetailTab = "overview" | "documents" | "chat" | "config" | "eval";
 
 export function DomainsPage({
   onOpenEngines,
   onCreateTeam,
   initialDomainId = null,
   onLeaveDetail,
+  embeddedTab,
 }: {
   onOpenEngines?: () => void;
   onCreateTeam?: () => void;
@@ -41,6 +42,9 @@ export function DomainsPage({
   initialDomainId?: string | null;
   /** Revamp interim: "← Domains" and a delete go back to the new list page. */
   onLeaveDetail?: () => void;
+  /** Revamp interim (until each redesigned tab lands): render only this tab's body, under the
+   *  new detail page's header and tabs. */
+  embeddedTab?: DetailTab;
 } = {}) {
   const [domains, setDomains] = useState<DomainSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +52,7 @@ export function DomainsPage({
   const [selectedId, setSelectedId] = useState<string | null>(initialDomainId);
   const [detail, setDetail] = useState<DomainDetail | null>(null);
   const [documents, setDocuments] = useState<DomainDocumentSummary[]>([]);
-  const [tab, setTab] = useState<DetailTab>("overview");
+  const [tab, setTab] = useState<DetailTab>(embeddedTab ?? "overview");
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<DomainMessageSummary[]>([]);
   const [chatDraft, setChatDraft] = useState("");
@@ -131,78 +135,82 @@ export function DomainsPage({
   if (selectedId && detail) {
     return (
       <div className="tv-domains">
-        <header className="tv-dash__page-head tv-domains__detail-head">
-          <button
-            type="button"
-            className="tv-btn tv-btn--ghost"
-            onClick={() => {
-              setSelectedId(null);
-              setTab("overview");
-              onLeaveDetail?.();
-            }}
-          >
-            ← Domains
-          </button>
-          <h1 className="tv-dash__page-title">{detail.name}</h1>
-          <p className="tv-dash__page-lede">
-            {labelForDomainTemplate(detail.template)} · {detail.status}
-          </p>
-        </header>
-        <DomainGuidedPath
-          context="detail"
-          onOpenEngines={onOpenEngines}
-          onCreateTeam={onCreateTeam}
-          onGoConfig={() => setTab("config")}
-          onGoDocuments={() => setTab("documents")}
-          onGoEval={() => setTab("eval")}
-        />
-        <div className="tv-domains__tabs" role="tablist" aria-label="Domain sections">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "overview"}
-            className={`tv-domains__tab${tab === "overview" ? " tv-domains__tab--active" : ""}`}
-            onClick={() => setTab("overview")}
-          >
-            Overview
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "documents"}
-            className={`tv-domains__tab${tab === "documents" ? " tv-domains__tab--active" : ""}`}
-            onClick={() => setTab("documents")}
-          >
-            Documents
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "chat"}
-            className={`tv-domains__tab${tab === "chat" ? " tv-domains__tab--active" : ""}`}
-            onClick={() => setTab("chat")}
-          >
-            Chat
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "eval"}
-            className={`tv-domains__tab${tab === "eval" ? " tv-domains__tab--active" : ""}`}
-            onClick={() => setTab("eval")}
-          >
-            Eval
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "config"}
-            className={`tv-domains__tab${tab === "config" ? " tv-domains__tab--active" : ""}`}
-            onClick={() => setTab("config")}
-          >
-            Config
-          </button>
-        </div>
+        {!embeddedTab && (
+          <>
+            <header className="tv-dash__page-head tv-domains__detail-head">
+              <button
+                type="button"
+                className="tv-btn tv-btn--ghost"
+                onClick={() => {
+                  setSelectedId(null);
+                  setTab("overview");
+                  onLeaveDetail?.();
+                }}
+              >
+                ← Domains
+              </button>
+              <h1 className="tv-dash__page-title">{detail.name}</h1>
+              <p className="tv-dash__page-lede">
+                {labelForDomainTemplate(detail.template)} · {detail.status}
+              </p>
+            </header>
+            <DomainGuidedPath
+              context="detail"
+              onOpenEngines={onOpenEngines}
+              onCreateTeam={onCreateTeam}
+              onGoConfig={() => setTab("config")}
+              onGoDocuments={() => setTab("documents")}
+              onGoEval={() => setTab("eval")}
+            />
+            <div className="tv-domains__tabs" role="tablist" aria-label="Domain sections">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "overview"}
+                className={`tv-domains__tab${tab === "overview" ? " tv-domains__tab--active" : ""}`}
+                onClick={() => setTab("overview")}
+              >
+                Overview
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "documents"}
+                className={`tv-domains__tab${tab === "documents" ? " tv-domains__tab--active" : ""}`}
+                onClick={() => setTab("documents")}
+              >
+                Documents
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "chat"}
+                className={`tv-domains__tab${tab === "chat" ? " tv-domains__tab--active" : ""}`}
+                onClick={() => setTab("chat")}
+              >
+                Chat
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "eval"}
+                className={`tv-domains__tab${tab === "eval" ? " tv-domains__tab--active" : ""}`}
+                onClick={() => setTab("eval")}
+              >
+                Eval
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "config"}
+                className={`tv-domains__tab${tab === "config" ? " tv-domains__tab--active" : ""}`}
+                onClick={() => setTab("config")}
+              >
+                Config
+              </button>
+            </div>
+          </>
+        )}
         {tab === "overview" && (
           <section className="tv-domains__panel" aria-label="Overview">
             <dl className="tv-domains__meta">
@@ -466,6 +474,8 @@ export function DomainsPage({
       </div>
     );
   }
+
+  if (embeddedTab) return null;
 
   return (
     <div className="tv-domains">

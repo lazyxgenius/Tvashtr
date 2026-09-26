@@ -1,7 +1,8 @@
 /**
- * The Domains list's "Sort" picker (DM-8). At rest it draws as the design system's Select, as
- * Dm-List, DmF-Find-1 and DmF-Find-2 show it; open, it is DmF-Find-3's listbox (220px, the
- * current choice ticked). Arrow keys move, Enter / Space pick, Escape and an outside click close.
+ * The Domains list's "Sort" picker (DM-8) and the Sources tab's "Show" filter (DM-47). At rest it
+ * draws as the design system's Select, as Dm-List, DmF-Find-1/2 and Dm-Sources show it; open, it
+ * is DmF-Find-3's / DmF-Filter-2's listbox (220px, the current choice ticked, an optional count on
+ * the right). Arrow keys move, Enter / Space pick, Escape and an outside click close.
  */
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
@@ -11,6 +12,8 @@ import { cx, useDismiss } from "../../design-system/components/utils";
 export interface SortOption<V extends string> {
   value: V;
   label: string;
+  /** Shown on the right of the option (the Show filter's file counts). */
+  count?: number;
 }
 
 export function SortSelect<V extends string>({
@@ -18,12 +21,18 @@ export function SortSelect<V extends string>({
   options,
   onChange,
   labelId,
+  name = "Sort",
+  className,
 }: {
   value: V;
   options: SortOption<V>[];
   onChange: (value: V) => void;
-  /** The id of the visible "Sort" label beside the picker. */
-  labelId: string;
+  /** The id of a visible label beside the picker ("Sort"); without one, the open trigger is
+   *  named by its value, as DmF-Filter-2 draws it. */
+  labelId?: string;
+  /** The picker's name at rest and the listbox's name. */
+  name?: string;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const selected = Math.max(
@@ -82,15 +91,15 @@ export function SortSelect<V extends string>({
 
   const label = options[selected]?.label ?? "";
   return (
-    <div className="dm-sort" ref={wrapRef}>
+    <div className={cx("dm-sort", className)} ref={wrapRef}>
       <button
         ref={buttonRef}
         type="button"
         className={cx("dm-sort__btn", open ? "dm-sort__btn--open" : "ds-select")}
         // At rest the control is named "Sort" (the design system's Select); open, it reads
         // "Sort <choice>" from the visible label and value, as DmF-Find-3 draws it.
-        aria-label={open ? undefined : "Sort"}
-        aria-labelledby={open ? `${labelId} ${valueId}` : undefined}
+        aria-label={open ? undefined : name}
+        aria-labelledby={open && labelId ? `${labelId} ${valueId}` : undefined}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
@@ -112,7 +121,7 @@ export function SortSelect<V extends string>({
           ref={listRef}
           id={listId}
           role="listbox"
-          aria-label="Sort"
+          aria-label={name}
           tabIndex={-1}
           aria-activedescendant={optionId(active)}
           className="dm-listbox"
@@ -135,6 +144,7 @@ export function SortSelect<V extends string>({
                 <span className="dm-option__spacer" />
               )}
               <span className="dm-option__label">{o.label}</span>
+              {o.count !== undefined && <span className="dm-option__count">{o.count}</span>}
             </li>
           ))}
         </ul>

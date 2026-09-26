@@ -207,6 +207,13 @@
 .dm-option__label {
   min-width: 0;
 }
+.dm-option__count {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-500);
+}
 
 /* ---- Card grid (DM-9) ---- */
 .dm-grid {
@@ -454,4 +461,491 @@
 }
 .dm-hint .dm-link {
   font-size: 12.5px;
+}
+
+/* ---- A domain's page (Dm-Sources, DmF-First-4/5; DM-31…DM-37) ---- */
+.dm-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 1136px;
+}
+.dm-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-crumbs__link {
+  color: var(--ink-500);
+  text-decoration: none;
+}
+.dm-crumbs__link:hover {
+  color: var(--ink-900);
+}
+.dm-crumbs__link:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--shadow-focus);
+}
+.dm-crumbs__here {
+  color: var(--ink-700);
+}
+.dm-dhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.dm-dhead__text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.dm-dhead__titles {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dm-dhead__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1.6;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+.dm-dhead__meta {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-500);
+}
+.dm-dhead__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+/* The one-line summary strip (DM-34). */
+.dm-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  flex-wrap: wrap;
+}
+.dm-summary__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #52613e;
+}
+.dm-summary__item--todo {
+  color: var(--ink-500);
+}
+.dm-summary__item--warn {
+  color: #8f3b2f;
+}
+.dm-summary__item svg {
+  flex: none;
+}
+.dm-summary__sep {
+  width: 1px;
+  height: 16px;
+  background: var(--line-300);
+}
+
+/* The four-step setup strip (DM-37). */
+.dm-setup {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.dm-setup__step {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+}
+.dm-setup__step + .dm-setup__step {
+  border-left: 1px solid var(--line-200);
+}
+.dm-setup__mark {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dm-setup__mark--done {
+  background: var(--sage-100);
+  color: #52613e;
+}
+.dm-setup__mark--spin {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.dm-setup__mark--spin svg {
+  animation: dm-spin 1.2s linear infinite;
+}
+.dm-setup__mark--warn {
+  background: var(--amber-100);
+  color: #8a5a1f;
+}
+/* The design's numbered step is content-box: 22px inside a 1px ring. */
+.dm-setup__mark--step {
+  box-sizing: content-box;
+  border: 1px solid var(--line-400);
+  color: var(--ink-500);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.dm-setup__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.dm-setup__title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-setup__body {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+@keyframes dm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dm-setup__mark--spin svg {
+    animation: none;
+  }
+}
+
+.dm-tabs {
+  border-bottom: 1px solid var(--line-300);
+}
+
+.dm-missing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 40px 0;
+}
+.dm-missing__text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-700);
+}
+
+/* ---- Sources tab (DM-38…DM-47) ---- */
+.dm-src {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+}
+.dm-src__tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+.dm-src__spacer {
+  margin-left: auto;
+}
+.dm-show {
+  width: 190px;
+}
+.dm-drophint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1.5px dashed var(--line-400);
+  border-radius: 12px;
+  background: var(--cream-50);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.dm-drophint b {
+  font-weight: 600;
+}
+.dm-drophint__icon {
+  color: var(--ink-500);
+  flex: none;
+}
+
+.dm-files {
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.dm-files__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.dm-files__table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+  border-bottom: 1px solid var(--line-200);
+}
+/* Column widths are the design's content-box widths (plus 14px padding each side). */
+.dm-files__table th,
+.dm-files__table td {
+  box-sizing: content-box;
+}
+.dm-files__size {
+  width: 90px;
+}
+.dm-files__pieces {
+  width: 80px;
+}
+.dm-files__status {
+  width: 240px;
+}
+.dm-files__added {
+  width: 80px;
+}
+.dm-files__more {
+  width: 56px;
+}
+.dm-files__table td {
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line-200);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-800);
+  vertical-align: middle;
+}
+.dm-files__row--tint {
+  background: var(--coral-100);
+}
+.dm-files__name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dm-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: content-box;
+  min-width: 34px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: var(--panel-300);
+  border: 1px solid var(--line-300);
+  font-family: var(--font-code);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-600);
+}
+.dm-files__open {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+  cursor: pointer;
+  text-align: left;
+}
+.dm-files__open:hover {
+  text-decoration: underline;
+}
+.dm-files__open:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--shadow-focus);
+}
+.dm-files__menu {
+  display: flex;
+  justify-content: flex-end;
+}
+.dm-files__empty {
+  color: var(--ink-500);
+}
+.dm-files__foot {
+  padding: 10px 14px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-files__showall {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: normal;
+  color: var(--coral-700);
+  cursor: pointer;
+}
+.dm-files__showall:hover {
+  text-decoration: underline;
+}
+.dm-files__showall:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--shadow-focus);
+}
+
+/* The Status cell (DM-42). */
+.dm-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.dm-status svg {
+  flex: none;
+}
+.dm-status--ready {
+  color: #52613e;
+}
+.dm-status--waiting {
+  color: var(--ink-500);
+}
+.dm-status--progress {
+  gap: 8px;
+  color: var(--ink-600);
+}
+.dm-status--attention {
+  color: #8f3b2f;
+}
+.dm-status__attention {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dm-status__reason {
+  padding-left: 20px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8f3b2f;
+}
+.dm-status__fix {
+  font-size: 12px;
+  font-weight: 500;
+  color: #8f3b2f;
+  text-decoration: none;
+}
+.dm-status--waiting .dm-status__fix {
+  color: var(--coral-700);
+}
+.dm-status__fix:hover {
+  text-decoration: underline;
+}
+.dm-bar {
+  display: inline-block;
+  width: 80px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--panel-300);
+  overflow: hidden;
+  flex: none;
+}
+.dm-bar__fill {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--coral-500);
+}
+
+/* ---- File preview sheet (DM-51) ---- */
+.dm-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dm-find > * {
+  width: 100%;
+}
+.dm-pieces {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dm-piece {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-300);
+  border-radius: 10px;
+  background: var(--surface-page);
+}
+.dm-piece--marked {
+  border-color: var(--coral-500);
+  background: var(--coral-100);
+}
+.dm-piece__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dm-piece__label {
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-piece__chars {
+  margin-left: auto;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-piece__text {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-800);
+}
+.dm-preview__note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-500);
 }
