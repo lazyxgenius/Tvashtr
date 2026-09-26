@@ -1,7 +1,7 @@
-// M-memory S5 — pure, unit-tested helpers shared by the Memory shelf (S5a) and the scoped views
-// (S5b): the polarity/tier presentation vocabulary + the client-side bucketing of one flat
-// `GET /api/memories` list into the shelf's Account / This-repo / Per-node sections. No JSX here, so
-// both MemoryFact.tsx and MemoryShelf.tsx import from it without tripping react-refresh.
+// M-memory S5 — pure, unit-tested helpers shared by the memory views (Toolkit › Memory, the agent
+// drawer's Memory section, a run's memories): the polarity/tier presentation vocabulary, the repos
+// among a list of facts, and the "Used this run" resolution. No JSX here, so components import from
+// it without tripping react-refresh.
 
 import type { MemoryPolarity, MemoryTier, NodeMemoryRow } from "./api";
 
@@ -31,9 +31,6 @@ export const TIER_LABEL: Record<MemoryTier, string> = {
   node: "Per-node",
 };
 
-// The repo selector's synthetic "show every repo" option (never a real repo_key).
-export const ALL_REPOS = "__all__";
-
 export interface RepoOption {
   repo_key: string;
   count: number;
@@ -50,61 +47,6 @@ export function reposOf(rows: NodeMemoryRow[]): RepoOption[] {
   return [...counts.entries()]
     .map(([repo_key, count]) => ({ repo_key, count }))
     .sort((a, b) => b.count - a.count);
-}
-
-// The repo pre-selected on load: the one with the most facts (null when nothing is repo-scoped).
-export function defaultRepo(rows: NodeMemoryRow[]): string | null {
-  const repos = reposOf(rows);
-  return repos.length > 0 ? repos[0].repo_key : null;
-}
-
-export interface NodeGroup {
-  node_id: string;
-  rows: NodeMemoryRow[];
-}
-
-export interface RepoGroup {
-  repo_key: string;
-  repoFacts: NodeMemoryRow[]; // repo-tier rows (node_id null)
-  nodeGroups: NodeGroup[]; // node-tier rows grouped by node_id, first-seen order
-}
-
-export interface MemoryBuckets {
-  account: NodeMemoryRow[]; // repo_key null
-  repoGroups: RepoGroup[]; // the selected repo, or every repo under ALL_REPOS (most facts first)
-}
-
-// Bucket one flat active-facts list into the shelf's sections. `selectedRepo` governs the repo/node
-// area: a concrete repo_key narrows it to that repo; ALL_REPOS spans every repo (each its own group).
-export function bucketMemories(rows: NodeMemoryRow[], selectedRepo: string): MemoryBuckets {
-  const account = rows.filter((r) => r.repo_key === null);
-  const scoped = rows.filter((r) => r.repo_key !== null);
-  const wanted = (rk: string) => selectedRepo === ALL_REPOS || rk === selectedRepo;
-  const order = reposOf(scoped)
-    .map((o) => o.repo_key)
-    .filter(wanted);
-
-  const repoGroups: RepoGroup[] = order.map((rk) => {
-    const group = scoped.filter((r) => r.repo_key === rk);
-    const repoFacts = group.filter((r) => r.node_id === null);
-    const nodeIds: string[] = [];
-    const byNode = new Map<string, NodeMemoryRow[]>();
-    for (const r of group) {
-      const nid = r.node_id;
-      if (nid === null) continue;
-      const existing = byNode.get(nid);
-      if (existing) {
-        existing.push(r);
-      } else {
-        byNode.set(nid, [r]);
-        nodeIds.push(nid);
-      }
-    }
-    const nodeGroups = nodeIds.map((node_id) => ({ node_id, rows: byNode.get(node_id) ?? [] }));
-    return { repo_key: rk, repoFacts, nodeGroups };
-  });
-
-  return { account, repoGroups };
 }
 
 // ===== M-memory S5b — the run-inspector "Used this run" resolution ==============================
