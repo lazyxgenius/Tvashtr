@@ -31,6 +31,13 @@ in `routers.py` and changed there in place.
 | `POST /api/domains/{id}/ask` | optional `use_history`; the NOT_FOUND rule; answer gains `covered`, `answer_text`, `sources`, `searched`, `used_history`, `model_label` | G6 |
 | `GET /api/domains/{id}/messages` | answers gain the same keys (+ `model`) | G6 |
 | `DELETE /api/domains/{id}/messages` | **new** — Clear chat | G6 |
+| `GET /api/domains/{id}/eval/cases` | items gain `expected_files` | G7 |
+| `POST /api/domains/{id}/eval/cases` | needs a file or a key word; Quality copy for every `422`; answer gains `expected_files` | G7 |
+| `PATCH /api/domains/{id}/eval/cases/{case_id}` | **new** — edit a test question | G7 |
+| `POST /api/domains/{id}/eval/runs` | **new** — run all tests in the background (`202`) | G7 |
+| `GET /api/domains/{id}/eval/runs` | **new** — the runs, newest first | G7 |
+| `GET /api/domains/{id}/eval/runs/{run_id}` | **new** — one run with every case's result and top passages | G7 |
+| `POST /api/domains/{id}/eval` (sync, old) | `scores` gains `config`; each `per_case` entry gains `top` | G7 |
 
 Schema: migration `0042_domain_message_meta` adds `domain_messages.meta JSONB NULL` (the Ask tab's
 answer meta `{model, used_history, source}`; written from the Ask group on).
@@ -527,3 +534,68 @@ Clear chat (DM-67): deletes every question and answer of the domain. Idempotent.
 Not built (the frontend keeps them): `/api/config` `domain_generation_presets` — the answer-model
 list's labels and taglines live in `frontend/src/pages/domains/answerModels.ts`, like the reading
 models in `readingModels.ts`.
+
+---
+
+## Quality (G7 — test questions and test runs, DM-70…DM-79)
+
+### Test questions: `GET /api/domains/{id}/eval/cases`, `POST …/eval/cases`
+Each case gains `expected_files` — the expected ids with their file names; a deleted file keeps its
+id with `filename: null, exists: false` (DM-54):
+
+```json
+{"cases": [{
+  "case_id": "4b7c…", "domain_id": "9f1e…", "question": "How do I verify webhook signatures?",
+  "expected_answer": null,
+  "expected_citation_doc_ids": ["d1a2…"],
+  "expected_files": [{"document_id": "d1a2…", "filename": "webhooks.md", "exists": true}],
+  "expected_keywords": ["signature", "secret"], "ordinal": 8, "created_at": "2026-09-27T10:02:00+00:00"
+}]}
+```
+
+`POST` body unchanged (`question`, `expected_citation_doc_ids`, `expected_keywords`, `ordinal`, …).
+`422` details (exact copy):
+- `"Write the question first."` — blank question
+- `"Add a file or a key word, so there’s something to check."` — no file and no key word (HTTP only;
+  the Python helper keeps accepting question-only cases for old callers)
+- `"You can have up to 50 test questions."` — the 51st (OQ-26)
+- `"invalid document id: <x>"` — a malformed file id
+
+### `PATCH /api/domains/{id}/eval/cases/{case_id}` → the case
+Body: any of `question`, `expected_citation_doc_ids`, `expected_keywords`; only the fields sent change.
+Same `422` copy as `POST`. `404 {"detail": "case not found"}`; another account's domain → `"domain not found"`.
+
+### `POST /api/domains/{id}/eval/runs` → `202` the run
+Starts the durable workflow `run_domain_eval_workflow` (one step per case). A run already going
+(started in the last 15 minutes) is answered instead of starting another.
+
+```json
+{"run_id": "70c2…", "number": 4, "status": "running",
+ "created_at": "2026-09-27T10:05:00+00:00", "completed_at": null,
+ "hit_at_k": null, "keyword_hit": null, "retrieval_mode": "dense", "top_k": 8,
+ "config": {"chunking": {"strategy": "fixed", "size": 600, "overlap": 100}, "embedding": {"model": "text-embedding-3-small"},
+            "retrieval": {"mode": "dense", "top_k": 8}, "generation": {"model": null}},
+ "progress": {"done": 0, "total": 8}, "error_message": null,
+ "domain_id": "9f1e…", "scores": {"cases_total": 8, "top_k": 8, "retrieval_mode": "dense", "config": {…}, "per_case": []}}
+```
+
+`422 {"detail": "Add a test question first."}` with no test questions.
+
+### `GET /api/domains/{id}/eval/runs?limit=20` → `{"runs": [...]}`
+Newest first (`limit` 1–100). Items are the run above WITHOUT `scores`/`domain_id`. `number` counts
+the domain's runs from 1 (oldest). `status`: `running` | `completed` | `failed` (every case failed;
+`error_message` = the first case's reason, e.g. a missing key).
+
+### `GET /api/domains/{id}/eval/runs/{run_id}` → the run with `scores`
+`scores.per_case[]` (appended as cases finish, so `progress.done` grows):
+
+```json
+{"case_id": "4b7c…", "question": "How do I verify webhook signatures?",
+ "hit": false, "keyword_hit": false, "citation_doc_ids": ["…", "…"], "latency_ms": 212, "error": null,
+ "top": [{"number": 1, "document_id": "…", "filename": "integrations.html",
+          "excerpt": "…signed payloads are sent to your endpoint with an X-Signature header…"}]}
+```
+
+`hit`/`keyword_hit` are `null` when the case has no files / no key words to check. `top` holds the
+first 3 passages search found (DM-77). `404 {"detail": "run not found"}`. The path only matches a
+uuid, so the old `GET …/eval/runs/latest` keeps working.
