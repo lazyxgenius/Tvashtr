@@ -54,6 +54,10 @@
 .eng-status--muted {
   color: var(--ink-500);
 }
+/* A row's Connect in progress: "Checking…" (EnF-OvConnect-2). */
+.eng-status--busy {
+  color: var(--ink-600);
+}
 .eng-muted {
   color: var(--ink-500);
 }
@@ -165,6 +169,17 @@
   font-size: 13px;
   color: var(--ink-800);
   vertical-align: middle;
+  transition: background-color 0.6s ease;
+}
+/* The row a save or a Connect just changed, briefly (ENG-23): on at once, fades out. */
+.eng-table tr.eng-row--ok > td {
+  background: var(--sage-100);
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eng-table td {
+    transition: none;
+  }
 }
 /* Arrived from a blocked run: the rows to fix (Eng-Flow-Blocked-2). */
 .eng-table tr.eng-row--fix > td {

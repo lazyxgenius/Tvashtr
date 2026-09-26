@@ -3,7 +3,7 @@
  * monogram tile, a section card with its uppercase title, the subscription disclosure and the
  * load-failed / loading states (ENG-78).
  */
-import { Circle, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { Circle, CircleCheck, History, Info, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "../../design-system/components";
@@ -34,15 +34,18 @@ export function EnginesHead({
   );
 }
 
-export type StatusTone = "ok" | "warn" | "muted";
+export type StatusTone = "ok" | "warn" | "muted" | "busy";
 
-/** "✓ Always available" / "⚠ No API key [Add key]" / "○ Not open on this computer". */
+/** "✓ Always available" / "⚠ No API key [Add key]" / "○ Not open on this computer" /
+ *  "↺ Checking…". */
 export function StatusLine({ tone, children }: { tone: StatusTone; children: ReactNode }) {
   const icon =
     tone === "ok" ? (
       <CircleCheck size={14} strokeWidth={1.6} aria-hidden />
     ) : tone === "warn" ? (
       <TriangleAlert size={14} strokeWidth={1.6} aria-hidden />
+    ) : tone === "busy" ? (
+      <History size={13} strokeWidth={1.6} aria-hidden />
     ) : (
       <Circle size={13} strokeWidth={1.6} aria-hidden />
     );

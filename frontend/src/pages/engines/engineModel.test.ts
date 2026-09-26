@@ -8,6 +8,7 @@ import {
   providerRows,
   providersServingNoSeat,
   roleLabel,
+  rowsCoveredBy,
   teamVerdicts,
   toFixCount,
   usedByCell,
@@ -105,6 +106,13 @@ describe("fixes move the count (OvAddKey-5, OvConnect-3)", () => {
     // A key works on Desktop too, so the Desktop line is ready as well.
     expect(teamVerdicts(both)[0].desktop.ready).toBe(true);
     expect(toFixCount(both)).toBe(0);
+  });
+
+  it("a Connect flashes the rows its subscription covers (ENG-16)", () => {
+    const i = sampleInputs({ surface: "desktop" });
+    expect(rowsCoveredBy(i, "grok")).toEqual(["xai"]);
+    expect(rowsCoveredBy(i, "claude")).toEqual(["anthropic"]);
+    expect(rowsCoveredBy(i, "codex")).toEqual([]);
   });
 
   it("a key covers the Desktop too when no subscription does", () => {

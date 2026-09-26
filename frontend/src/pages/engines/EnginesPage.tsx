@@ -5,18 +5,23 @@
  * serves every "Add key" on them (ENG-61), and one pair of dialogs every website "Open Tvashtr
  * Desktop" / "Open in Desktop" (ENG-48) and "Download" (ENG-47).
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { openTvashtrDesktop } from "../../lib/desktopDeepLinks";
 import { type ConnectTarget, type EnginesTab, navigate } from "../../lib/nav";
 import { AddKeySheet, type AddKeyRequest } from "./AddKeySheet";
 import { type AddKeyOptions, ApiKeysPage } from "./ApiKeysPage";
 import { GetDesktopDialog, OpenDesktopDialog } from "./DesktopDialogs";
+import { enginesBridge } from "./engineBridge";
 import type { CellAction } from "./engineModel";
-import { EnginesDataProvider } from "./enginesData";
-import { OverviewPage } from "./OverviewPage";
+import { EnginesDataProvider, useEngines } from "./enginesData";
+import { OverviewPage, type RowFlash } from "./OverviewPage";
 import { SubscriptionsPage } from "./SubscriptionsPage";
+import { useRowConnect } from "./useRowConnect";
 import "./engines.css";
+
+/** How long a changed row stays highlighted before it fades (ENG-23). */
+const ROW_FLASH_MS = 2400;
 
 function goSubscriptions(): void {
   navigate({ page: "engines", tab: "subscriptions" });
@@ -35,7 +40,23 @@ function EnginesTabs({
 }) {
   const [sheet, setSheet] = useState<(AddKeyRequest & { seq: number }) | null>(null);
   const [desktop, setDesktop] = useState<(DesktopDialog & { seq: number }) | null>(null);
+  const [flash, setFlash] = useState<RowFlash | null>(null);
   const seq = useRef(0);
+  const { surface } = useEngines();
+
+  const flashRows = useCallback((providers: readonly string[]) => {
+    if (!providers.length) return;
+    seq.current += 1;
+    setFlash({ providers, seq: seq.current });
+  }, []);
+  useEffect(() => {
+    if (!flash) return;
+    const t = window.setTimeout(() => setFlash(null), ROW_FLASH_MS);
+    return () => window.clearTimeout(t);
+  }, [flash]);
+  const flashSaved = useCallback((provider: string) => flashRows([provider]), [flashRows]);
+
+  const rowConnect = useRowConnect(flashRows);
 
   /** Hand `tvashtr://…` to the browser (inside the click, so the browser lets it through), then
    *  say what happens next. `sub` points Desktop at that card. */
@@ -58,20 +79,29 @@ function EnginesTabs({
       provider,
       embeddings: options?.embeddings ?? false,
       banner: options?.banner ?? false,
+      row: options?.row ?? false,
       seq: seq.current,
     });
   }, []);
 
-  /** A row's Add key opens the sheet with that provider (ENG-15); the website's Open in Desktop
-   *  opens Desktop on that subscription (OQ-2); connecting, re-checking and setting up a
-   *  subscription happen on Subscriptions. */
+  /** A row's Add key opens the sheet with that provider (ENG-15); a row's Connect on Desktop signs
+   *  in from the row (ENG-16); the website's Open in Desktop opens Desktop on that subscription
+   *  (OQ-2); re-checking and setting up a subscription happen on Subscriptions. */
+  const connectRow = rowConnect.connect;
   const cellAction = useCallback(
     (action: CellAction) => {
-      if (action.kind === "add-key") addKey(action.provider);
+      if (action.kind === "add-key") addKey(action.provider, { row: true });
       else if (action.kind === "open-desktop") openDesktop(connectTargetOf(action.sub));
+      else if (
+        action.kind === "connect" &&
+        action.sub &&
+        surface === "desktop" &&
+        enginesBridge()?.connect
+      )
+        connectRow(action.sub);
       else goSubscriptions();
     },
-    [addKey, openDesktop],
+    [addKey, openDesktop, connectRow, surface],
   );
 
   return (
@@ -79,6 +109,8 @@ function EnginesTabs({
       {tab === "overview" && (
         <OverviewPage
           highlightFixes={fix}
+          checking={rowConnect.checking}
+          flash={flash}
           onAddKey={addKey}
           onCellAction={cellAction}
           onOpenSubscriptions={goSubscriptions}
@@ -94,7 +126,12 @@ function EnginesTabs({
         />
       )}
       {tab === "keys" && <ApiKeysPage onAddKey={addKey} />}
-      <AddKeySheet request={sheet} onClose={() => setSheet(null)} onAddKey={addKey} />
+      <AddKeySheet
+        request={sheet}
+        onClose={() => setSheet(null)}
+        onAddKey={addKey}
+        onSaved={flashSaved}
+      />
       {desktop?.kind === "open" && (
         <OpenDesktopDialog
           key={desktop.seq}

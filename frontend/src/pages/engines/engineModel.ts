@@ -287,6 +287,13 @@ export function providerRows(i: EngineInputs): ProviderRow[] {
   );
 }
 
+/** The Overview rows a subscription covers (Grok → xai): the rows its Connect flashes (ENG-16). */
+export function rowsCoveredBy(i: EngineInputs, sub: SubscriptionProviderId): string[] {
+  return providerRows(i)
+    .map((r) => r.provider)
+    .filter((p) => runnableSubFor(p) === sub);
+}
+
 // ---- Also saved (ENG-19) ----
 
 export interface AlsoSaved {

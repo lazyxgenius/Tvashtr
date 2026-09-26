@@ -50,6 +50,8 @@ export interface AddKeyOptions {
   embeddings?: boolean;
   /** A suggested-keys banner "+ provider": the save toast reads "Add <q> too, so …" (ENG-58). */
   banner?: boolean;
+  /** An Overview row's Add key: the save toast reads "… still needs <q> for the website." (ENG-18). */
+  row?: boolean;
 }
 
 export interface ApiKeysActions {

@@ -238,6 +238,22 @@ describe("save toast (ENG-58, ENG-60, OQ-7)", () => {
     });
   });
 
+  it("from an Overview row: still needs <q> for the website, then can now run (ENG-18, EnF-OvAddKey-4/5)", () => {
+    expect(saveToast(after("anthropic"), "anthropic", false, { row: true })).toEqual({
+      message: "anthropic key saved. Indicator sprint team still needs xai for the website.",
+      action: { kind: "add-key", label: "Add xai", provider: "xai", embeddings: false },
+    });
+    const both = after("xai", { keys: [...KEYS, key("anthropic", "wQ3f")] });
+    expect(saveToast(both, "xai", false, { row: true })).toEqual({
+      message: "xai key saved. Indicator sprint team can now run on the website.",
+      action: null,
+    });
+    // A key no agent uses stays plain, wherever it was added from.
+    expect(saveToast(after("nvidia_nim"), "nvidia_nim", false, { row: true }).message).toBe(
+      "nvidia_nim key saved. No agent uses NVIDIA NIM right now.",
+    );
+  });
+
   it("says a team is ready once its last key is saved; a Claude subscription doesn't count on the website", () => {
     const both = after("xai", { keys: [...KEYS, key("anthropic", "wQ3f")] });
     expect(saveToast(both, "xai", false).message).toBe(

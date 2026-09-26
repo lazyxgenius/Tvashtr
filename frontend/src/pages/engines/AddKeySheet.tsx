@@ -50,15 +50,20 @@ import {
 } from "./sheetModel";
 
 /** What opened the sheet: a provider picked in advance, whether it is an embeddings key, and
- *  whether it came from the suggested-keys banner (the toast then says "Add <q> too, so …"). */
+ *  whether it came from the suggested-keys banner (the toast then says "Add <q> too, so …") or an
+ *  Overview row (the toast then says "… still needs <q> for the website."). */
 export interface AddKeyRequest {
   provider?: string;
   embeddings?: boolean;
   banner?: boolean;
+  row?: boolean;
 }
 
-/** Opens the sheet again (a toast's "Add <q>"). */
-export type OpenAddKey = (provider?: string, options?: { embeddings?: boolean }) => void;
+/** Opens the sheet again (a toast's "Add <q>"; an Overview row's toast keeps its wording). */
+export type OpenAddKey = (
+  provider?: string,
+  options?: { embeddings?: boolean; row?: boolean },
+) => void;
 
 function HintLine({ hint }: { hint: SheetHint }) {
   if (hint.kind === "covers") {
@@ -91,10 +96,12 @@ function AddKeyForm({
   request,
   onClose,
   onAddKey,
+  onSaved,
 }: {
   request: AddKeyRequest;
   onClose: () => void;
   onAddKey: OpenAddKey;
+  onSaved?: (provider: string) => void;
 }) {
   const { inputs, keys, setKeys } = useEngines();
   const toast = useToast();
@@ -150,9 +157,11 @@ function AddKeyForm({
         : [next, ...keys];
       setKeys(nextKeys);
       onClose();
+      onSaved?.(provider);
       const done = saveToast({ ...inputs, keys: nextKeys }, provider, saved.replaced, {
         banner: request.banner,
         embeddings: request.embeddings,
+        row: request.row,
       });
       toast({
         message: done.message,
@@ -168,7 +177,7 @@ function AddKeyForm({
 
   const runAction = (action: SaveToastAction) => () => {
     if (action.kind === "open-domains") navigate({ page: "domains" });
-    else onAddKey(action.provider, { embeddings: action.embeddings });
+    else onAddKey(action.provider, { embeddings: action.embeddings, row: request.row });
   };
 
   const clearFormError = () => {
@@ -275,12 +284,21 @@ export function AddKeySheet({
   request,
   onClose,
   onAddKey,
+  onSaved,
 }: {
   request: (AddKeyRequest & { seq: number }) | null;
   onClose: () => void;
   onAddKey: OpenAddKey;
+  /** A key was saved (the Overview flashes its row, ENG-23). */
+  onSaved?: (provider: string) => void;
 }) {
   return request ? (
-    <AddKeyForm key={request.seq} request={request} onClose={onClose} onAddKey={onAddKey} />
+    <AddKeyForm
+      key={request.seq}
+      request={request}
+      onClose={onClose}
+      onAddKey={onAddKey}
+      onSaved={onSaved}
+    />
   ) : null;
 }

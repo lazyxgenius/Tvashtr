@@ -3,15 +3,21 @@
  * provider the user's teams use with how each surface covers it (and the fix), the saved keys no
  * team uses, and "Can your teams run?" per team. With nothing set up yet it is the first-time
  * chooser instead (EnF-FirstTime-1).
+ *
+ * A row's fixes (EnF-OvAddKey, EnF-OvConnect): Add key opens the sheet with that provider; Connect
+ * on Desktop says "Checking…" in the row while the sign-in runs; the row a save or a Connect just
+ * changed flashes (ENG-23), and the cells, verdicts and nav badges recompute from the new data.
  */
 import { Globe, Monitor, Plus } from "lucide-react";
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 
 import { Button } from "../../design-system/components";
+import type { SubscriptionProviderId } from "../../lib/engines";
 import { formatRelativeTime } from "../../lib/time";
 import {
   type Cell,
   type CellAction,
+  type EngineInputs,
   type ProviderRow,
   type Verdict,
   alsoSaved,
@@ -41,6 +47,23 @@ export interface OverviewActions {
   onOpenSubscriptions: () => void;
   /** Download Tvashtr Desktop: the Get Tvashtr Desktop dialog (ENG-47). */
   onGetDesktop: () => void;
+}
+
+/** The rows a save or a Connect just changed (ENG-23); `seq` restarts the flash. */
+export interface RowFlash {
+  providers: readonly string[];
+  seq: number;
+}
+
+/** Rows whose subscription is being connected read "Checking…" (EnF-OvConnect-2). */
+function withChecking(i: EngineInputs, checking: readonly SubscriptionProviderId[]): EngineInputs {
+  if (!checking.length) return i;
+  return {
+    ...i,
+    subs: i.subs.map((s) =>
+      checking.includes(s.provider) && !s.connected ? { ...s, state: "checking" } : s,
+    ),
+  };
 }
 
 function DesktopStatus({ onGetDesktop }: { onGetDesktop: () => void }) {
@@ -109,7 +132,8 @@ function CellView({ cell, onAction }: { cell: Cell; onAction: (a: CellAction) =>
       </StatusLine>
     );
   }
-  if (cell.tone === "neutral") return <StatusLine tone="muted">{cell.text}</StatusLine>;
+  // The only neutral cell is a Connect in progress: "Checking…".
+  if (cell.tone === "neutral") return <StatusLine tone="busy">{cell.text}</StatusLine>;
   const action = cell.action;
   return (
     <StatusLine tone="warn">
@@ -124,13 +148,33 @@ function CellView({ cell, onAction }: { cell: Cell; onAction: (a: CellAction) =>
   );
 }
 
+/** Keep each row where the page first put it (rows to fix first, ENG-10): a fix changes the row in
+ *  place, where its flash shows it, instead of moving it down the table; a new provider joins at
+ *  the end. A new visit sorts again. */
+function useStableRows(rows: ProviderRow[]): ProviderRow[] {
+  const [order, setOrder] = useState<readonly string[]>([]);
+  const added = rows.map((r) => r.provider).filter((p) => !order.includes(p));
+  const next = added.length ? [...order, ...added] : order;
+  // Remembering what an earlier render showed: React re-renders at once with the new order.
+  if (next !== order) setOrder(next);
+  const at = (p: string) => next.indexOf(p);
+  return [...rows].sort((a, b) => at(a.provider) - at(b.provider));
+}
+
+function rowClass(row: ProviderRow, highlightFixes: boolean, flashed: boolean): string | undefined {
+  if (flashed) return "eng-row--ok";
+  return highlightFixes && row.needsFix ? "eng-row--fix" : undefined;
+}
+
 function ProvidersTable({
   rows,
   highlightFixes,
+  flash,
   onAction,
 }: {
   rows: ProviderRow[];
   highlightFixes: boolean;
+  flash: RowFlash | null;
   onAction: (a: CellAction) => void;
 }) {
   return (
@@ -152,7 +196,11 @@ function ProvidersTable({
           <tr
             key={row.provider}
             data-provider={row.provider}
-            className={highlightFixes && row.needsFix ? "eng-row--fix" : undefined}
+            className={rowClass(
+              row,
+              highlightFixes,
+              Boolean(flash?.providers.includes(row.provider)),
+            )}
           >
             <td>
               <div className="eng-prov">
@@ -184,13 +232,23 @@ function VerdictView({ v }: { v: Verdict }) {
 
 export function OverviewPage({
   highlightFixes = false,
+  checking = [],
+  flash = null,
   onAddKey,
   onCellAction,
   onOpenSubscriptions,
   onGetDesktop,
-}: OverviewActions & { highlightFixes?: boolean }) {
+}: OverviewActions & {
+  highlightFixes?: boolean;
+  /** Subscriptions a row's Connect is signing in to. */
+  checking?: readonly SubscriptionProviderId[];
+  flash?: RowFlash | null;
+}) {
   const engines = useEngines();
   const { status, inputs } = engines;
+  const rows = useStableRows(
+    status === "ready" ? providerRows(withChecking(inputs, checking)) : [],
+  );
 
   if (status !== "ready") {
     return (
@@ -209,7 +267,6 @@ export function OverviewPage({
     return <FirstTimeChooser onAddKey={() => onAddKey()} onConnect={onOpenSubscriptions} />;
   }
 
-  const rows = providerRows(inputs);
   const also = alsoSaved(inputs);
   const verdicts = teamVerdicts(inputs);
   const hasTeams = inputs.usage.teams.length > 0;
@@ -237,7 +294,12 @@ export function OverviewPage({
       {(hasTeams || also.providers.length > 0) && (
         <EnginesSection title="Providers your teams use" titleId="eng-providers-title">
           {rows.length > 0 ? (
-            <ProvidersTable rows={rows} highlightFixes={highlightFixes} onAction={onCellAction} />
+            <ProvidersTable
+              rows={rows}
+              highlightFixes={highlightFixes}
+              flash={flash}
+              onAction={onCellAction}
+            />
           ) : (
             <p className="eng-empty">
               {hasTeams ? "None of your teams use a model yet." : "You have no teams yet."}

@@ -29,6 +29,12 @@ export function joinAnd(items: readonly string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
+/** "Indicator sprint team", "A and B", "A and 2 other teams". */
+export function teamsPhrase(names: readonly string[]): string {
+  if (names.length <= 2) return joinAnd(names);
+  return `${names[0]} and ${names.length - 1} other teams`;
+}
+
 function primaryProvider(n: UsageNode): string | null {
   if (!n.model || !n.model.trim()) return null;
   return n.provider ?? (byokProviderOf(n.model) || null);

@@ -212,6 +212,204 @@ describe("Overview on Desktop (Eng-Overview)", () => {
   });
 });
 
+/** POST /api/providers as the server answers it: last4 of the posted key, a new key. */
+const answerPost = (_u: URL, body: unknown) => {
+  const b = body as { provider: string; api_key: string };
+  const now = new Date().toISOString();
+  return {
+    provider: b.provider,
+    key_last4: b.api_key.slice(-4),
+    created_at: now,
+    updated_at: now,
+    replaced: false,
+  };
+};
+
+/** Paste a key into the open sheet and save it; resolves once the sheet has closed. */
+async function saveWith(value: string) {
+  const sheet = within(screen.getByRole("dialog", { name: "Add an API key" }));
+  fireEvent.change(sheet.getByLabelText("API key"), { target: { value } });
+  fireEvent.click(sheet.getByRole("button", { name: "Save key" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+}
+
+const providerOrder = () =>
+  within(table())
+    .getAllByRole("row")
+    .slice(1)
+    .map((r) => r.getAttribute("data-provider"));
+const flashed = (provider: string) => row(provider).classList.contains("eng-row--ok");
+const badges = () => renderHook(() => useNavBadges()).result.current;
+
+describe("A row's Add key (EnF-OvAddKey-1..5)", () => {
+  it("adds anthropic then xai from the rows: flash, cells, verdicts, badge and toasts recompute", async () => {
+    mockEnginesApi({ "POST /api/providers": answerPost });
+    installDesktop();
+    renderEngines();
+    await loaded();
+    expect(badges()).toMatchObject({ enginesToFix: 2 });
+
+    // 1-2: the anthropic row's Add key opens the sheet with anthropic picked.
+    fireEvent.click(within(row("anthropic")).getByRole("button", { name: "Add key" }));
+    expect(providerOrder()).toEqual(["anthropic", "xai", "deepseek"]);
+    const sheet = within(screen.getByRole("dialog", { name: "Add an API key" }));
+    expect(sheet.getByRole("button", { name: "Provider anthropic" })).toBeInTheDocument();
+    expect(sheet.getByText("Used by Engineer · Indicator sprint team")).toBeInTheDocument();
+
+    // 3-4: saved — the row flashes, its Website cell shows the key, the team still needs xai.
+    await saveWith("sk-ant-parity-wQ3f");
+    expect(flashed("anthropic")).toBe(true);
+    expect(flashed("xai")).toBe(false);
+    // Fixed in place: the row doesn't move down the table.
+    expect(providerOrder()).toEqual(["anthropic", "xai", "deepseek"]);
+    expect(within(row("anthropic")).getByText("API key •••• wQ3f")).toBeInTheDocument();
+    expect(within(row("anthropic")).getByText("Claude subscription")).toBeInTheDocument();
+    // OQ-16: no false "Website: ready" while xai is still missing.
+    expect(within(teamsList()).getByText("Website: add xai key")).toBeInTheDocument();
+    expect(within(teamsList()).queryAllByText("Website: ready")).toHaveLength(1);
+    expect(badges()).toMatchObject({ enginesToFix: 2, apiKeys: 4 });
+    const toast = await screen.findByRole("status");
+    expect(toast).toHaveTextContent(
+      "anthropic key saved. Indicator sprint team still needs xai for the website.",
+    );
+
+    // 5: the toast's Add xai keeps the row's wording; the team can now run on the website.
+    fireEvent.click(within(toast).getByRole("button", { name: "Add xai" }));
+    expect(
+      within(screen.getByRole("dialog", { name: "Add an API key" })).getByRole("button", {
+        name: "Provider xai",
+      }),
+    ).toBeInTheDocument();
+    await saveWith("xai-parity-9Kx2");
+    expect(flashed("xai")).toBe(true);
+    expect(flashed("anthropic")).toBe(false);
+    expect(within(row("xai")).getAllByText("API key •••• 9Kx2")).toHaveLength(2);
+    expect(within(teamsList()).getAllByText("Website: ready")).toHaveLength(2);
+    // A key covers Desktop too, so both lines are ready and the badge hides (0 to fix).
+    expect(within(teamsList()).getAllByText("Desktop: ready")).toHaveLength(2);
+    expect(badges()).toMatchObject({ enginesToFix: 0, apiKeys: 5 });
+    expect(
+      await screen.findByText("xai key saved. Indicator sprint team can now run on the website."),
+    ).toBeInTheDocument();
+  });
+
+  it("the flash fades after a moment (ENG-23)", async () => {
+    mockEnginesApi({ "POST /api/providers": answerPost });
+    renderEngines();
+    await loaded();
+    // Fake timers after the load (the flash's timer starts at the save); real time still flows
+    // so the save's fetch settles.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fireEvent.click(within(row("anthropic")).getByRole("button", { name: "Add key" }));
+      await saveWith("sk-ant-parity-wQ3f");
+      expect(flashed("anthropic")).toBe(true);
+      await act(() => vi.advanceTimersByTimeAsync(2000));
+      expect(flashed("anthropic")).toBe(true);
+      await act(() => vi.advanceTimersByTimeAsync(500));
+      expect(flashed("anthropic")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the header's Add API key keeps the plain toast wording", async () => {
+    mockEnginesApi({ "POST /api/providers": answerPost });
+    renderEngines();
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "Add API key" }));
+    const sheet = within(screen.getByRole("dialog", { name: "Add an API key" }));
+    fireEvent.click(sheet.getByRole("button", { name: /^Provider / }));
+    fireEvent.click(
+      within(sheet.getByRole("listbox", { name: "Providers" })).getByRole("option", {
+        name: /^anthropic/,
+      }),
+    );
+    await saveWith("sk-ant-parity-wQ3f");
+    expect(flashed("anthropic")).toBe(true);
+    expect(
+      await screen.findByText(
+        "anthropic key saved. Indicator sprint team still needs xai to run on the website.",
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("A row's Connect on Desktop (EnF-OvConnect-1..3)", () => {
+  const later = (s: ReturnType<typeof sub>, at: string) => ({ ...s, checked_at: at });
+
+  it("signs in from the row: Checking…, the Terminal toast, then connected", async () => {
+    mockEnginesApi();
+    const desktop = installDesktop();
+    renderEngines();
+    await loaded();
+    fireEvent.click(within(row("xai")).getByRole("button", { name: "Connect" }));
+    expect(desktop.engines.connect).toHaveBeenCalledWith("grok");
+    expect(within(row("xai")).getByText("Checking…")).toBeInTheDocument();
+    expect(within(row("xai")).queryByRole("button", { name: "Connect" })).toBeNull();
+    expect(
+      await screen.findByText("A Terminal window opened. Sign in to Grok there, then come back."),
+    ).toBeInTheDocument();
+    // The Connect's own status push (same check) keeps the row checking.
+    act(() => desktop.push(sub("grok", "needs_login")));
+    expect(within(row("xai")).getByText("Checking…")).toBeInTheDocument();
+
+    act(() => desktop.push(later(sub("grok", "connected"), "2026-09-25T09:05:00+00:00")));
+    await waitFor(() =>
+      expect(within(row("xai")).getByText("Grok subscription")).toBeInTheDocument(),
+    );
+    expect(flashed("xai")).toBe(true);
+    expect(flashed("anthropic")).toBe(false);
+    expect(within(teamsList()).getAllByText("Desktop: ready")).toHaveLength(2);
+    expect(badges()).toMatchObject({ enginesToFix: 1, subscriptions: { connected: 2, total: 2 } });
+    expect(
+      await screen.findByText("Grok connected. Indicator sprint team can run on this computer."),
+    ).toBeInTheDocument();
+  });
+
+  it("coming back without signing in offers Connect again", async () => {
+    mockEnginesApi();
+    const desktop = installDesktop();
+    renderEngines();
+    await loaded();
+    fireEvent.click(within(row("xai")).getByRole("button", { name: "Connect" }));
+    await screen.findByText("A Terminal window opened. Sign in to Grok there, then come back.");
+    act(() => desktop.push(later(sub("grok", "needs_login"), "2026-09-25T09:05:00+00:00")));
+    await waitFor(() =>
+      expect(within(row("xai")).getByRole("button", { name: "Connect" })).toBeInTheDocument(),
+    );
+    expect(within(row("xai")).getByText("Grok needs login")).toBeInTheDocument();
+    expect(flashed("xai")).toBe(false);
+  });
+
+  it("already signed in: connected at once, no Terminal toast", async () => {
+    mockEnginesApi();
+    const desktop = installDesktop();
+    desktop.engines.connect.mockResolvedValueOnce(sub("grok", "connected"));
+    renderEngines();
+    await loaded();
+    fireEvent.click(within(row("xai")).getByRole("button", { name: "Connect" }));
+    expect(
+      await screen.findByText("Grok connected. Indicator sprint team can run on this computer."),
+    ).toBeInTheDocument();
+    expect(flashed("xai")).toBe(true);
+    expect(screen.queryByText(/A Terminal window opened/)).toBeNull();
+  });
+
+  it("a Connect that fails says so and puts the button back", async () => {
+    mockEnginesApi();
+    const desktop = installDesktop();
+    desktop.engines.connect.mockRejectedValueOnce(new Error("ipc down"));
+    renderEngines();
+    await loaded();
+    fireEvent.click(within(row("xai")).getByRole("button", { name: "Connect" }));
+    expect(
+      await screen.findByText("Couldn’t open a Terminal window to sign in. Try again."),
+    ).toBeInTheDocument();
+    expect(within(row("xai")).getByRole("button", { name: "Connect" })).toBeInTheDocument();
+  });
+});
+
 describe("First time (EnF-FirstTime-1)", () => {
   const nothingSetUp = {
     "GET /api/providers": { providers: [] },

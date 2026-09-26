@@ -18,8 +18,15 @@ import {
   modelProvidersForSubscription,
 } from "../../lib/engines";
 import { formatRelativeTime } from "../../lib/time";
-import { type EngineInputs, nodeProvider, roleLabel, usedByCell } from "./engineModel";
-import { joinAnd } from "./keysModel";
+import {
+  type EngineInputs,
+  nodeProvider,
+  roleLabel,
+  runnableSubFor,
+  teamVerdict,
+  usedByCell,
+} from "./engineModel";
+import { joinAnd, teamsPhrase } from "./keysModel";
 
 // ---- the page's flow state per card ----
 
@@ -534,6 +541,33 @@ export function connectedToast(s: SubscriptionStatus, from: SubscriptionCardStat
     return `Claude connected with ${s.account_hint.trim()}.`;
   }
   return `${name} connected. ${keyProviderOf(s.provider)} models now run on this computer.`;
+}
+
+// ---- an Overview row's Connect (ENG-16) ----
+
+/** Connect opened the vendor's sign-in in Terminal (the bridge answered "not signed in yet"). */
+export function terminalOpenedToast(sub: SubscriptionProviderId): string {
+  return `A Terminal window opened. Sign in to ${displayNameForSubscription(sub)} there, then come back.`;
+}
+
+/** An Overview row's Connect finished: "Grok connected. Indicator sprint team can run on this
+ *  computer." names the teams using that subscription's models that can now run on Desktop
+ *  (computed from the inputs AFTER the connect); with none, the Subscriptions page's toast. */
+export function rowConnectedToast(
+  i: EngineInputs,
+  s: SubscriptionStatus,
+  from: SubscriptionCardState | null,
+): string {
+  const ready = i.usage.teams.filter(
+    (t) =>
+      t.nodes.some((n) => {
+        const p = nodeProvider(n);
+        return p !== null && runnableSubFor(p) === s.provider;
+      }) && teamVerdict(i, t, "local").ready,
+  );
+  if (!ready.length) return connectedToast(s, from);
+  const names = ready.map((t) => t.name);
+  return `${displayNameForSubscription(s.provider)} connected. ${teamsPhrase(names)} can run on this computer.`;
 }
 
 /** What an explicit Refresh found, as a toast — or null when the card says it alone. */

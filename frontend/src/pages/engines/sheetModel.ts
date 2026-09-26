@@ -21,7 +21,7 @@ import {
   usedBySegments,
   websiteKeysMissing,
 } from "./engineModel";
-import { embeddingsOnly, joinAnd, replaceCopy } from "./keysModel";
+import { embeddingsOnly, joinAnd, replaceCopy, teamsPhrase } from "./keysModel";
 
 // ---- what the picker holds ----
 
@@ -223,10 +223,12 @@ export const SAVE_NETWORK_ERROR =
   "Couldn’t save that key — is the backend running? Your key wasn’t saved. Try again.";
 
 /** Where the sheet was opened from, when the toast's words depend on it: the suggested-keys banner
- *  ("Add anthropic too, so …", ENG-58) or the Domains embeddings section (ENG-60). */
+ *  ("Add anthropic too, so …", ENG-58), the Domains embeddings section (ENG-60) or an Overview
+ *  row's Add key ("… still needs xai for the website.", ENG-18). */
 export interface SaveOrigin {
   banner?: boolean;
   embeddings?: boolean;
+  row?: boolean;
 }
 
 /** The toast's one action: open the sheet again for the next key a team or domain needs, or open
@@ -249,20 +251,15 @@ const addAction = (provider: string, embeddings = false): SaveToastAction => ({
 
 const OPEN_DOMAINS: SaveToastAction = { kind: "open-domains", label: "Open Domains" };
 
-/** "Indicator sprint team", "A and B", "A and 2 other teams". */
-function teamsPhrase(names: readonly string[]): string {
-  if (names.length <= 2) return joinAnd(names);
-  return `${names[0]} and ${names.length - 1} other teams`;
-}
-
 /**
  * The toast after a save, computed from the inputs AFTER it (the new key included). It only says
  * what the data backs:
  * - a key no agent uses (NVIDIA NIM) is never celebrated (area rule); a replace says "replaced";
  * - a provider teams use: the first of those teams still missing a key for the website names it,
- *   with "Add <q>" ("… still needs xai to run on the website.", or from the banner "Add anthropic
- *   too, so … can run on the website."); once none is missing, "… is ready to run on the website."
- *   (the Overview's "Website: ready"); anything else stays a plain "<p> key saved.";
+ *   with "Add <q>" ("… still needs xai to run on the website.", from an Overview row "… still needs
+ *   xai for the website.", from the banner "Add anthropic too, so … can run on the website."); once
+ *   none is missing, "… is ready to run on the website." (the Overview's "Website: ready"; from a
+ *   row "… can now run on the website."); anything else stays a plain "<p> key saved.";
  * - an embeddings key: "Domains can ingest documents now." + Open Domains only when every domain's
  *   embedding provider has a key (OQ-7); with no domain using it, only that Domains can use it.
  */
@@ -288,15 +285,17 @@ export function saveToast(
       return {
         message: origin.banner
           ? `${saved} Add ${needs} too, so ${team.name} can run on the website.`
-          : `${saved} ${team.name} still needs ${needs} to run on the website.`,
+          : origin.row
+            ? `${saved} ${team.name} still needs ${needs} for the website.`
+            : `${saved} ${team.name} still needs ${needs} to run on the website.`,
         action: addAction(missing[0]),
       };
     }
     if (teams.every((t) => teamVerdict(i, t, "hosted").ready)) {
+      const names = teamsPhrase(teams.map((t) => t.name));
+      if (origin.row) return plain(`${saved} ${names} can now run on the website.`);
       const verb = teams.length === 1 ? "is" : "are";
-      return plain(
-        `${saved} ${teamsPhrase(teams.map((t) => t.name))} ${verb} ready to run on the website.`,
-      );
+      return plain(`${saved} ${names} ${verb} ready to run on the website.`);
     }
     return plain(saved);
   }

@@ -10,9 +10,11 @@ import {
   disconnectCopy,
   disconnectedMessage,
   refreshToast,
+  rowConnectedToast,
   runnerBanner,
   subUsedBy,
   subscriptionCard,
+  terminalOpenedToast,
 } from "./subscriptionModel";
 
 const desktop = sampleInputs({ surface: "desktop" });
@@ -337,6 +339,35 @@ describe("Used by, the banner and the toasts", () => {
       checked: "Last checked in 3h ago",
     });
     expect(runnerBanner({ fresh: false, last_seen_at: null, providers: [] }).checked).toBeNull();
+  });
+
+  it("an Overview row's Connect: Terminal opened, then the teams that can run here (ENG-16)", () => {
+    expect(terminalOpenedToast("grok")).toBe(
+      "A Terminal window opened. Sign in to Grok there, then come back.",
+    );
+    const grokOn = sampleInputs({
+      surface: "desktop",
+      subs: [
+        sub("claude", "connected", "Claude Pro"),
+        sub("grok", "connected"),
+        sub("codex", "needs_install"),
+      ],
+    });
+    expect(rowConnectedToast(grokOn, sub("grok", "connected"), "needs_login")).toBe(
+      "Grok connected. Indicator sprint team can run on this computer.",
+    );
+    // Claude still missing: no team can run yet, so it says what the sign-in covers.
+    const claudeOff = sampleInputs({
+      surface: "desktop",
+      subs: [
+        sub("claude", "disconnected"),
+        sub("grok", "connected"),
+        sub("codex", "needs_install"),
+      ],
+    });
+    expect(rowConnectedToast(claudeOff, sub("grok", "connected"), "needs_login")).toBe(
+      "Grok connected. xai models now run on this computer.",
+    );
   });
 
   it("toasts after a sign-in or a Refresh", () => {
