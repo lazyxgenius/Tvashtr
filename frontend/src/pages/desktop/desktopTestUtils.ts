@@ -117,6 +117,8 @@ export function installDesktopBridge(opts: FakeBridgeOptions = {}) {
       updateListeners.add(cb);
       return () => updateListeners.delete(cb);
     }),
+    restartToUpdate: vi.fn(() => Promise.resolve()),
+    openDownload: vi.fn(() => Promise.resolve()),
   };
   type Provider = SubscriptionStatus["provider"];
   const engines = {
@@ -182,6 +184,10 @@ export function installDesktopBridge(opts: FakeBridgeOptions = {}) {
       }),
       remove: vi.fn(() => Promise.resolve()),
     },
+    prepareRun: vi.fn((o: { path: string; baseRef: string; label: string }) => {
+      void o;
+      return Promise.resolve({ snapshot_id: "snap-1", size_bytes: 10 });
+    }),
   };
   const reposBridge = reposOpts?.initGit === false ? { ...repos, initGit: undefined } : repos;
   const bridge = {
@@ -207,6 +213,7 @@ export function installDesktopBridge(opts: FakeBridgeOptions = {}) {
     engines,
     setup,
     repos,
+    update,
     fireStatus: (s: SubscriptionStatus) => statusListeners.forEach((cb) => cb(s)),
     fireSignIn: (e: TvashtrSignInEvent) => signInListeners.forEach((cb) => cb(e)),
     fireNavigate: (t: TvashtrDeepLinkTarget) => navListeners.forEach((cb) => cb(t)),

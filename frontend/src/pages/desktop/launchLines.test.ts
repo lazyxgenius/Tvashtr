@@ -5,6 +5,7 @@ import {
   offlineDetail,
   planLines,
   reconnectedLines,
+  runsGoingLine,
   splashLines,
   updatingLines,
 } from "./launchLines";
@@ -69,6 +70,12 @@ describe("launch checklist lines", () => {
     expect(updatingLines("0.7.0", 2)[1].text).toBe(
       "Your running teams will resume from their last step",
     );
+  });
+
+  it("Update card run count (DT-44): none, one, many", () => {
+    expect(runsGoingLine(0)).toBe("No runs are going.");
+    expect(runsGoingLine(1)).toBe("1 run is going.");
+    expect(runsGoingLine(3)).toBe("3 runs are going.");
   });
 
   it("Offline detail: host · reason · tries", () => {

@@ -68,6 +68,8 @@ let state: SetupState = { status: "none" };
 const listeners = new Set<() => void>();
 // Where the user was headed when setup took over (a deep link, OQ-34); opened when it finishes.
 let afterSetup: string | null = null;
+// Setup finished in this session (DT-38: the ready card says "You’re set up…", else "Welcome back").
+let finishedThisSession = false;
 
 function set(next: SetupState): void {
   state = next;
@@ -108,6 +110,7 @@ export async function saveDesktopSetup(patch: SetupPatch): Promise<DesktopSetup>
   const { accountId } = state;
   const saved = validSetup(await bridge.update(accountId, patch));
   if (!saved) throw new Error("Couldn't save this Mac's setup. Try again.");
+  if (patch.finishedAt) finishedThisSession = true;
   if (state.status === "ready" && state.accountId === accountId) {
     set({ status: "ready", accountId, setup: saved });
   }
@@ -117,7 +120,13 @@ export async function saveDesktopSetup(patch: SetupPatch): Promise<DesktopSetup>
 /** Signed out: forget the loaded setup (the next account loads its own). */
 export function resetDesktopSetup(): void {
   afterSetup = null;
+  finishedThisSession = false;
   if (state.status !== "none" || state.accountId) set({ status: "none" });
+}
+
+/** Did the signed-in account finish setup on this Mac in this session (DT-38)? */
+export function setupFinishedThisSession(): boolean {
+  return finishedThisSession;
 }
 
 /** True while the signed-in account hasn't finished setup on this Mac. */

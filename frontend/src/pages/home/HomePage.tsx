@@ -4,11 +4,14 @@ import { useToast } from "../../design-system/components";
 import { type AuthUser, getTeams, type TeamSummary } from "../../lib/api";
 import { reportFetchFailed, reportFetchOk } from "../../lib/backendStatus";
 import { type HomeAction, useHomeActionHandler } from "../../lib/homeActions";
+import { DesktopReadyCard } from "../desktop/DesktopReadyCard";
+import { useShowReadyCard } from "../desktop/readyCard";
 import { Composer } from "./Composer";
 import { defaultTeamId } from "./composerModel";
 import { FirstTimeHome } from "./FirstTimeHome";
 import { HomeHeader } from "./HomeHeader";
 import { HomeContext, type HomeContextValue } from "./homeContext";
+import { type ComposerPrefill, requestComposerPrefill } from "./homeData";
 import { NeedsYou } from "./NeedsYou";
 import { NewTeamDialog } from "./NewTeamDialog";
 import { RecentRuns } from "./RecentRuns";
@@ -33,6 +36,13 @@ export function HomePage({ user = null }: { user?: AuthUser | null } = {}) {
   const composerFocus = useRef<(() => void) | null>(null);
   const toast = useToast();
   const getStarted = useGetStartedProgress(teams, teamsLoading);
+  // Desktop until the first run: the ready card (DT-38); "Decide at launch" hands its idea to the
+  // full composer.
+  const showReadyCard = useShowReadyCard();
+  const [decideAtLaunch, setDecideAtLaunch] = useState<ComposerPrefill | null>(null);
+  useEffect(() => {
+    if (decideAtLaunch) requestComposerPrefill(decideAtLaunch);
+  }, [decideAtLaunch]);
 
   const reloadTeams = useCallback(async () => {
     try {
@@ -113,7 +123,15 @@ export function HomePage({ user = null }: { user?: AuthUser | null } = {}) {
 
   return (
     <HomeContext.Provider value={value}>
-      {getStarted.firstTime ? <FirstTimeHome progress={getStarted} /> : <HomeMain />}
+      {decideAtLaunch ? (
+        <HomeMain />
+      ) : showReadyCard ? (
+        <DesktopReadyCard user={user} onDecideAtLaunch={setDecideAtLaunch} />
+      ) : showReadyCard === null ? null : getStarted.firstTime ? (
+        <FirstTimeHome progress={getStarted} />
+      ) : (
+        <HomeMain />
+      )}
       <NewTeamDialog
         open={newTeam !== null}
         initialTemplate={newTeam?.templateKey}

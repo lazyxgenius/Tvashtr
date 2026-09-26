@@ -6,6 +6,7 @@
  */
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { DESKTOP_MAC_DMG_URL } from "./desktopDownload";
 import type { SubscriptionStatus } from "./engines";
 
 type AuthBridge = NonNullable<TvashtrDesktopBridge["auth"]>;
@@ -231,6 +232,36 @@ export function onUpdateState(cb: (state: UpdateState) => void): () => void {
     if (s) cb(s);
   });
   return typeof unsubscribe === "function" ? unsubscribe : () => {};
+}
+
+/** The updater's state, live (the Shell's update card, DT-43). */
+export function useUpdateState(): UpdateState {
+  const [state, setState] = useState<UpdateState>({ state: "idle" });
+  useEffect(() => {
+    let alive = true;
+    void getUpdateState().then((s) => {
+      // A pushed state that arrived first is newer.
+      if (alive) setState((prev) => (prev.state === "idle" ? s : prev));
+    });
+    const unsubscribe = onUpdateState(setState);
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, []);
+  return state;
+}
+
+/** "Restart to update" (DT-45): main shows Updating, swaps the app and relaunches. */
+export async function restartToUpdate(): Promise<void> {
+  await bridge()?.update?.restartToUpdate?.();
+}
+
+/** "Download update" (DT-46): the stable DMG link, opened in the default browser. */
+export async function openUpdateDownload(): Promise<void> {
+  const open = bridge()?.update?.openDownload;
+  if (open) await open();
+  else window.open(DESKTOP_MAC_DMG_URL, "_blank", "noopener");
 }
 
 /** "Signed in as <login>" (DT-16, the sign-in toast): the GitHub login, else the display name. */

@@ -88,6 +88,12 @@ export function updatingLines(version: string, runsGoing: number | null): Status
   return lines;
 }
 
+/** The update card's run count (DT-44, OQ-7). */
+export function runsGoingLine(n: number): string {
+  if (n === 0) return "No runs are going.";
+  return n === 1 ? "1 run is going." : `${n} runs are going.`;
+}
+
 function offlineReason(failure: ProbeFailure): string {
   switch (failure.kind) {
     case "timeout":

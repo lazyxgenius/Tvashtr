@@ -267,7 +267,146 @@
 
 /* The design's buttons carry their icon inside the label (svg + span, laid out inline), not as a
    flex item; keep the svg inline here (Tailwind's preflight makes every svg a block). */
-.dt-launch .ds-btn > span > svg {
+.dt-launch .ds-btn > span > svg,
+.dt-ready .ds-btn > span > svg,
+.dt-update .ds-btn > span > svg {
   display: inline;
   vertical-align: baseline;
+}
+
+/* ---- Desktop Home's ready card (DT-Ready, DtF-Launch-2; DT-38–41) ---- */
+/* The round-1 Shell's Home main is 28px 40px / gap 20 / max 1100; the board's is 26px 40px / 22 /
+   1000. */
+.dt-ready {
+  max-width: 1000px;
+  margin-top: -2px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  line-height: 1.6;
+}
+.dt-ready__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dt-ready__h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1.6;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+.dt-ready__card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 26px 28px;
+  border: 1px solid var(--coral-200);
+  border-radius: 18px;
+  background: #fdf6f2;
+}
+.dt-ready__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dt-ready__h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 26px;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+  color: var(--ink-900);
+}
+.dt-ready__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dt-ready__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #52613e;
+}
+.dt-ready__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dt-ready__later-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-700);
+}
+.dt-ready__later {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.dt-ready__next {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--line-300);
+  border-radius: 14px;
+  background: var(--surface-card);
+  font: inherit;
+  line-height: 1.6;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dt-ready__next:hover {
+  border-color: var(--coral-200);
+}
+.dt-ready__next:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.dt-ready__next-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.dt-ready__next-head > svg {
+  color: var(--ink-600);
+}
+.dt-ready__next-body {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+
+/* ---- The update card in the Shell's nav foot (DT-Update, DtF-Upd-1; DT-43–46) ---- */
+.dt-update {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dt-update b {
+  font-weight: 600;
+}
+.dt-update__fix {
+  font-size: 11.5px;
+  color: var(--ink-600);
+}
+.dt-update__fix code {
+  font-family: var(--font-code);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  user-select: all;
 }
