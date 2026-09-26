@@ -1,24 +1,40 @@
+import { useEffect, useRef } from "react";
+
 import { Button } from "../../design-system/components";
+import type { ProbeFailure } from "../../lib/backendStatus";
 import { thisComputer } from "../../lib/desktopApp";
 import { ExternalLinkIcon, RefreshIcon, WifiOffIcon } from "./icons";
 import { LaunchFrame } from "./LaunchFrame";
+import { offlineDetail } from "./launchLines";
 
 /**
  * DT-Offline — Tvashtr's server can't be reached, so the app can't open the user's teams (DT-14).
- * Check service status opens `<api origin>/health` in the browser (OQ-8). `detail` is the mono
- * line "<api host> · <reason> · tried 3 times" once the launch probe knows it.
+ * Try again reruns the launch check; the app also retries by itself when the OS says it is back
+ * online. Check service status opens `<api origin>/health` in the browser (OQ-8).
  */
 export function OfflinePage({
+  failure,
+  tries,
+  apiHost,
   statusUrl,
-  detail,
   retrying = false,
   onRetry,
 }: {
+  failure: ProbeFailure;
+  tries: number;
+  apiHost: string | null;
   statusUrl: string | null;
-  detail?: string | null;
   retrying?: boolean;
   onRetry: () => void;
 }) {
+  const retry = useRef(onRetry);
+  retry.current = onRetry;
+  useEffect(() => {
+    const onOnline = () => retry.current();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
+
   return (
     <LaunchFrame width={560}>
       <span className="dt-tile dt-tile--panel">
@@ -45,7 +61,7 @@ export function OfflinePage({
           </Button>
         )}
       </div>
-      {detail && <div className="dt-detail">{detail}</div>}
+      <div className="dt-detail">{offlineDetail(failure, tries, apiHost)}</div>
     </LaunchFrame>
   );
 }

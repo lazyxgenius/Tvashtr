@@ -6,6 +6,8 @@
  */
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import type { SubscriptionStatus } from "./engines";
+
 type AuthBridge = NonNullable<TvashtrDesktopBridge["auth"]>;
 export type SignInEvent = TvashtrSignInEvent;
 export type AppInfo = TvashtrAppInfo;
@@ -122,6 +124,72 @@ export function useAppVersion(): string | null {
     };
   }, []);
   return version;
+}
+
+// ---- Plans and the updater ----------------------------------------------------------------------
+
+const PLAN_PROVIDERS = new Set(["claude", "grok", "codex"]);
+const PLAN_STATES = new Set([
+  "disconnected",
+  "checking",
+  "needs_install",
+  "needs_login",
+  "api_key",
+  "connected",
+  "error",
+]);
+
+/** The plan CLIs' status on this Mac (bridge `engines.getStatus`), or null without a bridge. */
+export async function getPlanStatuses(): Promise<SubscriptionStatus[] | null> {
+  try {
+    const list: unknown = await bridge()?.engines?.getStatus?.();
+    if (!Array.isArray(list)) return null;
+    return list.filter(
+      (s): s is SubscriptionStatus =>
+        !!s &&
+        typeof s === "object" &&
+        PLAN_PROVIDERS.has((s as SubscriptionStatus).provider) &&
+        PLAN_STATES.has((s as SubscriptionStatus).state),
+    );
+  } catch {
+    return null;
+  }
+}
+
+export type UpdateState = TvashtrUpdateState;
+
+function validUpdateState(s: unknown): UpdateState | null {
+  if (!s || typeof s !== "object") return null;
+  const state = (s as { state?: unknown }).state;
+  if (state === "idle") return { state: "idle" };
+  const version = (s as { version?: unknown }).version;
+  if (typeof version !== "string") return null;
+  if (
+    state === "ready" ||
+    state === "installing" ||
+    state === "downloading" ||
+    state === "manual"
+  ) {
+    return s as UpdateState;
+  }
+  return null;
+}
+
+/** The updater's state (bridge v6 `update`, DB-6); `idle` on an older Desktop or the website. */
+export async function getUpdateState(): Promise<UpdateState> {
+  try {
+    return validUpdateState(await bridge()?.update?.getState?.()) ?? { state: "idle" };
+  } catch {
+    return { state: "idle" };
+  }
+}
+
+export function onUpdateState(cb: (state: UpdateState) => void): () => void {
+  const unsubscribe = bridge()?.update?.onState?.((raw) => {
+    const s = validUpdateState(raw);
+    if (s) cb(s);
+  });
+  return typeof unsubscribe === "function" ? unsubscribe : () => {};
 }
 
 /** DT-50: "this Mac" on macOS, else "this computer". */

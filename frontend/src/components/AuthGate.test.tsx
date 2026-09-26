@@ -31,7 +31,18 @@ describe("AuthGate on Tvashtr Desktop", () => {
 
   it("hands over to the Desktop launch screens: Welcome, never the landing page (DT-1)", async () => {
     document.documentElement.dataset.tvashtrDesktop = "true";
-    stubMe(401);
+    // The Desktop launch asks /health first (DT-2): the server is up, the session is not.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const up = input === "/health";
+        return Promise.resolve({
+          ok: up,
+          status: up ? 200 : 401,
+          json: () => Promise.resolve(up ? { status: "ok", db: "ok" } : {}),
+        } as unknown as Response);
+      }),
+    );
     render(<AuthGate />);
     expect(await screen.findByRole("heading", { name: "Welcome to Tvashtr" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start building" })).toBeNull();

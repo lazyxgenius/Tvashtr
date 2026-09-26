@@ -72,6 +72,9 @@
 .dt-h1--36 {
   font-size: 36px;
 }
+.dt-h1--30 {
+  font-size: 30px;
+}
 .dt-lede {
   margin: 0;
   font-size: 17px;
@@ -227,6 +230,38 @@
   font-family: var(--font-code);
   font-size: 12px;
   line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* The status checklist card (DT-Splash, DtF-Off-2, DtF-Upd-2): 12.5px lines, each with its icon. */
+.dt-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--line-300);
+}
+.dt-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  text-align: left;
+}
+.dt-check--done {
+  color: #52613e;
+}
+.dt-check--warn {
+  color: #7a5423;
+}
+.dt-check--busy {
+  color: var(--ink-600);
+}
+.dt-check--note {
   color: var(--ink-500);
 }
 

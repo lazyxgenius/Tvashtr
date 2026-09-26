@@ -161,7 +161,30 @@ interface TvashtrDesktopBridge {
     /** v6: the running app (version from desktop/package.json), its API and update posture. */
     getInfo?: () => Promise<TvashtrAppInfo>;
   };
+  /**
+   * v6 (DB-6, desktop-app.md §4): the in-app updater. The renderer shows DtF-Upd-2 while the state
+   * is `installing`; the Shell's update card (G6) reads `ready` / `manual`.
+   */
+  update?: {
+    getState: () => Promise<TvashtrUpdateState>;
+    /** Every state change. Returns an unsubscribe. */
+    onState: (cb: (state: TvashtrUpdateState) => void) => () => void;
+    check?: () => Promise<TvashtrUpdateState>;
+    restartToUpdate?: () => Promise<void>;
+    openDownload?: () => Promise<void>;
+  };
 }
+
+type TvashtrUpdateState =
+  | { state: "idle" }
+  | { state: "downloading"; version: string; progress: number }
+  | { state: "ready"; version: string }
+  | { state: "installing"; version: string }
+  | {
+      state: "manual";
+      version: string;
+      reason: "not_writable" | "download_failed" | "swap_failed";
+    };
 
 type TvashtrSignInEvent =
   | { state: "waiting"; signInUrl: string }
