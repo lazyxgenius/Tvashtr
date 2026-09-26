@@ -103,16 +103,23 @@ describe("Overview on the website (Eng-OverviewWeb)", () => {
     expect(screen.getByRole("alertdialog", { name: "Opening Tvashtr Desktop…" })).toBeVisible();
   });
 
-  it("Download Tvashtr Desktop opens Get Tvashtr Desktop with the latest DMG (ENG-47)", async () => {
-    mockEnginesApi();
-    renderEngines();
-    await loaded();
-    fireEvent.click(screen.getByRole("button", { name: "Download Tvashtr Desktop" }));
-    const dialog = within(screen.getByRole("alertdialog", { name: "Get Tvashtr Desktop" }));
-    expect(dialog.getByRole("link", { name: "Download" })).toHaveAttribute(
-      "href",
-      DESKTOP_MAC_DMG_URL,
-    );
+  it("Download Tvashtr Desktop opens Get Tvashtr Desktop with the latest DMG on a Mac (ENG-47)", async () => {
+    const platform = Object.getOwnPropertyDescriptor(window.navigator, "platform");
+    Object.defineProperty(window.navigator, "platform", { value: "MacIntel", configurable: true });
+    try {
+      mockEnginesApi();
+      renderEngines();
+      await loaded();
+      fireEvent.click(screen.getByRole("button", { name: "Download Tvashtr Desktop" }));
+      const dialog = within(screen.getByRole("alertdialog", { name: "Get Tvashtr Desktop" }));
+      expect(dialog.getByRole("link", { name: "Download" })).toHaveAttribute(
+        "href",
+        DESKTOP_MAC_DMG_URL,
+      );
+    } finally {
+      if (platform) Object.defineProperty(window.navigator, "platform", platform);
+      else Reflect.deleteProperty(window.navigator, "platform");
+    }
   });
 
   it("header buttons: Subscriptions, and Add API key opens the empty sheet", async () => {

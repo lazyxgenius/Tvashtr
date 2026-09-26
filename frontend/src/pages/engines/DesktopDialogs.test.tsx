@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../../design-system/components";
 import type { RunnerStatus } from "../../lib/api/engines";
 import { openTvashtrDesktop } from "../../lib/desktopDeepLinks";
-import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
+import { DESKTOP_MAC_DMG_URL, DESKTOP_RELEASES_URL } from "../../lib/desktopDownload";
 import { EnginesPage } from "./EnginesPage";
 import {
   RUNNER_STALE,
@@ -182,7 +182,7 @@ describe("Get Tvashtr Desktop (EnF-WebDesktop-3, ENG-47)", () => {
     expect(getting()).toBeNull();
   });
 
-  it("says Desktop is Mac-only on any other platform (OQ-18)", async () => {
+  it("says Desktop is Mac-only on any other platform, with the releases page, not the DMG (OQ-18)", async () => {
     setPlatform("Win32");
     api();
     renderEngines("subscriptions");
@@ -190,9 +190,13 @@ describe("Get Tvashtr Desktop (EnF-WebDesktop-3, ENG-47)", () => {
     fireEvent.click(banner().getByRole("button", { name: "Download" }));
     const dialog = within(getting()!);
     expect(dialog.getByText("Tvashtr Desktop is Mac-only for now.")).toBeInTheDocument();
-    expect(dialog.getByRole("link", { name: "Download" })).toHaveAttribute(
+    // No macOS Terminal fix, and no Mac download pretending to work here.
+    expect(dialog.queryByText(/xattr/)).toBeNull();
+    expect(dialog.queryByText(/Tvashtr is damaged/)).toBeNull();
+    expect(dialog.queryByRole("link", { name: "Download" })).toBeNull();
+    expect(dialog.getByRole("link", { name: "See releases" })).toHaveAttribute(
       "href",
-      DESKTOP_MAC_DMG_URL,
+      DESKTOP_RELEASES_URL,
     );
   });
 });

@@ -6,8 +6,8 @@
  *   closes when the server reports a check-in newer than the one it saw when it opened.
  * - Get (ENG-47): what Desktop is, then Download → the stable latest-release DMG
  *   (DESKTOP_MAC_DMG_URL, never a version). The app isn't signed yet, so the dialog also gives the
- *   one-line Terminal fix for macOS's "Tvashtr is damaged", and says Desktop is Mac-only on any
- *   other platform (OQ-18).
+ *   one-line Terminal fix for macOS's "Tvashtr is damaged". On any other platform it says Desktop
+ *   is Mac-only for now and links the releases page instead of the Mac DMG (OQ-18).
  */
 import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -15,7 +15,11 @@ import { createPortal } from "react-dom";
 
 import { Button, ButtonLink } from "../../design-system/components";
 import { openTvashtrDesktop } from "../../lib/desktopDeepLinks";
-import { DESKTOP_MAC_DMG_URL, isMacPlatform } from "../../lib/desktopDownload";
+import {
+  DESKTOP_MAC_DMG_URL,
+  DESKTOP_RELEASES_URL,
+  isMacPlatform,
+} from "../../lib/desktopDownload";
 import type { ConnectTarget } from "../../lib/nav";
 import { useModalDialog } from "../../lib/useModalDialog";
 import { useEngines } from "./enginesData";
@@ -115,19 +119,28 @@ export function GetDesktopDialog({ onClose }: { onClose: () => void }) {
             </li>
           ))}
         </ul>
-        <div className="eng-getdesk__note">
-          The app isn’t signed yet, so macOS may say “Tvashtr is damaged”. After you move it to
-          Applications, run this once in Terminal, then open it:
-          <code className="eng-getdesk__cmd">{QUARANTINE_FIX}</code>
-        </div>
-        {!mac && <p className="eng-getdesk__note">Tvashtr Desktop is Mac-only for now.</p>}
+        {mac ? (
+          <div className="eng-getdesk__note">
+            The app isn’t signed yet, so macOS may say “Tvashtr is damaged”. After you move it to
+            Applications, run this once in Terminal, then open it:
+            <code className="eng-getdesk__cmd">{QUARANTINE_FIX}</code>
+          </div>
+        ) : (
+          <p className="eng-getdesk__note">Tvashtr Desktop is Mac-only for now.</p>
+        )}
         <div className="ds-dialog__actions">
           <Button variant="ghost" size="sm" onClick={onClose}>
             Not now
           </Button>
-          <ButtonLink variant="primary" size="sm" href={DESKTOP_MAC_DMG_URL}>
-            Download
-          </ButtonLink>
+          {mac ? (
+            <ButtonLink variant="primary" size="sm" href={DESKTOP_MAC_DMG_URL}>
+              Download
+            </ButtonLink>
+          ) : (
+            <ButtonLink variant="primary" size="sm" href={DESKTOP_RELEASES_URL}>
+              See releases
+            </ButtonLink>
+          )}
         </div>
       </div>
     </>,
