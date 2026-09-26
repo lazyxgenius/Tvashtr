@@ -81,11 +81,12 @@ setProviderCatalogue([
   },
   {
     provider: "nvidia_nim",
-    thinker_default: "nvidia_nim/openai/gpt-oss-20b",
-    // 2026-09-25: NIM declares no worker seat (minimax-m3 retired; gpt-oss-20b breaks the loop),
-    // mirrored exactly from the backend catalogue.
+    // NIM declares NO seat, mirrored exactly from the backend catalogue: no worker since 2026-09-25
+    // (minimax-m3 retired; gpt-oss-20b breaks the loop), no thinker since 2026-09-26 (gpt-oss-20b
+    // hangs). The provider itself stays catalogued.
+    thinker_default: null,
     worker_default: null,
-    thinker_presets: ["nvidia_nim/openai/gpt-oss-20b"],
+    thinker_presets: [],
     worker_presets: [],
   },
   {

@@ -233,9 +233,18 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
         "subscription": None,
         "byok_probed": False,
     },
-    # PROBED 2026-09-08 (full transcript in ``STATE.md``). THINKER: ``openai/gpt-oss-20b`` is
-    # the only nvidia_nim candidate that passed the thinker matrix, and it serves the PM live in
-    # every run to date. Rejected: ``moonshotai/kimi-k2.6`` 404s (not entitled).
+    # NIM SERVES NO SEAT today (2026-09-26). The entry stays — the label, the Engines › API keys
+    # directory row and a held key's place in ``_PROVIDER_DEFAULT_ORDER`` — but both seats are
+    # ``None`` with no presets, so every seat YIELDS to the next held provider.
+    #
+    # THINKER: NONE, deliberately (2026-09-26). ``openai/gpt-oss-20b`` — probed 2026-09-08 as the
+    # only nvidia_nim candidate that passed the thinker matrix (``moonshotai/kimi-k2.6`` 404s, not
+    # entitled), and the PM default since — HANGS: NIM accepts the request and never answers,
+    # HTTP 000 after 90-150 s on every probe from 2026-09-25 23:15 to 2026-09-26 01:44 IST (the
+    # first 7 over 2h20m, one of them a live PM step that never reached its gate), while NIM's
+    # other slugs answer 410 in 0.1 s. The agent path fails over to ``fallback_model`` only on a
+    # missing credential, not on a hang, so a PM on this slug stalls the whole run (8 retries x
+    # 120 s) instead of failing fast.
     #
     # WORKER: NONE, deliberately (2026-09-25). NIM has no usable worker model today:
     # * ``minimaxai/minimax-m3`` — the worker default since M-seat — is RETIRED: on 2026-09-25
@@ -245,20 +254,18 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
     #   DETERMINISTICALLY — runs 647f9c86 and 98427784, each on the Engineer's FIRST request with
     #   zero completed calls. Offering it as a worker quick-pick handed users a slug proven to
     #   break the Engineer, so it is no longer a worker preset either.
-    # So the worker seat YIELDS to the next held provider in ``_PROVIDER_DEFAULT_ORDER`` (for an
-    # account holding NIM + OpenAI: Engineer/Reviewer on OpenAI's worker default, the PM on NIM).
-    # A NIM-only account is told at launch to add a worker-capable key instead of meeting a dead
-    # model. Re-open this seat only for a slug that passes ``scripts/seat_probe.py`` AND a live
-    # loop.
+    # So both seats YIELD to the next held provider in ``_PROVIDER_DEFAULT_ORDER`` (for an account
+    # holding NIM + OpenAI: the PM on OpenAI's thinker default, Engineer/Reviewer on its worker
+    # default). A NIM-only account is told at launch to add another key instead of meeting a dead
+    # or hanging model. Re-open a seat only for a slug that passes ``scripts/seat_probe.py`` AND a
+    # live loop.
     "nvidia_nim": {
-        "thinker_default": "nvidia_nim/openai/gpt-oss-20b",
+        "thinker_default": None,
         "worker_default": None,
-        "thinker_presets": ["nvidia_nim/openai/gpt-oss-20b"],
+        "thinker_presets": [],
         "worker_presets": [],
         "label": "NVIDIA NIM",
-        "model_labels": {
-            "nvidia_nim/openai/gpt-oss-20b": "gpt-oss-20b",
-        },
+        "model_labels": {},
         "subscription": None,
         "byok_probed": True,
     },

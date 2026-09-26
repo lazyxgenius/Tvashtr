@@ -369,7 +369,9 @@ describe("TeamNodePanel — provider-gated model picker (Slice C)", () => {
     // Switching the provider rewrites node.model's leading segment to that provider's default FOR
     // THIS NODE'S SEAT (M-seat). The node under test is an engineer — a worker — so this is
     // openai's WORKER default (gpt-4.1-mini), not its thinker default (gpt-4o-mini). (It switches
-    // TO openai because nvidia_nim has no worker seat since 2026-09-25.)
+    // TO openai because nvidia_nim serves no seat — no worker since 2026-09-25, no thinker since
+    // 2026-09-26; the node starts on a NIM slug it was stamped with before, which is never
+    // rewritten.)
     await user.selectOptions(provider, "openai");
     const model = screen.getByRole<HTMLInputElement>("combobox", { name: "Model" });
     expect(model.value).toBe("openai/gpt-4.1-mini");

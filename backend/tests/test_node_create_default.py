@@ -2,9 +2,10 @@
 
 Discriminating (not smoke): the pure ``account_default_model`` returns the EXACT slug per
 provider-set (and the preference order is pinned), and the ``POST /api/teams/{id}/nodes`` endpoint
-applies it — a node dropped by an account holding only nvidia_nim gets the nvidia slug, an account
-holding NO providers gets the legacy hardcoded default, and an explicit ``model`` is preserved. A
-test that would pass with the logic inverted is not acceptable; each case asserts the exact value.
+applies it — a node dropped by an account holding nvidia_nim + openai gets the openai slug (NIM
+serves no seat since 2026-09-26), an account holding NO providers gets the legacy hardcoded default,
+and an explicit ``model`` is preserved. A test that would pass with the logic inverted is not
+acceptable; each case asserts the exact value.
 """
 
 import uuid
@@ -30,11 +31,12 @@ def test_account_default_model_picks_the_held_providers_slug():
     # M-seat: the walk now takes a SEAT. Exact slugs, not "something is set" — and openai is here
     # because it is the one held provider whose two seats resolve to DIFFERENT models, so a
     # capability-blind regression cannot hide behind a provider that answers both the same.
-    # nvidia_nim has NO worker seat since 2026-09-25 (a deliberate catalogue ruling, see the
-    # catalogue comment): minimax-m3 was retired (HTTP 410) and gpt-oss-20b breaks the real worker
-    # loop, so a NIM-only account has no worker default at all — the walk answers None.
+    # nvidia_nim serves NO seat (deliberate catalogue rulings, see the catalogue comment): no worker
+    # since 2026-09-25 (minimax-m3 retired, HTTP 410; gpt-oss-20b breaks the real worker loop) and
+    # no thinker since 2026-09-26 (gpt-oss-20b hangs, HTTP 000 on every probe). A NIM-only account
+    # has no default in either seat — the walk answers None for both.
     assert account_default_model({"nvidia_nim"}, "worker") is None
-    assert account_default_model({"nvidia_nim"}, "thinker") == "nvidia_nim/openai/gpt-oss-20b"
+    assert account_default_model({"nvidia_nim"}, "thinker") is None
     assert account_default_model({"groq"}, "worker") == "groq/openai/gpt-oss-120b"
     assert account_default_model({"openai"}, "worker") == "openai/gpt-4.1-mini"
     assert account_default_model({"openai"}, "thinker") == "openai/gpt-4o-mini"
@@ -74,17 +76,19 @@ def test_account_default_model_preference_order_is_deterministic():
     # M-thrift REORDERED the walk: nvidia_nim FIRST, openrouter LAST. openrouter's free tier is
     # credit-metered, so a low-balance key is refused outright (402) where NIM's request-metered
     # tier only throttles — and the tie-break's job is to maximise the chance a new account's first
-    # run succeeds. Was: openrouter won this pair. Since 2026-09-25 nvidia_nim declares no WORKER
-    # seat, so it wins every seat it serves (the thinker) and yields the worker to openrouter.
-    assert catalogue_default("nvidia_nim", "thinker") is not None
-    assert catalogue_default("nvidia_nim", "worker") is None
+    # run succeeds. Was: openrouter won this pair. Since 2026-09-26 nvidia_nim declares NO seat
+    # (worker 2026-09-25, thinker 2026-09-26), so it still leads the order but yields EVERY seat —
+    # the NIM + openrouter pair now lands wholly on openrouter.
     for capability in CAPABILITIES:
-        expected = catalogue_default("nvidia_nim", capability) or catalogue_default(
-            "openrouter", capability
-        )
-        assert account_default_model({"nvidia_nim", "openrouter"}, capability) == expected, (
-            capability
-        )
+        assert catalogue_default("nvidia_nim", capability) is None, capability
+        assert account_default_model({"nvidia_nim", "openrouter"}, capability) == (
+            catalogue_default("openrouter", capability)
+        ), capability
+        # openrouter stays LAST: a provider that serves the seat and sits between the two moved
+        # entries still beats it (it won this pair before M-thrift too, so this discriminates).
+        assert account_default_model({"openai", "openrouter"}, capability) == (
+            catalogue_default("openai", capability)
+        ), capability
     # The relative order of everything between the two moved entries is UNCHANGED.
     assert _PROVIDER_DEFAULT_ORDER == (
         "nvidia_nim",
@@ -136,16 +140,19 @@ def test_create_node_defaults_to_a_held_providers_model(monkeypatch):
     c.post("/api/providers", json={"provider": "openai", "api_key": "sk-dummy-key"})
     team_id = _blank_team(c)
     node = c.post(f"/api/teams/{team_id}/nodes", json={"node_kind": "worker"}).json()
-    # nvidia_nim leads the order but declares no worker seat (2026-09-25), so the WORKER default is
-    # the next held provider's, exactly — never the legacy default, never a NIM slug.
+    # nvidia_nim leads the order but declares no seat (worker 2026-09-25, thinker 2026-09-26), so
+    # the WORKER default is the next held provider's, exactly — never the legacy default, never a
+    # NIM slug.
     assert node["model"] == "openai/gpt-4.1-mini"
 
 
-def test_nim_plus_openai_account_stamps_workers_on_openai_and_the_pm_on_nim():
-    """The 2026-09-25 NIM worker-seat ruling, end to end through the API: an account holding
-    nvidia_nim + openai creates the PM -> Engineer <-> Reviewer template, and the THINKER (PM) keeps
-    NIM's thinker default while both WORKERS (Engineer, Reviewer) get OpenAI's worker default —
-    NIM yields the seat it cannot serve instead of stamping a dead or loop-breaking model."""
+def test_nim_plus_openai_account_stamps_every_seat_on_openai():
+    """The NIM seat rulings, end to end through the API: an account holding nvidia_nim + openai
+    creates the PM -> Engineer <-> Reviewer template. NIM leads the preference order but serves no
+    seat — no worker since 2026-09-25 (minimax-m3 retired; gpt-oss-20b breaks the loop), no thinker
+    since 2026-09-26 (gpt-oss-20b hangs) — so it yields BOTH: the THINKER (PM) gets OpenAI's thinker
+    default and both WORKERS (Engineer, Reviewer) get OpenAI's worker default. No node is stamped
+    with a dead, loop-breaking or hanging NIM slug."""
     c = _fresh_account()
     c.post("/api/providers", json={"provider": "nvidia_nim", "api_key": "nv-dummy-key"})
     c.post("/api/providers", json={"provider": "openai", "api_key": "sk-dummy-key"})
@@ -155,13 +162,16 @@ def test_nim_plus_openai_account_stamps_workers_on_openai_and_the_pm_on_nim():
     graph = c.get(f"/api/teams/{team_id}/graph").json()
     by_role = {n["role_name"]: n for n in graph["nodes"]}
 
-    nim_thinker = catalogue_default("nvidia_nim", "thinker")
+    assert catalogue_default("nvidia_nim", "thinker") is None
+    assert catalogue_default("nvidia_nim", "worker") is None
+    openai_thinker = catalogue_default("openai", "thinker")
     openai_worker = catalogue_default("openai", "worker")
-    assert nim_thinker == "nvidia_nim/openai/gpt-oss-20b"
+    assert openai_thinker == "openai/gpt-4o-mini"
     assert openai_worker == "openai/gpt-4.1-mini"
-    assert by_role["pm"]["model"] == nim_thinker
+    assert by_role["pm"]["model"] == openai_thinker
     assert by_role["engineer"]["model"] == openai_worker
     assert by_role["reviewer"]["model"] == openai_worker
+    assert not any(str(n["model"] or "").startswith("nvidia_nim/") for n in graph["nodes"])
 
 
 def test_create_node_falls_back_to_legacy_default_when_no_providers(monkeypatch):

@@ -158,13 +158,31 @@ def test_directory_entries_are_consistent_with_the_catalogues():
             "hint",
         }
         assert len(e["monogram"]) == 1
-        assert e["example_model"] and provider_for_model(e["example_model"]) == e["provider"]
-        assert e["embeddings"] is (e["provider"] in embedding_providers)
         source = PROVIDER_CATALOGUE.get(e["provider"])
+        embedding_slug = next(
+            (slug for slug, m in EMBEDDING_CATALOGUE.items() if m["provider"] == e["provider"]),
+            None,
+        )
+        declared = (
+            (source or {}).get("thinker_default")
+            or (source or {}).get("worker_default")
+            or embedding_slug
+        )
+        # The example is DERIVED, exactly: a provider that declares a model quotes one of its own;
+        # one that declares none quotes nothing rather than an undeclared slug. The only such
+        # provider today is nvidia_nim — kept in the directory (a held key still has its row) but
+        # serving no seat since 2026-09-26 (worker: minimax-m3 retired; thinker: gpt-oss-20b
+        # hangs) — and the Add-key hint then reads "Covers models that start with nvidia_nim/.".
+        assert e["example_model"] == declared, e["provider"]
+        if declared is not None:
+            assert provider_for_model(e["example_model"]) == e["provider"]
+        assert e["embeddings"] is (e["provider"] in embedding_providers)
         if source is not None:
             assert e["name"] == source["label"]
             assert e["subscription"] == source["subscription"]
             assert e["hint"] is None  # model providers use the generic "Covers models …" hint
+    no_example = {d["provider"] for d in public_provider_directory() if not d["example_model"]}
+    assert no_example == {"nvidia_nim"}
 
 
 # ------------------------------------------------------------------------ /api/config ----

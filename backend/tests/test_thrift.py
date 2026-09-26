@@ -329,46 +329,52 @@ def _all_builders():
     ]
 
 
-def test_a_two_provider_account_gets_nvidia_primary_and_openrouter_as_the_fallback():
-    """ITEMS 2 + 3 together, on every builder: the account holds the exhausted paid provider AND the
-    free one, so the free one must be what every model node RUNS on and the paid one must be what it
-    falls back TO. Before M-thrift openrouter won primary and there was no fallback key at all."""
+def test_a_two_provider_account_gets_the_first_serving_provider_primary_and_the_next_as_fallback():
+    """ITEMS 2 + 3 together, on every builder: the account holds two providers, so every model node
+    must RUN on the first held provider that serves its seat and fall back TO the next one — a real
+    vendor boundary. Before M-thrift openrouter won primary and there was no fallback key at all.
+
+    M-thrift proved this on NIM (free) + openrouter (paid). NIM serves NO seat since 2026-09-26
+    (worker: minimax-m3 retired, gpt-oss-20b breaks the loop; thinker: gpt-oss-20b hangs), so that
+    pair now pins the yield — every node lands on openrouter, with nowhere left to fail over to —
+    and the primary + fallback stamping itself is pinned on openai + openrouter, where both serve
+    both seats and openrouter is still LAST."""
     from tvashtr.control_plane.teams import capability_of, catalogue_default
 
-    held = {"openrouter", "nvidia_nim"}
     for builder in _all_builders():
-        nodes = _nodes_of(builder(held_providers=held))
+        # NIM + openrouter: NIM leads the order but yields every seat; it is never the primary and
+        # never the fallback (never the primary again either).
+        nodes = _nodes_of(builder(held_providers={"openrouter", "nvidia_nim"}))
         model_bearing = [n for n in nodes if n["model"] is not None]
         assert model_bearing, builder.__name__
         for node in model_bearing:
-            # M-seat: the ITEM 2 + 3 property is unchanged — the free provider must be what every
-            # model node RUNS on, the paid one what it falls back TO. What changed is that the slug
-            # is now per SEAT, so the expectation is read from the catalogue for THIS node's seat
-            # instead of being one hardcoded string for all of them. Still exact, still per node.
             capability = capability_of(node["kind"])
-            if catalogue_default("nvidia_nim", capability) is not None:
-                assert node["model"] == catalogue_default("nvidia_nim", capability), (
-                    builder.__name__,
-                    node["role"],
-                    capability,
-                )
-                assert node["config"].get("fallback_model") == catalogue_default(
-                    "openrouter", capability
-                ), (builder.__name__, node["role"], capability)
-                # and the providers themselves are the point: free primary, paid fallback.
-                assert node["model"].startswith("nvidia_nim/")
-                assert node["config"]["fallback_model"].startswith("openrouter/")
-            else:
-                # 2026-09-25: nvidia_nim declares NO worker seat (minimax-m3 retired, HTTP 410;
-                # gpt-oss-20b breaks the real worker loop), so a WORKER yields to openrouter — the
-                # only held provider that serves it — and, with nowhere left to fail over to, it
-                # carries no fallback key at all (never NIM, never the primary again).
-                assert node["model"] == catalogue_default("openrouter", capability), (
-                    builder.__name__,
-                    node["role"],
-                    capability,
-                )
-                assert "fallback_model" not in node["config"], (builder.__name__, node["role"])
+            assert catalogue_default("nvidia_nim", capability) is None, capability
+            assert node["model"] == catalogue_default("openrouter", capability), (
+                builder.__name__,
+                node["role"],
+                capability,
+            )
+            assert "fallback_model" not in node["config"], (builder.__name__, node["role"])
+
+        # openai + openrouter: per SEAT, the primary is openai's default for THIS node's seat and
+        # the fallback openrouter's — still exact, still per node, read from the catalogue.
+        nodes = _nodes_of(builder(held_providers={"openrouter", "openai"}))
+        model_bearing = [n for n in nodes if n["model"] is not None]
+        assert model_bearing, builder.__name__
+        for node in model_bearing:
+            capability = capability_of(node["kind"])
+            assert node["model"] == catalogue_default("openai", capability), (
+                builder.__name__,
+                node["role"],
+                capability,
+            )
+            assert node["config"].get("fallback_model") == catalogue_default(
+                "openrouter", capability
+            ), (builder.__name__, node["role"], capability)
+            # and the providers themselves are the point: a real vendor boundary.
+            assert node["model"].startswith("openai/")
+            assert node["config"]["fallback_model"].startswith("openrouter/")
         # A gate or terminal carries no model, so it must never acquire a fallback either.
         for node in nodes:
             if node["model"] is None:
