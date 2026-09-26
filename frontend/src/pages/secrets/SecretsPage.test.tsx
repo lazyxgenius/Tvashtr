@@ -461,7 +461,7 @@ describe("Secret ⋯ menu", () => {
       pick("GITHUB_TOKEN", "Delete secret");
 
       const d = await confirm("GITHUB_TOKEN");
-      expect(d).toHaveTextContent(
+      expect(d).toHaveAccessibleDescription(
         "github uses it. github stops connecting for Engineer, Reviewer and Writer until you add it again. You can’t undo this.",
       );
       expect(calls.some((c) => c.method === "GET" && c.path === "/api/tool-library/t-github")).toBe(

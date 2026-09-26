@@ -5,6 +5,7 @@
  * window and keeps this page; Desktop loads GitHub in this window and reloads the app afterwards,
  * so its copy doesn't promise a new window (TOOL-69).
  */
+import { useId } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "../../design-system/components";
@@ -31,6 +32,8 @@ export function InstallGithubAppDialog({
   onLeave: () => void;
 }) {
   const ref = useModalDialog<HTMLDivElement>(true, onClose);
+  // The body is the dialog's description: a screen reader reads it with the title.
+  const bodyId = useId();
   const open = () => {
     onLeave();
     openGithub(url);
@@ -45,11 +48,14 @@ export function InstallGithubAppDialog({
         role="alertdialog"
         aria-modal="true"
         aria-label={TITLE}
+        aria-describedby={bodyId}
         className="ds-dialog sc-dialog sc-dialog--confirm"
         tabIndex={-1}
       >
         <h2 className="ds-dialog__title">{TITLE}</h2>
-        <div className="ds-dialog__body">{isDesktopApp() ? DESKTOP_BODY : WEB_BODY}</div>
+        <div className="ds-dialog__body" id={bodyId}>
+          {isDesktopApp() ? DESKTOP_BODY : WEB_BODY}
+        </div>
         <div className="ds-dialog__actions">
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel

@@ -9,7 +9,7 @@
  * "Remove <name>?" — "Engineer, Reviewer and Writer lose it on their next run. You can add it again
  * later."
  */
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "../../design-system/components";
@@ -67,6 +67,8 @@ export function RemoveToolDialog({
     if (!busy) onClose();
   };
   const ref = useModalDialog<HTMLDivElement>(agents !== null, cancel);
+  // The impact sentence is the dialog's description: a screen reader reads it with the title.
+  const bodyId = useId();
   if (agents === null) return null;
 
   const title = known ? `Remove ${tool.name}?` : `Remove ${tool.name} from Toolkit?`;
@@ -90,11 +92,12 @@ export function RemoveToolDialog({
         role="alertdialog"
         aria-modal="true"
         aria-label={title}
+        aria-describedby={bodyId}
         className="ds-dialog sc-dialog sc-dialog--confirm"
         tabIndex={-1}
       >
         <h2 className="ds-dialog__title">{title}</h2>
-        <div className="ds-dialog__body">
+        <div className="ds-dialog__body" id={bodyId}>
           {known ? pageRemoveImpact(known) : removeImpact(tool.used_by, agents.rows)}
         </div>
         {error && (

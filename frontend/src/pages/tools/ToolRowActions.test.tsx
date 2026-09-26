@@ -274,7 +274,8 @@ describe("Tools · row ⋯ menu", () => {
     await choose("github", "Remove from Toolkit");
 
     const dialog = await screen.findByRole("alertdialog", { name: "Remove github from Toolkit?" });
-    expect(dialog).toHaveTextContent(
+    // A screen reader hears who loses it, not only the title and Cancel.
+    expect(dialog).toHaveAccessibleDescription(
       "3 agents in 2 teams use it: Engineer and Reviewer in Indicator sprint team, Writer in Docs team. They lose it on their next run.",
     );
     expect(within(dialog).getByRole("button", { name: "Remove tool" })).toHaveClass(

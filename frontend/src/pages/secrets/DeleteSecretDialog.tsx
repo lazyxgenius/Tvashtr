@@ -4,7 +4,7 @@
  * (`GET /api/tool-library/{id}` → `used_by_agents`), so it opens once those have loaded (or
  * failed: the sentence then leaves the agents out). Same geometry as the other secret dialogs.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "../../design-system/components";
@@ -59,6 +59,8 @@ export function DeleteSecretDialog({
     if (!busy) onClose();
   };
   const ref = useModalDialog<HTMLDivElement>(agents !== null, cancel);
+  // The impact sentence is the dialog's description: a screen reader reads it with the title.
+  const bodyId = useId();
   if (agents === null) return null;
 
   const title = `Delete ${name}?`;
@@ -82,11 +84,14 @@ export function DeleteSecretDialog({
         role="alertdialog"
         aria-modal="true"
         aria-label={title}
+        aria-describedby={bodyId}
         className="ds-dialog sc-dialog sc-dialog--confirm"
         tabIndex={-1}
       >
         <h2 className="ds-dialog__title">{title}</h2>
-        <div className="ds-dialog__body">{deleteImpact(usedBy, agents)}</div>
+        <div className="ds-dialog__body" id={bodyId}>
+          {deleteImpact(usedBy, agents)}
+        </div>
         {error && (
           <div className="sc-dialog__error" role="alert">
             {error}
