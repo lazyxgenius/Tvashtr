@@ -13,15 +13,20 @@ export function EnginesHead({
   title,
   lede,
   actions,
+  titleId,
 }: {
   title: string;
   lede: string;
   actions?: ReactNode;
+  /** An id for the h1, when a region is labelled by it. */
+  titleId?: string;
 }) {
   return (
     <div className="eng-head">
       <div>
-        <h1 className="eng-head__title">{title}</h1>
+        <h1 className="eng-head__title" id={titleId}>
+          {title}
+        </h1>
         <p className="eng-head__lede">{lede}</p>
       </div>
       <div className="eng-head__actions">{actions}</div>

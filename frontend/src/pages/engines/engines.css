@@ -280,6 +280,143 @@
   flex: 1;
 }
 
+/* ---- API keys (Eng-Keys, Eng-Flow-Key-*, EnF-KeyUsed-*) ---- */
+/* The page is one labelled region (the e2e hook); it keeps the shell's 20px column rhythm. */
+.eng-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+/* The suggested-keys warn banner (ENG-52). */
+.eng-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #fbf3e6;
+  border: 1px solid var(--amber-100);
+  font-size: 13px;
+  color: #6b4a1f;
+}
+.eng-banner__text {
+  flex: 1;
+}
+.eng-banner__text b {
+  font-weight: 600;
+}
+/* The key table's ⋯ menu and usage popover open below their row, past the card's edge. */
+.eng-card--keys {
+  overflow: visible;
+}
+/* The design's menu items inherit the page's 1.6 line-height (37px rows). */
+.eng-card--keys .ds-menu__item {
+  line-height: 1.6;
+}
+.eng-card--keys .ds-menu__item--danger,
+.eng-card--keys .ds-menu__item--danger .ds-menu__icon {
+  color: #8f3b2f;
+}
+.eng-key__last4 {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-600);
+}
+/* "Where the <p> key is used" (EnF-KeyUsed-2): 320px, 14px padding, 10px rhythm. */
+.ds-popover.eng-usage {
+  padding: 14px;
+  gap: 10px;
+}
+.eng-usage__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.eng-usage__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.eng-usage__title {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.eng-usage__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.eng-usage__body {
+  flex: 1;
+  min-width: 0;
+}
+.eng-usage__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.eng-usage__detail {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.eng-usage__open {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--coral-700);
+  text-decoration: none;
+}
+.eng-usage__open:hover {
+  text-decoration: underline;
+}
+.eng-usage__foot {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+/* Domains embeddings (ENG-59). */
+.eng-embed {
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.eng-embed__icon {
+  display: inline-flex;
+  color: var(--ink-600);
+}
+.eng-embed__body {
+  flex: 1;
+}
+.eng-embed__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.eng-embed__desc {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.eng-embed__items {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.eng-embed__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* OQ-21: a run in progress will fail at its next step. */
+.eng-dialog__inflight {
+  margin: 8px 0 0;
+  color: #7a5423;
+}
+
 /* ---- The subscription disclosure ---- */
 .eng-disclosure {
   display: flex;
