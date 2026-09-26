@@ -60,7 +60,8 @@ test("memory page: add / pin / edit / review-toggle / keep-pending / delete", as
   await shellNav(page)
     .getByRole("button", { name: /^Memory/ })
     .click();
-  // The Memory nav always opens the Inbox.
+  // MEM-4: the Memory nav opens the Inbox when something waits there (the seeded pending fact
+  // does), otherwise Active.
   await expect(page).toHaveURL(/#\/toolkit\/memory\/inbox/);
   await expect(page.getByRole("heading", { name: "Memory", level: 1 })).toBeVisible({
     timeout: 30_000,

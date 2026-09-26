@@ -7,8 +7,8 @@ import { registerFresh, shellNav } from "./_home";
 
 // M-tools C7.C frontend self-sign-off. Drives the REAL app (register -> Toolkit › Tools + Skills ->
 // Home's New team -> a WORKER node drawer) and screenshots:
-//   (a) the account Tool + Skill LIBRARY shelves (Toolkit › Tools / Skills), each holding a defined
-//       item;
+//   (a) the account Tool LIBRARY shelf (Toolkit › Tools) and Toolkit › Skills (a skill written in
+//       the New skill editor), each holding a defined item;
 //   (b) the Tools section "Add from library" pick -> a Library-badged reference row;
 //   (c) the same in the Skills section;
 //   (d) the "overridden" tag when an inline server shares a name with a library reference.
