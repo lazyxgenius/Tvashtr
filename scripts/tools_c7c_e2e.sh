@@ -2,9 +2,9 @@
 #
 # M-tools C7.C frontend self-sign-off harness (NO NIM / NO agent run). Starts Postgres + migrates +
 # a LOCAL-sandbox backend + the Vite dev server, then runs the headless Playwright spec that drives
-# the real app and screenshots: (a) the account Tool + Skill library shelves, (b) the Tools section
-# "Add from library" -> a Library-badged row, (c) the same in the Skills section, (d) the "overridden"
-# tag when an inline server shares a name with a library ref. Orchestration mirrors scripts/auth_e2e.sh.
+# the real app and screenshots: (a) the account Tool + Skill library shelves, (b) the drawer's Add tool
+# › From your library -> a Library-badged row, (c) the same in the Skills section, (d) the Add a server
+# form refusing the library tool's name. Orchestration mirrors scripts/auth_e2e.sh.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

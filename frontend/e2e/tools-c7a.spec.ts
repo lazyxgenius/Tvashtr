@@ -6,9 +6,10 @@ import { expect, test } from "@playwright/test";
 import { registerFresh, shellNav } from "./_home";
 
 // M-tools C7.A frontend self-sign-off. Drives the REAL app (register -> Toolkit › Secrets -> Home's
-// New team -> open a WORKER node) and screenshots: (a) the real Tools (MCP) editor, (b) the pre-launch
-// "Needs ${GITHUB_TOKEN}" note, (c) the run-inspector warning banner (the exact .tv-runwarn DOM
-// RunWarnings renders, styled by the live panel.css), and (d) the account MCP Secrets shelf.
+// New team -> open a WORKER node) and screenshots: (a) the drawer's Add a server form, (b) the Paste
+// mcp.json "github uses ${GITHUB_TOKEN}, which isn’t set yet" warning, (c) the run-inspector warning
+// banner (the exact .tv-runwarn DOM RunWarnings renders, styled by the live panel.css), and (d) the
+// account MCP Secrets shelf.
 // Targeted selectors only (no whole-tree a11y snapshot — that wedges on the React Flow canvas).
 // Revamp round 1: the account registers through the API (the sign-up wizard is not under test and
 // hides its email form in the hosted posture), and the Secrets shelf lives on Toolkit › Secrets. No
@@ -56,28 +57,37 @@ test("M-tools C7.A: real Tools editor + pre-launch ${NAME} note + run banner + S
   await picker.getByRole("button", { name: "Create team" }).click();
   await createResp;
 
-  // Open the Engineer (a worker) node -> the panel with the real Tools section.
+  // Open the Engineer (a worker) node -> its drawer's Skills & tools tab.
   const eng = page.locator(".react-flow__node", { hasText: "Engineer" }).first();
   await expect(eng).toBeVisible({ timeout: 30_000 });
   await eng.click();
+  const drawer = page.getByRole("complementary", { name: "Engineer settings" });
+  await expect(drawer).toBeVisible({ timeout: 30_000 });
+  await drawer.getByRole("tab", { name: /^Skills & tools/ }).click();
 
-  // (a) The real Tools section — the paste textarea + the guided Add-server form.
-  const toolsJson = page.getByLabel("Tools JSON");
-  await expect(toolsJson).toBeVisible({ timeout: 30_000 });
-  await toolsJson.scrollIntoViewIfNeeded();
-  await expect(page.getByLabel("New server name")).toBeVisible();
+  // (a) The Add a tool sheet — the guided Add a server form (name, Local/Remote, URL, headers).
+  await drawer
+    .getByRole("region", { name: /^Tools/ })
+    .getByRole("button", { name: "Add tool" })
+    .click();
+  await page.getByRole("menuitem", { name: /^Add a server/ }).click();
+  const sheet = drawer.getByRole("region", { name: "Add a tool" });
+  await expect(sheet.getByLabel("Server name")).toBeVisible({ timeout: 30_000 });
+  await expect(sheet.getByRole("group", { name: "Headers" })).toBeVisible();
   await page.screenshot({ path: path.join(SHOTS, "a-tools-section.png") });
-  console.log("[tools-c7a-e2e] (a) captured the real Tools section");
+  console.log("[tools-c7a-e2e] (a) captured the Add a server form");
 
-  // (b) A config with an unstored ${NAME} -> the pre-launch note + a per-server row.
-  await toolsJson.fill(
-    '{"mcpServers":{"github":{"command":"uvx","args":["mcp-server-github"],"env":{"GITHUB_TOKEN":"${GITHUB_TOKEN}"}}}}',
-  );
-  const note = page.getByText(/Needs .*GITHUB_TOKEN/);
+  // (b) Paste mcp.json with an unstored ${NAME} -> the missing-secret warning under the server found.
+  await sheet.getByRole("tab", { name: "Paste mcp.json" }).click();
+  await sheet
+    .getByRole("textbox", { name: "mcp.json" })
+    .fill(
+      '{"mcpServers":{"github":{"command":"uvx","args":["mcp-server-github"],"env":{"GITHUB_TOKEN":"${GITHUB_TOKEN}"}}}}',
+    );
+  const note = sheet.getByText(/^github uses \$\{GITHUB_TOKEN\}, which isn’t set yet/);
   await expect(note).toBeVisible({ timeout: 30_000 });
-  await note.scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(SHOTS, "b-needs-secret-note.png") });
-  console.log("[tools-c7a-e2e] (b) captured the pre-launch needs-GITHUB_TOKEN note");
+  console.log("[tools-c7a-e2e] (b) captured the paste's needs-GITHUB_TOKEN warning");
 
   // (c) The run-inspector warning banner — the exact .tv-runwarn DOM RunWarnings renders, mounted in
   //     the live page so the live panel.css styles it (the run view renders this off resolution_warnings).
