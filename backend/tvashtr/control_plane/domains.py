@@ -12,6 +12,7 @@ from tvashtr.control_plane.domain_embedding import (
     expected_dim,
     is_allowed_embedding_model,
     normalize_embedding_model,
+    same_embedding_weights,
 )
 from tvashtr.db import session_scope
 from tvashtr.models import Domain, DomainChunk, DomainDocument
@@ -445,27 +446,80 @@ def get_domain(owner_id: uuid.UUID, domain_id: uuid.UUID) -> dict | None:
         return None if row is None else domain_to_dict(row, doc_count=_doc_count(session, row.id))
 
 
-def _clear_ready_embeddings_for_dim_change(session, domain: Domain) -> None:
-    """Clear chunk embeddings and force re-ingest when embedding dim changes.
+# Why a waiting file waits, kept on the file while it waits and is read (a file's
+# ``error_message`` only shows as a problem when reading fails). The model marks start with
+# "embedding model"; the first is the pre-revamp wording, kept.
+READ_DIM_CHANGED = "embedding model dimension changed — re-ingest required"
+READ_MODEL_CHANGED = "embedding model changed — re-read required"
+# A re-read asked to run the tests when it's done (DM-90): the workflow reading the file runs them.
+READ_TESTS_AFTER = "re-read: run tests after"
 
-    Same-dim model switches leave ready embeddings intact (compatible vectors).
-    """
+
+def is_model_mark(message: str | None) -> bool:
+    return (message or "").startswith("embedding model")
+
+
+def keeps_mark(message: str | None) -> bool:
+    """Whether a waiting file's message is a re-read mark to keep while the file is read."""
+    return is_model_mark(message) or message == READ_TESTS_AFTER
+
+
+def reread_version(session, domain_id: uuid.UUID) -> int:
+    """The version a re-read gives its files. Every file of one re-read shares it, so the files
+    at the domain's highest version are the latest re-read (``rereading`` in the detail). A re-read
+    asked for while one is still running joins it."""
+    rows = session.execute(
+        select(DomainDocument.version, DomainDocument.ingest_status).where(
+            DomainDocument.domain_id == domain_id
+        )
+    ).all()
+    top = max((v for v, _ in rows), default=1)
+    running = top > 1 and any(
+        v == top and st in (INGEST_PENDING, INGEST_INDEXING) for v, st in rows
+    )
+    return top if running else top + 1
+
+
+def model_rereading(domain_id: uuid.UUID) -> bool:
+    """Whether the domain is re-reading every file for a new reading model — the old vectors are
+    gone, so asking pauses until it's done (DM-88)."""
+    with session_scope() as session:
+        return (
+            session.execute(
+                select(DomainDocument.id)
+                .where(
+                    DomainDocument.domain_id == domain_id,
+                    DomainDocument.ingest_status.in_((INGEST_PENDING, INGEST_INDEXING)),
+                    DomainDocument.error_message.startswith("embedding model"),
+                )
+                .limit(1)
+            ).first()
+            is not None
+        )
+
+
+def _reread_for_model_change(session, domain: Domain, message: str) -> None:
+    """A new reading model's vectors can't be compared with the old ones: clear them and put
+    every file back to waiting as one re-read (the caller starts reading)."""
     session.execute(
         update(DomainChunk).where(DomainChunk.domain_id == domain.id).values(embedding=None)
     )
+    version = reread_version(session, domain.id)
     docs = (
         session.execute(select(DomainDocument).where(DomainDocument.domain_id == domain.id))
         .scalars()
         .all()
     )
     for doc in docs:
-        if doc.ingest_status == INGEST_READY:
-            doc.ingest_status = INGEST_PENDING
-            doc.error_message = "embedding model dimension changed — re-ingest required"
-        elif doc.ingest_status == INGEST_INDEXING:
-            doc.ingest_status = INGEST_PENDING
-            doc.error_message = "embedding model dimension changed — re-ingest required"
+        doc.ingest_status = INGEST_PENDING
+        doc.version = version
+        doc.error_message = message
     _apply_domain_aggregates(session, domain)
+
+
+def _pieces_of(config: dict | None) -> tuple[object, object]:
+    chunking = (config or {}).get("chunking") or {}
+    return chunking.get("size"), chunking.get("overlap")
 
 
 def update_domain(
@@ -479,7 +533,13 @@ def update_domain(
 ) -> dict | None:
     """Rename and/or replace the settings. ``name_rule`` applies the account's name rule to a new
     name (``clean_domain_name``, the domain itself excluded) — the HTTP PATCH sets it (DM-14).
-    ``template`` is the Settings tab's starting point (DM-81); the route checks it's a known one."""
+    ``template`` is the Settings tab's starting point (DM-81); the route checks it's a known one.
+
+    The answer adds ``reread``: ``required`` (reason ``reading_model``) when the new reading model
+    has other weights — every file was put back to waiting and the caller starts reading (OQ-17);
+    ``optional`` (reason ``pieces``) when the piece size or overlap changed — existing files keep
+    their pieces until re-read (DM-90); else ``none``. A domain with no files needs none."""
+    reread: dict = {"needed": "none", "reason": None}
     with session_scope() as session:
         row = session.execute(
             select(Domain).where(Domain.id == domain_id, Domain.owner_id == owner_id)
@@ -503,18 +563,24 @@ def update_domain(
             new_model = normalize_embedding_model(
                 str((config.get("embedding") or {}).get("model") or "")
             )
-            dim_changed = False
-            try:
-                dim_changed = expected_dim(old_model) != expected_dim(new_model)
-            except ValueError:
-                # Old model unknown (pre-catalogue) — treat as change if new differs.
-                dim_changed = old_model != new_model
+            pieces_changed = _pieces_of(row.config) != _pieces_of(config)
+            has_files = _doc_count(session, row.id) > 0
             # Fresh dict so JSONB dirty-tracking works (same pattern as gate config patches).
             row.config = dict(config)
-            if dim_changed:
-                _clear_ready_embeddings_for_dim_change(session, row)
+            if not same_embedding_weights(old_model, new_model):
+                try:
+                    dim_changed = expected_dim(old_model) != expected_dim(new_model)
+                except ValueError:
+                    dim_changed = True  # an old model from before the catalogue
+                _reread_for_model_change(
+                    session, row, READ_DIM_CHANGED if dim_changed else READ_MODEL_CHANGED
+                )
+                if has_files:
+                    reread = {"needed": "required", "reason": "reading_model"}
+            elif pieces_changed and has_files:
+                reread = {"needed": "optional", "reason": "pieces"}
         session.flush()
-        return domain_to_dict(row, doc_count=_doc_count(session, row.id))
+        return {**domain_to_dict(row, doc_count=_doc_count(session, row.id)), "reread": reread}
 
 
 def list_documents(owner_id: uuid.UUID, domain_id: uuid.UUID) -> list[dict] | None:

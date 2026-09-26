@@ -386,3 +386,31 @@ def test_reread_owner_scoped_and_unknown_files(started):
     assert r.status_code == 400
     r = c.post(f"/api/domains/{uuid.uuid4()}/reread", json={})
     assert r.status_code == 404
+
+
+def test_tests_after_a_reread_run_even_when_a_read_was_already_running(
+    client, started, fake_embed, monkeypatch
+):
+    """A re-read that asks for the tests while another file is being read joins that read (DM-90):
+    the running workflow reads the file and runs the tests when it's done."""
+    c, owner = _fresh()
+    _key(owner)
+    did = _domain(c)
+    a = _upload(c, did, "refund-policy.md", b"# Refunds\nWithin 30 days.")
+    b = _upload(c, did, "billing-faq.md", b"# Billing\nInvoices monthly.")
+    assert (a["reading"], b["reading"]) == ("started", "queued")
+    r = c.post(
+        f"/api/domains/{did}/reread",
+        json={"document_ids": [b["document_id"]], "run_tests_after": True},
+    )
+    assert r.json()["state"] == "queued"
+    assert c.get(f"/api/domains/{did}").json()["rereading"]["run_tests_after"] is True
+    ran: list[str] = []
+    monkeypatch.setattr(
+        domain_read, "run_tests_after_read_step", lambda o, d: ran.append(d) or {"ok": True}
+    )
+    out = domain_read.read_domain_files(str(owner), did, a["document_id"], False)
+    assert [d["ok"] for d in out["documents"]] == [True, True]
+    assert ran == [did] and out["tests"] == {"ok": True}
+    assert _status(b["document_id"]) == ("ready", 2)
+    assert c.get(f"/api/domains/{did}").json()["rereading"] is None

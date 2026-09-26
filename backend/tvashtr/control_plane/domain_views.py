@@ -30,9 +30,16 @@ from tvashtr.control_plane.domain_answers import cited_sources
 from tvashtr.control_plane.domain_embedding import (
     EMBEDDING_CATALOGUE,
     normalize_embedding_model,
+    read_seconds,
 )
 from tvashtr.control_plane.domain_usage import usage_counts
-from tvashtr.control_plane.domains import _owned_domain, document_to_dict, domain_to_dict
+from tvashtr.control_plane.domains import (
+    READ_TESTS_AFTER,
+    _owned_domain,
+    document_to_dict,
+    domain_to_dict,
+    is_model_mark,
+)
 from tvashtr.db import session_scope
 from tvashtr.models import (
     Domain,
@@ -285,9 +292,43 @@ def first_read_done(docs: list[DomainDocument]) -> bool:
     return any(d.ingest_status in ("ready", "error") and d.updated_at < oldest_busy for d in docs)
 
 
+def rereading_summary(
+    docs: list[DomainDocument], pieces: dict[uuid.UUID, tuple[int, int]], config: dict | None
+) -> dict | None:
+    """The re-read still running, or ``None`` (DM-39, DmF-Embed-4, DmF-Piece-3): its files are the
+    ones at the domain's highest version (``reread_version``). ``done`` = files of it read since,
+    ``eta_seconds`` = the pieces left at the reading model's pace, ``reason`` = ``reading_model``
+    when a new reading model is being read (asking pauses) else ``files``, and ``run_tests_after``
+    whether the tests run when it's done."""
+    top = max((d.version for d in docs), default=1)
+    batch = [d for d in docs if d.version == top]
+    left = [d for d in batch if d.ingest_status in ("pending", "indexing")]
+    if top <= 1 or not left:
+        return None
+    size = int(((config or {}).get("chunking") or {}).get("size") or 800)
+    remaining = 0
+    for d in left:
+        total, done = pieces.get(d.id, (0, 0))
+        if d.ingest_status == "indexing" and done < total:
+            remaining += total - done
+        else:  # not read yet: about as many pieces as last time (or its size in pieces)
+            remaining += total or max(1, d.byte_size // size)
+    model = normalize_embedding_model(
+        str(((config or {}).get("embedding") or {}).get("model") or "")
+    )
+    return {
+        "total": len(batch),
+        "done": len(batch) - len(left),
+        "eta_seconds": read_seconds(remaining, model),
+        "reason": "reading_model" if any(is_model_mark(d.error_message) for d in left) else "files",
+        "run_tests_after": any(d.error_message == READ_TESTS_AFTER for d in left),
+    }
+
+
 def detail_summary(owner_id: uuid.UUID, domain_id: uuid.UUID) -> dict | None:
     """``GET /api/domains/{id}``: the list item's keys for one owned domain (``None`` → 404), plus
-    ``setup`` (the four setup-strip steps), ``answer_model`` and ``last_question_at``."""
+    ``setup`` (the four setup-strip steps), ``answer_model``, ``last_question_at`` and
+    ``rereading`` (:func:`rereading_summary`)."""
     with session_scope() as session:
         row = session.execute(
             select(Domain).where(Domain.id == domain_id, Domain.owner_id == owner_id)
@@ -317,6 +358,7 @@ def detail_summary(owner_id: uuid.UUID, domain_id: uuid.UUID) -> dict | None:
         }
         base["answer_model"] = answer_model_summary(owner_id, row.config, held)
         base["last_question_at"] = _iso(last_question)
+        base["rereading"] = rereading_summary(docs, _piece_counts(session, row.id), row.config)
         return base
 
 

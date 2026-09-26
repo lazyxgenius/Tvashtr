@@ -27,7 +27,7 @@ from tvashtr.control_plane.domain_retrieve import (
     retrieve_for_query,
 )
 from tvashtr.control_plane.domain_views import answer_model_label
-from tvashtr.control_plane.domains import _owned_domain
+from tvashtr.control_plane.domains import _owned_domain, model_rereading
 from tvashtr.control_plane.teams import account_default_model
 from tvashtr.db import session_scope
 from tvashtr.gateway import (
@@ -281,6 +281,13 @@ class DomainAskError(Exception):
         super().__init__(str(detail))
 
 
+def _check_not_paused(domain_id: uuid.UUID, domain) -> None:
+    """Asking and team lookups pause while a new reading model re-reads the files (DM-88): the
+    old vectors are gone and half the files aren't searchable yet."""
+    if model_rereading(domain_id):
+        raise DomainAskError("paused", f"Ask is paused while {domain.name} re-reads its files.")
+
+
 def ask_domain(
     owner_id: uuid.UUID,
     domain_id: uuid.UUID,
@@ -304,6 +311,7 @@ def ask_domain(
         domain = _owned_domain(session, owner_id, domain_id)
         if domain is None:
             raise DomainAskError("not_found", "domain not found")
+        _check_not_paused(domain_id, domain)
         cfg = dict(domain.config or {})
         ready_n = count_ready_chunks(session, domain_id)
         if ready_n < 1:
@@ -483,6 +491,7 @@ def retrieve_domain(
         domain = _owned_domain(session, owner_id, domain_id)
         if domain is None:
             raise DomainAskError("not_found", "domain not found")
+        _check_not_paused(domain_id, domain)
         cfg = dict(domain.config or {})
         ready_n = count_ready_chunks(session, domain_id)
         if ready_n < 1:

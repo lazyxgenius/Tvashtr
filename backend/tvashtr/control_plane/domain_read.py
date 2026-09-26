@@ -39,8 +39,11 @@ from tvashtr.control_plane.domains import (
     INGEST_INDEXING,
     INGEST_PENDING,
     INGEST_READY,
+    READ_TESTS_AFTER,
     _apply_domain_aggregates,
     _owned_domain,
+    keeps_mark,
+    reread_version,
 )
 from tvashtr.db import session_scope
 from tvashtr.gateway import EmbeddingRequest, embed
@@ -120,7 +123,8 @@ def _claim_next(session, domain: Domain) -> uuid.UUID | None:
     if doc is None:
         return None
     doc.ingest_status = INGEST_INDEXING
-    doc.error_message = None
+    if not keeps_mark(doc.error_message):
+        doc.error_message = None
     doc.updated_at = _now()
     return doc.id
 
@@ -211,6 +215,8 @@ def start_reread(
 ) -> dict | None:
     """Read files again (DM-50, DM-89): each named file — or every file — goes back to waiting
     with its ``version`` bumped (``version > 1`` is what "Re-reading" means), then reading starts.
+    The files share one version (``reread_version``: a re-read asked for during another joins it),
+    and ``run_tests_after`` is kept on them, so a read that is already running runs the tests too.
 
     ``None`` when the domain isn't the owner's. ``LookupError`` when a named file isn't in the
     domain. ``RereadConflict`` when every file was asked for while a full re-read is running.
@@ -237,14 +243,15 @@ def start_reread(
                 raise LookupError("document not found")
             targets = [by_id[i] for i in dict.fromkeys(document_ids)]
         live = _now() - STALE_AFTER
+        version = reread_version(session, domain_id)
         for doc in targets:
             # A file being read right now is left to that read: re-queueing it would start a
             # second reader beside the running one (a domain reads one file at a time).
             if doc.ingest_status == INGEST_INDEXING and doc.updated_at >= live:
                 continue
-            doc.version = (doc.version or 1) + 1
+            doc.version = version
             doc.ingest_status = INGEST_PENDING
-            doc.error_message = None
+            doc.error_message = READ_TESTS_AFTER if run_tests_after else None
         _apply_domain_aggregates(session, domain)
         count = len(targets)
     state = "idle"
@@ -268,7 +275,8 @@ def _doc(session, domain_id: uuid.UUID, document_id: uuid.UUID) -> DomainDocumen
 def prepare_document_step(owner_id: str, domain_id: str, document_id: str) -> dict:
     """Extract and cut one file into pieces, stored with no embedding yet (the progress base).
 
-    Returns ``{"pieces": n, "error": None}`` or ``{"pieces": 0, "error": "<raw reason>"}``.
+    Returns ``{"pieces": n, "error": None}`` or ``{"pieces": 0, "error": "<raw reason>"}``, plus
+    ``tests_after`` when a re-read asked to run the tests once reading is done.
     """
     oid, did, doc_id = uuid.UUID(owner_id), uuid.UUID(domain_id), uuid.UUID(document_id)
     try:
@@ -281,10 +289,11 @@ def prepare_document_step(owner_id: str, domain_id: str, document_id: str) -> di
             size = int(chunking.get("size") or 800)
             overlap = int(chunking.get("overlap") or 100)
             filename, rel = doc.filename, doc.storage_path
+            tests_after = doc.error_message == READ_TESTS_AFTER
         body, starts = extract_pages(absolute_path(rel), extension_of(filename))
         spans = chunk_spans(body, size=size, overlap=overlap)
         if not spans:
-            return {"pieces": 0, "error": "no extractable text"}
+            return {"pieces": 0, "error": "no extractable text", "tests_after": tests_after}
         with session_scope() as session:
             doc = _doc(session, did, doc_id)
             if doc is None:
@@ -306,7 +315,7 @@ def prepare_document_step(owner_id: str, domain_id: str, document_id: str) -> di
                     )
                 )
             doc.updated_at = _now()
-        return {"pieces": len(spans), "error": None}
+        return {"pieces": len(spans), "error": None, "tests_after": tests_after}
     except Exception as exc:
         return {"pieces": 0, "error": str(exc)[:2000] or exc.__class__.__name__}
 
@@ -413,6 +422,7 @@ def read_domain_files(
     current: str | None = document_id
     while current is not None:
         prepared = prepare_document_step(owner_id, domain_id, current)
+        run_tests_after = run_tests_after or bool(prepared.get("tests_after"))
         error = prepared.get("error")
         total = int(prepared.get("pieces") or 0)
         start = 0

@@ -9,7 +9,8 @@ fail-closes when ``len(vec) != expected_dim(model)``.
 OpenRouter free catalogue embeds (384/768/1024) are excluded unless explicitly
 listed. Gemini ``gemini-embedding-001`` (768 via ``output_dimensionality``) and
 Hugging Face free Inference ``BAAI/bge-small-en-v1.5`` (384, rate-limited
-feature-extraction via hf-inference) are the non-1536 presets. Groq hosted nomic embed is unavailable (docs/API list none; removed).
+feature-extraction via hf-inference) are the non-1536 presets. Groq hosted nomic embed is
+unavailable (docs/API list none; removed).
 """
 
 from __future__ import annotations
@@ -124,6 +125,40 @@ def normalize_embedding_model(model: str) -> str:
 def is_allowed_embedding_model(model: str) -> bool:
     """True if ``model`` normalizes to a catalogue slug."""
     return normalize_embedding_model(model) in ALLOWED_EMBEDDING_MODELS
+
+
+def same_embedding_weights(a: str, b: str) -> bool:
+    """Whether two slugs name the same model weights (OQ-17): only the route may differ —
+    ``openrouter/openai/x`` ≡ ``openai/x`` ≡ bare ``x``. Vectors from the same weights compare, so
+    switching between routes keeps them; any other change must re-read every file (finding 1)."""
+
+    def weights(model: str) -> str:
+        slug = normalize_embedding_model(model)
+        if slug.lower().startswith("openrouter/"):
+            slug = normalize_embedding_model(slug[len("openrouter/") :])
+        return slug.lower()
+
+    return weights(a) == weights(b)
+
+
+# How many pieces a reading model reads per second, for the "about 2 minutes" estimates
+# (DM-88/89/90). ponytail: fixed per-provider guesses (16-piece batches, one file at a time) —
+# a calibration knob, not a measurement; tune from real reads if the estimates drift.
+READ_PIECES_PER_SECOND: dict[str, float] = {
+    "openai": 10.0,
+    "openrouter": 10.0,
+    "gemini": 10.0,
+    "huggingface": 2.0,
+}
+
+
+def read_seconds(pieces: int, model: str) -> int:
+    """Seconds ``model`` needs to read ``pieces`` pieces (at least 1 when there is anything)."""
+    if pieces <= 0:
+        return 0
+    entry = EMBEDDING_CATALOGUE.get(normalize_embedding_model(model))
+    provider = str(entry["provider"]) if entry else normalize_embedding_model(model).split("/")[0]
+    return max(1, round(pieces / READ_PIECES_PER_SECOND.get(provider, 10.0)))
 
 
 def expected_dim(model: str) -> int:

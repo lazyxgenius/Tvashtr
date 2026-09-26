@@ -2735,6 +2735,12 @@ def patch_domain(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if row is None:
         raise HTTPException(status_code=404, detail="domain not found")
+    if row["reread"]["needed"] == "required":
+        # A new reading model: every file went back to waiting; read them now (DM-89).
+        try:
+            domain_read.ensure_reading(uuid.UUID(current_user.id), uuid.UUID(row["domain_id"]))
+        except Exception as exc:  # the files wait; the next upload, re-read or key save starts them
+            logger.warning("domain %s did not start re-reading: %s", row["domain_id"], exc)
     return row
 
 
@@ -2899,6 +2905,8 @@ def post_domain_ask(
             raise HTTPException(status_code=404, detail="domain not found") from e
         if e.code == "gateway":
             raise HTTPException(status_code=502, detail=e.detail) from e
+        if e.code == "paused":
+            raise HTTPException(status_code=409, detail=e.detail) from e
         raise HTTPException(status_code=422, detail=e.detail) from e
 
 
@@ -2920,6 +2928,8 @@ def post_domain_retrieve(
             raise HTTPException(status_code=404, detail="domain not found") from e
         if e.code == "gateway":
             raise HTTPException(status_code=502, detail=e.detail) from e
+        if e.code == "paused":
+            raise HTTPException(status_code=409, detail=e.detail) from e
         raise HTTPException(status_code=422, detail=e.detail) from e
     return {
         "domain_id": str(did),
