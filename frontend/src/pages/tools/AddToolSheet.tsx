@@ -103,10 +103,12 @@ function StartOption({
 }) {
   return (
     <label className={cx("tk-start", checked && "tk-start--on")}>
+      {/* No `value` attribute: the design's radios have none (the parity measure keys them by
+          it); the choice rides on data-start. */}
       <input
         type="radio"
         name="tk-start"
-        value={value}
+        data-start={value}
         checked={checked}
         onChange={() => onChange(value)}
       />
@@ -189,7 +191,7 @@ export function AddToolSheet({
     if (e.key.startsWith("Arrow")) arrowed.current = true;
     else if ((e.key === " " || e.key === "Enter") && target.type === "radio") {
       e.preventDefault();
-      take(target.value as Start);
+      take(target.dataset.start as Start);
     }
   };
 
