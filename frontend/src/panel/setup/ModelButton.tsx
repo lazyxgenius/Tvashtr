@@ -17,6 +17,8 @@ export function ModelButton({
   catalogued = true,
   buttonRef,
   controls,
+  id,
+  labelledBy,
 }: {
   model: string;
   emptyLabel: string;
@@ -25,16 +27,21 @@ export function ModelButton({
   /** The slug is one the catalogue lists (tile + short id); otherwise the full slug. */
   catalogued?: boolean;
   buttonRef?: Ref<HTMLButtonElement>;
-  /** The listbox this button opens (while it's open). */
+  /** The picker this button opens (while it's open). */
   controls?: string;
+  id?: string;
+  /** Ids naming the button (its row label, then itself). */
+  labelledBy?: string;
 }) {
   const slug = model.trim();
   return (
     <button
       ref={buttonRef}
+      id={id}
       type="button"
       className="nd-model"
-      aria-haspopup="listbox"
+      aria-labelledby={labelledBy}
+      aria-haspopup="dialog"
       aria-expanded={expanded ?? false}
       aria-controls={controls}
       onClick={onOpen}

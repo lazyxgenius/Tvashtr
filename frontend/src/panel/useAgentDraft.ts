@@ -83,7 +83,7 @@ export function useAgentDraft(
 
   const { baseline, draft } = current;
   const changed = useMemo(() => changedGroups(baseline, draft), [baseline, draft]);
-  const problem = draftProblem(draft);
+  const problem = draftProblem(baseline, draft);
 
   const mounted = useRef(true);
   useEffect(() => {

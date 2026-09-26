@@ -22,7 +22,7 @@ type Open = "access" | "reads" | "writes" | null;
 /**
  * Access & documents (PANEL-49..56): File access, the documents it reads (in order) and the one it
  * writes. The entry agent stays read-only, starts from the idea and writes the shared spec (Q5).
- * An agent that routes on a verdict asks before it gets write tools (Q6) and can't write a
+ * An agent that routes on a verdict asks before it may edit files (Q6) and can't write a
  * document: its verdict goes to Runs (Q3).
  */
 export function AccessSection({

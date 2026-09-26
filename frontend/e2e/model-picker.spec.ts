@@ -15,8 +15,8 @@ import { openMyTeam } from "./_myTeam";
 // Revamp round 1: the account registers through the API (the email sign-up form is hidden in the
 // hosted posture .env sets), the team is created (new accounts start with none), and the saved keys
 // are read back on Engines › API keys (the old dashboard's providers section).
-// Revamp round 2 (F5 G4): the drawer's model picker is a listbox grouped by provider for the node's
-// seat, with an inline key field for a provider with no key yet; the recommendation hint is the
+// Revamp round 2 (F5 G4): the drawer's model picker groups models by provider (a listbox each) for the
+// node's seat, with an inline key field for a provider with no key yet; the recommendation hint is the
 // same-model advisory under the Model row.
 
 const SHOTS_DIR = process.env.TVASHTR_MODEL_PICKER_SHOTS_DIR ?? "/tmp/tvashtr_model_picker_shots";
@@ -55,11 +55,11 @@ test("model picker: seat-grouped picker + inline key add + the same-model adviso
   const panel = page.getByRole("complementary", { name: "Engineer settings" });
   await expect(panel).toBeVisible({ timeout: 30_000 });
   const modelSection = panel.getByRole("region", { name: "Model" });
-  const modelButton = modelSection.locator('button[aria-haspopup="listbox"]');
+  const modelButton = modelSection.locator('button[aria-haspopup="dialog"]');
   const engineerModel = ((await modelButton.textContent()) ?? "").trim();
   expect(engineerModel.length).toBeGreaterThan(0);
   await modelButton.click();
-  const picker = panel.getByRole("listbox", { name: "Choose a model" });
+  const picker = panel.getByRole("dialog", { name: "Choose a model" });
   await expect(picker).toBeVisible({ timeout: 30_000 });
   const group = (provider: string) =>
     picker.getByRole("group", { name: new RegExp(`^${provider}\\b`) });

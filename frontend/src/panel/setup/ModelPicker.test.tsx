@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProviderCatalogueEntry } from "../../lib/api";
-import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
+import { DESKTOP_MAC_DMG_URL, DESKTOP_RELEASES_URL } from "../../lib/desktopDownload";
 import type { CredentialCover } from "./modelCopy";
 import { ModelPicker, type ModelPickerProps } from "./ModelPicker";
 
@@ -51,6 +51,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function renderPicker(over: Partial<ModelPickerProps> = {}) {
@@ -73,7 +74,7 @@ function renderPicker(over: Partial<ModelPickerProps> = {}) {
 
 const open = (name = "grok-4.7") => {
   fireEvent.click(screen.getByRole("button", { name }));
-  return screen.getByRole("listbox", { name: /^Choose a/ });
+  return screen.getByRole("dialog", { name: /^Choose a/ });
 };
 const group = (list: HTMLElement, provider: string) =>
   within(list).getByRole("group", { name: new RegExp(`^${provider}\\b`) });
@@ -118,7 +119,7 @@ describe("ModelPicker (Desktop-ModelPicker / Flow-Model)", () => {
     const list = open();
     fireEvent.click(within(list).getByRole("option", { name: "claude-sonnet-4" }));
     expect(props.onPick).toHaveBeenCalledWith("anthropic/claude-sonnet-4");
-    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("searches providers and models", () => {
@@ -153,7 +154,7 @@ describe("ModelPicker (Desktop-ModelPicker / Flow-Model)", () => {
     expect(within(list).getByRole("option", { name: "gpt-4o-mini" })).toHaveFocus();
 
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("button", { name: "grok-4.7" })).toHaveFocus();
     expect(props.onPick).not.toHaveBeenCalled();
 
@@ -173,7 +174,7 @@ describe("ModelPicker (Desktop-ModelPicker / Flow-Model)", () => {
       target: { value: "AIza-secret" },
     });
     fireEvent.click(within(gemini).getByRole("button", { name: "Add" }));
-    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/providers",
       expect.objectContaining({ method: "POST" }),
@@ -182,7 +183,7 @@ describe("ModelPicker (Desktop-ModelPicker / Flow-Model)", () => {
     expect(body).toEqual({ provider: "gemini", api_key: "AIza-secret" });
     expect(props.onKeySaved).toHaveBeenCalledWith(expect.objectContaining({ provider: "gemini" }));
     expect(props.onPick).toHaveBeenCalledWith("gemini/gemini-2.5-flash");
-    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("says so when the key can't be saved, and keeps the picker open", async () => {
@@ -231,12 +232,40 @@ describe("ModelPicker (Desktop-ModelPicker / Flow-Model)", () => {
     const list = open();
     fireEvent.click(within(list).getByRole("button", { name: "Add a provider" }));
     expect(props.onAddProvider).toHaveBeenCalled();
-    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("ModelPicker accessibility", () => {
+  it("names its button after the row, and keeps search, key fields and footer out of the listboxes", () => {
+    renderPicker({ rowLabel: "Backup model", allowNone: true, model: "", emptyLabel: "None" });
+    fireEvent.click(screen.getByRole("button", { name: "Backup model None" }));
+    const dialog = screen.getByRole("dialog", { name: /^Choose a/ });
+    expect(within(dialog).getByRole("textbox", { name: "Search models" })).toBeTruthy();
+    const lists = within(dialog).getAllByRole("listbox");
+    expect(lists.length).toBeGreaterThan(1);
+    for (const list of lists) {
+      expect(within(list).queryByRole("textbox")).toBeNull();
+      expect(within(list).queryByRole("button")).toBeNull();
+      expect(within(list).getAllByRole("option").length).toBeGreaterThan(0);
+    }
+    expect(within(dialog).getByRole("option", { name: "None" })).toBeTruthy();
   });
 });
 
 describe("ModelPicker on the website (Panel-ModelWeb)", () => {
+  it("links off-Mac visitors to the releases page, not the Mac disk image", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+    renderPicker({ desktop: false, cover: cover(["openai"]) });
+    const anthropic = group(open(), "anthropic");
+    expect(within(anthropic).getByRole("link", { name: "Tvashtr Desktop" })).toHaveAttribute(
+      "href",
+      DESKTOP_RELEASES_URL,
+    );
+  });
+
   it("offers Claude and Grok models on a key, and points at Tvashtr Desktop for the subscription", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
     renderPicker({ desktop: false, cover: cover(["xai", "openai"], { grok: true }) });
     const list = open();
     // Subscriptions never run agents on the website: xai runs on its key.

@@ -1,8 +1,8 @@
 /**
  * Applying one of the built-in agent templates (PANEL-30..33, spec Q7): a template sets the
  * instructions and its default File access (Product manager and Reviewer read-only, Engineer can
- * edit files). File access only moves on a sandboxed agent that isn't the team's entry agent (the
- * entry agent stays read-only; a thinker has no sandbox).
+ * edit files). File access moves on any agent but the team's entry agent, which stays read-only
+ * (thinkers and workers run the same agent loop and both honour File access).
  */
 import type { NodeTemplate } from "../../lib/api/nodes";
 import type { AgentDraft } from "../agentDraft";

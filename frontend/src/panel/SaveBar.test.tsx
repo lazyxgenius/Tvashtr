@@ -34,6 +34,12 @@ describe("SaveBar (PANEL-17)", () => {
     expect(screen.getByRole("button", { name: "Save Ctrl S" })).toBeInTheDocument();
   });
 
+  it("says why Save is off when the draft can't be saved", () => {
+    bar({ dirtyCount: 2, canSave: false, problem: "Instructions can’t be empty." });
+    expect(screen.getByRole("status")).toHaveTextContent("Instructions can’t be empty.");
+    expect(screen.getByRole("button", { name: /^Save/ })).toBeDisabled();
+  });
+
   it("one change is singular", () => {
     bar({ dirtyCount: 1, canSave: true });
     expect(screen.getByText("1 unsaved change")).toBeInTheDocument();

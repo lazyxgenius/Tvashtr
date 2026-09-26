@@ -108,12 +108,24 @@ describe("describeChanges", () => {
 describe("draftProblem", () => {
   it("blocks empty instructions and a malformed output format", () => {
     const base = seedDraft(node());
-    expect(draftProblem(base)).toBeNull();
-    expect(draftProblem({ ...base, prompt: "  " })).toBe("Instructions can’t be empty.");
+    expect(draftProblem(base, base)).toBeNull();
+    expect(draftProblem(base, { ...base, prompt: "  " })).toBe("Instructions can’t be empty.");
     const bad = "The output format isn’t a valid JSON Schema.";
-    expect(draftProblem({ ...base, outputSchema: "{" })).toBe(bad);
-    expect(draftProblem({ ...base, outputSchema: "[1]" })).toBe(bad);
-    expect(draftProblem({ ...base, outputSchema: '{ "type": "objekt" }' })).toBe(bad);
-    expect(draftProblem({ ...base, outputSchema: '{ "type": "object" }' })).toBeNull();
+    expect(draftProblem(base, { ...base, outputSchema: "{" })).toBe(bad);
+    expect(draftProblem(base, { ...base, outputSchema: "[1]" })).toBe(bad);
+    expect(draftProblem(base, { ...base, outputSchema: '{ "type": "objekt" }' })).toBe(bad);
+    expect(draftProblem(base, { ...base, outputSchema: '{ "type": "object" }' })).toBeNull();
+  });
+
+  it("lets a new agent with no instructions yet save its other settings", () => {
+    const blank = seedDraft(node({ prompt: "", model: "" }));
+    // The PATCH leaves `prompt` out when it didn't change, so the server keeps it as it is.
+    expect(
+      draftProblem(blank, { ...blank, model: "openai/gpt-4.1-mini", title: "Critic" }),
+    ).toBeNull();
+    expect(patchFor(blank, { ...blank, model: "openai/gpt-4.1-mini" })).toEqual({
+      model: "openai/gpt-4.1-mini",
+    });
+    expect(draftProblem(blank, { ...blank, prompt: " " })).toBe("Instructions can’t be empty.");
   });
 });

@@ -256,6 +256,26 @@ describe("Library tab", () => {
     expect(screen.getByText("1 server added · 1 needs a secret")).toBeTruthy();
   });
 
+  it("says so when the library can't load, and Try again loads it", async () => {
+    let fail = true;
+    fetchMock = stubFetch(node, (url) => {
+      if (url === "/api/skill-library") return json({ skills: [] });
+      if (url === "/api/tool-library")
+        return fail ? json({ detail: "boom" }, 500) : json({ tools: [GITHUB, SENTRY] });
+      if (url === "/api/secrets") return json({ secrets: [{ name: "GITHUB_TOKEN" }] });
+      return undefined;
+    });
+    renderTab();
+    await screen.findByText("fetch");
+    fireEvent.click(screen.getByRole("button", { name: "Add tool" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^From your library/ }));
+    const sheet = within(screen.getByRole("region", { name: "Add a tool" }));
+    expect(await sheet.findByText("Couldn’t load your library.")).toBeTruthy();
+    fail = false;
+    fireEvent.click(sheet.getByRole("button", { name: "Try again" }));
+    expect(await sheet.findByRole("checkbox", { name: /sentry/ })).toBeTruthy();
+  });
+
   it("switches between the tabs", async () => {
     renderTab();
     // Each tab is its own sheet: find it again after a switch.

@@ -21,7 +21,9 @@ export function runtimeBanner(opts: {
 }
 
 export const FILE_ACCESS_HINT = {
-  readOnly: "Same agent loop with read-only tools. Only its report leaves the sandbox.",
+  /** Every agent gets the same tools; a read-only one is told to stay report-only and only its
+   *  report is pulled back (context_compiler's capability note, team_run `_resolve_pull_paths`). */
+  readOnly: "Same agent loop. Its edits stay in the sandbox; only its report leaves.",
   edits:
     "Full agent loop. It can change files in the repo. Memory → Remember what it learns is now available.",
   entry: "The first agent writes the shared spec the team reads, so it stays read-only.",
@@ -34,7 +36,7 @@ export const FILE_ACCESS_HINT = {
 /** Flow-Access-1 (Q6). The design says its changes "can end up in the pull request"; for an agent
  *  that routes on a verdict (the only one asked) the executor pulls back the verdict file alone. */
 export const ACCESS_CONFIRM_BODY =
-  "It gets write tools in its sandbox, but its edits stay there: only its verdict leaves, so they never reach the pull request. Reviewers usually stay read-only.";
+  "It’s no longer told to stay report-only, but its edits stay in its sandbox: only its verdict leaves, so they never reach the pull request. Reviewers usually stay read-only.";
 
 /** Q3: an agent that routes on a verdict can't author a document (the executor ignores it). */
 export const WRITES_VERDICT_HINT = "Its verdict goes to Runs.";

@@ -113,8 +113,10 @@ const scrollBody = (page, px) =>
   }, px);
 
 async function openPicker(page, { model = "grok-4.7", scroll = 46 } = {}) {
-  await page.getByRole("button", { name: model, exact: true }).click();
-  await page.getByRole("listbox", { name: "Choose a model" }).waitFor();
+  await page
+    .getByRole("button", { name: `Model ${model}`, exact: true })
+    .click();
+  await page.getByRole("dialog", { name: "Choose a model" }).waitFor();
   await page.waitForTimeout(250);
   await settle(page);
   await scrollBody(page, scroll);
@@ -221,8 +223,10 @@ const WARN_DESKTOP = panelRoutes({
 /** Panel-Warnings: a mistyped custom backup model, then Save fails. */
 async function warnings(page) {
   await page.getByRole("button", { name: /^Advanced/ }).click();
-  await page.getByRole("button", { name: "None", exact: true }).click();
-  await page.getByRole("listbox", { name: "Choose a backup model" }).waitFor();
+  await page
+    .getByRole("button", { name: "Backup model None", exact: true })
+    .click();
+  await page.getByRole("dialog", { name: "Choose a backup model" }).waitFor();
   await page.getByRole("button", { name: "Use a custom model ID" }).click();
   await page
     .getByRole("textbox", { name: "Custom model ID" })
@@ -280,7 +284,7 @@ export default [
         await openPicker(p, { scroll: 0 });
         await pasteGemini(p);
         await p
-          .getByRole("listbox")
+          .getByRole("dialog", { name: "Choose a model" })
           .getByRole("button", { name: "Add", exact: true })
           .click();
         await p

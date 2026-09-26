@@ -137,9 +137,11 @@ export function describeChanges(groups: ChangeGroup[]): string {
   return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
 
-/** Why the draft can't be saved yet, or null. */
-export function draftProblem(draft: AgentDraft): string | null {
-  if (!draft.prompt.trim()) return "Instructions can’t be empty.";
+/** Why the draft can't be saved yet, or null. Empty instructions only block a save that sends them
+ * (a new agent can save its model or name before it has instructions). */
+export function draftProblem(base: AgentDraft, draft: AgentDraft): string | null {
+  if (!same(base.prompt, draft.prompt) && !draft.prompt.trim())
+    return "Instructions can’t be empty.";
   // The same check the Output format editor runs (its Done is disabled on any of these).
   if (checkSchema(draft.outputSchema).state === "error") {
     return "The output format isn’t a valid JSON Schema.";
@@ -147,7 +149,7 @@ export function draftProblem(draft: AgentDraft): string | null {
   return null;
 }
 
-/** The PATCH body for exactly the changed parts. Call only when `draftProblem(draft)` is null. */
+/** The PATCH body for exactly the changed parts. Call only when `draftProblem(base, draft)` is null. */
 export function patchFor(base: AgentDraft, draft: AgentDraft): AgentPatch {
   const out: AgentPatch = {};
   const changed = (f: keyof AgentDraft) => !same(base[f], draft[f]);

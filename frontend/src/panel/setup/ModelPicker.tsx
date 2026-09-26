@@ -11,7 +11,11 @@ import { AlertTriangle, Check, CircleCheck, KeyRound, Monitor, Plus } from "luci
 
 import { Button, Input, LetterTile, useDismiss } from "../../design-system/components";
 import { addProvider, type Capability, type ProviderCatalogueEntry } from "../../lib/api";
-import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
+import {
+  DESKTOP_MAC_DMG_URL,
+  DESKTOP_RELEASES_URL,
+  isMacPlatform,
+} from "../../lib/desktopDownload";
 import {
   customModelProblem,
   isCatalogueModel,
@@ -31,8 +35,10 @@ export interface ModelPickerProps {
   onPick: (slug: string) => void;
   /** The button's text when no model is set ("Choose a model" / "None"). */
   emptyLabel: string;
-  /** The listbox's accessible name. */
+  /** The picker's accessible name. */
   label: string;
+  /** The row the button sits in ("Model" / "Backup model"): the button's name starts with it. */
+  rowLabel?: string;
   /** The backup model can be "None". */
   allowNone?: boolean;
   catalogue: readonly ProviderCatalogueEntry[];
@@ -104,6 +110,7 @@ export function ModelPicker({
   onPick,
   emptyLabel,
   label,
+  rowLabel,
   allowNone = false,
   catalogue,
   seat,
@@ -251,8 +258,15 @@ export function ModelPicker({
 
   return (
     <div className="nd-picker" ref={wrapRef}>
+      {rowLabel && (
+        <span id={`${listId}-row`} hidden>
+          {rowLabel}
+        </span>
+      )}
       <ModelButton
         buttonRef={buttonRef}
+        id={`${listId}-button`}
+        labelledBy={rowLabel ? `${listId}-row ${listId}-button` : undefined}
         model={model}
         emptyLabel={emptyLabel}
         catalogued={catalogue.length === 0 || isCatalogueModel(slug, catalogue)}
@@ -264,7 +278,7 @@ export function ModelPicker({
         <div
           id={listId}
           ref={listRef}
-          role="listbox"
+          role="dialog"
           aria-label={label}
           className="nd-lb"
           style={place ?? { visibility: "hidden" }}
@@ -330,7 +344,11 @@ export function ModelPicker({
               </div>
             ) : (
               <>
-                {allowNone && !query.trim() && option("", "None", " nd-lb__opt--none")}
+                {allowNone && !query.trim() && (
+                  <div role="listbox" aria-label="No model">
+                    {option("", "None", " nd-lb__opt--none")}
+                  </div>
+                )}
                 {groups.map((g) => {
                   const headId = `${listId}-${g.provider}`;
                   const keyId = `${listId}-key-${g.provider}`;
@@ -348,9 +366,13 @@ export function ModelPicker({
                               <Monitor size={12} strokeWidth={1.6} aria-hidden /> Your Claude or
                               Grok subscription can run agents in{" "}
                               <a
-                                href={DESKTOP_MAC_DMG_URL}
+                                href={isMacPlatform() ? DESKTOP_MAC_DMG_URL : DESKTOP_RELEASES_URL}
                                 className="nd-lb__dl"
-                                title="Download Tvashtr Desktop for Mac"
+                                title={
+                                  isMacPlatform()
+                                    ? "Download Tvashtr Desktop for Mac"
+                                    : "Tvashtr Desktop releases"
+                                }
                               >
                                 Tvashtr Desktop
                               </a>
@@ -396,7 +418,9 @@ export function ModelPicker({
                           )}
                         </>
                       ) : (
-                        g.models.map((m) => option(m, shortId(m)))
+                        <div role="listbox" aria-labelledby={headId}>
+                          {g.models.map((m) => option(m, shortId(m)))}
+                        </div>
                       )}
                     </div>
                   );

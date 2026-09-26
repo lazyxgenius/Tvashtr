@@ -41,6 +41,8 @@ interface ViewProps {
   skills: unknown[] | null;
   /** The account's library skills (null while unknown). */
   library: SkillLibraryItem[] | null;
+  /** Set when the library failed to load: the picker offers Try again. */
+  retryLibrary?: () => void;
   onChange: (next: unknown[] | null) => void;
   onClose: () => void;
 }
@@ -488,7 +490,7 @@ function PresetPicker({
   );
 }
 
-function LoadProblem({ text, onRetry }: { text: string; onRetry: () => void }) {
+export function LoadProblem({ text, onRetry }: { text: string; onRetry: () => void }) {
   return (
     <div className="nd-pick__empty" role="alert">
       <p className="nd-pick__none">{text}</p>
@@ -510,6 +512,7 @@ function librarySourceLine(item: SkillLibraryItem): string {
 function LibrarySkillPicker({
   skills,
   library,
+  retryLibrary,
   onChange,
   onClose,
   notify,
@@ -534,7 +537,9 @@ function LibrarySkillPicker({
   };
 
   let body: ReactNode;
-  if (library === null) body = <p className="nd-pick__none">Loading your library…</p>;
+  if (library === null && retryLibrary)
+    body = <LoadProblem text="Couldn’t load your library." onRetry={retryLibrary} />;
+  else if (library === null) body = <p className="nd-pick__none">Loading your library…</p>;
   else if (library.length === 0)
     body = (
       <div className="nd-pick__empty">

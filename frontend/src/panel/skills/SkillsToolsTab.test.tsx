@@ -163,6 +163,17 @@ describe("Skills & tools — the lists", () => {
   });
 });
 
+describe("Skills & tools — the Skills ⓘ", () => {
+  it("says every agent gets its skills as context (team_run build_skills), folded in on Desktop", () => {
+    const { skills } = renderTab();
+    expect(
+      skills.getByRole("img", {
+        name: "Reusable know-how the agent gets as context. On a Desktop subscription they’re added to its instructions.",
+      }),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("Skills & tools — load mode (Flow-LoadMode)", () => {
   it("When triggered asks for words inline, then saves the mode on the repo source", async () => {
     const { drawer } = renderTab();

@@ -117,6 +117,7 @@ export function ModelSection({
           onPick={onModelChange}
           emptyLabel="Choose a model"
           label="Choose a model"
+          rowLabel="Model"
           catalogue={picker.catalogue}
           seat={picker.seat}
           cover={picker.cover}

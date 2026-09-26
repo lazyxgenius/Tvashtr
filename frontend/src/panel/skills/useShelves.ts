@@ -13,37 +13,48 @@ export interface Shelves {
   skillLibrary: SkillLibraryItem[] | null;
   toolLibrary: ToolLibraryItem[] | null;
   secrets: string[] | null;
+  /** Library shelves that failed to load; `retry` loads every shelf again. */
+  failed: { skillLibrary: boolean; toolLibrary: boolean };
+  retry: () => void;
   /** Items this drawer just put in the library (a preset's copy), so their rows are named. */
   addSkillItems: (items: SkillLibraryItem[]) => void;
 }
 
 /**
  * The shelves the Skills & tools tab and its add views read, loaded once the tab is first shown
- * (`enabled`). A shelf that fails to load leaves its rows generic ("Library skill"), nothing more.
+ * (`enabled`). A shelf that fails to load leaves its rows generic ("Library skill"); the library
+ * pickers say so and offer Try again (`failed` / `retry`).
  */
 export function useShelves(enabled: boolean): Shelves {
   const [skillLibrary, setSkillLibrary] = useState<SkillLibraryItem[] | null>(null);
   const [toolLibrary, setToolLibrary] = useState<ToolLibraryItem[] | null>(null);
   const [secrets, setSecrets] = useState<string[] | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  if (enabled && !loaded) setLoaded(true);
+  const [failed, setFailed] = useState({ skillLibrary: false, toolLibrary: false });
+  // 0 = not wanted yet; each retry bumps it and loads again.
+  const [attempt, setAttempt] = useState(0);
+  if (enabled && attempt === 0) setAttempt(1);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
-    if (!loaded) return;
+    if (attempt === 0) return;
     let live = true;
+    const fail = (shelf: "skillLibrary" | "toolLibrary") => () => {
+      if (live) setFailed((f) => ({ ...f, [shelf]: true }));
+    };
+    setFailed({ skillLibrary: false, toolLibrary: false });
     listSkillLibrary()
       .then((v) => live && setSkillLibrary(v))
-      .catch(() => {});
+      .catch(fail("skillLibrary"));
     listToolLibrary()
       .then((v) => live && setToolLibrary(v))
-      .catch(() => {});
+      .catch(fail("toolLibrary"));
     listSecrets()
       .then((v) => live && setSecrets(v.map((s) => s.name)))
       .catch(() => {});
     return () => {
       live = false;
     };
-  }, [loaded]);
+  }, [attempt]);
 
   const addSkillItems = useCallback((items: SkillLibraryItem[]) => {
     setSkillLibrary((prev) => [
@@ -52,5 +63,5 @@ export function useShelves(enabled: boolean): Shelves {
     ]);
   }, []);
 
-  return { skillLibrary, toolLibrary, secrets, addSkillItems };
+  return { skillLibrary, toolLibrary, secrets, failed, retry, addSkillItems };
 }

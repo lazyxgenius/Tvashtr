@@ -78,6 +78,7 @@ export function AdvancedSection({
                 onPick={(m) => onBackupChange?.(m)}
                 emptyLabel="None"
                 label="Choose a backup model"
+                rowLabel="Backup model"
                 allowNone
                 catalogue={picker.catalogue}
                 seat={picker.seat}

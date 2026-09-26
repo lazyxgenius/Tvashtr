@@ -124,7 +124,7 @@ export function SkillsPanel({
         <h3 className="nd-kit__title" id="nd-kit-skills">
           Skills
           {rows.length > 0 && <span className="nd-kit__count">{rows.length}</span>}
-          <InfoTip text="Reusable know-how. Worker agents get skills as context and tools; thinker agents fold them into their prompt." />
+          <InfoTip text="Reusable know-how the agent gets as context. On a Desktop subscription they’re added to its instructions." />
         </h3>
         <span className="nd-kit__add">
           <Menu

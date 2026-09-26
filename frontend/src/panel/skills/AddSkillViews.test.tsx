@@ -296,6 +296,24 @@ describe("From your library", () => {
     expect((await savedSkills(drawer))[0]).toEqual({ type: "library", id: "s-yag" });
   });
 
+  it("says so when the library can't load, and Try again loads it", async () => {
+    let fail = true;
+    fetchMock = stubFetch(node, (url) => {
+      if (url === "/api/skill-library")
+        return fail ? json({ detail: "boom" }, 500) : json({ skills: library });
+      if (url === "/api/tool-library") return json({ tools: [] });
+      if (url === "/api/secrets") return json({ secrets: [] });
+      return undefined;
+    });
+    renderTab(node(null));
+    await openSheet("From your library");
+    const sheet = within(screen.getByRole("region", { name: "Add from your library" }));
+    expect(await sheet.findByText("Couldn’t load your library.")).toBeTruthy();
+    fail = false;
+    fireEvent.click(sheet.getByRole("button", { name: "Try again" }));
+    expect(await sheet.findByRole("checkbox", { name: /yagni/ })).toBeTruthy();
+  });
+
   it("with an empty library, links to Toolkit", async () => {
     library = [];
     const { props } = renderTab(node(null));

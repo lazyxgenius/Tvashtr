@@ -224,9 +224,9 @@ function AgentEditor({
       void api.save();
   });
 
-  // Q7: a template sets the instructions and its default File access (a sandboxed agent's only;
-  // the entry agent stays read-only). Undo puts back what it replaced.
-  const canSetFileAccess = node.kind === "agent" && !isEntry;
+  // Q7: a template sets the instructions and its default File access (thinker or worker: both run
+  // the agent loop; only the entry agent stays read-only). Undo puts back what it replaced.
+  const canSetFileAccess = !isEntry;
   const applyTemplate = (template: NodeTemplate) => {
     const before = { prompt: draft.prompt, editsAllowed: draft.editsAllowed };
     api.update(templateApplication(template, draft, canSetFileAccess).patch);
@@ -309,6 +309,7 @@ function AgentEditor({
         sub={skillSub}
         skills={draft.skills}
         library={shelves.skillLibrary}
+        retryLibrary={shelves.failed.skillLibrary ? shelves.retry : undefined}
         onChange={(v) => api.set("skills", v)}
         onLibraryAdded={shelves.addSkillItems}
         notify={toast.show}
@@ -329,6 +330,7 @@ function AgentEditor({
         sub={toolSub}
         config={draft.toolConfig}
         library={shelves.toolLibrary}
+        retryLibrary={shelves.failed.toolLibrary ? shelves.retry : undefined}
         secrets={shelves.secrets}
         onChange={(v) => api.set("toolConfig", v)}
         notify={toast.show}
@@ -618,6 +620,7 @@ function AgentEditor({
       dirtyCount={api.dirtyCount}
       saveState={api.saveState}
       error={api.saveError}
+      problem={api.problem}
       canSave={canSave}
       memoryTab={tab === "memory"}
       onSave={() => void api.save()}

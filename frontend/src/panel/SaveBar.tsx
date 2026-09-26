@@ -13,6 +13,7 @@ export function SaveBar({
   dirtyCount,
   saveState,
   error,
+  problem,
   canSave,
   memoryTab = false,
   onSave,
@@ -21,6 +22,8 @@ export function SaveBar({
   dirtyCount: number;
   saveState: SaveState;
   error?: string | null;
+  /** Why the draft can't be saved (shown in place of the count). */
+  problem?: string | null;
   canSave: boolean;
   /** On the Memory tab changes save as you make them. */
   memoryTab?: boolean;
@@ -63,7 +66,7 @@ export function SaveBar({
       <footer className="nd-foot">
         <span className="nd-foot__status nd-foot__status--dirty" role="status">
           <span className="nd-foot__dot" aria-hidden />
-          {dirtyCount} unsaved {dirtyCount === 1 ? "change" : "changes"}
+          {problem || `${dirtyCount} unsaved ${dirtyCount === 1 ? "change" : "changes"}`}
         </span>
         <div className="nd-foot__actions">
           <Button variant="ghost" size="sm" onClick={onDiscard}>

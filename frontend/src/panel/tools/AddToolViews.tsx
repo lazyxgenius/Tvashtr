@@ -12,7 +12,7 @@ import { AlertTriangle, CircleCheck, KeyRound, Plus, X } from "lucide-react";
 import { Badge, Button, IconButton, Input, Tabs } from "../../design-system/components";
 import type { ToolLibraryItem } from "../../lib/api";
 import type { Route } from "../../lib/nav";
-import { PickList } from "../skills/AddSkillViews";
+import { LoadProblem, PickList } from "../skills/AddSkillViews";
 import { SubView } from "../SubView";
 import type { ToastAction } from "../useDrawerToast";
 import {
@@ -46,6 +46,8 @@ interface ViewProps {
   config: ToolConfig;
   /** The account's library tools and secret names (null while unknown). */
   library: readonly ToolLibraryItem[] | null;
+  /** Set when the library failed to load: the Library tab offers Try again. */
+  retryLibrary?: () => void;
   secrets: readonly string[] | null;
   onChange: (next: ToolConfig) => void;
   notify: (message: string, action?: ToastAction) => void;
@@ -437,7 +439,9 @@ function LibraryToolPicker({ tabs, ...props }: ViewProps & { tabs: ReactNode }) 
   };
 
   let body: ReactNode;
-  if (library === null) body = <p className="nd-pick__none">Loading your library…</p>;
+  if (library === null && props.retryLibrary)
+    body = <LoadProblem text="Couldn’t load your library." onRetry={props.retryLibrary} />;
+  else if (library === null) body = <p className="nd-pick__none">Loading your library…</p>;
   else if (library.length === 0)
     body = (
       <div className="nd-pick__empty">

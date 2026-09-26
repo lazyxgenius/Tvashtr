@@ -211,7 +211,9 @@ describe("NodeEditor — header, badges, tabs", () => {
     const { drawer } = renderEditor({ node: reviewer({ model: "", last_run: null }) });
     expect(within(drawer).getByText("Needs a model")).toBeInTheDocument();
     expect(within(drawer).getByText("Not run yet")).toBeInTheDocument();
-    expect(within(drawer).getByRole("button", { name: "Choose a model" })).toBeInTheDocument();
+    expect(
+      within(drawer).getByRole("button", { name: "Model Choose a model" }),
+    ).toBeInTheDocument();
     expect(
       within(drawer).getByText("This agent needs a model before the team can run."),
     ).toBeInTheDocument();
@@ -272,7 +274,7 @@ describe("NodeEditor — Setup read view", () => {
     expect(adv).toHaveTextContent("Backup model: none · Output format: none");
     fireEvent.click(adv);
     expect(adv).toHaveAttribute("aria-expanded", "true");
-    expect(within(drawer).getByRole("button", { name: "None" })).toBeInTheDocument();
+    expect(within(drawer).getByRole("button", { name: "Backup model None" })).toBeInTheDocument();
     expect(within(drawer).getByRole("button", { name: "Add JSON schema" })).toBeInTheDocument();
     expect(
       within(drawer).getByText("Used once if the main model fails (bad key, provider down)."),
@@ -686,6 +688,19 @@ describe("NodeEditor — templates, routing sync, new agent (G3)", () => {
     expect(within(drawer).getByText("2 unsaved changes")).toBeInTheDocument();
   });
 
+  it("a thinker that isn't the entry agent also takes the template's File access (Q7)", async () => {
+    const thinker = reviewer({ kind: "completion", role_name: "thinker" });
+    const { drawer } = renderEditor({ node: thinker });
+    fireEvent.click(
+      within(await openTemplates(drawer)).getByRole("menuitem", { name: "Engineer" }),
+    );
+    const confirm = within(drawer).getByRole("alertdialog", { name: "Replace the instructions?" });
+    expect(confirm).toHaveTextContent("and lets this agent edit files.");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Replace" }));
+    const head = drawer.querySelector(".nd-head") as HTMLElement;
+    expect(within(head).getByText("Can edit files")).toBeInTheDocument();
+  });
+
   it("the entry agent keeps its File access when a template is applied", async () => {
     const { drawer } = renderEditor({ node: { ...pm, id: "n-rev" }, isEntry: true });
     fireEvent.click(
@@ -753,6 +768,24 @@ describe("NodeEditor — templates, routing sync, new agent (G3)", () => {
     expect(instructions(drawer).value).toBe(TEMPLATES[0].prompt);
     expect(ready).toHaveTextContent("2 of 3");
     expect(toastOf(drawer)).toHaveTextContent("Product manager template applied");
+  });
+
+  it("a new agent saves its other settings before it has instructions", async () => {
+    const { drawer } = renderEditor({ node: newAgent(), nodes: [newAgent()], edges: [] });
+    fireEvent.click(within(drawer).getByRole("switch", { name: "Images" }));
+    const save = within(drawer).getByRole("button", { name: /^Save/ });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await within(drawer).findByText("Saved. This drives the next run you launch.");
+    expect(patchBody()).toEqual({ multimodal: true });
+  });
+
+  it("says why it can't save when the instructions were emptied", () => {
+    const { drawer } = renderEditor();
+    fireEvent.change(instructions(drawer), { target: { value: "  " } });
+    const foot = drawer.querySelector(".nd-foot") as HTMLElement;
+    expect(foot).toHaveTextContent("Instructions can’t be empty.");
+    expect(within(foot).getByRole("button", { name: /^Save/ })).toBeDisabled();
   });
 
   it("Start from scratch opens an empty editor with the caret in it", () => {
@@ -827,17 +860,21 @@ describe("NodeEditor — the model picker and the model warnings (G4)", () => {
       onOpenEngines,
       onProviderAdded,
     });
-    fireEvent.click(within(model(drawer)).getByRole("button", { name: "grok-4.7" }));
-    const list = within(drawer).getByRole("listbox", { name: "Choose a model" });
+    fireEvent.click(within(model(drawer)).getByRole("button", { name: "Model grok-4.7" }));
+    const list = within(drawer).getByRole("dialog", { name: "Choose a model" });
     // The worker seat's providers only: NIM (no seat) is never offered.
     expect(within(list).queryByText("nvidia_nim")).toBeNull();
     fireEvent.change(within(list).getByLabelText("Paste your Gemini API key"), {
       target: { value: "AIza-secret" },
     });
     fireEvent.click(within(list).getByRole("button", { name: "Add" }));
-    await waitFor(() => expect(within(drawer).queryByRole("listbox")).toBeNull());
+    await waitFor(() =>
+      expect(within(drawer).queryByRole("dialog", { name: "Choose a model" })).toBeNull(),
+    );
     expect(onProviderAdded).toHaveBeenCalledWith("gemini");
-    expect(within(model(drawer)).getByRole("button", { name: "gemini-2.5-flash" })).toBeTruthy();
+    expect(
+      within(model(drawer)).getByRole("button", { name: "Model gemini-2.5-flash" }),
+    ).toBeTruthy();
     expect(model(drawer).querySelector(".nd-hint")).toHaveTextContent(
       "Uses your Gemini API key (saved in Engines)",
     );
@@ -852,7 +889,7 @@ describe("NodeEditor — the model picker and the model warnings (G4)", () => {
   it("'Add a provider' opens Engines › API keys", () => {
     const onOpenEngines = vi.fn();
     const { drawer } = renderEditor({ catalogue: CATALOGUE, onOpenEngines });
-    fireEvent.click(within(model(drawer)).getByRole("button", { name: "grok-4.7" }));
+    fireEvent.click(within(model(drawer)).getByRole("button", { name: "Model grok-4.7" }));
     fireEvent.click(within(drawer).getByRole("button", { name: "Add a provider" }));
     expect(onOpenEngines).toHaveBeenCalledWith("keys");
   });
@@ -890,8 +927,8 @@ describe("NodeEditor — the model picker and the model warnings (G4)", () => {
     });
     const { drawer } = renderEditor({ catalogue: CATALOGUE });
     fireEvent.click(within(drawer).getByRole("button", { name: /^Advanced/ }));
-    fireEvent.click(within(drawer).getByRole("button", { name: "None" }));
-    const list = within(drawer).getByRole("listbox", { name: "Choose a backup model" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Backup model None" }));
+    const list = within(drawer).getByRole("dialog", { name: "Choose a backup model" });
     fireEvent.click(within(list).getByRole("button", { name: "Use a custom model ID" }));
     fireEvent.change(within(list).getByRole("textbox", { name: "Custom model ID" }), {
       target: { value: "openai/gpt-4o-mni" },
@@ -899,7 +936,9 @@ describe("NodeEditor — the model picker and the model warnings (G4)", () => {
     fireEvent.click(within(list).getByRole("button", { name: "Use this model" }));
 
     // The button shows the whole slug (no provider tile) and the soft warning sits under it.
-    expect(within(drawer).getByRole("button", { name: "openai/gpt-4o-mni" })).toBeTruthy();
+    expect(
+      within(drawer).getByRole("button", { name: "Backup model openai/gpt-4o-mni" }),
+    ).toBeTruthy();
     const warning = within(drawer)
       .getByText(/^No provider matches/)
       .closest("[role=status]");
@@ -925,7 +964,7 @@ describe("NodeEditor — the model picker and the model warnings (G4)", () => {
     expect(within(model(drawer)).getByText(/^No provider matches/)).toHaveTextContent(
       "No provider matches xai/grok-9.",
     );
-    fireEvent.click(within(model(drawer)).getByRole("button", { name: "xai/grok-9" }));
+    fireEvent.click(within(model(drawer)).getByRole("button", { name: "Model xai/grok-9" }));
     fireEvent.click(within(drawer).getByRole("option", { name: "grok-4.7" }));
     expect(within(model(drawer)).queryByText(/^No provider matches/)).toBeNull();
   });

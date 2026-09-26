@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { setProviderCatalogue } from "../../lib/api";
 import { modelHint, needsModel } from "./modelCopy";
 import { contractInSync, routingOf } from "./routing";
-import { runtimeBanner } from "./setupCopy";
+import { ACCESS_CONFIRM_BODY, FILE_ACCESS_HINT, runtimeBanner } from "./setupCopy";
 import type { GraphEdge, TeamGraphNode } from "../../lib/api";
 
 afterEach(() => setProviderCatalogue([]));
@@ -54,6 +54,17 @@ describe("modelHint (PANEL-40)", () => {
     expect(needsModel("xai/grok-4.7", null)).toBe(false);
     expect(needsModel("xai/grok-4.7", cover([]))).toBe(true);
     expect(needsModel("xai/grok-4.7", cover(["xai"]))).toBe(false);
+  });
+});
+
+// Read-only agents get the same tools (team_run gives every agent one tool set); what differs is
+// that they're told to stay report-only and only their report is pulled back.
+describe("File access copy (honest about tools)", () => {
+  it("doesn't promise read-only or extra write tools", () => {
+    expect(FILE_ACCESS_HINT.readOnly).toBe(
+      "Same agent loop. Its edits stay in the sandbox; only its report leaves.",
+    );
+    expect(ACCESS_CONFIRM_BODY).not.toMatch(/tools/);
   });
 });
 
