@@ -276,3 +276,17 @@ The exchange: main `POST <loopback>/api/auth/desktop/exchange {code, verifier}` 
 `app.getVersion()` (`desktop/package.json`); `apiHost` names the server for the offline detail
 line; `bundlePath` is the running `Tvashtr.app` (null in dev); `bundleWritable` is false on a
 mounted DMG (`/Volumes/…`), a translocated app, or a read-only location.
+
+## `update` (DB-6) — renderer side only so far
+
+Main isn't built yet (G6). The page already reads it, optional-chained (`lib/desktopApp.ts`
+`getUpdateState` / `onUpdateState`; types `TvashtrUpdateState` in `frontend/src/vite-env.d.ts`):
+
+- `update.getState(): Promise<UpdateState>` and `update.onState(cb): () => void`, with
+  `UpdateState = {state:"idle"} | {state:"downloading", version, progress} | {state:"ready",
+  version} | {state:"installing", version} | {state:"manual", version, reason:"not_writable" |
+  "download_failed" | "swap_failed"}`. An answer of another shape counts as `idle`.
+- While the state is `installing`, the whole window shows Updating (DtF-Upd-2): ◌ "Installing
+  <version>", plus ⓘ "Your running team will resume from its last step" only while the account
+  has a Desktop run going (`GET /api/runs?status=running`, `desktop_target: true`).
+- `check`, `restartToUpdate`, `openDownload` are typed as optional until G6 builds them.
