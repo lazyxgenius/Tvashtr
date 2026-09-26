@@ -41,6 +41,7 @@ from tvashtr.mcp.domains import get_domains_mcp
 from tvashtr.models import SpikeHelloEvent
 from tvashtr.routers import router as api_router
 from tvashtr.routes import account as revamp_account
+from tvashtr.routes import desktop_app as revamp_desktop_app
 from tvashtr.routes import documents as revamp_documents
 from tvashtr.routes import engines as revamp_engines
 from tvashtr.routes import home as revamp_home
@@ -114,6 +115,9 @@ DBOS(fastapi=app, config=_dbos_config)
 # M-accounts Slice A: auth endpoints (register/login/logout/me) — NO login dependency (these are
 # how you obtain a session). Everything else under /api requires a logged-in user.
 app.include_router(auth_router)
+# Revamp (Desktop app): the Desktop browser sign-in (start/exchange) and the latest Desktop
+# release — public like ``auth_router`` (how Desktop obtains a session; release data is public).
+app.include_router(revamp_desktop_app.public_router)
 # P0.2 gateway + document-layer endpoints (generate-doc, documents, costs). M-accounts Slice A: the
 # whole product surface now requires a session — one router-level dependency gates EVERY endpoint in
 # routers.py. /api/auth/* (above) and /health (below) stay open.
@@ -128,6 +132,7 @@ for _revamp_router in (
     revamp_documents.router,
     revamp_memory.router,
     revamp_local_repo.router,
+    revamp_desktop_app.router,
 ):
     app.include_router(_revamp_router, dependencies=[Depends(get_current_user)])
 app.include_router(api_router, dependencies=[Depends(get_current_user)])
@@ -193,6 +198,8 @@ class ProviderDirectoryEntry(BaseModel):
     subscription: str | None
     embeddings: bool
     hint: str | None
+    # Revamp (Desktop app, DT-26): False when the provider serves no model Tvashtr can run.
+    serves_models: bool = True
 
 
 class EmbeddingPresetEntry(BaseModel):
