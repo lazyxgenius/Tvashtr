@@ -212,7 +212,10 @@ async function billingMenu(page) {
 
 async function rereadBilling(page) {
   await billingMenu(page);
-  await page.getByRole("menuitem", { name: "Re-read this file" }).click();
+  // dispatchEvent: Playwright's click scrolls the page first (the menu sits in the table's box).
+  await page
+    .getByRole("menuitem", { name: "Re-read this file" })
+    .dispatchEvent("click");
 }
 
 /** Every render builds its own stateful routes (pair shares one spec). */
