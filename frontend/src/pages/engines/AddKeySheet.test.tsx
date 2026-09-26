@@ -2,6 +2,7 @@ import {
   type BoundFunctions,
   fireEvent,
   type queries,
+  renderHook,
   screen,
   waitFor,
   within,
@@ -9,6 +10,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProviderDirectoryEntry } from "../../lib/api/engines";
+import { useNavBadges } from "../../lib/workspaceStatus";
 import {
   CATALOGUE,
   DIRECTORY,
@@ -291,6 +293,8 @@ describe("Add key sheet: saving (ENG-71..73)", () => {
 
   it("saves, adds the row at the top, shrinks the banner and toasts the next key (Eng-Flow-Key-1)", async () => {
     const { calls, sheet } = await openSheet({ "POST /api/providers": answerPost });
+    const badges = renderHook(() => useNavBadges());
+    await waitFor(() => expect(badges.result.current.apiKeys).toBe(3));
     pick(sheet, "anthropic");
     fireEvent.change(sheet.getByLabelText("API key"), { target: { value: "  sk-ant-wQ3f " } });
     fireEvent.submit(sheet.getByLabelText("API key").closest("form")!);
@@ -302,6 +306,8 @@ describe("Add key sheet: saving (ENG-71..73)", () => {
     const rows = within(screen.getByRole("table")).getAllByRole("row");
     expect(rows[1]).toHaveAttribute("data-provider", "anthropic");
     expect(within(rows[1]).getByText("Just now")).toBeInTheDocument();
+    // The nav badges recount from the new key list.
+    await waitFor(() => expect(badges.result.current.apiKeys).toBe(4));
     // The banner now names only the provider still missing.
     expect(screen.getByRole("note")).toHaveTextContent(
       "Your teams also use xai. Add a key to run them on the website.",
