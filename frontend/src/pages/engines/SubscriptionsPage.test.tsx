@@ -2,7 +2,6 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RunnerStatus } from "../../lib/api/engines";
-import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
 import { SUBSCRIPTION_DISCLOSURE } from "../../lib/engines";
 import {
   KEYS,
@@ -363,15 +362,12 @@ describe("Subscriptions on the website (ENG-46/49)", () => {
     renderEngines("subscriptions");
     await loaded();
 
-    expect(
-      screen.getByText(
-        "Subscriptions run on your own computer. Open Tvashtr Desktop to connect them. Website runs always use API keys.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute(
-      "href",
-      DESKTOP_MAC_DMG_URL,
+    const bannerText = screen.getByText(
+      "Subscriptions run on your own computer. Open Tvashtr Desktop to connect them. Website runs always use API keys.",
     );
+    const banner = within(bannerText.parentElement!);
+    expect(banner.getByRole("button", { name: "Open Tvashtr Desktop" })).toBeEnabled();
+    expect(banner.getByRole("button", { name: "Download" })).toBeEnabled();
     const claude = within(card("Claude"));
     expect(
       claude.getByText("Connected on your computer. It only runs agents from Tvashtr Desktop."),
@@ -382,6 +378,27 @@ describe("Subscriptions on the website (ENG-46/49)", () => {
     expect(
       within(card("Codex")).getByText("Status appears when Tvashtr Desktop is open."),
     ).toBeInTheDocument();
+  });
+
+  it("a user who never opened Desktop sees Not checked yet, not Disconnected (OQ-11)", async () => {
+    api(
+      RUNNER_STALE,
+      SUBS.map((s) => ({
+        ...s,
+        connected: false,
+        state: "disconnected" as const,
+        checked_at: null,
+      })),
+    );
+    renderEngines("subscriptions");
+    await loaded();
+    for (const name of ["Claude", "Grok", "Codex"]) {
+      expect(within(card(name)).getByText("Not checked yet")).toBeInTheDocument();
+      expect(within(card(name)).queryByText("Disconnected")).toBeNull();
+    }
+    const claude = within(card("Claude"));
+    expect(claude.getByText("Open Tvashtr Desktop to connect.")).toBeInTheDocument();
+    expect(claude.getByRole("button", { name: "Connect in Desktop" })).toBeDisabled();
   });
 
   it("a connected subscription whose Desktop isn't checking in can open Desktop (ENG-38)", async () => {

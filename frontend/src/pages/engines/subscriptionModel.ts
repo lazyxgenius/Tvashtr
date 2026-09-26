@@ -522,9 +522,6 @@ export function runnerBanner(runner: RunnerStatus): RunnerBanner {
   };
 }
 
-/** The deep link that opens (or focuses) Tvashtr Desktop on Subscriptions (bridge v5). */
-export const OPEN_DESKTOP_LINK = "tvashtr://engines/subscriptions";
-
 export const WEB_BANNER =
   "Subscriptions run on your own computer. Open Tvashtr Desktop to connect them. Website runs always use API keys.";
 

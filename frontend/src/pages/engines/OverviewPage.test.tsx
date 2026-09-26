@@ -1,6 +1,7 @@
 import { act, fireEvent, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { openTvashtrDesktop } from "../../lib/desktopDeepLinks";
 import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
 import { useNavBadges } from "../../lib/workspaceStatus";
 import {
@@ -15,7 +16,16 @@ import {
   sub,
 } from "./enginesTestUtils";
 
-beforeEach(() => resetEnginesState());
+// The browser can't follow `tvashtr://` in jsdom; record the hand-off instead.
+vi.mock("../../lib/desktopDeepLinks", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/desktopDeepLinks")>()),
+  openTvashtrDesktop: vi.fn(),
+}));
+
+beforeEach(() => {
+  resetEnginesState();
+  vi.mocked(openTvashtrDesktop).mockClear();
+});
 afterEach(() => {
   vi.unstubAllGlobals();
   resetEnginesState();
@@ -41,10 +51,7 @@ describe("Overview on the website (Eng-OverviewWeb)", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Engines" })).toBeInTheDocument();
     expect(screen.getByText("Not open on this computer")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Download Tvashtr Desktop" })).toHaveAttribute(
-      "href",
-      DESKTOP_MAC_DMG_URL,
-    );
+    expect(screen.getByRole("button", { name: "Download Tvashtr Desktop" })).toBeInTheDocument();
     expect(screen.getByText("Always available")).toBeInTheDocument();
 
     const anthropic = within(row("anthropic"));
@@ -82,7 +89,7 @@ describe("Overview on the website (Eng-OverviewWeb)", () => {
     });
   });
 
-  it("row fixes: Add key opens the sheet with that provider (ENG-15), Open in Desktop → Subscriptions", async () => {
+  it("row fixes: Add key opens the sheet with that provider (ENG-15), Open in Desktop opens Desktop on Grok (OQ-2)", async () => {
     mockEnginesApi();
     renderEngines();
     await loaded();
@@ -92,7 +99,20 @@ describe("Overview on the website (Eng-OverviewWeb)", () => {
     fireEvent.click(sheet.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog", { name: "Add an API key" })).toBeNull();
     fireEvent.click(within(row("xai")).getByRole("button", { name: "Open in Desktop" }));
-    expect(window.location.hash).toBe("#/engines/subscriptions");
+    expect(openTvashtrDesktop).toHaveBeenCalledWith("grok");
+    expect(screen.getByRole("alertdialog", { name: "Opening Tvashtr Desktop…" })).toBeVisible();
+  });
+
+  it("Download Tvashtr Desktop opens Get Tvashtr Desktop with the latest DMG (ENG-47)", async () => {
+    mockEnginesApi();
+    renderEngines();
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "Download Tvashtr Desktop" }));
+    const dialog = within(screen.getByRole("alertdialog", { name: "Get Tvashtr Desktop" }));
+    expect(dialog.getByRole("link", { name: "Download" })).toHaveAttribute(
+      "href",
+      DESKTOP_MAC_DMG_URL,
+    );
   });
 
   it("header buttons: Subscriptions, and Add API key opens the empty sheet", async () => {

@@ -7,6 +7,7 @@ import { SecretsShelf } from "../components/SecretsShelf";
 import { SkillsShelf } from "../components/SkillsShelf";
 import { ToolsShelf } from "../components/ToolsShelf";
 import type { AuthUser, Config } from "../lib/api";
+import { useDesktopDeepLinks } from "../lib/desktopDeepLinks";
 import { requestHomeAction } from "../lib/homeActions";
 import { type DashView, type Route, navigate, useNav } from "../lib/nav";
 import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
@@ -55,6 +56,8 @@ export function Workspace({
   useEffect(() => {
     void refreshBadges();
   }, []);
+  // Tvashtr Desktop: follow `tvashtr://` links (a no-op on the website).
+  useDesktopDeepLinks();
 
   useGlobalShortcuts(
     {
@@ -111,7 +114,7 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
         />
       );
     case "engines":
-      return <EnginesPage tab={route.tab} fix={route.fix} />;
+      return <EnginesPage tab={route.tab} fix={route.fix} connect={route.connect} />;
     case "tools":
     case "tool":
       return <ToolsShelf />;

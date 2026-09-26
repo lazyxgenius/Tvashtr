@@ -15,6 +15,10 @@ describe("parseRoute / routeToHash", () => {
     ["#/engines/subscriptions", { page: "engines", tab: "subscriptions" }],
     ["#/engines/keys", { page: "engines", tab: "keys" }],
     ["#/engines?fix=1", { page: "engines", tab: "overview", fix: true }],
+    [
+      "#/engines/subscriptions?connect=grok",
+      { page: "engines", tab: "subscriptions", connect: "grok" },
+    ],
     ["#/toolkit/tools", { page: "tools", view: "installed" }],
     ["#/toolkit/tools/browse", { page: "tools", view: "browse" }],
     ["#/toolkit/tools/abc-123", { page: "tool", toolId: "abc-123" }],
@@ -51,6 +55,12 @@ describe("parseRoute / routeToHash", () => {
     expect(parseRoute("#/engines/zzz")).toEqual({ page: "engines", tab: "overview" });
     // Only Overview highlights the rows to fix.
     expect(parseRoute("#/engines/keys?fix=1")).toEqual({ page: "engines", tab: "keys" });
+    // Only Subscriptions highlights a card, and only Claude or Grok (Codex never connects).
+    expect(parseRoute("#/engines/keys?connect=grok")).toEqual({ page: "engines", tab: "keys" });
+    expect(parseRoute("#/engines/subscriptions?connect=codex")).toEqual({
+      page: "engines",
+      tab: "subscriptions",
+    });
     expect(parseRoute("#/toolkit/memory/zzz")).toEqual({ page: "memory", tab: "inbox" });
     expect(parseRoute("#/toolkit")).toEqual({ page: "tools", view: "installed" });
   });

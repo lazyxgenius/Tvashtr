@@ -6,19 +6,21 @@
  * On Desktop every action goes through the bridge (optional-chained: an older build may lack a
  * method): Connect opens the vendor sign-in in Terminal and the card waits for the main process to
  * push the new status; Cancel stops that; Refresh asks the CLI again; Disconnect confirms first.
- * On the website the cards show the server mirror and every Desktop-only action is disabled.
+ * On the website the cards show the server mirror and every Desktop-only action is disabled; Open
+ * Tvashtr Desktop and Download open the page's dialogs (ENG-47/48). A `tvashtr://` link can point
+ * at one card (`#/engines/subscriptions?connect=grok`): that card is highlighted, nothing starts.
  */
 import { Monitor, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Button, ButtonLink, useToast } from "../../design-system/components";
+import { Button, useToast } from "../../design-system/components";
 import { toSubscriptionStatus } from "../../lib/api/engines";
-import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
 import {
   SUBSCRIPTION_PROVIDERS,
   type SubscriptionProviderId,
   type SubscriptionStatus,
 } from "../../lib/engines";
+import type { ConnectTarget } from "../../lib/nav";
 import { DisconnectDialog } from "./DisconnectDialog";
 import { enginesBridge } from "./engineBridge";
 import { useEngines } from "./enginesData";
@@ -29,7 +31,6 @@ import {
   type CardAction,
   type CardUi,
   IDLE_UI,
-  OPEN_DESKTOP_LINK,
   WEB_BANNER,
   connectedToast,
   refreshFailed,
@@ -50,12 +51,12 @@ const IDLE: UiMap = { claude: IDLE_UI, grok: IDLE_UI, codex: IDLE_UI };
 export interface SubscriptionsActions {
   /** "Add anthropic key" on the disconnect toast (ENG-43). */
   onAddKey: (provider: string) => void;
-  /** "Open Tvashtr Desktop" on the website. */
-  onOpenDesktop?: () => void;
-}
-
-function openDesktopLink(): void {
-  window.location.href = OPEN_DESKTOP_LINK;
+  /** "Open Tvashtr Desktop" on the website: the banner's (no card) or a card's (ENG-38). */
+  onOpenDesktop: (sub?: ConnectTarget) => void;
+  /** "Download" on the website: the Get Tvashtr Desktop dialog (ENG-47). */
+  onGetDesktop: () => void;
+  /** The card a `tvashtr://…?connect=` link points at. */
+  highlight?: ConnectTarget | null;
 }
 
 function RunnerBannerView() {
@@ -80,7 +81,13 @@ function RunnerBannerView() {
   );
 }
 
-function WebBanner({ onOpenDesktop }: { onOpenDesktop: () => void }) {
+function WebBanner({
+  onOpenDesktop,
+  onGetDesktop,
+}: {
+  onOpenDesktop: () => void;
+  onGetDesktop: () => void;
+}) {
   return (
     <div className="eng-webbanner" role="note">
       <Monitor size={16} strokeWidth={1.6} aria-hidden />
@@ -88,16 +95,18 @@ function WebBanner({ onOpenDesktop }: { onOpenDesktop: () => void }) {
       <Button variant="secondary" size="sm" onClick={onOpenDesktop}>
         Open Tvashtr Desktop
       </Button>
-      <ButtonLink variant="ghost" size="sm" href={DESKTOP_MAC_DMG_URL}>
+      <Button variant="ghost" size="sm" onClick={onGetDesktop}>
         Download
-      </ButtonLink>
+      </Button>
     </div>
   );
 }
 
 export function SubscriptionsPage({
   onAddKey,
-  onOpenDesktop = openDesktopLink,
+  onOpenDesktop,
+  onGetDesktop,
+  highlight = null,
 }: SubscriptionsActions) {
   const engines = useEngines();
   const { status, inputs, surface, subs, setSubscription, refreshRunner } = engines;
@@ -188,7 +197,7 @@ export function SubscriptionsPage({
     else if (a.kind === "cancel") void cancel(sub);
     else if (a.kind === "refresh") void refresh(sub);
     else if (a.kind === "disconnect") setDisconnecting(sub);
-    else onOpenDesktop();
+    else onOpenDesktop(sub === "codex" ? undefined : sub);
   };
 
   return (
@@ -205,7 +214,7 @@ export function SubscriptionsPage({
           {surface === "desktop" ? (
             <RunnerBannerView />
           ) : (
-            <WebBanner onOpenDesktop={onOpenDesktop} />
+            <WebBanner onOpenDesktop={() => onOpenDesktop()} onGetDesktop={onGetDesktop} />
           )}
           <div className="eng-subs">
             {SUBSCRIPTION_PROVIDERS.map((sub) => {
@@ -215,6 +224,7 @@ export function SubscriptionsPage({
                 <SubscriptionCard
                   key={sub}
                   view={subscriptionCard(inputs, s, ui[sub])}
+                  highlight={sub === highlight}
                   onAction={(a) => act(sub, a)}
                 />
               );

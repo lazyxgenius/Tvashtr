@@ -9,6 +9,7 @@
  *   #/domains
  *   #/engines · #/engines/subscriptions · #/engines/keys
  *   #/engines?fix=1 (Overview with the rows that need a fix highlighted — the canvas's Open Engines)
+ *   #/engines/subscriptions?connect=claude|grok (that card highlighted — a `tvashtr://` deep link)
  *   #/toolkit/tools · #/toolkit/tools/browse · #/toolkit/tools/<id>
  *   #/toolkit/skills · #/toolkit/skills/presets · #/toolkit/skills/new · #/toolkit/skills/<id>
  *   #/toolkit/memory/inbox|active|archive
@@ -20,6 +21,8 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 export type EnginesTab = "overview" | "subscriptions" | "keys";
+/** A subscription a link asks Subscriptions to point out (it never starts Connect). */
+export type ConnectTarget = "claude" | "grok";
 export type MemoryTab = "inbox" | "active" | "archive";
 export type NodeTab = "setup" | "skills" | "memory" | "runs" | "docs";
 /** The dashboard section the canvas's back / "Open Engines · Toolkit" controls return to. */
@@ -29,7 +32,8 @@ export type Route =
   | { page: "home" }
   | { page: "domains" }
   // `fix`: arrived from a blocked run ("Open Engines") — Overview highlights the rows to fix.
-  | { page: "engines"; tab: EnginesTab; fix?: boolean }
+  // `connect`: Subscriptions only — highlight that card (the website's "Open in Desktop").
+  | { page: "engines"; tab: EnginesTab; fix?: boolean; connect?: ConnectTarget }
   | { page: "tools"; view: "installed" | "browse" }
   | { page: "tool"; toolId: string }
   | { page: "skills"; view: "mine" | "presets" }
@@ -50,6 +54,7 @@ export type Route =
     };
 
 const ENGINES_TABS: EnginesTab[] = ["overview", "subscriptions", "keys"];
+const CONNECT_TARGETS: ConnectTarget[] = ["claude", "grok"];
 const MEMORY_TABS: MemoryTab[] = ["inbox", "active", "archive"];
 const NODE_TABS: NodeTab[] = ["setup", "skills", "memory", "runs", "docs"];
 
@@ -81,6 +86,10 @@ export function parseRoute(hash: string): Route {
       return { page: "domains" };
     case "engines": {
       const tab = ENGINES_TABS.includes(b as EnginesTab) ? (b as EnginesTab) : "overview";
+      const connect = q.get("connect");
+      if (tab === "subscriptions" && CONNECT_TARGETS.includes(connect as ConnectTarget)) {
+        return { page: "engines", tab, connect: connect as ConnectTarget };
+      }
       return tab === "overview" && q.get("fix") === "1"
         ? { page: "engines", tab, fix: true }
         : { page: "engines", tab };
@@ -134,6 +143,9 @@ export function routeToHash(route: Route): string {
     case "domains":
       return "#/domains";
     case "engines":
+      if (route.tab === "subscriptions" && route.connect) {
+        return `#/engines/subscriptions?connect=${route.connect}`;
+      }
       if (route.tab !== "overview") return `#/engines/${route.tab}`;
       return route.fix ? "#/engines?fix=1" : "#/engines";
     case "tools":

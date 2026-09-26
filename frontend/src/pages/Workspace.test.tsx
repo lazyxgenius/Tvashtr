@@ -29,7 +29,13 @@ vi.mock("../App", () => ({
   ),
 }));
 vi.mock("./home/HomePage", () => ({ HomePage: () => <div>HOME BODY</div> }));
-vi.mock("./engines/EnginesPage", () => ({ EnginesPage: () => <div>ENGINES BODY</div> }));
+vi.mock("./engines/EnginesPage", () => ({
+  EnginesPage: ({ tab, connect }: { tab: string; connect?: string }) => (
+    <div data-tab={tab} data-connect={connect}>
+      ENGINES BODY
+    </div>
+  ),
+}));
 
 const user = { id: "u1", email: "lazyx@tvashtr.dev", display_name: "Lazyx" };
 
@@ -51,10 +57,29 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  delete window.tvashtrDesktop;
   window.location.hash = "";
 });
 
 describe("Workspace", () => {
+  it("Tvashtr Desktop: a tvashtr:// link moves the page (connect only highlights a card)", async () => {
+    let deliver: (t: TvashtrDeepLinkTarget) => void = () => undefined;
+    window.tvashtrDesktop = {
+      navigation: {
+        onNavigate: (cb: (t: TvashtrDeepLinkTarget) => void) => {
+          deliver = cb;
+          return () => undefined;
+        },
+        consumePending: () => Promise.resolve(null),
+      },
+    } as unknown as TvashtrDesktopBridge;
+    renderAt("#/home");
+    act(() => deliver({ path: "/engines/subscriptions", params: { connect: "grok" } }));
+    const engines = await screen.findByText("ENGINES BODY");
+    expect(engines).toHaveAttribute("data-tab", "subscriptions");
+    expect(engines).toHaveAttribute("data-connect", "grok");
+  });
+
   it("shows the page for the address inside the shell", () => {
     renderAt("#/engines");
     expect(screen.getByText("ENGINES BODY")).toBeInTheDocument();

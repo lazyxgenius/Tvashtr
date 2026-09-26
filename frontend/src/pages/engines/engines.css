@@ -818,3 +818,47 @@
 .eng-sub__actions .ds-btn__spin {
   box-sizing: content-box;
 }
+/* A `tvashtr://…?connect=` link points at this card (it never starts Connect). */
+.eng-sub--highlight {
+  border-color: var(--coral-500);
+  box-shadow: 0 0 0 3px var(--coral-100);
+}
+
+/* Get Tvashtr Desktop (EnF-WebDesktop-3, ENG-47). */
+.eng-getdesk__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  list-style: none;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 13px;
+  color: var(--ink-700);
+}
+.eng-getdesk__list li {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.eng-getdesk__note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.eng-getdesk__cmd {
+  display: block;
+  margin-top: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--surface-sunk);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-800);
+  white-space: nowrap;
+  overflow-x: auto;
+  user-select: all;
+}

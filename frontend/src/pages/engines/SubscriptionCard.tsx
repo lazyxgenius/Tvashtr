@@ -11,16 +11,20 @@ import type { CardAction, CardView } from "./subscriptionModel";
 
 export function SubscriptionCard({
   view,
+  highlight = false,
   onAction,
 }: {
   view: CardView;
+  /** A `tvashtr://…?connect=` link pointed at this card. */
+  highlight?: boolean;
   onAction: (action: CardAction) => void;
 }) {
   const titleId = `eng-sub-${view.sub}`;
   const { message } = view;
   return (
     <article
-      className={`eng-sub${view.ok ? " eng-sub--ok" : ""}`}
+      className={`eng-sub${view.ok ? " eng-sub--ok" : ""}${highlight ? " eng-sub--highlight" : ""}`}
+      data-highlight={highlight || undefined}
       aria-labelledby={titleId}
       data-sub={view.sub}
     >

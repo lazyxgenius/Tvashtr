@@ -7,8 +7,7 @@
 import { Globe, Monitor, Plus } from "lucide-react";
 import { Fragment } from "react";
 
-import { Button, ButtonLink } from "../../design-system/components";
-import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
+import { Button } from "../../design-system/components";
 import { formatRelativeTime } from "../../lib/time";
 import {
   type Cell,
@@ -40,9 +39,11 @@ export interface OverviewActions {
   /** A row's Connect / Set up / Refresh / Open in Desktop. */
   onCellAction: (action: CellAction) => void;
   onOpenSubscriptions: () => void;
+  /** Download Tvashtr Desktop: the Get Tvashtr Desktop dialog (ENG-47). */
+  onGetDesktop: () => void;
 }
 
-function DesktopStatus() {
+function DesktopStatus({ onGetDesktop }: { onGetDesktop: () => void }) {
   const { surface, runner } = useEngines();
   if (surface === "desktop") {
     return <StatusLine tone="ok">Tvashtr Desktop is open on this computer</StatusLine>;
@@ -59,14 +60,14 @@ function DesktopStatus() {
   return (
     <div className="eng-surface__status-row">
       <StatusLine tone="muted">Not open on this computer</StatusLine>
-      <ButtonLink variant="secondary" size="sm" href={DESKTOP_MAC_DMG_URL}>
+      <Button variant="secondary" size="sm" onClick={onGetDesktop}>
         Download Tvashtr Desktop
-      </ButtonLink>
+      </Button>
     </div>
   );
 }
 
-function Surfaces() {
+function Surfaces({ onGetDesktop }: { onGetDesktop: () => void }) {
   return (
     <div className="eng-surfaces">
       <div className="eng-surface">
@@ -78,7 +79,7 @@ function Surfaces() {
           <div className="eng-surface__desc">
             Runs on this computer. Uses your Claude or Grok subscription first, or an API key.
           </div>
-          <DesktopStatus />
+          <DesktopStatus onGetDesktop={onGetDesktop} />
         </div>
       </div>
       <div className="eng-surface">
@@ -186,6 +187,7 @@ export function OverviewPage({
   onAddKey,
   onCellAction,
   onOpenSubscriptions,
+  onGetDesktop,
 }: OverviewActions & { highlightFixes?: boolean }) {
   const engines = useEngines();
   const { status, inputs } = engines;
@@ -231,7 +233,7 @@ export function OverviewPage({
           </>
         }
       />
-      <Surfaces />
+      <Surfaces onGetDesktop={onGetDesktop} />
       {(hasTeams || also.providers.length > 0) && (
         <EnginesSection title="Providers your teams use" titleId="eng-providers-title">
           {rows.length > 0 ? (
