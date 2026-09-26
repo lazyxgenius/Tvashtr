@@ -274,3 +274,153 @@ export const skillsRoutes = ({
     return { json: { added, skipped } };
   },
 });
+
+// ---- Toolkit › Memory (Toolkit-MemoryInbox, TkF-Review-*, TkF-Inbox-*) ----
+
+const REVIEWER = {
+  node_id: "n-rev",
+  role_name: "reviewer",
+  title: null,
+  team_id: "t-ind",
+  team_name: "Indicator sprint team",
+};
+
+const runSource = (over = {}) => ({
+  kind: "run",
+  run_id: "r-rsi",
+  run_title: "Add an RSI indicator",
+  run_status: "completed",
+  run_succeeded: true,
+  round: 3,
+  agent_role: "reviewer",
+  team_name: "Indicator sprint team",
+  node_id: "n-rev",
+  ...over,
+});
+
+export const memoryRow = (id, content, polarity, over = {}) => ({
+  id,
+  content,
+  polarity,
+  repo_key: "lazyxgenius/trade_mcp",
+  repo_label: "lazyxgenius/trade_mcp",
+  node_id: null,
+  tier: "repo",
+  pinned: false,
+  status: "pending_review",
+  confirmation_count: 1,
+  source_run_id: "r-rsi",
+  source_invocation_id: 4812,
+  source_node_id: "n-rev",
+  superseded_by: null,
+  embedding_dim: 1536,
+  valid_from: ago(31),
+  invalid_at: null,
+  edited_at: null,
+  created_at: ago(31),
+  updated_at: ago(31),
+  agent: null,
+  source: runSource(),
+  source_iteration: 3,
+  ...over,
+});
+
+// The Inbox's two memories: the Reviewer's SHOULD (31m ago) and a failed run's MUST NOT caution.
+export const MEM_SHOULD = memoryRow(
+  "m-should",
+  "Check web/lib/engine-facts.ts whenever the Python indicator list changes; the two must stay in sync.",
+  "prefer",
+  { node_id: "n-rev", tier: "node", agent: REVIEWER },
+);
+export const MEM_MUST_NOT = memoryRow(
+  "m-mustnot",
+  "Don’t edit files under web/generated/; they are rebuilt from the Python source.",
+  "forbid",
+  {
+    valid_from: day(23),
+    created_at: day(23),
+    updated_at: day(23),
+    source: runSource({
+      run_id: "r-fail",
+      run_title: "Wire the indicator page",
+      run_status: "failed",
+      run_succeeded: false,
+      round: 2,
+    }),
+    source_iteration: 2,
+  },
+);
+
+/**
+ * A small stateful memory backend: Keep / Discard / Undo move rows between the Inbox and the
+ * counts (the design's "Active 14", "Archive 3"), the review switch remembers its value.
+ */
+export const memoryRoutes = ({
+  pending = [MEM_SHOULD, MEM_MUST_NOT],
+  active = 14,
+  archive = 3,
+  review = true,
+} = {}) => {
+  const state = {
+    pending: [...pending],
+    away: new Map(),
+    active,
+    archive,
+    review,
+  };
+  const idAt = (req, fromEnd) =>
+    new URL(req.url()).pathname.split("/").at(fromEnd);
+  const take = (id) => {
+    const m = state.pending.find((x) => x.id === id);
+    if (m) {
+      state.pending = state.pending.filter((x) => x.id !== id);
+      state.away.set(id, m);
+    }
+    return m;
+  };
+  const gone = { status: 404, json: { detail: "memory not found" } };
+  return {
+    "GET /api/teams": { teams: [] },
+    "GET /api/memories": (req) => {
+      const status = new URL(req.url()).searchParams.get("status");
+      return {
+        json: { memories: status === "pending_review" ? state.pending : [] },
+      };
+    },
+    "GET /api/memories/counts": () => ({
+      json: {
+        inbox: state.pending.length,
+        active: state.active,
+        archive: state.archive,
+      },
+    }),
+    "GET /api/memory/review-mode": () => ({
+      json: { review_mode: state.review },
+    }),
+    "PATCH /api/memory/review-mode": (req) => {
+      state.review = JSON.parse(req.postData() ?? "{}").review_mode === true;
+      return { json: { review_mode: state.review } };
+    },
+    "POST /api/memories/:id/promote": (req) => {
+      const m = take(idAt(req, -2));
+      if (!m) return gone;
+      state.active += 1;
+      return { json: { ...m, status: "active", action: "promote" } };
+    },
+    "POST /api/memories/:id/reject": (req) => {
+      const m = take(idAt(req, -2));
+      if (!m) return gone;
+      state.archive += 1;
+      return { json: { ...m, status: "rejected", invalid_at: ago(0) } };
+    },
+    "POST /api/memories/:id/requeue": (req) => {
+      const m = state.away.get(idAt(req, -2));
+      if (!m) return gone;
+      state.away.delete(m.id);
+      state.pending.push(m);
+      return {
+        json: { ...m, action: "requeue", restored: [], unmerged_from: null },
+      };
+    },
+  };
+};
