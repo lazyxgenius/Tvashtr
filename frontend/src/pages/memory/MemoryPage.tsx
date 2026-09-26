@@ -10,6 +10,7 @@ import {
 } from "../../lib/api/memory";
 import { type MemoryTab, navigate } from "../../lib/nav";
 import { publishBadges } from "../../lib/workspaceStatus";
+import { MemoryActive } from "./MemoryActive";
 import { MemoryInbox } from "./MemoryInbox";
 import { MemoryList } from "./MemoryList";
 import "./memory.css";
@@ -17,10 +18,10 @@ import "./memory.css";
 const REVIEW_TITLE = "Review new memories before they apply";
 
 /**
- * Toolkit › Memory (Toolkit-MemoryInbox; flows TkF-Review, TkF-Inbox): the page header with Add
- * memory, the review switch (Inbox only), pill tabs "Inbox N / Active N / Archive" from
- * `/api/memories/counts` (the address carries the tab), and the tab's list. The Inbox count is also
- * the nav badge ("2 new").
+ * Toolkit › Memory (Toolkit-MemoryInbox, Toolkit-MemoryActive; flows TkF-Review, TkF-Inbox,
+ * TkF-Filters): the page header with Add memory, the review switch (Inbox only), pill tabs
+ * "Inbox N / Active N / Archive" from `/api/memories/counts` (the address carries the tab), and the
+ * tab's list. The Inbox count is also the nav badge ("2 new").
  */
 export function MemoryPage({ tab }: { tab: MemoryTab }) {
   const [counts, setCounts] = useState<MemoryCounts | null>(null);
@@ -37,6 +38,9 @@ export function MemoryPage({ tab }: { tab: MemoryTab }) {
   }, []);
   useEffect(refreshCounts, [refreshCounts]);
 
+  // Add memory (the header's and the empty states') — the drawer is its own slice (G7).
+  const openAdd = useCallback(() => undefined, []);
+
   return (
     <>
       <div className="pg-head">
@@ -48,7 +52,7 @@ export function MemoryPage({ tab }: { tab: MemoryTab }) {
           </p>
         </div>
         <div className="pg-head__actions">
-          <Button variant="primary" className="mem-btn-inline">
+          <Button variant="primary" className="mem-btn-inline" onClick={openAdd}>
             <Plus size={15} strokeWidth={1.6} aria-hidden />
             <span>Add memory</span>
           </Button>
@@ -76,8 +80,10 @@ export function MemoryPage({ tab }: { tab: MemoryTab }) {
           onChanged={refreshCounts}
           onSeeActive={() => navigate({ page: "memory", tab: "active" })}
         />
+      ) : tab === "active" ? (
+        <MemoryActive onChanged={refreshCounts} onAdd={openAdd} />
       ) : (
-        <MemoryList key={tab} tab={tab} />
+        <MemoryList />
       )}
     </>
   );
