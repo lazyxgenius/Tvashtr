@@ -134,6 +134,14 @@
   padding: 0;
   overflow: hidden;
 }
+/* A card whose rows have ⋯ menus / popovers: they must hang out of the card, so it can't clip. The
+   last row's rule would then poke past the rounded corners — hide it (the card's border is there). */
+.tk-card.tk-card--open {
+  overflow: visible;
+}
+.tk-card--open .tk-table tbody tr:last-child td {
+  border-bottom-color: transparent;
+}
 .tk-table {
   width: 100%;
   border-collapse: collapse;

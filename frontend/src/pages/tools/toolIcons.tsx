@@ -23,15 +23,30 @@ export function GithubMark({ size = 15 }: { size?: number }) {
   );
 }
 
-function isGithub(tool: ToolItem): boolean {
-  const url = typeof tool.server_config.url === "string" ? tool.server_config.url : "";
+function isGithub(tool: Pick<ToolItem, "name"> & { server_config?: ToolItem["server_config"] }) {
+  const url = typeof tool.server_config?.url === "string" ? tool.server_config.url : "";
   return /github/i.test(tool.name) || /github/i.test(url);
+}
+
+/** The bare glyph: GitHub's mark for a GitHub server, a server glyph otherwise. */
+export function ToolGlyph({
+  tool,
+  size = 15,
+}: {
+  tool: Pick<ToolItem, "name"> & { server_config?: ToolItem["server_config"] };
+  size?: number;
+}) {
+  return isGithub(tool) ? (
+    <GithubMark size={size} />
+  ) : (
+    <Server size={size} strokeWidth={1.6} aria-hidden />
+  );
 }
 
 export function ToolTile({ tool }: { tool: ToolItem }) {
   return (
     <span className="tk-tile" aria-hidden="true">
-      {isGithub(tool) ? <GithubMark /> : <Server size={15} strokeWidth={1.6} />}
+      <ToolGlyph tool={tool} />
     </span>
   );
 }

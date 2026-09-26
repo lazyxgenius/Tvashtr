@@ -3,23 +3,30 @@
  * TkF-SecretFix-*): the `${NAME}` values tools use. The header with Add secret; one warning banner
  * per name a tool uses that has no value, each with Add value; the table (Name / Used by / Updated
  * / ⋯) — missing rows with a No value badge and Add value, stored rows with a Sensitive badge,
- * the tools that use them, when they were saved and a ⋯ menu; the Engines footer; the empty,
- * loading and error states; and the secret dialog. Values are never shown (SECRET-21).
+ * the tools that use them, when they were saved and a ⋯ menu (TkF-SecretMenu-*: Replace value, See
+ * tools that use it, Copy ${NAME}, Delete secret); the Engines footer; the empty, loading and error
+ * states; and the secret and delete dialogs. Values are never shown (SECRET-21).
  */
 import { KeyRound, Lock, Plus, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Badge, Button, Menu, useToast } from "../../design-system/components";
-import { type SecretsList, listSecrets } from "../../lib/api/tools";
+import { Badge, Button, useToast } from "../../design-system/components";
+import { type SecretRef, type SecretsList, listSecrets } from "../../lib/api/tools";
 import { refreshBadges } from "../../lib/workspaceStatus";
 import { EmptyState } from "../tools/EmptyState";
 import "../tools/tools.css";
+import { DeleteSecretDialog } from "./DeleteSecretDialog";
 import { SecretDialog, type SecretDialogMode } from "./SecretDialog";
+import { SecretRowMenu } from "./SecretRowMenu";
 import {
   type SecretRow,
+  copiedToast,
+  deletedToast,
   formatUpdated,
   missingSentence,
+  orderMissing,
   orderSecretRows,
+  refOf,
   replacedToast,
   savedToast,
   usedByText,
@@ -54,16 +61,23 @@ function useSecretList() {
 export function SecretsPage() {
   const { list, error, reload, retry } = useSecretList();
   const [dialog, setDialog] = useState<SecretDialogMode | null>(null);
-  // Names saved during this visit, newest first: they stay at the top of the table.
+  const [deleting, setDeleting] = useState<{ name: string; usedBy: SecretRef[] } | null>(null);
+  // Names added during this visit, newest first: they stay at the top of the table. (A replaced
+  // value keeps its row where it is.)
   const [fresh, setFresh] = useState<string[]>([]);
   const toast = useToast();
   const listRef = useRef(list);
   listRef.current = list;
+  // What is on screen keeps its place across reloads (orderSecretRows / orderMissing).
+  const shown = useRef<{ rows: string[]; banners: string[] }>({ rows: [], banners: [] });
+  const banners = list ? orderMissing(list.missing, shown.current.banners) : [];
+  const rows = list ? orderSecretRows(list, fresh, shown.current.rows) : [];
+  shown.current = { rows: rows.map((r) => r.name), banners: banners.map((m) => m.name) };
 
   const onSaved = async (mode: SecretDialogMode, name: string) => {
     setDialog(null);
     const before = listRef.current;
-    setFresh((f) => [name, ...f.filter((n) => n !== name)]);
+    if (mode.kind !== "replace") setFresh((f) => [name, ...f.filter((n) => n !== name)]);
     const after = await reload();
     void refreshBadges();
     if (mode.kind === "replace") {
@@ -72,6 +86,26 @@ export function SecretsPage() {
     }
     const wasMissing = before?.missing.find((m) => m.name === name);
     toast({ message: savedToast(name, wasMissing, after) });
+  };
+
+  // SECRET-20: a secret a tool still uses comes back as a No value row with its banner (spec Q2).
+  const onDeleted = async (name: string, usedBy: SecretRef[]) => {
+    setDeleting(null);
+    setFresh((f) => f.filter((n) => n !== name));
+    await reload();
+    void refreshBadges();
+    toast({ message: deletedToast(name, usedBy) });
+  };
+
+  // SECRET-15: the literal ${NAME}, for pasting into a tool's config.
+  const copyRef = async (name: string) => {
+    try {
+      if (!navigator.clipboard) throw new Error("no clipboard");
+      await navigator.clipboard.writeText(refOf(name));
+      toast({ message: copiedToast(name) });
+    } catch {
+      toast({ message: `Couldn’t copy ${refOf(name)}.`, tone: "error" });
+    }
   };
 
   const addValue = (name: string) => setDialog({ kind: "add-prefilled", name });
@@ -94,7 +128,7 @@ export function SecretsPage() {
         </div>
       </div>
 
-      {list?.missing.map((m) => (
+      {banners.map((m) => (
         <div key={m.name} className="sc-banner" role="status">
           <TriangleAlert size={16} strokeWidth={1.6} aria-hidden />
           <span className="sc-banner__text">
@@ -109,14 +143,17 @@ export function SecretsPage() {
 
       <SecretsBody
         list={list}
+        rows={rows}
         error={error}
-        fresh={fresh}
         onRetry={retry}
         onAdd={() => setDialog({ kind: "add" })}
         onAddValue={addValue}
-        onReplace={(row) =>
-          setDialog({ kind: "replace", name: row.name, usedBy: row.secret.used_by_tools })
-        }
+        rowActions={(row) => ({
+          onReplace: () =>
+            setDialog({ kind: "replace", name: row.name, usedBy: row.secret.used_by_tools }),
+          onCopy: () => void copyRef(row.name),
+          onDelete: () => setDeleting({ name: row.name, usedBy: row.secret.used_by_tools }),
+        })}
       />
 
       <div className="sc-footer">
@@ -136,26 +173,38 @@ export function SecretsPage() {
           onSaved={(name) => void onSaved(dialog, name)}
         />
       )}
+      {deleting && (
+        <DeleteSecretDialog
+          name={deleting.name}
+          usedBy={deleting.usedBy}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => void onDeleted(deleting.name, deleting.usedBy)}
+        />
+      )}
     </>
   );
 }
 
 function SecretsBody({
   list,
+  rows,
   error,
-  fresh,
   onRetry,
   onAdd,
   onAddValue,
-  onReplace,
+  rowActions,
 }: {
   list: SecretsList | null;
+  rows: SecretRow[];
   error: boolean;
-  fresh: string[];
   onRetry: () => void;
   onAdd: () => void;
   onAddValue: (name: string) => void;
-  onReplace: (row: Extract<SecretRow, { kind: "stored" }>) => void;
+  rowActions: (row: Extract<SecretRow, { kind: "stored" }>) => {
+    onReplace: () => void;
+    onCopy: () => void;
+    onDelete: () => void;
+  };
 }) {
   if (list === null) {
     if (error) {
@@ -206,7 +255,7 @@ function SecretsBody({
 
   const now = Date.now();
   return (
-    <section className="tk-card">
+    <section className="tk-card tk-card--open">
       <table className="tk-table">
         <thead>
           <tr>
@@ -219,7 +268,7 @@ function SecretsBody({
           </tr>
         </thead>
         <tbody>
-          {orderSecretRows(list, fresh).map((row) =>
+          {rows.map((row) =>
             row.kind === "missing" ? (
               <tr key={row.name}>
                 <td>
@@ -261,12 +310,10 @@ function SecretsBody({
                   </span>
                 </td>
                 <td>
-                  {/* G3 grows this into the full secret menu (See tools, Copy, Delete). */}
-                  <Menu
-                    label={`More actions for ${row.name}`}
-                    items={[
-                      { key: "replace", label: "Replace value", onSelect: () => onReplace(row) },
-                    ]}
+                  <SecretRowMenu
+                    name={row.name}
+                    usedBy={row.secret.used_by_tools}
+                    {...rowActions(row)}
                   />
                 </td>
               </tr>

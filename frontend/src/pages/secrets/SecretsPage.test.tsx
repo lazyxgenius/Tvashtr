@@ -3,7 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SecretsList } from "../../lib/api/tools";
 import { refreshBadges } from "../../lib/workspaceStatus";
-import { mockApi, renderWithProviders, resetToolkitStores } from "../tools/toolsTestUtils";
+import {
+  FETCH as FETCH_TOOL,
+  GITHUB as GITHUB_TOOL,
+  LINEAR as LINEAR_TOOL,
+  mockApi,
+  renderWithProviders,
+  resetToolkitStores,
+} from "../tools/toolsTestUtils";
 import { SecretsPage } from "./SecretsPage";
 
 vi.mock("../../lib/workspaceStatus", async (importOriginal) => ({
@@ -43,10 +50,47 @@ function designList(): SecretsList {
   };
 }
 
-/** A fake server: GET reads the list, POST creates (409 when taken), PUT replaces. */
-function serve(initial: SecretsList = designList()) {
+// github's page data: the agents a delete of GITHUB_TOKEN stops (SECRET-18).
+const usage = (node_id: string, role_name: string, team_name: string) => ({
+  node_id,
+  role_name,
+  title: null,
+  team_id: `team-${team_name}`,
+  team_name,
+});
+const GITHUB_DETAIL = {
+  ...GITHUB_TOOL,
+  used_by_agents: [
+    usage("n-eng", "engineer", "web"),
+    usage("n-rev", "reviewer", "web"),
+    usage("n-wri", "writer", "docs"),
+  ],
+};
+
+/**
+ * A fake server: GET reads the list, POST creates (409 when taken), PUT replaces, DELETE removes —
+ * a name a tool still uses comes back under `missing` (spec Q2). `routes` override any of them.
+ */
+function serve(initial: SecretsList = designList(), routes: Record<string, unknown> = {}) {
   const state = structuredClone(initial);
   const calls = mockApi({
+    "GET /api/tool-library": { tools: [FETCH_TOOL, GITHUB_TOOL, LINEAR_TOOL] },
+    "GET /api/tool-library/:id": (u: URL) =>
+      u.pathname.endsWith(`/${GITHUB_TOOL.id}`)
+        ? GITHUB_DETAIL
+        : new Response(JSON.stringify({ detail: "tool not found in your library" }), {
+            status: 404,
+          }),
+    "DELETE /api/secrets/:name": (u: URL) => {
+      const name = decodeURIComponent(u.pathname.split("/").pop() ?? "");
+      const row = state.secrets.find((s) => s.name === name);
+      state.secrets = state.secrets.filter((s) => s.name !== name);
+      if (row?.used_by_tools.length) {
+        state.missing.push({ name, used_by_tools: row.used_by_tools });
+        state.missing.sort((a, b) => a.name.localeCompare(b.name));
+      }
+      return new Response(null, { status: 204 });
+    },
     "GET /api/secrets": () => state,
     "POST /api/secrets": (_u: URL, body: { name: string; value: string }) => {
       if (state.secrets.some((s) => s.name === body.name))
@@ -74,6 +118,7 @@ function serve(initial: SecretsList = designList()) {
       if (row) row.updated_at = at;
       return { name, created_at: row?.created_at, updated_at: at };
     },
+    ...routes,
   });
   renderWithProviders(<SecretsPage />);
   return calls;
@@ -324,5 +369,179 @@ describe("Replace value", () => {
       body: { value: "ghp_new" },
     });
     expect(refreshBadges).toHaveBeenCalled();
+  });
+});
+
+describe("Secret ⋯ menu", () => {
+  const openMenu = (name: string) => {
+    const row = rows().find((r) => r.querySelector(".sc-name__text")?.textContent === name);
+    if (!row) throw new Error(`no row ${name}`);
+    fireEvent.click(within(row).getByRole("button", { name: `More actions for ${name}` }));
+    return within(row).getByRole("menu", { name: `More actions for ${name}` });
+  };
+  const pick = (name: string, item: string) =>
+    fireEvent.click(within(openMenu(name)).getByRole("menuitem", { name: item }));
+
+  it("offers Replace value, See tools that use it, Copy ${NAME} and Delete secret", async () => {
+    serve();
+    await screen.findByRole("table");
+    const menu = openMenu("GITHUB_TOKEN");
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((i) => i.textContent),
+    ).toEqual(["Replace value", "See tools that use it", "Copy ${GITHUB_TOKEN}", "Delete secret"]);
+  });
+
+  it("shows the tools that use it, with their agents and teams and an Open link", async () => {
+    serve();
+    await screen.findByRole("table");
+    pick("GITHUB_TOKEN", "See tools that use it");
+
+    const pop = dialog("Tools that use GITHUB_TOKEN");
+    expect(within(pop).getByText("Used by 1 tool")).toBeInTheDocument();
+    expect(within(pop).getByText("github")).toBeInTheDocument();
+    expect(await within(pop).findByText("3 agents · 2 teams")).toBeInTheDocument();
+    const open = within(pop).getByRole("link", { name: "Open" });
+    expect(open).toHaveAttribute("href", "#/toolkit/tools/t-github");
+    expect(open).toHaveFocus();
+
+    // Escape closes it and puts focus back on the ⋯.
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Tools that use GITHUB_TOKEN" })).toBeNull();
+    expect(screen.getByRole("button", { name: "More actions for GITHUB_TOKEN" })).toHaveFocus();
+  });
+
+  it("says when no tool uses it", async () => {
+    serve();
+    await screen.findByRole("table");
+    pick("SENTRY_TOKEN", "See tools that use it");
+    const pop = dialog("Tools that use SENTRY_TOKEN");
+    expect(within(pop).getByText("Not used by any tool")).toBeInTheDocument();
+    expect(within(pop).queryByRole("link")).toBeNull();
+  });
+
+  describe("Copy ${NAME}", () => {
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, "clipboard");
+    });
+    const stubClipboard = (writeText: (text: string) => Promise<void>) => {
+      const fn = vi.fn(writeText);
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText: fn },
+        configurable: true,
+      });
+      return fn;
+    };
+
+    it("writes the literal ${NAME} and confirms it", async () => {
+      const writeText = stubClipboard(async () => {});
+      serve();
+      await screen.findByRole("table");
+      pick("GITHUB_TOKEN", "Copy ${GITHUB_TOKEN}");
+      expect(await screen.findByText("Copied ${GITHUB_TOKEN}.")).toBeInTheDocument();
+      expect(writeText).toHaveBeenCalledWith("${GITHUB_TOKEN}");
+    });
+
+    it("says so when the clipboard refuses", async () => {
+      stubClipboard(() => Promise.reject(new Error("denied")));
+      serve();
+      await screen.findByRole("table");
+      pick("GITHUB_TOKEN", "Copy ${GITHUB_TOKEN}");
+      expect(await screen.findByText("Couldn’t copy ${GITHUB_TOKEN}.")).toBeInTheDocument();
+    });
+  });
+
+  describe("Delete secret", () => {
+    const confirm = (name: string) => screen.findByRole("alertdialog", { name: `Delete ${name}?` });
+
+    it("names the tool and its agents, then the row comes back as No value (spec Q2)", async () => {
+      const calls = serve();
+      await screen.findByRole("table");
+      pick("GITHUB_TOKEN", "Delete secret");
+
+      const d = await confirm("GITHUB_TOKEN");
+      expect(d).toHaveTextContent(
+        "github uses it. github stops connecting for Engineer, Reviewer and Writer until you add it again. You can’t undo this.",
+      );
+      expect(calls.some((c) => c.method === "GET" && c.path === "/api/tool-library/t-github")).toBe(
+        true,
+      );
+      fireEvent.click(within(d).getByRole("button", { name: "Delete secret" }));
+
+      expect(
+        await screen.findByText("GITHUB_TOKEN deleted. github now needs a secret."),
+      ).toBeInTheDocument();
+      expect(calls.find((c) => c.method === "DELETE")).toMatchObject({
+        path: "/api/secrets/GITHUB_TOKEN",
+      });
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+      // Still used by github: the row stays in its place as No value, with a banner of its own.
+      await waitFor(() => expect(within(rows()[1]).getByText("No value")).toBeInTheDocument());
+      expect(rowNames()).toEqual(["LINEAR_TOKEN", "GITHUB_TOKEN", "SENTRY_TOKEN"]);
+      expect(within(rows()[1]).getByRole("button", { name: "Add value" })).toBeInTheDocument();
+      const banners = screen
+        .getAllByRole("status")
+        .filter((b) => b.classList.contains("sc-banner"));
+      expect(banners.map((b) => b.textContent)).toEqual([
+        expect.stringContaining("LINEAR_TOKEN is used by linear"),
+        expect.stringContaining("GITHUB_TOKEN is used by github"),
+      ]);
+      expect(refreshBadges).toHaveBeenCalled();
+    });
+
+    it("removes an unused secret's row", async () => {
+      const calls = serve();
+      await screen.findByRole("table");
+      pick("SENTRY_TOKEN", "Delete secret");
+
+      const d = await confirm("SENTRY_TOKEN");
+      expect(d).toHaveTextContent("No tool uses it. You can’t undo this.");
+      expect(calls.some((c) => c.path.startsWith("/api/tool-library/"))).toBe(false);
+      fireEvent.click(within(d).getByRole("button", { name: "Delete secret" }));
+
+      expect(await screen.findByText("SENTRY_TOKEN deleted.")).toBeInTheDocument();
+      await waitFor(() => expect(rowNames()).toEqual(["LINEAR_TOKEN", "GITHUB_TOKEN"]));
+    });
+
+    it("leaves the agents out when the tool's page can't load", async () => {
+      serve(designList(), {
+        "GET /api/tool-library/:id": new Response(JSON.stringify({ detail: "boom" }), {
+          status: 500,
+        }),
+      });
+      await screen.findByRole("table");
+      pick("GITHUB_TOKEN", "Delete secret");
+      expect(await confirm("GITHUB_TOKEN")).toHaveTextContent(
+        "github uses it. github stops connecting until you add it again. You can’t undo this.",
+      );
+    });
+
+    it("keeps the secret on Cancel", async () => {
+      const calls = serve();
+      await screen.findByRole("table");
+      pick("GITHUB_TOKEN", "Delete secret");
+      const d = await confirm("GITHUB_TOKEN");
+      fireEvent.click(within(d).getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+      expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+      expect(screen.getByRole("button", { name: "More actions for GITHUB_TOKEN" })).toHaveFocus();
+    });
+
+    it("stays open with a retryable message when the delete fails", async () => {
+      serve(designList(), {
+        "DELETE /api/secrets/:name": () =>
+          new Response(JSON.stringify({ detail: "boom" }), { status: 500 }),
+      });
+      await screen.findByRole("table");
+      pick("GITHUB_TOKEN", "Delete secret");
+      const d = await confirm("GITHUB_TOKEN");
+      fireEvent.click(within(d).getByRole("button", { name: "Delete secret" }));
+      expect(await within(d).findByRole("alert")).toHaveTextContent(
+        "Couldn’t delete the secret. Try again.",
+      );
+      expect(screen.getByRole("alertdialog", { name: "Delete GITHUB_TOKEN?" })).toBeInTheDocument();
+      expect(within(rows()[1]).getByText("Sensitive")).toBeInTheDocument();
+    });
   });
 });

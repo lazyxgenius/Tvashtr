@@ -1,5 +1,6 @@
-/** Copy helpers for the Tools screens (plurals, "Used by", status labels, sorting). */
-import type { ToolItem } from "../../lib/api/tools";
+/** Copy helpers for the Tools screens (plurals, "Used by", status labels, agent names, sorting). */
+import type { ToolItem, UsageRow } from "../../lib/api/tools";
+import { titleCase } from "../../lib/text";
 import type { StatusFilter } from "./toolsState";
 
 /** "1 agent", "3 agents". */
@@ -11,6 +12,20 @@ export function plural(n: number, one: string, many = `${one}s`): string {
 export function usedByLabel(usedBy: ToolItem["used_by"]): string {
   if (usedBy.agent_count === 0) return "Not used yet";
   return `${plural(usedBy.agent_count, "agent")} · ${plural(usedBy.team_count, "team")}`;
+}
+
+// The seeded roles' display names; any other role is title-cased ("prd_gate" → "Prd gate").
+const ROLE_TITLES: Record<string, string> = { pm: "Product manager" };
+
+/** An agent's display name: its own title when it has one, else its role ("Engineer"). */
+export function agentName(row: Pick<UsageRow, "role_name" | "title">): string {
+  const title = row.title?.trim();
+  return title || ROLE_TITLES[row.role_name] || titleCase(row.role_name);
+}
+
+/** The distinct agent names of some usage rows, in order ("Engineer", "Reviewer", "Writer"). */
+export function agentNames(rows: Pick<UsageRow, "role_name" | "title">[]): string[] {
+  return [...new Set(rows.map(agentName))];
 }
 
 /**

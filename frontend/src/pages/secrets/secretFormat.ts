@@ -74,8 +74,16 @@ export type SecretRow =
   | { kind: "missing"; name: string; missing: MissingSecret }
   | { kind: "stored"; name: string; secret: SecretItem };
 
-/** Table order: rows saved during this visit (newest first), then missing rows, then A→Z. */
-export function orderSecretRows(list: SecretsList, fresh: string[]): SecretRow[] {
+/**
+ * Table order: rows added during this visit (newest first), then missing rows, then A→Z. Rows
+ * already on screen (`previous`, the last order shown) keep their places — a row that flips between
+ * stored and No value (a delete, spec Q2) changes in place rather than jumping.
+ */
+export function orderSecretRows(
+  list: SecretsList,
+  fresh: string[],
+  previous: string[] = [],
+): SecretRow[] {
   const stored = new Map(list.secrets.map((s) => [s.name, s]));
   const pinned: SecretRow[] = [];
   for (const name of fresh) {
@@ -92,7 +100,21 @@ export function orderSecretRows(list: SecretsList, fresh: string[]): SecretRow[]
     .filter((s) => !pinnedNames.has(s.name))
     .sort(byName)
     .map((s) => ({ kind: "stored", name: s.name, secret: s }));
-  return [...pinned, ...missing, ...rest];
+  const rank = new Map(previous.map((name, i) => [name, i]));
+  const shown = [...missing, ...rest]
+    .filter((r) => rank.has(r.name))
+    .sort((a, b) => (rank.get(a.name) ?? 0) - (rank.get(b.name) ?? 0));
+  const isNew = (r: SecretRow) => !rank.has(r.name);
+  return [...pinned, ...missing.filter(isNew), ...shown, ...rest.filter(isNew)];
+}
+
+/** The banners' order: the server's (A→Z), except that banners already shown stay on top. */
+export function orderMissing(missing: MissingSecret[], previous: string[] = []): MissingSecret[] {
+  const rank = new Map(previous.map((name, i) => [name, i]));
+  return missing
+    .map((m, i) => ({ m, at: rank.get(m.name) ?? previous.length + i }))
+    .sort((a, b) => a.at - b.at)
+    .map(({ m }) => m);
 }
 
 /**
@@ -126,3 +148,35 @@ export function replacedToast(name: string, users: SecretRef[]): string {
   const names = users.map((t) => t.name);
   return `${name} replaced. ${joinNames(names)} ${names.length > 1 ? "use" : "uses"} the new value on ${names.length > 1 ? "their" : "its"} next run.`;
 }
+
+/** SECRET-14: the heading of "See tools that use it" ("Used by 1 tool" / "Not used by any tool"). */
+export function toolsUsingHeading(count: number): string {
+  if (count === 0) return "Not used by any tool";
+  return `Used by ${count} ${count === 1 ? "tool" : "tools"}`;
+}
+
+/**
+ * SECRET-18: the delete confirmation's impact sentence — who uses the secret and which agents lose
+ * the tool ("github uses it. github stops connecting for Engineer, Reviewer and Writer until you
+ * add it again. You can’t undo this."). `agents` are the using tools' agent names (may be empty).
+ */
+export function deleteImpact(users: SecretRef[], agents: string[]): string {
+  const undo = "You can’t undo this.";
+  if (users.length === 0) return `No tool uses it. ${undo}`;
+  const names = users.map((t) => t.name);
+  const who = joinNames(names);
+  const forWhom = agents.length > 0 ? ` for ${joinNames(agents)}` : "";
+  return names.length === 1
+    ? `${who} uses it. ${who} stops connecting${forWhom} until you add it again. ${undo}`
+    : `${who} use it. They stop connecting${forWhom} until you add it again. ${undo}`;
+}
+
+/** SECRET-20: the toast after a delete. */
+export function deletedToast(name: string, users: SecretRef[]): string {
+  if (users.length === 0) return `${name} deleted.`;
+  const names = users.map((t) => t.name);
+  return `${name} deleted. ${joinNames(names)} now ${names.length > 1 ? "need" : "needs"} a secret.`;
+}
+
+/** SECRET-15: the toast after "Copy ${NAME}". */
+export const copiedToast = (name: string) => `Copied ${refOf(name)}.`;
