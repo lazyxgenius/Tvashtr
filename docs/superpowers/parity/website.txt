@@ -1,13 +1,20 @@
 # The public website (website.md) — parity, branch feat/revamp-website. Every page is website-only (website.md §1); WEB-3's Desktop routing is pages/website/desktopRouting.test.tsx
-# scenarios: scripts/design-parity/scenarios/website-download.mjs (web-download = Web-Download, WbF-Mac-2; web-download2 = Web-Download2, WbF-Mac-3; web-mac-4 = WbF-Mac-4; web-download-win = Web-DownloadWin, WbF-Win-2 — the WbF boards are the same screens with a coral ring)
+# scenarios: scripts/design-parity/scenarios/website-download.mjs (web-download = Web-Download, WbF-Mac-2; web-download2 = Web-Download2, WbF-Mac-3; web-mac-4 = WbF-Mac-4; web-download-win = Web-DownloadWin, WbF-Win-2 — the WbF boards are the same screens with a coral ring); website-signin.mjs (web-signin = Web-SignIn, WbF-Start-2; web-signin-done = WbF-Start-3, held on "Opening Home…" by blocking the hand-off to #/home; web-signin-cancelled = WbF-Err-1)
 # not found in app, by decision: "Intel Mac? Get that version" + "· [version] · [minimum macOS]" → "Needs a Mac with Apple silicon (M1 or later) · v<version> · macOS 11 or later" (no Intel build, OQ-6/OQ-8); "Tvashtr-[version].dmg is in…" → "Tvashtr-mac.dmg is in…" (stable file name, OQ-5); the email Input + "Tell me" → "Watch for releases on GitHub" (no email service, OQ-9)
+# not found in app, by decision (sign-in): the foot note "Using the Mac app? Sign in from the app. It opens this page for you and brings you back." → "…Sign in from the app with the same GitHub account." (Desktop signs in with GitHub itself, desktop-app.md §6, OQ-18); "Check that pop-ups aren’t blocked" → "Check that cookies aren’t blocked" (sign-in is a redirect, not a pop-up; OQ-15)
 # only moved: step 3 and the two actions on Web-Download2/WbF-Mac-3/WbF-Mac-4 sit 104px lower under step 2's xattr fix (session rule, OQ-5); WbF-Mac-4's dialog is the DS Dialog, centred in the window (the board pins it at top 200)
+WbF-Err-1 web: matched 24/25 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+WbF-Err-1 desktop: n/a — website-only page (website.md §1)
 WbF-Mac-2 web: matched 19/21 design items · 0 with size/type drift · 0 only moved · 2 not found in app
 WbF-Mac-2 desktop: n/a — website-only page (website.md §1)
 WbF-Mac-3 web: matched 21/22 design items · 0 with size/type drift · 6 only moved · 1 not found in app
 WbF-Mac-3 desktop: n/a — website-only page (website.md §1)
 WbF-Mac-4 web: matched 27/28 design items · 0 with size/type drift · 12 only moved · 1 not found in app
 WbF-Mac-4 desktop: n/a — website-only page (website.md §1)
+WbF-Start-2 web: matched 25/26 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+WbF-Start-2 desktop: n/a — website-only page (website.md §1)
+WbF-Start-3 web: matched 24/24 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+WbF-Start-3 desktop: n/a — website-only page (website.md §1)
 WbF-Win-2 web: matched 16/19 design items · 0 with size/type drift · 0 only moved · 3 not found in app
 WbF-Win-2 desktop: n/a — website-only page (website.md §1)
 Web-Download web: matched 19/21 design items · 0 with size/type drift · 0 only moved · 2 not found in app
@@ -16,3 +23,5 @@ Web-Download2 web: matched 21/22 design items · 0 with size/type drift · 6 onl
 Web-Download2 desktop: n/a — website-only page (website.md §1)
 Web-DownloadWin web: matched 16/19 design items · 0 with size/type drift · 0 only moved · 3 not found in app
 Web-DownloadWin desktop: n/a — website-only page (website.md §1)
+Web-SignIn web: matched 25/26 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+Web-SignIn desktop: n/a — website-only page (website.md §1)
