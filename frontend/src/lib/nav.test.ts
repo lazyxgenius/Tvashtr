@@ -14,6 +14,7 @@ describe("parseRoute / routeToHash", () => {
     ["#/engines", { page: "engines", tab: "overview" }],
     ["#/engines/subscriptions", { page: "engines", tab: "subscriptions" }],
     ["#/engines/keys", { page: "engines", tab: "keys" }],
+    ["#/engines?fix=1", { page: "engines", tab: "overview", fix: true }],
     ["#/toolkit/tools", { page: "tools", view: "installed" }],
     ["#/toolkit/tools/browse", { page: "tools", view: "browse" }],
     ["#/toolkit/tools/abc-123", { page: "tool", toolId: "abc-123" }],
@@ -48,6 +49,8 @@ describe("parseRoute / routeToHash", () => {
 
   it("falls back to each section's first tab for an unknown tab", () => {
     expect(parseRoute("#/engines/zzz")).toEqual({ page: "engines", tab: "overview" });
+    // Only Overview highlights the rows to fix.
+    expect(parseRoute("#/engines/keys?fix=1")).toEqual({ page: "engines", tab: "keys" });
     expect(parseRoute("#/toolkit/memory/zzz")).toEqual({ page: "memory", tab: "inbox" });
     expect(parseRoute("#/toolkit")).toEqual({ page: "tools", view: "installed" });
   });

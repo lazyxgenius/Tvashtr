@@ -6,7 +6,9 @@
 import { getInbox } from "../lib/api/home";
 import { isDesktopApp } from "../lib/desktopRepos";
 import { registerBadgeLoader } from "../lib/workspaceStatus";
+import { loadEngineBadges } from "./engines/engineBadges";
 
 registerBadgeLoader("home", async () => ({
   home: (await getInbox(isDesktopApp() ? "desktop" : "website")).count,
 }));
+registerBadgeLoader("engines", loadEngineBadges);

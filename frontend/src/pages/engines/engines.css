@@ -1,0 +1,341 @@
+/* ============================================================
+   Engines (Eng-* / EnF-* artboards) — exact design values.
+   The page sits in .sh-main__inner (max-width 1100px, a column with a 20px gap).
+   ============================================================ */
+
+/* ---- Page header ---- */
+.eng-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+.eng-head__title {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+.eng-head__lede {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-500);
+  max-width: 620px;
+}
+.eng-head__actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+/* An icon + label inside one Button child span (the design's markup). */
+.eng-btn-inline > span {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---- Status lines: OK (sage), warn (amber), muted ---- */
+.eng-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.eng-status--ok {
+  color: #52613e;
+}
+.eng-status--warn {
+  gap: 8px;
+  color: #7a5423;
+}
+.eng-status--muted {
+  color: var(--ink-500);
+}
+.eng-muted {
+  color: var(--ink-500);
+}
+.eng-code {
+  font-family: var(--font-code);
+}
+
+/* ---- Section card ---- */
+.eng-card {
+  border: 1px solid var(--border-hairline);
+  border-radius: 16px;
+  background: var(--surface-card);
+  padding: 0;
+  overflow: hidden;
+}
+.eng-card__head {
+  padding: 14px 16px 4px;
+}
+.eng-card__head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.eng-card__title {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.eng-empty {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--ink-500);
+}
+
+/* ---- Overview: the two surfaces ---- */
+.eng-surfaces {
+  display: flex;
+  gap: 16px;
+}
+.eng-surface {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.eng-surface__icon {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--panel-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-700);
+}
+.eng-surface__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.eng-surface__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.eng-surface__desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+.eng-surface__status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- Overview: providers table ---- */
+.eng-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.eng-table th {
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+  border-bottom: 1px solid var(--line-200);
+}
+/* The design's header icons are inline (the app's preflight makes every svg a block). */
+.eng-table th svg {
+  display: inline;
+  vertical-align: baseline;
+}
+.eng-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-200);
+  font-size: 13px;
+  color: var(--ink-800);
+  vertical-align: middle;
+}
+/* Arrived from a blocked run: the rows to fix (Eng-Flow-Blocked-2). */
+.eng-table tr.eng-row--fix > td {
+  background: #fbf3e6;
+}
+.eng-prov {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.eng-mono {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 5px;
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.eng-prov__slug {
+  font-family: var(--font-code);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.eng-usedby {
+  font-size: 12.5px;
+}
+.eng-also {
+  padding: 10px 16px;
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+
+/* ---- Overview: can your teams run? ---- */
+.eng-teams {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.eng-team {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px 260px;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-200);
+}
+.eng-team__name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-900);
+}
+
+/* ---- First time (EnF-FirstTime-1) ---- */
+.eng-ft__intro {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.eng-ft__q {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--ink-900);
+}
+.eng-ft__sub {
+  font-size: 14px;
+  color: var(--ink-600);
+}
+.eng-ft__cards {
+  display: flex;
+  gap: 16px;
+}
+.eng-ft__card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.eng-ft__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--panel-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-700);
+}
+.eng-ft__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 400;
+  color: var(--ink-900);
+}
+.eng-ft__text {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+  flex: 1;
+}
+
+/* ---- The subscription disclosure ---- */
+.eng-disclosure {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.eng-disclosure__icon {
+  display: inline-flex;
+  margin-top: 2px;
+}
+
+/* ---- Loading and load errors (ENG-78) ---- */
+.eng-loaderr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fbf3e6;
+  font-size: 13px;
+  color: #7a5423;
+}
+.eng-loaderr > span {
+  flex: 1;
+}
+.eng-skel__row {
+  display: flex;
+  gap: 24px;
+  padding: 16px;
+  border-bottom: 1px solid var(--line-200);
+}
+.eng-skel__row:last-child {
+  border-bottom: 0;
+}
+.eng-skel__bar {
+  flex: 1;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--line-200);
+  animation: eng-pulse 1.4s ease-in-out infinite;
+}
+.eng-skel__bar--short {
+  flex: 0 0 140px;
+}
+@keyframes eng-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eng-skel__bar {
+    animation: none;
+  }
+}

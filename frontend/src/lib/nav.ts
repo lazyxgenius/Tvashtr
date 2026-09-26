@@ -8,6 +8,7 @@
  *   #/home
  *   #/domains
  *   #/engines · #/engines/subscriptions · #/engines/keys
+ *   #/engines?fix=1 (Overview with the rows that need a fix highlighted — the canvas's Open Engines)
  *   #/toolkit/tools · #/toolkit/tools/browse · #/toolkit/tools/<id>
  *   #/toolkit/skills · #/toolkit/skills/presets · #/toolkit/skills/new · #/toolkit/skills/<id>
  *   #/toolkit/memory/inbox|active|archive
@@ -27,7 +28,8 @@ export type DashView = "home" | "domains" | "engines" | "tools";
 export type Route =
   | { page: "home" }
   | { page: "domains" }
-  | { page: "engines"; tab: EnginesTab }
+  // `fix`: arrived from a blocked run ("Open Engines") — Overview highlights the rows to fix.
+  | { page: "engines"; tab: EnginesTab; fix?: boolean }
   | { page: "tools"; view: "installed" | "browse" }
   | { page: "tool"; toolId: string }
   | { page: "skills"; view: "mine" | "presets" }
@@ -77,11 +79,12 @@ export function parseRoute(hash: string): Route {
       return HOME;
     case "domains":
       return { page: "domains" };
-    case "engines":
-      return {
-        page: "engines",
-        tab: ENGINES_TABS.includes(b as EnginesTab) ? (b as EnginesTab) : "overview",
-      };
+    case "engines": {
+      const tab = ENGINES_TABS.includes(b as EnginesTab) ? (b as EnginesTab) : "overview";
+      return tab === "overview" && q.get("fix") === "1"
+        ? { page: "engines", tab, fix: true }
+        : { page: "engines", tab };
+    }
     case "toolkit":
       if (b === undefined || b === "tools") {
         if (c === undefined) return { page: "tools", view: "installed" };
@@ -131,7 +134,8 @@ export function routeToHash(route: Route): string {
     case "domains":
       return "#/domains";
     case "engines":
-      return route.tab === "overview" ? "#/engines" : `#/engines/${route.tab}`;
+      if (route.tab !== "overview") return `#/engines/${route.tab}`;
+      return route.fix ? "#/engines?fix=1" : "#/engines";
     case "tools":
       return route.view === "browse" ? "#/toolkit/tools/browse" : "#/toolkit/tools";
     case "tool":

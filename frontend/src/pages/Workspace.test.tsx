@@ -11,14 +11,25 @@ import {
 import { Workspace } from "./Workspace";
 
 vi.mock("../App", () => ({
-  default: ({ teamId, initialRunId }: { teamId: string; initialRunId: string | null }) => (
+  default: ({
+    teamId,
+    initialRunId,
+    onBackToDashboard,
+  }: {
+    teamId: string;
+    initialRunId: string | null;
+    onBackToDashboard: (view: string) => void;
+  }) => (
     <div>
       CANVAS {teamId} {initialRunId ?? "-"}
+      <button type="button" onClick={() => onBackToDashboard("engines")}>
+        Open Engines
+      </button>
     </div>
   ),
 }));
 vi.mock("./home/HomePage", () => ({ HomePage: () => <div>HOME BODY</div> }));
-vi.mock("../components/EnginesShelf", () => ({ EnginesShelf: () => <div>ENGINES BODY</div> }));
+vi.mock("./engines/EnginesPage", () => ({ EnginesPage: () => <div>ENGINES BODY</div> }));
 
 const user = { id: "u1", email: "lazyx@tvashtr.dev", display_name: "Lazyx" };
 
@@ -54,6 +65,12 @@ describe("Workspace", () => {
     renderAt("#/teams/t1/runs/r9");
     expect(screen.getByText("CANVAS t1 r9")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Dashboard" })).toBeNull();
+  });
+
+  it("the canvas's Open Engines lands on Overview with the rows to fix highlighted", () => {
+    renderAt("#/teams/t1");
+    act(() => screen.getByRole("button", { name: "Open Engines" }).click());
+    expect(window.location.hash).toBe("#/engines?fix=1");
   });
 
   it("follows the address when it changes", async () => {

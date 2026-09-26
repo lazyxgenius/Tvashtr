@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 
 import App from "../App";
 import { DomainsPage } from "../components/DomainsPage";
-import { EnginesShelf } from "../components/EnginesShelf";
 import { MemoryShelf } from "../components/MemoryShelf";
 import { SecretsShelf } from "../components/SecretsShelf";
 import { SkillsShelf } from "../components/SkillsShelf";
@@ -12,6 +11,7 @@ import { requestHomeAction } from "../lib/homeActions";
 import { type DashView, type Route, navigate, useNav } from "../lib/nav";
 import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
 import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
+import { EnginesPage } from "./engines/EnginesPage";
 import { CommandPalette } from "./home/CommandPalette";
 import { HomePage } from "./home/HomePage";
 import { Shell } from "./shell/Shell";
@@ -24,7 +24,8 @@ function dashViewRoute(view: DashView | undefined): Route {
     case "domains":
       return { page: "domains" };
     case "engines":
-      return { page: "engines", tab: "overview" };
+      // "Open Engines" on a blocked run: Overview with the rows to fix highlighted.
+      return { page: "engines", tab: "overview", fix: true };
     case "tools":
       return { page: "tools", view: "installed" };
     default:
@@ -110,7 +111,7 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
         />
       );
     case "engines":
-      return <EnginesShelf />;
+      return <EnginesPage tab={route.tab} fix={route.fix} />;
     case "tools":
     case "tool":
       return <ToolsShelf />;
