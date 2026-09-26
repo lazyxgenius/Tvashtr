@@ -313,6 +313,14 @@
 .eng-card--keys .ds-menu__item {
   line-height: 1.6;
 }
+/* The design hangs the ⋯ menu and the usage popover flush under the trigger (no 4px gap).
+   The DS Popover sets its offset inline, so only !important reaches it. */
+.eng-card--keys .ds-menu--end {
+  top: 100%;
+}
+.eng-card--keys .ds-popover.eng-usage {
+  top: 100% !important;
+}
 .eng-card--keys .ds-menu__item--danger,
 .eng-card--keys .ds-menu__item--danger .ds-menu__icon {
   color: #8f3b2f;

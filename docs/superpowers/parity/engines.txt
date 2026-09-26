@@ -12,10 +12,19 @@ Eng-Flow-Blocked-2 web: matched 58/60 design items · 0 with size/type drift · 
 Eng-Flow-Blocked-2 desktop: matched 56/60 design items · 0 with size/type drift · 53 only moved · 4 not found in app
 Eng-Flow-Key-2 web: matched 62/64 design items · 3 with size/type drift · 11 only moved · 2 not found in app
 Eng-Flow-Key-2 desktop: matched 62/64 design items · 3 with size/type drift · 57 only moved · 2 not found in app
+# waiver Eng-Flow-Key-2: [txt] 'anthropic' (the banner's bold provider name) — design draws a stale banner for a saved provider (ENG-58)
+# waiver Eng-Flow-Key-2: [ctl] 'anthropic' (the banner's + anthropic button) — design draws a stale banner for a saved provider (ENG-58)
+# waiver Eng-Flow-Key-2: [txt] 'anthropic' (that button's label) — design draws a stale banner for a saved provider (ENG-58)
 Eng-Flow-Key-3 web: matched 62/64 design items · 3 with size/type drift · 17 only moved · 2 not found in app
 Eng-Flow-Key-3 desktop: matched 62/64 design items · 3 with size/type drift · 57 only moved · 2 not found in app
+# waiver Eng-Flow-Key-3: [txt] 'anthropic' (the banner's bold provider name) — design draws a stale banner for a saved provider (ENG-58)
+# waiver Eng-Flow-Key-3: [ctl] 'anthropic' (the banner's + anthropic button) — design draws a stale banner for a saved provider (ENG-58)
+# waiver Eng-Flow-Key-3: [txt] 'anthropic' (that button's label) — design draws a stale banner for a saved provider (ENG-58)
 Eng-Flow-Key-4 web: matched 63/66 design items · 3 with size/type drift · 18 only moved · 3 not found in app
 Eng-Flow-Key-4 desktop: matched 63/66 design items · 3 with size/type drift · 58 only moved · 3 not found in app
+# waiver Eng-Flow-Key-4: [txt] 'anthropic' (the banner's bold provider name) — design draws a stale banner for a saved provider (ENG-58)
+# waiver Eng-Flow-Key-4: [ctl] 'anthropic' (the banner's + anthropic button) — design draws a stale banner for a saved provider (ENG-58)
+# waiver Eng-Flow-Key-4: [txt] 'anthropic' (that button's label) — design draws a stale banner for a saved provider (ENG-58)
 Eng-Keys web: matched 52/52 design items · 0 with size/type drift · 19 only moved · 0 not found in app
 Eng-Keys desktop: matched 52/52 design items · 0 with size/type drift · 50 only moved · 0 not found in app
 Eng-Overview web: matched 54/58 design items · 0 with size/type drift · 52 only moved · 4 not found in app

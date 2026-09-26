@@ -21,6 +21,8 @@ const openMenu = (provider) => async (page) => {
   await tableReady(page);
   await page.click(`button[aria-label="More actions for ${provider}"]`);
   await page.waitForSelector('[role="menu"]');
+  // The design draws the trigger at rest: take the pointer off it (no hover tint).
+  await page.mouse.move(700, 860);
 };
 
 const pick = (item) => async (page) => {
@@ -92,9 +94,11 @@ export default [
   }),
   ...both("Eng-Flow-Key-4", {
     keys: withAnthropic,
-    steps: seq(openMenu("deepseek"), pick("Replace key"), (p) =>
-      p.waitForSelector('[role="alertdialog"]'),
-    ),
+    steps: seq(openMenu("deepseek"), pick("Replace key"), async (p) => {
+      await p.waitForSelector('[role="alertdialog"]');
+      // The dialog focuses "New key"; the design draws the field at rest.
+      await p.evaluate(() => document.activeElement?.blur());
+    }),
   }),
   ...both("EnF-KeyUsed-1", { steps: openMenu("deepseek") }),
   ...both("EnF-KeyUsed-2", {
