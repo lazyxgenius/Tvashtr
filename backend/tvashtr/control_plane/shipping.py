@@ -34,6 +34,19 @@ def init_workspace_repo(workspace_dir: str) -> None:
     _git(workspace_dir, "commit", "--allow-empty", "-q", "-m", "init")
 
 
+# Tvashtr's own working files at the workspace root: a report-only node's deliverable (team_run's
+# REPORT_FILENAME), the reviewer's verdict sidecar and the large-spec handle (context_compiler's
+# SPEC_HANDLE_FILENAME). A greenfield workspace's .gitignore keeps them out of the ship, but a
+# hosted clone or a local folder has no Tvashtr .gitignore, so the ship leaves them out itself —
+# unless the repo already tracks a file of that name: then it is the user's own and ships as usual.
+_OWN_FILES = ("REPORT.md", "REVIEW_VERDICT.json", "SPEC.md")
+
+
+def _own_files_to_leave_out(workspace_dir: str) -> list[str]:
+    tracked = set(_git(workspace_dir, "ls-files", "--", *_OWN_FILES, check=False).stdout.split())
+    return [name for name in _OWN_FILES if name not in tracked]
+
+
 def _commits_since_branch_start(workspace_dir: str) -> int:
     """How many commits the checked-out branch has gained since it was created — the oldest entry
     of the branch's own reflog is where it started (a fresh workspace's ``init`` commit, or the base
@@ -67,7 +80,9 @@ def idempotent_ship(workspace_dir: str, run_id: str) -> dict:
     # exclude (mount-agnostic: covers both the greenfield workspace and a brownfield
     # worktree) leaves
     # the file on disk for the run-end read while keeping it out of the commit.
-    _git(workspace_dir, "add", "-A", "--", ".", ":(exclude)TVASHTR_REMEMBER.jsonl")
+    # Tvashtr's own untracked working files (``_OWN_FILES``) are left out the same way.
+    own = [f":(exclude){name}" for name in _own_files_to_leave_out(workspace_dir)]
+    _git(workspace_dir, "add", "-A", "--", ".", ":(exclude)TVASHTR_REMEMBER.jsonl", *own)
     # `git diff --cached --quiet` exits 0 when there is NOTHING staged.
     if _git(workspace_dir, "diff", "--cached", "--quiet", check=False).returncode == 0:
         # Crash window: the process may have died *between* commit and tag. If HEAD
