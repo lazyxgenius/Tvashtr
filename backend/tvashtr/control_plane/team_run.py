@@ -55,6 +55,7 @@ from tvashtr.control_plane import (
     run_failure,
     workspace_reaper,
 )
+from tvashtr.control_plane import domain_ask as domain_ask_mod
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.budget_nudge import maybe_emit_budget_nudge_step
 from tvashtr.control_plane.context_compiler import (
@@ -72,7 +73,6 @@ from tvashtr.control_plane.context_compiler import (
 )
 from tvashtr.control_plane.credential_gate import subscription_for_model
 from tvashtr.control_plane.credentials import NoCredentialError, resolve_owner_api_key
-from tvashtr.control_plane import domain_ask as domain_ask_mod
 from tvashtr.control_plane.domain_ask import DomainAskError
 from tvashtr.control_plane.domain_query_node import (
     domain_query_manifest,
@@ -80,7 +80,6 @@ from tvashtr.control_plane.domain_query_node import (
     render_domain_query_prompt,
     truncate_outcome_detail,
 )
-from tvashtr.control_plane.node_library import owner_for_run
 from tvashtr.control_plane.gates import wait_at_gate
 from tvashtr.control_plane.guardrails import (
     GUARDRAIL_GATE_KINDS,
@@ -95,6 +94,7 @@ from tvashtr.control_plane.memory_retrieval import (
     memory_query,
     retrieve_for_node,
 )
+from tvashtr.control_plane.node_library import owner_for_run
 from tvashtr.control_plane.node_skills import build_skills, inject_skills_into_prompt
 from tvashtr.control_plane.node_tools import build_mcp_config
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
@@ -121,7 +121,16 @@ from tvashtr.engines.registry import resolve_adapter
 from tvashtr.engines.run_event_sink import make_run_event_sink
 from tvashtr.engines.sandbox_cache import close_run_sandboxes, session_key_for
 from tvashtr.metering import record_agent_cost, running_cost
-from tvashtr.models import AgentNode, Edge, EngineerRunAttempt, GithubInstallation, Run, RunArtifact
+from tvashtr.models import (
+    AgentNode,
+    DesktopNodeJob,
+    Edge,
+    EngineerRunAttempt,
+    GithubInstallation,
+    Run,
+    RunArtifact,
+    RunEvent,
+)
 
 logger = logging.getLogger("tvashtr.control_plane.team_run")
 
@@ -543,6 +552,76 @@ def _authored_node_uuid(node_id: str) -> uuid.UUID:
             select(AgentNode.cloned_from_node_id).where(AgentNode.id == uuid.UUID(node_id))
         ).scalar_one_or_none()
     return origin if origin is not None else uuid.UUID(node_id)
+
+
+# revamp-e2e Phase 1: the run warning recorded when an entry's closing message stands in for its
+# missing REPORT.md (``run_warnings.source_kind``; the run view lists it).
+CLOSING_MESSAGE_WARNING_KIND = "spec"
+CLOSING_MESSAGE_WARNING = "The PM didn't save REPORT.md, so its final message was used"
+
+
+def _closing_text(kind: str, payload: dict | None) -> str | None:
+    """The agent's closing words carried by one recorded event, or ``None`` when the event is not a
+    closing event: a ``finish`` action (its whole ``message``) or an agent reply with no tool call
+    (its whole ``content``) — the two ways an agent ends its loop. The keys are written by the
+    adapters' shared ``_payload_of``; a Desktop runner's own events never carry them."""
+    payload = payload or {}
+    if kind == "action" and payload.get("tool_name") == "finish":
+        return payload.get("message") if isinstance(payload.get("message"), str) else ""
+    if kind == "message" and payload.get("source") == "agent":
+        return payload.get("content") if isinstance(payload.get("content"), str) else ""
+    return None
+
+
+@DBOS.step()
+def entry_closing_message_step(
+    run_id: str, node_id: str, invocation_id: int | None, role_name: str
+) -> str | None:
+    """revamp-e2e Phase 1: the ENTRY node's closing message, for an entry invocation that completed
+    WITHOUT writing ``REPORT.md`` — so the workflow can version it as the spec instead of failing
+    the run (live runs e62d9995 … 99539c30: OpenAI PMs put the whole PRD in their ``finish`` message
+    or a plain reply). A NEW step, so ``agent_run_step``'s recorded return shape is untouched; it
+    reads what that step already made durable, scoped to THIS invocation only:
+
+    * an OpenHands entry's events in ``run_events`` — walking back from the newest, the first
+      closing event wins (the SDK's own ``get_agent_final_response`` order); a ``finish`` with no
+      readable message ends the search, like the SDK;
+    * a Desktop-routed entry's final text on its completed ``desktop_node_jobs`` row.
+
+    Returns the text verbatim (as a pulled ``REPORT.md`` would be), or ``None`` when there is
+    nothing but whitespace (the caller then fails the run exactly as before). When it returns text
+    it also records the run warning the run view shows. Idempotent: a re-execution reads the same
+    rows, and the warning de-dupes."""
+    if invocation_id is None:
+        return None
+    text: str | None = None
+    with session_scope() as session:
+        events = session.execute(
+            select(RunEvent.kind, RunEvent.payload)
+            .where(RunEvent.run_id == run_id, RunEvent.invocation_id == invocation_id)
+            .order_by(RunEvent.seq.desc())
+        ).all()
+        for kind, payload in events:
+            found = _closing_text(kind, payload)
+            if found is not None:
+                text = found
+                break
+        if not (text or "").strip():
+            text = session.execute(
+                select(DesktopNodeJob.result_text)
+                .where(
+                    DesktopNodeJob.run_id == run_id,
+                    DesktopNodeJob.invocation_id == invocation_id,
+                    DesktopNodeJob.status == "completed",
+                )
+                .limit(1)
+            ).scalar_one_or_none()
+    if not (text or "").strip():
+        return None
+    record_resolution_warning(
+        run_id, CLOSING_MESSAGE_WARNING_KIND, role_name, CLOSING_MESSAGE_WARNING
+    )
+    return text
 
 
 @DBOS.step()
@@ -2317,6 +2396,13 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             elif is_entry:
                 report = result.get("report")
                 if report is None:
+                    # revamp-e2e Phase 1: an entry that ended its loop with the spec in its closing
+                    # message (a ``finish`` message or a plain reply) instead of REPORT.md — that
+                    # message becomes the spec version exactly as REPORT.md would, with a run
+                    # warning. A new step, only reached on this path, so every run that wrote
+                    # REPORT.md replays byte-identically.
+                    report = entry_closing_message_step(run_id, current, inv_id, node["role_name"])
+                if report is None:
                     # An entry invocation ending with no REPORT.md FAILS with a recorded reason (no
                     # silent empty spec version) — reusing node-failure semantics, no new routing,
                     # no
@@ -2369,7 +2455,10 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
             # missing one is itself a miss); an emitting node's verdict file was checked inside
             # ``agent_run_step`` before the harvest removed it.
             if output_schema is not None and not emits:
-                report = result.get("report")
+                if not is_entry:
+                    # (the entry's ``report`` is already set above: its REPORT.md, or the closing
+                    # message that stood in for it)
+                    report = result.get("report")
                 violation = (
                     _output_schema_violation(report, output_schema)
                     if report is not None
