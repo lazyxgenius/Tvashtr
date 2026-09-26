@@ -84,6 +84,10 @@ describe("the error variants (WEB-30)", () => {
     expect(help).toHaveAttribute("href", SIGNIN_HELP_URL);
     expect(help).toHaveAttribute("target", "_blank");
     expect(help).toHaveAttribute("rel", "noopener noreferrer");
+    // OQ-15: sign-in is a redirect, not a pop-up.
+    expect(help.parentElement).toHaveTextContent(
+      /^Still stuck\? Check that your browser allows cookies for this site, or read the sign-in help\.$/,
+    );
     expect(screen.queryByText(/pop-ups/)).toBeNull();
   });
 

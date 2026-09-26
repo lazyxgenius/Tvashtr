@@ -147,7 +147,7 @@ function Failed({ error, next, hosted }: { error: SignInError; next?: string; ho
       )}
       {/* OQ-15: sign-in is a redirect, not a pop-up; blocked cookies are what break it. */}
       <div className="web-signin__foot">
-        Still stuck? Check that cookies aren’t blocked, or{" "}
+        Still stuck? Check that your browser allows cookies for this site, or{" "}
         <a href={SIGNIN_HELP_URL} target="_blank" rel="noopener noreferrer">
           read the sign-in help
         </a>
