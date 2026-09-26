@@ -305,9 +305,14 @@ export function TeamCanvas({
     setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === focusNodeId })));
   }, [focusNodeId, setNodes]);
 
-  // The open drawer's node keeps the selection ring, also when the drawer was opened by address.
+  // The open drawer's node gets the selection ring when the drawer's node CHANGES (also when the
+  // address opened it before the graph loaded). Later node updates leave React Flow's own selection
+  // (a click, a box select for Delete) alone.
+  const ringed = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    if (selectedNodeId === undefined) return;
+    if (selectedNodeId === undefined || ringed.current === selectedNodeId) return;
+    if (selectedNodeId !== null && !nodes.some((n) => n.id === selectedNodeId)) return;
+    ringed.current = selectedNodeId;
     setNodes((nds) =>
       nds.every((n) => Boolean(n.selected) === (n.id === selectedNodeId))
         ? nds
