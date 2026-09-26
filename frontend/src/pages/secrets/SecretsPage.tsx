@@ -108,7 +108,12 @@ export function SecretsPage() {
     }
   };
 
-  const addValue = (name: string) => setDialog({ kind: "add-prefilled", name });
+  const addValue = (name: string) =>
+    setDialog({
+      kind: "add-prefilled",
+      name,
+      tools: list?.missing.find((m) => m.name === name)?.used_by_tools ?? [],
+    });
 
   return (
     <>

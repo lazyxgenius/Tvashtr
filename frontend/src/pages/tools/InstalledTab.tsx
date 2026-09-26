@@ -23,6 +23,15 @@ const FILTER_LINE: Record<Exclude<StatusFilter, "all">, string> = {
   ready: "Showing ready tools",
 };
 
+/** No search words, and the Status filter left nothing: say that, not "try another word". */
+const FILTER_EMPTY: Record<Exclude<StatusFilter, "all">, { title: string; body: string }> = {
+  needs_attention: { title: "No tools need attention", body: "Every tool is ready to use." },
+  ready: {
+    title: "No tools are ready",
+    body: "Every tool needs attention. Open one to see what it needs.",
+  },
+};
+
 export interface InstalledActions {
   onAddTool: (name?: string) => void;
   onPaste: () => void;
@@ -117,21 +126,31 @@ export function InstalledTab({
           </button>
         </div>
       )}
-      {rows.length === 0 ? (
+      {rows.length === 0 && !query.trim() && status !== "all" ? (
         <section className="tk-card">
           <EmptyState
             icon={<Search size={24} strokeWidth={1.6} />}
-            title={query.trim() ? `No tools match “${query.trim()}”` : "No tools match this filter"}
+            title={FILTER_EMPTY[status].title}
+            actions={
+              <Button variant="secondary" size="sm" onClick={() => setToolsStatus("all")}>
+                Clear filter
+              </Button>
+            }
+          >
+            {FILTER_EMPTY[status].body}
+          </EmptyState>
+        </section>
+      ) : rows.length === 0 ? (
+        <section className="tk-card">
+          <EmptyState
+            icon={<Search size={24} strokeWidth={1.6} />}
+            title={`No tools match “${query.trim()}”`}
             actions={
               <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => (query.trim() ? setToolsQuery("") : setToolsStatus("all"))}
-                >
-                  {query.trim() ? "Clear search" : "Clear filter"}
+                <Button variant="secondary" size="sm" onClick={() => setToolsQuery("")}>
+                  Clear search
                 </Button>
-                <Button size="sm" onClick={() => actions.onAddTool(query.trim() || undefined)}>
+                <Button size="sm" onClick={() => actions.onAddTool(query.trim())}>
                   Add tool
                 </Button>
               </>

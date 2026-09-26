@@ -160,6 +160,37 @@ describe("Tools · Installed", () => {
     expect(rowNames()).toHaveLength(3);
   });
 
+  it("with no search words, an empty filter says so without the search copy", async () => {
+    renderInstalled([FETCH, GITHUB]);
+    await screen.findByRole("table");
+    fireEvent.click(screen.getByRole("combobox", { name: "Status" }));
+    fireEvent.click(screen.getByRole("option", { name: "Needs attention" }));
+
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByText("No tools need attention")).toBeInTheDocument();
+    expect(screen.getByText("Every tool is ready to use.")).toBeInTheDocument();
+    expect(screen.queryByText(/Try another word/)).not.toBeInTheDocument();
+    const card = screen.getByText("No tools need attention").closest("section") as HTMLElement;
+    expect(
+      within(card)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Clear filter"]);
+    fireEvent.click(within(card).getByRole("button", { name: "Clear filter" }));
+    expect(rowNames()).toEqual(["fetch", "github"]);
+  });
+
+  it("an empty Ready filter says every tool needs attention", async () => {
+    renderInstalled([LINEAR]);
+    await screen.findByRole("table");
+    fireEvent.click(screen.getByRole("combobox", { name: "Status" }));
+    fireEvent.click(screen.getByRole("option", { name: "Ready" }));
+    expect(screen.getByText("No tools are ready")).toBeInTheDocument();
+    expect(
+      screen.getByText("Every tool needs attention. Open one to see what it needs."),
+    ).toBeInTheDocument();
+  });
+
   it("keeps the search words while you open a tool and come back", async () => {
     setToolsQuery("git");
     renderInstalled();

@@ -89,10 +89,13 @@ function useCatalog() {
 function AddButton({
   entry,
   tools,
+  listFailed,
   onAdd,
 }: {
   entry: CatalogEntry;
   tools: ToolItem[] | null;
+  /** Your tools couldn't be read: Add still works (a clash reloads and shows "In your tools"). */
+  listFailed: boolean;
   onAdd: BrowseActions["onAdd"];
 }) {
   const [busy, setBusy] = useState(false);
@@ -117,7 +120,7 @@ function AddButton({
       variant="primary"
       size="sm"
       loading={busy}
-      disabled={tools === null}
+      disabled={tools === null && !listFailed}
       onClick={() => void add()}
     >
       Add
@@ -168,10 +171,15 @@ function GithubAppCard({ entry }: { entry: CatalogEntry }) {
 
 export function BrowseTab({
   tools,
+  error = null,
+  onRetry,
   actions,
 }: {
   /** The installed tools (null while loading): "In your tools" is a name match. */
   tools: ToolItem[] | null;
+  /** Set when your tools couldn't be read (the Installed tab's error). */
+  error?: string | null;
+  onRetry?: () => void;
   actions: BrowseActions;
 }) {
   const { catalog, failed, retry } = useCatalog();
@@ -179,6 +187,18 @@ export function BrowseTab({
 
   return (
     <>
+      {error && (
+        <section className="tk-card tk-catalog__error">
+          <div className="tk-state" role="alert">
+            <span>Couldn’t load your tools.</span>
+            {onRetry && (
+              <Button variant="secondary" size="sm" onClick={onRetry}>
+                Retry
+              </Button>
+            )}
+          </div>
+        </section>
+      )}
       {failed && (
         <section className="tk-card tk-catalog__error">
           <div className="tk-state" role="alert">
@@ -203,7 +223,14 @@ export function BrowseTab({
               badge={entry.badge}
               badgeVariant={entry.access === "free" ? "success" : "neutral"}
               description={entry.description}
-              action={<AddButton entry={entry} tools={tools} onAdd={actions.onAdd} />}
+              action={
+                <AddButton
+                  entry={entry}
+                  tools={tools}
+                  listFailed={Boolean(error)}
+                  onAdd={actions.onAdd}
+                />
+              }
             />
           );
         })}

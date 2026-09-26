@@ -105,8 +105,8 @@ export function ToolsPage({ view }: { view: ToolsView }) {
     if (names.length === 0) return;
     const mode: SecretDialogMode =
       names.length === 1
-        ? { kind: "add-prefilled", name: names[0] }
-        : { kind: "add-many", names, tool: tool.name };
+        ? { kind: "add-prefilled", name: names[0], tools: [{ id: tool.id, name: tool.name }] }
+        : { kind: "add-many", names, tool: tool.name, toolId: tool.id };
     setDialog({ kind: "secret", tool, mode });
   };
 
@@ -305,6 +305,8 @@ export function ToolsPage({ view }: { view: ToolsView }) {
       ) : (
         <BrowseTab
           tools={tools}
+          error={error}
+          onRetry={retry}
           actions={{
             onAdd: addFromCatalog,
             onSetUp: () => setSheet({ kind: "add", start: "custom" }),

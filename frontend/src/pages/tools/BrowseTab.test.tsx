@@ -236,6 +236,34 @@ describe("Browse catalog", () => {
     expect(actions.onPaste).toHaveBeenCalledTimes(1);
   });
 
+  it("says so when your tools can't be read; Add still works and Retry reloads them", async () => {
+    let fail = true;
+    serve({
+      overrides: {
+        "GET /api/tool-library": () =>
+          fail
+            ? new Response(JSON.stringify({ detail: "boom" }), { status: 500 })
+            : { tools: [FETCH, GITHUB] },
+      },
+    });
+    renderWithProviders(<ToolsPage view="browse" />);
+    const failure = await screen.findByRole("alert");
+    expect(failure).toHaveTextContent("Couldn’t load your tools.");
+    // Not stuck disabled: a clash with a tool you already have falls back to "In your tools".
+    expect(
+      within(await screen.findByRole("article", { name: "Web fetch" })).getByRole("button", {
+        name: "Add",
+      }),
+    ).toBeEnabled();
+
+    fail = false;
+    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    expect(
+      await within(card("Web fetch")).findByRole("button", { name: "In your tools" }),
+    ).toBeDisabled();
+    expect(screen.queryByText("Couldn’t load your tools.")).toBeNull();
+  });
+
   it("says so when the catalog can't be read, and still offers your own servers", async () => {
     serve({
       overrides: {
@@ -268,11 +296,9 @@ describe("GitHub App card", () => {
     fireEvent.click(within(app).getByRole("button", { name: "Install GitHub App" }));
 
     const dialog = screen.getByRole("alertdialog", { name: "Install the Tvashtr GitHub App" });
-    expect(
-      within(dialog).getByText(
-        "GitHub opens in a new window. Pick the repos Tvashtr can use, then come back here. Hosted runs can only open pull requests on those repos.",
-      ),
-    ).toBeInTheDocument();
+    expect(dialog).toHaveAccessibleDescription(
+      "GitHub opens in a new window. Pick the repos Tvashtr can use, then come back here. Hosted runs can only open pull requests on those repos.",
+    );
     await waitFor(() =>
       expect(within(dialog).getByRole("button", { name: "Open GitHub" })).toBeEnabled(),
     );
