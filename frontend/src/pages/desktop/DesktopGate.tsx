@@ -25,6 +25,7 @@ import {
   getLaunchContext,
   getPlanStatuses,
   getUpdateState,
+  loginOf,
   onSignIn,
   onUpdateState,
   rememberUser,
@@ -32,9 +33,11 @@ import {
   setDesktopTitle,
   startSignIn,
   TITLE_CANVAS,
+  TITLE_LAUNCH,
   type UpdateState,
 } from "../../lib/desktopApp";
-import { DesktopDisclosure } from "../../components/DesktopDisclosure";
+import { loadDesktopSetup, resetDesktopSetup } from "../../lib/desktopSetup";
+import { useNav } from "../../lib/nav";
 import { Workspace } from "../Workspace";
 import { ExpiredPage } from "./ExpiredPage";
 import { type LaunchProgress, reconnectedLines, splashLines, updatingLines } from "./launchLines";
@@ -67,13 +70,17 @@ export type GateState =
  * failing → Offline), then the session (401 → Expired / Welcome), then the plans on this Mac and
  * the teams; its checklist ticks as each answer arrives.
  *
+ * Signed in, and this Mac's setup for the account not finished (DT-2 step 3, DT-17): the
+ * Workspace sits on `#/setup/<saved step>`; toasts there sit above the setup footer (OQ-32).
+ *
  * Deep links (DB-8): the root subscribes once to `navigation.onNavigate`; a link that arrives
- * while signed out is kept and opened after sign-in.
+ * while signed out is kept and opened after sign-in (after setup, OQ-34).
  */
 export function DesktopGate() {
+  const { route } = useNav();
   return (
-    <ToastProvider>
-      <DesktopGateInner />
+    <ToastProvider placement={route.page === "setup" ? "setup" : "center"}>
+      <DesktopGateInner onSetup={route.page === "setup"} />
     </ToastProvider>
   );
 }
@@ -91,7 +98,7 @@ function networkFailure(err: unknown): ProbeFailure | null {
   return typeof status === "number" && status >= 500 ? failureForStatus(status) : null;
 }
 
-function DesktopGateInner() {
+function DesktopGateInner({ onSetup }: { onSetup: boolean }) {
   const toast = useToast();
   const [state, setState] = useState<GateState>({
     kind: "launching",
@@ -178,6 +185,13 @@ function DesktopGateInner() {
           if (!stale()) setProgress({ plans });
         });
       }
+      // Setup on this Mac not finished for this account → setup at its saved step (DT-2 step 3).
+      const setup = await loadDesktopSetup(user.id);
+      if (stale()) return;
+      if (setup && setup.finishedAt === null) {
+        setState({ kind: "authed", user });
+        return;
+      }
       await listTeams().catch(() => undefined);
       if (stale()) return;
       setState({ kind: "authed", user });
@@ -194,6 +208,7 @@ function DesktopGateInner() {
     setUnauthorizedHandler(() => {
       if (stateRef.current.kind !== "authed") return;
       returnTo.current = window.location.hash;
+      resetDesktopSetup();
       void toSignedOut();
     });
     void launch("splash");
@@ -270,10 +285,10 @@ function DesktopGateInner() {
   }, []);
 
   const authedUser = state.kind === "authed" ? state.user : null;
-  // The shell's title (DT-3); the Updating screen is a launch screen and keeps "Tvashtr".
+  // The shell's title (DT-3); setup and the Updating screen keep the launch title "Tvashtr".
   useEffect(() => {
-    if (authedUser && !installing) setDesktopTitle(TITLE_CANVAS);
-  }, [authedUser, installing]);
+    if (authedUser && !installing) setDesktopTitle(onSetup ? TITLE_LAUNCH : TITLE_CANVAS);
+  }, [authedUser, installing, onSetup]);
   useEffect(() => {
     if (!authedUser) return;
     void rememberUser({
@@ -293,7 +308,7 @@ function DesktopGateInner() {
     justSignedIn.current = null;
     if (how === "handoff") toast({ message: "Signed in from your browser", duration: 6000 });
     else if (how === "browser") {
-      toast({ message: `Signed in as ${authedUser.display_name}`, duration: 6000 });
+      toast({ message: `Signed in as ${loginOf(authedUser)}`, duration: 6000 });
     }
   }, [authedUser, toast]);
 
@@ -346,6 +361,7 @@ function DesktopGateInner() {
       /* drop the local session view anyway */
     }
     await forgetUser();
+    resetDesktopSetup();
     returnTo.current = null;
     setHandoff(null);
     setState({ kind: "signed_out" });
@@ -416,13 +432,8 @@ function DesktopGateInner() {
         />
       );
     case "authed":
-      // The per-session plan disclosure shows only once signed in, never over the launch screens
-      // (it retires when the setup consent ships, DT-52).
-      return (
-        <>
-          <Workspace user={state.user} config={config} onLogout={() => void signOut()} />
-          <DesktopDisclosure />
-        </>
-      );
+      // The per-session plan disclosure retired with the setup consent (DT-52): the consent lives
+      // on the Engines step, the disclosure on Engines › Subscriptions.
+      return <Workspace user={state.user} config={config} onLogout={() => void signOut()} />;
   }
 }

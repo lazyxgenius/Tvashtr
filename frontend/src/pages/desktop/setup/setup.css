@@ -1,0 +1,309 @@
+/* Tvashtr Desktop's first-run setup (desktop-app.md §1 "Setup frame"). Every value is the design's
+   own (DT-Engines, DtF-Run-3/4/5 .dc.html). */
+
+.st-frame {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  background: var(--surface-page);
+  font-family: var(--font-ui);
+  color: var(--ink-900);
+}
+
+/* ---- Rail ---- */
+.st-rail {
+  width: 320px;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 28px 22px;
+  border-right: 1px solid var(--line-300);
+  background: var(--cream-200);
+  overflow-y: auto;
+}
+.st-rail__title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.6;
+}
+.st-rail__sub {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.st-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.st-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  line-height: 1.6;
+}
+.st-step--current {
+  background: var(--cream-50);
+  border-color: var(--line-300);
+}
+.st-step__dot {
+  box-sizing: content-box;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+.st-step--done .st-step__dot {
+  background: var(--sage-100);
+  color: #52613e;
+}
+.st-step--current .st-step__dot {
+  background: var(--coral-500);
+  color: var(--cream-50);
+  font-weight: 700;
+}
+.st-step--later .st-step__dot {
+  border: 1px solid var(--line-400);
+  color: var(--ink-500);
+}
+.st-step__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-500);
+}
+.st-step--done .st-step__title {
+  color: var(--ink-600);
+}
+.st-step--current .st-step__title {
+  color: var(--ink-900);
+}
+.st-step__sub {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.st-rail__who {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.st-rail__who b {
+  font-weight: 600;
+}
+.st-rail__switch {
+  margin-left: auto;
+}
+.st-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: normal;
+  color: var(--coral-700);
+  cursor: pointer;
+}
+.st-link:hover {
+  color: var(--coral-500);
+}
+.st-link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: 4px;
+}
+
+/* ---- Main column + footer ---- */
+.st-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.st-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 44px 56px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative;
+}
+.st-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 56px;
+  border-top: 1px solid var(--line-300);
+  background: var(--surface-card);
+}
+.st-foot__push {
+  margin-left: auto;
+}
+.st-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.st-h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 34px;
+  line-height: 1.6;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+.st-lede {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-600);
+  max-width: 720px;
+}
+
+/* The design's buttons carry their icon inside the label (svg + span, laid out inline). */
+.st-frame .ds-btn > span > svg {
+  display: inline;
+  vertical-align: baseline;
+}
+
+/* ---- Engines step ---- */
+.st-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.st-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--line-300);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.st-row--sage {
+  border-color: #cdd6bf;
+}
+.st-row--amber {
+  border-color: #e6cfa9;
+}
+.st-row__tile {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-weight: 700;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.st-row__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.st-row__head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.st-row__name {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.st-row__line {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.st-row--keys {
+  padding: 14px 18px;
+  border: 1px dashed var(--line-400);
+  background: none;
+}
+.st-row--keys > svg {
+  color: var(--ink-600);
+}
+.st-row__keys-text {
+  flex: 1;
+  line-height: 1.6;
+}
+.st-row__keys-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.st-consent {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+}
+.st-consent .ds-check__title {
+  font-size: 14px;
+}
+.st-fineprint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* ---- The Terminal sign-in (DtF-Run-4, OQ-33): the scrim and the strip only; the Terminal
+   window itself is the OS's, so its 560x128 place is kept empty. ---- */
+.st-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(20, 20, 19, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.st-scrim__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+}
+.st-scrim__terminal-slot {
+  width: 560px;
+  max-width: calc(100vw - 32px);
+  height: 128px;
+}
+.st-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}

@@ -1,9 +1,11 @@
 /**
  * Test helpers for the Desktop app screens: a fake v6 bridge (`window.tvashtrDesktop`) and a
- * fetch stub keyed by "METHOD /path". Later groups extend `installDesktopBridge` (setup, update).
+ * fetch stub keyed by "METHOD /path". `installDesktopBridge({setup})` adds this Mac's setup store
+ * (G3); `fireStatus` pushes an `engines.onStatus` event.
  */
 import { vi } from "vitest";
 
+import { resetDesktopSetup } from "../../lib/desktopSetup";
 import type { SubscriptionStatus } from "../../lib/engines";
 
 export const ME = {
@@ -25,6 +27,13 @@ export interface FakeBridgeOptions {
   plans?: SubscriptionStatus[];
   /** What `update.getState` answers first. */
   update?: TvashtrUpdateState;
+  /**
+   * This Mac's setup record (bridge `setup`, DB-4) for every account; omitted = no `setup` on the
+   * bridge (an older Desktop: no first-run setup).
+   */
+  setup?: Partial<TvashtrDesktopSetup>;
+  /** What `engines.connect(p)` answers per provider (default: connected). */
+  connect?: Partial<Record<SubscriptionStatus["provider"], SubscriptionStatus["state"]>>;
 }
 
 /** A plan CLI's status as the bridge reports it. */
@@ -46,6 +55,7 @@ export function installDesktopBridge(opts: FakeBridgeOptions = {}) {
   const signInListeners = new Set<(e: TvashtrSignInEvent) => void>();
   const navListeners = new Set<(t: TvashtrDeepLinkTarget) => void>();
   const updateListeners = new Set<(s: TvashtrUpdateState) => void>();
+  const statusListeners = new Set<(s: SubscriptionStatus) => void>();
   const auth = {
     startSignIn: vi.fn<
       (o?: { account?: "current" | "github"; openBrowser?: boolean }) => Promise<{
@@ -96,17 +106,46 @@ export function installDesktopBridge(opts: FakeBridgeOptions = {}) {
       return () => updateListeners.delete(cb);
     }),
   };
+  type Provider = SubscriptionStatus["provider"];
+  const engines = {
+    getStatus: vi.fn(() => Promise.resolve(opts.plans ?? [])),
+    connect: vi.fn((p: Provider) => Promise.resolve(plan(p, opts.connect?.[p] ?? "connected"))),
+    disconnect: vi.fn((p: Provider) => Promise.resolve(plan(p, "disconnected"))),
+    refresh: vi.fn((p: Provider) => Promise.resolve(plan(p, "connected"))),
+    cancelConnect: vi.fn((p: Provider) =>
+      Promise.resolve(opts.plans?.find((s) => s.provider === p) ?? plan(p, "disconnected")),
+    ),
+    onStatus: vi.fn((cb: (s: SubscriptionStatus) => void) => {
+      statusListeners.add(cb);
+      return () => statusListeners.delete(cb);
+    }),
+  };
+  let stored: TvashtrDesktopSetup | null = opts.setup
+    ? {
+        version: 1,
+        step: null,
+        finishedAt: null,
+        planConsentAt: null,
+        workspace: null,
+        ...opts.setup,
+      }
+    : null;
+  const setup = {
+    get: vi.fn<(id: string) => Promise<TvashtrDesktopSetup>>(() => Promise.resolve({ ...stored! })),
+    update: vi.fn<
+      (id: string, patch: Partial<TvashtrDesktopSetup>) => Promise<TvashtrDesktopSetup>
+    >((_id, patch) => {
+      stored = { ...stored!, ...patch };
+      return Promise.resolve({ ...stored });
+    }),
+  };
   const bridge = {
-    engines: {
-      getStatus: vi.fn(() => Promise.resolve(opts.plans ?? [])),
-      connect: vi.fn(),
-      disconnect: vi.fn(),
-      refresh: vi.fn(),
-    },
+    engines,
     navigation,
     auth,
     app,
     update,
+    ...(stored ? { setup } : {}),
   } as unknown as TvashtrDesktopBridge;
   window.tvashtrDesktop = bridge;
   window.tvashtrDesktopInfo = {
@@ -119,6 +158,9 @@ export function installDesktopBridge(opts: FakeBridgeOptions = {}) {
     auth,
     app,
     navigation,
+    engines,
+    setup,
+    fireStatus: (s: SubscriptionStatus) => statusListeners.forEach((cb) => cb(s)),
     fireSignIn: (e: TvashtrSignInEvent) => signInListeners.forEach((cb) => cb(e)),
     fireNavigate: (t: TvashtrDeepLinkTarget) => navListeners.forEach((cb) => cb(t)),
     fireUpdate: (s: TvashtrUpdateState) => updateListeners.forEach((cb) => cb(s)),
@@ -126,6 +168,7 @@ export function installDesktopBridge(opts: FakeBridgeOptions = {}) {
 }
 
 export function uninstallDesktopBridge() {
+  resetDesktopSetup();
   delete window.tvashtrDesktop;
   delete window.tvashtrDesktopInfo;
   delete document.documentElement.dataset.tvashtrDesktop;

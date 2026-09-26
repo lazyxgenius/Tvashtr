@@ -144,16 +144,57 @@ export async function getPlanStatuses(): Promise<SubscriptionStatus[] | null> {
   try {
     const list: unknown = await bridge()?.engines?.getStatus?.();
     if (!Array.isArray(list)) return null;
-    return list.filter(
-      (s): s is SubscriptionStatus =>
-        !!s &&
-        typeof s === "object" &&
-        PLAN_PROVIDERS.has((s as SubscriptionStatus).provider) &&
-        PLAN_STATES.has((s as SubscriptionStatus).state),
-    );
+    return list.filter((s): s is SubscriptionStatus => validPlan(s) !== null);
   } catch {
     return null;
   }
+}
+
+function validPlan(s: unknown): SubscriptionStatus | null {
+  return !!s &&
+    typeof s === "object" &&
+    PLAN_PROVIDERS.has((s as SubscriptionStatus).provider) &&
+    PLAN_STATES.has((s as SubscriptionStatus).state)
+    ? (s as SubscriptionStatus)
+    : null;
+}
+
+type PlanId = SubscriptionStatus["provider"];
+
+/**
+ * DT-23 / DT-24: Sign in (opens the vendor's own login in Terminal and answers at once) or turn
+ * "Use my plan" back on. Null on an older Desktop or an answer of the wrong shape.
+ */
+export async function connectPlan(provider: PlanId): Promise<SubscriptionStatus | null> {
+  return validPlan(await bridge()?.engines?.connect?.(provider));
+}
+
+/** DT-24: "Use my plan" off — sticky across relaunch (the row reads "Not used"). */
+export async function disconnectPlan(provider: PlanId): Promise<SubscriptionStatus | null> {
+  return validPlan(await bridge()?.engines?.disconnect?.(provider));
+}
+
+/** Ask the CLI again (never rejects on the bridge side: a failed check is an `error` status). */
+export async function refreshPlan(provider: PlanId): Promise<SubscriptionStatus | null> {
+  return validPlan(await bridge()?.engines?.refresh?.(provider));
+}
+
+/** Stop waiting for a Terminal sign-in (bridge v5); it can't close Terminal. */
+export async function cancelPlanConnect(provider: PlanId): Promise<SubscriptionStatus | null> {
+  try {
+    return validPlan(await bridge()?.engines?.cancelConnect?.(provider));
+  } catch {
+    return null;
+  }
+}
+
+/** Every status the bridge pushes (e.g. after a Terminal sign-in, on window focus). */
+export function onPlanStatus(cb: (status: SubscriptionStatus) => void): () => void {
+  const unsubscribe = bridge()?.engines?.onStatus?.((raw) => {
+    const s = validPlan(raw);
+    if (s) cb(s);
+  });
+  return typeof unsubscribe === "function" ? unsubscribe : () => {};
 }
 
 export type UpdateState = TvashtrUpdateState;
@@ -190,6 +231,15 @@ export function onUpdateState(cb: (state: UpdateState) => void): () => void {
     if (s) cb(s);
   });
   return typeof unsubscribe === "function" ? unsubscribe : () => {};
+}
+
+/** "Signed in as <login>" (DT-16, the sign-in toast): the GitHub login, else the display name. */
+export function loginOf(user: {
+  email: string;
+  github_login?: string | null;
+  display_name?: string | null;
+}): string {
+  return user.github_login || user.display_name || user.email;
 }
 
 /** DT-50: "this Mac" on macOS, else "this computer". */

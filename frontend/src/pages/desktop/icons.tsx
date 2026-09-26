@@ -8,10 +8,12 @@ function Svg({
   size,
   children,
   className,
+  strokeWidth = 1.6,
 }: {
   size: number;
   children: ReactNode;
   className?: string;
+  strokeWidth?: number;
 }) {
   return (
     <svg
@@ -20,7 +22,7 @@ function Svg({
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.6}
+      strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -144,6 +146,15 @@ export function InfoIcon({ size = 14 }: { size?: number }) {
       <circle cx="12" cy="12" r="10" />
       <path d="M12 16v-4" />
       <path d="M12 8h.01" />
+    </Svg>
+  );
+}
+
+/** The setup rail's done-step check (13px, stroke 2.2). */
+export function CheckIcon({ size = 13 }: { size?: number }) {
+  return (
+    <Svg size={size} strokeWidth={2.2}>
+      <path d="M20 6 9 17l-5-5" />
     </Svg>
   );
 }

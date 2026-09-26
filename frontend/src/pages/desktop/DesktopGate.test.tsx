@@ -279,7 +279,10 @@ describe("DesktopGate — signed in", () => {
     authed = true;
     act(() => bridge.fireSignIn({ state: "signed_in", user: ME }));
     await screen.findByRole("button", { name: "WORKSPACE STUB" });
-    expect(window.location.hash).toBe("#/engines/subscriptions?connect=claude");
+    // The link opens from the gate's effect, which can land a tick after the Workspace renders.
+    await waitFor(() =>
+      expect(window.location.hash).toBe("#/engines/subscriptions?connect=claude"),
+    );
   });
 
   it("a 401 mid-session goes to Expired (DT-11)", async () => {
