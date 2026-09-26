@@ -1,0 +1,187 @@
+/**
+ * Engines (spec §4.1): Overview · Subscriptions · API keys, chosen by the address
+ * (`#/engines`, `#/engines/subscriptions`, `#/engines/keys`). One data provider serves all three,
+ * so switching tabs never refetches and the nav badges always match the page. One Add key sheet
+ * serves every "Add key" on them (ENG-61), and one pair of dialogs every website "Open Tvashtr
+ * Desktop" / "Open in Desktop" (ENG-48) and "Download" (ENG-47).
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { openTvashtrDesktop } from "../../lib/desktopDeepLinks";
+import { type ConnectTarget, type EnginesTab, navigate } from "../../lib/nav";
+import { AddKeySheet, type AddKeyRequest } from "./AddKeySheet";
+import { listenForAddKey, requestAddKey } from "./addKeyRequests";
+import { type AddKeyOptions, ApiKeysPage } from "./ApiKeysPage";
+import { GetDesktopDialog, OpenDesktopDialog } from "./DesktopDialogs";
+import { enginesBridge } from "./engineBridge";
+import type { CellAction } from "./engineModel";
+import { EnginesDataProvider, useEngines } from "./enginesData";
+import { OverviewPage, type RowFlash } from "./OverviewPage";
+import { SubscriptionsPage } from "./SubscriptionsPage";
+import { useRowConnect } from "./useRowConnect";
+import "./engines.css";
+
+/** How long a changed row stays highlighted before it fades (ENG-23). */
+const ROW_FLASH_MS = 2400;
+
+function goSubscriptions(): void {
+  navigate({ page: "engines", tab: "subscriptions" });
+}
+
+type DesktopDialog = { kind: "open"; connect: ConnectTarget | null } | { kind: "get" };
+
+function EnginesTabs({
+  tab,
+  fix,
+  connect,
+  embeddings,
+}: {
+  tab: EnginesTab;
+  fix: boolean;
+  connect: ConnectTarget | null;
+  embeddings: boolean;
+}) {
+  const [sheet, setSheet] = useState<(AddKeyRequest & { seq: number }) | null>(null);
+  const [desktop, setDesktop] = useState<(DesktopDialog & { seq: number }) | null>(null);
+  const [flash, setFlash] = useState<RowFlash | null>(null);
+  const seq = useRef(0);
+  const { surface } = useEngines();
+
+  const flashRows = useCallback((providers: readonly string[]) => {
+    if (!providers.length) return;
+    seq.current += 1;
+    setFlash({ providers, seq: seq.current });
+  }, []);
+  useEffect(() => {
+    if (!flash) return;
+    const t = window.setTimeout(() => setFlash(null), ROW_FLASH_MS);
+    return () => window.clearTimeout(t);
+  }, [flash]);
+  const flashSaved = useCallback((provider: string) => flashRows([provider]), [flashRows]);
+
+  const rowConnect = useRowConnect(flashRows);
+
+  /** Hand `tvashtr://…` to the browser (inside the click, so the browser lets it through), then
+   *  say what happens next. `sub` points Desktop at that card. */
+  const openDesktop = useCallback((sub?: ConnectTarget | null) => {
+    openTvashtrDesktop(sub);
+    seq.current += 1;
+    setDesktop({ kind: "open", connect: sub ?? null, seq: seq.current });
+  }, []);
+
+  const getDesktop = useCallback(() => {
+    seq.current += 1;
+    setDesktop({ kind: "get", seq: seq.current });
+  }, []);
+  const closeDesktop = useCallback(() => setDesktop(null), []);
+
+  /** Open the Add key sheet: nothing picked, or `provider` picked in advance (ENG-74). */
+  const addKey = useCallback((provider?: string, options?: AddKeyOptions) => {
+    seq.current += 1;
+    setSheet({
+      provider,
+      embeddings: options?.embeddings ?? false,
+      banner: options?.banner ?? false,
+      row: options?.row ?? false,
+      seq: seq.current,
+    });
+  }, []);
+
+  // A toast's "Add <q>" outlives this page: it asks through addKeyRequests, which opens the sheet
+  // here, or brings the user back to Engines first if they have left.
+  useEffect(() => listenForAddKey(addKey), [addKey]);
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const addKeyFromToast = useCallback(
+    (provider?: string, options?: AddKeyOptions) =>
+      requestAddKey(provider, options, tabRef.current),
+    [],
+  );
+
+  /** A row's Add key opens the sheet with that provider (ENG-15); a row's Connect / Refresh on
+   *  Desktop signs in / re-checks from the row (ENG-16, ENG-13); the website's Open in Desktop opens
+   *  Desktop on that subscription (OQ-2); setting up a subscription happens on Subscriptions. */
+  const { connect: connectRow, refresh: refreshRow } = rowConnect;
+  const cellAction = useCallback(
+    (action: CellAction) => {
+      const onDesktop = action.sub && surface === "desktop" ? action.sub : null;
+      if (action.kind === "add-key") addKey(action.provider, { row: true });
+      else if (action.kind === "open-desktop") openDesktop(connectTargetOf(action.sub));
+      else if (action.kind === "connect" && onDesktop && enginesBridge()?.connect)
+        connectRow(onDesktop);
+      else if (action.kind === "refresh" && onDesktop && enginesBridge()?.refresh)
+        refreshRow(onDesktop);
+      else goSubscriptions();
+    },
+    [addKey, openDesktop, connectRow, refreshRow, surface],
+  );
+
+  return (
+    <>
+      {tab === "overview" && (
+        <OverviewPage
+          highlightFixes={fix}
+          checking={rowConnect.checking}
+          flash={flash}
+          onAddKey={addKey}
+          onCellAction={cellAction}
+          onOpenSubscriptions={goSubscriptions}
+          onGetDesktop={getDesktop}
+        />
+      )}
+      {tab === "subscriptions" && (
+        <SubscriptionsPage
+          highlight={connect}
+          onAddKey={(p) => addKeyFromToast(p)}
+          onOpenDesktop={openDesktop}
+          onGetDesktop={getDesktop}
+        />
+      )}
+      {tab === "keys" && <ApiKeysPage onAddKey={addKey} showEmbeddings={embeddings} />}
+      <AddKeySheet
+        request={sheet}
+        onClose={() => setSheet(null)}
+        onAddKey={addKeyFromToast}
+        onSaved={flashSaved}
+      />
+      {desktop?.kind === "open" && (
+        <OpenDesktopDialog
+          key={desktop.seq}
+          connect={desktop.connect}
+          onClose={closeDesktop}
+          onGetDesktop={getDesktop}
+        />
+      )}
+      {desktop?.kind === "get" && <GetDesktopDialog key={desktop.seq} onClose={closeDesktop} />}
+    </>
+  );
+}
+
+function connectTargetOf(sub: string | undefined): ConnectTarget | null {
+  return sub === "claude" || sub === "grok" ? sub : null;
+}
+
+export function EnginesPage({
+  tab,
+  fix = false,
+  connect = null,
+  embeddings = false,
+}: {
+  tab: EnginesTab;
+  fix?: boolean;
+  /** `#/engines/subscriptions?connect=…` (a `tvashtr://` link): highlight that card. */
+  connect?: ConnectTarget | null;
+  /** `#/engines/keys?embeddings=1` (Domains' Open Engines): scroll to Domains embeddings. */
+  embeddings?: boolean;
+}) {
+  return (
+    <EnginesDataProvider>
+      <EnginesTabs
+        tab={tab}
+        fix={fix}
+        connect={tab === "subscriptions" ? connect : null}
+        embeddings={tab === "keys" && embeddings}
+      />
+    </EnginesDataProvider>
+  );
+}

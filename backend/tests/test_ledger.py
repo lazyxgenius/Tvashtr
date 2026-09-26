@@ -380,12 +380,9 @@ def test_real_agent_run_step_scopes_events_to_invocation(client, monkeypatch, tm
 def test_run_events_endpoint_surfaces_legacy_null_invocation(client):
     """A legacy pre-0020 event (invocation_id NULL) must STILL surface via /spike/run-events (the
     LEFT outer join) with invocation_id/node_id/iteration all null + seq/kind/payload/created_at
-    intact. Guards against an outerjoin->join regression that would silently drop legacy events."""
-    run_id = f"test-{uuid.uuid4().hex}"
-    with session_scope() as session:
-        session.add(
-            RunEvent(run_id=run_id, invocation_id=None, seq=0, kind="message", payload={"t": "old"})
-        )
+    intact. Guards against an outerjoin->join regression that would silently drop legacy events.
+    (The run is the caller's own: the endpoint is owner-scoped.)"""
+    run_id = _owned_run_with_one_event("old")
     events = client.get(f"/api/spike/run-events/{run_id}").json()["events"]
     assert len(events) == 1
     ev = events[0]
@@ -394,3 +391,43 @@ def test_run_events_endpoint_surfaces_legacy_null_invocation(client):
     assert ev["invocation_id"] is None
     assert ev["node_id"] is None
     assert ev["iteration"] is None
+
+
+def _owned_run_with_one_event(text: str) -> str:
+    """A run owned by the test client's account, with one recorded event."""
+    run_id = str(uuid.uuid4())
+    with session_scope() as session:
+        session.add(
+            Run(
+                id=uuid.UUID(run_id),
+                team_graph_id=uuid.UUID(build_review_loop_team()),
+                owner_id=auth_user_id(),
+                idea="events owner check",
+                workflow_id=run_id,
+                status="completed",
+            )
+        )
+        session.add(
+            RunEvent(run_id=run_id, invocation_id=None, seq=0, kind="message", payload={"t": text})
+        )
+    return run_id
+
+
+def test_run_events_are_owner_scoped(client):
+    """revamp-e2e: a run's events (the agents' thoughts, actions, output and — since the entry's
+    closing message can become the spec — whole closing messages) are the run owner's alone.
+    Another signed-in account gets 404, exactly like the run's graph."""
+    run_id = _owned_run_with_one_event("private")
+    own = client.get(f"/api/spike/run-events/{run_id}")
+    assert own.status_code == 200
+    assert [e["payload"] for e in own.json()["events"]] == [{"t": "private"}]
+
+    other = TestClient(app)
+    other.cookies.clear()
+    reg = other.post(
+        "/api/auth/register",
+        json={"email": f"events-other-{uuid.uuid4().hex}@tvashtr.local", "password": "pw-123456"},
+    )
+    assert reg.status_code == 200, reg.text
+    assert other.get(f"/api/spike/run-events/{run_id}").status_code == 404
+    assert client.get(f"/api/spike/run-events/{uuid.uuid4()}").status_code == 404

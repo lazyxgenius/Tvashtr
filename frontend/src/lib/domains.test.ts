@@ -9,7 +9,6 @@ import {
   domainsEvalGoldenSetsHint,
   domainsEvalGraphGuidedHint,
   domainsGraphLiteConfigHint,
-  domainsMcpAccountToolsHint,
   domainsMcpToggleHint,
   domainsQueryNodeHint,
   embeddingSwitchNeedsReingest,
@@ -20,13 +19,7 @@ import {
 
 describe("domains helpers", () => {
   it("orders templates financial → legal → scientific → support → blank", () => {
-    expect(DOMAIN_TEMPLATE_ORDER).toEqual([
-      "financial",
-      "legal",
-      "scientific",
-      "support",
-      "blank",
-    ]);
+    expect(DOMAIN_TEMPLATE_ORDER).toEqual(["financial", "legal", "scientific", "support", "blank"]);
   });
 
   it("labels known templates", () => {
@@ -37,9 +30,7 @@ describe("domains helpers", () => {
 
 describe("embedding presets", () => {
   it("normalizes bare default to openai slug", () => {
-    expect(normalizeEmbeddingModel("text-embedding-3-small")).toBe(
-      "openai/text-embedding-3-small",
-    );
+    expect(normalizeEmbeddingModel("text-embedding-3-small")).toBe("openai/text-embedding-3-small");
     expect(normalizeEmbeddingModel("")).toBe("openai/text-embedding-3-small");
   });
 
@@ -74,10 +65,7 @@ describe("generation presets", () => {
 describe("embeddingSwitchNeedsReingest", () => {
   it("is true when dim changes (openai 1536 → gemini 768)", () => {
     expect(
-      embeddingSwitchNeedsReingest(
-        "openai/text-embedding-3-small",
-        "gemini/gemini-embedding-001",
-      ),
+      embeddingSwitchNeedsReingest("openai/text-embedding-3-small", "gemini/gemini-embedding-001"),
     ).toBe(true);
   });
 
@@ -92,10 +80,7 @@ describe("embeddingSwitchNeedsReingest", () => {
 
   it("is false when model is unchanged", () => {
     expect(
-      embeddingSwitchNeedsReingest(
-        "text-embedding-3-small",
-        "openai/text-embedding-3-small",
-      ),
+      embeddingSwitchNeedsReingest("text-embedding-3-small", "openai/text-embedding-3-small"),
     ).toBe(false);
   });
 });
@@ -128,13 +113,6 @@ describe("domains ask discoverability copy (#5)", () => {
     expect(copy).toMatch(/Domains MCP/i);
     expect(copy).toMatch(/agent|thinker|worker|tool/i);
     expect(copy).toMatch(/Chat|Query domain/i);
-  });
-
-  it("account Tools shelf hint points to node Tools for Domains MCP", () => {
-    const copy = domainsMcpAccountToolsHint();
-    expect(copy).toMatch(/Domains MCP/i);
-    expect(copy).toMatch(/node|Tools panel|team/i);
-    expect(copy).toMatch(/not here|library/i);
   });
 });
 

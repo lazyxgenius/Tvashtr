@@ -80,8 +80,8 @@ test("auth gate: landing when out, register→Home, logout→landing, seeded sig
   await nav.getByRole("button", { name: /^Engines/ }).click();
   await nav.getByRole("button", { name: /^API keys/ }).click();
   const keys = page.locator("section[aria-labelledby='tv-engines-keys']");
-  await expect(keys.locator(".tv-dash__prov-name").first()).toBeVisible({ timeout: 30_000 });
-  const held = await keys.locator(".tv-dash__prov-name").allInnerTexts();
+  await expect(keys.getByTestId("engines-key-provider").first()).toBeVisible({ timeout: 30_000 });
+  const held = await keys.getByTestId("engines-key-provider").allInnerTexts();
   await page.screenshot({ path: path.join(SHOTS_DIR, "check4-seeded-home.png") });
   console.log(
     `[auth-e2e] CHECK 4 PASS — seeded sign-in (${SEED_EMAIL}) reached the shell; keys: ${held.join(", ")}`,

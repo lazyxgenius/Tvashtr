@@ -88,7 +88,11 @@ function Nav({
       label: "Overview",
       route: { page: "engines", tab: "overview" },
       active: route.page === "engines" && route.tab === "overview",
-      badge: badges.enginesFirstTime ? <Badge>New</Badge> : warn(badges.enginesToFix, "to fix"),
+      badge: badges.enginesFirstTime ? (
+        <Badge tone="accent">New</Badge>
+      ) : (
+        warn(badges.enginesToFix, "to fix")
+      ),
     },
     {
       key: "subscriptions",
