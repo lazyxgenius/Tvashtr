@@ -135,7 +135,17 @@ function nodeCard(page: Page, roleTitle: string): Locator {
 /** Open a node's config drawer the way a user does: click its model strip. */
 async function openNodeDrawer(page: Page, roleTitle: string): Promise<void> {
   await nodeCard(page, roleTitle).locator(".rf-node__model").click();
-  await expect(page.locator("input[aria-label='Fallback model']")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("complementary", { name: `${roleTitle} settings` })).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+/** The drawer's backup model, read from the Advanced summary ("Backup model: <slug|none> · …"). */
+async function backupModelOf(page: Page, roleTitle: string): Promise<string> {
+  const drawer = page.getByRole("complementary", { name: `${roleTitle} settings` });
+  const summary = (await drawer.getByRole("button", { name: /^Advanced/ }).textContent()) ?? "";
+  const slug = /Backup model: (.+?) · Output format/.exec(summary)?.[1] ?? "";
+  return slug === "none" ? "" : slug;
 }
 
 /** The slices of the API payloads this harness reads. Typed so `String(...)` never stringifies an
@@ -392,7 +402,7 @@ test.describe("M-proof", () => {
       // nothing, so the fallback walks the same capability as the primary.
       for (const [role, capability] of roles) {
         await openNodeDrawer(page, role);
-        const value = await page.locator("input[aria-label='Fallback model']").inputValue();
+        const value = await backupModelOf(page, role);
         console.log(`[C6] ${role} (${capability}) fallback model value = ${JSON.stringify(value)}`);
         expect(value, `${role} fallback model (${capability} seat; value, not placeholder)`).toBe(
           expected[capability].fallback,
