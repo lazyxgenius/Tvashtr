@@ -29,7 +29,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from tvashtr.config import get_settings
@@ -42,6 +42,7 @@ from tvashtr.models import (
     DesktopRunnerHeartbeat,
     EngineSubscriptionStatus,
     Run,
+    RunEvent,
 )
 
 OFFLINE_ERROR = "Tvashtr Desktop went offline — reopen it and retry."
@@ -409,6 +410,46 @@ def submit_result(
         job.usage = usage
         job.finished_at = _now()
         job.heartbeat_at = job.finished_at
+
+
+RELEASED_MESSAGE = "Tvashtr Desktop restarted — this step starts again when it's back."
+NOT_CLAIMED_ERROR = "This job isn't running on Tvashtr Desktop."
+# The release notes' own seq range inside the node's invocation: above the adapter's messages
+# (0, 1, …) and below the runner's events (``RUNNER_SEQ_OFFSET`` + n), one seq per release.
+_RELEASE_SEQ_BASE = 50
+
+
+def release_job(owner_id: uuid.UUID, job_id: str) -> dict:
+    """Hand a claimed job back to the queue (Desktop is quitting or restarting to update): status
+    ``queued`` again, ``claimed_at``/``heartbeat_at`` cleared, and one note in the node's run log.
+    The relaunched runner re-claims it with the unchanged :func:`claim_next`; if Desktop doesn't
+    come back, the adapter's queued-offline rule fails the node as before. Raises
+    :class:`JobNotFound` (unknown / another owner's) or :class:`JobConflict` (not claimed)."""
+    with session_scope() as session:
+        job = _owned_job(session, owner_id, job_id)
+        if job.status != "claimed":
+            raise JobConflict(NOT_CLAIMED_ERROR)
+        job.status = "queued"
+        job.claimed_at = None
+        job.heartbeat_at = None
+        run_id, invocation_id, released_id = job.run_id, job.invocation_id, str(job.id)
+        top = session.execute(
+            select(func.max(RunEvent.seq)).where(
+                RunEvent.run_id == run_id,
+                RunEvent.invocation_id == invocation_id,
+                RunEvent.seq >= _RELEASE_SEQ_BASE,
+                RunEvent.seq < RUNNER_SEQ_OFFSET,
+            )
+        ).scalar_one_or_none()
+    seq = _RELEASE_SEQ_BASE if top is None else min(top + 1, RUNNER_SEQ_OFFSET - 1)
+    make_run_event_sink(run_id, invocation_id)(
+        EngineEvent(
+            seq=seq,
+            kind="message",
+            payload={"source": "tvashtr", "text": RELEASED_MESSAGE},
+        )
+    )
+    return {"job_id": released_id, "status": "queued"}
 
 
 def expire_job(job_id: str, error: str) -> bool:
