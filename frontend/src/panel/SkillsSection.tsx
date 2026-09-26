@@ -163,7 +163,7 @@ export function SkillsSection({
     if (!entry.attachable) return;
     setPresetBusy(true);
     try {
-      let item = librarySkills.find((s) => s.name === entry.name) ?? null;
+      const item = librarySkills.find((s) => s.name === entry.name) ?? null;
       let id = item?.id;
       if (!id) {
         const created = await createSkillLibraryItem(entry.name, entry.source);
@@ -429,7 +429,7 @@ export function SkillsSection({
           >
             {librarySkills.length === 0 ? (
               <li className="tv-field__hint">
-                No library skills yet — add one in the Skill library shelf on your dashboard.
+                No library skills yet — add one in Toolkit › Skills.
               </li>
             ) : (
               librarySkills.map((item) => {
