@@ -114,7 +114,8 @@ test("M-unify U3: edits toggle persists + re-labels, tools on every node, start 
   ); // the Reviewer is edits-off
   // The tools live on the drawer's Skills & tools tab.
   await rev.getByRole("tab", { name: /^Skills & tools/ }).click();
-  await expect(rev.getByLabel("Tools JSON")).toBeVisible({ timeout: 30_000 });
+  await expect(rev.getByRole("region", { name: /^Tools/ })).toBeVisible({ timeout: 30_000 });
+  await expect(rev.getByRole("button", { name: "Add tool" })).toBeEnabled();
   await expect(rev.getByText(/switch this node to Worker/i)).toHaveCount(0);
   await page.screenshot({ path: path.join(SHOTS_DIR, "checkC-tools-on-edits-off.png") });
   console.log("[edits-toggle-e2e] CHECK C PASS — Tools editor present on the edits-off Reviewer");

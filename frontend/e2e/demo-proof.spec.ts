@@ -160,18 +160,6 @@ interface TrajectoryRow {
   outcome_label?: string;
 }
 
-/** Expand a `<details>` if it is closed.
- *
- * `getAttribute("open")` answers `""` for `<details open>` — falsy in JS — so a naive
- * `if (!open) click()` guard toggles an already-open block SHUT, and the rows inside then report
- * `innerText === ""` because innerText is layout-dependent. Compare against `null`. */
-async function openDetails(details: Locator): Promise<void> {
-  if ((await details.getAttribute("open")) === null) {
-    await details.locator("summary").click();
-  }
-  await expect(details).toHaveAttribute("open", "");
-}
-
 async function jsonOf<T>(api: APIRequestContext, url: string): Promise<T> {
   const res = await api.get(url);
   if (!res.ok()) throw new Error(`GET ${url} -> ${res.status()} ${await res.text()}`);
@@ -415,20 +403,24 @@ test.describe("M-proof", () => {
       await shot(page, 6, "fallback-model");
 
       // ---- C7: caveman on the workers ---------------------------------------------------------
-      for (const role of ["Engineer", "Reviewer"]) {
+      // The skills live on the drawer's Skills & tools tab: one row per source, badged by kind.
+      const skillsOf = async (role: string) => {
         await openNodeDrawer(page, role);
-        const skills = page.locator("details.tv-skills");
-        await expect(skills.locator("summary"), `${role} skills summary`).toHaveText("Skills · 1");
-        await openDetails(skills);
-        await expect(skills.locator(".tv-skills__rows")).toBeVisible();
-        const labels = (await skills.locator(".tv-skills__label").allInnerTexts()).map((s) =>
-          s.trim(),
+        const drawer = page.getByRole("complementary", { name: `${role} settings` });
+        await drawer.getByRole("tab", { name: /^Skills & tools/ }).click();
+        return drawer.getByRole("region", { name: /^Skills/ });
+      };
+      for (const role of ["Engineer", "Reviewer"]) {
+        const skills = await skillsOf(role);
+        await expect(skills.getByRole("heading"), `${role} skills heading`).toHaveText(
+          /^Skills\s*1/,
         );
+        const rows = skills.getByRole("listitem");
+        const labels = (await rows.locator(".nd-skill__name").allInnerTexts()).map((s) => s.trim());
         console.log(`[C7] ${role} skills = ${JSON.stringify(labels)}`);
         expect(labels, `${role} skill rows`).toEqual(["caveman"]);
-        // The badge renders capitalised ("Inline"); the brief wrote the underlying `type` value.
-        // Assert the rendered DOM, case-insensitively, on the ROW rather than the whole block.
-        await expect(skills.locator(".tv-skills__row").first()).toContainText(/inline/i);
+        // An inline skill is badged "Custom".
+        await expect(rows.first()).toContainText("Custom");
       }
       console.log(
         "[C7] PASS — Engineer and Reviewer each carry exactly one inline 'caveman' skill",
@@ -436,13 +428,11 @@ test.describe("M-proof", () => {
       await shot(page, 7, "caveman-worker");
 
       // ---- C8: caveman NOT on the thinker -----------------------------------------------------
-      await openNodeDrawer(page, "Product manager");
-      const pmSkills = page.locator("details.tv-skills");
-      await expect(pmSkills.locator("summary"), "PM skills summary").toHaveText("Skills");
-      await openDetails(pmSkills);
-      const pmLabels = await pmSkills.locator(".tv-skills__label").allInnerTexts();
-      console.log(`[C8] PM skills = ${JSON.stringify(pmLabels)}`);
-      expect(pmLabels, "the thinker must carry NO stamped skill").toEqual([]);
+      const pmSkills = await skillsOf("Product manager");
+      await expect(
+        pmSkills.getByText("No skills yet"),
+        "the thinker carries NO stamped skill",
+      ).toBeVisible();
       console.log("[C8] PASS — the caveman stamp did not leak onto the thinker");
       await shot(page, 8, "caveman-not-thinker");
 
