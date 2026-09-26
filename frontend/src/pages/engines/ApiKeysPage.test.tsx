@@ -147,6 +147,8 @@ describe("API keys page (Eng-Keys)", () => {
     renderKeys();
     await loaded();
     expect(within(row("anthropic")).getByText("Just now")).toBeInTheDocument();
+    // Let the ticker's effect (scheduled when the keys arrived) start before the clock moves.
+    await act(async () => {});
     act(() => {
       vi.advanceTimersByTime(60_000);
     });
