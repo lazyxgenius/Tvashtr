@@ -66,6 +66,10 @@
   gap: 6px;
   min-width: 0;
 }
+/* The Reading model (340px, like Answer model) takes a row of its own so it fits its card. */
+.dm-set__field--wide {
+  grid-column: 1 / -1;
+}
 .dm-set__label {
   font-size: 13px;
   line-height: 1.6;
@@ -99,7 +103,8 @@
   line-height: 1.6;
   color: var(--ink-500);
 }
-.dm-set__answer {
+/* Reading model and Answer model selects: the design's 340px. */
+.dm-set__w340 {
   display: block;
   width: 340px;
   max-width: 100%;

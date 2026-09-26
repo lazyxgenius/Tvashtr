@@ -1,6 +1,7 @@
 /**
  * A domain's Settings tab (DM-80…DM-91; Dm-Settings, DmF-Tune-1…4): how files are read, how
- * answers are written, how search works and the danger card. Editing shows the save bar with what
+ * answers are written, how search works and the danger card. The Reading model select keeps the
+ * design's 340px on a row of its own (the frame draws it overflowing into the next card). Editing shows the save bar with what
  * saving means; **Save and run tests** saves and goes to Quality, where the run with the new
  * setting is compared with the last one.
  *
@@ -67,15 +68,18 @@ function Field({
   label,
   htmlFor,
   helper,
+  wide,
   children,
 }: {
   label: string;
   htmlFor: string;
   helper?: ReactNode;
+  /** A row of its own (both columns). */
+  wide?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="dm-set__field">
+    <div className={wide ? "dm-set__field dm-set__field--wide" : "dm-set__field"}>
       <label className="dm-set__label" htmlFor={htmlFor}>
         {label}
       </label>
@@ -263,6 +267,7 @@ export function SettingsTab({
               <Field
                 label="Reading model"
                 htmlFor="dm-set-reading"
+                wide
                 helper={
                   <span className="dm-set__help">
                     Turns each piece into something search can compare.{" "}
@@ -280,13 +285,15 @@ export function SettingsTab({
                   </span>
                 }
               >
-                <Select
-                  id="dm-set-reading"
-                  aria-label="Reading model"
-                  options={readingOptions}
-                  value={draft.reading}
-                  onChange={(e) => set({ reading: e.target.value })}
-                />
+                <span className="dm-set__w340">
+                  <Select
+                    id="dm-set-reading"
+                    aria-label="Reading model"
+                    options={readingOptions}
+                    value={draft.reading}
+                    onChange={(e) => set({ reading: e.target.value })}
+                  />
+                </span>
               </Field>
               <Field
                 label="Piece size"
@@ -359,7 +366,7 @@ export function SettingsTab({
                 </span>
               }
             >
-              <span className="dm-set__answer">
+              <span className="dm-set__w340">
                 <Select
                   id="dm-set-answer"
                   aria-label="Answer model"
@@ -372,7 +379,7 @@ export function SettingsTab({
                 />
               </span>
               {answerValue === CUSTOM && (
-                <span className="dm-set__answer">
+                <span className="dm-set__w340">
                   <Input
                     size="sm"
                     mono
