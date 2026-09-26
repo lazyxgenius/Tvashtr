@@ -3,9 +3,15 @@ import { Zap } from "lucide-react";
 
 import { LastRun } from "../components/LastRun";
 import { Button } from "../design-system/components";
-import type { GateConfig, GraphEdge, TeamGraphNode } from "../lib/api";
+import {
+  type GateConfig,
+  getProviderCatalogue,
+  type GraphEdge,
+  type ProviderCatalogueEntry,
+  type TeamGraphNode,
+} from "../lib/api";
 import type { NodeTemplate } from "../lib/api/nodes";
-import type { NodeTab } from "../lib/nav";
+import type { EnginesTab, NodeTab } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import { type AgentDraft, describeChanges } from "./agentDraft";
 import { DrawerConfirm } from "./DrawerConfirm";
@@ -27,7 +33,9 @@ import { SaveBar } from "./SaveBar";
 import { useSaveShortcut } from "./saveShortcut";
 import { isGettingReady } from "./setup/getReady";
 import { RoutingUpdateConfirm, TemplateReplaceConfirm } from "./setup/InstructionConfirms";
-import { type CredentialCover, needsModel } from "./setup/modelCopy";
+import { type ModelGroup, seatOf } from "./setup/modelCatalog";
+import { type CredentialCover, isDesktopApp, needsModel } from "./setup/modelCopy";
+import type { ModelPickerContext } from "./setup/ModelSection";
 import { type ContractUpdate, contractUpdate } from "./setup/routing";
 import { SetupTab } from "./setup/SetupTab";
 import { templateAppliedText, templateApplication, templateNeedsConfirm } from "./setup/templates";
@@ -64,6 +72,12 @@ export interface NodeEditorProps {
   guardRef?: MutableRefObject<LeaveGuard | null>;
   /** Delete this agent (and its arrows), close the drawer and reload the graph (PANEL-25). */
   onDelete?: () => Promise<void>;
+  /** The served provider catalogue (`/api/config`); defaults to the one cached at boot. */
+  catalogue?: readonly ProviderCatalogueEntry[];
+  /** Open Dashboard › Engines ("Add a provider" → API keys; the key toast's "Open Engines"). */
+  onOpenEngines?: (tab: EnginesTab) => void;
+  /** A key added from the model picker is now on the account (the page updates its cover). */
+  onProviderAdded?: (provider: string) => void;
 }
 
 /**
@@ -120,7 +134,6 @@ function AgentEditor({
   nodes,
   edges,
   isEntry,
-  cover,
   tab,
   onTabChange,
   focus,
@@ -130,8 +143,19 @@ function AgentEditor({
   onManageMemory,
   guardRef,
   onDelete,
+  catalogue,
+  onOpenEngines,
+  onProviderAdded,
+  cover: pageCover,
 }: NodeEditorProps) {
   const api = useAgentDraft(node, { teamId, onSaved: () => onSaved() });
+  // Providers whose key was pasted into the model picker here: their hint says "(saved in Engines)",
+  // and they cover the draft's model before the page's own credentials catch up.
+  const [justAdded, setJustAdded] = useState<ReadonlySet<string>>(() => new Set());
+  const cover: CredentialCover | null =
+    pageCover && justAdded.size > 0
+      ? { ...pageCover, byok: new Set([...pageCover.byok, ...justAdded]) }
+      : pageCover;
   const { draft } = api;
   const memoryCount = useNodeMemoryCount(node.id);
   const [renaming, setRenaming] = useState(false);
@@ -191,6 +215,25 @@ function AgentEditor({
       label: "Undo",
       onAction: () => api.set("prompt", before),
     });
+  };
+
+  // PANEL-43: the key is on the account now; the model lands on that provider's default.
+  const keySaved = (group: ModelGroup) => {
+    setJustAdded((prev) => new Set([...prev, group.provider]));
+    onProviderAdded?.(group.provider);
+    toast.show(
+      `${group.label} key saved to Engines`,
+      onOpenEngines ? { label: "Open Engines", onAction: () => onOpenEngines("keys") } : undefined,
+    );
+  };
+  const picker: ModelPickerContext = {
+    catalogue: catalogue ?? getProviderCatalogue(),
+    seat: seatOf(node),
+    cover,
+    desktop: isDesktopApp(),
+    justAdded,
+    onKeySaved: keySaved,
+    onAddProvider: onOpenEngines ? () => onOpenEngines("keys") : undefined,
   };
 
   const commitRename = (nextName: string, nextDescription: string) => {
@@ -344,6 +387,8 @@ function AgentEditor({
           isEntry={isEntry}
           draft={api}
           cover={cover}
+          picker={picker}
+          agentName={name}
           onOpenFullEditor={focus ? undefined : () => onFocusChange(true)}
           onPickTemplate={pickTemplate}
           onUpdateRouting={requestRoutingUpdate}

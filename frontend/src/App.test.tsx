@@ -295,8 +295,12 @@ describe("App — the agent drawer (F5)", () => {
       name: /^Instructions/,
     });
     expect(instructions.value).toContain("ENGINEER behavior");
-    // The model button shows the model id without its provider.
-    expect(within(panel).getByRole("button", { name: "gpt-4o-mini" })).toBeInTheDocument();
+    // The catalogue no longer lists gpt-4o-mini, so the button shows the whole slug (no provider
+    // tile) and the soft unknown-model warning says what that means.
+    expect(within(panel).getByRole("button", { name: "openai/gpt-4o-mini" })).toBeInTheDocument();
+    expect(within(panel).getByText(/^No provider matches/)).toHaveTextContent(
+      "No provider matches openai/gpt-4o-mini. It will fail at run time",
+    );
     expect(within(panel).getByText("All changes saved")).toBeInTheDocument();
 
     fireEvent.click(within(panel).getByRole("button", { name: "Close panel" }));

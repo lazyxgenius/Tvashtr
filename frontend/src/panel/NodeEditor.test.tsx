@@ -2,7 +2,12 @@ import { createRef } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { type GraphEdge, setProviderCatalogue, type TeamGraphNode } from "../lib/api";
+import {
+  type GraphEdge,
+  type ProviderCatalogueEntry,
+  setProviderCatalogue,
+  type TeamGraphNode,
+} from "../lib/api";
 import { __resetBackendStatusForTests } from "../lib/backendStatus";
 import { NodeEditor, type NodeEditorProps } from "./NodeEditor";
 import { resetNodeTemplates } from "./setup/useNodeTemplates";
@@ -769,6 +774,157 @@ describe("NodeEditor — templates, routing sync, new agent (G3)", () => {
     const { drawer } = renderEditor({ node: reviewer({ last_run: null }) });
     expect(within(drawer).queryByRole("region", { name: "Get this agent ready" })).toBeNull();
     expect(within(drawer).getByRole("textbox", { name: /^Instructions/ })).toBeInTheDocument();
+  });
+});
+
+describe("NodeEditor — the model picker and the model warnings (G4)", () => {
+  const CATALOGUE: ProviderCatalogueEntry[] = [
+    {
+      provider: "nvidia_nim",
+      thinker_default: null,
+      worker_default: null,
+      thinker_presets: [],
+      worker_presets: [],
+      label: "NVIDIA NIM",
+      byok_probed: true,
+    },
+    {
+      provider: "xai",
+      thinker_default: "xai/grok-4.7",
+      worker_default: "xai/grok-4.7",
+      thinker_presets: ["xai/grok-4.7"],
+      worker_presets: ["xai/grok-4.7"],
+      label: "xAI",
+      model_labels: { "xai/grok-4.7": "Grok 4.7" },
+      subscription: "grok",
+      byok_probed: false,
+    },
+    {
+      provider: "gemini",
+      thinker_default: null,
+      worker_default: "gemini/gemini-2.5-flash",
+      thinker_presets: [],
+      worker_presets: ["gemini/gemini-2.5-flash"],
+      label: "Gemini",
+      model_labels: { "gemini/gemini-2.5-flash": "Gemini 2.5 Flash" },
+      byok_probed: true,
+    },
+  ];
+  const toastOf = (drawer: HTMLElement) => drawer.querySelector(".nd-toast-host") as HTMLElement;
+  const model = (drawer: HTMLElement) => within(drawer).getByRole("region", { name: "Model" });
+
+  afterEach(() => window.sessionStorage.clear());
+
+  it("adds a missing key from the picker, lands on its model and says where it went (Flow-Model)", async () => {
+    const onOpenEngines = vi.fn();
+    const onProviderAdded = vi.fn();
+    const { drawer } = renderEditor({
+      catalogue: CATALOGUE,
+      cover: { byok: new Set(["xai", "nvidia_nim"]), subs: {} },
+      onOpenEngines,
+      onProviderAdded,
+    });
+    fireEvent.click(within(model(drawer)).getByRole("button", { name: "grok-4.7" }));
+    const list = within(drawer).getByRole("listbox", { name: "Choose a model" });
+    // The worker seat's providers only: NIM (no seat) is never offered.
+    expect(within(list).queryByText("nvidia_nim")).toBeNull();
+    fireEvent.change(within(list).getByLabelText("Paste your Gemini API key"), {
+      target: { value: "AIza-secret" },
+    });
+    fireEvent.click(within(list).getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(within(drawer).queryByRole("listbox")).toBeNull());
+    expect(onProviderAdded).toHaveBeenCalledWith("gemini");
+    expect(within(model(drawer)).getByRole("button", { name: "gemini-2.5-flash" })).toBeTruthy();
+    expect(model(drawer).querySelector(".nd-hint")).toHaveTextContent(
+      "Uses your Gemini API key (saved in Engines)",
+    );
+    expect(within(model(drawer)).getByRole("img", { name: "Changed" })).toBeTruthy();
+    expect(within(drawer).getByText("1 unsaved change")).toBeInTheDocument();
+    const toast = toastOf(drawer);
+    expect(toast).toHaveTextContent("Gemini key saved to Engines");
+    fireEvent.click(within(toast).getByRole("button", { name: "Open Engines" }));
+    expect(onOpenEngines).toHaveBeenCalledWith("keys");
+  });
+
+  it("'Add a provider' opens Engines › API keys", () => {
+    const onOpenEngines = vi.fn();
+    const { drawer } = renderEditor({ catalogue: CATALOGUE, onOpenEngines });
+    fireEvent.click(within(model(drawer)).getByRole("button", { name: "grok-4.7" }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Add a provider" }));
+    expect(onOpenEngines).toHaveBeenCalledWith("keys");
+  });
+
+  it("a verdict agent sharing its model with the agent it checks gets the advisory, until dismissed", () => {
+    const { drawer } = renderEditor({ catalogue: CATALOGUE });
+    const advisory = within(model(drawer))
+      .getByText(/both run/)
+      .closest("[role=status]");
+    expect(advisory).toHaveTextContent(
+      "Reviewer and Engineer both run xai/grok-4.7. Reviews are stronger when the reviewer runs a more capable model than the one it checks.",
+    );
+    fireEvent.click(within(advisory as HTMLElement).getByRole("button", { name: "Dismiss" }));
+    expect(within(model(drawer)).queryByText(/both run/)).toBeNull();
+    // Dismissed for this session: it stays away when the drawer opens again.
+    cleanup();
+    const again = renderEditor({ catalogue: CATALOGUE });
+    expect(within(model(again.drawer)).queryByText(/both run/)).toBeNull();
+  });
+
+  it("an agent that doesn't route on a verdict gets no advisory", () => {
+    const { drawer } = renderEditor({
+      catalogue: CATALOGUE,
+      node: engineer,
+      nodes: [pm, engineer, reviewer(), ship],
+    });
+    expect(within(model(drawer)).queryByText(/both run/)).toBeNull();
+  });
+
+  it("warns about a backup model no provider matches; Save still sends it (Panel-Warnings)", async () => {
+    fetchMock.mockImplementation((input: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") return json({ detail: "boom" }, 500);
+      if (input.startsWith("/api/memories")) return json({ memories: [] });
+      return json({});
+    });
+    const { drawer } = renderEditor({ catalogue: CATALOGUE });
+    fireEvent.click(within(drawer).getByRole("button", { name: /^Advanced/ }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "None" }));
+    const list = within(drawer).getByRole("listbox", { name: "Choose a backup model" });
+    fireEvent.click(within(list).getByRole("button", { name: "Use a custom model ID" }));
+    fireEvent.change(within(list).getByRole("textbox", { name: "Custom model ID" }), {
+      target: { value: "openai/gpt-4o-mni" },
+    });
+    fireEvent.click(within(list).getByRole("button", { name: "Use this model" }));
+
+    // The button shows the whole slug (no provider tile) and the soft warning sits under it.
+    expect(within(drawer).getByRole("button", { name: "openai/gpt-4o-mni" })).toBeTruthy();
+    const warning = within(drawer)
+      .getByText(/^No provider matches/)
+      .closest("[role=status]");
+    expect(warning).toHaveTextContent(
+      "No provider matches openai/gpt-4o-mni. It will fail at run time if the name is wrong or the key isn’t set.",
+    );
+    expect(within(drawer).getByText("1 unsaved change")).toBeInTheDocument();
+
+    fireEvent.click(within(drawer).getByRole("button", { name: /^Save/ }));
+    expect(await within(drawer).findByText("Couldn’t save. Try again.")).toBeInTheDocument();
+    expect(patchBody()).toEqual({ fallback_model: "openai/gpt-4o-mni" });
+    expect(within(drawer).getByRole("button", { name: "Try again" })).toBeTruthy();
+
+    fireEvent.click(within(warning as HTMLElement).getByRole("button", { name: "Dismiss" }));
+    expect(within(drawer).queryByText(/^No provider matches/)).toBeNull();
+  });
+
+  it("warns about an unknown main model too, and picking a listed one clears it", () => {
+    const { drawer } = renderEditor({
+      catalogue: CATALOGUE,
+      node: reviewer({ model: "xai/grok-9" }),
+    });
+    expect(within(model(drawer)).getByText(/^No provider matches/)).toHaveTextContent(
+      "No provider matches xai/grok-9.",
+    );
+    fireEvent.click(within(model(drawer)).getByRole("button", { name: "xai/grok-9" }));
+    fireEvent.click(within(drawer).getByRole("option", { name: "grok-4.7" }));
+    expect(within(model(drawer)).queryByText(/^No provider matches/)).toBeNull();
   });
 });
 

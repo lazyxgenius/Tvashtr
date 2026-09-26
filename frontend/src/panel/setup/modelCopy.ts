@@ -3,7 +3,7 @@
  * (PANEL-15 / Q9: "Needs a model" when blank or when no key or subscription covers it). Kept out of
  * lib/engines.ts (the Engines area owns that file).
  */
-import { providerOf } from "../../lib/api";
+import { providerOf, type ProviderCatalogueEntry } from "../../lib/api";
 import {
   credentialTreatment,
   displayNameForSubscription,
@@ -25,6 +25,13 @@ export interface ModelHint {
   warn: boolean;
 }
 
+const NONE: ReadonlySet<string> = new Set();
+
+function labelOf(provider: string, catalogue?: readonly ProviderCatalogueEntry[]): string {
+  const label = catalogue?.find((e) => e.provider === provider)?.label;
+  return label || providerLabel(provider);
+}
+
 export function isDesktopApp(): boolean {
   return document.documentElement.dataset.tvashtrDesktop === "true";
 }
@@ -44,11 +51,19 @@ export function modelTreatment(
   });
 }
 
-/** The hint under the model; null while credentials are still loading. */
+/**
+ * The hint under the model; null while credentials are still loading. `justAdded` holds the
+ * providers whose key was pasted into the picker in this drawer ("… (saved in Engines)");
+ * `catalogue` names the providers (defaults to the one cached at boot).
+ */
 export function modelHint(
   model: string,
   cover: CredentialCover | null,
   desktop = isDesktopApp(),
+  {
+    justAdded = NONE,
+    catalogue,
+  }: { justAdded?: ReadonlySet<string>; catalogue?: readonly ProviderCatalogueEntry[] } = {},
 ): ModelHint | null {
   if (!model.trim()) {
     return { icon: null, text: "This agent needs a model before the team can run.", warn: true };
@@ -65,7 +80,13 @@ export function modelHint(
       };
     }
     case "byok":
-      return { icon: "key", text: `Uses your ${providerLabel(provider)} API key`, warn: false };
+      return {
+        icon: "key",
+        text: `Uses your ${labelOf(provider, catalogue)} API key${
+          justAdded.has(provider) ? " (saved in Engines)" : ""
+        }`,
+        warn: false,
+      };
     default:
       return {
         icon: "warn",

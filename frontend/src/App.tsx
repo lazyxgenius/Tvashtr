@@ -5,7 +5,7 @@ import { RunBlockedBanner } from "./canvas/RunBlockedBanner";
 import { credentialBlock, validityBlock } from "./canvas/runBlocked";
 import { TeamCanvas } from "./canvas/TeamCanvas";
 import "./canvas/chrome.css";
-import type { DashView, NodeTab } from "./lib/nav";
+import { type DashView, navigate, type NodeTab } from "./lib/nav";
 import { CancelRunButton } from "./components/CancelRunButton";
 import { RunBanner } from "./components/RunBanner";
 import { RunWarnings } from "./components/RunWarnings";
@@ -97,6 +97,7 @@ export default function App({
   teamId,
   initialRunId,
   onBackToDashboard,
+  config,
   node: routeNode,
   tab: routeTab,
   focus: routeFocus,
@@ -746,6 +747,22 @@ export default function App({
                 }
                 guardRef={leaveGuardRef}
                 onDelete={() => handleDeleteNodes([selectedTeamNode.id])}
+                catalogue={config?.provider_catalogue}
+                onOpenEngines={
+                  onBackToDashboard
+                    ? (tab) =>
+                        guardLeave(() =>
+                          tab === "overview"
+                            ? onBackToDashboard("engines")
+                            : navigate({ page: "engines", tab }),
+                        )
+                    : undefined
+                }
+                onProviderAdded={(provider) =>
+                  setCredentialGate((gate) =>
+                    gate ? { ...gate, byok: new Set([...gate.byok, provider]) } : gate,
+                  )
+                }
               />
             )
           : selectedRunNode && (

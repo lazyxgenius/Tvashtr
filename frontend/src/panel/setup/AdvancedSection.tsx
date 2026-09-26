@@ -5,6 +5,10 @@ import { Button } from "../../design-system/components";
 import type { ChangeGroup } from "../agentDraft";
 import { ChangedDot } from "../ChangedDot";
 import { ModelButton } from "./ModelButton";
+import { unknownModel } from "./modelCatalog";
+import { UnknownModelWarning } from "./ModelNotices";
+import { ModelPicker } from "./ModelPicker";
+import type { ModelPickerContext } from "./ModelSection";
 import { SettingRow } from "./SettingRow";
 import { BACKUP_HINT, OUTPUT_FORMAT_HINT, TIPS } from "./setupCopy";
 
@@ -15,20 +19,25 @@ import { BACKUP_HINT, OUTPUT_FORMAT_HINT, TIPS } from "./setupCopy";
 export function AdvancedSection({
   fallbackModel,
   outputSchema,
-  onOpenBackup,
+  onBackupChange,
+  picker,
   onEditSchema,
   defaultOpen = false,
   changed = [],
 }: {
   fallbackModel: string;
   outputSchema: string;
-  onOpenBackup?: () => void;
+  /** Pick the backup model ("" = None). Without it the picker is read-only. */
+  onBackupChange?: (model: string) => void;
+  picker?: ModelPickerContext;
   onEditSchema?: () => void;
   defaultOpen?: boolean;
   /** The parts that differ from the saved agent (their rows get the Changed dot). */
   changed?: readonly ChangeGroup[];
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [unknownHidden, setUnknownHidden] = useState<string | null>(null);
+  const unknown = picker ? unknownModel(fallbackModel, picker.catalogue) : null;
   const schemaSet = outputSchema.trim() !== "";
   const summary = `Backup model: ${fallbackModel.trim() || "none"} · Output format: ${
     schemaSet ? "set" : "none"
@@ -63,8 +72,27 @@ export function AdvancedSection({
             hint={BACKUP_HINT}
             changed={changed.includes("backupModel")}
           >
-            <ModelButton model={fallbackModel} emptyLabel="None" onOpen={onOpenBackup} />
+            {picker ? (
+              <ModelPicker
+                model={fallbackModel}
+                onPick={(m) => onBackupChange?.(m)}
+                emptyLabel="None"
+                label="Choose a backup model"
+                allowNone
+                catalogue={picker.catalogue}
+                seat={picker.seat}
+                cover={picker.cover}
+                desktop={picker.desktop}
+                onKeySaved={picker.onKeySaved}
+                onAddProvider={picker.onAddProvider}
+              />
+            ) : (
+              <ModelButton model={fallbackModel} emptyLabel="None" />
+            )}
           </SettingRow>
+          {unknown && unknownHidden !== unknown && (
+            <UnknownModelWarning model={unknown} onDismiss={() => setUnknownHidden(unknown)} />
+          )}
           <SettingRow
             label="Output format"
             tip={TIPS.outputFormat}

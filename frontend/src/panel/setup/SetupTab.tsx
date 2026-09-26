@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, KeyRound, Monitor } from "lucide-react";
 
-import { Switch } from "../../design-system/components";
 import type { GraphEdge, TeamGraphNode } from "../../lib/api";
 import type { NodeTemplate } from "../../lib/api/nodes";
 import type { AgentDraftApi } from "../useAgentDraft";
@@ -10,33 +8,15 @@ import { AdvancedSection } from "./AdvancedSection";
 import { isGettingReady, isReadyHidden, readyItems, rememberReadyHidden } from "./getReady";
 import { GetReadyChecklist } from "./GetReadyChecklist";
 import { InstructionsCard } from "./InstructionsCard";
-import { ModelButton } from "./ModelButton";
-import { type CredentialCover, type ModelHint, modelHint, needsModel } from "./modelCopy";
+import { sameModelSibling } from "./modelCatalog";
+import { type CredentialCover, needsModel } from "./modelCopy";
+import { type ModelPickerContext, ModelSection } from "./ModelSection";
 import { routingOf } from "./routing";
 import { RoutingStatus } from "./RoutingStatus";
-import { SettingRow, SettingSection } from "./SettingRow";
-import { runtimeBanner, TIPS } from "./setupCopy";
+import { runtimeBanner } from "./setupCopy";
 import { TemplateChooser } from "./TemplateChooser";
 import { TemplatesMenu } from "./TemplatesMenu";
 import { useNodeTemplates } from "./useNodeTemplates";
-
-function HintLine({ hint }: { hint: ModelHint }) {
-  const Icon =
-    hint.icon === "monitor"
-      ? Monitor
-      : hint.icon === "key"
-        ? KeyRound
-        : hint.icon === "warn"
-          ? AlertTriangle
-          : null;
-  if (!Icon) return <>{hint.text}</>;
-  return (
-    <span className="nd-hint__icon">
-      <Icon size={13} strokeWidth={1.7} aria-hidden />
-      {hint.text}
-    </span>
-  );
-}
 
 /**
  * The Setup tab (Main / Web-Setup / Panel-FullLength): instructions with the routing line, the
@@ -51,6 +31,8 @@ export function SetupTab({
   isEntry,
   draft: api,
   cover,
+  picker,
+  agentName,
   onOpenFullEditor,
   onPickTemplate,
   onUpdateRouting,
@@ -62,6 +44,10 @@ export function SetupTab({
   draft: AgentDraftApi;
   /** The account's credentials (null while loading). */
   cover: CredentialCover | null;
+  /** What the model pickers offer (the catalogue for this agent's seat, and the key flows). */
+  picker: ModelPickerContext;
+  /** The agent's name as the header shows it (the same-model advisory names it). */
+  agentName: string;
   onOpenFullEditor?: () => void;
   /** A template picked from the menu or the chooser (the editor asks before replacing text). */
   onPickTemplate: (template: NodeTemplate) => void;
@@ -74,7 +60,6 @@ export function SetupTab({
   // "Start from scratch" (or any text typed since) keeps the editor, even when it's emptied again.
   const [editorOpen, setEditorOpen] = useState(false);
   const routing = routingOf(node.id, draft.prompt, nodes, edges);
-  const hint = modelHint(draft.model, cover);
   // The Changed marks follow the draft; while a save is on its way they step back (Flow-Save-2).
   const marking = api.saveState !== "saving";
   const changed = marking ? api.changed : [];
@@ -138,23 +123,19 @@ export function SetupTab({
         }
         onOpenFullEditor={onOpenFullEditor}
       />
-      <SettingSection title="Model">
-        <SettingRow
-          label="Model"
-          tip={TIPS.model}
-          hint={hint ? <HintLine hint={hint} /> : undefined}
-          changed={changed.includes("model")}
-        >
-          <ModelButton model={draft.model} emptyLabel="Choose a model" />
-        </SettingRow>
-        <SettingRow label="Images" tip={TIPS.images} changed={changed.includes("images")}>
-          <Switch
-            aria-label="Images"
-            checked={draft.multimodal}
-            onCheckedChange={(v) => set("multimodal", v)}
-          />
-        </SettingRow>
-      </SettingSection>
+      <ModelSection
+        nodeId={node.id}
+        model={draft.model}
+        onModelChange={(v) => set("model", v)}
+        multimodal={draft.multimodal}
+        onMultimodalChange={(v) => set("multimodal", v)}
+        picker={picker}
+        sameModelAs={sameModelSibling(node, draft.model, nodes, edges, {
+          verdict: routing.kind === "verdict",
+        })}
+        agentName={agentName}
+        changed={changed}
+      />
       <AccessSection
         editsAllowed={draft.editsAllowed}
         onEditsChange={(v) => set("editsAllowed", v)}
@@ -169,6 +150,8 @@ export function SetupTab({
       <AdvancedSection
         fallbackModel={draft.fallbackModel}
         outputSchema={draft.outputSchema}
+        onBackupChange={(v) => set("fallbackModel", v)}
+        picker={picker}
         changed={changed}
       />
     </div>
