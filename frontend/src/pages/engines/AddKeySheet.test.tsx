@@ -94,7 +94,10 @@ function pick(sheet: Scope, provider: string) {
 }
 
 const optionNames = (list: Scope) =>
-  list.getAllByRole("option").map((o) => o.querySelector(".eng-picker__opt-slug")?.textContent);
+  list
+    .getAllByRole("option")
+    .map((o) => o.querySelector(".eng-picker__opt-slug")?.textContent ?? o.textContent);
+const OTHER = "Other: type the model prefix";
 
 describe("Add key sheet: the provider picker (EnF-PickProvider-1..4, Eng-AddKeyPick)", () => {
   it("opens empty with Save enabled (OQ-4) and only the encryption note", async () => {
@@ -125,6 +128,7 @@ describe("Add key sheet: the provider picker (EnF-PickProvider-1..4, Eng-AddKeyP
       "huggingface",
       "nvidia_nim",
       "openrouter",
+      OTHER,
     ]);
     expect(list.getByRole("option", { name: /^anthropic/ })).toHaveTextContent(
       "Anthropic models · your teams use it",
@@ -136,7 +140,7 @@ describe("Add key sheet: the provider picker (EnF-PickProvider-1..4, Eng-AddKeyP
       "Saved · No agent uses NVIDIA NIM right now",
     );
     expect(list.getByRole("option", { name: /^nvidia_nim/ })).not.toHaveTextContent("models");
-    expect(sheet.getByRole("button", { name: "Other: type the model prefix" })).toBeInTheDocument();
+    expect(sheet.getByRole("option", { name: "Other: type the model prefix" })).toBeInTheDocument();
   });
 
   it('filters on the search ("hug" leaves huggingface + Other) and picks with Enter', async () => {
@@ -144,8 +148,8 @@ describe("Add key sheet: the provider picker (EnF-PickProvider-1..4, Eng-AddKeyP
     const list = openList(sheet);
     const search = sheet.getByRole("textbox", { name: "Search providers" });
     fireEvent.change(search, { target: { value: "hug" } });
-    expect(optionNames(list)).toEqual(["huggingface"]);
-    expect(sheet.getByRole("button", { name: "Other: type the model prefix" })).toBeInTheDocument();
+    expect(optionNames(list)).toEqual(["huggingface", OTHER]);
+    expect(sheet.getByRole("option", { name: "Other: type the model prefix" })).toBeInTheDocument();
     fireEvent.keyDown(search, { key: "Enter" });
     expect(sheet.queryByRole("listbox")).toBeNull();
     expect(providerButton(sheet)).toHaveAccessibleName("Provider huggingface");
@@ -166,10 +170,13 @@ describe("Add key sheet: the provider picker (EnF-PickProvider-1..4, Eng-AddKeyP
     expect(document.getElementById(active!)).toHaveTextContent(/^Xxai/);
     fireEvent.keyDown(search, { key: "ArrowUp" });
     fireEvent.keyDown(search, { key: "ArrowUp" });
-    // Up from the first wraps to "Other".
-    expect(
-      document.getElementById(search.getAttribute("aria-activedescendant")!),
-    ).toHaveTextContent("Other: type the model prefix");
+    // Up from the first wraps to "Other" — an option of the listbox the search box controls.
+    const other = document.getElementById(search.getAttribute("aria-activedescendant")!);
+    expect(other).toHaveTextContent("Other: type the model prefix");
+    expect(other).toHaveAttribute("role", "option");
+    const listbox = sheet.getByRole("listbox", { name: "Providers" });
+    expect(search).toHaveAttribute("aria-controls", listbox.id);
+    expect(listbox).toContainElement(other);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(sheet.queryByRole("listbox")).toBeNull();
     expect(screen.getByRole("dialog", { name: "Add an API key" })).toBeInTheDocument();
@@ -233,7 +240,7 @@ describe("Add key sheet: Other (EnF-OtherProvider-1/2)", () => {
   it("Other shows the Model prefix field; a slash is an error; a valid prefix is covered", async () => {
     const { sheet } = await openSheet();
     openList(sheet);
-    fireEvent.click(sheet.getByRole("button", { name: "Other: type the model prefix" }));
+    fireEvent.click(sheet.getByRole("option", { name: "Other: type the model prefix" }));
     expect(providerButton(sheet)).toHaveAccessibleName("Provider Other provider");
     const prefix = sheet.getByLabelText("Model prefix");
     expect(prefix).toHaveFocus();
@@ -253,7 +260,7 @@ describe("Add key sheet: Other (EnF-OtherProvider-1/2)", () => {
   it("won't save a prefix with a slash", async () => {
     const { calls, sheet } = await openSheet();
     openList(sheet);
-    fireEvent.click(sheet.getByRole("button", { name: "Other: type the model prefix" }));
+    fireEvent.click(sheet.getByRole("option", { name: "Other: type the model prefix" }));
     fireEvent.change(sheet.getByLabelText("Model prefix"), { target: { value: "mistral/" } });
     fireEvent.change(sheet.getByLabelText("API key"), { target: { value: "sk-m-1234" } });
     fireEvent.click(sheet.getByRole("button", { name: "Save key" }));
@@ -270,7 +277,7 @@ describe("Add key sheet: Other (EnF-OtherProvider-1/2)", () => {
     }));
     const { calls, sheet } = await openSheet({ "POST /api/providers": saved });
     openList(sheet);
-    fireEvent.click(sheet.getByRole("button", { name: "Other: type the model prefix" }));
+    fireEvent.click(sheet.getByRole("option", { name: "Other: type the model prefix" }));
     fireEvent.change(sheet.getByLabelText("Model prefix"), { target: { value: " Mistral " } });
     fireEvent.change(sheet.getByLabelText("API key"), { target: { value: "sk-m-wQ3f" } });
     fireEvent.click(sheet.getByRole("button", { name: "Save key" }));

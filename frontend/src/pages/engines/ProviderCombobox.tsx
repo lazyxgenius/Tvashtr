@@ -169,40 +169,45 @@ export function ProviderCombobox({
             }}
             onKeyDown={onSearchKey}
           />
-          <div role="listbox" id={listId} aria-label="Providers" className="eng-picker__list">
-            {shown.map((o, idx) => (
-              <button
-                key={o.provider}
-                id={optionId(idx)}
-                type="button"
-                role="option"
-                tabIndex={-1}
-                aria-selected={pick.kind === "provider" && pick.provider === o.provider}
-                className={cx(
-                  "eng-picker__opt",
-                  idx === active && "is-active",
-                  o.saved && "is-saved",
-                )}
-                onClick={() => chooseAt(idx)}
-              >
-                <MonogramTile letter={o.monogram} />
-                <span className="eng-picker__opt-slug">{o.provider}</span>
-                <span className="eng-picker__opt-desc">{o.description}</span>
-              </button>
-            ))}
+          {/* One listbox holds every option, "Other" included, so the search box's active option
+              is always one of its own; only the providers scroll, "Other" stays in view. */}
+          <div role="listbox" id={listId} aria-label="Providers">
+            <div role="presentation" className="eng-picker__list">
+              {shown.map((o, idx) => (
+                <button
+                  key={o.provider}
+                  id={optionId(idx)}
+                  type="button"
+                  role="option"
+                  tabIndex={-1}
+                  aria-selected={pick.kind === "provider" && pick.provider === o.provider}
+                  className={cx(
+                    "eng-picker__opt",
+                    idx === active && "is-active",
+                    o.saved && "is-saved",
+                  )}
+                  onClick={() => chooseAt(idx)}
+                >
+                  <MonogramTile letter={o.monogram} />
+                  <span className="eng-picker__opt-slug">{o.provider}</span>
+                  <span className="eng-picker__opt-desc">{o.description}</span>
+                </button>
+              ))}
+            </div>
+            <div className="eng-picker__sep" aria-hidden />
+            <button
+              id={otherId}
+              type="button"
+              role="option"
+              tabIndex={-1}
+              aria-selected={pick.kind === "other"}
+              className={cx("eng-picker__other", active === shown.length && "is-active")}
+              onClick={() => chooseAt(shown.length)}
+            >
+              <Plus size={14} strokeWidth={1.6} aria-hidden />
+              Other: type the model prefix
+            </button>
           </div>
-          <div className="eng-picker__sep" />
-          <button
-            id={otherId}
-            type="button"
-            tabIndex={-1}
-            aria-pressed={pick.kind === "other"}
-            className={cx("eng-picker__other", active === shown.length && "is-active")}
-            onClick={() => chooseAt(shown.length)}
-          >
-            <Plus size={14} strokeWidth={1.6} aria-hidden />
-            Other: type the model prefix
-          </button>
         </div>
       )}
       {children}
