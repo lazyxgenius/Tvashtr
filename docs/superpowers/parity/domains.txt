@@ -23,10 +23,31 @@
 #   listbox), 22px further right (width drift) or 8px lower (height drift), or the trigger sit 4px below the design.
 #   Only a lead waiver (as for engines ENG-58) closes it: '# waiver DmF-Find-3 web: [txt] 'Recently updated' — web-only
 #   nearest-match artifact of the 30px Desktop strip'.
+# G2 (a domain's page + Sources; scenarios domains-sources.mjs). Web "not found" adds the strip title as above.
+# note Dm-Sources / DmF-Preview-1 / DmF-Filter-2 / DmF-Preview-2: 'Showing 7 of 14 files · 1,212 pieces' not found — OQ-7:
+#   the table lists all 14 files (rows 8-14 fall below the 900px fold) and an unfiltered footer reads "14 files ·
+#   1,212 pieces" (it is off-screen too). "Showing k of n" appears only under a search or filter.
+# note DmF-Preview-1 is Dm-Sources with refund-policy.md focused (the ring); both are the `sources` scenario.
+# note DmF-Filter-2 / DmF-Filter-3: '14 of 14 files read' not found — OQ-5: counts are live, so with troubleshooting.pdf
+#   needing attention the strip reads "13 of 14 files read" (the design's strip is stale, its badge says 1 needs attention).
+# note DmF-First-5 desktop: 40 only moved — OQ-4: once the first read finishes the app shows the one-line summary strip on
+#   Sources (the frame omits it), so the tabs and table sit 52px lower. Not found: the meta line — DM-33 ends it with
+#   "created just now" / "updated …", which the frame leaves off ("3 files · 179 pieces · read with …" + the time part).
+# note DmF-Filter-2: the design draws the open Show trigger in a 40px row; the app keeps the row 44px so nothing below
+#   moves when it opens (4px, under the tolerance) — the same as DmF-Find-3.
+# note Filter-3: the needs-attention row is tinted coral-100 (as DmF-Fail-1 draws it, DM-44); this frame leaves it plain.
 Dm-List web: matched 57/58 design items · 0 with size/type drift · 55 only moved · 1 not found in app
 Dm-List desktop: matched 58/58 design items · 0 with size/type drift · 17 only moved · 0 not found in app
 Dm-ListEmpty web: matched 35/36 design items · 0 with size/type drift · 33 only moved · 1 not found in app
 Dm-ListEmpty desktop: matched 36/36 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+Dm-Sources web: matched 96/98 design items · 0 with size/type drift · 94 only moved · 2 not found in app
+Dm-Sources desktop: matched 97/98 design items · 0 with size/type drift · 1 only moved · 1 not found in app
+DmF-Filter-1 web: matched 62/63 design items · 0 with size/type drift · 60 only moved · 1 not found in app
+DmF-Filter-1 desktop: matched 63/63 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DmF-Filter-2 web: matched 106/109 design items · 0 with size/type drift · 104 only moved · 3 not found in app
+DmF-Filter-2 desktop: matched 107/109 design items · 0 with size/type drift · 1 only moved · 2 not found in app
+DmF-Filter-3 web: matched 55/57 design items · 0 with size/type drift · 53 only moved · 2 not found in app
+DmF-Filter-3 desktop: matched 56/57 design items · 0 with size/type drift · 1 only moved · 1 not found in app
 DmF-Find-1 web: matched 34/35 design items · 0 with size/type drift · 32 only moved · 1 not found in app
 DmF-Find-1 desktop: matched 35/35 design items · 0 with size/type drift · 1 only moved · 0 not found in app
 DmF-Find-2 web: matched 28/29 design items · 0 with size/type drift · 26 only moved · 1 not found in app
@@ -35,3 +56,11 @@ DmF-Find-3 web: matched 66/67 design items · 1 with size/type drift · 63 only 
 DmF-Find-3 desktop: matched 67/67 design items · 0 with size/type drift · 17 only moved · 0 not found in app
 DmF-First-1 web: matched 35/36 design items · 0 with size/type drift · 33 only moved · 1 not found in app
 DmF-First-1 desktop: matched 36/36 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DmF-First-4 web: matched 67/68 design items · 0 with size/type drift · 65 only moved · 1 not found in app
+DmF-First-4 desktop: matched 68/68 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DmF-First-5 web: matched 62/64 design items · 0 with size/type drift · 58 only moved · 2 not found in app
+DmF-First-5 desktop: matched 63/64 design items · 0 with size/type drift · 40 only moved · 1 not found in app
+DmF-Preview-1 web: matched 96/98 design items · 0 with size/type drift · 94 only moved · 2 not found in app
+DmF-Preview-1 desktop: matched 97/98 design items · 0 with size/type drift · 1 only moved · 1 not found in app
+DmF-Preview-2 web: matched 117/119 design items · 0 with size/type drift · 94 only moved · 2 not found in app
+DmF-Preview-2 desktop: matched 118/119 design items · 0 with size/type drift · 1 only moved · 1 not found in app
