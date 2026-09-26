@@ -2,12 +2,10 @@
  * The public website's pages (website.md WEB-1): the landing, sign-in and download, signed in or
  * out. `AuthGate` renders it for every public address; Tvashtr Desktop never does (WEB-3).
  *
- * The landing and sign-in still render the previous LandingPage / AuthWizard until their redesigns
- * land (website build groups G2, G3).
+ * The landing still renders the previous LandingPage until its redesign lands (build group G3).
  */
 import { type ReactNode, useEffect } from "react";
 
-import { AuthWizard } from "../../components/AuthWizard";
 import { LandingPage } from "../../components/LandingPage";
 import type { AuthUser, Config } from "../../lib/api";
 import { type PublicRoute, navigate, parseRoute } from "../../lib/nav";
@@ -15,6 +13,8 @@ import { DownloadPage } from "./DownloadPage";
 import { DownloadStarted } from "./DownloadStarted";
 import { type SiteNavItem, SiteHeader } from "./SiteHeader";
 import { SiteFooter } from "./SiteFooter";
+import { SignInDone } from "./SignInDone";
+import { SignInPage } from "./SignInPage";
 import "./website.css";
 
 const TITLES: Record<PublicRoute["page"], string> = {
@@ -44,7 +44,9 @@ export function SiteRoot({
   }, [title]);
 
   // Signed in, the sign-in page has nothing to do: on to where they were going (WEB-4).
-  const leaveSignIn = route.page === "signin" && user ? (route.next ?? "/home") : null;
+  // `#/signin/done` does its own leaving once the account is ready (WEB-29).
+  const leaveSignIn =
+    route.page === "signin" && !route.done && user ? (route.next ?? "/home") : null;
   useEffect(() => {
     if (leaveSignIn) navigate(parseRoute(`#${leaveSignIn}`), { replace: true });
   }, [leaveSignIn]);
@@ -61,15 +63,12 @@ export function SiteRoot({
     );
   }
   if (route.page === "signin") {
+    if (route.done) {
+      // Arriving here is a fresh page load from GitHub: assume hosted until /api/config says.
+      return <SignInDone user={user} next={route.next} hosted={config?.hosted_mode !== false} />;
+    }
     if (user) return null;
-    return (
-      <AuthWizard
-        onAuthed={onAuthed}
-        onBack={() => navigate({ page: "welcome" })}
-        hosted={config?.hosted_mode ?? false}
-        githubInstallUrl={config?.github_install_url ?? ""}
-      />
-    );
+    return <SignInPage error={route.error} next={route.next} config={config} onAuthed={onAuthed} />;
   }
   return <LandingPage onGetStarted={() => navigate({ page: "signin" })} />;
 }

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { stubFetch } from "../pages/desktop/desktopTestUtils";
+import { HOSTED_CONFIG, stubFetch } from "../pages/desktop/desktopTestUtils";
 import { AuthGate } from "./AuthGate";
 
 // The signed-in app is out of scope: this targets which screen the gate shows. The stub's button
@@ -99,6 +99,51 @@ describe("the website's gate (WEB-2)", () => {
     render(<AuthGate />);
     await waitFor(() => expect(window.location.hash).toBe("#/domains"));
     expect(await screen.findByText("DASHBOARD STUB")).toBeInTheDocument();
+  });
+});
+
+describe("signing in through the gate (WEB-27..29)", () => {
+  it("self-hosted: the form → #/signin/done → Home, no extra steps", async () => {
+    window.location.hash = "#/signin?next=%2Fdomains";
+    stubFetch({ ...signedOut, "POST /api/auth/login": { body: ME } });
+    render(<AuthGate />);
+    fireEvent.change(await screen.findByLabelText("Email"), { target: { value: ME.email } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "a-good-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("heading", { name: "Signing you in…" })).toBeInTheDocument();
+    expect(window.location.hash).toBe("#/signin/done?next=%2Fdomains");
+    expect(screen.getByText("Signed in as lazyxgenius")).toBeInTheDocument();
+    await waitFor(() => expect(window.location.hash).toBe("#/domains"), { timeout: 2000 });
+    expect(await screen.findByText("DASHBOARD STUB")).toBeInTheDocument();
+  });
+
+  it("hosted: back from GitHub, #/signin/done waits for the account, then Home", async () => {
+    window.location.hash = "#/signin/done";
+    stubFetch({ ...signedIn, "GET /api/config": { body: HOSTED_CONFIG } });
+    render(<AuthGate />);
+    expect(await screen.findByText("Signed in as lazyxgenius")).toBeInTheDocument();
+    expect(window.location.hash).toBe("#/signin/done");
+    await waitFor(() => expect(window.location.hash).toBe("#/home"), { timeout: 2000 });
+    expect(await screen.findByText("DASHBOARD STUB")).toBeInTheDocument();
+  });
+
+  it("#/signin/done with no session is a failed sign-in", async () => {
+    window.location.hash = "#/signin/done?next=%2Fdomains";
+    stubFetch({ ...signedOut, "GET /api/config": { body: HOSTED_CONFIG } });
+    render(<AuthGate />);
+    await waitFor(() => expect(window.location.hash).toBe("#/signin?error=failed&next=%2Fdomains"));
+    expect(
+      await screen.findByRole("heading", { name: "Sign-in didn’t finish" }),
+    ).toBeInTheDocument();
+  });
+
+  it("hosted: the only door is Continue with GitHub", async () => {
+    window.location.hash = "#/signin";
+    stubFetch({ ...signedOut, "GET /api/config": { body: HOSTED_CONFIG } });
+    render(<AuthGate />);
+    expect(await screen.findByRole("button", { name: "Continue with GitHub" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Email")).toBeNull();
+    expect(document.title).toBe("Sign in · Tvashtr");
   });
 });
 

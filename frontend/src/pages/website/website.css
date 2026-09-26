@@ -312,3 +312,288 @@
   line-height: 1.55;
   color: var(--ink-600);
 }
+
+/* ---- Sign in (WEB-26..30; Web-SignIn, WbF-Start-2/3, WbF-Err-1) ---- */
+.web-signin {
+  display: flex;
+}
+.web-signin__brand {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 40px 56px;
+  background: radial-gradient(120% 80% at 0% 0%, #f7e7df 0%, transparent 60%);
+}
+.web-signin__pitch {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.web-signin__line {
+  font-family: var(--font-display);
+  font-size: 44px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  max-width: 520px;
+}
+.web-signin__mock {
+  transform: scale(0.8);
+  transform-origin: 0 0;
+  height: 300px;
+}
+.web-signin__back {
+  font-size: 13.5px;
+  color: var(--ink-600);
+  text-decoration: none;
+}
+.web-signin__side {
+  width: 620px;
+  flex: none;
+  box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-left: 1px solid var(--line-200);
+  background: var(--cream-50);
+}
+.web-signin__col {
+  width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.web-signin__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 34px;
+}
+.web-signin__lede {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.web-signin__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+.web-signin__card > span {
+  display: flex;
+  gap: 8px;
+}
+.web-signin__card svg {
+  flex: none;
+  color: #52613e;
+}
+.web-signin__foot {
+  font-size: 13px;
+  color: var(--ink-500);
+}
+.web-signin__foot a {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--coral-700);
+  text-decoration: none;
+}
+.web-signin__tile {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.web-signin__tile--warn {
+  background: var(--amber-100);
+  color: #6b4a1f;
+}
+.web-signin__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13.5px;
+}
+.web-signin__step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--ink-600);
+}
+.web-signin__step--done {
+  color: #52613e;
+}
+.web-signin__step > svg {
+  flex: none;
+}
+/* Self-hosted email/password (WEB-28, not designed). */
+.web-signin__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.web-signin__error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+.web-signin__toggle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.web-signin__toggle button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  color: var(--coral-700);
+  cursor: pointer;
+}
+.web-spin {
+  animation: ds-btn-spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .web-spin {
+    animation: none;
+  }
+}
+/* Below 720px the brand panel goes and the column takes the width (OQ-25, not designed). */
+@media (max-width: 719px) {
+  .web-signin__brand {
+    display: none;
+  }
+  .web-signin__side {
+    flex: 1;
+    width: auto;
+    padding: 40px 16px;
+    border-left: 0;
+  }
+  .web-signin__col {
+    width: 100%;
+    max-width: 420px;
+  }
+}
+
+/* ---- Static product pictures (mocks.tsx) ---- */
+.web-mock__canvas {
+  position: relative;
+  width: 540px;
+  height: 340px;
+  box-sizing: content-box;
+  border-radius: 18px;
+  border: 1px solid var(--line-300);
+  overflow: hidden;
+  background-color: #f6f4ec;
+  background-image: radial-gradient(#dcd8ca 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.web-mock__canvas-inner {
+  position: absolute;
+  left: 20px;
+  top: 20px;
+}
+.web-mock__edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.web-mock__node {
+  position: absolute;
+  width: 172px;
+  box-sizing: border-box;
+  padding: 10px 11px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 2px rgba(20, 20, 19, 0.04),
+    0 6px 16px -8px rgba(20, 20, 19, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.web-mock__node--start {
+  border-left: 3px solid var(--coral-500);
+}
+.web-mock__node--ring {
+  box-shadow:
+    0 0 0 1.5px var(--coral-500),
+    0 0 0 6px rgba(217, 119, 87, 0.2);
+}
+.web-mock__node-head {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.web-mock__node-icon {
+  width: 24px;
+  height: 24px;
+  box-sizing: content-box;
+  flex: none;
+  border-radius: 7px;
+  background: var(--panel-300);
+  border: 1px solid var(--border-hairline);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-700);
+}
+.web-mock__node-icon > svg {
+  flex: none;
+}
+.web-mock__node-text {
+  min-width: 0;
+}
+.web-mock__node-kind {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink-500);
+}
+.web-mock__node--start .web-mock__node-kind {
+  color: var(--coral-700);
+}
+.web-mock__node-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.web-mock__node-sub {
+  font-size: 10.5px;
+  color: var(--ink-500);
+}
+.web-mock__node-model {
+  border-top: 1px solid var(--line-200);
+  padding-top: 6px;
+  font-family: var(--font-code);
+  font-size: 9.5px;
+  color: var(--ink-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.web-mock__pill {
+  position: absolute;
+  left: 250px;
+  top: 168px;
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--coral-100);
+  color: var(--coral-700);
+  border: 1px solid var(--coral-200);
+}
