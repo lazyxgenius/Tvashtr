@@ -3,14 +3,25 @@
  * size, pieces, the status cell with its progress bar or humanised problem, the date added and
  * the row's ⋯ menu; the footer line under it.
  */
-import { CircleCheck, Clock, TriangleAlert } from "lucide-react";
+import {
+  CircleCheck,
+  Clock,
+  Copy,
+  Download,
+  Eye,
+  RefreshCw,
+  Trash,
+  TriangleAlert,
+} from "lucide-react";
 
 import { Menu, type MenuEntry } from "../../design-system/components";
 import type { DomainFile } from "../../lib/api/domains";
 import { navigate } from "../../lib/nav";
 import { formatAdded, formatNumber, formatSize } from "./domainFormat";
+import "./menus.css";
 
 const STATUS_ICON = { size: 14, strokeWidth: 1.6, "aria-hidden": true } as const;
+const MENU_ICON = { size: 15, strokeWidth: 1.6, "aria-hidden": true } as const;
 
 function EnginesKeyLink({ children }: { children: string }) {
   return (
@@ -98,6 +109,7 @@ export interface FileActions {
   onReread: (file: DomainFile) => void;
   onDownload: (file: DomainFile) => void;
   onCopyId: (file: DomainFile) => void;
+  onDelete: (file: DomainFile) => void;
 }
 
 export function FilesTable({
@@ -113,7 +125,7 @@ export function FilesTable({
   files: DomainFile[];
   now: Date;
   provider: string;
-  /** The file whose preview is open (its row is tinted behind the sheet). */
+  /** The file whose preview or delete dialog is open (its row is tinted behind it). */
   tinted?: string;
   footer: { text: string; showAll: boolean };
   /** The one row shown when no file is listed. */
@@ -154,14 +166,38 @@ export function FilesTable({
           )}
           {files.map((f) => {
             const items: MenuEntry[] = [
-              { key: "preview", label: "Preview pieces", onSelect: () => actions.onPreview(f) },
-              { key: "reread", label: "Re-read this file", onSelect: () => actions.onReread(f) },
+              {
+                key: "preview",
+                label: "Preview pieces",
+                icon: <Eye {...MENU_ICON} />,
+                onSelect: () => actions.onPreview(f),
+              },
+              {
+                key: "reread",
+                label: "Re-read this file",
+                icon: <RefreshCw {...MENU_ICON} />,
+                onSelect: () => actions.onReread(f),
+              },
               {
                 key: "download",
                 label: "Download original",
+                icon: <Download {...MENU_ICON} />,
                 onSelect: () => actions.onDownload(f),
               },
-              { key: "copy", label: "Copy file ID", onSelect: () => actions.onCopyId(f) },
+              {
+                key: "copy",
+                label: "Copy file ID",
+                icon: <Copy {...MENU_ICON} />,
+                onSelect: () => actions.onCopyId(f),
+              },
+              "separator",
+              {
+                key: "delete",
+                label: "Delete file…",
+                icon: <Trash {...MENU_ICON} />,
+                danger: true,
+                onSelect: () => actions.onDelete(f),
+              },
             ];
             const tint =
               f.document_id === tinted || f.phase === "rereading" || f.phase === "needs_attention";

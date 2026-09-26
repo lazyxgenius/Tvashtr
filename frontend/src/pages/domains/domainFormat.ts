@@ -518,3 +518,101 @@ export function pickProblem(file: { name: string; size: number }): string | null
 export function createLabel(n: number, keySaved: boolean): string {
   return `Create and ${keySaved ? "read" : "add"} ${plural(n, "file", "files")}`;
 }
+
+// ---- The ⋯ menus: delete a domain, delete a file (DM-15, DM-53, OQ-14) ----
+
+/** The delete-domain dialog's text (DM-15). */
+export function deleteDomainText(d: Pick<DomainListItem, "files">): string {
+  const n = d.files.total;
+  const what =
+    n === 0
+      ? "This removes its settings, the chat history and test questions."
+      : `This removes its ${filesCount(n)}, their pieces, the chat history and test questions.`;
+  return `${what} It can’t be undone.`;
+}
+
+/**
+ * The honest in-use line (OQ-14): deleting clears the steps' domain, so their teams can't run
+ * until someone picks another one. Null when no step uses it (agents with access simply lose it).
+ */
+export function deleteDomainInUse(d: Pick<DomainListItem, "usage">): string | null {
+  return d.usage.steps > 0
+    ? "Teams that use it as a step can’t run until you pick another domain."
+    : null;
+}
+
+/** The delete-file dialog's text (DM-53); `expecting` = test questions that expect this file. */
+export function deleteFileText(
+  file: Pick<DomainFile, "pieces">,
+  domainName: string,
+  expecting: number | null,
+): string {
+  const n = file.pieces ?? 0;
+  const parts = [
+    n > 0
+      ? `Its ${plural(n, "piece", "pieces")} ${n === 1 ? "leaves" : "leave"} ${domainName}. Answers stop citing it.`
+      : `It leaves ${domainName}. No answer cites it yet.`,
+  ];
+  if (expecting) {
+    parts.push(
+      expecting === 1
+        ? "1 test question expects this file and will be flagged."
+        : `${formatNumber(expecting)} test questions expect this file and will be flagged.`,
+    );
+  }
+  return parts.join(" ");
+}
+
+/** The delete-file dialog's info callout (DM-53): what teams keep. `others` = files left. */
+export function deleteFileCallout(domainName: string, others: number): string {
+  return others > 0
+    ? `Teams using ${domainName} keep working with the other ${filesCount(others)}.`
+    : `${domainName} will have no files, so teams using it can’t get answers until you add one.`;
+}
+
+/** Which of the summary's file counts a file in `phase` sits in. */
+function filesBucket(phase: DomainFile["phase"]): keyof Omit<DomainFiles, "total"> {
+  if (phase === "rereading") return "reading";
+  return phase;
+}
+
+/**
+ * A domain's summary as it will be once `gone` are deleted (the deferred delete, OQ-12): the
+ * header, tabs and strip count without them at once, and it was updated just now.
+ */
+export function detailWithout(
+  d: DomainDetailView,
+  gone: DomainFile[],
+  now: Date = new Date(),
+): DomainDetailView {
+  if (gone.length === 0) return d;
+  const files = { ...d.files };
+  let pieces = d.pieces;
+  for (const f of gone) {
+    files.total = Math.max(0, files.total - 1);
+    const bucket = filesBucket(f.phase);
+    files[bucket] = Math.max(0, files[bucket] - 1);
+    if (f.phase === "ready") pieces = Math.max(0, pieces - (f.pieces ?? 0));
+  }
+  return { ...d, files, pieces, last_activity_at: now.toISOString() };
+}
+
+/** The files list without `gone` (their rows hide at once; counts and pieces drop, OQ-12). */
+export function listWithout(list: DomainFilesList, gone: DomainFile[]): DomainFilesList {
+  if (gone.length === 0) return list;
+  const ids = new Set(gone.map((f) => f.document_id));
+  const counts = { ...list.counts };
+  let pieces = list.total_pieces;
+  for (const f of gone) {
+    counts.all = Math.max(0, counts.all - 1);
+    const bucket: keyof Omit<DomainFileCounts, "all"> =
+      f.phase === "ready" ? "ready" : f.phase === "needs_attention" ? "needs_attention" : "reading";
+    counts[bucket] = Math.max(0, counts[bucket] - 1);
+    pieces = Math.max(0, pieces - (f.pieces ?? 0));
+  }
+  return {
+    documents: list.documents.filter((f) => !ids.has(f.document_id)),
+    counts,
+    total_pieces: pieces,
+  };
+}

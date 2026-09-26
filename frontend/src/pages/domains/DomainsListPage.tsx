@@ -28,7 +28,7 @@ import {
 import { HowDomainsWorkDialog, HowItWorksStrip } from "./HowItWorksStrip";
 import { NewDomainDialog } from "./NewDomainDialog";
 import { SortSelect } from "./SortSelect";
-import { useDomainList } from "./useDomainList";
+import { publishDomainNav, useDomainList } from "./useDomainList";
 import "./domains.css";
 
 /** "now", re-read every minute so "Updated just now" ages on an open page. */
@@ -53,7 +53,13 @@ export function DomainsListPage() {
   const [held, setHeld] = useState<string[] | null>(null);
   const [creating, setCreating] = useState<{ template?: string } | null>(null);
   const [howOpen, setHowOpen] = useState(false);
-  const empty = items !== null && items.length === 0;
+  // Domains deleted from their card: gone at once, before the reload confirms it.
+  const [gone, setGone] = useState<string[]>([]);
+  const visible = useMemo(
+    () => (items ? items.filter((d) => !gone.includes(d.domain_id)) : null),
+    [items, gone],
+  );
+  const empty = visible !== null && visible.length === 0;
 
   useEffect(() => {
     let live = true;
@@ -81,9 +87,10 @@ export function DomainsListPage() {
   }, [empty]);
 
   const shown = useMemo(
-    () => (items ? sortDomains(filterDomains(items, query), sort) : []),
-    [items, query, sort],
+    () => (visible ? sortDomains(filterDomains(visible, query), sort) : []),
+    [visible, query, sort],
   );
+  const names = useMemo(() => (visible ?? []).map((d) => d.name), [visible]);
 
   const hideHowto = () => {
     setHowtoHidden(true);
@@ -93,16 +100,12 @@ export function DomainsListPage() {
     });
   };
 
-  const copyId = (d: DomainListItem) => {
-    const failed = () => toast({ message: "Couldn’t copy the domain ID.", tone: "error" });
-    if (!navigator.clipboard) {
-      failed();
-      return;
-    }
-    navigator.clipboard
-      .writeText(d.domain_id)
-      .then(() => toast({ message: "Domain ID copied." }))
-      .catch(failed);
+  // Deleted from its card: drop it at once (the nav too), then reload for the truth.
+  const dropped = (d: DomainListItem) => {
+    const rest = (visible ?? []).filter((x) => x.domain_id !== d.domain_id);
+    setGone((g) => [...g, d.domain_id]);
+    publishDomainNav(rest);
+    void reload();
   };
 
   const showKeyHint = held !== null && !held.some((p) => READING_PROVIDERS.includes(p));
@@ -164,7 +167,14 @@ export function DomainsListPage() {
           {shown.length > 0 ? (
             <div className="dm-grid">
               {shown.map((d) => (
-                <DomainCard key={d.domain_id} domain={d} now={now} onCopyId={copyId} />
+                <DomainCard
+                  key={d.domain_id}
+                  domain={d}
+                  now={now}
+                  existingNames={names}
+                  onChanged={() => void reload()}
+                  onDeleted={dropped}
+                />
               ))}
             </div>
           ) : (
@@ -198,7 +208,7 @@ export function DomainsListPage() {
       <NewDomainDialog
         open={creating !== null}
         initialTemplate={creating?.template}
-        existingNames={(items ?? []).map((d) => d.name)}
+        existingNames={names}
         onClose={() => setCreating(null)}
         onCreated={(domain) => {
           setCreating(null);

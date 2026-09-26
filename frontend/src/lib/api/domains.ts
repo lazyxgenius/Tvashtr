@@ -513,6 +513,68 @@ export function domainFileUrl(domainId: string, documentId: string): string {
   );
 }
 
+// ---- The ⋯ menus (G4): rename, duplicate, delete a domain, delete a file ----
+
+const BACKEND_DOWN = "Couldn’t reach Tvashtr — is the backend running?";
+
+/**
+ * Rename (DM-14). A clash is a 409 and a bad name a 422, each carrying the copy to show under the
+ * Name field (`ApiError.message`).
+ */
+export async function renameDomain(domainId: string, name: string): Promise<void> {
+  const res = await send(`/api/domains/${encodeURIComponent(domainId)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+}
+
+/** Duplicate settings (DM-16): an empty copy named "<name> copy" (or `name`), with its summary. */
+export async function duplicateDomain(domainId: string, name?: string): Promise<DomainDetailView> {
+  const res = await send(`/api/domains/${encodeURIComponent(domainId)}/duplicate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(name === undefined ? {} : { name }),
+  });
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  const detail = normalizeDomainDetail((await res.json()) as unknown);
+  if (!detail) throw new ApiError(500, BACKEND_DOWN);
+  return detail;
+}
+
+/**
+ * Delete a domain for good (DM-15): its files, pieces, chat and test questions go; steps that used
+ * it lose it and agents' lists drop it (the counts say how many).
+ */
+export async function removeDomain(
+  domainId: string,
+): Promise<{ steps_cleared: number; agents_cleared: number }> {
+  const res = await send(`/api/domains/${encodeURIComponent(domainId)}`, { method: "DELETE" });
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  const out = obj((await res.json().catch(() => ({}))) as unknown);
+  return { steps_cleared: count(out.steps_cleared), agents_cleared: count(out.agents_cleared) };
+}
+
+/**
+ * Delete one file (DM-53). `keepalive` lets the request outlive the page — the deferred delete
+ * (OQ-12) is sent that way when the user leaves before its Undo toast closes. A file that is
+ * already gone (404) counts as deleted.
+ */
+export async function deleteDomainFile(
+  domainId: string,
+  documentId: string,
+  { keepalive = false }: { keepalive?: boolean } = {},
+): Promise<void> {
+  const res = await send(
+    `/api/domains/${encodeURIComponent(domainId)}/documents/${encodeURIComponent(documentId)}`,
+    { method: "DELETE", keepalive },
+  );
+  if (!res.ok && res.status !== 404) {
+    throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  }
+}
+
 // ---- The original clients (moved from lib/api.ts) ----
 
 export interface DomainSummary {

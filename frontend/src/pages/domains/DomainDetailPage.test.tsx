@@ -151,10 +151,48 @@ describe("A domain's page (Dm-Sources)", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((m) => m.textContent),
-    ).toEqual(["Ask a question", "Copy domain ID"]);
+    ).toEqual(["Ask a question", "Rename", "Duplicate settings", "Copy domain ID", "Delete…"]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy domain ID" }));
     expect(writeText).toHaveBeenCalledWith("d-support");
     expect(await screen.findByText("Domain ID copied.")).toBeInTheDocument();
+  });
+
+  it("renames from the header and deletes back to the list (OQ-28)", async () => {
+    let name = "Support docs";
+    const calls = mockApi(
+      routes({
+        "GET /api/domains/d-support": () => ({ ...SUPPORT, name }),
+        "PATCH /api/domains/d-support": (init?: RequestInit) => {
+          name = (JSON.parse(init?.body as string) as { name: string }).name;
+          return { domain_id: "d-support", name };
+        },
+        "DELETE /api/domains/d-support": { deleted: true, steps_cleared: 1, agents_cleared: 2 },
+      }),
+    );
+    publishBadges({ domains: [{ id: "d-support", name: "Support docs", state: "ready" }] });
+    renderPage();
+    await screen.findByRole("heading", { level: 1, name: "Support docs" });
+    const more = () => screen.getByRole("button", { name: `More actions for ${name}` });
+    fireEvent.click(more());
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const rename = screen.getByRole("dialog", { name: "Rename domain" });
+    fireEvent.change(within(rename).getByLabelText("Name"), { target: { value: "Help center" } });
+    fireEvent.click(within(rename).getByRole("button", { name: "Save name" }));
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Help center" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent("Help center");
+    expect(screen.getByTestId("nav")).toHaveTextContent("Help center:ready");
+    fireEvent.click(more());
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete…" }));
+    const del = screen.getByRole("dialog", { name: "Delete Help center?" });
+    fireEvent.change(within(del).getByLabelText("Type the domain name to confirm"), {
+      target: { value: "Help center" },
+    });
+    fireEvent.click(within(del).getByRole("button", { name: "Delete domain" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/domains"));
+    expect(await screen.findByText("Help center deleted")).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(true);
   });
 
   it("says when the domain doesn't exist any more", async () => {
@@ -480,5 +518,103 @@ describe("The file preview (DmF-Preview-1/2)", () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
     expect(await screen.findByText("refund-policy.md is ready · 44 pieces")).toBeInTheDocument();
+  });
+});
+
+describe("Deleting a file (DmF-DelFile-1…3)", () => {
+  const BILLING = "doc-billing-faq-pdf";
+  const deletes = (calls: { method: string; path: string }[]) =>
+    calls.filter((c) => c.method === "DELETE" && c.path.endsWith(`/documents/${BILLING}`));
+
+  function fileRoutes() {
+    return routes({
+      "GET /api/domains/d-support/eval/cases": {
+        cases: [
+          { case_id: "c1", question: "q", expected_citation_doc_ids: [BILLING] },
+          { case_id: "c2", question: "q", expected_citation_doc_ids: ["doc-other"] },
+        ],
+      },
+      "DELETE /api/domains/d-support/documents/:doc": { deleted: true },
+    });
+  }
+
+  async function askToDelete() {
+    await waitFor(() => expect(row("billing-faq.pdf")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More actions for billing-faq.pdf" }));
+    const menu = screen.getByRole("menu");
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((m) => m.textContent),
+    ).toEqual([
+      "Preview pieces",
+      "Re-read this file",
+      "Download original",
+      "Copy file ID",
+      "Delete file…",
+    ]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete file…" }));
+    return screen.getByRole("dialog", { name: "Delete billing-faq.pdf?" });
+  }
+
+  it("says what goes, hides the row at once and deletes when Undo lapses (DM-53)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const calls = mockApi(fileRoutes());
+    renderPage();
+    const dialog = await askToDelete();
+    expect(
+      await within(dialog).findByText(
+        "Its 86 pieces leave Support docs. Answers stop citing it. 1 test question expects this file and will be flagged.",
+      ),
+    ).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(
+      "Teams using Support docs keep working with the other 13 files.",
+    );
+    // The row stays tinted behind the dialog.
+    expect(row("billing-faq.pdf")).toHaveClass("dm-files__row--tint");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete file" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      within(table()).queryByRole("button", { name: "billing-faq.pdf", exact: true } as never),
+    ).toBeNull();
+    expect(screen.getByText(/^13 files · 1,126 pieces/)).toBeInTheDocument();
+    expect(await screen.findByText("billing-faq.pdf deleted")).toBeInTheDocument();
+    expect(deletes(calls)).toHaveLength(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    expect(deletes(calls)).toHaveLength(1);
+  });
+
+  it("brings the row back on Undo and never sends the delete", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const calls = mockApi(fileRoutes());
+    renderPage();
+    const dialog = await askToDelete();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete file" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+    expect(row("billing-faq.pdf")).toBeTruthy();
+    expect(screen.getByText(/^14 files · 1,212 pieces/)).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+    });
+    expect(deletes(calls)).toHaveLength(0);
+  });
+
+  it("sends the delete with keepalive when the user leaves first (OQ-12)", async () => {
+    const calls = mockApi(fileRoutes());
+    renderPage();
+    const dialog = await askToDelete();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete file" }));
+    act(() => {
+      window.location.hash = "#/engines";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    expect(await screen.findByText("left the domain")).toBeInTheDocument();
+    expect(deletes(calls)).toHaveLength(1);
+    const init = vi
+      .mocked(fetch)
+      .mock.calls.find(([u]) => (u as string).endsWith(`/documents/${BILLING}`))?.[1];
+    expect(init).toMatchObject({ method: "DELETE", keepalive: true });
   });
 });

@@ -1,0 +1,139 @@
+/* The Domains ⋯ menus and their dialogs (DmF-Menu-1…4, DmF-DelFile-1…3, DmF-Fail-2).
+   Exact px from the design HTML. */
+
+/* ---- ⋯ menus: 12px corners, 15px icons 10px from the label, 36.8px rows (13px on the page's 1.6) ---- */
+.dm-card__top .ds-menu,
+.dm-dhead__actions .ds-menu,
+.dm-files__menu .ds-menu {
+  top: 34px;
+  border-radius: 12px;
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+}
+.dm-card__top .ds-menu__item,
+.dm-dhead__actions .ds-menu__item,
+.dm-files__menu .ds-menu__item {
+  align-items: center;
+  gap: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.dm-card__top .ds-menu__icon,
+.dm-dhead__actions .ds-menu__icon,
+.dm-files__menu .ds-menu__icon {
+  flex: none;
+  margin-top: 0;
+  color: inherit;
+}
+.dm-card__top .ds-menu__item--danger,
+.dm-dhead__actions .ds-menu__item--danger,
+.dm-files__menu .ds-menu__item--danger {
+  color: #8f3b2f;
+}
+.dm-card__top .ds-menu__sep,
+.dm-dhead__actions .ds-menu__sep,
+.dm-files__menu .ds-menu__sep {
+  background: var(--line-200);
+}
+
+/* ---- Dialog frame (DomainDialog): border-box, pinned from the window top ---- */
+.ds-dialog.dm-dlg {
+  top: var(--dm-dlg-top);
+  left: max(16px, calc(50% - var(--dm-dlg-w) / 2));
+  width: var(--dm-dlg-w);
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - var(--dm-dlg-top) - 16px);
+  overflow-y: auto;
+  transform: none;
+  box-sizing: border-box;
+  padding: 0;
+  gap: 0;
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+  font-size: 16px;
+  line-height: 1.6;
+  animation: dm-dlg-in 0.18s var(--ease-out);
+}
+@keyframes dm-dlg-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.dm-dlg__form {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.dm-dlg__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px 16px 14px 24px;
+}
+.dm-dlg__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.6;
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+}
+.dm-dlg__body {
+  padding: 4px 24px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dm-dlg__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-700);
+}
+.dm-dlg__error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--danger, #8f3b2f);
+}
+.dm-dlg__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-hairline);
+}
+
+/* The info callout under the delete-file text. */
+.dm-callout {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.dm-callout__icon {
+  display: inline-flex;
+  flex: none;
+  margin-top: 2px;
+}
+.dm-callout__text {
+  flex: 1;
+}

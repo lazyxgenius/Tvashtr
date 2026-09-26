@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   createLabel,
+  deleteDomainInUse,
+  deleteDomainText,
+  deleteFileCallout,
+  deleteFileText,
   detailBadge,
+  detailWithout,
   domainNameProblem,
   filesFooter,
   filesLine,
@@ -14,6 +19,7 @@ import {
   formatUpdated,
   kindName,
   kindOfName,
+  listWithout,
   metaLine,
   pieceExcerpt,
   pieceSizeLabel,
@@ -416,5 +422,58 @@ describe("the New domain dialog's words (DM-22…DM-29)", () => {
     expect(createLabel(1, true)).toBe("Create and read 1 file");
     expect(createLabel(0, true)).toBe("Create and read 0 files");
     expect(createLabel(2, false)).toBe("Create and add 2 files");
+  });
+});
+
+describe("the delete dialogs (DM-15, DM-53, OQ-14)", () => {
+  it("words a domain delete, with the in-use line only for a team step", () => {
+    const [support, , , q3] = sampleDomains();
+    expect(deleteDomainText(support)).toBe(
+      "This removes its 14 files, their pieces, the chat history and test questions. It can’t be undone.",
+    );
+    expect(deleteDomainText(q3)).toBe(
+      "This removes its settings, the chat history and test questions. It can’t be undone.",
+    );
+    expect(deleteDomainInUse(support)).toBe(
+      "Teams that use it as a step can’t run until you pick another domain.",
+    );
+    expect(deleteDomainInUse(q3)).toBeNull();
+  });
+
+  it("words a file delete from the row and the test questions", () => {
+    const f = fileItem("pricing-2026.pdf", { pieces: 64 });
+    expect(deleteFileText(f, "Support docs", 1)).toBe(
+      "Its 64 pieces leave Support docs. Answers stop citing it. 1 test question expects this file and will be flagged.",
+    );
+    expect(deleteFileText(f, "Support docs", 3)).toMatch(/3 test questions expect this file/);
+    expect(deleteFileText(f, "Support docs", 0)).toBe(
+      "Its 64 pieces leave Support docs. Answers stop citing it.",
+    );
+    expect(deleteFileText(fileItem("a.pdf", { pieces: null }), "X", null)).toBe(
+      "It leaves X. No answer cites it yet.",
+    );
+    expect(deleteFileCallout("Support docs", 13)).toBe(
+      "Teams using Support docs keep working with the other 13 files.",
+    );
+    expect(deleteFileCallout("Support docs", 0)).toBe(
+      "Support docs will have no files, so teams using it can’t get answers until you add one.",
+    );
+  });
+
+  it("counts without the files waiting to be deleted (OQ-12)", () => {
+    const [support] = sampleDomains();
+    const gone = [
+      fileItem("pricing-2026.pdf", { pieces: 64 }),
+      fileItem("bad.pdf", { phase: "needs_attention", pieces: null }),
+    ];
+    const d = detailWithout(detailView(support), gone, NOW);
+    expect(d.files.total).toBe(12);
+    expect(d.pieces).toBe(1148);
+    expect(d.last_activity_at).toBe(NOW.toISOString());
+    const list = listWithout(filesList([...gone, fileItem("keep.md", { pieces: 5 })]), gone);
+    expect(list.documents.map((f) => f.filename)).toEqual(["keep.md"]);
+    expect(list.counts).toEqual({ all: 1, ready: 1, reading: 0, needs_attention: 0 });
+    expect(list.total_pieces).toBe(5);
+    expect(detailWithout(detailView(support), [])).toEqual(detailView(support));
   });
 });

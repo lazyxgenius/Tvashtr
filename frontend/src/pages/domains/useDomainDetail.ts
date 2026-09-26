@@ -11,6 +11,7 @@ import { type DomainDetailView, getDomainDetail } from "../../lib/api/domains";
 import { publishBadges, useNavBadges } from "../../lib/workspaceStatus";
 import { isReading } from "./domainFormat";
 import { DOMAIN_POLL_MS } from "./useDomainList";
+import { readStamp } from "./useFileDeletes";
 
 export function useDomainDetail(
   domainId: string,
@@ -21,22 +22,27 @@ export function useDomainDetail(
   missing: boolean;
   error: string | null;
   tick: number;
+  /** When the shown summary's load started (`readStamp`), for the deferred file deletes. */
+  stamp: number;
   reload: () => Promise<void>;
 } {
   const [detail, setDetail] = useState<DomainDetailView | null>(null);
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [stamp, setStamp] = useState(0);
   const live = useRef(true);
   const nav = useNavBadges().domains;
   const navRef = useRef(nav);
   navRef.current = nav;
 
   const reload = useCallback(async () => {
+    const started = readStamp();
     try {
       const d = await getDomainDetail(domainId);
       if (!live.current) return;
       setDetail(d);
+      setStamp(started);
       setMissing(false);
       setError(null);
       setTick((t) => t + 1);
@@ -75,5 +81,5 @@ export function useDomainDetail(
     return () => window.clearInterval(t);
   }, [polling, reload]);
 
-  return { detail, missing, error, tick, reload };
+  return { detail, missing, error, tick, stamp, reload };
 }

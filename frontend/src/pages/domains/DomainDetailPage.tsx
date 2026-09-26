@@ -9,25 +9,19 @@
  * the previous Domains screen's matching panel under the new header.
  */
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, Ellipsis, Workflow } from "lucide-react";
+import { ChevronRight, Workflow } from "lucide-react";
 
 import { DomainsPage, type DetailTab } from "../../components/DomainsPage";
-import {
-  Badge,
-  Button,
-  IconButton,
-  Menu,
-  type MenuEntry,
-  Tabs,
-  useToast,
-} from "../../design-system/components";
+import { Badge, Button, Tabs, useToast } from "../../design-system/components";
 import type { DomainDetailView } from "../../lib/api/domains";
 import { type DomainTab, navigate } from "../../lib/nav";
-import { refreshBadges } from "../../lib/workspaceStatus";
-import { detailBadge, metaLine, templateLabel } from "./domainFormat";
+import { refreshBadges, useNavBadges } from "../../lib/workspaceStatus";
+import { detailBadge, detailWithout, metaLine, templateLabel } from "./domainFormat";
+import { DomainMenu } from "./DomainMenu";
 import { SetupStrip, SummaryStrip } from "./DomainStrips";
 import { SourcesTab } from "./SourcesTab";
 import { useDomainDetail } from "./useDomainDetail";
+import { useFileDeletes } from "./useFileDeletes";
 import "./domains.css";
 
 /** The previous screen's panel each not-yet-redesigned tab shows meanwhile. */
@@ -69,8 +63,12 @@ export function DomainDetailPage({
   file?: string;
   piece?: number;
 }) {
-  const { detail, missing, error, tick, reload } = useDomainDetail(domainId);
+  const { detail: loaded, missing, error, tick, stamp, reload } = useDomainDetail(domainId);
   const toast = useToast();
+  // Files deleted from the Sources table: gone from every count at once, sent when Undo lapses.
+  const deletes = useFileDeletes(domainId, () => void reload());
+  const detail = loaded && detailWithout(loaded, deletes.gone(stamp));
+  const names = (useNavBadges().domains ?? []).map((d) => d.name);
   const now = useClock();
   const prev = useRef<DomainDetailView | null>(null);
 
@@ -127,19 +125,6 @@ export function DomainDetailPage({
   }
 
   const badge = detailBadge(detail);
-  const copyId = () => {
-    const failed = () => toast({ message: "Couldn’t copy the domain ID.", tone: "error" });
-    if (!navigator.clipboard) return failed();
-    navigator.clipboard
-      .writeText(detail.domain_id)
-      .then(() => toast({ message: "Domain ID copied." }))
-      .catch(failed);
-  };
-  // Rename, Duplicate settings and Delete… join this menu with their dialogs (OQ-28).
-  const menu: MenuEntry[] = [
-    { key: "ask", label: "Ask a question", onSelect: () => go("ask") },
-    { key: "copy", label: "Copy domain ID", onSelect: copyId },
-  ];
 
   return (
     <div className="dm-detail">
@@ -174,20 +159,15 @@ export function DomainDetailPage({
             <Workflow size={15} strokeWidth={1.6} aria-hidden />
             <span>Use in a team</span>
           </Button>
-          <Menu
-            label={`More actions for ${detail.name}`}
-            items={menu}
-            width={210}
-            trigger={(props) => (
-              <IconButton
-                size="sm"
-                variant="outline"
-                aria-label={`More actions for ${detail.name}`}
-                {...props}
-              >
-                <Ellipsis size={16} strokeWidth={1.6} aria-hidden />
-              </IconButton>
-            )}
+          <DomainMenu
+            domain={detail}
+            where="header"
+            existingNames={names}
+            onChanged={() => void reload().then(() => refreshBadges())}
+            onDeleted={() => {
+              navigate({ page: "domains" });
+              void refreshBadges();
+            }}
           />
         </div>
       </header>
@@ -216,6 +196,7 @@ export function DomainDetailPage({
             file={file}
             piece={piece}
             now={now}
+            deletes={deletes}
             onChanged={() => void reload()}
           />
         ) : (

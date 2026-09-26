@@ -1,12 +1,13 @@
 /**
  * One domain on the Domains list (DM-9…DM-13): serif name linking to the domain, status and
- * template badges, the ⋯ menu, the files / quality / usage lines and the updated footer.
+ * template badges, the ⋯ menu (DomainMenu), the files / quality / usage lines and the updated
+ * footer.
  */
 import { FileText, Target, Workflow } from "lucide-react";
 
-import { Badge, Menu, type MenuEntry } from "../../design-system/components";
+import { Badge } from "../../design-system/components";
 import type { DomainListItem } from "../../lib/api/domains";
-import { navigate, routeToHash } from "../../lib/nav";
+import { routeToHash } from "../../lib/nav";
 import {
   filesLine,
   footerLine,
@@ -15,30 +16,25 @@ import {
   templateLabel,
   usageLine,
 } from "./domainFormat";
+import { DomainMenu } from "./DomainMenu";
 
 const LINE_ICON = { size: 14, strokeWidth: 1.6, "aria-hidden": true } as const;
 
 export function DomainCard({
   domain,
   now,
-  onCopyId,
+  existingNames,
+  onChanged,
+  onDeleted,
 }: {
   domain: DomainListItem;
   now: Date;
-  onCopyId: (domain: DomainListItem) => void;
+  existingNames: string[];
+  onChanged: () => void;
+  onDeleted: (domain: DomainListItem) => void;
 }) {
   const badge = stateBadge(domain.state);
   const open = { page: "domains", domainId: domain.domain_id } as const;
-  // Rename, Duplicate settings and Delete… join this menu with their dialogs (DmF-Menu).
-  const items: MenuEntry[] = [
-    { key: "open", label: "Open", onSelect: () => navigate(open) },
-    {
-      key: "ask",
-      label: "Ask a question",
-      onSelect: () => navigate({ ...open, tab: "ask" }),
-    },
-    { key: "copy", label: "Copy domain ID", onSelect: () => onCopyId(domain) },
-  ];
   return (
     <article className="dm-card" aria-label={domain.name}>
       <div className="dm-card__top">
@@ -53,7 +49,13 @@ export function DomainCard({
             <span className="dm-pill">{templateLabel(domain.template)}</span>
           </div>
         </div>
-        <Menu label={`More actions for ${domain.name}`} items={items} width={210} />
+        <DomainMenu
+          domain={domain}
+          where="card"
+          existingNames={existingNames}
+          onChanged={onChanged}
+          onDeleted={() => onDeleted(domain)}
+        />
       </div>
       <div className="dm-card__lines">
         <span className="dm-card__line">

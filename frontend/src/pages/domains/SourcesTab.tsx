@@ -3,6 +3,7 @@
  * file names and text, the Show filter with its counts, Add files, the drop hint, the files table
  * and its footer, and the file preview sheet (`?file=`). Files dropped on the tab or picked with
  * Add files are checked here (type, 10 MB) and uploaded two at a time; the server reads them.
+ * Delete file… asks first (DeleteFileDialog), then hands the file to the page's deferred delete.
  */
 import { type DragEvent, useEffect, useRef, useState } from "react";
 import { Upload } from "lucide-react";
@@ -23,12 +24,15 @@ import {
   UPLOAD_ACCEPT,
   filesFooter,
   formatNumber,
+  listWithout,
   showOptions,
   uploadProblem,
 } from "./domainFormat";
+import { DeleteFileDialog } from "./DeleteFileDialog";
 import { FilePreviewSheet } from "./FilePreviewSheet";
 import { FilesTable } from "./FilesTable";
 import { SortSelect } from "./SortSelect";
+import { type FileDeletes, readStamp } from "./useFileDeletes";
 
 const SEARCH_DELAY_MS = 250;
 
@@ -49,6 +53,7 @@ export function SourcesTab({
   file,
   piece,
   now,
+  deletes,
   onChanged,
 }: {
   detail: DomainDetailView;
@@ -58,6 +63,8 @@ export function SourcesTab({
   file?: string;
   piece?: number;
   now: Date;
+  /** The page's deferred file deletes (OQ-12): their rows hide at once. */
+  deletes: FileDeletes;
   /** Something changed the files (upload, re-read): reload the summary. */
   onChanged: () => void;
 }) {
@@ -66,7 +73,8 @@ export function SourcesTab({
   const [find, setFind] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<DomainFileFilter>("all");
-  const [list, setList] = useState<DomainFilesList | null>(null);
+  const [loaded, setLoaded] = useState<{ list: DomainFilesList; stamp: number } | null>(null);
+  const [deleting, setDeleting] = useState<DomainFile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
@@ -80,10 +88,11 @@ export function SourcesTab({
 
   useEffect(() => {
     let live = true;
+    const stamp = readStamp();
     listDomainFiles(domainId, { q: query, status: filter })
       .then((next) => {
         if (!live) return;
-        setList(next);
+        setLoaded({ list: next, stamp });
         setError(null);
         for (const f of next.documents) {
           if (!rereading.current.has(f.document_id)) continue;
@@ -186,6 +195,7 @@ export function SourcesTab({
     void addFiles(Array.from(e.dataTransfer.files));
   };
 
+  const list = loaded && listWithout(loaded.list, deletes.gone(loaded.stamp));
   const previewed = file ? list?.documents.find((d) => d.document_id === file) : undefined;
   const footer = list
     ? filesFooter({
@@ -263,7 +273,7 @@ export function SourcesTab({
           files={list.documents}
           now={now}
           provider={detail.reading_model.provider}
-          tinted={file}
+          tinted={deleting?.document_id ?? file}
           footer={footer}
           empty={
             query
@@ -281,6 +291,20 @@ export function SourcesTab({
             onReread: (f) => reread(f.document_id, f.filename),
             onDownload: (f) => downloadInPlace(domainFileUrl(domainId, f.document_id), f.filename),
             onCopyId: copyId,
+            onDelete: setDeleting,
+          }}
+        />
+      )}
+      {deleting && (
+        <DeleteFileDialog
+          domainId={domainId}
+          domainName={detail.name}
+          file={deleting}
+          totalFiles={detail.files.total}
+          onClose={() => setDeleting(null)}
+          onConfirm={(f) => {
+            setDeleting(null);
+            deletes.schedule(f);
           }}
         />
       )}

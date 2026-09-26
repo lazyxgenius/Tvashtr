@@ -2,12 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createNewDomain,
+  deleteDomainFile,
   domainFileUrl,
+  duplicateDomain,
   getDomainDetail,
   getDomainFilePieces,
   listDomainFiles,
   normalizeDomainDetail,
   normalizeDomainFile,
+  removeDomain,
+  renameDomain,
   rereadDomainFiles,
 } from "./domains";
 
@@ -150,5 +154,53 @@ describe("Domains clients (G3)", () => {
       status: 500,
       message: "Couldn’t create the domain — is the backend running?",
     });
+  });
+});
+
+describe("Domains clients (G4)", () => {
+  it("renames and carries the server's copy on a clash", async () => {
+    const mock = answer({ domain_id: "dom", name: "Q3 2026 filings" });
+    await renameDomain("dom", "Q3 2026 filings");
+    expect(urlOf(mock, 0)).toContain("/api/domains/dom");
+    expect(mock.mock.calls[0]?.[1]?.method).toBe("PATCH");
+    expect(JSON.parse(mock.mock.calls[0]?.[1]?.body as string)).toEqual({
+      name: "Q3 2026 filings",
+    });
+    mock.mockRestore();
+    answer({ detail: "You already have a domain named “Support docs”." }, 409);
+    await expect(renameDomain("dom", "Support docs")).rejects.toMatchObject({
+      status: 409,
+      message: "You already have a domain named “Support docs”.",
+    });
+  });
+
+  it("duplicates and validates the copy's summary", async () => {
+    const mock = answer({ domain_id: "d-copy", name: "Support docs copy", state: "empty" });
+    const d = await duplicateDomain("dom");
+    expect(d).toMatchObject({ domain_id: "d-copy", name: "Support docs copy" });
+    expect(urlOf(mock, 0)).toContain("/api/domains/dom/duplicate");
+    expect(JSON.parse(mock.mock.calls[0]?.[1]?.body as string)).toEqual({});
+  });
+
+  it("deletes a domain and reads what it tidied", async () => {
+    const mock = answer({ domain_id: "dom", deleted: true, steps_cleared: 1, agents_cleared: 2 });
+    await expect(removeDomain("dom")).resolves.toEqual({ steps_cleared: 1, agents_cleared: 2 });
+    expect(mock.mock.calls[0]?.[1]?.method).toBe("DELETE");
+    mock.mockRestore();
+    answer({ domain_id: "dom", deleted: true });
+    await expect(removeDomain("dom")).resolves.toEqual({ steps_cleared: 0, agents_cleared: 0 });
+  });
+
+  it("deletes a file with keepalive, and a file already gone counts as deleted", async () => {
+    const mock = answer({ document_id: "d1", deleted: true });
+    await deleteDomainFile("dom", "d1", { keepalive: true });
+    expect(urlOf(mock, 0)).toContain("/api/domains/dom/documents/d1");
+    expect(mock.mock.calls[0]?.[1]).toMatchObject({ method: "DELETE", keepalive: true });
+    mock.mockRestore();
+    answer({ detail: "document not found" }, 404);
+    await expect(deleteDomainFile("dom", "d1")).resolves.toBeUndefined();
+    vi.restoreAllMocks();
+    answer("oops", 500);
+    await expect(deleteDomainFile("dom", "d1")).rejects.toMatchObject({ status: 500 });
   });
 });

@@ -226,7 +226,14 @@ describe("Domains list (Dm-List)", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((m) => m.textContent),
-    ).toEqual(["Open", "Ask a question", "Copy domain ID"]);
+    ).toEqual([
+      "Open",
+      "Ask a question",
+      "Rename",
+      "Duplicate settings",
+      "Copy domain ID",
+      "Delete…",
+    ]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Ask a question" }));
     expect(window.location.hash).toBe("#/domains/d-support/ask");
     fireEvent.click(menuFor());
@@ -379,5 +386,131 @@ describe("No domains yet (Dm-ListEmpty, DmF-First-1)", () => {
     await waitFor(() => expect(window.location.hash).toBe("#/domains/d-new"));
     expect(screen.queryByRole("dialog", { name: "New domain" })).toBeNull();
     expect(calls.some((c) => c.method === "POST" && c.path === "/api/domains")).toBe(true);
+  });
+});
+
+describe("A card's ⋯ menu (DmF-Menu-1…4)", () => {
+  const openMenu = async (name: string) => {
+    await screen.findByRole("article", { name });
+    fireEvent.click(screen.getByRole("button", { name: `More actions for ${name}` }));
+  };
+
+  it("renames under the name rule, and shows the server's clash copy (DM-14)", async () => {
+    let names = sampleDomains();
+    const calls = mockApi(
+      routes({
+        "GET /api/domains": () => ({ domains: names }),
+        "PATCH /api/domains/:id": (init?: RequestInit) => {
+          const { name } = JSON.parse(init?.body as string) as { name: string };
+          if (name === "Taken elsewhere") {
+            return new Response(
+              JSON.stringify({ detail: "You already have a domain named “Taken elsewhere”." }),
+              { status: 409 },
+            );
+          }
+          names = names.map((d) => (d.domain_id === "d-q3" ? { ...d, name } : d));
+          return { domain_id: "d-q3", name };
+        },
+      }),
+    );
+    renderPage();
+    await openMenu("Q3 filings");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const dialog = screen.getByRole("dialog", { name: "Rename domain" });
+    const field = within(dialog).getByLabelText<HTMLInputElement>("Name");
+    expect(field.value).toBe("Q3 filings");
+    expect(field).toHaveFocus();
+    // Another domain's name, ignoring case, is caught before the server is asked.
+    fireEvent.change(field, { target: { value: "  support DOCS " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save name" }));
+    expect(dialog).toHaveTextContent("You already have a domain named “support DOCS”.");
+    fireEvent.change(field, { target: { value: "" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save name" }));
+    expect(dialog).toHaveTextContent("Give this domain a name.");
+    expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+    fireEvent.change(field, { target: { value: "Taken elsewhere" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save name" }));
+    expect(
+      await within(dialog).findByText("You already have a domain named “Taken elsewhere”."),
+    ).toBeInTheDocument();
+    fireEvent.change(field, { target: { value: "Q3 2026 filings" } });
+    fireEvent.submit(field);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Rename domain" })).toBeNull());
+    expect(await screen.findByRole("article", { name: "Q3 2026 filings" })).toBeInTheDocument();
+    expect(screen.getByTestId("nav")).toHaveTextContent("Q3 2026 filings:empty");
+    expect(calls.filter((c) => c.method === "PATCH").at(-1)?.body).toEqual({
+      name: "Q3 2026 filings",
+    });
+  });
+
+  it("duplicates the settings and offers to open the copy (DM-16)", async () => {
+    const copy = domainItem({ name: "Support docs copy", domain_id: "d-copy" });
+    let list = sampleDomains();
+    const calls = mockApi(
+      routes({
+        "GET /api/domains": () => ({ domains: list }),
+        "POST /api/domains/:id/duplicate": () => {
+          list = [...list, copy];
+          return copy;
+        },
+      }),
+    );
+    renderPage();
+    await openMenu("Support docs");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate settings" }));
+    expect(
+      await screen.findByText("Copied the settings to “Support docs copy”."),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("article", { name: "Support docs copy" })).toBeInTheDocument();
+    expect(calls.some((c) => c.path === "/api/domains/d-support/duplicate")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(window.location.hash).toBe("#/domains/d-copy");
+  });
+
+  it("deletes only once the name is typed, then drops the card and its nav row (DM-15)", async () => {
+    let list = sampleDomains();
+    const calls = mockApi(
+      routes({
+        "GET /api/domains": () => ({ domains: list }),
+        "DELETE /api/domains/:id": () => {
+          list = list.filter((d) => d.domain_id !== "d-vendor");
+          return { domain_id: "d-vendor", deleted: true, steps_cleared: 0, agents_cleared: 0 };
+        },
+      }),
+    );
+    renderPage();
+    await openMenu("Vendor contracts");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete…" }));
+    const dialog = screen.getByRole("dialog", { name: "Delete Vendor contracts?" });
+    expect(dialog).toHaveTextContent(
+      "This removes its 6 files, their pieces, the chat history and test questions. It can’t be undone.",
+    );
+    // Not used as a step: no in-use line.
+    expect(dialog).not.toHaveTextContent("can’t run until");
+    const confirm = within(dialog).getByRole("button", { name: "Delete domain" });
+    expect(confirm).toBeDisabled();
+    const field = within(dialog).getByLabelText("Type the domain name to confirm");
+    fireEvent.change(field, { target: { value: "vendor contracts" } });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(field, { target: { value: " Vendor contracts " } });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+    expect(await screen.findByText("Vendor contracts deleted")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("article", { name: "Vendor contracts" })).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("nav")).not.toHaveTextContent("Vendor"));
+    expect(calls.some((c) => c.method === "DELETE" && c.path === "/api/domains/d-vendor")).toBe(
+      true,
+    );
+  });
+
+  it("says so when the domain is a team's step (OQ-14)", async () => {
+    mockApi(routes());
+    renderPage();
+    await openMenu("Support docs");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete…" }));
+    expect(screen.getByRole("dialog", { name: "Delete Support docs?" })).toHaveTextContent(
+      "Teams that use it as a step can’t run until you pick another domain.",
+    );
   });
 });
