@@ -95,7 +95,9 @@ export function SourcesAside({
                 <div className="dm-passage__head">
                   <SourceChip n={p.number} active={on} />
                   <span className="dm-passage__file">{p.filename}</span>
-                  <span className="dm-passage__meta">{passageMeta(p)}</span>
+                  <span className="dm-passage__meta">
+                    {passageMeta(p, !found && answer?.covered === false)}
+                  </span>
                 </div>
                 <Excerpt
                   passage={p}

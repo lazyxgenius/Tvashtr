@@ -2,7 +2,9 @@
  * A domain's Ask tab (DM-55…67; Dm-Ask, DmF-Ask-1…4, DmF-Model-1…3): the lock line and **Clear
  * chat** (Undo, OQ-12), the thread of questions and cited answers, the composer (question, answer
  * model, "Use earlier messages", **Ask**) and the Sources aside. Empty, it suggests questions from
- * the file names. Reading and answering need API keys on both surfaces (OQ-27).
+ * the file names. Reading and answering need API keys on both surfaces (OQ-27). **Save as test
+ * question** opens the test sheet prefilled from the answer (DM-68/69); a not-covered answer's
+ * **Add a file about it** opens Sources with the file picker (DM-62).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, Lock, MessageSquare } from "lucide-react";
@@ -13,10 +15,10 @@ import {
   AskError,
   type DomainChatTurn,
   type DomainDetailView,
+  type DomainFile,
   type DomainPassage,
   askDomainQuestion,
   clearDomainChat,
-  createDomainEvalCase,
   listDomainChat,
   listDomainFiles,
   rereadDomainFiles,
@@ -25,11 +27,13 @@ import {
 import { navigate } from "../../lib/nav";
 import { AnswerCard } from "./AnswerCard";
 import { AnswerModelPicker } from "./AnswerModelPicker";
-import { plainAnswer, suggestQuestions } from "./answerMarkers";
+import { plainAnswer, suggestKeywords, suggestQuestions } from "./answerMarkers";
 import { answerModelLabel } from "./answerModels";
 import { FilePreviewSheet } from "./FilePreviewSheet";
 import { type AsideMode, SourcesAside } from "./SourcesAside";
+import { type SheetMode, TestQuestionSheet } from "./TestQuestionSheet";
 import { UNDO_MS } from "./useFileDeletes";
+import { requestFilePicker } from "./useUploads";
 import "./ask.css";
 
 const BACKEND_DOWN = "Couldn’t reach Tvashtr — is the backend running?";
@@ -107,7 +111,8 @@ export function AskTab({
   const [problem, setProblem] = useState<Problem | null>(null);
   const [useEarlier, setUseEarlier] = useState(useEarlierSetting);
   const [held, setHeld] = useState<string[] | null>(null);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [files, setFiles] = useState<DomainFile[]>([]);
+  const [sheet, setSheet] = useState<SheetMode | null>(null);
   const [preview, setPreview] = useState<DomainPassage | null>(null);
   const thread = useRef<HTMLDivElement>(null);
   // A Clear chat waiting for its Undo toast to close (OQ-12).
@@ -127,13 +132,7 @@ export function AskTab({
       .then((ps) => live && setHeld(ps.map((p) => p.provider)))
       .catch(() => undefined);
     listDomainFiles(domainId)
-      .then(
-        (l) =>
-          live &&
-          setSuggestions(
-            suggestQuestions(l.documents.filter((f) => f.phase === "ready").map((f) => f.filename)),
-          ),
-      )
+      .then((l) => live && setFiles(l.documents))
       .catch(() => undefined);
     return () => {
       live = false;
@@ -256,19 +255,29 @@ export function AskTab({
       .catch(() => undefined);
   };
 
-  const saveTest = async (turn: DomainChatTurn) => {
-    const ids = [...new Set((turn.answer?.sources ?? []).map((s) => s.document_id))].filter(
-      Boolean,
+  // DM-68: the question, the cited files and suggested key words; a not-covered answer's files
+  // start empty (DM-69).
+  const saveTest = (turn: DomainChatTurn) => {
+    const cited = turn.answer?.covered ? turn.answer.sources : [];
+    const byId = new Map(
+      cited.map((s) => [
+        s.document_id,
+        { document_id: s.document_id, filename: s.filename, exists: true },
+      ]),
     );
-    try {
-      await createDomainEvalCase(domainId, {
-        question: turn.question,
-        expected_citation_doc_ids: turn.answer?.covered ? ids : [],
-      });
-    } catch {
-      toast({ message: "Couldn’t save the test question.", tone: "error" });
-      return;
-    }
+    setSheet({
+      kind: "answer",
+      question: turn.question,
+      files: [...byId.values()],
+      keywords: suggestKeywords(
+        turn.answer?.answer_text ?? "",
+        cited.map((s) => s.excerpt),
+      ),
+    });
+  };
+
+  const saved = () => {
+    setSheet(null);
     onChanged();
     toast({
       message: `Saved as test question ${detail.quality.cases + 1}`,
@@ -279,6 +288,9 @@ export function AskTab({
     });
   };
 
+  const suggestions = suggestQuestions(
+    files.filter((f) => f.phase === "ready").map((f) => f.filename),
+  );
   const shown = focus && turns?.[focus.turn]?.answer ? focus : null;
   const composerNote = paused
     ? `Ask is paused while ${name} re-reads its files.`
@@ -337,10 +349,15 @@ export function AskTab({
                 {t.answer ? (
                   <AnswerCard
                     answer={t.answer}
+                    domainName={name}
                     onChip={(n) => setFocus({ turn: i, mode: "sources", active: n })}
                     onShowFound={() => setFocus({ turn: i, mode: "found", active: null })}
                     onCopy={() => copy(plainAnswer(t.answer?.answer_text ?? ""), "Answer copied.")}
-                    onSaveTest={() => void saveTest(t)}
+                    onSaveTest={() => saveTest(t)}
+                    onAddFile={() => {
+                      requestFilePicker();
+                      navigate({ page: "domains", domainId });
+                    }}
                   />
                 ) : (
                   pending &&
@@ -430,6 +447,17 @@ export function AskTab({
         onOpen={(p) => setPreview(p)}
         onCopy={(p) => copy(p.excerpt, "Passage copied.")}
       />
+
+      {sheet && (
+        <TestQuestionSheet
+          domainId={domainId}
+          mode={sheet}
+          files={files}
+          count={detail.quality.cases}
+          onClose={() => setSheet(null)}
+          onSaved={saved}
+        />
+      )}
 
       {preview && (
         <FilePreviewSheet

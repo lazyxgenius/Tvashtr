@@ -77,7 +77,10 @@ function routes(over: Record<string, unknown> = {}) {
     "POST /api/domains/d-support/ask": ANSWER,
     "DELETE /api/domains/d-support/messages": new Response(null, { status: 204 }),
     "PATCH /api/domains/d-support": SUPPORT,
-    "POST /api/domains/d-support/eval/cases": { case_id: "c13" },
+    "POST /api/domains/d-support/eval/cases": {
+      case_id: "c13",
+      question: "How long for a refund?",
+    },
     ...over,
   });
 }
@@ -236,17 +239,165 @@ describe("Ask (Dm-Ask, DmF-Ask-1…4)", () => {
     ).toBeInTheDocument();
     expect(composer()).toBeDisabled();
   });
+});
 
-  it("Save as test question saves the question with its cited files", async () => {
+const NOT_COVERED = {
+  ...ANSWER,
+  message_id: "m4",
+  covered: false,
+  answer_text: "The closest passages talk about annual plan pricing and education discounts.",
+  sources: [
+    { ...passage(1, "pricing-2026.pdf", "doc-pricing", 5, 2), pieces_in_file: 12 },
+    { ...BILLING, page: 7 },
+  ],
+};
+const NOT_COVERED_CHAT = [
+  { message_id: "m3", role: "user", content: "Do you offer a discount for non-profits?" },
+  { ...NOT_COVERED, role: "assistant", content: "raw" },
+];
+
+describe("Answer states (DmF-NoAns-1/2, DmF-Follow-1/2)", () => {
+  it("a not-covered answer says so, with the closest passages by page and no chips, Copy or time", async () => {
+    routes({ "GET /api/domains/d-support/messages": { messages: NOT_COVERED_CHAT } });
+    renderAsk();
+    const card = await screen.findByRole("article", { name: "Answer" });
+    expect(card).toHaveTextContent(
+      "I couldn’t find this in Support docs. The closest passages talk about annual plan pricing and education discounts.",
+    );
+    expect(card).toHaveClass("dm-answer--uncovered");
+    expect(within(card).getByText("pricing-2026.pdf")).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "Copy" })).toBeNull();
+    expect(within(card).queryByText(/1\.8 s/)).toBeNull();
+    expect(within(card).queryByRole("button", { name: "Show what search found" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Add a file about it" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save as test question" })).toBeInTheDocument();
+    expect(within(aside()).getByText("page 2")).toBeInTheDocument();
+    expect(within(aside()).getByText("page 7")).toBeInTheDocument();
+  });
+
+  it("Add a file about it opens Sources with the file picker", async () => {
+    routes({ "GET /api/domains/d-support/messages": { messages: NOT_COVERED_CHAT } });
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
+    renderAsk();
+    fireEvent.click(await screen.findByRole("button", { name: "Add a file about it" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/domains/d-support"));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect((click.mock.contexts[0] as HTMLInputElement).dataset.testid).toBe("add-files-input");
+    click.mockRestore();
+  });
+
+  it("a follow-up says it used the earlier question; each answer numbers its own sources", async () => {
+    const follow = {
+      ...ANSWER,
+      message_id: "m4",
+      used_history: true,
+      latency_ms: 2100,
+      answer_text: "You get back the unused months [1].",
+      sources: [{ ...BILLING, number: 1 }],
+    };
+    routes({
+      "GET /api/domains/d-support/messages": {
+        messages: [
+          ...CHAT,
+          { message_id: "m3", role: "user", content: "What about annual plans?" },
+          { ...follow, role: "assistant", content: "raw" },
+        ],
+      },
+    });
+    renderAsk();
+    await screen.findAllByRole("article", { name: "Answer" });
+    const [first, second] = screen.getAllByRole("article", { name: "Answer" });
+    expect(within(first).queryByText("Used your earlier question for context")).toBeNull();
+    expect(within(second).getByText("Used your earlier question for context")).toBeInTheDocument();
+    expect(within(second).getByText("2.1 s · OpenAI gpt-4o-mini")).toBeInTheDocument();
+    expect(within(aside()).getAllByText("billing-faq.pdf")).toHaveLength(1);
+    expect(
+      within(second).getAllByRole("button", { name: "Source 1: billing-faq.pdf" }),
+    ).toHaveLength(2);
+  });
+});
+
+describe("Save as test question (DmF-SaveTest-1…3)", () => {
+  const sheet = () => screen.getByRole("dialog", { name: "Save as a test question" });
+
+  it("opens the sheet with the question, the cited files and suggested key words; saves", async () => {
     const calls = routes({ "GET /api/domains/d-support/messages": { messages: CHAT } });
     renderAsk();
     await screen.findByRole("article", { name: "Answer" });
     fireEvent.click(within(answer()).getByRole("button", { name: "Save as test question" }));
+    const s = sheet();
+    expect(
+      within(s).getByText("Quality will check that search keeps finding this"),
+    ).toBeInTheDocument();
+    expect(within(s).getByRole("textbox", { name: "Question" })).toHaveValue(
+      "How long for a refund?",
+    );
+    expect(within(s).getByRole("button", { name: "Remove refund-policy.md" })).toBeInTheDocument();
+    expect(within(s).getByRole("button", { name: "Remove billing-faq.pdf" })).toBeInTheDocument();
+    expect(
+      within(s).getByText("Taken from the answer’s sources. Any one of them counts as found."),
+    ).toBeInTheDocument();
+    expect(within(s).getByRole("button", { name: "Remove 30 days" })).toBeInTheDocument();
+    expect(
+      within(s).getByText(
+        "All of these must show up in the passages found. Suggested from the answer.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(s).getByText(
+        "You don’t need the exact answer. Quality checks what search finds, not the wording.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(s).getByText("Quality · 12 test questions")).toBeInTheDocument();
+
+    // A typed key word becomes a chip; Backspace on the empty field takes the last one back.
+    const word = within(s).getByRole("textbox", { name: "Add a key word" });
+    fireEvent.change(word, { target: { value: "prorated" } });
+    fireEvent.keyDown(word, { key: "Enter" });
+    expect(within(s).getByRole("button", { name: "Remove prorated" })).toBeInTheDocument();
+    fireEvent.change(word, { target: { value: "extra" } });
+    fireEvent.keyDown(word, { key: "," });
+    fireEvent.keyDown(word, { key: "Backspace" });
+    expect(within(s).queryByRole("button", { name: "Remove extra" })).toBeNull();
+    fireEvent.click(within(s).getByRole("button", { name: "Remove billing-faq.pdf" }));
+
+    fireEvent.click(within(s).getByRole("button", { name: "Save test" }));
     expect(await screen.findByText("Saved as test question 13")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Save as a test question" })).toBeNull();
     expect(calls.find((c) => c.path.endsWith("/eval/cases"))?.body).toEqual({
       question: "How long for a refund?",
-      expected_citation_doc_ids: ["doc-refund", "doc-billing"],
+      expected_citation_doc_ids: ["doc-refund"],
+      expected_keywords: ["30 days", "prorated"],
     });
+    fireEvent.click(screen.getByRole("button", { name: "View in Quality" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/domains/d-support/quality"));
+  });
+
+  it("from a not-covered answer the files and key words start empty; the server's words show", async () => {
+    routes({
+      "GET /api/domains/d-support/messages": { messages: NOT_COVERED_CHAT },
+      "POST /api/domains/d-support/eval/cases": new Response(
+        JSON.stringify({ detail: "Add a file or a key word, so there’s something to check." }),
+        { status: 422, headers: { "Content-Type": "application/json" } },
+      ),
+    });
+    renderAsk();
+    fireEvent.click(await screen.findByRole("button", { name: "Save as test question" }));
+    const s = sheet();
+    expect(within(s).getByRole("textbox", { name: "Question" })).toHaveValue(
+      "Do you offer a discount for non-profits?",
+    );
+    expect(within(s).queryByRole("button", { name: /^Remove / })).toBeNull();
+    expect(within(s).queryByText(/Taken from the answer’s sources/)).toBeNull();
+    expect(
+      within(s).getByText("All of these must show up in the passages found."),
+    ).toBeInTheDocument();
+    fireEvent.click(within(s).getByRole("button", { name: "Save test" }));
+    expect(
+      await within(s).findByText("Add a file or a key word, so there’s something to check."),
+    ).toBeInTheDocument();
+    fireEvent.click(within(s).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "Save as a test question" })).toBeNull();
   });
 });
 

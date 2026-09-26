@@ -120,7 +120,12 @@ export function highlightRange(excerpt: string, cited: string): [number, number]
 }
 
 /** "piece 3 of 42" / "page 4 · piece 17 of 86" (DM-60). */
-export function passageMeta(p: Pick<DomainPassage, "page" | "piece_number" | "pieces_in_file">) {
+export function passageMeta(
+  p: Pick<DomainPassage, "page" | "piece_number" | "pieces_in_file">,
+  /** A not-covered answer's closest passage: just "page 2" when the file has pages (DM-62). */
+  closest = false,
+) {
+  if (closest && p.page) return `page ${p.page}`;
   const piece = `piece ${p.piece_number}${p.pieces_in_file ? ` of ${p.pieces_in_file}` : ""}`;
   return p.page ? `page ${p.page} · ${piece}` : piece;
 }
@@ -178,4 +183,53 @@ export function suggestQuestions(filenames: string[]): string[] {
     if (out.length === 4) break;
   }
   return out;
+}
+
+// ---- Key words suggested from an answer (OQ-15) ----
+
+const KEY_STOP = new Set(
+  "about after again back before both does done each even every get gets got just less like made make more most much must only other over same should some such than very will would within without while where your".split(
+    " ",
+  ),
+);
+const UNIT_PHRASE =
+  /\b\d+(?:[.,]\d+)?(?:%|\s+(?:days?|weeks?|months?|years?|hours?|minutes?|seconds?|percent|[kmgt]b)\b)/gi;
+const stem = (w: string) =>
+  w.length > 5 && w.endsWith("ed")
+    ? w.slice(0, -2)
+    : w.length > 3 && w.endsWith("s")
+      ? w.slice(0, -1)
+      : w;
+const wordsOf = (text: string) => text.toLowerCase().match(/[a-z]+/g) ?? [];
+
+/**
+ * OQ-15, no model call: the answer's bold phrases and number + unit phrases ("30 days"), then
+ * words the answer repeats that a cited passage also uses (most repeated first), stop-words
+ * dropped; at most 3.
+ */
+export function suggestKeywords(answer: string, excerpts: string[]): string[] {
+  const text = answer.replace(MARKER, "");
+  const out: string[] = [];
+  const add = (phrase: string) => {
+    const k = phrase.trim().replace(/\s+/g, " ");
+    if (k && !out.some((o) => o.toLowerCase() === k.toLowerCase())) out.push(k);
+  };
+  for (const m of text.matchAll(/\*\*(.+?)\*\*/g)) add(m[1]);
+  for (const m of text.matchAll(UNIT_PHRASE)) add(m[0]);
+  const inPassages = new Set(excerpts.flatMap(wordsOf).map(stem));
+  const taken = new Set(out.flatMap(wordsOf).map(stem));
+  const counts = new Map<string, { word: string; n: number }>();
+  for (const w of wordsOf(text.replace(/\*\*|`/g, ""))) {
+    const s = stem(w);
+    if (w.length < 3 || STOP.has(w) || KEY_STOP.has(w) || taken.has(s) || !inPassages.has(s))
+      continue;
+    const c = counts.get(s);
+    if (c) c.n += 1;
+    else counts.set(s, { word: w, n: 1 });
+  }
+  [...counts.values()]
+    .filter((c) => c.n >= 2)
+    .sort((a, b) => b.n - a.n)
+    .forEach((c) => add(c.word));
+  return out.slice(0, 3);
 }

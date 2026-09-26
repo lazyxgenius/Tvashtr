@@ -375,6 +375,29 @@
   color: inherit;
   cursor: pointer;
 }
+/* Save from an answer (DM-68): key words are chips, typed in place. */
+.dm-qchip--word {
+  font-family: var(--font-ui);
+  background: var(--panel-300);
+  border-color: var(--line-400);
+}
+.dm-qsheet__word {
+  flex: 1;
+  min-width: 120px;
+  height: 24px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-900);
+  outline: none;
+}
+.dm-qsheet__help {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-500);
+}
 .dm-qsheet__error {
   margin: 0;
   font-size: 13px;

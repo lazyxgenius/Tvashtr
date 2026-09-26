@@ -152,10 +152,26 @@
   line-height: 1.6;
   color: var(--ink-500);
 }
+/* Not covered (DM-62): amber, and its buttons sit under the card. */
+.dm-answer--uncovered {
+  border-color: #e6cfa9;
+  background: #fbf5ea;
+}
+.dm-answer__after {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .dm-answer__context {
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
   line-height: 1.6;
   color: var(--ink-500);
+}
+.dm-answer__context > svg {
+  flex: none;
 }
 .dm-answer__text {
   font-size: 14px;

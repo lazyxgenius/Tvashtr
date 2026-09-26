@@ -4,9 +4,11 @@
  * **Add file**) and optional comma-separated key words. **Pick from Ask history** (DM-79) opens
  * it with the chat's questions, newest first; picking one fills the question and its cited files.
  * The server's 422 copy is shown as is ("Write the question first.", the 50 cap, OQ-26).
+ * **Save as test question** in Ask (DM-68) opens it as "Save as a test question": the asked
+ * question, the answer's cited files and key words suggested from the answer (OQ-15) as chips.
  */
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Plus, X } from "lucide-react";
+import { Check, ChevronDown, Info, Plus, X } from "lucide-react";
 
 import { Button, Input, Sheet, useDismiss } from "../../design-system/components";
 import { ApiError } from "../../lib/api";
@@ -19,11 +21,14 @@ import {
 } from "../../lib/api/domains";
 import { formatNumber } from "./domainFormat";
 import { splitKeywords } from "./qualityFormat";
+import "./menus.css";
+import "./quality.css";
 
 export type SheetMode =
   | { kind: "add" }
   | { kind: "history" }
-  | { kind: "edit"; testCase: DomainTestCase; index: number };
+  | { kind: "edit"; testCase: DomainTestCase; index: number }
+  | { kind: "answer"; question: string; files: DomainTestFile[]; keywords: string[] };
 
 const BACKEND_DOWN = "Couldn’t reach Tvashtr — is the backend running?";
 
@@ -146,9 +151,19 @@ export function TestQuestionSheet({
   onSaved: () => void;
 }) {
   const editing = mode.kind === "edit" ? mode.testCase : null;
-  const [question, setQuestion] = useState(editing?.question ?? "");
-  const [picks, setPicks] = useState<DomainTestFile[]>(editing?.expected_files ?? []);
+  const fromAnswer = mode.kind === "answer" ? mode : null;
+  const [question, setQuestion] = useState(editing?.question ?? fromAnswer?.question ?? "");
+  const [picks, setPicks] = useState<DomainTestFile[]>(
+    editing?.expected_files ?? fromAnswer?.files ?? [],
+  );
   const [keywords, setKeywords] = useState(editing?.expected_keywords.join(", ") ?? "");
+  // Save-from-answer keeps key words as chips (DM-68); `keywords` is then the word being typed.
+  const [words, setWords] = useState<string[]>(fromAnswer?.keywords ?? []);
+  const addWords = () => {
+    const more = splitKeywords(keywords).filter((w) => !words.includes(w));
+    if (more.length) setWords([...words, ...more]);
+    setKeywords("");
+  };
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<{ question?: boolean; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -202,7 +217,9 @@ export function TestQuestionSheet({
         {
           question: question.trim(),
           expected_citation_doc_ids: picks.map((p) => p.document_id),
-          expected_keywords: splitKeywords(keywords),
+          expected_keywords: fromAnswer
+            ? [...words, ...splitKeywords(keywords)]
+            : splitKeywords(keywords),
         },
         editing?.case_id,
       );
@@ -215,21 +232,34 @@ export function TestQuestionSheet({
   };
 
   const number = mode.kind === "edit" ? mode.index + 1 : count + 1;
+  const note = fromAnswer
+    ? `Quality · ${count} test question${count === 1 ? "" : "s"}`
+    : `Question ${number}`;
 
   return (
     <Sheet
       open
-      title={editing ? "Edit test question" : "Add a test question"}
-      subtitle="Something you already know the answer to"
+      title={
+        fromAnswer
+          ? "Save as a test question"
+          : editing
+            ? "Edit test question"
+            : "Add a test question"
+      }
+      subtitle={
+        fromAnswer
+          ? "Quality will check that search keeps finding this"
+          : "Something you already know the answer to"
+      }
       onClose={onClose}
-      footerNote={picking ? `Type to search ${files.length} files` : `Question ${number}`}
+      footerNote={picking ? `Type to search ${files.length} files` : note}
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button variant="primary" size="sm" loading={saving} onClick={() => void save()}>
-            {editing ? "Save changes" : "Add test"}
+            {fromAnswer ? "Save test" : editing ? "Save changes" : "Add test"}
           </Button>
         </>
       }
@@ -317,14 +347,70 @@ export function TestQuestionSheet({
             </Button>
           </div>
         )}
+        {fromAnswer && fromAnswer.files.length > 0 && (
+          <span className="dm-qsheet__help">
+            Taken from the answer’s sources. Any one of them counts as found.
+          </span>
+        )}
       </div>
-      <Input
-        label="Key words"
-        optional
-        helper="Comma-separated. All must appear in what search finds."
-        value={keywords}
-        onChange={(e) => setKeywords(e.target.value)}
-      />
+      {fromAnswer ? (
+        <div className="dm-qsheet__files">
+          <span className="dm-qsheet__label">Key words</span>
+          <div className="dm-qsheet__chips">
+            {words.map((w) => (
+              <span key={w} className="dm-qchip dm-qchip--word">
+                {w}
+                <button
+                  type="button"
+                  className="dm-qchip__x"
+                  aria-label={`Remove ${w}`}
+                  onClick={() => setWords(words.filter((x) => x !== w))}
+                >
+                  <X size={11} strokeWidth={1.6} aria-hidden />
+                </button>
+              </span>
+            ))}
+            <input
+              className="dm-qsheet__word"
+              aria-label="Add a key word"
+              placeholder={words.length ? "" : "Type a key word, then Enter"}
+              value={keywords}
+              onChange={(e) => setKeywords(e.target.value)}
+              onBlur={addWords}
+              onKeyDown={(e) => {
+                if ((e.key === "Enter" || e.key === ",") && keywords.trim()) {
+                  e.preventDefault();
+                  addWords();
+                } else if (e.key === "Backspace" && !keywords && words.length) {
+                  setWords(words.slice(0, -1));
+                }
+              }}
+            />
+          </div>
+          <span className="dm-qsheet__help">
+            All of these must show up in the passages found.
+            {fromAnswer.keywords.length > 0 && " Suggested from the answer."}
+          </span>
+        </div>
+      ) : (
+        <Input
+          label="Key words"
+          optional
+          helper="Comma-separated. All must appear in what search finds."
+          value={keywords}
+          onChange={(e) => setKeywords(e.target.value)}
+        />
+      )}
+      {fromAnswer && (
+        <div className="dm-callout">
+          <span className="dm-callout__icon">
+            <Info size={14} strokeWidth={1.6} aria-hidden />
+          </span>
+          <span className="dm-callout__text">
+            You don’t need the exact answer. Quality checks what search finds, not the wording.
+          </span>
+        </div>
+      )}
       {error && !error.question && (
         <p className="dm-qsheet__error" role="alert">
           {error.text}

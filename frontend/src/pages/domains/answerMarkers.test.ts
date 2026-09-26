@@ -10,6 +10,7 @@ import {
   passageText,
   plainAnswer,
   sentenceCiting,
+  suggestKeywords,
   suggestQuestions,
 } from "./answerMarkers";
 
@@ -85,6 +86,11 @@ it("passage meta, text and answer meta", () => {
     "page 4 · piece 17 of 86",
   );
   expect(passageMeta({ page: null, piece_number: 2, pieces_in_file: null })).toBe("piece 2");
+  // A not-covered answer's closest passages show only the page (DM-62).
+  expect(passageMeta({ page: 7, piece_number: 30, pieces_in_file: 86 }, true)).toBe("page 7");
+  expect(passageMeta({ page: null, piece_number: 3, pieces_in_file: 42 }, true)).toBe(
+    "piece 3 of 42",
+  );
   expect(passageText({ excerpt: "A whole piece.", piece_number: 1 })).toBe("A whole piece.");
   expect(passageText({ excerpt: "cut mid  way", piece_number: 5 })).toBe("…cut mid way…");
   expect(answerMeta(1800, "OpenAI gpt-4o-mini")).toBe("1.8 s · OpenAI gpt-4o-mini");
@@ -118,5 +124,28 @@ describe("suggestQuestions (DM-56)", () => {
     expect(suggestQuestions(["pricing.pdf", "webhooks.md"])).toEqual([
       "How much does each plan cost?",
     ]);
+  });
+});
+
+describe("suggestKeywords (OQ-15)", () => {
+  const EXCERPTS = [
+    "Customers may request a full refund within 30 days of their original purchase date. Requests are made from Billing → Refunds or by writing to support",
+    "For annual subscriptions cancelled after the first 30 days, we refund the unused whole months on a prorated basis. Refunds are issued to the original payment method and usually arrive within 5–10 business days",
+  ];
+
+  it("takes bold and number + unit phrases, then repeated words a cited passage uses", () => {
+    expect(suggestKeywords(ANSWER, EXCERPTS)).toEqual(["30 days", "refund"]);
+  });
+
+  it("drops words no cited passage uses and caps at three", () => {
+    expect(
+      suggestKeywords("Plans cost **$10**, plans renew yearly [1].", ["Billing runs monthly."]),
+    ).toEqual(["$10"]);
+    expect(suggestKeywords("Limits: 5 MB uploads, 40% off, 2 hours, 3 days [1].", ["x"])).toEqual([
+      "5 MB",
+      "40%",
+      "2 hours",
+    ]);
+    expect(suggestKeywords("Nothing here.", [])).toEqual([]);
   });
 });

@@ -2,14 +2,17 @@
  * One answer in the Ask thread (DM-58/59): light Markdown with number chips at its citations, the
  * "Sources" line, **Copy**, **Save as test question**, **Show what search found** and the meta
  * "1.8 s · OpenAI gpt-4o-mini". A chip is a button ("Source 2: billing-faq.pdf") that shows its
- * passage in the aside.
+ * passage in the aside. Not covered (DM-62) it is amber — "I couldn’t find this in <name>." and the
+ * model's note, the two closest passages, no chips, Copy or latency — with **Add a file about it**
+ * and **Save as test question** under it. A follow-up says "Used your earlier question for
+ * context" (DM-65).
  */
 import { Fragment } from "react";
-import { BookmarkPlus, Copy, Search } from "lucide-react";
+import { BookmarkPlus, Copy, MessageSquare, Search, Upload } from "lucide-react";
 
 import { Button } from "../../design-system/components";
 import type { DomainAnswer } from "../../lib/api/domains";
-import { type Inline, answerMeta, parseAnswer } from "./answerMarkers";
+import { type Inline, answerMeta, parseAnswer, plainAnswer } from "./answerMarkers";
 
 export function SourceChip({
   n,
@@ -38,16 +41,20 @@ export function SourceChip({
 
 export function AnswerCard({
   answer,
+  domainName,
   onChip,
   onShowFound,
   onCopy,
   onSaveTest,
+  onAddFile,
 }: {
   answer: DomainAnswer;
+  domainName: string;
   onChip: (n: number) => void;
   onShowFound: () => void;
   onCopy: () => void;
   onSaveTest: () => void;
+  onAddFile: () => void;
 }) {
   const fileOf = (n: number) => answer.sources.find((s) => s.number === n)?.filename;
   const inline = (parts: Inline[]) =>
@@ -63,11 +70,54 @@ export function AnswerCard({
       ),
     );
   const meta = answerMeta(answer.latency_ms, answer.model_label);
+  const sources = answer.sources.length > 0 && (
+    <div className="dm-answer__sources">
+      <span>Sources</span>
+      {answer.sources.map((s, i) => (
+        <Fragment key={s.number}>
+          {i > 0 && " · "}
+          <span className="dm-answer__source">
+            <SourceChip n={s.number} filename={s.filename} onClick={() => onChip(s.number)} />
+            <span className="dm-mono">{s.filename}</span>
+          </span>
+        </Fragment>
+      ))}
+    </div>
+  );
+  const saveTest = (
+    <Button variant="ghost" size="sm" className="dm-btn-inline" onClick={onSaveTest}>
+      <BookmarkPlus size={15} strokeWidth={1.6} aria-hidden />
+      <span>Save as test question</span>
+    </Button>
+  );
+
+  if (!answer.covered) {
+    return (
+      <>
+        <article className="dm-answer dm-answer--uncovered" aria-label="Answer">
+          <div className="dm-answer__text">
+            I couldn’t find this in {domainName}. {plainAnswer(answer.answer_text)}
+          </div>
+          {sources}
+        </article>
+        <div className="dm-answer__after">
+          <Button variant="secondary" size="sm" className="dm-btn-inline" onClick={onAddFile}>
+            <Upload size={15} strokeWidth={1.6} aria-hidden />
+            <span>Add a file about it</span>
+          </Button>
+          {saveTest}
+        </div>
+      </>
+    );
+  }
 
   return (
     <article className="dm-answer" aria-label="Answer">
       {answer.used_history && (
-        <span className="dm-answer__context">Used your earlier question for context</span>
+        <span className="dm-answer__context">
+          <MessageSquare size={12} strokeWidth={1.6} aria-hidden />
+          Used your earlier question for context
+        </span>
       )}
       <div className="dm-answer__text">
         {parseAnswer(answer.answer_text).map((b, i) =>
@@ -88,29 +138,13 @@ export function AnswerCard({
           ),
         )}
       </div>
-      {answer.sources.length > 0 && (
-        <div className="dm-answer__sources">
-          <span>Sources</span>
-          {answer.sources.map((s, i) => (
-            <Fragment key={s.number}>
-              {i > 0 && " · "}
-              <span className="dm-answer__source">
-                <SourceChip n={s.number} filename={s.filename} onClick={() => onChip(s.number)} />
-                <span className="dm-mono">{s.filename}</span>
-              </span>
-            </Fragment>
-          ))}
-        </div>
-      )}
+      {sources}
       <div className="dm-answer__actions">
         <Button variant="ghost" size="sm" className="dm-btn-inline" onClick={onCopy}>
           <Copy size={15} strokeWidth={1.6} aria-hidden />
           <span>Copy</span>
         </Button>
-        <Button variant="ghost" size="sm" className="dm-btn-inline" onClick={onSaveTest}>
-          <BookmarkPlus size={15} strokeWidth={1.6} aria-hidden />
-          <span>Save as test question</span>
-        </Button>
+        {saveTest}
         <Button variant="ghost" size="sm" className="dm-btn-inline" onClick={onShowFound}>
           <Search size={15} strokeWidth={1.6} aria-hidden />
           <span>Show what search found</span>

@@ -17,6 +17,18 @@ import { readStamp } from "./useFileDeletes";
 /** Local rows' ids start with this (they have no ⋯ actions but Remove). */
 export const LOCAL_PREFIX = "local:";
 
+// "Add a file about it" (DM-62) lands on Sources with the file picker open: Ask asks, the
+// Sources tab takes the request when it mounts.
+let pickerRequested = false;
+export function requestFilePicker(): void {
+  pickerRequested = true;
+}
+export function takeFilePickerRequest(): boolean {
+  const asked = pickerRequested;
+  pickerRequested = false;
+  return asked;
+}
+
 export function isLocalFile(f: Pick<DomainFile, "document_id">): boolean {
   return f.document_id.startsWith(LOCAL_PREFIX);
 }

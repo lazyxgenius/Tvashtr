@@ -26,7 +26,7 @@ import { FilePreviewSheet } from "./FilePreviewSheet";
 import { FilesTable } from "./FilesTable";
 import { SortSelect } from "./SortSelect";
 import { type FileDeletes, readStamp } from "./useFileDeletes";
-import { useUploads, withUploads } from "./useUploads";
+import { takeFilePickerRequest, useUploads, withUploads } from "./useUploads";
 
 const SEARCH_DELAY_MS = 250;
 
@@ -76,6 +76,10 @@ export function SourcesTab({
   const picker = useRef<HTMLInputElement>(null);
   // Files re-read from this page: a toast says when each one is ready again (DM-50).
   const rereading = useRef(new Map<string, string>());
+
+  useEffect(() => {
+    if (takeFilePickerRequest()) picker.current?.click();
+  }, []);
 
   useEffect(() => {
     const t = window.setTimeout(() => setQuery(find.trim()), SEARCH_DELAY_MS);
