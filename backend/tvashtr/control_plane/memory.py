@@ -202,8 +202,22 @@ def _manual_source() -> dict:
     }
 
 
+# A force's directive SIGN (mirrors ``memory_distill._polarity_sign``, which imports this module):
+# consolidation merges a same-sign duplicate and supersedes an opposite-sign one.
+_NEGATIVE_FORCE = frozenset({"avoid", "forbid"})
+_POSITIVE_FORCE = frozenset({"require", "prefer", "allow"})
+
+
+def _directive_sign(polarity: str | None) -> str:
+    if polarity in _NEGATIVE_FORCE:
+        return "neg"
+    if polarity in _POSITIVE_FORCE:
+        return "pos"
+    return "neu"
+
+
 def _enrich(session, owner_id: uuid.UUID, items: list[dict]) -> list[dict]:
-    """Add the joined provenance to serialized memories, in at most THREE batched queries whatever
+    """Add the joined provenance to serialized memories, in at most FOUR batched queries whatever
     the list length (no N+1):
 
     * ``agent`` — the agent a node-tier memory is scoped to (``node_id``):
@@ -213,6 +227,11 @@ def _enrich(session, owner_id: uuid.UUID, items: list[dict]) -> list[dict]:
       agent_role, team_name, node_id}``: the run that taught it (owner-scoped), the round (the
       teaching invocation's iteration) and the agent that learned it (``source_node_id``).
     * ``source_iteration`` — the same round, top-level (``None`` when unknown).
+    * ``superseded_reason`` — how a ``superseded`` memory was retired: ``"merged"`` when the memory
+      that replaced it (``superseded_by``) has the same directive sign (a Keep or Restore folded it
+      into a fact you already had), ``"replaced"`` when the sign differs (a memory that says the
+      opposite replaced it); ``None`` for every other status, or when that memory is gone or not
+      the owner's.
 
     Nodes resolve only inside teams the owner owns, or run snapshots of the owner's runs, so a
     memory can never reveal another account's agent or team names."""
@@ -280,8 +299,30 @@ def _enrich(session, owner_id: uuid.UUID, items: list[dict]) -> list[dict]:
                 "team_name": team_name,
             }
 
+    replacing: dict[str, str] = {}
+    replaced_ids: set[uuid.UUID] = set()
+    for it in items:
+        if it.get("status") == "superseded":
+            sid = _parse_uuid(it.get("superseded_by"))
+            if sid is not None:
+                replaced_ids.add(sid)
+    if replaced_ids:
+        rows = session.execute(
+            select(NodeMemory.id, NodeMemory.polarity).where(
+                NodeMemory.id.in_(replaced_ids), NodeMemory.owner_id == owner_id
+            )
+        ).all()
+        replacing = {str(mid): polarity for mid, polarity in rows}
+
     out: list[dict] = []
     for it in items:
+        superseded_reason: str | None = None
+        if it.get("status") == "superseded":
+            by = replacing.get(str(_parse_uuid(it.get("superseded_by"))))
+            if by is not None:
+                same = _directive_sign(by) == _directive_sign(it.get("polarity"))
+                superseded_reason = "merged" if same else "replaced"
+
         agent = None
         scoped = _parse_uuid(it.get("node_id"))
         if scoped is not None:
@@ -318,7 +359,15 @@ def _enrich(session, owner_id: uuid.UUID, items: list[dict]) -> list[dict]:
             }
         else:
             source = _manual_source()
-        out.append({**it, "agent": agent, "source": source, "source_iteration": round_no})
+        out.append(
+            {
+                **it,
+                "agent": agent,
+                "source": source,
+                "source_iteration": round_no,
+                "superseded_reason": superseded_reason,
+            }
+        )
     return out
 
 

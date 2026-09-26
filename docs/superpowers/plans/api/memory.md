@@ -76,7 +76,8 @@ queries, so they cost the same for 1 row or 100.
     "team_name": "Indicator sprint team",
     "node_id": "5d1f7a90-3c2e-4b8e-8f53-1f0c9a1d2e44"
   },
-  "source_iteration": 3
+  "source_iteration": 3,
+  "superseded_reason": null
 }
 ```
 
@@ -90,6 +91,7 @@ New fields:
 | `source_iteration` | Same as `source.round` (for the drawer's "Learned in round n"). |
 | `source_node_id` | The agent that learned it, even for repo-tier facts. Agent-remember captures and manual memories have `null`. |
 | `superseded_by` | For `status: "superseded"`: the id of the memory that replaced it. |
+| `superseded_reason` | For `status: "superseded"`: `"merged"` when the memory that replaced it has the same force sign (a Keep or Restore folded it into a memory you already had), `"replaced"` when the sign differs (a memory that says the opposite replaced it). `null` for every other status, and when the replacing memory is gone. The Archive says "Merged into a memory you already had" or "Replaced by a newer memory". |
 | `edited_at` | When a person last changed the content, force or scope ("Edited by you · …"). A pin never sets it, and neither does a PATCH that changes nothing. |
 
 UI hints:

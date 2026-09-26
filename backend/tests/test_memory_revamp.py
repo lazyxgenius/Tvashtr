@@ -400,6 +400,59 @@ def test_superseded_by_and_edited_at_are_serialized(acct):
     assert row["edited_at"] is None
 
 
+# ------------------------------------------------------------------ Archive: superseded_reason ----
+
+
+def _archived(client, memory_id: str) -> dict:
+    rows = client.get("/api/memories?status=superseded").json()["memories"]
+    return next(r for r in rows if r["id"] == memory_id)
+
+
+def test_superseded_reason_merged_when_a_restore_folds_into_a_same_force_fact(acct):
+    topic = uuid.uuid4().hex
+    _seed_memory(acct.id, f"{topic}: pin numpy", polarity="require")
+    discarded = _seed_memory(
+        acct.id, f"{topic}: pin numpy please", polarity="prefer", status="rejected"
+    )
+    restored = acct.client.post(f"/api/memories/{discarded}/promote").json()
+    assert restored["action"] == "promote_merged"
+    assert _archived(acct.client, discarded)["superseded_reason"] == "merged"
+
+
+def test_superseded_reason_replaced_when_the_newer_fact_says_the_opposite(acct):
+    newer = _seed_memory(acct.id, "r: never pin numpy", polarity="forbid")
+    older = _seed_memory(
+        acct.id,
+        "r: pin numpy",
+        polarity="require",
+        status="superseded",
+        superseded_by=uuid.UUID(newer),
+    )
+    assert _archived(acct.client, older)["superseded_reason"] == "replaced"
+
+
+def test_superseded_reason_is_null_off_archive_and_for_a_gone_or_foreign_fact(acct):
+    live = _seed_memory(acct.id, "n: a live fact")
+    [row] = [r for r in acct.client.get("/api/memories").json()["memories"] if r["id"] == live]
+    assert row["superseded_reason"] is None
+
+    gone = _seed_memory(
+        acct.id, "n: its fact was deleted", status="superseded", superseded_by=uuid.uuid4()
+    )
+    assert _archived(acct.client, gone)["superseded_reason"] is None
+
+    # Another account's memory never leaks its force into this account's Archive.
+    theirs = _seed_memory(_Account().id, "n: someone else's fact", polarity="context")
+    foreign = _seed_memory(
+        acct.id,
+        "n: points at another account",
+        polarity="context",
+        status="superseded",
+        superseded_by=uuid.UUID(theirs),
+    )
+    assert _archived(acct.client, foreign)["superseded_reason"] is None
+
+
 # ------------------------------------------------------------------ PATCH scope + edited_at ----
 
 
