@@ -38,6 +38,8 @@ in `routers.py` and changed there in place.
 | `GET /api/domains/{id}/eval/runs` | **new** — the runs, newest first | G7 |
 | `GET /api/domains/{id}/eval/runs/{run_id}` | **new** — one run with every case's result and top passages | G7 |
 | `POST /api/domains/{id}/eval` (sync, old) | `scores` gains `config`; each `per_case` entry gains `top` | G7 |
+| `PATCH /api/domains/{id}` | optional `template` (the starting point; `400` unknown); the Settings numbers are checked with the tab's copy (`422`) | G9 |
+| retrieval (Ask, tests, nodes, MCP) | "Look wider, then keep the best" (`retrieval.rerank.enabled`) re-scores its wider pool — no longer a passthrough | G9 |
 
 Schema: migration `0042_domain_message_meta` adds `domain_messages.meta JSONB NULL` (the Ask tab's
 answer meta `{model, used_history, source}`; written from the Ask group on).
@@ -599,3 +601,41 @@ the domain's runs from 1 (oldest). `status`: `running` | `completed` | `failed` 
 `hit`/`keyword_hit` are `null` when the case has no files / no key words to check. `top` holds the
 first 3 passages search found (DM-77). `404 {"detail": "run not found"}`. The path only matches a
 uuid, so the old `GET …/eval/runs/latest` keeps working.
+
+## `PATCH /api/domains/{id}` (G9 additions — the Settings tab)
+
+```json
+{"template": "legal",
+ "config": {"chunking": {"strategy": "fixed", "size": 500, "overlap": 80},
+            "embedding": {"model": "text-embedding-3-small"},
+            "retrieval": {"mode": "hybrid", "top_k": 8, "rerank": {"enabled": true, "model": null, "top_n": 20},
+                          "graph": {"enabled": false}},
+            "generation": {"model": null}}}
+```
+
+- `template` (optional) is the starting point (DM-81): `support` | `legal` | `financial` | `scientific` |
+  `blank`. It only sets the template; the client sends the piece size and overlap it fills in.
+- `config` numbers are checked (DM-83, DM-85) — a key the config leaves out is not checked:
+  - `chunking.size`: a whole number 100–4000
+  - `chunking.overlap`: a whole number 0…size−1
+  - `retrieval.top_k` (Passages per question): a whole number 1–30
+  - with `retrieval.rerank.enabled`, `rerank.top_n` (the wider pool) ≥ `top_k`
+- The answer is unchanged (the old `domain_to_dict` shape). Saving does not re-read files; a changed
+  piece size applies to files read from now on (G10 adds the re-read paths).
+
+| Status | `detail` |
+|---|---|
+| `400` | `"unknown template"` |
+| `404` | `"domain not found"` (not this account's) |
+| `422` | `"Use a number from 100 to 4,000."` (piece size) |
+| `422` | `"Use a number from 0 to <size − 1, e.g. 1,199>."` (overlap not a whole number ≥ 0) |
+| `422` | `"Overlap must be smaller than the piece size."` |
+| `422` | `"Use a number from 1 to 30."` (passages per question) |
+| `422` | `"Look wider needs at least as many passages as it keeps."` |
+
+### "Look wider, then keep the best" (retrieval, G9)
+With `retrieval.rerank.enabled`, every search (Ask, test runs, Query domain nodes, MCP) fetches `top_n`
+candidates per list, then re-scores that pool: Reciprocal Rank Fusion (k = 60) of the pool's own order
+and each piece's exact-word overlap with the question (stop words dropped; a piece sharing no word gets
+no second term), then keeps the first `top_k`. Deterministic, no model, no cost; `rerank.model` stays
+reserved. Off, nothing changes.
