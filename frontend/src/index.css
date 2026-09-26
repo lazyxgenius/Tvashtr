@@ -1288,62 +1288,7 @@ body,
   color: var(--text-secondary);
 }
 
-.tv-engines {
-  padding: 20px var(--space-6);
-}
-.tv-engines__title-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.tv-engines__title-row h2 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 19px;
-}
-.tv-engines__sub {
-  margin: 6px 0 18px;
-  font-size: 13px;
-  color: var(--ink-500);
-  max-width: 560px;
-}
-.tv-engines__section {
-  margin-top: 4px;
-}
-.tv-engines__section-title {
-  margin: 0 0 10px;
-  font-family: var(--font-ui);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-700);
-}
-.tv-engines__section-lede {
-  margin: 0 0 14px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--ink-500);
-  max-width: 560px;
-}
-.tv-engines__callout {
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--ink-700);
-  background: var(--blue-100);
-  border: 1px solid var(--blue-500);
-  border-radius: var(--radius-md);
-}
-/* M-subs-desktop §3.0: the subscription disclosure (cards + the once-per-launch Desktop notice). */
-.tv-engines__disclosure {
-  margin: 0 0 12px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--ink-500);
-}
+/* M-subs-desktop §3.0: the once-per-launch Desktop subscription notice. */
 .tv-desktop-disclosure {
   position: fixed;
   left: 50%;
@@ -1367,75 +1312,12 @@ body,
   margin: 0;
   flex: 1;
 }
-.tv-engines__section--byok {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line-400);
-}
-.tv-engines__byok-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
-  gap: 12px 14px;
-  align-items: end;
-}
-.tv-engines__byok-form .tv-field {
-  min-width: 0;
-}
-.tv-engines__byok-form .tv-btn {
-  height: 38px;
-  align-self: end;
-}
-.tv-engines__byok-form .tv-launch__input {
-  width: 100%;
-  max-width: none;
-}
-@media (max-width: 720px) {
-  .tv-engines__byok-form {
-    grid-template-columns: 1fr;
-  }
-}
-.tv-engines .tv-launch__input::placeholder,
 .tv-dash__library .tv-launch__input::placeholder,
 .tv-dash__prov-add--labeled .tv-launch__input::placeholder {
   color: var(--ink-500);
   opacity: 0.8;
 }
-.tv-engines__cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-@media (max-width: 900px) {
-  .tv-engines__cards {
-    grid-template-columns: 1fr;
-  }
-}
-.tv-engines__card {
-  border: 1px solid var(--line-400);
-  background: var(--cream-50, var(--cream-100));
-  border-radius: 12px;
-  padding: 14px 14px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 132px;
-}
-.tv-engines__card--connected {
-  border-color: var(--sage-500);
-}
-.tv-engines__card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-}
-.tv-engines__card-name {
-  font-family: var(--font-display);
-  font-size: 16px;
-  color: var(--ink-900);
-}
-.tv-engines__pill,
-.tv-engines-pill {
+.tv-engines__pill {
   display: inline-flex;
   align-items: center;
   height: 22px;
@@ -1448,16 +1330,6 @@ body,
   border: 1px solid var(--line-400);
   border-radius: 999px;
   white-space: nowrap;
-}
-.tv-engines__hint {
-  font-size: 12.5px;
-  color: var(--ink-500);
-}
-.tv-engines__actions {
-  display: flex;
-  gap: 8px;
-  margin-top: auto;
-  flex-wrap: wrap;
 }
 
 .tv-dash__library {
