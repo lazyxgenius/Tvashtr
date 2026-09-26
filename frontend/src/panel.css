@@ -458,6 +458,101 @@
   color: var(--text-tertiary);
 }
 
+/* ---- Event feed ---- */
+.tv-feed__note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: var(--border-width) solid var(--border-faint);
+  font-size: var(--fs-micro);
+  line-height: var(--lh-normal);
+  color: var(--text-tertiary);
+}
+.tv-feed__note svg {
+  flex: none;
+  margin-top: 1px;
+}
+.tv-feed {
+  display: flex;
+  flex-direction: column;
+}
+.tv-feed__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: var(--border-width) solid var(--border-faint);
+}
+.tv-feed__row:last-child {
+  border-bottom: none;
+}
+.tv-feed__main {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.tv-feed__lead {
+  flex: none;
+  font-family: var(--font-code);
+  font-size: var(--fs-micro);
+  color: var(--text-secondary);
+}
+.tv-feed__detail {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-primary);
+}
+.tv-feed__time {
+  flex: none;
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* ---- Badge vocabulary (ported from the DS Badge component) ---- */
+.tv-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 4px 9px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  white-space: nowrap;
+  border-radius: var(--radius-pill);
+  border: var(--border-width) solid transparent;
+}
+.tv-badge--neutral {
+  background: var(--panel-300);
+  color: var(--ink-600);
+  border-color: var(--border-hairline);
+}
+.tv-badge--accent {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.tv-badge--outline {
+  background: transparent;
+  color: var(--ink-600);
+  border-color: var(--border-strong);
+}
+.tv-badge--danger {
+  background: var(--red-100);
+  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
+}
+
 /* ---- Round grouping in the event feed (M-ledger C6) — once the backend keeps later rounds, a
    worker's steps group under a "Round N" header. ---- */
 .tv-feed__round {
