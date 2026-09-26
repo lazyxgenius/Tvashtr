@@ -4,6 +4,7 @@
  */
 import { Logo } from "../../design-system/components";
 import { DOCS_URL, GITHUB_RELEASES_PAGE_URL, GITHUB_REPO_URL } from "../../lib/desktopDownload";
+import { onSectionLink } from "./sections";
 
 const external = { target: "_blank", rel: "noopener noreferrer" } as const;
 
@@ -18,8 +19,12 @@ export function SiteFooter() {
         </div>
         <div className="web-foot__col">
           <span className="web-foot__head">Product</span>
-          <a href="#/welcome?s=product">Canvas</a>
-          <a href="#/welcome?s=domains">Domains</a>
+          <a href="#/welcome?s=product" onClick={onSectionLink}>
+            Canvas
+          </a>
+          <a href="#/welcome?s=domains" onClick={onSectionLink}>
+            Domains
+          </a>
           <a href="#/download">Desktop for Mac</a>
           <a href={GITHUB_RELEASES_PAGE_URL} {...external}>
             Changelog

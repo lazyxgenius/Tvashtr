@@ -121,14 +121,21 @@ function ForMac({ badge, phone }: { badge: string | null; phone: boolean }) {
 }
 
 /** A phone can't run the Mac app: send the page to a computer (OQ-10, OQ-24). */
-function SendLink() {
+export function SendLink({
+  path = "/#/download",
+  fullWidth,
+}: {
+  path?: string;
+  fullWidth?: boolean;
+}) {
   const toast = useToast();
-  const url = `${window.location.origin}/#/download`;
+  const url = `${window.location.origin}${path}`;
   if (typeof navigator.share === "function") {
     return (
       <Button
         variant="primary"
         size="lg"
+        fullWidth={fullWidth}
         onClick={() => void navigator.share({ title: "Tvashtr", url }).catch(() => undefined)}
       >
         <Share size={17} strokeWidth={1.6} aria-hidden />
@@ -140,6 +147,7 @@ function SendLink() {
     <Button
       variant="primary"
       size="lg"
+      fullWidth={fullWidth}
       onClick={() =>
         void navigator.clipboard?.writeText(url).then(
           () => toast({ message: "Link copied" }),

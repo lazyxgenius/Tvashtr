@@ -8,6 +8,7 @@ import { ArrowRight, ExternalLink } from "lucide-react";
 import { Avatar, ButtonLink, Logo } from "../../design-system/components";
 import type { AuthUser } from "../../lib/api";
 import { GITHUB_REPO_URL } from "../../lib/desktopDownload";
+import { onSectionLink } from "./sections";
 
 export type SiteNavItem = "product" | "how" | "domains" | "desktop";
 
@@ -37,6 +38,7 @@ export function SiteHeader({
             key={l.id}
             className="web-head__link"
             href={l.href}
+            onClick={onSectionLink}
             aria-current={current === l.id ? "page" : undefined}
           >
             {l.label}

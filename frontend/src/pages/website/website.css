@@ -3,6 +3,9 @@
    restated here. */
 
 .web-page {
+  /* #root is a 100%-tall flex column: without this the page shrinks to the viewport and the
+     sticky header scrolls away with it. */
+  flex-shrink: 0;
   min-height: 100vh;
   background: var(--surface-page);
   font-family: var(--font-ui);
@@ -51,6 +54,7 @@
   padding: 0 56px;
   border-bottom: 1px solid var(--line-200);
   background: rgba(250, 249, 245, 0.9);
+  backdrop-filter: blur(12px);
 }
 .web-head__logo {
   display: inline-flex;
@@ -1331,4 +1335,212 @@
   .web-cards {
     flex-direction: column;
   }
+}
+
+/* WEB-7: a `?s=` section lands just under the sticky header (72px here, 60px on a phone). */
+.web-main [id] {
+  scroll-margin-top: 72px;
+}
+
+/* ---- Landing, phone (Web-Mobile, WbF-Mob-1..3; WEB-20..24) ---- */
+.web-m [id] {
+  scroll-margin-top: 60px;
+}
+.web-m__head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 60px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line-200);
+  background: rgba(250, 249, 245, 0.9);
+  backdrop-filter: blur(12px);
+}
+.web-m__hero {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 36px 16px 0;
+  background: radial-gradient(120% 60% at 50% 0%, #f7e7df 0%, transparent 60%);
+}
+.web-m__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 42px;
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+.web-m__title em {
+  font-style: italic;
+  color: var(--coral-700);
+}
+.web-m__lede {
+  margin: 0;
+  font-size: 16.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.web-m__note {
+  font-size: 12.5px;
+  color: var(--ink-500);
+  text-align: center;
+}
+.web-m__canvas {
+  position: relative;
+  box-sizing: content-box;
+  height: 250px;
+  margin: 8px -16px 0;
+  overflow: hidden;
+  border-top: 1px solid var(--line-300);
+  background-color: #f6f4ec;
+  background-image: radial-gradient(#dcd8ca 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.web-m__canvas-in {
+  position: absolute;
+  left: 12px;
+  top: 20px;
+  transform: scale(0.72);
+  transform-origin: 0 0;
+}
+.web-m__sec {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 40px 16px 0;
+}
+.web-m__sec--two {
+  gap: 10px;
+}
+.web-m__h2 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 32px;
+}
+.web-m__h2--two {
+  font-size: 30px;
+}
+.web-m__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-card);
+}
+.web-m__card-body {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-700);
+}
+.web-m__way {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-card);
+  font-size: 15px;
+  line-height: 1.55;
+}
+.web-m__faq {
+  padding: 40px 16px 0;
+}
+.web-faq--phone {
+  margin-top: 10px;
+}
+.web-faq--phone .web-faq__q {
+  gap: 10px;
+  padding: 16px 0;
+  font-size: 15.5px;
+}
+.web-faq--phone .web-faq__a {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.web-m__close {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 40px 16px 0;
+  padding: 32px 20px;
+  border-radius: 22px;
+  background: var(--ink-900);
+  text-align: center;
+}
+.web-m__close-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 36px;
+  color: var(--cream-100);
+}
+.web-m__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 32px 16px;
+  font-size: 13px;
+  color: var(--ink-500);
+}
+.web-m__foot a {
+  color: inherit;
+}
+/* WbF-Mob-2: the menu covers the page. */
+.web-m__menu {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow-y: auto;
+  background: var(--surface-page);
+}
+.web-m__links {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 16px;
+}
+.web-m__link {
+  display: block;
+  padding: 16px 0;
+  border-top: 1px solid var(--line-200);
+  font-size: 20px;
+  color: var(--ink-900);
+  text-decoration: none;
+}
+/* WbF-Mob-3: the bottom sheet, over a scrim. */
+.web-m__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(20, 20, 19, 0.3);
+}
+.web-m__sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 16px 28px;
+  border-radius: 20px 20px 0 0;
+  background: var(--surface-card);
+}
+.web-m__sheet-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+}
+.web-m__sheet-body {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-600);
 }

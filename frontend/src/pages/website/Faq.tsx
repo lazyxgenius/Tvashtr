@@ -46,11 +46,20 @@ export function faqItems(config: Config | null): FaqItem[] {
   ];
 }
 
-export function Faq({ items, initialOpen }: { items: FaqItem[]; initialOpen: number | null }) {
+/** `phone`: the 390 rows (Web-Mobile), all closed until tapped. */
+export function Faq({
+  items,
+  initialOpen,
+  phone = false,
+}: {
+  items: FaqItem[];
+  initialOpen: number | null;
+  phone?: boolean;
+}) {
   const [open, setOpen] = useState(initialOpen);
   const id = useId();
   return (
-    <div className="web-faq">
+    <div className={phone ? "web-faq web-faq--phone" : "web-faq"}>
       {items.map((item, i) => {
         const expanded = open === i;
         const Icon = expanded ? ArrowUp : ChevronDown;
@@ -64,7 +73,7 @@ export function Faq({ items, initialOpen }: { items: FaqItem[]; initialOpen: num
               onClick={() => setOpen(expanded ? null : i)}
             >
               <span className="web-faq__q-text">{item.q}</span>
-              <Icon size={18} strokeWidth={1.6} aria-hidden />
+              <Icon size={phone ? 16 : 18} strokeWidth={1.6} aria-hidden />
             </button>
             <p id={`${id}-${i}`} className="web-faq__a" hidden={!expanded}>
               {item.a}

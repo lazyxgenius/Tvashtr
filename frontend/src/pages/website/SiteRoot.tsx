@@ -2,18 +2,31 @@
  * The public website's pages (website.md WEB-1): the landing, sign-in and download, signed in or
  * out. `AuthGate` renders it for every public address; Tvashtr Desktop never does (WEB-3).
  */
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useSyncExternalStore } from "react";
 
 import type { AuthUser, Config } from "../../lib/api";
 import { type PublicRoute, navigate, parseRoute } from "../../lib/nav";
 import { DownloadPage } from "./DownloadPage";
 import { DownloadStarted } from "./DownloadStarted";
+import { LandingMobile } from "./LandingMobile";
 import { LandingPage } from "./LandingPage";
+import { useSectionScroll } from "./sections";
 import { type SiteNavItem, SiteHeader } from "./SiteHeader";
 import { SiteFooter } from "./SiteFooter";
 import { SignInDone } from "./SignInDone";
 import { SignInPage } from "./SignInPage";
 import "./website.css";
+
+/** Below 720px the landing is the phone page (WEB-19). */
+const PHONE = "(max-width: 719px)";
+function subscribePhone(onChange: () => void): () => void {
+  const query = window.matchMedia?.(PHONE);
+  query?.addEventListener("change", onChange);
+  return () => query?.removeEventListener("change", onChange);
+}
+function isPhone(): boolean {
+  return window.matchMedia?.(PHONE).matches ?? false;
+}
 
 const TITLES: Record<PublicRoute["page"], string> = {
   welcome: "Tvashtr — compose your own team of AI agents",
@@ -49,6 +62,9 @@ export function SiteRoot({
     if (leaveSignIn) navigate(parseRoute(`#${leaveSignIn}`), { replace: true });
   }, [leaveSignIn]);
 
+  const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
+  useSectionScroll(route.page === "welcome" ? route.section : undefined);
+
   if (route.page === "download") {
     return (
       <SiteFrame user={user} current="desktop">
@@ -68,6 +84,7 @@ export function SiteRoot({
     if (user) return null;
     return <SignInPage error={route.error} next={route.next} config={config} onAuthed={onAuthed} />;
   }
+  if (phone) return <LandingMobile user={user} config={config} />;
   return (
     <SiteFrame user={user}>
       <LandingPage user={user} config={config} />

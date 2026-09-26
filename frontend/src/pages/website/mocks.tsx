@@ -160,6 +160,25 @@ export function TeamCanvasMock() {
   );
 }
 
+const PHONE_TEAM: MockNode[] = [
+  { ...TEAM[0], left: 0, top: 0, model: undefined },
+  { ...TEAM[2], left: 200, top: 80, model: undefined },
+  { ...TEAM[3], left: 0, top: 170, model: undefined },
+];
+
+/** Web-Mobile's three-node team, drawn at 72% under the hero (WEB-21). */
+export function PhoneTeamMock({ id }: { id?: string }) {
+  return (
+    <div id={id} className="web-m__canvas" aria-hidden="true">
+      <div className="web-m__canvas-in">
+        {PHONE_TEAM.map((node) => (
+          <NodeCard key={node.title} node={node} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const PRODUCT: MockNode[] = [
   {
     left: 40,
