@@ -1426,6 +1426,107 @@ def build_full_squad_team(
         return str(graph.id)
 
 
+# Revamp (Desktop setup, DT-34): the Reviewer of a SPEC-ONLY team judges the spec, not a build —
+# there is no code. The ``REVIEW_VERDICT.json`` sidecar name and the ``approved``/
+# ``changes_requested`` vocabulary are kept verbatim (``_harvest_verdict`` reads them).
+SPEC_REVIEWER_PROMPT = (
+    "You are the Reviewer on a product team. The spec below was written from the ORIGINAL IDEA. "
+    "Review the spec — do NOT rewrite it, and do not write any code.\n\n"
+    "Do these steps in order:\n"
+    "1. Read the ORIGINAL IDEA and the spec below.\n"
+    "2. State in ONE sentence what the idea asks for, then in ONE sentence whether the spec "
+    "covers it — name anything missing, ambiguous or contradictory.\n"
+    "3. Decide the verdict:\n"
+    '   - "approved" ONLY IF the spec fully and clearly covers the ORIGINAL IDEA.\n'
+    '   - "changes_requested" otherwise.\n'
+    "4. Write a file named EXACTLY REVIEW_VERDICT.json in your current working directory "
+    "(the bare filename), containing EXACTLY this JSON and nothing else:\n"
+    '       {"verdict": "approved" | "changes_requested", "reasons": "<1-3 short, '
+    'specific, actionable sentences>"}\n\n'
+    "STRICT RULES:\n"
+    "- You are REVIEWING, not editing. Do NOT modify, create, or delete ANY file except "
+    "REVIEW_VERDICT.json."
+)
+
+
+def build_spec_only_team(
+    name: str = "PM → Reviewer (spec only)", held_providers: set[str] | None = None
+) -> str:
+    """Insert the SPEC-ONLY team (Desktop setup's "Spec only", DT-34) and return its id.
+
+    Topology: PM (entry thinker; its REPORT.md is the spec) -> Reviewer (worker, edits OFF,
+    verdict-emitting: it judges the spec against the idea) -> Stop, on ``approved`` and on anything
+    else. There is no Ship node, so a run never changes code or opens a PR; the verdict and its
+    reasons are the review. No rework loop: the walk starts at the one node no edge targets, so a
+    loop back to the entry PM would leave the team without a start (``validate_graph`` no_root) —
+    reworking the spec needs a walk change, as does ending ``completed`` at a Stop."""
+    settings = get_settings()
+    with session_scope() as session:
+        graph = TeamGraph(name=name)
+        session.add(graph)
+        session.flush()
+
+        pm = AgentNode(
+            team_graph_id=graph.id,
+            role_name="pm",
+            kind="completion",
+            model=_node_default_model(held_providers, settings.default_model, "thinker"),
+            engine=None,
+            prompt=PM_PROMPT,
+            position={"x": 0, "y": 0},
+        )
+        reviewer = AgentNode(
+            team_graph_id=graph.id,
+            role_name="reviewer",
+            kind="agent",
+            engine="openhands",
+            model=_node_default_model(held_providers, reviewer_model(), "worker"),
+            prompt=SPEC_REVIEWER_PROMPT,
+            position={"x": 260, "y": 0},
+            config={"agent_kind": "reviewer"},
+            edits_allowed=False,
+        )
+        stop = AgentNode(
+            team_graph_id=graph.id,
+            role_name="stop",
+            kind="terminal",
+            model=None,
+            engine=None,
+            position={"x": 520, "y": 0},
+            config={"terminal_kind": "stop"},
+        )
+        session.add_all(_stamp_account_defaults([pm, reviewer, stop], held_providers))
+        session.flush()
+
+        session.add_all(
+            [
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=pm.id,
+                    target_node_id=reviewer.id,
+                    edge_type="review",
+                    conditions=None,
+                ),
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=reviewer.id,
+                    target_node_id=stop.id,
+                    edge_type="review",
+                    conditions={"when": "approved"},
+                ),
+                # The catch-all (changes_requested, or no verdict) ends the run too.
+                Edge(
+                    team_graph_id=graph.id,
+                    source_node_id=reviewer.id,
+                    target_node_id=stop.id,
+                    edge_type="review",
+                    conditions=None,
+                ),
+            ]
+        )
+        return str(graph.id)
+
+
 def clone_team_graph(source_team_graph_id: str, name: str | None = None) -> str:
     """Deep-clone a team graph into a NEW run-scoped ``TeamGraph`` and return its id — the
     clone-on-launch snapshot (P1.8b): fresh node ids, every edge remapped onto the cloned node
@@ -1562,7 +1663,21 @@ _TEMPLATE_CATALOG: tuple[TeamTemplate, ...] = (
         loops=((4, 3),),
     ),
 )
-_TEMPLATES_BY_KEY: dict[str, TeamTemplate] = {t.key: t for t in _TEMPLATE_CATALOG}
+# Revamp (Desktop setup, DT-34 / OQ-29): templates served only with ``GET /api/templates?for=
+# desktop`` — Home's designed New-team dialog shows exactly the four above. ``POST /api/teams``
+# accepts them from any surface.
+_DESKTOP_TEMPLATES: tuple[TeamTemplate, ...] = (
+    TeamTemplate(
+        "spec_only",
+        "Spec only",
+        "Turns an idea into a reviewed spec. No code changes.",
+        build_spec_only_team,
+        roles=("pm", "reviewer"),
+    ),
+)
+_TEMPLATES_BY_KEY: dict[str, TeamTemplate] = {
+    t.key: t for t in (*_TEMPLATE_CATALOG, *_DESKTOP_TEMPLATES)
+}
 
 # The Blank starting point (``POST /api/teams {template: "blank"}``) — not a catalog builder, so
 # the FE keeps its own card (it must render when the catalog fails to load); served for its copy and
@@ -1578,7 +1693,7 @@ SEED_TEMPLATE_KEY = "seed"
 # ("Created yesterday from PM → Engineer").
 _TEMPLATE_NAMES: dict[str, str] = {
     BLANK_TEMPLATE_KEY: _BLANK_NAME,
-    **{t.key: t.name for t in _TEMPLATE_CATALOG},
+    **{t.key: t.name for t in (*_TEMPLATE_CATALOG, *_DESKTOP_TEMPLATES)},
 }
 
 
@@ -1604,6 +1719,124 @@ def list_templates() -> list[dict]:
 def blank_template() -> dict:
     """The Blank starting point in the same shape as :func:`list_templates` items."""
     return _template_dict(BLANK_TEMPLATE_KEY, _BLANK_NAME, _BLANK_DESCRIPTION, _BLANK_ROLES)
+
+
+# ---- Desktop setup: plan-first models (DT-35/36, OQ-27) -----------------------------------------
+
+# A Desktop plan → the catalogue provider whose models it runs (``credential_gate``'s mapping,
+# inverted for the two runner subscriptions).
+PLAN_PROVIDERS: dict[str, str] = {"claude": "anthropic", "grok": "xai"}
+_SEATS = {"thinker": "thinker", "worker": "worker"}
+
+
+def plan_first_models(nodes: list[tuple[str, str]], plans: set[str]) -> dict[str, str]:
+    """The model each MODEL-BEARING node gets when a team is made on Desktop from the plans in use.
+    PURE (no DB): ``nodes`` are ``(role, seat)`` pairs in path order (seat ``thinker``/``worker``),
+    ``plans`` the connected Desktop plans (``claude``/``grok``). Returns ``{role: model}``, empty
+    when no plan is in use (the builders' BYOK defaults then stand, unchanged).
+
+    * One plan: every model node uses it.
+    * Both: a worker prefers Claude, a thinker prefers Grok, and a ``reviewer`` always uses the
+      other vendor than the model node before it (the node it reviews) — Plan, build, review is
+      PM Grok · Engineer Claude · Reviewer Grok; Spec only is PM Grok · Reviewer Claude."""
+    in_use = [p for p in PLAN_PROVIDERS if p in plans]
+    if not in_use:
+        return {}
+    models: dict[str, str] = {}
+    previous: str | None = None
+    for role, seat in nodes:
+        if len(in_use) == 1:
+            plan = in_use[0]
+        elif role == "reviewer" and previous is not None:
+            plan = "grok" if previous == "claude" else "claude"
+        else:
+            plan = "claude" if seat == "worker" else "grok"
+        model = catalogue_default(PLAN_PROVIDERS[plan], seat)
+        if model is not None:
+            models[role] = model
+        previous = plan
+    return models
+
+
+def connected_plans(owner_id: uuid.UUID) -> set[str]:
+    """The Desktop plans this owner's mirror says are connected (``claude``/``grok`` only)."""
+    with session_scope() as session:
+        rows = session.execute(
+            select(EngineSubscriptionStatus.provider).where(
+                EngineSubscriptionStatus.owner_id == owner_id,
+                EngineSubscriptionStatus.connected.is_(True),
+            )
+        ).scalars()
+        return {p for p in rows if p in RUNNER_SUBSCRIPTIONS}
+
+
+def _model_seats(roles: tuple[str, ...]) -> list[tuple[str, str]]:
+    """``(role, seat)`` for the model-bearing roles of a template strip, in order."""
+    from tvashtr.control_plane.graph_validity import shape_from_roles
+
+    return [
+        (n["role"], _SEATS[n["kind"]])
+        for n in shape_from_roles(roles)["nodes"]
+        if n["kind"] in _SEATS
+    ]
+
+
+def runs_on(model: str | None, plans: set[str], held_providers: set[str]) -> str | None:
+    """Where a node's model will run for this owner (DT-35): ``claude``/``grok`` when a plan in use
+    covers its provider, else ``api_key`` when a held key does, else ``None`` (needs setup)."""
+    if not model:
+        return None
+    sub = subscription_for_model(model)
+    if sub is not None and sub in plans:
+        return sub
+    return "api_key" if provider_for_model(model) in held_providers else None
+
+
+def _with_placements(template: dict, roles, plans: set[str], held: set[str]) -> dict:
+    """A template dict whose ``shape.nodes[]`` carry the ``model`` a Desktop create would stamp
+    (``use_plans``) and its ``runs_on``; gates and terminals get ``None`` for both."""
+    picks = plan_first_models(_model_seats(tuple(roles)), plans)
+    settings = get_settings()
+    nodes = []
+    for node in template["shape"]["nodes"]:
+        seat = _SEATS.get(node["kind"])
+        model = None
+        if seat is not None:
+            fallback = settings.default_model if seat == "thinker" else engineer_model()
+            model = picks.get(node["role"]) or _node_default_model(held, fallback, seat)
+        nodes.append({**node, "model": model, "runs_on": runs_on(model, plans, held)})
+    return {**template, "shape": {**template["shape"], "nodes": nodes}}
+
+
+def desktop_templates(owner_id: uuid.UUID) -> dict:
+    """``GET /api/templates?for=desktop``: the catalog plus the Desktop-only templates, and Blank,
+    each strip node carrying the ``model``/``runs_on`` a Desktop create would give it."""
+    plans = connected_plans(owner_id)
+    held = held_provider_slugs(owner_id)
+    return {
+        "templates": [
+            _with_placements(
+                _template_dict(t.key, t.name, t.description, t.roles, t.loops), t.roles, plans, held
+            )
+            for t in (*_TEMPLATE_CATALOG, *_DESKTOP_TEMPLATES)
+        ],
+        "blank": _with_placements(blank_template(), _BLANK_ROLES, plans, held),
+    }
+
+
+def _apply_plan_models(session, graph_id: uuid.UUID, roles, plans: set[str]) -> None:
+    """Re-stamp a freshly built team's model nodes with :func:`plan_first_models` (topology and
+    every other default untouched). No plan in use changes nothing."""
+    for role, model in plan_first_models(_model_seats(tuple(roles)), plans).items():
+        session.execute(
+            update(AgentNode)
+            .where(
+                AgentNode.team_graph_id == graph_id,
+                AgentNode.role_name == role,
+                AgentNode.model.is_not(None),
+            )
+            .values(model=model)
+        )
 
 
 # ---- The team summary (the Home team cards) ----------------------------------------------------
@@ -1981,16 +2214,24 @@ def rename_library_team(team_id: uuid.UUID, name: str, owner_id: uuid.UUID) -> d
         return _team_summary(session, graph)
 
 
-def create_team_from_template(template_key: str, name: str, owner_id: uuid.UUID) -> str:
+def create_team_from_template(
+    template_key: str, name: str, owner_id: uuid.UUID, *, use_plans: bool = False
+) -> str:
     """Materialize a starter template into a NEW library team OWNED by ``owner_id``; return its id
     (M-accounts Slice B). Calls the builder — passing the OWNER's held providers so every model node
     defaults to a provider the account can run (M-runnable) — then sets the user's ``name``, flips
     ``is_library = True``, and stamps ``owner_id`` (build-then-flip; the builder's TOPOLOGY is
     untouched, only its model DEFAULTS become account-aware). Raises ``KeyError`` on an unknown
-    template key (the router maps it to 400)."""
+    template key (the router maps it to 400).
+
+    ``use_plans`` (Desktop setup, DT-36): the model nodes then use the owner's connected Desktop
+    plans (:func:`plan_first_models`); with no plan connected the BYOK defaults stand."""
     template = _TEMPLATES_BY_KEY[template_key]
+    plans = connected_plans(owner_id) if use_plans else set()
     team_graph_id = template.builder(held_providers=held_provider_slugs(owner_id))
     with session_scope() as session:
+        if plans:
+            _apply_plan_models(session, uuid.UUID(team_graph_id), template.roles, plans)
         graph = session.execute(
             select(TeamGraph).where(TeamGraph.id == uuid.UUID(team_graph_id))
         ).scalar_one()
@@ -2002,15 +2243,17 @@ def create_team_from_template(template_key: str, name: str, owner_id: uuid.UUID)
     return team_graph_id
 
 
-def create_blank_team(name: str, owner_id: uuid.UUID) -> str:
+def create_blank_team(name: str, owner_id: uuid.UUID, *, use_plans: bool = False) -> str:
     """Materialize the MINIMAL valid skeleton — one root thinker → a Ship terminal (2 nodes, 1
     forward edge) — as a NEW library team and return its id (P1.8d topology editing). NEVER a
     0-node canvas (which ``validate_graph`` itself rejects): a blank team is the smallest graph that
     already passes validity, so the user starts from something runnable and reshapes it. The root
     thinker carries an empty editable prompt (the user fills it). A NEW function — the byte-intact
-    builders are untouched; the run-start guard + the canvas validity both accept this skeleton."""
+    builders are untouched; the run-start guard + the canvas validity both accept this skeleton.
+    ``use_plans``: as :func:`create_team_from_template`."""
     settings = get_settings()
     held_providers = held_provider_slugs(owner_id)
+    plans = connected_plans(owner_id) if use_plans else set()
     with session_scope() as session:
         graph = TeamGraph(
             name=name, is_library=True, owner_id=owner_id, template_key=BLANK_TEMPLATE_KEY
@@ -2047,6 +2290,9 @@ def create_blank_team(name: str, owner_id: uuid.UUID) -> str:
                 conditions=None,
             )
         )
+        if plans:
+            session.flush()
+            _apply_plan_models(session, graph.id, _BLANK_ROLES, plans)
         return str(graph.id)
 
 

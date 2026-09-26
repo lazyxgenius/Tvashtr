@@ -129,3 +129,44 @@ thinker or worker default for the provider, or a Domains embedding model uses it
  "hint": "NVIDIA NIM serves no model Tvashtr can run right now.", "serves_models": false}
 ```
 Setup screens list such a provider disabled and never pre-pick it.
+
+---
+
+## `GET /api/templates?for=desktop` (DT-34, DT-35, OQ-27, OQ-29) — session, owner-scoped
+Without `for` the answer is unchanged (`{templates: [4], blank}`, nodes `{id, kind, role, label}`).
+With `for=desktop`:
+- `templates` also lists the Desktop-only `spec_only` (after the four; Home's dialog never sees it);
+- every `shape.nodes[]` (templates and `blank`) gains `model` (slug or `null`) and `runs_on`
+  (`"claude" | "grok" | "api_key" | null`), computed for THIS owner exactly as a
+  `POST /api/teams {use_plans: true}` would stamp them. `runs_on` is the plan when the model's
+  provider maps to a *connected* Claude/Grok plan (the engines mirror), else `"api_key"` when the
+  owner holds a key for it, else `null` ("Needs setup"). Gates and terminals: both `null`.
+```json
+{"template": "spec_only", "name": "Spec only",
+ "description": "Turns an idea into a reviewed spec. No code changes.",
+ "shape": {"nodes": [
+   {"id": null, "kind": "thinker", "role": "pm", "label": "PM", "model": "xai/grok-4.7", "runs_on": "grok"},
+   {"id": null, "kind": "worker", "role": "reviewer", "label": "Reviewer", "model": "anthropic/claude-sonnet-5", "runs_on": "claude"}],
+  "loops": []}}
+```
+Model choice (`teams.plan_first_models`, pure): one plan → every model node uses it; both → a
+worker prefers Claude, a thinker prefers Grok, and a `reviewer` uses the other vendor than the
+model node before it (Plan, build, review = PM Grok · Engineer Claude · Reviewer Grok; Spec only =
+PM Grok · Reviewer Claude); no plan → the BYOK defaults (unchanged).
+
+Errors: 401 — no session.
+
+## `POST /api/teams` → `use_plans` (DT-36) — additive
+Body `{template, name, use_plans?: bool = false}`. With `use_plans: true` the model nodes get the
+plan-first models above (the owner's connected plans only; none connected → the BYOK defaults).
+`fallback_model` is still stamped from held keys. Response unchanged (the team summary).
+`template` also accepts `spec_only` from any surface (`template_name` "Spec only").
+Errors unchanged: 422 `"A team name is required."`, 400 `"unknown template"`, 401.
+
+### The Spec only team
+PM (entry thinker, its REPORT.md is the spec) → Reviewer (worker, `edits_allowed: false`,
+verdict-emitting, reviews the spec against the idea) → Stop, on `approved` and on anything else.
+No Ship node: no code change, no PR. KNOWN GAPS (walk changes in `team_run.py`, outside this
+slice): a run ends `rejected` at the Stop terminal even when approved (pinned by a strict xfail in
+`tests/test_desktop_templates.py`), and there is no rework loop (a loop back to the entry PM
+leaves the team without a start node).
