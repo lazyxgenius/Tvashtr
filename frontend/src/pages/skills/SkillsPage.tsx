@@ -21,6 +21,7 @@ import { SkillAgentsDialog } from "./SkillAgentsDialog";
 import { PresetPreviewDialog, SkillPresetsGrid } from "./SkillPresets";
 import { SkillsEmptyState } from "./SkillsEmptyState";
 import { SkillsTable } from "./SkillsTable";
+import { subscribeSkillsHandoff, takeSkillsHandoff } from "./skillsHandoff";
 import { matchesQuery, plural, presetInLibrary, sortByName } from "./skillsModel";
 import "./skills.css";
 
@@ -48,10 +49,23 @@ export function SkillsPage({ view }: { view: SkillsView }) {
   const [adding, setAdding] = useState<string | null>(null);
   const [preview, setPreview] = useState<SkillPreset | null>(null);
   const [deleting, setDeleting] = useState<Skill | null>(null);
-  const [agentsFor, setAgentsFor] = useState<Skill | null>(null);
+  const [agentsFor, setAgentsFor] = useState<{ id: string; name: string } | null>(null);
   const [fromGithub, setFromGithub] = useState(false);
-  // Rows the last import added: tinted until the next one (TkF-FromRepo-3).
+  // Rows just added (the last import, or the skill the editor just saved): tinted until the next
+  // one (TkF-FromRepo-3, TkF-NewSkill-5).
   const [justAdded, setJustAdded] = useState<ReadonlySet<string>>(new Set());
+
+  // The editor's hand-off: the row it saved, and the toast's "Choose agents" (SKILL-30), which can
+  // fire before or after this page mounts.
+  useEffect(() => {
+    const take = () => {
+      const h = takeSkillsHandoff();
+      if (h.highlight) setJustAdded(new Set([h.highlight]));
+      if (h.openAgentsFor) setAgentsFor(h.openAgentsFor);
+    };
+    take();
+    return subscribeSkillsHandoff(take);
+  }, []);
 
   const loadSkills = useCallback(() => {
     setSkills({ state: "loading" });
@@ -131,13 +145,16 @@ export function SkillsPage({ view }: { view: SkillsView }) {
     toast({ message: `${s.name} deleted.` });
   };
 
-  const onAgentsSaved = (s: Skill, res: SkillAgentsResult) => {
+  const onAgentsSaved = (s: { id: string; name: string }, res: SkillAgentsResult) => {
     setAgentsFor(null);
-    setLibrary(
-      (library ?? []).map((x) =>
-        x.id === s.id ? { ...x, usage: { agents: res.agent_count, teams: res.team_count } } : x,
-      ),
-    );
+    // Opened from the editor's toast, the picker can outrun the list's first load.
+    if (library === null) loadSkills();
+    else
+      setLibrary(
+        library.map((x) =>
+          x.id === s.id ? { ...x, usage: { agents: res.agent_count, teams: res.team_count } } : x,
+        ),
+      );
     toast({
       message:
         res.agent_count > 0

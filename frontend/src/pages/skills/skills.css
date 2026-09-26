@@ -392,3 +392,247 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* ---- Skill editor (TkF-NewSkill-1…4, TkF-SkillSource-1, Toolkit-SkillEditor) ---- */
+.sk-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.sk-crumbs a {
+  color: var(--ink-600);
+  text-decoration: none;
+}
+.sk-crumbs a:hover {
+  color: var(--ink-900);
+}
+.sk-crumbs [aria-current] {
+  color: var(--ink-900);
+}
+.sk-ed-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* Like a DS field: the error 8px under the input. */
+.sk-ed-namebox {
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sk-ed-title {
+  margin: 0;
+  font-family: var(--font-code);
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.sk-ed-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.sk-ed-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+}
+.sk-ed-card {
+  border: 1px solid var(--border-hairline);
+  border-radius: 16px;
+  background: var(--surface-card);
+  padding: 0;
+  overflow: hidden;
+}
+.sk-ed-card__body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sk-ed-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sk-ed-card__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sk-ed-label {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.sk-ed-side {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sk-ed-seg {
+  display: flex;
+}
+.sk-ed-seg .tv-seg__btn {
+  flex: 1;
+  padding: 0 8px;
+  font-size: 12.5px;
+}
+.sk-ed-helper {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.sk-ed-usedby {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sk-ed-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+
+/* The SKILL.md editor: a 300px box (content-box, so 302 with its border), a 40px line-number
+   gutter (content-box, + 8px right padding) and the monospace text. The focus ring is the
+   design's; it shows while the editor has focus. */
+.sk-md {
+  position: relative;
+  box-sizing: content-box;
+  height: 300px;
+  display: flex;
+  border: 1px solid var(--line-200);
+  border-radius: 10px;
+  background: var(--surface-page);
+  overflow: hidden;
+}
+.sk-md:focus-within {
+  border-color: var(--coral-200);
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.45);
+}
+.sk-md--error,
+.sk-md--error:focus-within {
+  border-color: var(--danger);
+}
+.sk-md__gutter {
+  flex: none;
+  box-sizing: content-box;
+  width: 40px;
+  padding: 12px 8px 0 0;
+  overflow: hidden;
+  text-align: right;
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 21px;
+  color: var(--stone-400);
+  background: var(--cream-200);
+  border-right: 1px solid var(--line-200);
+  user-select: none;
+}
+.sk-md__text {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 21px;
+  color: var(--ink-800);
+  white-space: pre;
+  overflow: auto;
+}
+.sk-md__text::placeholder {
+  color: var(--stone-400);
+}
+
+/* Preview (TkF-NewSkill-3): 300px tall inside 4px 6px padding, content-box. */
+.sk-mdp {
+  box-sizing: content-box;
+  height: 300px;
+  padding: 4px 6px;
+  overflow: auto;
+}
+.sk-mdp__h1 {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 24px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.sk-mdp__h2 {
+  margin: 12px 0 6px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 19px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.sk-mdp__h3 {
+  margin: 10px 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.sk-mdp__item {
+  display: flex;
+  gap: 10px;
+  margin: 5px 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.sk-mdp__mark {
+  color: var(--ink-500);
+}
+.sk-mdp__p {
+  margin: 5px 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.sk-mdp__code {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--cream-200);
+}
+.sk-mdp__pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 21px;
+  color: var(--ink-800);
+  background: var(--surface-page);
+  border: 1px solid var(--line-200);
+  border-radius: 8px;
+  overflow: auto;
+}
+.sk-mdp__empty {
+  margin: 5px 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}

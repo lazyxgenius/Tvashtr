@@ -5,7 +5,6 @@ import { DomainsPage } from "../components/DomainsPage";
 import { EnginesShelf } from "../components/EnginesShelf";
 import { MemoryShelf } from "../components/MemoryShelf";
 import { SecretsShelf } from "../components/SecretsShelf";
-import { SkillsShelf } from "../components/SkillsShelf";
 import { ToolsShelf } from "../components/ToolsShelf";
 import type { AuthUser, Config } from "../lib/api";
 import { requestHomeAction } from "../lib/homeActions";
@@ -15,6 +14,7 @@ import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
 import { CommandPalette } from "./home/CommandPalette";
 import { HomePage } from "./home/HomePage";
 import { Shell } from "./shell/Shell";
+import { SkillEditorPage } from "./skills/SkillEditorPage";
 import { SkillsPage } from "./skills/SkillsPage";
 import { ShortcutsDialog } from "./shell/ShortcutsDialog";
 import "./badgeLoaders";
@@ -118,7 +118,7 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
     case "skills":
       return <SkillsPage view={route.view} />;
     case "skill":
-      return <SkillsShelf />;
+      return <SkillEditorPage skillId={route.skillId} />;
     case "memory":
       return <MemoryShelf />;
     case "secrets":

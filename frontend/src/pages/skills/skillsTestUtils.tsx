@@ -5,6 +5,7 @@ import { render, screen } from "@testing-library/react";
 import { ToastProvider } from "../../design-system/components";
 import { useNav } from "../../lib/nav";
 import { useNavBadges } from "../../lib/workspaceStatus";
+import { SkillEditorPage } from "./SkillEditorPage";
 import { SkillsPage } from "./SkillsPage";
 
 export const inline = (name: string, mode = "always", triggers?: string[]) => ({
@@ -45,12 +46,18 @@ function Badges() {
   return <output aria-label="skills badge">{b.skills ?? ""}</output>;
 }
 
-/** The page as Workspace mounts it: the address picks the tab. */
+/** The pages as Workspace mounts them: the address picks the list tab or the editor. */
 function Harness() {
   const { route } = useNav();
   return (
     <>
-      {route.page === "skills" ? <SkillsPage view={route.view} /> : <p>elsewhere</p>}
+      {route.page === "skills" ? (
+        <SkillsPage view={route.view} />
+      ) : route.page === "skill" ? (
+        <SkillEditorPage skillId={route.skillId} />
+      ) : (
+        <p>elsewhere</p>
+      )}
       <Badges />
     </>
   );
