@@ -18,7 +18,7 @@ from sqlalchemy import select
 from tvashtr.auth import UserOut, get_current_user
 from tvashtr.control_plane import domain_read, domain_views
 from tvashtr.control_plane.domain_files import absolute_path
-from tvashtr.control_plane.domains import _owned_domain
+from tvashtr.control_plane.domains import DomainNameTaken, _owned_domain, duplicate_domain
 from tvashtr.db import session_scope
 from tvashtr.models import DomainDocument
 
@@ -123,3 +123,30 @@ def get_document_file(
         media_type=content_type,
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
+
+
+class DuplicateBody(BaseModel):
+    """``POST …/duplicate``: the copy's name (default "<name> copy", then "copy 2", …)."""
+
+    name: str | None = None
+
+
+@router.post("/api/domains/{domain_id}/duplicate", status_code=201)
+def post_domain_duplicate(
+    domain_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    body: DuplicateBody | None = None,
+) -> dict:
+    """Duplicate settings (DM-16): a new, empty domain with the same starting point and settings
+    and no files, answered with its full summary."""
+    owner = uuid.UUID(current_user.id)
+    did = _uuid(domain_id, "domain")
+    try:
+        row = duplicate_domain(owner, did, (body or DuplicateBody()).name)
+    except DomainNameTaken as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="domain not found")
+    return domain_views.detail_summary(owner, uuid.UUID(row["domain_id"])) or row

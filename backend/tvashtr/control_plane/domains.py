@@ -362,6 +362,46 @@ def create_domain(
         return domain_to_dict(row, doc_count=_doc_count(session, row.id))
 
 
+def copy_name(session, owner_id: uuid.UUID, base: str) -> str:
+    """The first free "<name> copy", "<name> copy 2", … under the name rule (DM-16); a long name
+    is cut so the copy stays within 120 characters."""
+    for n in range(1, 1000):
+        suffix = " copy" if n == 1 else f" copy {n}"
+        stem = base.strip()[: MAX_DOMAIN_NAME - len(suffix)].rstrip()
+        try:
+            return clean_domain_name(session, owner_id, f"{stem}{suffix}")
+        except DomainNameTaken:
+            continue
+    raise DomainNameTaken(f"{base.strip()} copy")
+
+
+def duplicate_domain(
+    owner_id: uuid.UUID, domain_id: uuid.UUID, name: str | None = None
+) -> dict | None:
+    """Duplicate settings (DM-16): a new, empty domain with the same starting point and settings
+    — no files. ``name`` follows the name rule; without one the copy is "<name> copy" (then
+    "copy 2", …). ``None`` when the domain isn't the owner's."""
+    with session_scope() as session:
+        src = _owned_domain(session, owner_id, domain_id)
+        if src is None:
+            return None
+        cleaned = (
+            clean_domain_name(session, owner_id, name)
+            if name is not None
+            else copy_name(session, owner_id, src.name)
+        )
+        row = Domain(
+            owner_id=owner_id,
+            name=cleaned,
+            template=src.template,
+            config=deepcopy(src.config or {}),
+            status="empty",
+        )
+        session.add(row)
+        session.flush()
+        return domain_to_dict(row, doc_count=0)
+
+
 def get_domain(owner_id: uuid.UUID, domain_id: uuid.UUID) -> dict | None:
     with session_scope() as session:
         row = session.execute(
@@ -399,14 +439,19 @@ def update_domain(
     *,
     name: str | None = None,
     config: dict | None = None,
+    name_rule: bool = False,
 ) -> dict | None:
+    """Rename and/or replace the settings. ``name_rule`` applies the account's name rule to a new
+    name (``clean_domain_name``, the domain itself excluded) — the HTTP PATCH sets it (DM-14)."""
     with session_scope() as session:
         row = session.execute(
             select(Domain).where(Domain.id == domain_id, Domain.owner_id == owner_id)
         ).scalar_one_or_none()
         if row is None:
             return None
-        if name is not None:
+        if name is not None and name_rule:
+            row.name = clean_domain_name(session, owner_id, name, exclude_id=row.id)
+        elif name is not None:
             cleaned = name.strip()
             if not cleaned:
                 raise ValueError("a domain name is required")

@@ -73,6 +73,9 @@ def test_patch_config_and_delete():
     assert c.delete(f"/api/domains/{row['domain_id']}").json() == {
         "domain_id": row["domain_id"],
         "deleted": True,
+        # Revamp (DM-15): how many steps and agents lost it — none here.
+        "steps_cleared": 0,
+        "agents_cleared": 0,
     }
     assert c.get(f"/api/domains/{row['domain_id']}").status_code == 404
 

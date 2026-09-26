@@ -24,6 +24,7 @@ from tvashtr.control_plane import (
     desktop_jobs,
     document_views,
     domain_read,
+    domain_usage,
     domain_views,
     github_app,
     github_targets,
@@ -67,6 +68,7 @@ from tvashtr.control_plane.domain_files import MAX_UPLOAD_BYTES
 from tvashtr.control_plane.domain_ingest import ingest_domain, normalize_embedding_model
 from tvashtr.control_plane.domains import (
     DomainNameTaken,
+    _owned_domain,
     create_document,
     create_domain,
     delete_document,
@@ -2716,7 +2718,11 @@ def patch_domain(
             _parse_domain_id(domain_id),
             name=body.name,
             config=body.config,
+            # Revamp (DM-14): a rename follows the account's name rule (409 on a clash).
+            name_rule=True,
         )
+    except DomainNameTaken as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if row is None:
@@ -2729,10 +2735,16 @@ def delete_domain_endpoint(
     domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
 ) -> dict:
     did = _parse_domain_id(domain_id)
-    ok = delete_domain(uuid.UUID(current_user.id), did)
+    owner_id = uuid.UUID(current_user.id)
+    # Revamp (DM-15, OQ-14): steps that used it lose their domain and agents' lists drop it.
+    with db.session_scope() as session:
+        if _owned_domain(session, owner_id, did) is None:
+            raise HTTPException(status_code=404, detail="domain not found")
+        cleared = domain_usage.clear_references(session, owner_id, did)
+    ok = delete_domain(owner_id, did)
     if not ok:
         raise HTTPException(status_code=404, detail="domain not found")
-    return {"domain_id": str(did), "deleted": True}
+    return {"domain_id": str(did), "deleted": True, **cleared}
 
 
 def _parse_doc_id(document_id: str) -> uuid.UUID:
