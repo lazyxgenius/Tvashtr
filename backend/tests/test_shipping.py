@@ -261,6 +261,54 @@ def test_ship_keeps_a_repos_own_tracked_report(tmp_path):
     assert _show(repo, "ship-run-own", "REPORT.md") == "v2\n"
 
 
+def _without_any_git_identity(monkeypatch, tmp_path) -> None:
+    """The production container: no global or system git config, so no author identity."""
+    home = tmp_path / "empty-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(home / "none"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    # Linux containers can't guess an email from the host, so git exits 128 ("unable to
+    # auto-detect email address"); macOS can guess one. useConfigOnly makes this machine behave
+    # like the container.
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "user.useConfigOnly")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_ship_commits_in_a_clone_with_no_git_identity(monkeypatch, tmp_path):
+    """revamp-e2e: on production every hosted-GitHub run failed at Ship — `git commit` exited 128
+    (live run 2177a044): the per-run clone has no repo-local identity and the container has no
+    global one. Ship commits as the Tvashtr agent when git has no identity at all."""
+    repo = _repo_with_history(tmp_path / "repo")  # a user's repo; its identity is repo-local here
+    clone = tmp_path / "clone"
+    _git(tmp_path, "clone", "-q", str(repo), str(clone))
+    _without_any_git_identity(monkeypatch, tmp_path)
+    _git(clone, "checkout", "-q", "-b", "tvashtr/run-noid")
+    (clone / "feature.py").write_text("print(3)\n")
+
+    ship = idempotent_ship(str(clone), "run-noid")
+
+    assert ship["created"] is True
+    assert _git(clone, "log", "-1", "--format=%an <%ae>", ship["tag"]) == (
+        "Tvashtr Agent <agent@tvashtr.local>"
+    )
+
+
+def test_ship_keeps_the_users_own_git_identity(tmp_path):
+    """A folder that already has an identity (the user's repo on their machine) commits as them."""
+    repo = _repo_with_history(tmp_path / "repo")  # identity user <u@x>, repo-local
+    _git(repo, "checkout", "-q", "-b", "tvashtr/run-id")
+    (repo / "feature.py").write_text("print(4)\n")
+
+    ship = idempotent_ship(str(repo), "run-id")
+
+    assert _git(repo, "log", "-1", "--format=%an <%ae>", ship["tag"]) == "user <u@x>"
+
+
 def test_ship_still_raises_when_a_run_branch_has_nothing_new(tmp_path):
     """The base's own commits are not the agent's work: a run that produced nothing still fails."""
     repo = _repo_with_history(tmp_path / "repo")

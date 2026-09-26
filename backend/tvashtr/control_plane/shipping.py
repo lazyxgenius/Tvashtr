@@ -67,6 +67,21 @@ def _ship_excludes(workspace_dir: str) -> list[str]:
     return [f":(exclude){name}" for name in names]
 
 
+# The identity a ship commit falls back to. A per-run clone on the server has none of its own and
+# the container has no global git config, so git refuses to commit (exit 128: "unable to
+# auto-detect email address"). A folder that has an identity (the user's repo on their machine,
+# a greenfield workspace) keeps its own.
+_AGENT_IDENTITY = {"user.name": "Tvashtr Agent", "user.email": "agent@tvashtr.local"}
+
+
+def _identity_args(workspace_dir: str) -> list[str]:
+    args: list[str] = []
+    for key, value in _AGENT_IDENTITY.items():
+        if not _git(workspace_dir, "config", key, check=False).stdout.strip():
+            args += ["-c", f"{key}={value}"]
+    return args
+
+
 def _commits_since_branch_start(workspace_dir: str) -> int:
     """How many commits the checked-out branch has gained since it was created — the oldest entry
     of the branch's own reflog is where it started (a fresh workspace's ``init`` commit, or the base
@@ -122,7 +137,7 @@ def idempotent_ship(workspace_dir: str, run_id: str) -> dict:
             f"nothing to ship for run {run_id}: no staged changes in {workspace_dir}"
         )
 
-    _git(workspace_dir, "commit", "-q", "-m", f"Ship: {run_id}")
+    _git(workspace_dir, *_identity_args(workspace_dir), "commit", "-q", "-m", f"Ship: {run_id}")
     _git(workspace_dir, "tag", tag)
     sha = _git(workspace_dir, "rev-parse", "HEAD").stdout.strip()
     return {"sha": sha, "tag": tag, "created": True}
