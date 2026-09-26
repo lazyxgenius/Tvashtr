@@ -112,6 +112,18 @@ describe("the Quality tab's words", () => {
     expect(runningText(later, NOW)).toBe("Running 8 tests… about 1 minute");
   });
 
+  it("says the new search when a run tries another one (DmF-Tune-3)", () => {
+    const both = run({
+      status: "running",
+      created_at: ago(0),
+      retrieval_mode: "hybrid",
+      progress: { done: 0, total: 12 },
+    });
+    expect(runningText(both, NOW, "dense")).toBe("Running 12 tests with Both search…");
+    expect(runningText(both, NOW, "hybrid")).toBe("Running 12 tests… about 30 seconds");
+    expect(runningText(both, NOW, null)).toBe("Running 12 tests… about 30 seconds");
+  });
+
   it("names the expected files and explains a miss (DM-77, OQ-16)", () => {
     expect(expectedLabel(CASE)).toBe("webhooks.md");
     const two = {

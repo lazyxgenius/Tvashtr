@@ -1,0 +1,200 @@
+/* A domain's Settings tab (Dm-Settings, DmF-Tune-1/2): px values from the design. */
+
+/* The tab fills the page so the save bar sits at its bottom (and sticks when the page scrolls). */
+.sh-main__inner:has(> .dm-detail--grow) {
+  min-height: 100%;
+}
+.dm-detail--grow {
+  flex: 1;
+}
+.dm-detail--grow > .dm-tabbody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.dm-set {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dm-set__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.dm-set__col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dm-set__card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.dm-set__card--answers {
+  gap: 12px;
+}
+.dm-set__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dm-set__eyebrow {
+  font-size: 11.5px;
+  line-height: 1.6;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.dm-set__pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.dm-set__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.dm-set__label {
+  font-size: 13px;
+  line-height: 1.6;
+  font-weight: 500;
+  color: var(--ink-900);
+}
+.dm-set__help {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-500);
+}
+.dm-set__help--switch {
+  line-height: 1.6;
+}
+.dm-set__error {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--danger);
+}
+.dm-set__num {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dm-set__num .ds-input {
+  width: 110px;
+}
+.dm-set__unit {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-set__answer {
+  display: block;
+  width: 340px;
+  max-width: 100%;
+}
+
+/* Search by: the design's pill segmented control, built to fit its cell (the frame's overflows). */
+.dm-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--panel-300);
+}
+.dm-seg__btn {
+  flex: 1 1 auto;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-600);
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dm-seg__btn[aria-pressed="true"] {
+  background: var(--cream-50);
+  color: var(--coral-700);
+  border-color: var(--coral-200);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.05);
+}
+.dm-seg__btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.dm-set__danger {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border: 1px solid #e4bdb5;
+  border-radius: 14px;
+  background: #fbf1ee;
+}
+.dm-set__danger-text {
+  flex: 1;
+}
+.dm-set__danger-title {
+  font-size: 14px;
+  line-height: 1.6;
+  font-weight: 600;
+  color: #7d3226;
+}
+.dm-set__danger-line {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #7d3226;
+}
+
+/* The save bar (DM-87): at the tab's bottom, over the page while it scrolls. */
+.dm-savebar {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+  box-shadow: 0 14px 40px -12px rgba(20, 20, 19, 0.22);
+}
+.dm-savebar__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--coral-500);
+}
+.dm-savebar__summary {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.dm-savebar__note {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #7a5423;
+}
+.dm-savebar__gap {
+  margin-left: auto;
+}

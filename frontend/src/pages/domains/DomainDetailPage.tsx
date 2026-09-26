@@ -5,13 +5,13 @@
  * Sources; the tabs; and the tab itself. Live while files are read (DM-4); when the first read
  * finishes a toast offers to ask it a question.
  *
- * INTERIM: until the Use in teams and Settings tabs are redesigned, those tabs show the
- * previous Domains screen's matching panel under the new header.
+ * INTERIM: until the Use in teams tab is redesigned, it shows the previous Domains screen's
+ * matching panel under the new header.
  */
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Workflow } from "lucide-react";
 
-import { DomainsPage, type DetailTab } from "../../components/DomainsPage";
+import { DomainsPage } from "../../components/DomainsPage";
 import { Badge, Button, Tabs, useToast } from "../../design-system/components";
 import type { DomainDetailView } from "../../lib/api/domains";
 import { type DomainTab, navigate } from "../../lib/nav";
@@ -20,17 +20,12 @@ import { detailBadge, detailWithout, metaLine, templateLabel } from "./domainFor
 import { AskTab } from "./AskTab";
 import { DomainMenu } from "./DomainMenu";
 import { QualityTab } from "./QualityTab";
+import { SettingsTab } from "./SettingsTab";
 import { SetupStrip, SummaryStrip } from "./DomainStrips";
 import { SourcesTab } from "./SourcesTab";
 import { useDomainDetail } from "./useDomainDetail";
 import { useFileDeletes } from "./useFileDeletes";
 import "./domains.css";
-
-/** The previous screen's panel each not-yet-redesigned tab shows meanwhile. */
-const INTERIM_TAB: Record<Exclude<DomainTab, "sources" | "ask" | "quality">, DetailTab> = {
-  teams: "overview",
-  settings: "config",
-};
 
 /** "now", re-read every 30 s so "Just now" and "updated 2 minutes ago" age on an open page. */
 function useClock(): Date {
@@ -127,7 +122,15 @@ export function DomainDetailPage({
   const badge = detailBadge(detail);
 
   return (
-    <div className={tab === "ask" || tab === "quality" ? "dm-detail dm-detail--fill" : "dm-detail"}>
+    <div
+      className={
+        tab === "ask" || tab === "quality"
+          ? "dm-detail dm-detail--fill"
+          : tab === "settings"
+            ? "dm-detail dm-detail--grow"
+            : "dm-detail"
+      }
+    >
       <nav className="dm-crumbs" aria-label="Breadcrumb">
         <a href="#/domains" className="dm-crumbs__link">
           Domains
@@ -209,11 +212,13 @@ export function DomainDetailPage({
           />
         ) : tab === "quality" ? (
           <QualityTab key={detail.domain_id} detail={detail} now={now} />
+        ) : tab === "settings" ? (
+          <SettingsTab key={detail.domain_id} detail={detail} onChanged={() => void reload()} />
         ) : (
           <DomainsPage
             key={tab}
             initialDomainId={detail.domain_id}
-            embeddedTab={INTERIM_TAB[tab]}
+            embeddedTab="overview"
             onLeaveDetail={() => navigate({ page: "domains" })}
             onOpenEngines={() => navigate({ page: "engines", tab: "overview" })}
           />

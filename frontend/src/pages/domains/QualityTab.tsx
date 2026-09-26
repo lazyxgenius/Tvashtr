@@ -411,7 +411,7 @@ export function QualityTab({ detail, now }: { detail: DomainDetailView; now: Dat
       {running && (
         <div className="dm-qrun" role="status">
           <LoaderCircle size={15} strokeWidth={1.6} aria-hidden />
-          <span>{runningText(running, new Date())}</span>
+          <span>{runningText(running, new Date(), latest?.retrieval_mode)}</span>
           <span className="dm-qrun__bar">
             <span
               className="dm-qrun__fill"

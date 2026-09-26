@@ -16,6 +16,7 @@ import {
   removeDomain,
   renameDomain,
   rereadDomainFiles,
+  saveDomainSettings,
 } from "./domains";
 
 /** The URL of the n-th fetch call. */
@@ -243,6 +244,25 @@ describe("Domains clients (G6)", () => {
     expect(old).toMatchObject({ covered: true, answer_text: "Old answer [1]", used_history: null });
     expect(old?.sources.map((s) => s.number)).toEqual([1, 2]);
     expect(normalizeDomainAnswer({ nope: 1 })).toBeNull();
+  });
+});
+
+describe("Domains clients (G9)", () => {
+  it("saves the settings with the starting point, and carries the tab's 422 copy", async () => {
+    const mock = answer({ domain_id: "dom" });
+    await saveDomainSettings("dom", { template: "legal", config: { chunking: { size: 500 } } });
+    expect(urlOf(mock, 0)).toBe("/api/domains/dom");
+    expect(mock.mock.calls[0]?.[1]?.method).toBe("PATCH");
+    expect(JSON.parse(mock.mock.calls[0]?.[1]?.body as string)).toEqual({
+      template: "legal",
+      config: { chunking: { size: 500 } },
+    });
+    mock.mockRestore();
+    answer({ detail: "Use a number from 1 to 30." }, 422);
+    await expect(saveDomainSettings("dom", { config: {} })).rejects.toMatchObject({
+      status: 422,
+      message: "Use a number from 1 to 30.",
+    });
   });
 });
 

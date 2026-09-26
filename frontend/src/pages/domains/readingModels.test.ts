@@ -8,6 +8,7 @@ import {
   missingKeyText,
   readingExamples,
   readingModel,
+  sameReadingWeights,
 } from "./readingModels";
 
 describe("reading models (DM-82)", () => {
@@ -42,5 +43,20 @@ describe("reading models (DM-82)", () => {
     const ex = readingExamples(readingModel("openai/text-embedding-ada-002"));
     expect(ex.openai).toBe("openai/text-embedding-ada-002");
     expect(ex.huggingface).toBe("huggingface/BAAI/bge-small-en-v1.5");
+  });
+
+  it("treats the OpenRouter route to the same weights as the same model (OQ-17)", () => {
+    expect(
+      sameReadingWeights("text-embedding-3-small", "openrouter/openai/text-embedding-3-small"),
+    ).toBe(true);
+    expect(sameReadingWeights("openai/text-embedding-3-small", "text-embedding-3-small")).toBe(
+      true,
+    );
+    expect(sameReadingWeights("text-embedding-3-small", "openai/text-embedding-ada-002")).toBe(
+      false,
+    );
+    expect(sameReadingWeights("openai/text-embedding-3-small", "gemini/gemini-embedding-001")).toBe(
+      false,
+    );
   });
 });

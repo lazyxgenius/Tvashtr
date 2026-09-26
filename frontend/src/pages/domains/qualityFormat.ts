@@ -102,14 +102,23 @@ export function changeMark(now: boolean | null, then: boolean | null | undefined
 const FIRST_GUESS_S = 2.5;
 
 /** "Running 8 tests… about 20 seconds": the rest at the pace so far. */
-export function runningText(run: DomainTestRun, now: Date = new Date()): string {
+export function runningText(
+  run: DomainTestRun,
+  now: Date = new Date(),
+  /** The last finished run's search mode: a run with a new mode says so instead (DmF-Tune-3). */
+  previousMode?: string | null,
+): string {
   const { done, total } = run.progress;
+  const tests = `${total} test${total === 1 ? "" : "s"}`;
+  if (previousMode && run.retrieval_mode && run.retrieval_mode !== previousMode) {
+    return `Running ${tests} with ${modeLabel(run.retrieval_mode)} search…`;
+  }
   const elapsed = Math.max(0, now.getTime() - new Date(run.created_at).getTime()) / 1000;
   const each = done > 0 ? elapsed / done : FIRST_GUESS_S;
   const s = Math.max(5, Math.ceil(((total - done) * each) / 5) * 5);
   const about =
     s < 60 ? `about ${s} seconds` : `about ${Math.round(s / 60)} minute${s < 90 ? "" : "s"}`;
-  return `Running ${total} test${total === 1 ? "" : "s"}… ${about}`;
+  return `Running ${tests}… ${about}`;
 }
 
 /** The expected files as the table shows them: "refund-policy.md", "a.md +1". */

@@ -1097,6 +1097,22 @@ export async function setDomainAnswerModel(
   if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
 }
 
+/**
+ * Save the Settings tab (DM-80…DM-85): the whole config, plus the starting point when it changed.
+ * A 4xx answer's `detail` is the tab's own copy ("Use a number from 1 to 30.").
+ */
+export async function saveDomainSettings(
+  domainId: string,
+  body: { template?: string; config: Record<string, unknown> },
+): Promise<void> {
+  const res = await send(`/api/domains/${encodeURIComponent(domainId)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+}
+
 // ---- The Quality tab (G7): test questions and test runs ----
 
 /** An expected file of a test question; a deleted file keeps its id (`exists: false`, DM-54). */

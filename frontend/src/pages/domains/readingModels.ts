@@ -66,6 +66,16 @@ export function readingModel(slug: string): ReadingModel {
   return { slug: norm, label: norm, provider, dim: 0, tagline: "" };
 }
 
+/**
+ * Two slugs name the same weights when they differ only by the OpenRouter route (OQ-17): switching
+ * between them needs no re-read. "text-embedding-3-small" ≡ "openrouter/openai/text-embedding-3-small".
+ */
+export function sameReadingWeights(a: string, b: string): boolean {
+  const weights = (s: string) =>
+    normalizeEmbeddingModel(normalizeEmbeddingModel(s).replace(/^openrouter\//i, "")).toLowerCase();
+  return weights(a) === weights(b);
+}
+
 /** Hugging Face calls its key a token. */
 export function keyWord(provider: string): "key" | "token" {
   return provider === "huggingface" ? "token" : "key";
