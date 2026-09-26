@@ -1,3 +1,4 @@
+# F5 Agent panel + canvas chrome — parity sweep, branch feat/revamp-f5-panel @ 957961b
 Desktop-Editing desktop: matched 84/84 design items · 0 with size/type drift · 31 only moved · 0 not found in app
 Desktop-Editing web: matched 81/84 design items · 0 with size/type drift · 31 only moved · 3 not found in app
 Desktop-Focus desktop: matched 109/111 design items · 0 with size/type drift · 47 only moved · 2 not found in app
@@ -10,10 +11,10 @@ Flow-Access-1 desktop: matched 56/58 design items · 0 with size/type drift · 7
 Flow-Access-1 web: matched 55/58 design items · 0 with size/type drift · 17 only moved · 3 not found in app
 Flow-Access-2 desktop: matched 54/55 design items · 0 with size/type drift · 6 only moved · 1 not found in app
 Flow-Access-2 web: matched 53/55 design items · 0 with size/type drift · 16 only moved · 2 not found in app
-Flow-Docs-1 desktop: matched 44/44 design items · 0 with size/type drift · 0 only moved · 0 not found in app
-Flow-Docs-1 web: matched 44/44 design items · 0 with size/type drift · 0 only moved · 0 not found in app
-Flow-Docs-2 desktop: matched 53/53 design items · 0 with size/type drift · 0 only moved · 0 not found in app
-Flow-Docs-2 web: matched 53/53 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+Flow-Docs-1 desktop: matched 43/44 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+Flow-Docs-1 web: matched 43/44 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+Flow-Docs-2 desktop: matched 52/53 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+Flow-Docs-2 web: matched 52/53 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 Flow-LoadMode-1 desktop: matched 54/55 design items · 0 with size/type drift · 4 only moved · 1 not found in app
 Flow-LoadMode-1 web: matched 54/55 design items · 0 with size/type drift · 4 only moved · 1 not found in app
 Flow-LoadMode-2 desktop: matched 50/51 design items · 0 with size/type drift · 0 only moved · 1 not found in app
@@ -78,8 +79,8 @@ Flow-SkillMenu-1 desktop: matched 47/52 design items · 0 with size/type drift �
 Flow-SkillMenu-1 web: matched 47/52 design items · 0 with size/type drift · 2 only moved · 5 not found in app
 Flow-SkillMenu-2 desktop: matched 51/51 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 Flow-SkillMenu-2 web: matched 51/51 design items · 0 with size/type drift · 0 only moved · 0 not found in app
-Flow-Templates-1 desktop: matched 53/53 design items · 0 with size/type drift · 0 only moved · 0 not found in app
-Flow-Templates-1 web: matched 52/53 design items · 0 with size/type drift · 5 only moved · 1 not found in app
+Flow-Templates-1 desktop: matched 51/53 design items · 0 with size/type drift · 0 only moved · 2 not found in app
+Flow-Templates-1 web: matched 50/53 design items · 0 with size/type drift · 5 only moved · 3 not found in app
 Flow-Templates-2 desktop: matched 49/49 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 Flow-Templates-2 web: matched 48/49 design items · 0 with size/type drift · 5 only moved · 1 not found in app
 Flow-Templates-3 desktop: matched 47/47 design items · 0 with size/type drift · 0 only moved · 0 not found in app
