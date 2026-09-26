@@ -141,7 +141,13 @@ function createUpdater({
     fs.mkdirSync(updatesDir, { recursive: true });
     const dmg = path.join(updatesDir, "Tvashtr-mac.dmg");
     const mount = path.join(updatesDir, "mnt");
-    await download(DMG_URL, dmg, (progress) => set({ state: "downloading", version, progress }));
+    // Tell the page once per whole percent, not per HTTP chunk (each message re-renders the app).
+    let percent = -1;
+    await download(DMG_URL, dmg, (progress) => {
+      if (Math.floor(progress * 100) === percent) return;
+      percent = Math.floor(progress * 100);
+      set({ state: "downloading", version, progress });
+    });
     fs.mkdirSync(mount);
     await run("hdiutil", ["attach", dmg, "-nobrowse", "-readonly", "-mountpoint", mount]);
     try {

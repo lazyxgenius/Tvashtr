@@ -63,6 +63,19 @@ test("a newer release is downloaded from the stable link, staged and ready", asy
   assert.deepEqual(updater.getState(), { state: "ready", version: "0.8.0" });
 });
 
+test("download progress reaches the page once per whole percent, not per chunk", async () => {
+  const { updater, states } = harness({
+    download: async (url, dest, onProgress) => {
+      for (let seen = 1; seen <= 5000; seen += 1) onProgress(seen / 5000); // 5000 chunks
+      fs.writeFileSync(dest, "dmg");
+    },
+  });
+  await updater.check();
+  const downloading = states.filter((s) => s.state === "downloading");
+  assert.ok(downloading.length <= 102, `${downloading.length} progress messages`);
+  assert.equal(downloading.at(-1).progress, 1);
+});
+
 test("same or older version: stays idle, nothing downloaded", async () => {
   const { updater, calls } = harness({ latestRelease: async () => ({ version: "0.7.0" }) });
   assert.deepEqual(await updater.check(), { state: "idle" });
