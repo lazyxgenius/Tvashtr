@@ -11,6 +11,8 @@ import {
   normalizeDomainAnswer,
   normalizeDomainDetail,
   normalizeDomainFile,
+  normalizeTestCase,
+  normalizeTestRun,
   removeDomain,
   renameDomain,
   rereadDomainFiles,
@@ -241,5 +243,70 @@ describe("Domains clients (G6)", () => {
     expect(old).toMatchObject({ covered: true, answer_text: "Old answer [1]", used_history: null });
     expect(old?.sources.map((s) => s.number)).toEqual([1, 2]);
     expect(normalizeDomainAnswer({ nope: 1 })).toBeNull();
+  });
+});
+
+describe("Quality shapes", () => {
+  it("normalizes a test question, old rows without expected_files too", () => {
+    const fresh = normalizeTestCase({
+      case_id: "c1",
+      question: "Q?",
+      expected_files: [
+        { document_id: "d1", filename: "a.md", exists: true },
+        { document_id: "d2", filename: null, exists: false },
+        { nope: 1 },
+      ],
+      expected_keywords: ["x", 3],
+    });
+    expect(fresh).toEqual({
+      case_id: "c1",
+      question: "Q?",
+      expected_files: [
+        { document_id: "d1", filename: "a.md", exists: true },
+        { document_id: "d2", filename: null, exists: false },
+      ],
+      expected_keywords: ["x"],
+      ordinal: 0,
+    });
+    expect(
+      normalizeTestCase({ case_id: "c", question: "Q", expected_citation_doc_ids: ["d9"] })
+        ?.expected_files,
+    ).toEqual([{ document_id: "d9", filename: null, exists: false }]);
+    expect(normalizeTestCase({ question: "no id" })).toBeNull();
+  });
+
+  it("normalizes a test run: list items have no results, a full run has them", () => {
+    const item = normalizeTestRun({ run_id: "r1", status: "weird", progress: { done: 2 } });
+    expect(item).toMatchObject({
+      status: "completed",
+      progress: { done: 2, total: 0 },
+      hit_at_k: null,
+      results: null,
+    });
+    const full = normalizeTestRun({
+      run_id: "r1",
+      status: "running",
+      scores: {
+        per_case: [
+          {
+            case_id: "c1",
+            hit: false,
+            keyword_hit: "?",
+            top: [{ filename: "a.md", excerpt: "…" }],
+          },
+          { nope: 1 },
+        ],
+      },
+    });
+    expect(full?.results).toEqual([
+      {
+        case_id: "c1",
+        hit: false,
+        keyword_hit: null,
+        error: null,
+        top: [{ number: 1, document_id: "", filename: "a.md", excerpt: "…" }],
+      },
+    ]);
+    expect(normalizeTestRun({})).toBeNull();
   });
 });

@@ -5,7 +5,7 @@
  * Sources; the tabs; and the tab itself. Live while files are read (DM-4); when the first read
  * finishes a toast offers to ask it a question.
  *
- * INTERIM: until the Quality, Use in teams and Settings tabs are redesigned, those tabs show the
+ * INTERIM: until the Use in teams and Settings tabs are redesigned, those tabs show the
  * previous Domains screen's matching panel under the new header.
  */
 import { useEffect, useRef, useState } from "react";
@@ -19,6 +19,7 @@ import { refreshBadges, useNavBadges } from "../../lib/workspaceStatus";
 import { detailBadge, detailWithout, metaLine, templateLabel } from "./domainFormat";
 import { AskTab } from "./AskTab";
 import { DomainMenu } from "./DomainMenu";
+import { QualityTab } from "./QualityTab";
 import { SetupStrip, SummaryStrip } from "./DomainStrips";
 import { SourcesTab } from "./SourcesTab";
 import { useDomainDetail } from "./useDomainDetail";
@@ -26,8 +27,7 @@ import { useFileDeletes } from "./useFileDeletes";
 import "./domains.css";
 
 /** The previous screen's panel each not-yet-redesigned tab shows meanwhile. */
-const INTERIM_TAB: Record<Exclude<DomainTab, "sources" | "ask">, DetailTab> = {
-  quality: "eval",
+const INTERIM_TAB: Record<Exclude<DomainTab, "sources" | "ask" | "quality">, DetailTab> = {
   teams: "overview",
   settings: "config",
 };
@@ -127,7 +127,7 @@ export function DomainDetailPage({
   const badge = detailBadge(detail);
 
   return (
-    <div className={tab === "ask" ? "dm-detail dm-detail--fill" : "dm-detail"}>
+    <div className={tab === "ask" || tab === "quality" ? "dm-detail dm-detail--fill" : "dm-detail"}>
       <nav className="dm-crumbs" aria-label="Breadcrumb">
         <a href="#/domains" className="dm-crumbs__link">
           Domains
@@ -207,6 +207,8 @@ export function DomainDetailPage({
             now={now}
             onChanged={() => void reload()}
           />
+        ) : tab === "quality" ? (
+          <QualityTab key={detail.domain_id} detail={detail} now={now} />
         ) : (
           <DomainsPage
             key={tab}

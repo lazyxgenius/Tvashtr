@@ -1096,3 +1096,192 @@ export async function setDomainAnswerModel(
   });
   if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
 }
+
+// ---- The Quality tab (G7): test questions and test runs ----
+
+/** An expected file of a test question; a deleted file keeps its id (`exists: false`, DM-54). */
+export interface DomainTestFile {
+  document_id: string;
+  filename: string | null;
+  exists: boolean;
+}
+
+export interface DomainTestCase {
+  case_id: string;
+  question: string;
+  expected_files: DomainTestFile[];
+  expected_keywords: string[];
+  ordinal: number;
+}
+
+/** One of the first passages search found for a test question (DM-77). */
+export interface DomainTestPassage {
+  number: number;
+  document_id: string;
+  filename: string;
+  excerpt: string;
+}
+
+/** One test question's result: `null` = nothing to check (no files / no key words). */
+export interface DomainTestResult {
+  case_id: string;
+  hit: boolean | null;
+  keyword_hit: boolean | null;
+  top: DomainTestPassage[];
+  error: string | null;
+}
+
+export type DomainTestRunStatus = "running" | "completed" | "failed";
+
+export interface DomainTestRun {
+  run_id: string;
+  /** 1 = the domain's first run. */
+  number: number;
+  status: DomainTestRunStatus;
+  created_at: string;
+  completed_at: string | null;
+  hit_at_k: number | null;
+  keyword_hit: number | null;
+  retrieval_mode: string | null;
+  top_k: number | null;
+  /** The settings the run used (chunking, embedding, retrieval, generation). */
+  config: Record<string, unknown>;
+  progress: { done: number; total: number };
+  error_message: string | null;
+  /** Every case's result — only from `getTestRun`. */
+  results: DomainTestResult[] | null;
+}
+
+const strs = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+const bool3 = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null);
+
+export function normalizeTestCase(raw: unknown): DomainTestCase | null {
+  const r = obj(raw);
+  if (typeof r.case_id !== "string" || typeof r.question !== "string") return null;
+  const files: Record<string, unknown>[] = Array.isArray(r.expected_files)
+    ? r.expected_files.map(obj).filter((f) => typeof f.document_id === "string")
+    : strs(r.expected_citation_doc_ids).map((id) => ({ document_id: id }));
+  return {
+    case_id: r.case_id,
+    question: r.question,
+    expected_files: files.map((f) => ({
+      document_id: f.document_id as string,
+      filename: strOrNull(f.filename),
+      exists: f.exists !== false && typeof f.filename === "string",
+    })),
+    expected_keywords: strs(r.expected_keywords),
+    ordinal: count(r.ordinal),
+  };
+}
+
+export function normalizeTestRun(raw: unknown): DomainTestRun | null {
+  const r = obj(raw);
+  if (typeof r.run_id !== "string") return null;
+  const status: DomainTestRunStatus =
+    r.status === "running" || r.status === "failed" ? r.status : "completed";
+  const p = obj(r.progress);
+  const perCase = obj(r.scores).per_case;
+  return {
+    run_id: r.run_id,
+    number: count(r.number),
+    status,
+    created_at: typeof r.created_at === "string" ? r.created_at : "",
+    completed_at: strOrNull(r.completed_at),
+    hit_at_k: numOrNull(r.hit_at_k),
+    keyword_hit: numOrNull(r.keyword_hit),
+    retrieval_mode: strOrNull(r.retrieval_mode),
+    top_k: numOrNull(r.top_k),
+    config: obj(r.config),
+    progress: { done: count(p.done), total: count(p.total) },
+    error_message: strOrNull(r.error_message),
+    results: Array.isArray(perCase)
+      ? perCase.map(obj).flatMap((c) =>
+          typeof c.case_id === "string"
+            ? [
+                {
+                  case_id: c.case_id,
+                  hit: bool3(c.hit),
+                  keyword_hit: bool3(c.keyword_hit),
+                  error: strOrNull(c.error),
+                  top: (Array.isArray(c.top) ? c.top : []).map(obj).map((t, i) => ({
+                    number: count(t.number) || i + 1,
+                    document_id: typeof t.document_id === "string" ? t.document_id : "",
+                    filename: typeof t.filename === "string" ? t.filename : "",
+                    excerpt: typeof t.excerpt === "string" ? t.excerpt : "",
+                  })),
+                },
+              ]
+            : [],
+        )
+      : null,
+  };
+}
+
+const evalPath = (domainId: string, rest = "") =>
+  `/api/domains/${encodeURIComponent(domainId)}/eval${rest}`;
+
+export async function listTestCases(domainId: string): Promise<DomainTestCase[]> {
+  const res = await send(evalPath(domainId, "/cases"));
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  const rows = obj((await res.json()) as unknown).cases;
+  return (Array.isArray(rows) ? rows : []).flatMap((c) => normalizeTestCase(c) ?? []);
+}
+
+/** Add a test question, or change one (`caseId`). A 422 carries the Quality copy. */
+export async function saveTestCase(
+  domainId: string,
+  body: { question: string; expected_citation_doc_ids: string[]; expected_keywords: string[] },
+  caseId?: string,
+): Promise<DomainTestCase> {
+  const res = await send(evalPath(domainId, caseId ? `/cases/${caseId}` : "/cases"), {
+    method: caseId ? "PATCH" : "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  const saved = normalizeTestCase((await res.json()) as unknown);
+  if (!saved) throw new ApiError(500, BACKEND_DOWN);
+  return saved;
+}
+
+/** Delete a test question; `keepalive` when the page is going away. 404 = already gone. */
+export async function deleteTestCase(
+  domainId: string,
+  caseId: string,
+  opts: { keepalive?: boolean } = {},
+): Promise<void> {
+  const res = await send(evalPath(domainId, `/cases/${caseId}`), {
+    method: "DELETE",
+    keepalive: opts.keepalive,
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  }
+}
+
+/** The domain's test runs, newest first (without their per-case results). */
+export async function listTestRuns(domainId: string): Promise<DomainTestRun[]> {
+  const res = await send(evalPath(domainId, "/runs?limit=20"));
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  const rows = obj((await res.json()) as unknown).runs;
+  return (Array.isArray(rows) ? rows : []).flatMap((r) => normalizeTestRun(r) ?? []);
+}
+
+/** One run with every case's result and the passages search found. */
+export async function getTestRun(domainId: string, runId: string): Promise<DomainTestRun> {
+  const res = await send(evalPath(domainId, `/runs/${runId}`));
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  const run = normalizeTestRun((await res.json()) as unknown);
+  if (!run) throw new ApiError(500, BACKEND_DOWN);
+  return run;
+}
+
+/** Run all tests (DM-74): the running run (or the one already going). */
+export async function startTestRun(domainId: string): Promise<DomainTestRun> {
+  const res = await send(evalPath(domainId, "/runs"), { method: "POST" });
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  const run = normalizeTestRun((await res.json()) as unknown);
+  if (!run) throw new ApiError(500, BACKEND_DOWN);
+  return run;
+}
