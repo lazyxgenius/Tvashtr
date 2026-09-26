@@ -144,5 +144,24 @@ export default [
   { name: "DtF-Run-8", ...ready },
   { name: "DtF-Launch-2", ...welcomeBack },
   { name: "DT-Update", ...update },
-  { name: "DtF-Upd-1", ...update },
+  {
+    name: "DtF-Upd-1",
+    ...update,
+    // The flow frame rings Restart in an annotation span (inline-flex, coral box-shadow), which
+    // stops the button stretching (148 vs DT-Update's 175). Draw the same annotation here; DT-Update
+    // (no ring) checks the card's real full-width button.
+    steps: async (page) => {
+      await update.steps(page);
+      await page.evaluate(() => {
+        const button = [...document.querySelectorAll("button")].find(
+          (b) => b.textContent?.trim() === "Restart to update",
+        );
+        const ring = document.createElement("span");
+        ring.style.cssText =
+          "display: inline-flex; border-radius: 10px; padding: 0; box-shadow: 0 0 0 2px #d97757, 0 0 0 7px rgba(217, 119, 87, 0.2)";
+        button.replaceWith(ring);
+        ring.append(button);
+      });
+    },
+  },
 ];

@@ -9,8 +9,8 @@ DT-Offline desktop: matched 11/11 design items · 0 with size/type drift · 0 on
 DT-Project web: n/a — Desktop-only screen (desktop-app.md §1)
 DT-Project desktop: matched 31/31 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DT-Ready web: n/a — Desktop-only screen (desktop-app.md §1)
-DT-Ready desktop: matched 27/28 design items · 1 with size/type drift · 0 only moved · 1 not found in app
-# explained DT-Ready desktop: [txt] 'Domains' + the missing 'are libraries of your own files…' — the board's nav foot is the Domains blurb; the app keeps the round-1 Shell's Home foot (Shortcuts, as Home-Main draws it) per OQ-28/DT-42, so the matcher pairs the blurb's bold 'Domains' with the nav item
+DT-Ready desktop: matched 28/28 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+# note DT-Ready / DtF-Run-8 / DtF-Launch-2 / DT-Update / DtF-Upd-1 desktop: round-1 Shell kept (OQ-28): the app also draws the ⌘K search button and nav badges, which the boards omit (extra app items, not counted); Home's nav foot shows the boards' Domains blurb while the ready card is on screen (Shortcuts otherwise)
 DT-Splash web: n/a — Desktop-only screen (desktop-app.md §1)
 DT-Splash desktop: matched 9/9 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DT-Team web: n/a — Desktop-only screen (desktop-app.md §1)
@@ -48,8 +48,7 @@ DtF-Key-3 desktop: matched 44/44 design items · 0 with size/type drift · 0 onl
 DtF-Launch-1 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Launch-1 desktop: matched 9/9 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Launch-2 web: n/a — Desktop-only screen (desktop-app.md §1)
-DtF-Launch-2 desktop: matched 27/28 design items · 1 with size/type drift · 0 only moved · 1 not found in app
-# explained DtF-Launch-2 desktop: same as DT-Ready (OQ-28 round-1 Shell foot)
+DtF-Launch-2 desktop: matched 28/28 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Off-1 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Off-1 desktop: matched 11/11 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Off-2 web: n/a — Desktop-only screen (desktop-app.md §1)
@@ -69,14 +68,13 @@ DtF-Run-6 desktop: matched 31/31 design items · 0 with size/type drift · 0 onl
 DtF-Run-7 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Run-7 desktop: matched 39/41 design items · 0 with size/type drift · 0 only moved · 2 not found in app
 DtF-Run-8 web: n/a — Desktop-only screen (desktop-app.md §1)
-DtF-Run-8 desktop: matched 27/28 design items · 1 with size/type drift · 0 only moved · 1 not found in app
-# explained DtF-Run-8 desktop: same as DT-Ready (OQ-28 round-1 Shell foot)
+DtF-Run-8 desktop: matched 28/28 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Sign-1 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Sign-1 desktop: matched 12/12 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Sign-2 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Sign-2 desktop: matched 11/11 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Upd-1 web: n/a — Desktop-only screen (desktop-app.md §1)
-DtF-Upd-1 desktop: matched 30/30 design items · 1 with size/type drift · 1 only moved · 0 not found in app
-# explained DtF-Upd-1 desktop: [ctl] 'Restart to update' 148→175 — the board's coral annotation ring wraps the button in an inline-flex span, which stops it stretching; DT-Update (no ring) draws it full-width at 175 and matches with 0 drift
+DtF-Upd-1 desktop: matched 30/30 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+# note DtF-Upd-1 desktop: the scenario draws the frame's coral annotation span around Restart (inline-flex, as the board does), which keeps the button at its 148px content width; DT-Update (no ring) checks the real full-width 175px button
 DtF-Upd-2 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Upd-2 desktop: matched 7/7 design items · 0 with size/type drift · 0 only moved · 0 not found in app
