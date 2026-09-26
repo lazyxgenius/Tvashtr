@@ -37,6 +37,8 @@ export interface MemorySource {
   node_id: string | null;
 }
 
+export type SupersededReason = "merged" | "replaced";
+
 export interface Memory {
   id: string;
   content: string;
@@ -51,6 +53,11 @@ export interface Memory {
   source_run_id: string | null;
   source_node_id: string | null;
   superseded_by: string | null;
+  /**
+   * How a superseded memory was retired: folded into a memory you already had ("merged"), or
+   * replaced by one that says the opposite ("replaced"); null otherwise or when unknown.
+   */
+  superseded_reason: SupersededReason | null;
   valid_from: string | null;
   invalid_at: string | null;
   edited_at: string | null;
@@ -180,6 +187,10 @@ export function parseMemory(raw: unknown): Memory | null {
     source_run_id: sourceRunId,
     source_node_id: strOrNull(raw.source_node_id),
     superseded_by: strOrNull(raw.superseded_by),
+    superseded_reason:
+      raw.superseded_reason === "merged" || raw.superseded_reason === "replaced"
+        ? raw.superseded_reason
+        : null,
     valid_from: strOrNull(raw.valid_from),
     invalid_at: strOrNull(raw.invalid_at),
     edited_at: strOrNull(raw.edited_at),

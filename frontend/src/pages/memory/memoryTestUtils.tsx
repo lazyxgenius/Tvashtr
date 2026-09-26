@@ -44,6 +44,7 @@ export const memory = (over: Partial<Memory> = {}): Memory => ({
   source_run_id: "r-rsi",
   source_node_id: "n-rev",
   superseded_by: null,
+  superseded_reason: null,
   valid_from: null,
   invalid_at: null,
   edited_at: null,

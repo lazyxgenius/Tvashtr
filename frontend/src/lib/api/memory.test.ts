@@ -33,6 +33,7 @@ const row = {
   source_run_id: "r1",
   source_node_id: "n1",
   superseded_by: null,
+  superseded_reason: null,
   valid_from: "2026-09-25T09:12:03Z",
   invalid_at: null,
   edited_at: null,
@@ -61,6 +62,17 @@ const row = {
 describe("parseMemory", () => {
   it("keeps a well-formed row", () => {
     expect(parseMemory(row)).toEqual(row);
+  });
+
+  it("reads how a superseded memory was retired, and drops a reason it doesn't know", () => {
+    const archived = { ...row, status: "superseded", superseded_by: "m0" };
+    expect(parseMemory({ ...archived, superseded_reason: "merged" })?.superseded_reason).toBe(
+      "merged",
+    );
+    expect(parseMemory({ ...archived, superseded_reason: "replaced" })?.superseded_reason).toBe(
+      "replaced",
+    );
+    expect(parseMemory({ ...archived, superseded_reason: "split" })?.superseded_reason).toBeNull();
   });
 
   it("fills what an older server leaves out (repo_label, tier, source, agent)", () => {
