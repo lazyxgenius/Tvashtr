@@ -24,6 +24,7 @@ in `routers.py` and changed there in place.
 | `POST /api/domains/{id}/reread` | **new** — read some or all files again | G2 |
 | `GET /api/domains/{id}/documents/{doc}/pieces` | **new** — one file's pieces + how often answers cite it | G2 |
 | `GET /api/domains/{id}/documents/{doc}/file` | **new** — download the original | G2 |
+| `POST /api/domains` | optional `embedding_model`; the name rule (1–120 characters, unique per account ignoring case → `409`); answers with the full summary | G3 |
 
 Schema: migration `0042_domain_message_meta` adds `domain_messages.meta JSONB NULL` (the Ask tab's
 answer meta `{model, used_history, source}`; written from the Ask group on).
@@ -328,3 +329,49 @@ window** (`<a href download>`), so Desktop's loopback proxy carries the session 
 
 Errors: `404 {"detail": "domain not found"}`, `404 {"detail": "document not found"}`,
 `404 {"detail": "The original file isn’t available any more."}` (the bytes are gone).
+
+---
+
+## `POST /api/domains` (G3 additions — the New domain dialog)
+
+```json
+{"name": "Support docs", "template": "support", "embedding_model": "huggingface/BAAI/bge-small-en-v1.5"}
+```
+
+- `embedding_model` (optional, new) — the reading model picked in the dialog (DM-23/DM-26). It must
+  normalise to one of the `EMBEDDING_PRESETS` slugs (bare OpenAI names gain `openai/`); it is stored
+  in `config.embedding.model`. Left out, the template's default (`text-embedding-3-small`) stays.
+  NVIDIA NIM and every other model outside the list are refused.
+- The name rule (HTTP create only; internal callers keep trim-only): trimmed, 1–120 characters, and
+  unique within the account ignoring case. Domains that already share a name keep working.
+- The answer is the full summary — the list-item keys plus `setup`, `answer_model` and
+  `last_question_at` (a superset of the old `domain_to_dict` answer), so the dialog can land on
+  `#/domains/<domain_id>` without a second read:
+
+```json
+{
+  "domain_id": "7f3a2c1e-0b4d-4c55-9a51-2f7d8e6b1a90",
+  "name": "Support docs",
+  "template": "support",
+  "config": {"chunking": {"strategy": "fixed", "size": 600, "overlap": 100}, "embedding": {"model": "huggingface/BAAI/bge-small-en-v1.5"}, "retrieval": {"…": "…"}, "generation": {"model": null}},
+  "status": "empty",
+  "doc_count": 0,
+  "files": {"total": 0, "ready": 0, "reading": 0, "waiting": 0, "waiting_for_key": 0, "needs_attention": 0},
+  "pieces": 0,
+  "state": "empty",
+  "reading_model": {"slug": "huggingface/BAAI/bge-small-en-v1.5", "label": "Hugging Face BGE-small (free)", "provider": "huggingface", "dim": 384, "key_saved": false},
+  "setup": {"key": false, "files_read": false, "tested": false, "used": false},
+  "…": "the other summary keys"
+}
+```
+
+Errors (`detail` copy is shown under the Name field or in the dialog as is):
+
+| Status | `detail` |
+|---|---|
+| `400` | `"unknown template"` (checked before the name clash) |
+| `409` | `"You already have a domain named “<trimmed name>”."` |
+| `422` | `"Give this domain a name."` (empty after trimming) |
+| `422` | `"Use 120 characters or fewer."` |
+| `422` | `"Pick a reading model from the list."` (`embedding_model` outside the list) |
+

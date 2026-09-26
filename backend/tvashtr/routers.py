@@ -66,6 +66,7 @@ from tvashtr.control_plane.domain_eval import (
 from tvashtr.control_plane.domain_files import MAX_UPLOAD_BYTES
 from tvashtr.control_plane.domain_ingest import ingest_domain, normalize_embedding_model
 from tvashtr.control_plane.domains import (
+    DomainNameTaken,
     create_document,
     create_domain,
     delete_document,
@@ -334,6 +335,8 @@ class CreateTeamRequest(BaseModel):
 class CreateDomainRequest(BaseModel):
     template: str
     name: str
+    # Revamp (New domain dialog, DM-23): the reading model picked before creating.
+    embedding_model: str | None = None
 
 
 class UpdateDomainRequest(BaseModel):
@@ -2666,11 +2669,22 @@ def post_domain(
 ) -> dict:
     owner_id = uuid.UUID(current_user.id)
     try:
-        return create_domain(owner_id, body.name, body.template)
+        row = create_domain(
+            owner_id,
+            body.name,
+            body.template,
+            embedding_model=body.embedding_model,
+            name_rule=True,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=400, detail="unknown template") from exc
+    except DomainNameTaken as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Revamp: answer with the full summary (a superset of the old keys) so the dialog can land on
+    # the new domain's page without a second read.
+    return domain_views.detail_summary(owner_id, uuid.UUID(row["domain_id"])) or row
 
 
 def _parse_domain_id(domain_id: str) -> uuid.UUID:

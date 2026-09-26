@@ -289,14 +289,67 @@ def list_domains(owner_id: uuid.UUID) -> list[dict]:
         return [domain_to_dict(r, doc_count=_doc_count(session, r.id)) for r in rows]
 
 
-def create_domain(owner_id: uuid.UUID, name: str, template: str) -> dict:
+MAX_DOMAIN_NAME = 120
+NAME_REQUIRED = "Give this domain a name."
+NAME_TOO_LONG = "Use 120 characters or fewer."
+UNKNOWN_READING_MODEL = "Pick a reading model from the list."
+
+
+class DomainNameTaken(ValueError):
+    """The owner already has a domain with this name (case-insensitive) → API 409."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(f"You already have a domain named “{name}”.")
+        self.name = name
+
+
+def clean_domain_name(
+    session, owner_id: uuid.UUID, name: str | None, *, exclude_id: uuid.UUID | None = None
+) -> str:
+    """The name rule (DM-14, DM-22): trimmed, 1–120 characters, unique per owner ignoring case.
+
+    Raises ``ValueError`` (→ 422) for an empty or long name and ``DomainNameTaken`` (→ 409) for a
+    clash. Only new names are checked, so domains that already share a name keep working.
+    """
     cleaned = (name or "").strip()
     if not cleaned:
-        raise ValueError("a domain name is required")
+        raise ValueError(NAME_REQUIRED)
+    if len(cleaned) > MAX_DOMAIN_NAME:
+        raise ValueError(NAME_TOO_LONG)
+    q = select(Domain.id).where(
+        Domain.owner_id == owner_id, func.lower(Domain.name) == cleaned.lower()
+    )
+    if exclude_id is not None:
+        q = q.where(Domain.id != exclude_id)
+    if session.execute(q.limit(1)).first() is not None:
+        raise DomainNameTaken(cleaned)
+    return cleaned
+
+
+def create_domain(
+    owner_id: uuid.UUID,
+    name: str,
+    template: str,
+    *,
+    embedding_model: str | None = None,
+    name_rule: bool = False,
+) -> dict:
+    """A new, empty domain. ``embedding_model`` (optional) is the reading model picked in the New
+    domain dialog; it must be one of the allowlisted slugs. ``name_rule`` applies the account's
+    name rule (``clean_domain_name``) — the HTTP create sets it; internal callers keep the old
+    trim-only behaviour."""
+    if not (name or "").strip():
+        raise ValueError(NAME_REQUIRED)
     if template not in DOMAIN_TEMPLATE_KEYS:
         raise KeyError(template)
     cfg = default_config_for_template(template)
+    if embedding_model is not None and embedding_model.strip():
+        slug = normalize_embedding_model(embedding_model.strip())
+        if not is_allowed_embedding_model(slug):
+            raise ValueError(UNKNOWN_READING_MODEL)
+        cfg["embedding"] = {"model": slug}
     with session_scope() as session:
+        cleaned = clean_domain_name(session, owner_id, name) if name_rule else name.strip()
         row = Domain(
             owner_id=owner_id,
             name=cleaned,
