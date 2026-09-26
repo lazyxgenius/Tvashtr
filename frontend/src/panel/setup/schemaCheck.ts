@@ -293,6 +293,17 @@ function checkSchemaNode(node: JsonNode, unchecked: string[]): string | null {
   return null;
 }
 
+/** JSON's first mistake in words ("Line 3: add a comma after the list."), or null (the paste sheet). */
+export function jsonProblem(text: string): string | null {
+  try {
+    parseJson(text);
+    return null;
+  } catch (e) {
+    if (e instanceof ParseFailure) return e.message;
+    throw e;
+  }
+}
+
 export function checkSchema(text: string): SchemaCheck {
   if (!text.trim()) return { state: "empty" };
   let root: JsonNode;

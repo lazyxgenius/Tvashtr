@@ -2,14 +2,20 @@ import { describe, expect, it } from "vitest";
 
 import {
   FETCH_SERVER,
+  addLibrary,
   addServer,
   domainsOf,
   enabledOf,
+  formOf,
   refsOf,
   removeLibrary,
   removeServer,
+  replaceServer,
+  secretName,
+  serverFrom,
   setDomains,
   setEnabled,
+  targetProblem,
   toolRows,
   transportOf,
 } from "./nodeTools";
@@ -69,5 +75,53 @@ describe("nodeTools", () => {
     const unknown = toolRows(withLib, null, null);
     expect(unknown.map((r) => r.badge.label)).toEqual(["Local", "Remote", "Library", "Library"]);
     expect(unknown[2].name).toBe("Library tool");
+  });
+
+  it("adds library ids once, and edits a server in place keeping its switch", () => {
+    expect(addLibrary({ tvashtr: { library: ["t1"] } }, ["t1", "t2"])).toEqual({
+      tvashtr: { library: ["t1", "t2"] },
+    });
+    const off = setEnabled(cfg, "fetch", false);
+    const renamed = replaceServer(off, "fetch", "web", { command: "uvx", args: ["f"] });
+    expect(Object.keys(renamed?.mcpServers as object)).toEqual(["web", "github"]);
+    expect(enabledOf(renamed, "web")).toBe(false);
+  });
+
+  it("builds a server from the add form and back (Q14: headers / env rows)", () => {
+    const rows = [
+      { key: "Authorization", value: "Bearer ${LINEAR_TOKEN}" },
+      { key: " ", value: "dropped" },
+    ];
+    const remote = serverFrom("remote", " https://mcp.linear.app/sse ", rows);
+    expect(remote).toEqual({
+      url: "https://mcp.linear.app/sse",
+      headers: { Authorization: "Bearer ${LINEAR_TOKEN}" },
+    });
+    expect(formOf(remote)).toEqual({
+      transport: "remote",
+      target: "https://mcp.linear.app/sse",
+      rows: [rows[0]],
+    });
+    const local = serverFrom("local", 'npx -y "my server" x', [], { type: "sse", timeout: 5 });
+    expect(local).toEqual({ timeout: 5, command: "npx", args: ["-y", "my server", "x"] });
+    expect(formOf(local).target).toBe('npx -y "my server" x');
+    expect(serverFrom("local", "uvx a", [{ key: "K", value: "${K}" }]).env).toEqual({ K: "${K}" });
+  });
+
+  it("checks the URL or command, and names the hint's secret", () => {
+    expect(targetProblem("remote", "https://mcp.linear.app/sse")).toBeNull();
+    expect(targetProblem("remote", "mcp.linear.app")).toBe(
+      "Use a URL that starts with https:// or http://.",
+    );
+    expect(targetProblem("remote", "ftp://x")).not.toBeNull();
+    expect(targetProblem("remote", "https://x/${T}")).toBe(
+      "Secrets aren’t filled in here. Put them in a header.",
+    );
+    expect(targetProblem("local", "uvx ${T}")).toMatch(/Put them in Env\.$/);
+    expect(targetProblem("local", "uvx x")).toBeNull();
+    expect(secretName("linear")).toBe("LINEAR_TOKEN");
+    expect(secretName("my-db 2")).toBe("MY_DB_2_TOKEN");
+    expect(secretName("")).toBe("MCP_TOKEN");
+    expect(secretName("1x")).toBe("MCP_1X_TOKEN");
   });
 });

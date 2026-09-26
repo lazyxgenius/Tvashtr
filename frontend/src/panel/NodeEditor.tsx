@@ -47,6 +47,7 @@ import { desktopSubscriptionNote } from "./skills/nodeSkills";
 import { AddSkillView, type SkillSub } from "./skills/AddSkillViews";
 import { SkillsToolsTab } from "./skills/SkillsToolsTab";
 import { useShelves } from "./skills/useShelves";
+import { AddToolView, type ToolSub } from "./tools/AddToolViews";
 import { useAgentDraft } from "./useAgentDraft";
 import { useDrawerToast } from "./useDrawerToast";
 import { useNodeMemoryCount } from "./useNodeMemoryCount";
@@ -181,6 +182,8 @@ function AgentEditor({
   const [schemaText, setSchemaText] = useState<string | null>(null);
   // The Skills sheet open over the Skills & tools tab (write / repo / presets / library; G8).
   const [skillSub, setSkillSub] = useState<SkillSub | null>(null);
+  // The Tools sheet (add a server / library / paste mcp.json, or Edit connection; G9).
+  const [toolSub, setToolSub] = useState<ToolSub | null>(null);
   const shelves = useShelves(tab === "skills");
 
   // The header follows the draft, so a rename shows before it's saved.
@@ -202,7 +205,8 @@ function AgentEditor({
   const canSave = api.isDirty && api.problem === null && !schemaBroken;
   // The drawer's Output format editor covers the Save footer; focus mode keeps it in view.
   const subCoversFooter =
-    (schemaText !== null && tab === "setup" && !focus) || (skillSub !== null && tab === "skills");
+    (schemaText !== null && tab === "setup" && !focus) ||
+    ((skillSub !== null || toolSub !== null) && tab === "skills");
   // ⌘S / Ctrl+S saves; while a confirm is open the confirm's own buttons decide.
   useSaveShortcut(() => {
     if (canSave && !guard.asking && !deleting && !pending && !subCoversFooter) void api.save();
@@ -298,6 +302,26 @@ function AgentEditor({
         notify={toast.show}
         onOpenToolkit={onOpenToolkit}
         onClose={closeSkillSub}
+      />
+    ) : null;
+
+  const closeToolSub = () => {
+    setToolSub(null);
+    window.requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>("[data-add-tool]")?.focus(),
+    );
+  };
+  const toolEditor =
+    toolSub !== null && tab === "skills" ? (
+      <AddToolView
+        sub={toolSub}
+        config={draft.toolConfig}
+        library={shelves.toolLibrary}
+        secrets={shelves.secrets}
+        onChange={(v) => api.set("toolConfig", v)}
+        notify={toast.show}
+        onOpenToolkit={onOpenToolkit}
+        onClose={closeToolSub}
       />
     ) : null;
 
@@ -416,7 +440,7 @@ function AgentEditor({
   switch (tab) {
     case "skills":
       // Focus mode has no sheet slot on this tab: the sheet takes the tab's place.
-      body = (focus && skillEditor) || (
+      body = (focus && (skillEditor ?? toolEditor)) || (
         <SkillsToolsTab
           skills={draft.skills}
           toolConfig={draft.toolConfig}
@@ -426,9 +450,8 @@ function AgentEditor({
           notify={toast.show}
           onAddSkill={(kind) => setSkillSub({ kind })}
           onEditSkill={(index) => setSkillSub({ kind: "write", index })}
-          // Interim: the add-tool and edit-server sheets land next (G9).
-          onAddTool={() => {}}
-          onEditServer={() => {}}
+          onAddTool={(kind) => setToolSub({ kind })}
+          onEditServer={(name) => setToolSub({ kind: "server", edit: name })}
           onOpenToolkit={onOpenToolkit}
           shelves={shelves}
         />
@@ -548,7 +571,7 @@ function AgentEditor({
       header={header}
       tabs={tabs}
       footer={footer}
-      sub={schemaEditor ?? skillEditor}
+      sub={schemaEditor ?? skillEditor ?? toolEditor}
       toast={toastHost}
       overlay={overlay}
     >

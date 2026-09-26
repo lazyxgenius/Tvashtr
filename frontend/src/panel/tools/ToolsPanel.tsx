@@ -1,12 +1,4 @@
-import {
-  BookOpen,
-  ClipboardPaste,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Server,
-  Trash,
-} from "lucide-react";
+import { BookOpen, Braces, MoreHorizontal, Pencil, Plus, Server, Trash } from "lucide-react";
 
 import { Button, IconButton, Menu, type MenuEntry, Switch } from "../../design-system/components";
 import type { ToolLibraryItem } from "../../lib/api";
@@ -94,12 +86,18 @@ export function ToolsPanel({
               {
                 key: "paste",
                 label: "Paste mcp.json",
-                icon: <ClipboardPaste {...icon} />,
+                icon: <Braces {...icon} />,
                 onSelect: () => onAdd("paste"),
               },
             ]}
             trigger={(props) => (
-              <Button variant="secondary" size="sm" className="nd-btn-flush" {...props}>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="nd-btn-flush"
+                data-add-tool
+                {...props}
+              >
                 <Plus size={13} strokeWidth={1.6} aria-hidden />
                 <span>Add tool</span>
               </Button>

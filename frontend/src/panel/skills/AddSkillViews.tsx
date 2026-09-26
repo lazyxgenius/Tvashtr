@@ -284,7 +284,7 @@ const addLabel = (n: number) => (n === 0 ? "Add skills" : `Add ${n} skill${n ===
 const addedText = (n: number) => `${n} skill${n === 1 ? "" : "s"} added`;
 
 /** A search box over checkbox rows (the presets and library pickers). */
-function PickList({
+export function PickList({
   items,
   picked,
   onToggle,
