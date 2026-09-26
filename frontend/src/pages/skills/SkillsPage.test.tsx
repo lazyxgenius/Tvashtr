@@ -1,45 +1,10 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ToastProvider } from "../../design-system/components";
 import { __resetBackendStatusForTests } from "../../lib/backendStatus";
-import { useNav } from "../../lib/nav";
-import { __resetWorkspaceStatusForTests, useNavBadges } from "../../lib/workspaceStatus";
+import { __resetWorkspaceStatusForTests } from "../../lib/workspaceStatus";
 import { jsonError, mockApi } from "../home/homeTestUtils";
-import { SkillsPage } from "./SkillsPage";
-
-const inline = (name: string, mode = "always", triggers?: string[]) => ({
-  type: "inline",
-  name,
-  content: `# ${name}`,
-  mode,
-  ...(triggers ? { triggers } : {}),
-});
-const skill = (
-  id: string,
-  name: string,
-  source: object,
-  usage = { agents: 0, teams: 0 },
-  updated = "2026-09-23T12:00:00+00:00",
-) => ({ id, name, source, created_at: updated, updated_at: updated, usage });
-
-const LIBRARY = [
-  skill(
-    "s3",
-    "security-checklist",
-    inline("security-checklist", "trigger", ["auth", "secrets", "tokens"]),
-    undefined,
-    "2026-09-24T12:00:00+00:00",
-  ),
-  skill("s1", "house-style", inline("house-style"), { agents: 2, teams: 1 }),
-  skill(
-    "s2",
-    "pytest-review",
-    { type: "repo", url: "https://github.com/org/skills", ref: "main", mode: "agent" },
-    { agents: 1, teams: 1 },
-    "2026-09-21T12:00:00+00:00",
-  ),
-];
+import { LIBRARY, inline, renderAt, skill, table } from "./skillsTestUtils";
 
 const preset = (key: string, title: string, description: string) => ({
   key,
@@ -64,33 +29,6 @@ const PRESETS = [
   ),
   preset("yagni", "YAGNI", "Smallest change that solves the asked problem, no speculative extras."),
 ];
-
-function Badges() {
-  const b = useNavBadges();
-  return <output aria-label="skills badge">{b.skills ?? ""}</output>;
-}
-
-/** The page as Workspace mounts it: the address picks the tab. */
-function Harness() {
-  const { route } = useNav();
-  return (
-    <>
-      {route.page === "skills" ? <SkillsPage view={route.view} /> : <p>elsewhere</p>}
-      <Badges />
-    </>
-  );
-}
-
-function renderAt(hash: string) {
-  window.location.hash = hash;
-  return render(
-    <ToastProvider>
-      <Harness />
-    </ToastProvider>,
-  );
-}
-
-const table = () => screen.getByRole("region", { name: "Your skills" });
 
 beforeEach(() => {
   __resetBackendStatusForTests();

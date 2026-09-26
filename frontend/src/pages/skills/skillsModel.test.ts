@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import type { Skill, SkillSource } from "../../lib/api/skills";
 import {
+  agentLabel,
+  agentsActionLabel,
+  deleteImpact,
+  foundSummary,
+  joinAnd,
   loadMode,
+  matchesGlobs,
+  parseGlobs,
   matchesQuery,
   presetInLibrary,
   repoSlug,
@@ -95,5 +102,82 @@ describe("skills labels", () => {
     };
     expect(presetInLibrary(preset, [skill("yagni")])).toBe(true);
     expect(presetInLibrary(preset, [skill("tdd")])).toBe(false);
+  });
+});
+
+const row = (role: string | null, team = "Indicator sprint team", title: string | null = null) => ({
+  node_id: `${role}-${team}`,
+  role_name: role,
+  title,
+  team_id: team,
+  team_name: team,
+});
+
+describe("agents and the delete impact", () => {
+  it("names an agent by its title, else its role; a deleted node is Removed agent", () => {
+    expect(agentLabel({ title: "Lead reviewer", role_name: "reviewer" })).toBe("Lead reviewer");
+    expect(agentLabel({ title: null, role_name: "pm" })).toBe("Product manager");
+    expect(agentLabel({ title: null, role_name: "writer" })).toBe("Writer");
+    expect(agentLabel({ title: null, role_name: null })).toBe("Removed agent");
+  });
+
+  it("joins names the way the design writes them", () => {
+    expect(joinAnd(["a"])).toBe("a");
+    expect(joinAnd(["a", "b"])).toBe("a and b");
+    expect(joinAnd(["a", "b", "c"])).toBe("a, b and c");
+  });
+
+  it("says who loses the skill (TkF-SkillMenu-2)", () => {
+    const usage = { agents: 2, teams: 1 };
+    expect(deleteImpact([row("reviewer"), row("engineer")], usage)).toBe(
+      "Reviewer and Engineer in Indicator sprint team use it. They lose it on their next run. You can’t undo this.",
+    );
+    expect(deleteImpact([row("reviewer"), row("writer", "Docs team")], usage)).toBe(
+      "Reviewer in Indicator sprint team and Writer in Docs team use it. They lose it on their next run. You can’t undo this.",
+    );
+    expect(deleteImpact([row("reviewer")], { agents: 1, teams: 1 })).toBe(
+      "Reviewer in Indicator sprint team uses it and loses it on its next run. You can’t undo this.",
+    );
+    const many = ["pm", "architect", "engineer", "reviewer", "writer"].map((r) => row(r));
+    expect(deleteImpact(many, { agents: 5, teams: 1 })).toMatch(
+      /^Product manager, Architect, Engineer and 2 more in Indicator sprint team use it\./,
+    );
+  });
+
+  it("falls back to the counts, and says when nobody uses it", () => {
+    expect(deleteImpact(null, { agents: 2, teams: 1 })).toBe(
+      "2 agents in 1 team use it. They lose it on their next run. You can’t undo this.",
+    );
+    expect(deleteImpact([], { agents: 0, teams: 0 })).toBe(
+      "No agents use it. You can’t undo this.",
+    );
+  });
+
+  it("labels the picker's action by the end state", () => {
+    expect(agentsActionLabel(1, false)).toBe("Turn on for 1 agent");
+    expect(agentsActionLabel(3, true)).toBe("Turn on for 3 agents");
+    expect(agentsActionLabel(0, true)).toBe("Turn off for all agents");
+    expect(agentsActionLabel(0, false)).toBe("Turn on for 0 agents");
+  });
+});
+
+describe("Add from GitHub", () => {
+  it("filters found skills by comma-separated globs, case-insensitively", () => {
+    const globs = parseGlobs(" review-*, pytest-* ,,");
+    expect(globs).toHaveLength(2);
+    expect(matchesGlobs("pytest-review", globs)).toBe(true);
+    expect(matchesGlobs("Review-api", globs)).toBe(true);
+    expect(matchesGlobs("house-style-py", globs)).toBe(false);
+    expect(matchesGlobs("anything", parseGlobs(""))).toBe(true);
+    // Regex characters are literal; ? is one character.
+    expect(matchesGlobs("a.b", parseGlobs("a.b"))).toBe(true);
+    expect(matchesGlobs("axb", parseGlobs("a.b"))).toBe(false);
+    expect(matchesGlobs("ab1", parseGlobs("ab?"))).toBe(true);
+  });
+
+  it("summarises what the scan found", () => {
+    expect(foundSummary(4, 4, "main", "1a2b3c4")).toBe("Found 4 skills at main @ 1a2b3c4");
+    expect(foundSummary(1, 1, "v2", "abcdef0")).toBe("Found 1 skill at v2 @ abcdef0");
+    expect(foundSummary(2, 4, "main", "1a2b3c4")).toBe("Found 2 of 4 skills at main @ 1a2b3c4");
   });
 });
