@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { navigate, parseRoute } from "../../lib/nav";
+import { NAVIGATION_KEPT, navigate, parseRoute } from "../../lib/nav";
 
 /** Tell Desktop whether closing / reloading the window should ask first (no-op on the website). */
 function reportUnsaved(state: { dirty: boolean; agentName?: string }): void {
@@ -62,7 +62,10 @@ export function useLeaveGuard(
     setPending(null);
     navigate(parseRoute(pending), { replace: true });
   }, [pending]);
-  const stay = useCallback(() => setPending(null), []);
+  const stay = useCallback(() => {
+    setPending(null);
+    window.dispatchEvent(new Event(NAVIGATION_KEPT));
+  }, []);
   /** Let the next move go without asking (the edits no longer matter, e.g. the thing was removed). */
   const release = useCallback(() => {
     leaving.current = true;
