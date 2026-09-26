@@ -234,10 +234,11 @@ class ConfigResponse(BaseModel):
 @app.get("/api/config", response_model=ConfigResponse)
 def config() -> ConfigResponse:
     """PUBLIC client bootstrap (open, like ``/health``): the posture the FE needs BEFORE login. In
-    HOSTED mode the AuthWizard shows only "Continue with GitHub" linking to ``github_install_url``
-    (the OAuth sign-in door), and the launch panel offers ``github_manage_url`` (the SECONDARY "add
-    repositories" install page) when a signed-in user's installation covers no repos; when
-    ``hosted_mode`` is False it stays the email/password wizard unchanged. Also serves the public
+    HOSTED mode the sign-in page shows only "Continue with GitHub" (through
+    ``/api/auth/github/start``; ``github_install_url`` is the OAuth door), and the launch panel
+    offers ``github_manage_url`` (the SECONDARY "add repositories" install page) when a signed-in
+    user's installation covers no repos; when ``hosted_mode`` is False it is the email/password
+    form. Also serves the public
     ``provider_catalogue`` (slugs only) the FE derives its model picker from — carrying M-seat's
     thinker/worker split, so the picker can offer a worker node only models proven to drive the
     agent loop. Exposes ONLY public fields — the client secret and private key are never

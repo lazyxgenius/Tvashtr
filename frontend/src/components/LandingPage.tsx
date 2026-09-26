@@ -1,8 +1,9 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import "../landing.css";
-import type { AuthMode } from "./AuthWizard";
 import { DESKTOP_MAC_DMG_URL } from "../lib/desktopDownload";
+
+type AuthMode = "login" | "register";
 
 /* ============================================================
    F4 — the premium logged-out landing, rebuilt from
@@ -450,8 +451,8 @@ export function LandingPage({ onGetStarted }: { onGetStarted: (mode: AuthMode) =
                 </a>
               </div>
               <p className="tv-lp__download-note">
-                Unsigned .dmg via GitHub Releases — right-click → Open on first launch
-                (not Apple-notarized).
+                Unsigned .dmg via GitHub Releases — right-click → Open on first launch (not
+                Apple-notarized).
               </p>
               <div className="tv-lp__chips">
                 {TRUST_CHIPS.map((c) => (
