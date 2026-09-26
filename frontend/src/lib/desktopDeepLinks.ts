@@ -22,10 +22,32 @@ export function desktopLink(connect?: ConnectTarget | null): string {
   return connect ? `${link}?connect=${connect}` : link;
 }
 
-/** Hand the link to the browser. The page stays where it is: the browser asks whether to open the
- *  app, and does nothing visible when the app isn't installed. */
+/** Firefox replaces the page with "The address wasn't understood" when a top-level navigation
+ *  names a scheme no app handles; inside a hidden frame that error stays invisible. */
+function isGecko(): boolean {
+  return typeof navigator !== "undefined" && /\bfirefox\//i.test(navigator.userAgent);
+}
+
+/** Hand the link to the browser (call it inside the click, so the browser lets it through). The
+ *  page stays where it is: the browser asks whether to open the app, and shows nothing that leaves
+ *  the page when the app isn't installed — Chrome and Safari keep the page for a top-level link,
+ *  Firefox gets it through one reusable hidden frame. */
 export function openTvashtrDesktop(connect?: ConnectTarget | null): void {
-  window.location.href = desktopLink(connect);
+  const link = desktopLink(connect);
+  if (!isGecko()) {
+    window.location.href = link;
+    return;
+  }
+  let frame = document.querySelector<HTMLIFrameElement>("iframe[data-tvashtr-desktop-link]");
+  if (!frame) {
+    frame = document.createElement("iframe");
+    frame.dataset.tvashtrDesktopLink = "";
+    frame.hidden = true;
+    frame.tabIndex = -1;
+    frame.setAttribute("aria-hidden", "true");
+    document.body.appendChild(frame);
+  }
+  frame.src = link;
 }
 
 /** The app address for a target the Desktop bridge delivered, or null when it isn't one. */
