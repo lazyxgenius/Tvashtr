@@ -66,6 +66,28 @@
 #   read") and the Sources tab ("Sources 13"), which the frame leaves stale at 14 (OQ-5): '14 of 14 files read',
 #   'Sources14' and '14' are not found. 'Showing 7 of 13 files · 1,148 pieces' — OQ-7 (all 13 rows listed).
 #   The fixture's webhooks.md (row 8, below the fold on every G2 board) is the frame's: 40 KB, 77 pieces, Sep 18.
+# note DmF-Drag-1…4 / DmF-Fail-1…4 (G5, scenarios/domains-upload.mjs): 'Tvashtr — the living canvas' only moved = the
+#   Desktop strip title (centred in the app); on web it is not found (no strip) — every other web item sits 30px higher.
+# note DmF-Drag-1 / DmF-Fail-1…4: 'Showing 7 of 14 files · 1,212 pieces' not found — OQ-7, as on Dm-Sources (all 14 rows).
+# note DmF-Drag-2…4: counts are live (OQ-5). After the drop the server lists the uploaded files, so the meta line
+#   ('16 files · …' / '17 files · 1,244 pieces · …' — Drag-4's '17 files · 1,282 pieces' matches), the strip
+#   ('14 of 16' / '16 of 17' / '17 of 17 files read') and the tab ('Sources 16' / '17') move with them where the frames stay
+#   at 14: '14 of 14 files read', 'Sources14', '14' and the 14-file meta line are not found. The footers
+#   ('18 files · reading 1, uploading 1, waiting 1' — the app writes exactly this — / '18 files · 1 needs attention' /
+#   'Showing 7 of 17 files · 1,282 pieces') sit below the 900px fold: the table lists all 18/17 rows (OQ-7). Drag-3's
+#   frame says "1 needs attention" while gdpr still reads; the app says "18 files · reading 1" (busy parts first, as Drag-2).
+# note DmF-Drag-2/3: the header badge stays "Ready" while new files read (OQ-5, like Fail-3: after the first read a partial
+#   read doesn't pause Ask). The nav dot still follows the server state (reading, coral) — lead: backend domain_state
+#   has no first-read signal in list summaries. The too-big row is tinted (DM-44, as Fail-1); the frames leave it plain.
+# note DmF-Drag-2: gdpr-requests.pdf's upload is held at 45% by the scenario (an XHR stub in init); the frame is shot after
+#   the too-big file's toast has gone (the app shows it on drop). DmF-Drag-3: shot after "3 files added" (5 s) has gone and
+#   while the too-big toast (8 s) is up; the ⋯ ring is keyboard focus (Tab from mobile-app-faq.md's ⋯).
+# note DmF-Drag-4: Remove it removed the row; "3 files added to Support docs" is the batch's toast (after the uploads).
+# note DmF-Fail-1…3: the meta line reads '14 files · 1,126 pieces' (billing-faq.pdf's 86 pieces aren't ready) and the strip
+#   '13 of 14 files read' — live counts (OQ-5); the frames' '1,212 pieces' / '14 of 14' are not found.
+# note DmF-Fail-2: after the key is fixed the row drops "Fix key in Engines" (backend: a key saved after the failure clears
+#   problem.fix) — as the frame draws it. The hovered item is coral (menus.css), like the frame.
+# note DmF-Fail-3: the badge stays "Ready" (OQ-5: a single-file re-read doesn't pause Ask).
 Dm-List web: matched 57/58 design items · 0 with size/type drift · 55 only moved · 1 not found in app
 Dm-List desktop: matched 58/58 design items · 0 with size/type drift · 17 only moved · 0 not found in app
 Dm-ListEmpty web: matched 35/36 design items · 0 with size/type drift · 33 only moved · 1 not found in app
@@ -80,6 +102,22 @@ DmF-DelFile-2 web: matched 104/106 design items · 0 with size/type drift · 94 
 DmF-DelFile-2 desktop: matched 105/106 design items · 0 with size/type drift · 1 only moved · 1 not found in app
 DmF-DelFile-3 web: matched 95/100 design items · 0 with size/type drift · 91 only moved · 5 not found in app
 DmF-DelFile-3 desktop: matched 96/100 design items · 0 with size/type drift · 1 only moved · 4 not found in app
+DmF-Drag-1 web: matched 98/100 design items · 0 with size/type drift · 96 only moved · 2 not found in app
+DmF-Drag-1 desktop: matched 99/100 design items · 0 with size/type drift · 1 only moved · 1 not found in app
+DmF-Drag-2 web: matched 89/95 design items · 0 with size/type drift · 87 only moved · 6 not found in app
+DmF-Drag-2 desktop: matched 90/95 design items · 0 with size/type drift · 1 only moved · 5 not found in app
+DmF-Drag-3 web: matched 93/99 design items · 0 with size/type drift · 89 only moved · 6 not found in app
+DmF-Drag-3 desktop: matched 94/99 design items · 0 with size/type drift · 1 only moved · 5 not found in app
+DmF-Drag-4 web: matched 94/99 design items · 0 with size/type drift · 91 only moved · 5 not found in app
+DmF-Drag-4 desktop: matched 95/99 design items · 0 with size/type drift · 1 only moved · 4 not found in app
+DmF-Fail-1 web: matched 95/99 design items · 0 with size/type drift · 93 only moved · 4 not found in app
+DmF-Fail-1 desktop: matched 96/99 design items · 0 with size/type drift · 1 only moved · 3 not found in app
+DmF-Fail-2 web: matched 104/108 design items · 0 with size/type drift · 102 only moved · 4 not found in app
+DmF-Fail-2 desktop: matched 105/108 design items · 0 with size/type drift · 1 only moved · 3 not found in app
+DmF-Fail-3 web: matched 93/97 design items · 0 with size/type drift · 91 only moved · 4 not found in app
+DmF-Fail-3 desktop: matched 94/97 design items · 0 with size/type drift · 1 only moved · 3 not found in app
+DmF-Fail-4 web: matched 97/99 design items · 0 with size/type drift · 94 only moved · 2 not found in app
+DmF-Fail-4 desktop: matched 98/99 design items · 0 with size/type drift · 1 only moved · 1 not found in app
 DmF-Filter-1 web: matched 62/63 design items · 0 with size/type drift · 60 only moved · 1 not found in app
 DmF-Filter-1 desktop: matched 63/63 design items · 0 with size/type drift · 1 only moved · 0 not found in app
 DmF-Filter-2 web: matched 106/109 design items · 0 with size/type drift · 104 only moved · 3 not found in app

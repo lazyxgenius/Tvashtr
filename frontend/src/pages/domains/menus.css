@@ -28,6 +28,11 @@
   margin-top: 0;
   color: inherit;
 }
+/* A file row's menu: the pointed-at action turns coral (DmF-Fail-2 "Re-read this file"). */
+.dm-files__menu .ds-menu__item:hover:not([disabled]):not(.ds-menu__item--danger) {
+  background: transparent;
+  color: var(--coral-700);
+}
 .dm-card__top .ds-menu__item--danger,
 .dm-dhead__actions .ds-menu__item--danger,
 .dm-files__menu .ds-menu__item--danger {
