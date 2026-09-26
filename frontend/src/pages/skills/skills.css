@@ -1,0 +1,233 @@
+/* Toolkit › Skills (Toolkit-Skills, Toolkit-SkillPresets, TkF-SkillTabs / SkillsEmpty / Presets).
+   Every value is copied from the design's HTML (project/<artboard>.dc.html). */
+
+/* The design's h1 keeps the page's 1.6 line height (48px), which sets where the lede starts. */
+.sk-title {
+  line-height: 1.6;
+}
+.sk-lede {
+  color: var(--ink-500);
+  max-width: 620px;
+}
+/* The design's buttons put the icon and the label in one inline run (no flex gap). */
+.sk-btn-inline > span {
+  display: inline-flex;
+  align-items: center;
+}
+
+.sk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sk-bar .sk-search {
+  width: 240px;
+}
+
+/* ---- The list card (table and empty states) ---- */
+.sk-card {
+  border: 1px solid var(--border-hairline);
+  border-radius: 16px;
+  background: var(--surface-card);
+  padding: 0;
+  overflow: hidden;
+}
+.sk-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.sk-table th {
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+  border-bottom: 1px solid var(--line-200);
+}
+.sk-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-200);
+  font-size: 13px;
+  color: var(--ink-800);
+  vertical-align: middle;
+}
+.sk-row {
+  cursor: pointer;
+}
+.sk-row:hover td {
+  background: var(--surface-sunk);
+}
+.sk-skill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sk-tile {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  /* Content-box like the design: 32px inside a 1px border (34px on screen). */
+  box-sizing: content-box;
+  border-radius: 8px;
+  background: var(--panel-300);
+  border: 1px solid var(--line-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-700);
+}
+/* The name opens the skill: a button for the keyboard that reads as the design's plain text. */
+.sk-name {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: inherit;
+  color: var(--ink-900);
+  text-align: left;
+  cursor: pointer;
+}
+.sk-name:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: 4px;
+}
+.sk-trig {
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.sk-small {
+  font-size: 12.5px;
+}
+.sk-muted {
+  color: var(--ink-500);
+}
+.sk-loading {
+  color: var(--ink-500);
+}
+
+/* ---- Empty states (TkF-SkillsEmpty-1/2) ---- */
+.sk-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 56px 24px;
+}
+.sk-empty__icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--panel-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-600);
+}
+.sk-empty__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 22px;
+  color: var(--ink-900);
+}
+.sk-empty__body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-600);
+  max-width: 460px;
+}
+.sk-empty__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* ---- Presets (Toolkit-SkillPresets) ---- */
+.sk-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.sk-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.sk-preset__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sk-preset__icon {
+  display: inline-flex;
+  color: var(--ink-600);
+}
+.sk-preset__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.sk-preset__badge {
+  margin-left: auto;
+}
+.sk-preset__desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-600);
+  flex: 1;
+}
+.sk-preset__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- Preset preview dialog (TkF-Presets-1): 640px of content ---- */
+.sk-preview__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sk-preview__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 22px;
+  color: var(--ink-900);
+}
+.sk-preview__md {
+  margin: 0;
+  max-height: min(440px, 60vh);
+  overflow: auto;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-page);
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-800);
+  white-space: pre-wrap;
+}
+
+.sk-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
