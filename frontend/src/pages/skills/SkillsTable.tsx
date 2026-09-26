@@ -106,7 +106,7 @@ function SkillRow({
         <IconButton
           size="sm"
           aria-label={`More actions for ${skill.name}`}
-          aria-haspopup="menu"
+          aria-haspopup={onMore ? "menu" : undefined}
           onClick={(e) => {
             e.stopPropagation();
             onMore?.(skill, e.currentTarget);
