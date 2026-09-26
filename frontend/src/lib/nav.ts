@@ -10,7 +10,7 @@
  *   #/engines · #/engines/subscriptions · #/engines/keys
  *   #/toolkit/tools · #/toolkit/tools/browse · #/toolkit/tools/<id>
  *   #/toolkit/skills · #/toolkit/skills/presets · #/toolkit/skills/new · #/toolkit/skills/<id>
- *   #/toolkit/memory/inbox|active|archive
+ *   #/toolkit/memory (the page picks Inbox or Active) · #/toolkit/memory/inbox|active|archive
  *   #/toolkit/secrets
  *   #/teams/<teamId>?node=<id>&tab=<tab>&focus=1
  *   #/teams/<teamId>/runs/<runId>
@@ -33,7 +33,9 @@ export type Route =
   | { page: "skills"; view: "mine" | "presets" }
   // `skillId` is "new" for the new-skill editor.
   | { page: "skill"; skillId: string }
-  | { page: "memory"; tab: MemoryTab }
+  // `pick`: the bare `#/toolkit/memory` (the nav's Memory link). The page opens the Inbox when
+  // memories wait there, otherwise Active (MEM-4); an address that names a tab keeps it.
+  | { page: "memory"; tab: MemoryTab; pick?: true }
   | { page: "secrets" }
   | {
       page: "team";
@@ -94,6 +96,7 @@ export function parseRoute(hash: string): Route {
         return { page: "skill", skillId: c };
       }
       if (b === "memory") {
+        if (c === undefined) return { page: "memory", tab: "inbox", pick: true };
         return {
           page: "memory",
           tab: MEMORY_TABS.includes(c as MemoryTab) ? (c as MemoryTab) : "inbox",
@@ -141,7 +144,7 @@ export function routeToHash(route: Route): string {
     case "skill":
       return `#/toolkit/skills/${enc(route.skillId)}`;
     case "memory":
-      return `#/toolkit/memory/${route.tab}`;
+      return route.pick ? "#/toolkit/memory" : `#/toolkit/memory/${route.tab}`;
     case "secrets":
       return "#/toolkit/secrets";
     case "team": {

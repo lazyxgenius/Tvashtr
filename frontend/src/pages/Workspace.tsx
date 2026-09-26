@@ -120,7 +120,7 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
     case "skill":
       return <SkillEditorPage skillId={route.skillId} />;
     case "memory":
-      return <MemoryPage tab={route.tab} />;
+      return <MemoryPage tab={route.tab} pick={route.pick === true} />;
     case "secrets":
       return <SecretsShelf />;
     default:

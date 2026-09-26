@@ -177,6 +177,38 @@ describe("MemoryPage — shell", () => {
   });
 });
 
+describe("MemoryPage — the tab it opens on (MEM-4)", () => {
+  it("the bare address opens Active when nothing waits in the Inbox", async () => {
+    memoryApi({ pending: [] });
+    renderAt("#/toolkit/memory");
+    await waitFor(() => expect(window.location.hash).toBe("#/toolkit/memory/active"));
+    expect(within(tabs()).getByRole("tab", { name: "Active 14" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("the bare address opens the Inbox when memories wait there", async () => {
+    memoryApi();
+    renderAt("#/toolkit/memory");
+    await waitFor(() => expect(window.location.hash).toBe("#/toolkit/memory/inbox"));
+    expect(await within(await inbox()).findByText(MEM_SHOULD.content)).toBeTruthy();
+  });
+
+  it("an address that names the Inbox stays on it, empty or not", async () => {
+    memoryApi({ pending: [] });
+    renderAt("#/toolkit/memory/inbox");
+    expect(await screen.findByRole("region", { name: "Inbox is clear" })).toBeTruthy();
+    expect(window.location.hash).toBe("#/toolkit/memory/inbox");
+  });
+
+  it("opens the Inbox when the counts can't be read", async () => {
+    memoryApi({ routes: { "GET /api/memories/counts": () => jsonError(500, "boom") } });
+    renderAt("#/toolkit/memory");
+    await waitFor(() => expect(window.location.hash).toBe("#/toolkit/memory/inbox"));
+  });
+});
+
 describe("MemoryPage — review switch", () => {
   it("turns off at once, says so, and Undo turns it back on", async () => {
     const { calls, state } = memoryApi();

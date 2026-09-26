@@ -172,7 +172,11 @@ function Harness() {
   const { route } = useNav();
   return (
     <>
-      {route.page === "memory" ? <MemoryPage tab={route.tab} /> : <p>elsewhere</p>}
+      {route.page === "memory" ? (
+        <MemoryPage tab={route.tab} pick={route.pick === true} />
+      ) : (
+        <p>elsewhere</p>
+      )}
       <Badges />
     </>
   );

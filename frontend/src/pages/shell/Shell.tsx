@@ -126,7 +126,7 @@ function Nav({
     {
       key: "memory",
       label: "Memory",
-      route: { page: "memory", tab: "inbox" },
+      route: { page: "memory", tab: "inbox", pick: true },
       active: route.page === "memory",
       badge: badges.memoryInbox ? <Badge tone="accent">{`${badges.memoryInbox} new`}</Badge> : null,
     },

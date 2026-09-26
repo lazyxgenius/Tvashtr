@@ -14,6 +14,7 @@ import { publishBadges } from "../../lib/workspaceStatus";
 import { AddMemorySheet } from "./AddMemorySheet";
 import { MemoryActive } from "./MemoryActive";
 import { MemoryArchive } from "./MemoryArchive";
+import { MemoryLoading } from "./MemoryEmptyState";
 import { MemoryInbox } from "./MemoryInbox";
 import { addedMessage } from "./memoryModel";
 import "./memory.css";
@@ -25,24 +26,47 @@ const REVIEW_TITLE = "Review new memories before they apply";
  * TkF-Filters, TkF-NoteActions, TkF-Archive, TkF-AddMemory): the page header with Add memory, the
  * review switch (Inbox only), pill tabs "Inbox N / Active N / Archive" from `/api/memories/counts`
  * (the address carries the tab), and the tab's list. The Inbox count is also the nav badge ("2 new").
+ * `pick` = the bare address (the nav's Memory link): it opens the Inbox when memories wait there,
+ * otherwise Active (MEM-4), once the counts answer.
  */
-export function MemoryPage({ tab }: { tab: MemoryTab }) {
+export function MemoryPage({ tab, pick = false }: { tab: MemoryTab; pick?: boolean }) {
   const toast = useToast();
   const [counts, setCounts] = useState<MemoryCounts | null>(null);
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState<Memory | null>(null);
 
-  const refreshCounts = useCallback(() => {
+  const refreshCounts = useCallback((then?: (c: MemoryCounts | null) => void) => {
     getMemoryCounts().then(
       (c) => {
         setCounts(c);
         publishBadges({ memoryInbox: c.inbox });
+        then?.(c);
       },
       // The tabs just go without counts; the lists say what failed.
-      () => undefined,
+      () => then?.(null),
     );
   }, []);
-  useEffect(refreshCounts, [refreshCounts]);
+
+  // Read the counts on arrival; from the bare address, they also pick the tab (the Inbox when they
+  // can't be read). The pick replaces the address, so Back skips it.
+  const picked = useRef(false);
+  useEffect(() => {
+    if (!pick) {
+      // The address a pick just wrote needs no second read.
+      if (picked.current) picked.current = false;
+      else refreshCounts();
+      return;
+    }
+    let live = true;
+    refreshCounts((c) => {
+      if (!live) return; // the person went elsewhere meanwhile
+      picked.current = true;
+      navigate({ page: "memory", tab: c && c.inbox === 0 ? "active" : "inbox" }, { replace: true });
+    });
+    return () => {
+      live = false;
+    };
+  }, [pick, refreshCounts]);
 
   // An Undo on a Keep or Discard toast can land after the person opened Active or the Archive (the
   // toast outlives the tab): those lists re-read when this changes.
@@ -81,6 +105,46 @@ export function MemoryPage({ tab }: { tab: MemoryTab }) {
         </div>
       </div>
 
+      {pick ? (
+        // Until the counts pick the tab (a moment).
+        <MemoryLoading label="Memory" />
+      ) : (
+        <MemoryTabs
+          tab={tab}
+          counts={counts}
+          added={added}
+          listsVersion={listsVersion}
+          refreshCounts={refreshCounts}
+          onRequeued={onRequeued}
+          openAdd={openAdd}
+        />
+      )}
+
+      {adding && <AddMemorySheet onClose={() => setAdding(false)} onAdded={onAdded} />}
+    </>
+  );
+}
+
+/** The review switch (Inbox only), the pill tabs with their counts, and the tab's list. */
+function MemoryTabs({
+  tab,
+  counts,
+  added,
+  listsVersion,
+  refreshCounts,
+  onRequeued,
+  openAdd,
+}: {
+  tab: MemoryTab;
+  counts: MemoryCounts | null;
+  added: Memory | null;
+  listsVersion: number;
+  refreshCounts: () => void;
+  onRequeued: () => void;
+  openAdd: () => void;
+}) {
+  return (
+    <>
       {tab === "inbox" && <ReviewSwitch />}
 
       <div>
@@ -117,8 +181,6 @@ export function MemoryPage({ tab }: { tab: MemoryTab }) {
           onOpenActive={() => navigate({ page: "memory", tab: "active" })}
         />
       )}
-
-      {adding && <AddMemorySheet onClose={() => setAdding(false)} onAdded={onAdded} />}
     </>
   );
 }

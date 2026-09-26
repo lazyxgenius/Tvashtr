@@ -21,6 +21,8 @@ describe("parseRoute / routeToHash", () => {
     ["#/toolkit/skills/presets", { page: "skills", view: "presets" }],
     ["#/toolkit/skills/new", { page: "skill", skillId: "new" }],
     ["#/toolkit/memory/active", { page: "memory", tab: "active" }],
+    // The bare address (the nav's Memory link): the page picks Inbox or Active (MEM-4).
+    ["#/toolkit/memory", { page: "memory", tab: "inbox", pick: true }],
     ["#/toolkit/secrets", { page: "secrets" }],
     ["#/teams/t1", { page: "team", teamId: "t1" }],
     ["#/teams/t1/runs/r1", { page: "team", teamId: "t1", runId: "r1" }],
