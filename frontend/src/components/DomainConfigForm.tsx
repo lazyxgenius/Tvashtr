@@ -7,7 +7,7 @@ import {
   parseDomainConfig,
   dimOfEmbedding,
   providerOfEmbedding,
-  embeddingSwitchNeedsReingest,
+  sameEmbeddingWeights,
   generationPresetSelectValue,
   isCustomGenerationSelect,
   domainsGraphLiteConfigHint,
@@ -59,10 +59,7 @@ export function DomainConfigForm({
     () => generationPresetSelectValue(seed.generation.model) === "__custom__",
   );
 
-  const needsReingest = embeddingSwitchNeedsReingest(
-    seed.embedding.model,
-    cfg.embedding.model,
-  );
+  const needsReingest = !sameEmbeddingWeights(seed.embedding.model, cfg.embedding.model);
 
   const save = async () => {
     setError(null);
@@ -82,7 +79,7 @@ export function DomainConfigForm({
       }
     }
     if (
-      embeddingSwitchNeedsReingest(seed.embedding.model, next.embedding.model) &&
+      !sameEmbeddingWeights(seed.embedding.model, next.embedding.model) &&
       !window.confirm(
         "Saving this embedding change will clear ready embeddings and require re-ingest of all documents. Continue?",
       )
@@ -110,7 +107,7 @@ export function DomainConfigForm({
           onClick={() => {
             setMode("form");
             try {
-              setCfg(asConfig(JSON.parse(jsonText)));
+              setCfg(asConfig(JSON.parse(jsonText) as Record<string, unknown>));
             } catch {
               /* keep current cfg if JSON invalid while switching */
             }
@@ -187,10 +184,9 @@ export function DomainConfigForm({
               )}
             </select>
             <span className="tv-field__hint">
-              Dim <strong>{dimOfEmbedding(cfg.embedding.model)}</strong> (pgvector unbound;
-              never padded). Provider{" "}
-              <strong>{providerOfEmbedding(cfg.embedding.model)}</strong> — add that
-              provider&apos;s API key under Dashboard → Engines before ingest/Ask. Hugging Face
+              Dim <strong>{dimOfEmbedding(cfg.embedding.model)}</strong> (pgvector unbound; never
+              padded). Provider <strong>{providerOfEmbedding(cfg.embedding.model)}</strong> — add
+              that provider&apos;s API key under Dashboard → Engines before ingest/Ask. Hugging Face
               BGE-small preset needs a free <strong>huggingface</strong> Engines token (384-dim,
               rate-limited). Gemini preset needs a <strong>gemini</strong> Engines key (768-dim
               gemini-embedding-001). OpenRouter preset uses your OpenRouter key (still OpenAI
@@ -327,11 +323,7 @@ export function DomainConfigForm({
             <select
               className="tv-launch__input"
               aria-label="Generation model"
-              value={
-                customGen
-                  ? "__custom__"
-                  : generationPresetSelectValue(cfg.generation.model)
-              }
+              value={customGen ? "__custom__" : generationPresetSelectValue(cfg.generation.model)}
               onChange={(e) => {
                 const v = e.target.value;
                 if (isCustomGenerationSelect(v)) {
@@ -354,9 +346,7 @@ export function DomainConfigForm({
               {!customGen &&
                 cfg.generation.model &&
                 !GENERATION_PRESETS.some((p) => p.slug === cfg.generation.model) && (
-                  <option value={cfg.generation.model}>
-                    Custom: {cfg.generation.model}
-                  </option>
+                  <option value={cfg.generation.model}>Custom: {cfg.generation.model}</option>
                 )}
             </select>
             {customGen && (
@@ -375,8 +365,8 @@ export function DomainConfigForm({
               />
             )}
             <span className="tv-field__hint">
-              Used by Domain Chat / Ask. Add that provider&apos;s API key under Dashboard →
-              Engines. Leave Account default to use the account thinker model.
+              Used by Domain Chat / Ask. Add that provider&apos;s API key under Dashboard → Engines.
+              Leave Account default to use the account thinker model.
             </span>
           </label>
         </div>

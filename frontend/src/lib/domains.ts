@@ -1,9 +1,4 @@
-export type DomainTemplateKey =
-  | "financial"
-  | "legal"
-  | "scientific"
-  | "support"
-  | "blank";
+export type DomainTemplateKey = "financial" | "legal" | "scientific" | "support" | "blank";
 
 export const DOMAIN_TEMPLATE_ORDER: DomainTemplateKey[] = [
   "financial",
@@ -36,7 +31,6 @@ export interface DomainRerankConfig {
 export interface DomainGraphConfig {
   enabled: boolean;
 }
-
 
 /** Embedding presets (mirrors backend domain_embedding.EMBEDDING_PRESETS; multi-dim). */
 export interface EmbeddingPreset {
@@ -108,7 +102,6 @@ export function providerOfEmbedding(model: string): string {
   return normalizeEmbeddingModel(model).split("/")[0]?.toLowerCase() || "openai";
 }
 
-
 export function dimOfEmbedding(model: string): number {
   const slug = normalizeEmbeddingModel(model);
   const preset = EMBEDDING_PRESETS.find((p) => p.slug === slug);
@@ -121,7 +114,8 @@ export interface DomainConfig {
   embedding: { model: string };
   retrieval: {
     top_k: number;
-    mode: RetrievalMode | string;
+    /** A `RetrievalMode`, or an older stored value. */
+    mode: string;
     rerank?: DomainRerankConfig;
     graph?: DomainGraphConfig;
   };
@@ -190,14 +184,15 @@ export function isCustomGenerationSelect(value: string): boolean {
 }
 
 /**
- * True when saving the new embed slug would clear ready embeddings / force re-ingest
- * (provider or dim differs from the currently saved model).
+ * Two embed slugs name the same weights when they differ only by the OpenRouter route (OQ-17):
+ * switching between them keeps the vectors; any other switch re-reads every file. Mirrors backend
+ * `domain_embedding.same_embedding_weights`. "text-embedding-3-small" ≡
+ * "openrouter/openai/text-embedding-3-small".
  */
-export function embeddingSwitchNeedsReingest(fromModel: string, toModel: string): boolean {
-  return (
-    dimOfEmbedding(fromModel) !== dimOfEmbedding(toModel) ||
-    providerOfEmbedding(fromModel) !== providerOfEmbedding(toModel)
-  );
+export function sameEmbeddingWeights(a: string, b: string): boolean {
+  const weights = (s: string) =>
+    normalizeEmbeddingModel(normalizeEmbeddingModel(s).replace(/^openrouter\//i, "")).toLowerCase();
+  return weights(a) === weights(b);
 }
 
 /**

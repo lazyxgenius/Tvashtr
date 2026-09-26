@@ -12,7 +12,7 @@ import {
   domainsMcpAccountToolsHint,
   domainsMcpToggleHint,
   domainsQueryNodeHint,
-  embeddingSwitchNeedsReingest,
+  sameEmbeddingWeights,
   labelForDomainTemplate,
   normalizeEmbeddingModel,
   providerOfEmbedding,
@@ -20,13 +20,7 @@ import {
 
 describe("domains helpers", () => {
   it("orders templates financial → legal → scientific → support → blank", () => {
-    expect(DOMAIN_TEMPLATE_ORDER).toEqual([
-      "financial",
-      "legal",
-      "scientific",
-      "support",
-      "blank",
-    ]);
+    expect(DOMAIN_TEMPLATE_ORDER).toEqual(["financial", "legal", "scientific", "support", "blank"]);
   });
 
   it("labels known templates", () => {
@@ -37,9 +31,7 @@ describe("domains helpers", () => {
 
 describe("embedding presets", () => {
   it("normalizes bare default to openai slug", () => {
-    expect(normalizeEmbeddingModel("text-embedding-3-small")).toBe(
-      "openai/text-embedding-3-small",
-    );
+    expect(normalizeEmbeddingModel("text-embedding-3-small")).toBe("openai/text-embedding-3-small");
     expect(normalizeEmbeddingModel("")).toBe("openai/text-embedding-3-small");
   });
 
@@ -71,32 +63,32 @@ describe("generation presets", () => {
   });
 });
 
-describe("embeddingSwitchNeedsReingest", () => {
-  it("is true when dim changes (openai 1536 → gemini 768)", () => {
+describe("sameEmbeddingWeights (OQ-17)", () => {
+  it("re-reads when the dimension changes (openai 1536 → gemini 768)", () => {
     expect(
-      embeddingSwitchNeedsReingest(
-        "openai/text-embedding-3-small",
-        "gemini/gemini-embedding-001",
-      ),
-    ).toBe(true);
+      sameEmbeddingWeights("openai/text-embedding-3-small", "gemini/gemini-embedding-001"),
+    ).toBe(false);
   });
 
-  it("is true when provider changes at same dim (openai → openrouter)", () => {
+  it("re-reads when the weights change at the same dimension (3-small → ada-002)", () => {
     expect(
-      embeddingSwitchNeedsReingest(
+      sameEmbeddingWeights("openai/text-embedding-3-small", "openai/text-embedding-ada-002"),
+    ).toBe(false);
+  });
+
+  it("keeps the vectors for the same weights through OpenRouter", () => {
+    expect(
+      sameEmbeddingWeights(
         "openai/text-embedding-3-small",
         "openrouter/openai/text-embedding-3-small",
       ),
     ).toBe(true);
   });
 
-  it("is false when model is unchanged", () => {
-    expect(
-      embeddingSwitchNeedsReingest(
-        "text-embedding-3-small",
-        "openai/text-embedding-3-small",
-      ),
-    ).toBe(false);
+  it("keeps them when the model is unchanged", () => {
+    expect(sameEmbeddingWeights("text-embedding-3-small", "openai/text-embedding-3-small")).toBe(
+      true,
+    );
   });
 });
 
