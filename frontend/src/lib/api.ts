@@ -1,10 +1,6 @@
 // Typed client for the Tvashtr control-plane HTTP surface (proxied to :8000 by Vite).
 
-import type {
-  SubscriptionProviderId,
-  SubscriptionSource,
-  SubscriptionStatus,
-} from "./engines";
+import type { SubscriptionProviderId, SubscriptionSource, SubscriptionStatus } from "./engines";
 
 export type { SubscriptionProviderId, SubscriptionStatus } from "./engines";
 
@@ -17,7 +13,6 @@ export function apiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
 }
-
 
 export interface NodePosition {
   x: number;
@@ -86,13 +81,15 @@ export interface NodeInvocation {
   // Both `null` for rounds the backend links no ledger row to (thinker / gate / terminal / a
   // zero-usage reviewer round).
   // Phase 4a: domain_query closes may attach citations / domain metadata on the same shape.
-  context_manifest: (ContextManifest & {
-    citations?: DomainCitation[];
-    domain_id?: string;
-    latency_ms?: number | null;
-    model?: string | null;
-    message_id?: string | null;
-  }) | null;
+  context_manifest:
+    | (ContextManifest & {
+        citations?: DomainCitation[];
+        domain_id?: string;
+        latency_ms?: number | null;
+        model?: string | null;
+        message_id?: string | null;
+      })
+    | null;
   cost: InvocationCost | null;
 }
 
@@ -222,6 +219,15 @@ export interface ProviderCatalogueEntry {
   worker_default: string | null;
   thinker_presets: string[];
   worker_presets: string[];
+  // Revamp (B-ENGINES): display metadata. Optional so older fixtures and callers keep compiling.
+  /** The provider's display name ("xAI", "Anthropic"). */
+  label?: string;
+  /** A friendly name per slug the entry declares ("xai/grok-4.7" → "Grok 4.7"). */
+  model_labels?: Record<string, string>;
+  /** The Desktop subscription that can run this provider's models ("claude" / "grok"), or null. */
+  subscription?: string | null;
+  /** Whether the seat presets were proven to run a full build on an API key. */
+  byok_probed?: boolean;
 }
 
 export interface Config {
@@ -308,7 +314,6 @@ export async function getMe(): Promise<AuthUser | null> {
   if (!res.ok) throw new ApiError(res.status, `GET /api/auth/me -> ${res.status}`);
   return (await res.json()) as AuthUser;
 }
-
 
 /**
  * Desktop Electron: rewrite GitHub authorize ``redirect_uri`` to the local loopback
@@ -421,9 +426,7 @@ export async function removeProvider(provider: string): Promise<void> {
 // ---- Subscription status (mirror: status-only, no secrets in PUT bodies) ----
 
 export async function listSubscriptionStatuses(): Promise<SubscriptionStatus[]> {
-  const data = await getJSON<{ subscriptions: SubscriptionStatus[] }>(
-    "/api/engines/subscriptions",
-  );
+  const data = await getJSON<{ subscriptions: SubscriptionStatus[] }>("/api/engines/subscriptions");
   return data.subscriptions;
 }
 
@@ -452,10 +455,12 @@ export async function deleteSubscriptionStatus(provider: SubscriptionProviderId)
     method: "DELETE",
   });
   if (!res.ok) {
-    throw new ApiError(res.status, `DELETE /api/engines/subscriptions/${provider} -> ${res.status}`);
+    throw new ApiError(
+      res.status,
+      `DELETE /api/engines/subscriptions/${provider} -> ${res.status}`,
+    );
   }
 }
-
 
 // ---- MCP secrets (M-tools C7.A): the account's ${NAME} store for MCP tool_config ----
 
@@ -735,6 +740,9 @@ export interface TeamGraphNode {
     run_id: string;
     iteration: number;
     started_at: string;
+    // B-NODES (additive): running | done | failed | stopped, and when the round ended.
+    status?: string | null;
+    ended_at?: string | null;
   } | null;
 }
 
@@ -927,6 +935,8 @@ export async function listSkillPresets(): Promise<SkillPresetEntry[]> {
 
 export interface TeamGraphData {
   team_graph_id: string;
+  /** The team's name (B-NODES, additive — the canvas toolbar shows it). */
+  name?: string;
   nodes: TeamGraphNode[];
   edges: GraphEdge[];
 }
@@ -1743,7 +1753,7 @@ export interface DomainDocumentSummary {
   filename: string;
   content_type: string;
   byte_size: number;
-  ingest_status: "pending" | "indexing" | "ready" | "error" | string;
+  ingest_status: "pending" | "indexing" | "ready" | "error" | (string & {});
   error_message: string | null;
   version: number;
   created_at: string;
@@ -1772,7 +1782,7 @@ export async function uploadDomainDocument(
     try {
       const j = (await res.json()) as { detail?: unknown };
       if (typeof j.detail === "string") detail = j.detail;
-      else if (j.detail && typeof j.detail === "object" && "message" in (j.detail as object)) {
+      else if (j.detail && typeof j.detail === "object" && "message" in j.detail) {
         detail = String((j.detail as { message: string }).message);
       }
     } catch {
@@ -1799,7 +1809,7 @@ export async function ingestDomain(
     try {
       const j = (await res.json()) as { detail?: unknown };
       if (typeof j.detail === "string") detail = j.detail;
-      else if (j.detail && typeof j.detail === "object" && "message" in (j.detail as object)) {
+      else if (j.detail && typeof j.detail === "object" && "message" in j.detail) {
         detail = String((j.detail as { message: string }).message);
       }
     } catch {
@@ -1822,7 +1832,7 @@ export interface DomainCitation {
 export interface DomainMessageSummary {
   message_id: string;
   domain_id: string;
-  role: "user" | "assistant" | string;
+  role: "user" | "assistant" | (string & {});
   content: string;
   citations: DomainCitation[] | null;
   latency_ms: number | null;
@@ -1858,7 +1868,7 @@ export async function askDomain(domainId: string, question: string): Promise<Dom
     try {
       const j = (await res.json()) as { detail?: unknown };
       if (typeof j.detail === "string") detail = j.detail;
-      else if (j.detail && typeof j.detail === "object" && "message" in (j.detail as object)) {
+      else if (j.detail && typeof j.detail === "object" && "message" in j.detail) {
         detail = String((j.detail as { message: string }).message);
       }
     } catch {
@@ -1920,9 +1930,7 @@ export interface DomainEvalRun {
 }
 
 export async function listDomainEvalCases(domainId: string): Promise<DomainEvalCase[]> {
-  const data = await getJSON<{ cases: DomainEvalCase[] }>(
-    `/api/domains/${domainId}/eval/cases`,
-  );
+  const data = await getJSON<{ cases: DomainEvalCase[] }>(`/api/domains/${domainId}/eval/cases`);
   return data.cases;
 }
 
