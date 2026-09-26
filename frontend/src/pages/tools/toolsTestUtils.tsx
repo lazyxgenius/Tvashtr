@@ -8,6 +8,7 @@ import type { ReactElement } from "react";
 import { vi } from "vitest";
 
 import { ToastProvider } from "../../design-system/components";
+import { __resetHomeConfigForTests } from "../../lib/api/home";
 import type { ToolItem } from "../../lib/api/tools";
 import { __resetBackendStatusForTests } from "../../lib/backendStatus";
 import { __resetWorkspaceStatusForTests } from "../../lib/workspaceStatus";
@@ -113,5 +114,6 @@ export function resetToolkitStores(): void {
   resetToolsView();
   __resetBackendStatusForTests();
   __resetWorkspaceStatusForTests();
+  __resetHomeConfigForTests();
   window.location.hash = "";
 }

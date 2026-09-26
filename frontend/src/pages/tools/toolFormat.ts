@@ -112,3 +112,13 @@ export function turnedOnToast(toolName: string, agentCount: number, skipped: num
   if (skipped === 0) return head;
   return `${head} ${plural(skipped, "agent")} kept ${skipped === 1 ? "its" : "their"} own ${toolName} server.`;
 }
+
+/** TOOL-22: after "Add" on a catalog card (its title, e.g. "Web fetch"). */
+export function catalogAddedToast(title: string): string {
+  return `${title} added. Turn it on for an agent in its Skills & tools tab.`;
+}
+
+/** TOOL-25: back from GitHub with the App installed or its repos changed. */
+export function githubInstalledToast(repoCount: number): string {
+  return `GitHub App installed on ${plural(repoCount, "repo")}.`;
+}

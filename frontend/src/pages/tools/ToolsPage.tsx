@@ -3,14 +3,22 @@
  * Installed only, Add tool on both), the Installed N / Browse pill tabs driven by the address, the
  * search box and Status filter, and the tab's content. Owns the tool list both tabs read, and the
  * row actions' dialogs (TkF-FixSecret-*, TkF-ToolMenu-*): Add secret, Remove, Turn on for agents,
- * and Duplicate.
+ * and Duplicate — and adding from the Browse catalog (TkF-Catalog-*), whose toast offers the same
+ * Turn on dialog.
  */
 import { Braces, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button, Input, Tabs, useToast } from "../../design-system/components";
 import { ApiDetailError } from "../../lib/api/runs";
-import { type ToolItem, duplicateTool, listTools, setToolAgents } from "../../lib/api/tools";
+import {
+  type CatalogEntry,
+  type ToolItem,
+  createTool,
+  duplicateTool,
+  listTools,
+  setToolAgents,
+} from "../../lib/api/tools";
 import { navigate, parseRoute } from "../../lib/nav";
 import { refreshBadges } from "../../lib/workspaceStatus";
 import { SecretDialog, type SecretDialogMode } from "../secrets/SecretDialog";
@@ -19,7 +27,7 @@ import { InstalledTab } from "./InstalledTab";
 import { RemoveToolDialog } from "./RemoveToolDialog";
 import { StatusSelect } from "./StatusSelect";
 import { TurnOnForAgentsDialog } from "./TurnOnForAgentsDialog";
-import { toolSecretsSavedToast, turnedOnToast } from "./toolFormat";
+import { catalogAddedToast, toolSecretsSavedToast, turnedOnToast } from "./toolFormat";
 import {
   markToolFresh,
   resetToolsView,
@@ -31,8 +39,9 @@ import "./tools.css";
 
 type ToolsView = "installed" | "browse";
 
-/** The sheets the page opens: the Add tool wizard (optionally with a name) or Paste mcp.json. */
-export type ToolSheet = { kind: "add"; name?: string } | { kind: "paste" } | null;
+/** The sheets the page opens: the Add tool wizard (optionally with a name, or with "A custom
+ *  server" chosen from Browse's Custom server card) or Paste mcp.json. */
+export type ToolSheet = { kind: "add"; name?: string; start?: "custom" } | { kind: "paste" } | null;
 
 /** The server's own words for a 4xx (e.g. "tool not found in your library"), else null. */
 function clientError(e: unknown): string | null {
@@ -133,6 +142,27 @@ export function ToolsPage({ view }: { view: ToolsView }) {
     }
   };
 
+  // TOOL-22: add from the catalog and stay on Browse; the card turns to "In your tools". A 409
+  // means it's already there, so the reload shows that too.
+  const addFromCatalog = async (entry: CatalogEntry) => {
+    try {
+      const tool = await createTool({ name: entry.name, server_config: entry.server_config });
+      markToolFresh(tool.id);
+      await reload();
+      void refreshBadges();
+      toast({
+        message: catalogAddedToast(entry.title),
+        action: { label: "Choose agents", onClick: () => setDialog({ kind: "turn-on", tool }) },
+      });
+    } catch (e) {
+      await reload();
+      toast({
+        message: clientError(e) ?? `Couldn’t add ${entry.title}. Try again.`,
+        tone: "error",
+      });
+    }
+  };
+
   // TOOL-47 from the ⋯: the checked set replaces who uses it (spec Q4).
   const turnOn = async (tool: ToolItem, nodeIds: string[]) => {
     const result = await setToolAgents(tool.id, nodeIds);
@@ -222,7 +252,14 @@ export function ToolsPage({ view }: { view: ToolsView }) {
           }}
         />
       ) : (
-        <BrowseTab />
+        <BrowseTab
+          tools={tools}
+          actions={{
+            onAdd: addFromCatalog,
+            onSetUp: () => setSheet({ kind: "add", start: "custom" }),
+            onPaste: () => setSheet({ kind: "paste" }),
+          }}
+        />
       )}
 
       <ToolSheetHost sheet={sheet} onClose={() => setSheet(null)} />

@@ -218,7 +218,9 @@ describe("Tools · tabs", () => {
   it("switches to Browse through the address; Browse has no Paste button or search", async () => {
     mockApi({
       "GET /api/tool-library": { tools: [FETCH] },
-      "GET /api/tool-catalog": { tools: [{ key: "fetch", title: "Web fetch", description: "" }] },
+      "GET /api/tool-catalog": {
+        tools: [{ key: "fetch", title: "Web fetch", description: "", attachable: true }],
+      },
     });
     const { rerender } = renderWithProviders(<ToolsPage view="installed" />);
     await screen.findByRole("table");

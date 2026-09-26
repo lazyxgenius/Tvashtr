@@ -17,6 +17,7 @@ import { SecretsPage } from "./secrets/SecretsPage";
 import { ShortcutsDialog } from "./shell/ShortcutsDialog";
 import { ToolDetailPage } from "./tools/ToolDetailPage";
 import { ToolsPage } from "./tools/ToolsPage";
+import { useGithubReturn } from "./tools/githubReturn";
 import "./badgeLoaders";
 
 /** Where the canvas's "back" and "Open Engines / Toolkit" controls land. */
@@ -55,6 +56,7 @@ export function Workspace({
   useEffect(() => {
     void refreshBadges();
   }, []);
+  useGithubReturn(); // Desktop: back from the GitHub App install → Toolkit › Tools › Browse
 
   useGlobalShortcuts(
     {

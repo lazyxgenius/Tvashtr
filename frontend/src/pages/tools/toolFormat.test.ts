@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { ToolItem, UsageRow } from "../../lib/api/tools";
 import {
+  catalogAddedToast,
+  githubInstalledToast,
   agentName,
   agentNames,
   removeImpact,
@@ -111,5 +113,15 @@ describe("turnedOnToast", () => {
     expect(turnedOnToast("linear", 1, 1)).toBe(
       "linear is on for 1 agent. 1 agent kept its own linear server.",
     );
+  });
+});
+
+describe("Browse toasts", () => {
+  it("names the catalog entry and pluralises repos", () => {
+    expect(catalogAddedToast("Web fetch")).toBe(
+      "Web fetch added. Turn it on for an agent in its Skills & tools tab.",
+    );
+    expect(githubInstalledToast(2)).toBe("GitHub App installed on 2 repos.");
+    expect(githubInstalledToast(1)).toBe("GitHub App installed on 1 repo.");
   });
 });

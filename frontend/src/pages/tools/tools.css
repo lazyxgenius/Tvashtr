@@ -360,29 +360,61 @@
   cursor: pointer;
 }
 
-/* ---- Browse (the catalog grid; G5 builds the real cards) ---- */
+/* ---- Browse (Toolkit-ToolsBrowse, TkF-Catalog-*): two columns of cards ---- */
 .tk-catalog {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
 }
-.tk-catalog__card {
+.tk-catalog__error {
+  margin-bottom: 16px;
+}
+.tk-cat {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
   padding: 18px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
 }
-.tk-catalog__title {
-  font-size: 14px;
+.tk-cat__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tk-cat__tile {
+  flex: none;
+  /* The design's 38px is content-box inside a 1px border: 40px in all (the app is border-box) */
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--panel-300);
+  border: 1px solid var(--line-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-700);
+}
+.tk-cat__title {
+  font-size: 15px;
   font-weight: 600;
   color: var(--ink-900);
 }
-.tk-catalog__desc {
+.tk-cat__badge {
+  margin-left: auto;
+}
+.tk-cat__desc {
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
   color: var(--ink-600);
+  flex: 1;
+}
+@media (max-width: 720px) {
+  .tk-catalog {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ---- Tool row ⋯ menu (TkF-ToolMenu-1): 240px of content (content-box: pass 252), flush under
