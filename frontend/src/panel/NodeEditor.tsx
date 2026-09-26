@@ -11,7 +11,7 @@ import {
   type TeamGraphNode,
 } from "../lib/api";
 import type { NodeTemplate } from "../lib/api/nodes";
-import type { EnginesTab, NodeTab } from "../lib/nav";
+import type { EnginesTab, NodeTab, Route } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import { type AgentDraft, describeChanges } from "./agentDraft";
 import { DrawerConfirm } from "./DrawerConfirm";
@@ -43,8 +43,8 @@ import { checkSchema, schemaDraftText } from "./setup/schemaCheck";
 import { SetupTab } from "./setup/SetupTab";
 import { NEW_DOCUMENT_TOAST } from "./setup/setupCopy";
 import { templateAppliedText, templateApplication, templateNeedsConfirm } from "./setup/templates";
-import { SkillsSection } from "./SkillsSection";
-import { ToolsSection } from "./ToolsSection";
+import { desktopSubscriptionNote } from "./skills/nodeSkills";
+import { SkillsToolsTab } from "./skills/SkillsToolsTab";
 import { useAgentDraft } from "./useAgentDraft";
 import { useDrawerToast } from "./useDrawerToast";
 import { useNodeMemoryCount } from "./useNodeMemoryCount";
@@ -82,6 +82,8 @@ export interface NodeEditorProps {
   onOpenEngines?: (tab: EnginesTab) => void;
   /** A key added from the model picker is now on the account (the page updates its cover). */
   onProviderAdded?: (provider: string) => void;
+  /** Open a Toolkit page (a library skill or tool: "Open in Toolkit"). */
+  onOpenToolkit?: (route: Route) => void;
 }
 
 /**
@@ -150,6 +152,7 @@ function AgentEditor({
   catalogue,
   onOpenEngines,
   onProviderAdded,
+  onOpenToolkit,
   cover: pageCover,
 }: NodeEditorProps) {
   const api = useAgentDraft(node, { teamId, onSaved: () => onSaved() });
@@ -385,12 +388,21 @@ function AgentEditor({
   let body;
   switch (tab) {
     case "skills":
-      // Until the Skills & tools rebuild lands: the existing editors, bound to the draft.
       body = (
-        <div className="nd-interim">
-          <SkillsSection value={draft.skills} onChange={(v) => api.set("skills", v)} />
-          <ToolsSection value={draft.toolConfig} onChange={(v) => api.set("toolConfig", v)} />
-        </div>
+        <SkillsToolsTab
+          skills={draft.skills}
+          toolConfig={draft.toolConfig}
+          onSkillsChange={(v) => api.set("skills", v)}
+          onToolsChange={(v) => api.set("toolConfig", v)}
+          note={desktopSubscriptionNote(draft.model, cover, isDesktopApp())}
+          notify={toast.show}
+          // Interim: the add and edit sub-views (skill forms, pickers, the server form) land next.
+          onAddSkill={() => {}}
+          onEditSkill={() => {}}
+          onAddTool={() => {}}
+          onEditServer={() => {}}
+          onOpenToolkit={onOpenToolkit}
+        />
       );
       break;
     case "memory":

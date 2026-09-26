@@ -931,12 +931,6 @@
 }
 
 /* ---- Interim tabs (until their rebuilds land) ---- */
-.nd-interim {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
 /* An icon inside the button's label, flush with the text (the design's Button children). */
 .nd-btn-flush > span {
   display: inline-flex;

@@ -1,0 +1,367 @@
+/* ---- Skills & tools tab (Web-Skills, Panel-SkillsEmpty, Panel-AddMenu, Flow-LoadMode,
+   Flow-SkillMenu, Flow-ToolMenu). Every value is the design's px. ---- */
+.nd-kit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.nd-kit--tools {
+  border-top: 1px solid var(--line-200);
+  padding-top: 18px;
+}
+.nd-kit__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.nd-kit__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.nd-kit__count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-500);
+}
+.nd-kit__icon {
+  display: inline-flex;
+  color: var(--ink-600);
+}
+.nd-kit__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nd-kit__note {
+  margin: 0;
+}
+/* The menus' wrappers add no line box of their own. */
+.nd-kit__add,
+.nd-skill__more,
+.nd-skill__modes,
+.nd-tool__more {
+  display: inline-flex;
+}
+
+/* The rules-files and Domains cards. */
+.nd-kit__card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-page);
+  border: 1px solid var(--line-200);
+}
+.nd-kit__card--rules {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.nd-kit__opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.nd-kit__opt-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.nd-kit__card--rules .nd-kit__opt-title {
+  display: block;
+}
+.nd-kit__opt-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-kit__opt-desc--gap {
+  margin-top: 2px;
+}
+.nd-kit__empty {
+  padding: 2px 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* A skill row. Its menus hang from the row itself (the anchors are static inside it). */
+.nd-skill,
+.nd-tool {
+  position: relative;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  background: var(--surface-card);
+}
+.nd-skill {
+  padding: 10px 10px 10px 12px;
+}
+.nd-skill .ds-anchor,
+.nd-tool .ds-anchor {
+  position: static;
+}
+.nd-skill__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nd-skill__name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nd-skill__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding-left: 22px;
+}
+.nd-kit__mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-page);
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--ink-700);
+  cursor: pointer;
+}
+.nd-kit__mode:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.nd-kit__mode[aria-expanded="true"] {
+  border-color: var(--line-400);
+}
+.nd-skill__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  padding-left: 22px;
+}
+.nd-skill__chip {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--panel-300);
+  color: var(--ink-600);
+  font-family: var(--font-code);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.nd-skill__words {
+  margin-top: 6px;
+  padding-left: 22px;
+}
+.nd-skill__input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-page);
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-900);
+  outline: none;
+}
+.nd-skill__input:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+.nd-skill__input[aria-invalid="true"] {
+  border-color: var(--red-500);
+}
+.nd-skill__hint {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-skill__hint--error {
+  color: #8f3b2f;
+}
+
+/* A tool row. */
+.nd-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px 9px 12px;
+}
+.nd-tool__body {
+  flex: 1;
+  min-width: 0;
+}
+.nd-tool__top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nd-tool__name {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.nd-tool__target {
+  font-family: var(--font-code);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The menus: the design's 13px items at line-height 1.6, 11.5px descriptions. */
+.nd-kit .ds-menu {
+  box-sizing: content-box;
+  z-index: 8;
+}
+.nd-kit .ds-menu__item {
+  line-height: 1.6;
+}
+.nd-kit .ds-menu__icon,
+.nd-kit .ds-menu__item--danger .ds-menu__icon {
+  color: inherit;
+}
+.nd-kit .ds-menu__item--danger {
+  color: #8f3b2f;
+}
+.nd-kit .ds-menu__desc {
+  margin-top: 1px;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+.nd-kit .ds-menu__sep {
+  background: var(--line-200);
+}
+.nd-kit__blank {
+  display: inline-block;
+  width: 15px;
+}
+/* Add skill (220px) drops 6px under its button; Add tool (280px) opens above its button. */
+.nd-kit__add .ds-menu {
+  width: 220px;
+  right: 0;
+  top: calc(100% + 6px);
+}
+.nd-kit__add--up .ds-menu {
+  width: 280px;
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+/* A skill's ⋯ menu (230px) and load-mode menu (290px), anchored to the row's right edge. */
+.nd-skill__more .ds-menu {
+  width: 230px;
+  right: -1px;
+  top: 19px;
+}
+.nd-skill__modes .ds-menu {
+  width: 290px;
+  right: -1px;
+  top: 59px;
+}
+/* A tool's ⋯ menu (240px) opens above its row: the rows sit at the bottom of the tab. */
+.nd-tool__more .ds-menu {
+  width: 240px;
+  right: -1px;
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+/* No skills yet (PANEL-90). */
+.nd-skills-empty {
+  padding: 14px;
+  border: 1px dashed var(--line-400);
+  border-radius: 12px;
+  background: var(--surface-page);
+}
+.nd-skills-empty__title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.nd-skills-empty__desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-skills-empty__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.nd-skills-empty__card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-card);
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.6;
+  text-align: left;
+  cursor: pointer;
+}
+.nd-skills-empty__card:hover {
+  border-color: var(--line-400);
+}
+.nd-skills-empty__card:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.nd-skills-empty__icon {
+  display: inline-flex;
+  color: var(--ink-700);
+}
+.nd-skills-empty__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.nd-skills-empty__hint {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}

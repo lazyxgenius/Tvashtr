@@ -1008,24 +1008,7 @@
 
 /* The branch-worker emit-contract block in the node panel (P1.8d anti-drift). */
 
-/* M-tools C7.A — the per-node MCP Tools editor: server rows + allow-list toggle + add form. */
-.tv-mcp-list {
-  list-style: none;
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.tv-mcp-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  background: var(--surface-page);
-  border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-sm);
-}
+/* The MCP transport badge on the Tools and Skills shelves. */
 .tv-mcp-badge {
   font-family: var(--font-mono);
   font-size: var(--fs-micro);
@@ -1033,44 +1016,6 @@
   color: var(--text-tertiary);
   padding: 0 var(--space-1);
   border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-sm);
-}
-.tv-mcp-name {
-  flex: 1;
-  font-size: var(--fs-caption);
-  color: var(--text-primary);
-}
-.tv-mcp-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--fs-micro);
-  color: var(--text-secondary);
-}
-.tv-mcp-remove {
-  border: none;
-  background: none;
-  cursor: pointer;
-  color: var(--text-tertiary);
-  font-size: var(--fs-body-sm);
-  line-height: 1;
-}
-.tv-mcp-remove:hover {
-  color: var(--danger);
-}
-.tv-mcp-add {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  margin-top: var(--space-2);
-}
-.tv-mcp-warn {
-  margin-top: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--fs-caption);
-  color: var(--text-secondary);
-  background: var(--accent-tint);
-  border: var(--border-width) solid var(--accent-tint-border);
   border-radius: var(--radius-sm);
 }
 

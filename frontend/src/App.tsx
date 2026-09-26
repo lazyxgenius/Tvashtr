@@ -758,6 +758,7 @@ export default function App({
                         )
                     : undefined
                 }
+                onOpenToolkit={(route) => guardLeave(() => navigate(route))}
                 onProviderAdded={(provider) =>
                   setCredentialGate((gate) =>
                     gate ? { ...gate, byok: new Set([...gate.byok, provider]) } : gate,
