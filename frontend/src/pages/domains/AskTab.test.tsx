@@ -231,13 +231,38 @@ describe("Ask (Dm-Ask, DmF-Ask-1…4)", () => {
     expect(note).toHaveAttribute("title", "generation failed: upstream 500");
   });
 
-  it("pauses while the domain re-reads its files", async () => {
-    routes({ "GET /api/domains/d-support": { ...SUPPORT, state: "rereading" } });
+  it("pauses while a new reading model re-reads the files (DM-88)", async () => {
+    routes({
+      "GET /api/domains/d-support": {
+        ...SUPPORT,
+        state: "rereading",
+        rereading: {
+          total: 14,
+          done: 1,
+          eta_seconds: 117,
+          reason: "reading_model",
+          run_tests_after: false,
+        },
+      },
+    });
     renderAsk();
     expect(
       await screen.findByText("Ask is paused while Support docs re-reads its files."),
     ).toBeInTheDocument();
     expect(composer()).toBeDisabled();
+  });
+
+  it("keeps asking while files re-read with the same model (a piece size, one file)", async () => {
+    routes({
+      "GET /api/domains/d-support": {
+        ...SUPPORT,
+        state: "rereading",
+        rereading: { total: 1, done: 0, eta_seconds: 5, reason: "files", run_tests_after: false },
+      },
+    });
+    renderAsk();
+    await waitFor(() => expect(composer()).toBeEnabled());
+    expect(screen.queryByText(/Ask is paused/)).toBeNull();
   });
 });
 

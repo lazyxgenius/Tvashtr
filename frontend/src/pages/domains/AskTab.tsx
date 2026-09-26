@@ -154,7 +154,9 @@ export function AskTab({
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns?.length, pending]);
 
-  const paused = detail.state === "rereading";
+  // A new reading model: the old vectors are gone, asking waits for the re-read (DM-88; the server
+  // refuses too). Re-reading with the same model leaves the other files searchable.
+  const paused = detail.rereading?.reason === "reading_model";
   const noPieces = detail.pieces === 0;
 
   const clearChat = () => {
