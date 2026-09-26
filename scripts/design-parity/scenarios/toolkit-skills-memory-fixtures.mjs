@@ -129,6 +129,42 @@ export const PRESET_LIBRARY = [
   SKILLS.houseStyle,
 ];
 
+// Who uses each skill (GET /api/skill-library/{id} `used_by`): house-style is on for the Reviewer
+// and the Engineer of the Indicator sprint team (TkF-SkillMenu-2).
+const usage = (role) => ({
+  node_id: `n-${role}`,
+  role_name: role,
+  title: null,
+  team_id: "t-indicator",
+  team_name: "Indicator sprint team",
+});
+export const USED_BY = {
+  "s-house": [usage("reviewer"), usage("engineer")],
+  "s-pytest": [usage("reviewer")],
+};
+
+// Add from GitHub (TkF-FromRepo-2): what lazyxgenius/skills holds at main, in the design's order.
+// pytest-review is already in the library (the design's own table lists it), so it comes back
+// `in_library` and the sheet leaves it out.
+export const SCAN = {
+  repo: "lazyxgenius/skills",
+  url: "https://github.com/lazyxgenius/skills",
+  ref: "main",
+  sha: "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+  short_sha: "1a2b3c4",
+  skills: [
+    "pytest-review",
+    "house-style-py",
+    "api-conventions",
+    "commit-messages",
+  ].map((name) => ({
+    name,
+    path: `skills/${name}/SKILL.md`,
+    description: null,
+    in_library: LIBRARY.some((s) => s.name === name),
+  })),
+};
+
 export const skillsRoutes = ({
   library = LIBRARY,
   presets = PRESETS,
@@ -144,5 +180,56 @@ export const skillsRoutes = ({
     });
     onCreate?.(created);
     return { json: created };
+  },
+  "GET /api/skill-library/:id": (req) => {
+    const id = new URL(req.url()).pathname.split("/").pop();
+    const found = library.find((s) => s.id === id);
+    return found
+      ? { json: { ...found, used_by: USED_BY[id] ?? [] } }
+      : { status: 404, json: { detail: "skill not found in your library" } };
+  },
+  "DELETE /api/skill-library/:id": (req) => {
+    const id = new URL(req.url()).pathname.split("/").pop();
+    const i = library.findIndex((s) => s.id === id);
+    if (i >= 0) library.splice(i, 1);
+    return { json: { removed_from_agents: (USED_BY[id] ?? []).length } };
+  },
+  "POST /api/skill-library/scan": (req) => {
+    const body = JSON.parse(req.postData() ?? "{}");
+    return body.url === SCAN.url
+      ? { json: SCAN }
+      : {
+          status: 404,
+          json: {
+            detail: {
+              code: "repo_not_found",
+              message:
+                "We couldn’t find that repo. Check the name, or install the GitHub App on it if it’s private.",
+            },
+          },
+        };
+  },
+  "POST /api/skill-library/import": (req) => {
+    const body = JSON.parse(req.postData() ?? "{}");
+    const added = body.skills
+      .filter((name) => !library.some((s) => s.name === name))
+      .map((name) =>
+        skill(
+          `s-${name}`,
+          name,
+          {
+            type: "repo",
+            url: body.url,
+            ref: body.ref,
+            filter: name,
+            mode: body.mode,
+            resolved_sha: body.sha,
+          },
+          { updated: ago(0) },
+        ),
+      );
+    library.push(...added);
+    const skipped = body.skills.filter((n) => !added.some((a) => a.name === n));
+    return { json: { added, skipped } };
   },
 });

@@ -37,6 +37,46 @@ const presetsFlow = () => {
 };
 
 const waitRows = (page) => page.waitForSelector(".sk-table tbody tr");
+
+// G2 flows mutate the library (Delete, Add from GitHub): each render gets its own copy.
+const g2Routes = () => skillsRoutes({ library: [...LIBRARY] });
+
+const openMenu = async (page) => {
+  await waitRows(page);
+  await page
+    .getByRole("button", { name: "More actions for house-style" })
+    .click();
+  await page.waitForSelector('[role="menu"]');
+};
+const openDelete = async (page) => {
+  await openMenu(page);
+  await page.getByRole("menuitem", { name: "Delete skill" }).click();
+  await page
+    .getByRole("alertdialog", { name: "Delete house-style?" })
+    .getByText(/Reviewer and Engineer in Indicator sprint team use it\./)
+    .waitFor();
+};
+const openSheet = async (page) => {
+  await waitRows(page);
+  await page.getByRole("button", { name: "Add from GitHub" }).click();
+  await page.waitForSelector(
+    '[role="dialog"][aria-label="Add skills from GitHub"]',
+  );
+};
+const findSkills = async (page, url) => {
+  await openSheet(page);
+  await page.getByRole("textbox", { name: "Repository" }).fill(url);
+  await page.getByRole("button", { name: "Find skills" }).click();
+};
+const foundSkills = async (page) => {
+  await findSkills(page, "https://github.com/lazyxgenius/skills");
+  await page.waitForSelector(".sk-found");
+};
+const toastShown = async (page) => {
+  await page.waitForSelector('[role="status"].ds-toast');
+  // The toast's pop-in animation finishes before the shot.
+  await page.waitForTimeout(300);
+};
 const waitPresets = (page) => page.waitForSelector(".sk-preset");
 const previewYagni = async (page) => {
   await waitPresets(page);
@@ -109,6 +149,61 @@ export default [
       await page.waitForSelector('[role="status"].ds-toast');
       // The toast's pop-in animation finishes before the shot.
       await page.waitForTimeout(300);
+    },
+  }),
+  // TkF-SkillMenu-1: ⋯ on house-style opens its menu.
+  ...both("TkF-SkillMenu-1", {
+    path: "/#/toolkit/skills",
+    routes: g2Routes,
+    steps: openMenu,
+  }),
+  // TkF-SkillMenu-2: Delete skill shows who loses it (GET /{id} used_by).
+  ...both("TkF-SkillMenu-2", {
+    path: "/#/toolkit/skills",
+    routes: g2Routes,
+    steps: openDelete,
+  }),
+  // TkF-SkillMenu-3: confirmed → the row goes, "house-style deleted." (no undo).
+  ...both("TkF-SkillMenu-3", {
+    path: "/#/toolkit/skills",
+    routes: g2Routes,
+    steps: async (page) => {
+      await openDelete(page);
+      await page
+        .getByRole("alertdialog", { name: "Delete house-style?" })
+        .getByRole("button", { name: "Delete skill" })
+        .click();
+      await toastShown(page);
+    },
+  }),
+  // TkF-FromRepo-1: a typo in the repo → the field error.
+  ...both("TkF-FromRepo-1", {
+    path: "/#/toolkit/skills",
+    routes: g2Routes,
+    steps: async (page) => {
+      await findSkills(page, "https://github.com/lazyxgenius/skils");
+      await page.waitForSelector(".ds-field__help--error");
+    },
+  }),
+  // TkF-FromRepo-2 / Toolkit-SkillFromRepo: the found state.
+  ...both("TkF-FromRepo-2", {
+    path: "/#/toolkit/skills",
+    routes: g2Routes,
+    steps: foundSkills,
+  }),
+  ...both("Toolkit-SkillFromRepo", {
+    path: "/#/toolkit/skills",
+    routes: g2Routes,
+    steps: foundSkills,
+  }),
+  // TkF-FromRepo-3: Add → the sheet closes, the new rows are tinted, the toast says so.
+  ...both("TkF-FromRepo-3", {
+    path: "/#/toolkit/skills",
+    routes: g2Routes,
+    steps: async (page) => {
+      await foundSkills(page);
+      await page.getByRole("button", { name: /^Add \d+ skills?$/ }).click();
+      await toastShown(page);
     },
   }),
 ];
