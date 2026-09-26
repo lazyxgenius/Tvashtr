@@ -947,3 +947,119 @@
   line-height: 1.5;
   color: var(--danger);
 }
+
+/* ---- Paste mcp.json (TkF-Paste-*): the DS Sheet at 540px ---- */
+.ds-sheet[aria-label="Paste mcp.json"] {
+  -webkit-app-region: no-drag;
+}
+.tk-paste__entry {
+  display: flex;
+  flex-direction: column;
+}
+/* The design's code box: 180px content-box min-height + 12px padding + 1px border = 206px. */
+.tk-paste__text {
+  display: block;
+  width: 100%;
+  min-height: 206px;
+  max-height: 420px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--coral-200);
+  background: var(--surface-page);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-800);
+  white-space: pre-wrap;
+  resize: none;
+}
+.tk-paste__text--error {
+  border-color: #e5b3a9;
+}
+.tk-paste__text:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+.tk-paste__text::placeholder {
+  color: var(--text-placeholder);
+}
+.tk-paste__error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #8f3b2f;
+}
+.tk-paste__error > svg {
+  flex: none;
+}
+.tk-paste__found {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line-200);
+  background: var(--surface-page);
+}
+.tk-paste__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: #52613e;
+}
+.tk-paste__server,
+.tk-paste__secret {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-900);
+  cursor: pointer;
+}
+/* The design's bare native checkbox: the browser's own font and margins. */
+.tk-paste__server input,
+.tk-paste__secret input {
+  flex: none;
+  font: revert;
+  margin: 3px 3px 3px 4px;
+  accent-color: #d97757;
+}
+.tk-paste__server--off {
+  cursor: default;
+  color: var(--ink-500);
+}
+.tk-paste__note {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.tk-paste__note--warn {
+  color: #7a5423;
+}
+.tk-paste__secret {
+  align-items: flex-start;
+  padding-left: 21px;
+  font-size: 12.5px;
+  color: var(--ink-700);
+}
+.tk-paste__secret code {
+  font-family: var(--font-code);
+  font-size: 12px;
+}
+.tk-paste__hint {
+  color: var(--ink-500);
+}
+/* A `${` typed in the URL, command or arguments won't be filled in (spec Q11). */
+.tk-wiz__refnote {
+  margin: -8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #7a5423;
+}

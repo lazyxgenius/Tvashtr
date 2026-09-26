@@ -4,10 +4,10 @@
  * search box and Status filter, and the tab's content. Owns the tool list both tabs read, and the
  * row actions' dialogs (TkF-FixSecret-*, TkF-ToolMenu-*): Add secret, Remove, Turn on for agents,
  * and Duplicate — and adding from the Browse catalog (TkF-Catalog-*), whose toast offers the same
- * Turn on dialog — and the Add tool wizard (TkF-AddTool-*).
+ * Turn on dialog — the Add tool wizard (TkF-AddTool-*) and the Paste mcp.json sheet (TkF-Paste-*).
  */
 import { Braces, Plus } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button, Input, Tabs, useToast } from "../../design-system/components";
 import { ApiDetailError } from "../../lib/api/runs";
@@ -25,6 +25,7 @@ import { SecretDialog, type SecretDialogMode } from "../secrets/SecretDialog";
 import { type AddedTool, AddToolSheet } from "./AddToolSheet";
 import { BrowseTab } from "./BrowseTab";
 import { InstalledTab } from "./InstalledTab";
+import { PasteMcpJsonSheet, type PastedTools } from "./PasteMcpJsonSheet";
 import { RemoveToolDialog } from "./RemoveToolDialog";
 import { StatusSelect } from "./StatusSelect";
 import { TurnOnForAgentsDialog } from "./TurnOnForAgentsDialog";
@@ -32,6 +33,7 @@ import {
   agentName,
   agentsFailedToast,
   catalogAddedToast,
+  pastedToast,
   toolAddedToast,
   toolSecretsSavedToast,
   turnedOnToast,
@@ -189,6 +191,28 @@ export function ToolsPage({ view }: { view: ToolsView }) {
     });
   };
 
+  // TOOL-65: the new rows land on top ("Not used yet"); a replaced tool keeps its row. The toast
+  // offers the one tool's missing secret, or Secrets when several tools need one.
+  const onPasted = async ({ added, replaced }: PastedTools) => {
+    setSheet(null);
+    for (const t of added) if (!replaced.includes(t.name)) markToolFresh(t.id);
+    const after = await reload();
+    void refreshBadges();
+    const { message, needs } = pastedToast(added);
+    const one = needs.length === 1 ? (after?.find((t) => t.id === needs[0].id) ?? needs[0]) : null;
+    toast({
+      message,
+      action: one
+        ? {
+            label: one.missing_secrets.length > 1 ? "Add secrets" : "Add secret",
+            onClick: () => addSecret(one),
+          }
+        : needs.length > 1
+          ? { label: "Open Secrets", onClick: () => navigate({ page: "secrets" }) }
+          : undefined,
+    });
+  };
+
   // TOOL-47 from the ⋯: the checked set replaces who uses it (spec Q4).
   const turnOn = async (tool: ToolItem, nodeIds: string[]) => {
     const result = await setToolAgents(tool.id, nodeIds);
@@ -208,6 +232,7 @@ export function ToolsPage({ view }: { view: ToolsView }) {
   );
 
   const installedCount = tools && tools.length > 0 ? tools.length : null;
+  const toolNames = useMemo(() => (tools ?? []).map((t) => t.name), [tools]);
 
   return (
     <>
@@ -291,7 +316,7 @@ export function ToolsPage({ view }: { view: ToolsView }) {
       {sheet?.kind === "add" && (
         <AddToolSheet
           initialName={sheet.name}
-          takenNames={(tools ?? []).map((t) => t.name)}
+          takenNames={toolNames}
           onClose={() => setSheet(null)}
           onBrowse={() => {
             setSheet(null);
@@ -301,7 +326,14 @@ export function ToolsPage({ view }: { view: ToolsView }) {
           onAdded={(added) => void onToolAdded(added)}
         />
       )}
-      {/* G7 mounts the Paste mcp.json sheet here for `sheet.kind === "paste"`. */}
+      {sheet?.kind === "paste" && (
+        <PasteMcpJsonSheet
+          existing={toolNames}
+          onClose={() => setSheet(null)}
+          onAdded={(result) => void onPasted(result)}
+          onStale={() => void reload()}
+        />
+      )}
 
       {dialog?.kind === "secret" && (
         <SecretDialog

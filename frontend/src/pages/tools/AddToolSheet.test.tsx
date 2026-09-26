@@ -105,6 +105,7 @@ function serve(overrides: Record<string, unknown> = {}) {
 }
 
 const sheet = () => screen.getByRole("dialog", { name: "Add a tool" });
+const REFS_NOTE = "Secrets work in headers and environment variables only.";
 const openWizard = async () => {
   await screen.findByRole("table");
   fireEvent.click(screen.getByRole("button", { name: "Add tool" }));
@@ -328,6 +329,104 @@ describe("Add tool · Connection", () => {
     ).toBeInTheDocument();
     next("Next: Secrets");
     expect(within(sheet()).getByText("sqlite · step 3 of 3")).toBeInTheDocument();
+  });
+});
+
+describe("Add tool · Local command (TkF-AddToolLocal-*)", () => {
+  /** Step 2 on Local command as the design fills it: uvx, its arguments and two variables. */
+  const fillLocal = () => {
+    fireEvent.click(within(sheet()).getByRole("button", { name: "Local command" }));
+    fireEvent.change(within(sheet()).getByLabelText("Command"), { target: { value: "uvx" } });
+    fireEvent.change(within(sheet()).getByLabelText(/Arguments/), {
+      target: { value: "mcp-server-sqlite --db-path data.db" },
+    });
+    const add = within(sheet()).getByRole("button", { name: "Add variable" });
+    fireEvent.click(add);
+    fireEvent.change(within(sheet()).getByRole("textbox", { name: "Variable name 1" }), {
+      target: { value: "SQLITE_READONLY" },
+    });
+    fireEvent.change(within(sheet()).getByRole("combobox", { name: "SQLITE_READONLY value" }), {
+      target: { value: "true" },
+    });
+    fireEvent.click(add);
+    fireEvent.change(within(sheet()).getByRole("textbox", { name: "Variable name 2" }), {
+      target: { value: "API_KEY" },
+    });
+    fireEvent.change(within(sheet()).getByRole("combobox", { name: "API_KEY value" }), {
+      target: { value: "${SQLITE_API_KEY}" },
+    });
+  };
+  const LOCAL_CONFIG = {
+    command: "uvx",
+    args: ["mcp-server-sqlite", "--db-path", "data.db"],
+    env: { SQLITE_READONLY: "true", API_KEY: "${SQLITE_API_KEY}" },
+  };
+
+  it("round-trips literal and ${NAME} variables through the raw JSON; Remove variable drops one", async () => {
+    serve();
+    await toConnection("sqlite");
+    fillLocal();
+    // The secret shows as a chip, marked not set, once you leave the field.
+    expect(await within(sheet()).findByText("${SQLITE_API_KEY}")).toBeInTheDocument();
+    expect(within(sheet()).getByText("· not set")).toBeInTheDocument();
+    fireEvent.click(within(sheet()).getByRole("button", { name: "Advanced (raw JSON)" }));
+    const raw = within(sheet()).getByRole("textbox", { name: "Advanced (raw JSON)" });
+    expect(JSON.parse((raw as HTMLTextAreaElement).value)).toEqual(LOCAL_CONFIG);
+
+    // JSON → form: a mixed value stays one string, with its literal text and its ref.
+    fireEvent.change(raw, {
+      target: {
+        value: JSON.stringify({
+          ...LOCAL_CONFIG,
+          env: { SQLITE_READONLY: "false", DSN: "file:${DB_FILE}?mode=ro" },
+        }),
+      },
+    });
+    expect(within(sheet()).getByRole("combobox", { name: "SQLITE_READONLY value" })).toHaveValue(
+      "false",
+    );
+    expect(within(sheet()).getByRole("combobox", { name: "DSN value" })).toHaveValue(
+      "file:${DB_FILE}?mode=ro",
+    );
+    expect(within(sheet()).queryByRole("combobox", { name: "API_KEY value" })).toBeNull();
+
+    // Form → JSON.
+    fireEvent.click(within(sheet()).getAllByRole("button", { name: "Remove variable" })[0]);
+    expect(JSON.parse((raw as HTMLTextAreaElement).value)).toEqual({
+      ...LOCAL_CONFIG,
+      env: { DSN: "file:${DB_FILE}?mode=ro" },
+    });
+  });
+
+  it("notes that a ${ in Command or Arguments isn't filled in (spec Q11)", async () => {
+    serve();
+    await toConnection("sqlite");
+    fireEvent.click(within(sheet()).getByRole("button", { name: "Local command" }));
+    expect(within(sheet()).queryByText(REFS_NOTE)).toBeNull();
+    fireEvent.change(within(sheet()).getByLabelText(/Arguments/), {
+      target: { value: "--token ${TOKEN}" },
+    });
+    expect(within(sheet()).getByText(REFS_NOTE)).toBeInTheDocument();
+  });
+
+  it("asks for the variable's secret on step 3, then creates the local tool", async () => {
+    const calls = serve();
+    await toConnection("sqlite");
+    fillLocal();
+    next("Next: Secrets");
+    expect(
+      within(sheet()).getByText("sqlite uses one secret. Add its value now or later in Secrets."),
+    ).toBeInTheDocument();
+    fireEvent.change(within(sheet()).getByLabelText("SQLITE_API_KEY"), {
+      target: { value: "sk-local-1" },
+    });
+    next("Add tool");
+    expect(await screen.findByText("sqlite added.")).toBeTruthy();
+    const writes = calls.filter((c) => c.method !== "GET");
+    expect(writes.map((c) => c.body)).toEqual([
+      { name: "SQLITE_API_KEY", value: "sk-local-1" },
+      { name: "sqlite", server_config: LOCAL_CONFIG },
+    ]);
   });
 });
 

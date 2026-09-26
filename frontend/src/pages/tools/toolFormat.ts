@@ -203,3 +203,32 @@ export function addFailedMessage(
 export function agentsFailedToast(toolName: string): string {
   return `${toolName} added, but it couldn’t be turned on for your agents. Use Turn on for agents… in its ⋯ menu.`;
 }
+
+// ---- Paste mcp.json (TOOL-62..65) ----
+
+/** The primary button: "Add 2 servers", "Add 1 server", or "Add servers" when none is chosen. */
+export function addServersLabel(checked: number): string {
+  return checked === 0 ? "Add servers" : `Add ${plural(checked, "server")}`;
+}
+
+/** The checklist's heading: "2 servers found". */
+export function serversFoundLabel(found: number): string {
+  return `${plural(found, "server")} found`;
+}
+
+/**
+ * The toast after adding: "2 servers added. linear needs a secret." (TOOL-65). `needs` are the
+ * added tools still missing a secret: one gets its "Add secret" action; more send you to Secrets.
+ */
+export function pastedToast(added: ToolItem[]): { message: string; needs: ToolItem[] } {
+  const needs = added.filter((t) => t.missing_secrets.length > 0);
+  let message = `${plural(added.length, "server")} added.`;
+  if (needs.length === 1) {
+    const [tool] = needs;
+    const n = tool.missing_secrets.length;
+    message += ` ${tool.name} needs ${n === 1 ? "a secret" : `${n} secrets`}.`;
+  } else if (needs.length > 1) {
+    message += ` ${joinNames(needs.map((t) => t.name))} need secrets.`;
+  }
+  return { message, needs };
+}

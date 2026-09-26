@@ -25,6 +25,9 @@ export interface ConnectionForm {
   command: string;
   /** Space-separated. */
   args: string;
+  /** The arguments as a config listed them, kept while `args` still reads the same, so one with a
+   *  space in it ("my data.db") survives the round trip through the form. */
+  argv?: string[];
   headers: KeyValueRow[];
   env: KeyValueRow[];
   /** Raw-JSON keys the form doesn't edit (e.g. `type`, `timeout`), sent as they are. */
@@ -46,7 +49,7 @@ const FORM_KEYS = new Set(["url", "headers", "command", "args", "env"]);
 /** The form → the INNER `server_config` (only the chosen transport's fields). */
 export function formToConfig(form: ConnectionForm): ServerConfig {
   const remote = form.transport === "remote";
-  return {
+  const config: ServerConfig = {
     ...form.extras,
     ...buildServerConfig(
       form.transport,
@@ -55,6 +58,8 @@ export function formToConfig(form: ConnectionForm): ServerConfig {
       remote ? form.headers : form.env,
     ),
   };
+  if (!remote && form.argv && form.argv.join(" ") === form.args.trim()) config.args = form.argv;
+  return config;
 }
 
 /** A parsed config → the form. The other transport's fields keep what `prev` had. */
@@ -71,14 +76,15 @@ export function configToForm(config: ServerConfig, prev: ConnectionForm): Connec
       extras,
     };
   }
-  const args = Array.isArray(config.args)
-    ? config.args.filter((a): a is string => typeof a === "string").join(" ")
-    : "";
+  const argv = Array.isArray(config.args)
+    ? config.args.filter((a): a is string => typeof a === "string")
+    : [];
   return {
     ...prev,
     transport,
     command: typeof config.command === "string" ? config.command : "",
-    args,
+    args: argv.join(" "),
+    argv,
     env: rowsOfBlock(config.env),
     extras,
   };
@@ -115,6 +121,15 @@ export function connectionError(form: ConnectionForm): string | null {
     return null;
   }
   return form.command.trim() ? null : "Add the command that starts the server.";
+}
+
+/** Secrets are filled in only in header and environment values (spec Q11). */
+export const REFS_ONLY_IN_VALUES = "Secrets work in headers and environment variables only.";
+
+/** The note for a `${` typed where it won't be filled in (URL, command, arguments), or null. */
+export function misplacedRefNote(form: ConnectionForm): string | null {
+  const fields = form.transport === "remote" ? [form.url] : [form.command, form.args];
+  return fields.some((v) => v.includes("${")) ? REFS_ONLY_IN_VALUES : null;
 }
 
 /** Step 1's "Next: Connection" check, or null. */

@@ -3,14 +3,17 @@ import { describe, expect, it } from "vitest";
 import type { ToolItem, UsageRow } from "../../lib/api/tools";
 import {
   addFailedMessage,
+  addServersLabel,
   agentsFailedToast,
   catalogAddedToast,
   githubInstalledToast,
   agentName,
   agentNames,
   heldAgentsLine,
+  pastedToast,
   removeImpact,
   secretsLede,
+  serversFoundLabel,
   toolAddedToast,
   toolSecretsSavedToast,
   turnedOnToast,
@@ -198,6 +201,30 @@ describe("Add tool wizard copy", () => {
     expect(addFailedMessage({ tool: "linear" }, null, [])).toBe("Couldn’t add linear. Try again.");
     expect(agentsFailedToast("linear")).toBe(
       "linear added, but it couldn’t be turned on for your agents. Use Turn on for agents… in its ⋯ menu.",
+    );
+  });
+});
+
+describe("paste copy (TOOL-62..65)", () => {
+  it("counts the servers found and the ones to add", () => {
+    expect(serversFoundLabel(2)).toBe("2 servers found");
+    expect(serversFoundLabel(1)).toBe("1 server found");
+    expect(addServersLabel(2)).toBe("Add 2 servers");
+    expect(addServersLabel(1)).toBe("Add 1 server");
+    expect(addServersLabel(0)).toBe("Add servers");
+  });
+
+  it("toasts what was added and who still needs a secret", () => {
+    const sqlite = tool("t-sqlite", "sqlite", { command: "uvx" });
+    expect(pastedToast([LINEAR, sqlite])).toEqual({
+      message: "2 servers added. linear needs a secret.",
+      needs: [LINEAR],
+    });
+    expect(pastedToast([sqlite]).message).toBe("1 server added.");
+    const jira = tool("t-jira", "jira", {}, { missing_secrets: ["JIRA_TOKEN", "JIRA_USER"] });
+    expect(pastedToast([jira]).message).toBe("1 server added. jira needs 2 secrets.");
+    expect(pastedToast([LINEAR, jira]).message).toBe(
+      "2 servers added. linear and jira need secrets.",
     );
   });
 });

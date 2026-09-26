@@ -8,7 +8,9 @@ import {
   configToForm,
   connectionError,
   defaultPick,
+  REFS_ONLY_IN_VALUES,
   formToConfig,
+  misplacedRefNote,
   openRefAt,
   parseConfigText,
   pickerOptions,
@@ -61,6 +63,46 @@ describe("connection form ⇄ server_config", () => {
     });
     // Neither a URL nor a command: keep where it runs.
     expect(configToForm({}, { ...prev, transport: "local" }).transport).toBe("local");
+  });
+
+  it("keeps an argument with a space in it through the form, until you edit the arguments", () => {
+    const form = configToForm(
+      { command: "uvx", args: ["mcp-server-sqlite", "--db-path", "my data.db"] },
+      EMPTY_CONNECTION,
+    );
+    expect(form.args).toBe("mcp-server-sqlite --db-path my data.db");
+    expect(formToConfig(form).args).toEqual(["mcp-server-sqlite", "--db-path", "my data.db"]);
+    expect(formToConfig({ ...form, args: "mcp-server-sqlite --db-path other.db" }).args).toEqual([
+      "mcp-server-sqlite",
+      "--db-path",
+      "other.db",
+    ]);
+  });
+
+  it("keeps literal and ${NAME} environment values as they are, both ways", () => {
+    const config = {
+      command: "uvx",
+      args: ["mcp-server-sqlite", "--db-path", "data.db"],
+      env: { SQLITE_READONLY: "true", API_KEY: "${SQLITE_API_KEY}", DSN: "pg://u:${DB_PASS}@h/db" },
+    };
+    const form = configToForm(config, EMPTY_CONNECTION);
+    expect(form.env).toEqual([
+      { key: "SQLITE_READONLY", value: "true" },
+      { key: "API_KEY", value: "${SQLITE_API_KEY}" },
+      { key: "DSN", value: "pg://u:${DB_PASS}@h/db" },
+    ]);
+    expect(formToConfig(form)).toEqual(config);
+    expect(parseConfigText(configText(form))).toEqual({ config });
+  });
+
+  it("notes a ${ typed where it won't be filled in (spec Q11)", () => {
+    expect(misplacedRefNote(LINEAR)).toBeNull();
+    expect(misplacedRefNote({ ...LINEAR, url: "https://x.dev/?key=${KEY}" })).toBe(
+      REFS_ONLY_IN_VALUES,
+    );
+    const local = { ...EMPTY_CONNECTION, transport: "local" as const, command: "uvx" };
+    expect(misplacedRefNote({ ...local, args: "--token ${T}" })).toBe(REFS_ONLY_IN_VALUES);
+    expect(misplacedRefNote({ ...local, env: [{ key: "T", value: "${T}" }] })).toBeNull();
   });
 
   it("parses typed raw JSON, or says why not", () => {

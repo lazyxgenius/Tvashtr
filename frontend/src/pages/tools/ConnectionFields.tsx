@@ -17,6 +17,7 @@ import {
   type SecretOption,
   configText,
   configToForm,
+  misplacedRefNote,
   parseConfigText,
 } from "./connectionForm";
 import type { Transport } from "./toolConfig";
@@ -121,6 +122,8 @@ export function ConnectionFields({
           />
         </div>
       )}
+
+      {misplacedRefNote(form) && <p className="tk-wiz__refnote">{misplacedRefNote(form)}</p>}
 
       <KeyValueRows
         key={form.transport}
