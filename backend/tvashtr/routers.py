@@ -23,6 +23,7 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane import (
     desktop_jobs,
     document_views,
+    domain_read,
     domain_views,
     github_app,
     github_targets,
@@ -72,9 +73,6 @@ from tvashtr.control_plane.domains import (
     get_domain,
     list_domain_templates,
     update_domain,
-)
-from tvashtr.control_plane.domains import (
-    list_documents as list_domain_documents,
 )
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
 from tvashtr.control_plane.local_repo import LocalRepoTarget
@@ -1956,7 +1954,13 @@ def add_provider(
             session.add(row)
         session.flush()
         session.refresh(row)  # the server-side created_at / updated_at of the saved row
-        return {**_provider_to_dict(row), "replaced": existing is not None}
+        saved = {**_provider_to_dict(row), "replaced": existing is not None}
+    # Revamp (Domains): files waiting for this provider's key start reading. Never fails the save.
+    try:
+        domain_read.resume_waiting(owner_id, provider)
+    except Exception:
+        logger.exception("resume_waiting failed after saving a %s key", provider)
+    return saved
 
 
 @router.delete("/api/providers/{provider}", status_code=204)
@@ -2726,12 +2730,23 @@ def _parse_doc_id(document_id: str) -> uuid.UUID:
 
 @router.get("/api/domains/{domain_id}/documents")
 def get_domain_documents(
-    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+    domain_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    status: str = "all",
 ) -> dict:
-    rows = list_domain_documents(uuid.UUID(current_user.id), _parse_domain_id(domain_id))
-    if rows is None:
+    # Revamp (Sources tab): items gain kind/phase/pieces/progress/problem (+ `matched` with `q`);
+    # the answer gains the Show filter's unfiltered `counts` and the ready `total_pieces`.
+    if status not in domain_views.DOCUMENT_STATUS_FILTERS:
+        raise HTTPException(
+            status_code=422, detail="status must be one of: all, ready, reading, needs_attention"
+        )
+    out = domain_views.document_views(
+        uuid.UUID(current_user.id), _parse_domain_id(domain_id), q=q, status=status
+    )
+    if out is None:
         raise HTTPException(status_code=404, detail="domain not found")
-    return {"documents": rows}
+    return out
 
 
 async def _read_domain_upload_capped(file: UploadFile) -> bytes:
@@ -2763,13 +2778,22 @@ async def post_domain_document(
     file: Annotated[UploadFile, File()],
 ) -> dict:
     name = file.filename or "upload.txt"
+    owner_id = uuid.UUID(current_user.id)
+    did = _parse_domain_id(domain_id)
     try:
         raw = await _read_domain_upload_capped(file)
-        return create_document(uuid.UUID(current_user.id), _parse_domain_id(domain_id), name, raw)
+        row = create_document(owner_id, did, name, raw)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="domain not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Revamp (finding 3): an upload starts reading by itself; `reading` says how it went.
+    try:
+        reading = domain_read.ensure_reading(owner_id, did)
+    except Exception:  # the file is saved; the next upload, re-read or key save starts it
+        logger.exception("domain upload: reading did not start for domain %s", did)
+        reading = "queued"
+    return {**row, "reading": "queued" if reading == "idle" else reading}
 
 
 @router.delete("/api/domains/{domain_id}/documents/{document_id}")

@@ -2,7 +2,8 @@
 
 Files live under ``settings.domain_files_dir``:
 ``{dir}/{owner_id}/{domain_id}/{document_id}/{safe_filename}``.
-No object storage in Phase 2. Fly multi-replica prod MUST use a shared volume (``TVASHTR_DOMAIN_FILES_DIR=/data/domain-files``).
+No object storage in Phase 2. Fly multi-replica prod MUST use a shared volume
+(``TVASHTR_DOMAIN_FILES_DIR=/data/domain-files``).
 """
 
 from __future__ import annotations
@@ -38,9 +39,7 @@ def safe_filename(name: str) -> str:
 def extension_of(filename: str) -> str:
     ext = Path(filename).suffix.lstrip(".").lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise ValueError(
-            f"unsupported file type: {ext or '(none)'} (allowed: pdf, md, txt, html)"
-        )
+        raise ValueError(f"unsupported file type: {ext or '(none)'} (allowed: pdf, md, txt, html)")
     return ext
 
 
@@ -90,6 +89,39 @@ def delete_domain_tree(owner_id: uuid.UUID, domain_id: uuid.UUID) -> None:
         return
     if tree.is_dir():
         shutil.rmtree(tree, ignore_errors=True)
+
+
+def extract_pages(absolute: Path, ext: str) -> tuple[str, list[tuple[int, int]]]:
+    """The file's text (exactly ``extract_text``'s) plus ``(offset, page)`` for each PDF page that
+    has text — the offset where that page starts in the text. Other kinds have no pages (``[]``)."""
+    if ext != "pdf":
+        return extract_text(absolute, ext), []
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(absolute))
+    parts: list[str] = []
+    starts: list[tuple[int, int]] = []
+    offset = 0
+    for number, page in enumerate(reader.pages, start=1):
+        t = page.extract_text() or ""
+        if not t.strip():
+            continue
+        if parts:
+            offset += 2  # the "\n\n" joining pages
+        starts.append((offset, number))
+        parts.append(t)
+        offset += len(t)
+    return "\n\n".join(parts), starts
+
+
+def page_at(starts: list[tuple[int, int]], offset: int) -> int | None:
+    """The page an ``offset`` into ``extract_pages``' text falls on (``None`` without pages)."""
+    page = None
+    for start, number in starts:
+        if start > offset:
+            break
+        page = number
+    return page
 
 
 def extract_text(absolute: Path, ext: str) -> str:
