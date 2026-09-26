@@ -202,7 +202,8 @@ export interface ProviderDirectoryEntry {
   monogram: string;
   name: string;
   label: string;
-  example_model: string;
+  /** `null` when the provider declares no model (nvidia_nim since 2026-09-26). */
+  example_model: string | null;
   subscription: string | null;
   embeddings: boolean;
   hint: string | null;
