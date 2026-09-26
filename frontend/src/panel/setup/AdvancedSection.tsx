@@ -28,8 +28,9 @@ export function AdvancedSection({
   const summary = `Backup model: ${fallbackModel.trim() || "none"} · Output format: ${
     schemaSet ? "set" : "none"
   }`;
+  // The button and its body are both rows of the Setup stack (the design's 22px gap between them).
   return (
-    <div>
+    <>
       <button
         type="button"
         className="nd-adv"
@@ -62,6 +63,6 @@ export function AdvancedSection({
           </SettingRow>
         </div>
       )}
-    </div>
+    </>
   );
 }
