@@ -125,6 +125,92 @@ def test_idempotent_ship_recovers_commit_made_without_tag(tmp_path):
     assert _tags(ws) == [f"ship-{run_id}"]
 
 
+# revamp-e2e: the OpenHands agent's own system prompt tells it to commit ("Use `git commit -a`
+# whenever possible"), and live run 42e08600's Engineer did: `git add docs/DEMO_PROOF.md && git
+# commit`. Ship then found nothing staged and raised, and the run never ended. An agent's commit on
+# the run's branch IS its work, so Ship ships it.
+
+
+def _git(ws, *args) -> str:
+    return subprocess.run(
+        ["git", "-C", str(ws), *args], check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def _agent_commits(ws, name: str, text: str) -> str:
+    (Path(ws) / name).write_text(text)
+    _git(ws, "add", name)
+    _git(ws, "-c", "user.email=a@x", "-c", "user.name=agent", "commit", "-q", "-m", f"add {name}")
+    return _git(ws, "rev-parse", "HEAD")
+
+
+def _repo_with_history(path: Path) -> Path:
+    """A user's repo with some history on ``main`` (not a fresh workspace)."""
+    path.mkdir()
+    _git(path, "init", "-q", "-b", "main")
+    _git(path, "config", "user.email", "u@x")
+    _git(path, "config", "user.name", "user")
+    (path / "README.md").write_text("repo\n")
+    _git(path, "add", "README.md")
+    _git(path, "commit", "-q", "-m", "first")
+    (path / "app.py").write_text("print(1)\n")
+    _git(path, "add", "app.py")
+    _git(path, "commit", "-q", "-m", "second")
+    return path
+
+
+def test_ship_takes_a_commit_the_agent_made_itself(tmp_path):
+    ws = tmp_path / "ws-self"
+    ws.mkdir()
+    init_workspace_repo(str(ws))
+    head = _agent_commits(ws, "greeting.txt", "hi\n")
+
+    first = idempotent_ship(str(ws), "run-self")
+    assert first == {"sha": head, "tag": "ship-run-self", "created": True}
+    assert _show(ws, "ship-run-self", "greeting.txt") == "hi\n"
+    # Re-running ships nothing new.
+    assert idempotent_ship(str(ws), "run-self") == {
+        "sha": head,
+        "tag": "ship-run-self",
+        "created": False,
+    }
+
+
+def test_ship_takes_the_agents_commits_on_a_run_branch(tmp_path):
+    """A hosted clone or a local folder: the run works on ``tvashtr/<run_id>`` branched from the
+    base. The agent's commits on that branch are shipped; the base's own history is not."""
+    repo = _repo_with_history(tmp_path / "repo")
+    _git(repo, "checkout", "-q", "-b", "tvashtr/run-br")
+    head = _agent_commits(repo, "docs.md", "# Docs\n")
+
+    assert idempotent_ship(str(repo), "run-br") == {
+        "sha": head,
+        "tag": "ship-run-br",
+        "created": True,
+    }
+
+
+def test_ship_takes_the_agents_commit_in_a_linked_worktree(tmp_path):
+    repo = _repo_with_history(tmp_path / "repo")
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "-q", "-b", "tvashtr/run-wt", str(wt), "main")
+    head = _agent_commits(wt, "docs.md", "# Docs\n")
+
+    assert idempotent_ship(str(wt), "run-wt")["sha"] == head
+
+
+def test_ship_still_raises_when_a_run_branch_has_nothing_new(tmp_path):
+    """The base's own commits are not the agent's work: a run that produced nothing still fails."""
+    repo = _repo_with_history(tmp_path / "repo")
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "-q", "-b", "tvashtr/run-none", str(wt), "main")
+    with pytest.raises(RuntimeError, match="nothing to ship"):
+        idempotent_ship(str(wt), "run-none")
+    _git(repo, "checkout", "-q", "-b", "tvashtr/run-none-2")
+    with pytest.raises(RuntimeError, match="nothing to ship"):
+        idempotent_ship(str(repo), "run-none-2")
+
+
 # ---------------------------------------------------------------------------------------------
 # ``ship_step`` — the durable GREENFIELD diff snapshot (M-wsgc S1, ``run_artifacts``).
 #
