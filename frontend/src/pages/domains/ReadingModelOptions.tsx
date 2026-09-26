@@ -71,7 +71,7 @@ export function ReadingModelOptions({
             onClick={() => onPick(m.slug)}
           >
             {selected ? (
-              <Check size={15} strokeWidth={1.6} aria-hidden />
+              <Check className="dm-rmopt__check" size={15} strokeWidth={2} aria-hidden />
             ) : (
               <span className="dm-rmopt__pad" />
             )}

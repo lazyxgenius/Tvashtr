@@ -1,8 +1,9 @@
 /**
  * A domain's Settings tab (DM-80…DM-91; Dm-Settings, DmF-Tune-1…4, DmF-Embed-1…3, DmF-Piece-1/2):
  * how files are read, how answers are written, how search works and the danger card. The Reading
- * model picker keeps the design's 340px on a row of its own (the frame draws it overflowing into the
- * next card). Editing shows the save bar with what saving means; **Save and run tests** saves and
+ * model picker keeps the design's 340px on a row of its own, first (the frame draws it beside
+ * Starting point, overflowing into the next card); Starting point then sits right above the piece
+ * size it sets. Editing shows the save bar with what saving means; **Save and run tests** saves and
  * goes to Quality, where the run with the new setting is compared with the last one. A reading model
  * with other weights warns first and asks before re-reading every file (the server starts it); a
  * new piece size asks whether to re-read the existing files now and run the tests afterwards.
@@ -15,6 +16,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { CircleCheck, RefreshCw, Trash } from "lucide-react";
 
 import { Button, Input, Select, Switch, useToast } from "../../design-system/components";
+import { cx } from "../../design-system/components/utils";
 import { ApiError, listProviders } from "../../lib/api";
 import {
   type DomainDetailView,
@@ -76,6 +78,7 @@ function Field({
   labelId,
   helper,
   wide,
+  newRow,
   children,
 }: {
   label: string;
@@ -85,10 +88,14 @@ function Field({
   helper?: ReactNode;
   /** A row of its own (both columns). */
   wide?: boolean;
+  /** Starts a row (the left column). */
+  newRow?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className={wide ? "dm-set__field dm-set__field--wide" : "dm-set__field"}>
+    <div
+      className={cx("dm-set__field", wide && "dm-set__field--wide", newRow && "dm-set__field--row")}
+    >
       <label className="dm-set__label" htmlFor={htmlFor} id={labelId}>
         {label}
       </label>
@@ -253,6 +260,7 @@ export function SettingsTab({
         },
       );
       if (started) {
+        onChanged(); // the header and Sources show the re-read
         toast({ message: pieceSavedToast(size, { files, tests: pieces.runTests ? cases : 0 }) });
         navigate({ page: "domains", domainId: id });
       }
@@ -301,23 +309,6 @@ export function SettingsTab({
             </div>
             <div className="dm-set__pair">
               <Field
-                label="Starting point"
-                htmlFor="dm-set-template"
-                helper={
-                  <span className="dm-set__help">
-                    Sets the piece size below. You can still change it.
-                  </span>
-                }
-              >
-                <Select
-                  id="dm-set-template"
-                  aria-label="Starting point"
-                  options={templateOptions}
-                  value={draft.template}
-                  onChange={(e) => pickTemplate(e.target.value)}
-                />
-              </Field>
-              <Field
                 label="Reading model"
                 htmlFor="dm-set-reading"
                 labelId="dm-set-reading-label"
@@ -347,8 +338,26 @@ export function SettingsTab({
                 />
               </Field>
               <Field
+                label="Starting point"
+                htmlFor="dm-set-template"
+                helper={
+                  <span className="dm-set__help">
+                    Sets the piece size below. You can still change it.
+                  </span>
+                }
+              >
+                <Select
+                  id="dm-set-template"
+                  aria-label="Starting point"
+                  options={templateOptions}
+                  value={draft.template}
+                  onChange={(e) => pickTemplate(e.target.value)}
+                />
+              </Field>
+              <Field
                 label="Piece size"
                 htmlFor="dm-set-size"
+                newRow
                 helper={
                   errors.size ? (
                     <Problem id="dm-set-size-error" text={errors.size} />

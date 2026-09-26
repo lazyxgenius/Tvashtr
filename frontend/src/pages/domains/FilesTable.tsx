@@ -127,6 +127,7 @@ export function FilesTable({
   now,
   provider,
   tinted,
+  fullReread = false,
   footer,
   empty,
   onShowAll,
@@ -137,6 +138,8 @@ export function FilesTable({
   provider: string;
   /** The file whose preview or delete dialog is open (its row is tinted behind it). */
   tinted?: string;
+  /** Every file is being re-read: re-reading rows aren't tinted (DmF-Embed-4, DmF-Piece-3). */
+  fullReread?: boolean;
   footer: { text: string; showAll: boolean };
   /** The one row shown when no file is listed. */
   empty: string;
@@ -220,7 +223,9 @@ export function FilesTable({
                   },
                 ];
             const tint =
-              f.document_id === tinted || f.phase === "rereading" || f.phase === "needs_attention";
+              f.document_id === tinted ||
+              (f.phase === "rereading" && !fullReread) ||
+              f.phase === "needs_attention";
             return (
               <tr key={f.document_id} className={tint ? "dm-files__row--tint" : undefined}>
                 <td>

@@ -282,6 +282,9 @@
 .dm-rmopt > svg {
   flex: none;
 }
+.dm-rmopt__check {
+  color: var(--coral-700);
+}
 .dm-rmopt__pad {
   width: 15px;
   flex: none;

@@ -70,6 +70,9 @@
 .dm-set__field--wide {
   grid-column: 1 / -1;
 }
+.dm-set__field--row {
+  grid-column: 1;
+}
 .dm-set__label {
   font-size: 13px;
   line-height: 1.6;

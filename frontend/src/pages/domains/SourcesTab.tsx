@@ -286,6 +286,7 @@ export function SourcesTab({
           now={now}
           provider={detail.reading_model.provider}
           tinted={deleting?.document_id ?? file}
+          fullReread={shownRereading(detail) !== null}
           footer={footer}
           empty={
             query
