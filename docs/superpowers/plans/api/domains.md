@@ -17,6 +17,13 @@ in `routers.py` and changed there in place.
 | `GET /api/domains/{id}` | gains the same keys as a list item | G1 |
 | `GET /api/domain-templates` | served in design order; items gain `short`, `piece_size`, `overlap`; `description` is the dialog copy | G1 |
 | `GET/PATCH /api/account/preferences` | new whitelisted key `domains_howto_hidden` | G1 |
+| `GET /api/domains/{id}` | also gains `setup`, `answer_model`, `last_question_at` | G2 |
+| `GET /api/domains/{id}/documents` | `?q=&status=`; items gain `kind`, `phase`, `pieces`, `pieces_total`, `pieces_done`, `progress`, `problem` (+ `matched`); answer gains `counts`, `total_pieces`, `query`, `status` | G2 |
+| `POST /api/domains/{id}/documents` | starts reading by itself; answer gains `reading` | G2 |
+| `POST /api/providers` | saving a key starts files waiting for that provider's key | G2 |
+| `POST /api/domains/{id}/reread` | **new** — read some or all files again | G2 |
+| `GET /api/domains/{id}/documents/{doc}/pieces` | **new** — one file's pieces + how often answers cite it | G2 |
+| `GET /api/domains/{id}/documents/{doc}/file` | **new** — download the original | G2 |
 
 Schema: migration `0042_domain_message_meta` adds `domain_messages.meta JSONB NULL` (the Ask tab's
 answer meta `{model, used_history, source}`; written from the Ask group on).
@@ -122,3 +129,202 @@ The whitelist gains `domains_howto_hidden` (bool, default `false`): the account 
 
 `PATCH` body `{"domains_howto_hidden": true}` → `200` with the merged object;
 a non-boolean → `422 {"detail": "domains_howto_hidden must be true or false."}`.
+
+---
+
+## Automatic reading (G2)
+
+Uploading a file starts reading it; there is no Ingest step any more (`POST /ingest` still works for
+old clients). A domain reads **one file at a time**, oldest first (OQ-24): the durable DBOS workflow
+`read_domain_files` reads a file (`prepare_document_step` → `embed_batch_step` × ⌈pieces ÷ 16⌉ →
+`finish_document_step`), and each file's last step claims the next waiting file under a per-domain
+advisory lock, so files uploaded during a read are picked up by the running read. Pieces are stored
+with no embedding first and filled 16 at a time — that is the per-file `progress`. PDF pieces carry
+`meta.page` (the page they start on); every new piece carries `meta.chunk_size`.
+
+A file whose reading key is missing waits (`phase: "waiting_for_key"`). Saving that provider's key
+(`POST /api/providers`, below) starts it. A file left `indexing` for 10 minutes with no progress (a
+crashed process) is picked up again by the next upload, re-read or key save.
+
+---
+
+## `GET /api/domains/{id}` (G2 additions)
+
+```json
+{
+  "...": "every key of the domain summary above",
+  "setup": {"key": true, "files_read": false, "tested": false, "used": false},
+  "answer_model": {
+    "configured": null,
+    "resolved": "openai/gpt-4o-mini",
+    "label": "OpenAI gpt-4o-mini",
+    "provider": "openai",
+    "key_saved": true
+  },
+  "last_question_at": null
+}
+```
+
+- `setup` — the four setup-strip steps (DM-37). `key`: the reading key is saved. `files_read`: the
+  first read has finished — sticky: once some file was read before the files now waiting were added
+  (or any file was read twice), it stays `true`, so later uploads and re-reads don't bring the setup
+  strip back. `tested`: it has test questions or someone asked it a question. `used`: `usage.uses > 0`.
+  The page shows the setup strip while `files_read` is `false`, else the summary strip (Sources only).
+- `answer_model` — `configured` is `config.generation.model` (`null` = account default); `resolved` is
+  what answers now (`null` when nothing resolves); `label` is the design's name for the three presets
+  (`Groq gpt-oss-120b`, `OpenAI gpt-4o-mini`, `OpenRouter gpt-4o-mini`), else the slug; `key_saved`: the
+  account holds `provider`'s key.
+- `last_question_at` — the newest question asked in Ask (`null` when none).
+
+---
+
+## `GET /api/domains/{id}/documents`
+
+Query: `q` (≤ 200 chars; matches the file name, case-insensitively, **or** the file's text via the
+English full-text index — "refund" finds a file that says "Refunds"), `status` — `all` (default) |
+`ready` | `reading` (reading, re-reading, waiting and waiting for a key) | `needs_attention`.
+
+```json
+{
+  "documents": [
+    {
+      "document_id": "3b0c1f2e-7a55-4d8e-9f10-2c4b6d8e0a11",
+      "domain_id": "7f3a2c1e-0b4d-4c55-9a51-2f7d8e6b1a90",
+      "filename": "refund-policy.md",
+      "content_type": "text/markdown",
+      "byte_size": 18432,
+      "ingest_status": "ready",
+      "error_message": null,
+      "version": 1,
+      "created_at": "2026-09-12T09:14:02.118201+00:00",
+      "updated_at": "2026-09-12T09:14:31.401233+00:00",
+      "kind": "MD",
+      "phase": "ready",
+      "pieces": 42,
+      "pieces_total": 42,
+      "pieces_done": 42,
+      "progress": null,
+      "problem": null,
+      "matched": "name"
+    },
+    {
+      "document_id": "9d2e4f60-1b3c-4a5d-8e7f-0a1b2c3d4e5f",
+      "filename": "billing-faq.pdf",
+      "kind": "PDF",
+      "ingest_status": "error",
+      "error_message": "AuthenticationError: 401 Incorrect API key provided",
+      "phase": "needs_attention",
+      "pieces": null,
+      "pieces_total": 0,
+      "pieces_done": 0,
+      "progress": null,
+      "problem": {"kind": "key_rejected", "message": "OpenAI rejected the key (401).", "fix": "engines_key"},
+      "matched": "text",
+      "...": "the other keys as above"
+    }
+  ],
+  "counts": {"all": 14, "ready": 13, "reading": 0, "needs_attention": 1},
+  "total_pieces": 1212,
+  "query": "refund",
+  "status": "all"
+}
+```
+
+- Files are listed **oldest first** (the order they were added).
+- `kind` — `PDF` | `MD` | `HTML` | `TXT` (the table's tile).
+- `phase` — `ready` | `reading` (first read) | `rereading` (`version > 1`) | `waiting` (queued, key
+  saved) | `waiting_for_key` | `needs_attention`.
+- `pieces` — the piece count of a **ready** file, else `null` (the table shows "—"). `pieces_total` /
+  `pieces_done` — pieces cut / embedded so far. `progress` — `pieces_done ÷ pieces_total` (0–1, 4
+  decimals; `0.0` before the file is cut) while `reading`/`rereading`, else `null`.
+- `problem` — only for `needs_attention`: the stored error in the table's words (DM-43). `kind` is
+  `key_rejected` ("<Vendor> rejected the key (401)." + `fix: "engines_key"`), `no_text` ("No text
+  found. It may be a scanned image. Export it as text-based PDF."), `rate_limited` ("<Vendor> is busy
+  right now. Re-read it in a minute."), `unsupported` ("Only PDF, Markdown, text or HTML files can be
+  read."), `wrong_dim` / `other` ("Couldn’t read this file: <first line of the error>.").
+- `matched` — only with `q`: `name` or `text`.
+- `counts` — the Show filter's numbers, **unfiltered** by `q`/`status`. `total_pieces` — ready pieces
+  of every file.
+
+Errors: `404 {"detail": "domain not found"}`; `422 {"detail": "status must be one of: all, ready,
+reading, needs_attention"}`.
+
+---
+
+## `POST /api/domains/{id}/documents` (G2 addition)
+
+Unchanged request (multipart `file`) and item keys; the answer gains `reading`:
+`"started"` (this upload started a read), `"queued"` (a read is running and will take it) or
+`"waiting_for_key"` (no key for the reading model yet).
+
+```json
+{"document_id": "…", "filename": "refund-policy.md", "ingest_status": "pending", "...": "…", "reading": "started"}
+```
+
+---
+
+## `POST /api/providers` (G2 addition)
+
+After the key is saved, every domain of the account whose files wait for **that provider's** key
+starts reading. Best-effort: it never changes the answer or fails the save.
+
+---
+
+## `POST /api/domains/{id}/reread` → `202`
+
+Body (optional): `{"document_ids": ["<uuid>", …], "run_tests_after": false}` — omit `document_ids` to
+read every file again. Each file goes back to waiting with `version` + 1 (so it shows as
+"Re-reading"), then reading starts. A file being read at that moment is left to that read. With
+`run_tests_after`, the domain's test questions run when the read finishes (a test run like
+`POST /eval`).
+
+```json
+{"reading": 1, "run_tests_after": false, "state": "started"}
+```
+
+`state` — `started` | `queued` | `waiting_for_key` | `idle`.
+
+Errors: `404 {"detail": "domain not found"}`, `404 {"detail": "document not found"}` (an id that isn't
+one of the domain's files), `400 {"detail": "invalid document id"}`,
+`409 {"detail": "This domain is already re-reading."}` (every file asked for while a full re-read runs).
+
+---
+
+## `GET /api/domains/{id}/documents/{doc}/pieces`
+
+Query: `q` (≤ 200; keeps pieces whose text contains it, case-insensitively, literally), `offset`
+(≥ 0, default 0), `limit` (1–200, default 50).
+
+```json
+{
+  "document": {"document_id": "3b0c1f2e-…", "filename": "refund-policy.md", "kind": "MD", "phase": "ready", "pieces": 42, "...": "a files-list item"},
+  "pieces": [
+    {"ordinal": 0, "number": 1, "chars": 598, "page": null, "text": "# Refund policy. This page explains when and how customers can get their money back…"},
+    {"ordinal": 1, "number": 2, "chars": 600, "page": null, "text": "Refunds apply to the subscription price only. …"}
+  ],
+  "total": 42,
+  "query": "",
+  "used_in_answers": {"count": 6, "of": 20}
+}
+```
+
+- `number` is `ordinal + 1` ("Piece 1 of 42" — the "of" is `document.pieces_total`); `total` counts
+  the pieces matching `q` (for paging); `page` is the PDF page the piece starts on (`null` for other
+  kinds and for pieces read before G2).
+- `used_in_answers` — of the domain's last 20 answers (`of` ≤ 20), how many cite this file: an answer
+  cites the passages its `[n]` markers name; a `NOT_FOUND:` answer cites none; an answer with no marker
+  counts its top two passages. The sheet hides the line when `of` is 0.
+
+Errors: `404 {"detail": "domain not found"}`, `404 {"detail": "document not found"}`, `400` for a
+malformed id, `422` for an out-of-range `offset`/`limit`.
+
+---
+
+## `GET /api/domains/{id}/documents/{doc}/file`
+
+The uploaded bytes with the stored `content_type` and
+`Content-Disposition: attachment; filename*=UTF-8''<stored name>`. The page links to it **in the same
+window** (`<a href download>`), so Desktop's loopback proxy carries the session (D2).
+
+Errors: `404 {"detail": "domain not found"}`, `404 {"detail": "document not found"}`,
+`404 {"detail": "The original file isn’t available any more."}` (the bytes are gone).
