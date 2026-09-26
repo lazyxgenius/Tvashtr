@@ -10,6 +10,7 @@ import {
   PenLine,
   Plus,
   ShieldCheck,
+  Sparkle,
   Terminal,
   Trash2,
   X,
@@ -59,6 +60,9 @@ const ROLE_ICON: Record<string, LucideIcon> = {
   architect: DraftingCompass,
   engineer: Terminal,
   reviewer: ClipboardCheck,
+  // A blank agent (the palette's Thinker / Worker) until a template gives it a role.
+  thinker: Sparkle,
+  worker: Sparkle,
 };
 
 function prettyEngine(engine: string): string {

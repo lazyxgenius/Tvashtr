@@ -17,6 +17,7 @@ export function NodeDrawer({
   children,
   bare = false,
   overlay,
+  toast,
   onDismissFocus,
 }: {
   name: string;
@@ -29,6 +30,8 @@ export function NodeDrawer({
   bare?: boolean;
   /** A drawer-scoped confirm (`DrawerConfirm`), drawn over the drawer only. */
   overlay?: ReactNode;
+  /** The drawer's toast host (`DrawerToast`), just above the footer. */
+  toast?: ReactNode;
   /** Esc in the focus view (dock back). */
   onDismissFocus?: () => void;
 }) {
@@ -45,6 +48,7 @@ export function NodeDrawer({
         {bare ? children : <div className="nd-body__inner">{children}</div>}
       </div>
       {footer}
+      {toast}
       {overlay}
     </>
   );

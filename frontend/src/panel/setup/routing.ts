@@ -5,6 +5,8 @@
  */
 import type { GraphEdge, TeamGraphNode } from "../../lib/api";
 import { nodeTitle } from "../../lib/nodeNames";
+import { applyEmitContract, emitContract } from "../../lib/topology";
+import { changedLines } from "./lineDiff";
 
 export interface VerdictBranch {
   label: string;
@@ -64,5 +66,38 @@ export function routingOf(
     otherwise,
     labels,
     inSync: contractInSync(prompt, labels),
+  };
+}
+
+/** What "Update instructions" does to the prompt (PANEL-36): the new text, and the non-blank lines
+ *  it adds (and, when it refreshes an older verdict block, the ones it takes out). */
+export interface ContractUpdate {
+  next: string;
+  added: string[];
+  removed: string[];
+}
+
+function linesAt(text: string, indexes: Set<number>): string[] {
+  const lines = text.split("\n");
+  return [...indexes]
+    .sort((a, b) => a - b)
+    .map((i) => lines[i])
+    .filter((line) => line.trim() !== "");
+}
+
+/** The verdict-file block the agent's arrows need, written into (or refreshed in) its instructions
+ *  by `lib/topology`'s emit contract. Null when no arrow out of it routes on a verdict. */
+export function contractUpdate(
+  nodeId: string,
+  prompt: string,
+  edges: GraphEdge[],
+): ContractUpdate | null {
+  const contract = emitContract(nodeId, edges);
+  if (!contract) return null;
+  const next = applyEmitContract(prompt, contract.promptBlock);
+  return {
+    next,
+    added: linesAt(next, changedLines(prompt, next)),
+    removed: linesAt(prompt, changedLines(next, prompt)),
   };
 }

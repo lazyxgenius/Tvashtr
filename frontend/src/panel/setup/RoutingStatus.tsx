@@ -13,7 +13,11 @@ import type { Routing } from "./routing";
 export function RoutingStatus({ routing, onUpdate }: { routing: Routing; onUpdate?: () => void }) {
   const outOfSync = routing.kind === "verdict" && !routing.inSync;
   return (
-    <div className={`nd-routing${outOfSync ? " nd-routing--warn" : ""}`}>
+    <div
+      className={`nd-routing${outOfSync ? " nd-routing--warn" : ""}${
+        routing.kind === "none" ? " nd-routing--none" : ""
+      }`}
+    >
       <div className="nd-routing__line">
         <span className="nd-routing__icon" aria-hidden>
           <Route size={14} strokeWidth={1.7} />

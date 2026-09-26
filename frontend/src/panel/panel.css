@@ -318,7 +318,10 @@
   border: 1px solid var(--border-hairline);
   border-radius: 12px;
   background: var(--surface-card);
-  overflow: hidden;
+}
+/* The card doesn't clip (the Templates menu may reach past it), so its last row rounds itself. */
+.nd-card > :last-child {
+  border-radius: 0 0 11px 11px;
 }
 .nd-card__head {
   display: flex;
@@ -472,6 +475,14 @@
   font-size: 12px;
   line-height: 1.6;
   color: #52613e;
+}
+/* No arrow out yet (Web-NewAgent): the muted one-liner. */
+.nd-routing--none {
+  padding-bottom: 10px;
+  color: var(--ink-600);
+}
+.nd-routing--none .nd-routing__icon {
+  color: var(--ink-500);
 }
 /* Out of sync (Desktop-Editing / Flow-Save-1): the amber band with the fix under the line. */
 .nd-routing--warn {
@@ -830,4 +841,241 @@
 }
 .nd-rename__hint--error {
   color: #8f3b2f;
+}
+
+/* ---- Templates menu (Flow-Templates-1): 250px, 5px past the button's right edge, 27px down ---- */
+.nd-templates {
+  display: inline-flex;
+}
+.nd-templates .ds-menu {
+  box-sizing: content-box;
+  width: 250px;
+  right: -5px;
+  top: 27px;
+  z-index: 8;
+}
+.nd-templates .ds-menu__item {
+  line-height: 1.6;
+}
+.nd-templates .ds-menu__icon {
+  color: inherit;
+}
+.nd-templates .ds-menu__sep {
+  background: var(--line-200);
+}
+
+/* ---- A new agent's template chooser (Web-NewAgent), in the editor's place ---- */
+.nd-chooser {
+  margin: 10px 14px 0;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px dashed var(--line-400);
+  background: var(--surface-page);
+}
+.nd-chooser__title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-700);
+}
+.nd-chooser__sub {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-chooser__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.nd-chooser__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line-400);
+  background: var(--surface-card);
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  color: var(--ink-800);
+  cursor: pointer;
+}
+.nd-chooser__pill:hover:not(:disabled) {
+  background: var(--panel-300);
+}
+.nd-chooser__pill:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.nd-chooser__pill:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.nd-chooser__pill--plain {
+  border: 0;
+  background: transparent;
+  color: var(--coral-700);
+}
+.nd-chooser__error {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8f3b2f;
+}
+.nd-chooser__gap {
+  height: 12px;
+}
+
+/* ---- "Get this agent ready" (Web-NewAgent) ---- */
+.nd-ready {
+  border: 1px solid var(--coral-200);
+  background: var(--coral-100);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nd-ready__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nd-ready__title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.nd-ready__count {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--coral-700);
+}
+.nd-ready__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nd-ready__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.nd-ready__icon {
+  display: inline-flex;
+  color: var(--line-400);
+}
+.nd-ready__item--done {
+  color: var(--ink-500);
+}
+.nd-ready__item--done .nd-ready__icon {
+  color: var(--sage-500);
+}
+.nd-ready__item--done .nd-ready__label {
+  text-decoration: line-through;
+}
+.nd-ready__note {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-ready__hide {
+  align-self: flex-start;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.nd-ready__hide:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* ---- Drawer toast (Flow-Templates-3, Flow-Routing-3): 16px in, 70px up, over the body ---- */
+.nd-toast-host {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 70px;
+  z-index: 8;
+  pointer-events: none;
+}
+.nd-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  line-height: 1.6;
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+}
+.nd-toast__icon {
+  display: inline-flex;
+  color: #b8c7a2;
+}
+.nd-toast__text {
+  flex: 1;
+}
+.nd-toast__action {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #efcdbe;
+  cursor: pointer;
+}
+.nd-toast__action:focus-visible {
+  outline: 2px solid #efcdbe;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ---- "Update the instructions?" diff (Flow-Routing-2) ---- */
+.nd-diff {
+  max-height: 240px;
+  overflow: hidden auto;
+  border: 1px solid var(--line-300);
+  border-radius: 8px;
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+.nd-diff__line {
+  padding: 2px 8px;
+  background: #e7ecdd;
+  color: var(--ink-800);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.nd-diff__line--del {
+  background: #f6e1db;
 }

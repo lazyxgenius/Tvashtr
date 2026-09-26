@@ -16,7 +16,14 @@ describe("nodeTitle / nodeDescription", () => {
       "Checks it",
     );
     expect(nodeDescription(node("agent", "reviewer"))).toBe("Checks against the spec");
-    expect(nodeTitle(node("agent", "worker"))).toBe("worker");
+    expect(nodeTitle(node("agent", "qa"))).toBe("qa");
+  });
+
+  it("a blank palette agent is a New agent until it's named (PANEL-61)", () => {
+    expect(nodeTitle(node("agent", "worker"))).toBe("New agent");
+    expect(nodeTitle(node("completion", "thinker"))).toBe("New agent");
+    expect(nodeDescription(node("agent", "worker"))).toBe("");
+    expect(nodeTitle(node("agent", "worker", { title: "Tester" }))).toBe("Tester");
   });
 
   it("gates, endpoints and Query-domain nodes", () => {

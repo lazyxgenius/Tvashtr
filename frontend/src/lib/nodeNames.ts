@@ -20,6 +20,12 @@ export const ROLE_BLURB: Record<string, string> = {
   reviewer: "Checks against the spec",
 };
 
+/** The roles a blank agent gets (the palette's Thinker / Worker, a blank team's first agent): until
+ *  it's named it reads "New agent" (PANEL-61). */
+const BLANK_ROLES = new Set(["thinker", "worker"]);
+
+export const NEW_AGENT_TITLE = "New agent";
+
 /** A short, canvas-legible gate label from its `gate_kind` (a gate's `config.title` is a sentence). */
 export function gateLabel(gateKind: string): string {
   if (gateKind === "prd_approval") return "PRD approval";
@@ -50,6 +56,7 @@ export function nodeTitle(node: NamedNode): string {
     return (node.config as TerminalConfig | null)?.terminal_kind === "ship" ? "Ship" : "Stop";
   }
   if (node.kind === "domain_query") return "Domain ask";
+  if (BLANK_ROLES.has(node.role_name)) return NEW_AGENT_TITLE;
   return ROLE_TITLE[node.role_name] ?? node.role_name;
 }
 

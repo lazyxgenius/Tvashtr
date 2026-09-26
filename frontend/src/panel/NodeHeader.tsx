@@ -27,6 +27,7 @@ export function NodeHeader({
   glyph: Glyph,
   name,
   description,
+  placeholder,
   badges,
   onFocus,
   focused = false,
@@ -37,6 +38,8 @@ export function NodeHeader({
   glyph: LucideIcon;
   name: string;
   description: string;
+  /** Shown in the description's place while it's empty ("Add a short description"). */
+  placeholder?: string;
   badges?: ReactNode;
   /** Opens the focus view (or docks back when `focused`). Omitted: no button. */
   onFocus?: () => void;
@@ -60,7 +63,9 @@ export function NodeHeader({
             <h2 className="nd-head__name" title={name}>
               {name}
             </h2>
-            {description && <div className="nd-head__desc">{description}</div>}
+            {(description || placeholder) && (
+              <div className="nd-head__desc">{description || placeholder}</div>
+            )}
           </div>
         )}
         <div className="nd-head__actions">
@@ -177,7 +182,8 @@ export function NodeBadges({
   onOpenRuns,
 }: {
   status: StatusBadge;
-  editsAllowed: boolean;
+  /** Null hides the File access badge (a new agent's header shows status and model only). */
+  editsAllowed: boolean | null;
   /** The friendly model name, or null when the agent needs a model. */
   model: string | null;
   onOpenRuns?: () => void;
@@ -195,9 +201,8 @@ export function NodeBadges({
           {status.label}
         </Badge>
       </button>
-      {editsAllowed ? (
-        <Badge variant="accent">Can edit files</Badge>
-      ) : (
+      {editsAllowed === true && <Badge variant="accent">Can edit files</Badge>}
+      {editsAllowed === false && (
         <Badge variant="neutral">
           <Lock size={11} strokeWidth={1.8} aria-hidden />
           Read-only

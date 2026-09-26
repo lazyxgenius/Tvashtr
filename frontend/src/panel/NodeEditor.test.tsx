@@ -1,10 +1,11 @@
 import { createRef } from "react";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type GraphEdge, setProviderCatalogue, type TeamGraphNode } from "../lib/api";
 import { __resetBackendStatusForTests } from "../lib/backendStatus";
 import { NodeEditor, type NodeEditorProps } from "./NodeEditor";
+import { resetNodeTemplates } from "./setup/useNodeTemplates";
 import type { LeaveGuard } from "./useUnsavedGuard";
 
 // The agent drawer (G1): the shell, header badges, tab counts, the Setup read view and the save
@@ -96,6 +97,29 @@ const edges: GraphEdge[] = [
   },
 ];
 
+// GET /api/node-templates (the built-in four; short prompts stand in for the real ones).
+const template = (key: string, title: string, prompt: string, edits_allowed = false) => ({
+  key,
+  title,
+  description: "",
+  role_name: key,
+  node_kind: key === "pm" || key === "architect" ? "thinker" : "worker",
+  edits_allowed,
+  writes_to: null,
+  verdict_labels: key === "reviewer" ? ["approved", "changes_requested"] : [],
+  prompt,
+});
+const TEMPLATES = [
+  template("pm", "Product manager", "You are the PM. Write the spec."),
+  template("architect", "Architect", "You are the architect."),
+  template("engineer", "Engineer", "You are the engineer. Build it.", true),
+  template(
+    "reviewer",
+    "Reviewer",
+    'You are the Reviewer.\n{"verdict": "approved" | "changes_requested"}',
+  ),
+];
+
 let fetchMock: ReturnType<typeof vi.fn>;
 const json = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status }));
@@ -125,6 +149,7 @@ beforeEach(() => {
       return json({ memories: pending ? [{ id: "m3" }] : [{ id: "m1" }, { id: "m2" }] });
     }
     if (method === "PATCH") return json(reviewer());
+    if (input === "/api/node-templates") return json({ templates: TEMPLATES });
     return json({});
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -132,6 +157,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  resetNodeTemplates();
+  window.localStorage.clear();
   setProviderCatalogue([]);
   __resetBackendStatusForTests();
 });
@@ -342,6 +369,9 @@ describe("NodeEditor — editing (G2)", () => {
   it("Update instructions writes the verdict the arrows route on into the draft", () => {
     const { drawer } = renderEditor({ node: reviewer({ prompt: "Review it." }) });
     fireEvent.click(within(drawer).getByRole("button", { name: "Update instructions" }));
+    fireEvent.click(
+      within(within(drawer).getByRole("alertdialog")).getByRole("button", { name: "Add lines" }),
+    );
     expect(instructions(drawer).value).toContain('"approved"');
     expect(within(drawer).getByText("Instructions match your arrows")).toBeInTheDocument();
     expect(within(drawer).getByText("1 unsaved change")).toBeInTheDocument();
@@ -552,6 +582,193 @@ describe("NodeEditor — the ⋯ menu (PANEL-23..26)", () => {
       within(within(drawer).getByRole("alertdialog")).getByRole("button", { name: "Delete agent" }),
     );
     await waitFor(() => expect(onDelete).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("NodeEditor — templates, routing sync, new agent (G3)", () => {
+  const instructions = (drawer: HTMLElement) =>
+    within(drawer).getByRole<HTMLTextAreaElement>("textbox", { name: /^Instructions/ });
+  // The drawer's toast host (a live region above the footer; the footer has its own status line).
+  const toastOf = (drawer: HTMLElement) => {
+    const host = drawer.querySelector(".nd-toast-host") as HTMLElement;
+    expect(host).toHaveAttribute("role", "status");
+    return host;
+  };
+  const openTemplates = async (drawer: HTMLElement) => {
+    fireEvent.click(within(drawer).getByRole("button", { name: "Templates" }));
+    const menu = within(drawer).getByRole("menu", { name: "Templates" });
+    await within(menu).findByRole("menuitem", { name: "Reviewer" });
+    return menu;
+  };
+  const newAgent = (over: Partial<TeamGraphNode> = {}) =>
+    reviewer({
+      id: "n-new",
+      role_name: "worker",
+      prompt: "",
+      model: "",
+      config: null,
+      skills: null,
+      tool_config: null,
+      last_run: null,
+      ...over,
+    });
+
+  it("lists the four templates and 'Compare templates in focus view'", async () => {
+    const { props, drawer } = renderEditor();
+    const menu = await openTemplates(drawer);
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((i) => i.textContent),
+    ).toEqual([
+      "Product manager",
+      "Architect",
+      "Engineer",
+      "Reviewer",
+      "Compare templates in focus view",
+    ]);
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "Compare templates in focus view" }),
+    );
+    expect(props.onFocusChange).toHaveBeenCalledWith(true);
+  });
+
+  it("asks before replacing text; Cancel keeps it, Replace applies it with an Undo toast", async () => {
+    const { drawer } = renderEditor();
+    fireEvent.click(
+      within(await openTemplates(drawer)).getByRole("menuitem", { name: "Reviewer" }),
+    );
+    const confirm = within(drawer).getByRole("alertdialog", { name: "Replace the instructions?" });
+    expect(confirm).toHaveTextContent(
+      "The Reviewer template replaces what’s in the editor now. Nothing is saved until you press Save, so Discard brings your text back.",
+    );
+    fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    expect(within(drawer).queryByRole("alertdialog")).toBeNull();
+    expect(instructions(drawer).value).toBe(PROMPT);
+
+    fireEvent.click(
+      within(await openTemplates(drawer)).getByRole("menuitem", { name: "Reviewer" }),
+    );
+    fireEvent.click(
+      within(within(drawer).getByRole("alertdialog")).getByRole("button", { name: "Replace" }),
+    );
+    expect(instructions(drawer).value).toBe(TEMPLATES[3].prompt);
+    expect(within(drawer).getByText("1 unsaved change")).toBeInTheDocument();
+    const toast = toastOf(drawer);
+    expect(toast).toHaveTextContent("Reviewer template applied");
+
+    fireEvent.click(within(toast).getByRole("button", { name: "Undo" }));
+    expect(instructions(drawer).value).toBe(PROMPT);
+    expect(within(drawer).getByText("All changes saved")).toBeInTheDocument();
+    expect(toastOf(drawer)).toBeEmptyDOMElement();
+  });
+
+  it("a template brings its default File access, and the confirm says so (Q7)", async () => {
+    const { drawer } = renderEditor();
+    fireEvent.click(
+      within(await openTemplates(drawer)).getByRole("menuitem", { name: "Engineer" }),
+    );
+    const confirm = within(drawer).getByRole("alertdialog", { name: "Replace the instructions?" });
+    expect(confirm).toHaveTextContent(
+      "The Engineer template replaces what’s in the editor now and lets this agent edit files.",
+    );
+    fireEvent.click(within(confirm).getByRole("button", { name: "Replace" }));
+    const head = drawer.querySelector(".nd-head") as HTMLElement;
+    expect(within(head).getByText("Can edit files")).toBeInTheDocument();
+    expect(within(drawer).getByText("2 unsaved changes")).toBeInTheDocument();
+  });
+
+  it("the entry agent keeps its File access when a template is applied", async () => {
+    const { drawer } = renderEditor({ node: { ...pm, id: "n-rev" }, isEntry: true });
+    fireEvent.click(
+      within(await openTemplates(drawer)).getByRole("menuitem", { name: "Engineer" }),
+    );
+    const confirm = within(drawer).getByRole("alertdialog", { name: "Replace the instructions?" });
+    expect(confirm).not.toHaveTextContent("edit files");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Replace" }));
+    expect(within(drawer).getByText("1 unsaved change")).toBeInTheDocument();
+  });
+
+  it("Update instructions previews the + lines, then Add lines syncs them with an Undo toast", () => {
+    const { drawer } = renderEditor({ node: reviewer({ prompt: "Review it." }) });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Update instructions" }));
+    const dialog = within(drawer).getByRole("alertdialog", { name: "Update the instructions?" });
+    expect(dialog).toHaveTextContent("This adds the verdict-file lines your arrows need:");
+    const lines = Array.from(dialog.querySelectorAll(".nd-diff__line")).map((l) => l.textContent);
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.every((l) => l?.startsWith("+ "))).toBe(true);
+    expect(lines.join("\n")).toContain('"approved"');
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(instructions(drawer).value).toBe("Review it.");
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "Update instructions" }));
+    fireEvent.click(
+      within(within(drawer).getByRole("alertdialog")).getByRole("button", { name: "Add lines" }),
+    );
+    expect(within(drawer).getByText("Instructions match your arrows")).toBeInTheDocument();
+    const toast = toastOf(drawer);
+    expect(toast).toHaveTextContent("Instructions updated to match your arrows");
+    fireEvent.click(within(toast).getByRole("button", { name: "Undo" }));
+    expect(instructions(drawer).value).toBe("Review it.");
+    expect(
+      within(drawer).getByText("Instructions no longer match your arrows"),
+    ).toBeInTheDocument();
+  });
+
+  it("a new agent: placeholders, two badges, the checklist and the template chooser", async () => {
+    const { drawer } = renderEditor({ node: newAgent(), nodes: [pm, newAgent()], edges: [] });
+    expect(within(drawer).getByRole("heading", { name: "New agent" })).toBeInTheDocument();
+    expect(within(drawer).getByText("Add a short description")).toBeInTheDocument();
+    const head = drawer.querySelector(".nd-head") as HTMLElement;
+    expect(within(head).getByText("Not run yet")).toBeInTheDocument();
+    expect(within(head).getByText("Needs a model")).toBeInTheDocument();
+    expect(within(head).queryByText("Read-only")).toBeNull();
+
+    const ready = within(drawer).getByRole("region", { name: "Get this agent ready" });
+    expect(ready).toHaveTextContent("1 of 3");
+    expect(ready).toHaveTextContent("Choose documents· reads the spec by default");
+    expect(within(drawer).getByText("Choose a model")).toBeInTheDocument();
+    expect(
+      within(drawer).getByText(
+        "Connect an arrow out of this agent on the canvas to set where its work goes.",
+      ),
+    ).toBeInTheDocument();
+
+    // No editor until a template (or "Start from scratch") is picked; an empty editor takes one at once.
+    expect(within(drawer).queryByRole("textbox", { name: /^Instructions/ })).toBeNull();
+    const chooser = within(drawer).getByRole("group", { name: "Start from a template" });
+    const pmButton = await within(chooser).findByRole("button", { name: "Product manager" });
+    await waitFor(() => expect(pmButton).toBeEnabled());
+    fireEvent.click(pmButton);
+    expect(within(drawer).queryByRole("alertdialog")).toBeNull();
+    expect(instructions(drawer).value).toBe(TEMPLATES[0].prompt);
+    expect(ready).toHaveTextContent("2 of 3");
+    expect(toastOf(drawer)).toHaveTextContent("Product manager template applied");
+  });
+
+  it("Start from scratch opens an empty editor with the caret in it", () => {
+    const { drawer } = renderEditor({ node: newAgent(), nodes: [newAgent()], edges: [] });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Start from scratch" }));
+    const box = instructions(drawer);
+    expect(box.value).toBe("");
+    expect(box).toHaveFocus();
+  });
+
+  it("Hide this hides the checklist for this agent, and remembers it", () => {
+    const first = renderEditor({ node: newAgent(), nodes: [newAgent()], edges: [] });
+    fireEvent.click(within(first.drawer).getByRole("button", { name: "Hide this" }));
+    expect(within(first.drawer).queryByRole("region", { name: "Get this agent ready" })).toBeNull();
+    cleanup();
+
+    const again = renderEditor({ node: newAgent(), nodes: [newAgent()], edges: [] });
+    expect(within(again.drawer).queryByRole("region", { name: "Get this agent ready" })).toBeNull();
+  });
+
+  it("an agent with saved instructions and a covered model shows no checklist", () => {
+    const { drawer } = renderEditor({ node: reviewer({ last_run: null }) });
+    expect(within(drawer).queryByRole("region", { name: "Get this agent ready" })).toBeNull();
+    expect(within(drawer).getByRole("textbox", { name: /^Instructions/ })).toBeInTheDocument();
   });
 });
 
