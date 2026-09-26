@@ -103,7 +103,8 @@
   min-width: 0;
 }
 
-/* "Can’t run on the website yet." — a 760px warn callout 20px below the toolbar. */
+/* "Can’t run on the website yet." — a 760px (content-box, as the design sizes it) warn callout
+   20px below the toolbar. */
 .cv-blocked {
   position: absolute;
   left: 50%;
@@ -111,8 +112,8 @@
   z-index: 5;
   transform: translateX(-50%);
   width: 760px;
-  max-width: calc(100% - 40px);
-  box-sizing: border-box;
+  max-width: calc(100% - 74px);
+  box-sizing: content-box;
   display: flex;
   align-items: center;
   gap: 12px;
