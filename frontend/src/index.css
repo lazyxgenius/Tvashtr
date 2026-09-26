@@ -1240,13 +1240,6 @@ body,
   background: var(--cream-50);
   white-space: nowrap;
 }
-/* Catalog entries carry a sentence of copy: let it wrap inside the card instead of overflowing. */
-.tv-dash__prov-chip--catalog {
-  max-width: 100%;
-  box-sizing: border-box;
-  flex-wrap: wrap;
-  white-space: normal;
-}
 .tv-dash__prov-chip--key {
   padding: 10px 14px;
   box-shadow: var(--shadow-xs);
@@ -1395,7 +1388,6 @@ body,
   }
 }
 .tv-engines .tv-launch__input::placeholder,
-.tv-dash__library .tv-launch__input::placeholder,
 .tv-dash__prov-add--labeled .tv-launch__input::placeholder {
   color: var(--ink-500);
   opacity: 0.8;
@@ -1460,54 +1452,6 @@ body,
   flex-wrap: wrap;
 }
 
-.tv-dash__library {
-  padding: 20px var(--space-6);
-}
-.tv-dash__library-head {
-  max-width: none;
-  margin-bottom: 16px;
-}
-.tv-dash__library-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 14px 20px;
-  align-items: start;
-}
-.tv-dash__library-span {
-  grid-column: 1 / -1;
-}
-.tv-dash__library-kv {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.tv-dash__library-kv .tv-launch__input {
-  flex: 1;
-  min-width: 0;
-  max-width: none;
-}
-.tv-dash__library-advanced summary {
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--ink-500);
-}
-.tv-dash__library-advanced .tv-node-prompt {
-  margin-top: 8px;
-  width: 100%;
-}
-.tv-dash__library-actions {
-  display: flex;
-  gap: 8px;
-}
-.tv-dash__library-form .tv-launch__input {
-  width: 100%;
-  max-width: none;
-}
-@media (max-width: 720px) {
-  .tv-dash__library-form {
-    grid-template-columns: 1fr;
-  }
-}
 .tv-dash__prov-add--labeled {
   align-items: end;
 }

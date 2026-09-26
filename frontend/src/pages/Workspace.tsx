@@ -6,7 +6,6 @@ import { EnginesShelf } from "../components/EnginesShelf";
 import { MemoryShelf } from "../components/MemoryShelf";
 import { SecretsShelf } from "../components/SecretsShelf";
 import { SkillsShelf } from "../components/SkillsShelf";
-import { ToolsShelf } from "../components/ToolsShelf";
 import type { AuthUser, Config } from "../lib/api";
 import { requestHomeAction } from "../lib/homeActions";
 import { type DashView, type Route, navigate, useNav } from "../lib/nav";
@@ -16,6 +15,8 @@ import { CommandPalette } from "./home/CommandPalette";
 import { HomePage } from "./home/HomePage";
 import { Shell } from "./shell/Shell";
 import { ShortcutsDialog } from "./shell/ShortcutsDialog";
+import { ToolDetailPage } from "./tools/ToolDetailPage";
+import { ToolsPage } from "./tools/ToolsPage";
 import "./badgeLoaders";
 
 /** Where the canvas's "back" and "Open Engines / Toolkit" controls land. */
@@ -112,8 +113,9 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
     case "engines":
       return <EnginesShelf />;
     case "tools":
+      return <ToolsPage view={route.view} />;
     case "tool":
-      return <ToolsShelf />;
+      return <ToolDetailPage key={route.toolId} toolId={route.toolId} />;
     case "skills":
     case "skill":
       return <SkillsShelf />;

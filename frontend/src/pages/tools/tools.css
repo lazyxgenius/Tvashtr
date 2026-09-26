@@ -1,0 +1,378 @@
+/* Toolkit › Tools. Every size is copied from the design artboards (Toolkit-Tools,
+   TkF-ToolSearch-*, TkF-ToolsEmpty-1); don't round them to tokens. The design's root line-height
+   is 1.6 (the body's), so text here inherits it unless the design sets one. */
+
+/* ---- Page header ---- */
+.tk-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+.tk-head__title {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+.tk-head__lede {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-500);
+  max-width: 620px;
+}
+.tk-head__actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+/* The design's header buttons put the icon flush against the label (no gap). */
+.tk-btn-inline > span {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---- Tabs + filters row ---- */
+.tk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tk-bar__filters {
+  display: flex;
+  gap: 8px;
+}
+.tk-search.ds-input {
+  width: 240px;
+}
+
+/* ---- Status select (a listbox that looks like the DS Select) ---- */
+.tk-status {
+  display: inline-flex;
+  flex: none;
+}
+.tk-status .ds-anchor,
+.tk-status__wrap {
+  width: 100%;
+}
+.tk-status__btn {
+  text-align: left;
+  white-space: nowrap;
+}
+/* The ring shows for keyboard focus only (picking with the mouse returns focus here too). */
+.tk-status__btn:focus:not(:focus-visible) {
+  border-color: var(--border-input);
+  box-shadow: none;
+}
+/* The design's listbox is content-box (170px inside 5px padding + 1px border) and hangs 12px past
+   the select's right edge. */
+.tk-status__list.ds-popover {
+  margin-right: -12px;
+  padding: 5px;
+  border-radius: 10px;
+  gap: 0;
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+}
+.tk-status__opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-900);
+  text-align: left;
+  cursor: pointer;
+}
+.tk-status__opt:hover,
+.tk-status__opt:focus-visible {
+  background: var(--surface-sunk);
+  outline: none;
+}
+.tk-status__opt[aria-selected="true"] {
+  background: var(--panel-300);
+}
+.tk-status__check {
+  width: 14px;
+  display: inline-flex;
+  color: var(--coral-700);
+}
+
+/* ---- "Showing tools that need attention · N  Clear" ---- */
+.tk-filterline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.tk-filterline__clear {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--coral-700);
+  cursor: pointer;
+}
+
+/* ---- Card + table ---- */
+.tk-card {
+  border: 1px solid var(--border-hairline);
+  border-radius: 16px;
+  background: var(--surface-card);
+  padding: 0;
+  overflow: hidden;
+}
+.tk-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.tk-table th {
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+  border-bottom: 1px solid var(--line-200);
+}
+.tk-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-200);
+  font-size: 13px;
+  color: var(--ink-800);
+  vertical-align: middle;
+}
+.tk-row {
+  cursor: pointer;
+}
+.tk-row:hover td {
+  background: rgba(20, 20, 19, 0.018);
+}
+.tk-toolcell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tk-tile {
+  /* The design's tile is content-box: 32px plus its 1px border. */
+  box-sizing: content-box;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--panel-300);
+  border: 1px solid var(--line-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-700);
+}
+.tk-toolcell__name {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+  text-decoration: none;
+}
+.tk-toolcell__name:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.tk-runs {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-600);
+}
+.tk-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #52613e;
+}
+.tk-ready__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sage-500);
+}
+.tk-needs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tk-needs__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #7a5423;
+}
+.tk-usedby {
+  font-size: 12.5px;
+}
+
+/* ---- Footnote ---- */
+.tk-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 13px;
+  color: var(--ink-700);
+}
+.tk-note__icon {
+  display: inline-flex;
+  margin-top: 1px;
+}
+.tk-note b {
+  font-weight: 600;
+}
+
+/* ---- Empty / no results ---- */
+.tk-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 56px 24px;
+}
+.tk-empty__icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--panel-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-600);
+}
+.tk-empty__title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--ink-900);
+}
+.tk-empty__body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-600);
+  max-width: 460px;
+}
+.tk-empty__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* ---- Loading / error ---- */
+.tk-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  font-size: 13px;
+  color: var(--ink-700);
+}
+.tk-skel {
+  display: flex;
+  flex-direction: column;
+}
+.tk-skel__row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 18px 16px;
+  border-bottom: 1px solid var(--line-200);
+}
+.tk-skel__tile {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--panel-300);
+}
+.tk-skel__bar {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--panel-300);
+  animation: tk-pulse 1.4s ease-in-out infinite;
+}
+@keyframes tk-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tk-skel__bar {
+    animation: none;
+  }
+}
+
+.tk-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---- Breadcrumb (tool page) ---- */
+.tk-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-500);
+}
+.tk-crumbs__link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--coral-700);
+  cursor: pointer;
+}
+
+/* ---- Browse (the catalog grid; G5 builds the real cards) ---- */
+.tk-catalog {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.tk-catalog__card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 18px;
+}
+.tk-catalog__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.tk-catalog__desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}

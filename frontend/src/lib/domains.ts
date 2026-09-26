@@ -1,9 +1,4 @@
-export type DomainTemplateKey =
-  | "financial"
-  | "legal"
-  | "scientific"
-  | "support"
-  | "blank";
+export type DomainTemplateKey = "financial" | "legal" | "scientific" | "support" | "blank";
 
 export const DOMAIN_TEMPLATE_ORDER: DomainTemplateKey[] = [
   "financial",
@@ -36,7 +31,6 @@ export interface DomainRerankConfig {
 export interface DomainGraphConfig {
   enabled: boolean;
 }
-
 
 /** Embedding presets (mirrors backend domain_embedding.EMBEDDING_PRESETS; multi-dim). */
 export interface EmbeddingPreset {
@@ -108,7 +102,6 @@ export function providerOfEmbedding(model: string): string {
   return normalizeEmbeddingModel(model).split("/")[0]?.toLowerCase() || "openai";
 }
 
-
 export function dimOfEmbedding(model: string): number {
   const slug = normalizeEmbeddingModel(model);
   const preset = EMBEDDING_PRESETS.find((p) => p.slug === slug);
@@ -121,7 +114,8 @@ export interface DomainConfig {
   embedding: { model: string };
   retrieval: {
     top_k: number;
-    mode: RetrievalMode | string;
+    /** A `RetrievalMode`, or a value a newer server knows. */
+    mode: string;
     rerank?: DomainRerankConfig;
     graph?: DomainGraphConfig;
   };
@@ -235,14 +229,6 @@ export function domainsMcpToggleHint(): string {
   return (
     "Domains MCP lets this agent call domain ask/retrieve as tools during a run. " +
     "Prefer Chat/Ask to explore yourself, or a Query domain node for a fixed canvas step."
-  );
-}
-
-/** Account Tools shelf one-liner — Domains MCP is on node Tools, not the library. */
-export function domainsMcpAccountToolsHint(): string {
-  return (
-    "Domains MCP is enabled on each team node's Tools panel (not here). " +
-    "This shelf holds reusable MCP servers you reference from those panels."
   );
 }
 
