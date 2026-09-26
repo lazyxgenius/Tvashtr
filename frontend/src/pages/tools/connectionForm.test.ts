@@ -4,6 +4,8 @@ import {
   EMPTY_CONNECTION,
   RAW_JSON_INVALID,
   RAW_JSON_NOT_OBJECT,
+  compactJson,
+  configKey,
   configText,
   configToForm,
   connectionError,
@@ -198,5 +200,50 @@ describe("secret references", () => {
       "secret",
       "secret",
     ]);
+  });
+});
+
+describe("compactJson (the tool page's raw JSON)", () => {
+  it("keeps short nested objects and lists on one line", () => {
+    expect(
+      compactJson({
+        url: "https://api.githubcopilot.com/mcp",
+        headers: { Authorization: "Bearer ${GITHUB_TOKEN}" },
+      }),
+    ).toBe(
+      [
+        "{",
+        '  "url": "https://api.githubcopilot.com/mcp",',
+        '  "headers": { "Authorization": "Bearer ${GITHUB_TOKEN}" }',
+        "}",
+      ].join("\n"),
+    );
+    expect(compactJson({ command: "uvx", args: ["mcp-server-fetch"], env: {} })).toBe(
+      '{\n  "command": "uvx",\n  "args": ["mcp-server-fetch"],\n  "env": {}\n}',
+    );
+  });
+
+  it("breaks a nested object that doesn't fit, and parses back to the same config", () => {
+    const config = {
+      url: "https://mcp.example.com/sse",
+      headers: {
+        Authorization: "Bearer ${EXAMPLE_TOKEN}",
+        "X-Workspace": "a-rather-long-workspace-identifier",
+      },
+    };
+    const text = compactJson(config);
+    expect(text).toContain('  "headers": {\n    "Authorization": "Bearer ${EXAMPLE_TOKEN}",');
+    expect(JSON.parse(text)).toEqual(config);
+    expect(compactJson({})).toBe("{}");
+  });
+});
+
+describe("configKey", () => {
+  it("ignores key order but not values", () => {
+    expect(configKey({ url: "u", headers: { A: "1", B: "2" } })).toBe(
+      configKey({ headers: { B: "2", A: "1" }, url: "u" }),
+    );
+    expect(configKey({ url: "u" })).not.toBe(configKey({ url: "v" }));
+    expect(configKey({ args: ["a", "b"] })).not.toBe(configKey({ args: ["b", "a"] }));
   });
 });

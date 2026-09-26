@@ -10,13 +10,17 @@ import {
   agentName,
   agentNames,
   heldAgentsLine,
+  pageRemoveImpact,
   pastedToast,
+  removeCardLine,
   removeImpact,
+  savedToast,
   secretsLede,
   serversFoundLabel,
   toolAddedToast,
   toolSecretsSavedToast,
   turnedOnToast,
+  usedByTitle,
   wizardSubtitle,
 } from "./toolFormat";
 import { LINEAR, tool } from "./toolsTestUtils";
@@ -225,6 +229,54 @@ describe("paste copy (TOOL-62..65)", () => {
     expect(pastedToast([jira]).message).toBe("1 server added. jira needs 2 secrets.");
     expect(pastedToast([LINEAR, jira]).message).toBe(
       "2 servers added. linear and jira need secrets.",
+    );
+  });
+});
+
+describe("the tool page's copy", () => {
+  const row = (role_name: string, team_id: string, team_name: string): UsageRow => ({
+    node_id: `n-${role_name}-${team_id}`,
+    role_name,
+    title: null,
+    team_id,
+    team_name,
+  });
+  const three = [
+    row("engineer", "t1", "Indicator sprint team"),
+    row("reviewer", "t1", "Indicator sprint team"),
+    row("writer", "t2", "Docs team"),
+  ];
+
+  it("titles Used by with agents and teams", () => {
+    expect(usedByTitle(three)).toBe("Used by 3 agents in 2 teams");
+    expect(usedByTitle(three.slice(0, 1))).toBe("Used by 1 agent in 1 team");
+    expect(usedByTitle([])).toBe("Not used yet");
+  });
+
+  it("says who picks up a save (TOOL-57)", () => {
+    expect(savedToast(3)).toBe("Saved. 3 agents use the new settings on their next run.");
+    expect(savedToast(1)).toBe("Saved. 1 agent uses the new settings on its next run.");
+    expect(savedToast(0)).toBe("Saved.");
+  });
+
+  it("says who loses it on the Remove card and in its confirmation (TOOL-58)", () => {
+    expect(removeCardLine(3)).toBe("The 3 agents above lose it on their next run.");
+    expect(removeCardLine(1)).toBe("The agent above loses it on its next run.");
+    expect(removeCardLine(0)).toBe("No agents use it.");
+    expect(pageRemoveImpact(three)).toBe(
+      "Engineer, Reviewer and Writer lose it on their next run. You can add it again later.",
+    );
+    expect(pageRemoveImpact(three.slice(2))).toBe(
+      "Writer loses it on its next run. You can add it again later.",
+    );
+    expect(pageRemoveImpact([])).toBe("No agents use it. You can add it again later.");
+    expect(
+      pageRemoveImpact([
+        row("engineer", "t1", "Indicator sprint team"),
+        row("engineer", "t2", "Docs team"),
+      ]),
+    ).toBe(
+      "Engineer in Indicator sprint team and Engineer in Docs team lose it on their next run. You can add it again later.",
     );
   });
 });

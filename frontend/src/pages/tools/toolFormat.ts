@@ -232,3 +232,41 @@ export function pastedToast(added: ToolItem[]): { message: string; needs: ToolIt
   }
   return { message, needs };
 }
+
+// ---- The tool page (Toolkit-ToolDetail, TkF-Detail-*) ----
+
+/** "Used by 3 agents in 2 teams" (TOOL-59), or "Not used yet". */
+export function usedByTitle(agents: UsageRow[]): string {
+  if (agents.length === 0) return "Not used yet";
+  const teams = new Set(agents.map((a) => a.team_id)).size;
+  return `Used by ${plural(agents.length, "agent")} in ${plural(teams, "team")}`;
+}
+
+/** TOOL-57: "Saved. 3 agents use the new settings on their next run.", or "Saved." when none do. */
+export function savedToast(agentCount: number): string {
+  if (agentCount === 0) return "Saved.";
+  if (agentCount === 1) return "Saved. 1 agent uses the new settings on its next run.";
+  return `Saved. ${agentCount} agents use the new settings on their next run.`;
+}
+
+/** TOOL-58, the Remove card: "The 3 agents above lose it on their next run." */
+export function removeCardLine(agentCount: number): string {
+  if (agentCount === 0) return "No agents use it.";
+  if (agentCount === 1) return "The agent above loses it on its next run.";
+  return `The ${agentCount} agents above lose it on their next run.`;
+}
+
+/**
+ * TOOL-58, the tool page's Remove confirmation: "Engineer, Reviewer and Writer lose it on their next
+ * run. You can add it again later." Agents that share a name are told apart by team.
+ */
+export function pageRemoveImpact(agents: UsageRow[]): string {
+  const again = "You can add it again later.";
+  if (agents.length === 0) return `No agents use it. ${again}`;
+  const names = agents.map(agentName);
+  const clash = new Set(names).size < names.length;
+  const who = joinNames(clash ? agents.map((a) => `${agentName(a)} in ${a.team_name}`) : names);
+  return agents.length === 1
+    ? `${who} loses it on its next run. ${again}`
+    : `${who} lose it on their next run. ${again}`;
+}

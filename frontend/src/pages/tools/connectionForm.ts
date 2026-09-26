@@ -95,6 +95,60 @@ export function configText(form: ConnectionForm): string {
   return JSON.stringify(formToConfig(form), null, 2);
 }
 
+// Past this many columns a nested object or list breaks onto its own lines.
+const COMPACT_WIDTH = 80;
+
+/** One line, spaced like the tool page draws it: `{ "a": "b" }`, `["x", "y"]`. */
+function inlineJson(value: unknown): string {
+  if (Array.isArray(value)) return value.length ? `[${value.map(inlineJson).join(", ")}]` : "[]";
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value);
+    if (entries.length === 0) return "{}";
+    return `{ ${entries.map(([k, v]) => `${JSON.stringify(k)}: ${inlineJson(v)}`).join(", ")} }`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * JSON indented by two spaces whose nested objects and lists stay on one line while they fit
+ * (the tool page's "Advanced (raw JSON)", TkF-Detail-3):
+ * `{\n  "url": "…",\n  "headers": { "Authorization": "Bearer ${GITHUB_TOKEN}" }\n}`.
+ */
+export function compactJson(value: unknown, indent = "", lead = 0): string {
+  const one = inlineJson(value);
+  if (value === null || typeof value !== "object") return one;
+  if (indent !== "" && indent.length + lead + one.length + 1 <= COMPACT_WIDTH) return one;
+  const inner = `${indent}  `;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    const items = value.map((v) => inner + compactJson(v, inner));
+    return `[\n${items.join(",\n")}\n${indent}]`;
+  }
+  const entries = Object.entries(value);
+  if (entries.length === 0) return "{}";
+  const lines = entries.map(([k, v]) => {
+    const key = `${JSON.stringify(k)}: `;
+    return inner + key + compactJson(v, inner, key.length);
+  });
+  return `{\n${lines.join(",\n")}\n${indent}}`;
+}
+
+/** A config as text that ignores key order, to tell whether an edit changed anything. */
+export function configKey(config: ServerConfig): string {
+  const sorted = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(sorted);
+    if (v !== null && typeof v === "object") {
+      return Object.fromEntries(
+        Object.keys(v)
+          .sort()
+          .map((k) => [k, sorted((v as Record<string, unknown>)[k])]),
+      );
+    }
+    return v;
+  };
+  return JSON.stringify(sorted(config));
+}
+
 export const RAW_JSON_INVALID = "This isn’t valid JSON yet. The form keeps its last valid version.";
 export const RAW_JSON_NOT_OBJECT = "Use one server’s settings: an object with a url or a command.";
 

@@ -12,12 +12,15 @@ export function RawJsonDisclosure({
   text,
   error,
   onChange,
+  syncNote = true,
 }: {
   open: boolean;
   onToggle: () => void;
   text: string;
   error: string | null;
   onChange: (text: string) => void;
+  /** "Edits here and in the form above stay in sync." under the JSON (the tool page draws none). */
+  syncNote?: boolean;
 }) {
   const id = useId();
   const lines = text.split("\n").length;
@@ -45,7 +48,7 @@ export function RawJsonDisclosure({
             className="tk-raw__text"
             aria-labelledby={`${id}-toggle`}
             aria-invalid={error ? true : undefined}
-            aria-describedby={`${id}-note`}
+            aria-describedby={error || syncNote ? `${id}-note` : undefined}
             spellCheck={false}
             autoComplete="off"
             value={text}
@@ -57,9 +60,11 @@ export function RawJsonDisclosure({
               {error}
             </span>
           ) : (
-            <span id={`${id}-note`} className="tk-raw__note">
-              Edits here and in the form above stay in sync.
-            </span>
+            syncNote && (
+              <span id={`${id}-note`} className="tk-raw__note">
+                Edits here and in the form above stay in sync.
+              </span>
+            )
           )}
         </>
       )}
