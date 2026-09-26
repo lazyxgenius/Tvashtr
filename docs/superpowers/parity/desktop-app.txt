@@ -12,12 +12,24 @@ DT-Waiting web: n/a — Desktop-only screen (desktop-app.md §1)
 DT-Waiting desktop: matched 12/12 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DT-Welcome web: n/a — Desktop-only screen (desktop-app.md §1)
 DT-Welcome desktop: matched 13/15 design items · 0 with size/type drift · 9 only moved · 2 not found in app
+DtF-Claude-1 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Claude-1 desktop: matched 44/44 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Claude-2 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Claude-2 desktop: matched 62/62 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Claude-3 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Claude-3 desktop: matched 44/44 design items · 0 with size/type drift · 1 only moved · 0 not found in app
 DtF-Exp-1 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Exp-1 desktop: matched 9/9 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Hand-1 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Hand-1 desktop: matched 14/16 design items · 0 with size/type drift · 10 only moved · 2 not found in app
 DtF-Hand-2 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Hand-2 desktop: matched 44/44 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DtF-Key-1 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Key-1 desktop: matched 44/44 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Key-2 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Key-2 desktop: matched 59/59 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Key-3 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Key-3 desktop: matched 44/44 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Launch-1 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Launch-1 desktop: matched 9/9 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Off-1 web: n/a — Desktop-only screen (desktop-app.md §1)
