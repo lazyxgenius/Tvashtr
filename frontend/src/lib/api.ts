@@ -1,12 +1,10 @@
 // Typed client for the Tvashtr control-plane HTTP surface (proxied to :8000 by Vite).
 
-import type {
-  SubscriptionProviderId,
-  SubscriptionSource,
-  SubscriptionStatus,
-} from "./engines";
+import type { SubscriptionProviderId, SubscriptionSource, SubscriptionStatus } from "./engines";
 
 export type { SubscriptionProviderId, SubscriptionStatus } from "./engines";
+
+import type { DomainCitation } from "./api/domains";
 
 // Absolute API origin when set at build time. Empty = same-origin relative paths (preferred).
 // Desktop v1 leaves this empty and reverse-proxies /api → https://tvashtr.fly.dev from localhost
@@ -17,7 +15,6 @@ export function apiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
 }
-
 
 export interface NodePosition {
   x: number;
@@ -86,13 +83,15 @@ export interface NodeInvocation {
   // Both `null` for rounds the backend links no ledger row to (thinker / gate / terminal / a
   // zero-usage reviewer round).
   // Phase 4a: domain_query closes may attach citations / domain metadata on the same shape.
-  context_manifest: (ContextManifest & {
-    citations?: DomainCitation[];
-    domain_id?: string;
-    latency_ms?: number | null;
-    model?: string | null;
-    message_id?: string | null;
-  }) | null;
+  context_manifest:
+    | (ContextManifest & {
+        citations?: DomainCitation[];
+        domain_id?: string;
+        latency_ms?: number | null;
+        model?: string | null;
+        message_id?: string | null;
+      })
+    | null;
   cost: InvocationCost | null;
 }
 
@@ -309,7 +308,6 @@ export async function getMe(): Promise<AuthUser | null> {
   return (await res.json()) as AuthUser;
 }
 
-
 /**
  * Desktop Electron: rewrite GitHub authorize ``redirect_uri`` to the local loopback
  * origin so GitHub returns to ``http://127.0.0.1:<port>/api/auth/github/callback``
@@ -421,9 +419,7 @@ export async function removeProvider(provider: string): Promise<void> {
 // ---- Subscription status (mirror: status-only, no secrets in PUT bodies) ----
 
 export async function listSubscriptionStatuses(): Promise<SubscriptionStatus[]> {
-  const data = await getJSON<{ subscriptions: SubscriptionStatus[] }>(
-    "/api/engines/subscriptions",
-  );
+  const data = await getJSON<{ subscriptions: SubscriptionStatus[] }>("/api/engines/subscriptions");
   return data.subscriptions;
 }
 
@@ -452,10 +448,12 @@ export async function deleteSubscriptionStatus(provider: SubscriptionProviderId)
     method: "DELETE",
   });
   if (!res.ok) {
-    throw new ApiError(res.status, `DELETE /api/engines/subscriptions/${provider} -> ${res.status}`);
+    throw new ApiError(
+      res.status,
+      `DELETE /api/engines/subscriptions/${provider} -> ${res.status}`,
+    );
   }
 }
-
 
 // ---- MCP secrets (M-tools C7.A): the account's ${NAME} store for MCP tool_config ----
 
@@ -1676,295 +1674,5 @@ export async function setReviewMode(reviewMode: boolean): Promise<boolean> {
 }
 // ===== end M-memory S5 client block ============================================================
 
-export interface DomainSummary {
-  domain_id: string;
-  name: string;
-  template: string;
-  config: Record<string, unknown>;
-  status: string;
-  doc_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export type DomainDetail = DomainSummary;
-
-export interface DomainTemplate {
-  template: string;
-  name: string;
-  description: string;
-}
-
-export async function listDomains(): Promise<DomainSummary[]> {
-  const data = await getJSON<{ domains: DomainSummary[] }>("/api/domains");
-  return data.domains;
-}
-
-export async function getDomainTemplates(): Promise<DomainTemplate[]> {
-  const data = await getJSON<{ templates: DomainTemplate[] }>("/api/domain-templates");
-  return data.templates;
-}
-
-export async function createDomain(template: string, name: string): Promise<DomainSummary> {
-  const res = await fetch(apiUrl("/api/domains"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ template, name }),
-  });
-  if (!res.ok) throw new Error(`POST /api/domains -> ${res.status}`);
-  return (await res.json()) as DomainSummary;
-}
-
-export async function getDomain(domainId: string): Promise<DomainDetail> {
-  return getJSON<DomainDetail>(`/api/domains/${domainId}`);
-}
-
-export async function updateDomain(
-  domainId: string,
-  body: { name?: string; config?: Record<string, unknown> },
-): Promise<DomainDetail> {
-  const res = await fetch(apiUrl(`/api/domains/${domainId}`), {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`PATCH /api/domains/${domainId} -> ${res.status}`);
-  return (await res.json()) as DomainDetail;
-}
-
-export async function deleteDomain(domainId: string): Promise<void> {
-  const res = await fetch(apiUrl(`/api/domains/${domainId}`), { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE /api/domains/${domainId} -> ${res.status}`);
-}
-
-export interface DomainDocumentSummary {
-  document_id: string;
-  domain_id: string;
-  filename: string;
-  content_type: string;
-  byte_size: number;
-  ingest_status: "pending" | "indexing" | "ready" | "error" | string;
-  error_message: string | null;
-  version: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export async function listDomainDocuments(domainId: string): Promise<DomainDocumentSummary[]> {
-  const data = await getJSON<{ documents: DomainDocumentSummary[] }>(
-    `/api/domains/${domainId}/documents`,
-  );
-  return data.documents;
-}
-
-export async function uploadDomainDocument(
-  domainId: string,
-  file: File,
-): Promise<DomainDocumentSummary> {
-  const body = new FormData();
-  body.append("file", file);
-  const res = await fetch(apiUrl(`/api/domains/${domainId}/documents`), {
-    method: "POST",
-    body,
-  });
-  if (!res.ok) {
-    let detail = `POST /api/domains/${domainId}/documents -> ${res.status}`;
-    try {
-      const j = (await res.json()) as { detail?: unknown };
-      if (typeof j.detail === "string") detail = j.detail;
-      else if (j.detail && typeof j.detail === "object" && "message" in (j.detail as object)) {
-        detail = String((j.detail as { message: string }).message);
-      }
-    } catch {
-      /* ignore */
-    }
-    throw new ApiError(res.status, detail);
-  }
-  return (await res.json()) as DomainDocumentSummary;
-}
-
-export async function deleteDomainDocument(domainId: string, documentId: string): Promise<void> {
-  const res = await fetch(apiUrl(`/api/domains/${domainId}/documents/${documentId}`), {
-    method: "DELETE",
-  });
-  if (!res.ok) throw new ApiError(res.status, `DELETE document -> ${res.status}`);
-}
-
-export async function ingestDomain(
-  domainId: string,
-): Promise<{ domain_id: string; workflow_id: string; status: string }> {
-  const res = await fetch(apiUrl(`/api/domains/${domainId}/ingest`), { method: "POST" });
-  if (!res.ok) {
-    let detail = `POST ingest -> ${res.status}`;
-    try {
-      const j = (await res.json()) as { detail?: unknown };
-      if (typeof j.detail === "string") detail = j.detail;
-      else if (j.detail && typeof j.detail === "object" && "message" in (j.detail as object)) {
-        detail = String((j.detail as { message: string }).message);
-      }
-    } catch {
-      /* ignore */
-    }
-    throw new ApiError(res.status, detail);
-  }
-  return (await res.json()) as { domain_id: string; workflow_id: string; status: string };
-}
-
-export interface DomainCitation {
-  document_id: string;
-  filename: string;
-  chunk_id: string;
-  ordinal: number;
-  excerpt: string;
-  score?: number | null;
-}
-
-export interface DomainMessageSummary {
-  message_id: string;
-  domain_id: string;
-  role: "user" | "assistant" | string;
-  content: string;
-  citations: DomainCitation[] | null;
-  latency_ms: number | null;
-  cost_usd: number | null;
-  created_at: string | null;
-}
-
-export interface DomainAskResult {
-  answer: string;
-  citations: DomainCitation[];
-  message_id: string;
-  user_message_id: string;
-  latency_ms: number | null;
-  cost_usd?: number | null;
-  model?: string;
-}
-
-export async function listDomainMessages(domainId: string): Promise<DomainMessageSummary[]> {
-  const data = await getJSON<{ messages: DomainMessageSummary[] }>(
-    `/api/domains/${domainId}/messages`,
-  );
-  return data.messages;
-}
-
-export async function askDomain(domainId: string, question: string): Promise<DomainAskResult> {
-  const res = await fetch(apiUrl(`/api/domains/${domainId}/ask`), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
-  });
-  if (!res.ok) {
-    let detail = `POST /api/domains/${domainId}/ask -> ${res.status}`;
-    try {
-      const j = (await res.json()) as { detail?: unknown };
-      if (typeof j.detail === "string") detail = j.detail;
-      else if (j.detail && typeof j.detail === "object" && "message" in (j.detail as object)) {
-        detail = String((j.detail as { message: string }).message);
-      }
-    } catch {
-      /* ignore */
-    }
-    throw new ApiError(res.status, detail);
-  }
-  return (await res.json()) as DomainAskResult;
-}
-
-export interface DomainEvalCase {
-  case_id: string;
-  domain_id: string;
-  question: string;
-  expected_answer: string | null;
-  expected_citation_doc_ids: string[];
-  expected_keywords: string[];
-  ordinal: number;
-  created_at: string | null;
-}
-
-export interface DomainEvalCaseCreate {
-  question: string;
-  expected_answer?: string | null;
-  expected_citation_doc_ids?: string[];
-  expected_keywords?: string[];
-  ordinal?: number;
-}
-
-export interface DomainEvalPerCaseScore {
-  case_id: string;
-  question: string;
-  hit: boolean | null;
-  keyword_hit: boolean | null;
-  citation_doc_ids: string[];
-  latency_ms: number | null;
-  error: string | null;
-}
-
-export interface DomainEvalScores {
-  cases_total: number;
-  cases_scored_hit: number;
-  cases_scored_keyword: number;
-  hit_at_k: number | null;
-  keyword_hit: number | null;
-  top_k: number;
-  retrieval_mode: string;
-  per_case: DomainEvalPerCaseScore[];
-}
-
-export interface DomainEvalRun {
-  run_id: string;
-  domain_id: string;
-  status: string;
-  scores: DomainEvalScores | null;
-  error_message: string | null;
-  created_at: string | null;
-  completed_at: string | null;
-}
-
-export async function listDomainEvalCases(domainId: string): Promise<DomainEvalCase[]> {
-  const data = await getJSON<{ cases: DomainEvalCase[] }>(
-    `/api/domains/${domainId}/eval/cases`,
-  );
-  return data.cases;
-}
-
-export async function createDomainEvalCase(
-  domainId: string,
-  body: DomainEvalCaseCreate,
-): Promise<DomainEvalCase> {
-  const res = await fetch(apiUrl(`/api/domains/${domainId}/eval/cases`), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`POST eval case -> ${res.status}`);
-  return (await res.json()) as DomainEvalCase;
-}
-
-export async function deleteDomainEvalCase(domainId: string, caseId: string): Promise<void> {
-  const res = await fetch(apiUrl(`/api/domains/${domainId}/eval/cases/${caseId}`), {
-    method: "DELETE",
-  });
-  if (!res.ok) throw new Error(`DELETE eval case -> ${res.status}`);
-}
-
-export async function getLatestDomainEvalRun(domainId: string): Promise<DomainEvalRun> {
-  return getJSON<DomainEvalRun>(`/api/domains/${domainId}/eval/runs/latest`);
-}
-
-export async function runDomainEval(domainId: string): Promise<DomainEvalRun> {
-  const res = await fetch(apiUrl(`/api/domains/${domainId}/eval`), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
-  if (!res.ok) {
-    let detail = `POST eval -> ${res.status}`;
-    try {
-      const j = (await res.json()) as { detail?: unknown };
-      if (typeof j.detail === "string") detail = j.detail;
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail);
-  }
-  return (await res.json()) as DomainEvalRun;
-}
+// The Domains clients moved to lib/api/domains.ts (revamp round 2); re-exported for old imports.
+export * from "./api/domains";

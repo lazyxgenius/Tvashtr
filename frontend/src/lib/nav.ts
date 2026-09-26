@@ -6,7 +6,7 @@
  * routing.
  *
  *   #/home
- *   #/domains
+ *   #/domains · #/domains/<id> · #/domains/<id>/ask|quality|teams|settings (?file=<doc>&piece=<n>)
  *   #/engines · #/engines/subscriptions · #/engines/keys
  *   #/toolkit/tools · #/toolkit/tools/browse · #/toolkit/tools/<id>
  *   #/toolkit/skills · #/toolkit/skills/presets · #/toolkit/skills/new · #/toolkit/skills/<id>
@@ -21,12 +21,22 @@ import { useCallback, useSyncExternalStore } from "react";
 export type EnginesTab = "overview" | "subscriptions" | "keys";
 export type MemoryTab = "inbox" | "active" | "archive";
 export type NodeTab = "setup" | "skills" | "memory" | "runs" | "docs";
+/** A domain's tabs; `sources` is the bare `#/domains/<id>`. */
+export type DomainTab = "sources" | "ask" | "quality" | "teams" | "settings";
 /** The dashboard section the canvas's back / "Open Engines · Toolkit" controls return to. */
 export type DashView = "home" | "domains" | "engines" | "tools";
 
 export type Route =
   | { page: "home" }
-  | { page: "domains" }
+  | {
+      page: "domains";
+      /** A domain's page; absent = the Domains list. */
+      domainId?: string;
+      tab?: DomainTab;
+      /** `?file=<documentId>` opens that file's preview over the tab (`&piece=<n>` scrolls to it). */
+      file?: string;
+      piece?: number;
+    }
   | { page: "engines"; tab: EnginesTab }
   | { page: "tools"; view: "installed" | "browse" }
   | { page: "tool"; toolId: string }
@@ -50,6 +60,7 @@ export type Route =
 const ENGINES_TABS: EnginesTab[] = ["overview", "subscriptions", "keys"];
 const MEMORY_TABS: MemoryTab[] = ["inbox", "active", "archive"];
 const NODE_TABS: NodeTab[] = ["setup", "skills", "memory", "runs", "docs"];
+const DOMAIN_TABS: DomainTab[] = ["sources", "ask", "quality", "teams", "settings"];
 
 export const HOME: Route = { page: "home" };
 
@@ -75,8 +86,16 @@ export function parseRoute(hash: string): Route {
     case undefined:
     case "home":
       return HOME;
-    case "domains":
-      return { page: "domains" };
+    case "domains": {
+      if (!b) return { page: "domains" };
+      const route: Extract<Route, { page: "domains" }> = { page: "domains", domainId: b };
+      if (c && c !== "sources" && DOMAIN_TABS.includes(c as DomainTab)) route.tab = c as DomainTab;
+      const file = q.get("file");
+      if (file) route.file = file;
+      const piece = num(q.get("piece"));
+      if (file && piece !== undefined) route.piece = piece;
+      return route;
+    }
     case "engines":
       return {
         page: "engines",
@@ -128,8 +147,16 @@ export function routeToHash(route: Route): string {
   switch (route.page) {
     case "home":
       return "#/home";
-    case "domains":
-      return "#/domains";
+    case "domains": {
+      if (!route.domainId) return "#/domains";
+      let path = `#/domains/${enc(route.domainId)}`;
+      if (route.tab && route.tab !== "sources") path += `/${route.tab}`;
+      const q = new URLSearchParams();
+      if (route.file) q.set("file", route.file);
+      if (route.file && route.piece !== undefined) q.set("piece", String(route.piece));
+      const qs = q.toString();
+      return qs ? `${path}?${qs}` : path;
+    }
     case "engines":
       return route.tab === "overview" ? "#/engines" : `#/engines/${route.tab}`;
     case "tools":

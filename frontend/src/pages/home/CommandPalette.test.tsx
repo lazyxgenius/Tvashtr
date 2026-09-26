@@ -162,6 +162,16 @@ describe("CommandPalette", () => {
     expect(window.location.hash).toBe("#/engines/keys");
   });
 
+  it("opens a domain at its own address", async () => {
+    render(<CommandPalette open onClose={vi.fn()} />);
+    await screen.findByRole("group", { name: "Needs you" });
+    await userEvent.type(screen.getByRole("combobox"), "indicators");
+    await userEvent.click(
+      await screen.findByRole("option", { name: /Open the Indicators domain/ }),
+    );
+    expect(window.location.hash).toBe("#/domains/d1");
+  });
+
   it("Escape and ⌘K close it", async () => {
     const onClose = vi.fn();
     render(<CommandPalette open onClose={onClose} />);

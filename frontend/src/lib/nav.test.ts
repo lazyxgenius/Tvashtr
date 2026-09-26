@@ -11,6 +11,14 @@ describe("parseRoute / routeToHash", () => {
   const cases: [string, Route][] = [
     ["#/home", { page: "home" }],
     ["#/domains", { page: "domains" }],
+    ["#/domains/d1", { page: "domains", domainId: "d1" }],
+    ["#/domains/d1/ask", { page: "domains", domainId: "d1", tab: "ask" }],
+    ["#/domains/d1/settings", { page: "domains", domainId: "d1", tab: "settings" }],
+    ["#/domains/d1?file=f1", { page: "domains", domainId: "d1", file: "f1" }],
+    [
+      "#/domains/d1/quality?file=f1&piece=3",
+      { page: "domains", domainId: "d1", tab: "quality", file: "f1", piece: 3 },
+    ],
     ["#/engines", { page: "engines", tab: "overview" }],
     ["#/engines/subscriptions", { page: "engines", tab: "subscriptions" }],
     ["#/engines/keys", { page: "engines", tab: "keys" }],
@@ -50,6 +58,19 @@ describe("parseRoute / routeToHash", () => {
     expect(parseRoute("#/engines/zzz")).toEqual({ page: "engines", tab: "overview" });
     expect(parseRoute("#/toolkit/memory/zzz")).toEqual({ page: "memory", tab: "inbox" });
     expect(parseRoute("#/toolkit")).toEqual({ page: "tools", view: "installed" });
+  });
+
+  it("reads a domain address: sources is the bare id, unknown tabs and stray pieces drop", () => {
+    expect(parseRoute("#/domains/d1/sources")).toEqual({ page: "domains", domainId: "d1" });
+    expect(routeToHash({ page: "domains", domainId: "d1", tab: "sources" })).toBe("#/domains/d1");
+    expect(parseRoute("#/domains/d1/zzz")).toEqual({ page: "domains", domainId: "d1" });
+    expect(parseRoute("#/domains/d1?piece=2")).toEqual({ page: "domains", domainId: "d1" });
+    expect(parseRoute("#/domains/d1?file=f1&piece=x")).toEqual({
+      page: "domains",
+      domainId: "d1",
+      file: "f1",
+    });
+    expect(sectionOf({ page: "domains", domainId: "d1", tab: "ask" })).toBe("domains");
   });
 
   it("drops an unknown node tab and a non-numeric version", () => {

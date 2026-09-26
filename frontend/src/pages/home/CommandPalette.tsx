@@ -72,8 +72,9 @@ function go(target: PaletteTarget): void {
       navigate({ page: "tools", view: "installed" });
       return;
     case "domains":
-      // Domains has no per-domain address yet, so this opens the Domains page.
-      navigate({ page: "domains" });
+      navigate(
+        target.domainId ? { page: "domains", domainId: target.domainId } : { page: "domains" },
+      );
       return;
   }
 }
