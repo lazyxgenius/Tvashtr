@@ -16,24 +16,40 @@ const mirror = (statuses) =>
   statuses.map((s) => ({ ...s, runner_fresh: s.connected }));
 
 /**
- * Desktop bridge for these frames: `getStatus` answers `statuses`; `refresh(p)` answers
- * `refresh[p]` when given (else the current status); `connect(p)` answers the current status (the
- * CLI isn't signed in yet, so the card waits for a push); `window.__engPush(s)` is the main
+ * Desktop bridge for these frames: `getStatus` answers `statuses` (the `justChecked` providers
+ * stamped with the page's own clock); `refresh(p)` answers `refresh[p]` when given (else the
+ * current status) checked now, or never answers for "hang"; `connect(p)` answers the current status
+ * (the CLI isn't signed in yet, so the card waits for a push); `window.__engPush(s)` is the main
  * process's onStatus push.
  */
-function subsInit(statuses, { refresh = {} } = {}) {
+function subsInit(statuses, { refresh = {}, justChecked = [] } = {}) {
   return `(() => {
     try { sessionStorage.setItem("tvashtr.desktopDisclosureSeen", "1"); } catch {}
-    const statuses = ${JSON.stringify(statuses)};
+    const now = () => new Date().toISOString();
+    const justChecked = ${JSON.stringify(justChecked)};
+    const statuses = ${JSON.stringify(statuses)}.map((s) =>
+      justChecked.includes(s.provider) ? { ...s, checked_at: now() } : s,
+    );
     const refreshed = ${JSON.stringify(refresh)};
     const listeners = new Set();
     window.__engPush = (s) => listeners.forEach((cb) => cb(s));
+    window.__engNow = now;
     const find = (p) => statuses.find((s) => s.provider === p);
     window.tvashtrDesktop.engines = {
       getStatus: async () => statuses,
       connect: async (p) => find(p),
-      disconnect: async (p) => ({ ...find(p), connected: false, state: "disconnected" }),
-      refresh: async (p) => refreshed[p] ?? find(p),
+      disconnect: async (p) => ({
+        ...find(p),
+        connected: false,
+        state: "disconnected",
+        account_hint: null,
+        source: null,
+      }),
+      // "hang" keeps the check in flight (the Checking frame); a real check stamps checked_at.
+      refresh: (p) =>
+        refreshed[p] === "hang"
+          ? new Promise(() => {})
+          : Promise.resolve({ ...(refreshed[p] ?? find(p)), checked_at: now() }),
       cancelConnect: async (p) => find(p),
       onStatus: (cb) => { listeners.add(cb); return () => listeners.delete(cb); },
     };
@@ -48,6 +64,8 @@ function both(
     subs = SUBS,
     routes = {},
     refresh,
+    justChecked = [],
+    webSubs = subs,
     steps,
     webSteps = ready,
   } = {},
@@ -56,11 +74,24 @@ function both(
     {
       name: `${artboard}-web`,
       path,
-      routes: enginesRoutes({
-        runner: RUNNER_FRESH,
-        ...routes,
-        subs: mirror(subs),
-      }),
+      routes: {
+        ...enginesRoutes({
+          runner: RUNNER_FRESH,
+          ...routes,
+          subs: mirror(webSubs),
+        }),
+        // The mirror reports the Desktop check `justChecked` providers had moments ago.
+        "GET /api/engines/subscriptions": () => ({
+          json: {
+            subscriptions: mirror(webSubs).map((s) =>
+              justChecked.includes(s.provider)
+                ? { ...s, checked_at: new Date().toISOString() }
+                : s,
+            ),
+            runner: routes.runner ?? RUNNER_FRESH,
+          },
+        }),
+      },
       steps: webSteps,
     },
     {
@@ -69,7 +100,7 @@ function both(
       routes: enginesRoutes({ runner: RUNNER_FRESH, ...routes, subs }),
       steps: steps ?? ready,
       desktop: true,
-      init: subsInit(subs, { refresh }),
+      init: subsInit(subs, { refresh, justChecked }),
     },
   ];
 }
@@ -100,6 +131,18 @@ const firstTime = async (page) => {
   await page.click('button:has-text("Connect a subscription")');
   await ready(page);
   await rest(page);
+};
+
+// G6 — the Claude flows. Every frame has Grok connected and the Codex CLI found.
+const CLAUDE_API_KEY = sub("claude", "api_key");
+const withClaude = (claude) => [claude, GROK_CONNECTED, CODEX_FOUND];
+const CLAUDE_OK = withClaude(SUBS[0]);
+const CLAUDE_OFF = withClaude(sub("claude", "disconnected"));
+
+const openDisconnect = async (page) => {
+  await ready(page);
+  await clickIn(page, "claude", "Disconnect");
+  await page.waitForSelector('[role="alertdialog"]');
 };
 
 export default [
@@ -173,5 +216,76 @@ export default [
     routes: { keys: [] },
     steps: firstTime,
     webSteps: firstTime,
+  }),
+  // Claude was checked moments ago; Refresh checks it again.
+  ...both("EnF-ClaudeRefresh-1", { subs: CLAUDE_OK, justChecked: ["claude"] }),
+  ...both("EnF-ClaudeRefresh-2", {
+    subs: CLAUDE_OK,
+    justChecked: ["claude"],
+    refresh: { claude: "hang" },
+    steps: async (page) => {
+      await ready(page);
+      await clickIn(page, "claude", "Refresh");
+      await page.waitForSelector(
+        `${card("claude")} >> text=Checking that Claude Code`,
+      );
+    },
+  }),
+  ...both("EnF-ClaudeRefresh-3", {
+    subs: CLAUDE_OK,
+    justChecked: ["claude"],
+    steps: async (page) => {
+      await ready(page);
+      await clickIn(page, "claude", "Refresh");
+      await page.waitForSelector(".ds-toast");
+      await rest(page);
+    },
+  }),
+  // No anthropic key saved: the impact says the Engineer can't run until one is added.
+  ...both("EnF-ClaudeDisconnect-1", {
+    subs: CLAUDE_OK,
+    justChecked: ["claude"],
+    steps: openDisconnect,
+  }),
+  ...both("EnF-ClaudeDisconnect-2", {
+    subs: CLAUDE_OK,
+    webSubs: CLAUDE_OFF,
+    steps: async (page) => {
+      await openDisconnect(page);
+      await page.click('[role="alertdialog"] button:has-text("Disconnect")');
+      await page.waitForSelector('[role="alertdialog"]', { state: "detached" });
+      await page.waitForSelector(".ds-toast");
+      await rest(page);
+    },
+  }),
+  ...both("EnF-ClaudeApiKey-1", { subs: withClaude(CLAUDE_API_KEY) }),
+  // Connect from the API key: the sign-in waits in Terminal and asks for the plan.
+  ...both("EnF-ClaudeApiKey-2", {
+    subs: withClaude(CLAUDE_API_KEY),
+    steps: async (page) => {
+      await ready(page);
+      await clickIn(page, "claude", "Connect");
+      await page.waitForSelector(
+        `${card("claude")} >> text=Waiting for sign-in`,
+      );
+    },
+  }),
+  ...both("EnF-ClaudeApiKey-3", {
+    subs: withClaude(CLAUDE_API_KEY),
+    webSubs: CLAUDE_OK,
+    justChecked: ["claude"],
+    steps: async (page) => {
+      await ready(page);
+      await clickIn(page, "claude", "Connect");
+      await page.waitForSelector(
+        `${card("claude")} >> text=Waiting for sign-in`,
+      );
+      await page.evaluate(
+        (s) => window.__engPush({ ...s, checked_at: window.__engNow() }),
+        SUBS[0],
+      );
+      await page.waitForSelector(".ds-toast");
+      await rest(page);
+    },
   }),
 ];

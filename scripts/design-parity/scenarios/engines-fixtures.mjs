@@ -275,7 +275,7 @@ export const sub = (provider, state, account_hint = null) => ({
   state,
   account_hint,
   source: state === "disconnected" ? null : "harness",
-  checked_at: "2026-09-26T09:00:00+00:00",
+  checked_at: "2026-09-25T09:00:00+00:00",
   runner_fresh: false,
 });
 
