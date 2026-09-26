@@ -44,6 +44,12 @@ in `routers.py` and changed there in place.
 | `GET /api/domains/{id}` | gains `rereading` (the running re-read: files, done, estimate, reason, tests after) | G10 |
 | `POST /api/domains/{id}/reread` | the files share one version (a re-read asked for during another joins it); `run_tests_after` holds even when a read was already running | G10 |
 | `POST /api/domains/{id}/ask`, `…/retrieve` (+ nodes, MCP) | `409` while a new reading model re-reads the files | G10 |
+| `GET /api/domains/{id}/usage` | **new** — the Query domain steps that ask it and the agents that can search it | G11 |
+| `GET /api/domains/{id}/step-places` | **new** — the Add step dialog's teams, main paths and "After <agent>" places | G11 |
+| `POST /api/domains/{id}/steps` | **new** — add the domain to a team as a Query domain step (`201`) | G11 |
+| `GET /api/domains/{id}/agents` | **new** — every agent and whether it can search the domain | G11 |
+| `PUT /api/domains/{id}/agents` | **new** — exactly these agents can search the domain | G11 |
+| agent tools (`tool_config.tvashtr.domains`) | a list of domain ids now works (sends `X-Tvashtr-Domains`); the Domains MCP tools take the domain by name | G11 |
 
 Schema: migration `0042_domain_message_meta` adds `domain_messages.meta JSONB NULL` (the Ask tab's
 answer meta `{model, used_history, source}`; written from the Ask group on).
@@ -696,3 +702,112 @@ nodes and the MCP tools — refuse while `rereading.reason` is `reading_model`:
 | `409` | `"Ask is paused while <domain name> re-reads its files."` |
 
 A piece-size or single-file re-read doesn't pause asking (files not read yet are left out until they are).
+
+
+## Use in teams (G11 — Dm-Teams, DmF-Step-1…3, DmF-Agent-1…3; DM-92…97, OQ-19, OQ-20)
+
+Only the owner's LIBRARY teams count; a run's snapshot never does. Agents are thinker/worker nodes
+(`kind` `completion`/`agent`); a *step* is a `domain_query` node whose `config.domain_id` is the domain.
+An agent's access lives in `tool_config.tvashtr.domains`: `true` (or the old `{"enabled": …}` object)
+= every domain (the legacy switch, `scope: "all"`), a list of ids = just those (`scope: "this"`).
+Agent `title` = `config.title`, else the role's name ("Product manager", "Engineer", …).
+
+### `GET /api/domains/{id}/usage`
+
+```json
+{
+  "steps": [
+    {"node_id": "5b0e…", "team_id": "d442…", "team_name": "Docs team",
+     "title": "Look up support docs", "pass_to_spec": true}
+  ],
+  "agents": [
+    {"node_id": "caf4…", "team_id": "a1b2…", "team_name": "Indicator sprint team",
+     "role_name": "pm", "title": "Product manager", "model": "xai/grok-4.7",
+     "scope": "this", "subscription": null}
+  ]
+}
+```
+
+- Canvas order: teams oldest first, then left to right. A step with no `config.title` reads "Query
+  domain"; `pass_to_spec` is `false` when the key is absent (nodes made before round 2, OQ-21).
+- `subscription`: `"claude"`/`"grok"` when the agent's model maps to a Desktop plan the account has
+  connected — on Tvashtr Desktop such an agent runs on the plan and gets no Domains tools yet (DM-96,
+  B-16); else `null`. The tab count is the detail's `usage.uses` (= `steps` + `agents`).
+
+### `GET /api/domains/{id}/step-places`
+
+```json
+{
+  "teams": [
+    {
+      "team_id": "d442…",
+      "name": "Docs team",
+      "path": ["Product manager", "Writer", "Reviewer"],
+      "places": [
+        {"after_node_id": "caf4…", "after": "Product manager", "next": "Writer"},
+        {"after_node_id": "40de…", "after": "Writer", "next": "Reviewer"},
+        {"after_node_id": "1390…", "after": "Reviewer", "next": "Ship"}
+      ]
+    }
+  ]
+}
+```
+
+- Every library team, oldest first. `path` = the agents and steps on the team's main path (the same
+  walk as the team summary's `shape`; gates and terminals left out; `[]` for a team with no agents).
+- `places` (OQ-20): each agent on the main path with exactly one way out — one unconditional,
+  non-escalation edge. A gate, a terminal, an agent with a verdict (`when` branches or a rework loop)
+  or a fan-out has none. There is no "At the start" place. `next` = the node that edge leads to.
+
+### `POST /api/domains/{id}/steps` → `201`
+
+Body `{"team_id": "<uuid>", "after_node_id": "<uuid>", "prompt": "What do our support docs say about
+{idea}?", "pass_to_spec": true}` (`pass_to_spec` defaults to `true`).
+
+```json
+{
+  "node_id": "9f1c…",
+  "team_id": "d442…",
+  "title": "Look up support docs",
+  "after": {"node_id": "caf4…", "title": "Product manager"},
+  "connected_to": {"node_id": "40de…", "title": "Writer"}
+}
+```
+
+- Adds a `domain_query` node (`prompt` = the trimmed question, `edits_allowed` false,
+  `config {domain_id, title: "Look up <name>", pass_to_spec, on_no_answer: "continue"}` — the name's
+  first letter lower-cased unless the first word is an acronym: "Look up Q3 filings"). The agent's
+  edge `after → next` now ends at the step, and a new unconditional `work` edge runs `step → next`.
+  The step takes `next`'s canvas position; every node at or right of it moves 260px right.
+- `422 {"detail": "Pick where the step goes."}` — `after_node_id` is not one of the team's `places`
+  (or an id is malformed); `422 {"detail": "Write the question to ask."}` — a blank `prompt`.
+- `404 {"detail": "library team not found"}` (not the owner's library team), `404 {"detail": "node not
+  found in the team"}`, `404 {"detail": "domain not found"}`.
+- The run side of `pass_to_spec` / `on_no_answer` is the Query domain node's (G12).
+
+### `GET /api/domains/{id}/agents`
+
+`{"agents": [ …the usage agent rows for EVERY agent… ]}` with `scope: null` for those without access —
+the Give access dialog's rows (it disables the ones with a `scope`). Deviation: the analysis proposed
+`GET /api/agents?domain_id=`; the domain's own route keeps the Toolkit router untouched.
+
+### `PUT /api/domains/{id}/agents`
+
+Body `{"node_ids": ["caf4…", …]}` — the FULL set that can search the domain afterwards (like a tool's
+agents). A listed agent without access gains the id in its list (created as `[id]` when it had none);
+an unlisted agent with `scope: "this"` loses it; an unlisted `scope: "all"` agent keeps every OTHER
+domain of the account as an explicit list. Answers `{"agents": [ …usage agent rows with access… ]}`.
+`404 {"detail": "Agent not found."}` for an id that isn't one of the owner's library agents.
+
+### The run side of agent access
+
+- `node_tools.build_mcp_config`: a non-empty `tvashtr.domains` list injects the Domains MCP like
+  `true` does, plus a header `X-Tvashtr-Domains: <id>,<id>` (absent = every domain). An empty list
+  gives no Domains tools.
+- The Domains MCP tools `domain_ask(question, domain)` and `domain_retrieve(query, domain, top_k?)`
+  take the domain by name (any case) or id (`domain_id` still works for older agents), within the
+  header's allowlist; with one domain to search `domain` may be left out. Anything else errors with
+  "Domains you can search: Support docs, Vendor contracts." (or "You can’t search any domains.").
+- Not built (a `team_run.py` step change): the context compiler's "Domains you can search: …" line —
+  the tools' own descriptions and the error above tell the agent the names.
+
