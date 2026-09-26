@@ -199,6 +199,46 @@ def test_ship_takes_the_agents_commit_in_a_linked_worktree(tmp_path):
     assert idempotent_ship(str(wt), "run-wt")["sha"] == head
 
 
+def _tree(ws, ref) -> list[str]:
+    return _git(ws, "ls-tree", "-r", "--name-only", ref).split()
+
+
+def test_ship_leaves_tvashtrs_own_files_out_of_a_run_branch(tmp_path):
+    """revamp-e2e: live PR lazyxgenius/trade_mcp#14 shipped the PM's REPORT.md into the user's repo.
+    A hosted or local-folder run has no Tvashtr .gitignore, so the ship itself must leave Tvashtr's
+    own files out (the report, the reviewer's verdict, the spec handle) — they stay on disk."""
+    repo = _repo_with_history(tmp_path / "repo")
+    _git(repo, "checkout", "-q", "-b", "tvashtr/run-side")
+    for name, text in (
+        ("REPORT.md", "# PRD\n"),
+        ("REVIEW_VERDICT.json", '{"verdict": "approved"}'),
+        ("SPEC.md", "# spec\n"),
+        ("feature.py", "print(2)\n"),
+    ):
+        (repo / name).write_text(text)
+
+    idempotent_ship(str(repo), "run-side")
+
+    tree = _tree(repo, "ship-run-side")
+    assert "feature.py" in tree
+    assert not {"REPORT.md", "REVIEW_VERDICT.json", "SPEC.md"} & set(tree)
+    assert (repo / "REPORT.md").exists()
+
+
+def test_ship_keeps_a_repos_own_tracked_report(tmp_path):
+    """A repo that already tracks a REPORT.md owns it: the agent's edit to it ships."""
+    repo = _repo_with_history(tmp_path / "repo")
+    (repo / "REPORT.md").write_text("v1\n")
+    _git(repo, "add", "REPORT.md")
+    _git(repo, "commit", "-q", "-m", "their report")
+    _git(repo, "checkout", "-q", "-b", "tvashtr/run-own")
+    (repo / "REPORT.md").write_text("v2\n")
+
+    idempotent_ship(str(repo), "run-own")
+
+    assert _show(repo, "ship-run-own", "REPORT.md") == "v2\n"
+
+
 def test_ship_still_raises_when_a_run_branch_has_nothing_new(tmp_path):
     """The base's own commits are not the agent's work: a run that produced nothing still fails."""
     repo = _repo_with_history(tmp_path / "repo")
