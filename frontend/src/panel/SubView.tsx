@@ -25,8 +25,8 @@ export function SubView({
   /** Back (the same as the sheet's own Cancel). */
   onBack: () => void;
   children: ReactNode;
-  /** The footer's buttons, right-aligned. */
-  actions: ReactNode;
+  /** The footer's buttons, right-aligned (none: no footer — a read-only sheet). */
+  actions?: ReactNode;
   /** A line on the footer's left ("Adds to this agent. Save to keep it."). */
   note?: ReactNode;
   backLabel?: string;
@@ -66,7 +66,7 @@ export function SubView({
           <div className="nd-sub__actions">{actions}</div>
         </footer>
       ) : (
-        <footer className="nd-sub__foot">{actions}</footer>
+        actions && <footer className="nd-sub__foot">{actions}</footer>
       )}
     </div>
   );

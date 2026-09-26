@@ -10,7 +10,8 @@ const icon = { size: 15, strokeWidth: 1.6, "aria-hidden": true } as const;
 
 /**
  * The Instructions card's "Templates" button and its 250px menu (PANEL-30, Flow-Templates-1):
- * Product manager / Architect / Engineer / Reviewer, then "Compare templates in focus view".
+ * Product manager / Architect / Engineer / Reviewer, then "Open in focus view" (the focus area's
+ * template comparison isn't built yet, so the item only opens the focus view).
  */
 export function TemplatesMenu({
   templates,
@@ -44,7 +45,7 @@ export function TemplatesMenu({
   if (onCompare) {
     items.push("separator", {
       key: "compare",
-      label: "Compare templates in focus view",
+      label: "Open in focus view",
       icon: <Maximize2 {...icon} />,
       onSelect: onCompare,
     });

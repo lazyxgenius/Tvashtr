@@ -3,15 +3,15 @@ import { ArrowRight, Check, ChevronDown, FileText, History, Pin } from "lucide-r
 
 import { Button, Menu } from "../../design-system/components";
 import { listRunDocs, type NodeRuns, type NodeRunSummary, type RunDoc } from "../../lib/api/nodes";
-import { type Route, routeToHash } from "../../lib/nav";
+import { PrdView } from "../PrdView";
 import { runLine, whenShort } from "../runs/rounds";
+import { SubView } from "../SubView";
 import { EmptyCard, LoadState } from "../runs/RunsTab";
 import { type Loaded, useLoaded } from "../runs/useLoaded";
 import { agentDocs, readBy, specLine, versionLine, writtenBy } from "./agentDocs";
 import "./docs.css";
 
 export interface DocsTabProps {
-  teamId: string;
   nodeId: string;
   name: string;
   isEntry: boolean;
@@ -23,8 +23,10 @@ export interface DocsTabProps {
   agentCount: number;
   /** This agent's runs (the same history the Runs tab shows); "idle" when it never ran. */
   history: Loaded<NodeRuns>;
-  /** Open a document, or the run's documents. */
-  onOpen: (route: Route) => void;
+  /** Open a document (in the drawer). */
+  onOpenDoc: (doc: RunDoc) => void;
+  /** "See all documents in this run" (in the drawer). */
+  onOpenAll: (docs: RunDoc[]) => void;
   /** "Set in Setup": the Setup tab, on Reads or Writes. */
   onSetup: (row: "reads" | "writes") => void;
 }
@@ -63,7 +65,6 @@ export function DocsTab(props: DocsTabProps) {
 }
 
 function RunDocs({
-  teamId,
   nodeId,
   name,
   isEntry,
@@ -71,7 +72,8 @@ function RunDocs({
   writesTo,
   readsFrom,
   agentCount,
-  onOpen,
+  onOpenDoc,
+  onOpenAll,
   onSetup,
   run,
   runs,
@@ -83,8 +85,7 @@ function RunDocs({
 }) {
   const docs = useLoaded(run.run_id, () => listRunDocs(run.run_id));
   const when = whenShort(run.last_round_at ?? run.created_at);
-  const allRoute: Route = { page: "team", teamId, runId: run.run_id };
-  const open = (doc: RunDoc) => () => onOpen({ page: "team", teamId, docId: doc.id });
+  const open = (doc: RunDoc) => () => onOpenDoc(doc);
 
   let body: ReactNode;
   if (docs.state !== "ready") {
@@ -121,12 +122,11 @@ function RunDocs({
           {mine.missingWrite && <DocCard title={mine.missingWrite} sub="Not written in this run" />}
         </ul>
       );
+    } else if (verdict) {
+      // Q3: a verdict agent's Writes can't be chosen in Setup, so there's nothing to set there.
+      writes = <Note>No document. Its verdict goes to Runs.</Note>;
     } else {
-      writes = (
-        <Note action={setIn("writes")}>
-          {verdict ? "No document. Its verdict goes to Runs." : "No document."}
-        </Note>
-      );
+      writes = <Note action={setIn("writes")}>No document.</Note>;
     }
     let reads: ReactNode;
     if (isEntry) {
@@ -212,18 +212,78 @@ function RunDocs({
         />
       </div>
       {body}
-      <a
-        className="nd-docs__all"
-        href={routeToHash(allRoute)}
-        onClick={(e) => {
-          e.preventDefault();
-          onOpen(allRoute);
-        }}
-      >
-        See all documents in this run
-        <ArrowRight size={14} strokeWidth={1.6} aria-hidden />
-      </a>
+      {docs.state === "ready" && (
+        <button
+          type="button"
+          className="nd-link nd-docs__all"
+          onClick={() => onOpenAll(docs.value ?? [])}
+        >
+          See all documents in this run
+          <ArrowRight size={14} strokeWidth={1.6} aria-hidden />
+        </button>
+      )}
     </div>
+  );
+}
+
+/** The Docs tab's sheet: one document open, over the run's list when it came from there. */
+export interface DocSheetState {
+  /** "See all documents in this run" (null: a document opened from the tab). */
+  docs: RunDoc[] | null;
+  open: RunDoc | null;
+}
+
+const docTitle = (doc: RunDoc) => (doc.is_shared_spec ? "Shared spec" : doc.name);
+
+/**
+ * The run's documents inside the drawer (PANEL-76/79), read-only: every document of the run, or one
+ * document with its versions (`PrdView`). The Docs area's viewer and documents drawer replace it.
+ */
+export function RunDocSheet({
+  sheet,
+  onChange,
+  onClose,
+}: {
+  sheet: DocSheetState;
+  onChange: (next: DocSheetState) => void;
+  onClose: () => void;
+}) {
+  const { docs, open } = sheet;
+  if (open) {
+    return (
+      <SubView
+        title={docTitle(open)}
+        backLabel={docs ? "Back to documents" : "Back"}
+        onBack={docs ? () => onChange({ docs, open: null }) : onClose}
+      >
+        <PrdView
+          documentId={open.id}
+          editable={false}
+          emptyHint=""
+          subject={open.is_shared_spec ? "spec" : "document"}
+        />
+      </SubView>
+    );
+  }
+  return (
+    <SubView title="Documents in this run" onBack={onClose}>
+      {docs && docs.length > 0 ? (
+        <ul className="nd-docs__list">
+          {docs.map((d) => (
+            <DocCard
+              key={d.id}
+              shared={d.is_shared_spec}
+              title={docTitle(d)}
+              sub={d.is_shared_spec ? specLine(d) : writtenBy(d)}
+              meta={versionLine(d)}
+              onOpen={() => onChange({ docs, open: d })}
+            />
+          ))}
+        </ul>
+      ) : (
+        <Note>No documents in this run.</Note>
+      )}
+    </SubView>
   );
 }
 

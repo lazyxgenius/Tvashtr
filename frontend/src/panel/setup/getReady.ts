@@ -13,13 +13,16 @@ export interface ReadyItem {
   done: boolean;
 }
 
-/** The agent is still being set up: never run, and its SAVED instructions or model are missing. */
+/**
+ * The agent is still being set up: never run, and its SAVED instructions or model are blank. A chosen
+ * model with no key isn't "new" — its "Needs a model" badge says so.
+ */
 export function isGettingReady(opts: {
   hasRun: boolean;
   savedPrompt: string;
-  savedModelNeeded: boolean;
+  savedModel: string;
 }): boolean {
-  return !opts.hasRun && (opts.savedPrompt.trim() === "" || opts.savedModelNeeded);
+  return !opts.hasRun && (opts.savedPrompt.trim() === "" || opts.savedModel.trim() === "");
 }
 
 export function readyItems(

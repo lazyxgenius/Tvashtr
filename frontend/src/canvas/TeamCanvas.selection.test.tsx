@@ -36,7 +36,7 @@ const graph: GraphData = {
   edges: [],
 };
 
-function canvas(selectedNodeId: string | null, g: GraphData | null = graph) {
+function canvas(selectedNodeId: string | null, g: GraphData | null = graph, ringKey = 0) {
   return (
     <TeamCanvas
       graph={g}
@@ -45,6 +45,7 @@ function canvas(selectedNodeId: string | null, g: GraphData | null = graph) {
       tasks={NO_TASKS}
       editable
       selectedNodeId={selectedNodeId}
+      ringKey={ringKey}
       onSelectNodeId={vi.fn()}
       onAddDownstream={vi.fn()}
       onDeleteNodes={vi.fn()}
@@ -72,6 +73,16 @@ describe("TeamCanvas — the drawer's selection ring", () => {
       fireEvent.click(container.querySelector('[data-id="n-eng"]') as HTMLElement);
     });
     expect(selected(container)).toEqual(["n-eng"]);
+  });
+
+  it("rings the drawer's node again when the page kept it (Keep editing after a click elsewhere)", () => {
+    const { container, rerender } = render(canvas("n-rev"));
+    act(() => {
+      fireEvent.click(container.querySelector('[data-id="n-eng"]') as HTMLElement);
+    });
+    expect(selected(container)).toEqual(["n-eng"]);
+    rerender(canvas("n-rev", graph, 1));
+    expect(selected(container)).toEqual(["n-rev"]);
   });
 
   it("leaves React Flow's selection alone while no drawer is open", () => {

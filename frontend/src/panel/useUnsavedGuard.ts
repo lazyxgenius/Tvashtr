@@ -8,8 +8,11 @@
  */
 import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
 
-/** Run `proceed` now, or once the user has saved or discarded their changes. */
-export type LeaveGuard = (proceed: () => void) => void;
+/**
+ * Run `proceed` now, or once the user has saved or discarded their changes; `onStay` runs when they
+ * keep editing instead (the canvas puts its ring back on this agent).
+ */
+export type LeaveGuard = (proceed: () => void, onStay?: () => void) => void;
 
 export interface UnsavedGuard {
   /** The confirm is open. */
@@ -39,26 +42,32 @@ export function useUnsavedGuard({
 }): UnsavedGuard {
   const [asking, setAsking] = useState(false);
   const pending = useRef<(() => void) | null>(null);
+  const staying = useRef<(() => void) | null>(null);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
 
-  const request = useCallback<LeaveGuard>((proceed) => {
+  const request = useCallback<LeaveGuard>((proceed, onStay) => {
     if (!dirtyRef.current) {
       proceed();
       return;
     }
     pending.current = proceed;
+    staying.current = onStay ?? null;
     setAsking(true);
   }, []);
 
   const keepEditing = useCallback(() => {
+    const stay = staying.current;
     pending.current = null;
+    staying.current = null;
     setAsking(false);
+    stay?.();
   }, []);
 
   const leave = useCallback(() => {
     const proceed = pending.current;
     pending.current = null;
+    staying.current = null;
     setAsking(false);
     proceed?.();
   }, []);

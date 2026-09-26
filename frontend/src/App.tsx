@@ -167,9 +167,12 @@ export default function App({
   // drop its draft (Close, selecting another node, leaving the canvas) goes through `guardLeave`,
   // which runs at once when the draft is clean and otherwise asks "Save your changes to <Name>?".
   const leaveGuardRef = useRef<LeaveGuard | null>(null);
+  // Bumped when the user keeps editing: a click on another card has already moved React Flow's
+  // selection there, so the canvas rings the open agent again.
+  const [ringKey, setRingKey] = useState(0);
   const guardLeave = useCallback((proceed: () => void) => {
     const guard = leaveGuardRef.current;
-    if (guard) guard(proceed);
+    if (guard) guard(proceed, () => setRingKey((k) => k + 1));
     else proceed();
   }, []);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
@@ -710,6 +713,7 @@ export default function App({
             onDeleteEdges={(ids) => void handleDeleteEdges(ids)}
             onMoveNode={handleMoveNode}
             onSelectNodeId={handleSelectNodeId}
+            ringKey={ringKey}
             onOpenModel={handleOpenModel}
             busy={editBusy}
             selectedNodeId={authoring ? selectedNodeId : undefined}

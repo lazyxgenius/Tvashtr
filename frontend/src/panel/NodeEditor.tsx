@@ -15,7 +15,7 @@ import type { EnginesTab, NodeTab, Route } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import { type AgentDraft, describeChanges } from "./agentDraft";
 import { DrawerConfirm } from "./DrawerConfirm";
-import { DocsTab } from "./docs/DocsTab";
+import { type DocSheetState, DocsTab, RunDocSheet } from "./docs/DocsTab";
 import { DrawerToast } from "./DrawerToast";
 import { NodeFocusView } from "./focus/NodeFocusView";
 import { DomainQueryBody } from "./legacy/DomainQueryBody";
@@ -187,6 +187,8 @@ function AgentEditor({
   const [skillSub, setSkillSub] = useState<SkillSub | null>(null);
   // The Tools sheet (add a server / library / paste mcp.json, or Edit connection; G9).
   const [toolSub, setToolSub] = useState<ToolSub | null>(null);
+  // A run document (or the run's list of them) open over the Docs tab.
+  const [docSheet, setDocSheet] = useState<DocSheetState | null>(null);
   const shelves = useShelves(tab === "skills");
   // Runs and Docs share this agent's history, keyed on its last run (a new round reloads it).
   const last = node.last_run;
@@ -207,7 +209,7 @@ function AgentEditor({
   const isNew = isGettingReady({
     hasRun: node.last_run != null,
     savedPrompt: api.baseline.prompt,
-    savedModelNeeded: needsModel(api.baseline.model, cover),
+    savedModel: api.baseline.model,
   });
 
   const guard = useUnsavedGuard({ dirty: api.isDirty, agentName: name, guardRef });
@@ -217,7 +219,8 @@ function AgentEditor({
   // The drawer's Output format editor covers the Save footer; focus mode keeps it in view.
   const subCoversFooter =
     (schemaText !== null && tab === "setup" && !focus) ||
-    ((skillSub !== null || toolSub !== null) && tab === "skills");
+    ((skillSub !== null || toolSub !== null) && tab === "skills") ||
+    (docSheet !== null && tab === "docs");
   // ⌘S / Ctrl+S saves; while a confirm is open the confirm's own buttons decide.
   useSaveShortcut(() => {
     if (canSave && !guard.asking && !deleting && !pending && !forgetting && !subCoversFooter)
@@ -337,6 +340,11 @@ function AgentEditor({
         onOpenToolkit={onOpenToolkit}
         onClose={closeToolSub}
       />
+    ) : null;
+
+  const docEditor =
+    docSheet !== null && tab === "docs" ? (
+      <RunDocSheet sheet={docSheet} onChange={setDocSheet} onClose={() => setDocSheet(null)} />
     ) : null;
 
   // "Turn on File access in Setup" / "Set in Setup": the Setup tab, on that control.
@@ -540,9 +548,8 @@ function AgentEditor({
       );
       break;
     case "docs":
-      body = (
+      body = (focus && docEditor) || (
         <DocsTab
-          teamId={teamId}
           nodeId={node.id}
           name={name}
           isEntry={isEntry}
@@ -551,7 +558,8 @@ function AgentEditor({
           readsFrom={api.baseline.readsFrom}
           agentCount={nodes.filter((n) => n.kind === "agent" || n.kind === "completion").length}
           history={history}
-          onOpen={(route) => onOpenToolkit?.(route)}
+          onOpenDoc={(doc) => setDocSheet({ docs: null, open: doc })}
+          onOpenAll={(docs) => setDocSheet({ docs, open: null })}
           onSetup={(row) => openSetup(`[data-setup-row="${row}"]`)}
         />
       );
@@ -566,7 +574,6 @@ function AgentEditor({
           edges={edges}
           isEntry={isEntry}
           draft={api}
-          cover={cover}
           picker={picker}
           agentName={name}
           onOpenFullEditor={focus ? undefined : () => onFocusChange(true)}
@@ -651,7 +658,7 @@ function AgentEditor({
       header={header}
       tabs={tabs}
       footer={footer}
-      sub={schemaEditor ?? skillEditor ?? toolEditor}
+      sub={schemaEditor ?? skillEditor ?? toolEditor ?? docEditor}
       toast={toastHost}
       overlay={overlay}
     >

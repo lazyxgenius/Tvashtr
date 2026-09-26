@@ -30,10 +30,13 @@ export function PrdView({
   documentId,
   emptyHint,
   editable,
+  subject = "spec",
 }: {
   documentId: string | null;
   emptyHint: string;
   editable: boolean;
+  /** What the loading / failure / no-versions notes call it ("document" for any other document). */
+  subject?: string;
 }) {
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
   const [state, setState] = useState<LoadState>("idle");
@@ -102,13 +105,13 @@ export function PrdView({
   if (state === "idle" || state === "loading")
     return (
       <div className="tv-scroll">
-        <p className="tv-panel-note">Loading the spec…</p>
+        <p className="tv-panel-note">Loading the {subject}…</p>
       </div>
     );
   if (state === "error" || !doc)
     return (
       <div className="tv-scroll">
-        <p className="tv-panel-note">Couldn't load the spec.</p>
+        <p className="tv-panel-note">Couldn't load the {subject}.</p>
       </div>
     );
 
@@ -148,7 +151,7 @@ export function PrdView({
       <div className="tv-prd__divider" />
 
       {!selected ? (
-        <p className="tv-panel-note">This spec has no versions yet.</p>
+        <p className="tv-panel-note">This {subject} has no versions yet.</p>
       ) : showEditor ? (
         <PrdEditor
           markdown={selected.content}

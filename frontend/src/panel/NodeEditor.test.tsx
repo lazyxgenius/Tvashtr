@@ -431,13 +431,16 @@ describe("NodeEditor — leaving with unsaved changes (PANEL-21)", () => {
 
   it("asks 'Save your changes to <Name>?' naming what changed; Keep editing stays", () => {
     const { drawer, guardRef, proceed } = dirtyEditor();
-    act(() => guardRef.current?.(proceed));
+    const stay = vi.fn();
+    act(() => guardRef.current?.(proceed, stay));
     const dialog = within(drawer).getByRole("alertdialog", { name: "Unsaved changes" });
     expect(dialog).toHaveTextContent("Save your changes to Reviewer?");
     expect(dialog).toHaveTextContent("You changed the instructions and images.");
     fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
     expect(within(drawer).queryByRole("alertdialog")).toBeNull();
     expect(proceed).not.toHaveBeenCalled();
+    // The page hears that it stayed (the canvas rings this agent's card again).
+    expect(stay).toHaveBeenCalledTimes(1);
     expect(within(drawer).getByText("2 unsaved changes")).toBeInTheDocument();
   });
 
@@ -623,23 +626,15 @@ describe("NodeEditor — templates, routing sync, new agent (G3)", () => {
       ...over,
     });
 
-  it("lists the four templates and 'Compare templates in focus view'", async () => {
+  it("lists the four templates and 'Open in focus view'", async () => {
     const { props, drawer } = renderEditor();
     const menu = await openTemplates(drawer);
     expect(
       within(menu)
         .getAllByRole("menuitem")
         .map((i) => i.textContent),
-    ).toEqual([
-      "Product manager",
-      "Architect",
-      "Engineer",
-      "Reviewer",
-      "Compare templates in focus view",
-    ]);
-    fireEvent.click(
-      within(menu).getByRole("menuitem", { name: "Compare templates in focus view" }),
-    );
+    ).toEqual(["Product manager", "Architect", "Engineer", "Reviewer", "Open in focus view"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Open in focus view" }));
     expect(props.onFocusChange).toHaveBeenCalledWith(true);
   });
 
@@ -804,6 +799,17 @@ describe("NodeEditor — templates, routing sync, new agent (G3)", () => {
 
     const again = renderEditor({ node: newAgent(), nodes: [newAgent()], edges: [] });
     expect(within(again.drawer).queryByRole("region", { name: "Get this agent ready" })).toBeNull();
+  });
+
+  it("a never-run agent whose chosen model has no key isn't new: its access badge, no checklist", () => {
+    const { drawer } = renderEditor({
+      node: reviewer({ last_run: null }),
+      cover: { byok: new Set(), subs: {} },
+    });
+    const head = drawer.querySelector(".nd-head") as HTMLElement;
+    expect(within(head).getByText("Read-only")).toBeInTheDocument();
+    expect(within(head).getByText("Needs a model")).toBeInTheDocument();
+    expect(within(drawer).queryByRole("region", { name: "Get this agent ready" })).toBeNull();
   });
 
   it("an agent with saved instructions and a covered model shows no checklist", () => {

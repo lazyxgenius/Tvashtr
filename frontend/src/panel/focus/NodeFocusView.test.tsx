@@ -181,9 +181,9 @@ describe("Focus mode — Setup", () => {
       "aria-expanded",
       "true",
     );
-    // The Templates menu here has no "Compare templates in focus view": this is the focus view.
+    // The Templates menu here has no "Open in focus view": this is the focus view.
     fireEvent.click(within(dialog()).getByRole("button", { name: "Templates" }));
-    expect(screen.queryByRole("menuitem", { name: "Compare templates in focus view" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Open in focus view" })).toBeNull();
   });
 
   it("previews what the agent sees, with the unsaved instructions, then goes back to editing", async () => {
@@ -196,6 +196,8 @@ describe("Focus mode — Setup", () => {
       prompt: "You are the Reviewer. Be brief.",
       model: "xai/grok-4.7",
       edits_allowed: false,
+      // No skills in the draft is sent as an empty list: an absent key would mean the saved ones.
+      skills: [],
     });
     expect(within(preview).getByRole("region", { name: "Your instructions" })).toHaveTextContent(
       "Setup → Instructions",

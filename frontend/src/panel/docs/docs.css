@@ -151,3 +151,9 @@
 .nd-doc__meta {
   padding-left: 39px;
 }
+
+/* A run document in the drawer's sheet: the sheet already pads and scrolls it. */
+.nd-sub .tv-scroll {
+  padding: 0;
+  overflow: visible;
+}

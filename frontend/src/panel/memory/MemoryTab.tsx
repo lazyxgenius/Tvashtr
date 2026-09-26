@@ -264,7 +264,10 @@ function RememberCard({
       </>
     );
   } else {
-    hint = "While it works, it writes down lessons worth keeping. They show up here.";
+    // Captures are stored as the repo's memories (memory_review.ingest_run_remembers: repo tier, no
+    // node), so they don't show in this tab.
+    hint =
+      "While it works, it writes down lessons worth keeping. They’re saved to this repo’s memory in Toolkit › Memory.";
   }
   return (
     <div className="nd-kit__card nd-kit__card--rules">

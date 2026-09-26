@@ -117,10 +117,10 @@ describe("Get this agent ready (PANEL-62)", () => {
   const draft = { prompt: "", readsFrom: [], readsDefault: true, writesTo: "" };
 
   it("shows while a never-run agent's saved instructions or model are missing", () => {
-    const base = { hasRun: false, savedPrompt: "Do it.", savedModelNeeded: false };
+    const base = { hasRun: false, savedPrompt: "Do it.", savedModel: "xai/grok-4.7" };
     expect(isGettingReady(base)).toBe(false);
     expect(isGettingReady({ ...base, savedPrompt: " " })).toBe(true);
-    expect(isGettingReady({ ...base, savedModelNeeded: true })).toBe(true);
+    expect(isGettingReady({ ...base, savedModel: "" })).toBe(true);
     expect(isGettingReady({ ...base, hasRun: true, savedPrompt: "" })).toBe(false);
   });
 

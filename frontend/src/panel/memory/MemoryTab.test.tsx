@@ -268,6 +268,12 @@ describe("Memory tab — Remember what it learns (PANEL-63)", () => {
     const { props, drawer } = renderTab(reviewer({ edits_allowed: true }));
     const remember = screen.getByRole("switch", { name: "Remember what it learns" });
     expect(remember).not.toBeDisabled();
+    // Captures are stored as the repo's memories (no node), so they land in Toolkit › Memory.
+    expect(
+      screen.getByText(
+        "While it works, it writes down lessons worth keeping. They’re saved to this repo’s memory in Toolkit › Memory.",
+      ),
+    ).toBeInTheDocument();
     fireEvent.click(remember);
     await waitFor(() =>
       expect(bodyOf(fetchMock, "PATCH", "/api/teams/t1/nodes/n-rev")).toEqual({

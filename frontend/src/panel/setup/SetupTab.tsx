@@ -11,7 +11,6 @@ import { isGettingReady, isReadyHidden, readyItems, rememberReadyHidden } from "
 import { GetReadyChecklist } from "./GetReadyChecklist";
 import { InstructionsCard } from "./InstructionsCard";
 import { sameModelSibling } from "./modelCatalog";
-import { type CredentialCover, needsModel } from "./modelCopy";
 import { type ModelPickerContext, ModelSection } from "./ModelSection";
 import { routingOf } from "./routing";
 import { RoutingStatus } from "./RoutingStatus";
@@ -37,7 +36,6 @@ export function SetupTab({
   edges,
   isEntry,
   draft: api,
-  cover,
   picker,
   agentName,
   onOpenFullEditor,
@@ -55,8 +53,6 @@ export function SetupTab({
   edges: GraphEdge[];
   isEntry: boolean;
   draft: AgentDraftApi;
-  /** The account's credentials (null while loading). */
-  cover: CredentialCover | null;
   /** What the model pickers offer (the catalogue for this agent's seat, and the key flows). */
   picker: ModelPickerContext;
   /** The agent's name as the header shows it (the same-model advisory names it). */
@@ -82,20 +78,19 @@ export function SetupTab({
   // The Changed marks follow the draft; while a save is on its way they step back (Flow-Save-2).
   const marking = api.saveState !== "saving";
   const changed = marking ? api.changed : [];
-  const modelNeeded = needsModel(draft.model, cover);
   const gettingReady =
     !readyHidden &&
     isGettingReady({
       hasRun: node.last_run != null,
       savedPrompt: api.baseline.prompt,
-      savedModelNeeded: needsModel(api.baseline.model, cover),
+      savedModel: api.baseline.model,
     });
   const [previewing, setPreviewing] = useState(false);
   const showChooser =
     !editorOpen && api.baseline.prompt.trim() === "" && draft.prompt.trim() === "";
   const checklist = gettingReady && (
     <GetReadyChecklist
-      items={readyItems(draft, { modelNeeded, isEntry })}
+      items={readyItems(draft, { modelNeeded: draft.model.trim() === "", isEntry })}
       onHide={() => {
         rememberReadyHidden(node.id);
         setReadyHidden(true);
@@ -187,7 +182,8 @@ export function SetupTab({
                   edits_allowed: draft.editsAllowed,
                   reads_from: draft.readsFrom,
                   reads_default: draft.readsDefault,
-                  skills: draft.skills ?? undefined,
+                  // [] (not absent): an absent key would preview the SAVED skills.
+                  skills: draft.skills ?? [],
                 }}
               />
             ) : null

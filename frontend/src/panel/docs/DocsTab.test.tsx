@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setProviderCatalogue, type TeamGraphNode } from "../../lib/api";
@@ -48,6 +48,29 @@ const docsOf = (runId: string) => ({
         ]
       : [],
 });
+const NOTES = {
+  id: "d-notes",
+  title: "build-notes",
+  doc_type: "build-notes",
+  created_at: ago(40),
+  updated_at: ago(36),
+  versions: [
+    {
+      id: "v1",
+      version_no: 1,
+      content: "First notes",
+      created_by: "agent:n-eng",
+      created_at: ago(40),
+    },
+    {
+      id: "v2",
+      version_no: 2,
+      content: "Ran pytest: 12 passed",
+      created_by: "agent:n-eng",
+      created_at: ago(36),
+    },
+  ],
+};
 const ran: TeamGraphNode["last_run"] = {
   run_id: "r1",
   iteration: 3,
@@ -64,7 +87,8 @@ beforeEach(() => {
     (url) => {
       if (url.startsWith("/api/teams/t1/nodes/")) return json(HISTORY);
       const m = /^\/api\/runs\/(\w+)\/documents$/.exec(url);
-      return m ? json(docsOf(m[1])) : undefined;
+      if (m) return json(docsOf(m[1]));
+      return url === "/api/documents/d-notes" ? json(NOTES) : undefined;
     },
   );
 });
@@ -112,15 +136,42 @@ describe("Docs tab", () => {
     expect(card("Shared spec", 1).getByText("v3 · same as above")).toBeInTheDocument();
     expect(card("build-notes").getByText("Written by Engineer")).toBeInTheDocument();
     expect(screen.getByText("No document. Its verdict goes to Runs.")).toBeInTheDocument();
+    // A verdict agent can't choose a document (Q3), so there's nothing to set in Setup.
+    expect(screen.queryByRole("button", { name: "Set in Setup" })).toBeNull();
+    expect(props.onOpenToolkit).not.toHaveBeenCalled();
+  });
 
+  it("Open shows the document in the drawer; See all lists every document of the run", async () => {
+    const props = renderDocs(reviewer({ last_run: ran }));
+    await screen.findAllByText("Shared spec");
     fireEvent.click(card("build-notes").getByRole("button", { name: "Open" }));
-    expect(props.onOpenToolkit).toHaveBeenCalledWith({
-      page: "team",
-      teamId: "t1",
-      docId: "d-notes",
-    });
-    fireEvent.click(screen.getByRole("link", { name: "See all documents in this run" }));
-    expect(props.onOpenToolkit).toHaveBeenCalledWith({ page: "team", teamId: "t1", runId: "r1" });
+    const sheet = screen.getByRole("region", { name: "build-notes" });
+    expect(await within(sheet).findByText("Ran pytest: 12 passed")).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Back" }));
+    expect(screen.queryByRole("region", { name: "build-notes" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "See all documents in this run" }));
+    const all = screen.getByRole("region", { name: "Documents in this run" });
+    const items = within(all).getAllByRole("listitem");
+    expect(items.map((li) => li.querySelector(".nd-doc__title")?.textContent)).toEqual([
+      "Shared spec",
+      "build-notes",
+    ]);
+    fireEvent.click(within(items[1]).getByRole("button", { name: "Open" }));
+    const doc = screen.getByRole("region", { name: "build-notes" });
+    expect(await within(doc).findByText("Ran pytest: 12 passed")).toBeInTheDocument();
+    fireEvent.click(within(doc).getByRole("button", { name: "Back to documents" }));
+    expect(screen.getByRole("region", { name: "Documents in this run" })).toBeInTheDocument();
+    expect(props.onOpenToolkit).not.toHaveBeenCalled();
+  });
+
+  it("an agent that doesn't branch and writes nothing: Set in Setup opens Writes", async () => {
+    cleanup();
+    const plain = edges
+      .filter((e) => e.id !== "e4")
+      .map((e) => (e.id === "e3" ? { ...e, conditions: null } : e));
+    const props = renderDocs(reviewer({ last_run: ran }), { edges: plain });
+    expect(await screen.findByText("No document.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Set in Setup" }));
     expect(props.onTabChange).toHaveBeenCalledWith("setup");
   });
