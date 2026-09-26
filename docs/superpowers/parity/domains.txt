@@ -12,6 +12,12 @@
 #   (13.5px, exact on Desktop) is farther from the design point than the first option (13px), so parity pairs them.
 #   The Desktop render (the design's own mode) is 0 drift; the Sort trigger draws as the DS Select at rest (Dm-List,
 #   Find-1/-2: 44px/16px) and as Find-3's listbox trigger when open (40px/13.5px), as the two boards draw it.
+#   Re-checked on attempt 2: the web render is the Desktop render minus the strip, pixel for pixel. Against the design
+#   with the strip removed (every y - 30), web is "matched 66/66 · 0 with size/type drift · 18 only moved". No product
+#   change can fix the pairing: the option sits 7px right / 14px below the design's trigger label on web, the real
+#   trigger label 28px above it. Proposed for the lead (not applied; the gate is shared): in parity.py let a design txt
+#   fall back to app ctls with its words only when the design has no ctl with those words — with that one line every G1
+#   board keeps its line and DmF-Find-3 web reads "matched 66/67 · 0 with size/type drift · 64 only moved · 1 not found".
 Dm-List web: matched 57/58 design items · 0 with size/type drift · 55 only moved · 1 not found in app
 Dm-List desktop: matched 58/58 design items · 0 with size/type drift · 17 only moved · 0 not found in app
 Dm-ListEmpty web: matched 35/36 design items · 0 with size/type drift · 33 only moved · 1 not found in app
