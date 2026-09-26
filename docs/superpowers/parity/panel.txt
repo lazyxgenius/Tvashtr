@@ -24,6 +24,12 @@ Flow-More-1 web: matched 51/52 design items · 0 with size/type drift · 5 only 
 Flow-More-1 desktop: matched 52/52 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 Flow-More-2 web: matched 48/49 design items · 0 with size/type drift · 5 only moved · 1 not found in app
 Flow-More-2 desktop: matched 49/49 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+Flow-PasteJson-1 web: matched 52/53 design items · 0 with size/type drift · 7 only moved · 1 not found in app
+Flow-PasteJson-1 desktop: matched 52/53 design items · 0 with size/type drift · 7 only moved · 1 not found in app
+Flow-PasteJson-2 web: matched 37/37 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+Flow-PasteJson-2 desktop: matched 37/37 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+Flow-PasteJson-3 web: matched 50/51 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+Flow-PasteJson-3 desktop: matched 50/51 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 Flow-Presets-1 web: matched 49/50 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 Flow-Presets-1 desktop: matched 49/50 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 Flow-Presets-2 web: matched 34/34 design items · 0 with size/type drift · 0 only moved · 0 not found in app
@@ -72,6 +78,8 @@ Main web: matched 78/81 design items · 0 with size/type drift · 32 only moved 
 Main desktop: matched 81/81 design items · 0 with size/type drift · 31 only moved · 0 not found in app
 Panel-AddMenu web: matched 56/57 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 Panel-AddMenu desktop: matched 56/57 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+Panel-AddTool web: matched 41/41 design items · 0 with size/type drift · 2 only moved · 0 not found in app
+Panel-AddTool desktop: matched 41/41 design items · 0 with size/type drift · 2 only moved · 0 not found in app
 Panel-CloseUnsaved web: matched 60/62 design items · 0 with size/type drift · 11 only moved · 2 not found in app
 Panel-CloseUnsaved desktop: matched 61/62 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 Panel-EntryAgent web: matched 42/55 design items · 0 with size/type drift · 9 only moved · 13 not found in app
