@@ -10,6 +10,7 @@ import {
   type ProviderCatalogueEntry,
   type TeamGraphNode,
 } from "../lib/api";
+import { deleteMemory, type Memory } from "../lib/api/memory";
 import type { NodeTemplate } from "../lib/api/nodes";
 import type { EnginesTab, NodeTab, Route } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
@@ -27,7 +28,8 @@ import { NodeBadges, NodeHeader } from "./NodeHeader";
 import { deleteAgentBody } from "./nodeActions";
 import { NodeDrawer } from "./NodeDrawer";
 import { glyphForNode } from "./nodeGlyph";
-import { NodeMemorySection } from "./NodeMemorySection";
+import { MemoryTab } from "./memory/MemoryTab";
+import { useNodeMemories } from "./memory/useNodeMemories";
 import { NodeMoreMenu } from "./NodeMoreMenu";
 import { NodeTabs } from "./NodeTabs";
 import { SaveBar } from "./SaveBar";
@@ -50,7 +52,6 @@ import { useShelves } from "./skills/useShelves";
 import { AddToolView, type ToolSub } from "./tools/AddToolViews";
 import { useAgentDraft } from "./useAgentDraft";
 import { useDrawerToast } from "./useDrawerToast";
-import { useNodeMemoryCount } from "./useNodeMemoryCount";
 import { type LeaveGuard, useUnsavedGuard } from "./useUnsavedGuard";
 import "./panel.css";
 
@@ -70,8 +71,6 @@ export interface NodeEditorProps {
   onClose: () => void;
   /** Refetch the team graph (and validity) after a save. */
   onSaved: () => void | Promise<void>;
-  /** Open the Memory shelf. */
-  onManageMemory?: () => void;
   /**
    * The page's handle on the unsaved-changes guard: it calls `guardRef.current(proceed)` before it
    * closes the drawer, selects another node or leaves the canvas (PANEL-21).
@@ -149,7 +148,6 @@ function AgentEditor({
   onFocusChange,
   onClose,
   onSaved,
-  onManageMemory,
   guardRef,
   onDelete,
   catalogue,
@@ -167,7 +165,10 @@ function AgentEditor({
       ? { ...pageCover, byok: new Set([...pageCover.byok, ...justAdded]) }
       : pageCover;
   const { draft } = api;
-  const memoryCount = useNodeMemoryCount(node.id);
+  const memories = useNodeMemories(node.id);
+  // The note waiting on its Delete confirm (Flow-Memory-4).
+  const [forgetting, setForgetting] = useState<Memory | null>(null);
+  const [forgetBusy, setForgetBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -209,7 +210,8 @@ function AgentEditor({
     ((skillSub !== null || toolSub !== null) && tab === "skills");
   // ⌘S / Ctrl+S saves; while a confirm is open the confirm's own buttons decide.
   useSaveShortcut(() => {
-    if (canSave && !guard.asking && !deleting && !pending && !subCoversFooter) void api.save();
+    if (canSave && !guard.asking && !deleting && !pending && !forgetting && !subCoversFooter)
+      void api.save();
   });
 
   // Q7: a template sets the instructions and its default File access (a sandboxed agent's only;
@@ -325,6 +327,16 @@ function AgentEditor({
       />
     ) : null;
 
+  // "Turn on File access in Setup": the Setup tab, on its File access control.
+  const openFileAccess = () => {
+    onTabChange("setup");
+    window.requestAnimationFrame(() => {
+      const button = document.querySelector<HTMLElement>('[aria-label="File access"] button');
+      button?.scrollIntoView?.({ block: "nearest" });
+      button?.focus();
+    });
+  };
+
   const commitRename = (nextName: string, nextDescription: string) => {
     // Only what actually changed goes into the draft (the built-in name stays built-in).
     const patch: Partial<AgentDraft> = {};
@@ -409,6 +421,41 @@ function AgentEditor({
         {deleteAgentBody(node.id, nodes, edges)}
       </DrawerConfirm>
     );
+  } else if (forgetting) {
+    const note = forgetting;
+    const close = () => setForgetting(null);
+    overlay = (
+      <DrawerConfirm
+        title="Delete this note?"
+        onCancel={close}
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={close}>
+              Cancel
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={forgetBusy}
+              onClick={() => {
+                setForgetBusy(true);
+                void memories
+                  .change(() => deleteMemory(note.id))
+                  .then((done) => {
+                    setForgetBusy(false);
+                    close();
+                    if (!done) toast.show("Couldn’t delete the note. Try again.");
+                  });
+              }}
+            >
+              Delete note
+            </Button>
+          </>
+        }
+      >
+        {name} won’t be reminded of it again. You can’t undo this.
+      </DrawerConfirm>
+    );
   } else if (pending?.kind === "template") {
     const { template } = pending;
     overlay = (
@@ -458,7 +505,21 @@ function AgentEditor({
       );
       break;
     case "memory":
-      body = <NodeMemorySection nodeId={node.id} onManageAll={onManageMemory} />;
+      body = (
+        <MemoryTab
+          teamId={teamId}
+          nodeId={node.id}
+          rememberSaved={cfg.memory_remember_enabled === true}
+          editsAllowed={draft.editsAllowed}
+          isEntry={isEntry}
+          memories={memories}
+          notify={toast.show}
+          onRememberSaved={() => void onSaved()}
+          onOpenFileAccess={openFileAccess}
+          onDelete={setForgetting}
+          onOpenShelf={onOpenToolkit}
+        />
+      );
       break;
     case "runs":
     case "docs":
@@ -533,7 +594,7 @@ function AgentEditor({
       value={tab}
       onChange={onTabChange}
       skillsCount={skillsAndToolsCount(draft.skills, draft.toolConfig)}
-      memoryCount={memoryCount}
+      memoryCount={memories.count}
     />
   );
   const footer = (

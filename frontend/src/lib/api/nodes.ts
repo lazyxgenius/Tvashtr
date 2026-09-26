@@ -7,6 +7,8 @@
  */
 import { ApiError, apiUrl, type TeamGraphNode } from "../api";
 import { reportFetchFailed, reportFetchOk } from "../backendStatus";
+import { type Memory, type MemoryStatus, parseMemory } from "./memory";
+import { apiRequest } from "./runs";
 
 // ---- Types -----------------------------------------------------------------------------------
 
@@ -433,4 +435,13 @@ export async function patchAgentNode(
     throw new NodeSaveError(res.status, message, saveErrorKind(res.status));
   }
   return (await res.json()) as TeamGraphNode;
+}
+
+/** GET /api/memories?node_id=&status= — one agent's own notes with one status (the Memory tab). */
+export async function listNodeMemories(nodeId: string, status: MemoryStatus): Promise<Memory[]> {
+  const q = new URLSearchParams({ node_id: nodeId, status });
+  const body = await apiRequest<unknown>("GET", `/api/memories?${q}`);
+  if (!isObj(body) || !Array.isArray(body.memories))
+    throw new Error("Unexpected answer from /api/memories");
+  return body.memories.map(parseMemory).filter((m): m is Memory => m !== null);
 }

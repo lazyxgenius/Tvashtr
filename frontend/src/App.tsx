@@ -742,9 +742,6 @@ export default function App({
                 onFocusChange={(focus) => setPlace({ ...place, focus })}
                 onClose={() => handleSelectNodeId(null)}
                 onSaved={() => loadTeam(currentTeamId)}
-                onManageMemory={
-                  onBackToDashboard ? () => guardLeave(() => onBackToDashboard("tools")) : undefined
-                }
                 guardRef={leaveGuardRef}
                 onDelete={() => handleDeleteNodes([selectedTeamNode.id])}
                 catalogue={config?.provider_catalogue}

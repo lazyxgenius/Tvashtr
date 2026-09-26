@@ -151,7 +151,8 @@ beforeEach(() => {
     const method = init?.method ?? "GET";
     if (input.startsWith("/api/memories")) {
       const pending = input.includes("status=pending_review");
-      return json({ memories: pending ? [{ id: "m3" }] : [{ id: "m1" }, { id: "m2" }] });
+      const note = (id: string) => ({ id, content: id, polarity: "context", status: "active" });
+      return json({ memories: pending ? [note("m3")] : [note("m1"), note("m2")] });
     }
     if (method === "PATCH") return json(reviewer());
     if (input === "/api/node-templates") return json({ templates: TEMPLATES });

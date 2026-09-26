@@ -4,6 +4,7 @@ import { __resetBackendStatusForTests } from "../backendStatus";
 import {
   getNodeRuns,
   getNodeTemplates,
+  listNodeMemories,
   NodeSaveError,
   patchAgentNode,
   previewNodeContext,
@@ -178,5 +179,30 @@ describe("patchAgentNode", () => {
     )) as NodeSaveError;
     expect(other.kind).toBe("other");
     expect(other.message).toBe("Couldn’t save. Try again.");
+  });
+});
+
+describe("listNodeMemories", () => {
+  it("asks for one agent's notes with one status and drops malformed rows", async () => {
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(() =>
+      json({
+        memories: [
+          { id: "m1", content: "Run pytest.", polarity: "require", status: "active" },
+          { id: "m2", content: "Bad force.", polarity: "loud", status: "active" },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const rows = await listNodeMemories("n-1", "pending_review");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/memories?node_id=n-1&status=pending_review");
+    expect(rows.map((m) => m.id)).toEqual(["m1"]);
+  });
+
+  it("an unexpected answer is a failed load", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => json({ nope: true })),
+    );
+    await expect(listNodeMemories("n-1", "active")).rejects.toThrow("Unexpected answer");
   });
 });
