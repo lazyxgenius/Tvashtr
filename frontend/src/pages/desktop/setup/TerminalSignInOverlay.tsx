@@ -11,6 +11,7 @@ import "../desktop.css";
  * the scrim and the strip, keeping the Terminal's place above the strip empty.
  *
  * Cancel (and Escape) only stops Tvashtr waiting: it can't close Terminal and doesn't say it does.
+ * A modal dialog "Signing in to <plan>" (DT-53): focus starts, and stays, on Cancel.
  */
 export function TerminalSignInOverlay({
   plan,
@@ -36,6 +37,10 @@ export function TerminalSignInOverlay({
         if (e.key === "Escape") {
           e.stopPropagation();
           onCancel();
+        } else if (e.key === "Tab") {
+          // Cancel is the dialog's only control: keep focus on it (DT-53).
+          e.preventDefault();
+          cancelRef.current?.focus();
         }
       }}
     >

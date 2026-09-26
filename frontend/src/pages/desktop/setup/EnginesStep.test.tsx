@@ -180,11 +180,15 @@ describe("EnginesStep — Terminal sign-in (DT-23, DtF-Run-4)", () => {
     ).toBeInTheDocument();
   });
 
-  it("Escape is Cancel", async () => {
+  it("focus stays on Cancel; Escape is Cancel", async () => {
     const { bridge } = await renderStep({ connect: { grok: "needs_login" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign in to Grok" }));
     const dialog = await screen.findByRole("dialog", { name: "Signing in to Grok" });
-    fireEvent.keyDown(within(dialog).getByRole("button", { name: "Cancel" }), { key: "Escape" });
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+    // Tab stays on the dialog's only control.
+    fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(cancel, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(bridge.engines.cancelConnect).toHaveBeenCalledWith("grok");
   });
