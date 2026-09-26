@@ -3,6 +3,8 @@
 // /tmp/parity-toolkit-skills-memory/<Artboard>-<surface>.json next to the design's <Artboard>.json.
 import {
   ACTIVE_ROWS,
+  ACT_CONTEXT,
+  ACT_SHOULD,
   MEM_MUST_NOT,
   MEM_SHOULD,
   frozenClock,
@@ -60,6 +62,15 @@ const activeRows = async (page) => {
   // The Repo filter's choices have loaded (repos with memories first).
   await page.waitForLoadState("networkidle");
 };
+const activeButton = (page, content, name) =>
+  page
+    .locator('section[aria-label="Active"] li.mem-row', { hasText: content })
+    .getByRole("button", { name, exact: true });
+// The pointer rests off the list (a clicked row moved away from under it).
+const pointerAway = (page) => page.mouse.move(1400, 700);
+const SHOULD_EDITED =
+  "Approve only when the registry test, the TypeScript mirror and the docs list the same indicators.";
+
 const openFilter = async (page, name) => {
   await page.getByRole("combobox", { name }).click();
   await page.getByRole("listbox", { name }).waitFor();
@@ -170,6 +181,62 @@ export default [
         .waitFor();
       // The design draws the search at rest (no focus ring).
       await search.evaluate((el) => el.blur());
+    },
+  }),
+  // G6 — note actions
+  ...both("TkF-NoteActions-1", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      await activeRows(page);
+      await activeButton(page, ACT_CONTEXT.content, "Pin").click();
+      await pointerAway(page);
+      await toastShown(page, "Pinned. Pinned notes go to the agent first.");
+      await page.getByText("Added by you · pinned").waitFor();
+    },
+  }),
+  ...both("TkF-NoteActions-2", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      await activeRows(page);
+      await activeButton(page, ACT_SHOULD.content, "Edit").click();
+      const box = page.getByRole("textbox", { name: "Memory text" });
+      await box.waitFor();
+      // The design draws the editor at rest (no focus ring).
+      await box.evaluate((el) => el.blur());
+      await pointerAway(page);
+    },
+  }),
+  ...both("TkF-NoteActions-3", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      await activeRows(page);
+      await activeButton(page, ACT_SHOULD.content, "Edit").click();
+      await page
+        .getByRole("textbox", { name: "Memory text" })
+        .fill(SHOULD_EDITED);
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await pointerAway(page);
+      await toastShown(
+        page,
+        "Saved. Agents see the new text on their next run.",
+      );
+      await page.getByText("Edited by you · just now").waitFor();
+    },
+  }),
+  ...both("TkF-NoteActions-4", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      await activeRows(page);
+      await activeButton(page, ACT_CONTEXT.content, "Delete").click();
+      await page
+        .getByRole("alertdialog", { name: "Delete this memory?" })
+        .waitFor();
+      // The dialog's pop-in animation finishes before the shot.
+      await page.waitForTimeout(300);
     },
   }),
   ...both("TkF-MemoryEmpty-1", {

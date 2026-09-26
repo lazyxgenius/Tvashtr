@@ -34,6 +34,14 @@ TkF-NewSkill-4 web: matched 32/38 design items · 0 with size/type drift · 0 on
 TkF-NewSkill-4 desktop: matched 32/38 design items · 0 with size/type drift · 30 only moved · 6 not found in app
 TkF-NewSkill-5 web: matched 50/57 design items · 0 with size/type drift · 0 only moved · 7 not found in app
 TkF-NewSkill-5 desktop: matched 50/57 design items · 0 with size/type drift · 46 only moved · 7 not found in app
+TkF-NoteActions-1 web: matched 54/59 design items · 0 with size/type drift · 1 only moved · 5 not found in app
+TkF-NoteActions-1 desktop: matched 54/59 design items · 0 with size/type drift · 50 only moved · 5 not found in app
+TkF-NoteActions-2 web: matched 53/57 design items · 0 with size/type drift · 0 only moved · 4 not found in app
+TkF-NoteActions-2 desktop: matched 53/57 design items · 0 with size/type drift · 51 only moved · 4 not found in app
+TkF-NoteActions-3 web: matched 53/58 design items · 0 with size/type drift · 1 only moved · 5 not found in app
+TkF-NoteActions-3 desktop: matched 53/58 design items · 0 with size/type drift · 50 only moved · 5 not found in app
+TkF-NoteActions-4 web: matched 58/63 design items · 0 with size/type drift · 7 only moved · 5 not found in app
+TkF-NoteActions-4 desktop: matched 58/63 design items · 0 with size/type drift · 56 only moved · 5 not found in app
 TkF-Presets-1 web: matched 37/42 design items · 0 with size/type drift · 7 only moved · 5 not found in app
 TkF-Presets-1 desktop: matched 37/42 design items · 0 with size/type drift · 35 only moved · 5 not found in app
 TkF-Presets-2 web: matched 27/34 design items · 0 with size/type drift · 0 only moved · 7 not found in app
