@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import github_app
+from tvashtr.control_plane import desktop_auth, github_app
 from tvashtr.db import session_scope
 from tvashtr.models import GithubInstallation, User
 
@@ -358,7 +358,9 @@ def github_callback(
     code: str | None = None,
     installation_id: str | None = None,
     setup_action: str | None = None,
-) -> RedirectResponse:
+    state: str | None = None,
+    error: str | None = None,
+) -> Response:
     """Complete GitHub App sign-in (HOSTED mode). GitHub redirects the browser here after the user
     authorizes/installs:``?code`` identifies the user; ``?installation_id`` + ``?setup_action``
     name the installation they granted. Exchange the code for a user token, read the identity,
@@ -371,10 +373,18 @@ def github_callback(
     local SPA — without changing fly.dev web login.
 
     Unauthenticated by design — it is how a GitHub user obtains their first session, so it lives on
-    ``auth_router`` (mounted WITHOUT ``get_current_user``). 404s when ``hosted_mode`` is off."""
+    ``auth_router`` (mounted WITHOUT ``get_current_user``). 404s when ``hosted_mode`` is off.
+
+    Desktop browser sign-in (desktop-app.md §3): when ``state`` is a desktop state this server
+    signed (``desktop_auth``), the browser is signed in the same way but answers with the return
+    page linking ``tvashtr://auth/done`` (a one-time code, or ``error=cancelled|expired``) instead
+    of redirecting. Without a desktop state nothing here changes."""
     settings = get_settings()
     if not settings.hosted_mode:
         raise HTTPException(status_code=404, detail="Not found")
+    desktop = desktop_auth.read_state(state)
+    if desktop is not None:
+        return _desktop_callback(desktop, code, installation_id, error)
     if not code:
         # Revamp (Toolkit › Browse "Install GitHub App"): an App whose Setup URL is this callback
         # but which does not request user authorization on install returns ``?installation_id`` +
@@ -383,7 +393,43 @@ def github_callback(
         # session is left as it is — just send the browser back to the app, which re-reads status.
         frontend = _desktop_frontend_origin_from_request(request) or settings.frontend_origin
         return RedirectResponse(url=frontend, status_code=302)
-    desktop_redirect_uri = _desktop_redirect_uri_from_request(request)
+    user_id = _complete_github_sign_in(
+        code, installation_id, _desktop_redirect_uri_from_request(request)
+    )
+
+    # Rider 4 (M-h1b): bounce to the CONFIGURABLE FE origin, not the backend root "/" (which 404s on
+    # the API port). Desktop may override with an allowlisted loopback origin via proxy header.
+    frontend = _desktop_frontend_origin_from_request(request) or settings.frontend_origin
+    response = RedirectResponse(url=frontend, status_code=302)
+    set_session_cookie(response, user_id)
+    return response
+
+
+def _desktop_callback(
+    desktop: dict, code: str | None, installation_id: str | None, error: str | None
+) -> Response:
+    """The callback's Desktop branch: sign the browser in, then hand a one-time code (bound to the
+    PKCE challenge in the signed state) back to Desktop through the return page."""
+    state = desktop["s"]
+    if desktop["expired"]:
+        link = desktop_auth.done_link(state=state, error="expired")
+        return desktop_auth.return_page(link, "expired")
+    if error or not code:
+        # ``error=access_denied``: the user cancelled on GitHub. Nothing was changed.
+        link = desktop_auth.done_link(state=state, error="cancelled")
+        return desktop_auth.return_page(link, "cancelled")
+    user_id = _complete_github_sign_in(code, installation_id, None)
+    link = desktop_auth.done_link(state=state, code=desktop_auth.make_code(user_id, desktop["c"]))
+    response = desktop_auth.return_page(link, "signed_in")
+    set_session_cookie(response, user_id)
+    return response
+
+
+def _complete_github_sign_in(
+    code: str, installation_id: str | None, desktop_redirect_uri: str | None
+) -> str:
+    """Exchange ``code``, find-or-create-or-link the account, record its installations and return
+    its id. Shared by the website redirect and the Desktop return page."""
     try:
         user_token = github_app.exchange_code_for_user_token(
             code, redirect_uri=desktop_redirect_uri
@@ -415,10 +461,4 @@ def github_callback(
             _store_installation(session, user.id, installation_id)
         for iid in discovered_ids:
             _store_installation(session, user.id, str(iid))
-
-    # Rider 4 (M-h1b): bounce to the CONFIGURABLE FE origin, not the backend root "/" (which 404s on
-    # the API port). Desktop may override with an allowlisted loopback origin via proxy header.
-    frontend = _desktop_frontend_origin_from_request(request) or settings.frontend_origin
-    response = RedirectResponse(url=frontend, status_code=302)
-    set_session_cookie(response, user_id)
-    return response
+    return user_id
