@@ -322,6 +322,8 @@ describe("NodeEditor — the save footer", () => {
     });
     const { drawer } = renderEditor();
     fireEvent.click(within(drawer).getByRole("button", { name: "Can edit files" }));
+    // The Reviewer routes on a verdict, so it asks first (Q6).
+    fireEvent.click(within(drawer).getByRole("button", { name: "Allow edits" }));
     fireEvent.click(within(drawer).getByRole("button", { name: /^Save/ }));
     expect(await within(drawer).findByRole("alert")).toHaveTextContent(/stays read-only/);
     expect(within(drawer).getByRole("button", { name: "Try again" })).toBeEnabled();
@@ -925,6 +927,54 @@ describe("NodeEditor — the model picker and the model warnings (G4)", () => {
     fireEvent.click(within(model(drawer)).getByRole("button", { name: "xai/grok-9" }));
     fireEvent.click(within(drawer).getByRole("option", { name: "grok-4.7" }));
     expect(within(model(drawer)).queryByText(/^No provider matches/)).toBeNull();
+  });
+});
+
+describe("NodeEditor — Access & documents (G5)", () => {
+  it("Allow edits flips the header badge to 'Can edit files'; Save sends edits_allowed", async () => {
+    const { drawer } = renderEditor();
+    const head = drawer.querySelector(".nd-head") as HTMLElement;
+    fireEvent.click(within(drawer).getByRole("button", { name: "Can edit files" }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Allow edits" }));
+    expect(within(head).getByText("Can edit files")).toBeInTheDocument();
+    expect(within(head).queryByText("Read-only")).toBeNull();
+    expect(within(drawer).getByText("1 unsaved change")).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole("button", { name: /^Save/ }));
+    await within(drawer).findByText("Saved. This drives the next run you launch.");
+    expect(patchBody()).toEqual({ edits_allowed: true });
+  });
+
+  it("a new Writes name says so in the drawer's toast, and Save sends it", async () => {
+    // A Reviewer that doesn't branch (its verdict agent twin can't write a document).
+    const plain = edges.map((e) => (e.id === "e3" ? { ...e, conditions: null } : e));
+    const { drawer } = renderEditor({ edges: plain });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Choose" }));
+    const dialog = within(drawer).getByRole("dialog", { name: "The one document it writes" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "New document name" }), {
+      target: { value: "review-notes" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Use review-notes" }));
+    const toasts = drawer.querySelector(".nd-toast-host") as HTMLElement;
+    expect(
+      within(toasts).getByText("New document. Other agents can add it to their Reads."),
+    ).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole("button", { name: /^Save/ }));
+    await within(drawer).findByText("Saved. This drives the next run you launch.");
+    expect(patchBody()).toEqual({ writes_to: "review-notes" });
+  });
+
+  it("Reads picks save the ordered names", async () => {
+    const withNotes = [pm, { ...engineer, config: { writes_to: "build-notes" } }, reviewer(), ship];
+    const { drawer } = renderEditor({ nodes: withNotes });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Add" }));
+    const dialog = within(drawer).getByRole("dialog", { name: "Documents it reads, in order" });
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /build-notes/ }));
+    expect(
+      within(drawer).getByText("Added at run time: the idea + the latest spec + build-notes"),
+    ).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole("button", { name: /^Save/ }));
+    await within(drawer).findByText("Saved. This drives the next run you launch.");
+    expect(patchBody()).toEqual({ reads_from: ["spec", "build-notes"] });
   });
 });
 

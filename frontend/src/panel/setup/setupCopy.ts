@@ -21,7 +21,24 @@ export const FILE_ACCESS_HINT = {
   edits:
     "Full agent loop. It can change files in the repo. Memory → Remember what it learns is now available.",
   entry: "The first agent writes the shared spec the team reads, so it stays read-only.",
+  /** An agent that routes on a verdict pulls back only its verdict file, whatever its access
+   *  (team_run `_resolve_pull_paths`), so its edits never leave the sandbox. */
+  editsVerdict:
+    "Full agent loop. Its edits stay in the sandbox. Memory → Remember what it learns is now available.",
 } as const;
+
+/** Flow-Access-1 (Q6). The design says its changes "can end up in the pull request"; for an agent
+ *  that routes on a verdict (the only one asked) the executor pulls back the verdict file alone. */
+export const ACCESS_CONFIRM_BODY =
+  "It gets write tools in its sandbox, but its edits stay there: only its verdict leaves, so they never reach the pull request. Reviewers usually stay read-only.";
+
+/** Q3: an agent that routes on a verdict can't author a document (the executor ignores it). */
+export const WRITES_VERDICT_HINT = "Its verdict goes to Runs.";
+export const WRITES_VERDICT_WARNING =
+  "It routes on a verdict, so it can’t write a document. Its verdict goes to Runs.";
+
+/** PANEL-56: a Writes name no agent uses yet. */
+export const NEW_DOCUMENT_TOAST = "New document. Other agents can add it to their Reads.";
 
 export const TIPS = {
   instructions:

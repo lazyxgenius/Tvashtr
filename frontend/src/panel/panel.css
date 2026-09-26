@@ -257,6 +257,7 @@
   position: relative;
 }
 .nd-row__grid {
+  position: relative;
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr);
   gap: 12px;
@@ -958,6 +959,114 @@
 .nd-btn-flush > span {
   display: inline-flex;
   align-items: center;
+}
+
+/* ---- Access & documents popovers (Flow-Access-1, Flow-Reads-1, Flow-Writes-1) ----
+   Each opens upward from its row's label/control grid, the design's distance above it. The File
+   access confirm spans the row (the aside's 20px sides); the pickers sit over the control column. */
+.nd-pop {
+  position: absolute;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+  font-family: var(--font-ui);
+  line-height: 1.6;
+  text-align: left;
+}
+.nd-pop--access {
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 40px);
+}
+.nd-pop--reads {
+  left: 116px;
+  right: 0;
+  bottom: calc(100% + 4.5px);
+}
+.nd-pop--writes {
+  left: 116px;
+  right: 0;
+  bottom: calc(100% + 44.5px);
+}
+.nd-pop__heading {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.nd-pop__body {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+.nd-pop__title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.nd-pop__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.nd-pop__group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.nd-pop__opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  font-size: 13px;
+  color: var(--ink-900);
+  cursor: pointer;
+}
+.nd-pop__opt--dragging {
+  opacity: 0.5;
+}
+.nd-pop__grip {
+  display: inline-flex;
+  color: var(--stone-400);
+  cursor: grab;
+}
+/* The native controls keep the browser's own margins and font, as the design draws (and measures)
+   them. */
+.nd-pop__check,
+.nd-pop__radio {
+  font:
+    400 13.3333px Arial,
+    sans-serif;
+}
+.nd-pop__check {
+  margin: 3px 3px 3px 4px;
+  accent-color: var(--coral-500);
+}
+.nd-pop__radio {
+  margin: 3px 3px 0 5px;
+  accent-color: var(--coral-500);
+}
+.nd-pop__name {
+  flex: 1;
+}
+.nd-pop__note {
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.nd-pop__hint {
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.nd-pop .ds-input {
+  display: block;
 }
 
 /* ---- In-drawer confirm (Flow-More-2, Panel-CloseUnsaved) ---- */

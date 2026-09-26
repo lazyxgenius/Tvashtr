@@ -38,6 +38,7 @@ import { type CredentialCover, isDesktopApp, needsModel } from "./setup/modelCop
 import type { ModelPickerContext } from "./setup/ModelSection";
 import { type ContractUpdate, contractUpdate } from "./setup/routing";
 import { SetupTab } from "./setup/SetupTab";
+import { NEW_DOCUMENT_TOAST } from "./setup/setupCopy";
 import { templateAppliedText, templateApplication, templateNeedsConfirm } from "./setup/templates";
 import { SkillsSection } from "./SkillsSection";
 import { ToolsSection } from "./ToolsSection";
@@ -392,6 +393,7 @@ function AgentEditor({
           onOpenFullEditor={focus ? undefined : () => onFocusChange(true)}
           onPickTemplate={pickTemplate}
           onUpdateRouting={requestRoutingUpdate}
+          onNewDocument={() => toast.show(NEW_DOCUMENT_TOAST)}
         />
       );
   }

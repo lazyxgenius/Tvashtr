@@ -36,6 +36,7 @@ export function SetupTab({
   onOpenFullEditor,
   onPickTemplate,
   onUpdateRouting,
+  onNewDocument,
 }: {
   node: TeamGraphNode;
   nodes: TeamGraphNode[];
@@ -53,6 +54,8 @@ export function SetupTab({
   onPickTemplate: (template: NodeTemplate) => void;
   /** "Update instructions": write the verdict lines the arrows need (the editor confirms first). */
   onUpdateRouting: () => void;
+  /** Writes got a name no agent on the team uses yet (the drawer's toast). */
+  onNewDocument?: () => void;
 }) {
   const { draft, set, update } = api;
   const templates = useNodeTemplates();
@@ -137,14 +140,19 @@ export function SetupTab({
         changed={changed}
       />
       <AccessSection
+        agentName={agentName}
+        nodeId={node.id}
+        nodes={nodes}
+        edges={edges}
         editsAllowed={draft.editsAllowed}
         onEditsChange={(v) => set("editsAllowed", v)}
         isEntry={isEntry}
-        readsFrom={draft.readsFrom}
-        readsDefault={draft.readsDefault}
-        onReadsChange={(readsFrom, readsDefault) => update({ readsFrom, readsDefault })}
+        verdict={routing.kind === "verdict"}
+        reads={{ readsFrom: draft.readsFrom, readsDefault: draft.readsDefault }}
+        onReadsChange={(next) => update(next)}
         writesTo={draft.writesTo}
         onWritesChange={(v) => set("writesTo", v)}
+        onNewDocument={onNewDocument}
         changed={changed}
       />
       <AdvancedSection
