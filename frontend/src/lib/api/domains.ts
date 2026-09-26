@@ -301,6 +301,7 @@ export async function createNewDomain(body: {
 
 /** A file's phase in the Status column (DM-42). `uploading` is local to this browser. */
 export type DomainFilePhase =
+  | "uploading"
   | "ready"
   | "reading"
   | "rereading"
@@ -688,6 +689,61 @@ export async function uploadDomainDocument(
     throw new ApiError(res.status, detail);
   }
   return (await res.json()) as DomainDocumentSummary;
+}
+
+/** The upload answer's `detail` (a string, or `{message}`), if any. */
+function uploadDetail(body: unknown): string | null {
+  const detail = body && typeof body === "object" ? (body as { detail?: unknown }).detail : null;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (detail && typeof detail === "object" && "message" in detail) {
+    return String(detail.message);
+  }
+  return null;
+}
+
+/**
+ * Upload one file with progress (DM-48): XHR, because `fetch` reports no upload progress.
+ * `onProgress` gets 0–1; `abort()` cancels (the promise then rejects with an `AbortError`).
+ */
+export function uploadDomainFile(
+  domainId: string,
+  file: File,
+  onProgress: (fraction: number) => void,
+): { done: Promise<DomainDocumentSummary>; abort: () => void } {
+  const xhr = new XMLHttpRequest();
+  const done = new Promise<DomainDocumentSummary>((resolve, reject) => {
+    xhr.open("POST", apiUrl(`/api/domains/${domainId}/documents`));
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 502 && xhr.status <= 504) reportFetchFailed();
+      else reportFetchOk();
+      let body: unknown = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        // not JSON
+      }
+      const doc = body as DomainDocumentSummary | null;
+      if (xhr.status >= 200 && xhr.status < 300 && typeof doc?.document_id === "string") {
+        resolve(doc);
+      } else {
+        reject(
+          new ApiError(xhr.status, uploadDetail(body) ?? `The upload failed (${xhr.status}).`),
+        );
+      }
+    };
+    xhr.onerror = () => {
+      reportFetchFailed();
+      reject(new Error("The upload failed. Is the backend running?"));
+    };
+    xhr.onabort = () => reject(new DOMException("The upload was cancelled.", "AbortError"));
+    const body = new FormData();
+    body.append("file", file);
+    xhr.send(body);
+  });
+  return { done, abort: () => xhr.abort() };
 }
 
 export async function deleteDomainDocument(domainId: string, documentId: string): Promise<void> {

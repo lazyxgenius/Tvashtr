@@ -225,3 +225,45 @@ export function filesList(files: DomainFile[]): DomainFilesList {
     total_pieces: files.reduce((n, f) => n + (f.pieces ?? 0), 0),
   };
 }
+
+/** One fake upload (XHR): `progress(0.45)`, `respond(status, body)`; `file` is what was sent. */
+export class FakeUpload {
+  static sent: FakeUpload[] = [];
+  upload: { onprogress: ((e: ProgressEvent) => void) | null } = { onprogress: null };
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onabort: (() => void) | null = null;
+  status = 0;
+  responseText = "";
+  url = "";
+  file: File | null = null;
+  open(_method: string, url: string) {
+    this.url = url;
+  }
+  send(body: FormData) {
+    this.file = body.get("file") as File;
+    FakeUpload.sent.push(this);
+  }
+  abort() {
+    this.onabort?.();
+  }
+  progress(fraction: number) {
+    this.upload.onprogress?.({
+      lengthComputable: true,
+      loaded: fraction * 100,
+      total: 100,
+    } as ProgressEvent);
+  }
+  respond(status: number, body: unknown) {
+    this.status = status;
+    this.responseText = JSON.stringify(body);
+    this.onload?.();
+  }
+}
+
+/** Uploads go through XHR (for progress): stub it; returns the list of sent uploads. */
+export function fakeUploads(): FakeUpload[] {
+  FakeUpload.sent = [];
+  vi.stubGlobal("XMLHttpRequest", FakeUpload);
+  return FakeUpload.sent;
+}

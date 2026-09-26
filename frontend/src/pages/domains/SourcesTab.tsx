@@ -1,8 +1,8 @@
 /**
  * A domain's Sources tab (Dm-Sources, DmF-First-4/5, DmF-Filter-1…3, DmF-Preview-1/2): search in
  * file names and text, the Show filter with its counts, Add files, the drop hint, the files table
- * and its footer, and the file preview sheet (`?file=`). Files dropped on the tab or picked with
- * Add files are checked here (type, 10 MB) and uploaded two at a time; the server reads them.
+ * and its footer, and the file preview sheet (`?file=`). Files dragged over the tab show the drop
+ * overlay (DmF-Drag-1); dropped or picked files go to `useUploads` (DmF-Drag-2…4).
  * Delete file… asks first (DeleteFileDialog), then hands the file to the page's deferred delete.
  */
 import { type DragEvent, useEffect, useRef, useState } from "react";
@@ -17,22 +17,16 @@ import {
   domainFileUrl,
   listDomainFiles,
   rereadDomainFiles,
-  uploadDomainDocument,
 } from "../../lib/api/domains";
 import { navigate } from "../../lib/nav";
-import {
-  UPLOAD_ACCEPT,
-  filesFooter,
-  formatNumber,
-  listWithout,
-  showOptions,
-  uploadProblem,
-} from "./domainFormat";
+import { UPLOAD_ACCEPT, filesFooter, formatNumber, listWithout, showOptions } from "./domainFormat";
 import { DeleteFileDialog } from "./DeleteFileDialog";
+import { DropOverlay } from "./DropOverlay";
 import { FilePreviewSheet } from "./FilePreviewSheet";
 import { FilesTable } from "./FilesTable";
 import { SortSelect } from "./SortSelect";
 import { type FileDeletes, readStamp } from "./useFileDeletes";
+import { useUploads, withUploads } from "./useUploads";
 
 const SEARCH_DELAY_MS = 250;
 
@@ -76,7 +70,9 @@ export function SourcesTab({
   const [loaded, setLoaded] = useState<{ list: DomainFilesList; stamp: number } | null>(null);
   const [deleting, setDeleting] = useState<DomainFile | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
+  // Files dragged over the tab: how many (the overlay's "Drop to add <n> files").
+  const [dragging, setDragging] = useState<number | null>(null);
+  const uploads = useUploads({ domainId, domainName: detail.name, onUploaded: onChanged });
   const picker = useRef<HTMLInputElement>(null);
   // Files re-read from this page: a toast says when each one is ready again (DM-50).
   const rereading = useRef(new Map<string, string>());
@@ -130,38 +126,6 @@ export function SourcesTab({
     };
   }, []);
 
-  const addFiles = async (picked: File[]) => {
-    const ok: File[] = [];
-    for (const f of picked) {
-      const problem = uploadProblem(f);
-      if (problem) toast({ message: problem, tone: "error" });
-      else ok.push(f);
-    }
-    if (ok.length === 0) return;
-    setUploading(true);
-    let added = 0;
-    const queue = [...ok];
-    const worker = async () => {
-      for (let f = queue.shift(); f; f = queue.shift()) {
-        try {
-          await uploadDomainDocument(domainId, f);
-          added += 1;
-        } catch (e) {
-          const why = e instanceof Error && e.message ? e.message : "The upload failed.";
-          toast({ message: `${f.name} wasn’t added. ${why}`, tone: "error" });
-        }
-      }
-    };
-    await Promise.all([worker(), worker()]);
-    setUploading(false);
-    if (added > 0) {
-      toast({
-        message: `${added === 1 ? "1 file" : `${formatNumber(added)} files`} added to ${detail.name}`,
-      });
-    }
-    onChanged();
-  };
-
   const openPreview = (f: DomainFile) =>
     navigate({ page: "domains", domainId, file: f.document_id }, { replace: true });
   const closePreview = () => navigate({ page: "domains", domainId }, { replace: true });
@@ -189,27 +153,52 @@ export function SourcesTab({
       .catch(failed);
   };
 
+  const onDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    const n = Array.from(e.dataTransfer.items ?? []).filter((i) => i.kind === "file").length;
+    if (n !== dragging) setDragging(n);
+  };
+  const onDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(null);
+  };
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
+    setDragging(null);
     if (!e.dataTransfer.files.length) return;
     e.preventDefault();
-    void addFiles(Array.from(e.dataTransfer.files));
+    void uploads.add(Array.from(e.dataTransfer.files));
   };
 
   const list = loaded && listWithout(loaded.list, deletes.gone(loaded.stamp));
   const previewed = file ? list?.documents.find((d) => d.document_id === file) : undefined;
-  const footer = list
-    ? filesFooter({
-        files: detail.files,
-        list,
-        shown: list.documents.length,
-        query,
-        filter,
-        firstRead: !detail.setup.files_read,
-      })
-    : null;
+  const rows =
+    loaded && list
+      ? withUploads(list.documents, uploads.uploads, {
+          listStamp: loaded.stamp,
+          showLocal: !query && filter === "all",
+        })
+      : null;
+  const footer =
+    list && rows
+      ? filesFooter({
+          files: detail.files,
+          list,
+          shown: list.documents.length,
+          query,
+          filter,
+          firstRead: !detail.setup.files_read,
+          local: { uploading: rows.uploading, rejected: rows.rejected },
+        })
+      : null;
 
   return (
-    <div className="dm-src" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+    <div
+      className="dm-src"
+      onDragEnter={onDragOver}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <div className="dm-src__tools">
         <Input
           size="sm"
@@ -233,7 +222,6 @@ export function SourcesTab({
           variant="primary"
           size="sm"
           className="dm-btn-inline"
-          loading={uploading}
           onClick={() => picker.current?.click()}
         >
           <Upload size={15} strokeWidth={1.6} aria-hidden />
@@ -249,7 +237,7 @@ export function SourcesTab({
           onChange={(e) => {
             const picked = Array.from(e.target.files ?? []);
             e.target.value = "";
-            void addFiles(picked);
+            void uploads.add(picked);
           }}
         />
       </div>
@@ -268,9 +256,9 @@ export function SourcesTab({
           </Button>
         </div>
       )}
-      {list && footer && (
+      {rows && footer && (
         <FilesTable
-          files={list.documents}
+          files={rows.rows}
           now={now}
           provider={detail.reading_model.provider}
           tinted={deleting?.document_id ?? file}
@@ -287,6 +275,7 @@ export function SourcesTab({
             setFind("");
           }}
           actions={{
+            onRemove: (f) => uploads.remove(f.document_id),
             onPreview: openPreview,
             onReread: (f) => reread(f.document_id, f.filename),
             onDownload: (f) => downloadInPlace(domainFileUrl(domainId, f.document_id), f.filename),
@@ -308,6 +297,7 @@ export function SourcesTab({
           }}
         />
       )}
+      {dragging !== null && <DropOverlay count={dragging} domainName={detail.name} />}
       {file && (
         <FilePreviewSheet
           key={file}

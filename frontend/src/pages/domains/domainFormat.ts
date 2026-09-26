@@ -218,7 +218,18 @@ export function detailBadge(d: DomainDetailView): {
   label: string;
 } {
   const { files } = d;
-  switch (d.state) {
+  // After the first read, reading a few files (new ones, or one re-read) doesn't pause Ask: the
+  // badge keeps the other files' state (OQ-5: Fail-3 and Drag-2/3 stay "Ready").
+  const partial = d.setup.files_read && d.pieces > 0 && inFlight(d) < files.total;
+  const state =
+    (d.state === "reading" || d.state === "rereading") && partial
+      ? files.waiting_for_key
+        ? "waiting_for_key"
+        : files.needs_attention
+          ? "needs_attention"
+          : "ready"
+      : d.state;
+  switch (state) {
     case "ready":
       return { variant: "success", dot: true, label: "Ready" };
     case "reading":
@@ -391,6 +402,7 @@ export function filesFooter({
   query,
   filter,
   firstRead,
+  local = { uploading: 0, rejected: 0 },
 }: {
   files: DomainFiles;
   list: DomainFilesList;
@@ -398,8 +410,10 @@ export function filesFooter({
   query: string;
   filter: DomainFileFilter;
   firstRead: boolean;
+  /** This browser's rows: files still uploading, and files rejected before upload (DM-48). */
+  local?: { uploading: number; rejected: number };
 }): { text: string; showAll: boolean } {
-  const n = list.counts.all;
+  const n = list.counts.all + local.uploading + local.rejected;
   const q = query.trim();
   if (q) return { text: `${formatNumber(shown)} of ${filesCount(n)} match “${q}”`, showAll: false };
   if (filter === "needs_attention") {
@@ -426,17 +440,16 @@ export function filesFooter({
       showAll: false,
     };
   }
-  if (busy > 0) {
+  if (busy + local.uploading > 0) {
     const parts = [];
     if (files.reading) parts.push(`reading ${formatNumber(files.reading)}`);
+    if (local.uploading) parts.push(`uploading ${formatNumber(local.uploading)}`);
     if (files.waiting) parts.push(`waiting ${formatNumber(files.waiting)}`);
     return { text: `${total} · ${parts.join(", ")}`, showAll: false };
   }
-  if (files.needs_attention > 0) {
-    return {
-      text: `${total} · ${formatNumber(files.needs_attention)} needs attention`,
-      showAll: false,
-    };
+  const attention = files.needs_attention + local.rejected;
+  if (attention > 0) {
+    return { text: `${total} · ${formatNumber(attention)} needs attention`, showAll: false };
   }
   return { text: `${total} · ${plural(list.total_pieces, "piece", "pieces")}`, showAll: false };
 }
@@ -572,7 +585,7 @@ export function deleteFileCallout(domainName: string, others: number): string {
 
 /** Which of the summary's file counts a file in `phase` sits in. */
 function filesBucket(phase: DomainFile["phase"]): keyof Omit<DomainFiles, "total"> {
-  if (phase === "rereading") return "reading";
+  if (phase === "rereading" || phase === "uploading") return "reading";
   return phase;
 }
 

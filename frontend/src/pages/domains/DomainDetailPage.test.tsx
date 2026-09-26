@@ -13,6 +13,7 @@ import { DomainDetailPage } from "./DomainDetailPage";
 import {
   detailView,
   domainItem,
+  fakeUploads,
   fileItem,
   filesList,
   mockApi,
@@ -372,31 +373,107 @@ describe("The Sources table (DM-41…DM-47)", () => {
     fireEvent.click(within(table()).getByRole("button", { name: "Show all files" }));
     await waitFor(() => expect(row("refund-policy.md")).toBeTruthy());
   });
+});
 
-  it("uploads picked files two at a time and turns away big ones (DM-48)", async () => {
-    const calls = mockApi(
+describe("Adding files (DmF-Drag-1…4)", () => {
+  const MB = 1024 * 1024;
+  const sized = (name: string, size: number) => {
+    const f = new File(["x"], name);
+    Object.defineProperty(f, "size", { value: size });
+    return f;
+  };
+  const dragData = (n: number, files: File[] = []) => ({
+    types: ["Files"],
+    items: Array.from({ length: n }, () => ({ kind: "file" })),
+    files,
+  });
+  const body = () => document.querySelector(".dm-src") as HTMLElement;
+
+  it("shows the drop overlay while files are dragged over the tab (DM-40)", async () => {
+    mockApi(routes());
+    renderPage();
+    await waitFor(() => expect(row("refund-policy.md")).toBeTruthy());
+    fireEvent.dragOver(body(), { dataTransfer: dragData(4) });
+    expect(screen.getByText("Drop to add 4 files to Support docs")).toBeInTheDocument();
+    expect(
+      screen.getByText("They’re read automatically. You can ask about them in about a minute."),
+    ).toBeInTheDocument();
+    fireEvent.dragLeave(body(), { relatedTarget: null });
+    expect(screen.queryByTestId("drop-overlay")).toBeNull();
+  });
+
+  it("uploads dropped files with progress, pins them on top and turns away big ones", async () => {
+    const sent = fakeUploads();
+    let uploaded = false;
+    const NEW = fileItem("status-page.md", {
+      document_id: "doc-status",
+      phase: "reading",
+      pieces: null,
+      progress: 0.8,
+      created_at: new Date().toISOString(),
+    });
+    mockApi(
       routes({
-        "POST /api/domains/d-support/documents": {
-          document_id: "new",
-          filename: "a.md",
-          reading: "started",
-        },
+        "GET /api/domains/d-support/documents": () => filesList(uploaded ? [...FILES, NEW] : FILES),
       }),
     );
     renderPage();
     await waitFor(() => expect(row("refund-policy.md")).toBeTruthy());
-    const input = screen.getByTestId("add-files-input");
-    expect(input).toHaveAttribute("accept", ".pdf,.md,.txt,.html");
-    const big = new File(["x"], "video-guide.pdf");
-    Object.defineProperty(big, "size", { value: 14.2 * 1024 * 1024 });
-    fireEvent.change(input, {
-      target: { files: [new File(["a"], "a.md"), new File(["b"], "b.md"), big] },
+    const big = sized("video-guide.pdf", 14.2 * MB);
+    fireEvent.drop(body(), {
+      dataTransfer: dragData(3, [
+        sized("status-page.md", 9 * 1024),
+        sized("gdpr-requests.pdf", 640 * 1024),
+        big,
+      ]),
     });
+    expect(screen.queryByTestId("drop-overlay")).toBeNull();
+    // The big one never uploads: a local Needs attention row and a toast that can remove it.
     expect(
       await screen.findByText("video-guide.pdf is 14.2 MB. The limit is 10 MB."),
     ).toBeInTheDocument();
-    expect(await screen.findByText("2 files added to Support docs")).toBeInTheDocument();
-    expect(calls.filter((c) => c.method === "POST").length).toBe(2);
+    expect(
+      within(row("video-guide.pdf")).getByText(
+        "Over 10 MB. Split it or compress it, then add it again.",
+      ),
+    ).toBeInTheDocument();
+    // Two at a time, with progress.
+    await waitFor(() =>
+      expect(sent.map((u) => u.file?.name)).toEqual(["status-page.md", "gdpr-requests.pdf"]),
+    );
+    expect(sent[0].url).toBe("/api/domains/d-support/documents");
+    act(() => sent[1].progress(0.45));
+    expect(within(row("gdpr-requests.pdf")).getByText("Uploading 45%")).toBeInTheDocument();
+    expect(within(table()).getByText(/uploading 2/)).toBeInTheDocument();
+    // status-page.md lands: the server's row replaces the local one, still on top.
+    uploaded = true;
+    act(() => sent[0].respond(200, { document_id: "doc-status", filename: "status-page.md" }));
+    await waitFor(() =>
+      expect(within(row("status-page.md")).getByText("Reading 80%")).toBeInTheDocument(),
+    );
+    const names = () =>
+      within(table())
+        .getAllByRole("row")
+        .slice(1)
+        .map((r) => r.querySelector(".dm-files__open")?.textContent);
+    expect(names().slice(0, 4)).toEqual([
+      "status-page.md",
+      "gdpr-requests.pdf",
+      "video-guide.pdf",
+      "refund-policy.md",
+    ]);
+    // A local row's ⋯ offers only Remove; the toast's Remove it does the same.
+    fireEvent.click(screen.getByRole("button", { name: "More actions for video-guide.pdf" }));
+    expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Remove"]);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Remove it" }));
+    expect(within(table()).queryByText("video-guide.pdf")).toBeNull();
+    // The batch ends: one toast for what was added.
+    act(() => sent[1].respond(413, { detail: "File too large." }));
+    expect(await screen.findByText("1 file added to Support docs")).toBeInTheDocument();
+    expect(
+      within(row("gdpr-requests.pdf")).getByText("Couldn’t add this file: File too large."),
+    ).toBeInTheDocument();
   });
 });
 

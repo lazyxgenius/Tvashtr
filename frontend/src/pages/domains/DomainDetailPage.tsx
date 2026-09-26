@@ -191,6 +191,7 @@ export function DomainDetailPage({
       <div className="dm-tabbody">
         {tab === "sources" ? (
           <SourcesTab
+            key={detail.domain_id}
             detail={detail}
             tick={tick}
             file={file}

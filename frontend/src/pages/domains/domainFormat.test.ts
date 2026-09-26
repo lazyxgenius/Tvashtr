@@ -213,7 +213,23 @@ describe("detail header (DM-32, DM-33)", () => {
       state: "reading",
       files: { ...support.files, total: 16, ready: 14, reading: 1, waiting: 1 },
     });
-    expect(detailBadge(later).label).toBe("Reading 2 files");
+    // After the first read, new files or one re-read don't pause Ask: the badge stays (OQ-5).
+    expect(detailBadge(later).label).toBe("Ready");
+    const oneReread = detail({
+      state: "rereading",
+      files: { ...support.files, ready: 13, reading: 1 },
+    });
+    expect(detailBadge(oneReread).label).toBe("Ready");
+    const laterAttention = detail({
+      state: "reading",
+      files: { ...support.files, total: 16, ready: 14, reading: 1, needs_attention: 1 },
+    });
+    expect(detailBadge(laterAttention).label).toBe("1 file needs attention");
+    const allAgain = detail({
+      state: "rereading",
+      files: { ...support.files, ready: 0, reading: 1, waiting: 13 },
+    });
+    expect(detailBadge(allAgain).label).toBe("Re-reading 14 files");
     const attention = detail({
       state: "needs_attention",
       files: { ...support.files, ready: 13, needs_attention: 1 },
@@ -371,6 +387,29 @@ describe("Sources table words (DM-41…DM-47)", () => {
     expect(
       filesFooter({ ...base, files: attention, list: three, shown: 3, firstRead: false }).text,
     ).toBe("3 files · 1 needs attention");
+    // This browser's rows (DmF-Drag-2/3): uploading and rejected files count too.
+    const drag = { ...support.files, total: 16, ready: 14, reading: 1, waiting: 1 };
+    const sixteen = filesList(Array.from({ length: 16 }, (_, i) => fileItem(`f${i}.md`)));
+    expect(
+      filesFooter({
+        ...base,
+        files: drag,
+        list: sixteen,
+        shown: 16,
+        firstRead: false,
+        local: { uploading: 1, rejected: 1 },
+      }).text,
+    ).toBe("18 files · reading 1, uploading 1, waiting 1");
+    expect(
+      filesFooter({
+        ...base,
+        files: { ...support.files, total: 17, ready: 17 },
+        list: filesList(Array.from({ length: 17 }, (_, i) => fileItem(`f${i}.md`))),
+        shown: 17,
+        firstRead: false,
+        local: { uploading: 0, rejected: 1 },
+      }).text,
+    ).toBe("18 files · 1 needs attention");
   });
 
   it("cuts piece excerpts where the design puts its ellipses", () => {

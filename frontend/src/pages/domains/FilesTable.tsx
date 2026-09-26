@@ -18,6 +18,7 @@ import { Menu, type MenuEntry } from "../../design-system/components";
 import type { DomainFile } from "../../lib/api/domains";
 import { navigate } from "../../lib/nav";
 import { formatAdded, formatNumber, formatSize } from "./domainFormat";
+import { isLocalFile } from "./useUploads";
 import "./menus.css";
 
 const STATUS_ICON = { size: 14, strokeWidth: 1.6, "aria-hidden": true } as const;
@@ -47,9 +48,13 @@ export function StatusCell({ file, provider }: { file: DomainFile; provider: str
           Ready
         </span>
       );
+    case "uploading":
     case "reading":
     case "rereading": {
       const pct = Math.round((file.progress ?? 0) * 100);
+      const verb = { uploading: "Uploading", reading: "Reading", rereading: "Re-reading" }[
+        file.phase
+      ];
       return (
         <span className="dm-status dm-status--progress">
           <span
@@ -58,11 +63,14 @@ export function StatusCell({ file, provider }: { file: DomainFile; provider: str
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={pct}
-            aria-label={`Reading ${file.filename}`}
+            aria-label={`${verb === "Uploading" ? "Uploading" : "Reading"} ${file.filename}`}
           >
-            <span className="dm-bar__fill" style={{ width: `${pct}%` }} />
+            <span
+              className={`dm-bar__fill${file.phase === "uploading" ? " dm-bar__fill--upload" : ""}`}
+              style={{ width: `${pct}%` }}
+            />
           </span>
-          {file.phase === "rereading" ? "Re-reading" : "Reading"} {pct}%
+          {verb} {pct}%
         </span>
       );
     }
@@ -105,6 +113,8 @@ export function StatusCell({ file, provider }: { file: DomainFile; provider: str
 }
 
 export interface FileActions {
+  /** A row that only exists in this browser (uploading or rejected): its ⋯ offers only Remove. */
+  onRemove: (file: DomainFile) => void;
   onPreview: (file: DomainFile) => void;
   onReread: (file: DomainFile) => void;
   onDownload: (file: DomainFile) => void;
@@ -165,40 +175,50 @@ export function FilesTable({
             </tr>
           )}
           {files.map((f) => {
-            const items: MenuEntry[] = [
-              {
-                key: "preview",
-                label: "Preview pieces",
-                icon: <Eye {...MENU_ICON} />,
-                onSelect: () => actions.onPreview(f),
-              },
-              {
-                key: "reread",
-                label: "Re-read this file",
-                icon: <RefreshCw {...MENU_ICON} />,
-                onSelect: () => actions.onReread(f),
-              },
-              {
-                key: "download",
-                label: "Download original",
-                icon: <Download {...MENU_ICON} />,
-                onSelect: () => actions.onDownload(f),
-              },
-              {
-                key: "copy",
-                label: "Copy file ID",
-                icon: <Copy {...MENU_ICON} />,
-                onSelect: () => actions.onCopyId(f),
-              },
-              "separator",
-              {
-                key: "delete",
-                label: "Delete file…",
-                icon: <Trash {...MENU_ICON} />,
-                danger: true,
-                onSelect: () => actions.onDelete(f),
-              },
-            ];
+            const local = isLocalFile(f);
+            const items: MenuEntry[] = local
+              ? [
+                  {
+                    key: "remove",
+                    label: "Remove",
+                    icon: <Trash {...MENU_ICON} />,
+                    onSelect: () => actions.onRemove(f),
+                  },
+                ]
+              : [
+                  {
+                    key: "preview",
+                    label: "Preview pieces",
+                    icon: <Eye {...MENU_ICON} />,
+                    onSelect: () => actions.onPreview(f),
+                  },
+                  {
+                    key: "reread",
+                    label: "Re-read this file",
+                    icon: <RefreshCw {...MENU_ICON} />,
+                    onSelect: () => actions.onReread(f),
+                  },
+                  {
+                    key: "download",
+                    label: "Download original",
+                    icon: <Download {...MENU_ICON} />,
+                    onSelect: () => actions.onDownload(f),
+                  },
+                  {
+                    key: "copy",
+                    label: "Copy file ID",
+                    icon: <Copy {...MENU_ICON} />,
+                    onSelect: () => actions.onCopyId(f),
+                  },
+                  "separator",
+                  {
+                    key: "delete",
+                    label: "Delete file…",
+                    icon: <Trash {...MENU_ICON} />,
+                    danger: true,
+                    onSelect: () => actions.onDelete(f),
+                  },
+                ];
             const tint =
               f.document_id === tinted || f.phase === "rereading" || f.phase === "needs_attention";
             return (
@@ -209,6 +229,7 @@ export function FilesTable({
                     <button
                       type="button"
                       className="dm-files__open"
+                      disabled={local}
                       onClick={() => actions.onPreview(f)}
                     >
                       {f.filename}
