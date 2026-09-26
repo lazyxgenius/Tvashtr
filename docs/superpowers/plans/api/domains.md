@@ -25,6 +25,9 @@ in `routers.py` and changed there in place.
 | `GET /api/domains/{id}/documents/{doc}/pieces` | **new** — one file's pieces + how often answers cite it | G2 |
 | `GET /api/domains/{id}/documents/{doc}/file` | **new** — download the original | G2 |
 | `POST /api/domains` | optional `embedding_model`; the name rule (1–120 characters, unique per account ignoring case → `409`); answers with the full summary | G3 |
+| `PATCH /api/domains/{id}` | a new `name` follows the name rule (`409` on a clash, `422` copy) | G4 |
+| `POST /api/domains/{id}/duplicate` | **new** — Duplicate settings: an empty copy with the same template and settings | G4 |
+| `DELETE /api/domains/{id}` | clears the steps and agents that used it; answer gains `steps_cleared`, `agents_cleared` | G4 |
 
 Schema: migration `0042_domain_message_meta` adds `domain_messages.meta JSONB NULL` (the Ask tab's
 answer meta `{model, used_history, source}`; written from the Ask group on).
@@ -374,4 +377,81 @@ Errors (`detail` copy is shown under the Name field or in the dialog as is):
 | `422` | `"Give this domain a name."` (empty after trimming) |
 | `422` | `"Use 120 characters or fewer."` |
 | `422` | `"Pick a reading model from the list."` (`embedding_model` outside the list) |
+
+## `PATCH /api/domains/{id}` (G4 addition — Rename)
+
+```json
+{"name": "Q3 2026 filings"}
+```
+
+A new `name` follows the same name rule as create (DM-14): trimmed, 1–120 characters, unique within the
+account ignoring case — the domain itself excluded, so "Support docs" → "Support Docs" is fine. The
+answer is unchanged (the old `domain_to_dict` shape, `name` trimmed). `config` changes are unaffected.
+
+| Status | `detail` |
+|---|---|
+| `404` | `"domain not found"` (not this account's) |
+| `409` | `"You already have a domain named “<trimmed name>”."` |
+| `422` | `"Give this domain a name."` / `"Use 120 characters or fewer."` |
+
+## `POST /api/domains/{id}/duplicate` → `201`
+
+Duplicate settings (DM-16): a new, **empty** domain with the same `template` and `config` (reading
+model, piece size, search and answer settings) — no files, no test questions, no chat.
+
+```json
+{"name": "Help centre"}
+```
+
+- `name` (optional) follows the name rule. Left out (or no body), the copy is named
+  `"<name> copy"`, then `"<name> copy 2"`, `"<name> copy 3"`… — the first free one; a long name is cut
+  so the copy stays within 120 characters.
+- The answer is the new domain's full summary (as `POST /api/domains`):
+
+```json
+{
+  "domain_id": "0c9d3b52-7e1a-4f0c-8a33-5b2e9d4c7f18",
+  "name": "Support docs copy",
+  "template": "support",
+  "config": {"chunking": {"strategy": "fixed", "size": 600, "overlap": 100}, "embedding": {"model": "text-embedding-3-small"}, "retrieval": {"…": "…"}, "generation": {"model": null}},
+  "status": "empty",
+  "doc_count": 0,
+  "files": {"total": 0, "ready": 0, "reading": 0, "waiting": 0, "waiting_for_key": 0, "needs_attention": 0},
+  "state": "empty",
+  "…": "the other summary keys"
+}
+```
+
+| Status | `detail` |
+|---|---|
+| `400` | `"invalid domain id"` |
+| `404` | `"domain not found"` |
+| `409` | `"You already have a domain named “<trimmed name>”."` (only with an explicit `name`) |
+| `422` | `"Give this domain a name."` / `"Use 120 characters or fewer."` |
+
+## `DELETE /api/domains/{id}` (G4 addition — tidy the uses)
+
+Before the domain goes (with its files, pieces, chat and test questions), its uses in the account's
+**library** teams are tidied (DM-15, OQ-14):
+
+- each Query domain step that used it gets `config.domain_id = null` — graph validity then asks for
+  another domain before that team can run ("Select a Domain on this Query domain node before
+  running.");
+- each agent whose `tool_config.tvashtr.domains` **list** names it drops it (an emptied list stays
+  `[]`); the legacy `true` / `{"enabled": …}` switch is left as it is.
+
+A past run's snapshot team keeps what it ran with. The answer gains two counts:
+
+```json
+{"domain_id": "7f3a2c1e-0b4d-4c55-9a51-2f7d8e6b1a90", "deleted": true, "steps_cleared": 1, "agents_cleared": 2}
+```
+
+| Status | `detail` |
+|---|---|
+| `400` | `"invalid domain id"` |
+| `404` | `"domain not found"` (nothing is tidied) |
+
+Deleting a **file** is unchanged (`DELETE /api/domains/{id}/documents/{doc}` → `{"document_id", "deleted": true}`,
+`404 "document not found"`). The page hides the row at once and sends the delete when its Undo toast
+closes (OQ-12: also on leaving the page and on `pagehide`, with `fetch(…, {keepalive: true})`).
 
