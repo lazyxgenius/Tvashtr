@@ -1,7 +1,8 @@
 /**
- * The Domains dialogs' shared frame (Rename 460, Delete domain 500, Delete file 500): scrim, serif
- * title with Close, a body and a footer with a hairline above it — border-box, pinned `top` px from
- * the window's top where the frames draw it (DmF-Menu-2/3, DmF-DelFile-2). Escape and the scrim
+ * The Domains dialogs' shared frame (Rename 460, Delete domain 500, Delete file 500, Add step and
+ * Give access 560): scrim, serif title (+ an optional subtitle) with Close, a body and a footer with
+ * a hairline above it — border-box, pinned `top` px from the window's top where the frames draw it
+ * (DmF-Menu-2/3, DmF-DelFile-2, DmF-Step-2/3, DmF-Agent-2). Escape and the scrim
  * close it unless `locked`; focus is trapped inside.
  */
 import type { CSSProperties, FormEvent, ReactNode } from "react";
@@ -14,6 +15,7 @@ import "./menus.css";
 
 export function DomainDialog({
   title,
+  subtitle,
   width,
   top,
   locked = false,
@@ -23,6 +25,8 @@ export function DomainDialog({
   footer,
 }: {
   title: string;
+  /** A line under the title (the 560 dialogs, DmF-Step-2, DmF-Agent-2). */
+  subtitle?: string;
   width: number;
   top: number;
   /** While saving: Escape, the scrim and Close do nothing. */
@@ -40,7 +44,14 @@ export function DomainDialog({
   const body = (
     <>
       <header className="dm-dlg__head">
-        <h2 className="dm-dlg__title">{title}</h2>
+        {subtitle ? (
+          <div className="dm-dlg__titles">
+            <h2 className="dm-dlg__title">{title}</h2>
+            <p className="dm-dlg__sub">{subtitle}</p>
+          </div>
+        ) : (
+          <h2 className="dm-dlg__title">{title}</h2>
+        )}
         <IconButton size="sm" aria-label="Close" onClick={onClose} disabled={locked}>
           <X size={16} strokeWidth={1.6} aria-hidden />
         </IconButton>

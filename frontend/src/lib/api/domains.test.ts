@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  addDomainStep,
   createNewDomain,
   deleteDomainFile,
   domainFileUrl,
   duplicateDomain,
   getDomainDetail,
   getDomainFilePieces,
+  getDomainUsage,
+  getStepPlaces,
   listDomainFiles,
   normalizeDomainAnswer,
   normalizeDomainDetail,
@@ -17,6 +20,7 @@ import {
   renameDomain,
   rereadDomainFiles,
   saveDomainSettings,
+  setDomainAgents,
 } from "./domains";
 
 /** The URL of the n-th fetch call. */
@@ -341,5 +345,59 @@ describe("Quality shapes", () => {
       },
     ]);
     expect(normalizeTestRun({})).toBeNull();
+  });
+});
+
+describe("Domains clients (G11)", () => {
+  it("validates the usage rows and drops odd ones", async () => {
+    answer({
+      steps: [{ node_id: "n1", team_id: "t1", team_name: "Docs team" }, { team_id: "t2" }],
+      agents: [
+        { node_id: "a1", team_id: "t1", team_name: "Docs team", role_name: "pm", scope: "oops" },
+      ],
+    });
+    const usage = await getDomainUsage("d1");
+    expect(usage.steps).toEqual([
+      {
+        node_id: "n1",
+        team_id: "t1",
+        team_name: "Docs team",
+        title: "Query domain",
+        pass_to_spec: false,
+      },
+    ]);
+    expect(usage.agents[0]).toMatchObject({ title: "pm", scope: null, model: null });
+  });
+
+  it("reads the step places and posts a step", async () => {
+    answer({
+      teams: [
+        {
+          team_id: "t1",
+          name: "Docs team",
+          path: ["Product manager", 3],
+          places: [{ after_node_id: "n1", after: "Product manager", next: null }, {}],
+        },
+      ],
+    });
+    const [team] = await getStepPlaces("d1");
+    expect(team.path).toEqual(["Product manager", ""]);
+    expect(team.places).toEqual([{ after_node_id: "n1", after: "Product manager", next: null }]);
+    vi.restoreAllMocks();
+
+    const mock = answer({ detail: "Pick where the step goes." }, 422);
+    await expect(
+      addDomainStep("d1", { team_id: "t1", after_node_id: "g", prompt: "q", pass_to_spec: true }),
+    ).rejects.toThrow("Pick where the step goes.");
+    expect(urlOf(mock, 0)).toContain("/api/domains/d1/steps");
+  });
+
+  it("puts the full set of agents", async () => {
+    const mock = answer({ agents: [{ node_id: "a1", team_id: "t1", scope: "this" }] });
+    const out = await setDomainAgents("d1", ["a1"]);
+    expect(out.map((a) => a.scope)).toEqual(["this"]);
+    const init = mock.mock.calls[0]?.[1];
+    expect(init?.method).toBe("PUT");
+    expect(JSON.parse(init?.body as string)).toEqual({ node_ids: ["a1"] });
   });
 });

@@ -4,14 +4,10 @@
  * team and the ⋯ menu; the setup strip until the first read finishes, then the summary strip on
  * Sources; the tabs; and the tab itself. Live while files are read (DM-4); when the first read
  * finishes a toast offers to ask it a question.
- *
- * INTERIM: until the Use in teams tab is redesigned, it shows the previous Domains screen's
- * matching panel under the new header.
  */
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Workflow } from "lucide-react";
 
-import { DomainsPage } from "../../components/DomainsPage";
 import { Badge, Button, Tabs, useToast } from "../../design-system/components";
 import type { DomainDetailView } from "../../lib/api/domains";
 import { type DomainTab, navigate } from "../../lib/nav";
@@ -29,6 +25,7 @@ import { QualityTab } from "./QualityTab";
 import { SettingsTab } from "./SettingsTab";
 import { SetupStrip, SummaryStrip } from "./DomainStrips";
 import { SourcesTab } from "./SourcesTab";
+import { UseInTeamsTab } from "./UseInTeamsTab";
 import { useDomainDetail } from "./useDomainDetail";
 import { useFileDeletes } from "./useFileDeletes";
 import "./domains.css";
@@ -222,12 +219,11 @@ export function DomainDetailPage({
         ) : tab === "settings" ? (
           <SettingsTab key={detail.domain_id} detail={detail} onChanged={() => void reload()} />
         ) : (
-          <DomainsPage
-            key={tab}
-            initialDomainId={detail.domain_id}
-            embeddedTab="overview"
-            onLeaveDetail={() => navigate({ page: "domains" })}
-            onOpenEngines={() => navigate({ page: "engines", tab: "overview" })}
+          <UseInTeamsTab
+            key={detail.domain_id}
+            detail={detail}
+            now={now}
+            onChanged={() => void reload()}
           />
         )}
       </div>

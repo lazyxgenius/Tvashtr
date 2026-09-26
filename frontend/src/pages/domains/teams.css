@@ -1,0 +1,189 @@
+/* A domain's Use in teams tab and its dialogs (Dm-Teams, DmF-Step-1…3, DmF-Agent-1…3). Every value
+   is the design's. */
+
+.dm-use {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dm-use__cards {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+}
+.dm-use__card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-card);
+  border-radius: 14px;
+  transition:
+    background-color 0.6s var(--ease-out),
+    border-color 0.6s var(--ease-out);
+}
+/* The agent card after Give access (DM-97, DmF-Agent-3). */
+.dm-use__card--flash {
+  border-color: var(--coral-200);
+  background: #fdf6f2;
+}
+.dm-use__tile {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--panel-300);
+  color: var(--ink-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dm-use__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-use__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.dm-use__list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+.dm-use__empty {
+  padding: 9px 0;
+  border-top: 1px solid var(--line-200);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-use__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line-200);
+}
+.dm-use__rowtile {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 7px;
+  background: var(--panel-300);
+  color: var(--ink-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dm-use__rowtext {
+  flex: 1;
+  min-width: 0;
+}
+.dm-use__rowname {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-use__rowsub {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-use__foot {
+  margin-top: auto;
+  padding-top: 6px;
+}
+.dm-use__id {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.dm-use__id > svg {
+  flex: none;
+}
+.dm-use__uuid {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  color: var(--ink-800);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .dm-use__cards {
+    flex-direction: column;
+  }
+  .dm-use__id {
+    flex-wrap: wrap;
+  }
+}
+
+/* ---- Add step (DmF-Step-2/3) ---- */
+.dm-addstep__team {
+  position: relative;
+}
+/* The rest-state chevron centres on the trigger, not the whole field. */
+.dm-addstep__team .dm-sort__btn {
+  position: relative;
+}
+/* Open, the field is the frame's combobox: a 13px label 6px above a 40px trigger. */
+.dm-addstep__field--open {
+  gap: 6px;
+}
+.dm-addstep__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-addstep__list {
+  position: absolute;
+  top: 70px;
+  left: 0;
+  width: 512px;
+  max-width: 100%;
+  z-index: 20;
+}
+.dm-addstep__opt {
+  color: var(--ink-800);
+}
+.dm-addstep__opt:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+/* Room for the open Team list until a team is picked. */
+.dm-addstep__room {
+  height: 150px;
+}
+
+/* ---- Give access (DmF-Agent-2) ---- */
+.dm-access__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dm-access__note {
+  display: block;
+  color: var(--amber-700, #8a5a12);
+}
+.dm-access__none {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-500);
+}

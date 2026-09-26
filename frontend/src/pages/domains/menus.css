@@ -95,6 +95,16 @@
   color: var(--ink-900);
   overflow-wrap: anywhere;
 }
+.dm-dlg__titles {
+  flex: 1;
+  min-width: 0;
+}
+.dm-dlg__sub {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-500);
+}
 .dm-dlg__body {
   padding: 4px 24px 18px;
   display: flex;

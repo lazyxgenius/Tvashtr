@@ -13,21 +13,9 @@ import { type DomainListItem, duplicateDomain } from "../../lib/api/domains";
 import { navigate } from "../../lib/nav";
 import { DeleteDomainDialog } from "./DeleteDomainDialog";
 import { RenameDomainDialog } from "./RenameDomainDialog";
+import { copyDomainId } from "./useInTeamsFormat";
 
 const ICON = { size: 15, strokeWidth: 1.6, "aria-hidden": true } as const;
-
-/** Put the raw UUID on the clipboard (DM-17). */
-function copyDomainId(domainId: string, toast: ReturnType<typeof useToast>): void {
-  const failed = () => toast({ message: "Couldn’t copy the domain ID.", tone: "error" });
-  if (!navigator.clipboard) {
-    failed();
-    return;
-  }
-  navigator.clipboard
-    .writeText(domainId)
-    .then(() => toast({ message: "Domain ID copied." }))
-    .catch(failed);
-}
 
 export function DomainMenu({
   domain,

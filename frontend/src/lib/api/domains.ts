@@ -1331,3 +1331,162 @@ export async function startTestRun(domainId: string): Promise<DomainTestRun> {
   if (!run) throw new ApiError(500, BACKEND_DOWN);
   return run;
 }
+
+// ---- Use in teams (G11: DM-92…97) ----
+
+/** A Query domain step that asks this domain. */
+export interface DomainStep {
+  node_id: string;
+  team_id: string;
+  team_name: string;
+  title: string;
+  pass_to_spec: boolean;
+}
+
+/** An agent and how it reaches this domain: `"this"`, `"all"` (the legacy switch) or `null`. */
+export interface DomainAgent {
+  node_id: string;
+  team_id: string;
+  team_name: string;
+  role_name: string;
+  title: string;
+  model: string | null;
+  scope: "this" | "all" | null;
+  /** A connected Desktop plan (`claude`/`grok`) that runs this agent without Domains tools. */
+  subscription: string | null;
+}
+
+export interface DomainUsageDetail {
+  steps: DomainStep[];
+  agents: DomainAgent[];
+}
+
+/** One "After <agent>" place for a new step (OQ-20). */
+export interface StepPlace {
+  after_node_id: string;
+  after: string;
+  next: string | null;
+}
+
+export interface StepTeam {
+  team_id: string;
+  name: string;
+  /** The agents and steps on the main path ("Product manager → Writer → Reviewer"). */
+  path: string[];
+  places: StepPlace[];
+}
+
+export interface AddedStep {
+  node_id: string;
+  team_id: string;
+  title: string;
+  after: { node_id: string; title: string };
+  connected_to: { node_id: string; title: string } | null;
+}
+
+const rows = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
+export function normalizeDomainStep(raw: unknown): DomainStep | null {
+  const r = obj(raw);
+  if (!str(r.node_id) || !str(r.team_id)) return null;
+  return {
+    node_id: str(r.node_id),
+    team_id: str(r.team_id),
+    team_name: str(r.team_name),
+    title: str(r.title) || "Query domain",
+    pass_to_spec: r.pass_to_spec === true,
+  };
+}
+
+export function normalizeDomainAgent(raw: unknown): DomainAgent | null {
+  const r = obj(raw);
+  if (!str(r.node_id) || !str(r.team_id)) return null;
+  return {
+    node_id: str(r.node_id),
+    team_id: str(r.team_id),
+    team_name: str(r.team_name),
+    role_name: str(r.role_name),
+    title: str(r.title) || str(r.role_name) || "Agent",
+    model: strOrNull(r.model),
+    scope: r.scope === "this" || r.scope === "all" ? r.scope : null,
+    subscription: strOrNull(r.subscription),
+  };
+}
+
+function agentsOf(raw: unknown): DomainAgent[] {
+  return rows(obj(raw).agents).flatMap((a) => normalizeDomainAgent(a) ?? []);
+}
+
+const domainPath = (domainId: string, rest: string) =>
+  `/api/domains/${encodeURIComponent(domainId)}${rest}`;
+
+/** Where the domain is used: its steps and the agents that can search it. */
+export async function getDomainUsage(domainId: string): Promise<DomainUsageDetail> {
+  const res = await send(domainPath(domainId, "/usage"));
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  const body = (await res.json()) as unknown;
+  return {
+    steps: rows(obj(body).steps).flatMap((s) => normalizeDomainStep(s) ?? []),
+    agents: agentsOf(body),
+  };
+}
+
+/** The Add step dialog's teams with their paths and places. */
+export async function getStepPlaces(domainId: string): Promise<StepTeam[]> {
+  const res = await send(domainPath(domainId, "/step-places"));
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  return rows(obj((await res.json()) as unknown).teams).flatMap((raw) => {
+    const t = obj(raw);
+    if (!str(t.team_id)) return [];
+    const places = rows(t.places).flatMap((p) => {
+      const q = obj(p);
+      return str(q.after_node_id)
+        ? [{ after_node_id: str(q.after_node_id), after: str(q.after), next: strOrNull(q.next) }]
+        : [];
+    });
+    return [{ team_id: str(t.team_id), name: str(t.name), path: rows(t.path).map(str), places }];
+  });
+}
+
+/** Add the domain to a team as a Query domain step (DM-94). A 422 carries the dialog's copy. */
+export async function addDomainStep(
+  domainId: string,
+  body: { team_id: string; after_node_id: string; prompt: string; pass_to_spec: boolean },
+): Promise<AddedStep> {
+  const res = await send(domainPath(domainId, "/steps"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  const r = obj((await res.json()) as unknown);
+  const after = obj(r.after);
+  const next = obj(r.connected_to);
+  if (!str(r.node_id)) throw new ApiError(500, BACKEND_DOWN);
+  return {
+    node_id: str(r.node_id),
+    team_id: str(r.team_id) || body.team_id,
+    title: str(r.title),
+    after: { node_id: str(after.node_id), title: str(after.title) },
+    connected_to: str(next.node_id) ? { node_id: str(next.node_id), title: str(next.title) } : null,
+  };
+}
+
+/** Every agent of the account's teams and whether it can search the domain. */
+export async function listDomainAgents(domainId: string): Promise<DomainAgent[]> {
+  const res = await send(domainPath(domainId, "/agents"));
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  return agentsOf((await res.json()) as unknown);
+}
+
+/** Exactly `nodeIds` can search the domain afterwards (DM-96); the agents with access. */
+export async function setDomainAgents(domainId: string, nodeIds: string[]): Promise<DomainAgent[]> {
+  const res = await send(domainPath(domainId, "/agents"), {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ node_ids: nodeIds }),
+  });
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  return agentsOf((await res.json()) as unknown);
+}
