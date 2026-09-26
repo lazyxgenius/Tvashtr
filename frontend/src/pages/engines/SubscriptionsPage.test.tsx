@@ -5,9 +5,11 @@ import type { RunnerStatus } from "../../lib/api/engines";
 import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
 import { SUBSCRIPTION_DISCLOSURE } from "../../lib/engines";
 import {
+  KEYS,
   RUNNER_STALE,
   SUBS,
   installDesktop,
+  key,
   mockEnginesApi,
   renderEngines,
   resetEnginesState,
@@ -175,6 +177,85 @@ describe("Subscriptions on Desktop (Eng-Subs)", () => {
     ).toBeInTheDocument();
   });
 
+  it("while Refresh checks Claude: Checking…, a loading Checking, Disconnect off (EnF-ClaudeRefresh-1..3)", async () => {
+    const justNow = {
+      ...sub("claude", "connected", "Claude Pro"),
+      checked_at: new Date().toISOString(),
+    };
+    const statuses = [justNow, sub("grok", "connected", "SuperGrok"), sub("codex", "needs_login")];
+    api(RUNNER_FRESH, statuses);
+    const desktop = installDesktop(statuses);
+    let answer: (s: typeof justNow) => void = () => {};
+    desktop.engines.refresh.mockReturnValueOnce(new Promise((r) => (answer = r)));
+    renderEngines("subscriptions");
+    await loaded();
+    const claude = within(card("Claude"));
+    // Checked moments ago: the card says so before any Refresh.
+    expect(
+      claude.getByText("Runs while Tvashtr Desktop is open. Checked just now."),
+    ).toBeInTheDocument();
+    expect(
+      within(card("Grok")).getByText("Runs while Tvashtr Desktop is open."),
+    ).toBeInTheDocument();
+
+    fireEvent.click(claude.getByRole("button", { name: "Refresh" }));
+    expect(claude.getByText("Checking…")).toBeInTheDocument();
+    expect(
+      claude.getByText("Checking that Claude Code is installed and signed in."),
+    ).toBeInTheDocument();
+    expect(claude.getByRole("button", { name: "Checking" })).toBeDisabled();
+    expect(claude.getByRole("button", { name: "Disconnect" })).toBeDisabled();
+    expect(within(card("Grok")).getByRole("button", { name: "Disconnect" })).toBeEnabled();
+
+    act(() => answer({ ...justNow, checked_at: new Date().toISOString() }));
+    expect(await screen.findByText("Claude is connected. Checked just now.")).toBeInTheDocument();
+    expect(claude.getByText("Connected")).toBeInTheDocument();
+    expect(
+      claude.getByText("Runs while Tvashtr Desktop is open. Checked just now."),
+    ).toBeInTheDocument();
+    expect(claude.getByRole("button", { name: "Disconnect" })).toBeEnabled();
+  });
+
+  it("Claude on an API key: Connect asks for the plan, then names it (EnF-ClaudeApiKey-1..3)", async () => {
+    const statuses = [sub("claude", "api_key"), sub("grok", "connected", "SuperGrok"), SUBS[2]];
+    api(RUNNER_FRESH, statuses);
+    const desktop = installDesktop(statuses);
+    renderEngines("subscriptions");
+    await loaded();
+    const claude = within(card("Claude"));
+    expect(claude.getByText("Claude Code signed in with an API key")).toBeInTheDocument();
+    expect(claude.getByText("On an API key")).toBeInTheDocument();
+    expect(
+      claude.getByText(
+        "Claude Code is using an API key, not your Claude plan. Connect to sign in with your plan instead.",
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.click(claude.getByRole("button", { name: "Connect" }));
+    expect(desktop.engines.connect).toHaveBeenCalledWith("claude");
+    expect(await claude.findByText("Waiting for sign-in")).toBeInTheDocument();
+    expect(
+      claude.getByText(
+        "Finish signing in to Claude in the Terminal window that just opened. Choose your Claude plan, not an API key.",
+      ),
+    ).toBeInTheDocument();
+    expect(claude.getByRole("button", { name: "Checking" })).toBeDisabled();
+    expect(claude.getByRole("button", { name: "Cancel" })).toBeEnabled();
+
+    act(() =>
+      desktop.push({
+        ...sub("claude", "connected", "Claude Pro"),
+        checked_at: new Date().toISOString(),
+      }),
+    );
+    expect(await screen.findByText("Claude connected with Claude Pro.")).toBeInTheDocument();
+    expect(claude.getByText("Claude Pro · via Claude Code")).toBeInTheDocument();
+    expect(
+      claude.getByText("Runs while Tvashtr Desktop is open. Checked just now."),
+    ).toBeInTheDocument();
+    expect(claude.queryByText("Waiting for sign-in")).toBeNull();
+  });
+
   it("Codex: still not found, then found and Ready (Eng-Flow-Codex-1..3)", async () => {
     api();
     const desktop = installDesktop();
@@ -233,6 +314,42 @@ describe("Subscriptions on Desktop (Eng-Subs)", () => {
       within(toast as HTMLElement).getByRole("button", { name: "Add anthropic key" }),
     );
     expect(await screen.findByRole("button", { name: /^Provider anthropic/ })).toBeInTheDocument();
+  });
+});
+
+describe("Disconnect Claude with an anthropic key saved (ENG-42/43)", () => {
+  it("names the key that takes over, and the toast offers no key", async () => {
+    mockEnginesApi({
+      "GET /api/engines/subscriptions": { subscriptions: SUBS, runner: RUNNER_FRESH },
+      "GET /api/providers": { providers: [...KEYS, key("anthropic", "wQ3f", "2026-09-20")] },
+    });
+    const desktop = installDesktop();
+    desktop.engines.disconnect.mockResolvedValueOnce(sub("claude", "disconnected"));
+    renderEngines("subscriptions");
+    await loaded();
+
+    fireEvent.click(within(card("Claude")).getByRole("button", { name: "Disconnect" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Disconnect Claude?" });
+    expect(dialog).toHaveTextContent(
+      "Engineer in Indicator sprint team uses anthropic models. Without Claude, it runs on your anthropic API key •••• wQ3f. You stay signed in to Claude Code itself.",
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Disconnect" }));
+    const toast = (await screen.findByText("Claude disconnected.")).closest(".ds-toast")!;
+    expect(within(toast as HTMLElement).queryByRole("button", { name: /key/ })).toBeNull();
+    expect(within(card("Claude")).getByRole("button", { name: "Connect" })).toBeEnabled();
+  });
+
+  it("Cancel keeps Claude connected", async () => {
+    api();
+    const desktop = installDesktop();
+    renderEngines("subscriptions");
+    await loaded();
+    fireEvent.click(within(card("Claude")).getByRole("button", { name: "Disconnect" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Disconnect Claude?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(desktop.engines.disconnect).not.toHaveBeenCalled();
+    expect(within(card("Claude")).getByText("Connected")).toBeInTheDocument();
   });
 });
 

@@ -813,3 +813,8 @@
   gap: 8px;
   align-items: center;
 }
+/* The design's loading spinner is content-box (1em + its 1.5px border each side = 16px); the app's
+   global border-box shrinks it to 13px and the "Checking" label sits 2px left (EnF-ClaudeRefresh-2). */
+.eng-sub__actions .ds-btn__spin {
+  box-sizing: content-box;
+}

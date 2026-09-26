@@ -30,7 +30,8 @@ export interface CardUi {
   waitingFrom: SubscriptionCardState | null;
   /** A Refresh is in flight (ENG-33). */
   refreshing: boolean;
-  /** An explicit Refresh answered on this page → "… Checked just now." (ENG-29). */
+  /** An explicit Refresh answered on this page → "… Checked <when>." (ENG-29). A status checked
+   *  within the last minute says "Checked just now." without one (EnF-ClaudeRefresh-1). */
   refreshed: boolean;
   /** An explicit Refresh still found no CLI (ENG-40, front-end state). */
   stillNotFound: boolean;
@@ -165,6 +166,14 @@ export function disconnectedMessage(i: EngineInputs, sub: SubscriptionProviderId
 
 function checkedAgo(s: SubscriptionStatus): string {
   return s.checked_at ? formatRelativeTime(s.checked_at) || "just now" : "just now";
+}
+
+/** Desktop checked this CLI within the last minute (a launch probe, a sign-in or a Refresh). A
+ *  future stamp doesn't count. The page re-renders on its runner poll, so the claim ages out. */
+export function checkedJustNow(s: SubscriptionStatus, now = Date.now()): boolean {
+  if (!s.checked_at) return false;
+  const age = now - new Date(s.checked_at).getTime();
+  return age >= 0 && age < 60_000;
 }
 
 function connectedAccount(s: SubscriptionStatus): string {
@@ -318,7 +327,7 @@ function desktopState(i: EngineInputs, s: SubscriptionStatus, ui: CardUi): Body 
   }
 
   if (s.state === "connected") {
-    const checked = ui.refreshed ? ` Checked ${checkedAgo(s)}.` : "";
+    const checked = ui.refreshed || checkedJustNow(s) ? ` Checked ${checkedAgo(s)}.` : "";
     return {
       account: connectedAccount(s),
       badges: [badge("success", "Connected")],

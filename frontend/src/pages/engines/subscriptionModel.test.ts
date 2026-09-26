@@ -5,6 +5,7 @@ import { KEYS, USAGE, key, node, sampleInputs, sub } from "./enginesTestUtils";
 import {
   CONNECT_FAILED,
   IDLE_UI,
+  checkedJustNow,
   connectedToast,
   disconnectCopy,
   disconnectedMessage,
@@ -46,6 +47,26 @@ describe("subscription cards on Desktop (Eng-Subs, Eng-CardStates)", () => {
       kind: "text",
       text: "Runs while Tvashtr Desktop is open. Checked just now.",
     });
+  });
+
+  it("a status checked within the last minute says so without a Refresh (EnF-ClaudeRefresh-1)", () => {
+    const at = (ms: number) => ({
+      ...sub("claude", "connected", "Claude Pro"),
+      checked_at: new Date(Date.now() - ms).toISOString(),
+    });
+    expect(subscriptionCard(desktop, at(20_000)).message).toEqual({
+      kind: "text",
+      text: "Runs while Tvashtr Desktop is open. Checked just now.",
+    });
+    expect(subscriptionCard(desktop, at(120_000)).message).toEqual({
+      kind: "text",
+      text: "Runs while Tvashtr Desktop is open.",
+    });
+    const now = Date.parse("2026-09-26T09:00:30Z");
+    expect(checkedJustNow({ ...at(0), checked_at: "2026-09-26T09:00:00Z" }, now)).toBe(true);
+    expect(checkedJustNow({ ...at(0), checked_at: "2026-09-26T08:59:00Z" }, now)).toBe(false);
+    expect(checkedJustNow({ ...at(0), checked_at: "2026-09-26T09:05:00Z" }, now)).toBe(false);
+    expect(checkedJustNow({ ...at(0), checked_at: null }, now)).toBe(false);
   });
 
   it("Grok has no plan name, so its account line says Grok subscription (OQ-10)", () => {
