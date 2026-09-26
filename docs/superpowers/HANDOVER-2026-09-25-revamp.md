@@ -1,9 +1,68 @@
-# Handover — frontend revamp, round 1 (2026-09-25)
+# Handover — frontend revamp (round 1: 2026-09-25 · round 2: the revamp-e2e session, 2026-09-26)
 
-Branch: `claude/tender-maxwell-0wxvan`. Design: the Claude Design artifact
-https://claude.ai/artifact/V6THVh3i7RFjMUtuS2dskK ("Tvashtr Agent Panel Redesign").
+Design: the Claude Design artifact https://claude.ai/artifact/V6THVh3i7RFjMUtuS2dskK ("Tvashtr
+Agent Panel Redesign"). Round 2 works from the on-disk export `design/revamp-export/project` (486
+artboards, git-excluded), per the brief `prompts/revamp-e2e.md`.
 
-## Where things stand
+## Round 2 — revamp-e2e session (start here to resume)
+
+**Next:** ship Phase 1 (below) → then ship F2 Engines, F3 Toolkit › Tools + Secrets and F4 Toolkit
+› Skills + Memory in that order as their builders finish → F5 agent panel + canvas → F6 Focus +
+Docs → Domains → Desktop app screens → website → Phase 3 close-out.
+
+### Ship log (Ship Protocol in the brief; one row per ship)
+
+| Ship | Branch | main sha | Fly release | Desktop tag |
+|---|---|---|---|---|
+| Phase 0 — Desktop catch-up | — (tag only) | `ec9202b` | (no deploy) | `desktop-v0.3.0` — latest release; DMG's `dist-fe/assets/index-X7f-3U3l.js` = the local build = the live site |
+| Phase 1 — the core loop completes | `fix/entry-report` | recorded at the next ship | recorded at the next ship | `desktop-v0.4.0` |
+
+### Phase 1 — what shipped (`fix/entry-report`)
+- **The PM's closing message becomes the spec when it didn't write `REPORT.md`.** Live runs
+  e62d9995 … 99539c30 failed "entry node produced no REPORT.md": OpenAI PMs put the PRD in their
+  `finish` message or a plain reply. `openhands_adapter._payload_of` now keeps the agent's closing
+  words whole in `run_events` (`payload.message` for `finish`, `payload.content` for an agent reply;
+  capped at 100k chars; the 2,000-char feed previews are unchanged). A NEW DBOS step
+  `team_run.entry_closing_message_step` reads the newest closing event of THIS invocation (or a
+  Desktop-routed entry's final text on its job row) and records the run warning "The PM didn't save
+  REPORT.md, so its final message was used"; the workflow calls it only when the entry wrote no
+  REPORT.md and then versions the text exactly as REPORT.md would be. No REPORT.md and nothing usable
+  still fails as before. `agent_run_step`'s return shape is unchanged. Reproduced first:
+  `backend/tests/test_entry_closing_message.py` failed on the old code with the live error.
+- The run view's warning banner lists run notes in their own words (it used to head every warning
+  "N tools/skills didn't load").
+- **Privacy fix found by the Phase 1 review:** `GET /api/spike/run-events/{run_id}` returned any
+  run's events (agent thoughts, actions, terminal output) to any signed-in account. Now 404 unless
+  the run is yours. Reproduced first.
+- Live proof: `make demo-proof` C1–C12 PASS, real PR https://github.com/lazyxgenius/trade_mcp/pull/14
+  (run 0d4bb37d). In that run the PM wrote REPORT.md itself, so the fallback was not exercised live;
+  it is proven by the reproduction tests.
+- Known limits (review, verified real, deliberately not changed — both only fall back to today's
+  failure): (1) a backend crash while the PM's step runs → DBOS re-runs it, and the re-run's events
+  can collide with the crashed attempt's rows on `(run_id, invocation_id, seq)`, so the fallback may
+  miss (run fails as before) or use the crashed attempt's closing message (same PM, same round);
+  fixing it means changing how `agent_run_step` records events. (2) If the remote adapters' WebSocket
+  drops before the final event, the event never reaches `run_events` (the SDK's reconcile invokes no
+  callbacks), so the fallback can't fire.
+- Deploys that change `team_run.py` change the DBOS application version: runs in flight across such a
+  deploy are not resumed by the new code.
+
+### Round-2 working setup (for a session that resumes)
+- Builders run as Workflow scripts, one per area, each in its own worktree + database + ports, at most
+  3 at once: `.claude/worktrees/f2-engines` (`feat/revamp-f2-engines`, db `tvashtr_f2`, backend 8011,
+  e2e Vite 5181, parity Vite 5191), `f3-tools-secrets` (`feat/revamp-f3-tools-secrets`, `tvashtr_f3`,
+  8012/5182/5192), `f4-skills-memory` (`feat/revamp-f4-skills-memory`, `tvashtr_f4`, 8013/5183/5193).
+  Each worktree's untracked `.env` points at its own database and ports, and sets
+  `COMPOSE_FILE`/`COMPOSE_PROJECT_NAME` so the e2e scripts' `docker compose up -d` is a no-op on the
+  shared containers. Never run a builder against the default `tvashtr` database.
+- The whole design is rendered once: `design/revamp-export/render/png/<Name>.png|json` (PNG + parity
+  measurements), `render/outlines/<Name>.txt`, `render/areas.json` (every artboard assigned to
+  exactly one area: F2 60, F3 57 (+2 commentary boards), F4 46, F5 64, F6 17, Domains 86, Desktop
+  app 40, website 25; Home was round 1), `render/notes/<area>.md` (each area's builder notes).
+- Parity lines per area land in `docs/superpowers/parity/<area>.txt` (two lines per artboard: web and
+  Desktop).
+
+## Round 1 — where things stood at its end
 
 | Part | State |
 |---|---|
