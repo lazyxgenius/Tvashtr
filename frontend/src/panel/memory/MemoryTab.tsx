@@ -371,7 +371,7 @@ function NoteEditor({
   return (
     <li className="nd-mem__note nd-mem__note--edit" onKeyDown={onKeyDown}>
       <TextArea
-        aria-label="Note"
+        title="Note"
         rows={3}
         value={text}
         autoFocus
@@ -379,7 +379,7 @@ function NoteEditor({
       />
       <div className="nd-mem__edit-row">
         <Select
-          aria-label="Force"
+          title="Force"
           className="nd-mem__force"
           options={FORCE_OPTIONS}
           value={force}

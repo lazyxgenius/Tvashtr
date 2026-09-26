@@ -1,4 +1,4 @@
-import { AlertCircle, Check, CircleCheck } from "lucide-react";
+import { AlertCircle, Check, CircleCheck, Info } from "lucide-react";
 
 import { Button } from "../design-system/components";
 import { saveShortcutLabel } from "./saveShortcut";
@@ -80,6 +80,7 @@ export function SaveBar({
     <footer className="nd-foot">
       {memoryTab ? (
         <span className="nd-foot__status" role="status">
+          <Info size={13} strokeWidth={1.6} aria-hidden />
           Memory changes save right away
         </span>
       ) : saveState === "saved" ? (
