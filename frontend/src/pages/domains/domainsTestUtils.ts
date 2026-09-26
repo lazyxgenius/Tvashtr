@@ -184,6 +184,7 @@ export function detailView(
       key_saved: true,
     },
     last_question_at: null,
+    rereading: null,
     ...over,
   };
 }

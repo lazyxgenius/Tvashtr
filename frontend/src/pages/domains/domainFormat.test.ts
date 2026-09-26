@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  aboutMinutes,
   createLabel,
   deleteDomainInUse,
   deleteDomainText,
@@ -23,6 +24,9 @@ import {
   metaLine,
   pieceExcerpt,
   pieceSizeLabel,
+  pieceSizeOf,
+  rereadingBanner,
+  shownRereading,
   pickProblem,
   qualityLine,
   setupSteps,
@@ -263,8 +267,30 @@ describe("detail header (DM-32, DM-33)", () => {
     expect(metaLine(firstRead, NOW)).toBe(
       "3 files · read with OpenAI text-embedding-3-small · created just now",
     );
-    const full = detail({ state: "rereading", files: { ...support.files, ready: 0, waiting: 14 } });
-    expect(metaLine(full, NOW)).toContain("reading with OpenAI text-embedding-3-small");
+    // A new reading model: nothing is read with it yet (DmF-Embed-4); a piece-size re-read keeps
+    // the line (DmF-Piece-3).
+    const files = { ...support.files, ready: 0, waiting: 13, reading: 1 };
+    const model = detail({
+      state: "rereading",
+      files,
+      reading_model: { ...support.reading_model, label: "Gemini embedding-001" },
+      rereading: {
+        total: 14,
+        done: 0,
+        eta_seconds: 121,
+        reason: "reading_model",
+        run_tests_after: false,
+      },
+    });
+    expect(metaLine(model, NOW)).toBe("14 files · reading with Gemini embedding-001");
+    const pieces = detail({
+      state: "rereading",
+      files,
+      rereading: { total: 14, done: 0, eta_seconds: 121, reason: "files", run_tests_after: true },
+    });
+    expect(metaLine(pieces, NOW)).toBe(
+      "14 files · 1,212 pieces · read with OpenAI text-embedding-3-small · updated 2 hours ago",
+    );
   });
 });
 
@@ -514,5 +540,76 @@ describe("the delete dialogs (DM-15, DM-53, OQ-14)", () => {
     expect(list.counts).toEqual({ all: 1, ready: 1, reading: 0, needs_attention: 0 });
     expect(list.total_pieces).toBe(5);
     expect(detailWithout(detailView(support), [])).toEqual(detailView(support));
+  });
+});
+
+describe("re-reading (DmF-Embed-4, DmF-Piece-3)", () => {
+  const [support] = sampleDomains();
+  const files = { ...support.files, ready: 1, reading: 1, waiting: 12 };
+  const model = detailView(support, {
+    state: "rereading",
+    files,
+    reading_model: { ...support.reading_model, label: "Gemini embedding-001" },
+    rereading: {
+      total: 14,
+      done: 1,
+      eta_seconds: 117,
+      reason: "reading_model",
+      run_tests_after: false,
+    },
+  });
+  const pieces = detailView(support, {
+    state: "rereading",
+    files,
+    rereading: { total: 14, done: 0, eta_seconds: 121, reason: "files", run_tests_after: true },
+  });
+  const oneFile = detailView(support, {
+    state: "rereading",
+    files: { ...support.files, ready: 13, reading: 1 },
+    rereading: { total: 1, done: 0, eta_seconds: 5, reason: "files", run_tests_after: false },
+  });
+  const footer = (d: typeof model) =>
+    filesFooter({
+      files: d.files,
+      list: filesList([]),
+      shown: 14,
+      query: "",
+      filter: "all",
+      firstRead: false,
+      rereading: shownRereading(d),
+      pieceSize: 400,
+    }).text;
+
+  it("badges a re-read of every file; a single file keeps the settled badge (DmF-Fail-3)", () => {
+    expect(detailBadge(model)).toEqual({
+      variant: "warning",
+      dot: true,
+      label: "Ask paused while re-reading",
+    });
+    expect(detailBadge(pieces)).toEqual({
+      variant: "info",
+      dot: true,
+      label: "Re-reading 14 files",
+    });
+    expect(shownRereading(oneFile)).toBeNull();
+    expect(detailBadge(oneFile).label).toBe("Ready");
+  });
+
+  it("writes the banner and the footer", () => {
+    expect(rereadingBanner(model)).toBe(
+      "Re-reading with Gemini embedding-001 · about 2 minutes left. Ask is paused until it’s done.",
+    );
+    expect(rereadingBanner(pieces)).toBeNull();
+    expect(footer(model)).toBe("Re-reading 14 files · 1 done");
+    expect(footer(pieces)).toBe(
+      "Re-reading 14 files with 400-character pieces · tests run when done",
+    );
+  });
+
+  it("rounds the estimate to whole minutes and reads the piece size", () => {
+    expect(aboutMinutes(121)).toBe("about 2 minutes");
+    expect(aboutMinutes(20)).toBe("about 1 minute");
+    expect(pieceSizeOf({ chunking: { size: 400 } })).toBe(400);
+    expect(pieceSizeOf({})).toBe(0);
   });
 });

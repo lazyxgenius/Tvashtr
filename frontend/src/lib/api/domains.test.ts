@@ -67,7 +67,20 @@ describe("Domains clients (G2)", () => {
     });
     expect(d?.setup).toEqual({ key: true, files_read: true, tested: false, used: false });
     expect(d?.answer_model.resolved).toBeNull();
+    expect(d?.rereading).toBeNull();
     expect(normalizeDomainDetail({ name: "no id" })).toBeNull();
+    const rereading = normalizeDomainDetail({
+      domain_id: "x",
+      name: "Support docs",
+      rereading: { total: 14, done: 1, eta_seconds: 121, reason: "reading_model" },
+    })?.rereading;
+    expect(rereading).toEqual({
+      total: 14,
+      done: 1,
+      eta_seconds: 121,
+      reason: "reading_model",
+      run_tests_after: false,
+    });
   });
 
   it("reports a missing domain as a 404 ApiError", async () => {

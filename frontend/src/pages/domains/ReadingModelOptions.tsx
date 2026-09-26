@@ -8,6 +8,7 @@ import { type KeyboardEvent, useRef } from "react";
 import { Check, CircleCheck } from "lucide-react";
 
 import { READING_MODELS, keySavedText, missingKeyText } from "./readingModels";
+import "./newDomain.css";
 
 export function KeySavedTag({ provider }: { provider: string }) {
   return (

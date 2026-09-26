@@ -88,7 +88,7 @@ describe("Settings (Dm-Settings, DmF-Tune-1…4)", () => {
         "Support · 600-character pieces",
       ),
     );
-    expect(within(read).getByRole("combobox", { name: "Reading model" })).toHaveDisplayValue(
+    expect(within(read).getByRole("button", { name: "Reading model" })).toHaveTextContent(
       "OpenAI text-embedding-3-small",
     );
     expect(await within(read).findByText("openai key saved")).toBeInTheDocument();
@@ -241,6 +241,19 @@ describe("Settings (Dm-Settings, DmF-Tune-1…4)", () => {
     expect(within(bar()).getByText("3 unsaved changes")).toBeInTheDocument();
     expect(within(bar()).getByText("Existing files keep 600")).toBeInTheDocument();
     fireEvent.click(within(bar()).getByRole("button", { name: "Save" }));
+    // DM-90: asks whether to re-read the existing files; without, they keep their pieces.
+    const dialog = screen.getByRole("dialog", {
+      name: "Apply the new piece size to existing files?",
+    });
+    expect(
+      within(dialog).getByText(
+        "New files will use 500-character pieces. Your 14 existing files still use 600 until they’re read again.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByLabelText("Re-read all 14 files now (about 2 minutes)"));
+    expect(within(dialog).queryByLabelText("Run tests afterwards")).toBeNull();
+    expect(patches(calls)).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     expect(
       await screen.findByText("Saved. New files use 500-character pieces."),
     ).toBeInTheDocument();
@@ -248,6 +261,42 @@ describe("Settings (Dm-Settings, DmF-Tune-1…4)", () => {
       template: "legal",
       config: { ...CONFIG, chunking: { strategy: "fixed", size: 500, overlap: 80 } },
     });
+    expect(calls.some((c) => c.path.endsWith("/reread"))).toBe(false);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(window.location.hash).toBe("#/domains/d-support/settings");
+  });
+
+  it("a new piece size can re-read every file now and run the tests after (DmF-Piece-1…3)", async () => {
+    const calls = routes({
+      "POST /api/domains/d-support/reread": {
+        reading: 14,
+        run_tests_after: true,
+        state: "started",
+      },
+    });
+    renderSettings();
+    fireEvent.change(await screen.findByLabelText("Piece size"), { target: { value: "400" } });
+    expect(within(bar()).getByText("1 unsaved change · Piece size")).toBeInTheDocument();
+    expect(within(bar()).getByText("Existing files keep 600")).toBeInTheDocument();
+    fireEvent.click(within(bar()).getByRole("button", { name: "Save" }));
+    const dialog = screen.getByRole("dialog", {
+      name: "Apply the new piece size to existing files?",
+    });
+    expect(
+      within(dialog).getByLabelText("Re-read all 14 files now (about 2 minutes)"),
+    ).toBeChecked();
+    expect(within(dialog).getByLabelText("Run tests afterwards")).toBeChecked();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/domains/d-support"));
+    expect(patches(calls)[0]?.body).toEqual({
+      config: { ...CONFIG, chunking: { strategy: "fixed", size: 400, overlap: 100 } },
+    });
+    expect(calls.find((c) => c.method === "POST" && c.path.endsWith("/reread"))?.body).toEqual({
+      run_tests_after: true,
+    });
+    expect(
+      await screen.findByText("Saved. Re-reading 14 files, then running 12 tests."),
+    ).toBeInTheDocument();
   });
 
   it("checks the numbers before saving", async () => {
@@ -281,27 +330,67 @@ describe("Settings (Dm-Settings, DmF-Tune-1…4)", () => {
     expect(bar()).toBeInTheDocument();
   });
 
-  it("another reading model re-reads every file, and needs its key (DM-88/89)", async () => {
+  it("another reading model warns, asks, and re-reads every file (DmF-Embed-1…3)", async () => {
     const calls = routes({
-      "POST /api/domains/d-support/reread": { reading: 14, state: "rereading" },
+      "PATCH /api/domains/d-support": {
+        domain_id: "d-support",
+        reread: { needed: "required", reason: "reading_model" },
+      },
     });
     renderSettings();
-    const reading = await screen.findByRole("combobox", { name: "Reading model" });
     await screen.findByText("openai key saved");
-    fireEvent.change(reading, { target: { value: "gemini/gemini-embedding-001" } });
+    const pick = (name: RegExp) => {
+      fireEvent.click(screen.getByRole("button", { name: "Reading model" }));
+      const list = screen.getByRole("listbox", { name: "Reading model" });
+      expect(within(list).getAllByRole("option")).toHaveLength(5);
+      fireEvent.click(within(list).getByRole("option", { name }));
+    };
+    // DM-82: the listbox names each model, its size and tagline, and the key state.
+    fireEvent.click(screen.getByRole("button", { name: "Reading model" }));
+    const list = screen.getByRole("listbox", { name: "Reading model" });
+    expect(within(list).getByRole("option", { selected: true })).toHaveTextContent(
+      "OpenAI text-embedding-3-small1536 · defaultkey saved",
+    );
+    expect(within(list).getByText("No huggingface token")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+
+    // No gemini key: the warning says so and Save and re-read waits for it (DM-88).
+    pick(/^Gemini embedding-001/);
+    const warn = screen.getByRole("status");
+    expect(warn).toHaveTextContent(
+      "This re-reads all 14 files with Gemini embedding-001 (about 2 minutes). Ask and team lookups pause until it’s done. You don’t have a gemini key yet.",
+    );
+    expect(within(warn).getByRole("button", { name: "Add gemini key" })).toBeInTheDocument();
+    expect(within(bar()).getByText("1 unsaved change · Reading model")).toBeInTheDocument();
     expect(within(bar()).getByText("Re-reads 14 files")).toBeInTheDocument();
     expect(screen.getByText("No gemini key")).toBeInTheDocument();
     expect(within(bar()).getByRole("button", { name: "Save and re-read" })).toBeDisabled();
+
     // The same weights through OpenRouter need no re-read (OQ-17).
-    fireEvent.change(reading, { target: { value: "openrouter/openai/text-embedding-3-small" } });
+    pick(/^OpenRouter text-embedding-3-small/);
     expect(within(bar()).getByText("No re-read needed")).toBeInTheDocument();
-    fireEvent.change(reading, { target: { value: "openai/text-embedding-ada-002" } });
+    expect(screen.queryByRole("status")).toBeNull();
+
+    pick(/^OpenAI text-embedding-ada-002/);
+    expect(screen.getByRole("status")).toHaveTextContent("Your openai key is saved.");
     fireEvent.click(within(bar()).getByRole("button", { name: "Save and re-read" }));
+    const dialog = screen.getByRole("dialog", { name: "Re-read all 14 files?" });
+    expect(dialog).toHaveTextContent(
+      "Search compares pieces read by the same model, so every file is read again with OpenAI text-embedding-ada-002. It takes about 2 minutes. Teams that look up Support docs meanwhile wait.",
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(patches(calls)).toHaveLength(0);
+    fireEvent.click(within(bar()).getByRole("button", { name: "Save and re-read" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save and re-read" }),
+    );
     await waitFor(() => expect(window.location.hash).toBe("#/domains/d-support"));
     expect(patches(calls)[0]?.body).toMatchObject({
       config: { embedding: { model: "openai/text-embedding-ada-002" } },
     });
-    expect(calls.find((c) => c.method === "POST" && c.path.endsWith("/reread"))?.body).toEqual({});
+    // The server started the re-read with the save.
+    expect(calls.some((c) => c.path.endsWith("/reread"))).toBe(false);
   });
 
   it("Delete domain… opens the delete dialog", async () => {

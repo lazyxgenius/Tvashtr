@@ -66,14 +66,22 @@ export function readingModel(slug: string): ReadingModel {
   return { slug: norm, label: norm, provider, dim: 0, tagline: "" };
 }
 
-/**
- * Two slugs name the same weights when they differ only by the OpenRouter route (OQ-17): switching
- * between them needs no re-read. "text-embedding-3-small" ≡ "openrouter/openai/text-embedding-3-small".
- */
-export function sameReadingWeights(a: string, b: string): boolean {
-  const weights = (s: string) =>
-    normalizeEmbeddingModel(normalizeEmbeddingModel(s).replace(/^openrouter\//i, "")).toLowerCase();
-  return weights(a) === weights(b);
+/** Whether a reading-model switch keeps the vectors (OQ-17; the rule lives in `lib/domains`). */
+export { sameEmbeddingWeights as sameReadingWeights } from "../../lib/domains";
+
+/** Pieces a reading model reads a second — mirrors backend `domain_embedding.READ_PIECES_PER_SECOND`. */
+const PIECES_PER_SECOND: Record<string, number> = {
+  openai: 10,
+  openrouter: 10,
+  gemini: 10,
+  huggingface: 2,
+};
+
+/** Seconds `slug` needs to read `pieces` pieces — the "about 2 minutes" before a re-read starts. */
+export function readSeconds(pieces: number, slug: string): number {
+  if (pieces <= 0) return 0;
+  const rate = PIECES_PER_SECOND[readingModel(slug).provider] ?? 10;
+  return Math.max(1, Math.round(pieces / rate));
 }
 
 /** Hugging Face calls its key a token. */

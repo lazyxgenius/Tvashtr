@@ -7,6 +7,7 @@ import {
   keySavedToast,
   missingKeyText,
   readingExamples,
+  readSeconds,
   readingModel,
   sameReadingWeights,
 } from "./readingModels";
@@ -58,5 +59,15 @@ describe("reading models (DM-82)", () => {
     expect(sameReadingWeights("openai/text-embedding-3-small", "gemini/gemini-embedding-001")).toBe(
       false,
     );
+  });
+});
+
+describe("readSeconds (the re-read estimate)", () => {
+  it("reads at the backend's pace per provider", () => {
+    expect(readSeconds(1212, "gemini/gemini-embedding-001")).toBe(121);
+    expect(readSeconds(1212, "text-embedding-3-small")).toBe(121);
+    expect(readSeconds(1212, "huggingface/BAAI/bge-small-en-v1.5")).toBe(606);
+    expect(readSeconds(0, "text-embedding-3-small")).toBe(0);
+    expect(readSeconds(1, "text-embedding-3-small")).toBe(1);
   });
 });

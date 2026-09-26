@@ -110,6 +110,27 @@
   max-width: 100%;
 }
 
+/* Reading model: the Select look at rest, DmF-Embed-1's trigger + 460px listbox open. */
+.dm-rmselect {
+  position: relative;
+  width: 340px;
+  max-width: 100%;
+}
+.dm-rmselect__pop {
+  position: absolute;
+  top: 46px;
+  left: 0;
+  width: 460px;
+  max-width: calc(100vw - 32px);
+  z-index: 20;
+}
+
+/* The re-read warning above the cards (DM-88, DmF-Embed-2). */
+.dm-set__warn-action {
+  margin-left: auto;
+  align-self: center;
+}
+
 /* Search by: the design's pill segmented control, built to fit its cell (the frame's overflows). */
 .dm-seg {
   display: inline-flex;

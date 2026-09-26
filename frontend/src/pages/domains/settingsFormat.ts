@@ -5,8 +5,8 @@
  */
 import type { DomainTemplate } from "../../lib/api/domains";
 import { normalizeEmbeddingModel } from "../../lib/domains";
-import { formatNumber, pieceSizeLabel, templateLabel } from "./domainFormat";
-import { sameReadingWeights } from "./readingModels";
+import { aboutMinutes, formatNumber, pieceSizeLabel, templateLabel } from "./domainFormat";
+import { keyWord, readSeconds, readingModel, sameReadingWeights } from "./readingModels";
 
 export type SearchMode = "dense" | "lexical" | "hybrid";
 
@@ -216,4 +216,72 @@ export function dangerText(n: number, inUse: string | null): string {
       ? "Removes its chat and test questions."
       : `Removes its ${formatNumber(n)} file${n === 1 ? "" : "s"}, pieces, chat and test questions.`;
   return inUse ? `${what} ${inUse}` : what;
+}
+
+const allFiles = (n: number) => (n === 1 ? "its file" : `all ${formatNumber(n)} files`);
+
+/** How long re-reading the domain takes with `slug`, from the pieces it has now. */
+export function rereadTime(pieces: number, slug: string): string {
+  return aboutMinutes(readSeconds(pieces, slug));
+}
+
+/**
+ * The warn banner once a reading model with other weights is picked (DM-88): the bold lead and the
+ * rest — "This re-reads all 14 files" / " with Gemini embedding-001 (about 2 minutes). Ask and team
+ * lookups pause until it’s done. Your gemini key is saved."
+ */
+export function rereadWarning(
+  files: number,
+  pieces: number,
+  slug: string,
+  keySaved: boolean,
+): { lead: string; rest: string } {
+  const m = readingModel(slug);
+  const key = `${m.provider} ${keyWord(m.provider)}`;
+  return {
+    lead: `This re-reads ${allFiles(files)}`,
+    rest:
+      ` with ${m.label} (${rereadTime(pieces, slug)}). Ask and team lookups pause until it’s done. ` +
+      (keySaved
+        ? `Your ${key} is saved.`
+        : `You don’t have ${/^[aeiou]/i.test(key) ? "an" : "a"} ${key} yet.`),
+  };
+}
+
+/** The re-read confirm (DM-89): its title and text. */
+export function rereadDialog(
+  files: number,
+  pieces: number,
+  slug: string,
+  name: string,
+): { title: string; text: string } {
+  const m = readingModel(slug);
+  return {
+    title: files === 1 ? "Re-read its file?" : `Re-read all ${formatNumber(files)} files?`,
+    text:
+      `Search compares pieces read by the same model, so every file is read again with ${m.label}. ` +
+      `It takes ${rereadTime(pieces, slug)}. Teams that look up ${name} meanwhile wait.`,
+  };
+}
+
+/** "New files will use 400-character pieces. Your 14 existing files still use 600 until …" (DM-90). */
+export function pieceDialogText(size: number, oldSize: number, files: number): string {
+  const existing =
+    files === 1 ? "Your existing file" : `Your ${formatNumber(files)} existing files`;
+  return (
+    `New files will use ${pieceSizeLabel(size)}. ${existing} still ` +
+    `${files === 1 ? "uses" : "use"} ${formatNumber(oldSize)} until ${files === 1 ? "it’s" : "they’re"} read again.`
+  );
+}
+
+/** The toast after saving a piece-size change (DM-90). */
+export function pieceSavedToast(
+  size: number,
+  reread: { files: number; tests: number } | null,
+): string {
+  if (!reread) return `Saved. New files use ${pieceSizeLabel(size)}.`;
+  const files = `Re-reading ${formatNumber(reread.files)} file${reread.files === 1 ? "" : "s"}`;
+  return reread.tests > 0
+    ? `Saved. ${files}, then running ${formatNumber(reread.tests)} test${reread.tests === 1 ? "" : "s"}.`
+    : `Saved. ${files}.`;
 }

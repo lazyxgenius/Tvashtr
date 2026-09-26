@@ -6,7 +6,7 @@
  * Delete file… asks first (DeleteFileDialog), then hands the file to the page's deferred delete.
  */
 import { type DragEvent, useEffect, useRef, useState } from "react";
-import { Upload } from "lucide-react";
+import { RefreshCw, Upload } from "lucide-react";
 
 import { Button, Input, useToast } from "../../design-system/components";
 import {
@@ -19,7 +19,16 @@ import {
   rereadDomainFiles,
 } from "../../lib/api/domains";
 import { navigate } from "../../lib/nav";
-import { UPLOAD_ACCEPT, filesFooter, formatNumber, listWithout, showOptions } from "./domainFormat";
+import {
+  UPLOAD_ACCEPT,
+  filesFooter,
+  formatNumber,
+  listWithout,
+  pieceSizeOf,
+  rereadingBanner,
+  showOptions,
+  shownRereading,
+} from "./domainFormat";
 import { DeleteFileDialog } from "./DeleteFileDialog";
 import { DropOverlay } from "./DropOverlay";
 import { FilePreviewSheet } from "./FilePreviewSheet";
@@ -192,8 +201,11 @@ export function SourcesTab({
           filter,
           firstRead: !detail.setup.files_read,
           local: { uploading: rows.uploading, rejected: rows.rejected },
+          rereading: shownRereading(detail),
+          pieceSize: pieceSizeOf(detail.config),
         })
       : null;
+  const banner = rereadingBanner(detail);
 
   return (
     <div
@@ -245,6 +257,14 @@ export function SourcesTab({
           }}
         />
       </div>
+      {banner && (
+        <div className="dm-callout dm-callout--info" role="status">
+          <span className="dm-callout__icon">
+            <RefreshCw size={14} strokeWidth={1.6} aria-hidden />
+          </span>
+          <span className="dm-callout__text">{banner}</span>
+        </div>
+      )}
       <div className="dm-drophint">
         <Upload className="dm-drophint__icon" size={15} strokeWidth={1.6} aria-hidden />
         <span>

@@ -12,6 +12,7 @@ import type {
   DomainFiles,
   DomainFilesList,
   DomainListItem,
+  DomainRereading,
   DomainState,
 } from "../../lib/api/domains";
 
@@ -211,6 +212,38 @@ function inFlight(d: DomainListItem): number {
   return d.files.reading + d.files.waiting;
 }
 
+/**
+ * The re-read the header, the Sources banner and footer speak of (DmF-Embed-4, DmF-Piece-3): one
+ * for a new reading model, or one of several files (Settings' piece size, a picked few). A single
+ * "Re-read this file" is left to its row (DmF-Fail-3 keeps "Ready").
+ */
+export function shownRereading(d: DomainDetailView): DomainRereading | null {
+  const r = d.rereading;
+  return r && (r.reason === "reading_model" || r.total > 1) ? r : null;
+}
+
+/** The piece size files are read with now (`config.chunking.size`; 0 when unknown). */
+export function pieceSizeOf(config: Record<string, unknown>): number {
+  const chunking = config.chunking;
+  const size =
+    chunking && typeof chunking === "object" ? (chunking as Record<string, unknown>).size : null;
+  return typeof size === "number" && size > 0 ? size : 0;
+}
+
+/** "about 2 minutes" (DM-88/89/90): whole minutes, at least one. */
+export function aboutMinutes(seconds: number): string {
+  const m = Math.max(1, Math.round(seconds / 60));
+  return `about ${m} minute${m === 1 ? "" : "s"}`;
+}
+
+/** The Sources banner while a new reading model is read (DmF-Embed-4). */
+export function rereadingBanner(d: DomainDetailView): string | null {
+  const r = shownRereading(d);
+  if (r?.reason !== "reading_model") return null;
+  const model = d.reading_model.label || d.reading_model.slug;
+  return `Re-reading with ${model} · ${aboutMinutes(r.eta_seconds)} left. Ask is paused until it’s done.`;
+}
+
 /** The detail header's status badge (DM-32). */
 export function detailBadge(d: DomainDetailView): {
   variant: BadgeVariant;
@@ -218,6 +251,12 @@ export function detailBadge(d: DomainDetailView): {
   label: string;
 } {
   const { files } = d;
+  const rereading = shownRereading(d);
+  if (rereading) {
+    return rereading.reason === "reading_model"
+      ? { variant: "warning", dot: true, label: "Ask paused while re-reading" }
+      : { variant: "info", dot: true, label: `Re-reading ${filesCount(rereading.total)}` };
+  }
   // After the first read, reading a few files (new ones, or one re-read) doesn't pause Ask: the
   // badge keeps the other files' state (OQ-5: Fail-3 and Drag-2/3 stay "Ready").
   const partial = d.setup.files_read && d.pieces > 0 && inFlight(d) < files.total;
@@ -265,13 +304,14 @@ export function detailBadge(d: DomainDetailView): {
 
 /** The header's meta line (DM-33). */
 export function metaLine(d: DomainDetailView, now: Date = new Date()): string {
+  const model = d.reading_model.label || d.reading_model.slug;
+  // A new reading model: nothing is read with it yet (DmF-Embed-4).
+  if (shownRereading(d)?.reason === "reading_model") {
+    return `${filesCount(d.files.total)} · reading with ${model}`;
+  }
   const parts = [filesCount(d.files.total)];
   if (d.setup.files_read && d.pieces > 0) parts.push(plural(d.pieces, "piece", "pieces"));
-  const model = d.reading_model.label || d.reading_model.slug;
-  if (model) {
-    const fullReread = d.state === "rereading" && inFlight(d) === d.files.total;
-    parts.push(`${fullReread ? "reading" : "read"} with ${model}`);
-  }
+  if (model) parts.push(`read with ${model}`);
   const created = new Date(d.created_at).getTime();
   if (!Number.isNaN(created) && now.getTime() - created < 60_000) parts.push("created just now");
   else {
@@ -403,6 +443,8 @@ export function filesFooter({
   filter,
   firstRead,
   local = { uploading: 0, rejected: 0 },
+  rereading = null,
+  pieceSize = 0,
 }: {
   files: DomainFiles;
   list: DomainFilesList;
@@ -412,6 +454,9 @@ export function filesFooter({
   firstRead: boolean;
   /** This browser's rows: files still uploading, and files rejected before upload (DM-48). */
   local?: { uploading: number; rejected: number };
+  /** The re-read the header shows (`shownRereading`), and the piece size files are read with. */
+  rereading?: DomainRereading | null;
+  pieceSize?: number;
 }): { text: string; showAll: boolean } {
   const n = list.counts.all + local.uploading + local.rejected;
   const q = query.trim();
@@ -431,6 +476,14 @@ export function filesFooter({
       )}`,
       showAll: false,
     };
+  }
+  if (rereading) {
+    // "Re-reading 14 files · 1 done" / "… with 400-character pieces · tests run when done".
+    let text = `Re-reading ${filesCount(rereading.total)}`;
+    if (rereading.reason === "files" && pieceSize > 0) text += ` with ${pieceSizeLabel(pieceSize)}`;
+    if (rereading.done > 0) text += ` · ${formatNumber(rereading.done)} done`;
+    if (rereading.run_tests_after) text += " · tests run when done";
+    return { text, showAll: false };
   }
   const total = filesCount(n);
   const busy = files.reading + files.waiting;

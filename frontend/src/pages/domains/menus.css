@@ -134,6 +134,15 @@
   line-height: 1.55;
   color: var(--ink-600);
 }
+/* Warn (amber) and info (blue) banners: the re-read warning and the re-reading banner (G10). */
+.dm-callout--warn {
+  background: var(--amber-100);
+  color: #6b4a1f;
+}
+.dm-callout--info {
+  background: var(--blue-100);
+  color: #2f4f6f;
+}
 .dm-callout__icon {
   display: inline-flex;
   flex: none;

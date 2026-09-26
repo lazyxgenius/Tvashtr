@@ -16,7 +16,13 @@ import { Badge, Button, Tabs, useToast } from "../../design-system/components";
 import type { DomainDetailView } from "../../lib/api/domains";
 import { type DomainTab, navigate } from "../../lib/nav";
 import { refreshBadges, useNavBadges } from "../../lib/workspaceStatus";
-import { detailBadge, detailWithout, metaLine, templateLabel } from "./domainFormat";
+import {
+  detailBadge,
+  detailWithout,
+  metaLine,
+  shownRereading,
+  templateLabel,
+} from "./domainFormat";
 import { AskTab } from "./AskTab";
 import { DomainMenu } from "./DomainMenu";
 import { QualityTab } from "./QualityTab";
@@ -178,7 +184,8 @@ export function DomainDetailPage({
       {!detail.setup.files_read ? (
         <SetupStrip detail={detail} />
       ) : (
-        tab === "sources" && <SummaryStrip detail={detail} />
+        // A re-read of every file hides the "14 of 14 files read" strip (DmF-Embed-4, DmF-Piece-3).
+        tab === "sources" && !shownRereading(detail) && <SummaryStrip detail={detail} />
       )}
 
       <div className="dm-tabs">

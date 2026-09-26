@@ -375,6 +375,85 @@ describe("The Sources table (DM-41…DM-47)", () => {
   });
 });
 
+describe("Re-reading every file (DmF-Embed-4, DmF-Piece-3)", () => {
+  const rereadFiles = [
+    fileItem("refund-policy.md", { pieces: 42 }),
+    fileItem("billing-faq.pdf", { phase: "rereading", pieces: null, progress: 0.91 }),
+    fileItem("getting-started.md", { phase: "waiting", pieces: null }),
+  ];
+  const busy = { ...support.files, ready: 1, reading: 1, waiting: 12 };
+
+  it("a new reading model pauses Ask, says so and counts the files done", async () => {
+    mockApi(
+      routes({
+        "GET /api/domains/d-support": {
+          ...SUPPORT,
+          state: "rereading",
+          files: busy,
+          pieces: 42,
+          reading_model: { ...SUPPORT.reading_model, label: "Gemini embedding-001" },
+          rereading: {
+            total: 14,
+            done: 1,
+            eta_seconds: 117,
+            reason: "reading_model",
+            run_tests_after: false,
+          },
+        },
+        "GET /api/domains/d-support/documents": filesList(rereadFiles),
+      }),
+    );
+    renderPage();
+    const h1 = await screen.findByRole("heading", { level: 1, name: "Support docs" });
+    const head = h1.closest("header") as HTMLElement;
+    expect(within(head).getByText("Ask paused while re-reading")).toBeInTheDocument();
+    expect(
+      within(head).getByText("14 files · reading with Gemini embedding-001"),
+    ).toBeInTheDocument();
+    // The "14 of 14 files read" strip would be wrong now.
+    expect(screen.queryByLabelText("Summary")).toBeNull();
+    expect(
+      await screen.findByText(
+        "Re-reading with Gemini embedding-001 · about 2 minutes left. Ask is paused until it’s done.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(row("billing-faq.pdf")).getByText("Re-reading 91%")).toBeInTheDocument();
+    expect(within(row("getting-started.md")).getByText("Waiting to read")).toBeInTheDocument();
+    expect(await screen.findByText("Re-reading 14 files · 1 done")).toBeInTheDocument();
+  });
+
+  it("a new piece size re-reads with Ask on and the tests queued", async () => {
+    mockApi(
+      routes({
+        "GET /api/domains/d-support": {
+          ...SUPPORT,
+          state: "rereading",
+          files: { ...busy, ready: 0, waiting: 13 },
+          config: { chunking: { strategy: "fixed", size: 400, overlap: 100 } },
+          rereading: {
+            total: 14,
+            done: 0,
+            eta_seconds: 121,
+            reason: "files",
+            run_tests_after: true,
+          },
+        },
+        "GET /api/domains/d-support/documents": filesList(rereadFiles),
+      }),
+    );
+    renderPage();
+    const h1 = await screen.findByRole("heading", { level: 1, name: "Support docs" });
+    const head = h1.closest("header") as HTMLElement;
+    expect(within(head).getByText("Re-reading 14 files")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Re-reading 14 files with 400-character pieces · tests run when done",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Ask is paused/)).toBeNull();
+  });
+});
+
 describe("Adding files (DmF-Drag-1…4)", () => {
   const MB = 1024 * 1024;
   const sized = (name: string, size: number) => {

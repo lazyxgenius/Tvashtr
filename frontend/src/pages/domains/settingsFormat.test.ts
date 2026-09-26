@@ -6,6 +6,10 @@ import {
   dangerText,
   draftOf,
   fieldErrors,
+  pieceDialogText,
+  pieceSavedToast,
+  rereadDialog,
+  rereadWarning,
   saveImpact,
   templateOption,
   widerHelper,
@@ -160,5 +164,39 @@ describe("Settings words", () => {
       "Removes its 1 file, pieces, chat and test questions. Teams that use it as a step can’t run until you pick another domain.",
     );
     expect(dangerText(0, null)).toBe("Removes its chat and test questions.");
+  });
+});
+
+describe("re-read copy (DM-88…DM-90)", () => {
+  it("warns before a new reading model re-reads every file", () => {
+    expect(rereadWarning(14, 1212, "gemini/gemini-embedding-001", true)).toEqual({
+      lead: "This re-reads all 14 files",
+      rest: " with Gemini embedding-001 (about 2 minutes). Ask and team lookups pause until it’s done. Your gemini key is saved.",
+    });
+    expect(rereadWarning(1, 40, "huggingface/BAAI/bge-small-en-v1.5", false)).toEqual({
+      lead: "This re-reads its file",
+      rest: " with Hugging Face BGE-small (free) (about 1 minute). Ask and team lookups pause until it’s done. You don’t have a huggingface token yet.",
+    });
+  });
+
+  it("asks before re-reading", () => {
+    expect(rereadDialog(14, 1212, "gemini/gemini-embedding-001", "Support docs")).toEqual({
+      title: "Re-read all 14 files?",
+      text: "Search compares pieces read by the same model, so every file is read again with Gemini embedding-001. It takes about 2 minutes. Teams that look up Support docs meanwhile wait.",
+    });
+  });
+
+  it("words the piece-size choice and its toast", () => {
+    expect(pieceDialogText(400, 600, 14)).toBe(
+      "New files will use 400-character pieces. Your 14 existing files still use 600 until they’re read again.",
+    );
+    expect(pieceDialogText(400, 600, 1)).toBe(
+      "New files will use 400-character pieces. Your existing file still uses 600 until it’s read again.",
+    );
+    expect(pieceSavedToast(400, { files: 14, tests: 12 })).toBe(
+      "Saved. Re-reading 14 files, then running 12 tests.",
+    );
+    expect(pieceSavedToast(400, { files: 14, tests: 0 })).toBe("Saved. Re-reading 14 files.");
+    expect(pieceSavedToast(1000, null)).toBe("Saved. New files use 1,000-character pieces.");
   });
 });

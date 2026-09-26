@@ -232,10 +232,36 @@ export interface DomainAnswerModel {
   key_saved: boolean;
 }
 
+/**
+ * The re-read still running (G10; DmF-Embed-4, DmF-Piece-3): its files, how many are done, the
+ * estimate, why (`reading_model` = a new reading model, asking is paused) and whether the tests run
+ * when it's done.
+ */
+export interface DomainRereading {
+  total: number;
+  done: number;
+  eta_seconds: number;
+  reason: "reading_model" | "files";
+  run_tests_after: boolean;
+}
+
 export interface DomainDetailView extends DomainListItem {
   setup: DomainSetup;
   answer_model: DomainAnswerModel;
   last_question_at: string | null;
+  rereading: DomainRereading | null;
+}
+
+function normalizeRereading(raw: unknown): DomainRereading | null {
+  const r = obj(raw);
+  if (typeof r.total !== "number" || r.total < 1) return null;
+  return {
+    total: count(r.total),
+    done: count(r.done),
+    eta_seconds: count(r.eta_seconds),
+    reason: r.reason === "reading_model" ? "reading_model" : "files",
+    run_tests_after: r.run_tests_after === true,
+  };
 }
 
 /** Validate the detail answer; `null` when it isn't a domain. */
@@ -261,6 +287,7 @@ export function normalizeDomainDetail(raw: unknown): DomainDetailView | null {
       key_saved: a.key_saved === true,
     },
     last_question_at: strOrNull(r.last_question_at),
+    rereading: normalizeRereading(r.rereading),
   };
 }
 
@@ -1104,13 +1131,16 @@ export async function setDomainAnswerModel(
 export async function saveDomainSettings(
   domainId: string,
   body: { template?: string; config: Record<string, unknown> },
-): Promise<void> {
+): Promise<{ reread: "none" | "required" | "optional" }> {
   const res = await send(`/api/domains/${encodeURIComponent(domainId)}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  // `required`: a reading model with other weights — the server already started re-reading.
+  const needed = obj(obj((await res.json().catch(() => ({}))) as unknown).reread).needed;
+  return { reread: needed === "required" || needed === "optional" ? needed : "none" };
 }
 
 // ---- The Quality tab (G7): test questions and test runs ----

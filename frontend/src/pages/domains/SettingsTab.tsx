@@ -1,16 +1,18 @@
 /**
- * A domain's Settings tab (DM-80…DM-91; Dm-Settings, DmF-Tune-1…4): how files are read, how
- * answers are written, how search works and the danger card. The Reading model select keeps the
- * design's 340px on a row of its own (the frame draws it overflowing into the next card). Editing shows the save bar with what
- * saving means; **Save and run tests** saves and goes to Quality, where the run with the new
- * setting is compared with the last one.
+ * A domain's Settings tab (DM-80…DM-91; Dm-Settings, DmF-Tune-1…4, DmF-Embed-1…3, DmF-Piece-1/2):
+ * how files are read, how answers are written, how search works and the danger card. The Reading
+ * model picker keeps the design's 340px on a row of its own (the frame draws it overflowing into the
+ * next card). Editing shows the save bar with what saving means; **Save and run tests** saves and
+ * goes to Quality, where the run with the new setting is compared with the last one. A reading model
+ * with other weights warns first and asks before re-reading every file (the server starts it); a
+ * new piece size asks whether to re-read the existing files now and run the tests afterwards.
  *
  * The draft outlives the tab: leave it and come back, the unsaved changes are still there (the
  * proposed "Discard your changes to Settings?" confirm is not built). Reloading or closing the page
  * while there are some asks first.
  */
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { CircleCheck, Trash } from "lucide-react";
+import { CircleCheck, RefreshCw, Trash } from "lucide-react";
 
 import { Button, Input, Select, Switch, useToast } from "../../design-system/components";
 import { ApiError, listProviders } from "../../lib/api";
@@ -26,8 +28,10 @@ import { navigate } from "../../lib/nav";
 import { refreshBadges } from "../../lib/workspaceStatus";
 import { ANSWER_MODELS } from "./answerModels";
 import { DeleteDomainDialog } from "./DeleteDomainDialog";
-import { deleteDomainInUse, formatNumber, templateLabel } from "./domainFormat";
-import { READING_MODELS, keySavedText, missingKeyText, readingModel } from "./readingModels";
+import { deleteDomainInUse, templateLabel } from "./domainFormat";
+import { ReadingModelSelect } from "./ReadingModelSelect";
+import { addKeyLabel, keySavedText, missingKeyText, readingModel } from "./readingModels";
+import { PieceSizeDialog, ReReadDialog } from "./RereadDialogs";
 import {
   SEARCH_MODES,
   type SaveImpact,
@@ -35,6 +39,8 @@ import {
   dangerText,
   draftOf,
   fieldErrors,
+  pieceSavedToast,
+  rereadWarning,
   saveImpact,
   templateOption,
   widerHelper,
@@ -67,12 +73,15 @@ function useLeaveGuard(dirty: boolean, name: string) {
 function Field({
   label,
   htmlFor,
+  labelId,
   helper,
   wide,
   children,
 }: {
   label: string;
   htmlFor: string;
+  /** The label's id, for a control named by it (the Reading model picker). */
+  labelId?: string;
   helper?: ReactNode;
   /** A row of its own (both columns). */
   wide?: boolean;
@@ -80,7 +89,7 @@ function Field({
 }) {
   return (
     <div className={wide ? "dm-set__field dm-set__field--wide" : "dm-set__field"}>
-      <label className="dm-set__label" htmlFor={htmlFor}>
+      <label className="dm-set__label" htmlFor={htmlFor} id={labelId}>
         {label}
       </label>
       {children}
@@ -141,6 +150,8 @@ export function SettingsTab({
   const [held, setHeld] = useState<string[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  /** The confirm a save that touches the files asks first (DM-89 / DM-90). */
+  const [confirm, setConfirm] = useState<"reread" | "pieces" | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -169,12 +180,6 @@ export function SettingsTab({
   const templateOptions = templates.some((t) => t.template === draft.template)
     ? templates.map((t) => ({ value: t.template, label: templateOption(t) }))
     : [{ value: draft.template, label: templateLabel(draft.template) }];
-  const readingOptions = READING_MODELS.some((m) => m.slug === draft.reading)
-    ? READING_MODELS.map((m) => ({ value: m.slug, label: m.label }))
-    : [
-        { value: draft.reading, label: reading.label },
-        ...READING_MODELS.map((m) => ({ value: m.slug, label: m.label })),
-      ];
   const listed = ANSWER_MODELS.some((m) => m.slug === draft.answer);
   const answerValue = draft.answer === null ? DEFAULT : listed ? draft.answer : CUSTOM;
 
@@ -194,7 +199,13 @@ export function SettingsTab({
     } else set({ answer: value });
   };
 
-  const save = async () => {
+  const save = () => {
+    if (!impact || blocked || saving) return;
+    if (impact.action === "reread" || impact.action === "pieces") setConfirm(impact.action);
+    else void commit();
+  };
+
+  const commit = async (pieces?: { reread: boolean; runTests: boolean }) => {
     if (!impact || blocked || saving) return;
     setSaving(true);
     try {
@@ -204,6 +215,7 @@ export function SettingsTab({
       });
     } catch (e) {
       setSaving(false);
+      setConfirm(null);
       toast({
         message:
           e instanceof ApiError && e.status < 500 && e.message
@@ -214,8 +226,10 @@ export function SettingsTab({
       return;
     }
     const size = Number(draft.size);
+    const { files, cases } = { files: detail.files.total, cases: detail.quality.cases };
     reset();
     setSaving(false);
+    setConfirm(null);
     onChanged();
     const failed = (what: string) => (e: unknown) =>
       toast({
@@ -227,17 +241,56 @@ export function SettingsTab({
       await startTestRun(id).catch(failed("the tests didn’t start"));
       navigate({ page: "domains", domainId: id, tab: "quality" });
     } else if (impact.action === "reread") {
-      await rereadDomainFiles(id).catch(failed("the files didn’t start re-reading"));
+      // DM-89: the server cleared the old vectors and started re-reading; Sources shows it.
       navigate({ page: "domains", domainId: id });
+    } else if (impact.action === "pieces" && pieces?.reread) {
+      // DM-90: re-read the existing files now, then (maybe) run the tests.
+      const started = await rereadDomainFiles(id, { run_tests_after: pieces.runTests }).then(
+        () => true,
+        (e: unknown) => {
+          failed("the files didn’t start re-reading")(e);
+          return false;
+        },
+      );
+      if (started) {
+        toast({ message: pieceSavedToast(size, { files, tests: pieces.runTests ? cases : 0 }) });
+        navigate({ page: "domains", domainId: id });
+      }
     } else if (impact.action === "pieces") {
-      toast({ message: `Saved. New files use ${formatNumber(size)}-character pieces.` });
+      toast({ message: pieceSavedToast(size, null) });
     }
   };
+
+  const warning =
+    impact?.action === "reread"
+      ? rereadWarning(detail.files.total, detail.pieces, draft.reading, keyHeld)
+      : null;
 
   const inUse = deleteDomainInUse(detail);
 
   return (
     <div className="dm-set">
+      {warning && (
+        <div className="dm-callout dm-callout--warn" role="status">
+          <span className="dm-callout__icon">
+            <RefreshCw size={14} strokeWidth={1.6} aria-hidden />
+          </span>
+          <span className="dm-callout__text">
+            <b>{warning.lead}</b>
+            {warning.rest}
+          </span>
+          {!keyHeld && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="dm-set__warn-action"
+              onClick={() => navigate({ page: "engines", tab: "keys" })}
+            >
+              {addKeyLabel(reading.provider)}
+            </Button>
+          )}
+        </div>
+      )}
       <div className="dm-set__grid">
         <div className="dm-set__col">
           <section className="dm-set__card" aria-labelledby="dm-set-read">
@@ -267,6 +320,7 @@ export function SettingsTab({
               <Field
                 label="Reading model"
                 htmlFor="dm-set-reading"
+                labelId="dm-set-reading-label"
                 wide
                 helper={
                   <span className="dm-set__help">
@@ -285,15 +339,12 @@ export function SettingsTab({
                   </span>
                 }
               >
-                <span className="dm-set__w340">
-                  <Select
-                    id="dm-set-reading"
-                    aria-label="Reading model"
-                    options={readingOptions}
-                    value={draft.reading}
-                    onChange={(e) => set({ reading: e.target.value })}
-                  />
-                </span>
+                <ReadingModelSelect
+                  value={draft.reading}
+                  held={held}
+                  labelId="dm-set-reading-label"
+                  onChange={(slug) => set({ reading: slug })}
+                />
               </Field>
               <Field
                 label="Piece size"
@@ -495,7 +546,32 @@ export function SettingsTab({
           saving={saving}
           blocked={blocked}
           onDiscard={reset}
-          onSave={() => void save()}
+          onSave={save}
+        />
+      )}
+
+      {confirm === "reread" && (
+        <ReReadDialog
+          files={detail.files.total}
+          pieces={detail.pieces}
+          slug={draft.reading}
+          name={detail.name}
+          saving={saving}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => void commit()}
+        />
+      )}
+      {confirm === "pieces" && (
+        <PieceSizeDialog
+          size={Number(draft.size)}
+          oldSize={Number(saved.size)}
+          files={detail.files.total}
+          pieces={detail.pieces}
+          slug={draft.reading}
+          tests={detail.quality.cases}
+          saving={saving}
+          onCancel={() => setConfirm(null)}
+          onSave={(choice) => void commit(choice)}
         />
       )}
 
