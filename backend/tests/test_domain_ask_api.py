@@ -1,7 +1,6 @@
 """Phase 3 — ask + messages API."""
 
 import uuid
-from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -26,9 +25,7 @@ def _fresh() -> TestClient:
 def test_ask_foreign_domain_404(monkeypatch):
     a = _fresh()
     b = _fresh()
-    did = a.post("/api/domains", json={"template": "blank", "name": "Secret"}).json()[
-        "domain_id"
-    ]
+    did = a.post("/api/domains", json={"template": "blank", "name": "Secret"}).json()["domain_id"]
     monkeypatch.setattr(
         "tvashtr.routers.ask_domain",
         lambda *a, **k: (_ for _ in ()).throw(DomainAskError("not_found", "domain not found")),
@@ -40,17 +37,13 @@ def test_ask_foreign_domain_404(monkeypatch):
 def test_messages_foreign_domain_404():
     a = _fresh()
     b = _fresh()
-    did = a.post("/api/domains", json={"template": "blank", "name": "Secret"}).json()[
-        "domain_id"
-    ]
+    did = a.post("/api/domains", json={"template": "blank", "name": "Secret"}).json()["domain_id"]
     assert b.get(f"/api/domains/{did}/messages").status_code == 404
 
 
 def test_ask_empty_corpus_422(monkeypatch):
     c = _fresh()
-    did = c.post("/api/domains", json={"template": "support", "name": "Empty"}).json()[
-        "domain_id"
-    ]
+    did = c.post("/api/domains", json={"template": "support", "name": "Empty"}).json()["domain_id"]
     monkeypatch.setattr(
         "tvashtr.routers.held_provider_slugs",
         lambda owner_id: {"openai"},
@@ -63,9 +56,7 @@ def test_ask_empty_corpus_422(monkeypatch):
 
 def test_ask_missing_keys_422(monkeypatch):
     c = _fresh()
-    did = c.post("/api/domains", json={"template": "support", "name": "Keys"}).json()[
-        "domain_id"
-    ]
+    did = c.post("/api/domains", json={"template": "support", "name": "Keys"}).json()["domain_id"]
 
     def _boom(*a, **k):
         raise DomainAskError(
@@ -83,11 +74,9 @@ def test_ask_missing_keys_422(monkeypatch):
 
 def test_ask_happy_path(monkeypatch):
     c = _fresh()
-    did = c.post("/api/domains", json={"template": "support", "name": "Ok"}).json()[
-        "domain_id"
-    ]
+    did = c.post("/api/domains", json={"template": "support", "name": "Ok"}).json()["domain_id"]
 
-    def _ok(owner_id, domain_id, question):
+    def _ok(owner_id, domain_id, question, **_kw):
         return {
             "answer": "Hello cited",
             "citations": [
@@ -118,9 +107,7 @@ def test_ask_happy_path(monkeypatch):
 
 def test_list_messages_empty():
     c = _fresh()
-    did = c.post("/api/domains", json={"template": "blank", "name": "M"}).json()[
-        "domain_id"
-    ]
+    did = c.post("/api/domains", json={"template": "blank", "name": "M"}).json()["domain_id"]
     resp = c.get(f"/api/domains/{did}/messages")
     assert resp.status_code == 200, resp.text
     assert resp.json()["messages"] == []

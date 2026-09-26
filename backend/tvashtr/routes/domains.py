@@ -11,12 +11,12 @@ from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from tvashtr.auth import UserOut, get_current_user
-from tvashtr.control_plane import domain_read, domain_views
+from tvashtr.control_plane import domain_ask, domain_read, domain_views
 from tvashtr.control_plane.domain_files import absolute_path
 from tvashtr.control_plane.domains import DomainNameTaken, _owned_domain, duplicate_domain
 from tvashtr.db import session_scope
@@ -150,3 +150,15 @@ def post_domain_duplicate(
     if row is None:
         raise HTTPException(status_code=404, detail="domain not found")
     return domain_views.detail_summary(owner, uuid.UUID(row["domain_id"])) or row
+
+
+@router.delete("/api/domains/{domain_id}/messages", status_code=204)
+def delete_domain_messages(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> Response:
+    """Clear chat (DM-67): every question and answer of the Ask tab goes. The page offers Undo by
+    sending this only when its toast closes (OQ-12)."""
+    did = _uuid(domain_id, "domain")
+    if not domain_ask.clear_domain_messages(uuid.UUID(current_user.id), did):
+        raise HTTPException(status_code=404, detail="domain not found")
+    return Response(status_code=204)

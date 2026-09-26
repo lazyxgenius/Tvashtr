@@ -31,9 +31,7 @@ def parse_domain_uuid(domain_id: str) -> uuid.UUID:
     try:
         return uuid.UUID(str(domain_id).strip())
     except (ValueError, AttributeError, TypeError) as e:
-        raise DomainAskError(
-            "bad_request", "domain_id must be a UUID"
-        ) from e
+        raise DomainAskError("bad_request", "domain_id must be a UUID") from e
 
 
 def _json_ok(payload: dict[str, Any]) -> str:
@@ -43,7 +41,8 @@ def _json_ok(payload: dict[str, Any]) -> str:
 def run_domain_ask_tool(owner_id: uuid.UUID, domain_id: str, question: str) -> str:
     try:
         did = parse_domain_uuid(domain_id)
-        result = ask_domain(owner_id, did, question)
+        # Agent asks stay out of the user's chat (finding 8).
+        result = ask_domain(owner_id, did, question, persist=False)
     except DomainAskError as exc:
         raise DomainMcpToolError(format_domain_ask_error(exc)) from exc
     return _json_ok(

@@ -348,6 +348,8 @@ class UpdateDomainRequest(BaseModel):
 
 class DomainAskRequest(BaseModel):
     question: str
+    # DM-65: earlier chat turns join the question (the Ask tab's "Use earlier messages").
+    use_history: bool = False
 
 
 class DomainRetrieveRequest(BaseModel):
@@ -2883,7 +2885,9 @@ def post_domain_ask(
     if row is None:
         raise HTTPException(status_code=404, detail="domain not found")
     try:
-        return ask_domain(owner_id, did, body.question)
+        return ask_domain(
+            owner_id, did, body.question, use_history=body.use_history, mark_not_found=True
+        )
     except DomainAskError as e:
         if e.code == "not_found":
             raise HTTPException(status_code=404, detail="domain not found") from e

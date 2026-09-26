@@ -236,6 +236,16 @@ ANSWER_MODEL_LABELS: dict[str, str] = {
 }
 
 
+def answer_model_label(slug: str | None) -> str | None:
+    """ "OpenAI gpt-4o-mini": the design's label, else "<vendor> <model name>" for any slug."""
+    if not slug:
+        return None
+    if slug in ANSWER_MODEL_LABELS:
+        return ANSWER_MODEL_LABELS[slug]
+    provider = provider_for_model(slug)
+    return f"{VENDOR_NAMES.get(provider, provider)} {slug.rsplit('/', 1)[-1]}"
+
+
 def answer_model_summary(owner_id: uuid.UUID, config: dict | None, held: set[str]) -> dict:
     """What answers questions: the configured model (``None`` = account default), what it resolves
     to now, its label and whether its key is saved (DM-63, OQ-11)."""
@@ -252,7 +262,7 @@ def answer_model_summary(owner_id: uuid.UUID, config: dict | None, held: set[str
     return {
         "configured": configured,
         "resolved": resolved,
-        "label": ANSWER_MODEL_LABELS.get(resolved or "", resolved),
+        "label": answer_model_label(resolved),
         "provider": provider,
         "key_saved": bool(provider and provider in held),
     }

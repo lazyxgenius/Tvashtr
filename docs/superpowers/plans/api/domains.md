@@ -28,6 +28,9 @@ in `routers.py` and changed there in place.
 | `PATCH /api/domains/{id}` | a new `name` follows the name rule (`409` on a clash, `422` copy) | G4 |
 | `POST /api/domains/{id}/duplicate` | **new** — Duplicate settings: an empty copy with the same template and settings | G4 |
 | `DELETE /api/domains/{id}` | clears the steps and agents that used it; answer gains `steps_cleared`, `agents_cleared` | G4 |
+| `POST /api/domains/{id}/ask` | optional `use_history`; the NOT_FOUND rule; answer gains `covered`, `answer_text`, `sources`, `searched`, `used_history`, `model_label` | G6 |
+| `GET /api/domains/{id}/messages` | answers gain the same keys (+ `model`) | G6 |
+| `DELETE /api/domains/{id}/messages` | **new** — Clear chat | G6 |
 
 Schema: migration `0042_domain_message_meta` adds `domain_messages.meta JSONB NULL` (the Ask tab's
 answer meta `{model, used_history, source}`; written from the Ask group on).
@@ -457,3 +460,70 @@ Deleting a **file** is unchanged (`DELETE /api/domains/{id}/documents/{doc}` →
 `404 "document not found"`). The page hides the row at once and sends the delete when its Undo toast
 closes (OQ-12: also on leaving the page and on `pagehide`, with `fetch(…, {keepalive: true})`).
 
+---
+
+## `POST /api/domains/{id}/ask` (G6 additions — the Ask tab)
+
+Body: `{"question": "How long do customers have to ask for a refund?", "use_history": true}`.
+`use_history` (default `false`, the tab's **Use earlier messages**): the last 3 question/answer turns
+of the chat go to the model (answers without their markers) and the search runs on
+`"<previous question> <question>"`. The chat route always asks with the NOT_FOUND rule: an answer the
+files don't cover starts with `NOT_FOUND:` (OQ-22). Agent tools (`domain_ask` MCP) no longer write
+into the chat (finding 8); Query domain nodes are unchanged until their new step lands (G12).
+
+```json
+{
+  "answer": "Customers can ask for a full refund within **30 days** of purchase [3]. … [5].",
+  "citations": [{"document_id": "…", "filename": "refund-policy.md", "chunk_id": "…", "ordinal": 0, "excerpt": "…", "score": 0.82}],
+  "message_id": "…", "user_message_id": "…", "latency_ms": 1800, "cost_usd": 0.0004,
+  "model": "gpt-4o-mini-2024-07-18",
+  "covered": true,
+  "answer_text": "Customers can ask for a full refund within **30 days** of purchase [1]. … [2].",
+  "sources": [
+    {"number": 1, "citation_index": 3, "document_id": "…", "filename": "refund-policy.md", "chunk_id": "…",
+     "ordinal": 2, "piece_number": 3, "pieces_in_file": 42, "page": null, "excerpt": "Customers may request…"},
+    {"number": 2, "citation_index": 5, "document_id": "…", "filename": "billing-faq.pdf", "chunk_id": "…",
+     "ordinal": 16, "piece_number": 17, "pieces_in_file": 86, "page": 4, "excerpt": "For annual subscriptions…"}
+  ],
+  "searched": [{"…every citation, in rank order, with piece_number / pieces_in_file / page": "…"}],
+  "used_history": false,
+  "model_label": "OpenAI gpt-4o-mini"
+}
+```
+
+- `answer`, `citations`, `model` (the provider's own model name) keep their meaning.
+- `answer_text`: `NOT_FOUND:` stripped; markers renumbered `[1]…[m]` in order of first mention
+  (`[1, 3]` groups stay groups); a marker pointing at no passage is dropped; a not-covered answer
+  keeps none.
+- `sources`: the passages the answer cites, numbered like `answer_text` (`citation_index` = its
+  1-based place in `citations`). No marker at all, or not covered: the two passages that came up
+  first (OQ-22/23).
+- `page`: the PDF page the piece starts on (`null` for other files, and for answers whose pieces were
+  re-read since). `pieces_in_file`: the file's pieces now (`null` once the file is gone).
+- `model_label`: the design's label for the three listed models, else `"<Vendor> <model name>"`
+  (e.g. `"OpenAI gpt-4.1-mini"`) — for the model asked for (the domain's answer model or the account
+  default it resolved to).
+- `persist`, `mark_not_found` are Python-only flags of `ask_domain` (not in the body).
+- Errors unchanged: `404 "domain not found"`, `422` (`"question must be non-empty"`, `"ingest documents
+  before asking"`, `{"message": "you have no API key for: openai — …", "missing_providers": ["openai"]}`,
+  no model), `502` (`"generation failed: …"` / `"embedding failed: …"`).
+
+Stored: the question row `meta {"source": "chat"}`, the answer row
+`meta {"model": "openai/gpt-4o-mini", "used_history": false, "source": "chat"}` (migration 0042).
+
+## `GET /api/domains/{id}/messages` (G6 additions)
+
+Oldest first, as before. Question rows are unchanged; answer rows gain `covered`, `answer_text`,
+`sources`, `searched`, `used_history`, `model` (the slug asked for) and `model_label` — all derived
+at read time from `content`, `citations` and `meta`. Answers from before 0042: `used_history`,
+`model`, `model_label` are `null`.
+
+## `DELETE /api/domains/{id}/messages` → `204`
+
+Clear chat (DM-67): deletes every question and answer of the domain. Idempotent. The page shows
+"Chat cleared." with **Undo** and sends this only when the toast closes, on leaving the domain, or on
+`pagehide` with `keepalive` (OQ-12). `404 "domain not found"`.
+
+Not built (the frontend keeps them): `/api/config` `domain_generation_presets` — the answer-model
+list's labels and taglines live in `frontend/src/pages/domains/answerModels.ts`, like the reading
+models in `readingModels.ts`.
