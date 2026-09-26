@@ -9,12 +9,13 @@ import {
   panelRoutes,
 } from "./panel-fixtures.mjs";
 
-const at = (tab) => `/#/teams/${TEAM_ID}?node=${NODES.rev.id}&tab=${tab}`;
+export const at = (tab) =>
+  `/#/teams/${TEAM_ID}?node=${NODES.rev.id}&tab=${tab}`;
 
 // The design's Reviewer: house-style (Custom, Always on), pytest-review (org/skills @ main, Agent
 // decides), security-checklist (Library, When triggered: auth secrets tokens), the rules files on;
 // fetch (Local) and github (Library, ${GITHUB_TOKEN} set in Secrets), Domains on.
-const SKILLS = [
+export const SKILLS = [
   {
     type: "inline",
     name: "house-style",
@@ -30,7 +31,7 @@ const SKILLS = [
   { type: "library", id: "s-sec" },
   { type: "project_rules" },
 ];
-const TOOLS = {
+export const TOOLS = {
   mcpServers: { fetch: { command: "uvx", args: ["mcp-server-fetch"] } },
   tvashtr: { library: ["t-gh"], domains: true },
 };
@@ -60,41 +61,41 @@ const TOOL_LIBRARY = [
     created_at: "2026-09-01T10:00:00Z",
   },
 ];
-const SHELVES = {
+export const SHELVES = {
   "GET /api/skill-library": { skills: SKILL_LIBRARY },
   "GET /api/tool-library": { tools: TOOL_LIBRARY },
   "GET /api/secrets": { secrets: [{ name: "GITHUB_TOKEN" }] },
 };
 
-const reviewer = (extra) => ({ ...NODES.rev, ...extra });
+export const reviewer = (extra) => ({ ...NODES.rev, ...extra });
 const nodesWith = (rev) => Object.values({ ...NODES, rev });
 // Both renders hold API keys: an agent on a Desktop subscription adds the PANEL-103 note, which
 // isn't drawn (unit-tested instead).
-const routes = (rev, over = {}) =>
+export const routes = (rev, over = {}) =>
   panelRoutes({
     nodes: nodesWith(rev),
     keys: ["xai", "anthropic"],
     over: { ...SHELVES, ...over },
   });
 
-const FULL = routes(reviewer({ skills: SKILLS, tool_config: TOOLS }));
+export const FULL = routes(reviewer({ skills: SKILLS, tool_config: TOOLS }));
 // Panel-SkillsEmpty: nothing added yet, and no notes ("Memory" without a count).
 const EMPTY = routes(reviewer({ skills: null, tool_config: null }), {
   "GET /api/memories": { memories: [] },
 });
 
 // Desktop: the one-time subscription disclosure was already dismissed this session.
-const seenDisclosure = () =>
+export const seenDisclosure = () =>
   sessionStorage.setItem("tvashtr.desktopDisclosureSeen", "1");
 
 // The Desktop render of a website board: Desktop draws the 30px title strip above the page.
-const aboveTitleStrip = async (page) => {
+export const aboveTitleStrip = async (page) => {
   await page.addStyleTag({
     content: "html { height: calc(100% + 30px); margin-top: -30px; }",
   });
 };
 
-const pair = (name, base, routeSet, desktopFrame) => [
+export const pair = (name, base, routeSet, desktopFrame) => [
   { name: `${name}-web`, ...base, routes: routeSet },
   {
     name: `${name}-desktop`,
@@ -112,7 +113,7 @@ const pair = (name, base, routeSet, desktopFrame) => [
 ];
 
 /** The drawer alone, on the Skills & tools tab, once the library shelves have named the rows. */
-const drawerAlone = (steps) => async (page) => {
+export const drawerAlone = (steps) => async (page) => {
   await drawerReady(page);
   await isolateDrawer(page);
   await page
@@ -127,19 +128,19 @@ const row = (page, name) =>
   page.getByRole("listitem").filter({ hasText: name });
 
 // The second of the boards' "2 unsaved changes": github's Enable switch, below the fold.
-const offscreenChange = (page) =>
+export const offscreenChange = (page) =>
   page
     .getByRole("switch", { name: "Enable github" })
     .evaluate((el) => el.click());
 
-const openMenu = async (page, button) => {
+export const openMenu = async (page, button) => {
   await button.click();
   // Pointer moves during the menu's pop-in can scroll the body: wait, then take the pointer away.
   await page.waitForTimeout(250);
   await page.mouse.move(0, 0);
 };
 
-const drawer = { width: 384, height: 800, path: at("skills") };
+export const drawer = { width: 384, height: 800, path: at("skills") };
 
 export default [
   ...pair(
