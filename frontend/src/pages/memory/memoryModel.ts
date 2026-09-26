@@ -260,7 +260,8 @@ const archivedAt = (m: Memory): string => m.invalid_at ?? m.updated_at;
 
 /**
  * MEM-26: "Replaced by a newer memory · Sep 22" / "Discarded by you · Sep 21". A memory a Keep or
- * Restore folded into one you already had says so instead of claiming a newer one replaced it.
+ * Restore folded into one you already had says so instead of claiming a newer one replaced it; with
+ * no reason (the replacing memory is gone, or a force was edited since) it claims neither.
  */
 export function archiveMeta(m: Memory): string {
   const how =
@@ -268,7 +269,9 @@ export function archiveMeta(m: Memory): string {
       ? "Discarded by you"
       : m.superseded_reason === "merged"
         ? "Merged into a memory you already had"
-        : "Replaced by a newer memory";
+        : m.superseded_reason === "replaced"
+          ? "Replaced by a newer memory"
+          : "Another memory took its place";
   const when = activeWhen(archivedAt(m));
   return when ? `${how} · ${when}` : how;
 }

@@ -306,9 +306,10 @@ describe("the Archive", () => {
       invalid_at: new Date(NOW).toISOString(),
     });
     expect(archiveMeta(merged)).toBe("Merged into a memory you already had · just now");
-    // An older server's row (no reason, no invalid_at) still reads like the design.
-    const legacy = memory({ status: "superseded", updated_at: "2026-09-19T12:00:00Z" });
-    expect(archiveMeta(legacy)).toBe("Replaced by a newer memory · Sep 19");
+    // No reason (the replacing memory is gone, or a force was edited since, so how it left can't
+    // be told): a plain line that claims neither a merge nor a newer memory.
+    const unknown = memory({ status: "superseded", updated_at: "2026-09-19T12:00:00Z" });
+    expect(archiveMeta(unknown)).toBe("Another memory took its place · Sep 19");
   });
 
   it("lists the most recently archived first", () => {

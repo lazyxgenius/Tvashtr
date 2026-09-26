@@ -431,6 +431,23 @@ def test_superseded_reason_replaced_when_the_newer_fact_says_the_opposite(acct):
     assert _archived(acct.client, older)["superseded_reason"] == "replaced"
 
 
+def test_superseded_reason_is_null_once_a_force_is_edited_after_the_retirement(acct):
+    """The reason is read from the two facts' forces; an edit after the retirement can change a
+    force, so how it was retired can't be told any more and the reason is null (not flipped)."""
+    topic = uuid.uuid4().hex
+    kept = _seed_memory(acct.id, f"{topic}: pin numpy", polarity="require")
+    discarded = _seed_memory(
+        acct.id, f"{topic}: pin numpy please", polarity="prefer", status="rejected"
+    )
+    assert acct.client.post(f"/api/memories/{discarded}/promote").json()["action"] == (
+        "promote_merged"
+    )
+    assert _archived(acct.client, discarded)["superseded_reason"] == "merged"
+    r = acct.client.patch(f"/api/memories/{kept}", json={"polarity": "forbid"})
+    assert r.status_code == 200, r.text
+    assert _archived(acct.client, discarded)["superseded_reason"] is None
+
+
 def test_superseded_reason_is_null_off_archive_and_for_a_gone_or_foreign_fact(acct):
     live = _seed_memory(acct.id, "n: a live fact")
     [row] = [r for r in acct.client.get("/api/memories").json()["memories"] if r["id"] == live]

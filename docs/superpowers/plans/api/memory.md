@@ -91,7 +91,7 @@ New fields:
 | `source_iteration` | Same as `source.round` (for the drawer's "Learned in round n"). |
 | `source_node_id` | The agent that learned it, even for repo-tier facts. Agent-remember captures and manual memories have `null`. |
 | `superseded_by` | For `status: "superseded"`: the id of the memory that replaced it. |
-| `superseded_reason` | For `status: "superseded"`: `"merged"` when the memory that replaced it has the same force sign (a Keep or Restore folded it into a memory you already had), `"replaced"` when the sign differs (a memory that says the opposite replaced it). `null` for every other status, and when the replacing memory is gone. The Archive says "Merged into a memory you already had" or "Replaced by a newer memory". |
+| `superseded_reason` | For `status: "superseded"`: `"merged"` when the memory that replaced it has the same force sign (a Keep or Restore folded it into a memory you already had), `"replaced"` when the sign differs (a memory that says the opposite replaced it). `null` for every other status, when the replacing memory is gone, and when either memory's force was edited after the retirement (the reason is read from the forces, so an edit would otherwise flip it; the retirement kind isn't stored). The Archive says "Merged into a memory you already had", "Replaced by a newer memory", or for `null` "Another memory took its place". |
 | `edited_at` | When a person last changed the content, force or scope ("Edited by you · …"). A pin never sets it, and neither does a PATCH that changes nothing. |
 
 UI hints:
