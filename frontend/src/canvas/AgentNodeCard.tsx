@@ -3,7 +3,6 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
   Check,
   ClipboardCheck,
-  Cpu,
   DraftingCompass,
   type LucideIcon,
   OctagonX,
@@ -17,9 +16,9 @@ import {
   Zap,
 } from "lucide-react";
 
-import { StatusPill } from "../components/StatusPill";
 import { AuthoringContext } from "./authoringContext";
 import type { GateConfig, NodeConfig, TerminalConfig } from "../lib/api";
+import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import type { GateState, NodeStatus, TerminalState } from "../lib/status";
 
 // A `type` (not interface) so it satisfies React Flow's `Node<T>` data constraint
@@ -55,18 +54,6 @@ function flagClasses(d: AgentNodeData): string {
   return `${d.errorMessage ? " tv-node--invalid" : ""}${d.isOrphan ? " tv-node--orphan" : ""}`;
 }
 
-const ROLE_TITLE: Record<string, string> = {
-  pm: "Product manager",
-  architect: "Architect",
-  engineer: "Engineer",
-  reviewer: "Reviewer",
-};
-const ROLE_BLURB: Record<string, string> = {
-  pm: "Drafts the spec",
-  architect: "Adds the technical design",
-  engineer: "Writes & ships it",
-  reviewer: "Checks against the spec",
-};
 const ROLE_ICON: Record<string, LucideIcon> = {
   pm: PenLine,
   architect: DraftingCompass,
@@ -182,7 +169,6 @@ function ModelChip({ nodeId, model }: { nodeId: string; model: string }) {
           : undefined
       }
     >
-      <Cpu size={13} strokeWidth={1.6} />
       <span className="rf-node__model-text">{model}</span>
     </button>
   );
@@ -197,8 +183,9 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
   // other node keeps its role glyph.
   const roleIcon = ROLE_ICON[d.role_name] ?? Terminal;
   const Icon = d.isEntry ? Zap : roleIcon;
-  const title = ROLE_TITLE[d.role_name] ?? d.role_name;
-  const caption = ROLE_BLURB[d.role_name] ?? d.kind;
+  // The agent's own name and tagline (`config.title` / `config.description`), else its role's.
+  const title = nodeTitle(d);
+  const caption = nodeDescription(d) || d.kind;
   // M-unify U3: the capability tag reads the edits distinction (not kind). Edits-off keeps the DS
   // "rare secondary" muted/blue tag the old thinker used; edits-on is the coral (writes-files) tag.
   // An Edits flip re-labels it here (the `--thinker` class is now the edits-off style token).
@@ -214,7 +201,7 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
       {d.isEntry && <span className="rf-node__bar" aria-hidden />}
       <div className="rf-node__head">
         <span className="rf-node__glyph">
-          <Icon size={17} strokeWidth={1.6} />
+          <Icon size={13} strokeWidth={1.7} />
         </span>
         <div className="rf-node__titles">
           {d.isEntry && <div className="rf-node__eyebrow">Start · entry</div>}
@@ -228,7 +215,7 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
           {capabilityLabel(d)}
         </span>
         {d.engine && <span className="rf-node__engine">{prettyEngine(d.engine)}</span>}
-        <StatusPill status={d.status} />
+        <CardStatus status={d.status} />
       </div>
       {/* F1c: the model footer opens the drawer's Model field in author mode; inert in the run view. */}
       <ModelChip nodeId={nodeId} model={d.model} />
@@ -246,13 +233,6 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
   );
 }
 
-// Short, canvas-legible gate label from gate_kind (the full config.title is a sentence —
-// that belongs on the drawer card, not the node).
-function gateLabel(gateKind: string): string {
-  if (gateKind === "prd_approval") return "PRD approval";
-  if (gateKind === "review_escalation") return "Escalation";
-  return gateKind;
-}
 const GATE_STATE_LINE: Record<GateState, string> = {
   idle: "Gate",
   awaiting: "Awaiting approval",
@@ -266,7 +246,7 @@ const GATE_STATE_LINE: Record<GateState, string> = {
 function GateCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) {
   const cfg = (d.config ?? {}) as GateConfig;
   const state = d.gateState ?? "idle";
-  const label = gateLabel(cfg.gate_kind ?? d.role_name);
+  const label = nodeTitle(d);
   return (
     <div
       className={`rf-gate rf-gate--${state}${flagClasses(d)}`}
@@ -275,7 +255,7 @@ function GateCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) 
       <NodeHandles />
       <NodeAffordances nodeId={nodeId} hovered={d.hovered} />
       <span className="rf-gate__glyph">
-        <ShieldCheck size={16} strokeWidth={1.7} />
+        <ShieldCheck size={13} strokeWidth={1.7} />
       </span>
       <div className="rf-gate__text">
         <div className="rf-gate__label">{label}</div>
@@ -303,7 +283,7 @@ function TerminalCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData
       <NodeHandles />
       <NodeAffordances nodeId={nodeId} hovered={d.hovered} />
       <span className="rf-terminal__glyph">
-        <Icon size={16} strokeWidth={1.7} />
+        <Icon size={14} strokeWidth={1.7} />
       </span>
       <div className="rf-terminal__label">{label}</div>
     </div>
@@ -319,11 +299,26 @@ function DomainQueryCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeD
       <NodeAffordances nodeId={nodeId} hovered={d.hovered} />
       <div className="rf-node__eyebrow">Query domain</div>
       <div className="rf-node__title">Domain ask</div>
-      <div className="rf-node__blurb">
-        {cfg.domain_id ? "Domain selected" : "Select a Domain"}
-      </div>
-      <StatusPill status={d.status} />
+      <div className="rf-node__blurb">{cfg.domain_id ? "Domain selected" : "Select a Domain"}</div>
+      <CardStatus status={d.status} />
     </div>
+  );
+}
+
+const STATUS_LABEL: Record<NodeStatus, string> = {
+  idle: "Waiting",
+  running: "Working…",
+  done: "Done",
+  stopped: "Stopped",
+  failed: "Failed",
+};
+
+/** The card's status chip, as the canvas design draws it: "● Waiting" (✓ once done). */
+function CardStatus({ status }: { status: NodeStatus }) {
+  return (
+    <span className={`rf-node__status rf-node__status--${status}`}>
+      {status === "done" ? "✓" : "●"} {STATUS_LABEL[status]}
+    </span>
   );
 }
 

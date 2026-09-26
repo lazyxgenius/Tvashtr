@@ -267,7 +267,8 @@ function NavFoot({ section }: { section: ReturnType<typeof sectionOf> }) {
   );
 }
 
-function AccountMenu({
+/** The avatar and its account menu (the dashboard header and the team canvas header share it). */
+export function AccountMenu({
   user,
   onShowShortcuts,
   onLogout,

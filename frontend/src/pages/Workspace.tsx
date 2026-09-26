@@ -75,6 +75,15 @@ export function Workspace({
         initialRunId={route.runId ?? null}
         onBackToDashboard={(view) => navigate(dashViewRoute(view))}
         config={config}
+        node={route.node}
+        tab={route.tab}
+        focus={route.focus}
+        onNodeRoute={(next) =>
+          navigate(
+            { page: "team", teamId: route.teamId, runId: route.runId, ...next },
+            { replace: true },
+          )
+        }
       />
     );
   }

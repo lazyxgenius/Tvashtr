@@ -149,6 +149,7 @@ export function TeamCanvas({
   // already renders the message; these put the same fact ON the nodes the user has to fix.
   blockedNodes = [],
   blockedReason = "",
+  selectedNodeId,
 }: {
   graph: GraphData | null;
   run: RunRow | null;
@@ -171,6 +172,8 @@ export function TeamCanvas({
   onOpenModel?: (id: string) => void;
   blockedNodes?: string[];
   blockedReason?: string;
+  /** The node whose drawer is open (authoring): drawn with the coral selection ring. */
+  selectedNodeId?: string | null;
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
   const [pending, setPending] = useState<PendingConnect | null>(null);
@@ -301,6 +304,20 @@ export function TeamCanvas({
     if (!focusNodeId) return;
     setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === focusNodeId })));
   }, [focusNodeId, setNodes]);
+
+  // The open drawer's node keeps the selection ring, also when the drawer was opened by address.
+  useEffect(() => {
+    if (selectedNodeId === undefined) return;
+    setNodes((nds) =>
+      nds.every((n) => Boolean(n.selected) === (n.id === selectedNodeId))
+        ? nds
+        : nds.map((n) =>
+            Boolean(n.selected) === (n.id === selectedNodeId)
+              ? n
+              : { ...n, selected: n.id === selectedNodeId },
+          ),
+    );
+  }, [selectedNodeId, nodes, setNodes]);
 
   const handleConnect = useCallback(
     (c: Connection) => {

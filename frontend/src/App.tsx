@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, LogOut, Play } from "lucide-react";
-
+import { CanvasHeader } from "./canvas/CanvasHeader";
+import { CanvasToolbar } from "./canvas/CanvasToolbar";
+import { RunBlockedBanner } from "./canvas/RunBlockedBanner";
+import { credentialBlock, validityBlock } from "./canvas/runBlocked";
 import { TeamCanvas } from "./canvas/TeamCanvas";
-import type { DashView } from "./lib/nav";
-import { BackendDot } from "./components/BackendDot";
+import "./canvas/chrome.css";
+import type { DashView, NodeTab } from "./lib/nav";
 import { CancelRunButton } from "./components/CancelRunButton";
 import { RunBanner } from "./components/RunBanner";
 import { RunWarnings } from "./components/RunWarnings";
 import { TasksDrawer } from "./components/TasksDrawer";
+import { NodeEditor } from "./panel/NodeEditor";
 import { SidePanel } from "./panel/SidePanel";
-import { TeamNodePanel } from "./panel/TeamNodePanel";
 import {
   acknowledgeTask,
   type AuthUser,
@@ -41,8 +43,6 @@ import {
   type TeamGraphData,
 } from "./lib/api";
 import {
-  missingCredentialCtaTitle,
-  missingProviderBannerDetail,
   missingProvidersForModels,
   type SubscriptionProviderId,
   type SubscriptionStatus,
@@ -75,6 +75,19 @@ interface AppProps {
   onBackToDashboard?: (view?: DashView) => void;
   /** The public config (the old launch panel read it; launching now happens on Home). */
   config?: Config | null;
+  /** The agent drawer's place from the address (`#/teams/<id>?node=&tab=&focus=1`). */
+  node?: string;
+  tab?: NodeTab;
+  focus?: boolean;
+  /** Write the drawer's place back to the address. Without it the drawer keeps its own state. */
+  onNodeRoute?: (next: { node?: string; tab?: NodeTab; focus?: boolean }) => void;
+}
+
+/** Where the agent drawer is: which node, which tab, docked or in focus view. */
+interface DrawerPlace {
+  node: string | null;
+  tab: NodeTab;
+  focus: boolean;
 }
 
 export default function App({
@@ -83,6 +96,10 @@ export default function App({
   teamId,
   initialRunId,
   onBackToDashboard,
+  node: routeNode,
+  tab: routeTab,
+  focus: routeFocus,
+  onNodeRoute,
 }: AppProps = {}) {
   const [runId, setRunId] = useState<string | null>(initialRunId ?? null);
   const [graph, setGraph] = useState<GraphData | null>(null);
@@ -113,16 +130,42 @@ export default function App({
   // of the authoring `selectedNodeId` below.
   const [selectedRunNodeId, setSelectedRunNodeId] = useState<string | null>(null);
   // P1.8d: authoring selection is by NODE ID too (duplicate role names possible after topology edits).
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // The drawer's place (node, tab, focus) lives in the page address when the Workspace passes
+  // `onNodeRoute` (spec §3.2: refresh and back/forward keep it); a bare mount keeps it here.
+  const [localPlace, setLocalPlace] = useState<DrawerPlace>({
+    node: routeNode ?? null,
+    tab: routeTab ?? "setup",
+    focus: routeFocus ?? false,
+  });
+  const place: DrawerPlace = onNodeRoute
+    ? { node: routeNode ?? null, tab: routeTab ?? "setup", focus: routeFocus ?? false }
+    : localPlace;
+  const selectedNodeId = place.node;
+  const setPlace = useCallback(
+    (next: DrawerPlace) => {
+      if (onNodeRoute) {
+        onNodeRoute({
+          node: next.node ?? undefined,
+          tab: next.node && next.tab !== "setup" ? next.tab : undefined,
+          focus: next.node && next.focus ? true : undefined,
+        });
+      } else {
+        setLocalPlace(next);
+      }
+    },
+    [onNodeRoute],
+  );
+  // Select a node (keeping the open tab) or close the drawer (null).
+  const setSelectedNodeId = useCallback(
+    (id: string | null) =>
+      setPlace({ node: id, tab: id ? place.tab : "setup", focus: id ? place.focus : false }),
+    [setPlace, place.tab, place.focus],
+  );
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   // F1c: the dock⇄pop-up viewing preference — SESSION-STICKY. It survives closing/reselecting a node
   // and the author↔run switch (it is NOT part of resetRunState); a reload starts docked. NOT persisted
   // to the backend (no field — the wall).
   const [panelMode, setPanelMode] = useState<"drawer" | "modal">("drawer");
-  // F1c: the model-chip express lane. A bumping nonce keyed to a node: `handleOpenModel` selects the
-  // node + bumps it, so the author drawer scrolls to + flashes its Model field; a normal card/selection
-  // open (`handleSelectNodeId`) clears it, so only a chip click focuses the Model field.
-  const [modelFocus, setModelFocus] = useState<{ nodeId: string; n: number } | null>(null);
   // Credential preflight for Run (UX): null until the first successful providers load so we
   // don't flash-disable the CTA; once loaded, missing BYOK (and no Desktop subscription cover)
   // blocks launch and points at Engines.
@@ -130,8 +173,6 @@ export default function App({
     byok: Set<string>;
     subs: Partial<Record<SubscriptionProviderId, boolean>>;
   } | null>(null);
-  // F-canvas-fidelity-1 Part B: the header profile menu (avatar → the email + Log out). Local UI state.
-  const [profileOpen, setProfileOpen] = useState(false);
 
   // Authoring vs run: with no active run the canvas shows the persistent team; once a run launches
   // the existing live run view takes over (graph/run/tasks polled as before).
@@ -142,7 +183,7 @@ export default function App({
   useEffect(() => {
     if (!authoring) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         // M-subs-desktop: the gate reads the SERVER mirror — a subscription covers only while it is
         // connected AND this user's Tvashtr Desktop runner has checked in (`runner_fresh`), which is
@@ -272,7 +313,7 @@ export default function App({
         if (mountedRef.current) setEditBusy(false);
       }
     },
-    [currentTeamId, teamGraph, loadTeam],
+    [currentTeamId, teamGraph, loadTeam, setSelectedNodeId],
   );
 
   // A drawn edge S → T, with its role chosen in the inline editor. A bounded rework loop ALSO
@@ -320,7 +361,7 @@ export default function App({
         if (mountedRef.current) setEditBusy(false);
       }
     },
-    [currentTeamId, loadTeam, selectedNodeId],
+    [currentTeamId, loadTeam, selectedNodeId, setSelectedNodeId],
   );
 
   const handleDeleteEdges = useCallback(
@@ -357,20 +398,18 @@ export default function App({
     setPanelMode((m) => (m === "drawer" ? "modal" : "drawer"));
   }, []);
 
-  // Author-canvas node selection (a card-body click / the pane-click deselect). Clears any pending
-  // model-focus so a normal open lands at the top of the drawer (prompt first), NOT scrolled to Model.
-  const handleSelectNodeId = useCallback((id: string | null) => {
-    setSelectedNodeId(id);
-    setModelFocus(null);
-  }, []);
+  // Author-canvas node selection (a card-body click / the pane-click deselect).
+  const handleSelectNodeId = useCallback(
+    (id: string | null) => setSelectedNodeId(id),
+    [setSelectedNodeId],
+  );
 
-  // The node card's model chip was clicked (author mode) — select the node AND bump the focus nonce so
-  // the drawer scrolls to + flashes its Model field. Re-clicking an ALREADY-open node re-bumps → the
-  // drawer re-scrolls (the edge case the brief calls out).
-  const handleOpenModel = useCallback((nodeId: string) => {
-    setSelectedNodeId(nodeId);
-    setModelFocus((prev) => ({ nodeId, n: (prev?.n ?? 0) + 1 }));
-  }, []);
+  // The node card's model chip was clicked (author mode): open that agent on Setup, where its Model
+  // row is.
+  const handleOpenModel = useCallback(
+    (nodeId: string) => setPlace({ node: nodeId, tab: "setup", focus: false }),
+    [setPlace],
+  );
 
   useEffect(() => {
     void loadTeams();
@@ -414,7 +453,7 @@ export default function App({
     setSelectedRunNodeId(null);
     setSelectedNodeId(null);
     setFocusNodeId(null);
-  }, []);
+  }, [setSelectedNodeId]);
 
   // Return to the authoring view (after a run finishes) to edit the current team and run again.
   // Refetches its graph so any edits made elsewhere are reflected.
@@ -541,9 +580,6 @@ export default function App({
 
   // P1.8d: the authoring panel selects by node id (duplicate role names are possible now).
   const selectedTeamNode = teamGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null;
-  // F1c: 0 for a normal open; the bumping nonce when the model chip opened THIS node (drives the
-  // author drawer's Model-field scroll + flash). Guarded on the id so a stale nonce reads 0.
-  const focusModel = modelFocus?.nodeId === selectedNodeId ? modelFocus.n : 0;
   // The run-view selected node (Option A): found by id so two same-role nodes select independently.
   const selectedRunNode = graph?.nodes.find((n) => n.id === selectedRunNodeId) ?? null;
   // P1.8c: the team's start node is the one NOT targeted by any edge (same rule as the backend).
@@ -581,193 +617,54 @@ export default function App({
   // authoritative total; else sum the polled cost rows), "$0.00" while nothing is running.
   const runCost = run?.cost_total_usd ?? costs.reduce((sum, c) => sum + c.cost_usd, 0);
   const spendLabel = `$${runCost.toFixed(2)}`;
-  // Part B: the avatar shows the first letter of the account's email.
-  const avatarInitial = user?.email?.trim().charAt(0).toUpperCase() || "?";
+  // Why Run is disabled, as the canvas callout says it: the team's blocking findings first, then the
+  // providers nothing covers (the same rule POST /api/runs enforces).
+  const runBlock = !authoring
+    ? null
+    : !teamRunnable
+      ? validityBlock(validityErrors)
+      : credentialGate !== null
+        ? credentialBlock(missingProviders, launchTarget === "local")
+        : null;
+  const openEngines = onBackToDashboard ? () => onBackToDashboard("engines") : undefined;
 
   return (
     <>
-      <header className="tv-topbar">
-        <div className="flex items-center gap-3">
-          <img src="/mark-coral.png" alt="" style={{ width: 24, height: 24 }} />
-          <span
-            style={{
-              fontFamily: "var(--font-display)",
-              fontWeight: "var(--fw-display)" as unknown as number,
-              fontSize: "var(--fs-h3)",
-              letterSpacing: "var(--tracking-tight)",
-              color: "var(--text-primary)",
-            }}
-          >
-            Tvashtr
-          </span>
-          <span style={{ fontSize: "var(--fs-caption)", color: "var(--text-secondary)" }}>
-            the living canvas
-          </span>
-        </div>
-        {/* Part B: the account avatar → a click-to-open profile menu (the email + Log out), replacing
-            the raw email + Log out text. The green backend dot moved OUT of the header to the toolbar. */}
-        {user && (
-          <div className="tv-avatar-wrap">
-            <button
-              type="button"
-              className="tv-avatar"
-              onClick={() => setProfileOpen((o) => !o)}
-              aria-haspopup="menu"
-              aria-expanded={profileOpen}
-              aria-label="Account"
-              title="Account"
-            >
-              {avatarInitial}
-            </button>
-            {profileOpen && (
-              <>
-                <div
-                  className="tv-avatarmenu__catch"
-                  onClick={() => setProfileOpen(false)}
-                  aria-hidden
-                />
-                <div className="tv-avatarmenu" role="menu">
-                  <div className="tv-avatarmenu__id">
-                    <span className="tv-avatarmenu__avatar" aria-hidden>
-                      {avatarInitial}
-                    </span>
-                    <span className="tv-avatarmenu__email" title={user.email}>
-                      {user.email}
-                    </span>
-                  </div>
-                  <div className="tv-avatarmenu__divider" />
-                  <button
-                    type="button"
-                    className="tv-avatarmenu__logout"
-                    role="menuitem"
-                    onClick={() => onLogout?.()}
-                  >
-                    <LogOut size={15} strokeWidth={1.8} />
-                    Log out
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </header>
-
-      <div className="tv-toolbar">
-        {/* Part C: the back-to-dashboard arrow (replaces the header's "← Dashboard" text button). */}
-        {onBackToDashboard && (
-          <button
-            type="button"
-            className="tv-toolbar__back"
-            onClick={() => onBackToDashboard()}
-            aria-label="Back to dashboard"
-            title="Back to dashboard"
-          >
-            <ArrowLeft size={16} strokeWidth={1.8} aria-hidden />
-          </button>
-        )}
-        {/* Author: Run this team (or Configure providers when keys are missing). Run mode: Edit + Cancel
-            + the run banner. */}
-        {authoring ? (
-          <>
-            <span style={{ position: "relative", display: "inline-flex" }}>
-              {!providersReady && credentialGate !== null ? (
-                <button
-                  className="tv-btn"
-                  type="button"
-                  onClick={() => onBackToDashboard?.("engines")}
-                  disabled={!onBackToDashboard}
-                  title={missingCredentialCtaTitle(launchTarget)}
-                >
-                  <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden />
-                  Configure providers
-                </button>
-              ) : (
-                <button
-                  className="tv-btn"
-                  // One launch surface (spec §4.6, Q18): Run opens Home's "Start a run" composer
-                  // with this team picked.
-                  onClick={() =>
-                    currentTeamId && requestHomeAction({ kind: "new-run", teamId: currentTeamId })
-                  }
-                  disabled={currentTeamId === null || !canLaunch}
-                  title={
-                    !teamRunnable
-                      ? "Fix the team before running (see the issues)."
-                      : undefined
-                  }
-                >
-                  <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden />
-                  Run this team
-                </button>
-              )}
-            </span>
-          </>
-        ) : (
+      <CanvasHeader user={user} onLogout={onLogout} />
+      <CanvasToolbar
+        onBack={onBackToDashboard ? () => onBackToDashboard() : undefined}
+        // One launch surface (spec §4.6, Q18): Run opens Home's "Start a run" composer with this
+        // team picked.
+        run={
+          authoring
+            ? {
+                disabled: currentTeamId === null || !canLaunch,
+                title: runBlock?.title,
+                onRun: () =>
+                  currentTeamId && requestHomeAction({ kind: "new-run", teamId: currentTeamId }),
+              }
+            : undefined
+        }
+        teamName={teamGraph?.name ?? ""}
+        spend={spendLabel}
+      >
+        {!authoring && (
           <>
             <button className="tv-btn tv-btn--ghost" onClick={handleEditTeam} disabled={inFlight}>
               {inFlight ? "Running…" : "Edit this team"}
             </button>
-            {inFlight && (
-              <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />
-            )}
+            {inFlight && <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />}
             <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
             <RunWarnings warnings={graph?.resolution_warnings ?? []} />
           </>
         )}
-        {/* Blocked-launch signals: topology validity and/or missing provider credentials. */}
-        {authoring && !teamRunnable && (
-          <div className="tv-validity" role="status">
-            <span className="tv-validity__lead">Can’t run yet:</span>
-            <ul className="tv-validity__list">
-              {validityErrors.slice(0, 4).map((issue, i) => (
-                <li key={`${issue.code}:${issue.node_id ?? issue.edge_id ?? i}`}>
-                  {issue.message}
-                </li>
-              ))}
-              {validityErrors.length > 4 && <li>…and {validityErrors.length - 4} more.</li>}
-            </ul>
-          </div>
-        )}
-        {authoring && teamRunnable && !providersReady && credentialGate !== null && (
-          <div className="tv-validity" role="status" data-testid="missing-providers">
-            <span className="tv-validity__lead">Missing providers:</span>
-            <ul className="tv-validity__list">
-              {missingProviders.map((p) => (
-                <li key={p}>{missingProviderBannerDetail(p, launchTarget)}</li>
-              ))}
-            </ul>
-            {onBackToDashboard && (
-              <button
-                type="button"
-                className="tv-btn tv-btn--ghost"
-                style={{ marginLeft: "0.5rem" }}
-                onClick={() => onBackToDashboard("engines")}
-              >
-                Open Engines
-              </button>
-            )}
-          </div>
-        )}
-        {error && (
-          <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>{error}</span>
-        )}
+        {error && <span className="cv-error">{error}</span>}
         {authoring && teamError && (
-          <span style={{ fontSize: "var(--fs-caption)", color: "var(--danger)" }}>
-            Couldn't load your team — is the backend running?
-          </span>
+          <span className="cv-error">Couldn't load your team — is the backend running?</span>
         )}
-        {/* Right cluster: the run spend ($0.00 when idle) + a hairline divider + the green backend dot
-            (moved out of the header). The design's static grid icon is intentionally omitted. */}
-        <div className="tv-toolbar__right">
-          <span className="tv-toolbar__spend" title="Spend this run">
-            {spendLabel}
-          </span>
-          <span className="tv-toolbar__divider" aria-hidden />
-          <BackendDot />
-        </div>
-      </div>
+      </CanvasToolbar>
 
-      <main className="flex min-h-0 flex-1">
+      <main className="cv-main">
         {/* Part A: no author-mode team rail — the canvas is full-width while authoring (the team
             library lives on the Dashboard). A left panel appears ONLY during a run (the tasks drawer). */}
         {!authoring && (
@@ -780,7 +677,7 @@ export default function App({
             busy={acting}
           />
         )}
-        <div className="relative min-w-0 flex-1">
+        <div className="cv-canvas">
           <TeamCanvas
             blockedNodes={blockedNodes}
             blockedReason={error ?? ""}
@@ -803,26 +700,28 @@ export default function App({
             onSelectNodeId={handleSelectNodeId}
             onOpenModel={handleOpenModel}
             busy={editBusy}
+            selectedNodeId={authoring ? selectedNodeId : undefined}
           />
+          {runBlock && <RunBlockedBanner block={runBlock} onOpenEngines={openEngines} />}
         </div>
         {authoring
-          ? selectedNodeId &&
+          ? selectedTeamNode &&
             currentTeamId && (
-              <TeamNodePanel
-                key={selectedNodeId}
+              <NodeEditor
+                key={selectedTeamNode.id}
                 teamId={currentTeamId}
                 node={selectedTeamNode}
-                edges={teamGraph?.edges ?? []}
                 nodes={teamGraph?.nodes ?? []}
-                isStartNode={selectedTeamNode?.id === startNodeId}
-                panelMode={panelMode}
-                onTogglePanelMode={togglePanelMode}
-                focusModel={focusModel}
-                onSaved={() => loadTeam(currentTeamId)}
+                edges={teamGraph?.edges ?? []}
+                isEntry={selectedTeamNode.id === startNodeId}
+                cover={credentialGate}
+                tab={place.tab}
+                onTabChange={(tab) => setPlace({ ...place, tab })}
+                focus={place.focus}
+                onFocusChange={(focus) => setPlace({ ...place, focus })}
                 onClose={() => handleSelectNodeId(null)}
-                onManageMemory={
-                  onBackToDashboard ? () => onBackToDashboard("tools") : undefined
-                }
+                onSaved={() => loadTeam(currentTeamId)}
+                onManageMemory={onBackToDashboard ? () => onBackToDashboard("tools") : undefined}
               />
             )
           : selectedRunNode && (

@@ -22,13 +22,18 @@
    Status tints the border + fill; running breathes coral, done/failed
    stamp a corner badge. Tokens only — no ad-hoc color. */
 .rf-node {
+  /* Main / Web-Setup canvas card: 164px, 10px 11px, 12px radius, a 7px column gap. */
   position: relative;
-  width: 216px;
-  padding: 13px 15px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 164px;
+  box-sizing: border-box;
+  padding: 10px 11px;
   font-family: var(--font-ui);
   background: var(--surface-card);
-  border: var(--border-width-2) solid var(--border-hairline);
-  border-radius: 13px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
   box-shadow: var(--shadow-node);
   transition:
     border-color var(--dur-base) var(--ease-standard),
@@ -39,29 +44,23 @@
   box-shadow: var(--shadow-node-hover);
 }
 .react-flow__node.selected .rf-node {
-  border-color: var(--border-strong);
+  border: 1.5px solid var(--coral-500);
   box-shadow:
-    0 0 0 3px var(--focus-ring),
-    var(--shadow-node-hover);
+    0 0 0 4px rgba(217, 119, 87, 0.16),
+    0 6px 16px -8px rgba(20, 20, 19, 0.1);
 }
 
 /* Entry node: a coral left-bar + rounder left corners + a coral-tinted glyph. */
 .rf-node--entry {
-  border-radius: 18px 13px 13px 18px;
+  border-left: 3px solid var(--coral-500);
 }
 .rf-node__bar {
-  position: absolute;
-  left: 0;
-  top: 11px;
-  bottom: 11px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
+  display: none;
 }
 .rf-node__eyebrow {
-  margin-bottom: 1px;
-  font-size: 10px;
-  font-weight: var(--fw-semibold);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.6;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--coral-700);
@@ -70,39 +69,37 @@
 .rf-node__head {
   display: flex;
   align-items: flex-start;
-  gap: 11px;
+  gap: 8px;
 }
 .rf-node__glyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
   flex: none;
   color: var(--ink-700);
   background: var(--panel-300);
-  border: var(--border-width) solid var(--border-hairline);
-  border-radius: 9px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 7px;
 }
 .rf-node--entry .rf-node__glyph {
-  color: var(--coral-700);
-  background: var(--coral-100);
-  border-color: var(--coral-200);
+  color: var(--ink-700);
 }
 .rf-node__titles {
   min-width: 0;
   flex: 1;
 }
 .rf-node__role {
-  font-size: 14px;
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-snug);
-  line-height: 1.2;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.6;
   color: var(--text-primary);
 }
 .rf-node__caption {
-  margin-top: 2px;
-  font-size: 11.5px;
+  font-size: 10.5px;
+  line-height: 1.6;
   color: var(--text-secondary);
 }
 
@@ -133,37 +130,34 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
-  margin-top: 11px;
+  gap: 4px;
 }
 .rf-node__meta .tv-pill {
-  margin-left: auto;
+  margin-left: 0;
 }
 .rf-node__cap {
-  padding: 2px 9px;
-  font-size: 10.5px;
-  font-weight: var(--fw-medium);
-  line-height: 1.35;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.6;
   color: var(--coral-700);
   background: var(--coral-100);
-  border: var(--border-width) solid var(--coral-200);
-  border-radius: var(--radius-pill);
+  border-radius: 999px;
 }
 /* Thinker capability reads in the DS "rare secondary" blue (reserved for tags). */
 .rf-node__cap--thinker {
-  color: var(--blue-500);
+  color: #3f6690;
   background: var(--blue-100);
-  border-color: color-mix(in srgb, var(--blue-500) 22%, transparent);
 }
 .rf-node__engine {
-  padding: 2px 8px;
-  font-size: 10.5px;
-  font-weight: var(--fw-medium);
-  line-height: 1.35;
-  color: var(--text-secondary);
-  background: var(--surface-page);
-  border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-pill);
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--ink-600);
+  background: transparent;
+  border: 1px solid var(--line-300);
+  border-radius: 999px;
 }
 
 /* The clickable model footer row: a top hairline, a CPU glyph, mono model text.
@@ -171,16 +165,18 @@
 .rf-node__model {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   width: 100%;
-  margin-top: 10px;
-  padding: 10px 0 0;
+  padding: 6px 0 0;
   border: none;
-  border-top: var(--border-width) solid var(--border-faint);
+  border-top: 1px solid var(--line-200);
   background: transparent;
-  color: var(--text-tertiary);
+  color: var(--ink-500);
   cursor: pointer;
   text-align: left;
+  font-family: var(--font-code);
+  font-size: 9.5px;
+  line-height: 1.6;
 }
 .rf-node__model svg {
   flex: none;
@@ -188,8 +184,8 @@
 .rf-node__model-text {
   min-width: 0;
   font-family: var(--font-code);
-  font-size: 11px;
-  color: var(--text-secondary);
+  font-size: 9.5px;
+  color: var(--ink-500);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -321,17 +317,40 @@
 /* the small centered "changes requested" chip on the arc — muted coral, calm */
 .rf-edge-rework__label {
   position: absolute;
-  padding: 2px 9px;
+  padding: 1px 7px;
   font-family: var(--font-ui);
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-medium);
-  line-height: 1;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.6;
   white-space: nowrap;
   color: var(--coral-700);
-  background: color-mix(in srgb, var(--coral-100) 65%, var(--surface-card));
-  border: var(--border-width) solid var(--accent-tint-border);
-  border-radius: var(--radius-pill);
+  background: var(--coral-100);
+  border: 1px solid var(--coral-200);
+  border-radius: 999px;
   pointer-events: none;
+}
+
+/* The card's status chip ("● Waiting"): 10px on the panel tint; state tints below. */
+.rf-node__status {
+  padding: 1px 7px;
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: nowrap;
+  color: var(--ink-500);
+  background: var(--panel-300);
+  border-radius: 999px;
+}
+.rf-node__status--running {
+  color: var(--coral-700);
+  background: var(--coral-100);
+}
+.rf-node__status--done {
+  color: #52613e;
+  background: var(--sage-100);
+}
+.rf-node__status--failed {
+  color: var(--red-500);
+  background: var(--red-100);
 }
 
 /* ---- Iteration badge: shown on a node once it has looped (round >= 2) ----
@@ -438,16 +457,18 @@
 /* ---- Gate: a compact "checkpoint" token — a pill silhouette, distinct from the
    square agent cards. State (idle/awaiting/approved/stopped) drives the color. ---- */
 .rf-gate {
+  /* A 36px checkpoint pill: 0 12px, a 7px gap, the strong border. */
   position: relative;
   display: flex;
   align-items: center;
-  gap: 11px;
-  width: 156px;
-  padding: 9px 16px;
+  gap: 7px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 12px;
   font-family: var(--font-ui);
   background: var(--surface-card);
-  border: var(--border-width-2) solid var(--border-strong);
-  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
   box-shadow: var(--shadow-node);
   transition:
     border-color var(--dur-base) var(--ease-standard),
@@ -456,29 +477,22 @@
 }
 .rf-gate__glyph {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
   flex: none;
-  color: var(--ink-700);
+  color: var(--ink-600);
 }
 .rf-gate__text {
   min-width: 0;
 }
 .rf-gate__label {
-  font-size: 13.5px;
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-snug);
-  line-height: 1.15;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.6;
   color: var(--text-primary);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .rf-gate__state {
-  margin-top: 1px;
-  font-size: 11px;
+  font-size: 9.5px;
+  line-height: 1.6;
   color: var(--text-secondary);
 }
 /* awaiting = blocked at this gate: the calm coral tint + coral ring, deliberately with
@@ -515,19 +529,20 @@
 /* ---- Terminal: a compact "endpoint" token — glyph over a one-line label, narrower
    than both the cards and the gate pill. Faint + dashed until the walk reaches it. ---- */
 .rf-terminal {
+  /* A 60×50 endpoint token with a dashed border. */
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  width: 88px;
-  padding: 12px 10px;
+  justify-content: center;
+  gap: 3px;
+  width: 60px;
+  height: 50px;
+  box-sizing: border-box;
   font-family: var(--font-ui);
   background: var(--surface-card);
-  border: var(--border-width-2) dashed var(--border-strong);
-  border-radius: 13px;
-  box-shadow: var(--shadow-node);
-  opacity: 0.82;
+  border: 1px dashed var(--line-400);
+  border-radius: 10px;
   transition:
     border-color var(--dur-base) var(--ease-standard),
     background var(--dur-base) var(--ease-standard),
@@ -535,18 +550,13 @@
 }
 .rf-terminal__glyph {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
   color: var(--ink-600);
 }
 .rf-terminal__label {
-  font-size: 11.5px;
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-snug);
-  line-height: 1;
-  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-600);
 }
 /* not reached yet → the base faint dashed outline (idle carries no extra rule). */
 /* ship reached → sage "Shipped" (solid, full opacity) */
@@ -875,16 +885,16 @@
 }
 .rf-edge__label {
   position: absolute;
-  padding: 2px 9px;
+  padding: 1px 7px;
   font-family: var(--font-ui);
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-medium);
-  line-height: 1;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.6;
   white-space: nowrap;
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--panel-300) 70%, var(--surface-card));
-  border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-pill);
+  color: var(--ink-500);
+  background: var(--surface-card);
+  border: 1px solid var(--line-300);
+  border-radius: 999px;
   pointer-events: none;
 }
 .rf-edge__del {
