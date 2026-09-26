@@ -78,6 +78,20 @@ describe("?s= section scroll (WEB-7)", () => {
     expect(window.location.hash).toBe("#/welcome");
   });
 
+  it("a new public page opens at its top; a ?s= visit keeps its section", async () => {
+    const scrollTo = vi.fn();
+    vi.stubGlobal("scrollTo", scrollTo);
+    renderAt("#/welcome");
+    expect(scrollTo).not.toHaveBeenCalled(); // first paint: the browser's own restore stands
+    window.location.hash = "#/download?os=mac";
+    await screen.findByRole("heading", { name: "Tvashtr for Mac" });
+    expect(scrollTo).toHaveBeenCalledWith(0, 0);
+    scrollTo.mockReset();
+    window.location.hash = "#/welcome?s=faq";
+    await waitFor(() => expect(scrolled).toHaveBeenCalledWith("faq", expect.anything()));
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
   it("from another page, a section link is an ordinary visit", async () => {
     renderAt("#/download?os=mac");
     const link = within(screen.getByRole("navigation", { name: "Site" })).getByRole("link", {

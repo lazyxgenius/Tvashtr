@@ -2,7 +2,7 @@
  * The public website's pages (website.md WEB-1): the landing, sign-in and download, signed in or
  * out. `AuthGate` renders it for every public address; Tvashtr Desktop never does (WEB-3).
  */
-import { type ReactNode, useEffect, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useRef, useSyncExternalStore } from "react";
 
 import type { AuthUser, Config } from "../../lib/api";
 import { type PublicRoute, navigate, parseRoute } from "../../lib/nav";
@@ -63,7 +63,18 @@ export function SiteRoot({
   }, [leaveSignIn]);
 
   const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
-  useSectionScroll(route.page === "welcome" ? route.section : undefined);
+  const section = route.page === "welcome" ? route.section : undefined;
+  useSectionScroll(section);
+
+  // Hash routes never scroll by themselves: a new page opens at its top, not at the last page's
+  // offset. Not on the first paint (the browser restores a reload's position) nor for a `?s=`.
+  const pageKey = `${route.page}:${"started" in route && route.started}:${"done" in route && route.done}`;
+  const shownPage = useRef(pageKey);
+  useEffect(() => {
+    if (shownPage.current === pageKey) return;
+    shownPage.current = pageKey;
+    if (!section) window.scrollTo(0, 0);
+  }, [pageKey, section]);
 
   if (route.page === "download") {
     return (
