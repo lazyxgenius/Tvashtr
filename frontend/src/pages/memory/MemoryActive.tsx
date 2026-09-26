@@ -46,9 +46,17 @@ const icon = { size: 14, strokeWidth: 1.6, "aria-hidden": true } as const;
  * pinned first then newest. The filter bar (words, Repo, Scope, Force) narrows it with AND and says
  * "1 of 14" with a Clear filters link. Each row can be pinned (pinned notes go to the agent first),
  * edited in place, or deleted. `onChanged` lets the page refresh the tab counts; `onAdd` opens Add
- * memory.
+ * memory, and `added` is the memory it just added (it joins the list without a reload).
  */
-export function MemoryActive({ onChanged, onAdd }: { onChanged: () => void; onAdd: () => void }) {
+export function MemoryActive({
+  onChanged,
+  onAdd,
+  added = null,
+}: {
+  onChanged: () => void;
+  onAdd: () => void;
+  added?: Memory | null;
+}) {
   const toast = useToast();
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [repos, setRepos] = useState<MemoryRepo[] | null>(null);
@@ -91,6 +99,17 @@ export function MemoryActive({ onChanged, onAdd }: { onChanged: () => void; onAd
 
   const update = (f: (rows: Memory[]) => Memory[]) =>
     setLoad((l) => (l.state === "ready" ? { state: "ready", data: sortActive(f(l.data)) } : l));
+
+  // MEM-34: a memory just added lands first in the unpinned group (it is the newest). A list still
+  // loading already has it from the server.
+  useEffect(() => {
+    if (!added) return;
+    setLoad((l) =>
+      l.state === "ready"
+        ? { state: "ready", data: sortActive([added, ...l.data.filter((r) => r.id !== added.id)]) }
+        : l,
+    );
+  }, [added]);
   const replace = (saved: Memory) =>
     update((rows) => rows.map((r) => (r.id === saved.id ? saved : r)));
   const mark = (id: string, on: boolean) =>

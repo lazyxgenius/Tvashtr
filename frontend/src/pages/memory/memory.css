@@ -313,3 +313,72 @@
   font-size: 13px;
   color: var(--ink-600);
 }
+
+/* ---- Add memory sheet (Toolkit-AddMemory, TkF-AddMemory-1…3): body is the DS sheet's ---- */
+.mem-add {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.mem-add__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mem-add__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.mem-add__seg {
+  display: flex;
+}
+.mem-add__seg .tv-seg__btn {
+  flex: 1;
+  padding: 0 8px;
+  font-size: 12.5px;
+}
+.mem-add__force {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 12px;
+  border: 1px solid var(--line-200);
+  border-radius: 10px;
+  background: var(--surface-card);
+  font-size: 16px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.mem-add__force--on {
+  border-color: var(--coral-200);
+  background: var(--coral-100);
+}
+/* The design's bare radio: the browser's own 13px control and margins, coral when checked. */
+.mem-add__force input {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin: 3px 3px 0 5px;
+  font: 400 13.3333px Arial;
+  accent-color: #d97757;
+}
+.mem-add__force input:focus-visible {
+  outline: 2px solid var(--coral-500);
+  outline-offset: 2px;
+}
+.mem-add__badge {
+  width: 92px;
+  flex: none;
+}
+.mem-add__hint {
+  font-size: 12.5px;
+  color: var(--ink-700);
+}
+.mem-add__error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--danger);
+}

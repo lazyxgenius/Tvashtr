@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button, Switch, Tabs, useToast } from "../../design-system/components";
 import {
+  type Memory,
   type MemoryCounts,
   getMemoryCounts,
   getReviewMode,
@@ -10,21 +11,26 @@ import {
 } from "../../lib/api/memory";
 import { type MemoryTab, navigate } from "../../lib/nav";
 import { publishBadges } from "../../lib/workspaceStatus";
+import { AddMemorySheet } from "./AddMemorySheet";
 import { MemoryActive } from "./MemoryActive";
 import { MemoryArchive } from "./MemoryArchive";
 import { MemoryInbox } from "./MemoryInbox";
+import { addedMessage } from "./memoryModel";
 import "./memory.css";
 
 const REVIEW_TITLE = "Review new memories before they apply";
 
 /**
  * Toolkit › Memory (Toolkit-MemoryInbox, Toolkit-MemoryActive; flows TkF-Review, TkF-Inbox,
- * TkF-Filters, TkF-NoteActions, TkF-Archive): the page header with Add memory, the review switch (Inbox only), pill tabs
- * "Inbox N / Active N / Archive" from `/api/memories/counts` (the address carries the tab), and the
- * tab's list. The Inbox count is also the nav badge ("2 new").
+ * TkF-Filters, TkF-NoteActions, TkF-Archive, TkF-AddMemory): the page header with Add memory, the
+ * review switch (Inbox only), pill tabs "Inbox N / Active N / Archive" from `/api/memories/counts`
+ * (the address carries the tab), and the tab's list. The Inbox count is also the nav badge ("2 new").
  */
 export function MemoryPage({ tab }: { tab: MemoryTab }) {
+  const toast = useToast();
   const [counts, setCounts] = useState<MemoryCounts | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [added, setAdded] = useState<Memory | null>(null);
 
   const refreshCounts = useCallback(() => {
     getMemoryCounts().then(
@@ -38,8 +44,16 @@ export function MemoryPage({ tab }: { tab: MemoryTab }) {
   }, []);
   useEffect(refreshCounts, [refreshCounts]);
 
-  // Add memory (the header's and the empty states') — the drawer is its own slice (G7).
-  const openAdd = useCallback(() => undefined, []);
+  // Add memory (the header's and the empty states'). The new memory applies right away, so the
+  // page shows it where it went: first in Active's unpinned group.
+  const openAdd = useCallback(() => setAdding(true), []);
+  const onAdded = (m: Memory, repo: string | null) => {
+    setAdding(false);
+    setAdded(m);
+    refreshCounts();
+    toast({ message: addedMessage(repo) });
+    if (tab !== "active") navigate({ page: "memory", tab: "active" });
+  };
 
   return (
     <>
@@ -81,13 +95,15 @@ export function MemoryPage({ tab }: { tab: MemoryTab }) {
           onSeeActive={() => navigate({ page: "memory", tab: "active" })}
         />
       ) : tab === "active" ? (
-        <MemoryActive onChanged={refreshCounts} onAdd={openAdd} />
+        <MemoryActive onChanged={refreshCounts} onAdd={openAdd} added={added} />
       ) : (
         <MemoryArchive
           onChanged={refreshCounts}
           onOpenActive={() => navigate({ page: "memory", tab: "active" })}
         />
       )}
+
+      {adding && <AddMemorySheet onClose={() => setAdding(false)} onAdded={onAdded} />}
     </>
   );
 }
