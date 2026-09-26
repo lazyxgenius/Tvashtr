@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { UsageDomain } from "../../lib/api/engines";
-import { KEYS, USAGE, key, node, sampleInputs, sub } from "./enginesTestUtils";
+import { DIRECTORY, KEYS, USAGE, key, node, sampleInputs, sub } from "./enginesTestUtils";
 import {
   EMBEDDINGS_SUGGESTION,
   addedLabel,
@@ -103,6 +103,22 @@ describe("keyRows (ENG-53)", () => {
       "Reviewer · Indicator sprint team; Writer, Reviewer · Docs team +1 more",
     );
     expect(deepseek.usedByFull).toContain("Reviewer · Third team");
+  });
+
+  it("an embeddings-only key is used by Domains ingest, a model key nothing uses is not (EnF-Embeddings-2)", () => {
+    const directory = DIRECTORY.map((d) =>
+      d.provider === "huggingface" ? { ...d, embeddings: true } : d,
+    );
+    const rows = keyRows(
+      sampleInputs({ directory, keys: [...KEYS, key("huggingface", "f0Tk", "2026-09-26")] }),
+      NOW,
+    );
+    const hf = rows.find((r) => r.provider === "huggingface")!;
+    expect(hf).toMatchObject({ usedBy: "Domains ingest", unused: false });
+    expect(rows.find((r) => r.provider === "openrouter")).toMatchObject({
+      usedBy: "Not used by any team",
+      unused: true,
+    });
   });
 });
 

@@ -334,19 +334,37 @@ function addKeys(providers: readonly string[]): string {
   return providers.length === 1 ? `add ${providers[0]} key` : `add ${providers.join(", ")} keys`;
 }
 
-/** One surface's verdict for one team. */
-export function teamVerdict(i: EngineInputs, team: UsageTeam, target: "local" | "hosted"): Verdict {
+/** The providers a team can't run on one surface yet (THE launch rule). A key that powers
+ *  nothing never counts toward a team being able to run. */
+function missingFor(i: EngineInputs, team: UsageTeam, target: "local" | "hosted"): string[] {
   const noSeat = providersServingNoSeat(i.catalogue);
-  // A key that powers nothing never counts toward a team being able to run.
   const byok = new Set(i.keys.map((k) => k.provider).filter((p) => !noSeat.has(p)));
   const connected: Partial<Record<SubscriptionProviderId, boolean>> = {};
   for (const s of RUNNER_SUBSCRIPTIONS) connected[s] = subStatus(i, s)?.connected === true;
-  const missing = missingProvidersForModels({
+  return missingProvidersForModels({
     models: team.nodes.map((n) => n.model),
     byokProviders: byok,
     subscriptionConnected: connected,
     launchTarget: target,
   });
+}
+
+/** The keys a team still needs to run on the website, in the rule's order. A provider that serves
+ *  no seat is never one of them: a key for it would run nothing (the fix is another model). */
+export function websiteKeysMissing(i: EngineInputs, team: UsageTeam): string[] {
+  const noSeat = providersServingNoSeat(i.catalogue);
+  return missingFor(i, team, "hosted").filter((p) => !noSeat.has(p));
+}
+
+/** The teams whose agents use `provider` as their model (fallbacks aside, OQ-13), in team order. */
+export function teamsUsing(usage: EngineUsage, provider: string): UsageTeam[] {
+  return usage.teams.filter((t) => t.nodes.some((n) => nodeProvider(n) === provider));
+}
+
+/** One surface's verdict for one team. */
+export function teamVerdict(i: EngineInputs, team: UsageTeam, target: "local" | "hosted"): Verdict {
+  const noSeat = providersServingNoSeat(i.catalogue);
+  const missing = missingFor(i, team, target);
   const parts: string[] = [];
   const keys: string[] = [];
   const changes: string[] = [];

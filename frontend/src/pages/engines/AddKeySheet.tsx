@@ -13,6 +13,9 @@
  * - Save key stays enabled (OQ-4): saving with nothing filled says "Enter a provider and an API
  *   key."; a 4xx shows the server's words, a network failure says the key wasn't saved; the values
  *   stay put either way (ENG-71..73).
+ * - After a save: the new key tops the table (the banner, the embeddings section and the nav badges
+ *   recompute from it) and a toast says what the key changed, with one action — "Add xai" opens
+ *   this sheet again for the next key, "Open Domains" goes to Domains (ENG-58, ENG-60, OQ-7).
  */
 import { Lock, Monitor, TriangleAlert } from "lucide-react";
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -20,6 +23,7 @@ import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "rea
 import { Button, Input, Sheet, useToast } from "../../design-system/components";
 import { saveKey } from "../../lib/api/engines";
 import { ApiDetailError } from "../../lib/api/runs";
+import { navigate } from "../../lib/nav";
 import { monogramOf } from "./engineModel";
 import { useEngines } from "./enginesData";
 import { ProviderCombobox } from "./ProviderCombobox";
@@ -32,6 +36,7 @@ import {
   PREFIX_HELPER,
   type ProviderPick,
   SAVE_NETWORK_ERROR,
+  type SaveToastAction,
   type SheetHint,
   effectiveProvider,
   filterOptions,
@@ -44,11 +49,16 @@ import {
   subscriptionNote,
 } from "./sheetModel";
 
-/** What opened the sheet: a provider picked in advance, and whether it is an embeddings key. */
+/** What opened the sheet: a provider picked in advance, whether it is an embeddings key, and
+ *  whether it came from the suggested-keys banner (the toast then says "Add <q> too, so …"). */
 export interface AddKeyRequest {
   provider?: string;
   embeddings?: boolean;
+  banner?: boolean;
 }
+
+/** Opens the sheet again (a toast's "Add <q>"). */
+export type OpenAddKey = (provider?: string, options?: { embeddings?: boolean }) => void;
 
 function HintLine({ hint }: { hint: SheetHint }) {
   if (hint.kind === "covers") {
@@ -77,7 +87,15 @@ function errorText(e: unknown): string {
   return SAVE_NETWORK_ERROR;
 }
 
-function AddKeyForm({ request, onClose }: { request: AddKeyRequest; onClose: () => void }) {
+function AddKeyForm({
+  request,
+  onClose,
+  onAddKey,
+}: {
+  request: AddKeyRequest;
+  onClose: () => void;
+  onAddKey: OpenAddKey;
+}) {
   const { inputs, keys, setKeys } = useEngines();
   const toast = useToast();
   const formId = useId();
@@ -127,17 +145,30 @@ function AddKeyForm({ request, onClose }: { request: AddKeyRequest; onClose: () 
         created_at: saved.created_at,
         updated_at: saved.updated_at,
       };
-      setKeys(
-        keys.some((k) => k.provider === provider)
-          ? keys.map((k) => (k.provider === provider ? next : k))
-          : [next, ...keys],
-      );
+      const nextKeys = keys.some((k) => k.provider === provider)
+        ? keys.map((k) => (k.provider === provider ? next : k))
+        : [next, ...keys];
+      setKeys(nextKeys);
       onClose();
-      toast({ message: saveToast(inputs, provider, saved.replaced) });
+      const done = saveToast({ ...inputs, keys: nextKeys }, provider, saved.replaced, {
+        banner: request.banner,
+        embeddings: request.embeddings,
+      });
+      toast({
+        message: done.message,
+        action: done.action
+          ? { label: done.action.label, onClick: runAction(done.action) }
+          : undefined,
+      });
     } catch (err) {
       setFormError(errorText(err));
       setBusy(false);
     }
+  };
+
+  const runAction = (action: SaveToastAction) => () => {
+    if (action.kind === "open-domains") navigate({ page: "domains" });
+    else onAddKey(action.provider, { embeddings: action.embeddings });
   };
 
   const clearFormError = () => {
@@ -243,9 +274,13 @@ function AddKeyForm({ request, onClose }: { request: AddKeyRequest; onClose: () 
 export function AddKeySheet({
   request,
   onClose,
+  onAddKey,
 }: {
   request: (AddKeyRequest & { seq: number }) | null;
   onClose: () => void;
+  onAddKey: OpenAddKey;
 }) {
-  return request ? <AddKeyForm key={request.seq} request={request} onClose={onClose} /> : null;
+  return request ? (
+    <AddKeyForm key={request.seq} request={request} onClose={onClose} onAddKey={onAddKey} />
+  ) : null;
 }

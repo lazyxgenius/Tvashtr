@@ -48,6 +48,8 @@ import {
 export interface AddKeyOptions {
   /** The Domains embeddings "Add key": the sheet reads "Add an embeddings key" (ENG-60). */
   embeddings?: boolean;
+  /** A suggested-keys banner "+ provider": the save toast reads "Add <q> too, so …" (ENG-58). */
+  banner?: boolean;
 }
 
 export interface ApiKeysActions {
@@ -393,7 +395,9 @@ export function ApiKeysPage({ onAddKey }: ApiKeysActions) {
   return (
     <section className="eng-page" aria-labelledby="tv-engines-keys">
       {head}
-      {suggested.length > 0 && <SuggestBanner providers={suggested} onAdd={(p) => onAddKey(p)} />}
+      {suggested.length > 0 && (
+        <SuggestBanner providers={suggested} onAdd={(p) => onAddKey(p, { banner: true })} />
+      )}
       <KeysTable
         rows={rows}
         usageFor={usageFor}

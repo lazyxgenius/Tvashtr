@@ -87,14 +87,24 @@ export function usedByList(i: EngineInputs, provider: string): string[] {
   return out;
 }
 
-/** The saved keys, newest first (by when the current key was saved). */
+/** A provider that only embeds (huggingface): in the directory with the embeddings flag, not in the
+ *  model catalogue. Domains ingest is the one thing its key is ever used by. */
+export function embeddingsOnly(i: EngineInputs, provider: string): boolean {
+  const entry = i.directory.find((d) => d.provider === provider);
+  return Boolean(entry?.embeddings) && !i.catalogue.some((c) => c.provider === provider);
+}
+
+/** The saved keys, newest first (by when the current key was saved). An embeddings-only key is
+ *  "Used by Domains ingest" even before a domain embeds with it (the directory's own words). */
 export function keyRows(i: EngineInputs, now: Date = new Date()): KeyRow[] {
   const noSeat = providersServingNoSeat(i.catalogue);
   const time = (k: SavedKey) => new Date(k.updated_at || k.created_at).getTime() || 0;
   return [...i.keys]
     .sort((a, b) => time(b) - time(a) || a.provider.localeCompare(b.provider))
     .map((k): KeyRow => {
-      const uses = noSeat.has(k.provider) ? [] : usedByList(i, k.provider);
+      const listed = noSeat.has(k.provider) ? [] : usedByList(i, k.provider);
+      const uses =
+        listed.length === 0 && embeddingsOnly(i, k.provider) ? ["Domains ingest"] : listed;
       const replaced = Boolean(k.created_at) && k.updated_at !== k.created_at;
       const created = replaced ? addedLabel(k.created_at, now) : "";
       return {

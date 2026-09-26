@@ -26,7 +26,12 @@ function EnginesTabs({ tab, fix }: { tab: EnginesTab; fix: boolean }) {
   /** Open the Add key sheet: nothing picked, or `provider` picked in advance (ENG-74). */
   const addKey = useCallback((provider?: string, options?: AddKeyOptions) => {
     seq.current += 1;
-    setSheet({ provider, embeddings: options?.embeddings ?? false, seq: seq.current });
+    setSheet({
+      provider,
+      embeddings: options?.embeddings ?? false,
+      banner: options?.banner ?? false,
+      seq: seq.current,
+    });
   }, []);
 
   /** A row's Add key opens the sheet with that provider (ENG-15); connecting, re-checking and
@@ -56,7 +61,7 @@ function EnginesTabs({ tab, fix }: { tab: EnginesTab; fix: boolean }) {
         />
       )}
       {tab === "keys" && <ApiKeysPage onAddKey={addKey} />}
-      <AddKeySheet request={sheet} onClose={() => setSheet(null)} />
+      <AddKeySheet request={sheet} onClose={() => setSheet(null)} onAddKey={addKey} />
     </>
   );
 }

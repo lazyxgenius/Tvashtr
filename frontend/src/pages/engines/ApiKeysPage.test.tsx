@@ -93,7 +93,7 @@ describe("API keys page (Eng-Keys)", () => {
       "Your teams also use anthropic and xai. Add keys to run them on the website.",
     );
     fireEvent.click(within(banner).getByRole("button", { name: "xai" }));
-    expect(onAddKey).toHaveBeenLastCalledWith("xai");
+    expect(onAddKey).toHaveBeenLastCalledWith("xai", { banner: true });
 
     // The header's Add key comes first (the embeddings section has its own).
     fireEvent.click(within(page).getAllByRole("button", { name: "Add key" })[0]);

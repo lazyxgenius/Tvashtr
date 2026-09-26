@@ -1,7 +1,8 @@
 /**
  * The Add key sheet, as pure data (no React, no fetch): the provider picker's options (ENG-63/64,
  * OQ-22), the hint under the picker (ENG-66, ENG-65/OQ-5 replace hint), the "Other" model-prefix
- * checks (ENG-70, OQ-6), the notes and the footer's "Used by …" (ENG-68), and the save toast.
+ * checks (ENG-70, OQ-6), the notes and the footer's "Used by …" (ENG-68), and the save toast with
+ * its one action (ENG-58, ENG-60, OQ-7).
  *
  * A provider whose catalogue entry serves no seat (NVIDIA NIM today) is described plainly — "No
  * agent uses NVIDIA NIM right now" — never with an inviting label, and it is never sorted first.
@@ -14,10 +15,13 @@ import {
   providerName,
   providersServingNoSeat,
   runnableSubFor,
+  teamVerdict,
+  teamsUsing,
   usedByCell,
   usedBySegments,
+  websiteKeysMissing,
 } from "./engineModel";
-import { replaceCopy } from "./keysModel";
+import { embeddingsOnly, joinAnd, replaceCopy } from "./keysModel";
 
 // ---- what the picker holds ----
 
@@ -218,11 +222,106 @@ export const FORM_EMPTY_ERROR = "Enter a provider and an API key.";
 export const SAVE_NETWORK_ERROR =
   "Couldn’t save that key — is the backend running? Your key wasn’t saved. Try again.";
 
-/** The toast after a save. A no-seat key is never celebrated (area rule). */
-export function saveToast(i: EngineInputs, provider: string, replaced: boolean): string {
+/** Where the sheet was opened from, when the toast's words depend on it: the suggested-keys banner
+ *  ("Add anthropic too, so …", ENG-58) or the Domains embeddings section (ENG-60). */
+export interface SaveOrigin {
+  banner?: boolean;
+  embeddings?: boolean;
+}
+
+/** The toast's one action: open the sheet again for the next key a team or domain needs, or open
+ *  Domains once they can ingest. */
+export type SaveToastAction =
+  | { kind: "add-key"; label: string; provider: string; embeddings: boolean }
+  | { kind: "open-domains"; label: string };
+
+export interface SaveToast {
+  message: string;
+  action: SaveToastAction | null;
+}
+
+const addAction = (provider: string, embeddings = false): SaveToastAction => ({
+  kind: "add-key",
+  label: `Add ${provider}`,
+  provider,
+  embeddings,
+});
+
+const OPEN_DOMAINS: SaveToastAction = { kind: "open-domains", label: "Open Domains" };
+
+/** "Indicator sprint team", "A and B", "A and 2 other teams". */
+function teamsPhrase(names: readonly string[]): string {
+  if (names.length <= 2) return joinAnd(names);
+  return `${names[0]} and ${names.length - 1} other teams`;
+}
+
+/**
+ * The toast after a save, computed from the inputs AFTER it (the new key included). It only says
+ * what the data backs:
+ * - a key no agent uses (NVIDIA NIM) is never celebrated (area rule); a replace says "replaced";
+ * - a provider teams use: the first of those teams still missing a key for the website names it,
+ *   with "Add <q>" ("… still needs xai to run on the website.", or from the banner "Add anthropic
+ *   too, so … can run on the website."); once none is missing, "… is ready to run on the website."
+ *   (the Overview's "Website: ready"); anything else stays a plain "<p> key saved.";
+ * - an embeddings key: "Domains can ingest documents now." + Open Domains only when every domain's
+ *   embedding provider has a key (OQ-7); with no domain using it, only that Domains can use it.
+ */
+export function saveToast(
+  i: EngineInputs,
+  provider: string,
+  replaced: boolean,
+  origin: SaveOrigin = {},
+): SaveToast {
+  const saved = `${provider} key saved.`;
+  const plain = (message: string): SaveToast => ({ message, action: null });
   if (providersServingNoSeat(i.catalogue).has(provider)) {
-    return `${provider} key saved. ${noSeatNote(providerName(i, provider))}`;
+    return plain(`${saved} ${noSeatNote(providerName(i, provider))}`);
   }
-  if (replaced) return replaceCopy(i, provider).toast;
-  return `${provider} key saved.`;
+  if (replaced) return plain(replaceCopy(i, provider).toast);
+
+  const teams = teamsUsing(i.usage, provider);
+  if (teams.length) {
+    for (const team of teams) {
+      const missing = websiteKeysMissing(i, team);
+      if (!missing.length) continue;
+      const needs = joinAnd(missing);
+      return {
+        message: origin.banner
+          ? `${saved} Add ${needs} too, so ${team.name} can run on the website.`
+          : `${saved} ${team.name} still needs ${needs} to run on the website.`,
+        action: addAction(missing[0]),
+      };
+    }
+    if (teams.every((t) => teamVerdict(i, t, "hosted").ready)) {
+      const verb = teams.length === 1 ? "is" : "are";
+      return plain(
+        `${saved} ${teamsPhrase(teams.map((t) => t.name))} ${verb} ready to run on the website.`,
+      );
+    }
+    return plain(saved);
+  }
+
+  const held = new Set(i.keys.map((k) => k.provider));
+  const domainProviders: string[] = [];
+  for (const d of i.usage.domains) {
+    const p = d.embedding_provider;
+    if (p && !domainProviders.includes(p)) domainProviders.push(p);
+  }
+  if (domainProviders.includes(provider)) {
+    const missing = domainProviders.filter((p) => !held.has(p));
+    if (!missing.length)
+      return { message: `${saved} Domains can ingest documents now.`, action: OPEN_DOMAINS };
+    return {
+      message: `${saved} Some domains still need ${joinAnd(missing)} to ingest documents.`,
+      action: addAction(missing[0], true),
+    };
+  }
+  const embeds = i.directory.find((d) => d.provider === provider)?.embeddings;
+  if (embeds && (embeddingsOnly(i, provider) || origin.embeddings)) {
+    return {
+      message: `${saved} Domains can use ${providerName(i, provider)} embeddings now.`,
+      action: OPEN_DOMAINS,
+    };
+  }
+  return plain(saved);
 }

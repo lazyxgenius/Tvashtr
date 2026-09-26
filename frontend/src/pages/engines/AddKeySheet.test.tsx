@@ -15,6 +15,7 @@ import {
   KEYS,
   RUNNER_STALE,
   SUBS,
+  USAGE,
   installDesktop,
   mockEnginesApi,
   renderEngines,
@@ -56,6 +57,27 @@ async function openSheet(over: Record<string, unknown> = {}) {
 }
 
 type Scope = BoundFunctions<typeof queries>;
+
+/** POST /api/providers as the server answers it: last4 of the posted key, a new key. */
+const answerPost = (_u: URL, body: unknown) => {
+  const b = body as { provider: string; api_key: string };
+  const now = new Date().toISOString();
+  return {
+    provider: b.provider,
+    key_last4: b.api_key.slice(-4),
+    created_at: now,
+    updated_at: now,
+    replaced: false,
+  };
+};
+
+/** Type a key into the open sheet and save it; resolves once the sheet has closed. */
+async function saveWith(value: string) {
+  const sheet = within(screen.getByRole("dialog"));
+  fireEvent.change(sheet.getByLabelText("API key"), { target: { value } });
+  fireEvent.click(sheet.getByRole("button", { name: "Save key" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+}
 
 const providerButton = (sheet: Scope) => sheet.getByRole("button", { name: /^Provider / });
 
@@ -267,15 +289,8 @@ describe("Add key sheet: saving (ENG-71..73)", () => {
     expect(calls.some((c) => c.method === "POST")).toBe(false);
   });
 
-  it("saves, adds the row at the top and closes with a toast", async () => {
-    const post = vi.fn(() => ({
-      provider: "anthropic",
-      key_last4: "wQ3f",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      replaced: false,
-    }));
-    const { calls, sheet } = await openSheet({ "POST /api/providers": post });
+  it("saves, adds the row at the top, shrinks the banner and toasts the next key (Eng-Flow-Key-1)", async () => {
+    const { calls, sheet } = await openSheet({ "POST /api/providers": answerPost });
     pick(sheet, "anthropic");
     fireEvent.change(sheet.getByLabelText("API key"), { target: { value: "  sk-ant-wQ3f " } });
     fireEvent.submit(sheet.getByLabelText("API key").closest("form")!);
@@ -286,7 +301,19 @@ describe("Add key sheet: saving (ENG-71..73)", () => {
     });
     const rows = within(screen.getByRole("table")).getAllByRole("row");
     expect(rows[1]).toHaveAttribute("data-provider", "anthropic");
-    expect(await screen.findByText("anthropic key saved.")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Just now")).toBeInTheDocument();
+    // The banner now names only the provider still missing.
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "Your teams also use xai. Add a key to run them on the website.",
+    );
+    const toast = await screen.findByRole("status");
+    expect(toast).toHaveTextContent(
+      "anthropic key saved. Indicator sprint team still needs xai to run on the website.",
+    );
+    // Its one action opens the sheet again with xai picked.
+    fireEvent.click(within(toast).getByRole("button", { name: "Add xai" }));
+    const again = within(screen.getByRole("dialog", { name: "Add an API key" }));
+    expect(providerButton(again)).toHaveAccessibleName("Provider xai");
   });
 
   it("a network failure keeps the sheet open with the values and says the key wasn't saved", async () => {
@@ -355,5 +382,82 @@ describe("Add key sheet: opened with a provider (ENG-74, ENG-60)", () => {
       within(dialog).getByText("For Domains ingest and Ask, on the website and on Desktop."),
     ).toBeInTheDocument();
     expect(providerButton(within(dialog))).toHaveAccessibleName("Provider huggingface");
+  });
+
+  it("from the banner, the toast says Add anthropic too; its action finishes the team (EnF-Suggest-1/2)", async () => {
+    mockEnginesApi({ "GET /api/config": CONFIG, "POST /api/providers": answerPost });
+    renderEngines("keys");
+    await screen.findByRole("table");
+    fireEvent.click(within(screen.getByRole("note")).getByRole("button", { name: "xai" }));
+    await saveWith("xai-parity-9Kx2");
+    const rows = within(screen.getByRole("table")).getAllByRole("row");
+    expect(rows[1]).toHaveAttribute("data-provider", "xai");
+    expect(within(rows[1]).getByText("•••• 9Kx2")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("Your teams also use anthropic.");
+    const toast = await screen.findByRole("status");
+    expect(toast).toHaveTextContent(
+      "xai key saved. Add anthropic too, so Indicator sprint team can run on the website.",
+    );
+    fireEvent.click(within(toast).getByRole("button", { name: "Add anthropic" }));
+    expect(providerButton(within(screen.getByRole("dialog")))).toHaveAccessibleName(
+      "Provider anthropic",
+    );
+    await saveWith("sk-ant-wQ3f");
+    // Every provider the teams use has a key now: the banner is gone.
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(
+      await screen.findByText(
+        "anthropic key saved. Indicator sprint team is ready to run on the website.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("an embeddings key: the section shows it and the toast opens Domains (EnF-Embeddings-2, OQ-7)", async () => {
+    mockEnginesApi({ "GET /api/config": CONFIG, "POST /api/providers": answerPost });
+    renderEngines("keys");
+    await screen.findByRole("table");
+    const embeddings = screen.getByRole("region", { name: "Domains embeddings" });
+    fireEvent.click(within(embeddings).getByRole("button", { name: "Add key" }));
+    await saveWith("hf_parity_f0Tk");
+    const rows = within(screen.getByRole("table")).getAllByRole("row");
+    expect(rows[1]).toHaveAttribute("data-provider", "huggingface");
+    expect(within(rows[1]).getByText("Domains ingest")).toBeInTheDocument();
+    expect(within(embeddings).getByText("huggingface •••• f0Tk")).toBeInTheDocument();
+    expect(within(embeddings).queryByRole("button", { name: "Add key" })).toBeNull();
+    // No domain exists, so nothing can ingest yet: only that Domains can use the key.
+    const toast = await screen.findByRole("status");
+    expect(toast).toHaveTextContent(
+      "huggingface key saved. Domains can use Hugging Face embeddings now.",
+    );
+    fireEvent.click(within(toast).getByRole("button", { name: "Open Domains" }));
+    expect(window.location.hash).toBe("#/domains");
+  });
+
+  it("with a domain on huggingface, the toast says Domains can ingest now", async () => {
+    mockEnginesApi({
+      "GET /api/config": CONFIG,
+      "POST /api/providers": answerPost,
+      "GET /api/engines/usage": {
+        ...USAGE,
+        domains: [
+          {
+            domain_id: "d1",
+            name: "Handbook",
+            embedding_model: "huggingface/BAAI/bge-small-en-v1.5",
+            embedding_provider: "huggingface",
+            generation_model: null,
+            generation_provider: null,
+          },
+        ],
+      },
+    });
+    renderEngines("keys");
+    await screen.findByRole("table");
+    const embeddings = screen.getByRole("region", { name: "Domains embeddings" });
+    fireEvent.click(within(embeddings).getByRole("button", { name: "Add key" }));
+    await saveWith("hf_parity_f0Tk");
+    expect(
+      await screen.findByText("huggingface key saved. Domains can ingest documents now."),
+    ).toBeInTheDocument();
   });
 });

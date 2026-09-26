@@ -193,16 +193,119 @@ describe("notes and footer (ENG-68)", () => {
   });
 });
 
-describe("save toast", () => {
+describe("save toast (ENG-58, ENG-60, OQ-7)", () => {
+  /** The inputs after `provider`'s key was saved. */
+  const after = (provider: string, over = {}) => {
+    const base = { ...inputs, ...over };
+    return { ...base, keys: [key(provider, "wQ3f"), ...base.keys] };
+  };
+  const domain = (id: string, embedding: string | null) => ({
+    domain_id: id,
+    name: `Domain ${id}`,
+    embedding_model: embedding ? `${embedding}/embed` : null,
+    embedding_provider: embedding,
+    generation_model: null,
+    generation_provider: null,
+  });
+
   it("never celebrates a key no agent uses; says replaced for a replace", () => {
-    expect(saveToast(inputs, "nvidia_nim", true)).toBe(
-      "nvidia_nim key saved. No agent uses NVIDIA NIM right now.",
+    expect(saveToast(inputs, "nvidia_nim", true)).toEqual({
+      message: "nvidia_nim key saved. No agent uses NVIDIA NIM right now.",
+      action: null,
+    });
+    expect(saveToast(after("nvidia_nim"), "nvidia_nim", false).message).not.toMatch(/can|ready/);
+    expect(saveToast(inputs, "deepseek", true)).toEqual({
+      message: "deepseek key replaced. Writer uses it on its next run.",
+      action: null,
+    });
+    expect(saveToast(after("openai"), "openai", false)).toEqual({
+      message: "openai key saved.",
+      action: null,
+    });
+  });
+
+  it("names the key a team still needs for the website, with Add <q>", () => {
+    expect(saveToast(after("anthropic"), "anthropic", false)).toEqual({
+      message: "anthropic key saved. Indicator sprint team still needs xai to run on the website.",
+      action: { kind: "add-key", label: "Add xai", provider: "xai", embeddings: false },
+    });
+  });
+
+  it("from the banner: Add <q> too, so the team can run on the website (EnF-Suggest-2)", () => {
+    expect(saveToast(after("xai"), "xai", false, { banner: true })).toEqual({
+      message: "xai key saved. Add anthropic too, so Indicator sprint team can run on the website.",
+      action: { kind: "add-key", label: "Add anthropic", provider: "anthropic", embeddings: false },
+    });
+  });
+
+  it("says a team is ready once its last key is saved; a Claude subscription doesn't count on the website", () => {
+    const both = after("xai", { keys: [...KEYS, key("anthropic", "wQ3f")] });
+    expect(saveToast(both, "xai", false).message).toBe(
+      "xai key saved. Indicator sprint team is ready to run on the website.",
     );
-    expect(saveToast(inputs, "deepseek", true)).toBe(
-      "deepseek key replaced. Writer uses it on its next run.",
-    );
-    expect(saveToast({ ...inputs, keys: [...KEYS, key("openai", "abcd")] }, "openai", false)).toBe(
-      "openai key saved.",
+  });
+
+  it("never offers a key for a model no agent can use; a NIM node is fixed by another model", () => {
+    const usage = {
+      ...USAGE,
+      teams: [
+        {
+          team_id: "t-nim",
+          name: "NIM team",
+          nodes: [
+            {
+              ...USAGE.teams[1].nodes[0],
+              node_id: "a",
+              model: "openai/gpt-4.1-mini",
+              provider: "openai",
+            },
+            {
+              ...USAGE.teams[1].nodes[0],
+              node_id: "b",
+              model: "nvidia_nim/x",
+              provider: "nvidia_nim",
+            },
+          ],
+        },
+      ],
+    };
+    // nvidia_nim is saved, yet the team isn't ready: no Add action, no "ready".
+    expect(saveToast(after("openai", { usage }), "openai", false)).toEqual({
+      message: "openai key saved.",
+      action: null,
+    });
+  });
+
+  it("claims Domains can ingest only when every domain's embedding provider has a key", () => {
+    const hf = { ...USAGE, domains: [domain("a", "huggingface")] };
+    expect(saveToast(after("huggingface", { usage: hf }), "huggingface", false)).toEqual({
+      message: "huggingface key saved. Domains can ingest documents now.",
+      action: { kind: "open-domains", label: "Open Domains" },
+    });
+    const two = { ...USAGE, domains: [domain("a", "huggingface"), domain("b", "gemini")] };
+    expect(saveToast(after("huggingface", { usage: two }), "huggingface", false)).toEqual({
+      message: "huggingface key saved. Some domains still need gemini to ingest documents.",
+      action: { kind: "add-key", label: "Add gemini", provider: "gemini", embeddings: true },
+    });
+  });
+
+  it("with no domain using it, an embeddings key only says Domains can use it (EnF-Embeddings-2)", () => {
+    expect(saveToast(after("huggingface"), "huggingface", false, { embeddings: true })).toEqual({
+      message: "huggingface key saved. Domains can use Hugging Face embeddings now.",
+      action: { kind: "open-domains", label: "Open Domains" },
+    });
+    // A model provider that also embeds says so only from the embeddings sheet.
+    const gem = sampleInputs({
+      directory: [
+        ...directory,
+        { ...directory[0], provider: "gemini", name: "Gemini", embeddings: true },
+      ],
+      catalogue: [...inputs.catalogue, { ...inputs.catalogue[0], provider: "gemini" }],
+    });
+    const saved = { ...gem, keys: [key("gemini", "wQ3f"), ...gem.keys] };
+    expect(saveToast(saved, "gemini", false).message).toBe("gemini key saved.");
+    expect(saveToast(saved, "gemini", false, { embeddings: true }).message).toBe(
+      "gemini key saved. Domains can use Gemini embeddings now.",
     );
   });
 });
