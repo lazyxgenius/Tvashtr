@@ -6,6 +6,7 @@
  */
 import type { TeamGraphNode } from "../lib/api";
 import type { AgentPatch } from "../lib/api/nodes";
+import { checkSchema } from "./setup/schemaCheck";
 
 export interface AgentDraft {
   prompt: string;
@@ -139,15 +140,9 @@ export function describeChanges(groups: ChangeGroup[]): string {
 /** Why the draft can't be saved yet, or null. */
 export function draftProblem(draft: AgentDraft): string | null {
   if (!draft.prompt.trim()) return "Instructions can’t be empty.";
-  if (draft.outputSchema.trim()) {
-    try {
-      const parsed: unknown = JSON.parse(draft.outputSchema);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        return "The output format must be a JSON object.";
-      }
-    } catch {
-      return "The output format isn’t valid JSON.";
-    }
+  // The same check the Output format editor runs (its Done is disabled on any of these).
+  if (checkSchema(draft.outputSchema).state === "error") {
+    return "The output format isn’t a valid JSON Schema.";
   }
   return null;
 }

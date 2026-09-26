@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import type { GraphEdge, TeamGraphNode } from "../../lib/api";
 import type { NodeTemplate } from "../../lib/api/nodes";
+import { AgentPreview } from "../focus/AgentPreview";
+import { InstructionsEditor } from "../focus/InstructionsEditor";
 import type { AgentDraftApi } from "../useAgentDraft";
 import { AccessSection } from "./AccessSection";
 import { AdvancedSection } from "./AdvancedSection";
@@ -13,6 +15,7 @@ import { type CredentialCover, needsModel } from "./modelCopy";
 import { type ModelPickerContext, ModelSection } from "./ModelSection";
 import { routingOf } from "./routing";
 import { RoutingStatus } from "./RoutingStatus";
+import { SettingSection } from "./SettingRow";
 import { runtimeBanner } from "./setupCopy";
 import { TemplateChooser } from "./TemplateChooser";
 import { TemplatesMenu } from "./TemplatesMenu";
@@ -23,8 +26,12 @@ import { useNodeTemplates } from "./useNodeTemplates";
  * model and Images, Access & documents, and the Advanced disclosure. Every edit goes into the
  * shared draft; nothing is saved until Save. A new agent (Web-NewAgent) also gets the "Get this
  * agent ready" checklist and, while its instructions are empty, the template chooser.
+ * `layout="focus"` is focus mode's Setup (Desktop-Focus): the full instructions editor on the left
+ * and Routing, Model, Access & documents and Advanced (open) in a column on the right.
  */
 export function SetupTab({
+  layout = "drawer",
+  teamId,
   node,
   nodes,
   edges,
@@ -37,7 +44,12 @@ export function SetupTab({
   onPickTemplate,
   onUpdateRouting,
   onNewDocument,
+  onEditSchema,
+  sub,
 }: {
+  layout?: "drawer" | "focus";
+  /** The team (focus mode's preview compiles against it). */
+  teamId?: string;
   node: TeamGraphNode;
   nodes: TeamGraphNode[];
   edges: GraphEdge[];
@@ -56,6 +68,10 @@ export function SetupTab({
   onUpdateRouting: () => void;
   /** Writes got a name no agent on the team uses yet (the drawer's toast). */
   onNewDocument?: () => void;
+  /** Open the Output format editor. */
+  onEditSchema?: () => void;
+  /** Focus mode: a sub-view (the Output format editor) in the settings column's place. */
+  sub?: ReactNode;
 }) {
   const { draft, set, update } = api;
   const templates = useNodeTemplates();
@@ -74,58 +90,34 @@ export function SetupTab({
       savedPrompt: api.baseline.prompt,
       savedModelNeeded: needsModel(api.baseline.model, cover),
     });
+  const [previewing, setPreviewing] = useState(false);
   const showChooser =
     !editorOpen && api.baseline.prompt.trim() === "" && draft.prompt.trim() === "";
-  return (
-    <div className="nd-stack">
-      {gettingReady && (
-        <GetReadyChecklist
-          items={readyItems(draft, { modelNeeded, isEntry })}
-          onHide={() => {
-            rememberReadyHidden(node.id);
-            setReadyHidden(true);
-          }}
-        />
-      )}
-      <InstructionsCard
-        prompt={draft.prompt}
-        saved={marking ? api.baseline.prompt : undefined}
-        onChange={(v) => {
-          setEditorOpen(true);
-          set("prompt", v);
-        }}
-        focusEditor={editorOpen}
-        templates={
-          <TemplatesMenu
-            templates={templates}
-            onPick={onPickTemplate}
-            onCompare={onOpenFullEditor}
-          />
-        }
-        chooser={
-          showChooser ? (
-            <TemplateChooser
-              templates={templates}
-              onPick={onPickTemplate}
-              onScratch={() => setEditorOpen(true)}
-            />
-          ) : undefined
-        }
-        banner={runtimeBanner({
-          isEntry,
-          readsFrom: draft.readsFrom,
-          readsDefault: draft.readsDefault,
-        })}
-        routing={
-          <RoutingStatus
-            routing={routing}
-            // Shows the verdict lines the arrows route on, then writes them into the draft
-            // (Discard or the toast's Undo brings the text back); nothing is saved until Save.
-            onUpdate={isEntry ? undefined : onUpdateRouting}
-          />
-        }
-        onOpenFullEditor={onOpenFullEditor}
-      />
+  const checklist = gettingReady && (
+    <GetReadyChecklist
+      items={readyItems(draft, { modelNeeded, isEntry })}
+      onHide={() => {
+        rememberReadyHidden(node.id);
+        setReadyHidden(true);
+      }}
+    />
+  );
+  const banner = runtimeBanner({
+    isEntry,
+    readsFrom: draft.readsFrom,
+    readsDefault: draft.readsDefault,
+    focus: layout === "focus",
+  });
+  const routingStatus = (
+    <RoutingStatus
+      routing={routing}
+      // Shows the verdict lines the arrows route on, then writes them into the draft
+      // (Discard or the toast's Undo brings the text back); nothing is saved until Save.
+      onUpdate={isEntry ? undefined : onUpdateRouting}
+    />
+  );
+  const settings = (
+    <>
       <ModelSection
         nodeId={node.id}
         model={draft.model}
@@ -160,8 +152,93 @@ export function SetupTab({
         outputSchema={draft.outputSchema}
         onBackupChange={(v) => set("fallbackModel", v)}
         picker={picker}
+        onEditSchema={onEditSchema}
+        defaultOpen={layout === "focus"}
         changed={changed}
       />
+    </>
+  );
+  const templatesMenu = (
+    <TemplatesMenu
+      templates={templates}
+      onPick={onPickTemplate}
+      onCompare={layout === "focus" ? undefined : onOpenFullEditor}
+    />
+  );
+
+  if (layout === "focus") {
+    return (
+      <div className="fx-setup">
+        <InstructionsEditor
+          prompt={draft.prompt}
+          saved={marking ? api.baseline.prompt : undefined}
+          onChange={(v) => set("prompt", v)}
+          banner={banner}
+          templates={templatesMenu}
+          autoFocus
+          preview={
+            previewing && teamId ? (
+              <AgentPreview
+                teamId={teamId}
+                nodeId={node.id}
+                draft={{
+                  prompt: draft.prompt,
+                  model: draft.model,
+                  edits_allowed: draft.editsAllowed,
+                  reads_from: draft.readsFrom,
+                  reads_default: draft.readsDefault,
+                  skills: draft.skills ?? undefined,
+                }}
+              />
+            ) : null
+          }
+          onTogglePreview={() => setPreviewing((p) => !p)}
+        />
+        <div
+          className={`fx-aside${sub ? " fx-aside--sub" : ""}`}
+          role="group"
+          aria-label="Settings"
+        >
+          {sub ?? (
+            <>
+              {checklist}
+              <div className="fx-routing">
+                <SettingSection title="Routing">{routingStatus}</SettingSection>
+              </div>
+              {settings}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="nd-stack">
+      {checklist}
+      <InstructionsCard
+        prompt={draft.prompt}
+        saved={marking ? api.baseline.prompt : undefined}
+        onChange={(v) => {
+          setEditorOpen(true);
+          set("prompt", v);
+        }}
+        focusEditor={editorOpen}
+        templates={templatesMenu}
+        chooser={
+          showChooser ? (
+            <TemplateChooser
+              templates={templates}
+              onPick={onPickTemplate}
+              onScratch={() => setEditorOpen(true)}
+            />
+          ) : undefined
+        }
+        banner={banner}
+        routing={routingStatus}
+        onOpenFullEditor={onOpenFullEditor}
+      />
+      {settings}
     </div>
   );
 }

@@ -110,11 +110,10 @@ describe("draftProblem", () => {
     const base = seedDraft(node());
     expect(draftProblem(base)).toBeNull();
     expect(draftProblem({ ...base, prompt: "  " })).toBe("Instructions can’t be empty.");
-    expect(draftProblem({ ...base, outputSchema: "{" })).toBe(
-      "The output format isn’t valid JSON.",
-    );
-    expect(draftProblem({ ...base, outputSchema: "[1]" })).toBe(
-      "The output format must be a JSON object.",
-    );
+    const bad = "The output format isn’t a valid JSON Schema.";
+    expect(draftProblem({ ...base, outputSchema: "{" })).toBe(bad);
+    expect(draftProblem({ ...base, outputSchema: "[1]" })).toBe(bad);
+    expect(draftProblem({ ...base, outputSchema: '{ "type": "objekt" }' })).toBe(bad);
+    expect(draftProblem({ ...base, outputSchema: '{ "type": "object" }' })).toBeNull();
   });
 });

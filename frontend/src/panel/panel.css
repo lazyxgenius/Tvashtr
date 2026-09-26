@@ -28,24 +28,6 @@
     z-index: 4;
   }
 }
-/* The focus view until the full focus layout lands: the same drawer as a centred dialog. */
-.nd-focus-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  background: rgba(20, 20, 19, 0.28);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-.nd-drawer--focus {
-  width: min(1240px, 100%);
-  height: min(860px, 100%);
-  border: 1px solid var(--border-hairline);
-  border-radius: 14px;
-  overflow: hidden;
-}
 
 /* ---- Header ---- */
 .nd-head {
@@ -1449,4 +1431,114 @@
 }
 .nd-diff__line--del {
   background: #f6e1db;
+}
+
+/* ---- Sub-view (Flow-Schema-2/3): a Back sheet in the body's and the footer's place ---- */
+.nd-sub {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.nd-sub__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 20px 24px;
+}
+.nd-sub__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.nd-sub__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nd-sub__title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.nd-sub__hint {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.nd-sub__tools {
+  display: flex;
+  gap: 6px;
+}
+.nd-sub__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-hairline);
+  background: var(--surface-card);
+}
+
+/* ---- Output format editor ---- */
+.nd-schema {
+  display: block;
+  width: 100%;
+  min-height: 146px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-page);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-800);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  overflow: hidden;
+  resize: none;
+  outline: none;
+}
+.nd-schema:focus {
+  border-color: var(--coral-200);
+}
+.nd-schema--error,
+.nd-schema--error:focus {
+  border-color: #e5b3a9;
+}
+.nd-schema::placeholder {
+  color: var(--stone-400);
+}
+.nd-schema__messages {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nd-schema__messages:empty {
+  display: none;
+}
+.nd-schema__msg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.nd-schema__msg > svg {
+  flex: none;
+}
+.nd-schema__msg--error {
+  color: #8f3b2f;
+}
+.nd-schema__msg--ok {
+  color: #52613e;
+}
+.nd-schema__note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-500);
 }

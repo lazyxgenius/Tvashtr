@@ -6,8 +6,12 @@ export function runtimeBanner(opts: {
   isEntry: boolean;
   readsFrom: string[];
   readsDefault: boolean;
+  /** Focus mode says where: the compiler puts them after the instructions (spec §4.4 OQ-1). */
+  focus?: boolean;
 }): string {
-  const lead = "Added at run time: the idea";
+  const lead = opts.focus
+    ? "Added at run time, after your instructions: the idea"
+    : "Added at run time: the idea";
   if (opts.isEntry) return lead;
   if (opts.readsFrom.length > 0) {
     const names = opts.readsFrom.map((n) => (n === "spec" ? "the latest spec" : n));

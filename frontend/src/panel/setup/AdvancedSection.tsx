@@ -101,7 +101,14 @@ export function AdvancedSection({
           >
             <div className="nd-outfmt">
               <span className="nd-muted">{schemaSet ? "Set" : "None"}</span>
-              <Button variant="secondary" size="sm" className="nd-btn-flush" onClick={onEditSchema}>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="nd-btn-flush"
+                onClick={onEditSchema}
+                disabled={!onEditSchema}
+                data-output-format
+              >
                 <Braces size={13} strokeWidth={1.7} aria-hidden />
                 <span>{schemaSet ? "Edit" : "Add JSON schema"}</span>
               </Button>

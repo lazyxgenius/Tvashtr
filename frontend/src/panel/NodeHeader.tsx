@@ -21,7 +21,9 @@ export interface HeaderRename {
 /**
  * The drawer header (PANEL-11/12): the role glyph, the agent's name and one-line description, the
  * Focus mode / More actions / Close buttons, and a row of badges under them. With `rename` the name
- * and description turn into fields (PANEL-24, Q18).
+ * and description turn into fields (PANEL-24, Q18). `focused` is the focus view's one-row header
+ * (Desktop-Focus): a larger glyph and name, the badges beside them, then Dock to the side / More
+ * actions / Close.
  */
 export function NodeHeader({
   glyph: Glyph,
@@ -50,37 +52,56 @@ export function NodeHeader({
   rename?: HeaderRename | null;
   onClose: () => void;
 }) {
+  const titles = rename ? (
+    <RenameFields name={name} description={description} {...rename} />
+  ) : (
+    <div className="nd-head__titles">
+      <h2 className="nd-head__name" title={name}>
+        {name}
+      </h2>
+      {(description || placeholder) && (
+        <div className="nd-head__desc">{description || placeholder}</div>
+      )}
+    </div>
+  );
+  if (focused) {
+    return (
+      <header className="fx-head">
+        <span className="fx-glyph" aria-hidden>
+          <Glyph size={17} strokeWidth={1.6} />
+        </span>
+        {titles}
+        {badges && <div className="fx-head__badges">{badges}</div>}
+        <div className="nd-head__actions fx-head__actions">
+          {onFocus && (
+            <IconButton
+              size="sm"
+              aria-label="Dock to the side"
+              title="Dock to the side"
+              onClick={onFocus}
+            >
+              <Minimize2 size={15} strokeWidth={1.6} />
+            </IconButton>
+          )}
+          {more}
+          <IconButton size="sm" aria-label="Close" title="Close" onClick={onClose}>
+            <X size={16} strokeWidth={1.6} />
+          </IconButton>
+        </div>
+      </header>
+    );
+  }
   return (
     <header className="nd-head">
       <div className="nd-head__row">
         <span className="nd-glyph" aria-hidden>
           <Glyph size={16} strokeWidth={1.7} />
         </span>
-        {rename ? (
-          <RenameFields name={name} description={description} {...rename} />
-        ) : (
-          <div className="nd-head__titles">
-            <h2 className="nd-head__name" title={name}>
-              {name}
-            </h2>
-            {(description || placeholder) && (
-              <div className="nd-head__desc">{description || placeholder}</div>
-            )}
-          </div>
-        )}
+        {titles}
         <div className="nd-head__actions">
           {onFocus && (
-            <IconButton
-              size="sm"
-              aria-label={focused ? "Dock to the side" : "Focus mode"}
-              title={focused ? "Dock to the side" : "Focus mode"}
-              onClick={onFocus}
-            >
-              {focused ? (
-                <Minimize2 size={15} strokeWidth={1.7} />
-              ) : (
-                <Maximize2 size={15} strokeWidth={1.7} />
-              )}
+            <IconButton size="sm" aria-label="Focus mode" title="Focus mode" onClick={onFocus}>
+              <Maximize2 size={15} strokeWidth={1.7} />
             </IconButton>
           )}
           {more}

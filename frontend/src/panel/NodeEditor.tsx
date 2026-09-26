@@ -16,6 +16,7 @@ import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import { type AgentDraft, describeChanges } from "./agentDraft";
 import { DrawerConfirm } from "./DrawerConfirm";
 import { DrawerToast } from "./DrawerToast";
+import { NodeFocusView } from "./focus/NodeFocusView";
 import { DomainQueryBody } from "./legacy/DomainQueryBody";
 import { GateBody } from "./legacy/GateBody";
 import { legacySubtitle } from "./legacy/legacyCopy";
@@ -36,7 +37,9 @@ import { RoutingUpdateConfirm, TemplateReplaceConfirm } from "./setup/Instructio
 import { type ModelGroup, seatOf } from "./setup/modelCatalog";
 import { type CredentialCover, isDesktopApp, needsModel } from "./setup/modelCopy";
 import type { ModelPickerContext } from "./setup/ModelSection";
-import { type ContractUpdate, contractUpdate } from "./setup/routing";
+import { OutputSchemaEditor } from "./setup/OutputSchemaEditor";
+import { type ContractUpdate, contractUpdate, routingOf } from "./setup/routing";
+import { checkSchema, schemaDraftText } from "./setup/schemaCheck";
 import { SetupTab } from "./setup/SetupTab";
 import { NEW_DOCUMENT_TOAST } from "./setup/setupCopy";
 import { templateAppliedText, templateApplication, templateNeedsConfirm } from "./setup/templates";
@@ -169,6 +172,8 @@ function AgentEditor({
     | null
   >(null);
   const toast = useDrawerToast();
+  // The Output format editor's text while it's open (null: closed). Done writes it to the draft.
+  const [schemaText, setSchemaText] = useState<string | null>(null);
 
   // The header follows the draft, so a rename shows before it's saved.
   const cfg = (node.config as Record<string, unknown> | null) ?? {};
@@ -184,10 +189,14 @@ function AgentEditor({
   });
 
   const guard = useUnsavedGuard({ dirty: api.isDirty, agentName: name, guardRef });
-  const canSave = api.isDirty && api.problem === null;
+  // PANEL-22: no Save while the open Output format editor holds a broken schema.
+  const schemaBroken = schemaText !== null && checkSchema(schemaText).state === "error";
+  const canSave = api.isDirty && api.problem === null && !schemaBroken;
+  // The drawer's Output format editor covers the Save footer; focus mode keeps it in view.
+  const subCoversFooter = schemaText !== null && tab === "setup" && !focus;
   // ⌘S / Ctrl+S saves; while a confirm is open the confirm's own buttons decide.
   useSaveShortcut(() => {
-    if (canSave && !guard.asking && !deleting && !pending) void api.save();
+    if (canSave && !guard.asking && !deleting && !pending && !subCoversFooter) void api.save();
   });
 
   // Q7: a template sets the instructions and its default File access (a sandboxed agent's only;
@@ -236,6 +245,31 @@ function AgentEditor({
     onKeySaved: keySaved,
     onAddProvider: onOpenEngines ? () => onOpenEngines("keys") : undefined,
   };
+
+  // Output format (PANEL-59/60): edit a copy; Done writes it (pretty-printed; empty = none).
+  const routing = routingOf(node.id, draft.prompt, nodes, edges);
+  const closeSchema = () => {
+    setSchemaText(null);
+    // Back on the Output format row, where the editor was opened from.
+    window.requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>("[data-output-format]")?.focus(),
+    );
+  };
+  const schemaEditor =
+    schemaText !== null && tab === "setup" ? (
+      <OutputSchemaEditor
+        value={schemaText}
+        onChange={setSchemaText}
+        verdictLabels={routing.kind === "verdict" ? routing.labels : null}
+        onCancel={closeSchema}
+        onDone={() => {
+          const next = schemaDraftText(schemaText);
+          if (next === null) return;
+          api.set("outputSchema", next);
+          closeSchema();
+        }}
+      />
+    ) : null;
 
   const commitRename = (nextName: string, nextDescription: string) => {
     // Only what actually changed goes into the draft (the built-in name stays built-in).
@@ -382,6 +416,8 @@ function AgentEditor({
     default:
       body = (
         <SetupTab
+          layout={focus ? "focus" : "drawer"}
+          teamId={teamId}
           node={node}
           nodes={nodes}
           edges={edges}
@@ -394,63 +430,85 @@ function AgentEditor({
           onPickTemplate={pickTemplate}
           onUpdateRouting={requestRoutingUpdate}
           onNewDocument={() => toast.show(NEW_DOCUMENT_TOAST)}
+          onEditSchema={() => setSchemaText(draft.outputSchema)}
+          sub={focus ? schemaEditor : undefined}
         />
       );
   }
 
+  const header = (
+    <NodeHeader
+      glyph={glyph}
+      name={name}
+      description={description}
+      placeholder="Add a short description"
+      focused={focus}
+      onFocus={() => onFocusChange(!focus)}
+      more={
+        <NodeMoreMenu
+          onOpenFocus={focus ? undefined : () => onFocusChange(true)}
+          onRename={() => setRenaming(true)}
+          onOpenDocs={() => onTabChange("docs")}
+          onDelete={() => setDeleting(true)}
+        />
+      }
+      rename={renaming ? { onCommit: commitRename, onCancel: () => setRenaming(false) } : null}
+      onClose={onClose}
+      badges={
+        <NodeBadges
+          status={statusBadge(node.last_run)}
+          editsAllowed={isNew ? null : draft.editsAllowed}
+          model={needsModel(draft.model, cover) ? null : modelLabel(draft.model)}
+          onOpenRuns={() => onTabChange("runs")}
+        />
+      }
+    />
+  );
+  const tabs = (
+    <NodeTabs
+      value={tab}
+      onChange={onTabChange}
+      skillsCount={skillsAndToolsCount(draft.skills, draft.toolConfig)}
+      memoryCount={memoryCount}
+    />
+  );
+  const footer = (
+    <SaveBar
+      dirtyCount={api.dirtyCount}
+      saveState={api.saveState}
+      error={api.saveError}
+      canSave={canSave}
+      memoryTab={tab === "memory"}
+      onSave={() => void api.save()}
+      onDiscard={api.discard}
+    />
+  );
+  const toastHost = <DrawerToast toast={toast.toast} onDismiss={toast.dismiss} />;
+
+  if (focus) {
+    return (
+      <NodeFocusView
+        name={name}
+        header={header}
+        tabs={tabs}
+        footer={footer}
+        scroll={tab !== "setup"}
+        toast={toastHost}
+        overlay={overlay}
+        onDock={() => onFocusChange(false)}
+      >
+        {body}
+      </NodeFocusView>
+    );
+  }
   return (
     <NodeDrawer
       name={name}
-      variant={focus ? "focus" : "dock"}
-      onDismissFocus={() => onFocusChange(false)}
-      header={
-        <NodeHeader
-          glyph={glyph}
-          name={name}
-          description={description}
-          placeholder="Add a short description"
-          focused={focus}
-          onFocus={() => onFocusChange(!focus)}
-          more={
-            <NodeMoreMenu
-              onOpenFocus={focus ? undefined : () => onFocusChange(true)}
-              onRename={() => setRenaming(true)}
-              onOpenDocs={() => onTabChange("docs")}
-              onDelete={() => setDeleting(true)}
-            />
-          }
-          rename={renaming ? { onCommit: commitRename, onCancel: () => setRenaming(false) } : null}
-          onClose={onClose}
-          badges={
-            <NodeBadges
-              status={statusBadge(node.last_run)}
-              editsAllowed={isNew ? null : draft.editsAllowed}
-              model={needsModel(draft.model, cover) ? null : modelLabel(draft.model)}
-              onOpenRuns={() => onTabChange("runs")}
-            />
-          }
-        />
-      }
-      tabs={
-        <NodeTabs
-          value={tab}
-          onChange={onTabChange}
-          skillsCount={skillsAndToolsCount(draft.skills, draft.toolConfig)}
-          memoryCount={memoryCount}
-        />
-      }
-      footer={
-        <SaveBar
-          dirtyCount={api.dirtyCount}
-          saveState={api.saveState}
-          error={api.saveError}
-          canSave={canSave}
-          memoryTab={tab === "memory"}
-          onSave={() => void api.save()}
-          onDiscard={api.discard}
-        />
-      }
-      toast={<DrawerToast toast={toast.toast} onDismiss={toast.dismiss} />}
+      header={header}
+      tabs={tabs}
+      footer={footer}
+      sub={schemaEditor}
+      toast={toastHost}
       overlay={overlay}
     >
       {body}

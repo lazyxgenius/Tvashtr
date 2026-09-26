@@ -54,7 +54,7 @@ const MIN_ABOVE = 240;
 
 function placeListbox(button: HTMLElement): CSSProperties {
   const r = button.getBoundingClientRect();
-  const frame = button.closest(".nd-drawer")?.getBoundingClientRect();
+  const frame = button.closest(".nd-drawer, .fx-dialog")?.getBoundingClientRect();
   const vw = document.documentElement.clientWidth || window.innerWidth;
   const vh = document.documentElement.clientHeight || window.innerHeight;
   const top = Math.max(frame?.top ?? 0, 0) + EDGE;
