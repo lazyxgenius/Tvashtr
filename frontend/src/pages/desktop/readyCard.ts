@@ -2,7 +2,7 @@
  * Desktop Home's ready card (DT-38–41): when it shows, and its data-driven chips (DT-39, OQ-24).
  * Pure helpers plus one hook; the card itself is DesktopReadyCard.tsx.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import type { TeamSummary } from "../../lib/api";
 import { listRunsPage } from "../../lib/api/runs";
@@ -65,4 +65,32 @@ export function useShowReadyCard(): boolean | null {
     };
   }, [desktop]);
   return show;
+}
+
+// Whether the ready card is on screen: the Shell's Home foot then introduces Domains, as DT-Ready
+// draws it, instead of the shortcuts.
+let readyCardShown = false;
+const readyCardListeners = new Set<() => void>();
+
+/** The ready card calls this while mounted. */
+export function useMarkReadyCardShown(): void {
+  useEffect(() => {
+    const set = (v: boolean) => {
+      readyCardShown = v;
+      readyCardListeners.forEach((l) => l());
+    };
+    set(true);
+    return () => set(false);
+  }, []);
+}
+
+export function useReadyCardShown(): boolean {
+  return useSyncExternalStore(
+    (l) => {
+      readyCardListeners.add(l);
+      return () => readyCardListeners.delete(l);
+    },
+    () => readyCardShown,
+    () => false,
+  );
 }

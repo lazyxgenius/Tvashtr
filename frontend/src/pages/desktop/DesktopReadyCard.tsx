@@ -18,6 +18,7 @@ import {
   engineChip,
   newestTeam,
   targetChip,
+  useMarkReadyCardShown,
 } from "./readyCard";
 import "./desktop.css";
 
@@ -63,6 +64,7 @@ export function DesktopReadyCard({
   onDecideAtLaunch: (p: { teamId: string; idea: string }) => void;
 }) {
   const { teams, openNewTeam } = useHome();
+  useMarkReadyCardShown();
   const setup = useDesktopSetupState();
   const workspace = setup.status === "ready" ? setup.setup.workspace : null;
   const engine = useEngineChip();
