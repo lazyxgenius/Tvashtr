@@ -11,7 +11,7 @@ import {
   useDesktopSetup,
 } from "../lib/desktopSetup";
 import { requestHomeAction } from "../lib/homeActions";
-import { type DashView, type Route, navigate, useNav } from "../lib/nav";
+import { type DashView, HOME, type Route, isPublicRoute, navigate, useNav } from "../lib/nav";
 import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
 import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
 import { EnginesPage } from "./engines/EnginesPage";
@@ -86,6 +86,12 @@ export function Workspace({
     }
   }, [needsSetup, onSetup, route.page, setup]);
 
+  // The website's public pages never show in the app: Tvashtr Desktop signed in goes Home (WEB-3).
+  const onPublic = isPublicRoute(route);
+  useEffect(() => {
+    if (onPublic) navigate(HOME, { replace: true });
+  }, [onPublic]);
+
   useGlobalShortcuts(
     {
       onSearch: () => setSearchOpen(true),
@@ -97,7 +103,7 @@ export function Workspace({
   );
 
   // Desktop: the few ms the setup store takes to answer, and the redirect into setup.
-  if (setup.status === "loading" || (needsSetup && !onSetup)) return null;
+  if (onPublic || setup.status === "loading" || (needsSetup && !onSetup)) return null;
 
   if (route.page === "setup") {
     if (setup.status !== "ready") return null;

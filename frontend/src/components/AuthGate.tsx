@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ToastProvider } from "../design-system/components";
 import {
@@ -10,10 +10,10 @@ import {
   setUnauthorizedHandler,
 } from "../lib/api";
 import { isDesktopApp } from "../lib/desktopRepos";
+import { appAddress, isPublicRoute, navigate, parseRoute, useNav } from "../lib/nav";
 import { DesktopGate } from "../pages/desktop/DesktopGate";
+import { SiteRoot } from "../pages/website/SiteRoot";
 import { Workspace } from "../pages/Workspace";
-import { LandingPage } from "./LandingPage";
-import { type AuthMode, AuthWizard } from "./AuthWizard";
 
 /**
  * The app's root gate. Tvashtr Desktop has its own launch and sign-in screens
@@ -25,58 +25,50 @@ export function AuthGate() {
 }
 
 /**
- * The auth gate + top-level router (M-accounts). On mount it asks the server who we are (`getMe`).
+ * The website's gate + top-level router (website.md WEB-1, WEB-2, WEB-5, WEB-42, WEB-43). It asks
+ * the server who we are once (`getMe`); `user` is undefined until it answers.
  *
- * - Logged OUT: the LANDING page by default (product pitch + CTAs); a CTA switches to the
- *   login/register screen (Slice B — the canvas is never the logged-out default).
- * - Logged IN: the `Workspace` — the dashboard pages and each team's canvas, chosen by the page
- *   address (`lib/nav.ts`), so back/forward and refresh keep the place.
- *
- * It also registers the api 401 seam so an expired session mid-use drops the whole app back to the
- * landing page, and threads the identity + a logout handler into the authed surfaces.
+ * - A public address (`#/welcome`, `#/download…`, `#/signin…`) renders the website at once, signed
+ *   in or out; only its header waits for the answer.
+ * - The empty hash (and `#/home`) is the landing signed out and Home signed in; it waits on a
+ *   blank page, never a wrong-variant flash.
+ * - Any other app address signed out goes to `#/signin?next=<that address>`, and so does a 401
+ *   mid-session (the api seam), so the user lands back where they were after signing in.
+ * - Toasts ("Command copied") work on public pages too: the provider sits above both branches.
  */
 function WebAuthGate() {
-  const [status, setStatus] = useState<"loading" | "authed" | "unauthed">("loading");
-  const [user, setUser] = useState<AuthUser | null>(null);
-  // Logged-out sub-view: the landing page by default; a CTA switches to the login screen.
-  const [unauthView, setUnauthView] = useState<"landing" | "login">("landing");
-  const [loginMode, setLoginMode] = useState<AuthMode>("login");
-  // M-h1a: the public backend posture (hosted vs self-hosted) — drives which door the AuthWizard shows.
+  const { route } = useNav();
+  const [user, setUser] = useState<AuthUser | null | undefined>(undefined);
+  const signedIn = useRef(false);
+  signedIn.current = Boolean(user);
+  // M-h1a: the public backend posture (hosted vs self-hosted) — which sign-in door shows.
   const [config, setConfig] = useState<Config | null>(null);
 
-  // Register the 401 seam first: a 401 on getMe (below) or any later poll flips us back to the
-  // logged-out landing page. Cleared on unmount so a stale closure can't fire after this gate is gone.
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      // Mid-session (not the first check): back through sign-in to this very address.
+      if (signedIn.current && !isPublicRoute(parseRoute(window.location.hash))) {
+        navigate({ page: "signin", next: here() }, { replace: true });
+      }
       setUser(null);
-      setStatus("unauthed");
-      setUnauthView("landing");
     });
     return () => setUnauthorizedHandler(null);
   }, []);
 
-  // Resolve the current session once on mount.
   useEffect(() => {
     let cancelled = false;
     getMe()
       .then((me) => {
-        if (cancelled) return;
-        if (me) {
-          setUser(me);
-          setStatus("authed");
-        } else {
-          setStatus("unauthed");
-        }
+        if (!cancelled) setUser(me);
       })
       .catch(() => {
-        if (!cancelled) setStatus("unauthed");
+        if (!cancelled) setUser(null);
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Fetch the public posture once on mount (resilient: defaults to self-hosted if it fails).
   useEffect(() => {
     let cancelled = false;
     void getConfig().then((c) => {
@@ -87,10 +79,11 @@ function WebAuthGate() {
     };
   }, []);
 
-  const handleAuthed = (me: AuthUser) => {
-    setUser(me);
-    setStatus("authed");
-  };
+  // Signed out on an app address (not Home): sign in first, then come back.
+  const toSignIn = user === null && !isPublicRoute(route) && route.page !== "home";
+  useEffect(() => {
+    if (toSignIn) navigate({ page: "signin", next: here() }, { replace: true });
+  }, [toSignIn]);
 
   const handleLogout = async () => {
     try {
@@ -99,36 +92,24 @@ function WebAuthGate() {
       /* even if the network call fails, drop the local session view */
     } finally {
       setUser(null);
-      setStatus("unauthed");
-      setUnauthView("landing");
+      navigate({ page: "welcome" });
     }
   };
 
-  const startAuth = (mode: AuthMode) => {
-    setLoginMode(mode);
-    setUnauthView("login");
-  };
+  let page;
+  if (isPublicRoute(route)) {
+    page = <SiteRoot route={route} user={user} config={config} onAuthed={setUser} />;
+  } else if (user) {
+    page = <Workspace user={user} config={config} onLogout={() => void handleLogout()} />;
+  } else if (user === null && route.page === "home") {
+    page = <SiteRoot route={{ page: "welcome" }} user={null} config={config} onAuthed={setUser} />;
+  } else {
+    page = <div className="web-blank" />;
+  }
+  return <ToastProvider>{page}</ToastProvider>;
+}
 
-  if (status === "loading") {
-    return <div className="tv-auth tv-auth__loading">Loading…</div>;
-  }
-  if (status === "unauthed" || !user) {
-    if (unauthView === "login") {
-      return (
-        <AuthWizard
-          onAuthed={handleAuthed}
-          initialMode={loginMode}
-          onBack={() => setUnauthView("landing")}
-          hosted={config?.hosted_mode ?? false}
-          githubInstallUrl={config?.github_install_url ?? ""}
-        />
-      );
-    }
-    return <LandingPage onGetStarted={startAuth} />;
-  }
-  return (
-    <ToastProvider>
-      <Workspace user={user} config={config} onLogout={() => void handleLogout()} />
-    </ToastProvider>
-  );
+/** The current app address (`/teams/<id>?node=x`), if it can be returned to after sign-in. */
+function here(): string | undefined {
+  return appAddress(window.location.hash.replace(/^#/, ""));
 }

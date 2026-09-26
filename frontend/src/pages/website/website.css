@@ -1,0 +1,314 @@
+/* The public website (website.md; design Web-*, WbF-*). Exact px from the design's HTML. The
+   design has no Tailwind preflight: where it relies on content-box sizing or inline svgs, that is
+   restated here. */
+
+.web-page {
+  min-height: 100vh;
+  background: var(--surface-page);
+  font-family: var(--font-ui);
+  color: var(--ink-900);
+  line-height: 1.6;
+}
+
+/* The empty hash while the session check runs (WEB-5): paper, no "Loading…". */
+.web-blank {
+  min-height: 100vh;
+  background: var(--surface-page);
+}
+
+.web-skip {
+  position: absolute;
+  left: 16px;
+  top: -48px;
+  z-index: 30;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--ink-900);
+  color: var(--surface-page);
+  font-size: 13px;
+  text-decoration: none;
+}
+.web-skip:focus {
+  top: 12px;
+}
+
+/* The design's buttons carry their icon inside the label (svg + span, laid out inline). */
+.web-page .ds-btn > span > svg {
+  display: inline;
+  vertical-align: baseline;
+}
+
+/* ---- Header (WEB-6) ---- */
+.web-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 72px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  padding: 0 56px;
+  border-bottom: 1px solid var(--line-200);
+  background: rgba(250, 249, 245, 0.9);
+}
+.web-head__logo {
+  display: inline-flex;
+  color: var(--ink-900);
+  text-decoration: none;
+}
+.web-head__nav {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+}
+.web-head__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-600);
+  text-decoration: none;
+}
+.web-head__link[aria-current="page"] {
+  color: var(--ink-900);
+}
+.web-head__right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.web-head__right--in {
+  gap: 12px;
+}
+.web-head__who {
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.web-head__who b {
+  font-weight: 600;
+}
+
+/* ---- Footer (WEB-8; from Web-Landing's HTML) ---- */
+.web-foot {
+  box-sizing: border-box;
+  padding: 0 120px;
+}
+.web-foot__in {
+  display: flex;
+  gap: 64px;
+  padding: 56px 0 40px;
+  border-top: 1px solid var(--line-200);
+  margin-top: 96px;
+}
+.web-foot__brand {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.web-foot__tag {
+  font-size: 14px;
+  color: var(--ink-500);
+}
+.web-foot__copy {
+  font-size: 13px;
+  color: var(--ink-500);
+  margin-top: 16px;
+}
+.web-foot__col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.web-foot__head {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.web-foot__col a {
+  font-size: 14px;
+  color: var(--ink-600);
+  text-decoration: none;
+}
+
+/* The footer sits below the fold on the short pages, as the download boards draw them. */
+.web-main {
+  min-height: calc(100vh - 72px);
+}
+.web-main:focus {
+  outline: none;
+}
+
+/* ---- Download (Web-Download, Web-Download2, Web-DownloadWin; WEB-32..37) ---- */
+.web-dl {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 80px 120px 0;
+  text-align: center;
+}
+.web-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-sizing: content-box;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.web-badge--success {
+  background: var(--sage-100);
+  color: #3f4d2f;
+  border: 1px solid #cdd6bf;
+}
+.web-badge--info {
+  background: var(--blue-100);
+  color: #2f4f6f;
+  border: 1px solid #c3d5e7;
+}
+.web-dl__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 56px;
+  line-height: 1.6;
+  letter-spacing: -0.02em;
+}
+.web-dl__title--steps {
+  font-size: 48px;
+}
+.web-dl__title--other {
+  font-size: 52px;
+}
+.web-dl__lede {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--ink-600);
+  max-width: 620px;
+}
+.web-dl__meta {
+  font-size: 13.5px;
+  color: var(--ink-500);
+}
+.web-dl__meta a {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--coral-700);
+  text-decoration: none;
+}
+.web-dl__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.web-dl__needs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: content-box;
+  width: 640px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-card);
+  text-align: left;
+}
+.web-dl__needs-head {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.web-dl__need {
+  display: flex;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--ink-700);
+}
+.web-dl__need > svg {
+  flex: none;
+  color: var(--ink-500);
+}
+
+/* Install steps (WEB-34) */
+.web-steps {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  width: 640px;
+  text-align: left;
+}
+.web-steps > li {
+  display: flex;
+  gap: 16px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line-200);
+}
+.web-steps__n {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--coral-100);
+  color: var(--coral-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+}
+.web-steps__title {
+  font-size: 17px;
+  font-weight: 600;
+}
+.web-steps__detail {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.web-steps__detail b {
+  font-weight: 600;
+  color: var(--ink-900);
+}
+
+/* The unsigned app's one-line fix (session rule; not in the design). */
+.web-fix {
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.web-fix__cmd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 4px 4px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-card);
+}
+.web-fix__cmd code {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+}
+
+/* "Open Tvashtr?" (WbF-Mac-4): the design's body copy is 14px. */
+.web-dialog__body {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}

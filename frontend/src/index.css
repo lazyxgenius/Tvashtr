@@ -565,10 +565,6 @@ html:has(.tv-titlebar) .ds-scrim {
   justify-content: center;
   padding: var(--space-6);
 }
-.tv-auth__loading {
-  font-size: var(--fs-body-sm);
-  color: var(--text-secondary);
-}
 .tv-auth__card {
   display: flex;
   flex-direction: column;
