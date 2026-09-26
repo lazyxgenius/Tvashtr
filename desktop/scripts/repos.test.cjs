@@ -123,14 +123,17 @@ test("inspect: non-git, missing and nested folders are results, not throws", asy
   assert.deepEqual(await service().inspect(plain), {
     is_git: false,
     error: "This folder isn't a git repository.",
+    reason: "not_git",
   });
   assert.deepEqual(await service().inspect(path.join(plain, "gone")), {
     is_git: false,
     error: "That folder doesn't exist any more.",
+    reason: "missing",
   });
   const repo = makeRepo();
   const nested = await service().inspect(path.join(repo, "src"));
   assert.equal(nested.is_git, false);
+  assert.equal(nested.reason, "inside_repo");
   assert.match(nested.error, /inside the git repository at ~\/repo-.+Choose that folder instead\.$/);
 });
 

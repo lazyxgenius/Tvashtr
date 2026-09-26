@@ -156,6 +156,7 @@ def test_directory_entries_are_consistent_with_the_catalogues():
             "subscription",
             "embeddings",
             "hint",
+            "serves_models",  # Desktop app (DT-26): additive
         }
         assert len(e["monogram"]) == 1
         source = PROVIDER_CATALOGUE.get(e["provider"])
@@ -180,7 +181,10 @@ def test_directory_entries_are_consistent_with_the_catalogues():
         if source is not None:
             assert e["name"] == source["label"]
             assert e["subscription"] == source["subscription"]
-            assert e["hint"] is None  # model providers use the generic "Covers models …" hint
+            if e["serves_models"]:
+                assert e["hint"] is None  # model providers use the generic "Covers models …" hint
+            else:  # Desktop app (DT-26): a provider serving no seat says so instead
+                assert e["hint"] == f"{e['name']} serves no model Tvashtr can run right now."
     no_example = {d["provider"] for d in public_provider_directory() if not d["example_model"]}
     assert no_example == {"nvidia_nim"}
 

@@ -69,10 +69,22 @@ body,
   user-select: none;
 }
 .tv-titlebar__title {
+  /* Full width like the design's span, so the title sits exactly where the design measures it. */
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  line-height: 20px;
   font-family: var(--font-ui);
   font-size: 12.5px;
   font-weight: 500;
   color: #c7c4ba;
+}
+/* Sheets and their scrim open below the strip, as every Desktop board draws them: the strip
+   stays the window's drag region with the traffic lights visible. */
+html:has(.tv-titlebar) .ds-sheet,
+html:has(.tv-titlebar) .ds-scrim {
+  top: 30px;
 }
 
 /* ---- UI primitives (ported from the DS component CSS, token-driven) ---- */
@@ -1249,31 +1261,6 @@ body,
   border-top: var(--border-width) solid var(--border-hairline);
   font-size: var(--fs-body-sm);
   color: var(--text-secondary);
-}
-
-/* M-subs-desktop §3.0: the once-per-launch Desktop subscription notice. */
-.tv-desktop-disclosure {
-  position: fixed;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
-  z-index: 1000;
-  width: min(720px, calc(100vw - 32px));
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px 12px;
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: var(--ink-700);
-  background: var(--blue-100);
-  border: 1px solid var(--blue-500);
-  border-radius: var(--radius-md);
-}
-.tv-desktop-disclosure p {
-  margin: 0;
-  flex: 1;
 }
 .tv-dash__library .tv-launch__input::placeholder,
 .tv-dash__prov-add--labeled .tv-launch__input::placeholder {

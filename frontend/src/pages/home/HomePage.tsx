@@ -4,11 +4,14 @@ import { useToast } from "../../design-system/components";
 import { type AuthUser, getTeams, type TeamSummary } from "../../lib/api";
 import { reportFetchFailed, reportFetchOk } from "../../lib/backendStatus";
 import { type HomeAction, useHomeActionHandler } from "../../lib/homeActions";
+import { DesktopReadyCard } from "../desktop/DesktopReadyCard";
+import { useShowReadyCard } from "../desktop/readyCard";
 import { Composer } from "./Composer";
 import { defaultTeamId } from "./composerModel";
 import { FirstTimeHome } from "./FirstTimeHome";
 import { HomeHeader } from "./HomeHeader";
 import { HomeContext, type HomeContextValue } from "./homeContext";
+import { type ComposerPrefill, requestComposerPrefill } from "./homeData";
 import { NeedsYou } from "./NeedsYou";
 import { NewTeamDialog } from "./NewTeamDialog";
 import { RecentRuns } from "./RecentRuns";
@@ -33,6 +36,15 @@ export function HomePage({ user = null }: { user?: AuthUser | null } = {}) {
   const composerFocus = useRef<(() => void) | null>(null);
   const toast = useToast();
   const getStarted = useGetStartedProgress(teams, teamsLoading);
+  // Desktop until the first run: the ready card for the team setup made (DT-38); with no team at
+  // all (an older Desktop without setup) the get-started checklist still leads. "Decide at launch"
+  // hands the card's idea to the full composer.
+  const showReadyCard = useShowReadyCard();
+  const [decideAtLaunch, setDecideAtLaunch] = useState<ComposerPrefill | null>(null);
+  useEffect(() => {
+    if (decideAtLaunch) requestComposerPrefill(decideAtLaunch);
+  }, [decideAtLaunch]);
+  const readyCardPending = showReadyCard === null || (showReadyCard && teamsLoading);
 
   const reloadTeams = useCallback(async () => {
     try {
@@ -113,7 +125,15 @@ export function HomePage({ user = null }: { user?: AuthUser | null } = {}) {
 
   return (
     <HomeContext.Provider value={value}>
-      {getStarted.firstTime ? <FirstTimeHome progress={getStarted} /> : <HomeMain />}
+      {decideAtLaunch ? (
+        <HomeMain />
+      ) : readyCardPending ? null : showReadyCard && teams.length > 0 ? (
+        <DesktopReadyCard user={user} onDecideAtLaunch={setDecideAtLaunch} />
+      ) : getStarted.firstTime ? (
+        <FirstTimeHome progress={getStarted} />
+      ) : (
+        <HomeMain />
+      )}
       <NewTeamDialog
         open={newTeam !== null}
         initialTemplate={newTeam?.templateKey}

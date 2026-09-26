@@ -104,3 +104,23 @@ describe("useNav", () => {
     expect(window.history.length).toBe(before);
   });
 });
+
+describe("Tvashtr Desktop's setup addresses (DT-17)", () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.tvashtrDesktop;
+  });
+
+  it("on Desktop #/setup/<step> is the setup step; an unknown step starts at Engines", () => {
+    document.documentElement.dataset.tvashtrDesktop = "true";
+    expect(parseRoute("#/setup/engines")).toEqual({ page: "setup", step: "engines" });
+    expect(parseRoute("#/setup/project")).toEqual({ page: "setup", step: "project" });
+    expect(parseRoute("#/setup/team")).toEqual({ page: "setup", step: "team" });
+    expect(parseRoute("#/setup/nowhere")).toEqual({ page: "setup", step: "engines" });
+    expect(routeToHash({ page: "setup", step: "project" })).toBe("#/setup/project");
+    expect(sectionOf({ page: "setup", step: "team" })).toBe("home");
+  });
+
+  it("the website has no setup: the address goes Home", () => {
+    expect(parseRoute("#/setup/engines")).toEqual({ page: "home" });
+  });
+});

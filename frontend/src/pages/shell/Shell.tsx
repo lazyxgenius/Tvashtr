@@ -24,10 +24,13 @@ import {
 import { Avatar, Button, Logo } from "../../design-system/components";
 import { cx, useDismiss } from "../../design-system/components/utils";
 import { checkBackend, useBackendStatus } from "../../lib/backendStatus";
+import { useUpdateState } from "../../lib/desktopApp";
 import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
 import { navigate, type Route, sectionOf } from "../../lib/nav";
 import type { NavBadges } from "../../lib/workspaceStatus";
 import { formatRelativeTimeWords } from "../../lib/time";
+import { useReadyCardShown } from "../desktop/readyCard";
+import { UpdateCard } from "../desktop/UpdateCard";
 import { loadGetStarted, setGetStartedHidden, useGetStarted } from "../home/getStarted";
 import "./shell.css";
 
@@ -238,6 +241,27 @@ function Nav({
 }
 
 function NavFoot({ section }: { section: ReturnType<typeof sectionOf> }) {
+  // Desktop: a waiting update replaces the section's foot on every page (DT-43).
+  const update = useUpdateState();
+  const readyCard = useReadyCardShown();
+  if (update.state === "ready" || update.state === "manual") {
+    return (
+      <div className="sh-nav__foot">
+        <UpdateCard update={update} />
+      </div>
+    );
+  }
+  // Desktop Home before the first job (the ready card) introduces Domains (DT-Ready).
+  if (section === "home" && readyCard) {
+    return (
+      <div className="sh-nav__foot">
+        <span>
+          <b>Domains</b> are libraries of your own files. You and your agents ask them questions and
+          get answers with sources.
+        </span>
+      </div>
+    );
+  }
   if (section === "engines") {
     return (
       <div className="sh-nav__foot">

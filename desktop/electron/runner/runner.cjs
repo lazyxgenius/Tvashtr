@@ -10,8 +10,8 @@
  * runner heartbeat the server's freshness check reads). A claimed job is run in its own temp copy
  * of the repo: snapshot → base commit → the CLI headless (clean env, enriched PATH) → stream its
  * output as run events → post back ONLY the final text + a git patch. At most one job per provider
- * at a time. `stop()` (app quit) kills in-flight CLIs and posts nothing — the server fails the node
- * with "Tvashtr Desktop went offline" once the job's heartbeat goes stale.
+ * at a time. `stop()` kills in-flight CLIs and posts no result; `stop({release: true})` (quit, update
+ * restart) also hands each job back to the queue so the next launch runs that step again.
  */
 const fs = require("fs");
 const path = require("path");
@@ -344,7 +344,11 @@ function createRunner({
     })();
   }
 
-  async function stop() {
+  /**
+   * Quit / update restart. With ``release`` (DB-7) each in-flight job goes back to the queue
+   * (best effort, 5 s cap), so the next launch claims it and runs that step again.
+   */
+  async function stop({ release = false } = {}) {
     stopped = true;
     const entries = [...active.values()];
     for (const entry of entries) {
@@ -355,6 +359,12 @@ function createRunner({
       Promise.allSettled(entries.map((e) => e.promise)),
       sleep(5000),
     ]);
+    if (release && entries.length && api.releaseJob) {
+      await Promise.race([
+        Promise.allSettled(entries.map((e) => api.releaseJob(e.jobId))),
+        sleep(5000),
+      ]);
+    }
   }
 
   return {

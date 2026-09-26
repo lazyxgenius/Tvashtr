@@ -6,8 +6,9 @@
  * and session cookies behave like the one-origin hosted app. A local reverse proxy
  * forwards /api and /health to the hosted backend (default https://tvashtr.fly.dev).
  *
- * GitHub OAuth stays INSIDE Electron (loadURL), not the OS browser, so the loopback
- * callback + proxied Set-Cookie land on the same partition as the SPA.
+ * Signing in to Tvashtr happens in the user's default browser (bridge v6 `auth`, PKCE; see
+ * auth/desktopSignIn.cjs). The GitHub App INSTALL flow still stays inside Electron (loadURL), so
+ * its loopback callback + proxied Set-Cookie land on the same partition as the SPA.
  */
 const {
   app,
@@ -32,9 +33,15 @@ const { mainWindowOptions } = require("./windowOptions.cjs");
 const {
   SCHEME,
   parseDeepLink,
+  parseAuthLink,
   findDeepLinkArg,
   createNavigationQueue,
 } = require("./deepLink.cjs");
+const { createDesktopSignIn } = require("./auth/desktopSignIn.cjs");
+const { createLastUser } = require("./auth/lastUser.cjs");
+const { createSetupStore, SetupError } = require("./setupStore.cjs");
+const { appInfo } = require("./appInfo.cjs");
+const { createUpdater } = require("./updater.cjs");
 const { createUnsavedGuard, unsavedDialogOptions, DISCARD } = require("./unsavedGuard.cjs");
 const { resolveCliEnv } = require("./harness/spawnEnv.cjs");
 const { RepoError, createGit, displayPath } = require("./repos/common.cjs");
@@ -56,6 +63,8 @@ const PROVIDERS = ["claude", "grok", "codex"];
 
 /** @type {ReturnType<typeof createRunner> | null} */
 let runner = null;
+/** @type {ReturnType<typeof createUpdater> | null} */
+let updater = null;
 
 /** Talks to the control plane through the local proxy with the UI's own session cookie. */
 const api = createRunnerApi({ baseUrl: () => localOrigin, cookieHeader: sessionCookieHeader });
@@ -71,6 +80,22 @@ const navigationQueue = createNavigationQueue({
 
 /** The renderer's latest "unsaved agent edits" state. */
 const unsaved = createUnsavedGuard();
+
+/** v6 browser sign-in (DB-1) — created once the app is ready (it needs userData). */
+/** @type {ReturnType<typeof createDesktopSignIn> | null} */
+let signIn = null;
+/** @type {ReturnType<typeof createLastUser> | null} */
+let lastUser = null;
+/** The website's "signed in there as …" hint from the last `from=web` link (DB-2); a label only. */
+/** @type {{ login: string, host: string } | null} */
+let openedFromWeb = null;
+
+/** The hosted API this app talks to (the env override is known before the proxy starts). */
+function currentApiOrigin() {
+  return String(
+    process.env.TVASHTR_API_BASE || process.env.VITE_API_BASE || apiBaseOrigin,
+  ).replace(/\/$/, "");
+}
 
 /**
  * Only the app's own page may use the newer bridge calls — the same window also shows GitHub's
@@ -179,6 +204,8 @@ function registerRepoIpc() {
     git: createGit({ env: () => (gitEnv ||= resolveCliEnv({ npmGlobalBin: null })) }),
     api,
     userDataDir: app.getPath("userData"),
+    // The first commit of "Set up git here" falls back to the signed-in login (DB-5).
+    login: () => (lastUser && lastUser.get() ? lastUser.get().login : null),
     log: (m) => console.log(m),
   });
 
@@ -212,6 +239,7 @@ function registerRepoIpc() {
     return { path: picked, displayPath: displayPath(picked) };
   });
   handle("tvashtr:repos:inspect", (p) => repos.inspect(p));
+  handle("tvashtr:repos:initGit", (args) => repos.initGit(args));
   handle("tvashtr:repos:recent:list", () => repos.recent.list());
   handle("tvashtr:repos:recent:add", async (p) => {
     await repos.recent.add(p);
@@ -223,6 +251,140 @@ function registerRepoIpc() {
   });
   handle("tvashtr:repos:prepareRun", (args) => repos.prepareRun(args));
   handle("tvashtr:repos:bringBackBranch", (args) => repos.bringBackBranch(args));
+}
+
+/** @param {string} channel @param {unknown} payload */
+function sendToPage(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
+}
+
+/**
+ * v6 `auth.*` (DB-1), `setup.*` (DB-4) and `app.getInfo` (DB-3). Answers `{ok, value}` like
+ * repos.*; only the app's own page may call them.
+ */
+function registerAuthIpc() {
+  lastUser = createLastUser({ userDataDir: app.getPath("userData") });
+  const remembered = lastUser;
+  signIn = createDesktopSignIn({
+    apiOrigin: currentApiOrigin,
+    localOrigin: () => localOrigin,
+    openExternal: (url) => shell.openExternal(url),
+    setSessionCookie: async ({ url, value, maxAgeSeconds }) => {
+      await session.defaultSession.cookies.set({
+        url,
+        name: "tv_session",
+        value,
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+        ...(maxAgeSeconds ? { expirationDate: Math.floor(Date.now() / 1000) + maxAgeSeconds } : {}),
+      });
+    },
+    lastUser: remembered,
+    focus: focusMainWindow,
+    emit: (event) => {
+      if (event.state === "signed_in") openedFromWeb = null;
+      sendToPage("tvashtr:auth:event", event);
+    },
+    log: (m) => console.log(m),
+  });
+  const auth = signIn;
+
+  /** @param {string} channel @param {(...args: any[]) => unknown} fn */
+  const handle = (channel, fn) =>
+    ipcMain.handle(channel, async (event, ...args) => {
+      if (!isAppPage(event)) {
+        return { ok: false, code: "forbidden", message: "This page can't use Tvashtr Desktop." };
+      }
+      try {
+        return { ok: true, value: await fn(...args) };
+      } catch (e) {
+        if (e instanceof SetupError) return { ok: false, code: e.code, message: e.message };
+        console.error(`[tvashtr-desktop] ${channel} failed:`, e);
+        return {
+          ok: false,
+          code: "unexpected",
+          message: "Something went wrong on this computer. Try again.",
+        };
+      }
+    });
+
+  // This Mac's first-run setup, per account (DB-4, DT-17).
+  const setupStore = createSetupStore({ userDataDir: app.getPath("userData") });
+  handle("tvashtr:setup:get", (accountId) => setupStore.get(accountId));
+  handle("tvashtr:setup:update", (accountId, patch) => setupStore.update(accountId, patch));
+
+  handle("tvashtr:auth:startSignIn", (opts) => {
+    const o = opts && typeof opts === "object" ? opts : {};
+    return auth.start({
+      account: o.account === "current" ? "current" : "github",
+      openBrowser: o.openBrowser !== false,
+    });
+  });
+  handle("tvashtr:auth:reopenBrowser", async () => {
+    await auth.reopen();
+    return null;
+  });
+  handle("tvashtr:auth:cancelSignIn", () => {
+    auth.cancel();
+    return null;
+  });
+  handle("tvashtr:auth:getLaunchContext", () => ({
+    openedFromWeb,
+    lastUser: remembered.get(),
+  }));
+  handle("tvashtr:auth:rememberUser", (user) => {
+    remembered.save(user && typeof user === "object" ? user : {});
+    return null;
+  });
+  handle("tvashtr:auth:forgetUser", () => {
+    remembered.forget();
+    openedFromWeb = null;
+    return null;
+  });
+  const info = () =>
+    appInfo({
+      version: app.getVersion(),
+      apiOrigin: currentApiOrigin(),
+      platform: process.platform,
+      exePath: app.getPath("exe"),
+      isPackaged: app.isPackaged,
+    });
+  handle("tvashtr:app:getInfo", info);
+
+  // The in-app updater (DB-6): check after launch and every 6 h; swap on "Restart to update".
+  const updates = createUpdater({
+    currentVersion: app.getVersion(),
+    latestRelease: () => api.latestRelease(),
+    bundleInfo: info,
+    updatesDir: path.join(app.getPath("userData"), "updates"),
+    emit: (state) => sendToPage("tvashtr:update:state", state),
+    confirmRestart: () => {
+      const win = mainWindow;
+      if (!win || win.isDestroyed()) return true;
+      return unsaved.confirmDiscard((options) => dialog.showMessageBoxSync(win, options));
+    },
+    stopRunner: async () => {
+      if (runner) await runner.stop({ release: true });
+    },
+    exit: () => {
+      quittingAfterStopAll = true;
+      if (localServer) localServer.close();
+      app.exit(0);
+    },
+    openExternal: (url) => shell.openExternal(url),
+  });
+  updater = updates;
+  handle("tvashtr:update:getState", () => updates.getState());
+  handle("tvashtr:update:check", () => updates.check());
+  handle("tvashtr:update:restart", async () => {
+    await updates.restartToUpdate();
+    return null;
+  });
+  handle("tvashtr:update:openDownload", async () => {
+    await updates.openDownload();
+    return null;
+  });
 }
 
 /** navigation.* (deep links) and app.setUnsavedChanges. */
@@ -255,11 +417,26 @@ function focusMainWindow() {
 
 /** @param {string} link */
 function handleDeepLink(link) {
-  const target = parseDeepLink(link);
-  if (!target) {
+  // v6: the browser sign-in's return link goes to main's sign-in only, never to the page.
+  const done = parseAuthLink(link);
+  if (done) {
+    if (done.state && signIn) void signIn.handleDone(done);
+    focusMainWindow();
+    return;
+  }
+  let apiHost = "";
+  try {
+    apiHost = new URL(currentApiOrigin()).host;
+  } catch {
+    /* no hint then */
+  }
+  const parsed = parseDeepLink(link, { apiHost });
+  if (!parsed) {
     console.log("[tvashtr-desktop] ignored a tvashtr:// link that isn't on the allow-list");
     return;
   }
+  const { hint, ...target } = parsed;
+  if (hint) openedFromWeb = hint;
   navigationQueue.deliver(target);
   focusMainWindow();
 }
@@ -511,9 +688,11 @@ function startApp() {
     registerEngineIpc();
     registerRepoIpc();
     registerShellIpc();
+    registerAuthIpc();
     boot()
       .then(() => {
         if (runner) runner.start();
+        if (updater && !envFlag("TVASHTR_DESKTOP_SMOKE")) updater.start();
       })
       .catch((err) => {
         console.error("[tvashtr-desktop] failed to start:", err);
@@ -551,9 +730,9 @@ function onBeforeQuit(event) {
   quittingAfterStopAll = true;
   (async () => {
     try {
-      // In-flight subscription jobs are killed and NOT reported; the control plane fails that node
-      // with "Tvashtr Desktop went offline — reopen it and retry." once its heartbeat goes stale.
-      if (runner) await runner.stop();
+      // In-flight subscription jobs are killed and handed back to the queue (DB-7), so the next
+      // launch runs that step again.
+      if (runner) await runner.stop({ release: true });
     } catch {
       /* ignore */
     }

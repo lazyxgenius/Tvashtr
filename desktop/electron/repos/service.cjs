@@ -4,6 +4,7 @@
  * throws RepoError with a message the UI can show as is.
  *
  *   inspect(path)                   → branch, branches, file count, scopes (or {is_git:false, error})
+ *   initGit({path})                 → git init on main + a first commit (v6, DB-5)
  *   recent.list/add/remove          → "Recent folders"
  *   prepareRun({path, baseRef, label}) → bundle the base branch, upload it → {snapshot_id, size_bytes}
  *   bringBackBranch({path, runId})  → download the result bundle, fetch it in as tvashtr/<runId>
@@ -13,6 +14,7 @@ const os = require("os");
 const path = require("path");
 const { RepoError, requireDirectory, displayPath, UUID_RE } = require("./common.cjs");
 const { inspectRepo } = require("./inspect.cjs");
+const { initGitRepo } = require("./initGit.cjs");
 const { createRecentFolders } = require("./recent.cjs");
 const { createBaseBundle, fetchResultBranch, MAX_BUNDLE_BYTES } = require("./bundle.cjs");
 
@@ -35,12 +37,14 @@ function isAuthError(e) {
  *   maxBundleBytes?: number,
  *   maxResultBytes?: number,
  *   log?: (m: string) => void,
+ *   login?: () => string | null | undefined,
  * }} deps
  */
 function createRepoService({
   git,
   api,
   userDataDir,
+  login = () => null,
   home = os.homedir(),
   tmpRoot = os.tmpdir(),
   maxBundleBytes = MAX_BUNDLE_BYTES,
@@ -110,6 +114,9 @@ function createRepoService({
 
   return {
     inspect: (p) => inspectRepo(p, { git, home }),
+
+    /** @param {unknown} args `{ path }` */
+    initGit: (args) => initGitRepo(args, { git, home, login }),
 
     recent: {
       list: () => recent.list(),

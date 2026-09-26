@@ -9,9 +9,20 @@ import {
   logout,
   setUnauthorizedHandler,
 } from "../lib/api";
+import { isDesktopApp } from "../lib/desktopRepos";
+import { DesktopGate } from "../pages/desktop/DesktopGate";
 import { Workspace } from "../pages/Workspace";
 import { LandingPage } from "./LandingPage";
 import { type AuthMode, AuthWizard } from "./AuthWizard";
+
+/**
+ * The app's root gate. Tvashtr Desktop has its own launch and sign-in screens
+ * (`pages/desktop/DesktopGate`, desktop-app.md DT-1): it never shows the website's landing page
+ * or login wizard. The website keeps the gate below.
+ */
+export function AuthGate() {
+  return isDesktopApp() ? <DesktopGate /> : <WebAuthGate />;
+}
 
 /**
  * The auth gate + top-level router (M-accounts). On mount it asks the server who we are (`getMe`).
@@ -24,7 +35,7 @@ import { type AuthMode, AuthWizard } from "./AuthWizard";
  * It also registers the api 401 seam so an expired session mid-use drops the whole app back to the
  * landing page, and threads the identity + a logout handler into the authed surfaces.
  */
-export function AuthGate() {
+function WebAuthGate() {
   const [status, setStatus] = useState<"loading" | "authed" | "unauthed">("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
   // Logged-out sub-view: the landing page by default; a CTA switches to the login screen.

@@ -18,6 +18,7 @@
  *   #/teams/<teamId>?node=<id>&tab=<tab>&focus=1
  *   #/teams/<teamId>/runs/<runId>
  *   #/teams/<teamId>/docs/<documentId>?v=<n>&compare=<m>
+ *   #/setup/engines|project|team          (Tvashtr Desktop only; the website goes Home)
  */
 import { useCallback, useSyncExternalStore } from "react";
 
@@ -28,6 +29,8 @@ export type MemoryTab = "inbox" | "active" | "archive";
 export type NodeTab = "setup" | "skills" | "memory" | "runs" | "docs";
 /** The dashboard section the canvas's back / "Open Engines · Toolkit" controls return to. */
 export type DashView = "home" | "domains" | "engines" | "tools";
+/** Tvashtr Desktop's first-run setup steps (desktop-app.md DT-17). */
+export type SetupStep = "engines" | "project" | "team";
 
 export type Route =
   | { page: "home" }
@@ -51,6 +54,8 @@ export type Route =
   // memories wait there, otherwise Active (MEM-4); an address that names a tab keeps it.
   | { page: "memory"; tab: MemoryTab; pick?: true }
   | { page: "secrets" }
+  // Desktop only: the first-run setup (DT-17).
+  | { page: "setup"; step: SetupStep }
   | {
       page: "team";
       teamId: string;
@@ -67,6 +72,13 @@ const ENGINES_TABS: EnginesTab[] = ["overview", "subscriptions", "keys"];
 const CONNECT_TARGETS: ConnectTarget[] = ["claude", "grok"];
 const MEMORY_TABS: MemoryTab[] = ["inbox", "active", "archive"];
 const NODE_TABS: NodeTab[] = ["setup", "skills", "memory", "runs", "docs"];
+const SETUP_STEPS: SetupStep[] = ["engines", "project", "team"];
+
+function onDesktop(): boolean {
+  return (
+    typeof document !== "undefined" && document.documentElement.dataset.tvashtrDesktop === "true"
+  );
+}
 
 export const HOME: Route = { page: "home" };
 
@@ -127,6 +139,13 @@ export function parseRoute(hash: string): Route {
       }
       if (b === "secrets") return { page: "secrets" };
       return { page: "tools", view: "installed" };
+    case "setup":
+      // Setup lives on this Mac; the website has none (DT-17).
+      if (!onDesktop()) return HOME;
+      return {
+        page: "setup",
+        step: SETUP_STEPS.includes(b as SetupStep) ? (b as SetupStep) : "engines",
+      };
     case "teams": {
       if (!b) return HOME;
       const route: Extract<Route, { page: "team" }> = { page: "team", teamId: b };
@@ -175,6 +194,8 @@ export function routeToHash(route: Route): string {
       return route.pick ? "#/toolkit/memory" : `#/toolkit/memory/${route.tab}`;
     case "secrets":
       return "#/toolkit/secrets";
+    case "setup":
+      return `#/setup/${route.step}`;
     case "team": {
       let path = `#/teams/${enc(route.teamId)}`;
       if (route.runId) path += `/runs/${enc(route.runId)}`;
@@ -199,6 +220,8 @@ export function sectionOf(route: Route): "home" | "domains" | "engines" | "toolk
     case "engines":
     case "team":
       return route.page;
+    case "setup":
+      return "home";
     default:
       return "toolkit";
   }

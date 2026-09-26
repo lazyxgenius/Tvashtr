@@ -1,0 +1,743 @@
+/* Tvashtr Desktop's first-run setup (desktop-app.md §1 "Setup frame"). Every value is the design's
+   own (DT-Engines, DtF-Run-3/4/5 .dc.html). */
+
+.st-frame {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  background: var(--surface-page);
+  font-family: var(--font-ui);
+  color: var(--ink-900);
+}
+
+/* ---- Rail ---- */
+.st-rail {
+  width: 320px;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 28px 22px;
+  border-right: 1px solid var(--line-300);
+  background: var(--cream-200);
+  overflow-y: auto;
+}
+.st-rail__title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.6;
+}
+.st-rail__sub {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.st-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.st-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  line-height: 1.6;
+}
+.st-step--current {
+  background: var(--cream-50);
+  border-color: var(--line-300);
+}
+.st-step__dot {
+  box-sizing: content-box;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+.st-step--done .st-step__dot {
+  background: var(--sage-100);
+  color: #52613e;
+}
+.st-step--current .st-step__dot {
+  background: var(--coral-500);
+  color: var(--cream-50);
+  font-weight: 700;
+}
+.st-step--later .st-step__dot {
+  border: 1px solid var(--line-400);
+  color: var(--ink-500);
+}
+.st-step__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-500);
+}
+.st-step--done .st-step__title {
+  color: var(--ink-600);
+}
+.st-step--current .st-step__title {
+  color: var(--ink-900);
+}
+.st-step__sub {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.st-rail__who {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.st-rail__who b {
+  font-weight: 600;
+}
+.st-rail__switch {
+  margin-left: auto;
+}
+.st-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: normal;
+  color: var(--coral-700);
+  cursor: pointer;
+}
+.st-link:hover {
+  color: var(--coral-500);
+}
+.st-link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: 4px;
+}
+
+/* ---- Main column + footer ---- */
+.st-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.st-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 44px 56px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative;
+}
+.st-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 56px;
+  border-top: 1px solid var(--line-300);
+  background: var(--surface-card);
+}
+.st-foot__push {
+  margin-left: auto;
+}
+.st-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.st-h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 34px;
+  line-height: 1.6;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+.st-lede {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-600);
+  max-width: 720px;
+}
+
+/* The design's buttons carry their icon inside the label (svg + span, laid out inline). */
+.st-frame .ds-btn > span > svg {
+  display: inline;
+  vertical-align: baseline;
+}
+
+/* ---- Engines step ---- */
+.st-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.st-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--line-300);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.st-row--sage {
+  border-color: #cdd6bf;
+}
+.st-row--amber {
+  border-color: #e6cfa9;
+}
+.st-row__tile {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-weight: 700;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.st-row__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.st-row__head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.st-row__name {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.st-row__line {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.st-row--keys {
+  padding: 14px 18px;
+  border: 1px dashed var(--line-400);
+  background: none;
+}
+.st-row--keys > svg {
+  color: var(--ink-600);
+}
+.st-row__keys-text {
+  flex: 1;
+  line-height: 1.6;
+}
+.st-row__keys-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.st-consent {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+}
+.st-consent .ds-check__title {
+  font-size: 14px;
+}
+.st-fineprint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* ---- The Terminal sign-in (DtF-Run-4, OQ-33): the scrim and the strip only; the Terminal
+   window itself is the OS's, so its 560x128 place is kept empty. ---- */
+.st-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(20, 20, 19, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.st-scrim__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+}
+.st-scrim__terminal-slot {
+  width: 560px;
+  max-width: calc(100vw - 32px);
+  height: 128px;
+}
+.st-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.st-keys-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #52613e;
+}
+
+/* ---- Setup sheets (DT-25 "Use your <plan> plan", DT-26 "Add an API key"). The DS Sheet portals
+   into <body>, so the Button-icon rule above is repeated for sheets holding setup content. ---- */
+.ds-sheet:has(.st-sheet) .ds-btn > span > svg {
+  display: inline;
+  vertical-align: baseline;
+}
+.st-plan-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.st-plan-step {
+  display: flex;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line-200);
+}
+.st-plan-step__num {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--coral-100);
+  color: var(--coral-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+.st-plan-step__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  line-height: 1.6;
+}
+.st-plan-step__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.st-plan-step__text {
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.st-plan-step__cmd {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--ink-900);
+}
+.st-sheet-note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.st-sheet-note__icon {
+  display: inline-flex;
+  margin-top: 2px;
+}
+.st-sheet-note__text {
+  flex: 1;
+}
+.st-key-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.st-key-form__error {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--red-100);
+  color: var(--danger);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.st-provider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.st-provider__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.st-provider__anchor {
+  position: relative;
+}
+.st-provider__button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-400);
+  border-radius: 8px;
+  background: var(--surface-page);
+  font: inherit;
+  font-family: var(--font-code);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-900);
+  cursor: pointer;
+  text-align: left;
+}
+.st-provider__button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.st-provider__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-provider__value.is-empty {
+  font-family: var(--font-ui);
+  color: var(--ink-500);
+}
+.st-provider__chevron {
+  color: var(--ink-500);
+}
+.st-provider__hint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.st-provider__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface-card);
+  border: 1px solid var(--line-300);
+  border-radius: 10px;
+  box-shadow: var(--shadow-pop);
+}
+.st-provider__list:focus-visible {
+  outline: none;
+}
+.st-provider__option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.st-provider__option.is-active {
+  background: var(--surface-sunk);
+}
+.st-provider__option.is-disabled {
+  cursor: not-allowed;
+}
+.st-provider__slug {
+  font-family: var(--font-code);
+  font-size: 13.5px;
+  color: var(--ink-900);
+}
+.st-provider__option[aria-selected="true"] .st-provider__slug {
+  font-weight: 600;
+}
+.st-provider__option.is-disabled .st-provider__slug {
+  color: var(--ink-500);
+}
+.st-provider__desc {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+
+/* ---- Radio cards: Project (DT-Project, DtF-Git-*) and First team (DT-Team) ---- */
+.st-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.st-card {
+  display: flex;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-card);
+  line-height: 1.6;
+  cursor: pointer;
+}
+.st-card--checked {
+  border: 1.5px solid var(--coral-500);
+  background: #fdf6f2;
+}
+.st-card[role="radio"]:focus-visible,
+.st-card:has(> [role="radio"]:focus-visible) {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.st-card__dot {
+  box-sizing: content-box;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-400);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.st-card__dot:focus-visible {
+  outline: none;
+}
+.st-card--checked .st-card__dot {
+  border-color: var(--coral-500);
+}
+.st-card__dot-fill {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--coral-500);
+}
+.st-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.st-card__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.st-card__desc {
+  font-size: 13.5px;
+  color: var(--ink-600);
+}
+.st-card > .ds-field,
+.st-card__body .ds-field {
+  cursor: auto;
+}
+
+/* First team cards: the whole card is the radio; a display-face name with an optional pill. */
+.st-card--team {
+  flex-direction: column;
+  gap: 10px;
+}
+.st-card--team .st-card__title {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: inherit;
+  font-weight: inherit;
+}
+.st-card__name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
+}
+.st-pill {
+  box-sizing: content-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--coral-100);
+  color: var(--coral-700);
+  border: 1px solid var(--coral-200);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The strip of role chips (DT-35). */
+.st-tpl-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.st-tpl-strip__arrow {
+  display: inline-flex;
+  color: var(--ink-500);
+}
+.st-tpl-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-page);
+}
+.st-tpl-chip__head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+}
+.st-tpl-chip__icon {
+  display: inline-flex;
+  color: var(--ink-700);
+}
+.st-tpl-chip__name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.st-tpl-chip__where {
+  font-size: 10.5px;
+  color: var(--ink-500);
+}
+
+/* The chosen folder (DT-30 b/d). */
+.st-folder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-page);
+  border: 1px solid var(--line-300);
+  cursor: auto;
+}
+.st-folder__icon {
+  display: inline-flex;
+  color: var(--ink-600);
+}
+.st-folder__path {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--ink-900);
+}
+.st-folder__push {
+  margin-left: auto;
+}
+.st-folder__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #52613e;
+}
+.st-folder__reading {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+/* The design wraps some buttons in an inline-flex slot (its annotation ring); keep the geometry. */
+.st-inline-slot {
+  display: inline-flex;
+  border-radius: 10px;
+}
+
+/* Not a git repository / can't use this folder (DT-30 c, DtF-Git-2). */
+.st-folder-warn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--amber-100);
+  font-size: 13px;
+  color: #6b4a1f;
+  cursor: auto;
+}
+.st-folder-warn__line {
+  display: flex;
+  gap: 8px;
+}
+.st-folder-warn__path {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: #6b4a1f;
+}
+.st-folder-warn__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+/* A GitHub repository (DT-31, not designed). */
+.st-repo__note {
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.st-repo__connect {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: auto;
+}
+.st-repo__select {
+  max-width: 420px;
+  cursor: auto;
+}
+
+/* First team's name (DT-36). */
+.st-team-name {
+  display: block;
+  width: 420px;
+}
+.st-form-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--danger);
+}
