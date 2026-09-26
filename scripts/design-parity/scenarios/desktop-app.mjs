@@ -11,9 +11,14 @@
  * `window.__tvSignIn(event)` fires an `auth.onSignIn` event from a scenario's steps.
  * `plans` sets each plan CLI's state (default Claude + Grok connected, Codex off); `update` is what
  * `update.getState` answers (default idle).
+ * `setup` (G3) installs the v6 `setup` store holding that record for every account (omit it for
+ * no setup bridge, i.e. no first-run setup); `connect` is the state `engines.connect(p)` answers
+ * per provider (default connected; "needs_login" keeps a Terminal sign-in open, DtF-Run-4).
+ * `window.__tvStatus(provider, state)` pushes an `engines.onStatus` event from a scenario's steps.
  * @param {{ openedFromWeb?: {login: string, host: string} | null,
  *   lastUser?: {login: string, displayName: string} | null, platform?: string,
- *   plans?: Record<string, string>, update?: object }} [opts]
+ *   plans?: Record<string, string>, update?: object, setup?: object,
+ *   connect?: Record<string, string> }} [opts]
  */
 export function desktopBridge(opts = {}) {
   const cfg = JSON.stringify({
@@ -26,6 +31,17 @@ export function desktopBridge(opts = {}) {
       codex: "disconnected",
     },
     update: opts.update ?? { state: "idle" },
+    setup: opts.setup
+      ? {
+          version: 1,
+          step: null,
+          finishedAt: null,
+          planConsentAt: null,
+          workspace: null,
+          ...opts.setup,
+        }
+      : null,
+    connect: opts.connect ?? {},
   });
   return `(() => {
     const cfg = ${cfg};
@@ -35,16 +51,25 @@ export function desktopBridge(opts = {}) {
     });
     const listeners = new Set();
     window.__tvSignIn = (event) => listeners.forEach((cb) => cb(event));
+    const statusListeners = new Set();
+    window.__tvStatus = (p, st) =>
+      statusListeners.forEach((cb) => cb(status(p, st === "connected", st)));
     const signInUrl = "https://tvashtr.fly.dev/api/auth/desktop/start?challenge=c&state=s&account=github";
     window.tvashtrDesktop = {
       engines: {
         getStatus: async () =>
           Object.entries(cfg.plans).map(([p, st]) => status(p, st === "connected", st)),
-        connect: async (p) => status(p, true),
+        connect: async (p) => {
+          const st = cfg.connect[p] ?? "connected";
+          return status(p, st === "connected", st);
+        },
         disconnect: async (p) => status(p, false),
         refresh: async (p) => status(p, true),
-        cancelConnect: async (p) => status(p, false),
-        onStatus: () => () => {},
+        cancelConnect: async (p) => status(p, false, cfg.plans[p]),
+        onStatus: (cb) => {
+          statusListeners.add(cb);
+          return () => statusListeners.delete(cb);
+        },
       },
       navigation: { onNavigate: () => () => {}, consumePending: async () => null },
       auth: {
@@ -63,6 +88,17 @@ export function desktopBridge(opts = {}) {
         getState: async () => cfg.update,
         onState: () => () => {},
       },
+      ...(cfg.setup
+        ? {
+            setup: {
+              get: async () => ({ ...cfg.setup }),
+              update: async (_id, patch) => {
+                Object.assign(cfg.setup, patch);
+                return { ...cfg.setup };
+              },
+            },
+          }
+        : {}),
       app: {
         setUnsavedChanges: () => {},
         getInfo: async () => ({
