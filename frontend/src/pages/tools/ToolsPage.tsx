@@ -7,7 +7,7 @@
  * Turn on dialog — the Add tool wizard (TkF-AddTool-*) and the Paste mcp.json sheet (TkF-Paste-*).
  */
 import { Braces, Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button, Input, Tabs, useToast } from "../../design-system/components";
 import { ApiDetailError } from "../../lib/api/runs";
@@ -91,12 +91,30 @@ function useToolList() {
   return { tools, error, reload, retry };
 }
 
+// A toast's action can outlive this page (toasts stay up for 8s). If Tools is gone by the click, the
+// dialog waits here, Tools opens again, and the dialog opens as it mounts.
+let queuedDialog: ToolDialog = null;
+
 export function ToolsPage({ view }: { view: ToolsView }) {
   const { tools, error, reload, retry } = useToolList();
   const { query, status } = useToolsView();
   const [sheet, setSheet] = useState<ToolSheet>(null);
   const [dialog, setDialog] = useState<ToolDialog>(null);
   const toast = useToast();
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    if (queuedDialog) setDialog(queuedDialog);
+    queuedDialog = null;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const showDialog = useCallback((d: ToolDialog) => {
+    if (mounted.current) return setDialog(d);
+    queuedDialog = d;
+    navigate({ page: "tools", view: "installed" });
+  }, []);
 
   // TOOL-67: "Add secret" on a row — "Add <NAME>" with the name fixed, or one field per name when
   // the tool misses more than one (spec Q3).
@@ -107,7 +125,7 @@ export function ToolsPage({ view }: { view: ToolsView }) {
       names.length === 1
         ? { kind: "add-prefilled", name: names[0], tools: [{ id: tool.id, name: tool.name }] }
         : { kind: "add-many", names, tool: tool.name, toolId: tool.id };
-    setDialog({ kind: "secret", tool, mode });
+    showDialog({ kind: "secret", tool, mode });
   };
 
   // TOOL-68: the row flips to Ready in place, the nav's "missing" badge follows.
@@ -156,7 +174,7 @@ export function ToolsPage({ view }: { view: ToolsView }) {
       void refreshBadges();
       toast({
         message: catalogAddedToast(entry.title),
-        action: { label: "Choose agents", onClick: () => setDialog({ kind: "turn-on", tool }) },
+        action: { label: "Choose agents", onClick: () => showDialog({ kind: "turn-on", tool }) },
       });
     } catch (e) {
       await reload();
