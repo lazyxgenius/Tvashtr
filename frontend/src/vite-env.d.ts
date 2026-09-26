@@ -21,7 +21,8 @@ interface Window {
   tvashtrDesktop?: boolean | TvashtrDesktopBridge;
   /**
    * `version` feature-detects the bridge: 4 = `platform`; 5 = `engines.cancelConnect`,
-   * `navigation`, `repos`, `app` (docs/superpowers/plans/api/desktop-bridge.md).
+   * `navigation`, `repos`, `app`; 6 = `auth`, `app.getInfo`
+   * (docs/superpowers/plans/api/desktop-bridge.md).
    */
   tvashtrDesktopInfo?: { shell: string; version: number; platform?: string };
 }
@@ -123,6 +124,33 @@ interface TvashtrDesktopBridge {
      */
     bringBackBranch: (args: { path: string; runId: string }) => Promise<{ branch: string }>;
   };
+  /** v6: sign in to Tvashtr in the default browser (PKCE in main; the page never sees a code). */
+  auth?: {
+    /**
+     * Open the default browser on the backend's desktop sign-in page and start the 10-minute
+     * clock. `account: "current"` reuses the browser's Tvashtr session (the website handoff);
+     * `openBrowser: false` only makes a fresh link (Copy the sign-in link).
+     */
+    startSignIn: (opts?: {
+      account?: "current" | "github";
+      openBrowser?: boolean;
+    }) => Promise<{ signInUrl: string }>;
+    /** The same sign-in page again; restarts the 10-minute clock. */
+    reopenBrowser: () => Promise<void>;
+    /** Drop the pending sign-in: a code arriving later is ignored. */
+    cancelSignIn: () => Promise<void>;
+    /** The sign-in's progress. Returns an unsubscribe. */
+    onSignIn: (cb: (event: TvashtrSignInEvent) => void) => () => void;
+    /** Opened from the website (a display hint only) and who last signed in on this Mac. */
+    getLaunchContext: () => Promise<{
+      openedFromWeb: { login: string; host: string } | null;
+      lastUser: { login: string; displayName: string } | null;
+    }>;
+    /** Remember who is signed in (login + display name only) for "Last signed in as". */
+    rememberUser?: (user: { login: string; displayName: string }) => Promise<void>;
+    /** Switch / sign out: forget the last user on this Mac. */
+    forgetUser: () => Promise<void>;
+  };
   /** v5 */
   app?: {
     /**
@@ -130,5 +158,28 @@ interface TvashtrDesktopBridge {
      * "Keep editing / Discard and close". Send `{dirty:false}` after Save or Discard.
      */
     setUnsavedChanges: (state: { dirty: boolean; agentName?: string }) => void;
+    /** v6: the running app (version from desktop/package.json), its API and update posture. */
+    getInfo?: () => Promise<TvashtrAppInfo>;
   };
+}
+
+type TvashtrSignInEvent =
+  | { state: "waiting"; signInUrl: string }
+  | {
+      state: "signed_in";
+      user: { id: string; email: string; github_login: string | null; display_name: string };
+    }
+  | {
+      state: "failed";
+      reason: "timeout" | "cancelled" | "expired" | "exchange_failed";
+      message: string;
+    };
+
+interface TvashtrAppInfo {
+  version: string;
+  apiOrigin: string;
+  apiHost: string;
+  platform: string;
+  bundlePath: string | null;
+  bundleWritable: boolean;
 }

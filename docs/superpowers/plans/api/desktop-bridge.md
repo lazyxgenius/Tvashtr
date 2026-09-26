@@ -215,3 +215,64 @@ Coded against the plan's contract; the lead should check these against B-LOCAL's
   clone/fetch that ref explicitly (`git clone --branch <base_ref> <bundle>` works).
 - `GET /api/runs/{id}/ship-bundle` streams a bundle containing `refs/heads/tvashtr/<run_id>` (full or
   with prerequisites the user's repo has — both tested); 404 while there is none.
+
+---
+
+# v6 additions (Desktop app screens, desktop-app.md §4) — `tvashtrDesktopInfo.version === 6`
+
+Additive; gated by `isAppPage` like v5 (GitHub's in-window install pages get `forbidden`). Every
+call answers through the v5 `{ok, value}` envelope, so a rejection's `message` is readable.
+Built so far: DB-1 `auth`, DB-2 deep-link additions, DB-3 `app.getInfo`. Still to build (later
+groups): DB-4 `setup`, DB-5 `repos.initGit`, DB-6 `update`, DB-7 `runner.stop({release})`, DB-11.
+
+## `auth` — sign in to Tvashtr in the default browser (DB-1)
+
+Main runs PKCE (`electron/auth/desktopSignIn.cjs`); the page never sees a code or the verifier.
+
+- `startSignIn({account?: "current" | "github", openBrowser?: boolean}): Promise<{signInUrl}>` —
+  a fresh verifier (32 random bytes), its S256 challenge and a state (24 bytes); `signInUrl` is
+  `<api origin>/api/auth/desktop/start?challenge=&state=&account=` (the real API host, not the
+  loopback). Opens it with `shell.openExternal` unless `openBrowser: false` (Copy the sign-in
+  link). Starts the 10-minute clock and emits `waiting`. A new start replaces any pending one.
+- `reopenBrowser(): Promise<void>` — opens the same URL again and restarts the clock (no-op
+  when nothing is pending).
+- `cancelSignIn(): Promise<void>` — drops the pending sign-in; a code arriving later is ignored
+  (also mid-exchange: its session is discarded).
+- `onSignIn(cb): () => void` — events:
+  - `{state:"waiting", signInUrl}`
+  - `{state:"signed_in", user:{id, email, github_login, display_name}}` — the `tv_session` cookie
+    is already set on the loopback origin, `last-user.json` saved, the window focused.
+  - `{state:"failed", reason, message}` — `timeout` "The browser didn't send you back within 10
+    minutes." · `cancelled` "You cancelled on GitHub. Nothing was changed." · `expired` "This
+    sign-in has expired. Sign in again." · `exchange_failed` the server's `detail` (e.g. "This
+    sign-in belongs to another app window. Sign in again.") or "Couldn't finish signing in. Sign
+    in again."
+- `getLaunchContext(): Promise<{openedFromWeb: {login, host} | null, lastUser: {login,
+  displayName} | null}>` — `openedFromWeb` is the last `from=web` hint (cleared on sign-in and
+  `forgetUser`); a label only, never proof of identity.
+- `rememberUser({login, displayName}): Promise<void>` — the page saves who is signed in when
+  `/api/auth/me` answers (sessions made before v6). Login `^[A-Za-z0-9._@+-]{1,100}$`, else ignored.
+- `forgetUser(): Promise<void>` — Switch / sign out: deletes `userData/last-user.json`.
+
+The exchange: main `POST <loopback>/api/auth/desktop/exchange {code, verifier}` (30 s cap), reads
+`tv_session` from `Set-Cookie`, and sets it with `session.defaultSession.cookies.set({url:
+<loopback>, name: "tv_session", httpOnly, sameSite: "lax", expirationDate})`.
+
+## Deep links (DB-2)
+
+- `tvashtr://auth/done?code=<[A-Za-z0-9_.-]{1,1500}>&state=<[A-Za-z0-9_-]{16,64}>` and
+  `?error=cancelled|expired&state=` go to main's sign-in only (never queued for the page); a state
+  that isn't the pending sign-in's is ignored. The bare `tvashtr://auth/done` only focuses the
+  window. Any other shape is ignored.
+- Every allowed page link may carry `from=web&login=<[A-Za-z0-9-]{1,39}>&host=<api host>`; when
+  `host` equals the configured API host main keeps `{login, host}` as `openedFromWeb`. It is never
+  a navigation param (the page's `onNavigate` target is unchanged).
+- Website side: a `tvashtr://` link the signed-in website fires appends
+  `?from=web&login=<github_login>&host=<its API host>`.
+
+## `app.getInfo(): Promise<TvashtrAppInfo>` (DB-3)
+
+`{version, apiOrigin, apiHost, platform, bundlePath, bundleWritable}` — `version` is
+`app.getVersion()` (`desktop/package.json`); `apiHost` names the server for the offline detail
+line; `bundlePath` is the running `Tvashtr.app` (null in dev); `bundleWritable` is false on a
+mounted DMG (`/Volumes/…`), a translocated app, or a read-only location.

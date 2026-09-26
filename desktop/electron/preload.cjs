@@ -85,8 +85,34 @@ const repos = {
   bringBackBranch: (args) => call("tvashtr:repos:bringBackBranch", args),
 };
 
-// ---- app (v5) ---------------------------------------------------------------------------------
+// ---- auth: sign in through the default browser (v6, DB-1) ------------------------------------
+// Main runs the PKCE handshake; the page only starts, re-opens or cancels it and hears the outcome.
+const auth = {
+  startSignIn: (opts) =>
+    call("tvashtr:auth:startSignIn", {
+      account: opts && opts.account === "current" ? "current" : "github",
+      openBrowser: !(opts && opts.openBrowser === false),
+    }),
+  reopenBrowser: () => call("tvashtr:auth:reopenBrowser").then(() => undefined),
+  cancelSignIn: () => call("tvashtr:auth:cancelSignIn").then(() => undefined),
+  onSignIn: (cb) => {
+    const handler = (_e, event) => cb(event);
+    ipcRenderer.on("tvashtr:auth:event", handler);
+    return () => ipcRenderer.removeListener("tvashtr:auth:event", handler);
+  },
+  getLaunchContext: () => call("tvashtr:auth:getLaunchContext"),
+  rememberUser: (user) =>
+    call("tvashtr:auth:rememberUser", {
+      login: user && typeof user.login === "string" ? user.login : "",
+      displayName: user && typeof user.displayName === "string" ? user.displayName : "",
+    }).then(() => undefined),
+  forgetUser: () => call("tvashtr:auth:forgetUser").then(() => undefined),
+};
+
+// ---- app (v5; getInfo v6) ---------------------------------------------------------------------
 const appBridge = {
+  // v6 (DB-3): the running version, the API host and whether the bundle can update in place.
+  getInfo: () => call("tvashtr:app:getInfo"),
   // Main asks "Keep editing / Discard and close" on window close, reload and quit while dirty.
   setUnsavedChanges: (state) => {
     const s = state && typeof state === "object" ? state : {};
@@ -101,12 +127,14 @@ contextBridge.exposeInMainWorld("tvashtrDesktop", {
   engines,
   navigation,
   repos,
+  auth,
   app: appBridge,
 });
 contextBridge.exposeInMainWorld("tvashtrDesktopInfo", {
   shell: "electron",
-  // v5: engines.cancelConnect, navigation, repos, app. v4: `platform` — the renderer draws the
-  // design's dark title strip only where main.cjs hid the system one.
-  version: 5,
+  // v6: auth (browser sign-in), app.getInfo. v5: engines.cancelConnect, navigation, repos, app.
+  // v4: `platform` — the renderer draws the design's dark title strip only where main.cjs hid the
+  // system one.
+  version: 6,
   platform: process.platform,
 });
