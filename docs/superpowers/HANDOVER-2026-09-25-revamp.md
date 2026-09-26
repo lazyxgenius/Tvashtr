@@ -6,10 +6,9 @@ artboards, git-excluded), per the brief `prompts/revamp-e2e.md`.
 
 ## Round 2 — revamp-e2e session (start here to resume)
 
-**Next:** ship F4 Toolkit › Skills + Memory (built, 46/46 at 0 drift) → F5 agent panel + canvas
-(building) → F6 Focus + Docs (branches from F5) → Domains (building; carries the session's one
-migration `0042`, so its deploy waits for the operator's Neon snapshot) → Desktop app screens
-(building) → website → Phase 3 close-out.
+**Next:** F5 agent panel + canvas (building) → F6 Focus + Docs (branches from F5) → Domains
+(building; carries the session's one migration `0042`, so its deploy waits for the operator's Neon
+snapshot) → Desktop app screens (building) → website → Phase 3 close-out.
 
 ### NEEDS_HUMAN (2026-09-26 ~14:55 IST) — RESOLVED 15:04 IST (new key in `.env`, `make seed`)
 The OpenAI key in `.env` (`OPENAI_API_KEY`, ends `…IgoA`, also the operator account's saved openai
@@ -25,7 +24,23 @@ replaced. Remedy: new key on the `OPENAI_API_KEY` line of `.env` → `make seed`
 | Phase 0 — Desktop catch-up | — (tag only) | `ec9202b` | (no deploy) | `desktop-v0.3.0` — latest release; DMG's `dist-fe/assets/index-X7f-3U3l.js` = the local build = the live site |
 | Phase 1 — the core loop completes | `fix/entry-report` | `007019d` | v20 | `desktop-v0.4.0` — latest release; DMG app 0.4.0 bundles `index-DZBnS0zK.js` = the live site |
 | F2 — Engines | `feat/revamp-f2-engines` | `6acc726` | v21 | `desktop-v0.5.0` — latest release; DMG app 0.5.0 bundles `index-CGZUXJb0.js` = the live site |
-| F3 — Toolkit › Tools + Secrets | `feat/revamp-f3-tools-secrets` | recorded at the next ship | recorded at the next ship | `desktop-v0.6.0` |
+| F3 — Toolkit › Tools + Secrets (+ `fix/ship-identity`) | `feat/revamp-f3-tools-secrets` | `c1a0172`, then `f6e1d4e` | v22 | `desktop-v0.6.0` — latest release; DMG app 0.6.0 bundles `index-DlPFWcla.js` = the live site |
+| F4 — Toolkit › Skills + Memory | `feat/revamp-f4-skills-memory` | recorded at the next ship | recorded at the next ship | `desktop-v0.7.0` |
+
+### F4 Toolkit › Skills + Memory — what shipped (`feat/revamp-f4-skills-memory`)
+- Toolkit › Skills on the new design: the list and presets, the row ⋯ menu (duplicate, turn on for
+  agents, delete with its impact), the skill editor (new and existing: SKILL.md, load mode, triggers,
+  source), Add from GitHub (scan, pick, import). Toolkit › Memory: Inbox (keep / discard / edit, with
+  Undo), Active (filters by agent, repo and kind, pin, edit, scope), Archive, and the Add memory sheet;
+  the Memory nav opens the Inbox when memories wait (MEM-4). `SkillsShelf.tsx`, `MemoryShelf.tsx` and
+  `MemoryFact.tsx` are gone; pages in `frontend/src/pages/skills/` and `frontend/src/pages/memory/`,
+  clients `frontend/src/lib/api/skills.ts` and `memory.ts`. Backend: `control_plane/memory.py` no
+  longer flips a memory's superseded reason after a force edit (tested); the memory contract doc was
+  updated. The agent drawer's skill and memory hints now point at Toolkit › Skills / Memory.
+- Parity (`docs/superpowers/parity/toolkit-skills-memory.txt`): all 46 artboards at 0 size/type drift
+  on the website AND Desktop, no waivers.
+- An existing skill with a legacy (non-kebab) name now saves; a memory edit the embedding service
+  can't take says so and keeps the app online.
 
 ### Production ship fix, deployed with F3 (`fix/ship-identity`)
 - **Production could never open a PR for a hosted GitHub run.** The prod demo-proof after the F2
