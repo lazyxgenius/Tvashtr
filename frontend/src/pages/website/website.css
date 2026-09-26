@@ -1335,6 +1335,59 @@
   .web-cards {
     flex-direction: column;
   }
+  /* The header and footer narrow with the page (OQ-25): the section links stay in the footer. */
+  .web-head {
+    gap: 24px;
+    padding: 0 32px;
+  }
+  .web-head__nav {
+    display: none;
+  }
+  .web-foot {
+    padding: 0 32px;
+  }
+  .web-dl {
+    padding: 80px 32px 0;
+  }
+  .web-dl__needs {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 682px;
+  }
+  .web-steps {
+    width: 100%;
+    max-width: 640px;
+  }
+}
+/* The download pages on a phone (OQ-24, OQ-25): the landing has its own phone page. */
+@media (max-width: 719px) {
+  .web-head {
+    padding: 0 16px;
+  }
+  .web-head__who {
+    display: none;
+  }
+  .web-foot {
+    padding: 0 16px;
+  }
+  .web-foot__in {
+    flex-direction: column;
+    gap: 32px;
+    margin-top: 64px;
+  }
+  .web-dl {
+    padding: 40px 16px 0;
+  }
+  .web-dl__row {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .web-dl__title,
+  .web-dl__title--steps,
+  .web-dl__title--other {
+    font-size: 36px;
+    line-height: 1.2;
+  }
 }
 
 /* WEB-7: a `?s=` section lands just under the sticky header (72px here, 60px on a phone). */
