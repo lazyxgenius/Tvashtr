@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api";
-import { getProviderDirectory, listSavedKeys, NIM_HINT, saveProviderKey } from "./desktop";
+import {
+  countLibraryTeams,
+  createFirstTeam,
+  getDesktopTemplates,
+  getProviderDirectory,
+  listSavedKeys,
+  NIM_HINT,
+  saveProviderKey,
+} from "./desktop";
 
 function answer(status: number, body: unknown) {
   return vi.fn(() =>
@@ -90,5 +98,83 @@ describe("listSavedKeys / saveProviderKey", () => {
     const err = await saveProviderKey("anthropic", " ").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect(err).toMatchObject({ status: 422, message: "An API key is required." });
+  });
+});
+
+describe("getDesktopTemplates / createFirstTeam / countLibraryTeams (DT-34..DT-37)", () => {
+  it("asks for=desktop and keeps valid templates and nodes, with a known runs_on only", async () => {
+    const fetchMock = answer(200, {
+      templates: [
+        {
+          template: "spec_only",
+          name: "Spec only",
+          description: "Turns an idea into a reviewed spec. No code changes.",
+          shape: {
+            nodes: [
+              { kind: "thinker", role: "pm", label: "PM", model: "xai/grok-4.7", runs_on: "grok" },
+              {
+                kind: "worker",
+                role: "reviewer",
+                label: "Reviewer",
+                model: null,
+                runs_on: "codex",
+              },
+              { kind: "gate" },
+            ],
+          },
+        },
+        { template: "", name: "broken" },
+        { template: "two_node", name: "PM → Engineer" },
+      ],
+      blank: "odd",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await getDesktopTemplates();
+    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toContain(
+      "/api/templates?for=desktop",
+    );
+    expect(out.templates.map((t) => t.template)).toEqual(["spec_only", "two_node"]);
+    expect(out.templates[0].nodes).toEqual([
+      { role: "pm", kind: "thinker", label: "PM", model: "xai/grok-4.7", runs_on: "grok" },
+      { role: "reviewer", kind: "worker", label: "Reviewer", model: null, runs_on: null },
+    ]);
+    expect(out.templates[1].nodes).toEqual([]);
+    expect(out.blank).toBeNull();
+  });
+
+  it("an unreadable answer throws (the step then shows no strips)", async () => {
+    vi.stubGlobal("fetch", answer(500, { detail: "boom" }));
+    await expect(getDesktopTemplates()).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("createFirstTeam posts use_plans and throws the 422 detail", async () => {
+    const ok = answer(200, { team_graph_id: "t-1" });
+    vi.stubGlobal("fetch", ok);
+    await expect(createFirstTeam("review_loop", "My first team")).resolves.toEqual({
+      team_graph_id: "t-1",
+    });
+    const init = (ok.mock.calls[0] as unknown[])[1] as RequestInit;
+    expect(JSON.parse(init.body as string)).toEqual({
+      template: "review_loop",
+      name: "My first team",
+      use_plans: true,
+    });
+    vi.stubGlobal("fetch", answer(422, { detail: "A team name is required." }));
+    await expect(createFirstTeam("blank", " ")).rejects.toMatchObject({
+      status: 422,
+      message: "A team name is required.",
+    });
+  });
+
+  it("countLibraryTeams counts, and says null when it can't", async () => {
+    vi.stubGlobal("fetch", answer(200, { teams: [{}, {}] }));
+    await expect(countLibraryTeams()).resolves.toBe(2);
+    vi.stubGlobal("fetch", answer(200, { teams: "odd" }));
+    await expect(countLibraryTeams()).resolves.toBeNull();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
+    );
+    await expect(countLibraryTeams()).resolves.toBeNull();
   });
 });

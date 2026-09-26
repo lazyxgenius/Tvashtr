@@ -274,3 +274,77 @@ export function useDesktopTitle(): string {
     () => title,
   );
 }
+
+// ---- Folders on this Mac (setup's Project step, DT-30..DT-32) -----------------------------------
+
+export type RepoInspection = TvashtrRepoInspection;
+export interface PickedFolder {
+  path: string;
+  displayPath: string;
+}
+
+function reposBridge(): NonNullable<TvashtrDesktopBridge["repos"]> | null {
+  return bridge()?.repos ?? null;
+}
+
+/** The native folder picker; null when cancelled or without the bridge. */
+export async function pickFolder(): Promise<PickedFolder | null> {
+  const picked = await reposBridge()?.pickFolder?.();
+  if (!picked || typeof picked.path !== "string" || !picked.path) return null;
+  return {
+    path: picked.path,
+    displayPath: typeof picked.displayPath === "string" ? picked.displayPath : picked.path,
+  };
+}
+
+/**
+ * What a folder is (branch, remote), or `{is_git:false, error, reason?}`. Rejects with ready-to-show
+ * copy (e.g. git missing); a bad answer reads as "not a git repository".
+ */
+export async function inspectFolder(path: string): Promise<RepoInspection> {
+  const repos = reposBridge();
+  if (!repos?.inspect) throw new Error("This version of Tvashtr Desktop can't read folders.");
+  const out = await repos.inspect(path);
+  if (out && typeof out === "object" && out.is_git === true) {
+    return {
+      ...out,
+      current_branch: typeof out.current_branch === "string" ? out.current_branch : null,
+      remote_url: typeof out.remote_url === "string" ? out.remote_url : null,
+    };
+  }
+  const bad = (out ?? {}) as { error?: unknown; reason?: unknown };
+  const reason =
+    bad.reason === "not_git" || bad.reason === "inside_repo" || bad.reason === "missing"
+      ? bad.reason
+      : undefined;
+  return {
+    is_git: false,
+    error:
+      typeof bad.error === "string" && bad.error
+        ? bad.error
+        : "This folder isn't a git repository.",
+    ...(reason ? { reason } : {}),
+  };
+}
+
+/** True when this Desktop can run "Set up git here" (bridge v6, DB-5). */
+export function canInitGit(): boolean {
+  return typeof reposBridge()?.initGit === "function";
+}
+
+/** "Set up git here" (DB-5). Rejects with the bridge's ready-to-show refusal copy. */
+export async function initGit(path: string): Promise<{ branch: string }> {
+  const repos = reposBridge();
+  if (!repos?.initGit) throw new Error("This version of Tvashtr Desktop can't set up git.");
+  const out = await repos.initGit({ path });
+  return { branch: out && typeof out.branch === "string" ? out.branch : "main" };
+}
+
+/** Put a folder first in the composer's Recent folders (best effort; never throws). */
+export async function addRecentFolder(path: string): Promise<void> {
+  try {
+    await reposBridge()?.recent?.add?.(path);
+  } catch {
+    // Only the composer's ordering depends on it.
+  }
+}

@@ -118,3 +118,100 @@ export async function saveProviderKey(provider: string, apiKey: string): Promise
   const body = await apiRequest<unknown>("POST", "/api/providers", { provider, api_key: apiKey });
   return savedKey(body) ?? { provider, key_last4: apiKey.trim().slice(-4) };
 }
+
+// ---- Setup's First team step (DT-34..DT-37) ----
+
+/** Where a template node will run for this account: a plan in use, a saved key, or neither. */
+export type RunsOn = "claude" | "grok" | "api_key";
+
+export interface DesktopTemplateNode {
+  role: string;
+  kind: string;
+  label: string;
+  /** Null for gates and terminals. */
+  model: string | null;
+  /** Null for a model node nothing covers yet ("Needs setup"), and for gates and terminals. */
+  runs_on: RunsOn | null;
+}
+
+export interface DesktopTemplate {
+  template: string;
+  name: string;
+  description: string;
+  nodes: DesktopTemplateNode[];
+}
+
+function templateNode(raw: unknown): DesktopTemplateNode | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const role = str(r.role);
+  if (!role) return null;
+  const runsOn = r.runs_on;
+  return {
+    role,
+    kind: typeof r.kind === "string" ? r.kind : "",
+    label: typeof r.label === "string" ? r.label : role,
+    model: str(r.model),
+    runs_on: runsOn === "claude" || runsOn === "grok" || runsOn === "api_key" ? runsOn : null,
+  };
+}
+
+function desktopTemplate(raw: unknown): DesktopTemplate | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const key = str(r.template);
+  const name = str(r.name);
+  if (!key || !name) return null;
+  const shape = (r.shape ?? {}) as { nodes?: unknown };
+  const nodes = Array.isArray(shape.nodes) ? shape.nodes : [];
+  return {
+    template: key,
+    name,
+    description: typeof r.description === "string" ? r.description : "",
+    nodes: nodes.map(templateNode).filter((n): n is DesktopTemplateNode => n !== null),
+  };
+}
+
+/**
+ * The starter templates as Desktop setup shows them (`GET /api/templates?for=desktop`): the catalog
+ * plus `spec_only`, each strip node with where it will run for this account. Throws when unreadable.
+ */
+export async function getDesktopTemplates(): Promise<{
+  templates: DesktopTemplate[];
+  blank: DesktopTemplate | null;
+}> {
+  const body = await apiRequest<{ templates?: unknown; blank?: unknown }>(
+    "GET",
+    "/api/templates?for=desktop",
+  );
+  const list = Array.isArray(body?.templates) ? body.templates : [];
+  return {
+    templates: list.map(desktopTemplate).filter((t): t is DesktopTemplate => t !== null),
+    blank: desktopTemplate(body?.blank),
+  };
+}
+
+/**
+ * Create the account's first team from setup (`POST /api/teams {template, name, use_plans:true}`):
+ * its model nodes use the plans in use on Desktop. Throws `ApiDetailError` (422 "A team name is
+ * required.") or the fetch's TypeError when nothing answered.
+ */
+export async function createFirstTeam(
+  template: string,
+  name: string,
+): Promise<{ team_graph_id: string }> {
+  const body = await apiRequest<{ team_graph_id?: unknown }>("POST", "/api/teams", {
+    template,
+    name,
+    use_plans: true,
+  });
+  return { team_graph_id: typeof body?.team_graph_id === "string" ? body.team_graph_id : "" };
+}
+
+/** How many library teams the account has (DT-37); null when that couldn't be read. */
+export async function countLibraryTeams(): Promise<number | null> {
+  try {
+    const body = await apiRequest<{ teams?: unknown }>("GET", "/api/teams");
+    return Array.isArray(body?.teams) ? body.teams.length : null;
+  } catch {
+    return null;
+  }
+}
