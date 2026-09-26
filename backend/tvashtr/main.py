@@ -49,6 +49,7 @@ from tvashtr.routes import local_repo as revamp_local_repo
 from tvashtr.routes import memory_extra as revamp_memory
 from tvashtr.routes import nodes as revamp_nodes
 from tvashtr.routes import toolkit as revamp_toolkit
+from tvashtr.routes import website as revamp_website
 
 settings = get_settings()
 
@@ -118,6 +119,8 @@ app.include_router(auth_router)
 # Revamp (Desktop app): the Desktop browser sign-in (start/exchange) and the latest Desktop
 # release — public like ``auth_router`` (how Desktop obtains a session; release data is public).
 app.include_router(revamp_desktop_app.public_router)
+# Revamp (Website): GitHub sign-in start + the public site facts (website.md) — public too.
+app.include_router(revamp_website.public_router)
 # P0.2 gateway + document-layer endpoints (generate-doc, documents, costs). M-accounts Slice A: the
 # whole product surface now requires a session — one router-level dependency gates EVERY endpoint in
 # routers.py. /api/auth/* (above) and /health (below) stay open.

@@ -15,7 +15,7 @@ see :mod:`tvashtr.control_plane.credentials`.)
 import logging
 import uuid
 from typing import Annotated
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import desktop_auth, github_app
+from tvashtr.control_plane import desktop_auth, github_app, web_signin
 from tvashtr.db import session_scope
 from tvashtr.models import GithubInstallation, User
 
@@ -378,13 +378,18 @@ def github_callback(
     Desktop browser sign-in (desktop-app.md §3): when ``state`` is a desktop state this server
     signed (``desktop_auth``), the browser is signed in the same way but answers with the return
     page linking ``tvashtr://auth/done`` (a one-time code, or ``error=cancelled|expired``) instead
-    of redirecting. Without a desktop state nothing here changes."""
+    of redirecting.
+
+    Website sign-in (website.md B-3): a ``tv_oauth_state`` cookie (from ``/api/auth/github/start``)
+    takes :func:`_website_callback`. Without one, an older client's flow is unchanged."""
     settings = get_settings()
     if not settings.hosted_mode:
         raise HTTPException(status_code=404, detail="Not found")
     desktop = desktop_auth.read_state(state)
     if desktop is not None:
         return _desktop_callback(desktop, code, installation_id, error)
+    if web_signin.STATE_COOKIE in request.cookies:
+        return _website_callback(request, code, installation_id, state, error)
     if not code:
         # Revamp (Toolkit › Browse "Install GitHub App"): an App whose Setup URL is this callback
         # but which does not request user authorization on install returns ``?installation_id`` +
@@ -402,6 +407,50 @@ def github_callback(
     frontend = _desktop_frontend_origin_from_request(request) or settings.frontend_origin
     response = RedirectResponse(url=frontend, status_code=302)
     set_session_cookie(response, user_id)
+    return response
+
+
+def _website_callback(
+    request: Request,
+    code: str | None,
+    installation_id: str | None,
+    state: str | None,
+    error: str | None,
+) -> Response:
+    """The website's sign-in (website.md B-3, started by ``/api/auth/github/start``): every outcome
+    returns to the sign-in screens — ``#/signin?error=cancelled|expired|failed`` or, signed in,
+    ``#/signin/done[?next=]`` — and the one-attempt ``tv_oauth_state`` cookie is cleared. GitHub's
+    ``state`` must equal the cookie's nonce (login CSRF)."""
+    settings = get_settings()
+    frontend = _desktop_frontend_origin_from_request(request) or settings.frontend_origin
+    signin = f"{frontend.rstrip('/')}/#/signin"
+    web = web_signin.read_state(request.cookies.get(web_signin.STATE_COOKIE))
+    user_id = None
+    if error:
+        target = f"{signin}?error={'cancelled' if error == 'access_denied' else 'failed'}"
+    elif web is None or state != web["n"]:
+        target = f"{signin}?error=expired"
+    elif not code:
+        target = f"{signin}?error=failed"
+    else:
+        try:
+            user_id = _complete_github_sign_in(
+                code, installation_id, _desktop_redirect_uri_from_request(request)
+            )
+        except HTTPException:
+            user_id = None
+        after = f"?next={quote(web['next'], safe='')}" if web["next"] else ""
+        target = f"{signin}/done{after}" if user_id else f"{signin}?error=failed"
+    response = RedirectResponse(url=target, status_code=302)
+    response.delete_cookie(
+        key=web_signin.STATE_COOKIE,
+        path=web_signin.COOKIE_PATH,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        httponly=True,
+    )
+    if user_id:
+        set_session_cookie(response, user_id)
     return response
 
 
