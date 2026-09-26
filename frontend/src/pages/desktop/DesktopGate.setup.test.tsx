@@ -54,8 +54,11 @@ describe("DesktopGate — this Mac's setup (DT-2 step 3, DT-17)", () => {
     expect(await enginesHeading()).toBeInTheDocument();
     expect(window.location.hash).toBe("#/setup/engines");
     expect(bridge.setup.get).toHaveBeenCalledWith(ME.id);
-    // Step 4 of the launch (teams, then Home) waits until setup is done.
-    expect(fetchMock.mock.calls.some(([u]) => (u as string).includes("/api/teams"))).toBe(false);
+    // Step 4 of the launch (teams, then Home) waits until setup is done: the one teams request is
+    // setup's own "has teams already" check (DT-37), not the launch's.
+    const teamsCalls = () =>
+      fetchMock.mock.calls.filter(([u]) => (u as string).includes("/api/teams")).length;
+    await waitFor(() => expect(teamsCalls()).toBe(1));
     expect(screen.queryByText("HOME STUB")).toBeNull();
     // DT-3: setup screens keep the launch title.
     expect(document.title).toBe("Tvashtr");

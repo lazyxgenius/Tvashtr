@@ -502,3 +502,242 @@
   font-size: 12px;
   color: var(--ink-500);
 }
+
+/* ---- Radio cards: Project (DT-Project, DtF-Git-*) and First team (DT-Team) ---- */
+.st-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.st-card {
+  display: flex;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-card);
+  line-height: 1.6;
+  cursor: pointer;
+}
+.st-card--checked {
+  border: 1.5px solid var(--coral-500);
+  background: #fdf6f2;
+}
+.st-card[role="radio"]:focus-visible,
+.st-card:has(> [role="radio"]:focus-visible) {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.st-card__dot {
+  box-sizing: content-box;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-400);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.st-card__dot:focus-visible {
+  outline: none;
+}
+.st-card--checked .st-card__dot {
+  border-color: var(--coral-500);
+}
+.st-card__dot-fill {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--coral-500);
+}
+.st-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.st-card__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.st-card__desc {
+  font-size: 13.5px;
+  color: var(--ink-600);
+}
+.st-card > .ds-field,
+.st-card__body .ds-field {
+  cursor: auto;
+}
+
+/* First team cards: the whole card is the radio; a display-face name with an optional pill. */
+.st-card--team {
+  flex-direction: column;
+  gap: 10px;
+}
+.st-card--team .st-card__title {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: inherit;
+  font-weight: inherit;
+}
+.st-card__name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
+}
+.st-pill {
+  box-sizing: content-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--coral-100);
+  color: var(--coral-700);
+  border: 1px solid var(--coral-200);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The strip of role chips (DT-35). */
+.st-tpl-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.st-tpl-strip__arrow {
+  display: inline-flex;
+  color: var(--ink-500);
+}
+.st-tpl-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-page);
+}
+.st-tpl-chip__head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+}
+.st-tpl-chip__icon {
+  display: inline-flex;
+  color: var(--ink-700);
+}
+.st-tpl-chip__name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.st-tpl-chip__where {
+  font-size: 10.5px;
+  color: var(--ink-500);
+}
+
+/* The chosen folder (DT-30 b/d). */
+.st-folder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-page);
+  border: 1px solid var(--line-300);
+  cursor: auto;
+}
+.st-folder__icon {
+  display: inline-flex;
+  color: var(--ink-600);
+}
+.st-folder__path {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--ink-900);
+}
+.st-folder__push {
+  margin-left: auto;
+}
+.st-folder__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #52613e;
+}
+.st-folder__reading {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+/* The design wraps some buttons in an inline-flex slot (its annotation ring); keep the geometry. */
+.st-inline-slot {
+  display: inline-flex;
+  border-radius: 10px;
+}
+
+/* Not a git repository / can't use this folder (DT-30 c, DtF-Git-2). */
+.st-folder-warn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--amber-100);
+  font-size: 13px;
+  color: #6b4a1f;
+  cursor: auto;
+}
+.st-folder-warn__line {
+  display: flex;
+  gap: 8px;
+}
+.st-folder-warn__path {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: #6b4a1f;
+}
+.st-folder-warn__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+/* A GitHub repository (DT-31, not designed). */
+.st-repo__note {
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.st-repo__connect {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: auto;
+}
+.st-repo__select {
+  max-width: 420px;
+  cursor: auto;
+}
+
+/* First team's name (DT-36). */
+.st-team-name {
+  display: block;
+  width: 420px;
+}
+.st-form-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--danger);
+}

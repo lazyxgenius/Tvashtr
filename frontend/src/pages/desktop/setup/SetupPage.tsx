@@ -1,17 +1,12 @@
-import { useCallback } from "react";
+import { useEffect, useState } from "react";
 
-import { useToast } from "../../../design-system/components";
 import type { AuthUser } from "../../../lib/api";
+import { countLibraryTeams } from "../../../lib/api/desktop";
 import { loginOf } from "../../../lib/desktopApp";
-import {
-  type DesktopSetup,
-  saveDesktopSetup,
-  type SetupStep,
-  takeAfterSetup,
-} from "../../../lib/desktopSetup";
-import { HOME, navigate } from "../../../lib/nav";
+import type { DesktopSetup, SetupStep } from "../../../lib/desktopSetup";
 import { EnginesStep } from "./EnginesStep";
-import { SetupFrame, SetupHead } from "./SetupFrame";
+import { ProjectStep } from "./ProjectStep";
+import { TeamStep } from "./TeamStep";
 
 /**
  * Tvashtr Desktop's first-run setup at `#/setup/<step>` (desktop-app.md DT-16..DT-18), shown
@@ -29,69 +24,37 @@ export function SetupPage({
   onLogout: () => void;
 }) {
   const login = loginOf(user);
+  const teamsAlready = useTeamsAlready();
   switch (step) {
     case "engines":
-      return <EnginesStep login={login} setup={setup} onSwitch={onLogout} />;
+      return (
+        <EnginesStep
+          login={login}
+          setup={setup}
+          onSwitch={onLogout}
+          teamsAlready={teamsAlready === true}
+        />
+      );
     case "project":
-      return <InterimStep step="project" login={login} onSwitch={onLogout} />;
+      return (
+        <ProjectStep login={login} setup={setup} teamsAlready={teamsAlready} onSwitch={onLogout} />
+      );
     case "team":
-      return <InterimStep step="team" login={login} onSwitch={onLogout} />;
+      return <TeamStep login={login} onSwitch={onLogout} />;
   }
 }
 
-/** Steps 3 and 4 until their screens land (G5): the frame, the heading and the way on. */
-function InterimStep({
-  step,
-  login,
-  onSwitch,
-}: {
-  step: "project" | "team";
-  login: string;
-  onSwitch: () => void;
-}) {
-  const toast = useToast();
-  const finish = useCallback(async () => {
-    try {
-      await saveDesktopSetup({ step: "team", finishedAt: new Date().toISOString() });
-    } catch {
-      toast({ message: "Couldn’t save this Mac’s setup. Try again.", tone: "error" });
-      return;
-    }
-    const after = takeAfterSetup();
-    if (after) window.location.hash = after;
-    else navigate(HOME);
-  }, [toast]);
-  const onward = useCallback(() => {
-    if (step === "team") {
-      void finish();
-      return;
-    }
-    void saveDesktopSetup({ step: "team" }).catch(() => undefined);
-    navigate({ page: "setup", step: "team" });
-  }, [finish, step]);
-  const back = useCallback(() => {
-    const to: SetupStep = step === "team" ? "project" : "engines";
-    void saveDesktopSetup({ step: to }).catch(() => undefined);
-    navigate({ page: "setup", step: to });
-  }, [step]);
-  return (
-    <SetupFrame
-      step={step}
-      login={login}
-      onSwitch={onSwitch}
-      footer={{ onBack: back, primary: { label: "Continue", onClick: onward } }}
-    >
-      {step === "project" ? (
-        <SetupHead
-          title="Where should your teams work?"
-          lede="Agents read and change code here. They work on a new branch and ask you before anything is merged."
-        />
-      ) : (
-        <SetupHead
-          title="Start with a team"
-          lede="Pick a starting point. You can change every role, prompt and model on the canvas."
-        />
-      )}
-    </SetupFrame>
-  );
+/** DT-37: whether the account already has library teams (null until known, or when unreadable). */
+function useTeamsAlready(): boolean | null {
+  const [has, setHas] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    void countLibraryTeams().then((n) => {
+      if (live) setHas(n === null ? null : n > 0);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return has;
 }

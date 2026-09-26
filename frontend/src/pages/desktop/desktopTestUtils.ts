@@ -36,6 +36,16 @@ export interface FakeBridgeOptions {
   connect?: Partial<Record<SubscriptionStatus["provider"], SubscriptionStatus["state"]>>;
   /** What `engines.refresh(p)` answers per provider (default: connected). */
   refresh?: Partial<Record<SubscriptionStatus["provider"], SubscriptionStatus["state"]>>;
+  /**
+   * This Mac's folders (bridge `repos`): what the picker returns, what `inspect` answers per path
+   * (an Error rejects), what `initGit` answers (an Error rejects; `false` = an older Desktop
+   * without it). Omitted = no `repos` on the bridge.
+   */
+  repos?: {
+    pick?: { path: string; displayPath: string } | null;
+    inspect?: Record<string, TvashtrRepoInspection | Error>;
+    initGit?: { branch: "main"; commit: string; file_count: number } | Error | false;
+  };
 }
 
 /** A plan CLI's status as the bridge reports it. */
@@ -141,6 +151,39 @@ export function installDesktopBridge(opts: FakeBridgeOptions = {}) {
       return Promise.resolve({ ...stored });
     }),
   };
+  const reposOpts = opts.repos;
+  const repos = {
+    pickFolder: vi.fn(() => Promise.resolve(reposOpts?.pick ?? null)),
+    inspect: vi.fn((path: string) => {
+      const out = reposOpts?.inspect?.[path];
+      if (out instanceof Error) return Promise.reject(out);
+      return Promise.resolve(
+        out ?? {
+          is_git: false as const,
+          error: "That folder doesn't exist any more.",
+          reason: "missing" as const,
+        },
+      );
+    }),
+    initGit: vi.fn((args: { path: string }) => {
+      void args;
+      const out = reposOpts?.initGit ?? {
+        branch: "main" as const,
+        commit: "c0ffee",
+        file_count: 3,
+      };
+      return out instanceof Error ? Promise.reject(out) : Promise.resolve(out || undefined);
+    }),
+    recent: {
+      list: vi.fn(() => Promise.resolve([])),
+      add: vi.fn((path: string) => {
+        void path;
+        return Promise.resolve();
+      }),
+      remove: vi.fn(() => Promise.resolve()),
+    },
+  };
+  const reposBridge = reposOpts?.initGit === false ? { ...repos, initGit: undefined } : repos;
   const bridge = {
     engines,
     navigation,
@@ -148,6 +191,7 @@ export function installDesktopBridge(opts: FakeBridgeOptions = {}) {
     app,
     update,
     ...(stored ? { setup } : {}),
+    ...(reposOpts ? { repos: reposBridge } : {}),
   } as unknown as TvashtrDesktopBridge;
   window.tvashtrDesktop = bridge;
   window.tvashtrDesktopInfo = {
@@ -162,6 +206,7 @@ export function installDesktopBridge(opts: FakeBridgeOptions = {}) {
     navigation,
     engines,
     setup,
+    repos,
     fireStatus: (s: SubscriptionStatus) => statusListeners.forEach((cb) => cb(s)),
     fireSignIn: (e: TvashtrSignInEvent) => signInListeners.forEach((cb) => cb(e)),
     fireNavigate: (t: TvashtrDeepLinkTarget) => navListeners.forEach((cb) => cb(t)),

@@ -175,3 +175,56 @@ export function ChevronDownIcon({ size = 15, className }: { size?: number; class
     </Svg>
   );
 }
+
+// ---- Setup's First team strip (DT-Team): one icon per role, and the arrow between chips ----
+
+export function ZapIcon({ size = 13 }: { size?: number }) {
+  return (
+    <Svg size={size}>
+      <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />
+    </Svg>
+  );
+}
+export function ShieldCheckIcon({ size = 13 }: { size?: number }) {
+  return (
+    <Svg size={size}>
+      <path d="M20 13c0 5-3.5 7.4-7.66 8.95a1 1 0 0 1-.67 0C7.5 20.4 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      <path d="m9 12 2 2 4-4" />
+    </Svg>
+  );
+}
+export function TerminalIcon({ size = 13 }: { size?: number }) {
+  return (
+    <Svg size={size}>
+      <path d="m4 17 6-6-6-6" />
+      <path d="M12 19h8" />
+    </Svg>
+  );
+}
+export function ClipboardCheckIcon({ size = 13 }: { size?: number }) {
+  return (
+    <Svg size={size}>
+      <rect width="8" height="4" x="8" y="2" rx="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <path d="m9 14 2 2 4-4" />
+    </Svg>
+  );
+}
+export function PackageCheckIcon({ size = 13 }: { size?: number }) {
+  return (
+    <Svg size={size}>
+      <path d="m16 16 2 2 4-4" />
+      <path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14" />
+      <path d="M3.29 7 12 12l8.71-5" />
+      <path d="M12 22V12" />
+    </Svg>
+  );
+}
+export function ArrowRightIcon({ size = 14 }: { size?: number }) {
+  return (
+    <Svg size={size}>
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </Svg>
+  );
+}

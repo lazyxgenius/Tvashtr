@@ -28,7 +28,8 @@ export interface SetupFooter {
  * Logo, "Set up Tvashtr Desktop", the steps (done, current, later; not clickable,
  * `aria-current="step"`) and "Signed in as <login>" with Switch — beside the main column and its
  * footer (Back, Skip for now, Continue). `overlay` covers everything below the title strip
- * (the Terminal sign-in scrim, DtF-Run-4).
+ * (the Terminal sign-in scrim, DtF-Run-4). `teamsAlready` (DT-37): the account has teams, so
+ * First team is skipped — the rail shows it done, "You have teams already".
  */
 export function SetupFrame({
   step,
@@ -36,6 +37,7 @@ export function SetupFrame({
   onSwitch,
   footer,
   overlay,
+  teamsAlready = false,
   children,
 }: {
   step: SetupStep;
@@ -43,6 +45,7 @@ export function SetupFrame({
   onSwitch: () => void;
   footer: SetupFooter;
   overlay?: ReactNode;
+  teamsAlready?: boolean;
   children: ReactNode;
 }) {
   const current = ORDER.indexOf(step);
@@ -56,8 +59,14 @@ export function SetupFrame({
         </div>
         <ol className="st-steps" aria-label="Setup steps">
           {ORDER.map((id, i) => {
-            const state = i < current ? "done" : i === current ? "current" : "later";
-            const { title, sub } = id === "signin" ? { title: "Sign in", sub: login } : COPY[id];
+            const skipped = id === "team" && teamsAlready && i > current;
+            const state = i < current || skipped ? "done" : i === current ? "current" : "later";
+            const { title, sub } =
+              id === "signin"
+                ? { title: "Sign in", sub: login }
+                : skipped
+                  ? { title: COPY.team.title, sub: "You have teams already" }
+                  : COPY[id];
             return (
               <li
                 key={id}

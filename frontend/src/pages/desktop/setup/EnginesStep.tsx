@@ -53,10 +53,13 @@ export function EnginesStep({
   login,
   setup,
   onSwitch,
+  teamsAlready = false,
 }: {
   login: string;
   setup: DesktopSetup;
   onSwitch: () => void;
+  /** DT-37: the account has teams — the rail shows First team done. */
+  teamsAlready?: boolean;
 }) {
   const toast = useToast();
   const mac = thisComputer();
@@ -198,6 +201,7 @@ export function EnginesStep({
       step="engines"
       login={login}
       onSwitch={onSwitch}
+      teamsAlready={teamsAlready}
       footer={{
         onSkip: next,
         primary: {
