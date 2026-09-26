@@ -7,6 +7,14 @@
 //   model-1 → DmF-Model-1 (the answer model chip ringed)
 //   model-2 → DmF-Model-2 (the answer model listbox open upward)
 //   model-3 → DmF-Model-3 (OpenAI gpt-4o-mini picked: the chip and the toast with Undo)
+// G8 (answer states + save as test):
+//   noans-1    → DmF-NoAns-1 (a question the files don't cover typed, Ask ringed)
+//   noans-2    → DmF-NoAns-2 (the amber not-covered answer; the closest passages by page)
+//   follow-1   → DmF-Follow-1 (a follow-up typed, Ask ringed)
+//   follow-2   → DmF-Follow-2 (the follow-up's answer, "Used your earlier question for context")
+//   savetest-1 → DmF-SaveTest-1 (Save as test question ringed)
+//   savetest-2 → DmF-SaveTest-2 (the sheet: files + suggested key words, Save test ringed)
+//   savetest-3 → DmF-SaveTest-3 (the toast "Saved as test question 13" + View in Quality)
 import {
   D,
   DOMAINS,
@@ -88,6 +96,69 @@ const CHAT = [
   ANSWER,
 ];
 
+// G8: the question the files don't cover, and its closest passages (DM-62).
+const NONPROFIT = "Do you offer a discount for non-profits?";
+const PRICING_2 = passage(
+  "pricing-2026.pdf",
+  1,
+  5,
+  64,
+  2,
+  "annual plans are billed at 10 months’ price. Verified schools and universities get 40% off",
+);
+const BILLING_7 = passage(
+  "billing-faq.pdf",
+  2,
+  30,
+  86,
+  7,
+  "discounts can’t be combined, and apply from the next billing cycle",
+);
+const NOT_COVERED = {
+  ...ANSWER,
+  message_id: "m-nonprofit",
+  content: "NOT_FOUND: The closest passages talk about …",
+  latency_ms: 1500,
+  covered: false,
+  answer_text:
+    "The closest passages talk about annual plan pricing and education discounts, not non-profits.",
+  sources: [PRICING_2, BILLING_7],
+  searched: [PRICING_2, BILLING_7],
+};
+const NOT_COVERED_CHAT = [
+  { ...CHAT[0], message_id: "m-q-nonprofit", content: NONPROFIT },
+  NOT_COVERED,
+];
+// G8: a follow-up; each answer numbers its own sources (OQ-6).
+const FOLLOW_UP = "What about annual plans after 6 months?";
+const FOLLOW_ANSWER = {
+  ...ANSWER,
+  message_id: "m-follow",
+  latency_ms: 2100,
+  used_history: true,
+  answer_text:
+    "For an annual plan cancelled after 6 months, you get back the 6 unused whole months, prorated[1]. It goes to the original payment method within 5–10 business days[1].",
+  sources: [{ ...BILLING, number: 1 }],
+  searched: [BILLING, REFUND],
+};
+const FOLLOW_CHAT = [
+  ...CHAT,
+  { ...CHAT[0], message_id: "m-q-follow", content: FOLLOW_UP },
+  FOLLOW_ANSWER,
+];
+const SAVED_CASE = {
+  case_id: "case-13",
+  question: QUESTION,
+  expected_citation_doc_ids: [REFUND.document_id, BILLING.document_id],
+  expected_keywords: ["30 days", "refund"],
+  expected_files: [REFUND, BILLING].map((p) => ({
+    document_id: p.document_id,
+    filename: p.filename,
+    exists: true,
+  })),
+  ordinal: 12,
+};
+
 const base = (messages, over = {}) =>
   detailRoutes({
     detail,
@@ -103,6 +174,16 @@ const composer = (page) => page.getByPlaceholder("Ask Support docs a question");
 const answered = (page) =>
   page.getByRole("article", { name: "Answer" }).waitFor();
 const chip = (page) => page.getByRole("button", { name: /^Answer model:/ });
+const saveAsTest = (page) =>
+  page
+    .getByRole("article", { name: "Answer" })
+    .getByRole("button", { name: "Save as test question" });
+/** Type a question and ring **Ask** (keyboard focus draws the design's ring). */
+const typed = (text) => async (page) => {
+  await answered(page);
+  await composer(page).fill(text);
+  await page.getByRole("button", { name: "Ask", exact: true }).focus();
+};
 
 /** Model-3: the PATCH saves OpenAI gpt-4o-mini, later reads answer with it. */
 function pickedRoutes() {
@@ -207,4 +288,66 @@ export default [
       await page.mouse.move(0, 0);
     },
   })),
+  ...pair("noans-1", { path, routes: base(CHAT), steps: typed(NONPROFIT) }),
+  ...pair("noans-2", {
+    path,
+    routes: base(NOT_COVERED_CHAT),
+    steps: async (page) => {
+      await answered(page);
+      await page.getByText("page 7").waitFor();
+    },
+  }),
+  ...pair("follow-1", { path, routes: base(CHAT), steps: typed(FOLLOW_UP) }),
+  ...pair("follow-2", {
+    path,
+    routes: base(FOLLOW_CHAT),
+    steps: async (page) => {
+      await page.getByText("Used your earlier question for context").waitFor();
+    },
+  }),
+  ...pair("savetest-1", {
+    path,
+    routes: base(CHAT),
+    steps: async (page) => {
+      await answered(page);
+      await saveAsTest(page).focus();
+    },
+  }),
+  ...pair("savetest-2", {
+    path,
+    routes: base(CHAT),
+    steps: async (page) => {
+      await answered(page);
+      await saveAsTest(page).click();
+      const sheet = page.getByRole("dialog", {
+        name: "Save as a test question",
+      });
+      await sheet
+        .getByRole("button", { name: "Remove refund", exact: true })
+        .waitFor();
+      // The ring is keyboard focus: Tab from Cancel.
+      await sheet.getByRole("button", { name: "Cancel" }).focus();
+      await page.keyboard.press("Tab");
+      await page.mouse.move(0, 0);
+    },
+  }),
+  ...pair("savetest-3", {
+    path,
+    routes: base(CHAT, {
+      [`POST /api/domains/${D.support}/eval/cases`]: SAVED_CASE,
+    }),
+    steps: async (page) => {
+      await answered(page);
+      await saveAsTest(page).click();
+      await page
+        .getByRole("dialog", { name: "Save as a test question" })
+        .getByRole("button", { name: "Save test" })
+        .click();
+      await page.getByText("Saved as test question 13").waitFor();
+      await page
+        .getByRole("dialog", { name: "Save as a test question" })
+        .waitFor({ state: "detached" });
+      await page.mouse.move(0, 0);
+    },
+  }),
 ];
