@@ -206,4 +206,18 @@ export default [
       await toastShown(page);
     },
   }),
+  // Not an artboard (no design): "Turn on for agents…" from the row menu, for a visual check
+  // against TkF-AddTool-6's dialog. No parity line is recorded for it.
+  ...both("SkillAgentsDialog", {
+    path: "/#/toolkit/skills",
+    routes: g2Routes,
+    steps: async (page) => {
+      await openMenu(page);
+      await page.getByRole("menuitem", { name: "Turn on for agents…" }).click();
+      await page
+        .getByRole("dialog", { name: "Turn on for agents" })
+        .getByRole("checkbox", { name: /^Writer/ })
+        .waitFor();
+    },
+  }),
 ];

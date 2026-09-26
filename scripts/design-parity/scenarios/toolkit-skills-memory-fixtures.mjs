@@ -165,6 +165,38 @@ export const SCAN = {
   })),
 };
 
+// "Turn on for agents…" (undesigned; the geometry mirrors TkF-AddTool-6): every agent by team.
+const pickerAgent = (
+  role,
+  { kind = "agent", edits = true, on = false } = {},
+) => ({
+  node_id: `n-${role}`,
+  role_name: role,
+  title: null,
+  kind,
+  edits_allowed: edits,
+  enabled: on,
+  overridden: false,
+  mode: null,
+  triggers: null,
+});
+export const AGENT_TEAMS = (id) => [
+  {
+    team_id: "t-indicator",
+    team_name: "Indicator sprint team",
+    agents: [
+      pickerAgent("pm", { kind: "completion", edits: false }),
+      pickerAgent("engineer", { on: id === "s-house" }),
+      pickerAgent("reviewer", { on: id === "s-house" || id === "s-pytest" }),
+    ],
+  },
+  {
+    team_id: "t-docs",
+    team_name: "Docs team",
+    agents: [pickerAgent("writer")],
+  },
+];
+
 export const skillsRoutes = ({
   library = LIBRARY,
   presets = PRESETS,
@@ -187,6 +219,10 @@ export const skillsRoutes = ({
     return found
       ? { json: { ...found, used_by: USED_BY[id] ?? [] } }
       : { status: 404, json: { detail: "skill not found in your library" } };
+  },
+  "GET /api/skill-library/:id/agents": (req) => {
+    const id = new URL(req.url()).pathname.split("/").at(-2);
+    return { json: { teams: AGENT_TEAMS(id) } };
   },
   "DELETE /api/skill-library/:id": (req) => {
     const id = new URL(req.url()).pathname.split("/").pop();
