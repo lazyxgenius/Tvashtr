@@ -6,10 +6,10 @@ artboards, git-excluded), per the brief `prompts/revamp-e2e.md`.
 
 ## Round 2 — revamp-e2e session (start here to resume)
 
-**Next:** ship F3 Toolkit › Tools + Secrets (built, 57/57 at 0 drift) → F4 Toolkit › Skills + Memory
-(built, 46/46) → F5 agent panel + canvas (building) → F6 Focus + Docs (branches from F5) → Domains
-(building; carries the session's one migration `0042`, so its deploy waits for the operator's Neon
-snapshot) → Desktop app screens (building) → website → Phase 3 close-out.
+**Next:** ship F4 Toolkit › Skills + Memory (built, 46/46 at 0 drift) → F5 agent panel + canvas
+(building) → F6 Focus + Docs (branches from F5) → Domains (building; carries the session's one
+migration `0042`, so its deploy waits for the operator's Neon snapshot) → Desktop app screens
+(building) → website → Phase 3 close-out.
 
 ### NEEDS_HUMAN (2026-09-26 ~14:55 IST) — RESOLVED 15:04 IST (new key in `.env`, `make seed`)
 The OpenAI key in `.env` (`OPENAI_API_KEY`, ends `…IgoA`, also the operator account's saved openai
@@ -24,7 +24,26 @@ replaced. Remedy: new key on the `OPENAI_API_KEY` line of `.env` → `make seed`
 |---|---|---|---|---|
 | Phase 0 — Desktop catch-up | — (tag only) | `ec9202b` | (no deploy) | `desktop-v0.3.0` — latest release; DMG's `dist-fe/assets/index-X7f-3U3l.js` = the local build = the live site |
 | Phase 1 — the core loop completes | `fix/entry-report` | `007019d` | v20 | `desktop-v0.4.0` — latest release; DMG app 0.4.0 bundles `index-DZBnS0zK.js` = the live site |
-| F2 — Engines | `feat/revamp-f2-engines` | recorded at the next ship | recorded at the next ship | `desktop-v0.5.0` |
+| F2 — Engines | `feat/revamp-f2-engines` | `6acc726` | v21 | `desktop-v0.5.0` — latest release; DMG app 0.5.0 bundles `index-CGZUXJb0.js` = the live site |
+| F3 — Toolkit › Tools + Secrets | `feat/revamp-f3-tools-secrets` | recorded at the next ship | recorded at the next ship | `desktop-v0.6.0` |
+
+### F3 Toolkit › Tools + Secrets — what shipped (`feat/revamp-f3-tools-secrets`)
+- Toolkit › Tools on the new design: the list (tabs, search and filters, empty states, row ⋯ menus,
+  Turn on for agents), Browse (the catalog, the GitHub App round trip), the Add tool wizard (remote,
+  local command, paste mcp.json, secrets in headers/env), and the tool page (settings, used by, the
+  missing-secret fixes). Toolkit › Secrets: the page, add / replace / delete with impact, the ⋯ menu,
+  the fix-a-missing-secret flows. `ToolsShelf.tsx` and `SecretsShelf.tsx` are gone; pages in
+  `frontend/src/pages/tools/` and `frontend/src/pages/secrets/`, client `frontend/src/lib/api/tools.ts`,
+  and the Toolkit nav badge (counts, "N missing") from `GET /api/toolkit/summary`. No backend change.
+- Parity (`docs/superpowers/parity/toolkit-tools.txt`): all 57 screen artboards at 0 size/type drift
+  on the website AND Desktop, no waivers. Not screens: `Toolkit-BeforeAfter`, `TkF-Index`.
+- Deviations: copy the design doesn't draw, each backed by the backend — the Start-from button reads
+  "Open the catalog" / "Paste mcp.json" when chosen by keyboard; "Discard this tool?" confirm; the
+  empty filter states; the lower-case secret-name message; "Clear choice". `lib/api.ts` had eslint and
+  prettier errors on main (domains types); they were fixed because the file entered the diff.
+- Not done: lower-case `${name}` refs are blocked only in the wizard's Connection step (the paste sheet
+  and the tool page still accept them; the secret dialog explains the rule). "Open <Role>" into the
+  team drawer waits for F5.
 
 ### F2 Engines — what shipped (`feat/revamp-f2-engines`)
 - The whole Engines area on the new design: Overview (can your teams run, per website and Desktop,
