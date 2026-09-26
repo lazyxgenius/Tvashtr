@@ -8,6 +8,7 @@ import uuid
 from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
+from sqlalchemy import select
 from starlette.requests import Request
 
 from tvashtr.auth import SESSION_COOKIE_NAME, read_session_cookie
@@ -17,6 +18,9 @@ from tvashtr.control_plane.domain_ask import (
     retrieve_domain,
 )
 from tvashtr.control_plane.domain_query_node import format_domain_ask_error
+from tvashtr.control_plane.node_tools import DOMAINS_HEADER
+from tvashtr.db import session_scope
+from tvashtr.models import Domain
 
 
 class DomainMcpToolError(Exception):
@@ -32,6 +36,39 @@ def parse_domain_uuid(domain_id: str) -> uuid.UUID:
         return uuid.UUID(str(domain_id).strip())
     except (ValueError, AttributeError, TypeError) as e:
         raise DomainAskError("bad_request", "domain_id must be a UUID") from e
+
+
+def allowed_domains(header: str | None) -> set[str] | None:
+    """The domain ids an agent may search, from the ``X-Tvashtr-Domains`` header its run sends
+    (DM-96); ``None`` (no header) = every domain — the legacy all-domains switch."""
+    if header is None:
+        return None
+    return {part.strip().lower() for part in header.split(",") if part.strip()}
+
+
+def resolve_domain_ref(owner_id: uuid.UUID, ref: str, allowed: set[str] | None) -> str:
+    """The id of the domain ``ref`` names — a name (any case) or an id — among the owner's domains
+    this agent may search. The only one when ``ref`` is empty and there is just one. Anything else
+    is a tool error listing the names it can use ("Domains you can search: Support docs, Vendor
+    contracts.")."""
+    with session_scope() as session:
+        rows = session.execute(
+            select(Domain.id, Domain.name)
+            .where(Domain.owner_id == owner_id)
+            .order_by(Domain.created_at, Domain.id)
+        ).all()
+    usable = [(str(i), n) for i, n in rows if allowed is None or str(i) in allowed]
+    want = (ref or "").strip()
+    if not want and len(usable) == 1:
+        return usable[0][0]
+    for did, name in usable:
+        if want.lower() in (did, name.strip().lower()):
+            return did
+    if not usable:
+        raise DomainMcpToolError("You can’t search any domains.")
+    raise DomainMcpToolError(
+        "Domains you can search: " + ", ".join(name for _, name in usable) + "."
+    )
 
 
 def _json_ok(payload: dict[str, Any]) -> str:
@@ -122,18 +159,29 @@ def create_domains_fastmcp() -> FastMCP:
             return uuid.UUID(env_oid)
         raise DomainMcpToolError("authentication required")
 
+    def _allowed_from_ctx(ctx: Context) -> set[str] | None:
+        try:
+            request = ctx.request_context.request  # type: ignore[attr-defined]
+        except Exception:
+            request = None
+        return allowed_domains(request.headers.get(DOMAINS_HEADER)) if request else None
+
     @mcp.tool(name="domain_ask")
-    def domain_ask(domain_id: str, question: str, ctx: Context) -> str:
-        """Ask a Domain a question; returns answer + citations JSON."""
+    def domain_ask(question: str, ctx: Context, domain: str = "", domain_id: str = "") -> str:
+        """Ask one of your domains (a library of the user's files) a question; returns the answer
+        and its sources as JSON. ``domain`` is the domain's name, e.g. "Support docs"."""
         owner = _owner_from_ctx(ctx)
-        return run_domain_ask_tool(owner, domain_id, question)
+        did = resolve_domain_ref(owner, domain or domain_id, _allowed_from_ctx(ctx))
+        return run_domain_ask_tool(owner, did, question)
 
     @mcp.tool(name="domain_retrieve")
     def domain_retrieve(
-        domain_id: str, query: str, top_k: int | None = None, ctx: Context = None
+        query: str, ctx: Context, domain: str = "", domain_id: str = "", top_k: int | None = None
     ) -> str:
-        """Retrieve cited chunks from a Domain (no LLM generation)."""
+        """Find the passages in one of your domains that match ``query`` (no answer is written);
+        returns them with their sources as JSON. ``domain`` is the domain's name."""
         owner = _owner_from_ctx(ctx)
-        return run_domain_retrieve_tool(owner, domain_id, query, top_k=top_k)
+        did = resolve_domain_ref(owner, domain or domain_id, _allowed_from_ctx(ctx))
+        return run_domain_retrieve_tool(owner, did, query, top_k=top_k)
 
     return mcp

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from tvashtr.auth import UserOut, get_current_user
-from tvashtr.control_plane import domain_ask, domain_eval, domain_read, domain_views
+from tvashtr.control_plane import domain_ask, domain_eval, domain_read, domain_usage, domain_views
 from tvashtr.control_plane.domain_files import absolute_path
 from tvashtr.control_plane.domains import DomainNameTaken, _owned_domain, duplicate_domain
 from tvashtr.db import session_scope
@@ -239,3 +239,100 @@ def get_domain_eval_run(
         return domain_eval.get_eval_run(uuid.UUID(current_user.id), did, run_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ---- Use in teams (DM-92…97) ----
+
+
+def _usage_404(value):
+    if value is None:
+        raise HTTPException(status_code=404, detail="domain not found")
+    return value
+
+
+@router.get("/api/domains/{domain_id}/usage")
+def get_domain_usage(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Where the domain is used (DM-92): its Query domain steps and the agents that can search it,
+    over the owner's library teams."""
+    owner = uuid.UUID(current_user.id)
+    return _usage_404(domain_usage.usage_detail(owner, _uuid(domain_id, "domain")))
+
+
+@router.get("/api/domains/{domain_id}/step-places")
+def get_domain_step_places(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """The Add step dialog's teams, each with its main path and the places a step can go (OQ-20)."""
+    owner = uuid.UUID(current_user.id)
+    return _usage_404(domain_usage.step_places(owner, _uuid(domain_id, "domain")))
+
+
+class StepBody(BaseModel):
+    """``POST …/steps``: where the new Query domain step goes and what it asks."""
+
+    team_id: str
+    after_node_id: str
+    prompt: str
+    pass_to_spec: bool = True
+
+
+@router.post("/api/domains/{domain_id}/steps", status_code=201)
+def post_domain_step(
+    domain_id: str,
+    body: StepBody,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """Add the domain to a team as a Query domain step after an agent (DM-94/95)."""
+    try:
+        team_id = uuid.UUID(body.team_id)
+        after_id = uuid.UUID(body.after_node_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=domain_usage.STEP_PLACE) from exc
+    try:
+        return domain_usage.insert_step(
+            uuid.UUID(current_user.id),
+            _uuid(domain_id, "domain"),
+            team_id,
+            after_id,
+            body.prompt,
+            body.pass_to_spec,
+        )
+    except LookupError as exc:
+        what = str(exc.args[0]) if exc.args else "domain"
+        detail = {"team": "library team not found", "node": "node not found in the team"}
+        raise HTTPException(status_code=404, detail=detail.get(what, "domain not found")) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/api/domains/{domain_id}/agents")
+def get_domain_agents(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Every agent of the owner's library teams and whether it can search this domain (DM-96)."""
+    owner = uuid.UUID(current_user.id)
+    return {"agents": _usage_404(domain_usage.domain_agents(owner, _uuid(domain_id, "domain")))}
+
+
+class DomainAgentsBody(BaseModel):
+    """``PUT …/agents``: the FULL set of agents that can search the domain afterwards."""
+
+    node_ids: list[str]
+
+
+@router.put("/api/domains/{domain_id}/agents")
+def put_domain_agents(
+    domain_id: str,
+    body: DomainAgentsBody,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """Give agents access to the domain — or take it away (DM-96/97)."""
+    owner = uuid.UUID(current_user.id)
+    did = _uuid(domain_id, "domain")
+    try:
+        agents = domain_usage.set_domain_agents(owner, did, body.node_ids)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Agent not found.") from exc
+    return {"agents": _usage_404(agents)}

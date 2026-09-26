@@ -81,7 +81,6 @@ def _substitute(server: dict, values: dict[str, str]) -> dict:
     return out
 
 
-
 def domains_mcp_url() -> str:
     """Control-plane Domains MCP URL reachable from the OpenHands agent process."""
     settings = get_settings()
@@ -100,13 +99,18 @@ def domains_mcp_url() -> str:
     return f"{base}/mcp/domains"
 
 
+# The header naming the domains an agent may search (``tvashtr.domains`` as a list of ids, DM-96);
+# absent = every domain (the legacy ``true`` switch). The Domains MCP enforces it.
+DOMAINS_HEADER = "X-Tvashtr-Domains"
+
+
 def _domains_opt_in(tvashtr_meta: dict) -> bool:
     flag = tvashtr_meta.get("domains")
     if flag is True:
         return True
     if isinstance(flag, dict) and flag.get("enabled", True) is not False and flag:
         return True
-    return False
+    return isinstance(flag, list) and bool(flag)
 
 
 def build_mcp_config(tool_config: dict | None, run_id: str) -> dict:
@@ -185,10 +189,10 @@ def build_mcp_config(tool_config: dict | None, run_id: str) -> dict:
         owner = _owner()
         if owner is not None and "tvashtr-domains" not in resolved:
             cookie_val = make_session_cookie_value(str(owner))
-            resolved["tvashtr-domains"] = {
-                "url": domains_mcp_url(),
-                "headers": {"Cookie": f"{SESSION_COOKIE_NAME}={cookie_val}"},
-            }
+            headers = {"Cookie": f"{SESSION_COOKIE_NAME}={cookie_val}"}
+            if isinstance(meta.get("domains"), list):
+                headers[DOMAINS_HEADER] = ",".join(str(d) for d in meta["domains"])
+            resolved["tvashtr-domains"] = {"url": domains_mcp_url(), "headers": headers}
 
     # Return ONLY ``{"mcpServers": {…}}`` — the ``tvashtr`` block (incl. ``library``) is stripped.
     return {"mcpServers": resolved}
