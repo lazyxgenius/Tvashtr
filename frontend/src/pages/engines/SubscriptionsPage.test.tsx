@@ -338,6 +338,42 @@ describe("Disconnect Claude with an anthropic key saved (ENG-42/43)", () => {
     expect(within(card("Claude")).getByRole("button", { name: "Connect" })).toBeEnabled();
   });
 
+  it("stays open while it disconnects: Escape can't hide a failure (ENG-42)", async () => {
+    const both = [SUBS[0], sub("grok", "connected"), SUBS[2]];
+    api(RUNNER_FRESH, both);
+    const desktop = installDesktop(both);
+    let fail: (e: Error) => void = () => undefined;
+    desktop.engines.disconnect.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        fail = reject;
+      }),
+    );
+    renderEngines("subscriptions");
+    await loaded();
+    fireEvent.click(within(card("Claude")).getByRole("button", { name: "Disconnect" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Disconnect Claude?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Disconnect" }));
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("alertdialog", { name: "Disconnect Claude?" })).toBeInTheDocument();
+
+    act(() => fail(new Error("offline")));
+    expect(
+      await within(screen.getByRole("alertdialog", { name: "Disconnect Claude?" })).findByText(
+        "Couldn’t disconnect Claude. Try again.",
+      ),
+    ).toBeInTheDocument();
+
+    // Once it has settled, Cancel closes it, and the next dialog starts clean.
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Cancel" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    fireEvent.click(within(card("Grok")).getByRole("button", { name: "Disconnect" }));
+    const grok = await screen.findByRole("alertdialog", { name: "Disconnect Grok?" });
+    expect(within(grok).queryByText(/Couldn’t disconnect/)).toBeNull();
+  });
+
   it("Cancel keeps Claude connected", async () => {
     api();
     const desktop = installDesktop();

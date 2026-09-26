@@ -27,7 +27,10 @@ export function DisconnectDialog({
   const [error, setError] = useState<string | null>(null);
   const copy = sub ? disconnectCopy(engines.inputs, sub) : null;
 
+  // While the bridge disconnects, Escape and the scrim do nothing (Cancel is disabled too): the
+  // dialog stays up to show the result.
   const close = () => {
+    if (busy) return;
     setError(null);
     onClose();
   };
