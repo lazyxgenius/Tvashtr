@@ -288,6 +288,27 @@ describe("MemoryPage › Add memory", () => {
     expect(posts(calls)[0].body).toMatchObject({ repo_key: null });
   });
 
+  it("opens from Active's empty state, and the first memory fills it", async () => {
+    const { state } = addApi();
+    state.rows = [];
+    renderAt("#/toolkit/memory/active");
+    const empty = await screen.findByRole("region", {
+      name: "Your agents haven’t learned anything yet",
+    });
+    fireEvent.click(within(empty).getByRole("button", { name: "Add memory" }));
+    const sheet = await screen.findByRole("dialog", { name: "Add memory" });
+    await waitFor(() =>
+      expect(within(sheet).getByRole("combobox", { name: "Repo" })).toHaveValue(
+        "lazyxgenius/trade_mcp",
+      ),
+    );
+    fireEvent.change(textBox(sheet), { target: { value: LINTER } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Add memory" }));
+
+    await waitFor(() => expect(activeRows()).toEqual([LINTER]));
+    expect(screen.queryByText("Your agents haven’t learned anything yet")).toBeNull();
+  });
+
   it("asks for the repos your GitHub App reaches too", async () => {
     const { calls } = addApi();
     renderAt("#/toolkit/memory/active");
