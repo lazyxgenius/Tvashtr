@@ -162,6 +162,31 @@ def test_files_list_phases_counts_and_pieces():
     )
 
 
+def test_fix_key_link_goes_once_a_key_is_saved_after_the_failure():
+    """DmF-Fail-1/2: "Fix key in Engines" shows until a key is saved after the file failed; the
+    row keeps its reason and the fix is Re-read this file."""
+    c, owner = _fresh()
+    did = _domain(c)
+    failed_at = datetime.now(UTC) - timedelta(minutes=5)
+    _doc(did, "billing-faq.pdf", "error", error="401 invalid api key", created=failed_at)
+    _key(owner)  # an old, rejected key saved before the failure
+    with session_scope() as s:
+        row = s.query(ProviderCredential).filter_by(owner_id=owner).one()
+        row.updated_at = failed_at - timedelta(minutes=1)
+    problem = _listing(c, did)["documents"][0]["problem"]
+    assert problem == {
+        "kind": "key_rejected",
+        "message": "OpenAI rejected the key (401).",
+        "fix": "engines_key",
+    }
+    with session_scope() as s:
+        row = s.query(ProviderCredential).filter_by(owner_id=owner).one()
+        row.updated_at = datetime.now(UTC)  # the key was replaced after the failure
+    problem = _listing(c, did)["documents"][0]["problem"]
+    assert problem["message"] == "OpenAI rejected the key (401)."
+    assert problem["fix"] is None
+
+
 def test_files_search_matches_names_and_text():
     c, owner = _fresh()
     did = _domain(c)

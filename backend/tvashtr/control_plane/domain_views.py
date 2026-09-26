@@ -391,9 +391,22 @@ def _filter_of(phase: str) -> str:
     return "reading"
 
 
-def _document_item(doc: DomainDocument, total: int, done: int, provider: str, key: bool) -> dict:
+def _document_item(
+    doc: DomainDocument,
+    total: int,
+    done: int,
+    provider: str,
+    key: bool,
+    key_saved_at: datetime | None = None,
+) -> dict:
     phase = document_phase(doc.ingest_status, doc.version, key)
     reading = phase in ("reading", "rereading")
+    problem = (
+        humanize_ingest_error(doc.error_message, provider) if phase == "needs_attention" else None
+    )
+    # A key saved after the failure is the fix already made: the row offers Re-read (DmF-Fail-2).
+    if problem and problem["fix"] and key_saved_at and key_saved_at > doc.updated_at:
+        problem["fix"] = None
     return {
         **document_to_dict(doc),
         "kind": file_kind(doc.filename),
@@ -402,9 +415,7 @@ def _document_item(doc: DomainDocument, total: int, done: int, provider: str, ke
         "pieces_total": total,
         "pieces_done": done,
         "progress": (round(done / total, 4) if total else 0.0) if reading else None,
-        "problem": humanize_ingest_error(doc.error_message, provider)
-        if phase == "needs_attention"
-        else None,
+        "problem": problem,
     }
 
 
@@ -439,8 +450,16 @@ def document_views(
             ).scalars()
         )
         pieces = _piece_counts(session, domain_id)
+        key_saved_at = session.execute(
+            select(func.max(ProviderCredential.updated_at)).where(
+                ProviderCredential.owner_id == owner_id,
+                ProviderCredential.provider == rm["provider"],
+            )
+        ).scalar()
         items = [
-            _document_item(d, *pieces.get(d.id, (0, 0)), rm["provider"], rm["key_saved"])
+            _document_item(
+                d, *pieces.get(d.id, (0, 0)), rm["provider"], rm["key_saved"], key_saved_at
+            )
             for d in docs
         ]
         counts = {"all": len(items), "ready": 0, "reading": 0, "needs_attention": 0}

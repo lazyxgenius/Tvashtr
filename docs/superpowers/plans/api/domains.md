@@ -246,6 +246,8 @@ English full-text index — "refund" finds a file that says "Refunds"), `status`
   found. It may be a scanned image. Export it as text-based PDF."), `rate_limited` ("<Vendor> is busy
   right now. Re-read it in a minute."), `unsupported` ("Only PDF, Markdown, text or HTML files can be
   read."), `wrong_dim` / `other` ("Couldn’t read this file: <first line of the error>.").
+  G5: `fix` turns `null` once a key for the reading model's provider was saved **after** the file
+  failed (the fix is made; the row's ⋯ → Re-read this file, DmF-Fail-2); the message stays.
 - `matched` — only with `q`: `name` or `text`.
 - `counts` — the Show filter's numbers, **unfiltered** by `q`/`status`. `total_pieces` — ready pieces
   of every file.
