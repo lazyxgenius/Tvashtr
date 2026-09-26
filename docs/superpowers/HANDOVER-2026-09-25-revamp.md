@@ -6,16 +6,97 @@ artboards, git-excluded), per the brief `prompts/revamp-e2e.md`.
 
 ## Round 2 — revamp-e2e session (start here to resume)
 
-**Next:** ship Phase 1 (below) → then ship F2 Engines, F3 Toolkit › Tools + Secrets and F4 Toolkit
-› Skills + Memory in that order as their builders finish → F5 agent panel + canvas → F6 Focus +
-Docs → Domains → Desktop app screens → website → Phase 3 close-out.
+**Next:** F5 agent panel + canvas (building) → F6 Focus + Docs (branches from F5) → Domains
+(building; carries the session's one migration `0042`, so its deploy waits for the operator's Neon
+snapshot) → Desktop app screens (building) → website → Phase 3 close-out.
+
+### NEEDS_HUMAN (2026-09-26 ~14:55 IST) — RESOLVED 15:04 IST (new key in `.env`, `make seed`)
+The OpenAI key in `.env` (`OPENAI_API_KEY`, ends `…IgoA`, also the operator account's saved openai
+credential) now returns 401 `invalid_api_key` (it worked at ~12:50 for demo-proof PR #15; `.env`
+unchanged since Jul 22, so it was revoked upstream; no key in today's pushes or PRs). The operator's PM
+and worker seats resolve to OpenAI first, so every ship's `make demo-proof` gate fails until it is
+replaced. Remedy: new key on the `OPENAI_API_KEY` line of `.env` → `make seed` → tell the session "go".
 
 ### Ship log (Ship Protocol in the brief; one row per ship)
 
 | Ship | Branch | main sha | Fly release | Desktop tag |
 |---|---|---|---|---|
 | Phase 0 — Desktop catch-up | — (tag only) | `ec9202b` | (no deploy) | `desktop-v0.3.0` — latest release; DMG's `dist-fe/assets/index-X7f-3U3l.js` = the local build = the live site |
-| Phase 1 — the core loop completes | `fix/entry-report` | recorded at the next ship | recorded at the next ship | `desktop-v0.4.0` |
+| Phase 1 — the core loop completes | `fix/entry-report` | `007019d` | v20 | `desktop-v0.4.0` — latest release; DMG app 0.4.0 bundles `index-DZBnS0zK.js` = the live site |
+| F2 — Engines | `feat/revamp-f2-engines` | `6acc726` | v21 | `desktop-v0.5.0` — latest release; DMG app 0.5.0 bundles `index-CGZUXJb0.js` = the live site |
+| F3 — Toolkit › Tools + Secrets (+ `fix/ship-identity`) | `feat/revamp-f3-tools-secrets` | `c1a0172`, then `f6e1d4e` | v22 | `desktop-v0.6.0` — latest release; DMG app 0.6.0 bundles `index-DlPFWcla.js` = the live site |
+| F4 — Toolkit › Skills + Memory | `feat/revamp-f4-skills-memory` | recorded at the next ship | recorded at the next ship | `desktop-v0.7.0` |
+
+### F4 Toolkit › Skills + Memory — what shipped (`feat/revamp-f4-skills-memory`)
+- Toolkit › Skills on the new design: the list and presets, the row ⋯ menu (duplicate, turn on for
+  agents, delete with its impact), the skill editor (new and existing: SKILL.md, load mode, triggers,
+  source), Add from GitHub (scan, pick, import). Toolkit › Memory: Inbox (keep / discard / edit, with
+  Undo), Active (filters by agent, repo and kind, pin, edit, scope), Archive, and the Add memory sheet;
+  the Memory nav opens the Inbox when memories wait (MEM-4). `SkillsShelf.tsx`, `MemoryShelf.tsx` and
+  `MemoryFact.tsx` are gone; pages in `frontend/src/pages/skills/` and `frontend/src/pages/memory/`,
+  clients `frontend/src/lib/api/skills.ts` and `memory.ts`. Backend: `control_plane/memory.py` no
+  longer flips a memory's superseded reason after a force edit (tested); the memory contract doc was
+  updated. The agent drawer's skill and memory hints now point at Toolkit › Skills / Memory.
+- Parity (`docs/superpowers/parity/toolkit-skills-memory.txt`): all 46 artboards at 0 size/type drift
+  on the website AND Desktop, no waivers.
+- An existing skill with a legacy (non-kebab) name now saves; a memory edit the embedding service
+  can't take says so and keeps the app online.
+
+### Production ship fix, deployed with F3 (`fix/ship-identity`)
+- **Production could never open a PR for a hosted GitHub run.** The prod demo-proof after the F2
+  deploy (run 2177a044) got through the PM fallback, the spec gate, three review rounds and the
+  escalation gate, then Ship's `git commit` exited 128: the per-run clone has no repo-local git
+  identity and the server container has no global one (Linux git can't guess an email). Local proofs
+  always passed because the Mac has a global identity. `shipping.idempotent_ship` now commits as
+  "Tvashtr Agent <agent@tvashtr.local>" only for the identity keys git doesn't already have.
+  Reproduced first (no global config + `user.useConfigOnly`, i.e. the container: exit 128).
+- The same prod run also showed the Engineer reporting ~270 "changed" files (incl. `.pytest_cache`)
+  and the Reviewer unable to run the repo's tests in the sandbox (missing dependencies). Not fixed
+  here; see the ship report's risks.
+
+### F3 Toolkit › Tools + Secrets — what shipped (`feat/revamp-f3-tools-secrets`)
+- Toolkit › Tools on the new design: the list (tabs, search and filters, empty states, row ⋯ menus,
+  Turn on for agents), Browse (the catalog, the GitHub App round trip), the Add tool wizard (remote,
+  local command, paste mcp.json, secrets in headers/env), and the tool page (settings, used by, the
+  missing-secret fixes). Toolkit › Secrets: the page, add / replace / delete with impact, the ⋯ menu,
+  the fix-a-missing-secret flows. `ToolsShelf.tsx` and `SecretsShelf.tsx` are gone; pages in
+  `frontend/src/pages/tools/` and `frontend/src/pages/secrets/`, client `frontend/src/lib/api/tools.ts`,
+  and the Toolkit nav badge (counts, "N missing") from `GET /api/toolkit/summary`. No backend change.
+- Parity (`docs/superpowers/parity/toolkit-tools.txt`): all 57 screen artboards at 0 size/type drift
+  on the website AND Desktop, no waivers. Not screens: `Toolkit-BeforeAfter`, `TkF-Index`.
+- Deviations: copy the design doesn't draw, each backed by the backend — the Start-from button reads
+  "Open the catalog" / "Paste mcp.json" when chosen by keyboard; "Discard this tool?" confirm; the
+  empty filter states; the lower-case secret-name message; "Clear choice". `lib/api.ts` had eslint and
+  prettier errors on main (domains types); they were fixed because the file entered the diff.
+- Not done: lower-case `${name}` refs are blocked only in the wizard's Connection step (the paste sheet
+  and the tool page still accept them; the secret dialog explains the rule). "Open <Role>" into the
+  team drawer waits for F5.
+
+### F2 Engines — what shipped (`feat/revamp-f2-engines`)
+- The whole Engines area on the new design: Overview (can your teams run, per website and Desktop,
+  "N to fix" nav badge), Subscriptions (Claude / Grok / Codex cards and every connect, refresh,
+  disconnect and API-key flow; the website's "Open in Desktop" deep link), API keys (Replace, Remove
+  with its impact, "See where it's used"), the Add key sheet (provider picker, "Other" prefixes,
+  save errors, toasts, embeddings keys) and first-time. `EnginesShelf.tsx` is gone. Pages in
+  `frontend/src/pages/engines/`, client `frontend/src/lib/api/engines.ts`, `tvashtr://` deep links
+  wired in `lib/desktopDeepLinks.ts`. No backend change was needed (round 1 built it).
+- Parity (`docs/superpowers/parity/engines.txt`): 52 of the 56 screen artboards at 0 size/type drift
+  on the website AND Desktop. `Eng-Flow-Key-1…4` carry a LEAD WAIVER: the design draws a stale
+  "anthropic" banner beside the anthropic key that was just saved, contradicting its own banner text
+  and ENG-58 (honest copy wins); only those stale-banner items drift. Not screens: `EnF-Index`,
+  `Eng-BeforeAfter`, `Eng-CardStates` (a state catalogue; all six states are built and tested).
+  `Eng-Flow-Blocked-1` (the canvas banner) moved to F5.
+- Deviations (design doesn't cover them): NIM reads "No agent uses NVIDIA NIM right now." and never
+  counts toward a team being ready; the Mac Get-Desktop dialog adds the unsigned-app fix
+  `xattr -dr com.apple.quarantine /Applications/Tvashtr.app`; off a Mac it says "Tvashtr Desktop is
+  Mac-only for now." with a releases link; an agent with no model makes a team not ready ("give
+  <Role> a model").
+- Also in this ship: `fix/ship-sidecars` — Ship leaves Tvashtr's own untracked `REPORT.md`,
+  `REVIEW_VERDICT.json` and `SPEC.md` out of the user's repo (live PR lazyxgenius/trade_mcp#14 had
+  shipped the PM's REPORT.md). Reproduced first.
+- Operator follow-ups from this stretch: the prod account's Gemini key is quota-limited (429), so
+  `make demo-proof-prod` fails at its Engineer — give that account a paid key or another worker
+  provider; the saved prod session expires ~2026-09-27 13:12 IST (`make demo-proof-login`).
 
 ### Phase 1 — what shipped (`fix/entry-report`)
 - **The PM's closing message becomes the spec when it didn't write `REPORT.md`.** Live runs

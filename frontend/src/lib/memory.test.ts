@@ -1,16 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { NodeMemoryRow } from "./api";
-import {
-  ALL_REPOS,
-  bucketMemories,
-  defaultRepo,
-  POLARITY_META,
-  polarityRank,
-  reposOf,
-  TIER_LABEL,
-  usedFacts,
-} from "./memory";
+import { POLARITY_META, polarityRank, reposOf, TIER_LABEL, usedFacts } from "./memory";
 
 function row(over: Partial<NodeMemoryRow> = {}): NodeMemoryRow {
   return {
@@ -69,59 +60,6 @@ describe("reposOf", () => {
 
   it("is empty when there are no repo-scoped facts", () => {
     expect(reposOf([row({ repo_key: null })])).toEqual([]);
-  });
-});
-
-describe("defaultRepo", () => {
-  it("picks the repo with the most facts", () => {
-    const rows = [row({ repo_key: "/x" }), row({ repo_key: "/x" }), row({ repo_key: "/y" })];
-    expect(defaultRepo(rows)).toBe("/x");
-  });
-
-  it("returns null when there are no repo-scoped facts", () => {
-    expect(defaultRepo([row({ repo_key: null })])).toBeNull();
-  });
-});
-
-describe("bucketMemories", () => {
-  it("splits account-tier rows from repo/node rows", () => {
-    const rows = [
-      row({ id: "acc", repo_key: null }),
-      row({ id: "r", repo_key: "/x", node_id: null }),
-    ];
-    const b = bucketMemories(rows, "/x");
-    expect(b.account.map((r) => r.id)).toEqual(["acc"]);
-    expect(b.repoGroups).toHaveLength(1);
-    expect(b.repoGroups[0].repo_key).toBe("/x");
-    expect(b.repoGroups[0].repoFacts.map((r) => r.id)).toEqual(["r"]);
-  });
-
-  it("groups per-node facts under their repo, by node_id, in first-seen order", () => {
-    const rows = [
-      row({ id: "r", repo_key: "/x", node_id: null }),
-      row({ id: "n1a", repo_key: "/x", node_id: "nodeA" }),
-      row({ id: "n1b", repo_key: "/x", node_id: "nodeA" }),
-      row({ id: "n2", repo_key: "/x", node_id: "nodeB" }),
-    ];
-    const g = bucketMemories(rows, "/x").repoGroups[0];
-    expect(g.repoFacts.map((r) => r.id)).toEqual(["r"]);
-    expect(g.nodeGroups).toHaveLength(2);
-    expect(g.nodeGroups[0].node_id).toBe("nodeA");
-    expect(g.nodeGroups[0].rows.map((r) => r.id)).toEqual(["n1a", "n1b"]);
-    expect(g.nodeGroups[1].node_id).toBe("nodeB");
-  });
-
-  it("restricts the repo groups to the selected repo", () => {
-    const rows = [row({ id: "x", repo_key: "/x" }), row({ id: "y", repo_key: "/y" })];
-    expect(bucketMemories(rows, "/x").repoGroups.map((g) => g.repo_key)).toEqual(["/x"]);
-  });
-
-  it("shows every repo group under ALL_REPOS", () => {
-    const rows = [row({ id: "x", repo_key: "/x" }), row({ id: "y", repo_key: "/y" })];
-    const keys = bucketMemories(rows, ALL_REPOS)
-      .repoGroups.map((g) => g.repo_key)
-      .sort();
-    expect(keys).toEqual(["/x", "/y"]);
   });
 });
 

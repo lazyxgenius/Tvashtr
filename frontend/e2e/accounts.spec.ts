@@ -67,10 +67,16 @@ test("accounts journey: landing → register → first-time Home → add key →
   await expect(page).toHaveURL(/#\/engines\/keys$/);
   const keys = page.locator("section[aria-labelledby='tv-engines-keys']");
   await expect(keys).toBeVisible({ timeout: 30_000 });
-  await keys.getByLabel("Provider", { exact: true }).fill("openrouter");
-  await keys.getByLabel("API key").fill("sk-or-e2e-fake-1234");
-  await keys.getByRole("button", { name: "Add key" }).click();
-  await expect(keys.locator(".tv-dash__prov-name")).toHaveText(["openrouter"], {
+  // The Add key sheet (ENG-61): pick openrouter from the provider list, paste, Save key.
+  await keys.getByRole("button", { name: "Add key", exact: true }).first().click();
+  const sheet = page.getByRole("dialog", { name: "Add an API key" });
+  await sheet.getByRole("button", { name: /^Provider / }).click();
+  await sheet.getByRole("textbox", { name: "Search providers" }).fill("openrouter");
+  await sheet.getByRole("option", { name: /^openrouter/ }).click();
+  await sheet.getByLabel("API key").fill("sk-or-e2e-fake-1234");
+  await sheet.getByRole("button", { name: "Save key" }).click();
+  await expect(sheet).toBeHidden({ timeout: 30_000 });
+  await expect(keys.getByTestId("engines-key-provider")).toHaveText(["openrouter"], {
     timeout: 30_000,
   });
   await expect(keys.getByText(/•••• 1234/)).toBeVisible();

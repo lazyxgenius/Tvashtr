@@ -463,6 +463,7 @@ export async function deleteSubscriptionStatus(provider: SubscriptionProviderId)
 }
 
 // ---- MCP secrets (M-tools C7.A): the account's ${NAME} store for MCP tool_config ----
+// (Adding, replacing and deleting secrets live in lib/api/tools.ts, with Toolkit › Secrets.)
 
 // A stored MCP secret as the shelf shows it — only the NAME is ever returned, never the value.
 export interface McpSecretName {
@@ -473,23 +474,6 @@ export interface McpSecretName {
 export async function listSecrets(): Promise<McpSecretName[]> {
   const data = await getJSON<{ secrets: McpSecretName[] }>("/api/secrets");
   return data.secrets;
-}
-
-// Add (or REPLACE) an MCP ${NAME} secret. Returns `{name}` — never the value.
-export async function addSecret(name: string, value: string): Promise<{ name: string }> {
-  const res = await fetch("/api/secrets", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name, value }),
-  });
-  if (!res.ok) throw new ApiError(res.status, `POST /api/secrets -> ${res.status}`);
-  return (await res.json()) as { name: string };
-}
-
-// Remove the account's ${name} secret (204, idempotent).
-export async function removeSecret(name: string): Promise<void> {
-  const res = await fetch(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE /api/secrets/${name} -> ${res.status}`);
 }
 
 // ---- The account's runs (the dashboard's "previous runs" list) ----
@@ -834,26 +818,6 @@ export async function createToolLibraryItem(
   });
   if (!res.ok) throw new ApiError(res.status, `POST /api/tool-library -> ${res.status}`);
   return (await res.json()) as { id: string; name: string };
-}
-
-// Edit a library tool by id (propagates LIVE to every referencing node's next run).
-export async function updateToolLibraryItem(
-  id: string,
-  name: string,
-  serverConfig: Record<string, unknown>,
-): Promise<{ id: string; name: string }> {
-  const res = await fetch(`/api/tool-library/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name, server_config: serverConfig }),
-  });
-  if (!res.ok) throw new ApiError(res.status, `PATCH /api/tool-library/${id} -> ${res.status}`);
-  return (await res.json()) as { id: string; name: string };
-}
-
-export async function deleteToolLibraryItem(id: string): Promise<void> {
-  const res = await fetch(`/api/tool-library/${encodeURIComponent(id)}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE /api/tool-library/${id} -> ${res.status}`);
 }
 
 // The account's library skills (oldest first).
@@ -1753,7 +1717,8 @@ export interface DomainDocumentSummary {
   filename: string;
   content_type: string;
   byte_size: number;
-  ingest_status: "pending" | "indexing" | "ready" | "error" | (string & {});
+  /** "pending" | "indexing" | "ready" | "error" (a newer server may add more). */
+  ingest_status: string;
   error_message: string | null;
   version: number;
   created_at: string;
@@ -1832,7 +1797,8 @@ export interface DomainCitation {
 export interface DomainMessageSummary {
   message_id: string;
   domain_id: string;
-  role: "user" | "assistant" | (string & {});
+  /** "user" | "assistant" (a newer server may add more). */
+  role: string;
   content: string;
   citations: DomainCitation[] | null;
   latency_ms: number | null;

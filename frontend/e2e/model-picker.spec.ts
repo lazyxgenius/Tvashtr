@@ -94,7 +94,7 @@ test("model picker: seat-grouped picker + inline key add + the same-model adviso
     .getByRole("button", { name: /^API keys/ })
     .click();
   const keys = page.locator("section[aria-labelledby='tv-engines-keys']");
-  await expect(keys.locator(".tv-dash__prov-name", { hasText: /^groq$/ })).toBeVisible({
+  await expect(keys.getByTestId("engines-key-provider").filter({ hasText: /^groq$/ })).toBeVisible({
     timeout: 30_000,
   });
   console.log(

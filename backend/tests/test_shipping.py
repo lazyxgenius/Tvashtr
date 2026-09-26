@@ -199,6 +199,116 @@ def test_ship_takes_the_agents_commit_in_a_linked_worktree(tmp_path):
     assert idempotent_ship(str(wt), "run-wt")["sha"] == head
 
 
+def _tree(ws, ref) -> list[str]:
+    return _git(ws, "ls-tree", "-r", "--name-only", ref).split()
+
+
+def test_ship_leaves_tvashtrs_own_files_out_of_a_run_branch(tmp_path):
+    """revamp-e2e: live PR lazyxgenius/trade_mcp#14 shipped the PM's REPORT.md into the user's repo.
+    A hosted or local-folder run has no Tvashtr .gitignore, so the ship itself must leave Tvashtr's
+    own files out (the report, the reviewer's verdict, the spec handle) — they stay on disk."""
+    repo = _repo_with_history(tmp_path / "repo")
+    _git(repo, "checkout", "-q", "-b", "tvashtr/run-side")
+    for name, text in (
+        ("REPORT.md", "# PRD\n"),
+        ("REVIEW_VERDICT.json", '{"verdict": "approved"}'),
+        ("SPEC.md", "# spec\n"),
+        ("feature.py", "print(2)\n"),
+    ):
+        (repo / name).write_text(text)
+
+    idempotent_ship(str(repo), "run-side")
+
+    tree = _tree(repo, "ship-run-side")
+    assert "feature.py" in tree
+    assert not {"REPORT.md", "REVIEW_VERDICT.json", "SPEC.md"} & set(tree)
+    assert (repo / "REPORT.md").exists()
+
+
+def test_ship_works_when_the_workspace_already_ignores_tvashtrs_files(tmp_path):
+    """A greenfield workspace's own .gitignore already ignores REPORT.md and friends (team_run's
+    _WORKSPACE_GITIGNORE). Naming an ignored file in `git add`, even as an exclude, makes git refuse
+    ("The following paths are ignored…"), which failed every greenfield ship in the suite."""
+    from tvashtr.control_plane.team_run import _WORKSPACE_GITIGNORE
+
+    ws = tmp_path / "ws-ignored"
+    ws.mkdir()
+    init_workspace_repo(str(ws))
+    (ws / ".gitignore").write_text(_WORKSPACE_GITIGNORE)
+    (ws / "REPORT.md").write_text("# PRD\n")
+    (ws / "SPEC.md").write_text("# spec\n")
+    (ws / "TVASHTR_REMEMBER.jsonl").write_text('{"content":"x"}\n')
+    (ws / "greeting.txt").write_text("hi\n")
+
+    idempotent_ship(str(ws), "run-ignored")
+
+    tree = _tree(ws, "ship-run-ignored")
+    assert "greeting.txt" in tree
+    assert not {"REPORT.md", "SPEC.md", "TVASHTR_REMEMBER.jsonl"} & set(tree)
+
+
+def test_ship_keeps_a_repos_own_tracked_report(tmp_path):
+    """A repo that already tracks a REPORT.md owns it: the agent's edit to it ships."""
+    repo = _repo_with_history(tmp_path / "repo")
+    (repo / "REPORT.md").write_text("v1\n")
+    _git(repo, "add", "REPORT.md")
+    _git(repo, "commit", "-q", "-m", "their report")
+    _git(repo, "checkout", "-q", "-b", "tvashtr/run-own")
+    (repo / "REPORT.md").write_text("v2\n")
+
+    idempotent_ship(str(repo), "run-own")
+
+    assert _show(repo, "ship-run-own", "REPORT.md") == "v2\n"
+
+
+def _without_any_git_identity(monkeypatch, tmp_path) -> None:
+    """The production container: no global or system git config, so no author identity."""
+    home = tmp_path / "empty-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(home / "none"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    # Linux containers can't guess an email from the host, so git exits 128 ("unable to
+    # auto-detect email address"); macOS can guess one. useConfigOnly makes this machine behave
+    # like the container.
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "user.useConfigOnly")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_ship_commits_in_a_clone_with_no_git_identity(monkeypatch, tmp_path):
+    """revamp-e2e: on production every hosted-GitHub run failed at Ship — `git commit` exited 128
+    (live run 2177a044): the per-run clone has no repo-local identity and the container has no
+    global one. Ship commits as the Tvashtr agent when git has no identity at all."""
+    repo = _repo_with_history(tmp_path / "repo")  # a user's repo; its identity is repo-local here
+    clone = tmp_path / "clone"
+    _git(tmp_path, "clone", "-q", str(repo), str(clone))
+    _without_any_git_identity(monkeypatch, tmp_path)
+    _git(clone, "checkout", "-q", "-b", "tvashtr/run-noid")
+    (clone / "feature.py").write_text("print(3)\n")
+
+    ship = idempotent_ship(str(clone), "run-noid")
+
+    assert ship["created"] is True
+    assert _git(clone, "log", "-1", "--format=%an <%ae>", ship["tag"]) == (
+        "Tvashtr Agent <agent@tvashtr.local>"
+    )
+
+
+def test_ship_keeps_the_users_own_git_identity(tmp_path):
+    """A folder that already has an identity (the user's repo on their machine) commits as them."""
+    repo = _repo_with_history(tmp_path / "repo")  # identity user <u@x>, repo-local
+    _git(repo, "checkout", "-q", "-b", "tvashtr/run-id")
+    (repo / "feature.py").write_text("print(4)\n")
+
+    ship = idempotent_ship(str(repo), "run-id")
+
+    assert _git(repo, "log", "-1", "--format=%an <%ae>", ship["tag"]) == "user <u@x>"
+
+
 def test_ship_still_raises_when_a_run_branch_has_nothing_new(tmp_path):
     """The base's own commits are not the agent's work: a run that produced nothing still fails."""
     repo = _repo_with_history(tmp_path / "repo")

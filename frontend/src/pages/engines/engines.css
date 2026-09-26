@@ -1,0 +1,879 @@
+/* ============================================================
+   Engines (Eng-* / EnF-* artboards) — exact design values.
+   The page sits in .sh-main__inner (max-width 1100px, a column with a 20px gap).
+   ============================================================ */
+
+/* ---- Page header ---- */
+.eng-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+.eng-head__title {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+.eng-head__lede {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-500);
+  max-width: 620px;
+}
+.eng-head__actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+/* An icon + label inside one Button child span (the design's markup). */
+.eng-btn-inline > span {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---- Status lines: OK (sage), warn (amber), muted ---- */
+.eng-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.eng-status--ok {
+  color: #52613e;
+}
+.eng-status--warn {
+  gap: 8px;
+  color: #7a5423;
+}
+.eng-status--muted {
+  color: var(--ink-500);
+}
+/* A row's Connect in progress: "Checking…" (EnF-OvConnect-2). */
+.eng-status--busy {
+  color: var(--ink-600);
+}
+.eng-muted {
+  color: var(--ink-500);
+}
+.eng-code {
+  font-family: var(--font-code);
+}
+
+/* ---- Section card ---- */
+.eng-card {
+  border: 1px solid var(--border-hairline);
+  border-radius: 16px;
+  background: var(--surface-card);
+  padding: 0;
+  overflow: hidden;
+}
+.eng-card__head {
+  padding: 14px 16px 4px;
+}
+.eng-card__head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.eng-card__title {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.eng-empty {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--ink-500);
+}
+
+/* ---- Overview: the two surfaces ---- */
+.eng-surfaces {
+  display: flex;
+  gap: 16px;
+}
+.eng-surface {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.eng-surface__icon {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--panel-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-700);
+}
+.eng-surface__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.eng-surface__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.eng-surface__desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+.eng-surface__status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- Overview: providers table ---- */
+.eng-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.eng-table th {
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+  border-bottom: 1px solid var(--line-200);
+}
+/* The design's header icons are inline (the app's preflight makes every svg a block). */
+.eng-table th svg {
+  display: inline;
+  vertical-align: baseline;
+}
+.eng-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-200);
+  font-size: 13px;
+  color: var(--ink-800);
+  vertical-align: middle;
+  transition: background-color 0.6s ease;
+}
+/* The row a save or a Connect just changed, briefly (ENG-23): on at once, fades out. */
+.eng-table tr.eng-row--ok > td {
+  background: var(--sage-100);
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eng-table td {
+    transition: none;
+  }
+}
+/* Arrived from a blocked run: the rows to fix (Eng-Flow-Blocked-2). */
+.eng-table tr.eng-row--fix > td {
+  background: #fbf3e6;
+}
+.eng-prov {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.eng-mono {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 5px;
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.eng-prov__slug {
+  font-family: var(--font-code);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.eng-usedby {
+  font-size: 12.5px;
+}
+.eng-also {
+  padding: 10px 16px;
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+
+/* ---- Overview: can your teams run? ---- */
+.eng-teams {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.eng-team {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px 260px;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-200);
+}
+.eng-team__name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-900);
+}
+
+/* ---- First time (EnF-FirstTime-1) ---- */
+.eng-ft__intro {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.eng-ft__q {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--ink-900);
+}
+.eng-ft__sub {
+  font-size: 14px;
+  color: var(--ink-600);
+}
+.eng-ft__cards {
+  display: flex;
+  gap: 16px;
+}
+.eng-ft__card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.eng-ft__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--panel-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-700);
+}
+.eng-ft__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 400;
+  color: var(--ink-900);
+}
+.eng-ft__text {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+  flex: 1;
+}
+
+/* ---- API keys (Eng-Keys, Eng-Flow-Key-*, EnF-KeyUsed-*) ---- */
+/* The page is one labelled region (the e2e hook); it keeps the shell's 20px column rhythm. */
+.eng-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+/* The suggested-keys warn banner (ENG-52). */
+.eng-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #fbf3e6;
+  border: 1px solid var(--amber-100);
+  font-size: 13px;
+  color: #6b4a1f;
+}
+.eng-banner__text {
+  flex: 1;
+}
+.eng-banner__text b {
+  font-weight: 600;
+}
+/* The key table's ⋯ menu and usage popover open below their row, past the card's edge. */
+.eng-card--keys {
+  overflow: visible;
+}
+/* The design's menu items inherit the page's 1.6 line-height (37px rows). */
+.eng-card--keys .ds-menu__item {
+  line-height: 1.6;
+}
+/* The design hangs the ⋯ menu and the usage popover flush under the trigger (no 4px gap).
+   The DS Popover sets its offset inline, so only !important reaches it. */
+.eng-card--keys .ds-menu--end {
+  top: 100%;
+}
+.eng-card--keys .ds-popover.eng-usage {
+  top: 100% !important;
+}
+.eng-card--keys .ds-menu__item--danger,
+.eng-card--keys .ds-menu__item--danger .ds-menu__icon {
+  color: #8f3b2f;
+}
+.eng-key__last4 {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-600);
+}
+/* "Where the <p> key is used" (EnF-KeyUsed-2): 320px, 14px padding, 10px rhythm. */
+.ds-popover.eng-usage {
+  padding: 14px;
+  gap: 10px;
+}
+.eng-usage__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.eng-usage__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.eng-usage__title {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.eng-usage__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.eng-usage__body {
+  flex: 1;
+  min-width: 0;
+}
+.eng-usage__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.eng-usage__detail {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.eng-usage__open {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--coral-700);
+  text-decoration: none;
+}
+.eng-usage__open:hover {
+  text-decoration: underline;
+}
+.eng-usage__foot {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+/* Domains embeddings (ENG-59). */
+.eng-embed {
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.eng-embed__icon {
+  display: inline-flex;
+  color: var(--ink-600);
+}
+.eng-embed__body {
+  flex: 1;
+}
+.eng-embed__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.eng-embed__desc {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.eng-embed__items {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.eng-embed__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* OQ-21: a run in progress will fail at its next step. */
+.eng-dialog__inflight {
+  margin: 8px 0 0;
+  color: #7a5423;
+}
+
+/* ---- The subscription disclosure ---- */
+.eng-disclosure {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.eng-disclosure__icon {
+  display: inline-flex;
+  margin-top: 2px;
+}
+
+/* ---- Loading and load errors (ENG-78) ---- */
+.eng-loaderr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fbf3e6;
+  font-size: 13px;
+  color: #7a5423;
+}
+.eng-loaderr > span {
+  flex: 1;
+}
+.eng-skel__row {
+  display: flex;
+  gap: 24px;
+  padding: 16px;
+  border-bottom: 1px solid var(--line-200);
+}
+.eng-skel__row:last-child {
+  border-bottom: 0;
+}
+.eng-skel__bar {
+  flex: 1;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--line-200);
+  animation: eng-pulse 1.4s ease-in-out infinite;
+}
+.eng-skel__bar--short {
+  flex: 0 0 140px;
+}
+@keyframes eng-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eng-skel__bar {
+    animation: none;
+  }
+}
+
+/* ---- Add key sheet (Eng-AddKeyPick, Eng-AddKey, EnF-PickProvider-*, EnF-OtherProvider-*) ----
+   The DS Sheet draws the frame (520px, header, footer); these are its body. The design's buttons
+   inherit the page's 16px (their text sits in explicitly sized spans). */
+.eng-sheet__form {
+  display: contents;
+}
+.eng-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+.eng-picker__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-900);
+}
+.eng-picker__btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line-300);
+  border-radius: 8px;
+  background: var(--surface-page);
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+.eng-picker__btn.is-invalid {
+  border-color: #c9826f;
+}
+.eng-picker__btn.is-open,
+.eng-picker__btn:focus-visible {
+  outline: none;
+  border-color: var(--coral-200);
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.45);
+}
+.eng-picker__placeholder {
+  font-size: 13.5px;
+  color: var(--ink-500);
+}
+.eng-picker__slug {
+  font-family: var(--font-code);
+  font-size: 13.5px;
+  color: var(--ink-900);
+}
+.eng-picker__value {
+  font-size: 13.5px;
+  color: var(--ink-900);
+}
+.eng-picker__plus {
+  display: inline-flex;
+  color: var(--coral-700);
+}
+.eng-picker__chev {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--ink-500);
+}
+.eng-picker__pop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+  z-index: 5;
+}
+/* The design's search box sits flush on the first option (its 6px margin lands inside the
+   imported component's box), so no gap here. */
+.eng-picker__search {
+  display: block;
+}
+/* A longer directory scrolls; "Other" below it stays in view (ENG-63). */
+.eng-picker__list {
+  max-height: 324px;
+  overflow-y: auto;
+}
+.eng-picker__opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+.eng-picker__opt.is-saved {
+  opacity: 0.55;
+}
+.eng-picker__opt-slug {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--ink-900);
+}
+.eng-picker__opt-desc {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.eng-picker__sep {
+  height: 1px;
+  background: var(--line-200);
+  margin: 4px 6px;
+}
+.eng-picker__other {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--coral-700);
+  text-align: left;
+  cursor: pointer;
+}
+.eng-picker__opt:hover,
+.eng-picker__opt.is-active,
+.eng-picker__other:hover,
+.eng-picker__other.is-active {
+  background: var(--panel-300);
+}
+.eng-sheet__hint {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.eng-sheet__hint code {
+  font-family: var(--font-code);
+  font-size: inherit;
+}
+.eng-sheet__hint b {
+  font-weight: 600;
+}
+.eng-sheet__note {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+.eng-sheet__note--sunk {
+  background: var(--surface-sunk);
+}
+.eng-sheet__note--line {
+  border: 1px solid var(--line-200);
+}
+.eng-sheet__icon {
+  display: inline-flex;
+  margin-top: 1px;
+}
+.eng-sheet__error {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8e7e2;
+  border: 1px solid #e5b3a9;
+  font-size: 13px;
+  color: #8f3b2f;
+}
+/* Tvashtr Desktop (macOS): the sheet is fixed over the window's 30px title strip, a drag region;
+   without this its Close button's top edge would drag the window instead of closing the sheet. */
+.ds-sheet:has(.eng-picker) {
+  -webkit-app-region: no-drag;
+}
+
+/* ---- Subscriptions (Eng-Subs, Eng-SubsWeb, Eng-Flow-Grok-*, Eng-Flow-Codex-*) ---- */
+/* Desktop: the runner's check-in (ENG-25) — OK sage, or warn when it isn't fresh. */
+.eng-runner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--sage-100);
+  font-size: 13px;
+  color: #3f4d2f;
+}
+.eng-runner--warn {
+  background: #fbf3e6;
+  color: #6b4a1f;
+}
+.eng-runner__text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.eng-runner__checked {
+  font-size: 12px;
+}
+/* The website: subscriptions run on the user's computer (ENG-46). */
+.eng-webbanner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--blue-100);
+  font-size: 13px;
+  color: #2f4f6f;
+}
+.eng-webbanner__text {
+  flex: 1;
+}
+.eng-subs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.eng-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.eng-sub--ok {
+  border-color: var(--sage-500);
+}
+.eng-sub__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.eng-sub__tile {
+  /* flex: none — the design's tile shrinks in a crowded header (Codex's two badges); it is meant
+     to be 34px square. */
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-weight: 700;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.eng-sub__name {
+  font-family: var(--font-display);
+  font-size: 19px;
+  color: var(--ink-900);
+}
+.eng-sub__account {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.eng-sub__badges {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.eng-sub__meta {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 6px 10px;
+  font-size: 12.5px;
+}
+.eng-sub__meta dt {
+  color: var(--ink-500);
+}
+.eng-sub__meta dd {
+  margin: 0;
+  color: var(--ink-800);
+}
+.eng-sub__msg {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+  flex: 1;
+}
+.eng-sub__link {
+  color: var(--coral-700);
+  font-weight: 500;
+  text-decoration: underline;
+}
+.eng-sub__callout {
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+/* Waiting for the sign-in in Terminal (ENG-31). */
+.eng-sub__callout--terminal {
+  display: flex;
+  gap: 8px;
+  background: var(--coral-100);
+  border: 1px solid var(--coral-200);
+  color: var(--ink-800);
+}
+.eng-sub__callout--terminal > svg {
+  flex: none;
+}
+/* Refresh still found nothing (ENG-40). */
+.eng-sub__callout--warn {
+  background: #fbf3e6;
+  border: 1px solid var(--amber-100);
+  color: #6b4a1f;
+}
+.eng-sub__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+/* The design's loading spinner is content-box (1em + its 1.5px border each side = 16px); the app's
+   global border-box shrinks it to 13px and the "Checking" label sits 2px left (EnF-ClaudeRefresh-2). */
+.eng-sub__actions .ds-btn__spin {
+  box-sizing: content-box;
+}
+/* A `tvashtr://…?connect=` link points at this card (it never starts Connect). */
+.eng-sub--highlight {
+  border-color: var(--coral-500);
+  box-shadow: 0 0 0 3px var(--coral-100);
+}
+
+/* Get Tvashtr Desktop (EnF-WebDesktop-3, ENG-47). */
+.eng-getdesk__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  list-style: none;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 13px;
+  color: var(--ink-700);
+}
+.eng-getdesk__list li {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.eng-getdesk__note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.eng-getdesk__cmd {
+  display: block;
+  margin-top: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--surface-sunk);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-800);
+  white-space: nowrap;
+  overflow-x: auto;
+  user-select: all;
+}
