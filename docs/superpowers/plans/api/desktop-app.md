@@ -1,0 +1,131 @@
+# API contract — Tvashtr Desktop app screens (area `desktop_app`)
+
+Backend for `docs/superpowers/specs/2026-09-25-revamp-analysis/desktop-app.md` §3. Code:
+`backend/tvashtr/routes/desktop_app.py` (routes), `control_plane/desktop_auth.py`,
+`control_plane/desktop_release.py`, `control_plane/desktop_jobs.py::release_job`,
+`control_plane/provider_directory.py`; the GitHub callback's desktop branch is in `auth.py`.
+No schema. Everything is additive: no existing key or behaviour changed.
+
+Status (2026-09-26): SHIPPED — browser sign-in (start / callback branch / return page /
+exchange), `GET /api/desktop/release`, job release, `provider_directory[].serves_models`.
+NOT YET BUILT (the First-team step's group, G5, builds them): the `spec_only` template,
+`use_plans` on `POST /api/teams`, `GET /api/templates?for=desktop`.
+
+---
+
+## Browser sign-in (DT-6..DT-10) — public, hosted mode only
+
+Stateless PKCE. Desktop main makes `verifier` (32 random bytes, base64url, no padding),
+`challenge = base64url(sha256(verifier))` (RFC 7636 S256, 43 chars) and its own `state`
+(`^[A-Za-z0-9_-]{16,64}$`). The verifier never leaves Desktop main.
+
+### `GET /api/auth/desktop/start?challenge=&state=&account=current|github`
+Opened in the user's **default browser** (not the app window). `account` defaults to `github`.
+
+| Case | Answer |
+|---|---|
+| `hosted_mode` off | 404 `{"detail":"Not found"}` |
+| `challenge` not `^[A-Za-z0-9_-]{43}$`, `state` not `^[A-Za-z0-9_-]{16,64}$`, or `account` not `current`/`github` | 400 HTML return page "This link doesn't work" / "This sign-in link is broken. Go back to Tvashtr Desktop and try again." (links bare `tvashtr://auth/done`, no auto-open) |
+| `account=current` and this browser holds a valid `tv_session` | 200 HTML return page (signed in), link `tvashtr://auth/done?code=<code>&state=<state>` — no GitHub step (the handoff) |
+| otherwise | 302 → `https://github.com/login/oauth/authorize?client_id=…&redirect_uri=<public_base_url>/api/auth/github/callback&state=<signed desktop state>` |
+
+The signed desktop state is itsdangerous, salt `tv-desktop-state`, valid 15 minutes, payload
+`{"c": challenge, "s": state}`.
+
+### `GET /api/auth/github/callback` (changed in place, additive)
+New optional query params `state` and `error`. When `state` verifies as a desktop state:
+
+| Case | Answer |
+|---|---|
+| `error` present (e.g. `access_denied`, the user cancelled on GitHub) or no `code` | 200 return page "Sign-in cancelled" / "Nothing was changed. Go back to Tvashtr Desktop."; link `tvashtr://auth/done?error=cancelled&state=<s>`; no cookie |
+| the desktop state is older than 15 minutes | 200 return page "This sign-in expired" / "This sign-in has expired. Sign in again."; link `tvashtr://auth/done?error=expired&state=<s>`; no cookie |
+| `code` present | the normal GitHub find-or-link + installations, the browser gets `tv_session`, then 200 return page "You're signed in" / "Go back to Tvashtr Desktop to continue. You can close this tab."; link `tvashtr://auth/done?code=<code>&state=<s>` |
+| GitHub exchange fails | 400 `{"detail":"GitHub sign-in failed."}` (unchanged) |
+
+Without a desktop state (absent, forged, foreign) the callback behaves exactly as before (302 to
+the website).
+
+The one-time `code` is itsdangerous, salt `tv-desktop-code`, valid 5 minutes, payload
+`{"u": user_id, "c": challenge}`. It names exactly one user and is useless without the verifier.
+
+### The return page (all variants)
+Server HTML, `Content-Type: text/html`, `Cache-Control: no-store`,
+`Referrer-Policy: no-referrer` (+ `<meta name="referrer" content="no-referrer">`). A button
+**Open Tvashtr Desktop** whose `href` is the link; when the link carries a result it also runs
+`window.location.href = <link>` once. The link ALWAYS starts with `tvashtr://auth/done` — any
+other value is replaced by the bare `tvashtr://auth/done` (no open redirect).
+
+### `POST /api/auth/desktop/exchange`
+Called by Desktop main through the loopback proxy (which rewrites `Set-Cookie` onto the local
+origin).
+
+Request: `{"code": "<from the tvashtr://auth/done link>", "verifier": "<PKCE verifier>"}`
+
+200 (`Set-Cookie: tv_session=…`, `Cache-Control: no-store`) — the `UserOut` of `/api/auth/me`:
+```json
+{"id": "7b0c…", "email": "lazyxgenius@users.noreply.github.com", "github_login": "lazyxgenius", "display_name": "lazyxgenius"}
+```
+Errors:
+- 404 `{"detail":"Not found"}` — `hosted_mode` off
+- 400 `{"detail":"This sign-in has expired. Sign in again."}` — bad, forged or > 5-minute-old
+  code, or the account no longer exists
+- 400 `{"detail":"This sign-in belongs to another app window. Sign in again."}` — the verifier is
+  malformed (`^[A-Za-z0-9._~-]{43,128}$`) or doesn't hash to the code's challenge
+- 422 — body missing `code`/`verifier`
+
+---
+
+## `GET /api/desktop/release` (DT-43) — public
+The latest Tvashtr Desktop release on GitHub (`settings.desktop_release_repo`, env
+`TVASHTR_DESKTOP_RELEASE_REPO`, default `lazyxgenius/Tvashtr`): `/releases/latest` if its tag is
+`desktop-v*`, else the first non-draft, non-prerelease `desktop-v*` in `/releases?per_page=20`.
+Cached in process 10 minutes (failures too); 3 s timeout per GitHub call; never errors.
+
+200:
+```json
+{
+  "version": "0.6.0",
+  "tag": "desktop-v0.6.0",
+  "published_at": "2026-09-30T10:12:00Z",
+  "dmg_url": "https://github.com/lazyxgenius/Tvashtr/releases/latest/download/Tvashtr-mac.dmg",
+  "release_url": "https://github.com/lazyxgenius/Tvashtr/releases/tag/desktop-v0.6.0",
+  "checked_at": "2026-09-30T10:20:04.512Z"
+}
+```
+GitHub unreachable or no desktop release: the same keys with `version`, `tag`, `published_at`,
+`release_url` = `null`. `dmg_url` is ALWAYS the stable `…/releases/latest/download/Tvashtr-mac.dmg`
+(the frontend's `DESKTOP_MAC_DMG_URL`), never a versioned link.
+
+---
+
+## `POST /api/desktop-runner/jobs/{job_id}/release` (DT-45, DB-7) — session, owner-scoped
+Desktop is quitting or restarting to update: hand its claimed job back to the queue. No body.
+
+200:
+```json
+{"job_id": "3f1c9a52-…", "status": "queued"}
+```
+Effect: `claimed → queued`, `claimed_at` and `heartbeat_at` set to null, one node run-log
+message `{"source":"tvashtr","text":"Tvashtr Desktop restarted — this step starts again when it's
+back."}`. The relaunched runner re-claims it with the unchanged `POST /api/desktop-runner/claim`
+(the provider is no longer blocked). If Desktop doesn't come back within
+`desktop_runner_offline_seconds`, the node fails with "Tvashtr Desktop went offline — reopen it
+and retry." as before.
+
+Errors:
+- 401 — no session
+- 404 `{"detail":"job not found"}` — unknown id, not a UUID, or another owner's job
+- 409 `{"detail":"This job isn't running on Tvashtr Desktop."}` — the job isn't `claimed`
+
+---
+
+## `GET /api/config` → `provider_directory[].serves_models` (DT-26, OQ-38) — additive
+Every directory entry gains `serves_models: bool` — true when the model catalogue declares a
+thinker or worker default for the provider, or a Domains embedding model uses it. When false,
+`hint` is `"<name> serves no model Tvashtr can run right now."`:
+```json
+{"provider": "nvidia_nim", "monogram": "N", "name": "NVIDIA NIM", "label": "Open models on NVIDIA NIM",
+ "example_model": null, "subscription": null, "embeddings": false,
+ "hint": "NVIDIA NIM serves no model Tvashtr can run right now.", "serves_models": false}
+```
+Setup screens list such a provider disabled and never pre-pick it.
