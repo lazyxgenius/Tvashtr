@@ -11,15 +11,15 @@ import {
 import { type MemoryTab, navigate } from "../../lib/nav";
 import { publishBadges } from "../../lib/workspaceStatus";
 import { MemoryActive } from "./MemoryActive";
+import { MemoryArchive } from "./MemoryArchive";
 import { MemoryInbox } from "./MemoryInbox";
-import { MemoryList } from "./MemoryList";
 import "./memory.css";
 
 const REVIEW_TITLE = "Review new memories before they apply";
 
 /**
  * Toolkit › Memory (Toolkit-MemoryInbox, Toolkit-MemoryActive; flows TkF-Review, TkF-Inbox,
- * TkF-Filters): the page header with Add memory, the review switch (Inbox only), pill tabs
+ * TkF-Filters, TkF-NoteActions, TkF-Archive): the page header with Add memory, the review switch (Inbox only), pill tabs
  * "Inbox N / Active N / Archive" from `/api/memories/counts` (the address carries the tab), and the
  * tab's list. The Inbox count is also the nav badge ("2 new").
  */
@@ -83,7 +83,10 @@ export function MemoryPage({ tab }: { tab: MemoryTab }) {
       ) : tab === "active" ? (
         <MemoryActive onChanged={refreshCounts} onAdd={openAdd} />
       ) : (
-        <MemoryList />
+        <MemoryArchive
+          onChanged={refreshCounts}
+          onOpenActive={() => navigate({ page: "memory", tab: "active" })}
+        />
       )}
     </>
   );

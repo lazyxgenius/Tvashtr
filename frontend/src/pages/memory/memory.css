@@ -306,3 +306,10 @@
   border-radius: 4px;
   box-shadow: var(--shadow-focus);
 }
+
+/* ---- Archive (TkF-Archive-1, TkF-Archive-2) ---- */
+.mem-archive__intro {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-600);
+}
