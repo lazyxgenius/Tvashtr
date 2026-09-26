@@ -11,14 +11,46 @@ import {
 import { Workspace } from "./Workspace";
 
 vi.mock("../App", () => ({
-  default: ({ teamId, initialRunId }: { teamId: string; initialRunId: string | null }) => (
+  default: ({
+    teamId,
+    initialRunId,
+    onBackToDashboard,
+  }: {
+    teamId: string;
+    initialRunId: string | null;
+    onBackToDashboard: (view: string) => void;
+  }) => (
     <div>
       CANVAS {teamId} {initialRunId ?? "-"}
+      <button type="button" onClick={() => onBackToDashboard("engines")}>
+        Open Engines
+      </button>
     </div>
   ),
 }));
 vi.mock("./home/HomePage", () => ({ HomePage: () => <div>HOME BODY</div> }));
-vi.mock("../components/EnginesShelf", () => ({ EnginesShelf: () => <div>ENGINES BODY</div> }));
+vi.mock("./engines/EnginesPage", () => ({
+  EnginesPage: ({
+    tab,
+    connect,
+    embeddings,
+  }: {
+    tab: string;
+    connect?: string;
+    embeddings?: boolean;
+  }) => (
+    <div data-tab={tab} data-connect={connect} data-embeddings={String(Boolean(embeddings))}>
+      ENGINES BODY
+    </div>
+  ),
+}));
+vi.mock("../components/DomainsPage", () => ({
+  DomainsPage: ({ onOpenEngines }: { onOpenEngines?: () => void }) => (
+    <button type="button" onClick={onOpenEngines}>
+      Domains Open Engines
+    </button>
+  ),
+}));
 
 const user = { id: "u1", email: "lazyx@tvashtr.dev", display_name: "Lazyx" };
 
@@ -40,10 +72,38 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  delete window.tvashtrDesktop;
   window.location.hash = "";
 });
 
 describe("Workspace", () => {
+  it("Domains' Open Engines lands on API keys at the Domains embeddings section (ENG-6)", async () => {
+    renderAt("#/domains");
+    await userEvent.click(await screen.findByRole("button", { name: "Domains Open Engines" }));
+    const engines = await screen.findByText("ENGINES BODY");
+    expect(window.location.hash).toBe("#/engines/keys?embeddings=1");
+    expect(engines).toHaveAttribute("data-tab", "keys");
+    expect(engines).toHaveAttribute("data-embeddings", "true");
+  });
+
+  it("Tvashtr Desktop: a tvashtr:// link moves the page (connect only highlights a card)", async () => {
+    let deliver: (t: TvashtrDeepLinkTarget) => void = () => undefined;
+    window.tvashtrDesktop = {
+      navigation: {
+        onNavigate: (cb: (t: TvashtrDeepLinkTarget) => void) => {
+          deliver = cb;
+          return () => undefined;
+        },
+        consumePending: () => Promise.resolve(null),
+      },
+    } as unknown as TvashtrDesktopBridge;
+    renderAt("#/home");
+    act(() => deliver({ path: "/engines/subscriptions", params: { connect: "grok" } }));
+    const engines = await screen.findByText("ENGINES BODY");
+    expect(engines).toHaveAttribute("data-tab", "subscriptions");
+    expect(engines).toHaveAttribute("data-connect", "grok");
+  });
+
   it("shows the page for the address inside the shell", () => {
     renderAt("#/engines");
     expect(screen.getByText("ENGINES BODY")).toBeInTheDocument();
@@ -54,6 +114,12 @@ describe("Workspace", () => {
     renderAt("#/teams/t1/runs/r9");
     expect(screen.getByText("CANVAS t1 r9")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Dashboard" })).toBeNull();
+  });
+
+  it("the canvas's Open Engines lands on Overview with the rows to fix highlighted", () => {
+    renderAt("#/teams/t1");
+    act(() => screen.getByRole("button", { name: "Open Engines" }).click());
+    expect(window.location.hash).toBe("#/engines?fix=1");
   });
 
   it("follows the address when it changes", async () => {

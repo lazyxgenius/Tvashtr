@@ -8,7 +8,7 @@ API to ORM/gateway types.
 import logging
 import os
 import uuid
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
@@ -21,18 +21,18 @@ from tvashtr import db
 from tvashtr.auth import UserOut, _store_installation, get_current_user
 from tvashtr.config import get_settings
 from tvashtr.control_plane import (
+    desktop_jobs,
+    document_views,
     github_app,
     github_targets,
+    local_repo,
     memory,
     memory_distill,
     memory_review,
     provider_models,
     run_views,
+    toolkit,
 )
-from tvashtr.control_plane import desktop_jobs
-from tvashtr.control_plane import toolkit
-from tvashtr.control_plane import local_repo
-from tvashtr.control_plane.local_repo import LocalRepoTarget
 from tvashtr.control_plane.context_compiler import resolve_fallback_model, resolve_multimodal
 from tvashtr.control_plane.credential_gate import (
     RUNNER_SUBSCRIPTIONS,
@@ -47,9 +47,37 @@ from tvashtr.control_plane.credentials import (
     resolve_owner_api_key,
     validate_provider_slug,
 )
-from tvashtr.control_plane import document_views
 from tvashtr.control_plane.doc_writer import generate_doc
+from tvashtr.control_plane.domain_ask import (
+    DomainAskError,
+    ask_domain,
+    list_domain_messages,
+    retrieve_domain,
+)
+from tvashtr.control_plane.domain_eval import (
+    create_eval_case,
+    delete_eval_case,
+    latest_eval_run_for_owner,
+    list_eval_cases,
+    run_domain_eval,
+)
+from tvashtr.control_plane.domain_files import MAX_UPLOAD_BYTES
+from tvashtr.control_plane.domain_ingest import ingest_domain, normalize_embedding_model
+from tvashtr.control_plane.domains import (
+    create_document,
+    create_domain,
+    delete_document,
+    delete_domain,
+    get_domain,
+    list_domain_templates,
+    list_domains,
+    update_domain,
+)
+from tvashtr.control_plane.domains import (
+    list_documents as list_domain_documents,
+)
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
+from tvashtr.control_plane.local_repo import LocalRepoTarget
 from tvashtr.control_plane.mcp_secrets import delete_owner_mcp_secret
 from tvashtr.control_plane.node_templates import NODE_TEMPLATES
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
@@ -75,32 +103,6 @@ from tvashtr.control_plane.teams import (
     reviewer_model,
 )
 from tvashtr.control_plane.worktree import repo_inspect, repo_subpaths, subpath_is_tracked_dir
-from tvashtr.control_plane.domains import (
-    create_domain,
-    create_document,
-    delete_domain,
-    delete_document,
-    get_domain,
-    list_domain_templates,
-    list_domains,
-    list_documents as list_domain_documents,
-    update_domain,
-)
-from tvashtr.control_plane.domain_files import MAX_UPLOAD_BYTES
-from tvashtr.control_plane.domain_ingest import ingest_domain, normalize_embedding_model
-from tvashtr.control_plane.domain_ask import (
-    DomainAskError,
-    ask_domain,
-    list_domain_messages,
-    retrieve_domain,
-)
-from tvashtr.control_plane.domain_eval import (
-    create_eval_case,
-    delete_eval_case,
-    latest_eval_run_for_owner,
-    list_eval_cases,
-    run_domain_eval,
-)
 from tvashtr.documents.service import list_documents_for_owner
 from tvashtr.gateway import CompletionRequest, GatewayError, complete, multimodal_supported
 from tvashtr.metering import record_cost
@@ -373,10 +375,10 @@ class CreateNodeRequest(BaseModel):
     and ``terminal``, and PolyRAG ``domain_query`` (corpus-bound Q&A; no model/engine). ``preset``
     (optional, thinker/worker only) seeds a pre-filled-but-editable role node from the ``teams.py``
     prompt constants (PM / Architect / Engineer / Reviewer); without it a blank primitive is dropped
-    (empty ``prompt``). ``terminal_kind`` is REQUIRED for a terminal (ship vs stop is a real choice);
-    ``title``/``description`` configure a gate; ``domain_id``/``prompt`` configure a domain_query
-    (default prompt ``{idea}``). ``position`` is the canvas drop point (defaults to the origin, then
-    auto-layout/drag persists real coords)."""
+    (empty ``prompt``). ``terminal_kind`` is REQUIRED for a terminal (ship vs stop is a real
+    choice); ``title``/``description`` configure a gate; ``domain_id``/``prompt`` configure a
+    domain_query (default prompt ``{idea}``). ``position`` is the canvas drop point (defaults to the
+    origin, then auto-layout/drag persists real coords)."""
 
     node_kind: Literal["thinker", "worker", "gate", "terminal", "domain_query"]
     preset: Literal["pm", "architect", "engineer", "reviewer"] | None = None
@@ -623,14 +625,20 @@ def get_costs(
 
 
 @router.get("/api/spike/run-events/{run_id}")
-def get_run_events(run_id: str) -> dict:
+def get_run_events(
+    run_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
     """Return the persisted, ordered engine events for a run (P0.3).
 
     M-ledger C5: each event additionally carries its ``invocation_id`` (the node-execution it
     belongs to) plus that invocation's ``node_id`` + ``iteration`` (LEFT-joined off
     ``agent_invocations`` — all three NULL for a legacy pre-0020 event with no ``invocation_id``).
-    Existing ``seq``/``kind``/``payload``/``created_at`` unchanged."""
+    Existing ``seq``/``kind``/``payload``/``created_at`` unchanged.
+
+    revamp-e2e: owner-scoped like the run's graph (404 unless the run belongs to the current
+    user) — the events carry the agents' thoughts, actions, output and closing messages."""
     with db.session_scope() as session:
+        _require_owned_run(session, run_id, uuid.UUID(current_user.id))
         rows = session.execute(
             select(RunEvent, AgentInvocation)
             .outerjoin(AgentInvocation, RunEvent.invocation_id == AgentInvocation.id)
@@ -774,9 +782,7 @@ def _desktop_launch_credentials(
     return missing, nodes, routed, fresh
 
 
-def _desktop_missing_detail(
-    owner_id: uuid.UUID, providers: list[str], nodes: list[str]
-) -> dict:
+def _desktop_missing_detail(owner_id: uuid.UUID, providers: list[str], nodes: list[str]) -> dict:
     """The 422 for a Desktop launch that still lacks a credential — says what would fix it."""
     stale = sorted(
         _MODEL_PROVIDER_TO_SUB[p]
@@ -784,8 +790,10 @@ def _desktop_missing_detail(
         if _MODEL_PROVIDER_TO_SUB.get(p) in RUNNER_SUBSCRIPTIONS
         and _MODEL_PROVIDER_TO_SUB[p] in _connected_subscription_ids(owner_id)
     )
-    msg = "you have no API key for: " + ", ".join(providers) + (
-        " — needed by " + ", ".join(nodes) if nodes else ""
+    msg = (
+        "you have no API key for: "
+        + ", ".join(providers)
+        + (" — needed by " + ", ".join(nodes) if nodes else "")
     )
     if stale:
         msg += (
@@ -848,8 +856,10 @@ def _missing_credentials_detail(
             + ". Your subscription covers local Desktop runs — add a key or run locally on Desktop."
         )
     else:
-        msg = "you have no API key for: " + ", ".join(providers) + (
-            " — needed by " + ", ".join(nodes) if nodes else ""
+        msg = (
+            "you have no API key for: "
+            + ", ".join(providers)
+            + (" — needed by " + ", ".join(nodes) if nodes else "")
         )
     return {
         "message": msg,
@@ -1192,9 +1202,7 @@ def create_run(
         if missing:
             raise HTTPException(
                 status_code=422,
-                detail=_desktop_missing_detail(
-                    uuid.UUID(current_user.id), missing, missing_nodes
-                ),
+                detail=_desktop_missing_detail(uuid.UUID(current_user.id), missing, missing_nodes),
             )
     else:
         missing, missing_nodes = _missing_provider_credentials(
@@ -2075,7 +2083,7 @@ def upsert_engine_subscription(
     if body.source is not None and body.source not in ("harness", "oauth"):
         raise HTTPException(status_code=422, detail="source must be harness or oauth")
     owner_id = uuid.UUID(current_user.id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with db.session_scope() as session:
         row = session.execute(
             select(EngineSubscriptionStatus).where(
@@ -2751,14 +2759,12 @@ async def _read_domain_upload_capped(file: UploadFile) -> bytes:
 async def post_domain_document(
     domain_id: str,
     current_user: Annotated[UserOut, Depends(get_current_user)],
-    file: UploadFile = File(...),
+    file: Annotated[UploadFile, File()],
 ) -> dict:
     name = file.filename or "upload.txt"
     try:
         raw = await _read_domain_upload_capped(file)
-        return create_document(
-            uuid.UUID(current_user.id), _parse_domain_id(domain_id), name, raw
-        )
+        return create_document(uuid.UUID(current_user.id), _parse_domain_id(domain_id), name, raw)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="domain not found") from exc
     except ValueError as exc:
@@ -2791,12 +2797,7 @@ def post_domain_ingest(
     if row is None:
         raise HTTPException(status_code=404, detail="domain not found")
     model = normalize_embedding_model(
-        str(
-            (row.get("config") or {})
-            .get("embedding", {})
-            .get("model")
-            or "text-embedding-3-small"
-        )
+        str((row.get("config") or {}).get("embedding", {}).get("model") or "text-embedding-3-small")
     )
     provider = provider_for_model(model)
     if provider not in held_provider_slugs(owner_id):
@@ -2963,7 +2964,6 @@ def post_domain_eval(
         raise HTTPException(status_code=404, detail="domain not found") from e
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
-
 
 
 def _latest_invocation_by_origin(

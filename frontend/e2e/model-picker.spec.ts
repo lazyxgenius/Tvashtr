@@ -75,7 +75,7 @@ test("model picker: provider-gated picker + inline add + the same-model reviewer
     .getByRole("button", { name: /^API keys/ })
     .click();
   const keys = page.locator("section[aria-labelledby='tv-engines-keys']");
-  await expect(keys.locator(".tv-dash__prov-name", { hasText: /^groq$/ })).toBeVisible({
+  await expect(keys.getByTestId("engines-key-provider").filter({ hasText: /^groq$/ })).toBeVisible({
     timeout: 30_000,
   });
   console.log(

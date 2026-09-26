@@ -34,6 +34,70 @@ def init_workspace_repo(workspace_dir: str) -> None:
     _git(workspace_dir, "commit", "--allow-empty", "-q", "-m", "init")
 
 
+# Tvashtr's own working files at the workspace root: a report-only node's deliverable (team_run's
+# REPORT_FILENAME), the reviewer's verdict sidecar and the large-spec handle (context_compiler's
+# SPEC_HANDLE_FILENAME). A greenfield workspace's .gitignore keeps them out of the ship, but a
+# hosted clone or a local folder has no Tvashtr .gitignore, so the ship leaves them out itself —
+# unless the repo already tracks a file of that name: then it is the user's own and ships as usual.
+_OWN_FILES = ("REPORT.md", "REVIEW_VERDICT.json", "SPEC.md")
+
+
+_REMEMBER_FILE = "TVASHTR_REMEMBER.jsonl"
+
+
+def _ship_excludes(workspace_dir: str) -> list[str]:
+    """The ``git add`` exclude pathspecs for this ship. Git refuses an ``add`` whose pathspec names
+    an ignored file that exists, even as an exclude, so a file is only named when git would
+    otherwise stage it: Tvashtr's own files when they are untracked and not ignored (a greenfield
+    workspace's .gitignore already ignores them); the remember sidecar whenever it isn't ignored."""
+    stageable = set(
+        _git(
+            workspace_dir,
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--",
+            *_OWN_FILES,
+            check=False,
+        ).stdout.split()
+    )
+    names = [name for name in _OWN_FILES if name in stageable]
+    if _git(workspace_dir, "check-ignore", "-q", _REMEMBER_FILE, check=False).returncode != 0:
+        names.insert(0, _REMEMBER_FILE)
+    return [f":(exclude){name}" for name in names]
+
+
+# The identity a ship commit falls back to. A per-run clone on the server has none of its own and
+# the container has no global git config, so git refuses to commit (exit 128: "unable to
+# auto-detect email address"). A folder that has an identity (the user's repo on their machine,
+# a greenfield workspace) keeps its own.
+_AGENT_IDENTITY = {"user.name": "Tvashtr Agent", "user.email": "agent@tvashtr.local"}
+
+
+def _identity_args(workspace_dir: str) -> list[str]:
+    args: list[str] = []
+    for key, value in _AGENT_IDENTITY.items():
+        if not _git(workspace_dir, "config", key, check=False).stdout.strip():
+            args += ["-c", f"{key}={value}"]
+    return args
+
+
+def _commits_since_branch_start(workspace_dir: str) -> int:
+    """How many commits the checked-out branch has gained since it was created — the oldest entry
+    of the branch's own reflog is where it started (a fresh workspace's ``init`` commit, or the base
+    a ``tvashtr/<run_id>`` branch or worktree was created from). ``0`` when git can't tell (detached
+    HEAD, no reflog), so the caller keeps its "nothing to ship" behaviour."""
+    branch = _git(workspace_dir, "symbolic-ref", "-q", "HEAD", check=False)
+    if branch.returncode != 0:
+        return 0
+    log = _git(workspace_dir, "reflog", "show", "--format=%H", branch.stdout.strip(), check=False)
+    shas = log.stdout.split() if log.returncode == 0 else []
+    if not shas:
+        return 0
+    count = _git(workspace_dir, "rev-list", "--count", f"{shas[-1]}..HEAD", check=False)
+    return int(count.stdout.strip() or 0) if count.returncode == 0 else 0
+
+
 def idempotent_ship(workspace_dir: str, run_id: str) -> dict:
     """Commit the workspace's changes once, tagged ``ship-{run_id}``.
 
@@ -51,7 +115,8 @@ def idempotent_ship(workspace_dir: str, run_id: str) -> dict:
     # exclude (mount-agnostic: covers both the greenfield workspace and a brownfield
     # worktree) leaves
     # the file on disk for the run-end read while keeping it out of the commit.
-    _git(workspace_dir, "add", "-A", "--", ".", ":(exclude)TVASHTR_REMEMBER.jsonl")
+    # Tvashtr's own untracked working files (``_OWN_FILES``) are left out the same way.
+    _git(workspace_dir, "add", "-A", "--", ".", *_ship_excludes(workspace_dir))
     # `git diff --cached --quiet` exits 0 when there is NOTHING staged.
     if _git(workspace_dir, "diff", "--cached", "--quiet", check=False).returncode == 0:
         # Crash window: the process may have died *between* commit and tag. If HEAD
@@ -62,11 +127,17 @@ def idempotent_ship(workspace_dir: str, run_id: str) -> dict:
             _git(workspace_dir, "tag", tag)
             sha = _git(workspace_dir, "rev-parse", "HEAD").stdout.strip()
             return {"sha": sha, "tag": tag, "created": False}
+        # The agent committed its own work on the run's branch (the OpenHands agent's system prompt
+        # tells it to commit): ship those commits as they are, tagged like any ship.
+        if _commits_since_branch_start(workspace_dir) > 0:
+            _git(workspace_dir, "tag", tag)
+            sha = _git(workspace_dir, "rev-parse", "HEAD").stdout.strip()
+            return {"sha": sha, "tag": tag, "created": True}
         raise RuntimeError(
             f"nothing to ship for run {run_id}: no staged changes in {workspace_dir}"
         )
 
-    _git(workspace_dir, "commit", "-q", "-m", f"Ship: {run_id}")
+    _git(workspace_dir, *_identity_args(workspace_dir), "commit", "-q", "-m", f"Ship: {run_id}")
     _git(workspace_dir, "tag", tag)
     sha = _git(workspace_dir, "rev-parse", "HEAD").stdout.strip()
     return {"sha": sha, "tag": tag, "created": True}

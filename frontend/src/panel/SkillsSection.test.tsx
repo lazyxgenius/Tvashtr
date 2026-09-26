@@ -161,6 +161,13 @@ describe("SkillsSection (M-tools C7.B)", () => {
     expect(onChange).toHaveBeenCalledWith([{ type: "library", id: "s1" }]);
   });
 
+  it("an empty library points to Toolkit › Skills (the dashboard shelf is gone)", async () => {
+    render(<SkillsSection value={null} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add from library" }));
+    const picker = await screen.findByRole("list", { name: "Skill library picker" });
+    expect(picker.textContent).toBe("No library skills yet — add one in Toolkit › Skills.");
+  });
+
   it("shows an 'overridden' tag when a library skill's name collides with an earlier inline skill", async () => {
     mockLibrary.mockResolvedValue([
       {

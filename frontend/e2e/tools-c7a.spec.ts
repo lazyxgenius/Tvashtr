@@ -34,10 +34,11 @@ test("M-tools C7.A: real Tools editor + pre-launch ${NAME} note + run banner + S
     .getByRole("button", { name: /^Secrets/ })
     .click();
   await expect(page).toHaveURL(/#\/toolkit\/secrets$/);
-  await expect(page.getByRole("heading", { name: "MCP secrets" })).toBeVisible({ timeout: 30_000 });
-  await page.getByRole("heading", { name: "MCP secrets" }).scrollIntoViewIfNeeded();
+  const secretsHeading = page.getByRole("heading", { level: 1, name: "Secrets" });
+  await expect(secretsHeading).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("link", { name: "Open Engines →" })).toBeVisible();
   await page.screenshot({ path: path.join(SHOTS, "d-secrets-shelf.png") });
-  console.log("[tools-c7a-e2e] (d) captured the account MCP Secrets shelf");
+  console.log("[tools-c7a-e2e] (d) captured the Toolkit › Secrets page");
 
   // New team from Home's dialog, PM → Engineer template (a PM thinker + an Engineer worker).
   await shellNav(page).getByRole("button", { name: /^Home/ }).click();

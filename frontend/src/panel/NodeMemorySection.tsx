@@ -132,7 +132,7 @@ export function NodeMemorySection({
       ) : isEmpty ? (
         <p className="tv-panel-note">
           This node has no private notes yet — as it runs, lessons specific to it appear here;
-          shared repo-wide lessons live in the Memory shelf.
+          shared repo-wide lessons live in Toolkit › Memory.
         </p>
       ) : (
         <div className="tv-mem-facts">

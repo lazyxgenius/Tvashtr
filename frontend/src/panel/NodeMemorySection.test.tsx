@@ -92,7 +92,9 @@ describe("NodeMemorySection", () => {
     stubList([]);
     const onManageAll = vi.fn();
     render(<NodeMemorySection nodeId="node-x" onManageAll={onManageAll} />);
-    expect(await screen.findByText(/no private notes yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no private notes yet/i)).toHaveTextContent(
+      "shared repo-wide lessons live in Toolkit › Memory.",
+    );
     fireEvent.click(screen.getByRole("button", { name: /manage all memory/i }));
     expect(onManageAll).toHaveBeenCalledTimes(1);
   });

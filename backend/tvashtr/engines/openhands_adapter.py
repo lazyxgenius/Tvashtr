@@ -29,6 +29,7 @@ from openhands.sdk.event import (
     MessageEvent,
     ObservationBaseEvent,
 )
+from openhands.sdk.llm.message import content_to_str
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.terminal import TerminalTool
 
@@ -54,6 +55,12 @@ _WORKSPACE_ROOT = Path(__file__).resolve().parents[2] / ".tvashtr_workspaces"
 # the agent had actually completed. The forced-revisions gates stub the agent (this cap never
 # applies to them); the real-run live gates set the env override explicitly.
 _MAX_ITERATIONS = int(os.environ.get("TVASHTR_AGENT_MAX_ITERATIONS", "150"))
+
+# How much of an agent's CLOSING words (its ``finish`` message, or a reply with no tool call) the
+# event payload keeps verbatim. The 2,000-char previews above are for the feed; this copy is the
+# durable record ``team_run.entry_closing_message_step`` reads when an entry node ended without
+# REPORT.md and its closing message has to stand in as the spec, so it must hold a whole PRD.
+_CLOSING_TEXT_CAP = 100_000
 
 
 def make_local_workspace(run_id: str) -> str:
@@ -104,11 +111,16 @@ def _payload_of(event: Event, kind: str) -> dict:
                     part.text if isinstance(getattr(part, "text", None), str) else str(part)
                     for part in thought
                 )
-            return {
+            payload = {
                 "tool_name": getattr(event, "tool_name", None),
                 "thought": thought[:1000],
                 "action": str(getattr(event, "action", ""))[:2000],
             }
+            # The ``finish`` tool's message is the agent's closing message — keep it whole.
+            message = getattr(getattr(event, "action", None), "message", None)
+            if getattr(event, "tool_name", None) == "finish" and isinstance(message, str):
+                payload["message"] = message[:_CLOSING_TEXT_CAP]
+            return payload
         if kind == "observation":
             return {
                 "tool_name": getattr(event, "tool_name", None),
@@ -135,7 +147,13 @@ def _payload_of(event: Event, kind: str) -> dict:
             }
         # message
         text = getattr(event, "llm_message", None) or getattr(event, "message", None)
-        return {"source": str(getattr(event, "source", "")), "text": str(text)[:2000]}
+        payload = {"source": str(getattr(event, "source", "")), "text": str(text)[:2000]}
+        # An agent reply with no tool call ends the loop too: keep its words whole (never the
+        # user's instruction — that is not a closing message).
+        llm_message = getattr(event, "llm_message", None)
+        if payload["source"] == "agent" and llm_message is not None:
+            payload["content"] = "".join(content_to_str(llm_message.content))[:_CLOSING_TEXT_CAP]
+        return payload
     except Exception as exc:  # never let payload extraction break a run
         return {"unparsed": True, "error": str(exc)}
 

@@ -41,6 +41,13 @@ export function subscriptionCoverLabel(provider: SubscriptionProviderId): string
   return `via your ${displayNameForSubscription(provider)} subscription · runs on this computer`;
 }
 
+/** Each subscription CLI's install docs (hard-coded — never pulled over IPC). */
+export const SUBSCRIPTION_INSTALL_URLS: Record<SubscriptionProviderId, string> = {
+  claude: "https://docs.anthropic.com/en/docs/claude-code/overview",
+  grok: "https://docs.x.ai/build/cli/reference",
+  codex: "https://developers.openai.com/codex",
+};
+
 export const SUBSCRIPTION_PROVIDERS: readonly SubscriptionProviderId[] = [
   "claude",
   "grok",
@@ -159,60 +166,3 @@ export function missingProviderBannerDetail(
   }
   return `No API key for “${provider}” (hosted runs need an API key; subscriptions are Desktop-only)`;
 }
-
-/**
- * Engines shelf subtitle — hosted (fly.dev) vs local Desktop credential clarity (#4).
- * Domains ingest/Ask and hosted team runs need API keys; Connect does not satisfy hosted.
- */
-export function enginesShelfSubtitle(): string {
-  return (
-    "Hosted (fly.dev) Domains ingest/Ask and hosted team runs need API keys under Engines. " +
-    "Desktop Connect/subscriptions do not satisfy hosted. " +
-    "On local Desktop, subscriptions can cover some models; API keys still work."
-  );
-}
-
-/** Subscriptions section callout — web vs Desktop wording; always clarifies hosted needs keys. */
-export function enginesSubscriptionsCallout(isDesktop: boolean): string {
-  if (isDesktop) {
-    return (
-      "Connect covers some models for local Desktop runs only — subscriptions do not satisfy hosted. " +
-      "Add API keys below for fly.dev Domains ingest/Ask and hosted team runs. " +
-      "Subscription runs stop when Desktop quits."
-    );
-  }
-  return (
-    "Subscription engines run on your machine — open Tvashtr Desktop to Connect. " +
-    "They do not satisfy hosted (fly.dev) Domains ingest/Ask or hosted team runs; add API keys below."
-  );
-}
-
-/** API keys section lede — required for hosted; also valid on Desktop. */
-export function enginesApiKeysLede(): string {
-  return (
-    "Stored per account, encrypted. We only ever show the last 4 digits. " +
-    "Required for hosted (fly.dev) Domains ingest/Ask and hosted team runs; " +
-    "also work on local Desktop alongside subscriptions."
-  );
-}
-
-/** Empty BYOK list hint. */
-export function enginesApiKeysEmpty(): string {
-  return (
-    "Add API keys for hosted Domains ingest/Ask and Fly team runs " +
-    "(Desktop Connect does not satisfy hosted)."
-  );
-}
-
-/**
- * Desktop Engines card hint when CLI detect returns needs_install.
- * Dock-launched apps often miss Terminal npm-global PATH.
- */
-export function enginesNeedsInstallHint(displayName: string): string {
-  return (
-    `${displayName} CLI was not found on the PATH this Desktop app sees ` +
-    `(Dock launch ≠ Terminal). Install the CLI, ensure it is on your PATH ` +
-    `(npm global bin / Homebrew), then quit and reopen Tvashtr and Refresh.`
-  );
-}
-
