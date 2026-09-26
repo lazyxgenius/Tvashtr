@@ -4,6 +4,8 @@ EnF-Embeddings-2 web: matched 56/58 design items · 0 with size/type drift · 21
 EnF-Embeddings-2 desktop: matched 56/58 design items · 0 with size/type drift · 54 only moved · 2 not found in app
 EnF-FirstTime-1 web: matched 26/27 design items · 0 with size/type drift · 24 only moved · 1 not found in app
 EnF-FirstTime-1 desktop: matched 27/27 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+EnF-FirstTime-2 web: matched 36/48 design items · 0 with size/type drift · 34 only moved · 12 not found in app
+EnF-FirstTime-2 desktop: matched 47/48 design items · 0 with size/type drift · 4 only moved · 1 not found in app
 EnF-KeyUsed-1 web: matched 58/58 design items · 0 with size/type drift · 19 only moved · 0 not found in app
 EnF-KeyUsed-1 desktop: matched 58/58 design items · 0 with size/type drift · 56 only moved · 0 not found in app
 EnF-KeyUsed-2 web: matched 57/57 design items · 0 with size/type drift · 23 only moved · 0 not found in app
@@ -40,6 +42,18 @@ Eng-AddKeyPick web: matched 94/98 design items · 0 with size/type drift · 23 o
 Eng-AddKeyPick desktop: matched 94/98 design items · 0 with size/type drift · 54 only moved · 4 not found in app
 Eng-Flow-Blocked-2 web: matched 58/60 design items · 0 with size/type drift · 5 only moved · 2 not found in app
 Eng-Flow-Blocked-2 desktop: matched 56/60 design items · 0 with size/type drift · 53 only moved · 4 not found in app
+Eng-Flow-Codex-1 web: matched 36/48 design items · 0 with size/type drift · 33 only moved · 12 not found in app
+Eng-Flow-Codex-1 desktop: matched 42/48 design items · 0 with size/type drift · 6 only moved · 6 not found in app
+Eng-Flow-Codex-2 web: matched 32/47 design items · 0 with size/type drift · 29 only moved · 15 not found in app
+Eng-Flow-Codex-2 desktop: matched 41/47 design items · 0 with size/type drift · 4 only moved · 6 not found in app
+Eng-Flow-Codex-3 web: matched 33/44 design items · 0 with size/type drift · 30 only moved · 11 not found in app
+Eng-Flow-Codex-3 desktop: matched 38/44 design items · 0 with size/type drift · 7 only moved · 6 not found in app
+Eng-Flow-Grok-1 web: matched 42/52 design items · 0 with size/type drift · 40 only moved · 10 not found in app
+Eng-Flow-Grok-1 desktop: matched 51/52 design items · 0 with size/type drift · 4 only moved · 1 not found in app
+Eng-Flow-Grok-2 web: matched 40/54 design items · 0 with size/type drift · 38 only moved · 14 not found in app
+Eng-Flow-Grok-2 desktop: matched 53/54 design items · 0 with size/type drift · 15 only moved · 1 not found in app
+Eng-Flow-Grok-3 web: matched 36/49 design items · 0 with size/type drift · 33 only moved · 13 not found in app
+Eng-Flow-Grok-3 desktop: matched 43/49 design items · 0 with size/type drift · 6 only moved · 6 not found in app
 Eng-Flow-Key-1 web: matched 58/59 design items · 2 with size/type drift · 10 only moved · 1 not found in app
 Eng-Flow-Key-1 desktop: matched 58/59 design items · 2 with size/type drift · 52 only moved · 1 not found in app
 # needs-waiver Eng-Flow-Key-1: [ctl] 'anthropic' (the banner's + anthropic button) — design draws a stale banner button for a saved provider (ENG-58); the lead's waiver names Key-2..4 only
@@ -65,3 +79,5 @@ Eng-Overview web: matched 54/58 design items · 0 with size/type drift · 52 onl
 Eng-Overview desktop: matched 58/58 design items · 0 with size/type drift · 1 only moved · 0 not found in app
 Eng-OverviewWeb web: matched 58/60 design items · 0 with size/type drift · 5 only moved · 2 not found in app
 Eng-OverviewWeb desktop: matched 56/60 design items · 0 with size/type drift · 53 only moved · 4 not found in app
+Eng-Subs web: matched 42/52 design items · 0 with size/type drift · 40 only moved · 10 not found in app
+Eng-Subs desktop: matched 51/52 design items · 0 with size/type drift · 4 only moved · 1 not found in app
