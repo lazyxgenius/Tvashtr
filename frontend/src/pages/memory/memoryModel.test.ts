@@ -2,19 +2,36 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Memory } from "../../lib/api/memory";
 import {
+  FORCE_FILTER_OPTIONS,
   FORCE_OPTIONS,
   FORCE_VARIANT,
+  NO_FILTERS,
+  activeMeta,
   draftOf,
   editPatch,
+  isFiltered,
   keptMessage,
+  matchesFilters,
   provenance,
+  repoFilterOptions,
   scopeChip,
   scopeChoices,
   shortDate,
+  sortActive,
   sortNewestFirst,
   whenLabel,
 } from "./memoryModel";
-import { MEM_MUST_NOT, MEM_SHOULD, NOW, memory } from "./memoryTestUtils";
+import {
+  ACTIVE,
+  ACT_CONTEXT,
+  ACT_MAY,
+  ACT_MUST,
+  ACT_SHOULD,
+  MEM_MUST_NOT,
+  MEM_SHOULD,
+  NOW,
+  memory,
+} from "./memoryTestUtils";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -161,5 +178,109 @@ describe("sortNewestFirst", () => {
       MEM_SHOULD.id,
       MEM_MUST_NOT.id,
     ]);
+  });
+});
+
+describe("Active meta (MEM-18)", () => {
+  it("says where it came from, then pinned or when", () => {
+    expect(ACTIVE.map(activeMeta)).toEqual([
+      "Confirmed 3× · pinned",
+      "Confirmed 1× · Sep 24",
+      "Added by you · Sep 20",
+      "Confirmed 2× · Sep 18",
+    ]);
+  });
+
+  it("an edit wins, and a fresh one reads just now", () => {
+    const now = new Date(NOW).toISOString();
+    expect(activeMeta({ ...ACT_SHOULD, edited_at: now })).toBe("Edited by you · just now");
+    expect(activeMeta({ ...ACT_MUST, edited_at: now })).toBe("Edited by you · pinned");
+    expect(
+      activeMeta({ ...ACT_CONTEXT, created_at: new Date(NOW - 3 * 3600_000).toISOString() }),
+    ).toBe("Added by you · 3h ago");
+  });
+});
+
+describe("sortActive (MEM-19)", () => {
+  it("puts pinned first, then newest", () => {
+    const pinnedOld = { ...ACT_MAY, pinned: true };
+    expect(sortActive([ACT_CONTEXT, ACT_MAY, ACT_SHOULD, ACT_MUST]).map((m) => m.id)).toEqual(
+      ACTIVE.map((m) => m.id),
+    );
+    expect(sortActive([ACT_SHOULD, pinnedOld, ACT_MUST]).map((m) => m.id)).toEqual([
+      ACT_MUST.id,
+      ACT_MAY.id,
+      ACT_SHOULD.id,
+    ]);
+  });
+});
+
+describe("filters (MEM-16)", () => {
+  const ids = (f: Partial<typeof NO_FILTERS>) =>
+    ACTIVE.filter((m) => matchesFilters(m, { ...NO_FILTERS, ...f })).map((m) => m.id);
+
+  it("no filter keeps everything", () => {
+    expect(isFiltered(NO_FILTERS)).toBe(false);
+    expect(isFiltered({ ...NO_FILTERS, q: "  " })).toBe(false);
+    expect(ids({})).toHaveLength(4);
+  });
+
+  it("filters by force, scope and words (text, repo or agent)", () => {
+    expect(ids({ force: "prefer" })).toEqual([ACT_SHOULD.id]);
+    expect(ids({ scope: "account" })).toEqual([ACT_CONTEXT.id, ACT_MAY.id]);
+    expect(ids({ scope: "agent" })).toEqual([ACT_SHOULD.id]);
+    expect(ids({ q: "FLY.IO" })).toEqual([ACT_CONTEXT.id]);
+    expect(ids({ q: "reviewer" })).toEqual([ACT_SHOULD.id]);
+    expect(ids({ q: "docker" })).toEqual([]);
+  });
+
+  it("a repo keeps its memories and the account-wide ones (Q9)", () => {
+    expect(ids({ repo: "lazyxgenius/trade_mcp" })).toEqual(ACTIVE.map((m) => m.id));
+    expect(ids({ repo: "lazyxgenius/cryptoground-mcp" })).toEqual([ACT_CONTEXT.id, ACT_MAY.id]);
+  });
+
+  it("combines with AND", () => {
+    expect(isFiltered({ ...NO_FILTERS, force: "allow" })).toBe(true);
+    expect(ids({ scope: "account", force: "allow" })).toEqual([ACT_MAY.id]);
+    expect(ids({ scope: "repo", q: "uvx" })).toEqual([]);
+  });
+
+  it("offers every force after Any force", () => {
+    expect(FORCE_FILTER_OPTIONS.map((o) => o.label)).toEqual([
+      "Any force",
+      "MUST",
+      "SHOULD",
+      "MAY",
+      "CONTEXT",
+      "SHOULD NOT",
+      "MUST NOT",
+    ]);
+  });
+});
+
+describe("repoFilterOptions", () => {
+  const repo = (key: string, n: number) => ({
+    repo_key: key,
+    label: key,
+    memory_count: n,
+    pending_count: 0,
+    last_run_at: null,
+  });
+
+  it("lists repos with memories first, then the rest in the server's order", () => {
+    const repos = [repo("lazyxgenius/cryptoground-mcp", 0), repo("lazyxgenius/trade_mcp", 9)];
+    expect(repoFilterOptions(repos, ACTIVE).map((o) => o.label)).toEqual([
+      "All repos",
+      "lazyxgenius/trade_mcp",
+      "lazyxgenius/cryptoground-mcp",
+    ]);
+  });
+
+  it("still names the memories' repos when the repo list failed", () => {
+    expect(repoFilterOptions(null, ACTIVE)).toEqual([
+      { value: "", label: "All repos" },
+      { value: "lazyxgenius/trade_mcp", label: "lazyxgenius/trade_mcp" },
+    ]);
+    expect(repoFilterOptions(null, [])).toEqual([{ value: "", label: "All repos" }]);
   });
 });

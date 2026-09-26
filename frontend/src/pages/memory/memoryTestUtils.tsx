@@ -82,6 +82,59 @@ export const MEM_MUST_NOT = memory({
   },
 });
 
+const MANUAL = { ...RSI_RUN, kind: "manual" as const, run_id: null, run_title: null, round: null };
+const ACCOUNT = {
+  repo_key: null,
+  repo_label: null,
+  tier: "account" as const,
+  source_node_id: null,
+};
+
+/** Toolkit-MemoryActive, top to bottom: the pinned MUST on the repo, confirmed three times… */
+export const ACT_MUST = memory({
+  id: "a-must",
+  content: "Run the tests with python -m pytest -q -p no:cacheprovider.",
+  polarity: "require",
+  status: "active",
+  pinned: true,
+  confirmation_count: 3,
+  created_at: "2026-09-25T09:00:00Z",
+});
+/** …the Reviewer's SHOULD (Sep 24)… */
+export const ACT_SHOULD = memory({
+  id: "a-should",
+  content:
+    "Approve only when the registry test and the TypeScript mirror list the same indicators.",
+  polarity: "prefer",
+  status: "active",
+  node_id: "n-rev",
+  tier: "node",
+  agent: REVIEWER,
+  created_at: "2026-09-24T12:00:00Z",
+});
+/** …a CONTEXT note you added for every repo (Sep 20)… */
+export const ACT_CONTEXT = memory({
+  ...ACCOUNT,
+  id: "a-context",
+  content: "The team ships to a Fly.io preview before the human merge gate.",
+  polarity: "context",
+  status: "active",
+  source_run_id: null,
+  source: MANUAL,
+  created_at: "2026-09-20T12:00:00Z",
+});
+/** …and a MAY every repo learned twice (Sep 18). */
+export const ACT_MAY = memory({
+  ...ACCOUNT,
+  id: "a-may",
+  content: "Use uvx to run Python MCP servers locally.",
+  polarity: "allow",
+  status: "active",
+  confirmation_count: 2,
+  created_at: "2026-09-18T12:00:00Z",
+});
+export const ACTIVE = [ACT_MUST, ACT_SHOULD, ACT_CONTEXT, ACT_MAY];
+
 function Badges() {
   const b = useNavBadges();
   return <output aria-label="memory badge">{b.memoryInbox ?? ""}</output>;

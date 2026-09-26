@@ -1,12 +1,14 @@
 /**
  * Toolkit › Memory — the pure labels behind the page (no JSX): force badges, the scope chip,
- * provenance lines, Keep's toast, the inline editor's scope choices and its patch.
+ * provenance lines, Keep's toast, the inline editor's scope choices and its patch, and the Active
+ * tab's meta line, filters and order.
  */
 import type { BadgeVariant } from "../../design-system/components";
 import type {
   Memory,
   MemoryPatch,
   MemoryPolarity,
+  MemoryRepo,
   MemoryScope,
   PromoteResult,
 } from "../../lib/api/memory";
@@ -146,4 +148,102 @@ export function editPatch(m: Memory, draft: MemoryDraft): MemoryPatch | null {
   if (draft.polarity !== m.polarity) patch.polarity = draft.polarity;
   if (draft.scope !== scopeOf(m)) patch.scope = draft.scope;
   return Object.keys(patch).length > 0 ? patch : null;
+}
+
+// ---- The Active tab (Toolkit-MemoryActive, TkF-Filters) ----
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** "just now" / "31m ago" / "5h ago" within a day, then "Sep 24". */
+export function activeWhen(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  return Date.now() - then >= DAY_MS ? shortDate(iso) : formatRelativeTime(iso);
+}
+
+/**
+ * MEM-18: where it came from, then "pinned" or when — "Confirmed 3× · pinned", "Added by you ·
+ * Sep 20", "Edited by you · just now". A person's edit wins over how it arrived.
+ */
+export function activeMeta(m: Memory): string {
+  const origin =
+    m.edited_at !== null
+      ? "Edited by you"
+      : m.source.kind === "manual"
+        ? "Added by you"
+        : `Confirmed ${Math.max(1, m.confirmation_count)}×`;
+  const when = m.pinned ? "pinned" : activeWhen(m.edited_at ?? m.created_at);
+  return when ? `${origin} · ${when}` : origin;
+}
+
+/** MEM-19: pinned first, then newest first. */
+export function sortActive(list: Memory[]): Memory[] {
+  return [...list].sort(
+    (a, b) => Number(b.pinned) - Number(a.pinned) || b.created_at.localeCompare(a.created_at),
+  );
+}
+
+export interface MemoryFilters {
+  /** Words to look for (text, repo or agent). */
+  q: string;
+  /** A repo key, or "" for every repo. */
+  repo: string;
+  scope: MemoryScope | "";
+  force: MemoryPolarity | "";
+}
+
+export const NO_FILTERS: MemoryFilters = { q: "", repo: "", scope: "", force: "" };
+
+export const isFiltered = (f: MemoryFilters): boolean =>
+  f.q.trim() !== "" || f.repo !== "" || f.scope !== "" || f.force !== "";
+
+/**
+ * MEM-16: the filters combine with AND. A repo keeps that repo's memories and the account-wide
+ * ones, which apply to it too (Q9).
+ */
+export function matchesFilters(m: Memory, f: MemoryFilters): boolean {
+  if (f.force && m.polarity !== f.force) return false;
+  if (f.scope && scopeOf(m) !== f.scope) return false;
+  if (f.repo && m.repo_key !== f.repo && m.tier !== "account") return false;
+  const q = f.q.trim().toLowerCase();
+  if (q && !`${m.content}\n${scopeChip(m).label}`.toLowerCase().includes(q)) return false;
+  return true;
+}
+
+export interface FilterOption {
+  value: string;
+  label: string;
+}
+
+export const SCOPE_FILTER_OPTIONS: FilterOption[] = [
+  { value: "", label: "All scopes" },
+  { value: "account", label: "Account" },
+  { value: "repo", label: "Repo" },
+  { value: "agent", label: "Agent" },
+];
+
+export const FORCE_FILTER_OPTIONS: FilterOption[] = [
+  { value: "", label: "Any force" },
+  ...FORCE_OPTIONS,
+];
+
+/**
+ * The Repo filter: "All repos", then the repos you have memories on (most first), then the other
+ * repos you ran on. `repos` is `/api/memory/repos` (null if it failed — the loaded memories still
+ * name their repos).
+ */
+export function repoFilterOptions(repos: MemoryRepo[] | null, memories: Memory[]): FilterOption[] {
+  const labels = new Map<string, string>();
+  for (const r of repos ?? []) labels.set(r.repo_key, r.label);
+  const count = new Map<string, number>();
+  for (const m of memories) {
+    if (m.repo_key === null) continue;
+    count.set(m.repo_key, (count.get(m.repo_key) ?? 0) + 1);
+    if (!labels.has(m.repo_key)) labels.set(m.repo_key, m.repo_label ?? m.repo_key);
+  }
+  const keys = [...labels.keys()].sort((a, b) => (count.get(b) ?? 0) - (count.get(a) ?? 0));
+  return [
+    { value: "", label: "All repos" },
+    ...keys.map((k) => ({ value: k, label: labels.get(k) ?? k })),
+  ];
 }
