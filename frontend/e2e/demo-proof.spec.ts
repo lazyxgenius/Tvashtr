@@ -176,7 +176,7 @@ test.describe("M-proof", () => {
     test.skip(LEG !== "login", "login leg only");
     test.setTimeout(LOGIN_TIMEOUT_MS + 60_000);
 
-    await page.goto("/");
+    await page.goto("/#/signin");
     console.log(
       "\n============================================================\n" +
         "  ACTION NEEDED — a browser window is open.\n" +

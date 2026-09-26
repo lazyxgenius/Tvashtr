@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
+import { passwordSignIn, startBuilding } from "./_site";
+
 // Live FE proof for the account journey on the revamped shell: landing → register → a first-time
 // Home → add a provider key on Engines › API keys → New team → the canvas → back to Home.
 // Targeted selectors (NOT a whole-tree a11y snapshot — that wedges on the React Flow canvas,
@@ -10,10 +12,10 @@ import { expect, test } from "@playwright/test";
 // in the self-hosted posture, so scripts/accounts_e2e.sh pins TVASHTR_HOSTED_MODE=false.
 //
 // Selector contract:
-//   Landing  — the "Get started" / "Sign in" CTAs; the shell's "Dashboard" nav, the canvas marker
-//              "the living canvas" and the Email field are ABSENT here.
-//   Register — the AuthWizard: "Email"/"Password", "Create account", then the two scene-setting
-//              steps (a role card, Continue, a "building" card, Continue) and "Enter Tvashtr".
+//   Landing  — the "Start building…" CTA (./_site.ts); the shell's "Dashboard" nav, the canvas
+//              marker "the living canvas" and the Email field are ABSENT here.
+//   Register — the sign-in page (#/signin): "Create an account", "Email"/"Password", "Create
+//              account"; #/signin/done then opens Home by itself (no extra steps).
 //   Home     — first time: "Welcome to Tvashtr…" + the "Get started" checklist ("N of 4 done").
 //   Keys     — Engines › API keys (#/engines/keys): "Provider"/"API key" + "Add key"; a saved key
 //              shows as `provider` + "Saved · •••• last4" (the secret is never shown).
@@ -30,9 +32,7 @@ test("accounts journey: landing → register → first-time Home → add key →
 
   // STEP 1 — a logged-out visit shows the LANDING page: CTAs present, NO shell, NO canvas.
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Get started" }).first()).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(startBuilding(page)).toBeVisible({ timeout: 30_000 });
   await expect(nav).toHaveCount(0); // not the signed-in shell
   await expect(page.getByText("the living canvas")).toHaveCount(0); // not the canvas
   await expect(page.getByLabel("Email")).toHaveCount(0); // not the sign-up form yet
@@ -41,15 +41,8 @@ test("accounts journey: landing → register → first-time Home → add key →
 
   // STEP 2 — a CTA opens register; a brand-new account lands on the first-time Home.
   const email = `e2e+${Date.now()}@tvashtr.local`;
-  await page.getByRole("button", { name: "Get started" }).first().click();
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("accounts-e2e-pass");
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.getByRole("button", { name: /^Engineer/ }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: /^A fresh idea/ }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Enter Tvashtr" }).click();
+  await startBuilding(page).click();
+  await passwordSignIn(page, email, "accounts-e2e-pass", true);
   await expect(nav).toBeVisible({ timeout: 30_000 });
   await expect(nav.getByRole("button", { name: /^Home/ })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("heading", { name: /^Welcome to Tvashtr/ })).toBeVisible({
