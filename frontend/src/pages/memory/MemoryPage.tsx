@@ -10,7 +10,7 @@ import {
   setReviewMode,
 } from "../../lib/api/memory";
 import { type MemoryTab, navigate } from "../../lib/nav";
-import { publishBadges } from "../../lib/workspaceStatus";
+import { publishBadges, refreshBadges } from "../../lib/workspaceStatus";
 import { AddMemorySheet } from "./AddMemorySheet";
 import { MemoryActive } from "./MemoryActive";
 import { MemoryArchive } from "./MemoryArchive";
@@ -40,6 +40,7 @@ export function MemoryPage({ tab, pick = false }: { tab: MemoryTab; pick?: boole
       (c) => {
         setCounts(c);
         publishBadges({ memoryInbox: c.inbox });
+        void refreshBadges(); // Home's "Needs you" counts memories to review too
         then?.(c);
       },
       // The tabs just go without counts; the lists say what failed.
