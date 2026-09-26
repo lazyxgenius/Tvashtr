@@ -109,6 +109,17 @@ const auth = {
   forgetUser: () => call("tvashtr:auth:forgetUser").then(() => undefined),
 };
 
+// ---- setup: this Mac's first-run setup, per account (v6, DB-4) ------------------------------
+const setup = {
+  get: (accountId) => call("tvashtr:setup:get", typeof accountId === "string" ? accountId : ""),
+  update: (accountId, patch) =>
+    call(
+      "tvashtr:setup:update",
+      typeof accountId === "string" ? accountId : "",
+      patch && typeof patch === "object" ? patch : {},
+    ),
+};
+
 // ---- app (v5; getInfo v6) ---------------------------------------------------------------------
 const appBridge = {
   // v6 (DB-3): the running version, the API host and whether the bundle can update in place.
@@ -128,11 +139,13 @@ contextBridge.exposeInMainWorld("tvashtrDesktop", {
   navigation,
   repos,
   auth,
+  setup,
   app: appBridge,
 });
 contextBridge.exposeInMainWorld("tvashtrDesktopInfo", {
   shell: "electron",
-  // v6: auth (browser sign-in), app.getInfo. v5: engines.cancelConnect, navigation, repos, app.
+  // v6: auth (browser sign-in), setup (this Mac's first-run setup), app.getInfo.
+  // v5: engines.cancelConnect, navigation, repos, app.
   // v4: `platform` — the renderer draws the design's dark title strip only where main.cjs hid the
   // system one.
   version: 6,

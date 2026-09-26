@@ -21,7 +21,7 @@ interface Window {
   tvashtrDesktop?: boolean | TvashtrDesktopBridge;
   /**
    * `version` feature-detects the bridge: 4 = `platform`; 5 = `engines.cancelConnect`,
-   * `navigation`, `repos`, `app`; 6 = `auth`, `app.getInfo`
+   * `navigation`, `repos`, `app`; 6 = `auth`, `setup`, `app.getInfo`
    * (docs/superpowers/plans/api/desktop-bridge.md).
    */
   tvashtrDesktopInfo?: { shell: string; version: number; platform?: string };
@@ -151,6 +151,18 @@ interface TvashtrDesktopBridge {
     /** Switch / sign out: forget the last user on this Mac. */
     forgetUser: () => Promise<void>;
   };
+  /**
+   * v6 (DB-4, desktop-app.md DT-17): this Mac's first-run setup, per account (the step, the plan
+   * consent time, the project choice, when it finished). Both reject with an `Error` whose message
+   * is ready to show ("Couldn't save this Mac's setup. Try again.").
+   */
+  setup?: {
+    get: (accountId: string) => Promise<TvashtrDesktopSetup>;
+    update: (
+      accountId: string,
+      patch: Partial<Omit<TvashtrDesktopSetup, "version">>,
+    ) => Promise<TvashtrDesktopSetup>;
+  };
   /** v5 */
   app?: {
     /**
@@ -173,6 +185,23 @@ interface TvashtrDesktopBridge {
     restartToUpdate?: () => Promise<void>;
     openDownload?: () => Promise<void>;
   };
+}
+
+type TvashtrSetupStep = "engines" | "project" | "team";
+
+interface TvashtrDesktopSetup {
+  version: 1;
+  /** The step to resume at; null before the first step is saved (setup starts at Engines). */
+  step: TvashtrSetupStep | null;
+  /** ISO time setup finished on this Mac; null while it isn't. */
+  finishedAt: string | null;
+  /** ISO time the plan consent was ticked (OQ-36); null when unticked. */
+  planConsentAt: string | null;
+  workspace:
+    | { kind: "folder"; path: string; displayPath: string }
+    | { kind: "github"; repo: string }
+    | { kind: "ask" }
+    | null;
 }
 
 type TvashtrUpdateState =

@@ -39,6 +39,7 @@ const {
 } = require("./deepLink.cjs");
 const { createDesktopSignIn } = require("./auth/desktopSignIn.cjs");
 const { createLastUser } = require("./auth/lastUser.cjs");
+const { createSetupStore, SetupError } = require("./setupStore.cjs");
 const { appInfo } = require("./appInfo.cjs");
 const { createUnsavedGuard, unsavedDialogOptions, DISCARD } = require("./unsavedGuard.cjs");
 const { resolveCliEnv } = require("./harness/spawnEnv.cjs");
@@ -252,8 +253,8 @@ function sendToPage(channel, payload) {
 }
 
 /**
- * v6 `auth.*` (DB-1) and `app.getInfo` (DB-3). Answers `{ok, value}` like repos.*; only the app's
- * own page may call them.
+ * v6 `auth.*` (DB-1), `setup.*` (DB-4) and `app.getInfo` (DB-3). Answers `{ok, value}` like
+ * repos.*; only the app's own page may call them.
  */
 function registerAuthIpc() {
   lastUser = createLastUser({ userDataDir: app.getPath("userData") });
@@ -292,6 +293,7 @@ function registerAuthIpc() {
       try {
         return { ok: true, value: await fn(...args) };
       } catch (e) {
+        if (e instanceof SetupError) return { ok: false, code: e.code, message: e.message };
         console.error(`[tvashtr-desktop] ${channel} failed:`, e);
         return {
           ok: false,
@@ -300,6 +302,11 @@ function registerAuthIpc() {
         };
       }
     });
+
+  // This Mac's first-run setup, per account (DB-4, DT-17).
+  const setupStore = createSetupStore({ userDataDir: app.getPath("userData") });
+  handle("tvashtr:setup:get", (accountId) => setupStore.get(accountId));
+  handle("tvashtr:setup:update", (accountId, patch) => setupStore.update(accountId, patch));
 
   handle("tvashtr:auth:startSignIn", (opts) => {
     const o = opts && typeof opts === "object" ? opts : {};

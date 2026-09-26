@@ -222,8 +222,8 @@ Coded against the plan's contract; the lead should check these against B-LOCAL's
 
 Additive; gated by `isAppPage` like v5 (GitHub's in-window install pages get `forbidden`). Every
 call answers through the v5 `{ok, value}` envelope, so a rejection's `message` is readable.
-Built so far: DB-1 `auth`, DB-2 deep-link additions, DB-3 `app.getInfo`. Still to build (later
-groups): DB-4 `setup`, DB-5 `repos.initGit`, DB-6 `update`, DB-7 `runner.stop({release})`, DB-11.
+Built so far: DB-1 `auth`, DB-2 deep-link additions, DB-3 `app.getInfo`, DB-4 `setup`. Still to
+build (later groups): DB-5 `repos.initGit`, DB-6 `update`, DB-7 `runner.stop({release})`, DB-11.
 
 ## `auth` — sign in to Tvashtr in the default browser (DB-1)
 
@@ -276,6 +276,25 @@ The exchange: main `POST <loopback>/api/auth/desktop/exchange {code, verifier}` 
 `app.getVersion()` (`desktop/package.json`); `apiHost` names the server for the offline detail
 line; `bundlePath` is the running `Tvashtr.app` (null in dev); `bundleWritable` is false on a
 mounted DMG (`/Volumes/…`), a translocated app, or a read-only location.
+
+## `setup` — this Mac's first-run setup, per account (DB-4)
+
+`electron/setupStore.cjs`, in `userData/desktop-setup.json` (mode 0600) keyed by the Tvashtr
+account id (`^[A-Za-z0-9-]{1,64}$`). Not localStorage: the loopback port (and so the origin) can
+change between launches.
+
+- `setup.get(accountId): Promise<DesktopSetup>` — an account never seen on this Mac (or a corrupt
+  file) answers the empty value `{version: 1, step: null, finishedAt: null, planConsentAt: null,
+  workspace: null}`.
+- `setup.update(accountId, patch): Promise<DesktopSetup>` — merges any of `step` (`"engines" |
+  "project" | "team" | null`), `finishedAt` / `planConsentAt` (an ISO time, stored normalised, or
+  null), `workspace` (`{kind:"folder", path (absolute), displayPath} | {kind:"github", repo
+  ("owner/name")} | {kind:"ask"} | null`) and answers the whole record. Any other key or value
+  rejects with "Couldn't save this Mac's setup. Try again." and changes nothing.
+
+The page (`lib/desktopSetup.ts`) reads it once per sign-in; while `finishedAt` is null the
+signed-in app sits on `#/setup/<step>` (DT-17). A Desktop without `setup` (older than v6) skips
+the first-run setup.
 
 ## `update` (DB-6) — renderer side only so far
 
