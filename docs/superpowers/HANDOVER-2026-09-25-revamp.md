@@ -27,6 +27,18 @@ replaced. Remedy: new key on the `OPENAI_API_KEY` line of `.env` → `make seed`
 | F2 — Engines | `feat/revamp-f2-engines` | `6acc726` | v21 | `desktop-v0.5.0` — latest release; DMG app 0.5.0 bundles `index-CGZUXJb0.js` = the live site |
 | F3 — Toolkit › Tools + Secrets | `feat/revamp-f3-tools-secrets` | recorded at the next ship | recorded at the next ship | `desktop-v0.6.0` |
 
+### Production ship fix, deployed with F3 (`fix/ship-identity`)
+- **Production could never open a PR for a hosted GitHub run.** The prod demo-proof after the F2
+  deploy (run 2177a044) got through the PM fallback, the spec gate, three review rounds and the
+  escalation gate, then Ship's `git commit` exited 128: the per-run clone has no repo-local git
+  identity and the server container has no global one (Linux git can't guess an email). Local proofs
+  always passed because the Mac has a global identity. `shipping.idempotent_ship` now commits as
+  "Tvashtr Agent <agent@tvashtr.local>" only for the identity keys git doesn't already have.
+  Reproduced first (no global config + `user.useConfigOnly`, i.e. the container: exit 128).
+- The same prod run also showed the Engineer reporting ~270 "changed" files (incl. `.pytest_cache`)
+  and the Reviewer unable to run the repo's tests in the sandbox (missing dependencies). Not fixed
+  here; see the ship report's risks.
+
 ### F3 Toolkit › Tools + Secrets — what shipped (`feat/revamp-f3-tools-secrets`)
 - Toolkit › Tools on the new design: the list (tabs, search and filters, empty states, row ⋯ menus,
   Turn on for agents), Browse (the catalog, the GitHub App round trip), the Add tool wizard (remote,
