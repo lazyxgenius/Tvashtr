@@ -671,3 +671,145 @@
 .ds-sheet:has(.eng-picker) {
   -webkit-app-region: no-drag;
 }
+
+/* ---- Subscriptions (Eng-Subs, Eng-SubsWeb, Eng-Flow-Grok-*, Eng-Flow-Codex-*) ---- */
+/* Desktop: the runner's check-in (ENG-25) — OK sage, or warn when it isn't fresh. */
+.eng-runner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--sage-100);
+  font-size: 13px;
+  color: #3f4d2f;
+}
+.eng-runner--warn {
+  background: #fbf3e6;
+  color: #6b4a1f;
+}
+.eng-runner__text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.eng-runner__checked {
+  font-size: 12px;
+}
+/* The website: subscriptions run on the user's computer (ENG-46). */
+.eng-webbanner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--blue-100);
+  font-size: 13px;
+  color: #2f4f6f;
+}
+.eng-webbanner__text {
+  flex: 1;
+}
+.eng-subs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.eng-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.eng-sub--ok {
+  border-color: var(--sage-500);
+}
+.eng-sub__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.eng-sub__tile {
+  /* flex: none — the design's tile shrinks in a crowded header (Codex's two badges); it is meant
+     to be 34px square. */
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-weight: 700;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.eng-sub__name {
+  font-family: var(--font-display);
+  font-size: 19px;
+  color: var(--ink-900);
+}
+.eng-sub__account {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.eng-sub__badges {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.eng-sub__meta {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 6px 10px;
+  font-size: 12.5px;
+}
+.eng-sub__meta dt {
+  color: var(--ink-500);
+}
+.eng-sub__meta dd {
+  margin: 0;
+  color: var(--ink-800);
+}
+.eng-sub__msg {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+  flex: 1;
+}
+.eng-sub__link {
+  color: var(--coral-700);
+  font-weight: 500;
+  text-decoration: underline;
+}
+.eng-sub__callout {
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+/* Waiting for the sign-in in Terminal (ENG-31). */
+.eng-sub__callout--terminal {
+  display: flex;
+  gap: 8px;
+  background: var(--coral-100);
+  border: 1px solid var(--coral-200);
+  color: var(--ink-800);
+}
+.eng-sub__callout--terminal > svg {
+  flex: none;
+}
+/* Refresh still found nothing (ENG-40). */
+.eng-sub__callout--warn {
+  background: #fbf3e6;
+  border: 1px solid var(--amber-100);
+  color: #6b4a1f;
+}
+.eng-sub__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}

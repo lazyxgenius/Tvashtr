@@ -117,7 +117,8 @@ export function roleLabel(roleName: string, title: string | null): string {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Agent";
 }
 
-function nodeProvider(n: { model: string | null; provider: string | null }): string | null {
+/** The provider slug of a node's primary model, or null when it has none. */
+export function nodeProvider(n: { model: string | null; provider: string | null }): string | null {
   if (!n.model || !n.model.trim()) return null;
   return n.provider ?? (byokProviderOf(n.model) || null);
 }

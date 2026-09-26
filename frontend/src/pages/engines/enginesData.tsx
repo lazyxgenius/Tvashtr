@@ -57,6 +57,9 @@ export interface EnginesData extends EnginesState {
   inputs: EngineInputs;
   /** Reload everything (Retry, after a change elsewhere). */
   refresh: () => Promise<void>;
+  /** Re-read the runner's check-in (and, on the website, the subscription mirror) only — the
+   *  Subscriptions banner polls it (ENG-25). A failure keeps what is on screen. */
+  refreshRunner: () => Promise<void>;
   /** Put one subscription's new status in place (a bridge push or an action's answer). */
   setSubscription: (status: SubscriptionStatus) => void;
   /** Replace the saved keys (after a save or remove) and republish the badges. */
@@ -135,6 +138,22 @@ export function EnginesDataProvider({ children }: { children: ReactNode }) {
     });
   }, [apply]);
 
+  const refreshRunner = useCallback(async () => {
+    try {
+      const mirror = await getSubscriptions();
+      const prev = current.current;
+      if (prev.status !== "ready") return;
+      apply({
+        ...prev,
+        runner: mirror.runner,
+        // Desktop keeps the live bridge status; the website shows the mirror (ENG-81).
+        subs: surface === "desktop" ? prev.subs : mirror.subscriptions,
+      });
+    } catch {
+      /* the header already shows the backend as unreachable */
+    }
+  }, [apply, surface]);
+
   // Load on mount, and again whenever the window regains focus (ENG-82).
   useEffect(() => {
     mounted.current = true;
@@ -176,10 +195,11 @@ export function EnginesDataProvider({ children }: { children: ReactNode }) {
       surface,
       inputs: inputsOf(state, surface),
       refresh,
+      refreshRunner,
       setSubscription,
       setKeys,
     }),
-    [state, surface, refresh, setSubscription, setKeys],
+    [state, surface, refresh, refreshRunner, setSubscription, setKeys],
   );
   return <EnginesContext.Provider value={value}>{children}</EnginesContext.Provider>;
 }

@@ -11,8 +11,8 @@ import { AddKeySheet, type AddKeyRequest } from "./AddKeySheet";
 import { type AddKeyOptions, ApiKeysPage } from "./ApiKeysPage";
 import type { CellAction } from "./engineModel";
 import { EnginesDataProvider } from "./enginesData";
-import { EnginesHead } from "./enginesUi";
 import { OverviewPage } from "./OverviewPage";
+import { SubscriptionsPage } from "./SubscriptionsPage";
 import "./engines.css";
 
 function goSubscriptions(): void {
@@ -54,12 +54,7 @@ function EnginesTabs({ tab, fix }: { tab: EnginesTab; fix: boolean }) {
           onOpenSubscriptions={goSubscriptions}
         />
       )}
-      {tab === "subscriptions" && (
-        <EnginesHead
-          title="Subscriptions"
-          lede="Run agents on your own Claude or Grok plan, from Tvashtr Desktop."
-        />
-      )}
+      {tab === "subscriptions" && <SubscriptionsPage onAddKey={(p) => addKey(p)} />}
       {tab === "keys" && <ApiKeysPage onAddKey={addKey} />}
       <AddKeySheet request={sheet} onClose={() => setSheet(null)} onAddKey={addKey} />
     </>
