@@ -70,6 +70,28 @@ const activeButton = (page, content, name) =>
     .getByRole("button", { name, exact: true });
 // The pointer rests off the list (a clicked row moved away from under it).
 const pointerAway = (page) => page.mouse.move(1400, 700);
+const REMEMBER = "What should agents remember?";
+const LINTER = "Always run the linter before shipping.";
+/** Click the header's Add memory; the sheet is in once its repos have loaded. */
+const openAddMemory = async (page) => {
+  await activeRows(page);
+  await page
+    .locator(".pg-head")
+    .getByRole("button", { name: "Add memory" })
+    .click();
+  const sheet = page.getByRole("dialog", { name: "Add memory" });
+  await sheet
+    .getByRole("combobox", { name: "Repo" })
+    .and(page.locator(":enabled"))
+    .waitFor();
+  return sheet;
+};
+/** The design draws the sheet at rest: no focus ring, the pointer off it, the slide-in done. */
+const restSheet = async (page) => {
+  await page.evaluate(() => document.activeElement?.blur());
+  await pointerAway(page);
+  await page.waitForTimeout(300);
+};
 const SHOULD_EDITED =
   "Approve only when the registry test, the TypeScript mirror and the docs list the same indicators.";
 
@@ -268,6 +290,56 @@ export default [
         .click();
       await pointerAway(page);
       await toastShown(page, "Restored to Active.");
+    },
+  }),
+  // G7 — Add memory (the sheet opens over Active, as the design draws it)
+  ...both("Toolkit-AddMemory", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      const sheet = await openAddMemory(page);
+      await sheet.getByRole("textbox", { name: REMEMBER }).fill(LINTER);
+      await restSheet(page);
+    },
+  }),
+  ...both("TkF-AddMemory-1", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      const sheet = await openAddMemory(page);
+      await sheet
+        .getByRole("button", { name: "Add memory", exact: true })
+        .click();
+      await sheet.getByText("Write the memory first.").waitFor();
+      await restSheet(page);
+    },
+  }),
+  ...both("TkF-AddMemory-2", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      const sheet = await openAddMemory(page);
+      await sheet.getByRole("textbox", { name: REMEMBER }).fill(LINTER);
+      await restSheet(page);
+    },
+  }),
+  ...both("TkF-AddMemory-3", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      const sheet = await openAddMemory(page);
+      await sheet.getByRole("textbox", { name: REMEMBER }).fill(LINTER);
+      await sheet
+        .getByRole("button", { name: "Add memory", exact: true })
+        .click();
+      await pointerAway(page);
+      await toastShown(
+        page,
+        "Added. It applies to lazyxgenius/trade_mcp right away.",
+      );
+      await page
+        .locator('section[aria-label="Active"] li.mem-row', { hasText: LINTER })
+        .waitFor();
     },
   }),
   ...both("TkF-MemoryEmpty-1", {

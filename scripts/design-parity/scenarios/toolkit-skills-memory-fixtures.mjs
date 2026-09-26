@@ -579,6 +579,33 @@ export const memoryRoutes = ({
       state.rows = state.rows.filter((x) => x.id !== m.id);
       return { status: 204, json: null };
     },
+    // Add memory: a memory you add is active at once, "Added by you", on the repo you chose.
+    "POST /api/memories": (req) => {
+      const b = JSON.parse(req.postData() ?? "{}");
+      const repo = b.repo_key ?? null;
+      const made = memoryRow(
+        `a-added-${activeCount() + 1}`,
+        b.content,
+        b.polarity,
+        {
+          status: "active",
+          repo_key: repo,
+          repo_label: repo,
+          tier: repo ? "repo" : "account",
+          source_run_id: null,
+          source_invocation_id: null,
+          source_node_id: null,
+          source_iteration: null,
+          source: MANUAL,
+          valid_from: ago(0),
+          created_at: ago(0),
+          updated_at: ago(0),
+        },
+      );
+      state.active += 1;
+      if (state.rows) state.rows.push(made);
+      return { json: made };
+    },
     "GET /api/memories/counts": () => ({
       json: {
         inbox: state.pending.length,
