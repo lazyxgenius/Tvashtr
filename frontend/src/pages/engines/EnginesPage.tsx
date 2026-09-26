@@ -1,10 +1,14 @@
 /**
  * Engines (spec §4.1): Overview · Subscriptions · API keys, chosen by the address
  * (`#/engines`, `#/engines/subscriptions`, `#/engines/keys`). One data provider serves all three,
- * so switching tabs never refetches and the nav badges always match the page.
+ * so switching tabs never refetches and the nav badges always match the page. One Add key sheet
+ * serves every "Add key" on them (ENG-61).
  */
+import { useCallback, useRef, useState } from "react";
+
 import { type EnginesTab, navigate } from "../../lib/nav";
-import { ApiKeysPage } from "./ApiKeysPage";
+import { AddKeySheet, type AddKeyRequest } from "./AddKeySheet";
+import { type AddKeyOptions, ApiKeysPage } from "./ApiKeysPage";
 import type { CellAction } from "./engineModel";
 import { EnginesDataProvider } from "./enginesData";
 import { EnginesHead } from "./enginesUi";
@@ -15,22 +19,28 @@ function goSubscriptions(): void {
   navigate({ page: "engines", tab: "subscriptions" });
 }
 
-/** Where a key is added. The API keys page is where keys live.
- *  G3 replaces this with the Add key sheet: `(provider?: string, options?: AddKeyOptions)` — the
- *  provider picked, `options.embeddings` → "Add an embeddings key". */
-function addKey(): void {
-  navigate({ page: "engines", tab: "keys" });
-}
+function EnginesTabs({ tab, fix }: { tab: EnginesTab; fix: boolean }) {
+  const [sheet, setSheet] = useState<(AddKeyRequest & { seq: number }) | null>(null);
+  const seq = useRef(0);
 
-/** Connecting, re-checking and setting up a subscription happen on Subscriptions. */
-function cellAction(action: CellAction): void {
-  if (action.kind === "add-key") addKey();
-  else goSubscriptions();
-}
+  /** Open the Add key sheet: nothing picked, or `provider` picked in advance (ENG-74). */
+  const addKey = useCallback((provider?: string, options?: AddKeyOptions) => {
+    seq.current += 1;
+    setSheet({ provider, embeddings: options?.embeddings ?? false, seq: seq.current });
+  }, []);
 
-export function EnginesPage({ tab, fix = false }: { tab: EnginesTab; fix?: boolean }) {
+  /** A row's Add key opens the sheet with that provider (ENG-15); connecting, re-checking and
+   *  setting up a subscription happen on Subscriptions. */
+  const cellAction = useCallback(
+    (action: CellAction) => {
+      if (action.kind === "add-key") addKey(action.provider);
+      else goSubscriptions();
+    },
+    [addKey],
+  );
+
   return (
-    <EnginesDataProvider>
+    <>
       {tab === "overview" && (
         <OverviewPage
           highlightFixes={fix}
@@ -46,6 +56,15 @@ export function EnginesPage({ tab, fix = false }: { tab: EnginesTab; fix?: boole
         />
       )}
       {tab === "keys" && <ApiKeysPage onAddKey={addKey} />}
+      <AddKeySheet request={sheet} onClose={() => setSheet(null)} />
+    </>
+  );
+}
+
+export function EnginesPage({ tab, fix = false }: { tab: EnginesTab; fix?: boolean }) {
+  return (
+    <EnginesDataProvider>
+      <EnginesTabs tab={tab} fix={fix} />
     </EnginesDataProvider>
   );
 }

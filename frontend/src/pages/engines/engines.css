@@ -484,3 +484,190 @@
     animation: none;
   }
 }
+
+/* ---- Add key sheet (Eng-AddKeyPick, Eng-AddKey, EnF-PickProvider-*, EnF-OtherProvider-*) ----
+   The DS Sheet draws the frame (520px, header, footer); these are its body. The design's buttons
+   inherit the page's 16px (their text sits in explicitly sized spans). */
+.eng-sheet__form {
+  display: contents;
+}
+.eng-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+.eng-picker__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-900);
+}
+.eng-picker__btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line-300);
+  border-radius: 8px;
+  background: var(--surface-page);
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+.eng-picker__btn.is-invalid {
+  border-color: #c9826f;
+}
+.eng-picker__btn.is-open,
+.eng-picker__btn:focus-visible {
+  outline: none;
+  border-color: var(--coral-200);
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.45);
+}
+.eng-picker__placeholder {
+  font-size: 13.5px;
+  color: var(--ink-500);
+}
+.eng-picker__slug {
+  font-family: var(--font-code);
+  font-size: 13.5px;
+  color: var(--ink-900);
+}
+.eng-picker__value {
+  font-size: 13.5px;
+  color: var(--ink-900);
+}
+.eng-picker__plus {
+  display: inline-flex;
+  color: var(--coral-700);
+}
+.eng-picker__chev {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--ink-500);
+}
+.eng-picker__pop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+  z-index: 5;
+}
+/* The design's search box sits flush on the first option (its 6px margin lands inside the
+   imported component's box), so no gap here. */
+.eng-picker__search {
+  display: block;
+}
+/* A longer directory scrolls; "Other" below it stays in view (ENG-63). */
+.eng-picker__list {
+  max-height: 324px;
+  overflow-y: auto;
+}
+.eng-picker__opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+.eng-picker__opt.is-saved {
+  opacity: 0.55;
+}
+.eng-picker__opt-slug {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--ink-900);
+}
+.eng-picker__opt-desc {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.eng-picker__sep {
+  height: 1px;
+  background: var(--line-200);
+  margin: 4px 6px;
+}
+.eng-picker__other {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--coral-700);
+  text-align: left;
+  cursor: pointer;
+}
+.eng-picker__opt:hover,
+.eng-picker__opt.is-active,
+.eng-picker__other:hover,
+.eng-picker__other.is-active {
+  background: var(--panel-300);
+}
+.eng-sheet__hint {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.eng-sheet__hint code {
+  font-family: var(--font-code);
+  font-size: inherit;
+}
+.eng-sheet__hint b {
+  font-weight: 600;
+}
+.eng-sheet__note {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+.eng-sheet__note--sunk {
+  background: var(--surface-sunk);
+}
+.eng-sheet__note--line {
+  border: 1px solid var(--line-200);
+}
+.eng-sheet__icon {
+  display: inline-flex;
+  margin-top: 1px;
+}
+.eng-sheet__error {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8e7e2;
+  border: 1px solid #e5b3a9;
+  font-size: 13px;
+  color: #8f3b2f;
+}
+/* Tvashtr Desktop (macOS): the sheet is fixed over the window's 30px title strip, a drag region;
+   without this its Close button's top edge would drag the window instead of closing the sheet. */
+.ds-sheet:has(.eng-picker) {
+  -webkit-app-region: no-drag;
+}

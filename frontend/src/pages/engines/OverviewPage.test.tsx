@@ -82,24 +82,28 @@ describe("Overview on the website (Eng-OverviewWeb)", () => {
     });
   });
 
-  it("row fixes lead to where they're done: Add key → API keys, Open in Desktop → Subscriptions", async () => {
+  it("row fixes: Add key opens the sheet with that provider (ENG-15), Open in Desktop → Subscriptions", async () => {
     mockEnginesApi();
     renderEngines();
     await loaded();
     fireEvent.click(within(row("anthropic")).getByRole("button", { name: "Add key" }));
-    expect(window.location.hash).toBe("#/engines/keys");
+    const sheet = within(screen.getByRole("dialog", { name: "Add an API key" }));
+    expect(sheet.getByRole("button", { name: "Provider anthropic" })).toBeInTheDocument();
+    fireEvent.click(sheet.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "Add an API key" })).toBeNull();
     fireEvent.click(within(row("xai")).getByRole("button", { name: "Open in Desktop" }));
     expect(window.location.hash).toBe("#/engines/subscriptions");
   });
 
-  it("header buttons: Subscriptions and Add API key", async () => {
+  it("header buttons: Subscriptions, and Add API key opens the empty sheet", async () => {
     mockEnginesApi();
     renderEngines();
     await loaded();
     fireEvent.click(screen.getByRole("button", { name: "Subscriptions" }));
     expect(window.location.hash).toBe("#/engines/subscriptions");
     fireEvent.click(screen.getByRole("button", { name: "Add API key" }));
-    expect(window.location.hash).toBe("#/engines/keys");
+    const sheet = within(screen.getByRole("dialog", { name: "Add an API key" }));
+    expect(sheet.getByRole("button", { name: "Provider Choose a provider" })).toBeInTheDocument();
   });
 
   it("says Desktop is open on your computer when the runner checked in (OQ-15)", async () => {
@@ -219,13 +223,13 @@ describe("First time (EnF-FirstTime-1)", () => {
     });
   });
 
-  it("Connect a subscription goes to Subscriptions; Add API key to API keys", async () => {
+  it("Connect a subscription goes to Subscriptions; Add API key opens the sheet", async () => {
     mockEnginesApi(nothingSetUp);
     renderEngines();
     fireEvent.click(await screen.findByRole("button", { name: "Connect a subscription" }));
     expect(window.location.hash).toBe("#/engines/subscriptions");
     fireEvent.click(screen.getByRole("button", { name: "Add API key" }));
-    expect(window.location.hash).toBe("#/engines/keys");
+    expect(screen.getByRole("dialog", { name: "Add an API key" })).toBeInTheDocument();
   });
 });
 
