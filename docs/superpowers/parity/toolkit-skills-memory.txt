@@ -4,6 +4,16 @@ TkF-FromRepo-2 web: matched 68/75 design items · 0 with size/type drift · 0 on
 TkF-FromRepo-2 desktop: matched 68/75 design items · 0 with size/type drift · 41 only moved · 7 not found in app
 TkF-FromRepo-3 web: matched 47/55 design items · 0 with size/type drift · 18 only moved · 8 not found in app
 TkF-FromRepo-3 desktop: matched 47/55 design items · 0 with size/type drift · 45 only moved · 8 not found in app
+TkF-NewSkill-1 web: matched 29/35 design items · 0 with size/type drift · 1 only moved · 6 not found in app
+TkF-NewSkill-1 desktop: matched 29/35 design items · 0 with size/type drift · 27 only moved · 6 not found in app
+TkF-NewSkill-2 web: matched 29/35 design items · 0 with size/type drift · 0 only moved · 6 not found in app
+TkF-NewSkill-2 desktop: matched 29/35 design items · 0 with size/type drift · 27 only moved · 6 not found in app
+TkF-NewSkill-3 web: matched 32/38 design items · 0 with size/type drift · 0 only moved · 6 not found in app
+TkF-NewSkill-3 desktop: matched 32/38 design items · 0 with size/type drift · 30 only moved · 6 not found in app
+TkF-NewSkill-4 web: matched 32/38 design items · 0 with size/type drift · 0 only moved · 6 not found in app
+TkF-NewSkill-4 desktop: matched 32/38 design items · 0 with size/type drift · 30 only moved · 6 not found in app
+TkF-NewSkill-5 web: matched 50/57 design items · 0 with size/type drift · 0 only moved · 7 not found in app
+TkF-NewSkill-5 desktop: matched 50/57 design items · 0 with size/type drift · 46 only moved · 7 not found in app
 TkF-Presets-1 web: matched 37/42 design items · 0 with size/type drift · 7 only moved · 5 not found in app
 TkF-Presets-1 desktop: matched 37/42 design items · 0 with size/type drift · 35 only moved · 5 not found in app
 TkF-Presets-2 web: matched 27/34 design items · 0 with size/type drift · 0 only moved · 7 not found in app
@@ -14,6 +24,8 @@ TkF-SkillMenu-2 web: matched 49/54 design items · 0 with size/type drift · 6 o
 TkF-SkillMenu-2 desktop: matched 49/54 design items · 0 with size/type drift · 47 only moved · 5 not found in app
 TkF-SkillMenu-3 web: matched 36/43 design items · 0 with size/type drift · 0 only moved · 7 not found in app
 TkF-SkillMenu-3 desktop: matched 36/43 design items · 0 with size/type drift · 33 only moved · 7 not found in app
+TkF-SkillSource-1 web: matched 34/40 design items · 0 with size/type drift · 0 only moved · 6 not found in app
+TkF-SkillSource-1 desktop: matched 34/40 design items · 0 with size/type drift · 32 only moved · 6 not found in app
 TkF-SkillTabs-1 web: matched 43/48 design items · 0 with size/type drift · 0 only moved · 5 not found in app
 TkF-SkillTabs-1 desktop: matched 43/48 design items · 0 with size/type drift · 41 only moved · 5 not found in app
 TkF-SkillTabs-2 web: matched 30/35 design items · 0 with size/type drift · 0 only moved · 5 not found in app
@@ -22,6 +34,8 @@ TkF-SkillsEmpty-1 web: matched 26/31 design items · 0 with size/type drift · 0
 TkF-SkillsEmpty-1 desktop: matched 26/31 design items · 0 with size/type drift · 24 only moved · 5 not found in app
 TkF-SkillsEmpty-2 web: matched 24/31 design items · 0 with size/type drift · 0 only moved · 7 not found in app
 TkF-SkillsEmpty-2 desktop: matched 24/31 design items · 0 with size/type drift · 22 only moved · 7 not found in app
+Toolkit-SkillEditor web: matched 34/40 design items · 0 with size/type drift · 0 only moved · 6 not found in app
+Toolkit-SkillEditor desktop: matched 34/40 design items · 0 with size/type drift · 32 only moved · 6 not found in app
 Toolkit-SkillFromRepo web: matched 68/75 design items · 0 with size/type drift · 0 only moved · 7 not found in app
 Toolkit-SkillFromRepo desktop: matched 68/75 design items · 0 with size/type drift · 41 only moved · 7 not found in app
 Toolkit-SkillPresets web: matched 30/35 design items · 0 with size/type drift · 0 only moved · 5 not found in app

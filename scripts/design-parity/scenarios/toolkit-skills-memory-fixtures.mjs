@@ -44,14 +44,19 @@ export const inline = (name, content, mode = "always", triggers) => ({
   ...(triggers ? { triggers } : {}),
 });
 
+// Toolkit-SkillEditor: house-style's SKILL.md as the editor shows it.
+export const HOUSE_STYLE_MD =
+  "# House style\n\nWrite review notes in plain words.\n- Lead with the verdict, then the reasons.\n- Name files and functions in `code`.\n- One reason per line, most important first.\n- Never suggest changes you did not verify.";
+
+// TkF-NewSkill-2…5: the skill the flow writes.
+export const API_CONVENTIONS_MD =
+  "# API conventions\n\n- Routes are nouns: /api/runs, /api/teams.\n- Return 422 for bad input, with a message a person can read.\n- Every new endpoint checks the session first.";
+
 export const SKILLS = {
   houseStyle: skill(
     "s-house",
     "house-style",
-    inline(
-      "house-style",
-      "# House style\n\nWrite code the way this team does.",
-    ),
+    inline("house-style", HOUSE_STYLE_MD),
     { agents: 2, teams: 1, updated: day(23) },
   ),
   pytestReview: skill(

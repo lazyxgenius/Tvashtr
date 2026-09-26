@@ -2,6 +2,7 @@
 // Scenario names are `<Artboard>-web` / `<Artboard>-desktop`, so the measurement lands in
 // /tmp/parity-toolkit-skills-memory/<Artboard>-<surface>.json next to the design's <Artboard>.json.
 import {
+  API_CONVENTIONS_MD,
   LIBRARY,
   PRESET_LIBRARY,
   frozenClock,
@@ -85,6 +86,36 @@ const previewYagni = async (page) => {
     .getByRole("button", { name: "Preview" })
     .click();
   await page.waitForSelector('[role="dialog"][aria-label="YAGNI preset"]');
+};
+
+// ---- G3: the skill editor ----
+const editorReady = (page) => page.waitForSelector(".sk-ed-grid");
+// The design draws the SKILL.md box with its focus ring on.
+const focusEditor = async (page) => {
+  await page.locator(".sk-md__text").focus();
+  await page.waitForTimeout(200);
+};
+const writeApiConventions = async (page) => {
+  await editorReady(page);
+  await page
+    .getByRole("textbox", { name: "Skill name" })
+    .fill("api-conventions");
+  await page.locator(".sk-md__text").fill(API_CONVENTIONS_MD);
+};
+const whenTriggered = async (page) => {
+  await writeApiConventions(page);
+  await page
+    .getByRole("group", { name: "Default load mode" })
+    .getByRole("button", { name: "When triggered" })
+    .click();
+  await page
+    .getByRole("textbox", { name: "Trigger words" })
+    .fill("endpoint, route, api");
+};
+// Each render gets its own library: Save skill adds to it.
+const g3Routes = () => {
+  const library = [...LIBRARY];
+  return skillsRoutes({ library, onCreate: (s) => library.push(s) });
 };
 
 export default [
@@ -218,6 +249,83 @@ export default [
         .getByRole("dialog", { name: "Turn on for agents" })
         .getByRole("checkbox", { name: /^Writer/ })
         .waitFor();
+    },
+  }),
+  // TkF-NewSkill-1: the empty form — Save skill waits for a name and the SKILL.md.
+  ...both("TkF-NewSkill-1", {
+    path: "/#/toolkit/skills/new",
+    routes: g3Routes,
+    steps: async (page) => {
+      await editorReady(page);
+      await focusEditor(page);
+    },
+  }),
+  // TkF-NewSkill-2: name + SKILL.md written → Save skill turns on.
+  ...both("TkF-NewSkill-2", {
+    path: "/#/toolkit/skills/new",
+    routes: g3Routes,
+    steps: async (page) => {
+      await writeApiConventions(page);
+      await focusEditor(page);
+    },
+  }),
+  // TkF-NewSkill-3: the Preview tab renders the markdown.
+  ...both("TkF-NewSkill-3", {
+    path: "/#/toolkit/skills/new",
+    routes: g3Routes,
+    steps: async (page) => {
+      await writeApiConventions(page);
+      await page.getByRole("tab", { name: "Preview" }).click();
+      await page.waitForSelector(".sk-mdp__h1");
+    },
+  }),
+  // TkF-NewSkill-4: When triggered → its helper and the Trigger words field.
+  ...both("TkF-NewSkill-4", {
+    path: "/#/toolkit/skills/new",
+    routes: g3Routes,
+    steps: async (page) => {
+      await whenTriggered(page);
+      await focusEditor(page);
+    },
+  }),
+  // TkF-NewSkill-5: Save skill → back on the list, the new row tinted, the toast with Choose agents.
+  ...both("TkF-NewSkill-5", {
+    path: "/#/toolkit/skills/new",
+    routes: g3Routes,
+    steps: async (page) => {
+      await whenTriggered(page);
+      await page.getByRole("button", { name: "Save skill" }).click();
+      await page.waitForSelector(".sk-row--new");
+      await toastShown(page);
+    },
+  }),
+  // TkF-SkillSource-1: Source = GitHub repo swaps in the "From a GitHub repo" card.
+  ...both("TkF-SkillSource-1", {
+    path: "/#/toolkit/skills/new",
+    routes: g3Routes,
+    steps: async (page) => {
+      await editorReady(page);
+      await page
+        .getByRole("textbox", { name: "Skill name" })
+        .fill("api-conventions");
+      await page
+        .getByRole("group", { name: "Source" })
+        .getByRole("button", { name: "GitHub repo" })
+        .click();
+      await page
+        .getByRole("textbox", { name: "Repository" })
+        .fill("https://github.com/lazyxgenius/skills");
+      // The design draws the card at rest (no field focused).
+      await page.evaluate(() => document.activeElement?.blur());
+    },
+  }),
+  // Toolkit-SkillEditor: house-style, loaded with who uses it.
+  ...both("Toolkit-SkillEditor", {
+    path: "/#/toolkit/skills/s-house",
+    routes: g3Routes,
+    steps: async (page) => {
+      await editorReady(page);
+      await focusEditor(page);
     },
   }),
 ];
