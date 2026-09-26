@@ -17,7 +17,7 @@ import { expect, test } from "@playwright/test";
 //   Home     — first time: "Welcome to Tvashtr…" + the "Get started" checklist ("N of 4 done").
 //   Keys     — Engines › API keys (#/engines/keys): "Provider"/"API key" + "Add key"; a saved key
 //              shows as `provider` + "Saved · •••• last4" (the secret is never shown).
-//   Canvas   — "the living canvas"; the toolbar's "Back to dashboard" arrow.
+//   Canvas   — "the living canvas"; the toolbar's "Back to teams" arrow.
 
 const SHOTS_DIR = process.env.TVASHTR_ACCOUNTS_SHOTS_DIR ?? "/tmp/tvashtr_accounts_shots";
 
@@ -93,7 +93,7 @@ test("accounts journey: landing → register → first-time Home → add key →
   await page.screenshot({ path: path.join(SHOTS_DIR, "step4-canvas.png") });
   console.log("[accounts-e2e] STEP 4 PASS — created a team → reached its canvas");
 
-  await page.getByRole("button", { name: "Back to dashboard" }).click();
+  await page.getByRole("button", { name: "Back to teams" }).click();
   await expect(nav).toBeVisible({ timeout: 30_000 });
   await expect(page).toHaveURL(/#\/(home)?$/);
   await expect(page.getByText(teamName).first()).toBeVisible({ timeout: 30_000 });

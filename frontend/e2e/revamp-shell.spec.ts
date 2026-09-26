@@ -108,7 +108,7 @@ test("the dashboard shell: addresses, nav, refresh, back, shortcuts, account, ca
   await page.reload();
   await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
   expect(page.url()).toBe(teamUrl);
-  await page.getByRole("button", { name: "Back to dashboard" }).click();
+  await page.getByRole("button", { name: "Back to teams" }).click();
   await expect(nav).toBeVisible();
   await expect(page).toHaveURL(/#\/(home)?$/);
   await expect(page.getByText("Shell e2e team").first()).toBeVisible({ timeout: 30_000 });

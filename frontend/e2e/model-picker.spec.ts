@@ -67,7 +67,7 @@ test("model picker: provider-gated picker + inline add + the same-model reviewer
   await expect(provider.getByRole("option", { name: "groq" })).toHaveCount(1, { timeout: 30_000 });
   await page.screenshot({ path: path.join(SHOTS_DIR, "check3-inline-add.png") });
   // Persisted: back in the shell, Engines › API keys lists groq too.
-  await page.getByRole("button", { name: "Back to dashboard" }).click();
+  await page.getByRole("button", { name: "Back to teams" }).click();
   await shellNav(page)
     .getByRole("button", { name: /^Engines/ })
     .click();

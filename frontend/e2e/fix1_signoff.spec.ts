@@ -47,7 +47,7 @@ async function nodeCount(page: Page): Promise<number> {
   return page.locator(".react-flow__node").count();
 }
 
-// A keyless account's canvas shows "Configure providers" in place of "Run this team". The checks
+// A keyless account's canvas disables "Run this team" (the "Can’t run" callout). The checks
 // that assert Run's state hold a DUMMY deepseek key first (deepseek serves both seats, so every node
 // the defaults stamp is covered; no run is launched, so the key is never used).
 async function holdDummyKey(page: Page): Promise<void> {
