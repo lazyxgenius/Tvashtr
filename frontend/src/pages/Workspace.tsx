@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 
 import App from "../App";
 import { DomainsPage } from "../components/DomainsPage";
-import { EnginesShelf } from "../components/EnginesShelf";
 import { MemoryShelf } from "../components/MemoryShelf";
 import { SkillsShelf } from "../components/SkillsShelf";
 import type { AuthUser, Config } from "../lib/api";
+import { useDesktopDeepLinks } from "../lib/desktopDeepLinks";
 import { requestHomeAction } from "../lib/homeActions";
 import { type DashView, type Route, navigate, useNav } from "../lib/nav";
 import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
 import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
+import { EnginesPage } from "./engines/EnginesPage";
 import { CommandPalette } from "./home/CommandPalette";
 import { HomePage } from "./home/HomePage";
 import { Shell } from "./shell/Shell";
@@ -26,7 +27,8 @@ function dashViewRoute(view: DashView | undefined): Route {
     case "domains":
       return { page: "domains" };
     case "engines":
-      return { page: "engines", tab: "overview" };
+      // "Open Engines" on a blocked run: Overview with the rows to fix highlighted.
+      return { page: "engines", tab: "overview", fix: true };
     case "tools":
       return { page: "tools", view: "installed" };
     default:
@@ -57,6 +59,8 @@ export function Workspace({
     void refreshBadges();
   }, []);
   useGithubReturn(); // Desktop: back from the GitHub App install → Toolkit › Tools › Browse
+  // Tvashtr Desktop: follow `tvashtr://` links (a no-op on the website).
+  useDesktopDeepLinks();
 
   useGlobalShortcuts(
     {
@@ -108,12 +112,20 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
     case "domains":
       return (
         <DomainsPage
-          onOpenEngines={() => navigate({ page: "engines", tab: "overview" })}
+          // Domains is blocked on an embeddings key: API keys at that section (ENG-6).
+          onOpenEngines={() => navigate({ page: "engines", tab: "keys", embeddings: true })}
           onCreateTeam={() => requestHomeAction({ kind: "new-team" })}
         />
       );
     case "engines":
-      return <EnginesShelf />;
+      return (
+        <EnginesPage
+          tab={route.tab}
+          fix={route.fix}
+          connect={route.connect}
+          embeddings={route.embeddings}
+        />
+      );
     case "tools":
       return <ToolsPage view={route.view} />;
     case "tool":

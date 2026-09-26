@@ -7,6 +7,7 @@ import { getInbox } from "../lib/api/home";
 import { getToolkitSummary } from "../lib/api/tools";
 import { isDesktopApp } from "../lib/desktopRepos";
 import { registerBadgeLoader } from "../lib/workspaceStatus";
+import { loadEngineBadges } from "./engines/engineBadges";
 
 registerBadgeLoader("home", async () => ({
   home: (await getInbox(isDesktopApp() ? "desktop" : "website")).count,
@@ -24,3 +25,5 @@ registerBadgeLoader("toolkit", async () => {
     secretsMissing: s.secrets_missing,
   };
 });
+
+registerBadgeLoader("engines", loadEngineBadges);

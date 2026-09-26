@@ -8,6 +8,9 @@
  *   #/home
  *   #/domains
  *   #/engines · #/engines/subscriptions · #/engines/keys
+ *   #/engines?fix=1 (Overview with the rows that need a fix highlighted — the canvas's Open Engines)
+ *   #/engines/subscriptions?connect=claude|grok (that card highlighted — a `tvashtr://` deep link)
+ *   #/engines/keys?embeddings=1 (API keys scrolled to Domains embeddings — Domains' Open Engines)
  *   #/toolkit/tools · #/toolkit/tools/browse · #/toolkit/tools/<id>
  *   #/toolkit/skills · #/toolkit/skills/presets · #/toolkit/skills/new · #/toolkit/skills/<id>
  *   #/toolkit/memory/inbox|active|archive
@@ -19,6 +22,8 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 export type EnginesTab = "overview" | "subscriptions" | "keys";
+/** A subscription a link asks Subscriptions to point out (it never starts Connect). */
+export type ConnectTarget = "claude" | "grok";
 export type MemoryTab = "inbox" | "active" | "archive";
 export type NodeTab = "setup" | "skills" | "memory" | "runs" | "docs";
 /** The dashboard section the canvas's back / "Open Engines · Toolkit" controls return to. */
@@ -27,7 +32,16 @@ export type DashView = "home" | "domains" | "engines" | "tools";
 export type Route =
   | { page: "home" }
   | { page: "domains" }
-  | { page: "engines"; tab: EnginesTab }
+  // `fix`: arrived from a blocked run ("Open Engines") — Overview highlights the rows to fix.
+  // `connect`: Subscriptions only — highlight that card (the website's "Open in Desktop").
+  // `embeddings`: API keys only — arrived from Domains, show the Domains embeddings section.
+  | {
+      page: "engines";
+      tab: EnginesTab;
+      fix?: boolean;
+      connect?: ConnectTarget;
+      embeddings?: boolean;
+    }
   | { page: "tools"; view: "installed" | "browse" }
   | { page: "tool"; toolId: string }
   | { page: "skills"; view: "mine" | "presets" }
@@ -48,6 +62,7 @@ export type Route =
     };
 
 const ENGINES_TABS: EnginesTab[] = ["overview", "subscriptions", "keys"];
+const CONNECT_TARGETS: ConnectTarget[] = ["claude", "grok"];
 const MEMORY_TABS: MemoryTab[] = ["inbox", "active", "archive"];
 const NODE_TABS: NodeTab[] = ["setup", "skills", "memory", "runs", "docs"];
 
@@ -77,11 +92,19 @@ export function parseRoute(hash: string): Route {
       return HOME;
     case "domains":
       return { page: "domains" };
-    case "engines":
-      return {
-        page: "engines",
-        tab: ENGINES_TABS.includes(b as EnginesTab) ? (b as EnginesTab) : "overview",
-      };
+    case "engines": {
+      const tab = ENGINES_TABS.includes(b as EnginesTab) ? (b as EnginesTab) : "overview";
+      const connect = q.get("connect");
+      if (tab === "subscriptions" && CONNECT_TARGETS.includes(connect as ConnectTarget)) {
+        return { page: "engines", tab, connect: connect as ConnectTarget };
+      }
+      if (tab === "keys" && q.get("embeddings") === "1") {
+        return { page: "engines", tab, embeddings: true };
+      }
+      return tab === "overview" && q.get("fix") === "1"
+        ? { page: "engines", tab, fix: true }
+        : { page: "engines", tab };
+    }
     case "toolkit":
       if (b === undefined || b === "tools") {
         if (c === undefined) return { page: "tools", view: "installed" };
@@ -131,7 +154,12 @@ export function routeToHash(route: Route): string {
     case "domains":
       return "#/domains";
     case "engines":
-      return route.tab === "overview" ? "#/engines" : `#/engines/${route.tab}`;
+      if (route.tab === "subscriptions" && route.connect) {
+        return `#/engines/subscriptions?connect=${route.connect}`;
+      }
+      if (route.tab === "keys" && route.embeddings) return "#/engines/keys?embeddings=1";
+      if (route.tab !== "overview") return `#/engines/${route.tab}`;
+      return route.fix ? "#/engines?fix=1" : "#/engines";
     case "tools":
       return route.view === "browse" ? "#/toolkit/tools/browse" : "#/toolkit/tools";
     case "tool":
