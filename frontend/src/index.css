@@ -1090,36 +1090,6 @@ body,
   color: var(--ink-500);
   max-width: 560px;
 }
-.tv-tools-section {
-  padding: 20px var(--space-6) 22px;
-}
-.tv-tools-section__head {
-  margin-bottom: 16px;
-}
-.tv-tools-section__form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
-  gap: 12px 14px;
-  align-items: end;
-  margin-bottom: 16px;
-}
-.tv-tools-section__form .tv-field {
-  min-width: 0;
-}
-.tv-tools-section__form .tv-btn {
-  height: 38px;
-  align-self: end;
-}
-.tv-tools-section__form .tv-launch__input {
-  width: 100%;
-  max-width: none;
-}
-@media (max-width: 720px) {
-  .tv-tools-section__form {
-    grid-template-columns: 1fr;
-  }
-}
-
 /* Frosted-glass sticky app bar — translucent cream over whatever scrolls beneath. */
 .tv-dash__error {
   margin: var(--space-3) var(--space-6) 0;
@@ -1450,17 +1420,6 @@ body,
   gap: 8px;
   margin-top: auto;
   flex-wrap: wrap;
-}
-
-.tv-dash__prov-add--labeled {
-  align-items: end;
-}
-.tv-dash__prov-add--labeled .tv-field {
-  flex: 1;
-  min-width: 150px;
-}
-.tv-dash__prov-add--labeled .tv-launch__input {
-  max-width: none;
 }
 
 /* The New-team / delete pop-ups — a centered card over the shared .tv-scrim (dimmed dashboard). */
