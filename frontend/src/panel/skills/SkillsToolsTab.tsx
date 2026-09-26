@@ -1,43 +1,12 @@
-import { useEffect, useState } from "react";
 import { Monitor } from "lucide-react";
 
-import {
-  type SkillLibraryItem,
-  type ToolLibraryItem,
-  listSecrets,
-  listSkillLibrary,
-  listToolLibrary,
-} from "../../lib/api";
 import type { Route } from "../../lib/nav";
 import { type AddToolKind, ToolsPanel } from "../tools/ToolsPanel";
 import type { ToolConfig } from "../tools/nodeTools";
 import type { ToastAction } from "../useDrawerToast";
 import { type AddSkillKind, SkillsPanel } from "./SkillsPanel";
+import type { Shelves } from "./useShelves";
 import "./skillsTools.css";
-
-/** The account's library skills and tools and its secret names; null while unknown. */
-function useShelves() {
-  const [skillLibrary, setSkillLibrary] = useState<SkillLibraryItem[] | null>(null);
-  const [toolLibrary, setToolLibrary] = useState<ToolLibraryItem[] | null>(null);
-  const [secrets, setSecrets] = useState<string[] | null>(null);
-  useEffect(() => {
-    let live = true;
-    // A shelf that fails to load leaves its rows generic ("Library skill"), nothing more.
-    listSkillLibrary()
-      .then((v) => live && setSkillLibrary(v))
-      .catch(() => {});
-    listToolLibrary()
-      .then((v) => live && setToolLibrary(v))
-      .catch(() => {});
-    listSecrets()
-      .then((v) => live && setSecrets(v.map((s) => s.name)))
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, []);
-  return { skillLibrary, toolLibrary, secrets };
-}
 
 /**
  * The Skills & tools tab (PANEL-81..99, 103): Skills over Tools, bound to the draft. `note` is the
@@ -55,6 +24,7 @@ export function SkillsToolsTab({
   onAddTool,
   onEditServer,
   onOpenToolkit,
+  shelves,
 }: {
   skills: unknown[] | null;
   toolConfig: ToolConfig;
@@ -67,8 +37,9 @@ export function SkillsToolsTab({
   onAddTool: (kind: AddToolKind) => void;
   onEditServer: (name: string) => void;
   onOpenToolkit?: (route: Route) => void;
+  shelves: Shelves;
 }) {
-  const { skillLibrary, toolLibrary, secrets } = useShelves();
+  const { skillLibrary, toolLibrary, secrets } = shelves;
   return (
     <div className="nd-stack">
       {note && (

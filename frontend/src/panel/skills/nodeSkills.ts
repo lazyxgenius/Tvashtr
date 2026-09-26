@@ -158,6 +158,85 @@ export function parseTriggers(text: string): string[] {
   ];
 }
 
+/** New skills go first (Flow-Presets-3 draws the added presets on top of the list). */
+export const withAdded = (
+  skills: readonly unknown[] | null,
+  added: readonly unknown[],
+): unknown[] => [...added, ...(skills ?? [])];
+
+/**
+ * A GitHub repo as the run clones it: "https://github.com/o/r", "github.com/o/r(.git)" or "o/r" →
+ * "https://github.com/o/r"; null when it isn't one (skill_repo.parse_github_repo).
+ */
+export function githubRepoUrl(text: string): string | null {
+  const m =
+    /^(?:(?:https?:\/\/)?(?:www\.)?github\.com\/)?([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9._-]{1,100}?)(?:\.git)?\/?$/.exec(
+      text.trim(),
+    );
+  if (!m || m[2] === "." || m[2] === "..") return null;
+  return `https://github.com/${m[1]}/${m[2]}`;
+}
+
+/**
+ * PANEL-89: a repo source. The run needs a ref (node_skills pins it), so a blank Version is "main";
+ * "Only these skills" is a comma list of globs (blank: every skill in the repo).
+ */
+export function repoSkill(url: string, version: string, only: string): SkillRef {
+  const filter = parseTriggers(only).join(", ");
+  return { type: "repo", url, ref: version.trim() || "main", ...(filter ? { filter } : {}) };
+}
+
+/** PANEL-86: a skill written on this agent (a trigger mode carries its words). */
+export function inlineSkill(
+  name: string,
+  content: string,
+  mode: SkillMode,
+  triggers: string[],
+): SkillRef {
+  return {
+    type: "inline",
+    name: name.trim(),
+    content,
+    mode,
+    ...(mode === "trigger" ? { triggers } : {}),
+  };
+}
+
+/**
+ * The names this agent's own and library skills go by, but the one at `except` (being edited): the
+ * run keeps only the first skill of a name, so a second one is worth a warning.
+ */
+export function takenNames(
+  skills: readonly unknown[] | null,
+  library: readonly SkillLibraryItem[] | null,
+  except?: number,
+): Set<string> {
+  return new Set(
+    skillRows(skills, library)
+      .filter(
+        (r) => r.index !== except && (r.custom || library?.some((item) => item.id === r.libraryId)),
+      )
+      .map((r) => r.name),
+  );
+}
+
+/** PANEL-87: a preset joins as a reference to its library copy, listed as "Agent decides". */
+export const presetRef = (libraryId: string, key: string): SkillRef => ({
+  type: "library",
+  id: libraryId,
+  origin: `preset:${key}`,
+  mode: "agent",
+});
+
+/** The library items this agent already references. */
+export const referencedLibraryIds = (skills: readonly unknown[] | null): Set<string> =>
+  new Set(
+    (skills ?? [])
+      .map(asRef)
+      .filter((s) => s.type === "library")
+      .map((s) => (s as { id: string }).id),
+  );
+
 /**
  * PANEL-103: on Tvashtr Desktop an agent whose model runs on a subscription gets its skills folded
  * into its instructions, but no tools, Domains or rules files (team_run `_desktop_instruction`).

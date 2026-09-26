@@ -15,6 +15,9 @@ export function SubView({
   onBack,
   children,
   actions,
+  note,
+  backLabel = "Back",
+  gap = 12,
 }: {
   title: string;
   /** The title's id, for a field inside to be labelled by it. */
@@ -24,6 +27,11 @@ export function SubView({
   children: ReactNode;
   /** The footer's buttons, right-aligned. */
   actions: ReactNode;
+  /** A line on the footer's left ("Adds to this agent. Save to keep it."). */
+  note?: ReactNode;
+  backLabel?: string;
+  /** The space between the sheet's rows (the design varies it per sheet). */
+  gap?: number;
 }) {
   const backRef = useRef<HTMLButtonElement>(null);
   // Opening a sheet moves the keyboard into it (unless something inside has already taken focus).
@@ -34,9 +42,15 @@ export function SubView({
   return (
     <div className="nd-sub" role="region" aria-label={title}>
       <div className="nd-sub__body">
-        <div className="nd-sub__stack">
+        <div className="nd-sub__stack" style={{ gap }}>
           <div className="nd-sub__head">
-            <IconButton ref={backRef} size="sm" aria-label="Back" title="Back" onClick={onBack}>
+            <IconButton
+              ref={backRef}
+              size="sm"
+              aria-label={backLabel}
+              title={backLabel}
+              onClick={onBack}
+            >
               <ChevronLeft size={16} strokeWidth={1.6} />
             </IconButton>
             <span id={titleId} className="nd-sub__title">
@@ -46,7 +60,14 @@ export function SubView({
           {children}
         </div>
       </div>
-      <footer className="nd-sub__foot">{actions}</footer>
+      {note ? (
+        <footer className="nd-sub__foot nd-sub__foot--note">
+          <span className="nd-sub__note">{note}</span>
+          <div className="nd-sub__actions">{actions}</div>
+        </footer>
+      ) : (
+        <footer className="nd-sub__foot">{actions}</footer>
+      )}
     </div>
   );
 }

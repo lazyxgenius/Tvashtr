@@ -136,7 +136,13 @@ export function SkillsPanel({
               onSelect: () => onAdd(o.kind),
             }))}
             trigger={(props) => (
-              <Button variant="secondary" size="sm" className="nd-btn-flush" {...props}>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="nd-btn-flush"
+                data-add-skill
+                {...props}
+              >
                 <Plus size={13} strokeWidth={1.6} aria-hidden />
                 <span>Add skill</span>
               </Button>

@@ -3,9 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   desktopSubscriptionNote,
   followsRules,
+  githubRepoUrl,
+  inlineSkill,
   parseTriggers,
+  presetRef,
   repoName,
+  repoSkill,
   skillRows,
+  takenNames,
+  withAdded,
   withMode,
   withRules,
   withoutSkill,
@@ -97,5 +103,59 @@ describe("nodeSkills", () => {
       desktopSubscriptionNote("xai/grok-4.7", { byok: new Set(["xai"]), subs: {} }, true),
     ).toBeNull();
     expect(desktopSubscriptionNote("openai/gpt-4o-mini", cover, true)).toBeNull();
+  });
+});
+
+describe("adding skills (G8)", () => {
+  it("puts new skills first", () => {
+    expect(withAdded(null, [{ type: "project_rules" }])).toEqual([{ type: "project_rules" }]);
+    expect(withAdded([SKILLS[0]], [SKILLS[3]])).toEqual([SKILLS[3], SKILLS[0]]);
+  });
+
+  it("reads a GitHub repo the way the run does", () => {
+    const url = "https://github.com/lazyxgenius/skills";
+    expect(githubRepoUrl(url)).toBe(url);
+    expect(githubRepoUrl(" github.com/lazyxgenius/skills.git/ ")).toBe(url);
+    expect(githubRepoUrl("lazyxgenius/skills")).toBe(url);
+    expect(githubRepoUrl("https://gitlab.com/org/skills")).toBeNull();
+    expect(githubRepoUrl("skills")).toBeNull();
+    expect(githubRepoUrl("org/..")).toBeNull();
+  });
+
+  it("pins a blank Version to main and keeps the filter as a comma list", () => {
+    const url = "https://github.com/org/skills";
+    expect(repoSkill(url, " ", "")).toEqual({ type: "repo", url, ref: "main" });
+    expect(repoSkill(url, "v1.2", " review-*,pytest-* , ")).toEqual({
+      type: "repo",
+      url,
+      ref: "v1.2",
+      filter: "review-*, pytest-*",
+    });
+  });
+
+  it("writes a custom skill with its words only when triggered", () => {
+    expect(inlineSkill(" a ", "# A", "always", ["x"])).toEqual({
+      type: "inline",
+      name: "a",
+      content: "# A",
+      mode: "always",
+    });
+    expect(inlineSkill("a", "# A", "trigger", ["x"]).triggers).toEqual(["x"]);
+  });
+
+  it("knows the custom and library names already taken, but the one being edited", () => {
+    expect([...takenNames(SKILLS, LIBRARY)]).toEqual(["house-style", "security-checklist"]);
+    expect([...takenNames(SKILLS, LIBRARY, 0)]).toEqual(["security-checklist"]);
+    // Unknown library: only the custom names are known.
+    expect([...takenNames(SKILLS, null)]).toEqual(["house-style"]);
+  });
+
+  it("adds a preset as an Agent decides reference that remembers its preset", () => {
+    expect(presetRef("s-tdd", "tdd")).toEqual({
+      type: "library",
+      id: "s-tdd",
+      origin: "preset:tdd",
+      mode: "agent",
+    });
   });
 });

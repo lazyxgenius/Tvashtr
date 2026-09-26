@@ -365,3 +365,71 @@
   line-height: 1.6;
   color: var(--ink-500);
 }
+
+/* ---- Add-skill sheets (Web-AddSkill, Panel-FromRepo, Flow-Presets-2) ---- */
+.nd-skill-form__mode {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nd-skill-form__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.nd-skill-form__hint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-skill-form__warn {
+  color: #8a5a14;
+}
+.nd-pick {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  background: var(--surface-card);
+  cursor: pointer;
+}
+.nd-pick--on {
+  border-color: var(--coral-200);
+  background: var(--coral-100);
+}
+.nd-pick--added {
+  cursor: default;
+}
+.nd-pick__title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.nd-pick__desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-pick__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.nd-pick__none,
+.nd-pick__problem {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-pick__problem {
+  color: #8f3b2f;
+}

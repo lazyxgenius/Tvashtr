@@ -1443,7 +1443,6 @@
 .nd-sub__stack {
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 .nd-sub__head {
   display: flex;
@@ -1474,6 +1473,21 @@
   padding: 12px 20px;
   border-top: 1px solid var(--border-hairline);
   background: var(--surface-card);
+}
+.nd-sub__foot--note {
+  justify-content: space-between;
+  gap: 12px;
+}
+.nd-sub__note {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-sub__actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ---- Output format editor ---- */
