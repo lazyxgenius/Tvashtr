@@ -8,9 +8,9 @@ import { registerFresh } from "./_home";
 import { seedProviderKeys } from "./_keys";
 
 // Live FE proof for the authoring-view "last run" brief (Option A / M2): run a real review_loop, then
-// return to the AUTHORING view, click the PM (thinker) node, and assert its TeamNodePanel surfaces
-// the per-node "Last run" brief ("Drafted the spec from the idea.") + a relative-time provenance tag
-// — i.e. the cloned_from_node_id linkage + the authoring read + the view-switch re-fetch all work.
+// return to the AUTHORING view, click the PM (thinker) node, and assert its drawer's Runs tab shows
+// the per-node "Last run" card ("Drafted the spec from the idea.", "Round 1 · <time>") — i.e. the
+// cloned_from_node_id linkage + the node history read + the view-switch re-fetch all work.
 // Targeted selectors + an element screenshot (NOT a whole-tree snapshot — the React Flow a11y tree
 // wedges the MCP snapshot). Revamp round 1: the team comes from Home's New team dialog and the run
 // is launched through Home's composer (the canvas's "Run this team" opens it), then "Open run".
@@ -85,15 +85,15 @@ test("authoring-brief: a run's PM brief surfaces in the authoring node panel aft
   // 4. Click the PM (thinker) authored node -> its authoring node panel opens.
   await expect(page.locator(`[data-id="${pmId}"]`).first()).toBeVisible({ timeout: 30_000 });
   await page.locator(`[data-id="${pmId}"]`).first().click();
-  const panel = page.getByLabel("Product manager editor");
+  const panel = page.getByRole("complementary", { name: "Product manager settings" });
   await expect(panel).toBeVisible({ timeout: 30_000 });
 
-  // 5. The "Last run" section shows the PM's first-thinker brief + a relative-time provenance tag.
-  await expect(panel.getByText("Drafted the spec from the idea.")).toBeVisible({ timeout: 30_000 });
-  const whenTag = panel.locator(".tv-lastrun__when");
-  await expect(whenTag).toBeVisible();
-  await expect(whenTag).toContainText("ran"); // "ran just now" / "ran 2m ago" / …
-  console.log("[authoring-brief-e2e] authoring PM panel shows the last-run brief + provenance");
+  // 5. The Runs tab's "Last run" card shows the PM's first-thinker brief + its round and time.
+  await panel.getByRole("tab", { name: "Runs" }).click();
+  const card = panel.getByRole("region", { name: "Last run" });
+  await expect(card.getByText("Drafted the spec from the idea.")).toBeVisible({ timeout: 30_000 });
+  await expect(card.getByText(/^Round 1 · /)).toBeVisible(); // "Round 1 · just now" / "· 2m ago"
+  console.log("[authoring-brief-e2e] authoring PM drawer's Runs tab shows the last-run card");
 
   // 6. Screenshot the authoring panel as the self-sign-off artifact.
   const shot = path.join(SHOTS_DIR, "authoring-pm-last-run.png");

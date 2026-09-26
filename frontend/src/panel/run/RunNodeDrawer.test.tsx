@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { GraphNode, NodeInvocation, NodeMemoryRow, RunRow } from "../lib/api";
-import { SidePanel } from "./SidePanel";
+import type { GraphNode, NodeInvocation, NodeMemoryRow, RunRow } from "../../lib/api";
+import { RunNodeDrawer } from "./RunNodeDrawer";
 
 // Option A: the run-view panel is keyed on the node's KIND (not a hardcoded role) and surfaces a
 // uniform "Last run" brief (the per-node `outcome_detail`) for ANY agent/thinker node — incl. a
@@ -37,7 +37,37 @@ function inv(over: Partial<NodeInvocation> & Pick<NodeInvocation, "iteration">):
   };
 }
 
-describe("SidePanel — generalized 'Last run' brief by node kind (Option A)", () => {
+describe("RunNodeDrawer — the agent drawer's shell (Q20)", () => {
+  it("names the node's run drawer and badges its last round, access and model", () => {
+    const onClose = vi.fn();
+    render(
+      <RunNodeDrawer
+        node={gnode({
+          id: "n-rev",
+          role_name: "reviewer",
+          kind: "agent",
+          model: "xai/grok-4.7",
+          edits_allowed: false,
+          config: { title: "Checker" },
+          invocations: [inv({ iteration: 1, outcome: "changes_requested" })],
+        })}
+        runId={null}
+        run={null}
+        workflowStatus={null}
+        onClose={onClose}
+      />,
+    );
+    const drawer = within(screen.getByRole("complementary", { name: "Checker in this run" }));
+    expect(drawer.getByTitle("See the last run")).toHaveTextContent(/^Changes requested/);
+    expect(drawer.getByText("Read-only")).toBeInTheDocument();
+    expect(drawer.getByText("grok-4.7")).toBeInTheDocument();
+    expect(drawer.queryByRole("tab")).toBeNull();
+    fireEvent.click(drawer.getByRole("button", { name: "Close panel" }));
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("RunNodeDrawer — generalized 'Last run' brief by node kind (Option A)", () => {
   it("renders a CUSTOM thinker's brief + the PRD body (NOT an empty event feed)", () => {
     const node = gnode({
       id: "n-arch",
@@ -52,7 +82,13 @@ describe("SidePanel — generalized 'Last run' brief by node kind (Option A)", (
       ],
     });
     const { container } = render(
-      <SidePanel node={node} runId={null} run={null} workflowStatus={null} onClose={() => {}} />,
+      <RunNodeDrawer
+        node={node}
+        runId={null}
+        run={null}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
     );
     // the custom role is title-cased into the header
     expect(screen.getByText("Architect")).toBeInTheDocument();
@@ -72,7 +108,13 @@ describe("SidePanel — generalized 'Last run' brief by node kind (Option A)", (
       invocations: [inv({ iteration: 1, outcome: "built", outcome_detail: brief })],
     });
     const { container } = render(
-      <SidePanel node={node} runId={null} run={null} workflowStatus={null} onClose={() => {}} />,
+      <RunNodeDrawer
+        node={node}
+        runId={null}
+        run={null}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
     );
     expect(screen.getByText("Engineer")).toBeInTheDocument();
     expect(screen.getByText(brief)).toBeInTheDocument();
@@ -93,7 +135,13 @@ describe("SidePanel — generalized 'Last run' brief by node kind (Option A)", (
       ],
     });
     const { container } = render(
-      <SidePanel node={node} runId={null} run={null} workflowStatus={null} onClose={() => {}} />,
+      <RunNodeDrawer
+        node={node}
+        runId={null}
+        run={null}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
     );
     const round1 = screen.getByText("Round 1");
     const round2 = screen.getByText("Round 2");
@@ -131,13 +179,13 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
   };
 }
 
-describe("SidePanel — F1c status-based subtitle (Decision 2)", () => {
+describe("RunNodeDrawer — F1c status-based subtitle (Decision 2)", () => {
   it("maps the node's live run status → the subtitle (Working now / Finished / Not reached yet)", () => {
     // A running node in an in-flight run → "Working now". runId=null keeps the EventFeed body inert
     // (no network) — the subtitle is a pure function of node.status + run + workflowStatus.
     const running = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "running" });
     const { rerender } = render(
-      <SidePanel
+      <RunNodeDrawer
         node={running}
         runId={null}
         run={runRow({ status: "running" })}
@@ -149,7 +197,7 @@ describe("SidePanel — F1c status-based subtitle (Decision 2)", () => {
 
     // A completed node → "Finished" (done is sticky, independent of the run).
     rerender(
-      <SidePanel
+      <RunNodeDrawer
         node={gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "done" })}
         runId={null}
         run={null}
@@ -161,7 +209,7 @@ describe("SidePanel — F1c status-based subtitle (Decision 2)", () => {
 
     // An idle / never-reached node → "Not reached yet" (it did not fail — it was simply not reached).
     rerender(
-      <SidePanel
+      <RunNodeDrawer
         node={gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "idle" })}
         runId={null}
         run={null}
@@ -176,7 +224,7 @@ describe("SidePanel — F1c status-based subtitle (Decision 2)", () => {
 // ---- M-ledger C6: the run-view panel surfaces each worker round's cost + context-manifest (via the
 // generalized "Last run" brief), and passes the selected node into EventFeed so the feed scopes to
 // it. Re-pointed (not gutted) — the Option A / Decision-2 tests above stand. ----
-describe("SidePanel — C6 per-round ledger + node-scoped feed", () => {
+describe("RunNodeDrawer — C6 per-round ledger + node-scoped feed", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("surfaces a worker round's per-round cost + context-manifest in the 'Last run' brief", () => {
@@ -208,7 +256,13 @@ describe("SidePanel — C6 per-round ledger + node-scoped feed", () => {
       ],
     });
     const { container } = render(
-      <SidePanel node={node} runId={null} run={null} workflowStatus={null} onClose={() => {}} />,
+      <RunNodeDrawer
+        node={node}
+        runId={null}
+        run={null}
+        workflowStatus={null}
+        onClose={() => {}}
+      />,
     );
     expect(screen.getByText("1,240 in / 320 out · $0.0041")).toBeInTheDocument();
     expect(container.querySelector(".tv-manifest")).not.toBeNull();
@@ -249,7 +303,7 @@ describe("SidePanel — C6 per-round ledger + node-scoped feed", () => {
     );
     const node = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "done" });
     render(
-      <SidePanel
+      <RunNodeDrawer
         node={node}
         runId="r1"
         run={runRow({ status: "completed" })}
@@ -266,7 +320,7 @@ describe("SidePanel — C6 per-round ledger + node-scoped feed", () => {
 
 // ---- Mode A ("Ask the node"): the run-view drawer gains an Ask tab on BOTH a worker (agent) and a
 // thinker (completion) node, but ONLY once the node has a recorded run (invocations.length > 0). ----
-describe("SidePanel — Ask tab (Mode A) wiring by kind", () => {
+describe("RunNodeDrawer — Ask tab (Mode A) wiring by kind", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -295,7 +349,7 @@ describe("SidePanel — Ask tab (Mode A) wiring by kind", () => {
       invocations: [inv({ iteration: 1, outcome: "built", outcome_detail: "did it" })],
     });
     render(
-      <SidePanel
+      <RunNodeDrawer
         node={node}
         runId="r1"
         run={runRow({ status: "completed" })}
@@ -315,7 +369,7 @@ describe("SidePanel — Ask tab (Mode A) wiring by kind", () => {
       invocations: [inv({ iteration: 1, outcome: "prd_written", outcome_detail: "drafted spec" })],
     });
     render(
-      <SidePanel
+      <RunNodeDrawer
         node={node}
         runId="r1"
         run={runRow({ status: "completed", pm_document_id: null })}
@@ -332,7 +386,7 @@ describe("SidePanel — Ask tab (Mode A) wiring by kind", () => {
     stubEmptyFetch();
     const node = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", invocations: [] });
     render(
-      <SidePanel
+      <RunNodeDrawer
         node={node}
         runId="r1"
         run={runRow({ status: "running" })}
@@ -346,7 +400,7 @@ describe("SidePanel — Ask tab (Mode A) wiring by kind", () => {
 
 // ---- M-memory S5b: the run-view drawer gains a Memory tab on BOTH a worker (Activity | Changes |
 // Ask | Memory) and a thinker (Spec | Ask | Memory), gated (like Ask) on the node having a run. ----
-describe("SidePanel — Memory tab (S5b) wiring by kind", () => {
+describe("RunNodeDrawer — Memory tab (S5b) wiring by kind", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   function memRow(over: Partial<NodeMemoryRow> = {}): NodeMemoryRow {
@@ -418,7 +472,7 @@ describe("SidePanel — Memory tab (S5b) wiring by kind", () => {
       ],
     });
     render(
-      <SidePanel
+      <RunNodeDrawer
         node={node}
         runId="r1"
         run={runRow({ status: "completed" })}
@@ -440,7 +494,7 @@ describe("SidePanel — Memory tab (S5b) wiring by kind", () => {
       invocations: [inv({ iteration: 1, outcome: "prd_written", outcome_detail: "drafted spec" })],
     });
     render(
-      <SidePanel
+      <RunNodeDrawer
         node={node}
         runId="r1"
         run={runRow({ status: "completed", pm_document_id: null })}
@@ -457,7 +511,7 @@ describe("SidePanel — Memory tab (S5b) wiring by kind", () => {
     stubMemFetch([], []);
     const node = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", invocations: [] });
     render(
-      <SidePanel
+      <RunNodeDrawer
         node={node}
         runId="r1"
         run={runRow({ status: "running" })}

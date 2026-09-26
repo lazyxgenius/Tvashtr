@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
  */
 export function NodeDrawer({
   name,
+  label,
   header,
   tabs,
   footer,
@@ -19,6 +20,8 @@ export function NodeDrawer({
   toast,
 }: {
   name: string;
+  /** The aside's accessible name (default "<Name> settings"). */
+  label?: string;
   header: ReactNode;
   tabs?: ReactNode;
   footer?: ReactNode;
@@ -33,7 +36,7 @@ export function NodeDrawer({
   toast?: ReactNode;
 }) {
   return (
-    <aside className="nd-drawer nd-drawer--dock" aria-label={`${name} settings`}>
+    <aside className="nd-drawer nd-drawer--dock" aria-label={label ?? `${name} settings`}>
       {header}
       {tabs}
       {/* Under a sub-view the body stays mounted (hidden), so Back finds it as it was left. */}

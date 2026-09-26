@@ -11,7 +11,7 @@ import { RunBanner } from "./components/RunBanner";
 import { RunWarnings } from "./components/RunWarnings";
 import { TasksDrawer } from "./components/TasksDrawer";
 import { NodeEditor } from "./panel/NodeEditor";
-import { SidePanel } from "./panel/SidePanel";
+import { RunNodeDrawer } from "./panel/run/RunNodeDrawer";
 import type { LeaveGuard } from "./panel/useUnsavedGuard";
 import {
   acknowledgeTask,
@@ -173,10 +173,6 @@ export default function App({
     else proceed();
   }, []);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
-  // F1c: the dock⇄pop-up viewing preference — SESSION-STICKY. It survives closing/reselecting a node
-  // and the author↔run switch (it is NOT part of resetRunState); a reload starts docked. NOT persisted
-  // to the backend (no field — the wall).
-  const [panelMode, setPanelMode] = useState<"drawer" | "modal">("drawer");
   // Credential preflight for Run (UX): null until the first successful providers load so we
   // don't flash-disable the CTA; once loaded, missing BYOK (and no Desktop subscription cover)
   // blocks launch and points at Engines.
@@ -403,11 +399,6 @@ export default function App({
     },
     [currentTeamId],
   );
-
-  // F1c: flip the sticky dock⇄pop-up viewing mode (drawer ⇄ modal).
-  const togglePanelMode = useCallback(() => {
-    setPanelMode((m) => (m === "drawer" ? "modal" : "drawer"));
-  }, []);
 
   // Author-canvas node selection (a card-body click / the pane-click deselect / the drawer's Close).
   const handleSelectNodeId = useCallback(
@@ -764,13 +755,11 @@ export default function App({
               />
             )
           : selectedRunNode && (
-              <SidePanel
+              <RunNodeDrawer
                 node={selectedRunNode}
                 runId={runId}
                 run={run}
                 workflowStatus={workflowStatus}
-                panelMode={panelMode}
-                onTogglePanelMode={togglePanelMode}
                 onClose={() => setSelectedRunNodeId(null)}
               />
             )}
