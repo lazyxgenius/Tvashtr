@@ -8,6 +8,11 @@
  * A failed first load is shown (`status: "error"` → "Couldn’t load your engines …" + Retry), never
  * swallowed; a failed refresh keeps the data already on screen (the header shows the backend as
  * unreachable).
+ *
+ * A refresh reads several things and applies them together, so it never undoes a change that
+ * landed while it was in flight: keys saved or removed, and any subscription status set since it
+ * started (a bridge push, an action's answer), win over what it read. An older refresh that settles
+ * after a newer one is dropped.
  */
 import {
   type ReactNode,
@@ -79,6 +84,22 @@ const INITIAL: EnginesState = {
 
 const EnginesContext = createContext<EnginesData | null>(null);
 
+type SubVersions = Partial<Record<string, number>>;
+
+/** `fetched`, except the subscriptions set (by `setSubscription`) since `since` was taken: those
+ *  keep the status on screen. */
+function mergeSubs(
+  fetched: SubscriptionStatus[],
+  onScreen: SubscriptionStatus[],
+  since: SubVersions,
+  now: SubVersions,
+): SubscriptionStatus[] {
+  return fetched.map((s) => {
+    if ((now[s.provider] ?? 0) === (since[s.provider] ?? 0)) return s;
+    return onScreen.find((o) => o.provider === s.provider) ?? s;
+  });
+}
+
 function inputsOf(s: EnginesState, surface: Surface): EngineInputs {
   return {
     directory: s.config.directory,
@@ -97,6 +118,11 @@ export function EnginesDataProvider({ children }: { children: ReactNode }) {
   const mounted = useRef(true);
   const current = useRef(state);
   current.current = state;
+  // Bumped by every setKeys / setSubscription, so a refresh can tell what changed under it.
+  const keysVersion = useRef(0);
+  const subVersions = useRef<SubVersions>({});
+  const refreshSeq = useRef(0);
+  const appliedSeq = useRef(0);
 
   const apply = useCallback(
     (next: EnginesState) => {
@@ -108,6 +134,9 @@ export function EnginesDataProvider({ children }: { children: ReactNode }) {
   );
 
   const refresh = useCallback(async () => {
+    const seq = ++refreshSeq.current;
+    const keysAt = keysVersion.current;
+    const subsAt = { ...subVersions.current };
     const [config, keys, usage, mirror, live] = await Promise.allSettled([
       getEnginesConfig(),
       listKeys(),
@@ -128,18 +157,23 @@ export function EnginesDataProvider({ children }: { children: ReactNode }) {
       if (prev.status !== "ready") apply({ ...prev, status: "error" });
       return;
     }
+    // A newer refresh already put newer data on screen.
+    if (seq < appliedSeq.current) return;
+    appliedSeq.current = seq;
+    const prev = current.current;
     apply({
       status: "ready",
       config: config.value,
-      keys: keys.value,
+      keys: keysVersion.current === keysAt ? keys.value : prev.keys,
       usage: usage.value,
-      subs,
-      runner: mirror.status === "fulfilled" ? mirror.value.runner : current.current.runner,
+      subs: mergeSubs(subs, prev.subs, subsAt, subVersions.current),
+      runner: mirror.status === "fulfilled" ? mirror.value.runner : prev.runner,
     });
   }, [apply]);
 
   const refreshRunner = useCallback(async () => {
     try {
+      const subsAt = { ...subVersions.current };
       const mirror = await getSubscriptions();
       const prev = current.current;
       if (prev.status !== "ready") return;
@@ -147,7 +181,10 @@ export function EnginesDataProvider({ children }: { children: ReactNode }) {
         ...prev,
         runner: mirror.runner,
         // Desktop keeps the live bridge status; the website shows the mirror (ENG-81).
-        subs: surface === "desktop" ? prev.subs : mirror.subscriptions,
+        subs:
+          surface === "desktop"
+            ? prev.subs
+            : mergeSubs(mirror.subscriptions, prev.subs, subsAt, subVersions.current),
       });
     } catch {
       /* the header already shows the backend as unreachable */
@@ -168,6 +205,7 @@ export function EnginesDataProvider({ children }: { children: ReactNode }) {
 
   const setSubscription = useCallback(
     (status: SubscriptionStatus) => {
+      subVersions.current[status.provider] = (subVersions.current[status.provider] ?? 0) + 1;
       const prev = current.current;
       apply({
         ...prev,
@@ -187,7 +225,13 @@ export function EnginesDataProvider({ children }: { children: ReactNode }) {
     });
   }, [setSubscription]);
 
-  const setKeys = useCallback((keys: SavedKey[]) => apply({ ...current.current, keys }), [apply]);
+  const setKeys = useCallback(
+    (keys: SavedKey[]) => {
+      keysVersion.current += 1;
+      apply({ ...current.current, keys });
+    },
+    [apply],
+  );
 
   const value = useMemo<EnginesData>(
     () => ({
