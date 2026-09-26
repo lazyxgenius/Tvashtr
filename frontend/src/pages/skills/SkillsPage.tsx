@@ -1,22 +1,27 @@
-import { Plus, Search, Sparkle, TriangleAlert } from "lucide-react";
+import { Check, Layers, Pencil, Plus, Search, Sparkle, Trash, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { Button, Input, Tabs, useToast } from "../../design-system/components";
+import { Button, Input, type MenuEntry, Tabs, useToast } from "../../design-system/components";
 import { ApiError } from "../../lib/api";
 import {
   type Skill,
+  type SkillAgentsResult,
   type SkillPreset,
   createSkill,
+  duplicateSkill,
   listSkillPresets,
   listSkills,
 } from "../../lib/api/skills";
 import { navigate } from "../../lib/nav";
 import { publishBadges } from "../../lib/workspaceStatus";
 import { GithubIcon } from "../home/homeIcons";
+import { AddFromGithubSheet } from "./AddFromGithubSheet";
+import { DeleteSkillDialog } from "./DeleteSkillDialog";
+import { SkillAgentsDialog } from "./SkillAgentsDialog";
 import { PresetPreviewDialog, SkillPresetsGrid } from "./SkillPresets";
 import { SkillsEmptyState } from "./SkillsEmptyState";
 import { SkillsTable } from "./SkillsTable";
-import { matchesQuery, presetInLibrary, sortByName } from "./skillsModel";
+import { matchesQuery, plural, presetInLibrary, sortByName } from "./skillsModel";
 import "./skills.css";
 
 export type SkillsView = "mine" | "presets";
@@ -32,7 +37,8 @@ const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message :
  * Toolkit › Skills (Toolkit-Skills, Toolkit-SkillPresets; flows TkF-SkillTabs, SkillsEmpty,
  * Presets): the page header with Add from GitHub / New skill, pill tabs "Your skills N" / "Presets"
  * (the address carries the tab), the client-side search, the skills table and its empty states,
- * and the free presets with their preview dialog.
+ * the free presets with their preview dialog, each row's ⋯ menu (Edit, Duplicate, Turn on for
+ * agents…, Delete skill — TkF-SkillMenu), and Add from GitHub (TkF-FromRepo).
  */
 export function SkillsPage({ view }: { view: SkillsView }) {
   const toast = useToast();
@@ -41,6 +47,11 @@ export function SkillsPage({ view }: { view: SkillsView }) {
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
   const [preview, setPreview] = useState<SkillPreset | null>(null);
+  const [deleting, setDeleting] = useState<Skill | null>(null);
+  const [agentsFor, setAgentsFor] = useState<Skill | null>(null);
+  const [fromGithub, setFromGithub] = useState(false);
+  // Rows the last import added: tinted until the next one (TkF-FromRepo-3).
+  const [justAdded, setJustAdded] = useState<ReadonlySet<string>>(new Set());
 
   const loadSkills = useCallback(() => {
     setSkills({ state: "loading" });
@@ -98,6 +109,83 @@ export function SkillsPage({ view }: { view: SkillsView }) {
   const openSkill = (s: Skill) => navigate({ page: "skill", skillId: s.id });
   const newSkill = () => navigate({ page: "skill", skillId: "new" });
 
+  /** The library after a change; the nav badge follows it. */
+  const setLibrary = (data: Skill[]) => {
+    setSkills({ state: "ready", data });
+    publishBadges({ skills: data.length });
+  };
+
+  const duplicate = async (s: Skill) => {
+    try {
+      const copy = await duplicateSkill(s.id);
+      setLibrary([...(library ?? []), copy]);
+      navigate({ page: "skill", skillId: copy.id });
+    } catch (e) {
+      toast({ message: errorText(e), tone: "error" });
+    }
+  };
+
+  const onDeleted = (s: Skill) => {
+    setDeleting(null);
+    setLibrary((library ?? []).filter((x) => x.id !== s.id));
+    toast({ message: `${s.name} deleted.` });
+  };
+
+  const onAgentsSaved = (s: Skill, res: SkillAgentsResult) => {
+    setAgentsFor(null);
+    setLibrary(
+      (library ?? []).map((x) =>
+        x.id === s.id ? { ...x, usage: { agents: res.agent_count, teams: res.team_count } } : x,
+      ),
+    );
+    toast({
+      message:
+        res.agent_count > 0
+          ? `${s.name} is on for ${plural(res.agent_count, "agent")}.`
+          : `${s.name} is off for every agent.`,
+    });
+  };
+
+  const onImported = (added: Skill[], skipped: string[], repo: string) => {
+    setFromGithub(false);
+    const ids = new Set(added.map((a) => a.id));
+    setLibrary([...(library ?? []).filter((x) => !ids.has(x.id)), ...added]);
+    setJustAdded(ids);
+    toast({
+      message:
+        added.length > 0
+          ? `${plural(added.length, "skill")} added from ${repo}.`
+          : `Nothing new: ${skipped.length === 1 ? "that skill is" : "those skills are"} already in your skills.`,
+    });
+  };
+
+  const menuFor = (s: Skill): MenuEntry[] => {
+    const icon = { size: 15, strokeWidth: 1.6, "aria-hidden": true } as const;
+    return [
+      { key: "edit", label: "Edit", icon: <Pencil {...icon} />, onSelect: () => openSkill(s) },
+      {
+        key: "duplicate",
+        label: "Duplicate",
+        icon: <Layers {...icon} />,
+        onSelect: () => void duplicate(s),
+      },
+      {
+        key: "agents",
+        label: "Turn on for agents…",
+        icon: <Check {...icon} />,
+        onSelect: () => setAgentsFor(s),
+      },
+      "separator",
+      {
+        key: "delete",
+        label: "Delete skill",
+        icon: <Trash {...icon} />,
+        danger: true,
+        onSelect: () => setDeleting(s),
+      },
+    ];
+  };
+
   return (
     <>
       <div className="pg-head">
@@ -110,7 +198,11 @@ export function SkillsPage({ view }: { view: SkillsView }) {
         </div>
         <div className="pg-head__actions">
           {view === "mine" && (
-            <Button variant="secondary" className="sk-btn-inline">
+            <Button
+              variant="secondary"
+              className="sk-btn-inline"
+              onClick={() => setFromGithub(true)}
+            >
               <GithubIcon size={15} />
               <span>Add from GitHub</span>
             </Button>
@@ -154,6 +246,8 @@ export function SkillsPage({ view }: { view: SkillsView }) {
           onRetry={loadSkills}
           onOpen={openSkill}
           onNew={newSkill}
+          menuFor={menuFor}
+          highlight={justAdded}
         />
       ) : (
         <PresetsTab
@@ -177,6 +271,25 @@ export function SkillsPage({ view }: { view: SkillsView }) {
         onAdd={(p) => void addPreset(p)}
         onClose={() => setPreview(null)}
       />
+      {deleting && (
+        <DeleteSkillDialog
+          key={deleting.id}
+          skill={deleting}
+          onCancel={() => setDeleting(null)}
+          onDeleted={onDeleted}
+        />
+      )}
+      {agentsFor && (
+        <SkillAgentsDialog
+          key={agentsFor.id}
+          skill={agentsFor}
+          onClose={() => setAgentsFor(null)}
+          onSaved={(res) => onAgentsSaved(agentsFor, res)}
+        />
+      )}
+      {fromGithub && (
+        <AddFromGithubSheet onClose={() => setFromGithub(false)} onAdded={onImported} />
+      )}
     </>
   );
 }
@@ -189,6 +302,8 @@ function YourSkills({
   onRetry,
   onOpen,
   onNew,
+  menuFor,
+  highlight,
 }: {
   skills: Load<Skill[]>;
   rows: Skill[];
@@ -197,6 +312,8 @@ function YourSkills({
   onRetry: () => void;
   onOpen: (s: Skill) => void;
   onNew: () => void;
+  menuFor: (s: Skill) => MenuEntry[];
+  highlight: ReadonlySet<string>;
 }) {
   if (skills.state === "loading") {
     return (
@@ -261,7 +378,7 @@ function YourSkills({
       />
     );
   }
-  return <SkillsTable skills={rows} onOpen={onOpen} />;
+  return <SkillsTable skills={rows} onOpen={onOpen} menuFor={menuFor} highlight={highlight} />;
 }
 
 function PresetsTab({

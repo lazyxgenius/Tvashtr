@@ -32,6 +32,17 @@
   padding: 0;
   overflow: hidden;
 }
+/* The table's card lets a row's ⋯ menu hang below it (TkF-SkillMenu-1); the last row's corner cells
+   carry the card's radius instead, so a hover or tint never pokes out of the corners. */
+.sk-card--table {
+  overflow: visible;
+}
+.sk-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 15px;
+}
+.sk-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 15px;
+}
 .sk-table {
   width: 100%;
   border-collapse: collapse;
@@ -58,6 +69,35 @@
 }
 .sk-row:hover td {
   background: var(--surface-sunk);
+}
+/* Just added (TkF-FromRepo-3, TkF-NewSkill-5). */
+.sk-row--new td,
+.sk-row--new:hover td {
+  background: var(--coral-100);
+}
+
+/* ---- Row ⋯ menu (TkF-SkillMenu-1): 240px of content inside 5px padding, items on the page's 1.6
+   line height, its right edge 19px past the button's and 3px below it. ---- */
+.sk-rowmenu .ds-menu {
+  width: 240px;
+  box-sizing: content-box;
+}
+.sk-rowmenu .ds-menu--end {
+  right: -19px;
+  top: calc(100% + 3px);
+}
+.sk-rowmenu .ds-menu__item {
+  line-height: 1.6;
+}
+.sk-rowmenu .ds-menu__icon {
+  color: inherit;
+}
+.sk-rowmenu .ds-menu__item--danger,
+.sk-rowmenu .ds-menu__item--danger .ds-menu__icon {
+  color: #8f3b2f;
+}
+.sk-rowmenu .ds-menu__sep {
+  background: var(--line-200);
 }
 .sk-skill {
   display: flex;
@@ -221,6 +261,127 @@
   line-height: 1.7;
   color: var(--ink-800);
   white-space: pre-wrap;
+}
+
+/* ---- Delete + Turn on for agents (TkF-SkillMenu-2; the picker mirrors TkF-AddTool-6: 500px of
+   content inside 20px padding, 14px between blocks) ---- */
+.ds-dialog.sk-agents {
+  padding: 20px;
+  gap: 14px;
+}
+.sk-agents__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: 22px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.sk-agents__lede {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.sk-agents__list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: min(440px, 55vh);
+  overflow-y: auto;
+}
+.sk-agents__team {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sk-agents__team-name {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.sk-agents__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line-200);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-900);
+  cursor: pointer;
+}
+/* Native checkboxes like the design's: the browser's own control font (the reset would give them
+   Inter — invisible, but it keeps the design and the app measuring alike). */
+.sk-agents__row input,
+.sk-found__row input {
+  font:
+    400 13.3333px Arial,
+    sans-serif;
+  /* The browser's default checkbox margin, which the reset zeroes. */
+  margin: 3px 3px 3px 4px;
+  accent-color: #d97757;
+}
+.sk-agents__tag {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.sk-agents__error,
+.sk-found__error {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--danger);
+}
+
+/* ---- Add from GitHub (TkF-FromRepo-1/2): fields 16px apart, the found list in a sunk card ---- */
+.sk-fromrepo {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.sk-found {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line-200);
+  background: var(--surface-page);
+}
+.sk-found__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: #52613e;
+}
+.sk-found__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-900);
+  cursor: pointer;
+}
+.sk-found__name {
+  font-family: var(--font-code);
+}
+.sk-found__note {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.sk-found__none {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-500);
 }
 
 .sk-sr-only {
