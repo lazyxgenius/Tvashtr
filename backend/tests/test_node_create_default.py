@@ -28,9 +28,11 @@ from tvashtr.main import app
 
 
 def test_account_default_model_picks_the_held_providers_slug():
-    # M-seat: the walk now takes a SEAT. Exact slugs, not "something is set" — and openai is here
-    # because it is the one held provider whose two seats resolve to DIFFERENT models, so a
-    # capability-blind regression cannot hide behind a provider that answers both the same.
+    # M-seat: the walk now takes a SEAT. Exact slugs, not "something is set" — and openrouter is
+    # here because it is the one provider whose two seats resolve to DIFFERENT models, so a
+    # capability-blind regression cannot hide behind a provider that answers both the same. (That
+    # was openai until 2026-09-26: its thinker moved from gpt-4o-mini to gpt-4.1-mini, the model
+    # its worker already runs, because gpt-4o-mini failed the entry node's REPORT.md job 4/4 live.)
     # nvidia_nim serves NO seat (deliberate catalogue rulings, see the catalogue comment): no worker
     # since 2026-09-25 (minimax-m3 retired, HTTP 410; gpt-oss-20b breaks the real worker loop) and
     # no thinker since 2026-09-26 (gpt-oss-20b hangs, HTTP 000 on every probe). A NIM-only account
@@ -39,7 +41,9 @@ def test_account_default_model_picks_the_held_providers_slug():
     assert account_default_model({"nvidia_nim"}, "thinker") is None
     assert account_default_model({"groq"}, "worker") == "groq/openai/gpt-oss-120b"
     assert account_default_model({"openai"}, "worker") == "openai/gpt-4.1-mini"
-    assert account_default_model({"openai"}, "thinker") == "openai/gpt-4o-mini"
+    assert account_default_model({"openai"}, "thinker") == "openai/gpt-4.1-mini"
+    assert account_default_model({"openrouter"}, "worker") == "openrouter/openai/gpt-4o-mini"
+    assert account_default_model({"openrouter"}, "thinker") == "openrouter/openai/gpt-4.1-mini"
 
 
 def test_account_default_model_none_when_no_mapped_provider():
@@ -166,7 +170,9 @@ def test_nim_plus_openai_account_stamps_every_seat_on_openai():
     assert catalogue_default("nvidia_nim", "worker") is None
     openai_thinker = catalogue_default("openai", "thinker")
     openai_worker = catalogue_default("openai", "worker")
-    assert openai_thinker == "openai/gpt-4o-mini"
+    # 2026-09-26: OpenAI's thinker is gpt-4.1-mini (gpt-4o-mini failed the entry node's REPORT.md
+    # job 4/4 live), so both seats now read the same slug — each is still asserted from ITS seat.
+    assert openai_thinker == "openai/gpt-4.1-mini"
     assert openai_worker == "openai/gpt-4.1-mini"
     assert by_role["pm"]["model"] == openai_thinker
     assert by_role["engineer"]["model"] == openai_worker

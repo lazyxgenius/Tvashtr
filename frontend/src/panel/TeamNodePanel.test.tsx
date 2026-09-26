@@ -1086,7 +1086,9 @@ describe("TeamNodePanel — edit-time model validation hint (soft, never blocks 
     // failure the seat split exists to prevent. The hint stays SOFT — Save is never blocked and
     // the field stays free text — but the user is told before the run instead of 30s into it.
     // This assertion is the reason the test above had to change rather than be deleted: the old
-    // expectation ("gpt-4o-mini on an engineer is fine") IS the defect.
+    // expectation ("gpt-4o-mini on an engineer is fine") IS the defect. (Since 2026-09-26 it is no
+    // thinker preset either — it failed the entry node's REPORT.md job 4/4 live — so the catalogue
+    // offers it for no openai seat, and the hint still shows.)
     render(
       <TeamNodePanel
         teamId="team-1"

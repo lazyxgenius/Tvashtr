@@ -213,19 +213,28 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
     # UNPROBED — the operator holds no OpenRouter key (its credits ran out, and the variable is gone
     # from ``.env``), so no gate could be run against it. Declaring ``None`` here would retire a
     # provider for every OTHER account on no evidence at all, which is a worse error than carrying a
-    # slug that the M-live launch pre-flight will catch the moment it does go dead. Left exactly as
-    # M-runnable seeded it, and it stays LAST in the preference order.
+    # slug that the M-live launch pre-flight will catch the moment it does go dead. It stays LAST in
+    # the preference order.
+    #
+    # THINKER moved to ``gpt-4.1-mini`` (2026-09-26), for the reason the ``openai`` entry below
+    # gives: since M-unify the thinker seat is the entry node, which runs the OpenHands agent loop
+    # and must write its deliverable to REPORT.md, and ``gpt-4o-mini`` failed that job in 4 of 4
+    # live runs (e62d9995, 69752d58, 185c6848, ae026ff5) — OpenRouter serves the same model, so it
+    # is no longer the thinker default or a thinker preset. ``openai/gpt-4.1-mini`` is listed in
+    # OpenRouter's public model catalogue with live endpoints (checked 2026-09-26); with no key, the
+    # gateway reaches OpenRouter and stops at its 401. The worker seat is unchanged.
     "openrouter": {
-        "thinker_default": "openrouter/openai/gpt-4o-mini",
+        "thinker_default": "openrouter/openai/gpt-4.1-mini",
         "worker_default": "openrouter/openai/gpt-4o-mini",
         "thinker_presets": [
-            "openrouter/openai/gpt-4o-mini",
+            "openrouter/openai/gpt-4.1-mini",
             "openrouter/meta-llama/llama-3.1-8b-instruct",
             "openrouter/google/gemini-flash-1.5",
         ],
         "worker_presets": ["openrouter/openai/gpt-4o-mini"],
         "label": "OpenRouter",
         "model_labels": {
+            "openrouter/openai/gpt-4.1-mini": "GPT-4.1 mini",
             "openrouter/openai/gpt-4o-mini": "GPT-4o mini",
             "openrouter/meta-llama/llama-3.1-8b-instruct": "Llama 3.1 8B Instruct",
             "openrouter/google/gemini-flash-1.5": "Gemini 1.5 Flash",
@@ -269,18 +278,25 @@ PROVIDER_CATALOGUE: dict[str, dict] = {
         "subscription": None,
         "byok_probed": True,
     },
-    # PROBED 2026-09-08. The two seats genuinely differ here, first-pass in preference order each:
-    # ``gpt-4.1-mini`` took the worker seat (W1-W4, 11s) and ``gpt-4o-mini`` the thinker seat
-    # (T1-T2, 1889 chars, 3/4 headings). Neither list carries the other's winner, because neither
-    # was probed in the other seat — an unprobed slug is exactly what this milestone removed.
+    # PROBED 2026-09-08: ``gpt-4.1-mini`` took the worker seat (W1-W4, 11s — W3 is a real agent step
+    # that writes a named file with exact contents) and ``gpt-4o-mini`` the thinker seat (T1-T2,
+    # 1889 chars, 3/4 headings).
+    #
+    # THINKER moved to ``gpt-4.1-mini`` (2026-09-26). The probe's thinker gates test ONE
+    # completion, but since M-unify the thinker seat is the ENTRY node, which runs the OpenHands
+    # agent loop and must write its deliverable to REPORT.md — the run fails without it.
+    # ``gpt-4o-mini`` failed that job in 4 of 4 live runs (e62d9995, 69752d58, 185c6848, ae026ff5):
+    # once it answered in chat, three times it ignored the report-only note and built the feature
+    # file itself. A model proven to fail the job is not offered, so it is no longer a thinker
+    # preset either. ``gpt-4.1-mini`` already drives the same loop as the worker, writing the file
+    # it is told to write.
     "openai": {
-        "thinker_default": "openai/gpt-4o-mini",
+        "thinker_default": "openai/gpt-4.1-mini",
         "worker_default": "openai/gpt-4.1-mini",
-        "thinker_presets": ["openai/gpt-4o-mini"],
+        "thinker_presets": ["openai/gpt-4.1-mini"],
         "worker_presets": ["openai/gpt-4.1-mini"],
         "label": "OpenAI",
         "model_labels": {
-            "openai/gpt-4o-mini": "GPT-4o mini",
             "openai/gpt-4.1-mini": "GPT-4.1 mini",
         },
         # Codex is a subscription for openai models, but Tvashtr Desktop cannot run nodes on it

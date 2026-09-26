@@ -70,10 +70,12 @@ Object.defineProperties(HTMLElement.prototype, {
 setProviderCatalogue([
   {
     provider: "openrouter",
-    thinker_default: "openrouter/openai/gpt-4o-mini",
+    // 2026-09-26: the thinker moved to gpt-4.1-mini (gpt-4o-mini failed the entry node's REPORT.md
+    // job 4/4 live); the worker seat is unchanged — mirrored exactly from the backend catalogue.
+    thinker_default: "openrouter/openai/gpt-4.1-mini",
     worker_default: "openrouter/openai/gpt-4o-mini",
     thinker_presets: [
-      "openrouter/openai/gpt-4o-mini",
+      "openrouter/openai/gpt-4.1-mini",
       "openrouter/meta-llama/llama-3.1-8b-instruct",
       "openrouter/google/gemini-flash-1.5",
     ],
@@ -91,9 +93,10 @@ setProviderCatalogue([
   },
   {
     provider: "openai",
-    thinker_default: "openai/gpt-4o-mini",
+    // 2026-09-26: the thinker moved to gpt-4.1-mini too, so both seats read the same slug.
+    thinker_default: "openai/gpt-4.1-mini",
     worker_default: "openai/gpt-4.1-mini",
-    thinker_presets: ["openai/gpt-4o-mini"],
+    thinker_presets: ["openai/gpt-4.1-mini"],
     worker_presets: ["openai/gpt-4.1-mini"],
   },
   {
