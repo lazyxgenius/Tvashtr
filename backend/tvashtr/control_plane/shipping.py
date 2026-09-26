@@ -42,9 +42,29 @@ def init_workspace_repo(workspace_dir: str) -> None:
 _OWN_FILES = ("REPORT.md", "REVIEW_VERDICT.json", "SPEC.md")
 
 
-def _own_files_to_leave_out(workspace_dir: str) -> list[str]:
-    tracked = set(_git(workspace_dir, "ls-files", "--", *_OWN_FILES, check=False).stdout.split())
-    return [name for name in _OWN_FILES if name not in tracked]
+_REMEMBER_FILE = "TVASHTR_REMEMBER.jsonl"
+
+
+def _ship_excludes(workspace_dir: str) -> list[str]:
+    """The ``git add`` exclude pathspecs for this ship. Git refuses an ``add`` whose pathspec names
+    an ignored file that exists, even as an exclude, so a file is only named when git would
+    otherwise stage it: Tvashtr's own files when they are untracked and not ignored (a greenfield
+    workspace's .gitignore already ignores them); the remember sidecar whenever it isn't ignored."""
+    stageable = set(
+        _git(
+            workspace_dir,
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--",
+            *_OWN_FILES,
+            check=False,
+        ).stdout.split()
+    )
+    names = [name for name in _OWN_FILES if name in stageable]
+    if _git(workspace_dir, "check-ignore", "-q", _REMEMBER_FILE, check=False).returncode != 0:
+        names.insert(0, _REMEMBER_FILE)
+    return [f":(exclude){name}" for name in names]
 
 
 def _commits_since_branch_start(workspace_dir: str) -> int:
@@ -81,8 +101,7 @@ def idempotent_ship(workspace_dir: str, run_id: str) -> dict:
     # worktree) leaves
     # the file on disk for the run-end read while keeping it out of the commit.
     # Tvashtr's own untracked working files (``_OWN_FILES``) are left out the same way.
-    own = [f":(exclude){name}" for name in _own_files_to_leave_out(workspace_dir)]
-    _git(workspace_dir, "add", "-A", "--", ".", ":(exclude)TVASHTR_REMEMBER.jsonl", *own)
+    _git(workspace_dir, "add", "-A", "--", ".", *_ship_excludes(workspace_dir))
     # `git diff --cached --quiet` exits 0 when there is NOTHING staged.
     if _git(workspace_dir, "diff", "--cached", "--quiet", check=False).returncode == 0:
         # Crash window: the process may have died *between* commit and tag. If HEAD
