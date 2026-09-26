@@ -225,6 +225,28 @@ def test_ship_leaves_tvashtrs_own_files_out_of_a_run_branch(tmp_path):
     assert (repo / "REPORT.md").exists()
 
 
+def test_ship_works_when_the_workspace_already_ignores_tvashtrs_files(tmp_path):
+    """A greenfield workspace's own .gitignore already ignores REPORT.md and friends (team_run's
+    _WORKSPACE_GITIGNORE). Naming an ignored file in `git add`, even as an exclude, makes git refuse
+    ("The following paths are ignored…"), which failed every greenfield ship in the suite."""
+    from tvashtr.control_plane.team_run import _WORKSPACE_GITIGNORE
+
+    ws = tmp_path / "ws-ignored"
+    ws.mkdir()
+    init_workspace_repo(str(ws))
+    (ws / ".gitignore").write_text(_WORKSPACE_GITIGNORE)
+    (ws / "REPORT.md").write_text("# PRD\n")
+    (ws / "SPEC.md").write_text("# spec\n")
+    (ws / "TVASHTR_REMEMBER.jsonl").write_text('{"content":"x"}\n')
+    (ws / "greeting.txt").write_text("hi\n")
+
+    idempotent_ship(str(ws), "run-ignored")
+
+    tree = _tree(ws, "ship-run-ignored")
+    assert "greeting.txt" in tree
+    assert not {"REPORT.md", "SPEC.md", "TVASHTR_REMEMBER.jsonl"} & set(tree)
+
+
 def test_ship_keeps_a_repos_own_tracked_report(tmp_path):
     """A repo that already tracks a REPORT.md owns it: the agent's edit to it ships."""
     repo = _repo_with_history(tmp_path / "repo")
