@@ -40,6 +40,10 @@ in `routers.py` and changed there in place.
 | `POST /api/domains/{id}/eval` (sync, old) | `scores` gains `config`; each `per_case` entry gains `top` | G7 |
 | `PATCH /api/domains/{id}` | optional `template` (the starting point; `400` unknown); the Settings numbers are checked with the tab's copy (`422`) | G9 |
 | retrieval (Ask, tests, nodes, MCP) | "Look wider, then keep the best" (`retrieval.rerank.enabled`) re-scores its wider pool — no longer a passthrough | G9 |
+| `PATCH /api/domains/{id}` | a reading model with other weights re-reads every file (bug fix: not only on a dimension change); answer gains `reread` | G10 |
+| `GET /api/domains/{id}` | gains `rereading` (the running re-read: files, done, estimate, reason, tests after) | G10 |
+| `POST /api/domains/{id}/reread` | the files share one version (a re-read asked for during another joins it); `run_tests_after` holds even when a read was already running | G10 |
+| `POST /api/domains/{id}/ask`, `…/retrieve` (+ nodes, MCP) | `409` while a new reading model re-reads the files | G10 |
 
 Schema: migration `0042_domain_message_meta` adds `domain_messages.meta JSONB NULL` (the Ask tab's
 answer meta `{model, used_history, source}`; written from the Ask group on).
@@ -620,8 +624,8 @@ uuid, so the old `GET …/eval/runs/latest` keeps working.
   - `chunking.overlap`: a whole number 0…size−1
   - `retrieval.top_k` (Passages per question): a whole number 1–30
   - with `retrieval.rerank.enabled`, `rerank.top_n` (the wider pool) ≥ `top_k`
-- The answer is unchanged (the old `domain_to_dict` shape). Saving does not re-read files; a changed
-  piece size applies to files read from now on (G10 adds the re-read paths).
+- The answer is the old `domain_to_dict` shape plus `reread` (G10, below). A changed piece size applies
+  to files read from now on; a changed reading model re-reads every file (G10).
 
 | Status | `detail` |
 |---|---|
@@ -639,3 +643,56 @@ candidates per list, then re-scores that pool: Reciprocal Rank Fusion (k = 60) o
 and each piece's exact-word overlap with the question (stop words dropped; a piece sharing no word gets
 no second term), then keeps the first `top_k`. Deterministic, no model, no cost; `rerank.model` stays
 reserved. Off, nothing changes.
+
+---
+
+## Changing how files are read (G10 — DmF-Embed-1…4, DmF-Piece-1…3; DM-88…DM-90, OQ-17, OQ-24)
+
+### `PATCH /api/domains/{id}` (G10 addition)
+The answer gains `reread` — what saving meant for the domain's files:
+
+```json
+{"domain_id": "…", "name": "Support docs", "template": "support", "config": {…}, "status": "indexing",
+ "doc_count": 14, "created_at": "…", "updated_at": "…",
+ "reread": {"needed": "required", "reason": "reading_model"}}
+```
+
+- `required` / `reading_model` — `config.embedding.model` names other weights than before (bug fix,
+  finding 1: before, vectors were cleared only when the dimension changed, so 3-small → ada-002 kept
+  vectors ada-002 can't compare). Every file's vectors are cleared, every file goes back to waiting as
+  one re-read, and reading starts (one file at a time, OQ-24). No separate `POST …/reread` is needed.
+- `none` — the same weights through another route keep their vectors (OQ-17):
+  `text-embedding-3-small` ≡ `openai/text-embedding-3-small` ≡ `openrouter/openai/text-embedding-3-small`.
+  Also a domain with no files, and any change that doesn't touch the files.
+- `optional` / `pieces` — `chunking.size` or `chunking.overlap` changed: existing files keep their pieces
+  until they're read again; the client offers `POST …/reread` (DM-90).
+
+### `GET /api/domains/{id}` (G10 addition)
+`rereading` — the re-read still running, else `null`:
+
+```json
+{"rereading": {"total": 14, "done": 1, "eta_seconds": 121, "reason": "reading_model", "run_tests_after": false}}
+```
+
+- A re-read's files share one `version` — the domain's highest; `total` counts them, `done` those read
+  since (ready or needing attention). A single "Re-read this file" is a re-read of `total: 1`.
+- `eta_seconds` — the pieces left at the reading model's pace (`domain_embedding.READ_PIECES_PER_SECOND`:
+  10 a second for OpenAI, OpenRouter and Gemini, 2 for Hugging Face; a fixed guess, the copy says
+  "about"). A file not read yet counts the pieces it had (or its size in pieces).
+- `reason` — `reading_model` while a new reading model is being read (asking pauses), else `files`.
+- `run_tests_after` — the tests run when the re-read is done.
+
+### `POST /api/domains/{id}/reread` (G10 changes)
+The files asked for get one shared version (the domain's highest + 1, or the running re-read's own when
+one is still running — it joins it). `run_tests_after` is kept on the waiting files, so a read that is
+already running (`state: "queued"`) runs the tests when it's done. Answer and errors unchanged.
+
+### Asking pauses while a new reading model is read
+`POST /api/domains/{id}/ask` and `POST /api/domains/{id}/retrieve` — and the same asks from Query domain
+nodes and the MCP tools — refuse while `rereading.reason` is `reading_model`:
+
+| Status | `detail` |
+|---|---|
+| `409` | `"Ask is paused while <domain name> re-reads its files."` |
+
+A piece-size or single-file re-read doesn't pause asking (files not read yet are left out until they are).
