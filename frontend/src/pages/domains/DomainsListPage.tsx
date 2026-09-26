@@ -6,7 +6,6 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 
-import { NewDomainDialog } from "../../components/NewDomainDialog";
 import { Button, Input, useToast } from "../../design-system/components";
 import { listProviders } from "../../lib/api";
 import {
@@ -27,6 +26,7 @@ import {
   sortDomains,
 } from "./domainFormat";
 import { HowDomainsWorkDialog, HowItWorksStrip } from "./HowItWorksStrip";
+import { NewDomainDialog } from "./NewDomainDialog";
 import { SortSelect } from "./SortSelect";
 import { useDomainList } from "./useDomainList";
 import "./domains.css";
@@ -195,17 +195,17 @@ export function DomainsListPage() {
         />
       )}
 
-      {creating && (
-        <NewDomainDialog
-          initialTemplate={creating.template}
-          onClose={() => setCreating(null)}
-          onCreated={(domainId) => {
-            setCreating(null);
-            void refreshBadges();
-            navigate({ page: "domains", domainId });
-          }}
-        />
-      )}
+      <NewDomainDialog
+        open={creating !== null}
+        initialTemplate={creating?.template}
+        existingNames={(items ?? []).map((d) => d.name)}
+        onClose={() => setCreating(null)}
+        onCreated={(domain) => {
+          setCreating(null);
+          void refreshBadges();
+          navigate({ page: "domains", domainId: domain.domain_id });
+        }}
+      />
       <HowDomainsWorkDialog open={howOpen} onClose={() => setHowOpen(false)} />
     </div>
   );

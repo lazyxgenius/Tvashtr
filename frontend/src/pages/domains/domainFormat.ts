@@ -477,3 +477,44 @@ export function uploadProblem(file: { name: string; size: number }): string | nu
   }
   return null;
 }
+
+// ---- The New domain dialog (DM-22…DM-29) ----
+
+export const MAX_DOMAIN_NAME = 120;
+
+/** The name rule (DM-14, DM-27): trimmed, 1–120 characters, unique ignoring case. */
+export function domainNameProblem(name: string, existing: string[]): string | null {
+  const clean = name.trim();
+  if (!clean) return "Give this domain a name.";
+  if (clean.length > MAX_DOMAIN_NAME) return "Use 120 characters or fewer.";
+  const lower = clean.toLowerCase();
+  if (existing.some((n) => n.trim().toLowerCase() === lower)) {
+    return `You already have a domain named “${clean}”.`;
+  }
+  return null;
+}
+
+/** A picked file's kind tile (MD, PDF, HTML, TXT — like the backend's `file_kind`). */
+export function kindOfName(name: string): DomainFileKind {
+  const ext = name.includes(".") ? (name.split(".").pop() ?? "").toLowerCase() : "";
+  if (ext === "pdf") return "PDF";
+  if (ext === "md") return "MD";
+  if (ext === "html") return "HTML";
+  return "TXT";
+}
+
+/** Why a file picked in the dialog won't be added (DM-28): listed with this note, not uploaded. */
+export function pickProblem(file: { name: string; size: number }): string | null {
+  const ext = file.name.includes(".") ? (file.name.split(".").pop() ?? "").toLowerCase() : "";
+  if (!UPLOAD_KINDS.includes(ext)) return "Only PDF, Markdown, text or HTML.";
+  if (file.size > MAX_UPLOAD_BYTES) return "Over 10 MB.";
+  return null;
+}
+
+/**
+ * Step 2's primary action (DM-28): "Create and read 3 files" ("1 file"). With no key for the
+ * reading model the files wait, so it says "add" instead of "read".
+ */
+export function createLabel(n: number, keySaved: boolean): string {
+  return `Create and ${keySaved ? "read" : "add"} ${plural(n, "file", "files")}`;
+}

@@ -1,0 +1,420 @@
+/* New domain dialog (Dm-NewDialog, DmF-First-2/3, DmF-NoKey-1…4). Exact px from the design HTML.
+   The design pins the dialog 90px from the top on step 1 and 110px on step 2. */
+
+.ds-dialog.dm-newdlg {
+  top: 90px;
+  left: max(16px, calc(50% - 360px));
+  width: 720px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+  transform: none;
+  box-sizing: border-box;
+  padding: 0;
+  gap: 0;
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+  font-size: 16px;
+  line-height: 1.6;
+  animation: dm-newdlg-in 0.18s var(--ease-out);
+}
+.ds-dialog.dm-newdlg--files {
+  top: 110px;
+}
+@keyframes dm-newdlg-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.dm-newdlg__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px 16px 14px 24px;
+}
+.dm-newdlg__titles {
+  flex: 1;
+  min-width: 0;
+}
+.dm-newdlg__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-newdlg__sub {
+  margin-top: 4px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-500);
+}
+
+.dm-newdlg__body {
+  padding: 4px 24px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dm-newdlg__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dm-newdlg__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-newdlg__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* A starting-point radio card. */
+.dm-tplradio {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--border-hairline);
+  background: var(--cream-50);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.6;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dm-tplradio[aria-checked="true"] {
+  border: 1.5px solid var(--coral-500);
+  background: #fdf6f2;
+}
+.dm-tplradio:hover:not([aria-checked="true"]) {
+  border-color: var(--line-400);
+}
+.dm-tplradio:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.dm-tplradio__top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+/* Content-box like the design: 16px inside a 1.5px ring (19px across). */
+.dm-tplradio__dot {
+  box-sizing: content-box;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-400);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dm-tplradio[aria-checked="true"] .dm-tplradio__dot {
+  border-color: var(--coral-500);
+}
+.dm-tplradio__fill {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--coral-500);
+}
+.dm-tplradio__name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-tplradio__desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-500);
+}
+.dm-tplradio__size {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+
+/* The reading model: the key-saved line, or the warn callout (no key yet). */
+.dm-newdlg__keyline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.dm-newdlg__keyline > svg {
+  flex: none;
+}
+.dm-newdlg__keyline b {
+  font-weight: 600;
+}
+.dm-keytag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #52613e;
+  white-space: nowrap;
+}
+.dm-keytag > svg {
+  flex: none;
+}
+.dm-keytag--missing {
+  font-size: 12px;
+  color: #7a5423;
+}
+.dm-newdlg__change {
+  margin-left: auto;
+}
+.dm-newdlg__link {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--coral-700);
+  text-decoration: none;
+  cursor: pointer;
+}
+.dm-newdlg__link:hover {
+  color: var(--coral-600);
+  text-decoration: underline;
+}
+.dm-newdlg__link:focus-visible,
+.dm-dropzone__pick:focus-visible {
+  outline: none;
+  border-radius: 3px;
+  box-shadow: var(--shadow-focus);
+}
+
+.dm-newdlg__warn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--amber-100);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #6b4a1f;
+}
+.dm-newdlg__warn-text {
+  display: flex;
+  gap: 8px;
+}
+.dm-newdlg__warn-text > svg {
+  flex: none;
+}
+.dm-newdlg__warn-text b {
+  font-weight: 600;
+}
+.dm-newdlg__warn-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+/* The reading-model list (after Change; DM-82's options). */
+.dm-newdlg__models {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dm-rmlist {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 5px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+  display: flex;
+  flex-direction: column;
+}
+.dm-rmopt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-800);
+  text-align: left;
+  cursor: pointer;
+}
+.dm-rmopt[aria-selected="true"] {
+  background: var(--coral-100);
+}
+.dm-rmopt:hover:not([aria-selected="true"]),
+.dm-rmopt:focus-visible:not([aria-selected="true"]) {
+  background: var(--panel-300);
+}
+.dm-rmopt:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.dm-rmopt > svg {
+  flex: none;
+}
+.dm-rmopt__pad {
+  width: 15px;
+  flex: none;
+}
+.dm-rmopt__text {
+  min-width: 0;
+}
+.dm-rmopt__label {
+  display: block;
+}
+.dm-rmopt__sub {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.dm-rmopt__tag {
+  margin-left: auto;
+  flex: none;
+}
+
+/* Step 2: the drop zone, the picked files and the info callout. */
+.dm-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 26px;
+  border: 1.5px dashed var(--line-400);
+  border-radius: 14px;
+  background: var(--cream-50);
+  text-align: center;
+}
+.dm-dropzone--over {
+  border-color: var(--coral-500);
+  background: #fdf6f2;
+}
+.dm-dropzone__tile {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--panel-300);
+  color: var(--ink-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dm-dropzone__line {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-dropzone__pick {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--coral-700);
+  text-decoration: none;
+  cursor: pointer;
+}
+.dm-dropzone__pick:hover {
+  color: var(--coral-600);
+  text-decoration: underline;
+}
+.dm-dropzone__hint {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-picked {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.dm-picked__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line-200);
+}
+.dm-picked__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-code);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-picked__problem {
+  flex: none;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--red-500);
+}
+.dm-picked__size {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-newdlg__info {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.dm-newdlg__info-icon {
+  display: inline-flex;
+  margin-top: 2px;
+}
+.dm-newdlg__error {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--red-500);
+}
+
+.dm-newdlg__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-hairline);
+}
+.dm-newdlg__spacer {
+  margin-left: auto;
+}

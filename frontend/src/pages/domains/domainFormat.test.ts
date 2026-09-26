@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createLabel,
   detailBadge,
+  domainNameProblem,
   filesFooter,
   filesLine,
   filterDomains,
@@ -11,9 +13,11 @@ import {
   formatSize,
   formatUpdated,
   kindName,
+  kindOfName,
   metaLine,
   pieceExcerpt,
   pieceSizeLabel,
+  pickProblem,
   qualityLine,
   setupSteps,
   showOptions,
@@ -380,5 +384,37 @@ describe("Sources table words (DM-41…DM-47)", () => {
     expect(uploadProblem({ name: "deck.pptx", size: 10 })).toBe(
       "deck.pptx wasn’t added. Only PDF, Markdown, text or HTML files can be read.",
     );
+  });
+});
+
+describe("the New domain dialog's words (DM-22…DM-29)", () => {
+  it("checks the name: trimmed, 1–120 characters, unique ignoring case", () => {
+    expect(domainNameProblem("   ", [])).toBe("Give this domain a name.");
+    expect(domainNameProblem("x".repeat(121), [])).toBe("Use 120 characters or fewer.");
+    expect(domainNameProblem("x".repeat(120), [])).toBeNull();
+    expect(domainNameProblem(" support DOCS ", ["Support docs"])).toBe(
+      "You already have a domain named “support DOCS”.",
+    );
+    expect(domainNameProblem("Support docs 2", ["Support docs"])).toBeNull();
+  });
+
+  it("gives a picked file its kind tile and says why it won't be added", () => {
+    expect(["a.pdf", "b.MD", "c.html", "d.txt", "e"].map(kindOfName)).toEqual([
+      "PDF",
+      "MD",
+      "HTML",
+      "TXT",
+      "TXT",
+    ]);
+    expect(pickProblem({ name: "a.md", size: 10 * 1024 * 1024 })).toBeNull();
+    expect(pickProblem({ name: "a.md", size: 10 * 1024 * 1024 + 1 })).toBe("Over 10 MB.");
+    expect(pickProblem({ name: "deck.pptx", size: 10 })).toBe("Only PDF, Markdown, text or HTML.");
+  });
+
+  it("says read with a key and add without one", () => {
+    expect(createLabel(3, true)).toBe("Create and read 3 files");
+    expect(createLabel(1, true)).toBe("Create and read 1 file");
+    expect(createLabel(0, true)).toBe("Create and read 0 files");
+    expect(createLabel(2, false)).toBe("Create and add 2 files");
   });
 });

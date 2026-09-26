@@ -346,8 +346,8 @@ describe("No domains yet (Dm-ListEmpty, DmF-First-1)", () => {
     fireEvent.click(within(group).getByRole("button", { name: /^Legal/ }));
     const dialog = await screen.findByRole("dialog", { name: "New domain" });
     await waitFor(() =>
-      expect(within(dialog).getByRole("button", { name: /^Legal/ })).toHaveAttribute(
-        "aria-pressed",
+      expect(within(dialog).getByRole("radio", { name: /^Legal/ })).toHaveAttribute(
+        "aria-checked",
         "true",
       ),
     );
@@ -357,5 +357,27 @@ describe("No domains yet (Dm-ListEmpty, DmF-First-1)", () => {
     expect(how).toHaveTextContent("2. Ask with sources");
     fireEvent.click(within(how).getByRole("button", { name: "Got it" }));
     expect(screen.queryByRole("dialog", { name: "How domains work" })).toBeNull();
+  });
+
+  it("creates a domain from New domain and lands on its page (DM-29)", async () => {
+    const created = domainItem({ name: "Support docs 2", domain_id: "d-new" });
+    const calls = mockApi(routes({ "POST /api/domains": created }));
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "New domain" }));
+    const dialog = await screen.findByRole("dialog", { name: "New domain" });
+    // The list's names are checked before step 2.
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "support DOCS" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Next: add files" }));
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+      "You already have a domain named “support DOCS”.",
+    );
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "Support docs 2" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Next: add files" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Skip — add files later" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/domains/d-new"));
+    expect(screen.queryByRole("dialog", { name: "New domain" })).toBeNull();
+    expect(calls.some((c) => c.method === "POST" && c.path === "/api/domains")).toBe(true);
   });
 });

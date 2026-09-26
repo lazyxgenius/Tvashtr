@@ -273,6 +273,32 @@ export async function getDomainDetail(domainId: string): Promise<DomainDetailVie
   return detail;
 }
 
+/**
+ * `POST /api/domains` from the New domain dialog (DM-22, DM-29): the name, starting point and —
+ * when the user changed it — the reading model. Answers with the full summary. A name clash is a
+ * 409 and a bad name a 422, each with the copy to show under the Name field (`ApiError.message`).
+ */
+export async function createNewDomain(body: {
+  name: string;
+  template: string;
+  embedding_model?: string;
+}): Promise<DomainDetailView> {
+  const res = await send("/api/domains", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new ApiError(
+      res.status,
+      await detailOf(res, "Couldn’t create the domain — is the backend running?"),
+    );
+  }
+  const detail = normalizeDomainDetail((await res.json()) as unknown);
+  if (!detail) throw new ApiError(500, "Couldn’t create the domain — is the backend running?");
+  return detail;
+}
+
 /** A file's phase in the Status column (DM-42). `uploading` is local to this browser. */
 export type DomainFilePhase =
   | "ready"

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createNewDomain,
   domainFileUrl,
   getDomainDetail,
   getDomainFilePieces,
@@ -113,5 +114,41 @@ describe("Domains clients (G2)", () => {
     );
     await expect(rereadDomainFiles("dom")).rejects.toThrow("This domain is already re-reading.");
     expect(domainFileUrl("dom", "d1")).toBe("/api/domains/dom/documents/d1/file");
+  });
+});
+
+describe("Domains clients (G3)", () => {
+  it("creates a domain and validates the summary it answers with", async () => {
+    const mock = answer({
+      domain_id: "d-new",
+      name: "Support docs",
+      state: "empty",
+      reading_model: { slug: "openai/text-embedding-3-small", provider: "openai", key_saved: true },
+    });
+    const d = await createNewDomain({ name: "Support docs", template: "support" });
+    expect(d).toMatchObject({ domain_id: "d-new", name: "Support docs", state: "empty" });
+    expect(d.setup.key).toBe(true);
+    expect(urlOf(mock, 0)).toContain("/api/domains");
+    const init = mock.mock.calls[0]?.[1];
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual({ name: "Support docs", template: "support" });
+  });
+
+  it("carries the server's copy on a name clash", async () => {
+    answer({ detail: "You already have a domain named “Support docs”." }, 409);
+    await expect(
+      createNewDomain({ name: "Support docs", template: "support" }),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: "You already have a domain named “Support docs”.",
+    });
+  });
+
+  it("falls back to the backend-down copy", async () => {
+    answer("oops", 500);
+    await expect(createNewDomain({ name: "X", template: "blank" })).rejects.toMatchObject({
+      status: 500,
+      message: "Couldn’t create the domain — is the backend running?",
+    });
   });
 });
