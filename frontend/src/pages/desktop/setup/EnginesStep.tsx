@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button, Checkbox, useToast } from "../../../design-system/components";
-import { listProviders, type ProviderCredential } from "../../../lib/api";
+import { listSavedKeys, type SavedKey } from "../../../lib/api/desktop";
 import {
   cancelPlanConnect,
   connectPlan,
@@ -14,11 +14,22 @@ import {
 import { saveDesktopSetup, type DesktopSetup } from "../../../lib/desktopSetup";
 import type { SubscriptionStatus } from "../../../lib/engines";
 import { navigate } from "../../../lib/nav";
-import { KeyIcon } from "../icons";
+import { CheckCircleIcon, KeyIcon } from "../icons";
 import { CodexRow, PlanRow } from "./PlanRow";
-import { canContinue, codexRow, type PlanProvider, planInUse, planRowViews } from "./planRows";
+import {
+  canContinue,
+  codexRow,
+  type PlanProvider,
+  planFoundToast,
+  planInUse,
+  planRowViews,
+  prePickProvider,
+  savedKeysLine,
+} from "./planRows";
 import { SetupFrame, SetupHead } from "./SetupFrame";
+import { SetupKeySheet } from "./SetupKeySheet";
 import { TerminalSignInOverlay } from "./TerminalSignInOverlay";
+import { UsePlanSheet } from "./UsePlanSheet";
 
 type Statuses = Partial<Record<SubscriptionStatus["provider"], SubscriptionStatus>>;
 
@@ -34,26 +45,27 @@ const SIGN_IN_DONE = new Set<SubscriptionStatus["state"]>(["connected", "needs_i
  * on this Mac. The plan rows come from the bridge (`engines.getStatus` + `onStatus`), never the
  * server mirror. Continue needs one way to run: a plan in use with the consent ticked, or no plan
  * in use and a saved API key. Skip for now goes on with nothing set up.
+ *
+ * A plan's Set up opens "Use your <plan> plan" (DT-25, DtF-Claude-1..3); "Use an API key instead"
+ * and "Manage keys" open the setup's Add-key sheet (DT-26, DtF-Key-1..3, OQ-21).
  */
 export function EnginesStep({
   login,
   setup,
   onSwitch,
-  onUseKey,
-  onSetUp,
 }: {
   login: string;
   setup: DesktopSetup;
   onSwitch: () => void;
-  /** "Use an API key instead" (the setup key sheet, DT-26). */
-  onUseKey: () => void;
-  /** A plan's "Set up" (the install sheet, DT-25). */
-  onSetUp: (provider: PlanProvider) => void;
 }) {
   const toast = useToast();
   const mac = thisComputer();
   const [statuses, setStatuses] = useState<Statuses>({});
-  const [keys, setKeys] = useState<ProviderCredential[]>([]);
+  const [keys, setKeys] = useState<SavedKey[]>([]);
+  const [planSheet, setPlanSheet] = useState<PlanProvider | null>(null);
+  const [keySheet, setKeySheet] = useState(false);
+  const planSheetRef = useRef(planSheet);
+  planSheetRef.current = planSheet;
   const [consent, setConsent] = useState(setup.planConsentAt !== null);
   const [signingIn, setSigningIn] = useState<PlanProvider | null>(null);
   const [busy, setBusy] = useState<PlanProvider | null>(null);
@@ -77,20 +89,26 @@ export function EnginesStep({
         return { ...next, ...prev };
       });
     });
-    void listProviders()
+    void listSavedKeys()
       .then((list) => {
-        if (alive && Array.isArray(list)) setKeys(list);
+        if (alive) setKeys(list);
       })
       .catch(() => undefined);
     const unsubscribe = onPlanStatus((s) => {
       put(s);
       if (signingInRef.current === s.provider && SIGN_IN_DONE.has(s.state)) setSigningIn(null);
+      // The bridge re-probes when the window regains focus: an open install sheet whose plan
+      // turns up signed in closes as if Check again had found it.
+      if (planSheetRef.current === s.provider && s.state === "connected") {
+        setPlanSheet(null);
+        toast({ message: planFoundToast(s.provider), tone: "success" });
+      }
     });
     return () => {
       alive = false;
       unsubscribe();
     };
-  }, [put]);
+  }, [put, toast]);
 
   /** DT-23: open the vendor's login in Terminal; the row and overlay wait for it. */
   const connect = useCallback(
@@ -151,7 +169,27 @@ export function EnginesStep({
     navigate({ page: "setup", step: "project" });
   }, []);
 
+  /** Check again found the plan (DT-25): close the sheet; signed in with the plan → the toast. */
+  const planFound = useCallback(
+    (s: SubscriptionStatus) => {
+      setPlanSheet(null);
+      if (s.state === "connected" && (s.provider === "claude" || s.provider === "grok"))
+        toast({ message: planFoundToast(s.provider), tone: "success" });
+    },
+    [toast],
+  );
+
+  const keySaved = useCallback((saved: SavedKey) => {
+    setKeySheet(false);
+    setKeys((prev) => [...prev.filter((k) => k.provider !== saved.provider), saved]);
+    // The server's list is the truth (a replace keeps the key's place); re-read it quietly.
+    void listSavedKeys()
+      .then(setKeys)
+      .catch(() => undefined);
+  }, []);
+
   const rows = planRowViews(statuses, { mac, signingIn });
+  const keysLine = savedKeysLine(keys);
   const inUse = planInUse(statuses);
   const codex = codexRow(statuses.codex ?? null, mac);
 
@@ -194,7 +232,7 @@ export function EnginesStep({
               if (does === "connect") void connect(view.provider);
               else if (does === "cancel") cancel();
               else if (does === "refresh") void run(view.provider, refreshPlan);
-              else onSetUp(view.provider);
+              else setPlanSheet(view.provider);
             }}
           />
         ))}
@@ -204,12 +242,19 @@ export function EnginesStep({
           <div className="st-row__keys-text">
             <div className="st-row__keys-title">API keys</div>
             <div className="st-row__line">
-              Works everywhere, including the website. Pay the provider per use.
+              {keysLine ? (
+                <span className="st-keys-saved">
+                  <CheckCircleIcon />
+                  {keysLine}
+                </span>
+              ) : (
+                "Works everywhere, including the website. Pay the provider per use."
+              )}
             </div>
           </div>
-          <Button variant="secondary" size="sm" onClick={onUseKey}>
+          <Button variant="secondary" size="sm" onClick={() => setKeySheet(true)}>
             <KeyIcon size={15} />
-            <span>Use an API key instead</span>
+            <span>{keysLine ? "Manage keys" : "Use an API key instead"}</span>
           </Button>
         </div>
       </div>
@@ -223,6 +268,19 @@ export function EnginesStep({
       <div className="st-fineprint">
         Tvashtr isn’t affiliated with or endorsed by Anthropic or xAI.
       </div>
+      <UsePlanSheet
+        provider={planSheet}
+        mac={mac}
+        onClose={() => setPlanSheet(null)}
+        onStatus={put}
+        onFound={planFound}
+      />
+      <SetupKeySheet
+        open={keySheet}
+        prePick={prePickProvider(statuses)}
+        onClose={() => setKeySheet(false)}
+        onSaved={keySaved}
+      />
     </SetupFrame>
   );
 }

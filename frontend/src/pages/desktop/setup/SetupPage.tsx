@@ -11,7 +11,6 @@ import {
 } from "../../../lib/desktopSetup";
 import { HOME, navigate } from "../../../lib/nav";
 import { EnginesStep } from "./EnginesStep";
-import { PLAN_INSTALL_URLS } from "./planRows";
 import { SetupFrame, SetupHead } from "./SetupFrame";
 
 /**
@@ -32,16 +31,7 @@ export function SetupPage({
   const login = loginOf(user);
   switch (step) {
     case "engines":
-      return (
-        <EnginesStep
-          login={login}
-          setup={setup}
-          onSwitch={onLogout}
-          // G4 swaps these for the setup sheets (UsePlanSheet DT-25, SetupKeySheet DT-26).
-          onSetUp={(p) => window.open(PLAN_INSTALL_URLS[p], "_blank", "noopener,noreferrer")}
-          onUseKey={() => undefined}
-        />
-      );
+      return <EnginesStep login={login} setup={setup} onSwitch={onLogout} />;
     case "project":
       return <InterimStep step="project" login={login} onSwitch={onLogout} />;
     case "team":

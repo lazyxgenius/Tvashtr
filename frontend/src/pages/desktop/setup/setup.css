@@ -307,3 +307,198 @@
   line-height: 1.6;
   color: var(--ink-800);
 }
+.st-keys-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #52613e;
+}
+
+/* ---- Setup sheets (DT-25 "Use your <plan> plan", DT-26 "Add an API key"). The DS Sheet portals
+   into <body>, so the Button-icon rule above is repeated for sheets holding setup content. ---- */
+.ds-sheet:has(.st-sheet) .ds-btn > span > svg {
+  display: inline;
+  vertical-align: baseline;
+}
+.st-plan-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.st-plan-step {
+  display: flex;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line-200);
+}
+.st-plan-step__num {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--coral-100);
+  color: var(--coral-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+.st-plan-step__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  line-height: 1.6;
+}
+.st-plan-step__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.st-plan-step__text {
+  font-size: 13px;
+  color: var(--ink-600);
+}
+.st-plan-step__cmd {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--ink-900);
+}
+.st-sheet-note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.st-sheet-note__icon {
+  display: inline-flex;
+  margin-top: 2px;
+}
+.st-sheet-note__text {
+  flex: 1;
+}
+.st-key-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.st-key-form__error {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--red-100);
+  color: var(--danger);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.st-provider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.st-provider__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.st-provider__anchor {
+  position: relative;
+}
+.st-provider__button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-400);
+  border-radius: 8px;
+  background: var(--surface-page);
+  font: inherit;
+  font-family: var(--font-code);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-900);
+  cursor: pointer;
+  text-align: left;
+}
+.st-provider__button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.st-provider__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-provider__value.is-empty {
+  font-family: var(--font-ui);
+  color: var(--ink-500);
+}
+.st-provider__chevron {
+  color: var(--ink-500);
+}
+.st-provider__hint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.st-provider__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface-card);
+  border: 1px solid var(--line-300);
+  border-radius: 10px;
+  box-shadow: var(--shadow-pop);
+}
+.st-provider__list:focus-visible {
+  outline: none;
+}
+.st-provider__option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.st-provider__option.is-active {
+  background: var(--surface-sunk);
+}
+.st-provider__option.is-disabled {
+  cursor: not-allowed;
+}
+.st-provider__slug {
+  font-family: var(--font-code);
+  font-size: 13.5px;
+  color: var(--ink-900);
+}
+.st-provider__option[aria-selected="true"] .st-provider__slug {
+  font-weight: 600;
+}
+.st-provider__option.is-disabled .st-provider__slug {
+  color: var(--ink-500);
+}
+.st-provider__desc {
+  font-size: 12px;
+  color: var(--ink-500);
+}

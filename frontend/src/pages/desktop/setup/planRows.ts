@@ -192,3 +192,100 @@ export function planInUse(statuses: Partial<Record<PlanProvider, SubscriptionSta
 export function canContinue(opts: { planInUse: boolean; consent: boolean; savedKeys: number }) {
   return opts.planInUse ? opts.consent : opts.savedKeys > 0;
 }
+
+// ---- The "Use your <plan> plan" sheet (DT-25, OQ-18) ----
+
+export interface UsePlanCopy {
+  title: string;
+  subtitle: string;
+  install: { title: string; body: string };
+  signIn: { body: string; command: string };
+  check: string;
+  lock: string;
+}
+
+/** The sheet's copy for Claude Code (DtF-Claude-2) and its Grok variant (OQ-18). */
+export function usePlanCopy(provider: PlanProvider, mac: string): UsePlanCopy {
+  const onMac = mac === "this Mac";
+  const tool = provider === "claude" ? "Claude Code" : "Grok";
+  const vendor = provider === "claude" ? "Anthropic’s" : "xAI’s";
+  return {
+    title: `Use your ${PLAN[provider]} plan`,
+    subtitle: `Tvashtr runs ${tool} on ${mac} for you`,
+    install: {
+      title: provider === "claude" ? "Install Claude Code" : "Install the Grok CLI",
+      body: `Follow ${vendor} install guide${onMac ? " for Mac" : ""}.`,
+    },
+    signIn: {
+      body: `Open ${onMac ? "Terminal" : "a terminal"}, run the command below, and sign in with your ${PLAN[provider]} account.`,
+      command: provider === "claude" ? "claude" : "grok login",
+    },
+    check: `Tvashtr looks for it again and uses your plan for ${MODELS[provider]} models.`,
+    lock: `You sign in inside ${tool}, not in Tvashtr. Tvashtr never sees your login.`,
+  };
+}
+
+/** The sheet's footer note: "Not found yet" until Check again finds something else (DT-25). */
+export const NOT_FOUND_YET = "Not found yet";
+
+/**
+ * What Check again says when the plan still isn't in use; null when the sheet should close
+ * (found and signed in with the plan, or found with "Use my plan" turned off).
+ */
+export function checkAgainNote(
+  provider: PlanProvider,
+  state: SubscriptionStatus["state"] | "failed",
+): string | null {
+  switch (state) {
+    case "connected":
+    case "disconnected":
+      return null;
+    case "needs_login":
+      return "Found. Sign in once (step 2), then check again.";
+    case "api_key":
+      return `Found, but signed in with an API key. Sign in with your ${PLAN[provider]} plan, then check again.`;
+    case "error":
+    case "failed":
+      return `Couldn’t check ${TITLE[provider]}. Try again.`;
+    default:
+      return NOT_FOUND_YET;
+  }
+}
+
+/** The toast when Check again (or a re-probe) finds the plan signed in (DtF-Claude-3). */
+export function planFoundToast(provider: PlanProvider): string {
+  return `${TITLE[provider]} found · using your ${PLAN[provider]} plan`;
+}
+
+// ---- API keys (DT-26) ----
+
+/** The API-key provider that covers each plan's models. */
+export const PLAN_KEY_PROVIDER: Record<PlanProvider, string> = { claude: "anthropic", grok: "xai" };
+
+/**
+ * The Add-key sheet's pre-pick: the provider of the first plan that can't run here (Claude not in
+ * use → anthropic; else Grok → xai; else nothing).
+ */
+export function prePickProvider(
+  statuses: Partial<Record<PlanProvider, SubscriptionStatus | null>>,
+): string | null {
+  for (const p of ["claude", "grok"] as const) {
+    if (statuses[p]?.state !== "connected") return PLAN_KEY_PROVIDER[p];
+  }
+  return null;
+}
+
+/**
+ * The API-keys row once a key is saved (DtF-Key-3): "<p> key saved · •••• <last4>", or
+ * "<p1>, <p2> keys saved" for several; null when none is saved.
+ */
+export function savedKeysLine(keys: { provider: string; key_last4: string }[]): string | null {
+  if (keys.length === 0) return null;
+  if (keys.length === 1) {
+    const [k] = keys;
+    return k.key_last4
+      ? `${k.provider} key saved · •••• ${k.key_last4}`
+      : `${k.provider} key saved`;
+  }
+  return `${keys.map((k) => k.provider).join(", ")} keys saved`;
+}

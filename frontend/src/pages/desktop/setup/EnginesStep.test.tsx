@@ -35,7 +35,7 @@ async function renderStep(
   });
   stubFetch({ "GET /api/providers": { body: { providers: opts.keys ?? [] } } });
   const setup = await loadDesktopSetup(ME.id);
-  const props = { onSwitch: vi.fn(), onUseKey: vi.fn(), onSetUp: vi.fn() };
+  const props = { onSwitch: vi.fn() };
   render(
     <ToastProvider placement="setup">
       <EnginesStep login="lazyxgenius" setup={setup!} {...props} />
@@ -126,16 +126,6 @@ describe("EnginesStep — DT-Engines", () => {
       "_blank",
       "noopener,noreferrer",
     );
-  });
-
-  it("Use an API key instead and Set up hand over to the sheets", async () => {
-    const { props } = await renderStep({
-      plans: [plan("claude", "needs_install"), plan("grok", "needs_login")],
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Use an API key instead" }));
-    expect(props.onUseKey).toHaveBeenCalledTimes(1);
-    fireEvent.click(within(row("claude")).getByRole("button", { name: "Set up" }));
-    expect(props.onSetUp).toHaveBeenCalledWith("claude");
   });
 });
 

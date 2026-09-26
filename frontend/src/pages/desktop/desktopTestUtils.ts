@@ -34,6 +34,8 @@ export interface FakeBridgeOptions {
   setup?: Partial<TvashtrDesktopSetup>;
   /** What `engines.connect(p)` answers per provider (default: connected). */
   connect?: Partial<Record<SubscriptionStatus["provider"], SubscriptionStatus["state"]>>;
+  /** What `engines.refresh(p)` answers per provider (default: connected). */
+  refresh?: Partial<Record<SubscriptionStatus["provider"], SubscriptionStatus["state"]>>;
 }
 
 /** A plan CLI's status as the bridge reports it. */
@@ -111,7 +113,7 @@ export function installDesktopBridge(opts: FakeBridgeOptions = {}) {
     getStatus: vi.fn(() => Promise.resolve(opts.plans ?? [])),
     connect: vi.fn((p: Provider) => Promise.resolve(plan(p, opts.connect?.[p] ?? "connected"))),
     disconnect: vi.fn((p: Provider) => Promise.resolve(plan(p, "disconnected"))),
-    refresh: vi.fn((p: Provider) => Promise.resolve(plan(p, "connected"))),
+    refresh: vi.fn((p: Provider) => Promise.resolve(plan(p, opts.refresh?.[p] ?? "connected"))),
     cancelConnect: vi.fn((p: Provider) =>
       Promise.resolve(opts.plans?.find((s) => s.provider === p) ?? plan(p, "disconnected")),
     ),

@@ -3,11 +3,16 @@ import { describe, expect, it } from "vitest";
 import { plan } from "../desktopTestUtils";
 import {
   canContinue,
+  checkAgainNote,
   CODEX_INSTALL_URL,
   codexRow,
+  planFoundToast,
   planInUse,
   planRowView,
   planRowViews,
+  prePickProvider,
+  savedKeysLine,
+  usePlanCopy,
 } from "./planRows";
 
 const MAC = { mac: "this Mac", signingIn: false, setUpTint: true };
@@ -163,5 +168,92 @@ describe("Continue (DT-27, OQ-16)", () => {
       planInUse({ claude: plan("claude", "disconnected"), grok: plan("grok", "needs_login") }),
     ).toBe(false);
     expect(planInUse({ grok: plan("grok", "api_key") })).toBe(false);
+  });
+});
+
+describe("the Use your plan sheet (DT-25, OQ-18)", () => {
+  it("Claude's copy names Claude Code, Anthropic's guide and the `claude` command", () => {
+    expect(usePlanCopy("claude", "this Mac")).toEqual({
+      title: "Use your Claude plan",
+      subtitle: "Tvashtr runs Claude Code on this Mac for you",
+      install: {
+        title: "Install Claude Code",
+        body: "Follow Anthropic’s install guide for Mac.",
+      },
+      signIn: {
+        body: "Open Terminal, run the command below, and sign in with your Claude account.",
+        command: "claude",
+      },
+      check: "Tvashtr looks for it again and uses your plan for anthropic/* models.",
+      lock: "You sign in inside Claude Code, not in Tvashtr. Tvashtr never sees your login.",
+    });
+  });
+
+  it("the Grok variant uses the Grok CLI, xAI's guide and `grok login`", () => {
+    const copy = usePlanCopy("grok", "this Mac");
+    expect(copy.title).toBe("Use your Grok plan");
+    expect(copy.subtitle).toBe("Tvashtr runs Grok on this Mac for you");
+    expect(copy.install).toEqual({
+      title: "Install the Grok CLI",
+      body: "Follow xAI’s install guide for Mac.",
+    });
+    expect(copy.signIn.command).toBe("grok login");
+    expect(copy.check).toBe("Tvashtr looks for it again and uses your plan for xai/* models.");
+    expect(copy.lock).toBe(
+      "You sign in inside Grok, not in Tvashtr. Tvashtr never sees your login.",
+    );
+  });
+
+  it("off macOS it says computer and a terminal (DT-50)", () => {
+    const copy = usePlanCopy("claude", "this computer");
+    expect(copy.subtitle).toBe("Tvashtr runs Claude Code on this computer for you");
+    expect(copy.install.body).toBe("Follow Anthropic’s install guide.");
+    expect(copy.signIn.body).toMatch(/^Open a terminal, /);
+  });
+
+  it("Check again: found and in use closes (null); every other answer is a footer note", () => {
+    expect(checkAgainNote("claude", "connected")).toBeNull();
+    expect(checkAgainNote("grok", "disconnected")).toBeNull();
+    expect(checkAgainNote("claude", "needs_install")).toBe("Not found yet");
+    expect(checkAgainNote("claude", "needs_login")).toBe(
+      "Found. Sign in once (step 2), then check again.",
+    );
+    expect(checkAgainNote("grok", "api_key")).toBe(
+      "Found, but signed in with an API key. Sign in with your Grok plan, then check again.",
+    );
+    expect(checkAgainNote("claude", "error")).toBe("Couldn’t check Claude Code. Try again.");
+    expect(checkAgainNote("grok", "failed")).toBe("Couldn’t check Grok. Try again.");
+  });
+
+  it("the found toast (DtF-Claude-3)", () => {
+    expect(planFoundToast("claude")).toBe("Claude Code found · using your Claude plan");
+    expect(planFoundToast("grok")).toBe("Grok found · using your Grok plan");
+  });
+});
+
+describe("API keys (DT-26)", () => {
+  it("pre-picks the provider of the first plan that can't run here", () => {
+    expect(prePickProvider({ claude: plan("claude", "needs_install") })).toBe("anthropic");
+    expect(
+      prePickProvider({ claude: plan("claude", "connected"), grok: plan("grok", "needs_login") }),
+    ).toBe("xai");
+    expect(
+      prePickProvider({ claude: plan("claude", "connected"), grok: plan("grok", "connected") }),
+    ).toBeNull();
+    // Not answered yet counts as not running here.
+    expect(prePickProvider({})).toBe("anthropic");
+  });
+
+  it("the saved row: one key with its last 4, several as one list, none as null", () => {
+    expect(savedKeysLine([])).toBeNull();
+    expect(savedKeysLine([{ provider: "anthropic", key_last4: "9c1e" }])).toBe(
+      "anthropic key saved · •••• 9c1e",
+    );
+    expect(
+      savedKeysLine([
+        { provider: "anthropic", key_last4: "9c1e" },
+        { provider: "xai", key_last4: "77aa" },
+      ]),
+    ).toBe("anthropic, xai keys saved");
   });
 });

@@ -80,6 +80,12 @@ body,
   font-weight: 500;
   color: #c7c4ba;
 }
+/* Sheets and their scrim open below the strip, as every Desktop board draws them: the strip
+   stays the window's drag region with the traffic lights visible. */
+html:has(.tv-titlebar) .ds-sheet,
+html:has(.tv-titlebar) .ds-scrim {
+  top: 30px;
+}
 
 /* ---- UI primitives (ported from the DS component CSS, token-driven) ---- */
 
