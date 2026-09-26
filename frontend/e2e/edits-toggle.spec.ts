@@ -11,9 +11,9 @@ import { openMyTeam } from "./_myTeam";
 // full a11y snapshot, which wedges on the React Flow canvas, §4). Authenticated API reads go through
 // `page.request` (it shares the page's session cookie).
 //
-//   A) flip a NON-start node (Engineer) Edits allowed → Not allowed + author an action-verb prompt,
+//   A) flip a NON-start node (Engineer) File access Can edit files → Read-only + author an action-verb prompt,
 //      Save → PERSISTS (edits_allowed=false via the team-graph API) and the card RE-LABELS "Edits off";
-//   B) the START node (PM) Edits toggle is LOCKED off;
+//   B) the START node (PM) File access is LOCKED read-only;
 //   C) the Tools editor is present on an EDITS-OFF node (the Reviewer) — no worker-only note;
 // (The old Check D — the launch panel's edits-off action-verb advisory — is gone: the composer
 // dropped that note on purpose to match the design, bc8d69e, and the architect ruled the check out.)
@@ -62,24 +62,24 @@ test("M-unify U3: edits toggle persists + re-labels, tools on every node, start 
   expect(byRole(seeded, "engineer")?.edits_allowed, "the Engineer stays edits-on").toBe(true);
   console.log("[edits-toggle-e2e] piece 4 OK — seeded Reviewer edits-off, Engineer edits-on");
 
-  // ── CHECK A — flip the Engineer (a non-start worker) Edits allowed → Not allowed + author an
+  // ── CHECK A — flip the Engineer (a non-start worker) Can edit files → Read-only + author an
   //    action-verb prompt, Save; assert it PERSISTED + the canvas RE-LABELS the card "Edits off".
   await page.locator(".react-flow__node", { hasText: "Engineer" }).first().click();
-  const eng = page.getByLabel("Engineer editor");
+  const eng = page.getByRole("complementary", { name: "Engineer settings" });
   await expect(eng).toBeVisible({ timeout: 30_000 });
-  await expect(eng.getByRole("button", { name: "Edits allowed" })).toHaveAttribute(
+  await expect(eng.getByRole("button", { name: "Can edit files" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   await eng
-    .getByRole("textbox", { name: /prompt/i })
+    .getByRole("textbox", { name: /^Instructions/ })
     .fill("Implement the subtract(a, b) function and a unit test.");
-  await eng.getByRole("button", { name: "Not allowed" }).click();
-  await expect(eng.getByRole("button", { name: "Not allowed" })).toHaveAttribute(
+  await eng.getByRole("button", { name: "Read-only" }).click();
+  await expect(eng.getByRole("button", { name: "Read-only" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await eng.getByRole("button", { name: "Save" }).click();
+  await eng.getByRole("button", { name: /^Save/ }).click();
   await expect(eng.getByText(/Saved/)).toBeVisible({ timeout: 30_000 });
   await expect
     .poll(async () => byRole(await graphNodes(), "engineer")?.edits_allowed, { timeout: 30_000 })
@@ -91,27 +91,29 @@ test("M-unify U3: edits toggle persists + re-labels, tools on every node, start 
   await page.screenshot({ path: path.join(SHOTS_DIR, "checkA-engineer-edits-off.png") });
   console.log("[edits-toggle-e2e] CHECK A PASS — Engineer edits-off persisted + card re-labelled");
 
-  // ── CHECK B — the START node (PM) Edits toggle is LOCKED off.
+  // ── CHECK B — the START node (PM) File access is LOCKED read-only.
   await page.locator(".react-flow__node", { hasText: "Product manager" }).first().click();
-  const pm = page.getByLabel("Product manager editor");
+  const pm = page.getByRole("complementary", { name: "Product manager settings" });
   await expect(pm).toBeVisible({ timeout: 30_000 });
-  await expect(pm.getByRole("button", { name: "Not allowed" })).toHaveAttribute(
+  await expect(pm.getByRole("button", { name: "Read-only" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await expect(pm.getByRole("button", { name: "Not allowed" })).toBeDisabled();
-  await expect(pm.getByRole("button", { name: "Edits allowed" })).toBeDisabled();
+  await expect(pm.getByRole("button", { name: "Read-only" })).toBeDisabled();
+  await expect(pm.getByRole("button", { name: "Can edit files" })).toBeDisabled();
   await page.screenshot({ path: path.join(SHOTS_DIR, "checkB-start-locked.png") });
-  console.log("[edits-toggle-e2e] CHECK B PASS — the PM (start) Edits toggle is locked off");
+  console.log("[edits-toggle-e2e] CHECK B PASS — the PM (start) File access is locked read-only");
 
   // ── CHECK C — the Tools editor is present on an EDITS-OFF node (the Reviewer), no worker-only note.
   await page.locator(".react-flow__node", { hasText: "Reviewer" }).first().click();
-  const rev = page.getByLabel("Reviewer editor");
+  const rev = page.getByRole("complementary", { name: "Reviewer settings" });
   await expect(rev).toBeVisible({ timeout: 30_000 });
-  await expect(rev.getByRole("button", { name: "Not allowed" })).toHaveAttribute(
+  await expect(rev.getByRole("button", { name: "Read-only" })).toHaveAttribute(
     "aria-pressed",
     "true",
   ); // the Reviewer is edits-off
+  // The tools live on the drawer's Skills & tools tab.
+  await rev.getByRole("tab", { name: /^Skills & tools/ }).click();
   await expect(rev.getByLabel("Tools JSON")).toBeVisible({ timeout: 30_000 });
   await expect(rev.getByText(/switch this node to Worker/i)).toHaveCount(0);
   await page.screenshot({ path: path.join(SHOTS_DIR, "checkC-tools-on-edits-off.png") });
