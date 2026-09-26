@@ -22,7 +22,7 @@ const localIso = (month, day, h, m) =>
   new Date(YEAR, month - 1, day, h, m).toISOString();
 
 // The picker's files: the four the frame lists first, then the rest (14, "Type to search 14 files").
-const FILES = [
+export const FILES = [
   ["webhooks.md", 77],
   ["integrations.html", 288],
   ["api-limits.html", 73],
@@ -43,7 +43,7 @@ const FILES = [
 const idOf = Object.fromEntries(FILES.map((f) => [f.filename, f.document_id]));
 
 // [question, file, key words, found the file, found the key words]
-const CASES = [
+export const CASES = [
   [
     "How long do customers have to ask for a refund?",
     "refund-policy.md",
@@ -141,7 +141,7 @@ const TOP = [
   excerpt,
 }));
 
-const CONFIG = {
+export const CONFIG = {
   chunking: { strategy: "fixed", size: 600, overlap: 100 },
   embedding: { model: "text-embedding-3-small" },
   retrieval: { mode: "dense", top_k: 8 },
@@ -149,7 +149,7 @@ const CONFIG = {
 };
 
 /** A finished run over `cases`: scores from their results, the webhook miss with its top 3. */
-function run(number, cases, at, over = {}) {
+export function run(number, cases, at, over = {}) {
   const hits = cases.filter((c) => c.hit).length;
   const kws = cases.filter((c) => c.kw).length;
   const per_case = cases.map((c) => ({
@@ -182,12 +182,12 @@ function run(number, cases, at, over = {}) {
 }
 
 /** Routes for one board: the cases, the runs (newest first) and each run by id. */
-function routes(cases, runs) {
+export function routes(cases, runs, d = detail) {
   const byId = Object.fromEntries(
     runs.map((r) => [`GET /api/domains/${D.support}/eval/runs/${r.run_id}`, r]),
   );
   return detailRoutes({
-    detail,
+    detail: d,
     files: FILES,
     extra: {
       [`GET /api/domains/${D.support}/eval/cases`]: {
@@ -204,7 +204,7 @@ function routes(cases, runs) {
 const TWELVE = CASES;
 const EIGHT = CASES.slice(0, 8);
 const SEVEN = CASES.slice(0, 7);
-const earlier = (cases) => [
+export const earlier = (cases) => [
   run(4, cases, localIso(9, 24, 10, 2)),
   run(3, cases, localIso(9, 22, 9, 40)),
   run(2, cases, localIso(9, 20, 16, 5), {

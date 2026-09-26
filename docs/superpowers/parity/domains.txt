@@ -129,6 +129,26 @@
 # note DmF-SaveTest-2: key words are suggested by the OQ-15 helper ("30 days" bold/number+unit, "refund" repeated in the
 #   answer and used by a cited passage); the type-to-add field (DM-68, not drawn) is an empty inline input after the chips.
 #   The ring on Save test is keyboard focus (Tab from Cancel).
+# G9 (the Settings tab + tune search → Quality; scenarios domains-settings.mjs). Web "not found" adds the strip title.
+# note Dm-Settings / DmF-Tune-1/2: the Reading model select keeps the design's 340px on a row of its own ("build them to
+#   fit": the frame draws it 340px wide in a 254px cell, overflowing into the Search card). The Piece size / Overlap row
+#   and the answers card below move down 110px (16 only moved on Desktop). The Search by segmented control fits its cell
+#   (8px side padding, the three buttons share the rest: 84/102/58 against the frame's squeezed 84/101/59, no clipping).
+# note Dm-Settings / DmF-Tune-1/2: 2 not found — copy deviations: OQ-18 "Adds up to 4 more passages that mention the same
+#   names. Off by default." and OQ-14 "Removes its 14 files, pieces, chat and test questions. Teams that use it as a step
+#   can’t run until you pick another domain." (Support docs is a step in a team).
+# note DmF-Tune-1: 3 more not found — the frame's bar reads "1 unsaved change" + Save changes; the app shows DM-87's words
+#   for this change, as DmF-Tune-2 draws them ("1 unsaved change · Search by: Both", No re-read needed, Save and run tests,
+#   so Discard sits 27px further left). Both is picked with the keyboard (the ring is focus); Tune-2's ring = Tab from Discard.
+# waiver Dm-Settings web: [txt] 'Starting point' — 30px-shift nearest-match artifact; Desktop render 0 drift (the 13px label
+#   sits 30px above the design point, the Starting point select — aria-label "Starting point", 16px — 4px above it)
+# waiver DmF-Tune-1 web: [txt] 'Starting point' — 30px-shift nearest-match artifact; Desktop render 0 drift
+# waiver DmF-Tune-2 web: [txt] 'Starting point' — 30px-shift nearest-match artifact; Desktop render 0 drift
+# note DmF-Tune-3: reached by the flow (Both → Save and run tests → Quality): "Running 12 tests with Both search…" names the
+#   new search when it differs from the last finished run's (no estimate then, as drawn); the old scores stay up.
+# note DmF-Tune-4: the run finishes while Quality polls. '+8 vs previous run' (first card) only moved: 10→11 of 12 is
+#   83% → 92%, and the app's delta is the shown percentages' difference, "+9" (G7 rule); the key-words card's "+8" matches.
+#   The Compare with select names the run 2 hours before ("Previous run · <today>"), where the frame keeps Sep 24.
 Dm-Ask web: matched 63/68 design items · 0 with size/type drift · 55 only moved · 5 not found in app
 Dm-Ask desktop: matched 64/68 design items · 0 with size/type drift · 1 only moved · 4 not found in app
 Dm-List web: matched 57/58 design items · 0 with size/type drift · 55 only moved · 1 not found in app
@@ -139,6 +159,8 @@ Dm-NewDialog web: matched 91/92 design items · 0 with size/type drift · 55 onl
 Dm-NewDialog desktop: matched 92/92 design items · 0 with size/type drift · 3 only moved · 0 not found in app
 Dm-Quality web: matched 87/88 design items · 0 with size/type drift · 85 only moved · 1 not found in app
 Dm-Quality desktop: matched 88/88 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+Dm-Settings web: matched 66/69 design items · 1 with size/type drift · 63 only moved · 3 not found in app
+Dm-Settings desktop: matched 67/69 design items · 0 with size/type drift · 16 only moved · 2 not found in app
 Dm-Sources web: matched 96/98 design items · 0 with size/type drift · 94 only moved · 2 not found in app
 Dm-Sources desktop: matched 97/98 design items · 0 with size/type drift · 1 only moved · 1 not found in app
 DmF-Ask-1 web: matched 51/52 design items · 0 with size/type drift · 43 only moved · 1 not found in app
@@ -243,3 +265,11 @@ DmF-SaveTest-2 web: matched 80/85 design items · 0 with size/type drift · 51 o
 DmF-SaveTest-2 desktop: matched 81/85 design items · 0 with size/type drift · 1 only moved · 4 not found in app
 DmF-SaveTest-3 web: matched 61/66 design items · 0 with size/type drift · 51 only moved · 5 not found in app
 DmF-SaveTest-3 desktop: matched 62/66 design items · 0 with size/type drift · 1 only moved · 4 not found in app
+DmF-Tune-1 web: matched 68/74 design items · 1 with size/type drift · 65 only moved · 6 not found in app
+DmF-Tune-1 desktop: matched 69/74 design items · 0 with size/type drift · 18 only moved · 5 not found in app
+DmF-Tune-2 web: matched 72/75 design items · 1 with size/type drift · 63 only moved · 3 not found in app
+DmF-Tune-2 desktop: matched 73/75 design items · 0 with size/type drift · 16 only moved · 2 not found in app
+DmF-Tune-3 web: matched 76/77 design items · 0 with size/type drift · 74 only moved · 1 not found in app
+DmF-Tune-3 desktop: matched 77/77 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DmF-Tune-4 web: matched 90/91 design items · 0 with size/type drift · 88 only moved · 1 not found in app
+DmF-Tune-4 desktop: matched 91/91 design items · 0 with size/type drift · 2 only moved · 0 not found in app
