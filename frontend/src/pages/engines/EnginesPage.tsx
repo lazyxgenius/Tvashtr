@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { openTvashtrDesktop } from "../../lib/desktopDeepLinks";
 import { type ConnectTarget, type EnginesTab, navigate } from "../../lib/nav";
 import { AddKeySheet, type AddKeyRequest } from "./AddKeySheet";
+import { listenForAddKey, requestAddKey } from "./addKeyRequests";
 import { type AddKeyOptions, ApiKeysPage } from "./ApiKeysPage";
 import { GetDesktopDialog, OpenDesktopDialog } from "./DesktopDialogs";
 import { enginesBridge } from "./engineBridge";
@@ -86,6 +87,17 @@ function EnginesTabs({
     });
   }, []);
 
+  // A toast's "Add <q>" outlives this page: it asks through addKeyRequests, which opens the sheet
+  // here, or brings the user back to Engines first if they have left.
+  useEffect(() => listenForAddKey(addKey), [addKey]);
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const addKeyFromToast = useCallback(
+    (provider?: string, options?: AddKeyOptions) =>
+      requestAddKey(provider, options, tabRef.current),
+    [],
+  );
+
   /** A row's Add key opens the sheet with that provider (ENG-15); a row's Connect / Refresh on
    *  Desktop signs in / re-checks from the row (ENG-16, ENG-13); the website's Open in Desktop opens
    *  Desktop on that subscription (OQ-2); setting up a subscription happens on Subscriptions. */
@@ -120,7 +132,7 @@ function EnginesTabs({
       {tab === "subscriptions" && (
         <SubscriptionsPage
           highlight={connect}
-          onAddKey={(p) => addKey(p)}
+          onAddKey={(p) => addKeyFromToast(p)}
           onOpenDesktop={openDesktop}
           onGetDesktop={getDesktop}
         />
@@ -129,7 +141,7 @@ function EnginesTabs({
       <AddKeySheet
         request={sheet}
         onClose={() => setSheet(null)}
-        onAddKey={addKey}
+        onAddKey={addKeyFromToast}
         onSaved={flashSaved}
       />
       {desktop?.kind === "open" && (

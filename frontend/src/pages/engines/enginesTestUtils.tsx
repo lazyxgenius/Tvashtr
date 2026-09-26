@@ -17,6 +17,7 @@ import {
   __resetEnginesConfigForTests,
 } from "../../lib/api/engines";
 import { __resetBackendStatusForTests } from "../../lib/backendStatus";
+import { __resetAddKeyRequestsForTests } from "./addKeyRequests";
 import type { SubscriptionStatus } from "../../lib/engines";
 import type { EnginesTab } from "../../lib/nav";
 import { __resetWorkspaceStatusForTests } from "../../lib/workspaceStatus";
@@ -241,6 +242,7 @@ export function resetEnginesState(): void {
   __resetBackendStatusForTests();
   __resetWorkspaceStatusForTests();
   __resetEnginesConfigForTests();
+  __resetAddKeyRequestsForTests();
   delete document.documentElement.dataset.tvashtrDesktop;
   delete window.tvashtrDesktop;
   window.location.hash = "";

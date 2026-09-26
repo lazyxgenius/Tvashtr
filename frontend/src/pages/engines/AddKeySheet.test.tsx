@@ -1,16 +1,22 @@
 import {
+  act,
   type BoundFunctions,
   fireEvent,
   type queries,
+  render,
   renderHook,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { ToastProvider } from "../../design-system/components";
 
 import type { ProviderDirectoryEntry } from "../../lib/api/engines";
 import { useNavBadges } from "../../lib/workspaceStatus";
+import { EnginesPage } from "./EnginesPage";
 import {
   CATALOGUE,
   DIRECTORY,
@@ -326,6 +332,37 @@ describe("Add key sheet: saving (ENG-71..73)", () => {
     // Its one action opens the sheet again with xai picked.
     fireEvent.click(within(toast).getByRole("button", { name: "Add xai" }));
     const again = within(screen.getByRole("dialog", { name: "Add an API key" }));
+    expect(providerButton(again)).toHaveAccessibleName("Provider xai");
+  });
+
+  it("the toast's Add <q> still works after leaving Engines: it comes back with the sheet", async () => {
+    mockEnginesApi({ "GET /api/config": CONFIG, "POST /api/providers": answerPost });
+    let show: (on: boolean) => void = () => undefined;
+    function Pages() {
+      const [on, setOn] = useState(true);
+      show = setOn;
+      return on ? <EnginesPage tab="keys" /> : <div>HOME BODY</div>;
+    }
+    render(
+      <ToastProvider>
+        <Pages />
+      </ToastProvider>,
+    );
+    await screen.findByRole("table");
+    fireEvent.click(screen.getAllByRole("button", { name: "Add key" })[0]);
+    pick(within(screen.getByRole("dialog")), "anthropic");
+    await saveWith("sk-ant-wQ3f");
+    const toast = await screen.findByRole("status");
+
+    // The user goes Home while the toast is still up, then clicks its action.
+    act(() => show(false));
+    expect(screen.getByText("HOME BODY")).toBeInTheDocument();
+    fireEvent.click(within(toast).getByRole("button", { name: "Add xai" }));
+    expect(window.location.hash).toBe("#/engines/keys");
+
+    // The router shows Engines again: the sheet opens there with xai picked.
+    act(() => show(true));
+    const again = within(await screen.findByRole("dialog", { name: "Add an API key" }));
     expect(providerButton(again)).toHaveAccessibleName("Provider xai");
   });
 
