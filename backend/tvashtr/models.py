@@ -811,6 +811,9 @@ class DomainMessage(Base):
     citations: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    # Migration ``0042``: what produced an assistant answer — ``{"model", "used_history",
+    # "source": "chat"}`` — so the Ask tab can show it after a reload. NULL on older rows.
+    meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
