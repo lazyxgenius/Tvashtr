@@ -32,6 +32,21 @@ TkF-Catalog-3 web: matched 48/48 design items · 0 with size/type drift · 0 onl
 TkF-Catalog-3 desktop: matched 47/48 design items · 0 with size/type drift · 40 only moved · 1 not found in app
 TkF-Catalog-4 web: matched 43/43 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 TkF-Catalog-4 desktop: matched 43/43 design items · 0 with size/type drift · 40 only moved · 0 not found in app
+TkF-Detail-1 web: matched 46/46 design items · 0 with size/type drift · 11 only moved · 0 not found in app
+TkF-Detail-1 desktop: matched 46/46 design items · 1 with size/type drift · 43 only moved · 0 not found in app
+# needs-waiver TkF-Detail-1 desktop: [txt] 'github' font 28→13px — the 28px title (a Newsreader h1, 0 drift on web) is paired by parity.py with the breadcrumb's 13px "github", which sits 11px from the design title once the Desktop title strip moves the page 30px down (nearest-position matching, many-to-one)
+TkF-Detail-2 web: matched 49/49 design items · 0 with size/type drift · 11 only moved · 0 not found in app
+TkF-Detail-2 desktop: matched 49/49 design items · 1 with size/type drift · 46 only moved · 0 not found in app
+# needs-waiver TkF-Detail-2 desktop: [txt] 'github' font 28→13px — the 28px title (a Newsreader h1, 0 drift on web) is paired by parity.py with the breadcrumb's 13px "github", which sits 11px from the design title once the Desktop title strip moves the page 30px down (nearest-position matching, many-to-one)
+TkF-Detail-3 web: matched 47/47 design items · 0 with size/type drift · 12 only moved · 0 not found in app
+TkF-Detail-3 desktop: matched 47/47 design items · 1 with size/type drift · 44 only moved · 0 not found in app
+# needs-waiver TkF-Detail-3 desktop: [txt] 'github' font 28→13px — the 28px title (a Newsreader h1, 0 drift on web) is paired by parity.py with the breadcrumb's 13px "github", which sits 11px from the design title once the Desktop title strip moves the page 30px down (nearest-position matching, many-to-one)
+TkF-Detail-4 web: matched 46/47 design items · 0 with size/type drift · 10 only moved · 1 not found in app
+TkF-Detail-4 desktop: matched 46/47 design items · 1 with size/type drift · 42 only moved · 1 not found in app
+# needs-waiver TkF-Detail-4 desktop: [txt] 'github' font 28→13px — the 28px title (a Newsreader h1, 0 drift on web) is paired by parity.py with the breadcrumb's 13px "github", which sits 11px from the design title once the Desktop title strip moves the page 30px down (nearest-position matching, many-to-one)
+TkF-Detail-5 web: matched 52/52 design items · 0 with size/type drift · 11 only moved · 0 not found in app
+TkF-Detail-5 desktop: matched 52/52 design items · 1 with size/type drift · 43 only moved · 0 not found in app
+# needs-waiver TkF-Detail-5 desktop: [txt] 'github' font 28→13px — the 28px title (a Newsreader h1, 0 drift on web) is paired by parity.py with the breadcrumb's 13px "github", which sits 11px from the design title once the Desktop title strip moves the page 30px down (nearest-position matching, many-to-one)
 TkF-FixSecret-1 web: matched 50/50 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 TkF-FixSecret-1 desktop: matched 50/50 design items · 0 with size/type drift · 48 only moved · 0 not found in app
 TkF-FixSecret-2 web: matched 61/61 design items · 0 with size/type drift · 0 only moved · 0 not found in app
@@ -94,6 +109,9 @@ Toolkit-ReplaceSecret web: matched 54/54 design items · 0 with size/type drift 
 Toolkit-ReplaceSecret desktop: matched 54/54 design items · 0 with size/type drift · 41 only moved · 0 not found in app
 Toolkit-Secrets web: matched 43/43 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 Toolkit-Secrets desktop: matched 43/43 design items · 0 with size/type drift · 41 only moved · 0 not found in app
+Toolkit-ToolDetail web: matched 46/46 design items · 0 with size/type drift · 11 only moved · 0 not found in app
+Toolkit-ToolDetail desktop: matched 46/46 design items · 1 with size/type drift · 43 only moved · 0 not found in app
+# needs-waiver Toolkit-ToolDetail desktop: [txt] 'github' font 28→13px — the 28px title (a Newsreader h1, 0 drift on web) is paired by parity.py with the breadcrumb's 13px "github", which sits 11px from the design title once the Desktop title strip moves the page 30px down (nearest-position matching, many-to-one)
 Toolkit-Tools web: matched 52/52 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 Toolkit-Tools desktop: matched 52/52 design items · 0 with size/type drift · 50 only moved · 0 not found in app
 Toolkit-ToolsBrowse web: matched 42/42 design items · 0 with size/type drift · 0 only moved · 0 not found in app
