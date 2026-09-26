@@ -43,6 +43,8 @@ const GIT = {
 interface Fixture {
   workspace?: TvashtrDesktopSetup["workspace"];
   runs?: unknown[];
+  teams?: unknown[];
+  checklistHidden?: boolean;
   finishedNow?: boolean;
   launch?: unknown;
 }
@@ -50,6 +52,8 @@ interface Fixture {
 async function setUp({
   workspace = { kind: "folder", ...TRADE },
   runs = [],
+  teams = [REFUND],
+  checklistHidden = true,
   finishedNow = false,
   launch = { run_id: "r-new" },
 }: Fixture = {}) {
@@ -60,10 +64,10 @@ async function setUp({
   });
   const calls = mockApi(
     homeRoutes({
-      "GET /api/teams": { teams: [REFUND] },
+      "GET /api/teams": { teams },
       "GET /api/runs": { runs, next_cursor: null },
       "GET /api/providers": { providers: [] },
-      "GET /api/account/preferences": { get_started_hidden: true },
+      "GET /api/account/preferences": { get_started_hidden: checklistHidden },
       "POST /api/runs": launch,
     }),
   );
@@ -127,6 +131,12 @@ describe("Desktop Home's ready card (DT-38–41)", () => {
   it("is the normal Home once the account has a run", async () => {
     await setUp({ runs: [{ run_id: "r1", status: "completed", status_group: "done" }] });
     expect(await screen.findByText("COMPOSER")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /What’s next/ })).not.toBeInTheDocument();
+  });
+
+  it("with no team at all (an older Desktop, no setup) the get-started checklist leads", async () => {
+    await setUp({ teams: [], checklistHidden: false });
+    expect(await screen.findByRole("heading", { name: "Get started" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /What’s next/ })).not.toBeInTheDocument();
   });
 

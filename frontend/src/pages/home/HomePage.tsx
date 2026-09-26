@@ -36,13 +36,15 @@ export function HomePage({ user = null }: { user?: AuthUser | null } = {}) {
   const composerFocus = useRef<(() => void) | null>(null);
   const toast = useToast();
   const getStarted = useGetStartedProgress(teams, teamsLoading);
-  // Desktop until the first run: the ready card (DT-38); "Decide at launch" hands its idea to the
-  // full composer.
+  // Desktop until the first run: the ready card for the team setup made (DT-38); with no team at
+  // all (an older Desktop without setup) the get-started checklist still leads. "Decide at launch"
+  // hands the card's idea to the full composer.
   const showReadyCard = useShowReadyCard();
   const [decideAtLaunch, setDecideAtLaunch] = useState<ComposerPrefill | null>(null);
   useEffect(() => {
     if (decideAtLaunch) requestComposerPrefill(decideAtLaunch);
   }, [decideAtLaunch]);
+  const readyCardPending = showReadyCard === null || (showReadyCard && teamsLoading);
 
   const reloadTeams = useCallback(async () => {
     try {
@@ -125,9 +127,9 @@ export function HomePage({ user = null }: { user?: AuthUser | null } = {}) {
     <HomeContext.Provider value={value}>
       {decideAtLaunch ? (
         <HomeMain />
-      ) : showReadyCard ? (
+      ) : readyCardPending ? null : showReadyCard && teams.length > 0 ? (
         <DesktopReadyCard user={user} onDecideAtLaunch={setDecideAtLaunch} />
-      ) : showReadyCard === null ? null : getStarted.firstTime ? (
+      ) : getStarted.firstTime ? (
         <FirstTimeHome progress={getStarted} />
       ) : (
         <HomeMain />
