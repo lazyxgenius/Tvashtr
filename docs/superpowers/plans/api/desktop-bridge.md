@@ -296,6 +296,22 @@ The page (`lib/desktopSetup.ts`) reads it once per sign-in; while `finishedAt` i
 signed-in app sits on `#/setup/<step>` (DT-17). A Desktop without `setup` (older than v6) skips
 the first-run setup.
 
+## `repos.initGit({path}): Promise<{branch: "main", commit, file_count}>` (DB-5)
+"Set up git here" on setup's Project step (DT-30, OQ-22), `electron/repos/initGit.cjs`: `git init`,
+HEAD on `main`, `git add -A` (honours `.gitignore`), one commit "Start tracking with Tvashtr"
+(hooks and signing off). The committer is the user's git identity for each key git has, else the
+last signed-in login (`<login>@users.noreply.github.com`; an email login as is), else
+"Tvashtr Agent <agent@tvashtr.local>". Refusals (RepoError, shown as is):
+- "This folder is already a git repository." / "This folder is inside the git repository at <~path>. Choose that folder instead."
+- "Choose a project folder, not your home folder." (home or `/`)
+- "This folder has more than 20,000 files. Set up git in it yourself, then choose it again."
+- "This folder is empty. Add your project's files, then set up git."
+- "Couldn't set up git here: <git's first error line>" — the `.git` it made is removed
+- git missing: the existing "Git isn't installed on this computer, or Tvashtr can't find it."
+
+`repos.inspect` non-git results gain an additive `reason`: `"not_git"` (offer Set up git here),
+`"inside_repo"`, `"missing"`. Tests: `desktop/scripts/init-git.test.cjs`.
+
 ## `update` (DB-6) — renderer side only so far
 
 Main isn't built yet (G6). The page already reads it, optional-chained (`lib/desktopApp.ts`

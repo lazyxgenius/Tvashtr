@@ -48,7 +48,15 @@ type TvashtrRepoInspection =
       subpaths: { path: string; file_count: number }[];
       remote_url: string | null;
     }
-  | { is_git: false; error: string };
+  | {
+      is_git: false;
+      error: string;
+      /**
+       * v6 (additive): `not_git` offers "Set up git here"; `inside_repo` / `missing` only "Choose
+       * another folder". Absent on an older Desktop.
+       */
+      reason?: "not_git" | "inside_repo" | "missing";
+    };
 
 interface TvashtrRecentFolder {
   path: string;
@@ -103,6 +111,14 @@ interface TvashtrDesktopBridge {
     /** Native folder picker; null when cancelled. */
     pickFolder: () => Promise<{ path: string; displayPath: string } | null>;
     inspect: (path: string) => Promise<TvashtrRepoInspection>;
+    /**
+     * v6 (DB-5): "Set up git here" — `git init` on main + one first commit ("Start tracking with
+     * Tvashtr"). Rejects with ready-to-show copy (already a repository, home folder, empty, over
+     * 20,000 files, "Couldn't set up git here: …").
+     */
+    initGit?: (args: {
+      path: string;
+    }) => Promise<{ branch: "main"; commit: string; file_count: number }>;
     recent: {
       /** Up to 8, most recent first, each re-checked. */
       list: () => Promise<TvashtrRecentFolder[]>;

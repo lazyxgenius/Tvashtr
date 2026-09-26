@@ -201,6 +201,8 @@ function registerRepoIpc() {
     git: createGit({ env: () => (gitEnv ||= resolveCliEnv({ npmGlobalBin: null })) }),
     api,
     userDataDir: app.getPath("userData"),
+    // The first commit of "Set up git here" falls back to the signed-in login (DB-5).
+    login: () => (lastUser && lastUser.get() ? lastUser.get().login : null),
     log: (m) => console.log(m),
   });
 
@@ -234,6 +236,7 @@ function registerRepoIpc() {
     return { path: picked, displayPath: displayPath(picked) };
   });
   handle("tvashtr:repos:inspect", (p) => repos.inspect(p));
+  handle("tvashtr:repos:initGit", (args) => repos.initGit(args));
   handle("tvashtr:repos:recent:list", () => repos.recent.list());
   handle("tvashtr:repos:recent:add", async (p) => {
     await repos.recent.add(p);

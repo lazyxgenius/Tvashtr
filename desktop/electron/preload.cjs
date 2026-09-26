@@ -76,6 +76,8 @@ async function call(channel, ...args) {
 const repos = {
   pickFolder: () => call("tvashtr:repos:pickFolder"),
   inspect: (path) => call("tvashtr:repos:inspect", path),
+  // v6 (DB-5): "Set up git here".
+  initGit: (args) => call("tvashtr:repos:initGit", args),
   recent: {
     list: () => call("tvashtr:repos:recent:list"),
     add: (path) => call("tvashtr:repos:recent:add", path).then(() => undefined),
