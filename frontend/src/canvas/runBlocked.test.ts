@@ -37,4 +37,16 @@ describe("validityBlock", () => {
     });
     expect(validityBlock([])).toBeNull();
   });
+
+  it("says a finding repeated on several nodes once (two starting points)", () => {
+    const roots = ["n-pm", "n-new"].map((node_id) => ({
+      code: "multiple_roots",
+      message: "More than one starting point (2) — a team needs exactly one.",
+      node_id,
+      edge_id: null,
+    }));
+    expect(validityBlock(roots)?.detail).toBe(
+      "More than one starting point (2) — a team needs exactly one.",
+    );
+  });
 });

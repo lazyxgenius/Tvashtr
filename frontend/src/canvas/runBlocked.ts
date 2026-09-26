@@ -46,9 +46,11 @@ export function credentialBlock(missing: string[], desktop: boolean): RunBlock |
 }
 
 export function validityBlock(errors: ValidityIssue[]): RunBlock | null {
-  if (errors.length === 0) return null;
-  const shown = errors.slice(0, 2).map((e) => e.message);
-  const more = errors.length - shown.length;
+  // A finding flagged on several nodes (two starting points) is said once.
+  const messages = [...new Set(errors.map((e) => e.message))];
+  if (messages.length === 0) return null;
+  const shown = messages.slice(0, 2);
+  const more = messages.length - shown.length;
   return {
     title: "Can’t run yet.",
     detail: `${shown.join(" ")}${more > 0 ? ` …and ${more} more.` : ""}`,
