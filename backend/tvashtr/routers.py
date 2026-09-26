@@ -2963,6 +2963,7 @@ def post_domain_eval_case(
             expected_citation_doc_ids=body.expected_citation_doc_ids,
             expected_keywords=body.expected_keywords,
             ordinal=body.ordinal,
+            require_check=True,
         )
     except LookupError as e:
         raise HTTPException(status_code=404, detail="domain not found") from e

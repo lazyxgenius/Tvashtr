@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from tvashtr.auth import UserOut, get_current_user
-from tvashtr.control_plane import domain_ask, domain_read, domain_views
+from tvashtr.control_plane import domain_ask, domain_eval, domain_read, domain_views
 from tvashtr.control_plane.domain_files import absolute_path
 from tvashtr.control_plane.domains import DomainNameTaken, _owned_domain, duplicate_domain
 from tvashtr.db import session_scope
@@ -162,3 +162,80 @@ def delete_domain_messages(
     if not domain_ask.clear_domain_messages(uuid.UUID(current_user.id), did):
         raise HTTPException(status_code=404, detail="domain not found")
     return Response(status_code=204)
+
+
+# ---- Quality (DM-70…DM-79): edit a test question; asynchronous test runs ----
+
+
+class CasePatch(BaseModel):
+    """``PATCH …/eval/cases/{case_id}``: only the fields sent change."""
+
+    question: str | None = None
+    expected_citation_doc_ids: list[str] | None = None
+    expected_keywords: list[str] | None = None
+
+
+@router.patch("/api/domains/{domain_id}/eval/cases/{case_id}")
+def patch_domain_eval_case(
+    domain_id: str,
+    case_id: str,
+    body: CasePatch,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> dict:
+    """Edit a test question (DM-78) under the same rules as adding one."""
+    did = _uuid(domain_id, "domain")
+    cid = _uuid(case_id, "case")
+    try:
+        return domain_eval.update_eval_case(
+            uuid.UUID(current_user.id),
+            did,
+            cid,
+            question=body.question,
+            expected_citation_doc_ids=body.expected_citation_doc_ids,
+            expected_keywords=body.expected_keywords,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/api/domains/{domain_id}/eval/runs", status_code=202)
+def post_domain_eval_run(
+    domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Run all tests (DM-74): answers at once with the running run; a run already going is
+    answered instead of starting another."""
+    did = _uuid(domain_id, "domain")
+    try:
+        return domain_eval.start_eval_run(uuid.UUID(current_user.id), did)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="domain not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/api/domains/{domain_id}/eval/runs")
+def get_domain_eval_runs(
+    domain_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> dict:
+    """The domain's test runs, newest first, for the score cards and "Compare with" (DM-73)."""
+    runs = domain_eval.list_eval_runs(uuid.UUID(current_user.id), _uuid(domain_id, "domain"), limit)
+    if runs is None:
+        raise HTTPException(status_code=404, detail="domain not found")
+    return {"runs": runs}
+
+
+# ``:uuid`` so ``…/eval/runs/latest`` (routers.py, included after this router) still matches there.
+@router.get("/api/domains/{domain_id}/eval/runs/{run_id:uuid}")
+def get_domain_eval_run(
+    domain_id: str, run_id: uuid.UUID, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """One run with every case's result and the top passages search found (DM-76, DM-77)."""
+    did = _uuid(domain_id, "domain")
+    try:
+        return domain_eval.get_eval_run(uuid.UUID(current_user.id), did, run_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
