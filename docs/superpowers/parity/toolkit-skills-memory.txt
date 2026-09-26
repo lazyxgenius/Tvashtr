@@ -1,0 +1,16 @@
+TkF-Presets-1 web: matched 37/42 design items · 0 with size/type drift · 7 only moved · 5 not found in app
+TkF-Presets-1 desktop: matched 37/42 design items · 0 with size/type drift · 35 only moved · 5 not found in app
+TkF-Presets-2 web: matched 27/34 design items · 0 with size/type drift · 0 only moved · 7 not found in app
+TkF-Presets-2 desktop: matched 27/34 design items · 0 with size/type drift · 24 only moved · 7 not found in app
+TkF-SkillTabs-1 web: matched 43/48 design items · 0 with size/type drift · 0 only moved · 5 not found in app
+TkF-SkillTabs-1 desktop: matched 43/48 design items · 0 with size/type drift · 41 only moved · 5 not found in app
+TkF-SkillTabs-2 web: matched 30/35 design items · 0 with size/type drift · 0 only moved · 5 not found in app
+TkF-SkillTabs-2 desktop: matched 30/35 design items · 0 with size/type drift · 28 only moved · 5 not found in app
+TkF-SkillsEmpty-1 web: matched 26/31 design items · 0 with size/type drift · 0 only moved · 5 not found in app
+TkF-SkillsEmpty-1 desktop: matched 26/31 design items · 0 with size/type drift · 24 only moved · 5 not found in app
+TkF-SkillsEmpty-2 web: matched 24/31 design items · 0 with size/type drift · 0 only moved · 7 not found in app
+TkF-SkillsEmpty-2 desktop: matched 24/31 design items · 0 with size/type drift · 22 only moved · 7 not found in app
+Toolkit-SkillPresets web: matched 30/35 design items · 0 with size/type drift · 0 only moved · 5 not found in app
+Toolkit-SkillPresets desktop: matched 30/35 design items · 0 with size/type drift · 28 only moved · 5 not found in app
+Toolkit-Skills web: matched 43/48 design items · 0 with size/type drift · 0 only moved · 5 not found in app
+Toolkit-Skills desktop: matched 43/48 design items · 0 with size/type drift · 41 only moved · 5 not found in app
