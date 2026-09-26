@@ -277,6 +277,8 @@ describe("Add an API key (DT-26, DtF-Key-2)", () => {
     const { s } = await openSheet();
     expect(s.getByText("Works on Desktop and on the website")).toBeInTheDocument();
     expect(providerButton()).toHaveTextContent("anthropic");
+    // A screen reader hears the chosen provider, not just "Provider".
+    expect(providerButton()).toHaveAccessibleName("Provider anthropic");
     expect(
       await s.findByText(
         "Covers models that start with anthropic/, like anthropic/claude-sonnet-5.",

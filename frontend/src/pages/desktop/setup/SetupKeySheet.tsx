@@ -194,6 +194,7 @@ function ProviderPicker({
   const labelId = useId();
   const listId = useId();
   const hintId = useId();
+  const valueId = useId();
 
   // The pre-pick may not be in the directory yet (still loading): show it all the same.
   const options = useMemo(() => {
@@ -265,7 +266,7 @@ function ProviderPicker({
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-controls={open ? listId : undefined}
-          aria-labelledby={labelId}
+          aria-labelledby={`${labelId} ${valueId}`}
           aria-describedby={hint ? hintId : undefined}
           onClick={() => (open ? close() : openList())}
           onKeyDown={(e) => {
@@ -275,7 +276,10 @@ function ProviderPicker({
             }
           }}
         >
-          <span className={value ? "st-provider__value" : "st-provider__value is-empty"}>
+          <span
+            id={valueId}
+            className={value ? "st-provider__value" : "st-provider__value is-empty"}
+          >
             {value ?? "Choose a provider"}
           </span>
           <ChevronDownIcon className="st-provider__chevron" />
