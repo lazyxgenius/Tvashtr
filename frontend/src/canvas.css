@@ -132,9 +132,6 @@
   align-items: center;
   gap: 4px;
 }
-.rf-node__meta .tv-pill {
-  margin-left: 0;
-}
 .rf-node__cap {
   padding: 1px 7px;
   font-size: 10px;
