@@ -313,6 +313,7 @@ export const memoryRow = (id, content, polarity, over = {}) => ({
   source_invocation_id: 4812,
   source_node_id: "n-rev",
   superseded_by: null,
+  superseded_reason: null,
   embedding_dim: 1536,
   valid_from: ago(31),
   invalid_at: null,
@@ -449,6 +450,41 @@ export const ACTIVE_ROWS = [
   ...OLDER,
 ];
 
+// ---- The Archive tab (TkF-Archive-*) ----
+// A SHOULD a newer memory replaced on Sep 22, and the Engineer's MUST NOT you discarded on Sep 21.
+export const ARC_REPLACED = memoryRow(
+  "x-replaced",
+  "Run the tests with python -m pytest -q.",
+  "prefer",
+  {
+    status: "superseded",
+    superseded_by: "a-newer",
+    superseded_reason: "replaced",
+    created_at: day(10),
+    valid_from: day(10),
+    invalid_at: day(22),
+    updated_at: day(22),
+  },
+);
+export const ARC_DISCARDED = memoryRow(
+  "x-discarded",
+  "Don’t touch web/lib at all.",
+  "forbid",
+  {
+    status: "rejected",
+    node_id: "n-eng",
+    tier: "node",
+    agent: { ...REVIEWER, node_id: "n-eng", role_name: "engineer" },
+    source_node_id: "n-eng",
+    source: runSource({ agent_role: "engineer", node_id: "n-eng" }),
+    created_at: day(21),
+    valid_from: day(21),
+    invalid_at: day(21),
+    updated_at: day(21),
+  },
+);
+export const ARCHIVE_ROWS = [ARC_REPLACED, ARC_DISCARDED];
+
 // GET /api/memory/repos — sorted by label, like the backend; the page lists repos with memories
 // first (trade_mcp, then cryptoground-mcp, as the design draws them).
 export const MEMORY_REPOS = [
@@ -477,6 +513,7 @@ export const memoryRoutes = ({
   active = 14,
   activeRows = null,
   archive = 3,
+  archiveRows = null,
   review = true,
 } = {}) => {
   const state = {
@@ -485,10 +522,14 @@ export const memoryRoutes = ({
     // With rows, the Active tab lists them and the count follows them.
     rows: activeRows ? [...activeRows] : null,
     active,
+    // With archive rows, the Archive tab lists them (Restore takes a discarded one out).
+    archived: archiveRows ? [...archiveRows] : null,
     archive,
     review,
   };
   const activeCount = () => (state.rows ? state.rows.length : state.active);
+  const archiveCount = () =>
+    state.archived ? state.archived.length : state.archive;
   const row = (id) => state.rows?.find((x) => x.id === id);
   const put = (m) => {
     state.rows = state.rows.map((x) => (x.id === m.id ? m : x));
@@ -514,7 +555,7 @@ export const memoryRoutes = ({
           ? state.pending
           : status === "active"
             ? (state.rows ?? [])
-            : [];
+            : (state.archived ?? []).filter((m) => m.status === status);
       return { json: { memories: list } };
     },
     "GET /api/memory/repos": { repos: MEMORY_REPOS },
@@ -542,7 +583,7 @@ export const memoryRoutes = ({
       json: {
         inbox: state.pending.length,
         active: activeCount(),
-        archive: state.archive,
+        archive: archiveCount(),
       },
     }),
     "GET /api/memory/review-mode": () => ({
@@ -553,7 +594,19 @@ export const memoryRoutes = ({
       return { json: { review_mode: state.review } };
     },
     "POST /api/memories/:id/promote": (req) => {
-      const m = take(idAt(req, -2));
+      const id = idAt(req, -2);
+      // Restore: a discarded memory goes back to Active.
+      const discarded = state.archived?.find(
+        (x) => x.id === id && x.status === "rejected",
+      );
+      if (discarded) {
+        state.archived = state.archived.filter((x) => x.id !== id);
+        const restored = { ...discarded, status: "active", invalid_at: null };
+        state.active += 1;
+        if (state.rows) state.rows.push(restored);
+        return { json: { ...restored, action: "promote" } };
+      }
+      const m = take(id);
       if (!m) return gone;
       state.active += 1;
       if (state.rows) state.rows.push({ ...m, status: "active" });

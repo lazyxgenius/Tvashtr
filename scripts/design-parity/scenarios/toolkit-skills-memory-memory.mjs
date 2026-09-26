@@ -5,6 +5,8 @@ import {
   ACTIVE_ROWS,
   ACT_CONTEXT,
   ACT_SHOULD,
+  ARCHIVE_ROWS,
+  ARC_DISCARDED,
   MEM_MUST_NOT,
   MEM_SHOULD,
   frozenClock,
@@ -70,6 +72,14 @@ const activeButton = (page, content, name) =>
 const pointerAway = (page) => page.mouse.move(1400, 700);
 const SHOULD_EDITED =
   "Approve only when the registry test, the TypeScript mirror and the docs list the same indicators.";
+
+const ARCHIVE = "#/toolkit/memory/archive";
+const archiveRoutes = () =>
+  memoryRoutes({ activeRows: ACTIVE_ROWS, archiveRows: ARCHIVE_ROWS });
+const archiveRows = async (page) => {
+  await page.waitForSelector('section[aria-label="Archive"] .mem-row');
+  await page.getByRole("tab", { name: /Active \d/ }).waitFor();
+};
 
 const openFilter = async (page, name) => {
   await page.getByRole("combobox", { name }).click();
@@ -237,6 +247,27 @@ export default [
         .waitFor();
       // The dialog's pop-in animation finishes before the shot.
       await page.waitForTimeout(300);
+    },
+  }),
+  // G6 — Archive
+  ...both("TkF-Archive-1", {
+    path: ARCHIVE,
+    routes: archiveRoutes,
+    steps: archiveRows,
+  }),
+  ...both("TkF-Archive-2", {
+    path: ARCHIVE,
+    routes: archiveRoutes,
+    steps: async (page) => {
+      await archiveRows(page);
+      await page
+        .locator('section[aria-label="Archive"] li.mem-row', {
+          hasText: ARC_DISCARDED.content,
+        })
+        .getByRole("button", { name: "Restore", exact: true })
+        .click();
+      await pointerAway(page);
+      await toastShown(page, "Restored to Active.");
     },
   }),
   ...both("TkF-MemoryEmpty-1", {
