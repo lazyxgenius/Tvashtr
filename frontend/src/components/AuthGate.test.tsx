@@ -46,7 +46,7 @@ describe("AuthGate on Tvashtr Desktop", () => {
     stubFetch(signedOut);
     render(<AuthGate />);
     expect(await screen.findByRole("heading", { name: "Welcome to Tvashtr" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start building" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Start building/ })).toBeNull();
   });
 });
 
@@ -54,15 +54,20 @@ describe("the website's gate (WEB-2)", () => {
   it("the empty address is the landing when signed out", async () => {
     stubFetch(signedOut);
     render(<AuthGate />);
-    expect(await screen.findByRole("button", { name: "Start building" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { level: 1, name: /^Compose your own team of AI agents/ }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("DASHBOARD STUB")).toBeNull();
   });
 
   it("the landing's CTA goes to the sign-in page", async () => {
     stubFetch(signedOut);
     render(<AuthGate />);
-    fireEvent.click(await screen.findByRole("button", { name: "Start building" }));
-    expect(window.location.hash).toBe("#/signin");
+    const [hero] = await screen.findAllByRole("link", {
+      name: "Start building — sign in with GitHub",
+    });
+    fireEvent.click(hero);
+    await waitFor(() => expect(window.location.hash).toBe("#/signin"));
     expect(await screen.findByLabelText("Email")).toBeInTheDocument();
   });
 

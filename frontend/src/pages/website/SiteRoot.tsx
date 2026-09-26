@@ -1,16 +1,14 @@
 /**
  * The public website's pages (website.md WEB-1): the landing, sign-in and download, signed in or
  * out. `AuthGate` renders it for every public address; Tvashtr Desktop never does (WEB-3).
- *
- * The landing still renders the previous LandingPage until its redesign lands (build group G3).
  */
 import { type ReactNode, useEffect } from "react";
 
-import { LandingPage } from "../../components/LandingPage";
 import type { AuthUser, Config } from "../../lib/api";
 import { type PublicRoute, navigate, parseRoute } from "../../lib/nav";
 import { DownloadPage } from "./DownloadPage";
 import { DownloadStarted } from "./DownloadStarted";
+import { LandingPage } from "./LandingPage";
 import { type SiteNavItem, SiteHeader } from "./SiteHeader";
 import { SiteFooter } from "./SiteFooter";
 import { SignInDone } from "./SignInDone";
@@ -70,7 +68,11 @@ export function SiteRoot({
     if (user) return null;
     return <SignInPage error={route.error} next={route.next} config={config} onAuthed={onAuthed} />;
   }
-  return <LandingPage onGetStarted={() => navigate({ page: "signin" })} />;
+  return (
+    <SiteFrame user={user}>
+      <LandingPage user={user} config={config} />
+    </SiteFrame>
+  );
 }
 
 /** Skip link, header, the page, footer (WEB-38 landmarks). */
