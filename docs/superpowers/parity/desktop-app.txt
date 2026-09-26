@@ -1,3 +1,5 @@
+# Tvashtr Desktop app screens — parity sweep, branch feat/revamp-desktop-app @ a1e3c80
+# skipped: DtF-Index — an index board ("Desktop first-run flows": a list of 10 flows / 28 screens and the coral-ring legend), not an app screen; its rule that the Mac app never shows the website's marketing page is built as DT-1
 DT-Engines web: n/a — Desktop-only screen (desktop-app.md §1)
 DT-Engines desktop: matched 43/43 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DT-Expired web: n/a — Desktop-only screen (desktop-app.md §1)
@@ -9,14 +11,13 @@ DT-Offline desktop: matched 11/11 design items · 0 with size/type drift · 0 on
 DT-Project web: n/a — Desktop-only screen (desktop-app.md §1)
 DT-Project desktop: matched 31/31 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DT-Ready web: n/a — Desktop-only screen (desktop-app.md §1)
-DT-Ready desktop: matched 28/28 design items · 0 with size/type drift · 0 only moved · 0 not found in app
-# note DT-Ready / DtF-Run-8 / DtF-Launch-2 / DT-Update / DtF-Upd-1 desktop: round-1 Shell kept (OQ-28): the app also draws the ⌘K search button and nav badges, which the boards omit (extra app items, not counted); Home's nav foot shows the boards' Domains blurb while the ready card is on screen (Shortcuts otherwise)
+DT-Ready desktop: matched 27/28 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 DT-Splash web: n/a — Desktop-only screen (desktop-app.md §1)
 DT-Splash desktop: matched 9/9 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DT-Team web: n/a — Desktop-only screen (desktop-app.md §1)
-DT-Team desktop: matched 39/41 design items · 0 with size/type drift · 0 only moved · 2 not found in app
+DT-Team desktop: matched 37/41 design items · 0 with size/type drift · 7 only moved · 4 not found in app
 DT-Update web: n/a — Desktop-only screen (desktop-app.md §1)
-DT-Update desktop: matched 30/30 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DT-Update desktop: matched 29/30 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 DT-Waiting web: n/a — Desktop-only screen (desktop-app.md §1)
 DT-Waiting desktop: matched 12/12 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DT-Welcome web: n/a — Desktop-only screen (desktop-app.md §1)
@@ -48,7 +49,7 @@ DtF-Key-3 desktop: matched 44/44 design items · 0 with size/type drift · 0 onl
 DtF-Launch-1 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Launch-1 desktop: matched 9/9 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Launch-2 web: n/a — Desktop-only screen (desktop-app.md §1)
-DtF-Launch-2 desktop: matched 28/28 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Launch-2 desktop: matched 27/28 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 DtF-Off-1 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Off-1 desktop: matched 11/11 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Off-2 web: n/a — Desktop-only screen (desktop-app.md §1)
@@ -66,15 +67,14 @@ DtF-Run-5 desktop: matched 41/42 design items · 0 with size/type drift · 0 onl
 DtF-Run-6 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Run-6 desktop: matched 31/31 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Run-7 web: n/a — Desktop-only screen (desktop-app.md §1)
-DtF-Run-7 desktop: matched 39/41 design items · 0 with size/type drift · 0 only moved · 2 not found in app
+DtF-Run-7 desktop: matched 37/41 design items · 0 with size/type drift · 7 only moved · 4 not found in app
 DtF-Run-8 web: n/a — Desktop-only screen (desktop-app.md §1)
-DtF-Run-8 desktop: matched 28/28 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Run-8 desktop: matched 27/28 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 DtF-Sign-1 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Sign-1 desktop: matched 12/12 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Sign-2 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Sign-2 desktop: matched 11/11 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 DtF-Upd-1 web: n/a — Desktop-only screen (desktop-app.md §1)
-DtF-Upd-1 desktop: matched 30/30 design items · 0 with size/type drift · 0 only moved · 0 not found in app
-# note DtF-Upd-1 desktop: the scenario draws the frame's coral annotation span around Restart (inline-flex, as the board does), which keeps the button at its 148px content width; DT-Update (no ring) checks the real full-width 175px button
+DtF-Upd-1 desktop: matched 29/30 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 DtF-Upd-2 web: n/a — Desktop-only screen (desktop-app.md §1)
 DtF-Upd-2 desktop: matched 7/7 design items · 0 with size/type drift · 0 only moved · 0 not found in app
