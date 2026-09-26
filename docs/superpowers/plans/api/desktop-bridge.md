@@ -222,8 +222,8 @@ Coded against the plan's contract; the lead should check these against B-LOCAL's
 
 Additive; gated by `isAppPage` like v5 (GitHub's in-window install pages get `forbidden`). Every
 call answers through the v5 `{ok, value}` envelope, so a rejection's `message` is readable.
-Built so far: DB-1 `auth`, DB-2 deep-link additions, DB-3 `app.getInfo`, DB-4 `setup`. Still to
-build (later groups): DB-5 `repos.initGit`, DB-6 `update`, DB-7 `runner.stop({release})`, DB-11.
+Built: DB-1 `auth`, DB-2 deep-link additions, DB-3 `app.getInfo`, DB-4 `setup`, DB-5
+`repos.initGit`, DB-6 `update`, DB-7 `runner.stop({release})`, DB-11 (release-notes `xattr` step).
 
 ## `auth` — sign in to Tvashtr in the default browser (DB-1)
 
@@ -312,16 +312,37 @@ last signed-in login (`<login>@users.noreply.github.com`; an email login as is),
 `repos.inspect` non-git results gain an additive `reason`: `"not_git"` (offer Set up git here),
 `"inside_repo"`, `"missing"`. Tests: `desktop/scripts/init-git.test.cjs`.
 
-## `update` (DB-6) — renderer side only so far
+## `update` (DB-6) — the in-app updater (`electron/updater.cjs`)
 
-Main isn't built yet (G6). The page already reads it, optional-chained (`lib/desktopApp.ts`
-`getUpdateState` / `onUpdateState`; types `TvashtrUpdateState` in `frontend/src/vite-env.d.ts`):
-
-- `update.getState(): Promise<UpdateState>` and `update.onState(cb): () => void`, with
-  `UpdateState = {state:"idle"} | {state:"downloading", version, progress} | {state:"ready",
-  version} | {state:"installing", version} | {state:"manual", version, reason:"not_writable" |
-  "download_failed" | "swap_failed"}`. An answer of another shape counts as `idle`.
+- `update.getState(): Promise<UpdateState>` and `update.onState(cb): () => void` (channel
+  `tvashtr:update:state`), with `UpdateState = {state:"idle"} | {state:"downloading", version,
+  progress} | {state:"ready", version} | {state:"installing", version} | {state:"manual", version,
+  reason:"not_writable" | "download_failed" | "swap_failed"}`. The page treats any other shape as
+  `idle` (`lib/desktopApp.ts`).
+- Main checks 15 s after launch and every 6 h: `GET /api/desktop/release` through the runner's API
+  client, numeric semver compare against `app.getVersion()` (desktop/package.json). Not newer, or
+  the release unknown (GitHub unreachable → nulls) → stays `idle`.
+- Newer: a bundle that can't be swapped in place (`app.getInfo().bundleWritable` false: not
+  packaged, on a DMG under /Volumes, translocated, read-only) → `manual` `not_writable`. Else
+  `downloading` → Node `https` fetches the STABLE `…/releases/latest/download/Tvashtr-mac.dmg`
+  (never a pinned version) into `userData/updates/`, `hdiutil attach -nobrowse -readonly`, `ditto`
+  `Tvashtr.app` out, detach, check the staged Info.plist (`CFBundleShortVersionString` = the
+  release's version, `CFBundleIdentifier` = `dev.tvashtr.desktop`), `xattr -dr
+  com.apple.quarantine` → `ready`. Any failure → `manual` `download_failed`.
+- `update.check(): Promise<UpdateState>` — the same check on demand (never rejects).
+- `update.restartToUpdate(): Promise<void>` — only from `ready`: the unsaved-changes guard ("Keep
+  editing" cancels, state stays `ready`), then `installing` (the page shows DtF-Upd-2), then
+  `runner.stop({release: true})`, then a detached `/bin/sh` helper waits for this PID to exit,
+  swaps the bundles (rolls back if the move fails) and `open`s the app; main exits. A helper that
+  can't start → `manual` `swap_failed`.
+- `update.openDownload(): Promise<void>` — opens the stable DMG link in the default browser.
 - While the state is `installing`, the whole window shows Updating (DtF-Upd-2): ◌ "Installing
   <version>", plus ⓘ "Your running team will resume from its last step" only while the account
   has a Desktop run going (`GET /api/runs?status=running`, `desktop_target: true`).
-- `check`, `restartToUpdate`, `openDownload` are typed as optional until G6 builds them.
+
+## `runner.stop({release})` (DB-7) — main only
+
+On quit and on the update restart, each in-flight Desktop job's CLI is killed (as before), then
+`POST /api/desktop-runner/jobs/{id}/release` (best effort, 5 s cap) puts it back in the queue, so
+the next launch claims it and runs that step again. `runner/api.cjs` gained `releaseJob(id)` and
+`latestRelease()`.

@@ -122,6 +122,19 @@ const setup = {
     ),
 };
 
+// ---- update: the in-app updater (v6, DB-6) --------------------------------------------------
+const update = {
+  getState: () => call("tvashtr:update:getState"),
+  onState: (cb) => {
+    const handler = (_e, state) => cb(state);
+    ipcRenderer.on("tvashtr:update:state", handler);
+    return () => ipcRenderer.removeListener("tvashtr:update:state", handler);
+  },
+  check: () => call("tvashtr:update:check"),
+  restartToUpdate: () => call("tvashtr:update:restart").then(() => undefined),
+  openDownload: () => call("tvashtr:update:openDownload").then(() => undefined),
+};
+
 // ---- app (v5; getInfo v6) ---------------------------------------------------------------------
 const appBridge = {
   // v6 (DB-3): the running version, the API host and whether the bundle can update in place.
@@ -142,11 +155,13 @@ contextBridge.exposeInMainWorld("tvashtrDesktop", {
   repos,
   auth,
   setup,
+  update,
   app: appBridge,
 });
 contextBridge.exposeInMainWorld("tvashtrDesktopInfo", {
   shell: "electron",
-  // v6: auth (browser sign-in), setup (this Mac's first-run setup), app.getInfo.
+  // v6: auth (browser sign-in), setup (this Mac's first-run setup), update (in-app updater),
+  // app.getInfo, repos.initGit.
   // v5: engines.cancelConnect, navigation, repos, app.
   // v4: `platform` — the renderer draws the design's dark title strip only where main.cjs hid the
   // system one.

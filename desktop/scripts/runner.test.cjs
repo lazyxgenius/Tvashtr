@@ -168,6 +168,23 @@ test("stop() kills an in-flight CLI and posts no result (the server times the jo
   assert.deepEqual(fs.readdirSync(workRoot), []);
 });
 
+test("stop({release: true}) hands the in-flight job back to the queue (DB-7)", async () => {
+  const api = fakeApi([job("job-q", "claude", "anthropic/claude-sonnet-5")]);
+  api.released = [];
+  api.releaseJob = async (id) => {
+    api.released.push(id);
+  };
+  const { runner } = runnerFor(api, {
+    baseEnv: { ...LEAKY_BASE_ENV, FAKE_CLI_SLEEP_MS: "5000" },
+  });
+  const inFlight = runner.tickOnce();
+  await new Promise((r) => setTimeout(r, 300));
+  await runner.stop({ release: true });
+  await inFlight;
+  assert.deepEqual(api.released, ["job-q"]);
+  assert.equal(api.results.length, 0);
+});
+
 test("a result POST that hits a control-plane restart is retried, not lost", async () => {
   const api = fakeApi([job("job-r", "claude", "anthropic/claude-sonnet-5")]);
   let failures = 2;

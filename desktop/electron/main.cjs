@@ -41,6 +41,7 @@ const { createDesktopSignIn } = require("./auth/desktopSignIn.cjs");
 const { createLastUser } = require("./auth/lastUser.cjs");
 const { createSetupStore, SetupError } = require("./setupStore.cjs");
 const { appInfo } = require("./appInfo.cjs");
+const { createUpdater } = require("./updater.cjs");
 const { createUnsavedGuard, unsavedDialogOptions, DISCARD } = require("./unsavedGuard.cjs");
 const { resolveCliEnv } = require("./harness/spawnEnv.cjs");
 const { RepoError, createGit, displayPath } = require("./repos/common.cjs");
@@ -62,6 +63,8 @@ const PROVIDERS = ["claude", "grok", "codex"];
 
 /** @type {ReturnType<typeof createRunner> | null} */
 let runner = null;
+/** @type {ReturnType<typeof createUpdater> | null} */
+let updater = null;
 
 /** Talks to the control plane through the local proxy with the UI's own session cookie. */
 const api = createRunnerApi({ baseUrl: () => localOrigin, cookieHeader: sessionCookieHeader });
@@ -339,15 +342,49 @@ function registerAuthIpc() {
     openedFromWeb = null;
     return null;
   });
-  handle("tvashtr:app:getInfo", () =>
+  const info = () =>
     appInfo({
       version: app.getVersion(),
       apiOrigin: currentApiOrigin(),
       platform: process.platform,
       exePath: app.getPath("exe"),
       isPackaged: app.isPackaged,
-    }),
-  );
+    });
+  handle("tvashtr:app:getInfo", info);
+
+  // The in-app updater (DB-6): check after launch and every 6 h; swap on "Restart to update".
+  const updates = createUpdater({
+    currentVersion: app.getVersion(),
+    latestRelease: () => api.latestRelease(),
+    bundleInfo: info,
+    updatesDir: path.join(app.getPath("userData"), "updates"),
+    emit: (state) => sendToPage("tvashtr:update:state", state),
+    confirmRestart: () => {
+      const win = mainWindow;
+      if (!win || win.isDestroyed()) return true;
+      return unsaved.confirmDiscard((options) => dialog.showMessageBoxSync(win, options));
+    },
+    stopRunner: async () => {
+      if (runner) await runner.stop({ release: true });
+    },
+    exit: () => {
+      quittingAfterStopAll = true;
+      if (localServer) localServer.close();
+      app.exit(0);
+    },
+    openExternal: (url) => shell.openExternal(url),
+  });
+  updater = updates;
+  handle("tvashtr:update:getState", () => updates.getState());
+  handle("tvashtr:update:check", () => updates.check());
+  handle("tvashtr:update:restart", async () => {
+    await updates.restartToUpdate();
+    return null;
+  });
+  handle("tvashtr:update:openDownload", async () => {
+    await updates.openDownload();
+    return null;
+  });
 }
 
 /** navigation.* (deep links) and app.setUnsavedChanges. */
@@ -655,6 +692,7 @@ function startApp() {
     boot()
       .then(() => {
         if (runner) runner.start();
+        if (updater && !envFlag("TVASHTR_DESKTOP_SMOKE")) updater.start();
       })
       .catch((err) => {
         console.error("[tvashtr-desktop] failed to start:", err);
@@ -692,9 +730,9 @@ function onBeforeQuit(event) {
   quittingAfterStopAll = true;
   (async () => {
     try {
-      // In-flight subscription jobs are killed and NOT reported; the control plane fails that node
-      // with "Tvashtr Desktop went offline — reopen it and retry." once its heartbeat goes stale.
-      if (runner) await runner.stop();
+      // In-flight subscription jobs are killed and handed back to the queue (DB-7), so the next
+      // launch runs that step again.
+      if (runner) await runner.stop({ release: true });
     } catch {
       /* ignore */
     }
