@@ -31,12 +31,11 @@ describe("First team strip labels (DT-35)", () => {
     expect(runsOnLabel(node({ kind: "terminal", model: null, runs_on: null }))).toBeNull();
   });
 
-  it("offers Plan, build, review (recommended), Spec only and Blank canvas, in that order", () => {
+  it("offers Plan, build, review (recommended) and Blank canvas — not Spec only (its run can't end completed yet)", () => {
     expect(SETUP_TEAM_CARDS.map((c) => [c.template, c.title])).toEqual([
       ["review_loop", "Plan, build, review"],
-      ["spec_only", "Spec only"],
       ["blank", "Blank canvas"],
     ]);
-    expect(SETUP_TEAM_CARDS[2].description).toBe("Start with one agent and add your own.");
+    expect(SETUP_TEAM_CARDS[1].description).toBe("Start with one agent and add your own.");
   });
 });

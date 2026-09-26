@@ -1,5 +1,5 @@
 /**
- * Pure pieces of setup's First team step (desktop-app.md DT-33..DT-36): the three cards, the strip
+ * Pure pieces of setup's First team step (desktop-app.md DT-33..DT-36): the cards, the strip
  * chip names and the "where it will run" labels.
  */
 import type { DesktopTemplateNode } from "../../../lib/api/desktop";
@@ -14,7 +14,11 @@ export interface SetupTeamCard {
   strip: boolean;
 }
 
-/** DT-34 (OQ-11 for Blank's copy). The first is preselected. */
+/**
+ * DT-34 (OQ-11 for Blank's copy). The first is preselected. The designed "Spec only" card is left
+ * out until a Spec only run can end `completed` and loop back to the PM (a team_run walk change;
+ * today an approved spec ends `rejected`, so the first run would read Stopped).
+ */
 export const SETUP_TEAM_CARDS: readonly SetupTeamCard[] = [
   {
     template: "review_loop",
@@ -22,12 +26,6 @@ export const SETUP_TEAM_CARDS: readonly SetupTeamCard[] = [
     description:
       "A product manager writes the spec, you approve it, an engineer builds, a reviewer checks.",
     recommended: true,
-    strip: true,
-  },
-  {
-    template: "spec_only",
-    title: "Spec only",
-    description: "Turns an idea into a reviewed spec. No code changes.",
     strip: true,
   },
   {

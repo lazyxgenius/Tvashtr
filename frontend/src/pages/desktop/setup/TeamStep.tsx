@@ -18,8 +18,9 @@ import { TemplateStrip } from "./TemplateStrip";
 const CARD_KEYS = SETUP_TEAM_CARDS.map((c) => c.template);
 
 /**
- * Setup step 4, First team (desktop-app.md DT-33..DT-36): Plan, build, review (preselected), Spec
- * only or Blank canvas, each strip showing where its agents will run for this account; a team
+ * Setup step 4, First team (desktop-app.md DT-33..DT-36): Plan, build, review (preselected) or
+ * Blank canvas (Spec only is held back, see SETUP_TEAM_CARDS), each strip showing where its agents
+ * will run for this account; a team
  * name ("My first team", OQ-13); Create team makes the team on the plans in use
  * (`use_plans`), marks setup finished on this Mac and goes Home.
  */

@@ -204,7 +204,10 @@ describe("Desktop Home's ready card (DT-38–41)", () => {
     expect(window.location.hash).toBe("#/toolkit/tools/browse");
     fireEvent.click(screen.getByRole("button", { name: /Add a domain/ }));
     expect(window.location.hash).toBe("#/domains");
-    fireEvent.click(screen.getByRole("button", { name: /Try another template/ }));
+    const another = screen.getByRole("button", { name: /Try another template/ });
+    // Home's New team dialog doesn't offer Spec only, so the card doesn't name it.
+    expect(another).toHaveTextContent("Pick a template, or build your own.");
+    fireEvent.click(another);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 });

@@ -223,7 +223,7 @@ export function DesktopReadyCard({
             <UsersIcon />
             <span>Try another template</span>
           </span>
-          <span className="dt-ready__next-body">Spec only, or build your own.</span>
+          <span className="dt-ready__next-body">Pick a template, or build your own.</span>
         </button>
       </div>
     </div>

@@ -88,7 +88,7 @@ afterEach(() => {
 });
 
 describe("TeamStep — DT-Team, DtF-Run-7", () => {
-  it("offers the three cards with Plan, build, review chosen and the honest copy (OQ-11, OQ-12)", async () => {
+  it("offers the cards with Plan, build, review chosen and the honest copy (OQ-11, OQ-12)", async () => {
     const { fetchMock } = await renderStep();
     expect(screen.getByRole("heading", { name: "Start with a team" })).toBeInTheDocument();
     expect(
@@ -98,7 +98,9 @@ describe("TeamStep — DT-Team, DtF-Run-7", () => {
     ).toBeInTheDocument();
     expect(radio(/Plan, build, review/)).toHaveAttribute("aria-checked", "true");
     expect(within(radio(/Plan, build, review/)).getByText("Recommended")).toBeInTheDocument();
-    expect(radio("Spec only")).toHaveAttribute("aria-checked", "false");
+    // Not offered until a Spec only run can end completed (the served template is ignored).
+    expect(screen.queryByRole("radio", { name: "Spec only" })).toBeNull();
+    expect(radio("Blank canvas")).toHaveAttribute("aria-checked", "false");
     expect(radio("Blank canvas")).toHaveAccessibleDescription(
       "Start with one agent and add your own.",
     );
@@ -115,9 +117,6 @@ describe("TeamStep — DT-Team, DtF-Run-7", () => {
     expect(
       plan.getAllByText(/./, { selector: ".st-tpl-chip__where" }).map((e) => e.textContent),
     ).toEqual(["Grok plan", "Claude plan", "API key"]);
-    const spec = within(radio("Spec only"));
-    expect(spec.getByText("Needs setup")).toBeInTheDocument();
-    expect(spec.getByText("Claude plan")).toBeInTheDocument();
     // Blank canvas draws no strip, as designed.
     expect(within(radio("Blank canvas")).queryByText("Grok plan")).toBeNull();
   });
@@ -139,7 +138,7 @@ describe("TeamStep — DT-Team, DtF-Run-7", () => {
     const plan = radio(/Plan, build, review/);
     plan.focus();
     fireEvent.keyDown(plan, { key: "ArrowDown" });
-    expect(radio("Spec only")).toHaveAttribute("aria-checked", "true");
+    expect(radio("Blank canvas")).toHaveAttribute("aria-checked", "true");
     fireEvent.change(screen.getByLabelText("Team name"), {
       target: { value: "Refund feature team" },
     });
@@ -147,7 +146,7 @@ describe("TeamStep — DT-Team, DtF-Run-7", () => {
     fireEvent.click(createButton());
     await waitFor(() => expect(window.location.hash).toBe("#/engines"));
     expect(posts(fetchMock)).toEqual([
-      { template: "spec_only", name: "Refund feature team", use_plans: true },
+      { template: "blank", name: "Refund feature team", use_plans: true },
     ]);
   });
 
