@@ -12,6 +12,7 @@ import {
   useToast,
 } from "../../design-system/components";
 import { type AddKeysRequest, useAddKeysHandler } from "./homeData";
+import { refreshBadges } from "../../lib/workspaceStatus";
 
 interface Sequence extends AddKeysRequest {
   index: number;
@@ -70,6 +71,7 @@ export function AddKeySheet({
     setError(null);
     try {
       await addProvider(provider, key.trim());
+      void refreshBadges(); // a key moves other areas' counts (Engines "N to fix", Home)
     } catch (e) {
       setBusy(false);
       setError(

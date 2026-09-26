@@ -56,9 +56,10 @@ export function Workspace({
   const [searchOpen, setSearchOpen] = useState(false);
   const onCanvas = route.page === "team";
 
+  // On arrival and on every return from the canvas: the drawer changes other areas' counts.
   useEffect(() => {
-    void refreshBadges();
-  }, []);
+    if (!onCanvas) void refreshBadges();
+  }, [onCanvas]);
   useGithubReturn(); // Desktop: back from the GitHub App install → Toolkit › Tools › Browse
   // Tvashtr Desktop: follow `tvashtr://` links (a no-op on the website).
   useDesktopDeepLinks();

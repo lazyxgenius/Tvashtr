@@ -197,6 +197,34 @@ describe("Browse catalog", () => {
     );
   });
 
+  it("the toast's Choose agents still works after leaving Tools: it goes back and opens the dialog", async () => {
+    const { calls } = serve({ tools: [GITHUB, LINEAR] });
+    window.location.hash = "#/toolkit/tools/browse";
+    const { rerender } = renderWithProviders(<ToolsPage view="browse" />);
+    await screen.findByRole("article", { name: "Web fetch" });
+    const add = await waitFor(() => {
+      const b = within(card("Web fetch")).getByRole("button", { name: "Add" });
+      expect(b).toBeEnabled();
+      return b;
+    });
+    fireEvent.click(add);
+    const toast = await screen.findByText(
+      "Web fetch added. Turn it on for an agent in its Skills & tools tab.",
+    );
+    const action = within(toast.closest("[role=status]") as HTMLElement).getByRole("button", {
+      name: "Choose agents",
+    });
+
+    rerender(<div>ELSEWHERE</div>); // the user left Toolkit › Tools; the toast is still up
+    fireEvent.click(action);
+    expect(window.location.hash).toBe("#/toolkit/tools");
+    rerender(<ToolsPage view="installed" />);
+    await screen.findByRole("dialog", { name: "Turn on for agents" });
+    await waitFor(() =>
+      expect(calls.some((c) => c.path === "/api/agents?tool_id=tool-fetch-new")).toBe(true),
+    );
+  });
+
   it("a name clash reloads the list (the card turns to In your tools) and toasts the server's words", async () => {
     let tools = [GITHUB, LINEAR];
     serve({
