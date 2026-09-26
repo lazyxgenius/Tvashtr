@@ -7,8 +7,8 @@ import { registerFresh, shellNav } from "./_home";
 
 // M-tools C7.C frontend self-sign-off. Drives the REAL app (register -> Toolkit › Tools + Skills ->
 // Home's New team -> a WORKER node drawer) and screenshots:
-//   (a) the account Tool + Skill LIBRARY shelves (Toolkit › Tools / Skills), each holding a defined
-//       item;
+//   (a) the account Tool + Skill libraries (Toolkit › Tools / Skills), each holding a defined item
+//       (Tools: added through the Add tool wizard);
 //   (b) the Tools section "Add from library" pick -> a Library-badged reference row;
 //   (c) the same in the Skills section;
 //   (d) the "overridden" tag when an inline server shares a name with a library reference.
@@ -28,22 +28,25 @@ test("M-tools C7.C: library shelves + Add-from-library pickers + overridden tag"
   await registerFresh(page, "c7c");
   const nav = shellNav(page);
 
-  // (a) Add a tool on Toolkit › Tools (its raw-JSON form sits under "Advanced (raw JSON)") and a
-  //     skill on Toolkit › Skills, then screenshot each shelf. Each name is matched EXACTLY so a
-  //     built-in catalog/preset entry can't satisfy the check.
+  // (a) Add a tool on Toolkit › Tools (the Add tool wizard: Basics → a Local command → Add tool)
+  //     and a skill on Toolkit › Skills, then screenshot each page. Each name is matched EXACTLY
+  //     so a built-in catalog/preset entry can't satisfy the check.
   await nav.getByRole("button", { name: /^Toolkit/ }).click();
   await expect(page).toHaveURL(/#\/toolkit\/tools$/);
-  const toolShelf = page.locator("section[aria-label='Your tool library']");
-  await expect(toolShelf.getByRole("heading", { name: "Tool library" })).toBeVisible({
+  await expect(page.getByRole("heading", { level: 1, name: "Tools" })).toBeVisible({
     timeout: 30_000,
   });
-  await toolShelf.getByLabel("Tool name").fill("fetch");
-  await toolShelf.getByText("Advanced (raw JSON)").click();
-  await toolShelf
-    .getByLabel("Server config JSON")
-    .fill('{"command":"uvx","args":["mcp-server-fetch"]}');
-  await toolShelf.getByRole("button", { name: "Add tool" }).click();
-  await expect(toolShelf.locator(".tv-dash__prov-name", { hasText: /^fetch$/ })).toBeVisible({
+  await page.getByRole("button", { name: "Add tool", exact: true }).first().click();
+  const wizard = page.getByRole("dialog", { name: "Add a tool" });
+  await wizard.getByLabel("Name", { exact: true }).fill("fetch");
+  await wizard.getByRole("button", { name: "Next: Connection" }).click();
+  await wizard.getByRole("button", { name: "Local command" }).click();
+  await wizard.getByLabel("Command", { exact: true }).fill("uvx");
+  await wizard.getByLabel(/^Arguments/).fill("mcp-server-fetch");
+  await wizard.getByRole("button", { name: "Next: Secrets" }).click();
+  await wizard.getByRole("button", { name: "Add tool", exact: true }).click();
+  await expect(wizard).toBeHidden({ timeout: 15_000 });
+  await expect(page.getByRole("link", { name: "fetch", exact: true })).toBeVisible({
     timeout: 15_000,
   });
   await page.screenshot({ path: path.join(SHOTS, "a-tool-library.png") });
