@@ -229,6 +229,28 @@ def test_callback_cancelled_on_github_links_back_with_cancelled(unauth_client, m
     assert _done_link(resp) == {"error": "cancelled", "state": state}
 
 
+def test_callback_whose_github_exchange_fails_links_back_with_failed(unauth_client, monkeypatch):
+    # GitHub refused the code (expired / a hiccup): Desktop is told at once, not after 10 minutes.
+    _hosted(monkeypatch)
+
+    def refusing_http(method, url, **_kwargs):
+        raise github_app.GithubAppError("bad_verification_code")
+
+    monkeypatch.setattr(github_app, "_http", refusing_http)
+    _, challenge, state = _pkce()
+    resp = unauth_client.get(
+        "/api/auth/github/callback",
+        params={"code": "gh-code", "state": _start_state(challenge, state)},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    _assert_return_page_headers(resp)
+    assert "Sign-in didn’t finish" in resp.text
+    assert "bad_verification_code" not in resp.text
+    assert "tv_session" not in resp.headers.get("set-cookie", "")
+    assert _done_link(resp) == {"error": "failed", "state": state}
+
+
 def test_callback_with_an_expired_desktop_state_links_back_with_expired(unauth_client, monkeypatch):
     _hosted(monkeypatch)
     monkeypatch.setattr(github_app, "_http", _fake_github())

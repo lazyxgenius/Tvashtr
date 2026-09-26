@@ -174,6 +174,14 @@ test("GitHub cancel and an expired start come back as failed events", async () =
   state = new URL((await signIn.start()).signInUrl).searchParams.get("state");
   await signIn.handleDone({ error: "expired", state });
   assert.equal(events.at(-1).reason, "expired");
+  // GitHub refused the code: not "you cancelled" — couldn't finish.
+  state = new URL((await signIn.start()).signInUrl).searchParams.get("state");
+  await signIn.handleDone({ error: "failed", state });
+  assert.deepEqual(events.at(-1), {
+    state: "failed",
+    reason: "exchange_failed",
+    message: "Couldn't finish signing in. Sign in again.",
+  });
 });
 
 test("Cancel drops the pending sign-in: its code is no longer used", async () => {
@@ -248,6 +256,10 @@ test("tvashtr://auth/done is main-only and strictly shaped", () => {
   });
   assert.deepEqual(parseAuthLink(`tvashtr://auth/done?error=expired&state=${state}`), {
     error: "expired",
+    state,
+  });
+  assert.deepEqual(parseAuthLink(`tvashtr://auth/done?error=failed&state=${state}`), {
+    error: "failed",
     state,
   });
   assert.deepEqual(parseAuthLink("tvashtr://auth/done"), {}, "the bare link only focuses");

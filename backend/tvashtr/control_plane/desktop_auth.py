@@ -44,7 +44,7 @@ BROKEN_LINK_COPY = "This sign-in link is broken. Go back to Tvashtr Desktop and 
 EXPIRED_COPY = "This sign-in has expired. Sign in again."
 OTHER_WINDOW_COPY = "This sign-in belongs to another app window. Sign in again."
 
-Outcome = Literal["signed_in", "cancelled", "expired", "broken"]
+Outcome = Literal["signed_in", "cancelled", "expired", "broken", "failed"]
 
 
 class DesktopAuthError(Exception):
@@ -158,6 +158,10 @@ _COPY: dict[str, tuple[str, str]] = {
     "cancelled": ("Sign-in cancelled", "Nothing was changed. Go back to Tvashtr Desktop."),
     "expired": ("This sign-in expired", EXPIRED_COPY),
     "broken": ("This link doesn’t work", BROKEN_LINK_COPY),
+    "failed": (
+        "Sign-in didn’t finish",
+        "GitHub didn’t sign you in. Go back to Tvashtr Desktop and try again.",
+    ),
 }
 
 

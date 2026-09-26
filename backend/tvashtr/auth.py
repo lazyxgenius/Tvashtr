@@ -418,7 +418,12 @@ def _desktop_callback(
         # ``error=access_denied``: the user cancelled on GitHub. Nothing was changed.
         link = desktop_auth.done_link(state=state, error="cancelled")
         return desktop_auth.return_page(link, "cancelled")
-    user_id = _complete_github_sign_in(code, installation_id, None)
+    try:
+        user_id = _complete_github_sign_in(code, installation_id, None)
+    except HTTPException:
+        # GitHub refused the code (expired, or a hiccup): tell Desktop now, not after 10 minutes.
+        link = desktop_auth.done_link(state=state, error="failed")
+        return desktop_auth.return_page(link, "failed", status_code=400)
     link = desktop_auth.done_link(state=state, code=desktop_auth.make_code(user_id, desktop["c"]))
     response = desktop_auth.return_page(link, "signed_in")
     set_session_cookie(response, user_id)

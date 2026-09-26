@@ -164,7 +164,8 @@ function createDesktopSignIn({
     const mine = pending;
     if (link.error) {
       drop();
-      const reason = link.error === "expired" ? "expired" : "cancelled";
+      // "failed": GitHub refused the code at the callback (not the user's cancel).
+      const reason = { expired: "expired", failed: "exchange_failed" }[link.error] || "cancelled";
       emit({ state: "failed", reason, message: MESSAGES[reason] });
       return true;
     }

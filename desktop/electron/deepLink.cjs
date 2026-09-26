@@ -41,7 +41,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // website's display hint (a GitHub login).
 const AUTH_CODE_RE = /^[A-Za-z0-9_.-]{1,1500}$/;
 const AUTH_STATE_RE = /^[A-Za-z0-9_-]{16,64}$/;
-const AUTH_ERRORS = ["cancelled", "expired"];
+const AUTH_ERRORS = ["cancelled", "expired", "failed"];
 const HINT_LOGIN_RE = /^[A-Za-z0-9-]{1,39}$/;
 
 /**
@@ -116,7 +116,7 @@ function parseDeepLink(link, opts = {}) {
 /**
  * `tvashtr://auth/done…` — the browser sign-in's return link (main only).
  * @param {unknown} link
- * @returns {{ code?: string, error?: "cancelled" | "expired", state?: string } | null}
+ * @returns {{ code?: string, error?: "cancelled" | "expired" | "failed", state?: string } | null}
  *   null when it isn't an auth link or its pieces are malformed; `{}` for the bare link (the
  *   return page's button without a result: just bring the window forward).
  */
@@ -132,7 +132,7 @@ function parseAuthLink(link) {
   if (state === null || !AUTH_STATE_RE.test(state)) return null;
   if (code !== null && error === null && AUTH_CODE_RE.test(code)) return { code, state };
   if (error !== null && code === null && AUTH_ERRORS.includes(error)) {
-    return { error: /** @type {"cancelled" | "expired"} */ (error), state };
+    return { error: /** @type {"cancelled" | "expired" | "failed"} */ (error), state };
   }
   return null;
 }
