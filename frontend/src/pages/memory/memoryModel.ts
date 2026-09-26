@@ -1,7 +1,8 @@
 /**
  * Toolkit › Memory — the pure labels behind the page (no JSX): force badges, the scope chip,
  * provenance lines, Keep's toast, the inline editor's scope choices and its patch, and the Active
- * tab's meta line, filters and order, and the Archive's rows and Restore toast.
+ * tab's meta line, filters and order, the Archive's rows and Restore toast, and Add memory's forces,
+ * default repo and toast.
  */
 import type { BadgeVariant } from "../../design-system/components";
 import type {
@@ -280,3 +281,32 @@ export function restoredMessage(res: Pick<PromoteResult, "action">): string {
     return "Restored to Active. It replaces an older memory that said the opposite.";
   return "Restored to Active.";
 }
+
+/** MEM-31: Add memory's "How strongly" cards, strongest first; MUST is the default. */
+export const FORCE_CHOICES: { polarity: MemoryPolarity; label: string; hint: string }[] = [
+  { polarity: "require", label: "MUST", hint: "Always do this." },
+  { polarity: "prefer", label: "SHOULD", hint: "Do this unless there’s a good reason." },
+  { polarity: "allow", label: "MAY", hint: "Allowed, not required." },
+  { polarity: "context", label: "CONTEXT", hint: "A background fact, no instruction." },
+  { polarity: "avoid", label: "SHOULD NOT", hint: "Avoid unless there’s a good reason." },
+  { polarity: "forbid", label: "MUST NOT", hint: "Never do this." },
+];
+
+/**
+ * MEM-30: the repo "One repo" starts on — the one you ran on last, else the one with the most
+ * memories, else the first. `null` when there is none (Add memory then applies to every repo).
+ */
+export function defaultRepo(repos: MemoryRepo[]): MemoryRepo | null {
+  let best: MemoryRepo | null = null;
+  for (const r of repos) {
+    if (!best) best = r;
+    else if ((r.last_run_at ?? "") !== (best.last_run_at ?? "")) {
+      if ((r.last_run_at ?? "") > (best.last_run_at ?? "")) best = r;
+    } else if (r.memory_count > best.memory_count) best = r;
+  }
+  return best;
+}
+
+/** MEM-34: the toast after Add memory; `repo` is the label of the one repo, `null` = every repo. */
+export const addedMessage = (repo: string | null): string =>
+  `Added. It applies to ${repo ?? "every repo"} right away.`;

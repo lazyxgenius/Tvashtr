@@ -5,9 +5,12 @@ import {
   FORCE_FILTER_OPTIONS,
   FORCE_OPTIONS,
   FORCE_VARIANT,
+  FORCE_CHOICES,
   NO_FILTERS,
   activeMeta,
+  addedMessage,
   archiveMeta,
+  defaultRepo,
   draftOf,
   editPatch,
   isFiltered,
@@ -320,5 +323,47 @@ describe("the Archive", () => {
     expect(restoredMessage({ action: "promote_supersede" })).toBe(
       "Restored to Active. It replaces an older memory that said the opposite.",
     );
+  });
+});
+
+describe("Add memory", () => {
+  const repo = (key: string, last_run_at: string | null, memory_count = 0) => ({
+    repo_key: key,
+    label: key,
+    memory_count,
+    pending_count: 0,
+    last_run_at,
+  });
+
+  it("offers the six forces strongest first, labelled like the badges", () => {
+    expect(FORCE_CHOICES.map((c) => c.polarity)).toEqual(FORCE_OPTIONS.map((o) => o.value));
+    expect(FORCE_CHOICES.map((c) => c.label)).toEqual(FORCE_OPTIONS.map((o) => o.label));
+    expect(FORCE_CHOICES[0]).toEqual({
+      polarity: "require",
+      label: "MUST",
+      hint: "Always do this.",
+    });
+  });
+
+  it("starts One repo on the repo you ran on last", () => {
+    const repos = [
+      repo("lazyxgenius/cryptoground-mcp", "2026-09-24T12:00:00Z"),
+      repo("lazyxgenius/trade_mcp", "2026-09-25T09:00:00Z"),
+      repo("octo/never-run", null, 9),
+    ];
+    expect(defaultRepo(repos)?.repo_key).toBe("lazyxgenius/trade_mcp");
+  });
+
+  it("falls back to the repo with the most memories, then the first, then none", () => {
+    expect(defaultRepo([repo("a/one", null, 1), repo("b/two", null, 4)])?.repo_key).toBe("b/two");
+    expect(defaultRepo([repo("a/one", null), repo("b/two", null)])?.repo_key).toBe("a/one");
+    expect(defaultRepo([])).toBeNull();
+  });
+
+  it("names where the memory applies", () => {
+    expect(addedMessage("lazyxgenius/trade_mcp")).toBe(
+      "Added. It applies to lazyxgenius/trade_mcp right away.",
+    );
+    expect(addedMessage(null)).toBe("Added. It applies to every repo right away.");
   });
 });
