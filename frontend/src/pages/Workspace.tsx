@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import App from "../App";
 import { DomainsPage } from "../components/DomainsPage";
 import { EnginesShelf } from "../components/EnginesShelf";
-import { MemoryShelf } from "../components/MemoryShelf";
 import { SecretsShelf } from "../components/SecretsShelf";
 import { ToolsShelf } from "../components/ToolsShelf";
 import type { AuthUser, Config } from "../lib/api";
@@ -13,6 +12,7 @@ import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
 import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
 import { CommandPalette } from "./home/CommandPalette";
 import { HomePage } from "./home/HomePage";
+import { MemoryPage } from "./memory/MemoryPage";
 import { Shell } from "./shell/Shell";
 import { SkillEditorPage } from "./skills/SkillEditorPage";
 import { SkillsPage } from "./skills/SkillsPage";
@@ -120,7 +120,7 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
     case "skill":
       return <SkillEditorPage skillId={route.skillId} />;
     case "memory":
-      return <MemoryShelf />;
+      return <MemoryPage tab={route.tab} />;
     case "secrets":
       return <SecretsShelf />;
     default:
