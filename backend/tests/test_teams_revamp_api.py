@@ -526,15 +526,30 @@ def test_delete_removes_runs_linked_only_by_library_team_id(client):
 def test_preferences_default_merge_and_owner_scope(client):
     c, owner = _fresh()
     other, _ = _fresh("teams-other")
-    assert c.get("/api/account/preferences").json() == {"get_started_hidden": False}
+    assert c.get("/api/account/preferences").json() == {
+        "get_started_hidden": False,
+        "domains_howto_hidden": False,
+    }
 
     resp = c.patch("/api/account/preferences", json={"get_started_hidden": True})
-    assert resp.status_code == 200 and resp.json() == {"get_started_hidden": True}
-    assert c.get("/api/account/preferences").json() == {"get_started_hidden": True}
+    assert resp.status_code == 200 and resp.json() == {
+        "get_started_hidden": True,
+        "domains_howto_hidden": False,
+    }
+    assert c.get("/api/account/preferences").json() == {
+        "get_started_hidden": True,
+        "domains_howto_hidden": False,
+    }
     # An empty patch changes nothing.
-    assert c.patch("/api/account/preferences", json={}).json() == {"get_started_hidden": True}
+    assert c.patch("/api/account/preferences", json={}).json() == {
+        "get_started_hidden": True,
+        "domains_howto_hidden": False,
+    }
     # Another account keeps its own default.
-    assert other.get("/api/account/preferences").json() == {"get_started_hidden": False}
+    assert other.get("/api/account/preferences").json() == {
+        "get_started_hidden": False,
+        "domains_howto_hidden": False,
+    }
     with session_scope() as session:
         assert session.get(User, owner).preferences == {"get_started_hidden": True}
 
@@ -549,7 +564,25 @@ def test_preferences_reject_unknown_keys_and_wrong_types(client):
     assert resp.json()["detail"] == "get_started_hidden must be true or false."
     assert c.patch("/api/account/preferences", json=[1]).status_code == 422
     # Nothing was stored by the rejected patches.
-    assert c.get("/api/account/preferences").json() == {"get_started_hidden": False}
+    assert c.get("/api/account/preferences").json() == {
+        "get_started_hidden": False,
+        "domains_howto_hidden": False,
+    }
+
+
+def test_preferences_domains_howto_hidden(client):
+    """DM-6: the Domains list's how-it-works strip is hidden per account."""
+    c, owner = _fresh()
+    other, _ = _fresh("teams-other")
+    resp = c.patch("/api/account/preferences", json={"domains_howto_hidden": True})
+    assert resp.status_code == 200
+    assert resp.json() == {"get_started_hidden": False, "domains_howto_hidden": True}
+    assert other.get("/api/account/preferences").json()["domains_howto_hidden"] is False
+    resp = c.patch("/api/account/preferences", json={"domains_howto_hidden": 1})
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "domains_howto_hidden must be true or false."
+    with session_scope() as session:
+        assert session.get(User, owner).preferences == {"domains_howto_hidden": True}
 
 
 def test_preferences_require_a_session(unauth_client):

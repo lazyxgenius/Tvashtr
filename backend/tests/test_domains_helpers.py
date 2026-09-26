@@ -5,6 +5,7 @@ import uuid
 from conftest import auth_user_id
 
 from tvashtr.control_plane import domains as domains_cp
+from tvashtr.control_plane.domains import compute_domain_status
 from tvashtr.models import Domain
 
 
@@ -21,7 +22,8 @@ def test_default_config_has_v1_keys():
 
 def test_list_domain_templates_order_and_keys():
     keys = [t["template"] for t in domains_cp.list_domain_templates()]
-    assert keys == ["financial", "legal", "scientific", "support", "blank"]
+    # Revamp: served in the design's order (Dm-NewDialog, Dm-ListEmpty).
+    assert keys == ["support", "legal", "financial", "scientific", "blank"]
     for t in domains_cp.list_domain_templates():
         assert t["name"] and t["description"]
 
@@ -75,9 +77,6 @@ def test_list_get_update_delete_owner_scoped(client):
     assert updated["config"]["retrieval"]["top_k"] == 3
     assert domains_cp.delete_domain(auth_user_id(), uuid.UUID(a["domain_id"])) is True
     assert domains_cp.get_domain(auth_user_id(), uuid.UUID(a["domain_id"])) is None
-
-
-from tvashtr.control_plane.domains import compute_domain_status
 
 
 def test_compute_domain_status_rules():

@@ -24,11 +24,12 @@ def _fresh() -> TestClient:
 def test_templates_endpoint():
     c = _fresh()
     body = c.get("/api/domain-templates").json()
+    # Revamp: served in the design's order (Dm-NewDialog, Dm-ListEmpty).
     assert [t["template"] for t in body["templates"]] == [
-        "financial",
-        "legal",
-        "scientific",
         "support",
+        "legal",
+        "financial",
+        "scientific",
         "blank",
     ]
 
@@ -94,9 +95,7 @@ def test_unauthenticated_domains_401():
     c = TestClient(app)
     c.cookies.clear()
     assert c.get("/api/domains").status_code == 401
-    assert (
-        c.post("/api/domains", json={"template": "blank", "name": "X"}).status_code == 401
-    )
+    assert c.post("/api/domains", json={"template": "blank", "name": "X"}).status_code == 401
 
 
 def test_patch_rejects_secret_keys_in_config():
@@ -185,6 +184,7 @@ def test_patch_rejects_invalid_graph():
     cfg["retrieval"] = {**cfg.get("retrieval", {}), "graph": {"enabled": True, "neo4j": "x"}}
     assert c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg}).status_code == 422
 
+
 def test_patch_accepts_openrouter_embedding_slug():
     c = _fresh()
     row = c.post("/api/domains", json={"template": "blank", "name": "OREmbed"}).json()
@@ -193,8 +193,7 @@ def test_patch_accepts_openrouter_embedding_slug():
     patched = c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg})
     assert patched.status_code == 200, patched.text
     assert (
-        patched.json()["config"]["embedding"]["model"]
-        == "openrouter/openai/text-embedding-3-small"
+        patched.json()["config"]["embedding"]["model"] == "openrouter/openai/text-embedding-3-small"
     )
 
 
@@ -204,4 +203,3 @@ def test_patch_rejects_non_allowlisted_embedding_model():
     cfg = dict(row["config"])
     cfg["embedding"] = {"model": "openrouter/thenlper/gte-base"}
     assert c.patch(f"/api/domains/{row['domain_id']}", json={"config": cfg}).status_code == 422
-

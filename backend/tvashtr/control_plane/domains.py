@@ -16,7 +16,6 @@ from tvashtr.control_plane.domain_embedding import (
 from tvashtr.db import session_scope
 from tvashtr.models import Domain, DomainChunk, DomainDocument
 
-
 _SECRET_KEYS = frozenset(
     {"api_key", "token", "cookies", "cookie", "secret", "authorization", "password"}
 )
@@ -29,9 +28,7 @@ def _reject_secret_keys(obj: object, *, path: str = "config") -> None:
         for key, value in obj.items():
             key_str = str(key)
             if key_str.lower() in _SECRET_KEYS:
-                raise ValueError(
-                    f"domain config must not include secrets: {key_str!r} at {path}"
-                )
+                raise ValueError(f"domain config must not include secrets: {key_str!r} at {path}")
             _reject_secret_keys(value, path=f"{path}.{key_str}")
     elif isinstance(obj, list):
         for i, item in enumerate(obj):
@@ -57,9 +54,7 @@ def validate_domain_config(config: dict) -> None:
     embedding = config["embedding"]
     emb_extra = set(embedding) - {"model"}
     if emb_extra:
-        raise ValueError(
-            f"domain config.embedding has unknown keys: {sorted(emb_extra)}"
-        )
+        raise ValueError(f"domain config.embedding has unknown keys: {sorted(emb_extra)}")
     if "model" not in embedding:
         raise ValueError("domain config.embedding.model is required")
     if embedding["model"] is not None and not isinstance(embedding["model"], str):
@@ -69,33 +64,30 @@ def validate_domain_config(config: dict) -> None:
         raise ValueError(
             "domain config.embedding.model must be an allowlisted slug "
             f"(got {emb_model!r}); see EMBEDDING_PRESETS / "
-            "openai|openrouter 1536, gemini/gemini-embedding-001 (768), or huggingface/BAAI/bge-small-en-v1.5 (384)"
+            "openai|openrouter 1536, gemini/gemini-embedding-001 (768), "
+            "or huggingface/BAAI/bge-small-en-v1.5 (384)"
         )
 
     retrieval = config["retrieval"]
     mode = retrieval.get("mode")
     if mode is not None and str(mode).strip() != "":
         if str(mode).strip().lower() not in {"dense", "lexical", "hybrid"}:
-            raise ValueError(
-                "domain config.retrieval.mode must be dense, lexical, or hybrid"
-            )
+            raise ValueError("domain config.retrieval.mode must be dense, lexical, or hybrid")
     rerank = retrieval.get("rerank")
     if rerank is not None:
         if not isinstance(rerank, dict):
             raise ValueError("domain config.retrieval.rerank must be an object")
         extra = set(rerank) - {"enabled", "model", "top_n"}
         if extra:
-            raise ValueError(
-                f"domain config.retrieval.rerank has unknown keys: {sorted(extra)}"
-            )
+            raise ValueError(f"domain config.retrieval.rerank has unknown keys: {sorted(extra)}")
         if "enabled" in rerank and not isinstance(rerank["enabled"], bool):
             raise ValueError("domain config.retrieval.rerank.enabled must be a boolean")
-        if "model" in rerank and rerank["model"] is not None and not isinstance(
-            rerank["model"], str
+        if (
+            "model" in rerank
+            and rerank["model"] is not None
+            and not isinstance(rerank["model"], str)
         ):
-            raise ValueError(
-                "domain config.retrieval.rerank.model must be a string or null"
-            )
+            raise ValueError("domain config.retrieval.rerank.model must be a string or null")
         if "top_n" in rerank:
             try:
                 n = int(rerank["top_n"])
@@ -104,9 +96,7 @@ def validate_domain_config(config: dict) -> None:
                     "domain config.retrieval.rerank.top_n must be an integer >= 1"
                 ) from e
             if n < 1:
-                raise ValueError(
-                    "domain config.retrieval.rerank.top_n must be an integer >= 1"
-                )
+                raise ValueError("domain config.retrieval.rerank.top_n must be an integer >= 1")
 
     graph = retrieval.get("graph")
     if graph is not None:
@@ -114,41 +104,48 @@ def validate_domain_config(config: dict) -> None:
             raise ValueError("domain config.retrieval.graph must be an object")
         extra = set(graph) - {"enabled"}
         if extra:
-            raise ValueError(
-                f"domain config.retrieval.graph has unknown keys: {sorted(extra)}"
-            )
+            raise ValueError(f"domain config.retrieval.graph has unknown keys: {sorted(extra)}")
         if "enabled" in graph and not isinstance(graph["enabled"], bool):
             raise ValueError("domain config.retrieval.graph.enabled must be a boolean")
 
 
+# Served in the design's order (Dm-NewDialog, Dm-ListEmpty): support, legal, financial,
+# scientific, blank.
 DOMAIN_TEMPLATE_KEYS: tuple[str, ...] = (
-    "financial",
-    "legal",
-    "scientific",
     "support",
+    "legal",
+    "financial",
+    "scientific",
     "blank",
 )
 
+# ``description`` is the New domain dialog's line under the name; ``short`` is the empty page's
+# template card line (Dm-ListEmpty).
 _TEMPLATE_META: dict[str, dict[str, str]] = {
-    "financial": {
-        "name": "Financial",
-        "description": "Filings, metrics, and investor docs — mid-size chunks.",
+    "support": {
+        "name": "Support",
+        "description": "Help center and product docs",
+        "short": "Help center and product docs",
     },
     "legal": {
         "name": "Legal",
-        "description": "Contracts and policies — smaller chunks for precise cites.",
+        "description": "Contracts and policies · precise sources",
+        "short": "Contracts and policies",
+    },
+    "financial": {
+        "name": "Financial",
+        "description": "Filings, metrics, investor docs",
+        "short": "Filings and investor docs",
     },
     "scientific": {
         "name": "Scientific",
-        "description": "Papers and methods — larger chunks for continuity.",
-    },
-    "support": {
-        "name": "Support",
-        "description": "Help center and product docs — concise retrieval chunks.",
+        "description": "Papers and methods · more context",
+        "short": "Papers and methods",
     },
     "blank": {
         "name": "Blank",
-        "description": "Start from default config and tune everything yourself.",
+        "description": "Start from defaults and tune it yourself",
+        "short": "Start from defaults",
     },
 }
 
@@ -181,14 +178,21 @@ def default_config_for_template(template: str) -> dict:
 
 
 def list_domain_templates() -> list[dict]:
-    return [
-        {
-            "template": key,
-            "name": _TEMPLATE_META[key]["name"],
-            "description": _TEMPLATE_META[key]["description"],
-        }
-        for key in DOMAIN_TEMPLATE_KEYS
-    ]
+    """The starting points, in design order, with the piece size and overlap each one seeds."""
+    out = []
+    for key in DOMAIN_TEMPLATE_KEYS:
+        chunking = default_config_for_template(key)["chunking"]
+        out.append(
+            {
+                "template": key,
+                "name": _TEMPLATE_META[key]["name"],
+                "description": _TEMPLATE_META[key]["description"],
+                "short": _TEMPLATE_META[key]["short"],
+                "piece_size": chunking["size"],
+                "overlap": chunking["overlap"],
+            }
+        )
+    return out
 
 
 INGEST_PENDING = "pending"
@@ -319,14 +323,10 @@ def _clear_ready_embeddings_for_dim_change(session, domain: Domain) -> None:
     Same-dim model switches leave ready embeddings intact (compatible vectors).
     """
     session.execute(
-        update(DomainChunk)
-        .where(DomainChunk.domain_id == domain.id)
-        .values(embedding=None)
+        update(DomainChunk).where(DomainChunk.domain_id == domain.id).values(embedding=None)
     )
     docs = (
-        session.execute(
-            select(DomainDocument).where(DomainDocument.domain_id == domain.id)
-        )
+        session.execute(select(DomainDocument).where(DomainDocument.domain_id == domain.id))
         .scalars()
         .all()
     )
@@ -397,9 +397,7 @@ def list_documents(owner_id: uuid.UUID, domain_id: uuid.UUID) -> list[dict] | No
         return [document_to_dict(r) for r in rows]
 
 
-def create_document(
-    owner_id: uuid.UUID, domain_id: uuid.UUID, filename: str, data: bytes
-) -> dict:
+def create_document(owner_id: uuid.UUID, domain_id: uuid.UUID, filename: str, data: bytes) -> dict:
     if len(data) > domain_files_cp.MAX_UPLOAD_BYTES:
         raise ValueError("file exceeds 10 MiB limit")
     ext = domain_files_cp.extension_of(filename)
@@ -418,9 +416,7 @@ def create_document(
         )
         session.add(doc)
         session.flush()
-        rel = domain_files_cp.relative_storage_path(
-            owner_id, domain.id, doc.id, doc.filename
-        )
+        rel = domain_files_cp.relative_storage_path(owner_id, domain.id, doc.id, doc.filename)
         domain_files_cp.save_bytes(rel, data)
         doc.storage_path = rel
         _apply_domain_aggregates(session, domain)
@@ -428,9 +424,7 @@ def create_document(
         return document_to_dict(doc)
 
 
-def delete_document(
-    owner_id: uuid.UUID, domain_id: uuid.UUID, document_id: uuid.UUID
-) -> bool:
+def delete_document(owner_id: uuid.UUID, domain_id: uuid.UUID, document_id: uuid.UUID) -> bool:
     with session_scope() as session:
         domain = _owned_domain(session, owner_id, domain_id)
         if domain is None:

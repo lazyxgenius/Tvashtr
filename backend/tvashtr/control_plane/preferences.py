@@ -12,7 +12,11 @@ from tvashtr.db import session_scope
 from tvashtr.models import User
 
 # key -> default. ``get_started_hidden``: the account hid Home's get-started checklist.
-PREFERENCE_DEFAULTS: dict[str, bool] = {"get_started_hidden": False}
+# ``domains_howto_hidden``: the account hid the Domains list's "how it works" strip (DM-6).
+PREFERENCE_DEFAULTS: dict[str, bool] = {
+    "get_started_hidden": False,
+    "domains_howto_hidden": False,
+}
 
 
 class PreferenceError(ValueError):

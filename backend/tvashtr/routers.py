@@ -23,6 +23,7 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane import (
     desktop_jobs,
     document_views,
+    domain_views,
     github_app,
     github_targets,
     local_repo,
@@ -70,7 +71,6 @@ from tvashtr.control_plane.domains import (
     delete_domain,
     get_domain,
     list_domain_templates,
-    list_domains,
     update_domain,
 )
 from tvashtr.control_plane.domains import (
@@ -2651,7 +2651,8 @@ def get_domain_templates(
 
 @router.get("/api/domains")
 def get_domains(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
-    return {"domains": list_domains(uuid.UUID(current_user.id))}
+    # Revamp (Domains list): each item also carries files/pieces/state/quality/usage summaries.
+    return {"domains": domain_views.list_summaries(uuid.UUID(current_user.id))}
 
 
 @router.post("/api/domains")
@@ -2679,7 +2680,7 @@ def _parse_domain_id(domain_id: str) -> uuid.UUID:
 def get_domain_endpoint(
     domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
 ) -> dict:
-    row = get_domain(uuid.UUID(current_user.id), _parse_domain_id(domain_id))
+    row = domain_views.detail_summary(uuid.UUID(current_user.id), _parse_domain_id(domain_id))
     if row is None:
         raise HTTPException(status_code=404, detail="domain not found")
     return row

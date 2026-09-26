@@ -42,6 +42,7 @@ from tvashtr.models import SpikeHelloEvent
 from tvashtr.routers import router as api_router
 from tvashtr.routes import account as revamp_account
 from tvashtr.routes import documents as revamp_documents
+from tvashtr.routes import domains as revamp_domains
 from tvashtr.routes import engines as revamp_engines
 from tvashtr.routes import home as revamp_home
 from tvashtr.routes import local_repo as revamp_local_repo
@@ -128,6 +129,7 @@ for _revamp_router in (
     revamp_documents.router,
     revamp_memory.router,
     revamp_local_repo.router,
+    revamp_domains.router,
 ):
     app.include_router(_revamp_router, dependencies=[Depends(get_current_user)])
 app.include_router(api_router, dependencies=[Depends(get_current_user)])
