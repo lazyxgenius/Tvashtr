@@ -20,6 +20,10 @@ TkF-AddTool-6 web: matched 75/86 design items · 0 with size/type drift · 12 on
 TkF-AddTool-6 desktop: matched 75/86 design items · 0 with size/type drift · 41 only moved · 11 not found in app
 TkF-AddTool-7 web: matched 49/49 design items · 0 with size/type drift · 14 only moved · 0 not found in app
 TkF-AddTool-7 desktop: matched 49/49 design items · 0 with size/type drift · 45 only moved · 0 not found in app
+TkF-AddToolLocal-1 web: matched 73/73 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+TkF-AddToolLocal-1 desktop: matched 73/73 design items · 0 with size/type drift · 48 only moved · 0 not found in app
+TkF-AddToolLocal-2 web: matched 80/80 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+TkF-AddToolLocal-2 desktop: matched 80/80 design items · 0 with size/type drift · 48 only moved · 0 not found in app
 TkF-Catalog-1 web: matched 40/42 design items · 0 with size/type drift · 0 only moved · 2 not found in app
 TkF-Catalog-1 desktop: matched 40/42 design items · 0 with size/type drift · 38 only moved · 2 not found in app
 TkF-Catalog-2 web: matched 44/44 design items · 0 with size/type drift · 0 only moved · 0 not found in app
@@ -34,6 +38,12 @@ TkF-FixSecret-2 web: matched 61/61 design items · 0 with size/type drift · 0 o
 TkF-FixSecret-2 desktop: matched 61/61 design items · 0 with size/type drift · 48 only moved · 0 not found in app
 TkF-FixSecret-3 web: matched 48/48 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 TkF-FixSecret-3 desktop: matched 48/48 design items · 0 with size/type drift · 45 only moved · 0 not found in app
+TkF-Paste-1 web: matched 59/59 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+TkF-Paste-1 desktop: matched 59/59 design items · 0 with size/type drift · 48 only moved · 0 not found in app
+TkF-Paste-2 web: matched 65/65 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+TkF-Paste-2 desktop: matched 65/65 design items · 0 with size/type drift · 48 only moved · 0 not found in app
+TkF-Paste-3 web: matched 49/58 design items · 0 with size/type drift · 18 only moved · 9 not found in app
+TkF-Paste-3 desktop: matched 49/58 design items · 0 with size/type drift · 47 only moved · 9 not found in app
 TkF-SecretFix-1 web: matched 54/54 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 TkF-SecretFix-1 desktop: matched 54/54 design items · 0 with size/type drift · 41 only moved · 0 not found in app
 TkF-SecretFix-2 web: matched 39/39 design items · 0 with size/type drift · 0 only moved · 0 not found in app
@@ -76,6 +86,10 @@ TkF-ToolsEmpty-1 web: matched 30/32 design items · 0 with size/type drift · 2 
 TkF-ToolsEmpty-1 desktop: matched 30/32 design items · 0 with size/type drift · 28 only moved · 2 not found in app
 Toolkit-AddTool2 web: matched 67/78 design items · 0 with size/type drift · 14 only moved · 11 not found in app
 Toolkit-AddTool2 desktop: matched 67/78 design items · 0 with size/type drift · 39 only moved · 11 not found in app
+Toolkit-AddTool2Local web: matched 82/82 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+Toolkit-AddTool2Local desktop: matched 82/82 design items · 0 with size/type drift · 50 only moved · 0 not found in app
+Toolkit-AddTool3 web: matched 60/71 design items · 0 with size/type drift · 14 only moved · 11 not found in app
+Toolkit-AddTool3 desktop: matched 60/71 design items · 0 with size/type drift · 39 only moved · 11 not found in app
 Toolkit-ReplaceSecret web: matched 54/54 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 Toolkit-ReplaceSecret desktop: matched 54/54 design items · 0 with size/type drift · 41 only moved · 0 not found in app
 Toolkit-Secrets web: matched 43/43 design items · 0 with size/type drift · 0 only moved · 0 not found in app
