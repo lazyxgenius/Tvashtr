@@ -1,3 +1,6 @@
+# F3 Toolkit › Tools + Secrets — parity sweep, branch feat/revamp-f3-tools-secrets @ 9cfb4fd
+# skipped: Toolkit-BeforeAfter — Commentary board, checked from its PNG: a Before (placeholder logo art) / After (thumbnail of Toolkit-Tools) comparison with bullet notes. It has no app state of its own.
+# skipped: TkF-Index — Index board, checked from its PNG: the "Toolkit flows" title, a lede and a two-column list of the 28 flows with screen counts. It is not an app screen.
 TkF-AddSecret-1 web: matched 54/54 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 TkF-AddSecret-1 desktop: matched 54/54 design items · 0 with size/type drift · 41 only moved · 0 not found in app
 TkF-AddSecret-2 web: matched 54/54 design items · 0 with size/type drift · 0 only moved · 0 not found in app
