@@ -158,7 +158,7 @@ function SkillEditor({ skill }: { skill: SkillDetail | null }) {
   const mode = shownMode(draft);
 
   const save = async () => {
-    const found = validateDraft(draft);
+    const found = validateDraft(draft, skill?.name);
     if (found.name || found.triggers) {
       setErrors(found);
       if (found.name) nameRef.current?.focus();
@@ -220,7 +220,15 @@ function SkillEditor({ skill }: { skill: SkillDetail | null }) {
       <Crumbs current={existing ? title : "New skill"} />
       <div className="sk-ed-head">
         {existing ? (
-          <h1 className="sk-ed-title">{title}</h1>
+          // No rename here (the design's title is plain text), but a name refusal still shows.
+          <div className="sk-ed-titlebox">
+            <h1 className="sk-ed-title">{title}</h1>
+            {errors.name && (
+              <span className="ds-field__help ds-field__help--error" role="alert">
+                {errors.name}
+              </span>
+            )}
+          </div>
         ) : (
           // The error sits outside the Input so the field isn't remounted (and doesn't lose focus)
           // when an error comes or goes.

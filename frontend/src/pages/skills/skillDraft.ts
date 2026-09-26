@@ -122,10 +122,12 @@ export function canSave(d: SkillDraft): boolean {
 
 export type DraftErrors = Partial<Record<DraftField, string>>;
 
-/** What Save refuses before asking the backend (the same rules it applies). */
-export function validateDraft(d: SkillDraft): DraftErrors {
+/** What Save refuses before asking the backend (the same rules it applies): the name rule holds
+ *  for a new name only — an existing skill keeps its current name even if an older shelf allowed
+ *  one the rule refuses (`savedName`), exactly as the backend's PATCH does. */
+export function validateDraft(d: SkillDraft, savedName?: string): DraftErrors {
   const out: DraftErrors = {};
-  const name = nameError(d.name);
+  const name = savedName !== undefined && d.name.trim() === savedName ? null : nameError(d.name);
   if (name) out.name = name;
   const trig = triggerError(d);
   if (trig) out.triggers = trig;

@@ -375,6 +375,42 @@ describe("Existing skill (Toolkit-SkillEditor, SKILL-32…35)", () => {
     expect(window.location.hash).toBe("#/toolkit/skills");
   });
 
+  it("a legacy name the old shelf allowed still saves (the backend keeps an unchanged name)", async () => {
+    const legacy = {
+      ...skill("s9", "House Style", {
+        type: "inline",
+        name: "House Style",
+        content: HOUSE_MD,
+        mode: "always",
+      }),
+      used_by: [],
+    };
+    const calls = mockApi({
+      "GET /api/skill-library/:id": legacy,
+      "PATCH /api/skill-library/:id": (_u: URL, b: unknown) => ({ ...legacy, ...(b as object) }),
+    });
+    renderAt("#/toolkit/skills/s9");
+    await screen.findByRole("heading", { name: "House Style" });
+    fireEvent.change(editor(), { target: { value: `${HOUSE_MD}\n- Short lines.` } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await toastWith("House Style saved. Agents use it from their next run.")).toBeTruthy();
+    expect(calls.find((c) => c.method === "PATCH")?.body).toMatchObject({ name: "House Style" });
+  });
+
+  it("a name the backend refuses on an existing skill shows under its title", async () => {
+    mockApi({
+      "GET /api/skill-library/:id": detail,
+      "PATCH /api/skill-library/:id": () =>
+        jsonError(422, "Use lowercase letters, numbers and single hyphens, like house-style."),
+    });
+    renderAt("#/toolkit/skills/s1");
+    await screen.findByRole("heading", { name: "house-style" });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Use lowercase letters, numbers and single hyphens, like house-style.",
+    );
+  });
+
   it("Discard reverts unsaved edits first, then leaves (SKILL-35)", async () => {
     const calls = mockApi({
       "GET /api/skill-library/:id": detail,

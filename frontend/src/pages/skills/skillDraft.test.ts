@@ -55,6 +55,14 @@ describe("skill draft", () => {
     expect(nameError("a".repeat(65))).toBe(rule);
   });
 
+  it("an existing skill's unchanged name isn't re-checked (the backend keeps a legacy name)", () => {
+    const d = { ...emptyDraft(), name: "House Style", content: "c" };
+    expect(validateDraft(d).name).toBeDefined();
+    expect(validateDraft(d, "House Style")).toEqual({});
+    expect(validateDraft({ ...d, name: " House Style " }, "House Style")).toEqual({});
+    expect(validateDraft({ ...d, name: "House Style 2" }, "House Style").name).toBeDefined();
+  });
+
   it("When triggered needs at least one word (Q16)", () => {
     const d = { ...emptyDraft(), name: "x", content: "c", mode: "trigger" as const };
     expect(validateDraft(d)).toEqual({ triggers: "Add at least one trigger word." });
