@@ -50,6 +50,22 @@
 #   focuses the empty field (the ring). The sheet is Home's AddKeySheet in its Domains copy.
 # note DmF-First-2 / DmF-First-3 / DmF-NoKey-1 / DmF-NoKey-3 / DmF-NoKey-4: the coral rings are focus (the scenario focuses
 #   the ringed control); DmF-NoKey-3's key-saved line + toast come from a real save (POST then GET /api/providers).
+# G4 (⋯ menus, rename, the two deletes; scenarios domains-menus.mjs). Dialogs are fixed from the window top as the frames
+#   draw them (Rename 220, Delete domain 200, Delete file 220), so on web only the page behind them moves up 30px.
+# note DmF-Menu-1 / DmF-Menu-2 / DmF-Menu-3: behind the menu or dialog the scenarios use the design's card order (Support
+#   docs first) by swapping Support's and Vendor's last activity, as in G3 — the two footer strings trade places (2 only
+#   moved). DmF-Menu-4 lists the three left in the app's own order, which is the frame's.
+# note DmF-Menu-3: Vendor contracts is used by no team step, so the OQ-14 line ("Teams that use it as a step can’t run until
+#   you pick another domain.") is absent, as in the frame; a domain that is a step adds it under the text.
+# note DmF-Menu-2 / DmF-Menu-3 / DmF-DelFile-2: the coral ring on the confirm button is keyboard focus (the scenario tabs to it).
+# note DmF-DelFile-1 / DmF-DelFile-2: 'Showing 7 of 14 files · 1,212 pieces' not found — OQ-7, as on Dm-Sources.
+#   DelFile-2's scenario dispatches the Delete file… click: a pointer click would scroll the page to the item, which sits
+#   below the 900px fold; the frame draws the page unscrolled.
+# note DmF-DelFile-3: the delete is deferred (OQ-12: the DELETE goes when Undo lapses), and every count drops at once —
+#   the header meta reads "13 files · 1,148 pieces · … updated just now" as drawn, and so do the strip ("13 of 13 files
+#   read") and the Sources tab ("Sources 13"), which the frame leaves stale at 14 (OQ-5): '14 of 14 files read',
+#   'Sources14' and '14' are not found. 'Showing 7 of 13 files · 1,148 pieces' — OQ-7 (all 13 rows listed).
+#   The fixture's webhooks.md (row 8, below the fold on every G2 board) is the frame's: 40 KB, 77 pieces, Sep 18.
 Dm-List web: matched 57/58 design items · 0 with size/type drift · 55 only moved · 1 not found in app
 Dm-List desktop: matched 58/58 design items · 0 with size/type drift · 17 only moved · 0 not found in app
 Dm-ListEmpty web: matched 35/36 design items · 0 with size/type drift · 33 only moved · 1 not found in app
@@ -58,6 +74,12 @@ Dm-NewDialog web: matched 91/92 design items · 0 with size/type drift · 55 onl
 Dm-NewDialog desktop: matched 92/92 design items · 0 with size/type drift · 3 only moved · 0 not found in app
 Dm-Sources web: matched 96/98 design items · 0 with size/type drift · 94 only moved · 2 not found in app
 Dm-Sources desktop: matched 97/98 design items · 0 with size/type drift · 1 only moved · 1 not found in app
+DmF-DelFile-1 web: matched 104/106 design items · 0 with size/type drift · 102 only moved · 2 not found in app
+DmF-DelFile-1 desktop: matched 105/106 design items · 0 with size/type drift · 1 only moved · 1 not found in app
+DmF-DelFile-2 web: matched 104/106 design items · 0 with size/type drift · 94 only moved · 2 not found in app
+DmF-DelFile-2 desktop: matched 105/106 design items · 0 with size/type drift · 1 only moved · 1 not found in app
+DmF-DelFile-3 web: matched 95/100 design items · 0 with size/type drift · 91 only moved · 5 not found in app
+DmF-DelFile-3 desktop: matched 96/100 design items · 0 with size/type drift · 1 only moved · 4 not found in app
 DmF-Filter-1 web: matched 62/63 design items · 0 with size/type drift · 60 only moved · 1 not found in app
 DmF-Filter-1 desktop: matched 63/63 design items · 0 with size/type drift · 1 only moved · 0 not found in app
 DmF-Filter-2 web: matched 106/109 design items · 0 with size/type drift · 104 only moved · 3 not found in app
@@ -80,6 +102,14 @@ DmF-First-4 web: matched 67/68 design items · 0 with size/type drift · 65 only
 DmF-First-4 desktop: matched 68/68 design items · 0 with size/type drift · 1 only moved · 0 not found in app
 DmF-First-5 web: matched 62/64 design items · 0 with size/type drift · 58 only moved · 2 not found in app
 DmF-First-5 desktop: matched 63/64 design items · 0 with size/type drift · 40 only moved · 1 not found in app
+DmF-Menu-1 web: matched 68/69 design items · 0 with size/type drift · 66 only moved · 1 not found in app
+DmF-Menu-1 desktop: matched 69/69 design items · 0 with size/type drift · 3 only moved · 0 not found in app
+DmF-Menu-2 web: matched 65/66 design items · 0 with size/type drift · 55 only moved · 1 not found in app
+DmF-Menu-2 desktop: matched 66/66 design items · 0 with size/type drift · 3 only moved · 0 not found in app
+DmF-Menu-3 web: matched 66/67 design items · 0 with size/type drift · 55 only moved · 1 not found in app
+DmF-Menu-3 desktop: matched 67/67 design items · 0 with size/type drift · 3 only moved · 0 not found in app
+DmF-Menu-4 web: matched 49/50 design items · 0 with size/type drift · 46 only moved · 1 not found in app
+DmF-Menu-4 desktop: matched 50/50 design items · 0 with size/type drift · 1 only moved · 0 not found in app
 DmF-NoKey-1 web: matched 93/94 design items · 0 with size/type drift · 55 only moved · 1 not found in app
 DmF-NoKey-1 desktop: matched 94/94 design items · 0 with size/type drift · 3 only moved · 0 not found in app
 DmF-NoKey-2 web: matched 107/109 design items · 0 with size/type drift · 55 only moved · 2 not found in app

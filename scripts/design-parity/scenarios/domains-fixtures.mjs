@@ -100,6 +100,19 @@ export const DOMAINS = [
   }),
 ];
 
+// Boards with a dialog or menu over the list draw it in the design's order (Support docs first) while
+// its footers say Support "2 hours ago" and Vendor "just now" — the app sorts by last activity
+// (DM-8), so these swap the two cards' last activity: same cards, same order as the frame, the two
+// footer strings trade places (only moved). Otherwise the cards' template pills "Support"/"Legal"
+// would pair with a dialog's radio-card names.
+export const DESIGN_ORDER = DOMAINS.map((d) =>
+  d.domain_id === D.support
+    ? { ...d, last_activity_at: ago(0.2) }
+    : d.domain_id === D.vendor
+      ? { ...d, last_activity_at: ago(120) }
+      : d,
+);
+
 export const TEMPLATES = [
   { template: "support", name: "Support", description: "Help center and product docs", short: "Help center and product docs", piece_size: 600, overlap: 100 },
   { template: "legal", name: "Legal", description: "Contracts and policies · precise sources", short: "Contracts and policies", piece_size: 500, overlap: 80 },
@@ -187,7 +200,8 @@ export const file = (name, over = {}) => {
 };
 
 // Support docs' 14 files, oldest first. The first seven are the design's rows (Dm-Sources); the
-// other seven fall below the 900px fold.
+// other seven fall below the 900px fold. webhooks.md is the eighth row DmF-DelFile-3 draws once
+// pricing-2026.pdf is gone; the pieces still add up to the design's 1,212.
 export const SUPPORT_FILES = [
   file("refund-policy.md", { byte_size: 18 * KB, pieces: 42, created_at: at(9, 12), text: "Refund policy. Customers may request a full refund within 30 days." }),
   file("billing-faq.pdf", { byte_size: 1.2 * MB, pieces: 86, created_at: at(9, 12), text: "Refunds are issued to the original card. Invoices are sent monthly." }),
@@ -196,9 +210,9 @@ export const SUPPORT_FILES = [
   file("account-security.pdf", { byte_size: 2.4 * MB, pieces: 128, created_at: at(9, 14) }),
   file("pricing-2026.pdf", { byte_size: 880 * KB, pieces: 64, created_at: at(9, 15) }),
   file("sso-setup.md", { byte_size: 31 * KB, pieces: 58, created_at: at(9, 18) }),
-  file("webhooks.md", { byte_size: 22 * KB, pieces: 66, created_at: at(9, 19) }),
+  file("webhooks.md", { byte_size: 40 * KB, pieces: 77, created_at: at(9, 18) }),
   file("troubleshooting.pdf", { byte_size: 3.1 * MB, pieces: 132, created_at: at(9, 20) }),
-  file("integrations.md", { byte_size: 40 * KB, pieces: 97, created_at: at(9, 21) }),
+  file("integrations.md", { byte_size: 40 * KB, pieces: 86, created_at: at(9, 21) }),
   file("team-management.md", { byte_size: 28 * KB, pieces: 83, created_at: at(9, 21) }),
   file("data-export.pdf", { byte_size: 1.6 * MB, pieces: 142, created_at: at(9, 22) }),
   file("release-notes.html", { byte_size: 90 * KB, pieces: 121, created_at: at(9, 23) }),

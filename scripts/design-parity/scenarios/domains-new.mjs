@@ -7,9 +7,7 @@
 //   nokey-3  → DmF-NoKey-3 (the key saved: the key line, the toast, Next: add files focused)
 //   nokey-4  → DmF-NoKey-4 (the warn callout, Use the free Hugging Face model focused)
 import {
-  D,
-  DOMAINS,
-  ago,
+  DESIGN_ORDER,
   domainsRoutes as baseRoutes,
   pair,
   typeAndBlur,
@@ -17,18 +15,6 @@ import {
 
 const path = "/#/domains";
 
-// The dialog boards draw the list in the design's order (Support docs first) while its footers say
-// Support "2 hours ago" and Vendor "just now" — the app sorts by last activity (DM-8), so behind the
-// dialog the two cards' last activity is swapped: same cards, same order as the frame, the two
-// footer strings trade places (only moved). Otherwise the cards' template pills "Support"/"Legal"
-// would pair with the dialog's radio-card names.
-const DESIGN_ORDER = DOMAINS.map((d) =>
-  d.domain_id === D.support
-    ? { ...d, last_activity_at: ago(0.2) }
-    : d.domain_id === D.vendor
-      ? { ...d, last_activity_at: ago(120) }
-      : d,
-);
 const domainsRoutes = (over = {}) =>
   baseRoutes({ domains: DESIGN_ORDER, ...over });
 const OPENAI = [
