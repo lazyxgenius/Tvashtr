@@ -23,6 +23,7 @@ import {
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Button, IconButton, Menu, Popover } from "../../design-system/components";
+import type { SavedKey } from "../../lib/api/engines";
 import { routeToHash } from "../../lib/nav";
 import { useEngines } from "./enginesData";
 import {
@@ -338,12 +339,25 @@ function EmbeddingsCard({ onAdd }: { onAdd: (provider: string) => void }) {
 
 // ---- The page ----
 
+/** The current time, ticking while a key reads "Just now" so it turns into a date after a minute. */
+function useNow(keys: readonly SavedKey[]): Date {
+  const [now, setNow] = useState(() => new Date());
+  const recent = keys.some((k) => Date.now() - new Date(k.updated_at).getTime() < 60_000);
+  useEffect(() => {
+    if (!recent) return;
+    const t = setInterval(() => setNow(new Date()), 15_000);
+    return () => clearInterval(t);
+  }, [recent]);
+  return now;
+}
+
 export function ApiKeysPage({ onAddKey }: ApiKeysActions) {
   const engines = useEngines();
   const { status, inputs } = engines;
   const [usageFor, setUsageFor] = useState<string | null>(null);
   const [replaceFor, setReplaceFor] = useState<string | null>(null);
   const [removeFor, setRemoveFor] = useState<string | null>(null);
+  const now = useNow(inputs.keys);
 
   const head = (
     <EnginesHead
@@ -372,7 +386,7 @@ export function ApiKeysPage({ onAddKey }: ApiKeysActions) {
     );
   }
 
-  const rows = keyRows(inputs);
+  const rows = keyRows(inputs, now);
   const suggested = suggestedKeys(inputs);
   const usage = usageFor ? keyUsage(inputs, usageFor) : null;
 

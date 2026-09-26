@@ -139,6 +139,20 @@ describe("API keys page (Eng-Keys)", () => {
     expect(within(embeddings).queryByRole("button")).toBeNull();
   });
 
+  it("turns Just now into the date after a minute", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-09-26T12:00:00+00:00"));
+    const fresh = { ...key("anthropic", "wQ3f"), updated_at: "2026-09-26T11:59:40+00:00" };
+    mockEnginesApi({ "GET /api/providers": { providers: [...KEYS, fresh] } });
+    renderKeys();
+    await loaded();
+    expect(within(row("anthropic")).getByText("Just now")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(within(row("anthropic")).getByText("Sep 26")).toBeInTheDocument();
+  });
+
   it("reads the same on Tvashtr Desktop", async () => {
     mockEnginesApi();
     installDesktop();
