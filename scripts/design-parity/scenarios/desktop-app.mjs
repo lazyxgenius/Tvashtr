@@ -42,6 +42,9 @@ export function desktopBridge(opts = {}) {
         }
       : null,
     connect: opts.connect ?? {},
+    // G5: this Mac's folders — `pick` is what the picker returns, `inspect` answers per path, and
+    // initGit makes a not-a-repo folder a repo on main with no remote.
+    repos: opts.repos ?? null,
   });
   return `(() => {
     const cfg = ${cfg};
@@ -96,6 +99,28 @@ export function desktopBridge(opts = {}) {
                 Object.assign(cfg.setup, patch);
                 return { ...cfg.setup };
               },
+            },
+          }
+        : {}),
+      ...(cfg.repos
+        ? {
+            repos: {
+              pickFolder: async () => cfg.repos.pick ?? null,
+              inspect: async (p) =>
+                (cfg.repos.inspect || {})[p] ?? {
+                  is_git: false, error: "That folder doesn't exist any more.", reason: "missing",
+                },
+              initGit: async ({ path }) => {
+                cfg.repos.inspect = cfg.repos.inspect || {};
+                cfg.repos.inspect[path] = {
+                  is_git: true, current_branch: "main", branches: ["main"],
+                  tracked_file_count: 3, subpaths: [], remote_url: null,
+                };
+                return { branch: "main", commit: "0".repeat(40), file_count: 3 };
+              },
+              recent: { list: async () => [], add: async () => {}, remove: async () => {} },
+              prepareRun: async () => ({ snapshot_id: "", size_bytes: 0 }),
+              bringBackBranch: async () => ({ branch: "" }),
             },
           }
         : {}),
