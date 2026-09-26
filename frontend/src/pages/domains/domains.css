@@ -1,0 +1,457 @@
+/* The Domains pages (Dm-*, DmF-* artboards). Exact px from the design HTML; the design is
+   content-box where noted, the app is border-box. */
+
+.dm-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1136px;
+}
+
+/* ---- Header ---- */
+.dm-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+.dm-head__text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dm-head__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1.6;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+.dm-head__lede {
+  margin: 0;
+  max-width: 620px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-500);
+}
+/* A Button whose icon sits flush against its label, as the design draws `<svg/><span>…</span>`. */
+.dm-btn-inline > span {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---- How it works strip (DM-6) ---- */
+.dm-howto {
+  display: flex;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.dm-howto__step {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+}
+.dm-howto__step + .dm-howto__step {
+  border-left: 1px solid var(--line-200);
+}
+.dm-howto__icon {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--panel-300);
+  color: var(--ink-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dm-howto__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-howto__body {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-500);
+}
+.dm-howto__close {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+}
+/* The same steps stacked, in the "How domains work" dialog (DM-21). */
+.dm-howto--stacked {
+  flex-direction: column;
+}
+.dm-howto--stacked .dm-howto__step + .dm-howto__step {
+  border-left: 0;
+  border-top: 1px solid var(--line-200);
+}
+
+/* ---- Search + sort row ---- */
+.dm-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+.dm-tools__search {
+  width: 280px;
+}
+.dm-tools__sort-label {
+  margin-left: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* The Sort select: at rest it is the design system's Select (Dm-List); open, the listbox trigger
+   of DmF-Find-3. */
+.dm-sort {
+  position: relative;
+  width: 220px;
+}
+.dm-sort__btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+}
+.dm-sort__btn--open {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--coral-200);
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.25);
+  border-radius: 8px;
+  background: var(--surface-page);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-900);
+  cursor: pointer;
+}
+.dm-sort__btn--open:focus-visible {
+  outline: none;
+}
+.dm-sort__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dm-sort__chevron {
+  color: var(--ink-500);
+  flex: none;
+}
+.dm-sort__btn.ds-select .dm-sort__chevron {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-secondary);
+}
+.dm-listbox {
+  position: absolute;
+  top: 46px;
+  left: 0;
+  width: 220px;
+  z-index: 20;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+}
+.dm-listbox:focus {
+  outline: none;
+}
+.dm-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-800);
+  cursor: pointer;
+}
+.dm-option[aria-selected="true"] {
+  background: var(--coral-100);
+}
+.dm-option--active:not([aria-selected="true"]) {
+  background: var(--cream-200);
+}
+.dm-option__check {
+  color: var(--coral-700);
+  flex: none;
+}
+.dm-option__spacer {
+  width: 15px;
+  flex: none;
+}
+.dm-option__label {
+  min-width: 0;
+}
+
+/* ---- Card grid (DM-9) ---- */
+.dm-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.dm-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.04);
+}
+.dm-card__top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.dm-card__titles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dm-card__name {
+  font-family: var(--font-display);
+  font-size: 21px;
+  line-height: 1.6;
+  color: var(--ink-900);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.dm-card__name:hover {
+  color: var(--ink-900);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.dm-card__name:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--shadow-focus);
+}
+.dm-card__badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.dm-card__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.dm-card__line {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.dm-card__line svg {
+  color: var(--ink-500);
+  flex: none;
+}
+.dm-card__foot {
+  border-top: 1px solid var(--line-200);
+  padding-top: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* The outline pill for a template or piece size (content-box 22px in the design). */
+.dm-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-sizing: content-box;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--cream-50);
+  color: var(--ink-700);
+  border: 1px solid var(--line-300);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* ---- No search match (DmF-Find-2) ---- */
+.dm-nomatch {
+  padding: 40px;
+  text-align: center;
+  border: 1px dashed var(--line-400);
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-link {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--coral-700);
+  text-decoration: none;
+  cursor: pointer;
+}
+.dm-link:hover {
+  color: var(--coral-600);
+  text-decoration: underline;
+}
+.dm-link:focus-visible {
+  outline: none;
+  border-radius: 3px;
+  box-shadow: var(--shadow-focus);
+}
+
+/* ---- Load error ---- */
+.dm-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-700);
+}
+.dm-error > span {
+  flex: 1;
+}
+
+/* ---- Empty page (Dm-ListEmpty, DM-18…DM-20) ---- */
+.dm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px 32px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 18px;
+  background: var(--surface-card);
+  text-align: center;
+}
+.dm-empty__tile {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--coral-100);
+  color: var(--coral-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dm-empty__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+  color: var(--ink-900);
+}
+.dm-empty__body {
+  margin: 0;
+  max-width: 600px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--ink-500);
+}
+.dm-empty__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dm-templates__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-700);
+}
+.dm-templates {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.dm-template {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--ink-900);
+  text-align: left;
+  cursor: pointer;
+}
+.dm-template:hover {
+  border-color: var(--line-400);
+}
+.dm-template:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.dm-template__name {
+  font-family: var(--font-display);
+  font-size: 19px;
+  color: var(--ink-900);
+}
+.dm-template__short {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.dm-hint {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.dm-hint__icon {
+  display: inline-flex;
+  margin-top: 2px;
+}
+.dm-hint__text {
+  flex: 1;
+}
+.dm-hint .dm-link {
+  font-size: 12.5px;
+}

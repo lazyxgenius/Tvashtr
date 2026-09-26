@@ -174,4 +174,67 @@ describe("Shell", () => {
     expect(within(nav).getByRole("button", { name: "Home" })).toBeInTheDocument();
     expect(within(nav).queryByText("2 to fix")).toBeNull();
   });
+
+  describe("Domains group (DM-1, DM-2)", () => {
+    const domains: NavBadges["domains"] = [
+      { id: "d1", name: "Support docs", state: "ready" },
+      { id: "d2", name: "Vendor contracts", state: "reading" },
+      { id: "d3", name: "Research papers", state: "needs_attention" },
+      { id: "d4", name: "Q3 filings", state: "empty" },
+    ];
+
+    it("lists one child per domain with its status dot, and the Domains foot", async () => {
+      const { onNavigate } = renderShell({ page: "domains" }, { domains });
+      const nav = screen.getByRole("navigation", { name: "Dashboard" });
+      const parent = within(nav).getByRole("button", { name: "Domains" });
+      expect(parent).toHaveAttribute("aria-current", "page");
+      expect(parent).toHaveAttribute("aria-expanded", "true");
+      const rows = domains.map((d) => within(nav).getByRole("button", { name: d.name }));
+      expect(
+        rows.map((r) => r.querySelector(".sh-nav__dot")?.className.replace("sh-nav__dot ", "")),
+      ).toEqual([
+        "sh-nav__dot--ready",
+        "sh-nav__dot--reading",
+        "sh-nav__dot--attention",
+        "sh-nav__dot--empty",
+      ]);
+      rows.forEach((r) => expect(r).not.toHaveAttribute("aria-current"));
+      expect(nav).toHaveTextContent(
+        "Domains are libraries of your own files. You and your agents ask them questions and get answers with sources.",
+      );
+      expect(within(nav).queryByText("Shortcuts")).toBeNull();
+      await userEvent.click(rows[1]);
+      expect(onNavigate).toHaveBeenCalledWith({ page: "domains", domainId: "d2" });
+    });
+
+    it("marks the open domain's row, not the parent", () => {
+      renderShell({ page: "domains", domainId: "d3", tab: "ask" }, { domains });
+      const nav = screen.getByRole("navigation", { name: "Dashboard" });
+      expect(within(nav).getByRole("button", { name: "Domains" })).not.toHaveAttribute(
+        "aria-current",
+      );
+      expect(within(nav).getByRole("button", { name: "Research papers" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+    });
+
+    it("folds the domains away outside the Domains section, even on first-time Home", () => {
+      setFirstTime(true);
+      renderShell({ page: "home" }, { domains });
+      const nav = screen.getByRole("navigation", { name: "Dashboard" });
+      expect(within(nav).getByRole("button", { name: "Domains" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      expect(within(nav).queryByRole("button", { name: "Support docs" })).toBeNull();
+    });
+
+    it("keeps the domain rows on a first-time account (they aren't badges)", () => {
+      setFirstTime(true);
+      renderShell({ page: "domains" }, { domains });
+      const nav = screen.getByRole("navigation", { name: "Dashboard" });
+      expect(within(nav).getByRole("button", { name: "Support docs" })).toBeInTheDocument();
+    });
+  });
 });

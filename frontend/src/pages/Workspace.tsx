@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
 import App from "../App";
-import { DomainsPage } from "../components/DomainsPage";
 import { EnginesShelf } from "../components/EnginesShelf";
 import { MemoryShelf } from "../components/MemoryShelf";
 import { SecretsShelf } from "../components/SecretsShelf";
@@ -12,6 +11,8 @@ import { requestHomeAction } from "../lib/homeActions";
 import { type DashView, type Route, navigate, useNav } from "../lib/nav";
 import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
 import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
+import { DomainDetailPage } from "./domains/DomainDetailPage";
+import { DomainsListPage } from "./domains/DomainsListPage";
 import { CommandPalette } from "./home/CommandPalette";
 import { HomePage } from "./home/HomePage";
 import { Shell } from "./shell/Shell";
@@ -103,11 +104,10 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
     case "home":
       return <HomePage user={user} />;
     case "domains":
-      return (
-        <DomainsPage
-          onOpenEngines={() => navigate({ page: "engines", tab: "overview" })}
-          onCreateTeam={() => requestHomeAction({ kind: "new-team" })}
-        />
+      return route.domainId ? (
+        <DomainDetailPage key={route.domainId} domainId={route.domainId} />
+      ) : (
+        <DomainsListPage />
       );
     case "engines":
       return <EnginesShelf />;

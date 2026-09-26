@@ -7,13 +7,16 @@ import { useModalDialog } from "../lib/useModalDialog";
 export function NewDomainDialog({
   onCreated,
   onClose,
+  initialTemplate,
 }: {
   onCreated: (domainId: string) => void;
   onClose: () => void;
+  /** Revamp interim: a template card on the empty Domains page opens the dialog with it picked. */
+  initialTemplate?: string;
 }) {
   const [name, setName] = useState("");
   const [templates, setTemplates] = useState<DomainTemplate[]>([]);
-  const [selected, setSelected] = useState<string>("blank");
+  const [selected, setSelected] = useState<string>(initialTemplate ?? "blank");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useModalDialog<HTMLDivElement>(true, onClose);
@@ -32,7 +35,7 @@ export function NewDomainDialog({
       .then((t) => {
         if (!cancelled) {
           setTemplates(t);
-          if (t.length) setSelected(t[0].template);
+          if (t.length && !initialTemplate) setSelected(t[0].template);
         }
       })
       .catch(() => {
@@ -41,7 +44,7 @@ export function NewDomainDialog({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialTemplate]);
 
   const create = async () => {
     const trimmed = name.trim();
@@ -120,7 +123,12 @@ export function NewDomainDialog({
           )}
         </div>
         <footer className="tv-dash__dialog-foot">
-          <button type="button" className="tv-btn" onClick={() => void create()} disabled={creating}>
+          <button
+            type="button"
+            className="tv-btn"
+            onClick={() => void create()}
+            disabled={creating}
+          >
             {creating ? "Creating…" : "Create domain"}
           </button>
           <button type="button" className="tv-btn tv-btn--ghost" onClick={onClose}>

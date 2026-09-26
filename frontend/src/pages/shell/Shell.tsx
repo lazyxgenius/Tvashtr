@@ -26,7 +26,7 @@ import { cx, useDismiss } from "../../design-system/components/utils";
 import { checkBackend, useBackendStatus } from "../../lib/backendStatus";
 import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
 import { navigate, type Route, sectionOf } from "../../lib/nav";
-import type { NavBadges } from "../../lib/workspaceStatus";
+import type { NavBadges, NavDomain } from "../../lib/workspaceStatus";
 import { formatRelativeTimeWords } from "../../lib/time";
 import { loadGetStarted, setGetStartedHidden, useGetStarted } from "../home/getStarted";
 import "./shell.css";
@@ -66,18 +66,39 @@ interface NavLeaf {
   badge?: ReactNode;
 }
 
+/** The status dot beside a domain's nav row (DM-1): sage ready, coral reading or re-reading,
+ *  amber needs attention or waiting for a key, stone empty. */
+function domainDotTone(state: NavDomain["state"]): string {
+  switch (state) {
+    case "ready":
+      return "ready";
+    case "reading":
+    case "rereading":
+      return "reading";
+    case "needs_attention":
+    case "waiting_for_key":
+      return "attention";
+    default:
+      return "empty";
+  }
+}
+
 function Nav({
   route,
   badges,
+  domains,
   onNavigate,
 }: {
   route: Route;
   badges: NavBadges;
+  domains: NavDomain[];
   onNavigate: (r: Route) => void;
 }) {
   const section = sectionOf(route);
   const inEngines = section === "engines";
   const inToolkit = section === "toolkit";
+  const inDomains = section === "domains";
+  const openDomainId = route.page === "domains" ? route.domainId : undefined;
 
   const warn = (n: number | undefined, word: string) =>
     n ? <Badge tone="warn">{`${n} ${word}`}</Badge> : null;
@@ -202,9 +223,29 @@ function Nav({
           <BookOpen {...iconProps} />,
           { page: "domains" },
           {
-            active: route.page === "domains",
+            active: route.page === "domains" && !openDomainId,
+            open: inDomains,
           },
         )}
+        {inDomains &&
+          domains.map((d) => (
+            <li key={`domain-${d.id}`}>
+              <button
+                type="button"
+                className="sh-nav__item sh-nav__item--child sh-nav__item--domain"
+                aria-current={openDomainId === d.id ? "page" : undefined}
+                onClick={() => onNavigate({ page: "domains", domainId: d.id })}
+              >
+                <span className="sh-nav__label">{d.name}</span>
+                <span className="sh-nav__end">
+                  <span
+                    className={`sh-nav__dot sh-nav__dot--${domainDotTone(d.state)}`}
+                    aria-hidden="true"
+                  />
+                </span>
+              </button>
+            </li>
+          ))}
         {top(
           "engines",
           "Engines",
@@ -234,6 +275,16 @@ function Nav({
 }
 
 function NavFoot({ section }: { section: ReturnType<typeof sectionOf> }) {
+  if (section === "domains") {
+    return (
+      <div className="sh-nav__foot">
+        <span>
+          <b>Domains</b> are libraries of your own files. You and your agents ask them questions and
+          get answers with sources.
+        </span>
+      </div>
+    );
+  }
   if (section === "engines") {
     return (
       <div className="sh-nav__foot">
@@ -454,8 +505,19 @@ export function Shell({
         </div>
       </header>
       <div className="sh-body">
-        <Nav route={route} badges={firstTime ? {} : badges} onNavigate={onNavigate} />
-        <main className={cx("sh-main", route.page === "home" && "sh-main--home")}>
+        <Nav
+          route={route}
+          badges={firstTime ? {} : badges}
+          domains={badges.domains ?? []}
+          onNavigate={onNavigate}
+        />
+        <main
+          className={cx(
+            "sh-main",
+            route.page === "home" && "sh-main--home",
+            route.page === "domains" && "sh-main--domains",
+          )}
+        >
           <div className="sh-main__inner">
             <OfflineBanner />
             {children}

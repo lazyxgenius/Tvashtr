@@ -6,6 +6,15 @@
  */
 import { useSyncExternalStore } from "react";
 
+import type { DomainState } from "./api/domains";
+
+/** One Domains nav child: the domain's name and the state behind its status dot. */
+export interface NavDomain {
+  id: string;
+  name: string;
+  state: DomainState;
+}
+
 /** Counts shown as nav badges. Anything undefined is simply not shown. */
 export interface NavBadges {
   /** Home: items in "Needs you". */
@@ -24,6 +33,8 @@ export interface NavBadges {
   memoryInbox?: number;
   /** Toolkit › Secrets: referenced secrets with no value ("N missing"). */
   secretsMissing?: number;
+  /** Domains: one child per domain, in creation order, each with a status dot (DM-1). */
+  domains?: NavDomain[];
 }
 
 export type BadgeLoader = () => Promise<Partial<NavBadges>>;

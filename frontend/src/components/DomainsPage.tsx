@@ -32,14 +32,20 @@ type DetailTab = "overview" | "documents" | "chat" | "config" | "eval";
 export function DomainsPage({
   onOpenEngines,
   onCreateTeam,
+  initialDomainId = null,
+  onLeaveDetail,
 }: {
   onOpenEngines?: () => void;
   onCreateTeam?: () => void;
+  /** Revamp interim (until the new detail page lands): open straight on this domain. */
+  initialDomainId?: string | null;
+  /** Revamp interim: "← Domains" and a delete go back to the new list page. */
+  onLeaveDetail?: () => void;
 } = {}) {
   const [domains, setDomains] = useState<DomainSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialDomainId);
   const [detail, setDetail] = useState<DomainDetail | null>(null);
   const [documents, setDocuments] = useState<DomainDocumentSummary[]>([]);
   const [tab, setTab] = useState<DetailTab>("overview");
@@ -132,6 +138,7 @@ export function DomainsPage({
             onClick={() => {
               setSelectedId(null);
               setTab("overview");
+              onLeaveDetail?.();
             }}
           >
             ← Domains
@@ -220,19 +227,15 @@ export function DomainsPage({
                 </dd>
               </div>
             </dl>
-            <aside
-              className="tv-domains__when"
-              role="note"
-              aria-label="When to use what"
-            >
+            <aside className="tv-domains__when" role="note" aria-label="When to use what">
               <strong className="tv-domains__when-title">When to use what</strong>
               <p className="tv-domains__hint">{domainsAskWhenToUseWhat()}</p>
             </aside>
             <p className="tv-domains__hint">
               Upload and ingest documents under Documents. Ask questions under Chat after ingest.
               Configure chunking, embedding, and generation under Config; set provider keys under
-              Engines before ingest. Use a team node&apos;s Tools → Domains MCP (or Attach fetch)
-              so agents can query this domain.
+              Engines before ingest. Use a team node&apos;s Tools → Domains MCP (or Attach fetch) so
+              agents can query this domain.
             </p>
             <button
               type="button"
@@ -247,6 +250,7 @@ export function DomainsPage({
                   try {
                     await deleteDomain(detail.domain_id);
                     setSelectedId(null);
+                    onLeaveDetail?.();
                     await refresh();
                   } finally {
                     if (mountedRef.current) setBusy(false);
@@ -310,8 +314,7 @@ export function DomainsPage({
                         setDetail(await getDomain(detail.domain_id));
                         await refresh();
                         const stillGoing = rows.some(
-                          (d) =>
-                            d.ingest_status === "pending" || d.ingest_status === "indexing",
+                          (d) => d.ingest_status === "pending" || d.ingest_status === "indexing",
                         );
                         if (!stillGoing) break;
                         await new Promise((r) => setTimeout(r, 2000));
@@ -411,20 +414,22 @@ export function DomainsPage({
             {chatError && <p className="tv-domains__docs-err">{chatError}</p>}
             <form
               className="tv-domains__chat-composer"
-              onSubmit={async (e) => {
+              onSubmit={(e) => {
                 e.preventDefault();
                 if (!detail || !chatDraft.trim() || chatBusy) return;
                 setChatBusy(true);
                 setChatError(null);
-                try {
-                  await askDomain(detail.domain_id, chatDraft.trim());
-                  setChatDraft("");
-                  setMessages(await listDomainMessages(detail.domain_id));
-                } catch (err) {
-                  setChatError(err instanceof Error ? err.message : String(err));
-                } finally {
-                  setChatBusy(false);
-                }
+                void (async () => {
+                  try {
+                    await askDomain(detail.domain_id, chatDraft.trim());
+                    setChatDraft("");
+                    setMessages(await listDomainMessages(detail.domain_id));
+                  } catch (err) {
+                    setChatError(err instanceof Error ? err.message : String(err));
+                  } finally {
+                    setChatBusy(false);
+                  }
+                })();
               }}
             >
               <label className="tv-domains__chat-label" htmlFor="domain-chat-input">
@@ -444,9 +449,7 @@ export function DomainsPage({
             </form>
           </section>
         )}
-        {tab === "eval" && detail && (
-          <DomainEvalPanel domainId={detail.domain_id} />
-        )}
+        {tab === "eval" && detail && <DomainEvalPanel domainId={detail.domain_id} />}
         {tab === "config" && (
           <section className="tv-domains__panel" aria-label="Config">
             <DomainConfigForm
@@ -493,7 +496,9 @@ export function DomainsPage({
         </div>
       )}
       {domains.length === 0 ? (
-        <p className="tv-domains__empty">No domains yet. Create one from a template to get started.</p>
+        <p className="tv-domains__empty">
+          No domains yet. Create one from a template to get started.
+        </p>
       ) : (
         <ul className="tv-domains__list">
           {domains.map((d) => (

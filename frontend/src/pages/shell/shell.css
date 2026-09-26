@@ -251,6 +251,32 @@
   padding: 8px 12px 8px 38px;
   font-size: 13px;
 }
+/* A domain's row (Dm-List): 7px vertical padding, the name, then a 7px status dot. */
+.sh-nav__item--domain {
+  padding: 7px 12px 7px 38px;
+}
+.sh-nav__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sh-nav__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--stone-300);
+}
+.sh-nav__dot--ready {
+  background: var(--sage-500);
+}
+.sh-nav__dot--reading {
+  background: var(--coral-500);
+}
+.sh-nav__dot--attention {
+  background: var(--amber-500);
+}
 .sh-nav__item[aria-current="page"] {
   border-color: var(--coral-200);
   background: var(--coral-100);
@@ -317,6 +343,13 @@
 }
 .sh-main--home {
   padding: 28px 40px;
+}
+/* Domains boards: 26px 40px, a 1136px column (Dm-List). */
+.sh-main--domains {
+  padding: 26px 40px;
+}
+.sh-main--domains .sh-main__inner {
+  max-width: 1136px;
 }
 .sh-main__inner {
   max-width: 1100px;
