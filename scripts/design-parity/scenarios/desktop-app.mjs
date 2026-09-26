@@ -9,19 +9,28 @@
 /**
  * The v6 fake bridge as an init-script string (Playwright can't serialise closures).
  * `window.__tvSignIn(event)` fires an `auth.onSignIn` event from a scenario's steps.
+ * `plans` sets each plan CLI's state (default Claude + Grok connected, Codex off); `update` is what
+ * `update.getState` answers (default idle).
  * @param {{ openedFromWeb?: {login: string, host: string} | null,
- *   lastUser?: {login: string, displayName: string} | null, platform?: string }} [opts]
+ *   lastUser?: {login: string, displayName: string} | null, platform?: string,
+ *   plans?: Record<string, string>, update?: object }} [opts]
  */
 export function desktopBridge(opts = {}) {
   const cfg = JSON.stringify({
     openedFromWeb: opts.openedFromWeb ?? null,
     lastUser: opts.lastUser ?? null,
     platform: opts.platform ?? "darwin",
+    plans: opts.plans ?? {
+      claude: "connected",
+      grok: "connected",
+      codex: "disconnected",
+    },
+    update: opts.update ?? { state: "idle" },
   });
   return `(() => {
     const cfg = ${cfg};
-    const status = (provider, connected) => ({
-      provider, connected, state: connected ? "connected" : "disconnected",
+    const status = (provider, connected, state) => ({
+      provider, connected, state: state ?? (connected ? "connected" : "disconnected"),
       account_hint: null, source: connected ? "harness" : null, checked_at: new Date().toISOString(),
     });
     const listeners = new Set();
@@ -29,7 +38,8 @@ export function desktopBridge(opts = {}) {
     const signInUrl = "https://tvashtr.fly.dev/api/auth/desktop/start?challenge=c&state=s&account=github";
     window.tvashtrDesktop = {
       engines: {
-        getStatus: async () => [status("claude", true), status("grok", true), status("codex", false)],
+        getStatus: async () =>
+          Object.entries(cfg.plans).map(([p, st]) => status(p, st === "connected", st)),
         connect: async (p) => status(p, true),
         disconnect: async (p) => status(p, false),
         refresh: async (p) => status(p, true),
@@ -49,6 +59,10 @@ export function desktopBridge(opts = {}) {
         rememberUser: async () => {},
         forgetUser: async () => {},
       },
+      update: {
+        getState: async () => cfg.update,
+        onState: () => () => {},
+      },
       app: {
         setUnsavedChanges: () => {},
         getInfo: async () => ({
@@ -63,19 +77,31 @@ export function desktopBridge(opts = {}) {
 
 /** Nobody signed in (the session is gone or never existed). */
 export const signedOut = {
-  "GET /api/auth/me": () => ({ status: 401, json: { detail: "Not authenticated" } }),
+  "GET /api/auth/me": () => ({
+    status: 401,
+    json: { detail: "Not authenticated" },
+  }),
 };
 
-const welcome = { path: "/", desktop: true, routes: signedOut, init: desktopBridge() };
+const welcome = {
+  path: "/",
+  desktop: true,
+  routes: signedOut,
+  init: desktopBridge(),
+};
 const handoff = {
   ...welcome,
-  init: desktopBridge({ openedFromWeb: { login: "lazyxgenius", host: "tvashtr.fly.dev" } }),
+  init: desktopBridge({
+    openedFromWeb: { login: "lazyxgenius", host: "tvashtr.fly.dev" },
+  }),
 };
 const waiting = {
   ...welcome,
   steps: async (page) => {
     await page.getByRole("button", { name: "Sign in with GitHub" }).click();
-    await page.getByRole("heading", { name: "Finish signing in in your browser" }).waitFor();
+    await page
+      .getByRole("heading", { name: "Finish signing in in your browser" })
+      .waitFor();
   },
 };
 const failed = {
@@ -89,7 +115,9 @@ const failed = {
         message: "The browser didn't send you back within 10 minutes.",
       }),
     );
-    await page.getByRole("heading", { name: "Sign-in didn’t finish" }).waitFor();
+    await page
+      .getByRole("heading", { name: "Sign-in didn’t finish" })
+      .waitFor();
   },
 };
 
