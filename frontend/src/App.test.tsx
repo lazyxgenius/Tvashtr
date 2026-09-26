@@ -297,7 +297,9 @@ describe("App — the agent drawer (F5)", () => {
     expect(instructions.value).toContain("ENGINEER behavior");
     // The catalogue no longer lists gpt-4o-mini, so the button shows the whole slug (no provider
     // tile) and the soft unknown-model warning says what that means.
-    expect(within(panel).getByRole("button", { name: "openai/gpt-4o-mini" })).toBeInTheDocument();
+    expect(
+      within(panel).getByRole("button", { name: "Model openai/gpt-4o-mini" }),
+    ).toBeInTheDocument();
     expect(within(panel).getByText(/^No provider matches/)).toHaveTextContent(
       "No provider matches openai/gpt-4o-mini. It will fail at run time",
     );
@@ -404,7 +406,7 @@ describe("App — the drawer asks before dropping unsaved changes (F5 G2)", () =
   it("the model picker's 'Add a provider' asks first, then opens Engines › API keys (F5 G4)", async () => {
     const { panel } = await dirtyEngineer();
     const model = within(panel).getByRole("region", { name: "Model" });
-    fireEvent.click(within(model).getByRole("button", { name: "openai/gpt-4o-mini" }));
+    fireEvent.click(within(model).getByRole("button", { name: "Model openai/gpt-4o-mini" }));
     fireEvent.click(within(panel).getByRole("button", { name: "Add a provider" }));
     const dialog = within(panel).getByRole("alertdialog", { name: "Unsaved changes" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Discard" }));
