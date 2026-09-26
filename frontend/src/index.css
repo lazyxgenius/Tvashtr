@@ -1114,14 +1114,6 @@ body,
 
 /* The stat strip — three real chips (Teams / Active runs / Total spend). */
 
-/* A section card (teams table / providers). */
-.tv-dash__panel {
-  border-radius: var(--radius-xl);
-  border: var(--border-width) solid var(--border-hairline);
-  background: var(--surface-card);
-  overflow: hidden;
-}
-
 /* The unified teams table (grid) — expander / Team / Nodes / Status / Spend / Created / actions. */
 /* The list item wraps the row AND its expanded run-history panel, so the panel spans the full
    width instead of being squeezed into a grid cell. The row keeps the grid + the hover surface;
@@ -1141,115 +1133,6 @@ body,
 
 /* ---- The per-team run-history drill-down panel ------------------------------------------------
    Inset and sunken so it reads as belonging to the row above it rather than as a sibling row. */
-
-/* Providers shelf — the BYOK section (behavior unchanged, reskinned to the mockup). */
-.tv-dash__prov {
-  padding: 20px var(--space-6);
-}
-.tv-dash__prov-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-5);
-  flex-wrap: wrap;
-}
-.tv-dash__prov-lede {
-  max-width: 440px;
-}
-.tv-dash__prov-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: 5px;
-}
-.tv-dash__prov-title h2 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 19px;
-  color: var(--text-primary);
-}
-.tv-dash__prov-sub {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--ink-500);
-}
-.tv-dash__prov-add {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex: 1;
-  min-width: 320px;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
-.tv-dash__prov-add .tv-launch__input {
-  height: 38px;
-  width: auto;
-  flex: 1;
-  min-width: 150px;
-  max-width: 300px;
-}
-.tv-dash__prov-list {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 16px 0 0;
-  padding: 16px 0 0;
-  border-top: var(--border-width) solid var(--border-hairline);
-}
-.tv-dash__prov-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 13px;
-  border-radius: var(--radius-lg);
-  border: var(--border-width) solid var(--border-strong);
-  background: var(--cream-50);
-  white-space: nowrap;
-}
-.tv-dash__prov-chip--key {
-  padding: 10px 14px;
-  box-shadow: var(--shadow-xs);
-}
-.tv-dash__prov-dot {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--sage-500);
-}
-.tv-dash__prov-name {
-  font-size: 13.5px;
-  font-weight: var(--fw-medium);
-  color: var(--text-primary);
-}
-.tv-dash__prov-last4 {
-  font-family: var(--font-code);
-  font-size: 12.5px;
-  color: var(--ink-600);
-}
-.tv-dash__prov-remove {
-  display: flex;
-  padding: 2px;
-  margin-left: 2px;
-  color: var(--text-tertiary);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-}
-.tv-dash__prov-remove:hover {
-  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
-}
-.tv-dash__prov-empty {
-  margin: 16px 0 0;
-  padding-top: 16px;
-  border-top: var(--border-width) solid var(--border-hairline);
-  font-size: var(--fs-body-sm);
-  color: var(--text-secondary);
-}
 
 /* M-subs-desktop §3.0: the once-per-launch Desktop subscription notice. */
 .tv-desktop-disclosure {
@@ -1274,11 +1157,6 @@ body,
 .tv-desktop-disclosure p {
   margin: 0;
   flex: 1;
-}
-.tv-dash__library .tv-launch__input::placeholder,
-.tv-dash__prov-add--labeled .tv-launch__input::placeholder {
-  color: var(--ink-500);
-  opacity: 0.8;
 }
 .tv-engines__pill {
   display: inline-flex;
