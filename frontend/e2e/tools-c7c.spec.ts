@@ -48,15 +48,21 @@ test("M-tools C7.C: library shelves + Add-from-library pickers + overridden tag"
   });
   await page.screenshot({ path: path.join(SHOTS, "a-tool-library.png") });
 
+  // Toolkit › Skills → New skill (the editor): a name and its SKILL.md → Save skill → back on Your
+  // skills with the new row.
   await nav.getByRole("button", { name: /^Skills/ }).click();
   await expect(page).toHaveURL(/#\/toolkit\/skills$/);
-  const skillShelf = page.locator("section[aria-label='Your skill library']");
-  await skillShelf.getByLabel("Skill name").fill("house-style");
-  await skillShelf.getByLabel("Skill content").fill("Prefer small, well-tested diffs.");
-  await skillShelf.getByRole("button", { name: "Add skill" }).click();
-  await expect(skillShelf.locator(".tv-dash__prov-name", { hasText: /^house-style$/ })).toBeVisible(
-    { timeout: 15_000 },
-  );
+  await page.getByRole("button", { name: "New skill", exact: true }).first().click();
+  await expect(page).toHaveURL(/#\/toolkit\/skills\/new$/);
+  await page.getByRole("textbox", { name: "Skill name" }).fill("house-style");
+  await page.getByRole("textbox", { name: "SKILL.md" }).fill("Prefer small, well-tested diffs.");
+  await page.getByRole("button", { name: "Save skill" }).click();
+  await expect(page).toHaveURL(/#\/toolkit\/skills$/);
+  await expect(
+    page
+      .getByRole("region", { name: "Your skills" })
+      .getByRole("button", { name: "house-style", exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
   await page.screenshot({ path: path.join(SHOTS, "a-library-shelves.png") });
   console.log("[c7c-e2e] (a) captured the Tool + Skill library shelves");
 
