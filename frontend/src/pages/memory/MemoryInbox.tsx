@@ -3,9 +3,11 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button, useToast } from "../../design-system/components";
 import { ApiError } from "../../lib/api";
+import { reportFetchOk } from "../../lib/backendStatus";
 import {
   type Memory,
   type MemoryPatch,
+  isEmbeddingFailure,
   listMemories,
   promoteMemory,
   rejectMemory,
@@ -15,7 +17,7 @@ import {
 import { MemoryEditor } from "./MemoryEditor";
 import { MemoryEmptyState, MemoryLoading } from "./MemoryEmptyState";
 import { MemoryRow } from "./MemoryRow";
-import { keptMessage, sortNewestFirst } from "./memoryModel";
+import { EDIT_EMBED_FAILED, keptMessage, sortNewestFirst } from "./memoryModel";
 
 type Load<T> =
   | { state: "loading" }
@@ -140,6 +142,10 @@ export function MemoryInbox({
       if (isGone(e)) {
         setEditing(null);
         failed(e);
+      } else if (isEmbeddingFailure(e)) {
+        // The app answered; only the embedding service behind it didn't.
+        reportFetchOk();
+        setEditError(EDIT_EMBED_FAILED);
       } else setEditError(errorText(e));
     } finally {
       setSaving(false);

@@ -1,8 +1,8 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Memory } from "../../lib/api/memory";
-import { __resetBackendStatusForTests } from "../../lib/backendStatus";
+import { __resetBackendStatusForTests, useBackendStatus } from "../../lib/backendStatus";
 import { __resetWorkspaceStatusForTests } from "../../lib/workspaceStatus";
 import { jsonError, mockApi } from "../home/homeTestUtils";
 import { MEM_MUST_NOT, MEM_SHOULD, NOW, memory, renderAt } from "./memoryTestUtils";
@@ -410,5 +410,21 @@ describe("MemoryPage — inline editor", () => {
       "This memory has no agent to scope to.",
     );
     expect(screen.getByRole("textbox", { name: "Memory text" })).toBeTruthy();
+  });
+
+  it("an edit the embedding service can't take says so, without calling the app offline", async () => {
+    memoryApi({
+      routes: { "PATCH /api/memories/:id": () => jsonError(502, "the embedding call failed") },
+    });
+    renderAt("#/toolkit/memory/inbox");
+    const status = renderHook(() => useBackendStatus());
+    const box = await openEditor(MEM_MUST_NOT.content);
+    fireEvent.change(box, { target: { value: "Never edit web/generated/ by hand." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "The embedding service didn’t answer, so the edit wasn’t saved. Try again.",
+    );
+    expect(box).toHaveValue("Never edit web/generated/ by hand.");
+    expect(status.result.current.state).toBe("connected");
   });
 });

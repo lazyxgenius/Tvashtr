@@ -31,6 +31,10 @@ export const forceLabel = (p: MemoryPolarity): string => POLARITY_META[p].label;
 
 export const FORCE_OPTIONS = POLARITY_ORDER.map((p) => ({ value: p, label: forceLabel(p) }));
 
+/** An inline edit whose new text couldn't be embedded (a 502): nothing changed on the server. */
+export const EDIT_EMBED_FAILED =
+  "The embedding service didn’t answer, so the edit wasn’t saved. Try again.";
+
 /** "Sep 23" (en-US, like the design, whatever the browser's locale). */
 export function shortDate(iso: string): string {
   const d = new Date(iso);

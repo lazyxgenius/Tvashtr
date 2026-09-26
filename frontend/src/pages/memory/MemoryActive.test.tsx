@@ -1,8 +1,8 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Memory } from "../../lib/api/memory";
-import { __resetBackendStatusForTests } from "../../lib/backendStatus";
+import { __resetBackendStatusForTests, useBackendStatus } from "../../lib/backendStatus";
 import { __resetWorkspaceStatusForTests } from "../../lib/workspaceStatus";
 import { jsonError, mockApi } from "../home/homeTestUtils";
 import {
@@ -334,6 +334,35 @@ describe("MemoryPage › Active — note actions", () => {
     expect(within(rowOf(next)).getByText("Edited by you · just now")).toBeTruthy();
     expect(rowTexts(await activeCard())[1]).toBe(next);
     expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ content: next });
+  });
+
+  it("an edit the embedding service can't take keeps the editor open, without calling the app offline", async () => {
+    let fail = true;
+    activeApi({
+      routes: {
+        "PATCH /api/memories/:id": (_u: URL, b: unknown) =>
+          fail
+            ? jsonError(502, "the embedding call failed")
+            : { ...ACT_SHOULD, ...(b as Partial<Memory>), edited_at: new Date(NOW).toISOString() },
+      },
+    });
+    renderAt("#/toolkit/memory/active");
+    const status = renderHook(() => useBackendStatus());
+    await activeCard();
+    fireEvent.click(within(rowOf(ACT_SHOULD.content)).getByRole("button", { name: "Edit" }));
+    const card = await activeCard();
+    const box = within(card).getByRole("textbox", { name: "Memory text" });
+    fireEvent.change(box, { target: { value: "Approve only with the docs list in step." } });
+    fireEvent.click(within(card).getByRole("button", { name: "Save" }));
+
+    expect((await within(card).findByRole("alert")).textContent).toBe(
+      "The embedding service didn’t answer, so the edit wasn’t saved. Try again.",
+    );
+    expect(box).toHaveValue("Approve only with the docs list in step.");
+    expect(status.result.current.state).toBe("connected");
+    fail = false;
+    fireEvent.click(within(card).getByRole("button", { name: "Save" }));
+    await toastWith("Saved. Agents see the new text on their next run.");
   });
 
   it("Delete asks first, quoting the memory, then removes it", async () => {

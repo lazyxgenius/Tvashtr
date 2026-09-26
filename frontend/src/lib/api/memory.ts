@@ -9,7 +9,7 @@
  * the whole list. Errors come back as `ApiDetailError` (status + the backend's own message).
  */
 import type { MemoryPolarity, MemoryTier } from "../api";
-import { apiRequest } from "./runs";
+import { ApiDetailError, apiRequest } from "./runs";
 
 export type { MemoryPolarity, MemoryTier } from "../api";
 
@@ -306,6 +306,13 @@ export async function deleteMemory(id: string): Promise<void> {
 }
 
 /** POST /api/memories — a memory you add applies right away (it skips the Inbox). */
+/** The backend's 502 when a create or a text edit couldn't embed: the app answered, only the
+ *  embedding service behind it didn't. `apiRequest` has already marked the backend unreachable on
+ *  the 502, so a caller that says so also calls `reportFetchOk()`. */
+export const EMBEDDING_FAILED = "the embedding call failed";
+export const isEmbeddingFailure = (e: unknown): boolean =>
+  e instanceof ApiDetailError && e.status === 502 && e.detail === EMBEDDING_FAILED;
+
 export async function createMemory(input: NewMemory): Promise<Memory> {
   const body = await apiRequest<unknown>("POST", "/api/memories", input);
   return expectMemory(body, "POST /api/memories");

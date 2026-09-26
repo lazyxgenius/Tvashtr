@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button, ConfirmDialog, IconButton, Input, useToast } from "../../design-system/components";
 import { ApiError } from "../../lib/api";
+import { reportFetchOk } from "../../lib/backendStatus";
 import {
   type Memory,
   type MemoryPatch,
@@ -10,6 +11,7 @@ import {
   type MemoryRepo,
   type MemoryScope,
   deleteMemory,
+  isEmbeddingFailure,
   listMemories,
   listMemoryRepos,
   pinMemory,
@@ -21,6 +23,7 @@ import { MemoryEditor } from "./MemoryEditor";
 import { MemoryEmptyState, MemoryLoading } from "./MemoryEmptyState";
 import { MemoryRow } from "./MemoryRow";
 import {
+  EDIT_EMBED_FAILED,
   FORCE_FILTER_OPTIONS,
   type MemoryFilters,
   NO_FILTERS,
@@ -168,6 +171,10 @@ export function MemoryActive({
       if (isGone(e)) {
         setEditing(null);
         failed(e);
+      } else if (isEmbeddingFailure(e)) {
+        // The app answered; only the embedding service behind it didn't.
+        reportFetchOk();
+        setEditError(EDIT_EMBED_FAILED);
       } else setEditError(errorText(e));
     } finally {
       setSaving(false);

@@ -7,6 +7,7 @@ import {
   type MemoryPolarity,
   type MemoryRepo,
   createMemory,
+  isEmbeddingFailure,
   listMemoryRepos,
 } from "../../lib/api/memory";
 import { ApiDetailError } from "../../lib/api/runs";
@@ -15,7 +16,6 @@ import { FORCE_CHOICES, FORCE_VARIANT, defaultRepo } from "./memoryModel";
 type Applies = "every" | "one";
 
 const EMPTY = "Write the memory first.";
-const EMBED_FAILED = "the embedding call failed";
 
 const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message : String(e));
 
@@ -90,7 +90,7 @@ export function AddMemorySheet({
       onAdded(added, scope === "one" && repo ? repo.label : null);
     } catch (err) {
       setBusy(false);
-      if (err instanceof ApiDetailError && err.status === 502 && err.detail === EMBED_FAILED) {
+      if (isEmbeddingFailure(err)) {
         // The app answered; only the embedding service behind it didn't.
         reportFetchOk();
         setError("The embedding service didn’t answer, so nothing was saved. Try again.");
