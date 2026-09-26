@@ -170,7 +170,7 @@ export function SecretsPage() {
         <SecretDialog
           mode={dialog}
           onClose={() => setDialog(null)}
-          onSaved={(name) => void onSaved(dialog, name)}
+          onSaved={(names) => void onSaved(dialog, names[0])}
         />
       )}
       {deleting && (

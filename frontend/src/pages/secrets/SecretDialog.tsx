@@ -5,7 +5,10 @@
  * - `add-prefilled`: "Add <NAME>" — the Name is fixed (disabled) because a tool already uses it
  *   (SECRET-19, from a banner, a missing row or a tool's "Add secret").
  * - `replace`: "Replace <NAME>" — a new value for a stored secret (SECRET-16).
- * Save stays disabled until every field has text. A value is only ever typed into a password field
+ * - `add-many`: a tool's "Add secret" when it misses 2+ names ("Needs 2 secrets", spec Q3; not
+ *   drawn) — one Value field per missing name. Save takes the ones you fill; a name that fails stays
+ *   in the form with the error, and Cancel after a partial save still reports what was saved.
+ * Save stays disabled until every field has text (add-many: until one has). A value is only ever typed into a password field
  * and never shown again. The caller reloads, toasts and refreshes the nav badges in `onSaved`.
  */
 import { Lock } from "lucide-react";
@@ -17,17 +20,20 @@ import { type SecretRef, createSecret, replaceSecret } from "../../lib/api/tools
 import { ApiDetailError } from "../../lib/api/runs";
 import { useModalDialog } from "../../lib/useModalDialog";
 import { joinNames, secretNameError } from "./secretFormat";
+import "./secrets.css";
 
 export type SecretDialogMode =
   | { kind: "add" }
   | { kind: "add-prefilled"; name: string }
-  | { kind: "replace"; name: string; usedBy: SecretRef[] };
+  | { kind: "replace"; name: string; usedBy: SecretRef[] }
+  | { kind: "add-many"; names: string[]; tool: string };
 
 const NAME_HELPER = "Capital letters, numbers and _. Tools use it as ${NAME}.";
 const SAVE_FAILED = "Couldn’t save the secret. Try again.";
 
 function titleOf(mode: SecretDialogMode): string {
   if (mode.kind === "add") return "Add a secret";
+  if (mode.kind === "add-many") return `Add ${mode.names.length} secrets for ${mode.tool}`;
   return mode.kind === "replace" ? `Replace ${mode.name}` : `Add ${mode.name}`;
 }
 
@@ -45,8 +51,22 @@ export function SecretDialog({
 }: {
   mode: SecretDialogMode;
   onClose: () => void;
-  /** Called with the saved name once the server has it. */
-  onSaved: (name: string) => void;
+  /** Called with the saved name(s) once the server has them. */
+  onSaved: (names: string[]) => void;
+}) {
+  if (mode.kind === "add-many")
+    return <AddManyDialog mode={mode} onClose={onClose} onSaved={onSaved} />;
+  return <OneSecretDialog mode={mode} onClose={onClose} onSaved={onSaved} />;
+}
+
+function OneSecretDialog({
+  mode,
+  onClose,
+  onSaved,
+}: {
+  mode: Exclude<SecretDialogMode, { kind: "add-many" }>;
+  onClose: () => void;
+  onSaved: (names: string[]) => void;
 }) {
   const fixedName = mode.kind === "add" ? null : mode.name;
   const [name, setName] = useState(fixedName ?? "");
@@ -78,7 +98,7 @@ export function SecretDialog({
     try {
       if (replacing) await replaceSecret(n, value);
       else await createSecret(n, value);
-      onSaved(n);
+      onSaved([n]);
     } catch (err) {
       setBusy(false);
       const status = err instanceof ApiDetailError ? err.status : 0;
@@ -150,6 +170,109 @@ export function SecretDialog({
             </Button>
             <Button type="submit" size="sm" disabled={!canSave} loading={busy}>
               {replacing ? "Replace value" : "Save secret"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </>,
+    document.body,
+  );
+}
+
+/** One Value field per name a tool misses (spec Q3). */
+function AddManyDialog({
+  mode,
+  onClose,
+  onSaved,
+}: {
+  mode: Extract<SecretDialogMode, { kind: "add-many" }>;
+  onClose: () => void;
+  onSaved: (names: string[]) => void;
+}) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  // Names saved so far: they leave the form (a later failure keeps only the rest).
+  const [saved, setSaved] = useState<string[]>([]);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const cancel = () => {
+    if (busy) return;
+    if (saved.length > 0) onSaved(saved);
+    else onClose();
+  };
+  const ref = useModalDialog<HTMLDivElement>(true, cancel);
+
+  const title = titleOf(mode);
+  const names = mode.names.filter((n) => !saved.includes(n));
+  const filled = names.filter((n) => values[n]?.trim());
+  const canSave = filled.length > 0 && !busy;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!canSave) return;
+    setBusy(true);
+    setFormError(null);
+    const done = [...saved];
+    for (const n of filled) {
+      try {
+        await createSecret(n, values[n]);
+        done.push(n);
+      } catch (err) {
+        const status = err instanceof ApiDetailError ? err.status : 0;
+        const message = err instanceof Error && err.message ? err.message : SAVE_FAILED;
+        setSaved(done);
+        setBusy(false);
+        setFormError(status >= 400 && status < 500 ? message : SAVE_FAILED);
+        return;
+      }
+    }
+    onSaved(done);
+  };
+
+  return createPortal(
+    <>
+      <div className="ds-scrim" onClick={cancel} aria-hidden />
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="ds-dialog sc-dialog"
+        tabIndex={-1}
+      >
+        <form className="sc-dialog__form" onSubmit={(e) => void submit(e)} noValidate>
+          <h2 className="sc-dialog__title">{title}</h2>
+          <p className="sc-dialog__lede">
+            {`${mode.tool} uses ${joinNames(mode.names)}. It won’t connect until each has a value.`}
+          </p>
+          {names.map((n) => (
+            <Input
+              key={n}
+              label={n}
+              type="password"
+              placeholder="Paste the secret value"
+              value={values[n] ?? ""}
+              autoComplete="new-password"
+              onChange={(e) => {
+                setValues((v) => ({ ...v, [n]: e.target.value }));
+                setFormError(null);
+              }}
+            />
+          ))}
+          <span className="sc-dialog__note">
+            <Lock size={12} strokeWidth={1.6} aria-hidden />
+            Stored encrypted. We never show a value again.
+          </span>
+          {formError && (
+            <div className="sc-dialog__error" role="alert">
+              {formError}
+            </div>
+          )}
+          <div className="sc-dialog__actions">
+            <Button variant="ghost" size="sm" onClick={cancel} disabled={busy}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={!canSave} loading={busy}>
+              Save secrets
             </Button>
           </div>
         </form>

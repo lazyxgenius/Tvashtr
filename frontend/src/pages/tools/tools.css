@@ -384,3 +384,100 @@
   line-height: 1.5;
   color: var(--ink-600);
 }
+
+/* ---- Tool row ⋯ menu (TkF-ToolMenu-1): 240px of content (content-box: pass 252), flush under
+   the ⋯ and 2px past its right edge, as drawn ---- */
+.tk-rowmenu {
+  display: inline-flex;
+}
+.tk-rowmenu .ds-menu {
+  top: 100%;
+  right: -2px;
+}
+.tk-rowmenu .ds-menu__item {
+  line-height: 1.6;
+}
+.tk-rowmenu .ds-menu__icon {
+  color: inherit;
+}
+.tk-rowmenu .ds-menu__item--danger {
+  color: #8f3b2f;
+}
+.tk-rowmenu .ds-menu__sep {
+  background: var(--line-200);
+}
+
+/* ---- "Turn <name> on for…" (TkF-AddTool-6): 500px of content inside 20px padding, 180px from
+   the top ---- */
+.ds-dialog.sc-dialog.tk-turnon {
+  padding: 20px;
+  top: clamp(16px, calc(50vh - 270px), 180px);
+}
+.tk-turnon-scrim {
+  background: rgba(20, 20, 19, 0.35);
+}
+.tk-turnon__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.tk-turnon__sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.tk-turnon__team {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tk-turnon__teamname {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.tk-turnon__agent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line-200);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-900);
+  cursor: pointer;
+}
+/* The design's bare native checkbox: the browser's own font and margins. */
+.tk-turnon__agent input {
+  font: revert;
+  margin: 3px 3px 3px 4px;
+  accent-color: #d97757;
+}
+.tk-turnon__agent > svg {
+  flex: none;
+}
+.tk-turnon__tag {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.tk-turnon__state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.tk-turnon__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}

@@ -1,6 +1,7 @@
 /** Copy helpers for the Tools screens (plurals, "Used by", status labels, agent names, sorting). */
 import type { ToolItem, UsageRow } from "../../lib/api/tools";
 import { titleCase } from "../../lib/text";
+import { joinNames } from "../secrets/secretFormat";
 import type { StatusFilter } from "./toolsState";
 
 /** "1 agent", "3 agents". */
@@ -57,4 +58,57 @@ export function filterTools(tools: ToolItem[], query: string, status: StatusFilt
     (t) =>
       (q === "" || t.name.toLowerCase().includes(q)) && (status === "all" || t.status === status),
   );
+}
+
+/** "Engineer and Reviewer in Indicator sprint team, Writer in Docs team" — teams in order met. */
+function agentsByTeam(rows: UsageRow[]): string {
+  const teams = new Map<string, { name: string; rows: UsageRow[] }>();
+  for (const row of rows) {
+    const team = teams.get(row.team_id) ?? { name: row.team_name, rows: [] };
+    team.rows.push(row);
+    teams.set(row.team_id, team);
+  }
+  return [...teams.values()].map((t) => `${joinNames(agentNames(t.rows))} in ${t.name}`).join(", ");
+}
+
+/**
+ * TOOL-49: the Remove confirmation's impact sentence, from the tool's `used_by_agents` — or, when
+ * those couldn't load, from its counts alone.
+ */
+export function removeImpact(usedBy: ToolItem["used_by"], agents: UsageRow[] | null): string {
+  const rows = agents ?? [];
+  const agentCount = agents ? rows.length : usedBy.agent_count;
+  const teamCount = agents ? new Set(rows.map((r) => r.team_id)).size : usedBy.team_count;
+  if (agentCount === 0) return "No agents use it.";
+  const who = `${plural(agentCount, "agent")} in ${plural(teamCount, "team")} ${agentCount === 1 ? "uses" : "use"} it`;
+  const tail =
+    agentCount === 1 ? "It loses it on its next run." : "They lose it on their next run.";
+  return rows.length > 0 ? `${who}: ${agentsByTeam(rows)}. ${tail}` : `${who}. ${tail}`;
+}
+
+/**
+ * TOOL-68: after a tool's missing secrets were saved from its row — "LINEAR_TOKEN saved. linear is
+ * ready.", or what it still needs; just "<NAMES> saved." when the list couldn't be re-read.
+ */
+export function toolSecretsSavedToast(
+  names: string[],
+  toolName: string,
+  after: ToolItem | null | undefined,
+): string {
+  const saved = `${joinNames(names)} saved.`;
+  if (!after) return saved;
+  if (after.status === "ready") return `${saved} ${toolName} is ready.`;
+  const still = after.missing_secrets;
+  if (still.length === 0) return saved;
+  return `${saved} ${toolName} still needs ${joinNames(still)}.`;
+}
+
+/** The toast after "Turn on for N agents" from a row's ⋯ (not drawn). */
+export function turnedOnToast(toolName: string, agentCount: number, skipped: number): string {
+  const head =
+    agentCount > 0
+      ? `${toolName} is on for ${plural(agentCount, "agent")}.`
+      : `${toolName} is off for every agent.`;
+  if (skipped === 0) return head;
+  return `${head} ${plural(skipped, "agent")} kept ${skipped === 1 ? "its" : "their"} own ${toolName} server.`;
 }

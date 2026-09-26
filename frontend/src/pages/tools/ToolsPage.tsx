@@ -1,18 +1,32 @@
 /**
  * Toolkit › Tools (`#/toolkit/tools`, `#/toolkit/tools/browse`): the page header (Paste mcp.json on
  * Installed only, Add tool on both), the Installed N / Browse pill tabs driven by the address, the
- * search box and Status filter, and the tab's content. Owns the tool list both tabs read.
+ * search box and Status filter, and the tab's content. Owns the tool list both tabs read, and the
+ * row actions' dialogs (TkF-FixSecret-*, TkF-ToolMenu-*): Add secret, Remove, Turn on for agents,
+ * and Duplicate.
  */
 import { Braces, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import { Button, Input, Tabs } from "../../design-system/components";
-import { type ToolItem, listTools } from "../../lib/api/tools";
+import { Button, Input, Tabs, useToast } from "../../design-system/components";
+import { ApiDetailError } from "../../lib/api/runs";
+import { type ToolItem, duplicateTool, listTools, setToolAgents } from "../../lib/api/tools";
 import { navigate, parseRoute } from "../../lib/nav";
+import { refreshBadges } from "../../lib/workspaceStatus";
+import { SecretDialog, type SecretDialogMode } from "../secrets/SecretDialog";
 import { BrowseTab } from "./BrowseTab";
 import { InstalledTab } from "./InstalledTab";
+import { RemoveToolDialog } from "./RemoveToolDialog";
 import { StatusSelect } from "./StatusSelect";
-import { resetToolsView, setToolsQuery, setToolsStatus, useToolsView } from "./toolsState";
+import { TurnOnForAgentsDialog } from "./TurnOnForAgentsDialog";
+import { toolSecretsSavedToast, turnedOnToast } from "./toolFormat";
+import {
+  markToolFresh,
+  resetToolsView,
+  setToolsQuery,
+  setToolsStatus,
+  useToolsView,
+} from "./toolsState";
 import "./tools.css";
 
 type ToolsView = "installed" | "browse";
@@ -20,16 +34,32 @@ type ToolsView = "installed" | "browse";
 /** The sheets the page opens: the Add tool wizard (optionally with a name) or Paste mcp.json. */
 export type ToolSheet = { kind: "add"; name?: string } | { kind: "paste" } | null;
 
-/** The tool list, loaded once per visit; `reload` after a change. */
+/** The server's own words for a 4xx (e.g. "tool not found in your library"), else null. */
+function clientError(e: unknown): string | null {
+  if (!(e instanceof ApiDetailError) || e.status < 400 || e.status >= 500) return null;
+  return e.message || null;
+}
+
+/** A row action's dialog. */
+type ToolDialog =
+  | { kind: "secret"; tool: ToolItem; mode: SecretDialogMode }
+  | { kind: "remove"; tool: ToolItem }
+  | { kind: "turn-on"; tool: ToolItem }
+  | null;
+
+/** The tool list, loaded once per visit; `reload` after a change (returns the new list, or null). */
 function useToolList() {
   const [tools, setTools] = useState<ToolItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (): Promise<ToolItem[] | null> => {
     setError(null);
     try {
-      setTools(await listTools());
+      const next = await listTools();
+      setTools(next);
+      return next;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t load your tools.");
+      return null;
     }
   }, []);
   useEffect(() => {
@@ -49,9 +79,67 @@ function ToolSheetHost({ sheet }: { sheet: ToolSheet; onClose: () => void }) {
 }
 
 export function ToolsPage({ view }: { view: ToolsView }) {
-  const { tools, error, retry } = useToolList();
+  const { tools, error, reload, retry } = useToolList();
   const { query, status } = useToolsView();
   const [sheet, setSheet] = useState<ToolSheet>(null);
+  const [dialog, setDialog] = useState<ToolDialog>(null);
+  const toast = useToast();
+
+  // TOOL-67: "Add secret" on a row — "Add <NAME>" with the name fixed, or one field per name when
+  // the tool misses more than one (spec Q3).
+  const addSecret = (tool: ToolItem) => {
+    const names = tool.missing_secrets;
+    if (names.length === 0) return;
+    const mode: SecretDialogMode =
+      names.length === 1
+        ? { kind: "add-prefilled", name: names[0] }
+        : { kind: "add-many", names, tool: tool.name };
+    setDialog({ kind: "secret", tool, mode });
+  };
+
+  // TOOL-68: the row flips to Ready in place, the nav's "missing" badge follows.
+  const onSecretsSaved = async (tool: ToolItem, names: string[]) => {
+    setDialog(null);
+    const after = await reload();
+    void refreshBadges();
+    const row = after?.find((t) => t.id === tool.id);
+    toast({ message: toolSecretsSavedToast(names, tool.name, after ? row : null) });
+  };
+
+  // TOOL-50: the row goes; counts follow in the tab and nav. No undo.
+  const onRemoved = async (tool: ToolItem) => {
+    setDialog(null);
+    await reload();
+    void refreshBadges();
+    toast({ message: `${tool.name} removed from Toolkit.` });
+  };
+
+  // TOOL-51: the copy lands on top, "Not used yet"; its toast opens it.
+  const duplicate = async (tool: ToolItem) => {
+    try {
+      const copy = await duplicateTool(tool.id);
+      markToolFresh(copy.id);
+      await reload();
+      void refreshBadges();
+      toast({
+        message: `Copied as ${copy.name}. Rename it in its settings.`,
+        action: {
+          label: "Open",
+          onClick: () => navigate({ page: "tool", toolId: copy.id }),
+        },
+      });
+    } catch (e) {
+      toast({ message: clientError(e) ?? `Couldn’t copy ${tool.name}. Try again.`, tone: "error" });
+    }
+  };
+
+  // TOOL-47 from the ⋯: the checked set replaces who uses it (spec Q4).
+  const turnOn = async (tool: ToolItem, nodeIds: string[]) => {
+    const result = await setToolAgents(tool.id, nodeIds);
+    setDialog(null);
+    await reload();
+    toast({ message: turnedOnToast(tool.name, result.agent_count, result.skipped.length) });
+  };
 
   // Leaving Toolkit › Tools ends the visit: forget the search, filter and fresh rows. (Opening a
   // tool keeps them, so its breadcrumb returns to the same list.)
@@ -127,8 +215,10 @@ export function ToolsPage({ view }: { view: ToolsView }) {
           actions={{
             onAddTool: (name) => setSheet({ kind: "add", name }),
             onPaste: () => setSheet({ kind: "paste" }),
-            // G4 opens the Add-secret dialog here; until then the Secrets page is where you add it.
-            onAddSecret: () => navigate({ page: "secrets" }),
+            onAddSecret: addSecret,
+            onDuplicate: (tool) => void duplicate(tool),
+            onTurnOn: (tool) => setDialog({ kind: "turn-on", tool }),
+            onRemove: (tool) => setDialog({ kind: "remove", tool }),
           }}
         />
       ) : (
@@ -136,6 +226,29 @@ export function ToolsPage({ view }: { view: ToolsView }) {
       )}
 
       <ToolSheetHost sheet={sheet} onClose={() => setSheet(null)} />
+
+      {dialog?.kind === "secret" && (
+        <SecretDialog
+          mode={dialog.mode}
+          onClose={() => setDialog(null)}
+          onSaved={(names) => void onSecretsSaved(dialog.tool, names)}
+        />
+      )}
+      {dialog?.kind === "remove" && (
+        <RemoveToolDialog
+          tool={dialog.tool}
+          onClose={() => setDialog(null)}
+          onRemoved={() => void onRemoved(dialog.tool)}
+        />
+      )}
+      {dialog?.kind === "turn-on" && (
+        <TurnOnForAgentsDialog
+          toolName={dialog.tool.name}
+          toolId={dialog.tool.id}
+          onClose={() => setDialog(null)}
+          onConfirm={(ids) => turnOn(dialog.tool, ids)}
+        />
+      )}
     </>
   );
 }

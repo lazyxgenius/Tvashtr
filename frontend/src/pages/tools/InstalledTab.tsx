@@ -8,12 +8,13 @@
 import { Info, Search, Server, TriangleAlert } from "lucide-react";
 import type { MouseEvent } from "react";
 
-import { Badge, Button, Menu } from "../../design-system/components";
+import { Badge, Button } from "../../design-system/components";
 import type { ToolItem } from "../../lib/api/tools";
 import { navigate } from "../../lib/nav";
 import { EmptyState } from "./EmptyState";
 import { runsLabel, transportOf } from "./toolConfig";
 import { filterTools, needsLabel, sortTools, usedByLabel } from "./toolFormat";
+import { ToolRowMenu } from "./ToolRowMenu";
 import { ToolTile } from "./toolIcons";
 import { type StatusFilter, setToolsQuery, setToolsStatus, useToolsView } from "./toolsState";
 
@@ -26,6 +27,9 @@ export interface InstalledActions {
   onAddTool: (name?: string) => void;
   onPaste: () => void;
   onAddSecret: (tool: ToolItem) => void;
+  onDuplicate: (tool: ToolItem) => void;
+  onTurnOn: (tool: ToolItem) => void;
+  onRemove: (tool: ToolItem) => void;
 }
 
 export function InstalledTab({
@@ -163,7 +167,7 @@ function ToolsTable({ rows, actions }: { rows: ToolItem[]; actions: InstalledAct
   };
 
   return (
-    <section className="tk-card">
+    <section className="tk-card tk-card--open">
       <table className="tk-table">
         <thead>
           <tr>
@@ -233,15 +237,12 @@ function ToolsTable({ rows, actions }: { rows: ToolItem[]; actions: InstalledAct
                   <span className="tk-usedby">{usedByLabel(tool.used_by)}</span>
                 </td>
                 <td>
-                  <Menu
-                    label={`More actions for ${tool.name}`}
-                    items={[
-                      {
-                        key: "edit",
-                        label: "Edit connection",
-                        onSelect: () => open(tool),
-                      },
-                    ]}
+                  <ToolRowMenu
+                    name={tool.name}
+                    onEdit={() => open(tool)}
+                    onDuplicate={() => actions.onDuplicate(tool)}
+                    onTurnOn={() => actions.onTurnOn(tool)}
+                    onRemove={() => actions.onRemove(tool)}
                   />
                 </td>
               </tr>
