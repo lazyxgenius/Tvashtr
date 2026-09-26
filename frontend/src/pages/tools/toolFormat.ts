@@ -122,3 +122,84 @@ export function catalogAddedToast(title: string): string {
 export function githubInstalledToast(repoCount: number): string {
   return `GitHub App installed on ${plural(repoCount, "repo")}.`;
 }
+
+// ---- Add tool wizard (TkF-AddTool-*) ----
+
+/** The sheet's subtitle: "Step 1 of 3", then "linear · step 2 of 3" (TOOL-30). */
+export function wizardSubtitle(step: number, name: string): string {
+  return step === 0 || !name ? `Step ${step + 1} of 3` : `${name} · step ${step + 1} of 3`;
+}
+
+/** Step 3's opening line (TOOL-41, spec Q14 for names that already have a value). */
+export function secretsLede(toolName: string, total: number, unset: number): string {
+  if (total === 0) return `${toolName} uses no secrets.`;
+  const uses = total === 1 ? "one secret" : `${total} secrets`;
+  if (unset === 0) return `${toolName} uses ${uses} (${total === 1 ? "already set" : "all set"}).`;
+  const what =
+    unset < total
+      ? unset === 1
+        ? "the missing value"
+        : "the missing values"
+      : total === 1
+        ? "its value"
+        : "their values";
+  return `${toolName} uses ${uses}. Add ${what} now or later in Secrets.`;
+}
+
+/** The "Switch it on for agents now" row's sub-line once agents are chosen (held until Add tool). */
+export function heldAgentsLine(names: string[]): string {
+  if (names.length === 0) return "You can also do this later, per agent.";
+  const who = names.length <= 2 ? joinNames(names) : plural(names.length, "agent");
+  return `Turns on for ${who} when you add it.`;
+}
+
+/**
+ * TOOL-44: "linear added and turned on for Reviewer." (one agent: its row, for the "Open Reviewer"
+ * action), "… for N agents.", or "linear added." when none were chosen.
+ */
+export function toolAddedToast(
+  toolName: string,
+  turnedOn: { agents: UsageRow[]; agent_count: number; skipped: unknown[] } | null,
+): { message: string; agent: UsageRow | null } {
+  if (!turnedOn || turnedOn.agent_count === 0) {
+    const skipped = turnedOn?.skipped.length ?? 0;
+    const tail = skipped
+      ? ` ${plural(skipped, "agent")} kept ${skipped === 1 ? "its" : "their"} own ${toolName} server.`
+      : "";
+    return { message: `${toolName} added.${tail}`, agent: null };
+  }
+  if (turnedOn.agent_count === 1 && turnedOn.agents.length === 1) {
+    const agent = turnedOn.agents[0];
+    return { message: `${toolName} added and turned on for ${agentName(agent)}.`, agent };
+  }
+  return {
+    message: `${toolName} added and turned on for ${plural(turnedOn.agent_count, "agent")}.`,
+    agent: null,
+  };
+}
+
+/** Which submit step failed (TOOL-43): a secret, or the tool itself; `saved` = secrets already stored. */
+export function addFailedMessage(
+  failed: { secret: string } | { tool: string },
+  reason: string | null,
+  saved: string[],
+): string {
+  const head =
+    "secret" in failed
+      ? reason
+        ? `Couldn’t save ${failed.secret}: ${reason}`
+        : `Couldn’t save ${failed.secret}. Try again.`
+      : reason
+        ? `Couldn’t add ${failed.tool}: ${reason}`
+        : `Couldn’t add ${failed.tool}. Try again.`;
+  const kept = saved.length
+    ? ` ${joinNames(saved)} ${saved.length === 1 ? "is" : "are"} saved.`
+    : "";
+  const notYet = "secret" in failed ? " The tool isn’t added yet." : "";
+  return `${head}${kept}${notYet}`;
+}
+
+/** The tool was created but PUT …/agents failed (TOOL-43, step 3 of the submit). */
+export function agentsFailedToast(toolName: string): string {
+  return `${toolName} added, but it couldn’t be turned on for your agents. Use Turn on for agents… in its ⋯ menu.`;
+}

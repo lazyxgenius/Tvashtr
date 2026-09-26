@@ -4,7 +4,7 @@
  * search box and Status filter, and the tab's content. Owns the tool list both tabs read, and the
  * row actions' dialogs (TkF-FixSecret-*, TkF-ToolMenu-*): Add secret, Remove, Turn on for agents,
  * and Duplicate — and adding from the Browse catalog (TkF-Catalog-*), whose toast offers the same
- * Turn on dialog.
+ * Turn on dialog — and the Add tool wizard (TkF-AddTool-*).
  */
 import { Braces, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -22,12 +22,20 @@ import {
 import { navigate, parseRoute } from "../../lib/nav";
 import { refreshBadges } from "../../lib/workspaceStatus";
 import { SecretDialog, type SecretDialogMode } from "../secrets/SecretDialog";
+import { type AddedTool, AddToolSheet } from "./AddToolSheet";
 import { BrowseTab } from "./BrowseTab";
 import { InstalledTab } from "./InstalledTab";
 import { RemoveToolDialog } from "./RemoveToolDialog";
 import { StatusSelect } from "./StatusSelect";
 import { TurnOnForAgentsDialog } from "./TurnOnForAgentsDialog";
-import { catalogAddedToast, toolSecretsSavedToast, turnedOnToast } from "./toolFormat";
+import {
+  agentName,
+  agentsFailedToast,
+  catalogAddedToast,
+  toolAddedToast,
+  toolSecretsSavedToast,
+  turnedOnToast,
+} from "./toolFormat";
 import {
   markToolFresh,
   resetToolsView,
@@ -79,12 +87,6 @@ function useToolList() {
     void reload();
   };
   return { tools, error, reload, retry };
-}
-
-/** Where the Add tool wizard (G6) and Paste mcp.json sheet (G7) mount. */
-function ToolSheetHost({ sheet }: { sheet: ToolSheet; onClose: () => void }) {
-  void sheet;
-  return null;
 }
 
 export function ToolsPage({ view }: { view: ToolsView }) {
@@ -161,6 +163,30 @@ export function ToolsPage({ view }: { view: ToolsView }) {
         tone: "error",
       });
     }
+  };
+
+  // TOOL-43..45: the wizard stored the secrets, created the tool and turned it on. The new row lands
+  // on top; "Open <Role>" opens that agent's Skills & tools tab on its team's canvas.
+  const onToolAdded = async ({ tool, turnedOn, agentsFailed }: AddedTool) => {
+    setSheet(null);
+    markToolFresh(tool.id);
+    await reload();
+    void refreshBadges();
+    if (agentsFailed) {
+      toast({ message: agentsFailedToast(tool.name), tone: "error" });
+      return;
+    }
+    const { message, agent } = toolAddedToast(tool.name, turnedOn);
+    toast({
+      message,
+      action: agent
+        ? {
+            label: `Open ${agentName(agent)}`,
+            onClick: () =>
+              navigate({ page: "team", teamId: agent.team_id, node: agent.node_id, tab: "skills" }),
+          }
+        : undefined,
+    });
   };
 
   // TOOL-47 from the ⋯: the checked set replaces who uses it (spec Q4).
@@ -262,7 +288,20 @@ export function ToolsPage({ view }: { view: ToolsView }) {
         />
       )}
 
-      <ToolSheetHost sheet={sheet} onClose={() => setSheet(null)} />
+      {sheet?.kind === "add" && (
+        <AddToolSheet
+          initialName={sheet.name}
+          takenNames={(tools ?? []).map((t) => t.name)}
+          onClose={() => setSheet(null)}
+          onBrowse={() => {
+            setSheet(null);
+            navigate({ page: "tools", view: "browse" }, { replace: true });
+          }}
+          onPaste={() => setSheet({ kind: "paste" })}
+          onAdded={(added) => void onToolAdded(added)}
+        />
+      )}
+      {/* G7 mounts the Paste mcp.json sheet here for `sheet.kind === "paste"`. */}
 
       {dialog?.kind === "secret" && (
         <SecretDialog

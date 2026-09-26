@@ -2,13 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import type { ToolItem, UsageRow } from "../../lib/api/tools";
 import {
+  addFailedMessage,
+  agentsFailedToast,
   catalogAddedToast,
   githubInstalledToast,
   agentName,
   agentNames,
+  heldAgentsLine,
   removeImpact,
+  secretsLede,
+  toolAddedToast,
   toolSecretsSavedToast,
   turnedOnToast,
+  wizardSubtitle,
 } from "./toolFormat";
 import { LINEAR, tool } from "./toolsTestUtils";
 
@@ -123,5 +129,75 @@ describe("Browse toasts", () => {
     );
     expect(githubInstalledToast(2)).toBe("GitHub App installed on 2 repos.");
     expect(githubInstalledToast(1)).toBe("GitHub App installed on 1 repo.");
+  });
+});
+
+describe("Add tool wizard copy", () => {
+  const reviewer: UsageRow = {
+    node_id: "n-rev",
+    role_name: "reviewer",
+    title: null,
+    team_id: "team-ind",
+    team_name: "Indicator sprint team",
+  };
+
+  it("subtitles each step", () => {
+    expect(wizardSubtitle(0, "linear")).toBe("Step 1 of 3");
+    expect(wizardSubtitle(1, "linear")).toBe("linear · step 2 of 3");
+    expect(wizardSubtitle(2, "linear")).toBe("linear · step 3 of 3");
+  });
+
+  it("opens step 3 by what's still unset", () => {
+    expect(secretsLede("linear", 1, 1)).toBe(
+      "linear uses one secret. Add its value now or later in Secrets.",
+    );
+    expect(secretsLede("jira", 2, 2)).toBe(
+      "jira uses 2 secrets. Add their values now or later in Secrets.",
+    );
+    expect(secretsLede("jira", 3, 1)).toBe(
+      "jira uses 3 secrets. Add the missing value now or later in Secrets.",
+    );
+    expect(secretsLede("github", 1, 0)).toBe("github uses one secret (already set).");
+    expect(secretsLede("jira", 2, 0)).toBe("jira uses 2 secrets (all set).");
+    expect(secretsLede("fetch", 0, 0)).toBe("fetch uses no secrets.");
+  });
+
+  it("says who it will turn on for", () => {
+    expect(heldAgentsLine([])).toBe("You can also do this later, per agent.");
+    expect(heldAgentsLine(["Reviewer"])).toBe("Turns on for Reviewer when you add it.");
+    expect(heldAgentsLine(["Engineer", "Reviewer", "Writer"])).toBe(
+      "Turns on for 3 agents when you add it.",
+    );
+  });
+
+  it("toasts the add, naming the one agent it opens", () => {
+    expect(toolAddedToast("linear", null)).toEqual({ message: "linear added.", agent: null });
+    expect(toolAddedToast("linear", { agents: [reviewer], agent_count: 1, skipped: [] })).toEqual({
+      message: "linear added and turned on for Reviewer.",
+      agent: reviewer,
+    });
+    expect(
+      toolAddedToast("linear", { agents: [reviewer, reviewer], agent_count: 2, skipped: [] })
+        .message,
+    ).toBe("linear added and turned on for 2 agents.");
+    expect(toolAddedToast("linear", { agents: [], agent_count: 0, skipped: [{}] }).message).toBe(
+      "linear added. 1 agent kept its own linear server.",
+    );
+  });
+
+  it("names the submit step that failed", () => {
+    expect(addFailedMessage({ secret: "LINEAR_TOKEN" }, null, [])).toBe(
+      "Couldn’t save LINEAR_TOKEN. Try again. The tool isn’t added yet.",
+    );
+    expect(addFailedMessage({ secret: "B" }, "Too long.", ["A"])).toBe(
+      "Couldn’t save B: Too long. A is saved. The tool isn’t added yet.",
+    );
+    expect(
+      addFailedMessage({ tool: "linear" }, "You already have a tool named linear.", ["A", "B"]),
+    ).toBe("Couldn’t add linear: You already have a tool named linear. A and B are saved.");
+    expect(addFailedMessage({ tool: "linear" }, null, [])).toBe("Couldn’t add linear. Try again.");
+    expect(agentsFailedToast("linear")).toBe(
+      "linear added, but it couldn’t be turned on for your agents. Use Turn on for agents… in its ⋯ menu.",
+    );
   });
 });

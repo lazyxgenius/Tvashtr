@@ -53,8 +53,9 @@ export function TurnOnForAgentsDialog({
   initial?: string[];
   /** Skip, Escape or the scrim. */
   onClose: () => void;
-  /** The full checked set; a rejection keeps the dialog open with an error. */
-  onConfirm: (nodeIds: string[]) => Promise<void> | void;
+  /** The full checked set (with the agents' names, same order); a rejection keeps the dialog open
+   *  with an error. */
+  onConfirm: (nodeIds: string[], names: string[]) => Promise<void> | void;
 }) {
   const { teams, failed, retry } = useAgentTeams(toolId);
   // Who uses it now: the held choice, else the server's `enabled` agents. Until you tick a box the
@@ -89,13 +90,14 @@ export function TurnOnForAgentsDialog({
     e.preventDefault();
     if (!canConfirm || !teams) return;
     // Keep the dialog's order: team by team, left → right.
-    const ids = teams
-      .flatMap((t) => t.agents.map((a) => a.node_id))
-      .filter((id) => checked.has(id));
+    const picked = teams.flatMap((t) => t.agents).filter((a) => checked.has(a.node_id));
     setBusy(true);
     setError(null);
     try {
-      await onConfirm(ids);
+      await onConfirm(
+        picked.map((a) => a.node_id),
+        picked.map((a) => agentName(a)),
+      );
     } catch (err) {
       setBusy(false);
       const status = err instanceof ApiDetailError ? err.status : 0;

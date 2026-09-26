@@ -442,10 +442,13 @@
 /* ---- "Turn <name> on for…" (TkF-AddTool-6): 500px of content inside 20px padding, 180px from
    the top ---- */
 .ds-dialog.sc-dialog.tk-turnon {
+  z-index: 73;
   padding: 20px;
   top: clamp(16px, calc(50vh - 270px), 180px);
 }
-.tk-turnon-scrim {
+/* Above the Add tool sheet (z 71) when the wizard opens it (TkF-AddTool-6 dims the sheet too). */
+.ds-scrim.tk-turnon-scrim {
+  z-index: 72;
   background: rgba(20, 20, 19, 0.35);
 }
 .tk-turnon__form {
@@ -512,4 +515,435 @@
   font-size: 12px;
   line-height: 1.6;
   color: var(--ink-500);
+}
+
+/* ---- Add tool wizard (TkF-AddTool-*): the DS Sheet at 540px; the body is a 16px-gap column ---- */
+/* On macOS Desktop the sheet's top 30px lie over the title strip, a window drag region: keep the
+   sheet's own controls (the ✕) clickable there. */
+.ds-sheet[aria-label="Add a tool"] {
+  -webkit-app-region: no-drag;
+}
+.tk-wiz {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tk-wiz__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.tk-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 8px;
+}
+.tk-step {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-page);
+  border: 1px solid var(--line-200);
+}
+.tk-step--current {
+  background: var(--coral-100);
+  border-color: var(--coral-200);
+}
+.tk-step__num {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--panel-300);
+  color: var(--ink-600);
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tk-step--current .tk-step__num {
+  background: var(--coral-500);
+  color: var(--cream-100);
+}
+.tk-step--done .tk-step__num {
+  background: var(--sage-500);
+  color: var(--cream-100);
+}
+.tk-step__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.tk-step--current .tk-step__label {
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.tk-step--done .tk-step__label {
+  color: var(--ink-900);
+}
+
+/* Step 1: "Start from" cards with the design's bare native radio (the browser's own font). */
+.tk-wiz__starts {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tk-start {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--line-300);
+  border-radius: 12px;
+  background: var(--surface-card);
+  cursor: pointer;
+}
+.tk-start--on {
+  border-color: var(--coral-200);
+  background: var(--coral-100);
+}
+.tk-start input {
+  flex: none;
+  font: revert;
+  margin: 3px 3px 0 5px;
+  accent-color: #d97757;
+}
+.tk-start__icon {
+  display: inline-flex;
+  margin-top: 1px;
+  color: var(--ink-700);
+}
+.tk-start__title {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.tk-start__desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* Step 2: Where it runs, the fields, header / env rows. */
+.tk-wiz__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tk-wiz__seg.tv-seg {
+  display: flex;
+}
+.tk-wiz__seg .tv-seg__btn {
+  flex: 1;
+  padding: 0 8px;
+  font-size: 12.5px;
+}
+.tk-wiz__cmd {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 10px;
+}
+.tk-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tk-kv__grid {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 32px;
+  gap: 8px;
+  align-items: center;
+}
+.tk-kv__grid--env {
+  grid-template-columns: 170px minmax(0, 1fr) 32px;
+}
+.tk-kv__row {
+  display: contents;
+}
+
+/* A value with `${NAME}` chips: the design's 32px box (content-box → 34px with its border). The
+   real input sits on top; while the chips show, its text is transparent. */
+.tk-ref {
+  position: relative;
+  min-width: 0;
+}
+.tk-ref--chips {
+  height: 34px;
+  border: 1px solid var(--line-300);
+  border-radius: 6px;
+  background: var(--surface-page);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.tk-ref--chips:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+.tk-ref__raw {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+}
+.tk-ref--show .tk-ref__raw {
+  color: transparent;
+  caret-color: transparent;
+}
+.tk-ref__display {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.tk-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--amber-100);
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: #7a5423;
+}
+.tk-chip--set {
+  background: var(--sage-100);
+  color: #4f6038;
+}
+.tk-chip__state {
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+/* The `${` picker: 300px of content (content-box → 312), 6px under the value. */
+.tk-ac {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  width: 312px;
+  padding: 5px;
+  border-radius: 10px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+}
+.tk-ac__opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-700);
+  cursor: pointer;
+}
+.tk-ac__opt[aria-selected="true"] {
+  background: var(--panel-300);
+}
+.tk-ac__opt > svg {
+  flex: none;
+}
+.tk-ac__name {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.tk-ac__usage {
+  margin-left: auto;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.tk-ac__create {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.tk-ac__mono {
+  font-family: var(--font-code);
+}
+.tk-ac__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line-200);
+}
+
+.tk-wiz__hint {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.tk-wiz__hint-icon {
+  flex: none;
+  display: inline-flex;
+  margin-top: 1px;
+}
+.tk-wiz__hint code {
+  font-family: var(--font-code);
+}
+
+/* Advanced (raw JSON) */
+.tk-raw {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tk-raw__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-700);
+  cursor: pointer;
+}
+.tk-raw__toggle[aria-expanded="true"] {
+  color: var(--ink-900);
+}
+.tk-raw__toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: 4px;
+}
+.tk-raw__text {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-page);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ink-800);
+  resize: none;
+  overflow: hidden;
+}
+.tk-raw__text:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+.tk-raw__note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.tk-raw__note--error {
+  color: var(--danger);
+}
+
+/* Step 3: the secrets card and the agents row. */
+.tk-wiz__lede {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.tk-secretcard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line-200);
+  border-radius: 12px;
+  background: var(--surface-page);
+}
+.tk-secretcard--unset {
+  border-color: var(--coral-200);
+}
+.tk-secretcard__item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tk-secretcard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tk-secretcard__name {
+  font-family: var(--font-code);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.tk-secretcard__note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.tk-agentsrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line-200);
+}
+.tk-agentsrow__title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.tk-agentsrow__sub {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.tk-wiz__error {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--danger);
 }
