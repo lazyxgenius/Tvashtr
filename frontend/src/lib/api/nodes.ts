@@ -360,6 +360,57 @@ export async function getNodeRuns(
   return { runs, run };
 }
 
+// ---- A run's documents (Docs tab) -------------------------------------------------------------
+
+export interface RunDocAgent {
+  /** The authored node's id. */
+  node_id: string;
+  label: string;
+}
+
+export interface RunDoc {
+  id: string;
+  name: string;
+  title: string;
+  doc_type: string;
+  is_shared_spec: boolean;
+  latest_version: { version_no: number; created_at: string } | null;
+  written_by: RunDocAgent[];
+  read_by: RunDocAgent[];
+}
+
+const toAgents = (v: unknown): RunDocAgent[] =>
+  (Array.isArray(v) ? v : [])
+    .filter(isObj)
+    .map((a) => ({ node_id: str(a.node_id), label: str(a.label) }))
+    .filter((a) => a.node_id !== "");
+
+/** GET /api/runs/{id}/documents — the run's documents with latest version, writers and readers. */
+export async function listRunDocs(runId: string): Promise<RunDoc[]> {
+  const res = await send(`/api/runs/${encodeURIComponent(runId)}/documents`);
+  if (!res.ok)
+    throw new ApiError(res.status, await detailOf(res, "Couldn’t load this run’s documents."));
+  const body: unknown = await res.json();
+  if (!isObj(body) || !Array.isArray(body.documents)) return [];
+  return body.documents.filter(isObj).flatMap((d) => {
+    const id = str(d.id);
+    if (!id) return [];
+    const v = isObj(d.latest_version) ? d.latest_version : null;
+    return [
+      {
+        id,
+        name: str(d.name),
+        title: str(d.title),
+        doc_type: str(d.doc_type),
+        is_shared_spec: d.is_shared_spec === true,
+        latest_version: v ? { version_no: num(v.version_no), created_at: str(v.created_at) } : null,
+        written_by: toAgents(d.written_by),
+        read_by: toAgents(d.read_by),
+      },
+    ];
+  });
+}
+
 // ---- Context preview -------------------------------------------------------------------------
 
 /** "Preview as the agent sees it": the first-round context with the unsaved draft applied. */

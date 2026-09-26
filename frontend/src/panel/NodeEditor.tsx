@@ -1,7 +1,6 @@
 import { type MutableRefObject, useState } from "react";
 import { Zap } from "lucide-react";
 
-import { LastRun } from "../components/LastRun";
 import { Button } from "../design-system/components";
 import {
   type GateConfig,
@@ -11,11 +10,12 @@ import {
   type TeamGraphNode,
 } from "../lib/api";
 import { deleteMemory, type Memory } from "../lib/api/memory";
-import type { NodeTemplate } from "../lib/api/nodes";
+import { getNodeRuns, type NodeTemplate } from "../lib/api/nodes";
 import type { EnginesTab, NodeTab, Route } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import { type AgentDraft, describeChanges } from "./agentDraft";
 import { DrawerConfirm } from "./DrawerConfirm";
+import { DocsTab } from "./docs/DocsTab";
 import { DrawerToast } from "./DrawerToast";
 import { NodeFocusView } from "./focus/NodeFocusView";
 import { DomainQueryBody } from "./legacy/DomainQueryBody";
@@ -32,6 +32,8 @@ import { MemoryTab } from "./memory/MemoryTab";
 import { useNodeMemories } from "./memory/useNodeMemories";
 import { NodeMoreMenu } from "./NodeMoreMenu";
 import { NodeTabs } from "./NodeTabs";
+import { RunsTab } from "./runs/RunsTab";
+import { useLoaded } from "./runs/useLoaded";
 import { SaveBar } from "./SaveBar";
 import { useSaveShortcut } from "./saveShortcut";
 import { isGettingReady } from "./setup/getReady";
@@ -186,6 +188,14 @@ function AgentEditor({
   // The Tools sheet (add a server / library / paste mcp.json, or Edit connection; G9).
   const [toolSub, setToolSub] = useState<ToolSub | null>(null);
   const shelves = useShelves(tab === "skills");
+  // Runs and Docs share this agent's history, keyed on its last run (a new round reloads it).
+  const last = node.last_run;
+  const [historyWanted, setHistoryWanted] = useState(false);
+  if (!historyWanted && (tab === "runs" || tab === "docs")) setHistoryWanted(true);
+  const history = useLoaded(
+    historyWanted && last ? `${last.run_id}:${last.iteration}:${last.outcome ?? ""}` : null,
+    () => getNodeRuns(teamId, node.id),
+  );
 
   // The header follows the draft, so a rename shows before it's saved.
   const cfg = (node.config as Record<string, unknown> | null) ?? {};
@@ -327,15 +337,16 @@ function AgentEditor({
       />
     ) : null;
 
-  // "Turn on File access in Setup": the Setup tab, on its File access control.
-  const openFileAccess = () => {
+  // "Turn on File access in Setup" / "Set in Setup": the Setup tab, on that control.
+  const openSetup = (selector: string) => {
     onTabChange("setup");
     window.requestAnimationFrame(() => {
-      const button = document.querySelector<HTMLElement>('[aria-label="File access"] button');
+      const button = document.querySelector<HTMLElement>(selector);
       button?.scrollIntoView?.({ block: "nearest" });
       button?.focus();
     });
   };
+  const openFileAccess = () => openSetup('[aria-label="File access"] button');
 
   const commitRename = (nextName: string, nextDescription: string) => {
     // Only what actually changed goes into the draft (the built-in name stays built-in).
@@ -522,20 +533,25 @@ function AgentEditor({
       );
       break;
     case "runs":
+      body = (
+        <RunsTab history={history} onOpenFocus={focus ? undefined : () => onFocusChange(true)} />
+      );
+      break;
     case "docs":
-      body = node.last_run ? (
-        <LastRun
-          rounds={[
-            {
-              iteration: node.last_run.iteration,
-              outcome: node.last_run.outcome,
-              outcome_detail: node.last_run.outcome_detail,
-            },
-          ]}
-          provenance={{ startedAt: node.last_run.started_at, runId: node.last_run.run_id }}
+      body = (
+        <DocsTab
+          teamId={teamId}
+          nodeId={node.id}
+          name={name}
+          isEntry={isEntry}
+          verdict={routing.kind === "verdict"}
+          writesTo={api.baseline.writesTo}
+          readsFrom={api.baseline.readsFrom}
+          agentCount={nodes.filter((n) => n.kind === "agent" || n.kind === "completion").length}
+          history={history}
+          onOpen={(route) => onOpenToolkit?.(route)}
+          onSetup={(row) => openSetup(`[data-setup-row="${row}"]`)}
         />
-      ) : (
-        <p className="tv-panel-note">This agent hasn’t run yet.</p>
       );
       break;
     default:

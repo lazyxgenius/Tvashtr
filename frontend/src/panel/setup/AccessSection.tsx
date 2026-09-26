@@ -139,6 +139,7 @@ export function AccessSection({
           ref={chooseButton}
           type="button"
           className="nd-dashed"
+          data-setup-row="writes"
           aria-haspopup="dialog"
           aria-expanded={open === "writes"}
           disabled={verdict}
@@ -255,6 +256,7 @@ export function AccessSection({
               ref={addButton}
               type="button"
               className="nd-dashed"
+              data-setup-row="reads"
               aria-haspopup="dialog"
               aria-expanded={open === "reads"}
               onClick={() => setOpen(open === "reads" ? null : "reads")}

@@ -5,6 +5,7 @@ import {
   getNodeRuns,
   getNodeTemplates,
   listNodeMemories,
+  listRunDocs,
   NodeSaveError,
   patchAgentNode,
   previewNodeContext,
@@ -101,6 +102,57 @@ describe("getNodeRuns", () => {
       vi.fn(() => json({ runs: [], run: null })),
     );
     await expect(getNodeRuns("t", "n")).resolves.toEqual({ runs: [], run: null });
+  });
+});
+
+describe("listRunDocs", () => {
+  it("keeps the version, writers and readers and drops rows without an id", async () => {
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(() =>
+      json({
+        run: { run_id: "r1" },
+        documents: [
+          {
+            id: "d1",
+            name: "spec",
+            title: "PRD",
+            doc_type: "prd",
+            is_shared_spec: true,
+            latest_version: { version_no: 3, created_at: "2026-09-25T10:00:00Z", author: {} },
+            written_by: [{ node_id: "n-pm", clone_node_id: "c1", label: "Product manager" }],
+            read_by: [{ node_id: "n-rev", label: "Reviewer" }, { label: "no id" }],
+          },
+          { name: "orphan" },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const docs = await listRunDocs("r 1");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/runs/r%201/documents");
+    expect(docs).toEqual([
+      {
+        id: "d1",
+        name: "spec",
+        title: "PRD",
+        doc_type: "prd",
+        is_shared_spec: true,
+        latest_version: { version_no: 3, created_at: "2026-09-25T10:00:00Z" },
+        written_by: [{ node_id: "n-pm", label: "Product manager" }],
+        read_by: [{ node_id: "n-rev", label: "Reviewer" }],
+      },
+    ]);
+  });
+
+  it("an unexpected answer is no documents; a 404 throws", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => json({ nope: true })),
+    );
+    await expect(listRunDocs("r")).resolves.toEqual([]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => json({ detail: "run not found" }, 404)),
+    );
+    await expect(listRunDocs("r")).rejects.toThrow("run not found");
   });
 });
 
