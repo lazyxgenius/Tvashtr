@@ -34,6 +34,30 @@ describe("SaveBar (PANEL-17)", () => {
     expect(screen.getByRole("button", { name: "Save Ctrl S" })).toBeInTheDocument();
   });
 
+  it("one change is singular", () => {
+    bar({ dirtyCount: 1, canSave: true });
+    expect(screen.getByText("1 unsaved change")).toBeInTheDocument();
+  });
+
+  it("clean and saved: the disabled Save", () => {
+    const { unmount } = bar();
+    expect(screen.getByText("All changes saved")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    unmount();
+    bar({ saveState: "saved" });
+    expect(screen.getByText("Saved. This drives the next run you launch.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("error: the message with Discard and Try again", () => {
+    const onSave = vi.fn();
+    bar({ dirtyCount: 2, saveState: "error", canSave: true, onSave });
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn’t save. Try again.");
+    screen.getByRole("button", { name: "Try again" }).click();
+    expect(onSave).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
+  });
+
   it("saving: 'Saving N changes…' with a busy Saving button", () => {
     bar({ dirtyCount: 2, saveState: "saving" });
     expect(screen.getByText("Saving 2 changes…")).toBeInTheDocument();

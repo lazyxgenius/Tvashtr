@@ -1,9 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { createRef } from "react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type GraphEdge, setProviderCatalogue, type TeamGraphNode } from "../lib/api";
 import { __resetBackendStatusForTests } from "../lib/backendStatus";
 import { NodeEditor, type NodeEditorProps } from "./NodeEditor";
+import type { LeaveGuard } from "./useUnsavedGuard";
 
 // The agent drawer (G1): the shell, header badges, tab counts, the Setup read view and the save
 // footer, driven through the real API client with `fetch` stubbed.
@@ -296,6 +298,260 @@ describe("NodeEditor — the save footer", () => {
   it("reads 'Memory changes save right away' on the Memory tab", () => {
     const { drawer } = renderEditor({ tab: "memory" });
     expect(within(drawer).getByText("Memory changes save right away")).toBeInTheDocument();
+  });
+});
+
+describe("NodeEditor — editing (G2)", () => {
+  const instructions = (drawer: HTMLElement) =>
+    within(drawer).getByRole<HTMLTextAreaElement>("textbox", { name: /^Instructions/ });
+  const rowOf = (drawer: HTMLElement, label: string) =>
+    within(drawer)
+      .getByText(label, { selector: ".nd-row__label" })
+      .closest(".nd-row") as HTMLElement;
+
+  it("tints the edited line, dots the changed rows, and Discard clears both", () => {
+    const { drawer } = renderEditor();
+    const lines = PROMPT.split("\n");
+    lines[2] = "Line 3 — now stricter";
+    fireEvent.change(instructions(drawer), { target: { value: lines.join("\n") } });
+    fireEvent.click(within(drawer).getByRole("switch", { name: "Images" }));
+
+    const marked = drawer.querySelectorAll(".nd-mark--on");
+    expect(marked).toHaveLength(1);
+    expect(marked[0]).toHaveTextContent("Line 3 — now stricter");
+    expect(within(rowOf(drawer, "Images")).getByRole("img", { name: "Changed" })).toBeVisible();
+    expect(within(rowOf(drawer, "Model")).queryByRole("img", { name: "Changed" })).toBeNull();
+    expect(within(drawer).getByText("2 unsaved changes")).toBeInTheDocument();
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "Discard" }));
+    expect(drawer.querySelectorAll(".nd-mark--on")).toHaveLength(0);
+    expect(within(drawer).queryByRole("img", { name: "Changed" })).toBeNull();
+    expect(instructions(drawer).value).toBe(PROMPT);
+    expect(within(drawer).getByText("All changes saved")).toBeInTheDocument();
+  });
+
+  it("marks the title when an edit only removed lines", () => {
+    const { drawer } = renderEditor();
+    fireEvent.change(instructions(drawer), {
+      target: { value: PROMPT.split("\n").slice(0, -1).join("\n") },
+    });
+    const title = within(drawer).getByRole("heading", { name: /^Instructions/ });
+    expect(within(title).getByRole("img", { name: "Changed" })).toBeInTheDocument();
+  });
+
+  it("Update instructions writes the verdict the arrows route on into the draft", () => {
+    const { drawer } = renderEditor({ node: reviewer({ prompt: "Review it." }) });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Update instructions" }));
+    expect(instructions(drawer).value).toContain('"approved"');
+    expect(within(drawer).getByText("Instructions match your arrows")).toBeInTheDocument();
+    expect(within(drawer).getByText("1 unsaved change")).toBeInTheDocument();
+  });
+
+  it("⌘S and Ctrl+S save a dirty draft; with nothing to save they only stop the browser's Save", async () => {
+    const { drawer } = renderEditor();
+    const clean = new KeyboardEvent("keydown", { key: "s", metaKey: true, cancelable: true });
+    document.dispatchEvent(clean);
+    expect(clean.defaultPrevented).toBe(true);
+    expect(patchBody()).toBeUndefined();
+
+    fireEvent.click(within(drawer).getByRole("switch", { name: "Images" }));
+    fireEvent.keyDown(document, { key: "s", metaKey: true });
+    await within(drawer).findByText("Saved. This drives the next run you launch.");
+    expect(patchBody()).toEqual({ multimodal: true });
+
+    fetchMock.mockClear();
+    fireEvent.click(within(drawer).getByRole("switch", { name: "Images" }));
+    fireEvent.keyDown(document, { key: "S", ctrlKey: true });
+    await waitFor(() => expect(patchBody()).toEqual({ multimodal: false }));
+  });
+});
+
+describe("NodeEditor — leaving with unsaved changes (PANEL-21)", () => {
+  function dirtyEditor(over: Partial<NodeEditorProps> = {}) {
+    const guardRef = createRef<LeaveGuard>() as { current: LeaveGuard | null };
+    const view = renderEditor({ guardRef, ...over });
+    const lines = PROMPT.split("\n");
+    lines[1] = "Line 2, edited";
+    fireEvent.change(within(view.drawer).getByRole("textbox", { name: /^Instructions/ }), {
+      target: { value: lines.join("\n") },
+    });
+    fireEvent.click(within(view.drawer).getByRole("switch", { name: "Images" }));
+    const proceed = vi.fn();
+    return { ...view, guardRef, proceed };
+  }
+
+  it("a clean drawer lets the page go at once", () => {
+    const guardRef = createRef<LeaveGuard>() as { current: LeaveGuard | null };
+    renderEditor({ guardRef });
+    const proceed = vi.fn();
+    act(() => guardRef.current?.(proceed));
+    expect(proceed).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("asks 'Save your changes to <Name>?' naming what changed; Keep editing stays", () => {
+    const { drawer, guardRef, proceed } = dirtyEditor();
+    act(() => guardRef.current?.(proceed));
+    const dialog = within(drawer).getByRole("alertdialog", { name: "Unsaved changes" });
+    expect(dialog).toHaveTextContent("Save your changes to Reviewer?");
+    expect(dialog).toHaveTextContent("You changed the instructions and images.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+    expect(within(drawer).queryByRole("alertdialog")).toBeNull();
+    expect(proceed).not.toHaveBeenCalled();
+    expect(within(drawer).getByText("2 unsaved changes")).toBeInTheDocument();
+  });
+
+  it("Escape is Keep editing too", () => {
+    const { drawer, guardRef, proceed } = dirtyEditor();
+    act(() => guardRef.current?.(proceed));
+    expect(within(drawer).getByRole("alertdialog")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(within(drawer).queryByRole("alertdialog")).toBeNull();
+    expect(proceed).not.toHaveBeenCalled();
+  });
+
+  it("Discard drops the draft and goes", () => {
+    const { drawer, guardRef, proceed } = dirtyEditor();
+    act(() => guardRef.current?.(proceed));
+    const dialog = within(drawer).getByRole("alertdialog", { name: "Unsaved changes" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard" }));
+    expect(proceed).toHaveBeenCalledTimes(1);
+    expect(patchBody()).toBeUndefined();
+    expect(within(drawer).getByText("All changes saved")).toBeInTheDocument();
+  });
+
+  it("Save saves the changed parts, then goes", async () => {
+    const { drawer, guardRef, proceed } = dirtyEditor();
+    act(() => guardRef.current?.(proceed));
+    const dialog = within(drawer).getByRole("alertdialog", { name: "Unsaved changes" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(proceed).toHaveBeenCalledTimes(1));
+    const body = patchBody() as { multimodal?: boolean; prompt?: string };
+    expect(body.multimodal).toBe(true);
+    expect(body.prompt).toContain("Line 2, edited");
+  });
+
+  it("a failed Save keeps the drawer open with the error footer", async () => {
+    fetchMock.mockImplementation((input: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") return json({ detail: "boom" }, 500);
+      if (input.startsWith("/api/memories")) return json({ memories: [] });
+      return json({});
+    });
+    const { drawer, guardRef, proceed } = dirtyEditor();
+    act(() => guardRef.current?.(proceed));
+    const dialog = within(drawer).getByRole("alertdialog", { name: "Unsaved changes" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await within(drawer).findByText("Couldn’t save. Try again.")).toBeInTheDocument();
+    expect(within(drawer).queryByRole("alertdialog")).toBeNull();
+    expect(proceed).not.toHaveBeenCalled();
+  });
+
+  it("asks the browser before a reload and tells Tvashtr Desktop while dirty", () => {
+    const setUnsavedChanges = vi.fn();
+    window.tvashtrDesktop = {
+      app: { setUnsavedChanges },
+    } as unknown as typeof window.tvashtrDesktop;
+    try {
+      const { drawer } = renderEditor();
+      const clean = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(clean);
+      expect(clean.defaultPrevented).toBe(false);
+      expect(setUnsavedChanges).toHaveBeenLastCalledWith({ dirty: false, agentName: "Reviewer" });
+
+      fireEvent.click(within(drawer).getByRole("switch", { name: "Images" }));
+      const dirty = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(dirty);
+      expect(dirty.defaultPrevented).toBe(true);
+      expect(setUnsavedChanges).toHaveBeenLastCalledWith({ dirty: true, agentName: "Reviewer" });
+    } finally {
+      delete (window as { tvashtrDesktop?: unknown }).tvashtrDesktop;
+    }
+  });
+});
+
+describe("NodeEditor — the ⋯ menu (PANEL-23..26)", () => {
+  const openMore = (drawer: HTMLElement) => {
+    fireEvent.click(within(drawer).getByRole("button", { name: "More actions" }));
+    return within(drawer).getByRole("menu", { name: "More actions" });
+  };
+
+  it("lists the four actions; focus view and documents go where they say", () => {
+    const { props, drawer } = renderEditor();
+    const menu = openMore(drawer);
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((m) => m.textContent),
+    ).toEqual([
+      "Open in focus view",
+      "Rename",
+      "Open its documents",
+      "Delete agentIts arrows are removed too",
+    ]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Open in focus view" }));
+    expect(props.onFocusChange).toHaveBeenCalledWith(true);
+    fireEvent.click(within(openMore(drawer)).getByRole("menuitem", { name: "Open its documents" }));
+    expect(props.onTabChange).toHaveBeenCalledWith("docs");
+  });
+
+  it("Rename edits the name and description in the header; Enter keeps it for Save", async () => {
+    const { drawer } = renderEditor();
+    fireEvent.click(within(openMore(drawer)).getByRole("menuitem", { name: "Rename" }));
+    const name = within(drawer).getByRole<HTMLInputElement>("textbox", { name: "Agent name" });
+    expect(name).toHaveFocus();
+    fireEvent.change(name, { target: { value: "  Spec checker " } });
+    fireEvent.change(within(drawer).getByRole("textbox", { name: "Short description" }), {
+      target: { value: "Reads the build against the PRD" },
+    });
+    fireEvent.keyDown(name, { key: "Enter" });
+
+    expect(within(drawer).getByRole("heading", { name: "Spec checker" })).toBeInTheDocument();
+    expect(within(drawer).getByText("Reads the build against the PRD")).toBeInTheDocument();
+    expect(drawer).toHaveAccessibleName("Spec checker settings");
+    expect(within(drawer).getByText("1 unsaved change")).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole("button", { name: /^Save/ }));
+    await within(drawer).findByText("Saved. This drives the next run you launch.");
+    expect(patchBody()).toEqual({
+      title: "Spec checker",
+      description: "Reads the build against the PRD",
+    });
+  });
+
+  it("Escape cancels a rename; a blank name is refused", () => {
+    const { drawer } = renderEditor();
+    fireEvent.click(within(openMore(drawer)).getByRole("menuitem", { name: "Rename" }));
+    let name = within(drawer).getByRole("textbox", { name: "Agent name" });
+    fireEvent.change(name, { target: { value: "Other" } });
+    fireEvent.keyDown(name, { key: "Escape" });
+    expect(within(drawer).getByRole("heading", { name: "Reviewer" })).toBeInTheDocument();
+    expect(within(drawer).getByText("All changes saved")).toBeInTheDocument();
+
+    fireEvent.click(within(openMore(drawer)).getByRole("menuitem", { name: "Rename" }));
+    name = within(drawer).getByRole("textbox", { name: "Agent name" });
+    fireEvent.change(name, { target: { value: "   " } });
+    fireEvent.keyDown(name, { key: "Enter" });
+    expect(within(drawer).getByRole("alert")).toHaveTextContent("An agent name is required.");
+    expect(name).toHaveAttribute("aria-invalid", "true");
+    expect(within(drawer).getByText("All changes saved")).toBeInTheDocument();
+  });
+
+  it("Delete agent names the arrows that go with it, then deletes", async () => {
+    const onDelete = vi.fn(() => Promise.resolve());
+    const { drawer } = renderEditor({ onDelete });
+    fireEvent.click(within(openMore(drawer)).getByRole("menuitem", { name: /^Delete agent/ }));
+    const dialog = within(drawer).getByRole("alertdialog", { name: "Delete Reviewer?" });
+    expect(dialog).toHaveTextContent(
+      "Its arrows to Engineer and Ship are removed too. Past runs keep their results.",
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(within(drawer).queryByRole("alertdialog")).toBeNull();
+    expect(onDelete).not.toHaveBeenCalled();
+
+    fireEvent.click(within(openMore(drawer)).getByRole("menuitem", { name: /^Delete agent/ }));
+    fireEvent.click(
+      within(within(drawer).getByRole("alertdialog")).getByRole("button", { name: "Delete agent" }),
+    );
+    await waitFor(() => expect(onDelete).toHaveBeenCalledTimes(1));
   });
 });
 

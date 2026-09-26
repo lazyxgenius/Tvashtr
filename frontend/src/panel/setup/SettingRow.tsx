@@ -1,24 +1,31 @@
 import type { ReactNode } from "react";
 
+import { ChangedDot } from "../ChangedDot";
 import { InfoTip } from "../InfoTip";
 
-/** One Setup row: a 104px label column (with its ⓘ), the control, and an optional hint under it. */
+/**
+ * One Setup row: a 104px label column (with its ⓘ), the control, and an optional hint under it.
+ * `changed` puts the coral "Changed" dot in the row's left gutter.
+ */
 export function SettingRow({
   label,
   tip,
   labelId,
   hint,
+  changed = false,
   children,
 }: {
   label: string;
   tip?: string;
   labelId?: string;
   hint?: ReactNode;
+  changed?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className="nd-row">
       <div className="nd-row__grid">
+        {changed && <ChangedDot />}
         <span className="nd-row__label" id={labelId}>
           {label}
           {tip && <InfoTip text={tip} />}

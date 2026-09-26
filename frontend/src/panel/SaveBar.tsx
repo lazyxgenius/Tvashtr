@@ -1,4 +1,4 @@
-import { AlertCircle, Check } from "lucide-react";
+import { AlertCircle, Check, CircleCheck } from "lucide-react";
 
 import { Button } from "../design-system/components";
 import { saveShortcutLabel } from "./saveShortcut";
@@ -70,8 +70,7 @@ export function SaveBar({
             Discard
           </Button>
           <Button variant="primary" size="sm" onClick={onSave} disabled={!canSave}>
-            Save
-            <span className="nd-foot__kbd">{saveShortcutLabel()}</span>
+            Save <span className="nd-foot__kbd">{saveShortcutLabel()}</span>
           </Button>
         </div>
       </footer>
@@ -85,13 +84,13 @@ export function SaveBar({
         </span>
       ) : saveState === "saved" ? (
         <span className="nd-foot__status nd-foot__status--saved" role="status">
-          <Check size={14} strokeWidth={1.8} aria-hidden />
+          <CircleCheck size={14} strokeWidth={1.6} aria-hidden />
           Saved. This drives the next run you launch.
         </span>
       ) : (
         <span className="nd-foot__status" role="status">
           <span className="nd-foot__ok">
-            <Check size={14} strokeWidth={1.8} aria-hidden />
+            <Check size={14} strokeWidth={2} aria-hidden />
           </span>
           All changes saved
         </span>

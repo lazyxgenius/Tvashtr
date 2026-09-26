@@ -2,13 +2,8 @@ import { Fragment } from "react";
 import { AlertTriangle, CircleCheck, Route } from "lucide-react";
 
 import { Button } from "../../design-system/components";
+import { joinAnd } from "../nodeActions";
 import type { Routing } from "./routing";
-
-/** "…and C" / "B and C" / "A, B and C". */
-function joinAnd(names: string[]): string {
-  if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
 
 /**
  * The routing line attached to the instructions card: where the agent's work goes, and (for an agent
@@ -16,8 +11,9 @@ function joinAnd(names: string[]): string {
  * "Update instructions" fix when they don't.
  */
 export function RoutingStatus({ routing, onUpdate }: { routing: Routing; onUpdate?: () => void }) {
+  const outOfSync = routing.kind === "verdict" && !routing.inSync;
   return (
-    <div className="nd-routing">
+    <div className={`nd-routing${outOfSync ? " nd-routing--warn" : ""}`}>
       <div className="nd-routing__line">
         <span className="nd-routing__icon" aria-hidden>
           <Route size={14} strokeWidth={1.7} />
@@ -55,15 +51,17 @@ export function RoutingStatus({ routing, onUpdate }: { routing: Routing; onUpdat
             Instructions match your arrows
           </span>
         ) : (
-          <span className="nd-routing__sync nd-routing__sync--warn">
-            <AlertTriangle size={13} strokeWidth={1.8} aria-hidden />
-            Instructions no longer match your arrows
+          <div className="nd-routing__fix">
+            <span className="nd-routing__warn">
+              <AlertTriangle size={13} strokeWidth={1.6} aria-hidden />
+              Instructions no longer match your arrows
+            </span>
             {onUpdate && (
               <Button variant="tint" size="sm" onClick={onUpdate}>
                 Update instructions
               </Button>
             )}
-          </span>
+          </div>
         ))}
     </div>
   );

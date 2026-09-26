@@ -49,6 +49,7 @@
 
 /* ---- Header ---- */
 .nd-head {
+  position: relative;
   flex: none;
   padding: 18px 20px 12px;
   display: flex;
@@ -262,6 +263,21 @@
   align-items: center;
   min-height: 40px;
 }
+/* The coral "Changed" dot in a row's left gutter (the design's left -13px, top 17px). */
+.nd-changed {
+  position: absolute;
+  left: -13px;
+  top: 17px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--coral-500);
+}
+.nd-changed--inline {
+  position: static;
+  display: inline-block;
+  flex: none;
+}
 .nd-row__label {
   font-size: 13px;
   line-height: 1.6;
@@ -346,6 +362,7 @@
   overflow: hidden;
 }
 .nd-editor__text {
+  position: relative;
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -362,6 +379,29 @@
   color: var(--ink-800);
   white-space: pre-wrap;
   overflow-wrap: break-word;
+}
+/* The changed-lines mirror (PANEL-18): the same text, wrapped the same way, glyphs hidden; a changed
+   line gets the design's coral band (4px wider each side, radius 4) behind the textarea. */
+.nd-editor__marks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.66;
+  color: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.nd-mark {
+  margin: 0 -4px;
+  padding: 0 4px;
+  border-radius: 4px;
+}
+.nd-mark--on {
+  background: var(--coral-100);
 }
 .nd-editor__text:focus-visible {
   box-shadow: 0 0 0 2px var(--coral-200);
@@ -433,8 +473,25 @@
   line-height: 1.6;
   color: #52613e;
 }
-.nd-routing__sync--warn {
-  color: #8a5a14;
+/* Out of sync (Desktop-Editing / Flow-Save-1): the amber band with the fix under the line. */
+.nd-routing--warn {
+  border-top-color: var(--amber-100);
+  padding-bottom: 12px;
+  background: #fbf3e6;
+  gap: 8px;
+}
+.nd-routing__fix {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.nd-routing__warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #7a5423;
+  font-weight: 500;
 }
 
 /* ---- Model button ---- */
@@ -628,4 +685,149 @@
 .nd-btn-flush > span {
   display: inline-flex;
   align-items: center;
+}
+
+/* ---- In-drawer confirm (Flow-More-2, Panel-CloseUnsaved) ---- */
+.nd-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  background: rgba(20, 20, 19, 0.28);
+}
+.nd-scrim--clear {
+  background: transparent;
+}
+.nd-confirm {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 250px;
+  z-index: 8;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+  font-family: var(--font-ui);
+  line-height: 1.6;
+}
+.nd-confirm:focus {
+  outline: none;
+}
+.nd-confirm__title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.nd-confirm__body {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+.nd-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 14px;
+}
+.nd-confirm--footer {
+  left: 12px;
+  right: 12px;
+  top: auto;
+  bottom: 68px;
+  padding: 14px;
+}
+.nd-confirm--footer .nd-confirm__title {
+  font-size: 13.5px;
+}
+.nd-confirm--footer .nd-confirm__body {
+  margin-top: 2px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-confirm--footer .nd-confirm__actions {
+  margin-top: 12px;
+}
+
+/* ---- ⋯ More actions (Flow-More-1): 240px, 20px in from the aside's right edge, 56px down ---- */
+.nd-head__actions > .ds-anchor {
+  position: static;
+}
+.nd-head__actions .ds-menu {
+  box-sizing: content-box;
+  width: 240px;
+  right: 20px;
+  top: 56px;
+  z-index: 8;
+}
+.nd-head__actions .ds-menu__item {
+  line-height: 1.6;
+}
+.nd-head__actions .ds-menu__icon,
+.nd-head__actions .ds-menu__item--danger .ds-menu__icon {
+  color: inherit;
+}
+.nd-head__actions .ds-menu__item--danger {
+  color: #8f3b2f;
+}
+.nd-head__actions .ds-menu__desc {
+  margin-top: 1px;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+.nd-head__actions .ds-menu__sep {
+  background: var(--line-200);
+}
+
+/* ---- Inline rename in the header (PANEL-24, Q18) ---- */
+.nd-rename {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nd-rename__name,
+.nd-rename__desc {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  border: 1px solid var(--border-hairline);
+  border-radius: 6px;
+  background: var(--surface-page);
+  color: var(--text-primary);
+  outline: none;
+}
+.nd-rename__name {
+  padding: 1px 6px;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.nd-rename__desc {
+  padding: 2px 6px;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.nd-rename__name:focus-visible,
+.nd-rename__desc:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+.nd-rename__name[aria-invalid="true"] {
+  border-color: var(--red-500);
+}
+.nd-rename__hint {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-rename__hint--error {
+  color: #8f3b2f;
 }

@@ -16,6 +16,7 @@ export function NodeDrawer({
   footer,
   children,
   bare = false,
+  overlay,
   onDismissFocus,
 }: {
   name: string;
@@ -26,6 +27,8 @@ export function NodeDrawer({
   children: ReactNode;
   /** The children own their padding and scroll (the older gate / endpoint bodies). */
   bare?: boolean;
+  /** A drawer-scoped confirm (`DrawerConfirm`), drawn over the drawer only. */
+  overlay?: ReactNode;
   /** Esc in the focus view (dock back). */
   onDismissFocus?: () => void;
 }) {
@@ -42,6 +45,7 @@ export function NodeDrawer({
         {bare ? children : <div className="nd-body__inner">{children}</div>}
       </div>
       {footer}
+      {overlay}
     </>
   );
   if (focus) {

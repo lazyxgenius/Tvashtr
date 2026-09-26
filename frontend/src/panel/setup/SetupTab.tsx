@@ -2,6 +2,7 @@ import { AlertTriangle, KeyRound, Monitor } from "lucide-react";
 
 import { Switch } from "../../design-system/components";
 import type { GraphEdge, TeamGraphNode } from "../../lib/api";
+import { applyEmitContract, emitContract } from "../../lib/topology";
 import type { AgentDraftApi } from "../useAgentDraft";
 import { AccessSection } from "./AccessSection";
 import { AdvancedSection } from "./AdvancedSection";
@@ -57,17 +58,34 @@ export function SetupTab({
   const { draft, set, update } = api;
   const routing = routingOf(node.id, draft.prompt, nodes, edges);
   const hint = modelHint(draft.model, cover);
+  // The Changed marks follow the draft; while a save is on its way they step back (Flow-Save-2).
+  const marking = api.saveState !== "saving";
+  const changed = marking ? api.changed : [];
+  const contract =
+    routing.kind === "verdict" && !routing.inSync ? emitContract(node.id, edges) : null;
   return (
     <div className="nd-stack">
       <InstructionsCard
         prompt={draft.prompt}
+        saved={marking ? api.baseline.prompt : undefined}
         onChange={(v) => set("prompt", v)}
         banner={runtimeBanner({
           isEntry,
           readsFrom: draft.readsFrom,
           readsDefault: draft.readsDefault,
         })}
-        routing={<RoutingStatus routing={routing} />}
+        routing={
+          <RoutingStatus
+            routing={routing}
+            // Writes the verdict block the arrows route on into the draft (Discard brings the text
+            // back); nothing is saved until Save.
+            onUpdate={
+              contract && !isEntry
+                ? () => set("prompt", applyEmitContract(draft.prompt, contract.promptBlock))
+                : undefined
+            }
+          />
+        }
         onOpenFullEditor={onOpenFullEditor}
       />
       <SettingSection title="Model">
@@ -75,10 +93,11 @@ export function SetupTab({
           label="Model"
           tip={TIPS.model}
           hint={hint ? <HintLine hint={hint} /> : undefined}
+          changed={changed.includes("model")}
         >
           <ModelButton model={draft.model} emptyLabel="Choose a model" />
         </SettingRow>
-        <SettingRow label="Images" tip={TIPS.images}>
+        <SettingRow label="Images" tip={TIPS.images} changed={changed.includes("images")}>
           <Switch
             aria-label="Images"
             checked={draft.multimodal}
@@ -95,8 +114,13 @@ export function SetupTab({
         onReadsChange={(readsFrom, readsDefault) => update({ readsFrom, readsDefault })}
         writesTo={draft.writesTo}
         onWritesChange={(v) => set("writesTo", v)}
+        changed={changed}
       />
-      <AdvancedSection fallbackModel={draft.fallbackModel} outputSchema={draft.outputSchema} />
+      <AdvancedSection
+        fallbackModel={draft.fallbackModel}
+        outputSchema={draft.outputSchema}
+        changed={changed}
+      />
     </div>
   );
 }

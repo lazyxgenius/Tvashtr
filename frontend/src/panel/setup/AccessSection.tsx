@@ -1,5 +1,6 @@
 import { FileText, Lock, Plus, X } from "lucide-react";
 
+import type { ChangeGroup } from "../agentDraft";
 import { SettingRow, SettingSection } from "./SettingRow";
 import { FILE_ACCESS_HINT, TIPS } from "./setupCopy";
 
@@ -18,6 +19,7 @@ export function AccessSection({
   onWritesChange,
   onAddRead,
   onChooseWrites,
+  changed = [],
 }: {
   editsAllowed: boolean;
   onEditsChange: (next: boolean) => void;
@@ -29,6 +31,8 @@ export function AccessSection({
   onWritesChange: (next: string) => void;
   onAddRead?: () => void;
   onChooseWrites?: () => void;
+  /** The parts that differ from the saved agent (their rows get the Changed dot). */
+  changed?: readonly ChangeGroup[];
 }) {
   const accessHint = isEntry ? (
     <span className="nd-hint__lock">
@@ -57,7 +61,12 @@ export function AccessSection({
 
   return (
     <SettingSection title="Access & documents">
-      <SettingRow label="File access" tip={TIPS.fileAccess} hint={accessHint}>
+      <SettingRow
+        label="File access"
+        tip={TIPS.fileAccess}
+        hint={accessHint}
+        changed={changed.includes("fileAccess")}
+      >
         <div className="tv-seg nd-seg" role="group" aria-label="File access">
           <button
             type="button"
@@ -79,7 +88,7 @@ export function AccessSection({
           </button>
         </div>
       </SettingRow>
-      <SettingRow label="Reads" tip={TIPS.reads}>
+      <SettingRow label="Reads" tip={TIPS.reads} changed={changed.includes("reads")}>
         {isEntry ? (
           <span className="nd-plain">The idea you type when you press Run</span>
         ) : (
@@ -107,7 +116,7 @@ export function AccessSection({
           </div>
         )}
       </SettingRow>
-      <SettingRow label="Writes" tip={TIPS.writes}>
+      <SettingRow label="Writes" tip={TIPS.writes} changed={changed.includes("writes")}>
         {isEntry ? (
           <div className="nd-chips">
             <span className="nd-chip">

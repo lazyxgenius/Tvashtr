@@ -1,9 +1,13 @@
+import { type MutableRefObject, useState } from "react";
 import { Zap } from "lucide-react";
 
 import { LastRun } from "../components/LastRun";
+import { Button } from "../design-system/components";
 import type { GateConfig, GraphEdge, TeamGraphNode } from "../lib/api";
 import type { NodeTab } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
+import { type AgentDraft, describeChanges } from "./agentDraft";
+import { DrawerConfirm } from "./DrawerConfirm";
 import { DomainQueryBody } from "./legacy/DomainQueryBody";
 import { GateBody } from "./legacy/GateBody";
 import { legacySubtitle } from "./legacy/legacyCopy";
@@ -11,17 +15,21 @@ import { TerminalBody } from "./legacy/TerminalBody";
 import { skillsAndToolsCount } from "./nodeCounts";
 import { modelLabel, statusBadge } from "./nodeBadges";
 import { NodeBadges, NodeHeader } from "./NodeHeader";
+import { deleteAgentBody } from "./nodeActions";
 import { NodeDrawer } from "./NodeDrawer";
 import { glyphForNode } from "./nodeGlyph";
 import { NodeMemorySection } from "./NodeMemorySection";
+import { NodeMoreMenu } from "./NodeMoreMenu";
 import { NodeTabs } from "./NodeTabs";
 import { SaveBar } from "./SaveBar";
+import { useSaveShortcut } from "./saveShortcut";
 import { type CredentialCover, needsModel } from "./setup/modelCopy";
 import { SetupTab } from "./setup/SetupTab";
 import { SkillsSection } from "./SkillsSection";
 import { ToolsSection } from "./ToolsSection";
 import { useAgentDraft } from "./useAgentDraft";
 import { useNodeMemoryCount } from "./useNodeMemoryCount";
+import { type LeaveGuard, useUnsavedGuard } from "./useUnsavedGuard";
 import "./panel.css";
 
 export interface NodeEditorProps {
@@ -42,6 +50,13 @@ export interface NodeEditorProps {
   onSaved: () => void | Promise<void>;
   /** Open the Memory shelf. */
   onManageMemory?: () => void;
+  /**
+   * The page's handle on the unsaved-changes guard: it calls `guardRef.current(proceed)` before it
+   * closes the drawer, selects another node or leaves the canvas (PANEL-21).
+   */
+  guardRef?: MutableRefObject<LeaveGuard | null>;
+  /** Delete this agent (and its arrows), close the drawer and reload the graph (PANEL-25). */
+  onDelete?: () => Promise<void>;
 }
 
 /**
@@ -106,10 +121,15 @@ function AgentEditor({
   onClose,
   onSaved,
   onManageMemory,
+  guardRef,
+  onDelete,
 }: NodeEditorProps) {
   const api = useAgentDraft(node, { teamId, onSaved: () => onSaved() });
   const { draft } = api;
   const memoryCount = useNodeMemoryCount(node.id);
+  const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   // The header follows the draft, so a rename shows before it's saved.
   const cfg = (node.config as Record<string, unknown> | null) ?? {};
@@ -117,6 +137,99 @@ function AgentEditor({
   const description =
     draft.description.trim() || nodeDescription({ ...node, config: { ...cfg, description: "" } });
   const glyph = isEntry ? Zap : glyphForNode(node.kind, node.role_name);
+
+  const guard = useUnsavedGuard({ dirty: api.isDirty, agentName: name, guardRef });
+  const canSave = api.isDirty && api.problem === null;
+  // ⌘S / Ctrl+S saves; while a confirm is open the confirm's own buttons decide.
+  useSaveShortcut(() => {
+    if (canSave && !guard.asking && !deleting) void api.save();
+  });
+
+  const commitRename = (nextName: string, nextDescription: string) => {
+    // Only what actually changed goes into the draft (the built-in name stays built-in).
+    const patch: Partial<AgentDraft> = {};
+    if (nextName !== name) patch.title = nextName;
+    if (nextDescription !== description) patch.description = nextDescription;
+    if (Object.keys(patch).length > 0) api.update(patch);
+    setRenaming(false);
+  };
+
+  const confirmDelete = async () => {
+    setDeleteBusy(true);
+    try {
+      await onDelete?.();
+    } finally {
+      // The page closes the drawer on success; a failure leaves it open to try again.
+      setDeleteBusy(false);
+      setDeleting(false);
+    }
+  };
+
+  let overlay = null;
+  if (guard.asking) {
+    overlay = (
+      <DrawerConfirm
+        placement="footer"
+        label="Unsaved changes"
+        title={`Save your changes to ${name}?`}
+        onCancel={guard.keepEditing}
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={guard.keepEditing}>
+              Keep editing
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                api.discard();
+                guard.leave();
+              }}
+            >
+              Discard
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={api.saveState === "saving"}
+              disabled={api.problem !== null}
+              onClick={() => {
+                void api.save().then((ok) => (ok ? guard.leave() : guard.keepEditing()));
+              }}
+            >
+              Save
+            </Button>
+          </>
+        }
+      >
+        You changed {describeChanges(api.changed)}.
+      </DrawerConfirm>
+    );
+  } else if (deleting) {
+    overlay = (
+      <DrawerConfirm
+        title={`Delete ${name}?`}
+        onCancel={() => setDeleting(false)}
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={() => setDeleting(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={deleteBusy}
+              onClick={() => void confirmDelete()}
+            >
+              Delete agent
+            </Button>
+          </>
+        }
+      >
+        {deleteAgentBody(node.id, nodes, edges)}
+      </DrawerConfirm>
+    );
+  }
 
   let body;
   switch (tab) {
@@ -175,7 +288,15 @@ function AgentEditor({
           description={description}
           focused={focus}
           onFocus={() => onFocusChange(!focus)}
-          onMore={() => {}}
+          more={
+            <NodeMoreMenu
+              onOpenFocus={focus ? undefined : () => onFocusChange(true)}
+              onRename={() => setRenaming(true)}
+              onOpenDocs={() => onTabChange("docs")}
+              onDelete={() => setDeleting(true)}
+            />
+          }
+          rename={renaming ? { onCommit: commitRename, onCancel: () => setRenaming(false) } : null}
           onClose={onClose}
           badges={
             <NodeBadges
@@ -200,12 +321,13 @@ function AgentEditor({
           dirtyCount={api.dirtyCount}
           saveState={api.saveState}
           error={api.saveError}
-          canSave={api.isDirty && api.problem === null}
+          canSave={canSave}
           memoryTab={tab === "memory"}
           onSave={() => void api.save()}
           onDiscard={api.discard}
         />
       }
+      overlay={overlay}
     >
       {body}
     </NodeDrawer>

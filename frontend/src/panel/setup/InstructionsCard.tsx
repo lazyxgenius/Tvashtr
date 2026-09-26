@@ -1,8 +1,10 @@
-import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Layers, Lock, Maximize2 } from "lucide-react";
 
 import { Button, IconButton } from "../../design-system/components";
+import { ChangedDot } from "../ChangedDot";
 import { InfoTip } from "../InfoTip";
+import { changedLines } from "./lineDiff";
 import { TIPS } from "./setupCopy";
 
 /** The editor is collapsed to this height, with a fade and "Show all N lines" (PANEL-29). */
@@ -11,9 +13,11 @@ const COLLAPSED_PX = 196;
 /**
  * The Instructions card (PANEL-27/28/29): the label and ⓘ, Templates and "Open full editor", the
  * run-time banner, the monospace editor collapsed to 196px, and the routing line attached below.
+ * Lines that differ from `saved` get the coral "changed" band behind them.
  */
 export function InstructionsCard({
   prompt,
+  saved,
   onChange,
   banner,
   routing,
@@ -23,6 +27,8 @@ export function InstructionsCard({
   readOnly = false,
 }: {
   prompt: string;
+  /** The saved instructions (omitted: no line marks). */
+  saved?: string;
   onChange: (next: string) => void;
   banner: string;
   routing: ReactNode;
@@ -36,6 +42,12 @@ export function InstructionsCard({
   const textRef = useRef<HTMLTextAreaElement>(null);
   const labelId = useId();
   const lines = prompt.split("\n").length;
+  const marks = useMemo(
+    () => (saved === undefined ? new Set<number>() : changedLines(saved, prompt)),
+    [saved, prompt],
+  );
+  // A change that only removed lines leaves nothing to tint: mark the title instead.
+  const unmarkedChange = saved !== undefined && saved !== prompt && marks.size === 0;
 
   // The editor grows with its text (no inner scrollbar); the wrapper clips it while collapsed.
   useLayoutEffect(() => {
@@ -57,6 +69,7 @@ export function InstructionsCard({
         <h3 className="nd-card__title">
           <span id={labelId}>Instructions</span>
           <InfoTip text={TIPS.instructions} />
+          {unmarkedChange && <ChangedDot inline />}
         </h3>
         <div className="nd-card__tools">
           {/* The icon sits inside the label, flush with the text, as the design draws it. */}
@@ -93,6 +106,16 @@ export function InstructionsCard({
           overflowing && expanded ? " nd-editor--expanded" : ""
         }`}
       >
+        {marks.size > 0 && (
+          // A mirror of the text (hidden glyphs, same wrapping) whose changed lines are tinted.
+          <div className="nd-editor__marks" aria-hidden>
+            {prompt.split("\n").map((line, i) => (
+              <div key={i} className={`nd-mark${marks.has(i) ? " nd-mark--on" : ""}`}>
+                <span>{line || " "}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <textarea
           ref={textRef}
           className="nd-editor__text"
