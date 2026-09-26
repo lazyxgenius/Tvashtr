@@ -1,0 +1,452 @@
+/* The Ask tab (Dm-Ask, DmF-Ask-1…4, DmF-Model-1…3): exact px from the design's HTML. */
+
+/* The tab fills the page's height: the composer sits at the bottom, the thread scrolls. */
+.sh-main__inner:has(> .dm-detail--fill) {
+  height: 100%;
+}
+.dm-detail--fill {
+  flex: 1;
+  min-height: 0;
+}
+.dm-detail--fill > .dm-tabbody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dm-ask {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 16px;
+}
+.dm-ask__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dm-ask__lock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-ask__lock > svg {
+  flex: none;
+}
+.dm-ask__spacer {
+  margin-left: auto;
+}
+.dm-ask__thread {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+.dm-ask__turn {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dm-ask__q {
+  align-self: flex-end;
+  max-width: 520px;
+  padding: 10px 14px;
+  border-radius: 14px 14px 4px 14px;
+  background: var(--panel-300);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-900);
+  white-space: pre-wrap;
+}
+
+/* Empty thread (DmF-Ask-1/2). */
+.dm-ask__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+}
+.dm-ask__tile {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--coral-100);
+  color: var(--coral-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dm-ask__empty-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+  color: var(--ink-900);
+}
+.dm-ask__empty-text {
+  margin: 0;
+  max-width: 460px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-500);
+}
+.dm-ask__pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 560px;
+}
+.dm-ask__pill {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line-300);
+  border-radius: 999px;
+  background: var(--cream-50);
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-800);
+  cursor: pointer;
+}
+.dm-ask__pill:hover {
+  background: var(--panel-300);
+}
+.dm-ask__pill:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.dm-ask__hint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* An answer (DM-58). The design's card is content-box: 640px of content. */
+.dm-answer {
+  align-self: flex-start;
+  box-sizing: content-box;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px 14px 14px 4px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+}
+.dm-answer--pending {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-answer__context {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-answer__text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-answer__text > p,
+.dm-answer__text > ul,
+.dm-answer__text > ol {
+  margin: 0;
+}
+.dm-answer__text > * + * {
+  margin-top: 8px;
+}
+.dm-answer__text > ul,
+.dm-answer__text > ol {
+  padding-left: 20px;
+}
+.dm-answer__text code {
+  font-family: var(--font-code);
+  font-size: 13px;
+}
+.dm-answer__sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-answer__source {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.dm-mono {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-700);
+}
+.dm-answer__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dm-answer__meta {
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* A number chip: a span in the aside, a button in the answer (DM-59). */
+.dm-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: content-box;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  margin: 0 2px;
+  border-radius: 5px;
+  background: var(--coral-100);
+  border: 1px solid var(--coral-200);
+  color: var(--coral-700);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: 1px;
+}
+button.dm-chip {
+  cursor: pointer;
+}
+button.dm-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.dm-chip--active {
+  background: var(--coral-500);
+  border-color: transparent;
+  color: var(--cream-50);
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.25);
+}
+
+/* The composer (DM-57). */
+.dm-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.dm-composer > .ds-input {
+  display: block;
+}
+.dm-composer__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dm-composer__note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-composer__note > .dm-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+/* The answer model chip and its listbox (DM-63, DmF-Model-2: w380, opening upward). */
+.dm-ampick {
+  position: relative;
+  display: inline-flex;
+}
+.dm-ampick__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-400);
+  border-radius: 999px;
+  background: var(--cream-50);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-700);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dm-ampick__chip > b {
+  font-weight: 600;
+}
+.dm-ampick__chip:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.dm-ampick__list {
+  position: absolute;
+  top: -262px;
+  left: 0;
+  width: 380px;
+  z-index: 20;
+  list-style: none;
+}
+.dm-ampick__list > li {
+  display: flex;
+  flex-direction: column;
+}
+.dm-ampick__check {
+  color: var(--coral-700);
+}
+.dm-ampick__list > .dm-ampick__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line-200);
+}
+.dm-ampick__custom {
+  padding: 6px 10px 8px 35px;
+}
+
+/* The Sources aside (DM-60/61). */
+.dm-aside {
+  width: 340px;
+  flex: none;
+  box-sizing: content-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+  min-height: 0;
+}
+.dm-aside__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dm-aside__title {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.dm-aside__back {
+  margin-left: auto;
+}
+.dm-aside__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.dm-aside__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 20px;
+}
+.dm-aside__tile {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--panel-300);
+  color: var(--ink-600);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dm-aside__empty-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-aside__empty-text {
+  margin: 0;
+  max-width: 240px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-500);
+}
+.dm-passage {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-hairline);
+  background: var(--cream-50);
+  cursor: pointer;
+}
+.dm-passage--active {
+  border-color: var(--coral-200);
+  background: var(--coral-100);
+  cursor: default;
+}
+.dm-passage__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dm-passage__file {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-passage__meta {
+  margin-left: auto;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+  white-space: nowrap;
+}
+.dm-passage__text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-700);
+}
+.dm-passage__text > mark {
+  background: #f4dccf;
+  color: var(--ink-900);
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.dm-passage__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}

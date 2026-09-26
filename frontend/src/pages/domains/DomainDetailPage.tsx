@@ -5,8 +5,8 @@
  * Sources; the tabs; and the tab itself. Live while files are read (DM-4); when the first read
  * finishes a toast offers to ask it a question.
  *
- * INTERIM: until the Ask, Quality, Use in teams and Settings tabs are redesigned, those tabs show
- * the previous Domains screen's matching panel under the new header.
+ * INTERIM: until the Quality, Use in teams and Settings tabs are redesigned, those tabs show the
+ * previous Domains screen's matching panel under the new header.
  */
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Workflow } from "lucide-react";
@@ -17,6 +17,7 @@ import type { DomainDetailView } from "../../lib/api/domains";
 import { type DomainTab, navigate } from "../../lib/nav";
 import { refreshBadges, useNavBadges } from "../../lib/workspaceStatus";
 import { detailBadge, detailWithout, metaLine, templateLabel } from "./domainFormat";
+import { AskTab } from "./AskTab";
 import { DomainMenu } from "./DomainMenu";
 import { SetupStrip, SummaryStrip } from "./DomainStrips";
 import { SourcesTab } from "./SourcesTab";
@@ -25,8 +26,7 @@ import { useFileDeletes } from "./useFileDeletes";
 import "./domains.css";
 
 /** The previous screen's panel each not-yet-redesigned tab shows meanwhile. */
-const INTERIM_TAB: Record<Exclude<DomainTab, "sources">, DetailTab> = {
-  ask: "chat",
+const INTERIM_TAB: Record<Exclude<DomainTab, "sources" | "ask">, DetailTab> = {
   quality: "eval",
   teams: "overview",
   settings: "config",
@@ -127,7 +127,7 @@ export function DomainDetailPage({
   const badge = detailBadge(detail);
 
   return (
-    <div className="dm-detail">
+    <div className={tab === "ask" ? "dm-detail dm-detail--fill" : "dm-detail"}>
       <nav className="dm-crumbs" aria-label="Breadcrumb">
         <a href="#/domains" className="dm-crumbs__link">
           Domains
@@ -198,6 +198,13 @@ export function DomainDetailPage({
             piece={piece}
             now={now}
             deletes={deletes}
+            onChanged={() => void reload()}
+          />
+        ) : tab === "ask" ? (
+          <AskTab
+            key={detail.domain_id}
+            detail={detail}
+            now={now}
             onChanged={() => void reload()}
           />
         ) : (

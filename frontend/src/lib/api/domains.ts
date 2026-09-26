@@ -930,3 +930,169 @@ export async function runDomainEval(domainId: string): Promise<DomainEvalRun> {
   }
   return (await res.json()) as DomainEvalRun;
 }
+
+// ---- The Ask tab (G6): the chat, asking, Clear chat, the answer model ----
+
+/** One passage an answer used or search found (DM-60): `number` is its chip. */
+export interface DomainPassage {
+  number: number;
+  document_id: string;
+  filename: string;
+  piece_number: number;
+  pieces_in_file: number | null;
+  page: number | null;
+  excerpt: string;
+}
+
+/** An answer as the Ask tab shows it (contract: "POST /api/domains/{id}/ask (G6 additions)"). */
+export interface DomainAnswer {
+  message_id: string | null;
+  covered: boolean;
+  /** Markers renumbered to `sources`' numbers, NOT_FOUND stripped. */
+  answer_text: string;
+  sources: DomainPassage[];
+  /** Every passage search found, in rank order (numbered 1…k). */
+  searched: DomainPassage[];
+  used_history: boolean | null;
+  model_label: string | null;
+  latency_ms: number | null;
+}
+
+/** A question and its answer (`null` while it's being asked or when the chat lost it). */
+export interface DomainChatTurn {
+  question: string;
+  answer: DomainAnswer | null;
+}
+
+function passages(raw: unknown, numbered: boolean): DomainPassage[] {
+  return (Array.isArray(raw) ? raw : []).flatMap((item, i): DomainPassage[] => {
+    const p = obj(item);
+    if (typeof p.filename !== "string" || typeof p.excerpt !== "string") return [];
+    return [
+      {
+        number: numbered && typeof p.number === "number" ? p.number : i + 1,
+        document_id: typeof p.document_id === "string" ? p.document_id : "",
+        filename: p.filename,
+        piece_number: typeof p.piece_number === "number" ? p.piece_number : count(p.ordinal) + 1,
+        pieces_in_file: numOrNull(p.pieces_in_file),
+        page: numOrNull(p.page),
+        excerpt: p.excerpt,
+      },
+    ];
+  });
+}
+
+/** Validate one answer (an ask's result or an assistant message); `null` when it isn't one. */
+export function normalizeDomainAnswer(raw: unknown): DomainAnswer | null {
+  const r = obj(raw);
+  const text =
+    typeof r.answer_text === "string"
+      ? r.answer_text
+      : typeof r.answer === "string"
+        ? r.answer
+        : typeof r.content === "string"
+          ? r.content
+          : null;
+  if (text === null) return null;
+  const searched = passages(r.searched ?? r.citations, false);
+  return {
+    message_id: strOrNull(r.message_id),
+    covered: r.covered !== false,
+    answer_text: text,
+    sources: Array.isArray(r.sources) ? passages(r.sources, true) : searched.slice(0, 2),
+    searched,
+    used_history: typeof r.used_history === "boolean" ? r.used_history : null,
+    model_label: strOrNull(r.model_label),
+    latency_ms: numOrNull(r.latency_ms),
+  };
+}
+
+/** The chat, oldest first, as question/answer turns. */
+export async function listDomainChat(domainId: string): Promise<DomainChatTurn[]> {
+  const res = await send(`/api/domains/${encodeURIComponent(domainId)}/messages`);
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  const rows = obj((await res.json()) as unknown).messages;
+  const turns: DomainChatTurn[] = [];
+  for (const raw of Array.isArray(rows) ? rows : []) {
+    const m = obj(raw);
+    if (m.role === "user" && typeof m.content === "string") {
+      turns.push({ question: m.content, answer: null });
+    } else if (m.role === "assistant" && turns.length && !turns[turns.length - 1].answer) {
+      turns[turns.length - 1].answer = normalizeDomainAnswer(raw);
+    }
+  }
+  return turns;
+}
+
+/**
+ * Why an ask failed: the status, the server's words and the providers it needs a key for. (Not an
+ * `ApiError` subclass: `lib/api.ts` re-exports this module, so its classes aren't ready here yet.)
+ */
+export class AskError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly missingProviders: string[] = [],
+  ) {
+    super(message);
+    this.name = "AskError";
+  }
+}
+
+/** Ask (DM-57): `useHistory` = "Use earlier messages". Throws `AskError`. */
+export async function askDomainQuestion(
+  domainId: string,
+  question: string,
+  useHistory: boolean,
+): Promise<DomainAnswer> {
+  const res = await send(`/api/domains/${encodeURIComponent(domainId)}/ask`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ question, use_history: useHistory }),
+  });
+  if (!res.ok) {
+    const detail = obj(await res.json().catch(() => ({}))).detail;
+    const d = obj(detail);
+    const missing = Array.isArray(d.missing_providers)
+      ? d.missing_providers.filter((p): p is string => typeof p === "string")
+      : [];
+    const message =
+      typeof detail === "string" ? detail : typeof d.message === "string" ? d.message : "";
+    throw new AskError(res.status, message, missing);
+  }
+  const answer = normalizeDomainAnswer((await res.json()) as unknown);
+  if (!answer) throw new AskError(500, "");
+  return answer;
+}
+
+/** Clear chat (DM-67): `keepalive` when the page is going away. 404 = nothing left to clear. */
+export async function clearDomainChat(
+  domainId: string,
+  opts: { keepalive?: boolean } = {},
+): Promise<void> {
+  const res = await send(`/api/domains/${encodeURIComponent(domainId)}/messages`, {
+    method: "DELETE",
+    keepalive: opts.keepalive,
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  }
+}
+
+/**
+ * The domain's answer model (DM-64; the same setting as Settings › Answer model): `null` = the
+ * account default. The domain's other settings are sent back unchanged.
+ */
+export async function setDomainAnswerModel(
+  domainId: string,
+  config: Record<string, unknown>,
+  model: string | null,
+): Promise<void> {
+  const generation = { ...obj(config.generation), model };
+  const res = await send(`/api/domains/${encodeURIComponent(domainId)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ config: { ...config, generation } }),
+  });
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+}

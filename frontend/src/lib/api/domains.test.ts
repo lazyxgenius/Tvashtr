@@ -8,6 +8,7 @@ import {
   getDomainDetail,
   getDomainFilePieces,
   listDomainFiles,
+  normalizeDomainAnswer,
   normalizeDomainDetail,
   normalizeDomainFile,
   removeDomain,
@@ -202,5 +203,43 @@ describe("Domains clients (G4)", () => {
     vi.restoreAllMocks();
     answer("oops", 500);
     await expect(deleteDomainFile("dom", "d1")).rejects.toMatchObject({ status: 500 });
+  });
+});
+
+describe("Domains clients (G6)", () => {
+  it("normalizeDomainAnswer reads new answers and degrades old rows", () => {
+    const cite = { document_id: "d1", filename: "a.md", ordinal: 2, excerpt: "x" };
+    const fresh = normalizeDomainAnswer({
+      message_id: "m",
+      content: "raw [3]",
+      answer_text: "raw [1]",
+      covered: false,
+      sources: [{ ...cite, number: 1, piece_number: 3, pieces_in_file: 9, page: 2 }],
+      searched: [cite, { bogus: true }],
+      used_history: true,
+      model_label: "OpenAI gpt-4o-mini",
+      latency_ms: 2100,
+    });
+    expect(fresh).toMatchObject({
+      covered: false,
+      answer_text: "raw [1]",
+      used_history: true,
+      model_label: "OpenAI gpt-4o-mini",
+      latency_ms: 2100,
+    });
+    expect(fresh?.sources[0]).toMatchObject({
+      number: 1,
+      piece_number: 3,
+      pieces_in_file: 9,
+      page: 2,
+    });
+    expect(fresh?.searched).toHaveLength(1);
+    expect(fresh?.searched[0]).toMatchObject({ number: 1, piece_number: 3, page: null });
+
+    // A row from before the Ask revamp: its text, the first two citations, no meta.
+    const old = normalizeDomainAnswer({ content: "Old answer [1]", citations: [cite, cite, cite] });
+    expect(old).toMatchObject({ covered: true, answer_text: "Old answer [1]", used_history: null });
+    expect(old?.sources.map((s) => s.number)).toEqual([1, 2]);
+    expect(normalizeDomainAnswer({ nope: 1 })).toBeNull();
   });
 });
