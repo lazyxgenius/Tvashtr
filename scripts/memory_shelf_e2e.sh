@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# Live M-memory S5a Memory-shelf E2E — the account Memory shelf's six acceptance checks, driven end
-# to end in a real browser:
+# Live Toolkit › Memory E2E (the revamp's Memory page: Inbox / Active / Archive tabs and the Add
+# memory sheet) — six acceptance checks, driven end to end in a real browser:
 #
-#   1. add an Account-tier fact via the form -> it renders with its polarity badge;
-#   2. pin it -> the pin persists across a reload;
-#   3. edit its text -> the edit persists across a reload;
-#   4. toggle review mode ON -> the switch stays ON across a reload;
-#   5. a SEEDED pending fact shows in the inbox -> Confirm moves it into the live facts;
-#   6. delete a fact -> it is gone.
+#   1. Add memory (sheet, "Every repo", MUST) -> it lands in the Active tab with its force badge;
+#   2. Pin it in Active -> the pin persists across a reload;
+#   3. Edit its text in place -> the edit persists across a reload;
+#   4. turn "Review new memories before they apply" ON (Inbox tab) -> it stays ON across a reload;
+#   5. a SEEDED pending fact waits in the Inbox -> Keep moves it into Active;
+#   6. Delete a memory (confirm "Delete memory") -> it is gone.
 #
 # Orchestration mirrors scripts/accounts_e2e.sh (Postgres + migrate + seed the operator + a real
 # backend on the LOCAL sandbox + Vite + a headless Playwright run). NO agent run is driven, so it
@@ -56,7 +56,7 @@ PG_USER="${POSTGRES_USER:-tvashtr}"
 PG_DB="${POSTGRES_DB:-tvashtr}"
 
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-  echo "WARNING: OPENAI_API_KEY is not set — POST /api/memories embeds will 502 and check 1 will fail." >&2
+  echo "WARNING: OPENAI_API_KEY is not set — Add memory's POST /api/memories embed will 502 and check 1 will fail." >&2
 fi
 
 BACKEND_PID=""
@@ -87,7 +87,7 @@ hr
 ( cd "$BACKEND" && uv run python -m tvashtr.seed )
 
 hr
-echo "STEP B3: reset review-mode OFF + seed ONE pending fact for the operator (deterministic check 5)"
+echo "STEP B3: reset review-mode OFF + seed ONE pending fact for the operator (the Inbox row check 5 keeps)"
 hr
 ( cd "$BACKEND" && uv run python - <<'PY'
 import os
@@ -161,7 +161,7 @@ hr
 ( cd "$FRONTEND" && npx playwright install chromium )
 
 hr
-echo "STEP F: run the memory-shelf Playwright spec (a screenshot per check)"
+echo "STEP F: run the Memory page Playwright spec (a screenshot per check)"
 hr
 cd "$FRONTEND"
 set +e
@@ -171,11 +171,11 @@ set -e
 
 hr
 if [[ "$PW_EXIT" == "0" ]]; then
-  echo "MEMORY SHELF E2E PASSED (add -> pin -> edit -> review-toggle -> confirm-pending -> delete)"
+  echo "MEMORY PAGE E2E PASSED (add -> pin -> edit -> review-toggle -> keep-pending -> delete)"
   echo "screenshots:"
   ls -la "$SHOTS_DIR"/*.png 2>/dev/null || echo "  (no screenshots found in $SHOTS_DIR)"
 else
-  echo "MEMORY SHELF E2E FAILED (exit $PW_EXIT)"
+  echo "MEMORY PAGE E2E FAILED (exit $PW_EXIT)"
 fi
 hr
 exit "$PW_EXIT"

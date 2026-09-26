@@ -5,17 +5,21 @@ import { expect, test } from "@playwright/test";
 
 import { shellNav } from "./_home";
 
-// Live FE sign-off for the M-memory S5a account **Memory shelf** (on Toolkit › Memory since revamp
-// round 1). Logs in as the SEEDED operator (whose .env OpenAI key was imported by the seed, so POST /api/memories can
-// embed), then drives the six acceptance checks — each with a screenshot. Targeted role/label
-// selectors only (the Dashboard is not a React Flow canvas, but the discipline still holds). NO agent
-// run is driven; the one pending fact is seeded directly by scripts/memory_shelf_e2e.sh.
+// Live FE sign-off for Toolkit › Memory (the revamp's Memory page: Inbox / Active / Archive tabs
+// and the Add memory sheet). Logs in as the SEEDED operator (whose .env OpenAI key was imported by
+// the seed, so POST /api/memories can embed), then drives the six acceptance checks — each with a
+// screenshot. Targeted role/label selectors only. NO agent run is driven; the one pending fact is
+// seeded directly by scripts/memory_shelf_e2e.sh.
 //
-// Selector contract: the shelf is `section[aria-label="Your agent memory"]`; the review switch is a
-// role="switch" named "Review new memories…"; the add form aria-labels are "New memory content" /
-// "Tier" / "Polarity" / the "Add memory" button; each fact chip's per-row buttons carry the content
-// in their name ("Pin <c>" / "Unpin <c>" / "Edit <c>" / "Delete <c>" / "Confirm <c>" / "Discard <c>")
-// and the edit/confirm controls are "Edit content" / "Save memory" / "Confirm delete".
+// Selector contract: the page header is the h1 "Memory" with an "Add memory" button (`.pg-head`);
+// the tabs are a tablist "Memory" (Inbox N / Active N / Archive); each tab's list is a
+// `section[aria-label="Inbox" | "Active" | "Archive"]` of `li.mem-row`, whose buttons are named
+// "Keep" / "Edit" / "Discard" (Inbox) and "Pin" or "Unpin" / "Edit" / "Delete" (Active). The Add
+// memory sheet is a dialog "Add memory" (textbox "What should agents remember?", group "Applies to"
+// with "Every repo" / "One repo", radios "MUST Always do this." …). The inline editor is a textbox
+// "Memory text" + "Save"; Delete asks in an alertdialog "Delete this memory?" ("Delete memory").
+// The review switch (Inbox tab only) is a role="switch" named "Review new memories before they
+// apply"; its input is visually hidden, so it is clicked through its `.mem-review .ds-switch` label.
 
 const SHOTS_DIR = process.env.TVASHTR_MEMORY_SHELF_SHOTS_DIR ?? "/tmp/tvashtr_memory_shots";
 const SEED_EMAIL = process.env.TVASHTR_SEED_EMAIL ?? "operator@tvashtr.local";
@@ -23,18 +27,20 @@ const SEED_PASSWORD = process.env.TVASHTR_SEED_PASSWORD ?? "tvashtr-dev";
 // Must match the content scripts/memory_shelf_e2e.sh seeds as a pending_review row for the operator.
 const PENDING = "e2e-seeded pending fact awaiting review";
 
-test("memory shelf: add / pin / edit / review-toggle / confirm-pending / delete", async ({
-  page,
-}) => {
+test("memory page: add / pin / edit / review-toggle / keep-pending / delete", async ({ page }) => {
   test.setTimeout(3 * 60 * 1000);
   fs.mkdirSync(SHOTS_DIR, { recursive: true });
 
   const suffix = String(Date.now());
   let alpha = `e2e-alpha ${suffix} use pnpm`;
-  // Element screenshot of the Memory shelf itself — auto-scrolls it into view and captures its
-  // current state (the 4th shelf sits below the fold, and a reload resets the scroll to the top).
-  const shelf = page.locator('section[aria-label="Your agent memory"]');
-  const shot = (name: string) => shelf.screenshot({ path: path.join(SHOTS_DIR, name) });
+  const shot = (name: string) => page.screenshot({ path: path.join(SHOTS_DIR, name) });
+  const tabs = page.getByRole("tablist", { name: "Memory" });
+  const list = (tab: "Inbox" | "Active") => page.locator(`section[aria-label="${tab}"]`);
+  const row = (tab: "Inbox" | "Active", text: string) =>
+    list(tab).locator("li.mem-row", { hasText: text });
+  const toast = (text: string) => page.locator('[role="status"].ds-toast', { hasText: text });
+  const reviewSwitch = () =>
+    page.getByRole("switch", { name: "Review new memories before they apply" });
 
   // ---- Sign in as the seeded operator → Home, then Toolkit › Memory. The landing's nav "Sign in"
   // CTA opens the AuthWizard in login mode (its submit is also "Sign in"); the landing is replaced by
@@ -54,93 +60,117 @@ test("memory shelf: add / pin / edit / review-toggle / confirm-pending / delete"
   await shellNav(page)
     .getByRole("button", { name: /^Memory/ })
     .click();
-  await expect(page).toHaveURL(/#\/toolkit\/memory/);
-
-  // The Memory shelf heading is the "signed in + Toolkit › Memory loaded" marker (a reload keeps the
-  // page's address, so the checks below reload in place).
-  await expect(shelf.getByRole("heading", { name: "Memory" })).toBeVisible({ timeout: 30_000 });
-
-  // ---- CHECK 1 — add an Account-tier fact via the form → it appears with its polarity badge. ----
-  await shelf.getByLabel("New memory content").fill(alpha);
-  await shelf.getByLabel("Polarity").selectOption("require");
-  await shelf.getByRole("button", { name: "Add memory" }).click();
-  const alphaChip = () => shelf.locator(".tv-mem-fact", { hasText: alpha });
-  await expect(alphaChip()).toBeVisible({ timeout: 30_000 });
-  await expect(alphaChip().getByText("MUST", { exact: true })).toBeVisible();
-  await shot("check1-add-account-fact.png");
-  console.log("[memory-e2e] CHECK 1 PASS — added an Account fact; MUST badge renders");
-
-  // ---- CHECK 2 — pin it; the pin persists across a reload. ----
-  await shelf.getByRole("button", { name: `Pin ${alpha}`, exact: true }).click();
-  await expect(shelf.getByRole("button", { name: `Unpin ${alpha}`, exact: true })).toBeVisible({
+  // The Memory nav always opens the Inbox.
+  await expect(page).toHaveURL(/#\/toolkit\/memory\/inbox/);
+  await expect(page.getByRole("heading", { name: "Memory", level: 1 })).toBeVisible({
     timeout: 30_000,
   });
+
+  // ---- CHECK 1 — add a memory for every repo through the sheet → it lands in Active, MUST. ----
+  await page.locator(".pg-head").getByRole("button", { name: "Add memory" }).click();
+  const sheet = page.getByRole("dialog", { name: "Add memory" });
+  await sheet.getByRole("textbox", { name: "What should agents remember?" }).fill(alpha);
+  await sheet.getByRole("button", { name: "Every repo", exact: true }).click();
+  await expect(sheet.getByRole("radio", { name: "MUST Always do this." })).toBeChecked();
+  await sheet.getByRole("button", { name: "Add memory", exact: true }).click();
+  await expect(toast("Added. It applies to every repo right away.")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(sheet).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/toolkit\/memory\/active/);
+  await expect(row("Active", alpha)).toBeVisible({ timeout: 30_000 });
+  await expect(row("Active", alpha).getByText("MUST", { exact: true })).toBeVisible();
+  await expect(row("Active", alpha).getByText("Added by you · just now")).toBeVisible();
+  await shot("check1-add-memory.png");
+  console.log("[memory-e2e] CHECK 1 PASS — added a memory for every repo; MUST, in Active");
+
+  // ---- CHECK 2 — pin it; the pin persists across a reload. ----
+  await row("Active", alpha).getByRole("button", { name: "Pin", exact: true }).click();
+  await expect(toast("Pinned. Pinned notes go to the agent first.")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(
+    row("Active", alpha).getByRole("button", { name: "Unpin", exact: true }),
+  ).toBeVisible();
   await page.reload();
-  await expect(shelf.getByRole("button", { name: `Unpin ${alpha}`, exact: true })).toBeVisible({
+  await expect(
+    row("Active", alpha).getByRole("button", { name: "Unpin", exact: true }),
+  ).toBeVisible({
     timeout: 30_000,
   });
   await shot("check2-pin-persists.png");
   console.log("[memory-e2e] CHECK 2 PASS — pin persisted across a reload");
 
-  // ---- CHECK 3 — edit the text; the edit persists across a reload. ----
+  // ---- CHECK 3 — edit the text in place; the edit persists across a reload. ----
   const alpha2 = `e2e-alpha ${suffix} use bun`;
-  await shelf.getByRole("button", { name: `Edit ${alpha}`, exact: true }).click();
-  await shelf.getByLabel("Edit content").fill(alpha2);
-  await shelf.getByRole("button", { name: "Save memory", exact: true }).click();
+  await row("Active", alpha).getByRole("button", { name: "Edit", exact: true }).click();
+  await list("Active").getByRole("textbox", { name: "Memory text" }).fill(alpha2);
+  await list("Active").getByRole("button", { name: "Save", exact: true }).click();
+  await expect(toast("Saved. Agents see the new text on their next run.")).toBeVisible({
+    timeout: 30_000,
+  });
   alpha = alpha2;
-  await expect(shelf.getByText(alpha, { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(row("Active", alpha).getByText("Edited by you · pinned")).toBeVisible();
   await page.reload();
-  await expect(shelf.getByText(alpha, { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(row("Active", alpha)).toBeVisible({ timeout: 30_000 });
   await shot("check3-edit-persists.png");
-  console.log("[memory-e2e] CHECK 3 PASS — edited content persisted across a reload");
+  console.log("[memory-e2e] CHECK 3 PASS — edited text persisted across a reload");
 
-  // ---- CHECK 4 — toggle review mode ON; the switch reflects ON and survives a reload. ----
-  const reviewSwitch = () => shelf.getByRole("switch", { name: /Review new memories/i });
-  await expect(reviewSwitch()).toHaveAttribute("aria-checked", "false");
-  await reviewSwitch().click();
-  await expect(reviewSwitch()).toHaveAttribute("aria-checked", "true");
+  // ---- CHECK 4 — on the Inbox tab, turn review ON; the switch stays ON across a reload. ----
+  await tabs.getByRole("tab", { name: /^Inbox/ }).click();
+  await expect(page).toHaveURL(/#\/toolkit\/memory\/inbox/);
+  await expect(reviewSwitch()).toBeEnabled({ timeout: 30_000 });
+  await expect(reviewSwitch()).not.toBeChecked();
+  await page.locator(".mem-review .ds-switch").click();
+  await expect(reviewSwitch()).toBeChecked();
+  await expect(toast("New memories now wait in the Inbox.")).toBeVisible({ timeout: 30_000 });
   await page.reload();
-  await expect(reviewSwitch()).toHaveAttribute("aria-checked", "true", { timeout: 30_000 });
+  await expect(reviewSwitch()).toBeChecked({ timeout: 30_000 });
+  await expect(
+    page.getByText("On: every new memory waits in the Inbox until you keep it."),
+  ).toBeVisible();
   await shot("check4-review-mode-persists.png");
   console.log("[memory-e2e] CHECK 4 PASS — review mode ON persisted across a reload");
 
-  // ---- CHECK 5 — the seeded pending fact shows in the inbox; Confirm moves it into the live facts.
-  await expect(shelf.getByRole("button", { name: `Confirm ${PENDING}`, exact: true })).toBeVisible({
-    timeout: 30_000,
-  });
+  // ---- CHECK 5 — the seeded pending fact waits in the Inbox; Keep moves it into Active. ----
+  await expect(row("Inbox", PENDING)).toBeVisible({ timeout: 30_000 });
   await expect(
-    shelf.getByRole("button", { name: `Discard ${PENDING}`, exact: true }),
+    row("Inbox", PENDING).getByRole("button", { name: "Discard", exact: true }),
   ).toBeVisible();
-  await shelf.getByRole("button", { name: `Confirm ${PENDING}`, exact: true }).click();
-  // After promote it leaves the pending inbox (no Confirm button) and becomes a live manage-able fact.
-  await expect(shelf.getByRole("button", { name: `Confirm ${PENDING}`, exact: true })).toHaveCount(
-    0,
-    { timeout: 30_000 },
-  );
-  await expect(shelf.getByRole("button", { name: `Pin ${PENDING}`, exact: true })).toBeVisible({
+  await row("Inbox", PENDING).getByRole("button", { name: "Keep", exact: true }).click();
+  await expect(toast("Kept. Agents use it from the next run.")).toBeVisible({ timeout: 30_000 });
+  await expect(row("Inbox", PENDING)).toHaveCount(0, { timeout: 30_000 });
+  await tabs.getByRole("tab", { name: /^Active/ }).click();
+  await expect(
+    row("Active", PENDING).getByRole("button", { name: "Pin", exact: true }),
+  ).toBeVisible({
     timeout: 30_000,
   });
-  await shot("check5-confirm-pending.png");
-  console.log("[memory-e2e] CHECK 5 PASS — pending fact confirmed → moved into the live facts");
+  await shot("check5-keep-pending.png");
+  console.log("[memory-e2e] CHECK 5 PASS — the pending fact was kept → it is in Active");
 
-  // ---- CHECK 6 — delete the alpha fact → it is gone. ----
-  await shelf.getByRole("button", { name: `Delete ${alpha}`, exact: true }).click();
-  await shelf.getByRole("button", { name: "Confirm delete", exact: true }).click();
-  await expect(shelf.getByText(alpha, { exact: true })).toHaveCount(0, { timeout: 30_000 });
+  // ---- CHECK 6 — delete the alpha memory → it is gone. ----
+  await row("Active", alpha).getByRole("button", { name: "Delete", exact: true }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Delete this memory?" });
+  await confirm.getByRole("button", { name: "Delete memory", exact: true }).click();
+  await expect(row("Active", alpha)).toHaveCount(0, { timeout: 30_000 });
   await shot("check6-delete-removes.png");
-  console.log("[memory-e2e] CHECK 6 PASS — the fact was deleted");
+  console.log("[memory-e2e] CHECK 6 PASS — the memory was deleted");
 
   // ---- Cleanup — turn review mode back off so a re-run starts from a clean OFF state. ----
-  if ((await reviewSwitch().getAttribute("aria-checked")) === "true") {
-    await reviewSwitch().click();
+  await tabs.getByRole("tab", { name: /^Inbox/ }).click();
+  await expect(reviewSwitch()).toBeEnabled({ timeout: 30_000 });
+  if (await reviewSwitch().isChecked()) {
+    await page.locator(".mem-review .ds-switch").click();
+    await expect(reviewSwitch()).not.toBeChecked();
   }
 
   for (const f of [
-    "check1-add-account-fact.png",
+    "check1-add-memory.png",
     "check2-pin-persists.png",
     "check3-edit-persists.png",
     "check4-review-mode-persists.png",
-    "check5-confirm-pending.png",
+    "check5-keep-pending.png",
     "check6-delete-removes.png",
   ]) {
     expect(fs.existsSync(path.join(SHOTS_DIR, f)), `screenshot ${f} written`).toBe(true);
