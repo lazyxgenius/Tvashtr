@@ -109,7 +109,7 @@ function ValueCard({
 }
 
 /** OQ-37: a self-hosted backend (`hosted_mode: false`) signs in with email and password. */
-function EmailSignIn({ onAuthed }: { onAuthed: (user: AuthUser) => void }) {
+export function EmailSignIn({ onAuthed }: { onAuthed: (user: AuthUser) => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

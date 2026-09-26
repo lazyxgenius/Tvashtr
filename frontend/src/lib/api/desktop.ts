@@ -2,8 +2,24 @@
  * API calls only Tvashtr Desktop's screens make (desktop-app.md §5). Every answer is shape-checked
  * here, so one odd answer never blanks a launch screen.
  */
-import { apiUrl } from "../api";
+import { apiUrl, type Config, getConfig } from "../api";
 import { apiRequest, listRunsPage } from "./runs";
+
+/**
+ * `getConfig` for the launch gate, or null when `/api/config` didn't answer. `getConfig` answers
+ * "self-hosted" then, which on Desktop would hide the browser sign-in from a hosted account; the
+ * sign-in screens treat null as hosted. Only a self-hosted answer is asked again, to tell the two
+ * apart.
+ */
+export async function getDesktopConfig(): Promise<Config | null> {
+  const config = await getConfig();
+  if (config.hosted_mode) return config;
+  try {
+    return (await fetch("/api/config")).ok ? config : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * DT-44 / OQ-7: how many of the account's runs are going on this Desktop — status group `running`

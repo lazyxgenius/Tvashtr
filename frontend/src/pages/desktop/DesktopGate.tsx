@@ -1,15 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ToastProvider, useToast } from "../../design-system/components";
-import {
-  type AuthUser,
-  type Config,
-  getConfig,
-  getMe,
-  logout,
-  setUnauthorizedHandler,
-} from "../../lib/api";
-import { countDesktopRunsGoing } from "../../lib/api/desktop";
+import { type AuthUser, type Config, getMe, logout, setUnauthorizedHandler } from "../../lib/api";
+import { countDesktopRunsGoing, getDesktopConfig } from "../../lib/api/desktop";
 import { listTeams } from "../../lib/api/teams";
 import {
   failureForStatus,
@@ -161,8 +154,9 @@ function DesktopGateInner({ onSetup }: { onSetup: boolean }) {
 
       let me: AuthUser | null;
       try {
-        // getConfig never throws (it falls back to self-hosted), so it can't mask a failed getMe.
-        const [who, cfg] = await Promise.all([getMe(), getConfig()]);
+        // getDesktopConfig never throws, so it can't mask a failed getMe; no answer = unknown, and
+        // the sign-in screens then assume hosted (this app's browser sign-in).
+        const [who, cfg] = await Promise.all([getMe(), getDesktopConfig()]);
         me = who;
         setConfig(cfg);
       } catch (err) {
@@ -279,8 +273,15 @@ function DesktopGateInner({ onSetup }: { onSetup: boolean }) {
     const nav = typeof window.tvashtrDesktop === "object" ? window.tvashtrDesktop.navigation : null;
     if (!nav?.onNavigate) return;
     return nav.onNavigate((target) => {
-      if (stateRef.current.kind === "authed") window.location.hash = linkHash(target);
-      else pendingLink.current = target;
+      if (stateRef.current.kind === "authed") {
+        window.location.hash = linkHash(target);
+        return;
+      }
+      pendingLink.current = target;
+      // A website link (from=web) that arrives while Welcome is up: show its handoff (DT-10).
+      if (stateRef.current.kind === "signed_out") {
+        void getLaunchContext().then((ctx) => setHandoff(ctx.openedFromWeb));
+      }
     });
   }, []);
 
@@ -408,8 +409,10 @@ function DesktopGateInner({ onSetup }: { onSetup: boolean }) {
       return (
         <ExpiredPage
           lastLogin={state.lastLogin}
+          hosted={config?.hosted_mode ?? true}
           busy={busy}
           onSignIn={() => void signIn("github")}
+          onAuthed={(user) => setState({ kind: "authed", user })}
         />
       );
     case "waiting":

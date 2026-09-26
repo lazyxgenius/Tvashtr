@@ -110,6 +110,30 @@ describe("DesktopGate — signed out (DT-1, DT-5)", () => {
     expect(await screen.findByRole("button", { name: "WORKSPACE STUB" })).toBeInTheDocument();
   });
 
+  it("Expired on a self-hosted backend offers the email form, not GitHub (OQ-37)", async () => {
+    installDesktopBridge({ lastUser: { login: "ada@b.dev", displayName: "ada@b.dev" } });
+    signedOut({
+      "GET /api/config": { body: { ...HOSTED_CONFIG, hosted_mode: false } },
+      "POST /api/auth/login": { body: ME },
+    });
+    render(<DesktopGate />);
+    await screen.findByRole("heading", { name: "Sign in again to continue" });
+    expect(screen.queryByRole("button", { name: "Sign in with GitHub" })).toBeNull();
+    const form = screen.getByRole("form", { name: "Sign in with email" });
+    fireEvent.change(within(form).getByLabelText("Email"), { target: { value: "ada@b.dev" } });
+    fireEvent.change(within(form).getByLabelText("Password"), { target: { value: "secret-pass" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("button", { name: "WORKSPACE STUB" })).toBeInTheDocument();
+  });
+
+  it("a failed /api/config doesn't pass a hosted backend off as self-hosted", async () => {
+    installDesktopBridge();
+    signedOut({ "GET /api/config": { status: 502 } });
+    render(<DesktopGate />);
+    expect(await screen.findByRole("button", { name: "Sign in with GitHub" })).toBeInTheDocument();
+    expect(screen.queryByRole("form", { name: "Sign in with email" })).toBeNull();
+  });
+
   it("shows Offline when the server can't be reached, and Try again relaunches", async () => {
     installDesktopBridge();
     let down = true;
@@ -245,6 +269,22 @@ describe("DesktopGate — opened from the website (DT-10)", () => {
     authed = true;
     act(() => bridge.fireSignIn({ state: "signed_in", user: ME }));
     expect(await screen.findByText("Signed in from your browser")).toBeInTheDocument();
+  });
+
+  it("a from=web link that arrives while Welcome is open shows the handoff", async () => {
+    const bridge = installDesktopBridge();
+    signedOut();
+    render(<DesktopGate />);
+    await screen.findByRole("button", { name: "Sign in with GitHub" });
+    // Main keeps the link's hint, then delivers the link.
+    bridge.auth.getLaunchContext.mockResolvedValue({
+      openedFromWeb: { login: "lazyxgenius", host: "tvashtr.fly.dev" },
+      lastUser: null,
+    });
+    act(() => bridge.fireNavigate({ path: "/home" }));
+    expect(
+      await screen.findByRole("button", { name: /Continue as lazyxgenius/ }),
+    ).toBeInTheDocument();
   });
 
   it("Use a different account starts the GitHub path", async () => {
