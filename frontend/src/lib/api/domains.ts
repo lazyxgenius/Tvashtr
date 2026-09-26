@@ -213,6 +213,280 @@ export async function listDomainTemplates(): Promise<DomainTemplate[]> {
   });
 }
 
+// ---- The detail page and its Sources tab (GET /api/domains/{id}, …/documents) ----
+
+/** The setup strip's four steps (DM-37); the strip shows while `files_read` is false. */
+export interface DomainSetup {
+  key: boolean;
+  files_read: boolean;
+  tested: boolean;
+  used: boolean;
+}
+
+/** What answers questions (DM-63): `configured` null = the account default. */
+export interface DomainAnswerModel {
+  configured: string | null;
+  resolved: string | null;
+  label: string | null;
+  provider: string | null;
+  key_saved: boolean;
+}
+
+export interface DomainDetailView extends DomainListItem {
+  setup: DomainSetup;
+  answer_model: DomainAnswerModel;
+  last_question_at: string | null;
+}
+
+/** Validate the detail answer; `null` when it isn't a domain. */
+export function normalizeDomainDetail(raw: unknown): DomainDetailView | null {
+  const base = normalizeDomainListItem(raw);
+  if (!base) return null;
+  const r = obj(raw);
+  const s = obj(r.setup);
+  const a = obj(r.answer_model);
+  return {
+    ...base,
+    setup: {
+      key: s.key === undefined ? base.reading_model.key_saved : s.key === true,
+      files_read: s.files_read === undefined ? base.state === "ready" : s.files_read === true,
+      tested: s.tested === true,
+      used: s.used === undefined ? base.usage.uses > 0 : s.used === true,
+    },
+    answer_model: {
+      configured: strOrNull(a.configured),
+      resolved: strOrNull(a.resolved),
+      label: strOrNull(a.label),
+      provider: strOrNull(a.provider),
+      key_saved: a.key_saved === true,
+    },
+    last_question_at: strOrNull(r.last_question_at),
+  };
+}
+
+/** One domain with its summaries; `ApiError` 404 when it doesn't exist (any more). */
+export async function getDomainDetail(domainId: string): Promise<DomainDetailView> {
+  const res = await send(`/api/domains/${encodeURIComponent(domainId)}`);
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, "Couldn’t load this domain."));
+  const detail = normalizeDomainDetail((await res.json()) as unknown);
+  if (!detail) throw new ApiError(500, "Couldn’t load this domain.");
+  return detail;
+}
+
+/** A file's phase in the Status column (DM-42). `uploading` is local to this browser. */
+export type DomainFilePhase =
+  | "ready"
+  | "reading"
+  | "rereading"
+  | "waiting"
+  | "waiting_for_key"
+  | "needs_attention";
+
+export type DomainFileKind = "PDF" | "MD" | "HTML" | "TXT";
+
+/** A failed read in the table's words (DM-43). */
+export interface DomainFileProblem {
+  kind: string;
+  message: string;
+  /** `engines_key`: the fix is a key in Engines ("Fix key in Engines"). */
+  fix: "engines_key" | null;
+}
+
+export interface DomainFile {
+  document_id: string;
+  filename: string;
+  byte_size: number;
+  created_at: string;
+  version: number;
+  kind: DomainFileKind;
+  phase: DomainFilePhase;
+  /** Pieces of a ready file; null otherwise ("—"). */
+  pieces: number | null;
+  pieces_total: number;
+  pieces_done: number;
+  /** 0–1 while reading or re-reading. */
+  progress: number | null;
+  problem: DomainFileProblem | null;
+  matched: "name" | "text" | null;
+}
+
+export type DomainFileFilter = "all" | "ready" | "reading" | "needs_attention";
+
+export interface DomainFileCounts {
+  all: number;
+  ready: number;
+  reading: number;
+  needs_attention: number;
+}
+
+export interface DomainFilesList {
+  documents: DomainFile[];
+  counts: DomainFileCounts;
+  total_pieces: number;
+}
+
+const PHASES: DomainFilePhase[] = [
+  "ready",
+  "reading",
+  "rereading",
+  "waiting",
+  "waiting_for_key",
+  "needs_attention",
+];
+const KINDS: DomainFileKind[] = ["PDF", "MD", "HTML", "TXT"];
+
+function kindOf(filename: string): DomainFileKind {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  if (ext === "pdf") return "PDF";
+  if (ext === "md") return "MD";
+  if (ext === "html") return "HTML";
+  return "TXT";
+}
+
+/** Validate one file; `null` when it lacks an id or a name. */
+export function normalizeDomainFile(raw: unknown): DomainFile | null {
+  const r = obj(raw);
+  if (typeof r.document_id !== "string" || !r.document_id) return null;
+  if (typeof r.filename !== "string") return null;
+  const p = r.problem ? obj(r.problem) : null;
+  const phase = PHASES.includes(r.phase as DomainFilePhase)
+    ? (r.phase as DomainFilePhase)
+    : r.ingest_status === "ready"
+      ? "ready"
+      : r.ingest_status === "error"
+        ? "needs_attention"
+        : r.ingest_status === "indexing"
+          ? "reading"
+          : "waiting";
+  return {
+    document_id: r.document_id,
+    filename: r.filename,
+    byte_size: count(r.byte_size),
+    created_at: typeof r.created_at === "string" ? r.created_at : "",
+    version: count(r.version) || 1,
+    kind: KINDS.includes(r.kind as DomainFileKind)
+      ? (r.kind as DomainFileKind)
+      : kindOf(r.filename),
+    phase,
+    pieces: numOrNull(r.pieces),
+    pieces_total: count(r.pieces_total),
+    pieces_done: count(r.pieces_done),
+    progress: numOrNull(r.progress),
+    problem:
+      p && typeof p.message === "string"
+        ? {
+            kind: typeof p.kind === "string" ? p.kind : "other",
+            message: p.message,
+            fix: p.fix === "engines_key" ? "engines_key" : null,
+          }
+        : null,
+    matched: r.matched === "name" || r.matched === "text" ? r.matched : null,
+  };
+}
+
+/** The domain's files (oldest first), narrowed by `q` (names and text) and the Show filter. */
+export async function listDomainFiles(
+  domainId: string,
+  opts: { q?: string; status?: DomainFileFilter } = {},
+): Promise<DomainFilesList> {
+  const params = new URLSearchParams();
+  if (opts.q?.trim()) params.set("q", opts.q.trim());
+  if (opts.status && opts.status !== "all") params.set("status", opts.status);
+  const qs = params.toString();
+  const res = await send(
+    `/api/domains/${encodeURIComponent(domainId)}/documents${qs ? `?${qs}` : ""}`,
+  );
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, "Couldn’t load the files."));
+  const body = obj((await res.json()) as unknown);
+  const documents = (Array.isArray(body.documents) ? body.documents : [])
+    .map(normalizeDomainFile)
+    .filter((d): d is DomainFile => d !== null);
+  const c = obj(body.counts);
+  return {
+    documents,
+    counts: {
+      all: c.all === undefined ? documents.length : count(c.all),
+      ready: count(c.ready),
+      reading: count(c.reading),
+      needs_attention: count(c.needs_attention),
+    },
+    total_pieces: count(body.total_pieces),
+  };
+}
+
+export interface DomainPiece {
+  number: number;
+  chars: number;
+  page: number | null;
+  text: string;
+}
+
+export interface DomainFilePieces {
+  document: DomainFile;
+  pieces: DomainPiece[];
+  /** Pieces matching the find (for paging). */
+  total: number;
+  used_in_answers: { count: number; of: number };
+}
+
+/** One file's pieces in order (`q` keeps the pieces that contain it), 50 at a time. */
+export async function getDomainFilePieces(
+  domainId: string,
+  documentId: string,
+  opts: { q?: string; offset?: number; limit?: number } = {},
+): Promise<DomainFilePieces> {
+  const params = new URLSearchParams();
+  if (opts.q?.trim()) params.set("q", opts.q.trim());
+  if (opts.offset) params.set("offset", String(opts.offset));
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  const res = await send(
+    `/api/domains/${encodeURIComponent(domainId)}/documents/${encodeURIComponent(documentId)}/pieces${
+      qs ? `?${qs}` : ""
+    }`,
+  );
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, "Couldn’t load this file."));
+  const body = obj((await res.json()) as unknown);
+  const document = normalizeDomainFile(body.document);
+  if (!document) throw new ApiError(500, "Couldn’t load this file.");
+  const used = obj(body.used_in_answers);
+  return {
+    document,
+    pieces: (Array.isArray(body.pieces) ? body.pieces : []).flatMap((raw): DomainPiece[] => {
+      const p = obj(raw);
+      if (typeof p.text !== "string" || typeof p.number !== "number") return [];
+      return [{ number: p.number, chars: count(p.chars), page: numOrNull(p.page), text: p.text }];
+    }),
+    total: count(body.total),
+    used_in_answers: { count: count(used.count), of: count(used.of) },
+  };
+}
+
+/** Read some files — or all of them — again (DM-50). */
+export async function rereadDomainFiles(
+  domainId: string,
+  body: { document_ids?: string[]; run_tests_after?: boolean } = {},
+): Promise<{ reading: number; state: string }> {
+  const res = await send(`/api/domains/${encodeURIComponent(domainId)}/reread`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, "Couldn’t start reading."));
+  const out = obj((await res.json()) as unknown);
+  return { reading: count(out.reading), state: typeof out.state === "string" ? out.state : "" };
+}
+
+/**
+ * The original file's address. The page links to it in the SAME window (`<a href download>`),
+ * never a new one: on Desktop a new window opens in the system browser, which has no session (D2).
+ */
+export function domainFileUrl(domainId: string, documentId: string): string {
+  return apiUrl(
+    `/api/domains/${encodeURIComponent(domainId)}/documents/${encodeURIComponent(documentId)}/file`,
+  );
+}
+
 // ---- The original clients (moved from lib/api.ts) ----
 
 export interface DomainSummary {
