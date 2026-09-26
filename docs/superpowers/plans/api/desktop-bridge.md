@@ -204,6 +204,15 @@ page navigates to a new document or crashes. `agentName` is trimmed to 80 chars.
 
 ---
 
+## Window navigation guard (D1, no bridge change)
+
+The main process refuses any in-window navigation that isn't `http:`/`https:`
+(`electron/navigationGuard.cjs` `blocksNavigation`, test `scripts/navigation-guard.test.cjs`). A file
+dropped outside a page's drop zone (`file:///…`) therefore leaves the app in place; the page also
+cancels window-level `dragover`/`drop` for files (Domains Sources). No `tvashtrDesktopInfo.version` bump.
+
+---
+
 ## Assumptions about B-LOCAL (built in parallel)
 
 Coded against the plan's contract; the lead should check these against B-LOCAL's

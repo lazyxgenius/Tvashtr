@@ -36,6 +36,7 @@ const {
   createNavigationQueue,
 } = require("./deepLink.cjs");
 const { createUnsavedGuard, unsavedDialogOptions, DISCARD } = require("./unsavedGuard.cjs");
+const { blocksNavigation } = require("./navigationGuard.cjs");
 const { resolveCliEnv } = require("./harness/spawnEnv.cjs");
 const { RepoError, createGit, displayPath } = require("./repos/common.cjs");
 const { createRepoService } = require("./repos/service.cjs");
@@ -364,6 +365,11 @@ function attachNavigationGuards(win) {
   });
 
   win.webContents.on("will-navigate", (event, url) => {
+    // D1: a file dropped outside a drop zone would replace the app (file:///…).
+    if (blocksNavigation(url)) {
+      event.preventDefault();
+      return;
+    }
     if (isGithubAuthUrl(url)) {
       // Allow in-window navigation to GitHub OAuth.
       return;
