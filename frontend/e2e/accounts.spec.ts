@@ -70,7 +70,7 @@ test("accounts journey: landing → register → first-time Home → add key →
   await keys.getByLabel("Provider", { exact: true }).fill("openrouter");
   await keys.getByLabel("API key").fill("sk-or-e2e-fake-1234");
   await keys.getByRole("button", { name: "Add key" }).click();
-  await expect(keys.locator(".tv-dash__prov-name")).toHaveText(["openrouter"], {
+  await expect(keys.getByTestId("engines-key-provider")).toHaveText(["openrouter"], {
     timeout: 30_000,
   });
   await expect(keys.getByText(/•••• 1234/)).toBeVisible();

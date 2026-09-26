@@ -266,10 +266,12 @@ test.describe("M-proof", () => {
       await expect(keysPanel).toBeVisible({ timeout: 30_000 });
       await expect(keysPanel).toContainText("API keys");
       await expect
-        .poll(async () => keysPanel.locator(".tv-dash__prov-name").count(), { timeout: 20_000 })
+        .poll(async () => keysPanel.getByTestId("engines-key-provider").count(), {
+          timeout: 20_000,
+        })
         .toBeGreaterThan(0)
         .catch(() => undefined);
-      const held = (await keysPanel.locator(".tv-dash__prov-name").allInnerTexts())
+      const held = (await keysPanel.getByTestId("engines-key-provider").allInnerTexts())
         .map((s) => s.trim())
         .filter(Boolean);
       console.log(`[C2] held providers (${held.length}): ${held.join(", ") || "(none)"}`);
