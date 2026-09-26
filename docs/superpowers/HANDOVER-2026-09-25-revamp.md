@@ -6,16 +6,51 @@ artboards, git-excluded), per the brief `prompts/revamp-e2e.md`.
 
 ## Round 2 — revamp-e2e session (start here to resume)
 
-**Next:** ship Phase 1 (below) → then ship F2 Engines, F3 Toolkit › Tools + Secrets and F4 Toolkit
-› Skills + Memory in that order as their builders finish → F5 agent panel + canvas → F6 Focus +
-Docs → Domains → Desktop app screens → website → Phase 3 close-out.
+**Next:** ship F3 Toolkit › Tools + Secrets (built, 57/57 at 0 drift) → F4 Toolkit › Skills + Memory
+(built, 46/46) → F5 agent panel + canvas (building) → F6 Focus + Docs (branches from F5) → Domains
+(building; carries the session's one migration `0042`, so its deploy waits for the operator's Neon
+snapshot) → Desktop app screens (building) → website → Phase 3 close-out.
+
+### NEEDS_HUMAN (2026-09-26 ~14:55 IST) — RESOLVED 15:04 IST (new key in `.env`, `make seed`)
+The OpenAI key in `.env` (`OPENAI_API_KEY`, ends `…IgoA`, also the operator account's saved openai
+credential) now returns 401 `invalid_api_key` (it worked at ~12:50 for demo-proof PR #15; `.env`
+unchanged since Jul 22, so it was revoked upstream; no key in today's pushes or PRs). The operator's PM
+and worker seats resolve to OpenAI first, so every ship's `make demo-proof` gate fails until it is
+replaced. Remedy: new key on the `OPENAI_API_KEY` line of `.env` → `make seed` → tell the session "go".
 
 ### Ship log (Ship Protocol in the brief; one row per ship)
 
 | Ship | Branch | main sha | Fly release | Desktop tag |
 |---|---|---|---|---|
 | Phase 0 — Desktop catch-up | — (tag only) | `ec9202b` | (no deploy) | `desktop-v0.3.0` — latest release; DMG's `dist-fe/assets/index-X7f-3U3l.js` = the local build = the live site |
-| Phase 1 — the core loop completes | `fix/entry-report` | recorded at the next ship | recorded at the next ship | `desktop-v0.4.0` |
+| Phase 1 — the core loop completes | `fix/entry-report` | `007019d` | v20 | `desktop-v0.4.0` — latest release; DMG app 0.4.0 bundles `index-DZBnS0zK.js` = the live site |
+| F2 — Engines | `feat/revamp-f2-engines` | recorded at the next ship | recorded at the next ship | `desktop-v0.5.0` |
+
+### F2 Engines — what shipped (`feat/revamp-f2-engines`)
+- The whole Engines area on the new design: Overview (can your teams run, per website and Desktop,
+  "N to fix" nav badge), Subscriptions (Claude / Grok / Codex cards and every connect, refresh,
+  disconnect and API-key flow; the website's "Open in Desktop" deep link), API keys (Replace, Remove
+  with its impact, "See where it's used"), the Add key sheet (provider picker, "Other" prefixes,
+  save errors, toasts, embeddings keys) and first-time. `EnginesShelf.tsx` is gone. Pages in
+  `frontend/src/pages/engines/`, client `frontend/src/lib/api/engines.ts`, `tvashtr://` deep links
+  wired in `lib/desktopDeepLinks.ts`. No backend change was needed (round 1 built it).
+- Parity (`docs/superpowers/parity/engines.txt`): 52 of the 56 screen artboards at 0 size/type drift
+  on the website AND Desktop. `Eng-Flow-Key-1…4` carry a LEAD WAIVER: the design draws a stale
+  "anthropic" banner beside the anthropic key that was just saved, contradicting its own banner text
+  and ENG-58 (honest copy wins); only those stale-banner items drift. Not screens: `EnF-Index`,
+  `Eng-BeforeAfter`, `Eng-CardStates` (a state catalogue; all six states are built and tested).
+  `Eng-Flow-Blocked-1` (the canvas banner) moved to F5.
+- Deviations (design doesn't cover them): NIM reads "No agent uses NVIDIA NIM right now." and never
+  counts toward a team being ready; the Mac Get-Desktop dialog adds the unsigned-app fix
+  `xattr -dr com.apple.quarantine /Applications/Tvashtr.app`; off a Mac it says "Tvashtr Desktop is
+  Mac-only for now." with a releases link; an agent with no model makes a team not ready ("give
+  <Role> a model").
+- Also in this ship: `fix/ship-sidecars` — Ship leaves Tvashtr's own untracked `REPORT.md`,
+  `REVIEW_VERDICT.json` and `SPEC.md` out of the user's repo (live PR lazyxgenius/trade_mcp#14 had
+  shipped the PM's REPORT.md). Reproduced first.
+- Operator follow-ups from this stretch: the prod account's Gemini key is quota-limited (429), so
+  `make demo-proof-prod` fails at its Engineer — give that account a paid key or another worker
+  provider; the saved prod session expires ~2026-09-27 13:12 IST (`make demo-proof-login`).
 
 ### Phase 1 — what shipped (`fix/entry-report`)
 - **The PM's closing message becomes the spec when it didn't write `REPORT.md`.** Live runs
