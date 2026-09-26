@@ -26,14 +26,17 @@ const fetchArchive = (): Promise<Memory[]> =>
  * first. Agents don't see these. A replaced memory has a neutral "Superseded" badge and no action;
  * a discarded one has an outline "Discarded" badge and Restore, which puts it back in Active
  * through the same consolidation as Keep. `onChanged` refreshes the tab counts; `onOpenActive` is
- * the toast's "Open Active".
+ * the toast's "Open Active". A change of `version` re-reads it quietly (another tab's Undo moved a
+ * memory).
  */
 export function MemoryArchive({
   onChanged,
   onOpenActive,
+  version = 0,
 }: {
   onChanged: () => void;
   onOpenActive: () => void;
+  version?: number;
 }) {
   const toast = useToast();
   const [load, setLoad] = useState<Load>({ state: "loading" });
@@ -61,6 +64,14 @@ export function MemoryArchive({
       (data) => live.current && setLoad({ state: "ready", data }),
       () => undefined,
     );
+
+  // Not on mount (the load above reads it): only when the page says memories moved meanwhile.
+  const seenVersion = useRef(version);
+  useEffect(() => {
+    if (seenVersion.current === version) return;
+    seenVersion.current = version;
+    void refresh();
+  }, [version]);
 
   const mark = (id: string, on: boolean) =>
     setBusy((b) => {

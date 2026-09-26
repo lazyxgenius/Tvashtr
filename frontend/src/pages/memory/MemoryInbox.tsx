@@ -31,13 +31,16 @@ const isGone = (e: unknown) => e instanceof ApiError && e.status === 404;
  * Memory › Inbox (Toolkit-MemoryInbox, TkF-Inbox-1…4): what runs taught, newest first, each with
  * Keep / Edit / Discard. Keep and Discard take the row out and toast with an Undo that sends it back
  * (`/requeue`; for a merge, the id that was merged). Edit opens the inline editor in place.
- * `onChanged` lets the page refresh the tab counts and the nav badge.
+ * `onChanged` lets the page refresh the tab counts and the nav badge; `onRequeued` tells it an Undo
+ * moved a memory back (the toast outlives the tab, so Active or the Archive may be showing).
  */
 export function MemoryInbox({
   onChanged,
+  onRequeued,
   onSeeActive,
 }: {
   onChanged: () => void;
+  onRequeued: () => void;
   onSeeActive: () => void;
 }) {
   const toast = useToast();
@@ -71,7 +74,7 @@ export function MemoryInbox({
     try {
       const { memory } = await requeueMemory(id);
       update((rows) => sortNewestFirst([...rows.filter((r) => r.id !== memory.id), memory]));
-      onChanged();
+      onRequeued();
     } catch (e) {
       toast({ message: `Couldn’t undo: ${errorText(e)}`, tone: "error" });
     }

@@ -1,5 +1,5 @@
 import { Brain, Pencil, Pin, Search, Trash, TriangleAlert } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button, ConfirmDialog, IconButton, Input, useToast } from "../../design-system/components";
 import { ApiError } from "../../lib/api";
@@ -49,16 +49,19 @@ const icon = { size: 14, strokeWidth: 1.6, "aria-hidden": true } as const;
  * pinned first then newest. The filter bar (words, Repo, Scope, Force) narrows it with AND and says
  * "1 of 14" with a Clear filters link. Each row can be pinned (pinned notes go to the agent first),
  * edited in place, or deleted. `onChanged` lets the page refresh the tab counts; `onAdd` opens Add
- * memory, and `added` is the memory it just added (it joins the list without a reload).
+ * memory, and `added` is the memory it just added (it joins the list without a reload). A change of
+ * `version` re-reads the list quietly (another tab's Undo moved a memory).
  */
 export function MemoryActive({
   onChanged,
   onAdd,
   added = null,
+  version = 0,
 }: {
   onChanged: () => void;
   onAdd: () => void;
   added?: Memory | null;
+  version?: number;
 }) {
   const toast = useToast();
   const [load, setLoad] = useState<Load>({ state: "loading" });
@@ -80,6 +83,17 @@ export function MemoryActive({
     );
   }, []);
   useEffect(reload, [reload]);
+
+  // Not on mount (the load above reads it): only when the page says memories moved meanwhile.
+  const seenVersion = useRef(version);
+  useEffect(() => {
+    if (seenVersion.current === version) return;
+    seenVersion.current = version;
+    listMemories("active").then(
+      (data) => setLoad({ state: "ready", data: sortActive(data) }),
+      () => undefined,
+    );
+  }, [version]);
 
   // The Repo filter's choices; without them it still lists the memories' own repos.
   useEffect(() => {

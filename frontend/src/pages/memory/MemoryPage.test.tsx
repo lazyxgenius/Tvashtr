@@ -32,17 +32,20 @@ function memoryApi(
     archive: 3,
     review: opts.review ?? true,
   };
-  const take = (id: string) => {
+  /** Out of the Inbox into Active (Keep) or the Archive (Discard); the other tabs list it there. */
+  const take = (id: string, status: "active" | "rejected") => {
     const m = state.pending.find((x) => x.id === id);
     if (!m) return null;
     state.pending = state.pending.filter((x) => x.id !== id);
-    state.away.set(id, m);
+    state.away.set(id, { ...m, status });
     return m;
   };
   const calls = mockApi({
-    "GET /api/memories": (u: URL) => ({
-      memories: u.searchParams.get("status") === "pending_review" ? state.pending : [],
-    }),
+    "GET /api/memories": (u: URL) => {
+      const status = u.searchParams.get("status");
+      if (status === "pending_review") return { memories: state.pending };
+      return { memories: [...state.away.values()].filter((m) => m.status === status) };
+    },
     "GET /api/memories/counts": () => ({
       inbox: state.pending.length,
       active: state.active,
@@ -54,13 +57,13 @@ function memoryApi(
       return { review_mode: state.review };
     },
     "POST /api/memories/:id/promote": (u: URL) => {
-      const m = take(idOf(u));
+      const m = take(idOf(u), "active");
       if (!m) return jsonError(404, "memory not found");
       state.active += 1;
       return { ...m, status: "active", action: "promote" };
     },
     "POST /api/memories/:id/reject": (u: URL) => {
-      const m = take(idOf(u));
+      const m = take(idOf(u), "rejected");
       if (!m) return jsonError(404, "memory not found");
       state.archive += 1;
       return { ...m, status: "rejected" };
@@ -69,7 +72,7 @@ function memoryApi(
       const m = state.away.get(idOf(u));
       if (!m) return jsonError(404, "memory not found");
       state.away.delete(m.id);
-      state.pending.push(m);
+      state.pending.push({ ...m, status: "pending_review" });
       return {
         ...m,
         status: "pending_review",
@@ -319,6 +322,45 @@ describe("MemoryPage — Keep and Discard", () => {
     await within(await inbox()).findByText(MEM_SHOULD.content);
     fireEvent.click(within(rowOf(MEM_SHOULD.content)).getByRole("button", { name: "Keep" }));
     expect(await toastWith("That memory is no longer in the Inbox.")).toBeTruthy();
+  });
+});
+
+describe("MemoryPage — Undo after switching tabs", () => {
+  /** A tab's card once it has loaded (the loading card carries the same name). */
+  const card = async (name: string) => {
+    const region = () => screen.getByRole("region", { name });
+    await waitFor(() => expect(region()).not.toHaveAttribute("aria-busy"));
+    return region();
+  };
+
+  it("Undo Keep from the Active tab takes the memory back out of Active", async () => {
+    memoryApi();
+    renderAt("#/toolkit/memory/inbox");
+    await within(await inbox()).findByText(MEM_SHOULD.content);
+    fireEvent.click(within(rowOf(MEM_SHOULD.content)).getByRole("button", { name: "Keep" }));
+    const toast = await toastWith("Kept. Reviewer uses it from the next run.");
+    fireEvent.click(within(tabs()).getByRole("tab", { name: /^Active/ }));
+    expect(await within(await card("Active")).findByText(MEM_SHOULD.content)).toBeTruthy();
+
+    fireEvent.click(within(toast).getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(screen.queryByText(MEM_SHOULD.content)).toBeNull());
+    await waitFor(() => expect(within(tabs()).getByRole("tab", { name: "Inbox 2" })).toBeTruthy());
+  });
+
+  it("Undo Discard from the Archive tab takes the memory out of the Archive", async () => {
+    memoryApi();
+    renderAt("#/toolkit/memory/inbox");
+    await within(await inbox()).findByText(MEM_MUST_NOT.content);
+    fireEvent.click(within(rowOf(MEM_MUST_NOT.content)).getByRole("button", { name: "Discard" }));
+    const toast = await toastWith("Discarded. You’ll find it in Archive.");
+    fireEvent.click(within(tabs()).getByRole("tab", { name: /^Archive/ }));
+    const archive = await card("Archive");
+    expect(within(archive).getByText(MEM_MUST_NOT.content)).toBeTruthy();
+    expect(within(archive).getByRole("button", { name: "Restore" })).toBeTruthy();
+
+    fireEvent.click(within(toast).getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(screen.queryByText(MEM_MUST_NOT.content)).toBeNull());
+    expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
   });
 });
 

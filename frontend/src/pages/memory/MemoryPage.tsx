@@ -44,6 +44,14 @@ export function MemoryPage({ tab }: { tab: MemoryTab }) {
   }, []);
   useEffect(refreshCounts, [refreshCounts]);
 
+  // An Undo on a Keep or Discard toast can land after the person opened Active or the Archive (the
+  // toast outlives the tab): those lists re-read when this changes.
+  const [listsVersion, setListsVersion] = useState(0);
+  const onRequeued = useCallback(() => {
+    refreshCounts();
+    setListsVersion((v) => v + 1);
+  }, [refreshCounts]);
+
   // Add memory (the header's and the empty states'). The new memory applies right away, so the
   // page shows it where it went: first in Active's unpinned group.
   const openAdd = useCallback(() => setAdding(true), []);
@@ -92,12 +100,19 @@ export function MemoryPage({ tab }: { tab: MemoryTab }) {
       {tab === "inbox" ? (
         <MemoryInbox
           onChanged={refreshCounts}
+          onRequeued={onRequeued}
           onSeeActive={() => navigate({ page: "memory", tab: "active" })}
         />
       ) : tab === "active" ? (
-        <MemoryActive onChanged={refreshCounts} onAdd={openAdd} added={added} />
+        <MemoryActive
+          onChanged={refreshCounts}
+          onAdd={openAdd}
+          added={added}
+          version={listsVersion}
+        />
       ) : (
         <MemoryArchive
+          version={listsVersion}
           onChanged={refreshCounts}
           onOpenActive={() => navigate({ page: "memory", tab: "active" })}
         />
