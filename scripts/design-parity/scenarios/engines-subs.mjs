@@ -1,9 +1,11 @@
-// Engines › Subscriptions (slice F2, group G5) — website and Desktop renders of each artboard.
+// Engines › Subscriptions (slice F2, groups G5–G7) — website and Desktop renders of each artboard.
 //   node scripts/design-parity/shoot-app.mjs /tmp/parity-engines scripts/design-parity/scenarios/engines-subs.mjs
-// Names are `<Artboard>-web` / `<Artboard>-desktop`. Every artboard here is drawn on Desktop (the
+// Names are `<Artboard>-web` / `<Artboard>-desktop`. The G5/G6 artboards are drawn on Desktop (the
 // 30px title strip, the runner banner, enabled actions). The website render shows the same data
 // from the server mirror: the web banner, web messages and disabled actions (ENG-46/49), and no
 // flow step can run there (Connect / Refresh are Desktop-only), so it stays on the first state.
+// The G7 artboards (Eng-SubsWeb, EnF-WebDesktop-*) are drawn on the website; their Desktop render
+// is the Desktop page (no web banner, so neither dialog can open there).
 import { RUNNER_FRESH, SUBS, enginesRoutes, sub } from "./engines-fixtures.mjs";
 
 const ready = async (page) => {
@@ -143,6 +145,15 @@ const openDisconnect = async (page) => {
   await ready(page);
   await clickIn(page, "claude", "Disconnect");
   await page.waitForSelector('[role="alertdialog"]');
+};
+
+// G7 — the website's Open / Get Tvashtr Desktop dialogs (ENG-47/48).
+const webBanner = (label) => `.eng-webbanner button:has-text("${label}")`;
+const openDialog = (label) => async (page) => {
+  await ready(page);
+  await page.click(webBanner(label));
+  await page.waitForSelector('[role="alertdialog"]');
+  await rest(page);
 };
 
 export default [
@@ -288,4 +299,10 @@ export default [
       await rest(page);
     },
   }),
+  ...both("Eng-SubsWeb"),
+  ...both("EnF-WebDesktop-1"),
+  // Open Tvashtr Desktop: the link goes to the browser; the dialog says what happens next.
+  ...both("EnF-WebDesktop-2", { webSteps: openDialog("Open Tvashtr Desktop") }),
+  // Download: Get Tvashtr Desktop.
+  ...both("EnF-WebDesktop-3", { webSteps: openDialog("Download") }),
 ];
