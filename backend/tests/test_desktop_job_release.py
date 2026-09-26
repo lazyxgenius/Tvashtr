@@ -131,6 +131,43 @@ def test_release_requeues_a_claimed_job_with_one_note_and_it_is_claimed_again(tm
     assert _notes(run_id, 5151).count(RELEASED) == 2
 
 
+def _say(c: TestClient, job_id: str, *texts: str) -> None:
+    events = [
+        {"seq": i, "kind": "message", "payload": {"source": "claude", "text": t}}
+        for i, t in enumerate(texts)
+    ]
+    resp = c.post(f"/api/desktop-runner/jobs/{job_id}/events", json={"events": events})
+    assert resp.status_code == 200 and resp.json()["cancelled"] is False, resp.text
+
+
+def test_a_reclaimed_job_keeps_both_attempts_events_in_order(tmp_path):
+    # The relaunched runner restarts seq at 0: its events must not collide with (and be dropped
+    # as duplicates of) the killed attempt's, and the release note sits between the two.
+    c, owner = _account()
+    run_id = _run_for(owner)
+    job_id = _job(owner, run_id, tmp_path)
+    _claim(c)
+    _say(c, job_id, "first 0", "first 1")
+    assert c.post(f"/api/desktop-runner/jobs/{job_id}/release").status_code == 200
+    _claim(c)
+    _say(c, job_id, "second 0", "second 1", "second 2")
+    _say(c, job_id, "second 0")  # a runner retry of the same batch still dedups
+    assert c.post(f"/api/desktop-runner/jobs/{job_id}/release").status_code == 200
+    _claim(c)
+    _say(c, job_id, "third 0")
+
+    assert _notes(run_id, 5151) == [
+        "first 0",
+        "first 1",
+        RELEASED,
+        "second 0",
+        "second 1",
+        "second 2",
+        RELEASED,
+        "third 0",
+    ]
+
+
 def test_release_is_owner_scoped(tmp_path):
     alice, alice_id = _account()
     bob, _ = _account()
