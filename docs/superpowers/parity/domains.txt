@@ -1,0 +1,26 @@
+# Domains (Dm-*, DmF-*) — parity record, branch feat/revamp-domains
+# Every Domains board is drawn in Desktop mode (30px title strip): web renders are 30px higher ("only moved"),
+# and the one web "not found" is the strip's own title "Tvashtr — the living canvas" (Desktop-only chrome).
+# The header ⌘K search is only in the app (OQ-1: one shell). Scenarios: scripts/design-parity/scenarios/domains-*.mjs.
+# Desktop "1 only moved" is that title's text box (the design's spans the full strip, the app's is centred).
+# skipped: Dm-BeforeAfter — rationale board (placeholder Before image + six After bullets), not an app screen
+# skipped: DmF-Index — index of the 21 flows / 74 screens with the coral-ring legend, not an app screen
+# note Dm-List / DmF-Find-3: 16 card items "only moved" — the design orders Support docs before Vendor contracts under
+#   "Recently updated" while their footers say "2 hours ago" / "just now"; the app sorts by last activity (DM-8).
+# note DmF-First-1 is Dm-ListEmpty with New domain ringed; both are the `empty` scenario.
+# needs-waiver DmF-Find-3 web: [txt] 'Recently updated' — web-only nearest-match artifact: 30px higher, the trigger label
+#   (13.5px, exact on Desktop) is farther from the design point than the first option (13px), so parity pairs them.
+#   The Desktop render (the design's own mode) is 0 drift; the Sort trigger draws as the DS Select at rest (Dm-List,
+#   Find-1/-2: 44px/16px) and as Find-3's listbox trigger when open (40px/13.5px), as the two boards draw it.
+Dm-List web: matched 57/58 design items · 0 with size/type drift · 55 only moved · 1 not found in app
+Dm-List desktop: matched 58/58 design items · 0 with size/type drift · 17 only moved · 0 not found in app
+Dm-ListEmpty web: matched 35/36 design items · 0 with size/type drift · 33 only moved · 1 not found in app
+Dm-ListEmpty desktop: matched 36/36 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DmF-Find-1 web: matched 34/35 design items · 0 with size/type drift · 32 only moved · 1 not found in app
+DmF-Find-1 desktop: matched 35/35 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DmF-Find-2 web: matched 28/29 design items · 0 with size/type drift · 26 only moved · 1 not found in app
+DmF-Find-2 desktop: matched 29/29 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DmF-Find-3 web: matched 66/67 design items · 1 with size/type drift · 63 only moved · 1 not found in app
+DmF-Find-3 desktop: matched 67/67 design items · 0 with size/type drift · 17 only moved · 0 not found in app
+DmF-First-1 web: matched 35/36 design items · 0 with size/type drift · 33 only moved · 1 not found in app
+DmF-First-1 desktop: matched 36/36 design items · 0 with size/type drift · 1 only moved · 0 not found in app
