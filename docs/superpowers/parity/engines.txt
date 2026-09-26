@@ -99,8 +99,8 @@ Eng-Flow-Grok-3 web: matched 36/49 design items · 0 with size/type drift · 33 
 Eng-Flow-Grok-3 desktop: matched 43/49 design items · 0 with size/type drift · 6 only moved · 6 not found in app
 Eng-Flow-Key-1 web: matched 58/59 design items · 2 with size/type drift · 10 only moved · 1 not found in app
 Eng-Flow-Key-1 desktop: matched 58/59 design items · 2 with size/type drift · 52 only moved · 1 not found in app
-# needs-waiver Eng-Flow-Key-1: [ctl] 'anthropic' (the banner's + anthropic button) — design draws a stale banner button for a saved provider (ENG-58); the lead's waiver names Key-2..4 only
-# needs-waiver Eng-Flow-Key-1: [txt] 'anthropic' (that button's label) — design draws a stale banner button for a saved provider (ENG-58); the lead's waiver names Key-2..4 only
+# waiver Eng-Flow-Key-1: [ctl] 'anthropic' (the banner's + anthropic button) — design draws a stale banner button for a saved provider (ENG-58; waiver extended to Key-1 by the lead, 2026-09-26)
+# waiver Eng-Flow-Key-1: [txt] 'anthropic' (that button's label) — design draws a stale banner button for a saved provider (ENG-58; waiver extended to Key-1 by the lead, 2026-09-26)
 Eng-Flow-Key-2 web: matched 62/64 design items · 3 with size/type drift · 11 only moved · 2 not found in app
 Eng-Flow-Key-2 desktop: matched 62/64 design items · 3 with size/type drift · 57 only moved · 2 not found in app
 # waiver Eng-Flow-Key-2: [txt] 'anthropic' (the banner's bold provider name) — design draws a stale banner for a saved provider (ENG-58)
