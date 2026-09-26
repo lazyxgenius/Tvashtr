@@ -692,6 +692,13 @@
   z-index: 72;
   background: rgba(20, 20, 19, 0.35);
 }
+/* The wizard's "Discard this tool?" (a DS ConfirmDialog, portalled after the sheet): above it too. */
+.ds-sheet[aria-label="Add a tool"] ~ .ds-scrim {
+  z-index: 72;
+}
+.ds-sheet[aria-label="Add a tool"] ~ [role="alertdialog"].ds-dialog {
+  z-index: 73;
+}
 .tk-turnon__form {
   display: flex;
   flex-direction: column;

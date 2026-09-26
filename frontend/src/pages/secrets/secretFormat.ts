@@ -31,6 +31,13 @@ export function secretNameError(name: string): string | null {
 /** `${NAME}` — how a tool refers to the secret. */
 export const refOf = (name: string) => "${" + name + "}";
 
+/** A tool may write `${linear_token}` (runs read any `${name}`), but a secret is only stored under
+ *  a name that follows the rule — so that reference can never get a value. Null when it can. */
+export function refNameProblem(name: string): string | null {
+  if (!secretNameError(name)) return null;
+  return `Secret names use capital letters, numbers and _: write ${refOf(suggestSecretName(name))}, not ${refOf(name)}.`;
+}
+
 const SHORT_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 const LONG_DATE = new Intl.DateTimeFormat("en-US", {
   month: "short",

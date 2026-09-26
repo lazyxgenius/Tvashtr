@@ -85,6 +85,12 @@ export function TurnOnForAgentsDialog({
   const count = checked.size;
   const turnsOff = count === 0 && before.length > 0;
   const canConfirm = teams !== null && teams.length > 0 && (count > 0 || turnsOff) && !busy;
+  // The wizard's tool doesn't exist yet: there, unticking everyone only drops the held choice.
+  const confirmLabel = !turnsOff
+    ? `Turn on for ${plural(count, "agent")}`
+    : toolId
+      ? "Turn off for all agents"
+      : "Clear choice";
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -187,7 +193,7 @@ export function TurnOnForAgentsDialog({
               Skip
             </Button>
             <Button type="submit" size="sm" disabled={!canConfirm} loading={busy}>
-              {turnsOff ? "Turn off for all agents" : `Turn on for ${plural(count, "agent")}`}
+              {confirmLabel}
             </Button>
           </div>
         </form>

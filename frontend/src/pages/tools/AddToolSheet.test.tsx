@@ -3,7 +3,7 @@
  * (Remote URL + headers, the `${` secret picker and its chips, raw JSON both ways, Local command),
  * Secrets (values, Choose agents held until Add tool), and the submit order with its failures.
  */
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ToolItem } from "../../lib/api/tools";
@@ -180,6 +180,44 @@ describe("Add tool · Basics", () => {
     expect(screen.queryByRole("dialog", { name: "Add a tool" })).toBeNull();
   });
 
+  it("arrow keys only move the Start from choice; the primary button acts on it (WCAG 3.2.2)", async () => {
+    serve();
+    const dialog = await openWizard();
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "linear" } });
+    // ArrowDown from "A custom server" checks "An mcp.json" (the browser fires change).
+    fireEvent.keyDown(within(dialog).getByRole("radio", { name: /A custom server/ }), {
+      key: "ArrowDown",
+    });
+    fireEvent.click(within(dialog).getByRole("radio", { name: /An mcp.json/ }));
+    expect(sheet()).toBeInTheDocument();
+    expect(within(sheet()).getByLabelText("Name")).toHaveValue("linear");
+    expect(within(sheet()).getByRole("radio", { name: /An mcp.json/ })).toBeChecked();
+
+    // ArrowUp twice → "The catalog": still here; the primary button now says where it goes.
+    fireEvent.keyDown(within(sheet()).getByRole("radio", { name: /An mcp.json/ }), {
+      key: "ArrowUp",
+    });
+    fireEvent.click(within(sheet()).getByRole("radio", { name: /The catalog/ }));
+    expect(sheet()).toBeInTheDocument();
+    expect(window.location.hash).not.toBe("#/toolkit/tools/browse");
+    next("Open the catalog");
+    expect(screen.queryByRole("dialog", { name: "Add a tool" })).toBeNull();
+    expect(window.location.hash).toBe("#/toolkit/tools/browse");
+  });
+
+  it("Space on the focused choice takes it", async () => {
+    serve();
+    const dialog = await openWizard();
+    fireEvent.keyDown(within(dialog).getByRole("radio", { name: /A custom server/ }), {
+      key: "ArrowDown",
+    });
+    fireEvent.click(within(dialog).getByRole("radio", { name: /An mcp.json/ }));
+    expect(within(sheet()).getByRole("button", { name: "Paste mcp.json" })).toBeInTheDocument();
+    fireEvent.keyDown(within(sheet()).getByRole("radio", { name: /An mcp.json/ }), { key: " " });
+    expect(screen.queryByRole("dialog", { name: "Add a tool" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Paste mcp.json" })).toBeInTheDocument();
+  });
+
   it("Cancel and Escape close it", async () => {
     serve();
     await openWizard();
@@ -189,9 +227,64 @@ describe("Add tool · Basics", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Add a tool" })).toBeNull();
   });
+
+  it("asks “Discard this tool?” before Escape, ✕ or the scrim drop a connection draft (TOOL-30)", async () => {
+    serve();
+    // Let the sheet's secrets load land inside act().
+    const settle = () => act(() => new Promise((r) => setTimeout(r, 0)));
+    await toConnection();
+    await settle();
+    // Nothing typed on step 2 yet: Escape just closes.
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Add a tool" })).toBeNull();
+
+    await toConnection();
+    await settle();
+    fireEvent.change(within(sheet()).getByLabelText("URL"), {
+      target: { value: "https://mcp.linear.app/sse" },
+    });
+    fireEvent.keyDown(document, { key: "Escape" });
+    const confirm = screen.getByRole("alertdialog", { name: "Discard this tool?" });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Keep editing" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(within(sheet()).getByLabelText("URL")).toHaveValue("https://mcp.linear.app/sse");
+
+    fireEvent.click(within(sheet()).getByRole("button", { name: "Close" }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog", { name: "Discard this tool?" })).getByRole("button", {
+        name: "Discard",
+      }),
+    );
+    expect(screen.queryByRole("dialog", { name: "Add a tool" })).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
 });
 
 describe("Add tool · Connection", () => {
+  it("won’t go on with a lower-case ${name}: a secret can’t be stored under it", async () => {
+    serve();
+    await toConnection();
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    fireEvent.change(within(sheet()).getByLabelText("URL"), {
+      target: { value: "https://mcp.linear.app/sse" },
+    });
+    fireEvent.click(within(sheet()).getByRole("button", { name: "Add header" }));
+    fireEvent.change(within(sheet()).getByRole("textbox", { name: "Header name 1" }), {
+      target: { value: "Authorization" },
+    });
+    fireEvent.change(valueBox(), { target: { value: "Bearer ${linear_token}" } });
+    next("Next: Secrets");
+    expect(within(sheet()).getByRole("alert")).toHaveTextContent(
+      "Secret names use capital letters, numbers and _: write ${LINEAR_TOKEN}, not ${linear_token}.",
+    );
+    expect(within(sheet()).getByText("linear · step 2 of 3")).toBeInTheDocument();
+
+    fireEvent.change(valueBox(), { target: { value: "Bearer ${LINEAR_TOKEN}" } });
+    expect(within(sheet()).queryByRole("alert")).toBeNull();
+    next("Next: Secrets");
+    expect(within(sheet()).getByText("linear · step 3 of 3")).toBeInTheDocument();
+  });
+
   it("defaults to Remote URL and needs an http(s) URL", async () => {
     serve();
     await toConnection();
@@ -481,6 +574,24 @@ describe("Add tool · Secrets and submit", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open Reviewer" }));
     expect(window.location.hash).toBe("#/teams/team-ind?node=n-rev&tab=skills");
+  });
+
+  it("unticking a held choice says “Clear choice”, not “Turn off for all agents”", async () => {
+    serve();
+    await toSecrets();
+    fireEvent.click(within(sheet()).getByRole("button", { name: "Choose agents" }));
+    const first = await screen.findByRole("dialog", { name: "Turn on for agents" });
+    fireEvent.click(await within(first).findByRole("checkbox", { name: "Reviewer" }));
+    fireEvent.click(within(first).getByRole("button", { name: "Turn on for 1 agent" }));
+    expect(within(sheet()).getByText("Turns on for Reviewer when you add it.")).toBeInTheDocument();
+
+    fireEvent.click(within(sheet()).getByRole("button", { name: "Choose agents" }));
+    const again = await screen.findByRole("dialog", { name: "Turn on for agents" });
+    fireEvent.click(await within(again).findByRole("checkbox", { name: "Reviewer" }));
+    expect(within(again).queryByRole("button", { name: "Turn off for all agents" })).toBeNull();
+    fireEvent.click(within(again).getByRole("button", { name: "Clear choice" }));
+    expect(screen.queryByRole("dialog", { name: "Turn on for agents" })).toBeNull();
+    expect(within(sheet()).getByText("You can also do this later, per agent.")).toBeInTheDocument();
   });
 
   it("with no value and no agents it only creates the tool: “linear added.”", async () => {

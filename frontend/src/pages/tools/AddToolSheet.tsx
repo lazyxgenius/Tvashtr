@@ -9,9 +9,9 @@
  * failure says which step failed. The page closes the sheet, refreshes and toasts.
  */
 import { ArrowLeft, Braces, Layers, Lock, Server } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
-import { Badge, Button, Input, Sheet, cx } from "../../design-system/components";
+import { Badge, Button, ConfirmDialog, Input, Sheet, cx } from "../../design-system/components";
 import { ApiDetailError } from "../../lib/api/runs";
 import {
   type SetAgentsResult,
@@ -29,7 +29,9 @@ import {
   EMPTY_CONNECTION,
   type SecretOption,
   connectionError,
+  connectionTouched,
   formToConfig,
+  refNameError,
   secretOptions,
   suggestedSecret,
   toolNameError,
@@ -39,6 +41,14 @@ import { addFailedMessage, heldAgentsLine, secretsLede, wizardSubtitle } from ".
 import "./tools.css";
 
 const STEPS = ["Basics", "Connection", "Secrets"] as const;
+
+/** Step 1's "Start from" choices. */
+type Start = "catalog" | "custom" | "paste";
+const START_LABEL: Record<Start, string> = {
+  catalog: "Open the catalog",
+  custom: "Next: Connection",
+  paste: "Paste mcp.json",
+};
 
 export interface AddedTool {
   tool: ToolItem;
@@ -77,21 +87,29 @@ function useStoredSecrets() {
 }
 
 function StartOption({
+  value,
   checked,
   onChange,
   icon,
   title,
   description,
 }: {
+  value: Start;
   checked: boolean;
-  onChange: () => void;
+  onChange: (value: Start) => void;
   icon: ReactNode;
   title: string;
   description: string;
 }) {
   return (
     <label className={cx("tk-start", checked && "tk-start--on")}>
-      <input type="radio" name="tk-start" checked={checked} onChange={onChange} />
+      <input
+        type="radio"
+        name="tk-start"
+        value={value}
+        checked={checked}
+        onChange={() => onChange(value)}
+      />
       <span className="tk-start__icon">{icon}</span>
       <span>
         <span className="tk-start__title">{title}</span>
@@ -120,12 +138,17 @@ export function AddToolSheet({
   onAdded: (added: AddedTool) => void;
 }) {
   const [step, setStep] = useState(0);
+  const [start, setStart] = useState<Start>("custom");
+  // An arrow key in the radio group only moves the choice; a click or Space takes it (WCAG 3.2.2).
+  const arrowed = useRef(false);
   const [name, setName] = useState(initialName);
   const [nameError, setNameError] = useState<string | null>(null);
   const [form, setForm] = useState<ConnectionForm>(EMPTY_CONNECTION);
   const [raw, setRaw] = useState<RawDraft | null>(null);
   const [rawOpen, setRawOpen] = useState(false);
   const [connError, setConnError] = useState<string | null>(null);
+  const [refError, setRefError] = useState<string | null>(null);
+  const [discarding, setDiscarding] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [agents, setAgents] = useState<{ ids: string[]; names: string[] }>({ ids: [], names: [] });
   const [choosing, setChoosing] = useState(false);
@@ -139,12 +162,40 @@ export function AddToolSheet({
   const refs = useMemo(() => secretRefsOf(config), [config]);
   const unset = refs.filter((n) => !stored?.has(n));
 
+  // TOOL-30: once a connection is typed, Escape / ✕ / the scrim ask before throwing it away.
+  const hasDraft =
+    connectionTouched(form) ||
+    raw !== null ||
+    Object.values(values).some((v) => v.trim()) ||
+    agents.ids.length > 0;
   const close = () => {
-    if (!busy) onClose();
+    if (busy) return;
+    if (hasDraft) setDiscarding(true);
+    else onClose();
+  };
+
+  const take = (choice: Start) => {
+    if (choice === "catalog") onBrowse();
+    else if (choice === "paste") onPaste();
+    else setStart("custom");
+  };
+  const onStartChange = (choice: Start) => {
+    if (!arrowed.current) return take(choice);
+    arrowed.current = false;
+    setStart(choice);
+  };
+  const onStartKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLInputElement;
+    if (e.key.startsWith("Arrow")) arrowed.current = true;
+    else if ((e.key === " " || e.key === "Enter") && target.type === "radio") {
+      e.preventDefault();
+      take(target.value as Start);
+    }
   };
 
   const next = () => {
     if (step === 0) {
+      if (start !== "custom") return take(start);
       const err = toolNameError(name, takenNames);
       setNameError(err);
       if (!err) setStep(1);
@@ -154,7 +205,9 @@ export function AddToolSheet({
       if (raw?.error) return;
       const err = connectionError(form);
       setConnError(err);
-      if (!err) setStep(2);
+      const refErr = err ? null : refNameError(config);
+      setRefError(refErr);
+      if (!err && !refErr) setStep(2);
       return;
     }
     void submit();
@@ -228,7 +281,7 @@ export function AddToolSheet({
   );
   const primary = (
     <Button size="sm" onClick={next} loading={busy} disabled={step === 1 && Boolean(raw?.error)}>
-      {step === 0 ? "Next: Connection" : step === 1 ? "Next: Secrets" : "Add tool"}
+      {step === 0 ? START_LABEL[start] : step === 1 ? "Next: Secrets" : "Add tool"}
     </Button>
   );
 
@@ -251,24 +304,34 @@ export function AddToolSheet({
               <span className="tk-wiz__label" id="tk-wiz-start">
                 Start from
               </span>
-              <div role="radiogroup" aria-labelledby="tk-wiz-start" className="tk-wiz__starts">
+              <div
+                role="radiogroup"
+                aria-labelledby="tk-wiz-start"
+                className="tk-wiz__starts"
+                onKeyDown={onStartKey}
+                onKeyUp={() => (arrowed.current = false)}
+                onPointerDown={() => (arrowed.current = false)}
+              >
                 <StartOption
-                  checked={false}
-                  onChange={onBrowse}
+                  value="catalog"
+                  checked={start === "catalog"}
+                  onChange={onStartChange}
                   icon={<Layers size={16} strokeWidth={1.6} aria-hidden />}
                   title="The catalog"
                   description="Web fetch or GitHub App repos, set up for you."
                 />
                 <StartOption
-                  checked
-                  onChange={() => {}}
+                  value="custom"
+                  checked={start === "custom"}
+                  onChange={onStartChange}
                   icon={<Server size={16} strokeWidth={1.6} aria-hidden />}
                   title="A custom server"
                   description="Any MCP server: a local command or a remote URL."
                 />
                 <StartOption
-                  checked={false}
-                  onChange={onPaste}
+                  value="paste"
+                  checked={start === "paste"}
+                  onChange={onStartChange}
                   icon={<Braces size={16} strokeWidth={1.6} aria-hidden />}
                   title="An mcp.json"
                   description="Paste config from Claude, Cursor or VS Code."
@@ -295,6 +358,7 @@ export function AddToolSheet({
               onChange={(f) => {
                 setForm(f);
                 setConnError(null);
+                setRefError(null);
               }}
               raw={raw}
               onRawChange={setRaw}
@@ -305,6 +369,11 @@ export function AddToolSheet({
               stored={stored}
               suggestion={suggestion}
             />
+          )}
+          {step === 1 && refError && (
+            <p className="tk-wiz__error" role="alert">
+              {refError}
+            </p>
           )}
 
           {step === 2 && (
@@ -371,6 +440,20 @@ export function AddToolSheet({
           )}
         </div>
       </Sheet>
+      <ConfirmDialog
+        open={discarding}
+        title="Discard this tool?"
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        tone="danger"
+        onCancel={() => setDiscarding(false)}
+        onConfirm={() => {
+          setDiscarding(false);
+          onClose();
+        }}
+      >
+        {toolName ? `What you typed for ${toolName} isn’t saved.` : "What you typed isn’t saved."}
+      </ConfirmDialog>
       {choosing && (
         <TurnOnForAgentsDialog
           toolName={toolName}

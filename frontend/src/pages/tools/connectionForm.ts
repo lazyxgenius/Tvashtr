@@ -5,13 +5,14 @@
  * raw JSON text, and the `${` secret picker's options.
  */
 import type { SecretsList, ServerConfig } from "../../lib/api/tools";
-import { suggestSecretName } from "../secrets/secretFormat";
+import { refNameProblem, suggestSecretName } from "../secrets/secretFormat";
 import {
   type KeyValueRow,
   SECRET_REF,
   type Transport,
   buildServerConfig,
   rowsOfBlock,
+  secretRefsOf,
   transportOf,
 } from "./toolConfig";
 
@@ -175,6 +176,29 @@ export function connectionError(form: ConnectionForm): string | null {
     return null;
   }
   return form.command.trim() ? null : "Add the command that starts the server.";
+}
+
+/** The first `${name}` in the header / environment values that no secret can be stored under
+ *  (lower-case, say), with what to write instead; null when every reference can get a value. */
+export function refNameError(config: ServerConfig): string | null {
+  for (const name of secretRefsOf(config)) {
+    const problem = refNameProblem(name);
+    if (problem) return problem;
+  }
+  return null;
+}
+
+/** Anything typed on the Connection step (the wizard asks before discarding it). */
+export function connectionTouched(form: ConnectionForm): boolean {
+  const typed = (rows: KeyValueRow[]) => rows.some((r) => r.key.trim() || r.value.trim());
+  return Boolean(
+    form.url.trim() ||
+    form.command.trim() ||
+    form.args.trim() ||
+    typed(form.headers) ||
+    typed(form.env) ||
+    Object.keys(form.extras).length > 0,
+  );
 }
 
 /** Secrets are filled in only in header and environment values (spec Q11). */
