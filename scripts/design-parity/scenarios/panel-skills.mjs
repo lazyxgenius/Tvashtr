@@ -244,10 +244,9 @@ export default [
             li.getBoundingClientRect().bottom -
             body.getBoundingClientRect().bottom;
         });
-        await p
-          .getByRole("button", { name: "More actions for fetch" })
-          .evaluate((el) => el.click());
+        await p.getByRole("button", { name: "More actions for fetch" }).click();
         await p.waitForTimeout(250);
+        await p.mouse.move(0, 0);
       }),
     },
     FULL,
