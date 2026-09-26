@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../../../design-system/components";
@@ -290,6 +290,29 @@ describe("ProjectStep — DT-Project, DtF-Git-1..3", () => {
     // Desktop's install link returns to this app (the existing in-window App install).
     expect(connect.getAttribute("href")).toMatch(/^https:\/\/gh\/install\?redirect_uri=/);
     expect(continueButton()).toBeDisabled();
+  });
+
+  it("Connect GitHub keeps the GitHub choice across the app's reload after GitHub", async () => {
+    const routes = {
+      "GET /api/github/repos": { body: { repos: [], installation_count: 0 } },
+      "GET /api/config": { body: { github_install_url: "https://gh/install" } },
+    };
+    // A folder was saved earlier; the user switches to GitHub and connects it.
+    const setup = { workspace: { kind: "folder" as const, ...TRADE } };
+    await renderStep({ routes, setup });
+    fireEvent.click(screen.getByText("A GitHub repository"));
+    fireEvent.click(await screen.findByRole("link", { name: "Connect GitHub" }));
+    // GitHub loads in this window; its callback reloads the app back onto this step.
+    cleanup();
+    uninstallDesktopBridge();
+    await renderStep({ routes, setup });
+    expect(radio("A GitHub repository")).toBeChecked();
+    // Picking again forgets it.
+    fireEvent.click(screen.getByText("A folder on this Mac"));
+    cleanup();
+    uninstallDesktopBridge();
+    await renderStep({ routes, setup });
+    expect(radio("A folder on this Mac")).toBeChecked();
   });
 
   it("with teams already, Continue finishes setup and goes Home; the rail says so (DT-37)", async () => {

@@ -33,6 +33,25 @@ const messageOf = (e: unknown, fallback: string): string =>
 
 const SAVE_FAILED = "Couldn’t save this Mac’s setup. Try again.";
 
+// Connect GitHub can load GitHub in this window, and its callback reloads the app onto this step:
+// the GitHub choice is kept for that reload (this window's session only).
+const GITHUB_PENDING = "tv-setup-github-pending";
+function githubPending(): boolean {
+  try {
+    return sessionStorage.getItem(GITHUB_PENDING) === "1";
+  } catch {
+    return false;
+  }
+}
+function setGithubPending(on: boolean): void {
+  try {
+    if (on) sessionStorage.setItem(GITHUB_PENDING, "1");
+    else sessionStorage.removeItem(GITHUB_PENDING);
+  } catch {
+    /* the choice just isn't kept across the reload */
+  }
+}
+
 /**
  * Setup step 3, Project (desktop-app.md DT-29..DT-32, DT-37): where teams work — a folder on this
  * Mac (picked, read and, when it isn't one, made a git repository), a GitHub repository, or decide
@@ -54,8 +73,15 @@ export function ProjectStep({
   const toast = useToast();
   const saved = setup.workspace;
   const [choice, setChoice] = useState<ProjectChoice>(
-    saved?.kind === "github" ? "github" : saved?.kind === "ask" ? "ask" : "folder",
+    githubPending() || saved?.kind === "github"
+      ? "github"
+      : saved?.kind === "ask"
+        ? "ask"
+        : "folder",
   );
+  useEffect(() => {
+    if (choice !== "github") setGithubPending(false);
+  }, [choice]);
   const [folder, setFolder] = useState<FolderState>(
     saved?.kind === "folder"
       ? { phase: "reading", folder: { path: saved.path, displayPath: saved.displayPath } }
@@ -395,7 +421,10 @@ function RepoPanel({
             href={list.connectUrl}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={() => setConnecting(true)}
+            onClick={() => {
+              setGithubPending(true);
+              setConnecting(true);
+            }}
           >
             <GithubIcon size={15} />
             <span>Connect GitHub</span>
