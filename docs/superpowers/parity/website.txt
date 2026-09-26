@@ -5,8 +5,15 @@
 # only moved: step 3 and the two actions on Web-Download2/WbF-Mac-3/WbF-Mac-4 sit 104px lower under step 2's xattr fix (session rule, OQ-5); WbF-Mac-4's dialog is the DS Dialog, centred in the window (the board pins it at top 200)
 # not found in app, by decision (landing): "Open source · Your keys…" / "Free and open source" / "Open source on GitHub · [stars]" / the closing "…Free and open source." → the interim "source on GitHub" wording (no LICENSE yet, OQ-4; stars live, OQ-13); the testimonial quote + caption are not rendered until a real, permitted quote exists (OQ-12)
 # only moved (landing): the Questions section and the closing panel sit about 174px higher on Web-Landing because the testimonial figure is not rendered (OQ-12)
+# scenarios (G4): website-scroll.mjs (web-two = WbF-Two-1, WbF-Two-2 — the same screen, `#/welcome?s=two-ways`; web-faq-1 = WbF-Faq-1, `?s=faq` then item 1 closed; web-faq-2 = WbF-Faq-2, item 2 opened); website-mobile.mjs (web-mobile = Web-Mobile, 390×2300; web-mob-1 = WbF-Mob-1, the 390×844 top; web-mob-2 = WbF-Mob-2, the menu; web-mob-3 = WbF-Mob-3, Start building's sheet)
+# not found in app, by decision (phone): the pill "Open source · your keys or your plan" → "Source on GitHub · your keys or your plan" (OQ-4); the dark panel's "Email me a link for my computer" → "Send me a link for my computer", the sheet's "We’ll email you a sign-in link…" body, Email Input and "Email me the link" → "Send yourself this page…" + "Send me the link" (share sheet) or "Copy the link" (no email service, OQ-10)
+# only moved (phone): WbF-Mob-3's sheet title sits 86px lower — the sheet is bottom-anchored and has no Email field (OQ-10)
 WbF-Err-1 web: matched 24/25 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 WbF-Err-1 desktop: n/a — website-only page (website.md §1)
+WbF-Faq-1 web: matched 22/22 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+WbF-Faq-1 desktop: n/a — website-only page (website.md §1)
+WbF-Faq-2 web: matched 23/23 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+WbF-Faq-2 desktop: n/a — website-only page (website.md §1)
 WbF-Mac-1 web: matched 39/41 design items · 0 with size/type drift · 0 only moved · 2 not found in app
 WbF-Mac-1 desktop: n/a — website-only page (website.md §1)
 WbF-Mac-2 web: matched 19/21 design items · 0 with size/type drift · 0 only moved · 2 not found in app
@@ -15,6 +22,12 @@ WbF-Mac-3 web: matched 21/22 design items · 0 with size/type drift · 6 only mo
 WbF-Mac-3 desktop: n/a — website-only page (website.md §1)
 WbF-Mac-4 web: matched 27/28 design items · 0 with size/type drift · 12 only moved · 1 not found in app
 WbF-Mac-4 desktop: n/a — website-only page (website.md §1)
+WbF-Mob-1 web: matched 19/20 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+WbF-Mob-1 desktop: n/a — website-only page (website.md §1)
+WbF-Mob-2 web: matched 11/11 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+WbF-Mob-2 desktop: n/a — website-only page (website.md §1)
+WbF-Mob-3 web: matched 22/28 design items · 0 with size/type drift · 1 only moved · 6 not found in app
+WbF-Mob-3 desktop: n/a — website-only page (website.md §1)
 WbF-Signed-1 web: matched 39/41 design items · 0 with size/type drift · 0 only moved · 2 not found in app
 WbF-Signed-1 desktop: n/a — website-only page (website.md §1)
 WbF-Start-1 web: matched 39/41 design items · 0 with size/type drift · 0 only moved · 2 not found in app
@@ -23,6 +36,10 @@ WbF-Start-2 web: matched 25/26 design items · 0 with size/type drift · 0 only 
 WbF-Start-2 desktop: n/a — website-only page (website.md §1)
 WbF-Start-3 web: matched 24/24 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 WbF-Start-3 desktop: n/a — website-only page (website.md §1)
+WbF-Two-1 web: matched 36/36 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+WbF-Two-1 desktop: n/a — website-only page (website.md §1)
+WbF-Two-2 web: matched 36/36 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+WbF-Two-2 desktop: n/a — website-only page (website.md §1)
 WbF-Win-1 web: matched 39/41 design items · 0 with size/type drift · 0 only moved · 2 not found in app
 WbF-Win-1 desktop: n/a — website-only page (website.md §1)
 WbF-Win-2 web: matched 16/19 design items · 0 with size/type drift · 0 only moved · 3 not found in app
@@ -35,5 +52,7 @@ Web-DownloadWin web: matched 16/19 design items · 0 with size/type drift · 0 o
 Web-DownloadWin desktop: n/a — website-only page (website.md §1)
 Web-Landing web: matched 193/199 design items · 0 with size/type drift · 18 only moved · 6 not found in app
 Web-Landing desktop: n/a — website-only page (website.md §1)
+Web-Mobile web: matched 41/44 design items · 0 with size/type drift · 0 only moved · 3 not found in app
+Web-Mobile desktop: n/a — website-only page (website.md §1)
 Web-SignIn web: matched 25/26 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 Web-SignIn desktop: n/a — website-only page (website.md §1)
