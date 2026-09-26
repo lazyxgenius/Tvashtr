@@ -1,3 +1,8 @@
+# F2 Engines — parity sweep, branch feat/revamp-f2-engines @ bfaa4d8
+# skipped: EnF-Index — index board ('Engines flows' lists the 17 flows / 50 screens), not an app screen
+# skipped: Eng-BeforeAfter — before/after rationale board (blurred old shelf beside a new-Overview thumbnail), not an app screen
+# skipped: Eng-CardStates — reference catalogue 'Subscription card states' (compact cards, no page has that title); all six states are built into SubscriptionCard and covered by vitest
+# skipped: Eng-Flow-Blocked-1 — the team canvas with its missing-providers banner (canvas chrome, ENG-77), moved to F5 by the lead; F2 builds its landing, Eng-Flow-Blocked-2
 EnF-ClaudeApiKey-1 web: matched 41/50 design items · 0 with size/type drift · 32 only moved · 9 not found in app
 EnF-ClaudeApiKey-1 desktop: matched 48/50 design items · 0 with size/type drift · 6 only moved · 2 not found in app
 EnF-ClaudeApiKey-2 web: matched 36/49 design items · 0 with size/type drift · 27 only moved · 13 not found in app
