@@ -100,6 +100,25 @@
 #   is keyboard focus; DmF-Ask-4: chip 2 reached with Tab and opened with Enter (focus ring + active card 2).
 # note Ask is disabled (lighter coral) while the question is empty (DM-57); the frames draw it enabled. Same geometry.
 # note Dm-Ask is DmF-Ask-3 with source 1 active (the card clicked); DmF-Ask-3 has no active card.
+# G7 (the Quality tab; scenarios domains-quality.mjs). Like Ask, the tab fills the page height and the table scrolls in its
+#   card, so on web everything sits 30px higher except the empty card's centred content (DmF-Qual-1/2), which moves 15px.
+#   Web "not found" adds the strip title as above.
+# note Dm-Quality web: 4 'Found' only moved 17px — nearest-match pairing: 30px higher, a design 'Found' is nearer the
+#   next row's 'Found' (47px rows) than its own; same size/type. Desktop pairs them exactly.
+# note Dm-Quality / DmF-Qual-5: the Compare with select shows "Previous run · Sep 24, 10:0…" as drawn (the run before the
+#   latest; its scores equal the latest, so no delta and no "fixed" marks — the app shows a delta only when a score moved).
+# note DmF-Qual-5: the table scrolls in its card; the scenario opens the webhook miss and scrolls the card three rows (the
+#   frame starts at "What is the API rate limit per minute?"). OQ-16: the hint reads "webhooks.md wasn’t in the top 8. Try
+#   “Both” search." (the frame's "or add “verify” as a key word" is dropped); it sits below the 900px fold on both.
+# note DmF-Qual-3: 6 not found — the frame's 'Found'/'Missed' badges behind the sheet while its own cards say "—" / "Not run
+#   yet"; with no run the app's result cells read "—" (DM-72/DM-76).
+# note DmF-Qual-4: the Compare with select is disabled "No earlier run" (DM-73) where the frame still draws "Previous run ·
+#   Sep 24, 10:02" over "Not run yet" (parity keys the select by its aria-label, so it matches). The estimate is 2.5 s a
+#   test until one finishes ("about 20 seconds" for 8), then the pace so far; the bar shows real progress (0 of 8 here,
+#   the frame draws 58%). Result cells show "—" while running (DM-75).
+# note DmF-Qual-1: the coral ring on Add test question is keyboard focus; DmF-Qual-3: Add test is reached with Tab.
+# note DmF-Qual-2: the file list shows the domain's files in Sources order (the scenario's first four are the frame's); it
+#   scrolls past four (max-height 238px) and filters as you type ("Type to search 14 files").
 Dm-Ask web: matched 63/68 design items · 0 with size/type drift · 55 only moved · 5 not found in app
 Dm-Ask desktop: matched 64/68 design items · 0 with size/type drift · 1 only moved · 4 not found in app
 Dm-List web: matched 57/58 design items · 0 with size/type drift · 55 only moved · 1 not found in app
@@ -108,6 +127,8 @@ Dm-ListEmpty web: matched 35/36 design items · 0 with size/type drift · 33 onl
 Dm-ListEmpty desktop: matched 36/36 design items · 0 with size/type drift · 1 only moved · 0 not found in app
 Dm-NewDialog web: matched 91/92 design items · 0 with size/type drift · 55 only moved · 1 not found in app
 Dm-NewDialog desktop: matched 92/92 design items · 0 with size/type drift · 3 only moved · 0 not found in app
+Dm-Quality web: matched 87/88 design items · 0 with size/type drift · 85 only moved · 1 not found in app
+Dm-Quality desktop: matched 88/88 design items · 0 with size/type drift · 1 only moved · 0 not found in app
 Dm-Sources web: matched 96/98 design items · 0 with size/type drift · 94 only moved · 2 not found in app
 Dm-Sources desktop: matched 97/98 design items · 0 with size/type drift · 1 only moved · 1 not found in app
 DmF-Ask-1 web: matched 51/52 design items · 0 with size/type drift · 43 only moved · 1 not found in app
@@ -188,3 +209,13 @@ DmF-Preview-1 web: matched 96/98 design items · 0 with size/type drift · 94 on
 DmF-Preview-1 desktop: matched 97/98 design items · 0 with size/type drift · 1 only moved · 1 not found in app
 DmF-Preview-2 web: matched 117/119 design items · 0 with size/type drift · 94 only moved · 2 not found in app
 DmF-Preview-2 desktop: matched 118/119 design items · 0 with size/type drift · 1 only moved · 1 not found in app
+DmF-Qual-1 web: matched 38/39 design items · 0 with size/type drift · 36 only moved · 1 not found in app
+DmF-Qual-1 desktop: matched 39/39 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DmF-Qual-2 web: matched 63/64 design items · 0 with size/type drift · 36 only moved · 1 not found in app
+DmF-Qual-2 desktop: matched 64/64 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DmF-Qual-3 web: matched 86/93 design items · 0 with size/type drift · 66 only moved · 7 not found in app
+DmF-Qual-3 desktop: matched 87/93 design items · 0 with size/type drift · 1 only moved · 6 not found in app
+DmF-Qual-4 web: matched 73/74 design items · 0 with size/type drift · 71 only moved · 1 not found in app
+DmF-Qual-4 desktop: matched 74/74 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DmF-Qual-5 web: matched 73/74 design items · 0 with size/type drift · 71 only moved · 1 not found in app
+DmF-Qual-5 desktop: matched 74/74 design items · 0 with size/type drift · 1 only moved · 0 not found in app
