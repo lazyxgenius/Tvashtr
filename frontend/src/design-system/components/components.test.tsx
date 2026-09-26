@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -203,6 +203,33 @@ describe("Toast", () => {
     await userEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(undo).toHaveBeenCalledOnce();
     expect(screen.queryByText("Removed pytest-review")).toBeNull();
+  });
+
+  it("sits bottom-centre by default and above the setup footer with placement setup", () => {
+    function Harness() {
+      const toast = useToast();
+      return (
+        <button type="button" onClick={() => toast({ message: "Signed in as lazyxgenius" })}>
+          go
+        </button>
+      );
+    }
+    const { rerender } = render(
+      <ToastProvider>
+        <Harness />
+      </ToastProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "go" }));
+    const region = screen.getByRole("status").parentElement!;
+    expect(region).toHaveClass("ds-toasts");
+    expect(region).not.toHaveClass("ds-toasts--setup");
+    rerender(
+      <ToastProvider placement="setup">
+        <Harness />
+      </ToastProvider>,
+    );
+    // The same toast moves with the placement (the setup frame took over the window).
+    expect(screen.getByRole("status").parentElement).toHaveClass("ds-toasts", "ds-toasts--setup");
   });
 
   it("is a no-op outside a provider", () => {
