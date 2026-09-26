@@ -89,8 +89,9 @@ export function AddKeySheet({
     }
     const where = desktop ? "on this computer" : "on the website";
     toast({
-      message:
-        seq.providers.length === 1
+      message: seq.savedMessage
+        ? seq.savedMessage(provider)
+        : seq.providers.length === 1
           ? `${provider} key saved. ${seq.teamName} can run ${where}.`
           : `Keys saved. ${seq.teamName} can run ${where}.`,
     });
@@ -102,11 +103,12 @@ export function AddKeySheet({
   const n = seq.providers.length;
   const note =
     n === 1
-      ? `Used by ${seq.teamName}`
+      ? (seq.note ?? `Used by ${seq.teamName}`)
       : seq.index < n - 1
         ? `Key ${seq.index + 1} of ${n} · then ${seq.providers[seq.index + 1]}`
         : `Key ${n} of ${n}`;
-  const example = exampleFor(provider, directory);
+  const example = seq.examples?.[provider] ?? exampleFor(provider, directory);
+  const plain = seq.plain === true;
   const choices = directory.length
     ? directory
     : seq.providers.map((p) => ({ provider: p, monogram: p.charAt(0).toUpperCase() }));
@@ -115,7 +117,7 @@ export function AddKeySheet({
     <Sheet
       open
       title="Add an API key"
-      subtitle="For website runs, and Desktop runs without a subscription"
+      subtitle={seq.subtitle ?? "For website runs, and Desktop runs without a subscription"}
       onClose={close}
       footerNote={note}
       footer={
@@ -142,13 +144,13 @@ export function AddKeySheet({
           trigger={
             <button
               type="button"
-              className="hm-key__provider"
+              className={plain ? "hm-key__provider hm-key__provider--plain" : "hm-key__provider"}
               aria-haspopup="listbox"
               aria-expanded={pickOpen}
               aria-labelledby="hm-key-provider"
               onClick={() => setPickOpen((o) => !o)}
             >
-              <LetterTile name={provider} tone="dark" />
+              {!plain && <LetterTile name={provider} tone="dark" />}
               <span className="hm-key__provider-name">{provider}</span>
               <span className="hm-picker__chev">
                 <ChevronDown size={15} strokeWidth={1.6} aria-hidden />
@@ -173,10 +175,16 @@ export function AddKeySheet({
             </button>
           ))}
         </Popover>
-        <span className="hm-key__hint">
-          Covers models that start with <code>{provider}/</code>
-          {example ? `, like ${example}.` : "."}
-        </span>
+        {plain ? (
+          <span className="hm-key__hint">
+            {`Covers models that start with ${provider}/${example ? `, like ${example}.` : "."}`}
+          </span>
+        ) : (
+          <span className="hm-key__hint">
+            Covers models that start with <code>{provider}/</code>
+            {example ? `, like ${example}.` : "."}
+          </span>
+        )}
       </div>
       <Input
         ref={keyRef}

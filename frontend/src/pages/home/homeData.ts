@@ -243,6 +243,17 @@ export interface AddKeysRequest {
   teamName: string;
   providers: string[];
   onDone?: () => void;
+  /** Callers outside Home (Domains' reading key, DmF-NoKey-2) replace Home's copy: */
+  /** the sheet's subtitle; */
+  subtitle?: string;
+  /** the footer note (a single key); */
+  note?: string;
+  /** the hint's example model per provider; */
+  examples?: Record<string, string>;
+  /** the toast after the last key is saved; */
+  savedMessage?: (provider: string) => string;
+  /** the provider trigger drawn without its letter tile, 40px tall, and a plain-text hint. */
+  plain?: boolean;
 }
 
 type Handler<T> = ((req: T) => void) | null;

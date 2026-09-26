@@ -363,6 +363,20 @@
   cursor: pointer;
   box-sizing: border-box;
 }
+/* Domains' reading-key sheet (DmF-NoKey-2): no letter tile, 40px, the darker line. */
+.hm-key__provider--plain {
+  height: 40px;
+  border-color: var(--line-400);
+  font-family: var(--font-code);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.hm-key__provider--plain > .hm-key__provider-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
 .hm-key__provider-name {
   font-family: var(--font-code);
   font-size: 13.5px;
