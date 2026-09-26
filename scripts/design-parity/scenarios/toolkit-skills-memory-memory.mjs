@@ -2,6 +2,7 @@
 // Scenario names are `<Artboard>-web` / `<Artboard>-desktop`, so the measurement lands in
 // /tmp/parity-toolkit-skills-memory/<Artboard>-<surface>.json next to the design's <Artboard>.json.
 import {
+  ACTIVE_ROWS,
   MEM_MUST_NOT,
   MEM_SHOULD,
   frozenClock,
@@ -51,6 +52,21 @@ const toastShown = async (page, text) => {
   await page.waitForTimeout(300);
 };
 
+const ACTIVE = "#/toolkit/memory/active";
+const activeRoutes = () => memoryRoutes({ activeRows: ACTIVE_ROWS });
+const activeRows = async (page) => {
+  await page.waitForSelector('section[aria-label="Active"] .mem-row');
+  await page.getByRole("tab", { name: /Active \d/ }).waitFor();
+  // The Repo filter's choices have loaded (repos with memories first).
+  await page.waitForLoadState("networkidle");
+};
+const openFilter = async (page, name) => {
+  await page.getByRole("combobox", { name }).click();
+  await page.getByRole("listbox", { name }).waitFor();
+  // The popover's pop-in animation finishes before the shot.
+  await page.waitForTimeout(250);
+};
+
 export default [
   // G4 — Memory shell + Inbox
   ...both("Toolkit-MemoryInbox", {
@@ -97,6 +113,75 @@ export default [
       await toastShown(page, "Discarded. You’ll find it in Archive.");
       await page.getByRole("heading", { name: "Inbox is clear" }).waitFor();
       await page.getByRole("tab", { name: "Inbox 0" }).waitFor();
+    },
+  }),
+  // G5 — Active, filters, empty
+  ...both("Toolkit-MemoryActive", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: activeRows,
+  }),
+  ...both("TkF-Filters-1", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      await activeRows(page);
+      await openFilter(page, "Repo");
+    },
+  }),
+  ...both("TkF-Filters-2", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      await activeRows(page);
+      await openFilter(page, "Scope");
+    },
+  }),
+  // The design highlights SHOULD in the open list: the pointer rests on it.
+  ...both("TkF-Filters-3", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      await activeRows(page);
+      await openFilter(page, "Force");
+      await page.getByRole("option", { name: "SHOULD", exact: true }).hover();
+    },
+  }),
+  ...both("TkF-Filters-4", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      await activeRows(page);
+      await openFilter(page, "Force");
+      await page.getByRole("option", { name: "SHOULD", exact: true }).click();
+      await page.getByText("1 of 14").waitFor();
+      await page.mouse.move(700, 800);
+    },
+  }),
+  ...both("TkF-Filters-5", {
+    path: ACTIVE,
+    routes: activeRoutes,
+    steps: async (page) => {
+      await activeRows(page);
+      const search = page.getByRole("textbox", { name: "Search memory" });
+      await search.fill("docker");
+      await page
+        .getByRole("heading", { name: "Nothing matches “docker”" })
+        .waitFor();
+      // The design draws the search at rest (no focus ring).
+      await search.evaluate((el) => el.blur());
+    },
+  }),
+  ...both("TkF-MemoryEmpty-1", {
+    path: ACTIVE,
+    routes: () => memoryRoutes({ pending: [], activeRows: [] }),
+    steps: async (page) => {
+      await page
+        .getByRole("heading", {
+          name: "Your agents haven’t learned anything yet",
+        })
+        .waitFor();
+      await page.getByRole("tab", { name: "Active 0" }).waitFor();
     },
   }),
 ];

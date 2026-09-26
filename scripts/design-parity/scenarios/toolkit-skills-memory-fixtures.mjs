@@ -351,6 +351,123 @@ export const MEM_MUST_NOT = memoryRow(
   },
 );
 
+// ---- The Active tab (Toolkit-MemoryActive, TkF-Filters-*) ----
+const ACCOUNT = {
+  repo_key: null,
+  repo_label: null,
+  tier: "account",
+  node_id: null,
+};
+const MANUAL = {
+  kind: "manual",
+  run_id: null,
+  run_title: null,
+  run_status: null,
+  run_succeeded: null,
+  round: null,
+  agent_role: null,
+  team_name: null,
+  node_id: null,
+};
+const active = (id, content, polarity, over = {}) =>
+  memoryRow(id, content, polarity, { status: "active", ...over });
+
+// The design's four rows, pinned first then newest: the pinned MUST (confirmed 3×), the Reviewer's
+// SHOULD (Sep 24), a CONTEXT note you added for every repo (Sep 20), a MAY learned twice (Sep 18).
+export const ACT_MUST = active(
+  "a-must",
+  "Run the tests with python -m pytest -q -p no:cacheprovider.",
+  "require",
+  {
+    pinned: true,
+    confirmation_count: 3,
+    created_at: day(25),
+    valid_from: day(25),
+  },
+);
+export const ACT_SHOULD = active(
+  "a-should",
+  "Approve only when the registry test and the TypeScript mirror list the same indicators.",
+  "prefer",
+  {
+    node_id: "n-rev",
+    tier: "node",
+    agent: REVIEWER,
+    created_at: day(24),
+    valid_from: day(24),
+  },
+);
+export const ACT_CONTEXT = active(
+  "a-context",
+  "The team ships to a Fly.io preview before the human merge gate.",
+  "context",
+  {
+    ...ACCOUNT,
+    source_run_id: null,
+    source_node_id: null,
+    source: MANUAL,
+    created_at: day(20),
+    valid_from: day(20),
+  },
+);
+export const ACT_MAY = active(
+  "a-may",
+  "Use uvx to run Python MCP servers locally.",
+  "allow",
+  {
+    ...ACCOUNT,
+    confirmation_count: 2,
+    created_at: day(18),
+    valid_from: day(18),
+  },
+);
+
+// "Active 14": ten older memories below the four the design draws (none a SHOULD, so filtering to
+// SHOULD reads "1 of 14").
+const OLDER = [
+  ["Keep indicator names lowercase with underscores.", "require"],
+  ["Every new indicator gets a registry test.", "require"],
+  ["Prefer pandas vectorised maths over Python loops.", "allow"],
+  ["The MCP server entry point is src/trade_mcp/server.py.", "context"],
+  ["Indicators return a DataFrame with the input's index.", "require"],
+  ["Don’t add a dependency without asking in the PR.", "avoid"],
+  ["Never commit .env files.", "forbid"],
+  ["Tests use fixtures from tests/fixtures/ohlcv.csv.", "context"],
+  ["CI runs on Python 3.12.", "context"],
+  ["Docs live in docs/indicators/, one page per indicator.", "allow"],
+].map(([content, polarity], i) =>
+  active(`a-old-${i}`, content, polarity, {
+    created_at: day(16 - i),
+    valid_from: day(16 - i),
+  }),
+);
+export const ACTIVE_ROWS = [
+  ACT_MUST,
+  ACT_SHOULD,
+  ACT_CONTEXT,
+  ACT_MAY,
+  ...OLDER,
+];
+
+// GET /api/memory/repos — sorted by label, like the backend; the page lists repos with memories
+// first (trade_mcp, then cryptoground-mcp, as the design draws them).
+export const MEMORY_REPOS = [
+  {
+    repo_key: "lazyxgenius/cryptoground-mcp",
+    label: "lazyxgenius/cryptoground-mcp",
+    memory_count: 0,
+    pending_count: 0,
+    last_run_at: day(24),
+  },
+  {
+    repo_key: "lazyxgenius/trade_mcp",
+    label: "lazyxgenius/trade_mcp",
+    memory_count: 12,
+    pending_count: 2,
+    last_run_at: day(25),
+  },
+];
+
 /**
  * A small stateful memory backend: Keep / Discard / Undo move rows between the Inbox and the
  * counts (the design's "Active 14", "Archive 3"), the review switch remembers its value.
@@ -358,15 +475,24 @@ export const MEM_MUST_NOT = memoryRow(
 export const memoryRoutes = ({
   pending = [MEM_SHOULD, MEM_MUST_NOT],
   active = 14,
+  activeRows = null,
   archive = 3,
   review = true,
 } = {}) => {
   const state = {
     pending: [...pending],
     away: new Map(),
+    // With rows, the Active tab lists them and the count follows them.
+    rows: activeRows ? [...activeRows] : null,
     active,
     archive,
     review,
+  };
+  const activeCount = () => (state.rows ? state.rows.length : state.active);
+  const row = (id) => state.rows?.find((x) => x.id === id);
+  const put = (m) => {
+    state.rows = state.rows.map((x) => (x.id === m.id ? m : x));
+    return { json: m };
   };
   const idAt = (req, fromEnd) =>
     new URL(req.url()).pathname.split("/").at(fromEnd);
@@ -383,14 +509,39 @@ export const memoryRoutes = ({
     "GET /api/teams": { teams: [] },
     "GET /api/memories": (req) => {
       const status = new URL(req.url()).searchParams.get("status");
-      return {
-        json: { memories: status === "pending_review" ? state.pending : [] },
-      };
+      const list =
+        status === "pending_review"
+          ? state.pending
+          : status === "active"
+            ? (state.rows ?? [])
+            : [];
+      return { json: { memories: list } };
+    },
+    "GET /api/memory/repos": { repos: MEMORY_REPOS },
+    "POST /api/memories/:id/pin": (req) => {
+      const m = row(idAt(req, -2));
+      return m ? put({ ...m, pinned: true }) : gone;
+    },
+    "POST /api/memories/:id/unpin": (req) => {
+      const m = row(idAt(req, -2));
+      return m ? put({ ...m, pinned: false }) : gone;
+    },
+    "PATCH /api/memories/:id": (req) => {
+      const m = row(idAt(req, -1));
+      if (!m) return gone;
+      const patch = JSON.parse(req.postData() ?? "{}");
+      return put({ ...m, ...patch, edited_at: ago(0), updated_at: ago(0) });
+    },
+    "DELETE /api/memories/:id": (req) => {
+      const m = row(idAt(req, -1));
+      if (!m) return gone;
+      state.rows = state.rows.filter((x) => x.id !== m.id);
+      return { status: 204, json: null };
     },
     "GET /api/memories/counts": () => ({
       json: {
         inbox: state.pending.length,
-        active: state.active,
+        active: activeCount(),
         archive: state.archive,
       },
     }),
@@ -405,6 +556,7 @@ export const memoryRoutes = ({
       const m = take(idAt(req, -2));
       if (!m) return gone;
       state.active += 1;
+      if (state.rows) state.rows.push({ ...m, status: "active" });
       return { json: { ...m, status: "active", action: "promote" } };
     },
     "POST /api/memories/:id/reject": (req) => {
