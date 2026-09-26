@@ -7,6 +7,7 @@ import {
   FORCE_VARIANT,
   NO_FILTERS,
   activeMeta,
+  archiveMeta,
   draftOf,
   editPatch,
   isFiltered,
@@ -14,10 +15,12 @@ import {
   matchesFilters,
   provenance,
   repoFilterOptions,
+  restoredMessage,
   scopeChip,
   scopeChoices,
   shortDate,
   sortActive,
+  sortArchive,
   sortNewestFirst,
   whenLabel,
 } from "./memoryModel";
@@ -27,6 +30,8 @@ import {
   ACT_MAY,
   ACT_MUST,
   ACT_SHOULD,
+  ARC_DISCARDED,
+  ARC_REPLACED,
   MEM_MUST_NOT,
   MEM_SHOULD,
   NOW,
@@ -282,5 +287,38 @@ describe("repoFilterOptions", () => {
       { value: "lazyxgenius/trade_mcp", label: "lazyxgenius/trade_mcp" },
     ]);
     expect(repoFilterOptions(null, [])).toEqual([{ value: "", label: "All repos" }]);
+  });
+});
+
+describe("the Archive", () => {
+  it("says how and when each memory left, like the design", () => {
+    expect(archiveMeta(ARC_REPLACED)).toBe("Replaced by a newer memory · Sep 22");
+    expect(archiveMeta(ARC_DISCARDED)).toBe("Discarded by you · Sep 21");
+  });
+
+  it("says a merged memory joined one you already had, and a fresh one when it happened", () => {
+    const merged = memory({
+      status: "superseded",
+      superseded_reason: "merged",
+      invalid_at: new Date(NOW).toISOString(),
+    });
+    expect(archiveMeta(merged)).toBe("Merged into a memory you already had · just now");
+    // An older server's row (no reason, no invalid_at) still reads like the design.
+    const legacy = memory({ status: "superseded", updated_at: "2026-09-19T12:00:00Z" });
+    expect(archiveMeta(legacy)).toBe("Replaced by a newer memory · Sep 19");
+  });
+
+  it("lists the most recently archived first", () => {
+    expect(sortArchive([ARC_DISCARDED, ARC_REPLACED])).toEqual([ARC_REPLACED, ARC_DISCARDED]);
+  });
+
+  it("Restore's toast follows what the backend did", () => {
+    expect(restoredMessage({ action: "promote" })).toBe("Restored to Active.");
+    expect(restoredMessage({ action: "promote_merged" })).toBe(
+      "Already known. Confirmed the existing memory.",
+    );
+    expect(restoredMessage({ action: "promote_supersede" })).toBe(
+      "Restored to Active. It replaces an older memory that said the opposite.",
+    );
   });
 });

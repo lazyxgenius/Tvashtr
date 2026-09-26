@@ -136,6 +136,32 @@ export const ACT_MAY = memory({
 });
 export const ACTIVE = [ACT_MUST, ACT_SHOULD, ACT_CONTEXT, ACT_MAY];
 
+/** TkF-Archive-1, top to bottom: a SHOULD a newer memory replaced on Sep 22… */
+export const ARC_REPLACED = memory({
+  id: "x-replaced",
+  content: "Run the tests with python -m pytest -q.",
+  polarity: "prefer",
+  status: "superseded",
+  superseded_by: "a-newer",
+  superseded_reason: "replaced",
+  created_at: "2026-09-10T12:00:00Z",
+  invalid_at: "2026-09-22T12:00:00Z",
+});
+/** …and the Engineer's MUST NOT you discarded on Sep 21. */
+export const ARC_DISCARDED = memory({
+  id: "x-discarded",
+  content: "Don’t touch web/lib at all.",
+  polarity: "forbid",
+  status: "rejected",
+  node_id: "n-eng",
+  tier: "node",
+  agent: { ...REVIEWER, node_id: "n-eng", role_name: "engineer" },
+  source_node_id: "n-eng",
+  created_at: "2026-09-21T09:00:00Z",
+  invalid_at: "2026-09-21T12:00:00Z",
+});
+export const ARCHIVE = [ARC_REPLACED, ARC_DISCARDED];
+
 function Badges() {
   const b = useNavBadges();
   return <output aria-label="memory badge">{b.memoryInbox ?? ""}</output>;

@@ -1,7 +1,7 @@
 /**
  * Toolkit › Memory — the pure labels behind the page (no JSX): force badges, the scope chip,
  * provenance lines, Keep's toast, the inline editor's scope choices and its patch, and the Active
- * tab's meta line, filters and order.
+ * tab's meta line, filters and order, and the Archive's rows and Restore toast.
  */
 import type { BadgeVariant } from "../../design-system/components";
 import type {
@@ -246,4 +246,37 @@ export function repoFilterOptions(repos: MemoryRepo[] | null, memories: Memory[]
     { value: "", label: "All repos" },
     ...keys.map((k) => ({ value: k, label: labels.get(k) ?? k })),
   ];
+}
+
+// ---- The Archive tab (TkF-Archive) ----
+
+/** When it left Active or the Inbox: `invalid_at` (set when it was replaced or discarded). */
+const archivedAt = (m: Memory): string => m.invalid_at ?? m.updated_at;
+
+/**
+ * MEM-26: "Replaced by a newer memory · Sep 22" / "Discarded by you · Sep 21". A memory a Keep or
+ * Restore folded into one you already had says so instead of claiming a newer one replaced it.
+ */
+export function archiveMeta(m: Memory): string {
+  const how =
+    m.status === "rejected"
+      ? "Discarded by you"
+      : m.superseded_reason === "merged"
+        ? "Merged into a memory you already had"
+        : "Replaced by a newer memory";
+  const when = activeWhen(archivedAt(m));
+  return when ? `${how} · ${when}` : how;
+}
+
+/** The Archive's order: most recently replaced or discarded first. */
+export function sortArchive(list: Memory[]): Memory[] {
+  return [...list].sort((a, b) => archivedAt(b).localeCompare(archivedAt(a)));
+}
+
+/** MEM-27: Restore's toast; a restore that only confirms a memory you had says that. */
+export function restoredMessage(res: Pick<PromoteResult, "action">): string {
+  if (res.action === "promote_merged") return "Already known. Confirmed the existing memory.";
+  if (res.action === "promote_supersede")
+    return "Restored to Active. It replaces an older memory that said the opposite.";
+  return "Restored to Active.";
 }
