@@ -96,9 +96,7 @@ RRF_K = 60
 DEFAULT_RERANK: dict = {"enabled": False, "model": None, "top_n": 20}
 
 
-def coerce_retrieval_mode(
-    config: dict | None, default: str = DEFAULT_RETRIEVAL_MODE
-) -> str:
+def coerce_retrieval_mode(config: dict | None, default: str = DEFAULT_RETRIEVAL_MODE) -> str:
     raw = (config or {}).get("retrieval") or {}
     if not isinstance(raw, dict):
         return default
@@ -134,16 +132,43 @@ DEFAULT_GRAPH: dict = {"enabled": False}
 
 _MENTION_STOP = frozenset(
     {
-        "the", "a", "an", "and", "or", "of", "in", "on", "for", "to", "is", "are",
-        "was", "were", "be", "by", "as", "at", "from", "with", "this", "that",
-        "it", "its", "we", "you", "they", "he", "she", "not", "but", "if",
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "of",
+        "in",
+        "on",
+        "for",
+        "to",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "by",
+        "as",
+        "at",
+        "from",
+        "with",
+        "this",
+        "that",
+        "it",
+        "its",
+        "we",
+        "you",
+        "they",
+        "he",
+        "she",
+        "not",
+        "but",
+        "if",
     }
 )
 
 # Capitalized / camelCase runs + ALLCAPS acronyms (len>=2); allow inner caps (OpenAI)
-_MENTION_RE = re.compile(
-    r"\b(?:[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)*)\b"
-)
+_MENTION_RE = re.compile(r"\b(?:[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)*)\b")
 
 
 def coerce_graph_config(config: dict | None) -> dict:
@@ -178,7 +203,6 @@ def extract_mentions(text: str) -> list[str]:
             if len(out) >= GRAPH_MENTION_CAP:
                 return out
     return out
-
 
 
 def rank_mention_neighbors(
@@ -278,7 +302,6 @@ def expand_chunks_by_shared_mentions(
     return rank_mention_neighbors(candidates, mentions, max_expand=cap)
 
 
-
 def candidate_k(top_k: int, rerank: dict) -> int:
     try:
         k = int(top_k)
@@ -318,18 +341,34 @@ def rrf_fuse(ranked_lists: list[list[dict]], k: int = RRF_K) -> list[dict]:
     return fused
 
 
+_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def _words(text: str) -> set[str]:
+    return set(_WORD_RE.findall(str(text or "").lower())) - _MENTION_STOP
+
+
 def apply_rerank(chunks: list[dict], query: str, rerank: dict) -> list[dict]:
-    """v1 passthrough. Reserved hook: a future LiteLLM rerank may use rerank['model'].
+    """ "Look wider, then keep the best" (DM-85): re-score the wider pool the caller fetched.
 
-    Today no first-party rerank API exists in-repo — always return chunks unchanged
-    (caller already expanded candidate_k when enabled).
+    Deterministic, no model and no cost: Reciprocal Rank Fusion of the pool's own order and its
+    exact-word overlap with the question (pieces sharing no word get no second term, as in
+    ``rrf_fuse``). The caller cuts the result to top_k. ``rerank['model']`` stays reserved.
     """
-    return chunks
+    if not rerank or not rerank.get("enabled") or len(chunks) < 2:
+        return chunks
+    terms = _words(query)
+    if not terms:
+        return chunks
+    overlap = [len(terms & _words(c.get("text") or "")) for c in chunks]
+    by_words = sorted((i for i in range(len(chunks)) if overlap[i]), key=lambda i: -overlap[i])
+    score = [1.0 / (RRF_K + i + 1) for i in range(len(chunks))]
+    for rank, i in enumerate(by_words, start=1):
+        score[i] += 1.0 / (RRF_K + rank)
+    return [chunks[i] for i in sorted(range(len(chunks)), key=lambda i: -score[i])]
 
 
-def retrieve_lexical_chunks(
-    domain_id: uuid.UUID, query: str, top_k: int
-) -> list[dict]:
+def retrieve_lexical_chunks(domain_id: uuid.UUID, query: str, top_k: int) -> list[dict]:
     """Return up to ``top_k`` ready chunks ranked by ``ts_rank`` descending.
 
     Uses ``plainto_tsquery('english', query)`` against generated ``text_tsv``.
@@ -381,7 +420,6 @@ def retrieve_lexical_chunks(
         return out
 
 
-
 def retrieve_for_query(
     domain_id: uuid.UUID,
     query: str,
@@ -395,7 +433,7 @@ def retrieve_for_query(
     """Shared retrieve path for Chat / Query node / HTTP retrieve / MCP.
 
     dense | lexical | hybrid (RRF). When rerank.enabled, fetch candidate_k then
-    passthrough-rerank and slice to top_k. When graph.enabled, append mention
+    re-score that pool (apply_rerank) and slice to top_k. When graph.enabled, append mention
     neighbors (up to GRAPH_EXPAND_MAX) after the seed slice.
     """
     try:
@@ -435,8 +473,6 @@ def retrieve_for_query(
     seeds = fused[:k_final]
     g = graph if isinstance(graph, dict) else {}
     if bool(g.get("enabled")):
-        neighbors = expand_chunks_by_shared_mentions(
-            domain_id, seeds, max_expand=GRAPH_EXPAND_MAX
-        )
+        neighbors = expand_chunks_by_shared_mentions(domain_id, seeds, max_expand=GRAPH_EXPAND_MAX)
         return seeds + neighbors
     return seeds

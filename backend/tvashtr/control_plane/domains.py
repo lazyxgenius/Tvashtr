@@ -35,6 +35,40 @@ def _reject_secret_keys(obj: object, *, path: str = "config") -> None:
             _reject_secret_keys(item, path=f"{path}[{i}]")
 
 
+# The Settings tab's own copy for its numbers (DM-83, DM-85).
+PIECE_SIZE_RANGE = "Use a number from 100 to 4,000."
+OVERLAP_SMALLER = "Overlap must be smaller than the piece size."
+PASSAGES_RANGE = "Use a number from 1 to 30."
+LOOK_WIDER_POOL = "Look wider needs at least as many passages as it keeps."
+
+
+def _whole(v: object) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _check_numbers(config: dict) -> None:
+    """Piece size 100–4,000, overlap 0…size−1, passages 1–30, and a Look-wider pool at least as
+    big as what it keeps. Keys a config leaves out are not checked (older configs)."""
+    chunking, retrieval = config["chunking"], config["retrieval"]
+    size = chunking.get("size", 800)
+    if "size" in chunking and not (_whole(size) and 100 <= size <= 4000):
+        raise ValueError(PIECE_SIZE_RANGE)
+    if "overlap" in chunking:
+        overlap = chunking["overlap"]
+        if not _whole(overlap) or overlap < 0:
+            raise ValueError(f"Use a number from 0 to {size - 1:,}.")
+        if overlap >= size:
+            raise ValueError(OVERLAP_SMALLER)
+    top_k = retrieval.get("top_k", 8)
+    if "top_k" in retrieval and not (_whole(top_k) and 1 <= top_k <= 30):
+        raise ValueError(PASSAGES_RANGE)
+    rerank = retrieval.get("rerank")
+    if isinstance(rerank, dict) and rerank.get("enabled") is True:
+        top_n = rerank.get("top_n", 20)
+        if _whole(top_n) and top_n < top_k:
+            raise ValueError(LOOK_WIDER_POOL)
+
+
 def validate_domain_config(config: dict) -> None:
     """Enforce Phase 1 v1 shape + secret denylist. Raises ValueError → API 422."""
     if not isinstance(config, dict):
@@ -68,6 +102,7 @@ def validate_domain_config(config: dict) -> None:
             "or huggingface/BAAI/bge-small-en-v1.5 (384)"
         )
 
+    _check_numbers(config)
     retrieval = config["retrieval"]
     mode = retrieval.get("mode")
     if mode is not None and str(mode).strip() != "":
@@ -440,9 +475,11 @@ def update_domain(
     name: str | None = None,
     config: dict | None = None,
     name_rule: bool = False,
+    template: str | None = None,
 ) -> dict | None:
     """Rename and/or replace the settings. ``name_rule`` applies the account's name rule to a new
-    name (``clean_domain_name``, the domain itself excluded) — the HTTP PATCH sets it (DM-14)."""
+    name (``clean_domain_name``, the domain itself excluded) — the HTTP PATCH sets it (DM-14).
+    ``template`` is the Settings tab's starting point (DM-81); the route checks it's a known one."""
     with session_scope() as session:
         row = session.execute(
             select(Domain).where(Domain.id == domain_id, Domain.owner_id == owner_id)
@@ -456,6 +493,8 @@ def update_domain(
             if not cleaned:
                 raise ValueError("a domain name is required")
             row.name = cleaned
+        if template is not None:
+            row.template = template
         if config is not None:
             validate_domain_config(config)
             old_model = normalize_embedding_model(

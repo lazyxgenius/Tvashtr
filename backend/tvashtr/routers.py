@@ -67,6 +67,7 @@ from tvashtr.control_plane.domain_eval import (
 from tvashtr.control_plane.domain_files import MAX_UPLOAD_BYTES
 from tvashtr.control_plane.domain_ingest import ingest_domain, normalize_embedding_model
 from tvashtr.control_plane.domains import (
+    DOMAIN_TEMPLATE_KEYS,
     DomainNameTaken,
     _owned_domain,
     create_document,
@@ -344,6 +345,8 @@ class CreateDomainRequest(BaseModel):
 class UpdateDomainRequest(BaseModel):
     name: str | None = None
     config: dict | None = None
+    # Revamp (DM-81): the Settings tab's starting point.
+    template: str | None = None
 
 
 class DomainAskRequest(BaseModel):
@@ -2714,6 +2717,8 @@ def patch_domain(
     body: UpdateDomainRequest,
     current_user: Annotated[UserOut, Depends(get_current_user)],
 ) -> dict:
+    if body.template is not None and body.template not in DOMAIN_TEMPLATE_KEYS:
+        raise HTTPException(status_code=400, detail="unknown template")
     try:
         row = update_domain(
             uuid.UUID(current_user.id),
@@ -2722,6 +2727,7 @@ def patch_domain(
             config=body.config,
             # Revamp (DM-14): a rename follows the account's name rule (409 on a clash).
             name_rule=True,
+            template=body.template,
         )
     except DomainNameTaken as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

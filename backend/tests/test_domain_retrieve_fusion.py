@@ -1,4 +1,7 @@
-"""Phase 5 — retrieval knobs, RRF fusion, rerank passthrough."""
+"""Phase 5 — retrieval knobs, RRF fusion, rerank re-score (revamp DM-85)."""
+
+import uuid
+from unittest.mock import patch
 
 from tvashtr.control_plane.domain_retrieve import (
     DEFAULT_RETRIEVAL_MODE,
@@ -7,6 +10,7 @@ from tvashtr.control_plane.domain_retrieve import (
     candidate_k,
     coerce_rerank_config,
     coerce_retrieval_mode,
+    retrieve_for_query,
     rrf_fuse,
 )
 
@@ -66,23 +70,19 @@ def test_rrf_single_list_preserves_order():
     assert [c["chunk_id"] for c in fused] == ["a", "b"]
 
 
-def test_apply_rerank_is_passthrough_even_with_model():
+def test_apply_rerank_rescores_the_pool_by_exact_words_even_with_model():
+    # Revamp DM-85 (analysis finding 5): the rerank is no longer a passthrough — a piece sharing
+    # the question's words moves above one that shares none; the model name stays unused.
     chunks = [
         {"chunk_id": "a", "text": "a", "score": 1.0},
-        {"chunk_id": "b", "text": "b", "score": 0.5},
+        {"chunk_id": "b", "text": "query words", "score": 0.5},
     ]
     out = apply_rerank(
         chunks,
         "query",
         {"enabled": True, "model": "some-rerank-model", "top_n": 20},
     )
-    assert out is chunks or [c["chunk_id"] for c in out] == ["a", "b"]
-
-
-import uuid
-from unittest.mock import patch
-
-from tvashtr.control_plane.domain_retrieve import retrieve_for_query
+    assert [c["chunk_id"] for c in out] == ["b", "a"]
 
 
 def _chunk(cid: str, text: str, score: float = 0.5) -> dict:
@@ -99,13 +99,16 @@ def _chunk(cid: str, text: str, score: float = 0.5) -> dict:
 def test_retrieve_for_query_dense_does_not_call_lexical():
     did = uuid.uuid4()
     dense_hits = [_chunk("a", "alpha", 0.9)]
-    with patch(
-        "tvashtr.control_plane.domain_retrieve.retrieve_domain_chunks",
-        return_value=dense_hits,
-    ) as dense, patch(
-        "tvashtr.control_plane.domain_retrieve.retrieve_lexical_chunks",
-        return_value=[],
-    ) as lex:
+    with (
+        patch(
+            "tvashtr.control_plane.domain_retrieve.retrieve_domain_chunks",
+            return_value=dense_hits,
+        ) as dense,
+        patch(
+            "tvashtr.control_plane.domain_retrieve.retrieve_lexical_chunks",
+            return_value=[],
+        ) as lex,
+    ):
         out = retrieve_for_query(
             did,
             "q",
@@ -122,13 +125,16 @@ def test_retrieve_for_query_dense_does_not_call_lexical():
 def test_retrieve_for_query_lexical_skips_dense():
     did = uuid.uuid4()
     lex_hits = [_chunk("b", "bravo", 0.4)]
-    with patch(
-        "tvashtr.control_plane.domain_retrieve.retrieve_domain_chunks",
-        return_value=[_chunk("a", "nope")],
-    ) as dense, patch(
-        "tvashtr.control_plane.domain_retrieve.retrieve_lexical_chunks",
-        return_value=lex_hits,
-    ) as lex:
+    with (
+        patch(
+            "tvashtr.control_plane.domain_retrieve.retrieve_domain_chunks",
+            return_value=[_chunk("a", "nope")],
+        ) as dense,
+        patch(
+            "tvashtr.control_plane.domain_retrieve.retrieve_lexical_chunks",
+            return_value=lex_hits,
+        ) as lex,
+    ):
         out = retrieve_for_query(
             did,
             "q",
@@ -145,13 +151,16 @@ def test_retrieve_for_query_hybrid_rrf_and_rerank_expands_pool():
     did = uuid.uuid4()
     dense_hits = [_chunk("x", "x", 0.9), _chunk("y", "y", 0.8)]
     lex_hits = [_chunk("y", "y", 0.7), _chunk("z", "z", 0.6)]
-    with patch(
-        "tvashtr.control_plane.domain_retrieve.retrieve_domain_chunks",
-        return_value=dense_hits,
-    ) as dense, patch(
-        "tvashtr.control_plane.domain_retrieve.retrieve_lexical_chunks",
-        return_value=lex_hits,
-    ) as lex:
+    with (
+        patch(
+            "tvashtr.control_plane.domain_retrieve.retrieve_domain_chunks",
+            return_value=dense_hits,
+        ) as dense,
+        patch(
+            "tvashtr.control_plane.domain_retrieve.retrieve_lexical_chunks",
+            return_value=lex_hits,
+        ) as lex,
+    ):
         out = retrieve_for_query(
             did,
             "q",
@@ -168,15 +177,16 @@ def test_retrieve_for_query_hybrid_rrf_and_rerank_expands_pool():
 
 def test_retrieve_for_query_unknown_mode_is_dense():
     did = uuid.uuid4()
-    with patch(
-        "tvashtr.control_plane.domain_retrieve.retrieve_domain_chunks",
-        return_value=[_chunk("a", "a")],
-    ) as dense, patch(
-        "tvashtr.control_plane.domain_retrieve.retrieve_lexical_chunks",
-    ) as lex:
-        retrieve_for_query(
-            did, "q", query_embedding=[0.0], top_k=1, mode="colbert"
-        )
+    with (
+        patch(
+            "tvashtr.control_plane.domain_retrieve.retrieve_domain_chunks",
+            return_value=[_chunk("a", "a")],
+        ) as dense,
+        patch(
+            "tvashtr.control_plane.domain_retrieve.retrieve_lexical_chunks",
+        ) as lex,
+    ):
+        retrieve_for_query(did, "q", query_embedding=[0.0], top_k=1, mode="colbert")
     dense.assert_called_once()
     lex.assert_not_called()
 
@@ -185,12 +195,15 @@ def test_retrieve_for_query_graph_omitted_does_not_expand():
     """Smoke: graph default/omitted leaves dense path unchanged (Phase 7)."""
     did = uuid.uuid4()
     dense_hits = [_chunk("a", "Acme Corp", 0.9)]
-    with patch(
-        "tvashtr.control_plane.domain_retrieve.retrieve_domain_chunks",
-        return_value=dense_hits,
-    ), patch(
-        "tvashtr.control_plane.domain_retrieve.expand_chunks_by_shared_mentions",
-    ) as exp:
+    with (
+        patch(
+            "tvashtr.control_plane.domain_retrieve.retrieve_domain_chunks",
+            return_value=dense_hits,
+        ),
+        patch(
+            "tvashtr.control_plane.domain_retrieve.expand_chunks_by_shared_mentions",
+        ) as exp,
+    ):
         out = retrieve_for_query(
             did,
             "q",
