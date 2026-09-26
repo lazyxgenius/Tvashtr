@@ -23,6 +23,21 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("AuthGate on Tvashtr Desktop", () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.tvashtrDesktop;
+    delete window.tvashtrDesktop;
+  });
+
+  it("hands over to the Desktop launch screens: Welcome, never the landing page (DT-1)", async () => {
+    document.documentElement.dataset.tvashtrDesktop = "true";
+    stubMe(401);
+    render(<AuthGate />);
+    expect(await screen.findByRole("heading", { name: "Welcome to Tvashtr" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start building" })).toBeNull();
+  });
+});
+
 describe("AuthGate", () => {
   it("shows the LANDING page (not the canvas, not login) when unauthenticated (401)", async () => {
     stubMe(401);
