@@ -12,6 +12,7 @@ import { RunWarnings } from "./components/RunWarnings";
 import { TasksDrawer } from "./components/TasksDrawer";
 import { NodeEditor } from "./panel/NodeEditor";
 import { SidePanel } from "./panel/SidePanel";
+import type { LeaveGuard } from "./panel/useUnsavedGuard";
 import {
   acknowledgeTask,
   type AuthUser,
@@ -161,6 +162,15 @@ export default function App({
       setPlace({ node: id, tab: id ? place.tab : "setup", focus: id ? place.focus : false }),
     [setPlace, place.tab, place.focus],
   );
+  // PANEL-21: the open agent drawer registers its unsaved-changes guard here. Everything that would
+  // drop its draft (Close, selecting another node, leaving the canvas) goes through `guardLeave`,
+  // which runs at once when the draft is clean and otherwise asks "Save your changes to <Name>?".
+  const leaveGuardRef = useRef<LeaveGuard | null>(null);
+  const guardLeave = useCallback((proceed: () => void) => {
+    const guard = leaveGuardRef.current;
+    if (guard) guard(proceed);
+    else proceed();
+  }, []);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   // F1c: the dock⇄pop-up viewing preference — SESSION-STICKY. It survives closing/reselecting a node
   // and the author↔run switch (it is NOT part of resetRunState); a reload starts docked. NOT persisted
@@ -305,7 +315,7 @@ export default function App({
         await loadTeam(currentTeamId);
         // Thinker/worker → open the existing side panel on the new node (gate/terminal: not selected).
         if (mountedRef.current && (created.kind === "agent" || created.kind === "completion")) {
-          setSelectedNodeId(created.id);
+          guardLeave(() => setSelectedNodeId(created.id));
         }
       } catch {
         if (mountedRef.current) setTeamError(true);
@@ -313,7 +323,7 @@ export default function App({
         if (mountedRef.current) setEditBusy(false);
       }
     },
-    [currentTeamId, teamGraph, loadTeam, setSelectedNodeId],
+    [currentTeamId, teamGraph, loadTeam, setSelectedNodeId, guardLeave],
   );
 
   // A drawn edge S → T, with its role chosen in the inline editor. A bounded rework loop ALSO
@@ -398,17 +408,24 @@ export default function App({
     setPanelMode((m) => (m === "drawer" ? "modal" : "drawer"));
   }, []);
 
-  // Author-canvas node selection (a card-body click / the pane-click deselect).
+  // Author-canvas node selection (a card-body click / the pane-click deselect / the drawer's Close).
   const handleSelectNodeId = useCallback(
-    (id: string | null) => setSelectedNodeId(id),
-    [setSelectedNodeId],
+    (id: string | null) => {
+      if (id === selectedNodeId) return;
+      guardLeave(() => setSelectedNodeId(id));
+    },
+    [selectedNodeId, setSelectedNodeId, guardLeave],
   );
 
   // The node card's model chip was clicked (author mode): open that agent on Setup, where its Model
   // row is.
   const handleOpenModel = useCallback(
-    (nodeId: string) => setPlace({ node: nodeId, tab: "setup", focus: false }),
-    [setPlace],
+    (nodeId: string) => {
+      const open = () => setPlace({ node: nodeId, tab: "setup", focus: false });
+      if (nodeId === selectedNodeId) open();
+      else guardLeave(open);
+    },
+    [setPlace, selectedNodeId, guardLeave],
   );
 
   useEffect(() => {
@@ -626,13 +643,15 @@ export default function App({
       : credentialGate !== null
         ? credentialBlock(missingProviders, launchTarget === "local")
         : null;
-  const openEngines = onBackToDashboard ? () => onBackToDashboard("engines") : undefined;
+  const openEngines = onBackToDashboard
+    ? () => guardLeave(() => onBackToDashboard("engines"))
+    : undefined;
 
   return (
     <>
       <CanvasHeader user={user} onLogout={onLogout} />
       <CanvasToolbar
-        onBack={onBackToDashboard ? () => onBackToDashboard() : undefined}
+        onBack={onBackToDashboard ? () => guardLeave(() => onBackToDashboard()) : undefined}
         // One launch surface (spec §4.6, Q18): Run opens Home's "Start a run" composer with this
         // team picked.
         run={
@@ -641,7 +660,8 @@ export default function App({
                 disabled: currentTeamId === null || !canLaunch,
                 title: runBlock?.title,
                 onRun: () =>
-                  currentTeamId && requestHomeAction({ kind: "new-run", teamId: currentTeamId }),
+                  currentTeamId &&
+                  guardLeave(() => requestHomeAction({ kind: "new-run", teamId: currentTeamId })),
               }
             : undefined
         }
@@ -721,7 +741,11 @@ export default function App({
                 onFocusChange={(focus) => setPlace({ ...place, focus })}
                 onClose={() => handleSelectNodeId(null)}
                 onSaved={() => loadTeam(currentTeamId)}
-                onManageMemory={onBackToDashboard ? () => onBackToDashboard("tools") : undefined}
+                onManageMemory={
+                  onBackToDashboard ? () => guardLeave(() => onBackToDashboard("tools")) : undefined
+                }
+                guardRef={leaveGuardRef}
+                onDelete={() => handleDeleteNodes([selectedTeamNode.id])}
               />
             )
           : selectedRunNode && (

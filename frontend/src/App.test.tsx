@@ -379,6 +379,78 @@ describe("App — the agent drawer (F5)", () => {
   });
 });
 
+describe("App — the drawer asks before dropping unsaved changes (F5 G2)", () => {
+  function nodeCard(label: string): Element {
+    const card = screen
+      .getAllByText(label)
+      .map((el) => el.closest(".react-flow__node"))
+      .find((el): el is Element => el !== null);
+    expect(card).toBeTruthy();
+    return card as Element;
+  }
+
+  async function dirtyEngineer(onBack = vi.fn()) {
+    render(<App teamId="team-1" node="tn-eng" onBackToDashboard={onBack} />);
+    const panel = await screen.findByRole("complementary", { name: "Engineer settings" });
+    fireEvent.click(within(panel).getByRole("switch", { name: "Images" }));
+    expect(within(panel).getByText("1 unsaved change")).toBeInTheDocument();
+    return { panel, onBack };
+  }
+
+  it("selecting another agent asks first; Keep editing stays, Discard moves on", async () => {
+    const { panel } = await dirtyEngineer();
+    fireEvent.click(nodeCard("Product manager"));
+    const dialog = within(panel).getByRole("alertdialog", { name: "Unsaved changes" });
+    expect(dialog).toHaveTextContent("Save your changes to Engineer?");
+    expect(dialog).toHaveAccessibleDescription("You changed images.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+    expect(screen.getByRole("complementary", { name: "Engineer settings" })).toBeInTheDocument();
+
+    fireEvent.click(nodeCard("Product manager"));
+    fireEvent.click(
+      within(within(panel).getByRole("alertdialog")).getByRole("button", { name: "Discard" }),
+    );
+    await screen.findByRole("complementary", { name: "Product manager settings" });
+    expect(fetchMock.mock.calls.some((c) => (c[1] as RequestInit)?.method === "PATCH")).toBe(false);
+  });
+
+  it("Close and Back to teams ask too", async () => {
+    const { panel, onBack } = await dirtyEngineer();
+    fireEvent.click(within(panel).getByRole("button", { name: "Close panel" }));
+    fireEvent.click(
+      within(within(panel).getByRole("alertdialog")).getByRole("button", { name: "Keep editing" }),
+    );
+    expect(screen.getByRole("complementary", { name: "Engineer settings" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to teams" }));
+    expect(onBack).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(within(panel).getByRole("alertdialog")).getByRole("button", { name: "Discard" }),
+    );
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("Delete agent (⋯) deletes the node and closes the drawer", async () => {
+    render(<App teamId="team-1" node="tn-eng" />);
+    const panel = await screen.findByRole("complementary", { name: "Engineer settings" });
+    fireEvent.click(within(panel).getByRole("button", { name: "More actions" }));
+    fireEvent.click(within(panel).getByRole("menuitem", { name: /^Delete agent/ }));
+    const dialog = within(panel).getByRole("alertdialog", { name: "Delete Engineer?" });
+    expect(dialog).toHaveTextContent("Past runs keep their results.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete agent" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Engineer settings" })).toBeNull(),
+    );
+    expect(
+      fetchMock.mock.calls.some(
+        (c) =>
+          urlOf(c[0] as RequestInfo | URL) === "/api/teams/team-1/nodes/tn-eng" &&
+          (c[1] as RequestInit)?.method === "DELETE",
+      ),
+    ).toBe(true);
+  });
+});
+
 // ---- F-canvas-fidelity-1: the canvas SCREEN SHELL (Part A rail / Part B header / Part C toolbar) ----
 
 describe("App — Run opens Home's composer", () => {
