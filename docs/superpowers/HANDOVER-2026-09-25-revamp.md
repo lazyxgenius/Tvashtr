@@ -34,9 +34,14 @@ Docs → Domains → Desktop app screens → website → Phase 3 close-out.
 - **Privacy fix found by the Phase 1 review:** `GET /api/spike/run-events/{run_id}` returned any
   run's events (agent thoughts, actions, terminal output) to any signed-in account. Now 404 unless
   the run is yours. Reproduced first.
-- Live proof: `make demo-proof` C1–C12 PASS, real PR https://github.com/lazyxgenius/trade_mcp/pull/14
-  (run 0d4bb37d). In that run the PM wrote REPORT.md itself, so the fallback was not exercised live;
-  it is proven by the reproduction tests.
+- **Ship takes an agent's own commits.** The OpenHands system prompt tells agents to commit; in live
+  run 42e08600 the Engineer did (`git add docs/DEMO_PROOF.md && git commit`), Ship found nothing
+  staged, raised "nothing to ship", and the run never ended. `shipping.idempotent_ship` now ships the
+  commits the run's branch gained since it was created (its reflog's first entry). Reproduced first.
+- Live proofs: `make demo-proof` #1 C1–C12 PASS, real PR https://github.com/lazyxgenius/trade_mcp/pull/14
+  (run 0d4bb37d; the PM wrote REPORT.md itself). #2 (run 42e08600): the PM did NOT write REPORT.md,
+  the fallback fired live (warning recorded, its reply became spec v1, the spec gate showed it), then
+  Ship hit the self-commit bug above. The final proof on the shipped HEAD is in the ship report.
 - Known limits (review, verified real, deliberately not changed — both only fall back to today's
   failure): (1) a backend crash while the PM's step runs → DBOS re-runs it, and the re-run's events
   can collide with the crashed attempt's rows on `(run_id, invocation_id, seq)`, so the fallback may
