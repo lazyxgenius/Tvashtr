@@ -123,10 +123,11 @@ test("endpoint-edit: a Ship terminal flips to Stop in the drawer, persists, keep
   await page.screenshot({ path: path.join(SHOTS_DIR, "check4-canvas-stop-edges.png") });
   console.log("[endpoint-edit-e2e] CHECK 4 PASS — canvas shows Stop; in-edges unchanged");
 
-  // CHECK 5 — reload keeps the canvas address (the page reopens the same team): still Stop. Then
-  //           back to Home and re-open the team from the palette: still Stop.
+  // CHECK 5 — reload keeps the canvas address, open drawer included (the page reopens the same
+  //           team on the same node): still Stop. Then back to Home and re-open the team from the
+  //           palette: still Stop.
   await page.reload();
-  await expect(page).toHaveURL(new RegExp(`#/teams/${teamId}$`));
+  await expect(page).toHaveURL(new RegExp(`#/teams/${teamId}\\?node=${ship.id}$`));
   // API durability first (independent of FE selection).
   await expect
     .poll(
