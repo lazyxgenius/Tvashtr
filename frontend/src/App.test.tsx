@@ -401,6 +401,17 @@ describe("App — the drawer asks before dropping unsaved changes (F5 G2)", () =
     return { panel, onBack };
   }
 
+  it("the model picker's 'Add a provider' asks first, then opens Engines › API keys (F5 G4)", async () => {
+    const { panel } = await dirtyEngineer();
+    const model = within(panel).getByRole("region", { name: "Model" });
+    fireEvent.click(within(model).getByRole("button", { name: "openai/gpt-4o-mini" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Add a provider" }));
+    const dialog = within(panel).getByRole("alertdialog", { name: "Unsaved changes" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard" }));
+    expect(window.location.hash).toBe("#/engines/keys");
+    window.location.hash = "";
+  });
+
   it("selecting another agent asks first; Keep editing stays, Discard moves on", async () => {
     const { panel } = await dirtyEngineer();
     fireEvent.click(nodeCard("Product manager"));
