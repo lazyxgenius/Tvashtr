@@ -79,6 +79,16 @@
   line-height: 1.6;
   color: var(--ink-600);
 }
+/* The entry agent's plain lines (Docs-PanelPM): no box. */
+.nd-docs__text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.nd-docs__text b {
+  font-weight: 600;
+}
 .nd-docs__all {
   display: inline-flex;
   align-items: center;

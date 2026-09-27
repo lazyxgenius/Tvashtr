@@ -151,10 +151,10 @@ describe("Documents on the canvas", () => {
     expect(button).toHaveAttribute("aria-pressed", "false");
     // The chips sit on their writers' cards.
     const chip = await screen.findByRole("button", { name: "Shared spec v3" });
-    expect(chip.closest(".react-flow__node")).toHaveTextContent("Product manager");
-    expect(
-      screen.getByRole("button", { name: "build-notes v2" }).closest(".react-flow__node"),
-    ).toHaveTextContent("Engineer");
+    const chipNode = (el: Element) =>
+      el.closest(".react-flow__node-toolbar")?.getAttribute("data-id");
+    expect(chipNode(chip)).toBe("tn-pm");
+    expect(chipNode(screen.getByRole("button", { name: "build-notes v2" }))).toBe("tn-eng");
 
     fireEvent.click(button);
     expect(button).toHaveAttribute("aria-pressed", "true");

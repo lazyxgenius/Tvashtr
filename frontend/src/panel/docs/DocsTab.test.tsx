@@ -180,9 +180,9 @@ describe("Docs tab", () => {
 
   it("the entry agent writes the spec and reads the idea; a new agent has no documents yet", async () => {
     renderDocs(reviewer({ last_run: ran }), { isEntry: true });
-    expect(
-      await screen.findByText("Reviewer is the entry agent, so it writes the Shared spec above."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/is the entry agent, so it writes the/)).toHaveTextContent(
+      "Reviewer is the entry agent, so it writes the Shared spec above.",
+    );
     expect(screen.getByText("The idea you type when you press Run.")).toBeInTheDocument();
   });
 

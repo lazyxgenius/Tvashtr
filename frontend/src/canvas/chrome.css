@@ -178,12 +178,9 @@
   color: var(--ink-600);
 }
 
-/* DOCS-11: the documents an agent wrote, as chips on its card's lower-left edge. */
+/* DOCS-11: the documents an agent wrote, as chips on its card's lower-left edge (a NodeToolbar:
+   React Flow places it and keeps it unscaled). */
 .cv-doc-chips {
-  position: absolute;
-  left: -1px;
-  top: 119px;
-  z-index: 2;
   display: flex;
   gap: 6px;
 }

@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, NodeToolbar, Position, type NodeProps } from "@xyflow/react";
 import {
   Check,
   ClipboardCheck,
@@ -181,14 +181,21 @@ function ModelChip({ nodeId, model }: { nodeId: string; model: string }) {
   );
 }
 
-/** DOCS-11: the documents this agent wrote, as chips on the card's lower-left edge ("Shared spec v3"
- *  coral, "build-notes v2" neutral); a click opens the document. */
+/** DOCS-11: the documents this agent wrote, as chips straddling the card's lower-left edge ("Shared
+ *  spec v3" coral, "build-notes v2" neutral); a click opens the document. A `NodeToolbar`, so the
+ *  chips keep their size at any zoom. */
 function DocChips({ nodeId }: { nodeId: string }) {
   const { docChips, onOpenDoc } = useContext(AuthoringContext);
   const docs = docChips?.get(nodeId);
   if (!docs?.length) return null;
   return (
-    <div className="cv-doc-chips nodrag nopan">
+    <NodeToolbar
+      isVisible
+      position={Position.Bottom}
+      align="start"
+      offset={-12}
+      className="cv-doc-chips nodrag nopan"
+    >
       {docs.map((doc) => (
         <button
           key={doc.id}
@@ -207,7 +214,7 @@ function DocChips({ nodeId }: { nodeId: string }) {
           {docLabel(doc)} v{doc.latest_version?.version_no}
         </button>
       ))}
-    </div>
+    </NodeToolbar>
   );
 }
 

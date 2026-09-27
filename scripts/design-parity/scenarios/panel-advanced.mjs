@@ -23,7 +23,7 @@ const seenDisclosure = () =>
 
 // The website render of a Desktop board: the web has no title strip, so the page is framed 30px
 // down, where the Desktop board draws it (as panel-shell's Main).
-const underTitleStrip = (page) =>
+export const underTitleStrip = (page) =>
   page.addStyleTag({
     content: "body { padding-top: 30px; box-sizing: border-box; }",
   });

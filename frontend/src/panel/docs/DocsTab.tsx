@@ -108,7 +108,11 @@ function RunDocs({
     );
     let writes: ReactNode;
     if (isEntry) {
-      writes = <Note>{name} is the entry agent, so it writes the Shared spec above.</Note>;
+      writes = (
+        <p className="nd-docs__text">
+          {name} is the entry agent, so it writes the <b>Shared spec</b> above.
+        </p>
+      );
     } else if (mine.writes.length > 0 || mine.missingWrite) {
       writes = (
         <ul className="nd-docs__list">
@@ -132,7 +136,7 @@ function RunDocs({
     }
     let reads: ReactNode;
     if (isEntry) {
-      reads = <Note>The idea you type when you press Run.</Note>;
+      reads = <p className="nd-docs__text">The idea you type when you press Run.</p>;
     } else if (mine.reads.length > 0 || mine.missingReads.length > 0) {
       reads = (
         <ul className="nd-docs__list">
