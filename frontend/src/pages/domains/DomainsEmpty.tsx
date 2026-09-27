@@ -82,7 +82,10 @@ export function DomainsEmpty({
           <span className="dm-hint__text">
             You’ll need an API key for a reading model, like OpenAI. There’s also a free Hugging
             Face option for testing.{" "}
-            <a className="dm-link" href={routeToHash({ page: "engines", tab: "keys" })}>
+            <a
+              className="dm-link"
+              href={routeToHash({ page: "engines", tab: "keys", embeddings: true })}
+            >
               Check Engines
             </a>
           </span>

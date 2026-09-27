@@ -77,7 +77,7 @@ test("node-ask: the Ask tab answers a question about what a node did", async ({ 
   await page.getByRole("button", { name: "Ask", exact: true }).click();
   await expect(page.getByLabel("Ask this node")).toBeVisible({ timeout: 30_000 });
   const askShot = path.join(SHOTS_DIR, "ask-tab-open.png");
-  await page.locator(".tv-panel").screenshot({ path: askShot });
+  await page.locator(".nd-drawer").screenshot({ path: askShot });
   console.log(`[node-ask-e2e] Ask tab open; screenshot -> ${askShot}`);
 
   // 6. Ask what the node did and assert a NON-EMPTY answer renders (a REAL deepseek completion, keyed
@@ -91,7 +91,7 @@ test("node-ask: the Ask tab answers a question about what a node did", async ({ 
   console.log(`[node-ask-e2e] answer: ${answerText.slice(0, 160)}`);
 
   const answerShot = path.join(SHOTS_DIR, "ask-tab-answer.png");
-  await page.locator(".tv-panel").screenshot({ path: answerShot });
+  await page.locator(".nd-drawer").screenshot({ path: answerShot });
   console.log(`[node-ask-e2e] answer rendered; screenshot -> ${answerShot}`);
 
   expect(fs.existsSync(askShot) && fs.existsSync(answerShot), "both screenshots saved").toBe(true);

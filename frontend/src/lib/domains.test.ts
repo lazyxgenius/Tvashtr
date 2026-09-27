@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  domainsMcpAccountToolsHint,
-  sameEmbeddingWeights,
-  normalizeEmbeddingModel,
-} from "./domains";
+import { sameEmbeddingWeights, normalizeEmbeddingModel } from "./domains";
 
 describe("normalizeEmbeddingModel", () => {
   it("normalizes bare default to openai slug", () => {
@@ -39,16 +35,5 @@ describe("sameEmbeddingWeights (OQ-17)", () => {
     expect(sameEmbeddingWeights("text-embedding-3-small", "openai/text-embedding-3-small")).toBe(
       true,
     );
-  });
-});
-
-describe("domains ask discoverability copy (#5)", () => {
-  it("account Tools shelf hint points to the node's domain checklist and Use in teams", () => {
-    const copy = domainsMcpAccountToolsHint();
-    // The node's "Domains MCP" switch is gone: the checklist and the domain's tab replace it.
-    expect(copy).not.toMatch(/Domains MCP/i);
-    expect(copy).toMatch(/Domains this agent can search/);
-    expect(copy).toMatch(/Use in teams/);
-    expect(copy).toMatch(/aren’t added on this shelf/);
   });
 });

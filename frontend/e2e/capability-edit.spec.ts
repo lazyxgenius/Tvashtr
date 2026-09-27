@@ -60,28 +60,29 @@ test("P1.8c: flip the Architect thinker→worker on a plan_review team — it pe
   expect(before?.kind, "the Architect seeds as a completion (thinker)").toBe("completion");
   expect(before?.edits_allowed, "a thinker seeds edits-off").toBe(false);
 
-  // 2. Click the Architect node → the editable panel opens with the Edits toggle on "Not allowed".
+  // 2. Click the Architect node → the drawer opens with File access on "Read-only".
   const architectNode = page.locator(".react-flow__node", { hasText: "Architect" }).first();
   await expect(architectNode).toBeVisible({ timeout: 30_000 });
   await expect(architectNode).toContainText("Edits off");
   await architectNode.click();
-  const panel = page.getByLabel("Architect editor");
+  const panel = page.getByRole("complementary", { name: "Architect settings" });
   await expect(panel).toBeVisible({ timeout: 30_000 });
-  const edits = panel.getByRole("group", { name: "Edits" });
-  await expect(edits.getByRole("button", { name: "Not allowed" })).toHaveAttribute(
+  const edits = panel.getByRole("group", { name: "File access" });
+  await expect(edits.getByRole("button", { name: "Read-only" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
 
-  // 3. Flip it to "Edits allowed" (thinker → worker), then Save (PATCH the node-update endpoint).
-  await edits.getByRole("button", { name: "Edits allowed" }).click();
-  await expect(edits.getByRole("button", { name: "Edits allowed" })).toHaveAttribute(
+  // 3. Flip it to "Can edit files" (thinker → worker; it doesn't route on a verdict, so no confirm),
+  //    then Save (PATCH the node-update endpoint).
+  await edits.getByRole("button", { name: "Can edit files" }).click();
+  await expect(edits.getByRole("button", { name: "Can edit files" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await panel.getByRole("button", { name: "Save" }).click();
+  await panel.getByRole("button", { name: /^Save/ }).click();
   await expect(panel.getByText(/Saved/)).toBeVisible({ timeout: 30_000 });
-  console.log("[capability-edit-e2e] flipped the Architect to Edits allowed and saved");
+  console.log("[capability-edit-e2e] flipped the Architect to Can edit files and saved");
 
   // (a) PERSISTED: the team graph now carries edits_allowed=true for the Architect.
   await expect
@@ -95,12 +96,12 @@ test("P1.8c: flip the Architect thinker→worker on a plan_review team — it pe
     { timeout: 30_000 },
   );
 
-  // (c) START-LOCK: the PM (the start node) has both Edits buttons disabled.
+  // (c) START-LOCK: the PM (the start node) has both File access buttons disabled.
   await page.locator(".react-flow__node", { hasText: "Product manager" }).first().click();
-  const pmPanel = page.getByLabel("Product manager editor");
+  const pmPanel = page.getByRole("complementary", { name: "Product manager settings" });
   await expect(pmPanel).toBeVisible({ timeout: 30_000 });
-  const pmEdits = pmPanel.getByRole("group", { name: "Edits" });
-  await expect(pmEdits.getByRole("button", { name: "Edits allowed" })).toBeDisabled();
-  await expect(pmEdits.getByRole("button", { name: "Not allowed" })).toBeDisabled();
-  console.log("[capability-edit-e2e] start-lock: the PM Edits toggle is disabled");
+  const pmEdits = pmPanel.getByRole("group", { name: "File access" });
+  await expect(pmEdits.getByRole("button", { name: "Can edit files" })).toBeDisabled();
+  await expect(pmEdits.getByRole("button", { name: "Read-only" })).toBeDisabled();
+  console.log("[capability-edit-e2e] start-lock: the PM File access is disabled");
 });

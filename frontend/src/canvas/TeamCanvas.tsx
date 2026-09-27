@@ -155,6 +155,8 @@ export function TeamCanvas({
   // already renders the message; these put the same fact ON the nodes the user has to fix.
   blockedNodes = [],
   blockedReason = "",
+  selectedNodeId,
+  ringKey = 0,
 }: {
   graph: GraphData | null;
   run: RunRow | null;
@@ -177,6 +179,10 @@ export function TeamCanvas({
   onOpenModel?: (id: string) => void;
   blockedNodes?: string[];
   blockedReason?: string;
+  /** The node whose drawer is open (authoring): drawn with the coral selection ring. */
+  selectedNodeId?: string | null;
+  /** A change rings `selectedNodeId` again (the page kept the drawer's node after a click elsewhere). */
+  ringKey?: number;
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
   const [pending, setPending] = useState<PendingConnect | null>(null);
@@ -307,6 +313,27 @@ export function TeamCanvas({
     if (!focusNodeId) return;
     setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === focusNodeId })));
   }, [focusNodeId, setNodes]);
+
+  // The open drawer's node gets the selection ring when the drawer's node CHANGES (also when the
+  // address opened it before the graph loaded) or `ringKey` does. Later node updates leave React
+  // Flow's own selection (a click, a box select for Delete) alone.
+  const ringed = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (selectedNodeId === undefined) return;
+    const key = `${ringKey}:${selectedNodeId}`;
+    if (ringed.current === key) return;
+    if (selectedNodeId !== null && !nodes.some((n) => n.id === selectedNodeId)) return;
+    ringed.current = key;
+    setNodes((nds) =>
+      nds.every((n) => Boolean(n.selected) === (n.id === selectedNodeId))
+        ? nds
+        : nds.map((n) =>
+            Boolean(n.selected) === (n.id === selectedNodeId)
+              ? n
+              : { ...n, selected: n.id === selectedNodeId },
+          ),
+    );
+  }, [selectedNodeId, ringKey, nodes, setNodes]);
 
   const handleConnect = useCallback(
     (c: Connection) => {

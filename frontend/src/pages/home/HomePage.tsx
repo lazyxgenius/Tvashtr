@@ -113,7 +113,12 @@ export function HomePage({ user = null }: { user?: AuthUser | null } = {}) {
 
   return (
     <HomeContext.Provider value={value}>
-      {getStarted.firstTime ? <FirstTimeHome progress={getStarted} /> : <HomeMain />}
+      {/* Pick the layout once its data is in: switching later would remount the composer. */}
+      {!getStarted.ready ? null : getStarted.firstTime ? (
+        <FirstTimeHome progress={getStarted} />
+      ) : (
+        <HomeMain />
+      )}
       <NewTeamDialog
         open={newTeam !== null}
         initialTemplate={newTeam?.templateKey}

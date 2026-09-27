@@ -333,9 +333,10 @@ describe("No domains yet (Dm-ListEmpty, DmF-First-1)", () => {
     expect(
       await screen.findByText(/You’ll need an API key for a reading model, like OpenAI\./),
     ).toBeInTheDocument();
+    // API keys at its Domains embeddings section (ENG-6).
     expect(screen.getByRole("link", { name: "Check Engines" })).toHaveAttribute(
       "href",
-      "#/engines/keys",
+      "#/engines/keys?embeddings=1",
     );
     // The page has one New domain (in the card), no search, no strip.
     expect(screen.getAllByRole("button", { name: "New domain" })).toHaveLength(1);

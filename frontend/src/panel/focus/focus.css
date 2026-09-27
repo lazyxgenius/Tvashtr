@@ -1,0 +1,372 @@
+/* Focus mode (Desktop-Focus): the agent's settings as a 1240×720 dialog over the dimmed canvas.
+   Every px value is copied from the design's HTML; `fx-` keeps it apart from the drawer's `nd-`. */
+
+/* ---- Layer: the scrim covers the canvas (not the header and toolbar); the dialog sits 18px under
+   the toolbar and centres in the room below it. ---- */
+.fx-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 24px 20px;
+  box-sizing: border-box;
+}
+.fx-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 20, 19, 0.3);
+}
+.fx-dialog {
+  position: relative;
+  width: min(1240px, 100%);
+  height: min(720px, 100%);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: 16px;
+  box-shadow:
+    0 14px 40px -12px rgba(20, 20, 19, 0.22),
+    0 2px 6px rgba(20, 20, 19, 0.06);
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+}
+
+/* ---- Header: one row — glyph, name, badges, then Dock / More / Close ---- */
+.fx-head {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 12px 24px;
+}
+.fx-glyph {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--panel-300);
+  border: 1px solid var(--border-hairline);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-700);
+}
+.fx-head .nd-head__titles {
+  flex: none;
+  max-width: 360px;
+}
+.fx-head .nd-head__name {
+  font-size: 21px;
+  letter-spacing: normal;
+  color: var(--ink-900);
+}
+.fx-head .nd-head__desc {
+  margin-top: 0;
+}
+.fx-head .nd-rename {
+  flex: 0 1 360px;
+}
+.fx-head__badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: 8px;
+}
+.fx-head__actions {
+  margin-left: auto;
+}
+
+/* ---- Tabs: 24px in and apart, the design system's 14px labels ---- */
+.fx-tabs {
+  flex: none;
+}
+.fx-tabs .nd-tabs .ds-tabs {
+  padding: 0 24px;
+  gap: 24px;
+}
+.fx-tabs .nd-tabs .ds-tab {
+  font-size: 14px;
+}
+
+/* ---- Body ---- */
+.fx-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.fx-body--scroll {
+  overflow: auto;
+  padding: 18px 24px 24px;
+}
+
+/* Setup: the instructions on the left, every other setting in a 440px column on the right. */
+.fx-setup {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 440px;
+}
+.fx-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 18px 20px 16px 24px;
+  gap: 10px;
+}
+.fx-main__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.fx-main__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.fx-main__tools {
+  display: flex;
+  gap: 4px;
+}
+.fx-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: var(--surface-sunk);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.fx-banner > svg {
+  flex: none;
+}
+
+/* The editor: a 40px number gutter (+8px pad, 1px rule) beside the text. The rows under the
+   textarea carry the numbers and wrap each line exactly as the textarea does, so a number sits on
+   its line's first row however long the line is. */
+.fx-editor {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  background: var(--surface-page);
+}
+.fx-editor:focus-within {
+  border-color: var(--coral-200);
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.45);
+}
+.fx-editor__inner {
+  position: relative;
+  min-height: 100%;
+  background: linear-gradient(
+    to right,
+    var(--cream-200) 48px,
+    var(--line-200) 48px 49px,
+    transparent 49px
+  );
+}
+.fx-editor__rows {
+  padding: 12px 0;
+}
+.fx-row {
+  display: flex;
+}
+.fx-row__n {
+  flex: none;
+  width: 40px;
+  padding-right: 9px;
+  text-align: right;
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 21px;
+  color: var(--stone-400);
+  user-select: none;
+}
+.fx-row__text {
+  flex: 1;
+  min-width: 0;
+  padding: 0 14px;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 21px;
+  color: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.fx-row__text--changed {
+  background: var(--coral-100);
+}
+.fx-editor__text {
+  position: absolute;
+  top: 0;
+  left: 49px;
+  right: 0;
+  bottom: 0;
+  width: calc(100% - 49px);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 21px;
+  color: var(--ink-800);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.fx-status {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* The settings column. */
+.fx-aside {
+  min-height: 0;
+  overflow: auto;
+  box-sizing: border-box;
+  border-left: 1px solid var(--border-hairline);
+  background: var(--surface-raised);
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.fx-aside--sub {
+  padding: 0;
+  overflow: hidden;
+}
+.fx-routing {
+  gap: 8px;
+}
+.fx-routing .nd-routing {
+  border: 1px solid var(--line-200);
+  border-radius: 10px;
+  padding: 10px 12px;
+  gap: 6px;
+}
+.fx-routing .nd-routing--warn {
+  border-color: var(--amber-100);
+}
+
+/* "Preview as the agent sees it": the compiled parts, in order. */
+.fx-preview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  background: var(--surface-page);
+}
+.fx-preview__lede {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.fx-preview__error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #8f3b2f;
+}
+.fx-preview__notes,
+.fx-preview__skills {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-500);
+}
+.fx-part {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fx-part__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fx-part__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.fx-part__source {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.fx-part__tokens {
+  margin-left: auto;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.fx-part__text {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-sunk);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-800);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The drawer's own confirm and toast, sized for the dialog instead of stretched across it. */
+.fx-dialog .nd-confirm {
+  left: 50%;
+  right: auto;
+  width: 360px;
+  transform: translateX(-50%);
+}
+.fx-dialog .nd-confirm--footer {
+  left: auto;
+  right: 12px;
+  width: 380px;
+  transform: none;
+}
+.fx-dialog .nd-toast-host {
+  left: auto;
+  right: 16px;
+  width: 352px;
+}

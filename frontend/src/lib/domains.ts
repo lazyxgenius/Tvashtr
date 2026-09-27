@@ -19,12 +19,3 @@ export function sameEmbeddingWeights(a: string, b: string): boolean {
     normalizeEmbeddingModel(normalizeEmbeddingModel(s).replace(/^openrouter\//i, "")).toLowerCase();
   return weights(a) === weights(b);
 }
-
-/** Account Tools shelf one-liner — agents get domains on their node or a domain's page, not here. */
-export function domainsMcpAccountToolsHint(): string {
-  return (
-    "Domains aren’t added on this shelf: pick them in an agent’s “Domains this agent can " +
-    "search”, or from a domain’s Use in teams tab. This shelf holds reusable MCP servers you " +
-    "reference from node panels."
-  );
-}

@@ -331,7 +331,7 @@ describe("The Sources table (DM-41…DM-47)", () => {
     const link = await screen.findByRole("link", { name: "Fix key in Engines" });
     expect(screen.getByText(/OpenAI rejected the key \(401\)\./)).toBeInTheDocument();
     fireEvent.click(link);
-    await waitFor(() => expect(window.location.hash).toBe("#/engines/keys"));
+    await waitFor(() => expect(window.location.hash).toBe("#/engines/keys?embeddings=1"));
   });
 
   it("searches names and text (DmF-Filter-1)", async () => {

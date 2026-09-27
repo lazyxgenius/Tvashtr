@@ -221,6 +221,15 @@ export interface ProviderCatalogueEntry {
   worker_default: string | null;
   thinker_presets: string[];
   worker_presets: string[];
+  // Revamp (B-ENGINES): display metadata. Optional so older fixtures and callers keep compiling.
+  /** The provider's display name ("xAI", "Anthropic"). */
+  label?: string;
+  /** A friendly name per slug the entry declares ("xai/grok-4.7" → "Grok 4.7"). */
+  model_labels?: Record<string, string>;
+  /** The Desktop subscription that can run this provider's models ("claude" / "grok"), or null. */
+  subscription?: string | null;
+  /** Whether the seat presets were proven to run a full build on an API key. */
+  byok_probed?: boolean;
 }
 
 export interface Config {
@@ -456,6 +465,7 @@ export async function deleteSubscriptionStatus(provider: SubscriptionProviderId)
 }
 
 // ---- MCP secrets (M-tools C7.A): the account's ${NAME} store for MCP tool_config ----
+// (Adding, replacing and deleting secrets live in lib/api/tools.ts, with Toolkit › Secrets.)
 
 // A stored MCP secret as the shelf shows it — only the NAME is ever returned, never the value.
 export interface McpSecretName {
@@ -466,23 +476,6 @@ export interface McpSecretName {
 export async function listSecrets(): Promise<McpSecretName[]> {
   const data = await getJSON<{ secrets: McpSecretName[] }>("/api/secrets");
   return data.secrets;
-}
-
-// Add (or REPLACE) an MCP ${NAME} secret. Returns `{name}` — never the value.
-export async function addSecret(name: string, value: string): Promise<{ name: string }> {
-  const res = await fetch("/api/secrets", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name, value }),
-  });
-  if (!res.ok) throw new ApiError(res.status, `POST /api/secrets -> ${res.status}`);
-  return (await res.json()) as { name: string };
-}
-
-// Remove the account's ${name} secret (204, idempotent).
-export async function removeSecret(name: string): Promise<void> {
-  const res = await fetch(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE /api/secrets/${name} -> ${res.status}`);
 }
 
 // ---- The account's runs (the dashboard's "previous runs" list) ----
@@ -733,6 +726,9 @@ export interface TeamGraphNode {
     run_id: string;
     iteration: number;
     started_at: string;
+    // B-NODES (additive): running | done | failed | stopped, and when the round ended.
+    status?: string | null;
+    ended_at?: string | null;
   } | null;
 }
 
@@ -826,26 +822,6 @@ export async function createToolLibraryItem(
   return (await res.json()) as { id: string; name: string };
 }
 
-// Edit a library tool by id (propagates LIVE to every referencing node's next run).
-export async function updateToolLibraryItem(
-  id: string,
-  name: string,
-  serverConfig: Record<string, unknown>,
-): Promise<{ id: string; name: string }> {
-  const res = await fetch(`/api/tool-library/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name, server_config: serverConfig }),
-  });
-  if (!res.ok) throw new ApiError(res.status, `PATCH /api/tool-library/${id} -> ${res.status}`);
-  return (await res.json()) as { id: string; name: string };
-}
-
-export async function deleteToolLibraryItem(id: string): Promise<void> {
-  const res = await fetch(`/api/tool-library/${encodeURIComponent(id)}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE /api/tool-library/${id} -> ${res.status}`);
-}
-
 // The account's library skills (oldest first).
 export async function listSkillLibrary(): Promise<SkillLibraryItem[]> {
   const data = await getJSON<{ skills: SkillLibraryItem[] }>("/api/skill-library");
@@ -925,6 +901,8 @@ export async function listSkillPresets(): Promise<SkillPresetEntry[]> {
 
 export interface TeamGraphData {
   team_graph_id: string;
+  /** The team's name (B-NODES, additive — the canvas toolbar shows it). */
+  name?: string;
   nodes: TeamGraphNode[];
   edges: GraphEdge[];
 }

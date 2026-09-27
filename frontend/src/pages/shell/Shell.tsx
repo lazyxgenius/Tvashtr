@@ -110,7 +110,11 @@ function Nav({
       label: "Overview",
       route: { page: "engines", tab: "overview" },
       active: route.page === "engines" && route.tab === "overview",
-      badge: badges.enginesFirstTime ? <Badge>New</Badge> : warn(badges.enginesToFix, "to fix"),
+      badge: badges.enginesFirstTime ? (
+        <Badge tone="accent">New</Badge>
+      ) : (
+        warn(badges.enginesToFix, "to fix")
+      ),
     },
     {
       key: "subscriptions",
@@ -148,7 +152,7 @@ function Nav({
     {
       key: "memory",
       label: "Memory",
-      route: { page: "memory", tab: "inbox" },
+      route: { page: "memory", tab: "inbox", pick: true },
       active: route.page === "memory",
       badge: badges.memoryInbox ? <Badge tone="accent">{`${badges.memoryInbox} new`}</Badge> : null,
     },
@@ -324,7 +328,8 @@ function NavFoot({ section }: { section: ReturnType<typeof sectionOf> }) {
   );
 }
 
-function AccountMenu({
+/** The avatar and its account menu (the dashboard header and the team canvas header share it). */
+export function AccountMenu({
   user,
   onShowShortcuts,
   onLogout,

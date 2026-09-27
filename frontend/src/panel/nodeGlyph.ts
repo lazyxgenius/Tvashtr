@@ -7,6 +7,7 @@ import {
   Package,
   PenLine,
   ShieldCheck,
+  Sparkle,
   Terminal,
 } from "lucide-react";
 
@@ -19,6 +20,9 @@ const ROLE_ICON: Record<string, LucideIcon> = {
   architect: DraftingCompass,
   engineer: Terminal,
   reviewer: ClipboardCheck,
+  // A blank agent (the palette's Thinker / Worker) until a template gives it a role.
+  thinker: Sparkle,
+  worker: Sparkle,
 };
 
 export function glyphForNode(kind: string, roleName: string, terminalKind?: string): LucideIcon {

@@ -1,22 +1,26 @@
 import { useEffect, useState } from "react";
 
 import App from "../App";
-import { EnginesShelf } from "../components/EnginesShelf";
-import { MemoryShelf } from "../components/MemoryShelf";
-import { SecretsShelf } from "../components/SecretsShelf";
-import { SkillsShelf } from "../components/SkillsShelf";
-import { ToolsShelf } from "../components/ToolsShelf";
 import type { AuthUser, Config } from "../lib/api";
+import { useDesktopDeepLinks } from "../lib/desktopDeepLinks";
 import { requestHomeAction } from "../lib/homeActions";
 import { type DashView, type Route, navigate, useNav } from "../lib/nav";
 import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
 import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
 import { DomainDetailPage } from "./domains/DomainDetailPage";
 import { DomainsListPage } from "./domains/DomainsListPage";
+import { EnginesPage } from "./engines/EnginesPage";
 import { CommandPalette } from "./home/CommandPalette";
 import { HomePage } from "./home/HomePage";
+import { MemoryPage } from "./memory/MemoryPage";
 import { Shell } from "./shell/Shell";
+import { SkillEditorPage } from "./skills/SkillEditorPage";
+import { SkillsPage } from "./skills/SkillsPage";
+import { SecretsPage } from "./secrets/SecretsPage";
 import { ShortcutsDialog } from "./shell/ShortcutsDialog";
+import { ToolDetailPage } from "./tools/ToolDetailPage";
+import { ToolsPage } from "./tools/ToolsPage";
+import { useGithubReturn } from "./tools/githubReturn";
 import "./badgeLoaders";
 
 /** Where the canvas's "back" and "Open Engines / Toolkit" controls land. */
@@ -25,7 +29,8 @@ function dashViewRoute(view: DashView | undefined): Route {
     case "domains":
       return { page: "domains" };
     case "engines":
-      return { page: "engines", tab: "overview" };
+      // "Open Engines" on a blocked run: Overview with the rows to fix highlighted.
+      return { page: "engines", tab: "overview", fix: true };
     case "tools":
       return { page: "tools", view: "installed" };
     default:
@@ -52,9 +57,13 @@ export function Workspace({
   const [searchOpen, setSearchOpen] = useState(false);
   const onCanvas = route.page === "team";
 
+  // On arrival and on every return from the canvas: the drawer changes other areas' counts.
   useEffect(() => {
-    void refreshBadges();
-  }, []);
+    if (!onCanvas) void refreshBadges();
+  }, [onCanvas]);
+  useGithubReturn(); // Desktop: back from the GitHub App install → Toolkit › Tools › Browse
+  // Tvashtr Desktop: follow `tvashtr://` links (a no-op on the website).
+  useDesktopDeepLinks();
 
   useGlobalShortcuts(
     {
@@ -76,6 +85,15 @@ export function Workspace({
         initialRunId={route.runId ?? null}
         onBackToDashboard={(view) => navigate(dashViewRoute(view))}
         config={config}
+        node={route.node}
+        tab={route.tab}
+        focus={route.focus}
+        onNodeRoute={(next) =>
+          navigate(
+            { page: "team", teamId: route.teamId, runId: route.runId, ...next },
+            { replace: true },
+          )
+        }
       />
     );
   }
@@ -116,17 +134,26 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
         <DomainsListPage />
       );
     case "engines":
-      return <EnginesShelf />;
+      return (
+        <EnginesPage
+          tab={route.tab}
+          fix={route.fix}
+          connect={route.connect}
+          embeddings={route.embeddings}
+        />
+      );
     case "tools":
+      return <ToolsPage view={route.view} />;
     case "tool":
-      return <ToolsShelf />;
+      return <ToolDetailPage key={route.toolId} toolId={route.toolId} />;
     case "skills":
+      return <SkillsPage view={route.view} />;
     case "skill":
-      return <SkillsShelf />;
+      return <SkillEditorPage skillId={route.skillId} />;
     case "memory":
-      return <MemoryShelf />;
+      return <MemoryPage tab={route.tab} pick={route.pick === true} />;
     case "secrets":
-      return <SecretsShelf />;
+      return <SecretsPage />;
     default:
       return null;
   }

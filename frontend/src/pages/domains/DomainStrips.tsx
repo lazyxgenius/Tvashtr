@@ -74,10 +74,10 @@ export function SetupStrip({ detail }: { detail: DomainDetailView }) {
                   {" "}
                   <a
                     className="dm-link"
-                    href="#/engines/keys"
+                    href="#/engines/keys?embeddings=1"
                     onClick={(e) => {
                       e.preventDefault();
-                      navigate({ page: "engines", tab: "keys" });
+                      navigate({ page: "engines", tab: "keys", embeddings: true });
                     }}
                   >
                     Add key

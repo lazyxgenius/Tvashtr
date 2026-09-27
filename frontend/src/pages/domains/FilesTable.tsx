@@ -28,10 +28,10 @@ function EnginesKeyLink({ children }: { children: string }) {
   return (
     <a
       className="dm-status__fix"
-      href="#/engines/keys"
+      href="#/engines/keys?embeddings=1"
       onClick={(e) => {
         e.preventDefault();
-        navigate({ page: "engines", tab: "keys" });
+        navigate({ page: "engines", tab: "keys", embeddings: true });
       }}
     >
       {children}

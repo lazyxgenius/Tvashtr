@@ -1,0 +1,145 @@
+/* The team canvas chrome (Main / Web-Setup / Web-1024 / Eng-Flow-Blocked-1). Every px value is
+   copied from the design's HTML; the `cv-` prefix keeps it clear of the older `tv-topbar` /
+   `tv-toolbar` rules. */
+.cv-bar {
+  height: 56px;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-hairline);
+  font-family: var(--font-ui);
+}
+.cv-bar__group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.cv-tagline {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.cv-env {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--panel-300);
+  border: 1px solid var(--line-300);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--ink-600);
+  white-space: nowrap;
+}
+.cv-team {
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin-left: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cv-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--font-code);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  flex: none;
+}
+.cv-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-hairline);
+}
+.cv-conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+}
+.cv-conn__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sage-500);
+}
+.cv-conn--checking .cv-conn__dot {
+  background: var(--stone-400, #b0aea5);
+}
+.cv-conn--offline .cv-conn__dot {
+  background: var(--red-500, #c0453a);
+}
+.cv-error {
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  color: var(--danger, #b3261e);
+}
+
+/* The canvas area: the drawer docks beside it (push) or floats over it (≤1280px). */
+.cv-main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.cv-canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+/* "Can’t run on the website yet." — a 760px (content-box, as the design sizes it) warn callout
+   20px below the toolbar. */
+.cv-blocked {
+  position: absolute;
+  left: 50%;
+  top: 20px;
+  z-index: 5;
+  transform: translateX(-50%);
+  width: 760px;
+  max-width: calc(100% - 74px);
+  box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #fbf3e6;
+  border: 1px solid var(--amber-100);
+  box-shadow: var(--shadow-raise);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.6;
+  color: #6b4a1f;
+}
+.cv-blocked__icon {
+  display: inline-flex;
+  flex: none;
+}
+.cv-blocked__text {
+  flex: 1;
+}
+.cv-blocked__text b {
+  font-weight: 600;
+}
+
+/* An icon inside the button's label, flush with the text (the design's Button children). */
+.cv-btn-flush > span {
+  display: inline-flex;
+  align-items: center;
+}

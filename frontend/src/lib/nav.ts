@@ -8,9 +8,12 @@
  *   #/home
  *   #/domains · #/domains/<id> · #/domains/<id>/ask|quality|teams|settings (?file=<doc>&piece=<n>)
  *   #/engines · #/engines/subscriptions · #/engines/keys
+ *   #/engines?fix=1 (Overview with the rows that need a fix highlighted — the canvas's Open Engines)
+ *   #/engines/subscriptions?connect=claude|grok (that card highlighted — a `tvashtr://` deep link)
+ *   #/engines/keys?embeddings=1 (API keys scrolled to Domains embeddings — Domains' Open Engines)
  *   #/toolkit/tools · #/toolkit/tools/browse · #/toolkit/tools/<id>
  *   #/toolkit/skills · #/toolkit/skills/presets · #/toolkit/skills/new · #/toolkit/skills/<id>
- *   #/toolkit/memory/inbox|active|archive
+ *   #/toolkit/memory (the page picks Inbox or Active) · #/toolkit/memory/inbox|active|archive
  *   #/toolkit/secrets
  *   #/teams/<teamId>?node=<id>&tab=<tab>&focus=1
  *   #/teams/<teamId>/runs/<runId>
@@ -19,6 +22,8 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 export type EnginesTab = "overview" | "subscriptions" | "keys";
+/** A subscription a link asks Subscriptions to point out (it never starts Connect). */
+export type ConnectTarget = "claude" | "grok";
 export type MemoryTab = "inbox" | "active" | "archive";
 export type NodeTab = "setup" | "skills" | "memory" | "runs" | "docs";
 /** A domain's tabs; `sources` is the bare `#/domains/<id>`. */
@@ -37,13 +42,24 @@ export type Route =
       file?: string;
       piece?: number;
     }
-  | { page: "engines"; tab: EnginesTab }
+  // `fix`: arrived from a blocked run ("Open Engines") — Overview highlights the rows to fix.
+  // `connect`: Subscriptions only — highlight that card (the website's "Open in Desktop").
+  // `embeddings`: API keys only — arrived from Domains, show the Domains embeddings section.
+  | {
+      page: "engines";
+      tab: EnginesTab;
+      fix?: boolean;
+      connect?: ConnectTarget;
+      embeddings?: boolean;
+    }
   | { page: "tools"; view: "installed" | "browse" }
   | { page: "tool"; toolId: string }
   | { page: "skills"; view: "mine" | "presets" }
   // `skillId` is "new" for the new-skill editor.
   | { page: "skill"; skillId: string }
-  | { page: "memory"; tab: MemoryTab }
+  // `pick`: the bare `#/toolkit/memory` (the nav's Memory link). The page opens the Inbox when
+  // memories wait there, otherwise Active (MEM-4); an address that names a tab keeps it.
+  | { page: "memory"; tab: MemoryTab; pick?: true }
   | { page: "secrets" }
   | {
       page: "team";
@@ -58,6 +74,7 @@ export type Route =
     };
 
 const ENGINES_TABS: EnginesTab[] = ["overview", "subscriptions", "keys"];
+const CONNECT_TARGETS: ConnectTarget[] = ["claude", "grok"];
 const MEMORY_TABS: MemoryTab[] = ["inbox", "active", "archive"];
 const NODE_TABS: NodeTab[] = ["setup", "skills", "memory", "runs", "docs"];
 const DOMAIN_TABS: DomainTab[] = ["sources", "ask", "quality", "teams", "settings"];
@@ -96,11 +113,19 @@ export function parseRoute(hash: string): Route {
       if (file && piece !== undefined) route.piece = piece;
       return route;
     }
-    case "engines":
-      return {
-        page: "engines",
-        tab: ENGINES_TABS.includes(b as EnginesTab) ? (b as EnginesTab) : "overview",
-      };
+    case "engines": {
+      const tab = ENGINES_TABS.includes(b as EnginesTab) ? (b as EnginesTab) : "overview";
+      const connect = q.get("connect");
+      if (tab === "subscriptions" && CONNECT_TARGETS.includes(connect as ConnectTarget)) {
+        return { page: "engines", tab, connect: connect as ConnectTarget };
+      }
+      if (tab === "keys" && q.get("embeddings") === "1") {
+        return { page: "engines", tab, embeddings: true };
+      }
+      return tab === "overview" && q.get("fix") === "1"
+        ? { page: "engines", tab, fix: true }
+        : { page: "engines", tab };
+    }
     case "toolkit":
       if (b === undefined || b === "tools") {
         if (c === undefined) return { page: "tools", view: "installed" };
@@ -113,6 +138,7 @@ export function parseRoute(hash: string): Route {
         return { page: "skill", skillId: c };
       }
       if (b === "memory") {
+        if (c === undefined) return { page: "memory", tab: "inbox", pick: true };
         return {
           page: "memory",
           tab: MEMORY_TABS.includes(c as MemoryTab) ? (c as MemoryTab) : "inbox",
@@ -158,7 +184,12 @@ export function routeToHash(route: Route): string {
       return qs ? `${path}?${qs}` : path;
     }
     case "engines":
-      return route.tab === "overview" ? "#/engines" : `#/engines/${route.tab}`;
+      if (route.tab === "subscriptions" && route.connect) {
+        return `#/engines/subscriptions?connect=${route.connect}`;
+      }
+      if (route.tab === "keys" && route.embeddings) return "#/engines/keys?embeddings=1";
+      if (route.tab !== "overview") return `#/engines/${route.tab}`;
+      return route.fix ? "#/engines?fix=1" : "#/engines";
     case "tools":
       return route.view === "browse" ? "#/toolkit/tools/browse" : "#/toolkit/tools";
     case "tool":
@@ -168,7 +199,7 @@ export function routeToHash(route: Route): string {
     case "skill":
       return `#/toolkit/skills/${enc(route.skillId)}`;
     case "memory":
-      return `#/toolkit/memory/${route.tab}`;
+      return route.pick ? "#/toolkit/memory" : `#/toolkit/memory/${route.tab}`;
     case "secrets":
       return "#/toolkit/secrets";
     case "team": {
@@ -237,3 +268,7 @@ export function useNav(): {
   );
   return { route: parseRoute(hash), navigate: nav };
 }
+
+/** Fired when a page keeps the user where they are (a leave guard's "Keep editing"): anything
+ * queued to run on the page they were heading to must be dropped, not run on a later visit. */
+export const NAVIGATION_KEPT = "tvashtr:navigation-kept";

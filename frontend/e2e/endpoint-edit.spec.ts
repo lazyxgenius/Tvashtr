@@ -96,8 +96,8 @@ test("endpoint-edit: a Ship terminal flips to Stop in the drawer, persists, keep
   await expect(page.getByText("Saved — this drives the next run you launch.")).toBeVisible({
     timeout: 15_000,
   });
-  // Drawer header flips Ship → Stop (local title follows the selected kind).
-  await expect(page.getByLabel("Stop endpoint")).toBeVisible();
+  // Once saved (and the graph refetched), the drawer header reads Stop.
+  await expect(page.getByRole("complementary", { name: "Stop settings" })).toBeVisible();
   await page.screenshot({ path: path.join(SHOTS_DIR, "check3-saved-stop.png") });
 
   await expect
@@ -123,10 +123,11 @@ test("endpoint-edit: a Ship terminal flips to Stop in the drawer, persists, keep
   await page.screenshot({ path: path.join(SHOTS_DIR, "check4-canvas-stop-edges.png") });
   console.log("[endpoint-edit-e2e] CHECK 4 PASS — canvas shows Stop; in-edges unchanged");
 
-  // CHECK 5 — reload keeps the canvas address (the page reopens the same team): still Stop. Then
-  //           back to Home and re-open the team from the palette: still Stop.
+  // CHECK 5 — reload keeps the canvas address, open drawer included (the page reopens the same
+  //           team on the same node): still Stop. Then back to Home and re-open the team from the
+  //           palette: still Stop.
   await page.reload();
-  await expect(page).toHaveURL(new RegExp(`#/teams/${teamId}$`));
+  await expect(page).toHaveURL(new RegExp(`#/teams/${teamId}\\?node=${ship.id}$`));
   // API durability first (independent of FE selection).
   await expect
     .poll(
@@ -141,7 +142,7 @@ test("endpoint-edit: a Ship terminal flips to Stop in the drawer, persists, keep
   const reloaded = page.locator(`.react-flow__node[data-id="${ship.id}"]`);
   await expect(reloaded).toBeVisible({ timeout: 30_000 });
   await expect(reloaded.getByText("Stop", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Back to dashboard" }).click();
+  await page.getByRole("button", { name: "Back to teams" }).click();
   await expect(page).toHaveURL(/#\/(home)?$/, { timeout: 30_000 });
   await openTeamViaPalette(page, teamName);
   const reopened = page.locator(`.react-flow__node[data-id="${ship.id}"]`);

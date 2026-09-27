@@ -1,0 +1,175 @@
+/* ---- Runs tab (Web-Runs, Flow-Runs-1/2, Panel-RunsEmpty) and the Docs tab's shared bits ---- */
+.nd-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--coral-700);
+  cursor: pointer;
+}
+.nd-code {
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  background: var(--surface-sunk);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.nd-runs {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Last run card: the badge's tint on the head and the border (accent = coral). */
+.nd-lastrun {
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-card);
+}
+.nd-lastrun__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--panel-300);
+}
+.nd-lastrun--accent {
+  border-color: var(--coral-200);
+}
+.nd-lastrun--accent .nd-lastrun__head {
+  background: var(--coral-100);
+}
+.nd-lastrun--success .nd-lastrun__head {
+  background: var(--sage-100);
+}
+.nd-lastrun--danger .nd-lastrun__head {
+  background: var(--red-100);
+}
+.nd-lastrun__when {
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.nd-lastrun__detail {
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.nd-lastrun__more {
+  padding: 0 12px 12px;
+}
+
+/* Earlier rounds: a row each; the open one shows its detail, tokens, cost and time. */
+.nd-runs__earlier {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nd-runs__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nd-round {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  background: var(--surface-card);
+}
+.nd-round--open {
+  border-color: var(--coral-200);
+}
+.nd-round__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.nd-round__id {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.nd-round__n {
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-round__when {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-round__detail {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-800);
+}
+.nd-round__meta {
+  display: flex;
+  gap: 12px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-round__focus {
+  align-self: flex-start;
+}
+
+/* Empty (Panel-RunsEmpty; the Docs tab's "No documents yet"). */
+.nd-runs__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 32px 16px;
+  border: 1px dashed var(--line-400);
+  border-radius: 12px;
+  background: var(--surface-page);
+}
+.nd-runs__empty-icon {
+  display: inline-flex;
+  color: var(--ink-500);
+}
+.nd-runs__empty-title {
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.nd-runs__empty-body {
+  max-width: 280px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.nd-runs__empty-body b {
+  font-weight: 600;
+  color: var(--ink-700);
+}
