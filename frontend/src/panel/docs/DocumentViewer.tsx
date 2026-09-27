@@ -94,6 +94,8 @@ export function DocumentViewer({
   }, [unsaved, label]);
 
   const dialogRef = useModalDialog<HTMLElement>(true, () => guard(onClose));
+  // Focus starts on the dialog itself (its name is read out), not on its first button.
+  useEffect(() => dialogRef.current?.focus(), [dialogRef]);
 
   const leaveEdit = () => {
     setEditing(false);
@@ -200,7 +202,8 @@ export function DocumentViewer({
       <div className="fx-scrim" aria-hidden />
       <section
         ref={dialogRef}
-        className="fx-dialog"
+        className="fx-dialog dv-dialog"
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={label}

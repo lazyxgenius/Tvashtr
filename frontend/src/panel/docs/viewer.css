@@ -6,6 +6,9 @@
 .dv-layer {
   z-index: 41;
 }
+.dv-dialog:focus {
+  outline: none;
+}
 
 /* ---- Header: glyph, title, subtitle, then version menu / Edit / Copy / Close ---- */
 .dv-head {
@@ -154,6 +157,10 @@
   background: var(--surface-sunk);
   font-size: 11.5px;
   color: var(--ink-600);
+}
+/* The icon runs with the text, as the design draws it. */
+.dv-rail__run svg {
+  display: inline;
 }
 button.dv-rail__run {
   border: 0;
