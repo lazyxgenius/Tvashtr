@@ -398,6 +398,21 @@ export default [
   }),
   ...pair("agent-access", {
     path: `/#/teams/${T.sprint}?node=${N.sprintPm}&tab=tools`,
+    // The frame's PM runs grok on its API key (no DM-96 plan note), so the Desktop render's
+    // harness bridge reports Grok signed out. A no-op on the website render.
+    init: () => {
+      window.sessionStorage.setItem("tvashtr.desktopDisclosureSeen", "1");
+      const engines = window.tvashtrDesktop?.engines;
+      if (engines) {
+        const base = engines.getStatus;
+        engines.getStatus = async () =>
+          (await base()).map((s) =>
+            s.provider === "grok"
+              ? { ...s, connected: false, state: "disconnected" }
+              : s,
+          );
+      }
+    },
     routes: canvasRoutes({
       graph: {
         team_graph_id: T.sprint,
