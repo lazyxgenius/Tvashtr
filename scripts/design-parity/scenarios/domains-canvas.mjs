@@ -10,7 +10,13 @@
 // These boards are drawn on F5's rebuilt canvas chrome (header, toolbar, 172px cards, the 384px
 // drawer shell with its tabs); today's App draws the old chrome, so their lines are `# needs-F5`.
 // The Domains parts (drawer body, checklist, card lines) are what this file exercises.
-import { D, DOMAINS, SUPPORT_FILES, domainsRoutes, pair } from "./domains-fixtures.mjs";
+import {
+  D,
+  DOMAINS,
+  SUPPORT_FILES,
+  domainsRoutes,
+  pair,
+} from "./domains-fixtures.mjs";
 
 const T = {
   docs: "d4427ab6-2d4d-4ab9-b925-bd7e107ce3a4",
@@ -66,7 +72,9 @@ const queryNode = (config, over = {}) => ({
   kind: "domain_query",
   model: null,
   engine: null,
-  prompt: config.domain_id ? "What do our support docs say about {idea}?" : "{idea}",
+  prompt: config.domain_id
+    ? "What do our support docs say about {idea}?"
+    : "{idea}",
   position: { x: 292, y: 290 },
   edits_allowed: false,
   config,
@@ -110,7 +118,8 @@ const NO_EXIT = {
   errors: [
     {
       code: "no_exit",
-      message: "This Query domain node has no outgoing connection — add a 'Then →' edge.",
+      message:
+        "This Query domain node has no outgoing connection — add a 'Then →' edge.",
       node_id: N.dq,
       edge_id: null,
     },
@@ -143,10 +152,12 @@ const RUN_14 = {
         iteration: 1,
         status: "done",
         outcome: "answered",
-        outcome_detail: "Refunds are requested from Billing → Refunds within 30 days [1].",
+        outcome_detail:
+          "Refunds are requested from Billing → Refunds within 30 days [1].",
         cost: { cost_usd: 0.0012 },
         domain: {
-          question: "What do our support docs say about a self-serve refund button?",
+          question:
+            "What do our support docs say about a self-serve refund button?",
           answer_text:
             "Refunds are requested from Billing → Refunds within 30 days [1]. Annual plans are prorated after that [2].",
           covered: true,
@@ -186,10 +197,17 @@ const PROVIDERS = ["openai", "anthropic", "xai"].map((provider) => ({
   created_at: "2026-09-01T10:00:00Z",
 }));
 
-function canvasRoutes({ graph, validity = VALID, runs = NEVER_RAN, extra = {} }) {
+function canvasRoutes({
+  graph,
+  validity = VALID,
+  runs = NEVER_RAN,
+  extra = {},
+}) {
   return {
     ...domainsRoutes({ domains: DOMAINS, providers: PROVIDERS }),
-    "GET /api/teams": { teams: [{ team_graph_id: graph.team_graph_id, name: graph.name }] },
+    "GET /api/teams": {
+      teams: [{ team_graph_id: graph.team_graph_id, name: graph.name }],
+    },
     [`GET /api/teams/${graph.team_graph_id}/graph`]: graph,
     [`GET /api/teams/${graph.team_graph_id}/validate`]: validity,
     [`GET /api/teams/${graph.team_graph_id}/runs`]: { runs: [] },
@@ -208,17 +226,25 @@ function canvasRoutes({ graph, validity = VALID, runs = NEVER_RAN, extra = {} })
 
 // F5's drawer is the "Node settings" aside; today's agent editor is named after the agent.
 const drawer = (page) =>
-  page.locator('aside[aria-label="Node settings"], aside[aria-label$=" editor"]').first();
+  page
+    .locator('aside[aria-label="Node settings"], aside[aria-label$=" editor"]')
+    .first();
 
 /** Select a node: F5's App opens it from `?node=`; today's opens it on a click. */
 async function select(page, title) {
   if (await drawer(page).isVisible()) return;
-  await page.locator(".react-flow__node").filter({ hasText: title }).first().click();
+  await page
+    .locator(".react-flow__node")
+    .filter({ hasText: title })
+    .first()
+    .click();
   await drawer(page).waitFor();
 }
 
 const settled = async (page) => {
-  await drawer(page).getByText("Saved — this drives the next run you launch.").waitFor();
+  await drawer(page)
+    .getByText("Saved — this drives the next run you launch.")
+    .waitFor();
   await page.mouse.move(0, 0);
 };
 
@@ -235,7 +261,10 @@ export default [
     path: `/#/domains/${D.support}/teams`,
     routes: {
       ...canvasRoutes({ graph: docsGraph(queryNode(LOOKUP)) }),
-      [`GET /api/domains/${D.support}`]: { ...DOMAINS[0], last_question_at: null },
+      [`GET /api/domains/${D.support}`]: {
+        ...DOMAINS[0],
+        last_question_at: null,
+      },
       [`GET /api/domains/${D.support}/documents`]: { documents: SUPPORT_FILES },
       [`GET /api/domains/${D.support}/usage`]: { steps: [], agents: [] },
       [`GET /api/domains/${D.support}/step-places`]: {
@@ -244,7 +273,9 @@ export default [
             team_id: T.docs,
             name: "Docs team",
             path: ["Product manager", "Writer", "Reviewer"],
-            places: [{ after_node_id: N.pm, after: "Product manager", next: "Writer" }],
+            places: [
+              { after_node_id: N.pm, after: "Product manager", next: "Writer" },
+            ],
           },
         ],
       },
@@ -257,10 +288,14 @@ export default [
       },
     },
     steps: async (page) => {
-      await page.getByRole("button", { name: "Add as a step in a team" }).click();
+      await page
+        .getByRole("button", { name: "Add as a step in a team" })
+        .click();
       await page.getByRole("option", { name: /^Docs team/ }).click();
       await page.getByRole("button", { name: "Add step", exact: true }).click();
-      await page.getByText("Added after Product manager. Connected to Writer.").waitFor();
+      await page
+        .getByText("Added after Product manager. Connected to Writer.")
+        .waitFor();
       await select(page, "Look up support docs");
       await settled(page);
     },
@@ -284,7 +319,9 @@ export default [
     steps: async (page) => {
       await select(page, "Look up support docs");
       await drawer(page).getByRole("tab", { name: "Last run" }).click();
-      await drawer(page).getByText("Added to the spec · section “What the docs say”").waitFor();
+      await drawer(page)
+        .getByText("Added to the spec · section “What the docs say”")
+        .waitFor();
       await page.mouse.move(0, 0);
     },
   }),
@@ -295,7 +332,10 @@ export default [
       // Today's palette opens on hover (a click toggles it); F5's opens on a click.
       const add = page.getByRole("button", { name: "Add to canvas" });
       await add.hover();
-      if (!(await page.getByRole("menu", { name: "Add to canvas" }).isVisible())) await add.click();
+      if (
+        !(await page.getByRole("menu", { name: "Add to canvas" }).isVisible())
+      )
+        await add.click();
       await page.getByRole("menu", { name: "Add to canvas" }).waitFor();
     },
   }),
@@ -303,13 +343,19 @@ export default [
     path: `/#/teams/${T.docs}?node=${N.dq}`,
     routes: canvasRoutes({
       graph: docsGraph(
-        queryNode({ domain_id: null, pass_to_spec: true, on_no_answer: "continue" }),
+        queryNode({
+          domain_id: null,
+          pass_to_spec: true,
+          on_no_answer: "continue",
+        }),
         { connected: false },
       ),
     }),
     steps: async (page) => {
       await select(page, "Query domain");
-      await drawer(page).getByRole("button", { name: /^Domain / }).click();
+      await drawer(page)
+        .getByRole("button", { name: /^Domain / })
+        .click();
       await drawer(page).getByRole("listbox", { name: "Domain" }).waitFor();
       await page.mouse.move(0, 0);
     },
@@ -318,14 +364,22 @@ export default [
     path: `/#/teams/${T.docs}?node=${N.dq}`,
     routes: canvasRoutes({
       graph: docsGraph(
-        queryNode({ domain_id: null, pass_to_spec: true, on_no_answer: "continue" }),
+        queryNode({
+          domain_id: null,
+          pass_to_spec: true,
+          on_no_answer: "continue",
+        }),
         { connected: false },
       ),
     }),
     steps: async (page) => {
       await select(page, "Query domain");
-      await drawer(page).getByRole("button", { name: /^Domain / }).click();
-      await drawer(page).getByRole("option", { name: /^Support docs/ }).click();
+      await drawer(page)
+        .getByRole("button", { name: /^Domain / })
+        .click();
+      await drawer(page)
+        .getByRole("option", { name: /^Support docs/ })
+        .click();
       await drawer(page).getByLabel("If the domain has no answer").focus();
       await page.keyboard.press("Tab");
       await page.mouse.move(0, 0);
