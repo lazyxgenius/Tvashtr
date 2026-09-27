@@ -49,9 +49,13 @@ export function DocumentViewer({
 }: DocumentViewerProps) {
   const toast = useToast();
   const loaded = useLoaded(docId, () => getDocument(docId));
-  // A reload after a save keeps showing the old answer until the new one lands.
+  // A reload (after a save, or a refused one) replaces the answer in place — never through a loading
+  // state, which would unmount an open edit. Versions only grow, so the longer list is the newer.
   const [fresh, setFresh] = useState<DocDetail | null>(null);
-  const detail = fresh?.id === docId ? fresh : loaded.value;
+  const detail =
+    fresh?.id === docId && fresh.versions.length >= (loaded.value?.versions.length ?? 0)
+      ? fresh
+      : loaded.value;
   const runId = detail?.run_id ?? null;
   const runDocs = useLoaded(runId, () => listRunDocs(runId ?? ""));
   const [editing, setEditing] = useState(false);
