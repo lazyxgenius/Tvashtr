@@ -435,6 +435,8 @@ describe("Re-reading every file (DmF-Embed-4, DmF-Piece-3)", () => {
         "Re-reading with Gemini embedding-001 · about 2 minutes left. Ask is paused until it’s done.",
       ),
     ).toBeInTheDocument();
+    // The table loads on its own beat: wait for its rows.
+    await waitFor(() => expect(row("billing-faq.pdf")).toBeTruthy());
     expect(within(row("billing-faq.pdf")).getByText("Re-reading 91%")).toBeInTheDocument();
     expect(within(row("getting-started.md")).getByText("Waiting to read")).toBeInTheDocument();
     expect(await screen.findByText("Re-reading 14 files · 1 done")).toBeInTheDocument();
