@@ -1,4 +1,4 @@
-# F6 Focus view + Documents — parity, branch feat/revamp-f6-focus-docs (sorted by artboard)
+# F6 Focus view + Documents — parity sweep, branch feat/revamp-f6-focus-docs @ f7cb4e1
 Docs-Compare desktop: matched 104/106 design items · 0 with size/type drift · 50 only moved · 2 not found in app
 Docs-Compare web: matched 102/106 design items · 0 with size/type drift · 49 only moved · 4 not found in app
 Docs-Drawer desktop: matched 62/62 design items · 0 with size/type drift · 33 only moved · 0 not found in app
