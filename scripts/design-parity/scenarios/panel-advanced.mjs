@@ -10,15 +10,15 @@ import {
   panelRoutes,
 } from "./panel-fixtures.mjs";
 
-const at = (node, focus = false) =>
+export const at = (node, focus = false) =>
   `/#/teams/${TEAM_ID}?node=${node}${focus ? "&focus=1" : ""}`;
 
-const web = (over) => panelRoutes({ keys: ["xai", "anthropic"], over });
-const desktop = (over) =>
+export const web = (over) => panelRoutes({ keys: ["xai", "anthropic"], over });
+export const desktop = (over) =>
   panelRoutes({ keys: [], subs: ["claude", "grok"], over });
 
 // Desktop: the one-time subscription disclosure was already dismissed this session.
-const seenDisclosure = () =>
+export const seenDisclosure = () =>
   sessionStorage.setItem("tvashtr.desktopDisclosureSeen", "1");
 
 // The website render of a Desktop board: the web has no title strip, so the page is framed 30px
@@ -92,7 +92,7 @@ const flows = {
 
 // The board's counter reads "1,284 characters · about 320 tokens": the Reviewer's first 27 lines,
 // with line 26 a little longer, come to exactly 1,284 characters (and keep the verdict line).
-const FOCUS_PROMPT = REVIEWER_PROMPT.split("\n")
+export const FOCUS_PROMPT = REVIEWER_PROMPT.split("\n")
   .slice(0, 27)
   .map((line, i) =>
     i === 25 ? "- One to three short, specific sentences, no more." : line,
@@ -101,13 +101,13 @@ const FOCUS_PROMPT = REVIEWER_PROMPT.split("\n")
 if (FOCUS_PROMPT.length !== 1284)
   throw new Error(`focus prompt is ${FOCUS_PROMPT.length} chars`);
 
-const FOCUS_NODES = Object.values({
+export const FOCUS_NODES = Object.values({
   ...NODES,
   rev: { ...NODES.rev, prompt: FOCUS_PROMPT },
 });
 
 /** The caret on line 12, column 38 ("Line 12, column 38"), in the focused editor. */
-async function caretAt(page, line, column) {
+export async function caretAt(page, line, column) {
   const editor = page.getByRole("textbox", { name: "Instructions" });
   await editor.evaluate(
     (el, [l, c]) => {
@@ -123,7 +123,7 @@ async function caretAt(page, line, column) {
   await page.waitForTimeout(150);
 }
 
-const focusSteps = async (p) => {
+export const focusSteps = async (p) => {
   await p.getByRole("dialog", { name: "Reviewer in focus view" }).waitFor();
   await p.waitForTimeout(300);
   await caretAt(p, 12, 38);
