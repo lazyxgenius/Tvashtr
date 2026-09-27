@@ -194,6 +194,8 @@ Response `200`:
       "status": "completed",
       "created_at": "2026-09-25T09:58:40+00:00",
       "live": false,
+      "repo_key": "lazyxgenius/trade_mcp",
+      "repo_label": "lazyxgenius/trade_mcp",
       "rounds_count": 3,
       "last_outcome": "approved",
       "last_status": "done",
@@ -206,6 +208,8 @@ Response `200`:
     "status": "completed",
     "created_at": "2026-09-25T09:58:40+00:00",
     "live": false,
+    "repo_key": "lazyxgenius/trade_mcp",
+    "repo_label": "lazyxgenius/trade_mcp",
     "rounds": [
       {
         "invocation_id": 812,
@@ -247,6 +251,10 @@ Response `200`:
   ran this agent → `{"runs": [], "run": null}`.
 - `live`: the run's status is not one of `completed`, `failed`, `rejected`, `over_budget`,
   `cancelled`.
+- `repo_key` / `repo_label` (additive, F6 B2): the run's memory repo — `memory.repo_key_for_run`
+  (GitHub `owner/name`, else the Desktop folder label, else the local path; `null` for a greenfield
+  run) and its readable label (`memory.repo_label`). Repo-tier memories carry the same `repo_key`
+  (Focus-Memory's "This repo" scope).
 - `rounds`: newest first. `cost` is `null` when no cost row links to the round (gates, Desktop
   jobs record usage only when the CLI reported it, zero-usage rounds). `model_used`: the model the
   cost row recorded (a fallback may have swapped it), else the Desktop job's, else the node's.
