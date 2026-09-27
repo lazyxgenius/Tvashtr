@@ -56,6 +56,7 @@ from tvashtr.control_plane import (
     workspace_reaper,
 )
 from tvashtr.control_plane import domain_ask as domain_ask_mod
+from tvashtr.control_plane import domain_query_node as dq_node
 from tvashtr.control_plane.budget import budget_check_step, mark_budget_overridden_step
 from tvashtr.control_plane.budget_nudge import maybe_emit_budget_nudge_step
 from tvashtr.control_plane.context_compiler import (
@@ -124,6 +125,7 @@ from tvashtr.metering import record_agent_cost, running_cost
 from tvashtr.models import (
     AgentNode,
     DesktopNodeJob,
+    Domain,
     Edge,
     EngineerRunAttempt,
     GithubInstallation,
@@ -1916,6 +1918,96 @@ def domain_query_step(run_id: str, domain_id: str, question: str) -> dict:
     }
 
 
+# Revamp Domains G12: a Query domain node waits while its domain re-reads (DM-104), polling.
+DOMAIN_REREAD_POLL_S = 30
+DOMAIN_REREAD_WAIT_S = 600
+
+
+@DBOS.step()
+def domain_query_step_v2(
+    run_id: str, node_id: str, iteration: int, invocation_id: int, domain_id: str, question: str
+) -> dict:
+    """The Query domain lookup for nodes with the pass/no-answer settings (OQ-21): the ask stays out
+    of the chat (``persist=False``), answers NOT_FOUND when the files don't cover it, and its spend
+    goes on the run against this round (finding 7).
+
+    Returns ``{status: completed|paused|failed, domain_name, error?, answer, answer_text, covered,
+    sources, citations, latency_ms, cost_usd, model, message_id}`` — ``paused`` while the domain
+    re-reads its files with a new reading model."""
+    owner_id = owner_for_run(run_id)
+    if owner_id is None:
+        return {"status": "failed", "error": "run has no owner — cannot query a domain"}
+    try:
+        did = uuid.UUID(str(domain_id))
+    except (ValueError, TypeError):
+        return {"status": "failed", "error": "Query domain node has an invalid domain_id"}
+    with session_scope() as session:
+        domain = session.execute(
+            select(Domain.name).where(Domain.id == did, Domain.owner_id == owner_id)
+        ).scalar_one_or_none()
+    if domain is None:
+        return {"status": "failed", "error": "This Query domain node’s domain was deleted."}
+    try:
+        result = domain_ask_mod.ask_domain(
+            owner_id, did, question, persist=False, mark_not_found=True
+        )
+    except DomainAskError as exc:
+        if exc.code == "paused":
+            return {"status": "paused", "domain_name": domain}
+        return {"status": "failed", "domain_name": domain, "error": format_domain_ask_error(exc)}
+    except Exception as exc:  # noqa: BLE001 — surface unexpected failures like other nodes
+        return {"status": "failed", "domain_name": domain, "error": f"domain query failed: {exc}"}
+    usage = result.get("usage") or {}
+    if usage.get("cost_usd") or usage.get("total_tokens"):
+        record_agent_cost(
+            workflow_id=run_id,
+            idempotency_key=f"{run_id}:domain-cost:{node_id}:{iteration}",
+            model=str(result.get("model") or ""),
+            prompt_tokens=int(usage.get("prompt_tokens") or 0),
+            completion_tokens=int(usage.get("completion_tokens") or 0),
+            total_tokens=int(usage.get("total_tokens") or 0),
+            cost_usd=float(usage.get("cost_usd") or 0.0),
+            invocation_id=invocation_id,
+        )
+    return {
+        "status": "completed",
+        "domain_name": domain,
+        "answer": result.get("answer") or "",
+        "answer_text": result.get("answer_text") or result.get("answer") or "",
+        "covered": result.get("covered") is not False,
+        "sources": list(result.get("sources") or []),
+        "citations": list(result.get("citations") or []),
+        "latency_ms": result.get("latency_ms"),
+        "cost_usd": usage.get("cost_usd", result.get("cost_usd")),
+        "model": result.get("model"),
+        "message_id": None,
+    }
+
+
+@DBOS.step()
+def append_domain_answer_to_spec_step(
+    run_id: str, pm_document_id: str, node_id: str, iteration: int, section_md: str
+) -> int:
+    """Add a Query domain node's section to the run's spec as a new version (DM-104), so the agents
+    after it read the answer. Authored by the node ("Added by <title>"); idempotent per round.
+    Returns the new version number."""
+    with session_scope() as session:
+        cfg = session.execute(
+            select(AgentNode.config).where(AgentNode.id == uuid.UUID(node_id))
+        ).scalar_one_or_none()
+    latest = get_latest_version(uuid.UUID(pm_document_id))
+    base = (latest.content if latest is not None else "").rstrip()
+    version = add_version(
+        uuid.UUID(pm_document_id),
+        f"{base}\n\n{section_md}" if base else section_md,
+        created_by="agent:domain_query",
+        idempotency_key=f"{run_id}:domain-spec:{node_id}:{iteration}",
+        note=f"Added by {dq_node.node_title(cfg)}",
+        author_node_id=_authored_node_uuid(node_id),
+    )
+    return int(version.version_no)
+
+
 @DBOS.step()
 def distill_run_memory_step(run_id: str) -> None:
     """M-memory S2: distil durable memory from the finished run (the WRITE half of the memory loop).
@@ -2099,6 +2191,78 @@ def _finalize_over_budget(run_id: str, document_id: str | None) -> dict:
         "document_id": document_id,
         "cost_total": final["cost_total_usd"],
     }
+
+
+def _run_domain_query_v2(
+    run_id: str,
+    node_id: str,
+    n: int,
+    inv_id: int,
+    cfg: dict,
+    domain_id: str,
+    question: str,
+    pm_document_id: str | None,
+) -> str | None:
+    """One v2 Query domain round inside the walk (DM-104): wait while the domain re-reads (≤10 min),
+    ask, add the section to the spec when passing is on, and stop the run on a not-covered answer
+    when the node says so. Closes the round and returns ``None`` to continue, else the failure
+    reason (the run is already marked failed)."""
+    title = dq_node.node_title(cfg)
+
+    def fail(reason: str, code: str) -> str:
+        close_invocation_step(run_id, node_id, n, "failed", None, outcome_detail=reason)
+        mark_run_failed_step(run_id, code=code, message=reason, node_id=node_id)
+        DBOS.logger.error(f"run_team domain_query failed run_id={run_id}: {reason}")
+        return reason
+
+    waited = 0
+    while True:
+        result = domain_query_step_v2(run_id, node_id, n, inv_id, domain_id, question)
+        if result.get("status") != "paused":
+            break
+        if waited >= DOMAIN_REREAD_WAIT_S:
+            name = result.get("domain_name") or "The domain"
+            return fail(dq_node.rereading_message(name), run_failure.DOMAIN_QUERY)
+        DBOS.sleep(DOMAIN_REREAD_POLL_S)
+        waited += DOMAIN_REREAD_POLL_S
+    if result.get("status") != "completed":
+        return fail(result.get("error") or "domain query failed", run_failure.DOMAIN_QUERY)
+
+    name = result.get("domain_name") or "The domain"
+    covered = result.get("covered") is not False
+    stop = not covered and cfg.get("on_no_answer") == "stop"
+    section = None
+    if cfg.get("pass_to_spec") and pm_document_id and not stop:
+        append_domain_answer_to_spec_step(
+            run_id, pm_document_id, node_id, n, dq_node.spec_section_md(name, question, result)
+        )
+        section = dq_node.SPEC_SECTION
+    manifest = dq_node.domain_query_manifest_v2(result, domain_id, question, section)
+    if stop:
+        reason = dq_node.no_answer_message(title, name, question)
+        close_invocation_step(
+            run_id,
+            node_id,
+            n,
+            "failed",
+            "no_answer",
+            outcome_detail=reason,
+            context_manifest=manifest,
+        )
+        mark_run_failed_step(
+            run_id, code=run_failure.DOMAIN_NO_ANSWER, message=reason, node_id=node_id
+        )
+        return reason
+    close_invocation_step(
+        run_id,
+        node_id,
+        n,
+        "done",
+        "answered" if covered else "no_answer",
+        outcome_detail=truncate_outcome_detail(result.get("answer_text") or ""),
+        context_manifest=manifest,
+    )
+    return None
 
 
 def run_graph(run_id: str, graph: dict, idea: str) -> dict:
@@ -2503,7 +2667,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
         elif kind == "domain_query":
             n = iters_by_node.get(current, 0) + 1
             iters_by_node[current] = n
-            open_invocation_step(run_id, current, n)
+            inv_id = open_invocation_step(run_id, current, n)
             cfg = node.get("config") or {}
             domain_id = cfg.get("domain_id") if isinstance(cfg, dict) else None
             if not domain_id:
@@ -2532,6 +2696,19 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                     "document_id": pm_document_id,
                     "error": reason,
                 }
+            if dq_node.uses_v2(cfg):
+                failed = _run_domain_query_v2(
+                    run_id, current, n, inv_id, cfg, str(domain_id), question, pm_document_id
+                )
+                if failed is not None:
+                    return {
+                        "run_id": run_id,
+                        "status": "failed",
+                        "document_id": pm_document_id,
+                        "error": failed,
+                    }
+                current = next_node(edges, current, None)
+                continue
             result = domain_query_step(run_id, str(domain_id), question)
             if result.get("status") != "completed":
                 reason = result.get("error") or "domain query failed"

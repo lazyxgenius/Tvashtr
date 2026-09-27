@@ -78,7 +78,7 @@ from tvashtr.control_plane.domains import (
     list_domain_templates,
     update_domain,
 )
-from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
+from tvashtr.control_plane.graph_validity import graph_dicts, owner_domain_ids, validate_graph
 from tvashtr.control_plane.local_repo import LocalRepoTarget
 from tvashtr.control_plane.mcp_secrets import delete_owner_mcp_secret
 from tvashtr.control_plane.node_templates import NODE_TEMPLATES
@@ -318,6 +318,10 @@ class UpdateTeamNodeRequest(BaseModel):
     multimodal: bool | None = None
     # PolyRAG Phase 4a: domain_query bound corpus id — model_fields_set clear/set.
     domain_id: str | None = None  # domain_query — model_fields_set clear/set
+    # Revamp Domains G12 (DM-100/104): pass the answer to the spec, and what a not-covered answer
+    # does. Stored in the domain_query node's config; absent = off / "continue" (OQ-21).
+    pass_to_spec: bool | None = None
+    on_no_answer: Literal["continue", "stop"] | None = None
     # B-NODES: ``False`` = the node reads NOTHING by default (no spec) when ``reads_from`` is empty;
     # ``True``/absent = today's default (the latest spec). Stored as ``config["reads_default"]``;
     # an explicit null clears it back to the default.
@@ -1179,7 +1183,8 @@ def create_run(
                 raise HTTPException(status_code=404, detail="unknown team_graph_id")
             library_team_id = gid if source.is_library else None
             nodes, edges = graph_dicts(session, gid)
-        verdict = validate_graph(nodes, edges)
+            domain_ids = owner_domain_ids(session, source.owner_id)
+        verdict = validate_graph(nodes, edges, domain_ids)
         if not verdict["runnable"]:
             raise HTTPException(
                 status_code=422,
@@ -3199,7 +3204,11 @@ def update_team_node(
                     except ValueError as exc:
                         raise HTTPException(status_code=400, detail="invalid domain_id") from exc
                     cfg["domain_id"] = str(body.domain_id)
-                node.config = cfg
+            if body.pass_to_spec is not None:
+                cfg["pass_to_spec"] = body.pass_to_spec
+            if body.on_no_answer is not None:
+                cfg["on_no_answer"] = body.on_no_answer
+            node.config = cfg
             if "prompt" in body.model_fields_set and body.prompt is not None:
                 node.prompt = body.prompt
             _apply_node_identity(node, body)
@@ -3540,7 +3549,13 @@ def _build_node(
             prompt=body.prompt if body.prompt is not None else "{idea}",
             position=position,
             edits_allowed=False,
-            config={"domain_id": str(domain_id) if domain_id else None, **(identity or {})},
+            # New nodes pass the answer on and keep going on no answer (DM-98, OQ-21).
+            config={
+                "domain_id": str(domain_id) if domain_id else None,
+                "pass_to_spec": True,
+                "on_no_answer": "continue",
+                **(identity or {}),
+            },
         )
     # terminal
     if body.terminal_kind is None:
@@ -3723,7 +3738,8 @@ def validate_team(
     with db.session_scope() as session:
         graph = _require_library_team(session, team_id, uuid.UUID(current_user.id))
         nodes, edges = graph_dicts(session, graph.id)
-    return validate_graph(nodes, edges)
+        domain_ids = owner_domain_ids(session, graph.owner_id)
+    return validate_graph(nodes, edges, domain_ids)
 
 
 def _humantask_to_dict(task: HumanTask) -> dict:

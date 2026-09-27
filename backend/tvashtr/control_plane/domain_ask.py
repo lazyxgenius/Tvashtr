@@ -274,6 +274,17 @@ def _finite_or_none(value) -> float | None:
     return f
 
 
+def _ask_usage(completion, emb_result) -> dict:
+    embed_tokens = int(getattr(emb_result, "prompt_tokens", 0) or 0)
+    embed_cost = _finite_or_none(getattr(emb_result, "cost_usd", 0)) or 0.0
+    return {
+        "prompt_tokens": int(completion.prompt_tokens or 0) + embed_tokens,
+        "completion_tokens": int(completion.completion_tokens or 0),
+        "total_tokens": int(completion.total_tokens or 0) + embed_tokens,
+        "cost_usd": (_finite_or_none(completion.cost_usd) or 0.0) + embed_cost,
+    }
+
+
 class DomainAskError(Exception):
     def __init__(self, code: str, detail: str | dict):
         self.code = code
@@ -370,6 +381,7 @@ def ask_domain(
 
     started = time.perf_counter()
     query_embedding = None
+    emb_result = None
     if needs_embed:
         try:
             emb_result = embed(EmbeddingRequest(model=emb_model, input=[search], api_key=embed_key))
@@ -426,6 +438,9 @@ def ask_domain(
         "latency_ms": latency_ms,
         "cost_usd": float(cost_val) if cost_val is not None else None,
         "model": completion.model_used,
+        # What the ask spent, question embedding included — a Query domain node puts it on the run
+        # (finding 7).
+        "usage": _ask_usage(completion, emb_result),
     }
 
     with session_scope() as session:

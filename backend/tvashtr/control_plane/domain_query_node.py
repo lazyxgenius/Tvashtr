@@ -12,7 +12,7 @@ _IDEA_TOKEN = "{idea}"
 
 def render_domain_query_prompt(template: str | None, idea: str | None) -> str:
     """Substitute ``{idea}`` via literal replace (safe if idea contains braces)."""
-    raw = (template if template is not None else _IDEA_TOKEN)
+    raw = template if template is not None else _IDEA_TOKEN
     text = str(raw).replace(_IDEA_TOKEN, idea or "")
     text = text.strip()
     if not text:
@@ -52,4 +52,68 @@ def domain_query_manifest(result: dict[str, Any], domain_id: str) -> dict[str, A
         "latency_ms": result.get("latency_ms"),
         "model": result.get("model"),
         "message_id": result.get("message_id"),
+    }
+
+
+# ---- Revamp Domains G12: the node's pass-to-spec / no-answer run side (DM-98–104) ---------------
+
+SPEC_SECTION = "What the docs say"
+ON_NO_ANSWER = ("continue", "stop")
+DEFAULT_TITLE = "Query domain"
+
+
+def uses_v2(config: dict | None) -> bool:
+    """A node authored with the pass/no-answer settings (palette, Add step, a drawer save) runs the
+    v2 steps; a node from before them keeps today's lookup (OQ-21)."""
+    return isinstance(config, dict) and "pass_to_spec" in config
+
+
+def node_title(config: dict | None) -> str:
+    title = (config or {}).get("title") if isinstance(config, dict) else None
+    return title.strip() if isinstance(title, str) and title.strip() else DEFAULT_TITLE
+
+
+def _source_line(source: dict[str, Any]) -> str:
+    piece = f"piece {source.get('piece_number')}"
+    if source.get("pieces_in_file"):
+        piece += f" of {source['pieces_in_file']}"
+    page = f"page {source['page']} · " if source.get("page") else ""
+    return f"{source.get('number')}. {source.get('filename')} · {page}{piece}"
+
+
+def spec_section_md(domain_name: str, question: str, result: dict[str, Any]) -> str:
+    """The section a node adds to the spec (DM-104): the question, the answer and its numbered
+    sources, or — not covered — that the domain had no answer."""
+    if result.get("covered") is False:
+        body = f"{domain_name} had no answer for: “{question}”"
+    else:
+        answer = str(result.get("answer_text") or result.get("answer") or "").strip()
+        lines = [f"**Asked {domain_name}:** {question}", "", answer]
+        sources = [s for s in result.get("sources") or [] if isinstance(s, dict)]
+        if sources:
+            lines += ["", "Sources:", *(_source_line(s) for s in sources)]
+        body = "\n".join(lines)
+    return f"## {SPEC_SECTION}\n\n{body}\n"
+
+
+def no_answer_message(title: str, domain_name: str, question: str) -> str:
+    return f"{title} stopped the run: {domain_name} has no answer for “{question}”."
+
+
+def rereading_message(domain_name: str) -> str:
+    return f"{domain_name} was still re-reading its files."
+
+
+def domain_query_manifest_v2(
+    result: dict[str, Any], domain_id: str, question: str, spec_section: str | None
+) -> dict[str, Any]:
+    """The v2 round's ``context_manifest``: the v1 keys plus what the drawer's Last run shows."""
+    return {
+        **domain_query_manifest(result, domain_id),
+        "question": question,
+        "covered": result.get("covered") is not False,
+        "answer_text": result.get("answer_text") or result.get("answer") or "",
+        "sources": list(result.get("sources") or []),
+        "cost_usd": result.get("cost_usd"),
+        "spec_section": spec_section,
     }

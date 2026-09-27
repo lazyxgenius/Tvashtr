@@ -22,7 +22,7 @@ from collections import defaultdict
 from sqlalchemy import select
 
 from tvashtr.control_plane.team_run import escalation_target, next_node, node_emits_outcome
-from tvashtr.models import AgentNode, Edge
+from tvashtr.models import AgentNode, Domain, Edge
 
 
 def _routing_edges(edges: list[dict]) -> list[dict]:
@@ -48,7 +48,9 @@ def _is_loop_back(edge: dict) -> bool:
     return bool(edge["conditions"]) and "loop_limit" in edge["conditions"]
 
 
-def validate_graph(nodes: list[dict], edges: list[dict]) -> dict:
+def validate_graph(
+    nodes: list[dict], edges: list[dict], domain_ids: set[str] | None = None
+) -> dict:
     """Decide whether an authored team graph is runnable. PURE — ``nodes``/``edges`` are the
     serialized canvas dicts (nodes carry ``id``/``kind``; edges carry ``id``/``source_node_id``/
     ``target_node_id``/``edge_type``/``conditions``). Returns ``{"errors": [...], "warnings": [...],
@@ -58,7 +60,10 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> dict:
     BLOCK (errors): not exactly one root; the root is not a thinker; a reachable node has no valid
     outgoing route for an outcome it can emit; a reachable node can't reach a terminal; an unbounded
     loop (a reachable cycle with no ``loop_limit`` back-edge); a bounded rework loop whose
-    re-entered node has no escalation exit. WARN: an orphan (unreachable) node."""
+    re-entered node has no escalation exit. WARN: an orphan (unreachable) node.
+
+    ``domain_ids`` (the owner's domains, when the caller knows them): a Query domain node pointing
+    at a domain that isn't one of them — deleted — needs a domain too (DM-102)."""
     errors: list[dict] = []
     warnings: list[dict] = []
 
@@ -186,7 +191,7 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> dict:
             continue
         cfg = n.get("config") or {}
         did = cfg.get("domain_id") if isinstance(cfg, dict) else None
-        if not did:
+        if not did or (domain_ids is not None and str(did) not in domain_ids):
             err(
                 "domain_query_no_domain",
                 "Select a Domain on this Query domain node before running.",
@@ -496,3 +501,11 @@ def graph_dicts(session, graph_id) -> tuple[list[dict], list[dict]]:
         for e in edges
     ]
     return node_dicts, edge_dicts
+
+
+def owner_domain_ids(session, owner_id) -> set[str]:
+    """The owner's domain ids, for :func:`validate_graph`'s deleted-domain check."""
+    return {
+        str(d)
+        for d in session.execute(select(Domain.id).where(Domain.owner_id == owner_id)).scalars()
+    }

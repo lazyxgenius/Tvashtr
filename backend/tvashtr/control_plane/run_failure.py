@@ -21,6 +21,9 @@ AGENT_ERROR = "agent_error"
 OVER_CONTEXT = "over_context"
 NO_SPEC = "no_spec"
 DOMAIN_QUERY = "domain_query"
+# A Query domain node set to "Stop the run and tell me" found no answer (revamp Domains DM-104). Its
+# message is already the whole sentence ("<title> stopped the run: …").
+DOMAIN_NO_ANSWER = "domain_no_answer"
 GITHUB_DELIVERY = "github_delivery"
 INVALID_GRAPH = "invalid_graph"
 # Refinements the humaniser derives from the reason text.
@@ -135,6 +138,8 @@ def humanise(
     if not text:
         return {"code": code or UNKNOWN, "message": GENERIC_MESSAGE, "provider": None}
     line = _first_line(text)
+    if code == DOMAIN_NO_ANSWER:
+        return {"code": DOMAIN_NO_ANSWER, "message": line, "provider": None}
     if code == OVER_CONTEXT or text.startswith("context ") and "exceeds budget" in text:
         return {
             "code": OVER_CONTEXT,

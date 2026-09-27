@@ -223,7 +223,40 @@ def _run_detail(session, node: AgentNode, run_id: str, owner_id: uuid.UUID) -> d
                 "produced": _produced(inv, clone, run, docs, emits, is_entry, job),
             }
         )
-    return {**_run_brief(run), "rounds": rounds}
+        if clone.kind == "domain_query":
+            rounds[-1]["domain"] = _domain_round(inv)
+    return {**_run_brief(run), "number": _run_number(session, run), "rounds": rounds}
+
+
+def _domain_round(inv: AgentInvocation) -> dict:
+    """A Query domain round's lookup (revamp Domains DM-103): what it asked, the answer and its
+    sources, and where it went in the spec. Rounds from before the v2 steps carry only the answer
+    (``outcome_detail``) and the raw citations."""
+    m = inv.context_manifest or {}
+    return {
+        "question": m.get("question"),
+        "answer_text": m.get("answer_text", inv.outcome_detail),
+        "covered": m.get("covered", inv.outcome != "no_answer") if inv.outcome else None,
+        "sources": list(m.get("sources") or []),
+        "citations": list(m.get("citations") or []),
+        "latency_ms": m.get("latency_ms"),
+        "cost_usd": m.get("cost_usd"),
+        "spec_section": m.get("spec_section"),
+    }
+
+
+def _run_number(session, run: Run) -> int | None:
+    """The run's place among its library team's runs ("run 14"); ``None`` for a run launched
+    without one."""
+    if run.library_team_id is None:
+        return None
+    return session.execute(
+        select(func.count(Run.id)).where(
+            Run.library_team_id == run.library_team_id,
+            Run.owner_id == run.owner_id,
+            Run.created_at <= run.created_at,
+        )
+    ).scalar_one()
 
 
 def _cost_by_invocation(
