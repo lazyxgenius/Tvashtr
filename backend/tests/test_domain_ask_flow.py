@@ -1,7 +1,6 @@
 """Phase 3 — ask_domain sync flow with mocked gateway."""
 
 import uuid
-from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -90,7 +89,8 @@ def test_ask_domain_persists_messages(monkeypatch):
     monkeypatch.setattr("tvashtr.control_plane.domain_ask.embed", lambda req: emb)
     monkeypatch.setattr("tvashtr.control_plane.domain_ask.complete", lambda req: cmp)
 
-    result = ask_domain(owner_id, did, "How long do refunds take?")
+    # The chat's call (POST /ask passes persist=True; the default writes nothing).
+    result = ask_domain(owner_id, did, "How long do refunds take?", persist=True)
     assert "5 business days" in result["answer"]
     assert result["citations"]
     assert result["citations"][0]["filename"] == "faq.txt"
@@ -182,7 +182,7 @@ def test_ask_domain_sanitizes_nonfinite_latency_cost(monkeypatch):
     _c, owner_id, did = _register()
     _seed_ready_chunk(did)
     _patch_gateway(monkeypatch, latency_ms=float("nan"), cost_usd=float("inf"))
-    result = ask_domain(owner_id, did, "How long?")
+    result = ask_domain(owner_id, did, "How long?", persist=True)
     assert result["latency_ms"] is None
     assert result["cost_usd"] is None
     from tvashtr.control_plane.domain_ask import list_domain_messages

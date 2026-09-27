@@ -306,15 +306,16 @@ def ask_domain(
     question: str,
     *,
     use_history: bool = False,
-    persist: bool = True,
+    persist: bool = False,
     mark_not_found: bool = False,
 ) -> dict:
     """Sync cited ask. Raises DomainAskError for mapped HTTP statuses.
 
     ``use_history``: earlier chat turns go to the model and the previous question joins the search
-    (DM-65). ``persist=False`` keeps the ask out of the chat (Query domain nodes, agent tools —
-    finding 8). ``mark_not_found``: the NOT_FOUND rule (OQ-22). The answer carries the Ask tab's
-    keys (``answer_fields``) next to the original ones."""
+    (DM-65). ``persist=True`` writes the question and the answer to the domain's chat — only the
+    chat endpoint does; Query domain nodes and agent tools stay out of it (finding 8, OQ-13).
+    ``mark_not_found``: the NOT_FOUND rule (OQ-22). The answer carries the Ask tab's keys
+    (``answer_fields``) next to the original ones."""
     q = (question or "").strip()
     if not q:
         raise DomainAskError("bad_request", "question must be non-empty")

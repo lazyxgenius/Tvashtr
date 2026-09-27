@@ -2914,8 +2914,14 @@ def post_domain_ask(
     if row is None:
         raise HTTPException(status_code=404, detail="domain not found")
     try:
+        # The chat is the one caller that keeps the thread (ask_domain's default doesn't).
         return ask_domain(
-            owner_id, did, body.question, use_history=body.use_history, mark_not_found=True
+            owner_id,
+            did,
+            body.question,
+            use_history=body.use_history,
+            persist=True,
+            mark_not_found=True,
         )
     except DomainAskError as e:
         if e.code == "not_found":

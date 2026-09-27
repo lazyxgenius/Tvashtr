@@ -533,7 +533,10 @@ into the chat (finding 8); Query domain nodes are unchanged until their new step
 - `model_label`: the design's label for the three listed models, else `"<Vendor> <model name>"`
   (e.g. `"OpenAI gpt-4.1-mini"`) — for the model asked for (the domain's answer model or the account
   default it resolved to).
-- `persist`, `mark_not_found` are Python-only flags of `ask_domain` (not in the body).
+- `persist`, `mark_not_found` are Python-only flags of `ask_domain` (not in the body). `persist`
+  defaults to false: this endpoint is the one caller that passes `persist=True` (the chat thread);
+  the Query domain steps (the legacy `domain_query_step` by the default, `domain_query_step_v2`
+  explicitly) and the MCP tools keep their asks out of it (finding 8, OQ-13).
 - Errors unchanged: `404 "domain not found"`, `422` (`"question must be non-empty"`, `"ingest documents
   before asking"`, `{"message": "you have no API key for: openai — …", "missing_providers": ["openai"]}`,
   no model), `502` (`"generation failed: …"` / `"embedding failed: …"`).

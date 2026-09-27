@@ -299,6 +299,22 @@ def test_agent_and_node_asks_stay_out_of_the_chat(monkeypatch):
         assert session.query(DomainMessage).filter_by(domain_id=did).count() == 0
 
 
+def test_ask_domain_writes_no_chat_message_by_default(monkeypatch):
+    """Only the chat endpoint keeps the thread: ask_domain's default (what the legacy Query domain
+    step calls, with no ``persist``) writes no DomainMessage; POST /ask still writes both turns."""
+    c, owner_id, did = _fresh()
+    _seed(did)
+    _Gateway(monkeypatch, ["Within 30 days [1].", "Within 30 days [1]."])
+    out = domain_ask.ask_domain(owner_id, did, "How long?")
+    assert out["message_id"] is None and out["answer_text"] == "Within 30 days [1]."
+    with session_scope() as session:
+        assert session.query(DomainMessage).filter_by(domain_id=did).count() == 0
+    assert c.post(f"/api/domains/{did}/ask", json={"question": "How long?"}).status_code == 200
+    with session_scope() as session:
+        roles = [m.role for m in session.query(DomainMessage).filter_by(domain_id=did)]
+    assert sorted(roles) == ["assistant", "user"]
+
+
 def test_mcp_ask_tool_does_not_write_the_chat(monkeypatch):
     from tvashtr.control_plane import domain_mcp
 

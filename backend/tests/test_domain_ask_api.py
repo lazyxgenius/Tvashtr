@@ -76,7 +76,10 @@ def test_ask_happy_path(monkeypatch):
     c = _fresh()
     did = c.post("/api/domains", json={"template": "support", "name": "Ok"}).json()["domain_id"]
 
-    def _ok(owner_id, domain_id, question, **_kw):
+    seen: dict = {}
+
+    def _ok(owner_id, domain_id, question, **kw):
+        seen.update(kw)
         return {
             "answer": "Hello cited",
             "citations": [
@@ -103,6 +106,8 @@ def test_ask_happy_path(monkeypatch):
     assert body["answer"] == "Hello cited"
     assert body["citations"][0]["filename"] == "a.txt"
     assert body["latency_ms"] == 42
+    # The chat is the one caller that keeps the thread (ask_domain's default doesn't).
+    assert seen["persist"] is True
 
 
 def test_list_messages_empty():

@@ -20,7 +20,9 @@ def test_domain_query_step_success(monkeypatch):
         assert oid == owner
         assert did == domain_id
         assert q == "What is the refund policy?"
-        assert kw == {"persist": False}  # node asks stay out of the chat (OQ-13)
+        # The legacy step is main's, byte for byte: no ``persist`` kwarg. ask_domain's default keeps
+        # the node's ask out of the chat (OQ-13; test_ask_domain_writes_no_chat_message_by_default).
+        assert kw == {}
         return {
             "answer": "30 days",
             "citations": [
