@@ -34,6 +34,9 @@ export interface NodeRunSummary {
   status: string;
   created_at: string;
   live: boolean;
+  /** The run's memory repo (`memory.repo_key_for_run`); null for a greenfield run. */
+  repo_key: string | null;
+  repo_label: string | null;
   rounds_count: number;
   last_outcome: string | null;
   last_status: string | null;
@@ -258,6 +261,8 @@ function toRunSummary(r: Record<string, unknown>): NodeRunSummary | null {
     status: str(r.status),
     created_at: str(r.created_at),
     live: r.live === true,
+    repo_key: strOrNull(r.repo_key),
+    repo_label: strOrNull(r.repo_label),
     rounds_count: num(r.rounds_count),
     last_outcome: strOrNull(r.last_outcome),
     last_status: strOrNull(r.last_status),

@@ -856,6 +856,11 @@ export default function App({
                 onOpenToolkit={(route) => guardLeave(() => navigate(route))}
                 onOpenDocuments={(docsRunId) => openDocuments(docsRunId)}
                 onOpenDoc={openDoc}
+                onOpenRun={(openRunId) =>
+                  guardLeave(() =>
+                    navigate({ page: "team", teamId: currentTeamId, runId: openRunId }),
+                  )
+                }
                 onProviderAdded={(provider) =>
                   setCredentialGate((gate) =>
                     gate ? { ...gate, byok: new Set([...gate.byok, provider]) } : gate,

@@ -1,7 +1,14 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { ArrowRight, Pencil, Pin, Trash } from "lucide-react";
 
-import { Button, IconButton, Select, Switch, TextArea } from "../../design-system/components";
+import {
+  Badge,
+  Button,
+  IconButton,
+  Select,
+  Switch,
+  TextArea,
+} from "../../design-system/components";
 import {
   type Memory,
   type MemoryPolarity,
@@ -15,8 +22,15 @@ import {
 import { patchAgentNode } from "../../lib/api/nodes";
 import { type Route, routeToHash } from "../../lib/nav";
 import { GithubIcon } from "../../pages/home/homeIcons";
+import { FORCE_VARIANT, forceLabel } from "../../pages/memory/memoryModel";
 import type { ToastAction } from "../useDrawerToast";
-import { FORCE_OPTIONS, noteGroups, noteOrigin } from "./memoryNotes";
+import {
+  FORCE_OPTIONS,
+  noteGroups,
+  noteOrigin,
+  noteProvenance,
+  suggestedLine,
+} from "./memoryNotes";
 import type { NodeMemories } from "./useNodeMemories";
 import "../skills/skillsTools.css";
 import "./memory.css";
@@ -37,6 +51,12 @@ export interface MemoryTabProps {
   /** Ask before deleting a note (the drawer's confirm). */
   onDelete: (note: Memory) => void;
   onOpenShelf?: (route: Route) => void;
+  /**
+   * Focus mode (Focus-Memory): the notes the filter rail lets through (this agent's, and the repo's
+   * or account's when those scopes are on), each a row with its force. `filtered`: the rail hides
+   * some, so an empty list says so.
+   */
+  focus?: { active: Memory[]; pending: Memory[]; filtered: boolean };
 }
 
 /**
@@ -55,10 +75,12 @@ export function MemoryTab({
   onOpenFileAccess,
   onDelete,
   onOpenShelf,
+  focus,
 }: MemoryTabProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const { state, active, pending, change } = memories;
+  const { state, change } = memories;
+  const { active, pending } = focus ?? memories;
 
   const undo = async (id: string) => {
     if (!(await change(() => requeueMemory(id)))) notify("Couldn’t undo that. Try again.");
@@ -94,7 +116,7 @@ export function MemoryTab({
   const empty = state === "ready" && active.length === 0 && pending.length === 0;
 
   return (
-    <div className="nd-mem">
+    <div className={focus ? "fx-mem__notes" : "nd-mem"}>
       <RememberCard
         teamId={teamId}
         nodeId={nodeId}
@@ -103,10 +125,13 @@ export function MemoryTab({
         isEntry={isEntry}
         onSaved={onRememberSaved}
         onOpenFileAccess={onOpenFileAccess}
+        compact={focus !== undefined}
       />
-      <p className="nd-mem__intro">
-        Private lessons that apply only to this agent. Team-wide lessons live in the Memory shelf.
-      </p>
+      {!focus && (
+        <p className="nd-mem__intro">
+          Private lessons that apply only to this agent. Team-wide lessons live in the Memory shelf.
+        </p>
+      )}
 
       {state === "loading" && (
         <div className="nd-mem__skel" role="status" aria-label="Loading notes">
@@ -122,7 +147,8 @@ export function MemoryTab({
           </Button>
         </div>
       )}
-      {empty && (
+      {empty && focus?.filtered && <p className="fx-mem__none">No notes match these filters.</p>}
+      {empty && !focus?.filtered && (
         <div className="nd-mem__empty">
           <img src="/mark-coral.png" alt="" width={40} height={40} />
           <div className="nd-mem__empty-title">No notes yet</div>
@@ -139,8 +165,21 @@ export function MemoryTab({
           </h4>
           <ul className="nd-mem__list">
             {pending.map((note) => (
-              <li key={note.id} className="nd-mem__note nd-mem__note--pending">
-                <div className="nd-mem__text">{note.content}</div>
+              <li
+                key={note.id}
+                className={`nd-mem__note nd-mem__note--pending${focus ? " fx-note" : ""}`}
+              >
+                {focus ? (
+                  <>
+                    <ForceBadge note={note} />
+                    <div>
+                      <div className="nd-mem__text">{note.content}</div>
+                      <div className="fx-note__origin">{suggestedLine(note)}</div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="nd-mem__text">{note.content}</div>
+                )}
                 <div className="nd-mem__review">
                   <Button
                     variant="primary"
@@ -188,25 +227,37 @@ export function MemoryTab({
                   onCancelEdit={() => setEditing(null)}
                   onSave={(content, polarity) => saveEdit(note, content, polarity)}
                   onDelete={() => onDelete(note)}
+                  focus={focus !== undefined}
                 />
               ))}
             </ul>
           </section>
         ))}
 
-      <a
-        className="nd-mem__shelf"
-        href={routeToHash(shelf)}
-        onClick={(e) => {
-          if (!onOpenShelf) return;
-          e.preventDefault();
-          onOpenShelf(shelf);
-        }}
-      >
-        Open Memory shelf
-        <ArrowRight size={14} strokeWidth={1.6} aria-hidden />
-      </a>
+      {!focus && (
+        <a
+          className="nd-mem__shelf"
+          href={routeToHash(shelf)}
+          onClick={(e) => {
+            if (!onOpenShelf) return;
+            e.preventDefault();
+            onOpenShelf(shelf);
+          }}
+        >
+          Open Memory shelf
+          <ArrowRight size={14} strokeWidth={1.6} aria-hidden />
+        </a>
+      )}
     </div>
+  );
+}
+
+/** A note's force, as Toolkit › Memory colours it (MUST = danger, SHOULD = warning, …). */
+function ForceBadge({ note }: { note: Memory }) {
+  return (
+    <Badge variant={FORCE_VARIANT[note.polarity]} className="fx-note__force">
+      {forceLabel(note.polarity)}
+    </Badge>
   );
 }
 
@@ -219,6 +270,7 @@ function RememberCard({
   isEntry,
   onSaved,
   onOpenFileAccess,
+  compact,
 }: {
   teamId: string;
   nodeId: string;
@@ -227,6 +279,8 @@ function RememberCard({
   isEntry: boolean;
   onSaved: () => void;
   onOpenFileAccess: () => void;
+  /** Focus mode: one line — the name and the rule (Focus-Memory). */
+  compact: boolean;
 }) {
   // What was just switched, until the refetched node agrees.
   const [value, setValue] = useState<boolean | null>(null);
@@ -248,6 +302,32 @@ function RememberCard({
       setSaving(false);
     }
   };
+
+  const toggle = (
+    <Switch
+      aria-label="Remember what it learns"
+      checked={editsAllowed && (value ?? saved)}
+      disabled={!editsAllowed || saving}
+      onCheckedChange={(on) => void flip(on)}
+    />
+  );
+  const failure = failed && (
+    <div className="nd-mem__fail" role="alert">
+      Couldn’t save. Try again.
+    </div>
+  );
+  if (compact) {
+    return (
+      <div className="fx-remember">
+        <div className="fx-remember__text">
+          <b>Remember what it learns</b>{" "}
+          <span>· only agents that can edit files record new lessons</span>
+          {failure}
+        </div>
+        {toggle}
+      </div>
+    );
+  }
 
   let hint;
   if (isEntry) {
@@ -274,18 +354,9 @@ function RememberCard({
       <div>
         <div className="nd-kit__opt-title">Remember what it learns</div>
         <div className="nd-kit__opt-desc nd-kit__opt-desc--gap">{hint}</div>
-        {failed && (
-          <div className="nd-mem__fail" role="alert">
-            Couldn’t save. Try again.
-          </div>
-        )}
+        {failure}
       </div>
-      <Switch
-        aria-label="Remember what it learns"
-        checked={editsAllowed && (value ?? saved)}
-        disabled={!editsAllowed || saving}
-        onCheckedChange={(on) => void flip(on)}
-      />
+      {toggle}
     </div>
   );
 }
@@ -300,10 +371,13 @@ function MemoryNoteRow({
   onCancelEdit,
   onSave,
   onDelete,
+  focus,
 }: {
   note: Memory;
   busy: boolean;
   editing: boolean;
+  /** Focus mode: force · text and provenance · actions on one row. */
+  focus: boolean;
   onTogglePin: () => void;
   onEdit: () => void;
   onCancelEdit: () => void;
@@ -319,31 +393,46 @@ function MemoryNoteRow({
   }, [editing]);
 
   if (editing) return <NoteEditor note={note} onCancel={onCancelEdit} onSave={onSave} />;
+  const actions = (
+    <div className="nd-mem__actions">
+      <IconButton
+        size="sm"
+        active={note.pinned}
+        aria-label="Pin"
+        title={note.pinned ? "Pinned: it always reaches this agent" : "Pin"}
+        disabled={busy}
+        onClick={onTogglePin}
+      >
+        <span className={`nd-mem__pin${note.pinned ? " nd-mem__pin--on" : ""}`}>
+          <Pin size={14} strokeWidth={1.6} aria-hidden />
+        </span>
+      </IconButton>
+      <IconButton ref={editButton} size="sm" aria-label="Edit" onClick={onEdit}>
+        <Pencil size={14} strokeWidth={1.6} aria-hidden />
+      </IconButton>
+      <IconButton size="sm" aria-label="Delete" onClick={onDelete}>
+        <Trash size={14} strokeWidth={1.6} aria-hidden />
+      </IconButton>
+    </div>
+  );
+  if (focus) {
+    return (
+      <li className="nd-mem__note fx-note">
+        <ForceBadge note={note} />
+        <div>
+          <div className="nd-mem__text">{note.content}</div>
+          <div className="fx-note__origin">{noteProvenance(note)}</div>
+        </div>
+        {actions}
+      </li>
+    );
+  }
   return (
     <li className="nd-mem__note">
       <div className="nd-mem__text">{note.content}</div>
       <div className="nd-mem__meta">
         <span className="nd-mem__origin">{noteOrigin(note)}</span>
-        <div className="nd-mem__actions">
-          <IconButton
-            size="sm"
-            active={note.pinned}
-            aria-label="Pin"
-            title={note.pinned ? "Pinned: it always reaches this agent" : "Pin"}
-            disabled={busy}
-            onClick={onTogglePin}
-          >
-            <span className={`nd-mem__pin${note.pinned ? " nd-mem__pin--on" : ""}`}>
-              <Pin size={14} strokeWidth={1.6} aria-hidden />
-            </span>
-          </IconButton>
-          <IconButton ref={editButton} size="sm" aria-label="Edit" onClick={onEdit}>
-            <Pencil size={14} strokeWidth={1.6} aria-hidden />
-          </IconButton>
-          <IconButton size="sm" aria-label="Delete" onClick={onDelete}>
-            <Trash size={14} strokeWidth={1.6} aria-hidden />
-          </IconButton>
-        </div>
+        {actions}
       </div>
     </li>
   );

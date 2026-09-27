@@ -25,7 +25,7 @@ export function NodeFocusView({
   tabs: ReactNode;
   footer: ReactNode;
   children: ReactNode;
-  /** The body scrolls as one column (tabs other than Setup, which lays out its own columns). */
+  /** The body scrolls as one column (a Skills sheet); the tabs lay out their own scrolling panes. */
   scroll?: boolean;
   toast?: ReactNode;
   overlay?: ReactNode;

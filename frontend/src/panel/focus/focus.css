@@ -707,3 +707,390 @@
   right: 16px;
   width: 352px;
 }
+
+/* ---- Skills, Memory and Runs (Focus-Skills, Focus-Memory, Focus-Runs): panes that fill the body,
+   each scrolling on its own (the body itself never scrolls). ---- */
+.fx-panes {
+  position: absolute;
+  inset: 0;
+  display: grid;
+}
+.fx-panes--skills {
+  grid-template-columns: 440px minmax(0, 1fr);
+}
+.fx-panes--memory {
+  grid-template-columns: 250px minmax(0, 1fr);
+}
+.fx-panes--runs {
+  grid-template-columns: 330px minmax(0, 1fr);
+}
+.fx-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.fx-pane--list {
+  padding: 18px 22px 18px 24px;
+  border-right: 1px solid var(--border-hairline);
+}
+.fx-pane--detail {
+  padding: 18px 24px;
+}
+.fx-rail {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-hairline);
+  background: var(--surface-raised);
+}
+.fx-label {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.fx-empty {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 18px 24px 24px;
+}
+
+/* Skills: the picked skill beside the list. */
+.fx-skill {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.fx-skill__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fx-skill__icon {
+  display: inline-flex;
+  color: var(--ink-600);
+}
+.fx-skill__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-code);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.fx-skill__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.fx-skill__more {
+  display: inline-flex;
+}
+.fx-skill__facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.fx-fact {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-page);
+  border: 1px solid var(--line-200);
+}
+.fx-fact__label {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.fx-fact__value {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+}
+.fx-skill__md {
+  margin: -6px 0 0;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-page);
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-800);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fx-skill__md--note {
+  font-family: var(--font-ui);
+  color: var(--ink-500);
+}
+.fx-skill__why {
+  margin: 0;
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-sunk);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.fx-skill__why > svg {
+  flex: none;
+  margin-top: 3px;
+}
+.fx-skill__none {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* Memory: the filter rail, then the notes (force · text · actions on one row). */
+.fx-mem__rail {
+  padding: 18px 20px 18px 24px;
+  gap: 16px;
+}
+.fx-checks {
+  margin-top: -8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fx-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.fx-check input {
+  /* A native checkbox keeps the browser's control font (no text: invisible; it measures alike). */
+  font: 400 13.3333px Arial;
+  margin: 3px 3px 3px 4px;
+  accent-color: #d97757;
+}
+.fx-mem__shelf {
+  margin-top: auto;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--coral-700);
+  text-decoration: none;
+}
+.fx-mem__shelf:hover {
+  text-decoration: underline;
+}
+.fx-mem__notes {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.fx-mem__none {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.fx-remember {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--surface-page);
+  border: 1px solid var(--line-200);
+}
+.fx-remember__text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.fx-remember__text b {
+  font-weight: 600;
+}
+.fx-remember__text span {
+  color: var(--ink-500);
+}
+.nd-mem__note.fx-note {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+}
+.nd-mem__note--pending.fx-note {
+  align-items: center;
+}
+.fx-note .nd-mem__text {
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.fx-note .nd-mem__review {
+  margin-top: 0;
+}
+.fx-note__origin {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* Runs: the rounds rail, then the picked round's cards. */
+.fx-runs__rail {
+  padding: 18px 16px 18px 24px;
+  gap: 12px;
+}
+.fx-rounds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fx-round {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.6;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fx-round:hover {
+  background: var(--surface-page);
+}
+.fx-round--on,
+.fx-round--on:hover {
+  border-color: var(--coral-200);
+  background: var(--coral-100);
+}
+.fx-round:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.fx-round__n {
+  width: 56px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.fx-round__when {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.fx-runs__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.fx-runs__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fx-runs__when {
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.fx-runs__open {
+  margin-left: auto;
+  display: inline-flex;
+}
+.fx-runs__pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.fx-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+.fx-card__text {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--ink-800);
+  overflow-wrap: anywhere;
+}
+.fx-card__text .nd-code {
+  font-size: 12px;
+}
+.fx-card__none {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.fx-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-800);
+}
+.fx-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fx-list__dim {
+  color: var(--ink-500);
+}
+.fx-list__file {
+  font-family: var(--font-code);
+  font-size: 12px;
+}
+.fx-code {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-page);
+  border: 1px solid var(--line-200);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-800);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fx-cost {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-700);
+}

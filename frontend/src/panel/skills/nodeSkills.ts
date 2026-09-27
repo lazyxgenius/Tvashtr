@@ -246,9 +246,20 @@ export function desktopSubscriptionNote(
   cover: CredentialCover | null,
   desktop: boolean,
 ): string | null {
+  const name = desktopSubscriptionName(model, cover, desktop);
+  if (!name) return null;
+  return `Runs on your ${name} subscription on this computer. Its skills are added to its instructions, but tools, Domains and the repo’s rules files aren’t used there yet.`;
+}
+
+/** The subscription ("Grok") an agent runs on on Tvashtr Desktop; null when it doesn't. */
+export function desktopSubscriptionName(
+  model: string,
+  cover: CredentialCover | null,
+  desktop: boolean,
+): string | null {
   const sub = subscriptionProviderForModel(model);
   if (!desktop || !cover || !sub || modelTreatment(model, cover, desktop) !== "subscription") {
     return null;
   }
-  return `Runs on your ${displayNameForSubscription(sub)} subscription on this computer. Its skills are added to its instructions, but tools, Domains and the repo’s rules files aren’t used there yet.`;
+  return displayNameForSubscription(sub);
 }

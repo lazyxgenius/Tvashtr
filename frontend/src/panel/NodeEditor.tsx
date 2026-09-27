@@ -19,6 +19,9 @@ import { DocsTab } from "./docs/DocsTab";
 import type { DocPlace } from "./docs/docView";
 import { AgentPreview } from "./focus/AgentPreview";
 import { FocusDocsTab } from "./focus/FocusDocsTab";
+import { FocusMemoryTab } from "./focus/FocusMemoryTab";
+import { FocusRunsTab } from "./focus/FocusRunsTab";
+import { FocusSkillsTab } from "./focus/FocusSkillsTab";
 import { DrawerToast } from "./DrawerToast";
 import { NodeFocusView } from "./focus/NodeFocusView";
 import { ReviewChanges } from "./focus/ReviewChanges";
@@ -53,7 +56,7 @@ import { checkSchema, schemaDraftText } from "./setup/schemaCheck";
 import { SetupTab } from "./setup/SetupTab";
 import { NEW_DOCUMENT_TOAST } from "./setup/setupCopy";
 import { templateAppliedText, templateApplication, templateNeedsConfirm } from "./setup/templates";
-import { desktopSubscriptionNote } from "./skills/nodeSkills";
+import { desktopSubscriptionName, desktopSubscriptionNote } from "./skills/nodeSkills";
 import { AddSkillView, type SkillSub } from "./skills/AddSkillViews";
 import { SkillsToolsTab } from "./skills/SkillsToolsTab";
 import { useShelves } from "./skills/useShelves";
@@ -98,6 +101,8 @@ export interface NodeEditorProps {
   onOpenDocuments?: (runId: string) => void;
   /** A document's Open: the document viewer (DOCS-18), on that version or compare. */
   onOpenDoc?: (docId: string, place?: DocPlace) => void;
+  /** Focus Runs' "Open this run on the canvas": the run view of that run (FOCUS-64). */
+  onOpenRun?: (runId: string) => void;
 }
 
 /**
@@ -168,6 +173,7 @@ function AgentEditor({
   onOpenToolkit,
   onOpenDocuments,
   onOpenDoc,
+  onOpenRun,
   cover: pageCover,
 }: NodeEditorProps) {
   const api = useAgentDraft(node, { teamId, onSaved: () => onSaved() });
@@ -208,10 +214,12 @@ function AgentEditor({
   // The Tools sheet (add a server / library / paste mcp.json, or Edit connection; G9).
   const [toolSub, setToolSub] = useState<ToolSub | null>(null);
   const shelves = useShelves(tab === "skills" || view === "review");
-  // Runs and Docs share this agent's history, keyed on its last run (a new round reloads it).
+  // Runs and Docs share this agent's history, keyed on its last run (a new round reloads it); focus
+  // Memory reads its latest run's repo ("This repo").
   const last = node.last_run;
   const [historyWanted, setHistoryWanted] = useState(false);
-  if (!historyWanted && (tab === "runs" || tab === "docs")) setHistoryWanted(true);
+  if (!historyWanted && (tab === "runs" || tab === "docs" || (focus && tab === "memory")))
+    setHistoryWanted(true);
   const history = useLoaded(
     historyWanted && last ? `${last.run_id}:${last.iteration}:${last.outcome ?? ""}` : null,
     () => getNodeRuns(teamId, node.id),
@@ -534,47 +542,70 @@ function AgentEditor({
     );
   }
 
+  // Focus mode has no sheet slot on the Skills tab: an open sheet takes the tab's place.
+  const sheetOpen = tab === "skills" && (skillSub !== null || toolSub !== null);
   let body;
   switch (tab) {
-    case "skills":
-      // Focus mode has no sheet slot on this tab: the sheet takes the tab's place.
-      body = (focus && (skillEditor ?? toolEditor)) || (
-        <SkillsToolsTab
-          skills={draft.skills}
-          toolConfig={draft.toolConfig}
-          onSkillsChange={(v) => api.set("skills", v)}
-          onToolsChange={(v) => api.set("toolConfig", v)}
-          note={desktopSubscriptionNote(draft.model, cover, isDesktopApp())}
-          notify={toast.show}
-          onAddSkill={(kind) => setSkillSub({ kind })}
-          onEditSkill={(index) => setSkillSub({ kind: "write", index })}
-          onAddTool={(kind) => setToolSub({ kind })}
-          onEditServer={(name) => setToolSub({ kind: "server", edit: name })}
-          onOpenToolkit={onOpenToolkit}
-          shelves={shelves}
-        />
+    case "skills": {
+      const skillsTab = {
+        skills: draft.skills,
+        toolConfig: draft.toolConfig,
+        onSkillsChange: (v: unknown[] | null) => api.set("skills", v),
+        onToolsChange: (v: AgentDraft["toolConfig"]) => api.set("toolConfig", v),
+        note: desktopSubscriptionNote(draft.model, cover, isDesktopApp()),
+        notify: toast.show,
+        onAddSkill: (kind: SkillSub["kind"]) => setSkillSub({ kind }),
+        onEditSkill: (index: number) => setSkillSub({ kind: "write", index }),
+        onAddTool: (kind: ToolSub["kind"]) => setToolSub({ kind }),
+        onEditServer: (name: string) => setToolSub({ kind: "server", edit: name }),
+        onOpenToolkit,
+        shelves,
+      };
+      if (!focus) body = <SkillsToolsTab {...skillsTab} />;
+      else
+        body = (sheetOpen && (skillEditor ?? toolEditor)) || (
+          <FocusSkillsTab
+            tab={skillsTab}
+            node={node}
+            name={name}
+            nodes={nodes}
+            subscription={desktopSubscriptionName(draft.model, cover, isDesktopApp())}
+          />
+        );
+      break;
+    }
+    case "memory": {
+      const memoryTab = {
+        teamId,
+        nodeId: node.id,
+        rememberSaved: cfg.memory_remember_enabled === true,
+        editsAllowed: draft.editsAllowed,
+        isEntry,
+        memories,
+        notify: toast.show,
+        onRememberSaved: () => void onSaved(),
+        onOpenFileAccess: openFileAccess,
+        onDelete: setForgetting,
+        onOpenShelf: onOpenToolkit,
+      };
+      body = focus ? (
+        <FocusMemoryTab tab={memoryTab} repoKey={history.value?.runs[0]?.repo_key ?? null} />
+      ) : (
+        <MemoryTab {...memoryTab} />
       );
       break;
-    case "memory":
-      body = (
-        <MemoryTab
+    }
+    case "runs":
+      body = focus ? (
+        <FocusRunsTab
           teamId={teamId}
           nodeId={node.id}
-          rememberSaved={cfg.memory_remember_enabled === true}
-          editsAllowed={draft.editsAllowed}
-          isEntry={isEntry}
-          memories={memories}
-          notify={toast.show}
-          onRememberSaved={() => void onSaved()}
-          onOpenFileAccess={openFileAccess}
-          onDelete={setForgetting}
-          onOpenShelf={onOpenToolkit}
+          history={history}
+          verdict={routing.kind === "verdict"}
+          onOpenRun={onOpenRun}
         />
-      );
-      break;
-    case "runs":
-      body = (
-        <RunsTab history={history} onOpenFocus={focus ? undefined : () => onFocusChange(true)} />
+      ) : (
+        <RunsTab history={history} onOpenFocus={() => onFocusChange(true)} />
       );
       break;
     case "docs":
@@ -712,7 +743,7 @@ function AgentEditor({
         header={header}
         tabs={tabs}
         footer={footer}
-        scroll={tab !== "setup" && tab !== "docs"}
+        scroll={sheetOpen}
         toast={toastHost}
         overlay={overlay}
         // Escape leaves the preview / review first, then docks (FOCUS-13).
