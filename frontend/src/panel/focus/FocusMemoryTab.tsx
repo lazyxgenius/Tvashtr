@@ -6,7 +6,6 @@ import { listMemories, type Memory } from "../../lib/api/memory";
 import { POLARITY_META, POLARITY_ORDER } from "../../lib/memory";
 import { routeToHash, type Route } from "../../lib/nav";
 import { MemoryTab } from "../memory/MemoryTab";
-import type { NodeMemories } from "../memory/useNodeMemories";
 
 type Scope = "agent" | "repo" | "account";
 
@@ -37,20 +36,12 @@ export function FocusMemoryTab({
       ),
     [],
   );
+  const own = tab.memories;
+  // A Keep, pin, edit or delete (the drawer's confirm too) also changes the repo / account lists.
   useEffect(() => {
     void loadAll();
-  }, [loadAll]);
+  }, [loadAll, own.changes]);
 
-  const own = tab.memories;
-  // A Keep, pin, edit or delete also changes the repo / account lists.
-  const memories: NodeMemories = {
-    ...own,
-    change: async (call) => {
-      const done = await own.change(call);
-      void loadAll();
-      return done;
-    },
-  };
   const repoNotes = (all ?? []).filter((m) => m.tier === "repo" && m.repo_key === repoKey);
   const accountNotes = (all ?? []).filter((m) => m.tier === "account");
   const counts: Record<Scope, number | null> = {
@@ -133,7 +124,7 @@ export function FocusMemoryTab({
         </a>
       </aside>
       <div className="fx-pane fx-pane--detail">
-        <MemoryTab {...tab} memories={memories} focus={{ active, pending, filtered }} />
+        <MemoryTab {...tab} focus={{ active, pending, filtered }} />
       </div>
     </div>
   );

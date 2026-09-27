@@ -67,12 +67,18 @@ const HISTORY = {
 };
 
 let fetchMock: ReturnType<typeof vi.fn>;
+let account: typeof ACCOUNT;
 beforeEach(() => {
   setProviderCatalogue(CATALOGUE);
+  account = [...ACCOUNT];
   fetchMock = stubFetch(
     () => reviewer(),
     (url, init) => {
       if (url.startsWith("/api/teams/t1/nodes/n-rev/runs")) return json(HISTORY);
+      if (init?.method === "DELETE" && url === "/api/memories/a-1") {
+        account = [];
+        return json(null);
+      }
       if (init?.method === "POST" && url.endsWith("/promote"))
         return json({ ...PENDING[0], status: "active", action: "promote" });
       if (!url.startsWith("/api/memories?")) return undefined;
@@ -80,7 +86,7 @@ beforeEach(() => {
       if (q.get("node_id")) {
         return json({ memories: q.get("status") === "pending_review" ? PENDING : OWN });
       }
-      return json({ memories: [...OWN, ...REPO_NOTES, ...ACCOUNT] });
+      return json({ memories: [...OWN, ...REPO_NOTES, ...account] });
     },
   );
 });
@@ -161,5 +167,17 @@ describe("Focus view › Memory", () => {
     );
     fireEvent.click(rail.getByRole("link", { name: "Open Memory in Toolkit →" }));
     expect(onOpenToolkit).toHaveBeenCalledWith({ page: "memory", tab: "inbox" });
+  });
+
+  it("deleting an account note takes it off the list and the count, in words for its reach", async () => {
+    const { view, rail } = renderMemory();
+    fireEvent.click(await rail.findByRole("checkbox", { name: "Account (1)" }));
+    const row = view.getByText("Prefer small commits.").closest("li") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    const confirm = view.getByRole("alertdialog", { name: "Delete this note?" });
+    expect(confirm).toHaveTextContent("Agents stop seeing it on their next run.");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete note" }));
+    expect(await rail.findByRole("checkbox", { name: "Account (0)" })).toBeChecked();
+    expect(view.queryByText("Prefer small commits.")).toBeNull();
   });
 });

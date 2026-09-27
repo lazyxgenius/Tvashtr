@@ -77,4 +77,33 @@ describe("reviewSections", () => {
       ],
     });
   });
+
+  it("names a skill or tool whose only change is its content, and a new order", () => {
+    const edited: AgentDraft = {
+      ...base,
+      skills: [{ type: "inline", name: "house-style", mode: "always", content: "Use tabs." }],
+    };
+    expect(review(edited)).toMatchObject([
+      { group: "skills", lines: [{ op: "change", text: "house-style: edited" }] },
+    ]);
+
+    const two = [
+      { type: "inline", name: "house-style", mode: "always" },
+      { type: "inline", name: "security", mode: "always" },
+    ];
+    const from = { ...base, skills: two };
+    const reordered = { ...base, skills: [two[1], two[0]] };
+    expect(reviewSections(from, reordered, changedGroups(from, reordered), ctx)).toMatchObject([
+      { group: "skills", lines: [{ op: "change", text: "Order changed" }] },
+    ]);
+
+    const server = (env: Record<string, string>) => ({
+      mcpServers: { docs: { command: "npx", args: ["docs-mcp"], env } },
+    });
+    const tools = { ...base, toolConfig: server({ A: "1" }) } as AgentDraft;
+    const retuned = { ...base, toolConfig: server({ A: "2" }) } as AgentDraft;
+    expect(reviewSections(tools, retuned, changedGroups(tools, retuned), ctx)).toMatchObject([
+      { group: "tools", lines: [{ op: "change", text: "docs: edited" }] },
+    ]);
+  });
 });

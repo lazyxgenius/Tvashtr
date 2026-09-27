@@ -15,6 +15,7 @@ import { glyphForNode } from "../nodeGlyph";
 import { NodeBadges, NodeHeader } from "../NodeHeader";
 import { RunDiff } from "../RunDiff";
 import { RunMemory } from "../RunMemory";
+import { LoadState } from "../runs/RunsTab";
 import { useLoaded } from "../runs/useLoaded";
 
 /** The thinker's placeholder copy when there is no spec document yet — derived from run-level
@@ -51,14 +52,25 @@ function RunDocuments({
   workflowStatus: string | null;
   onOpenDoc?: (docId: string) => void;
 }) {
-  const docs = useLoaded(runId && `${runId}:${node.status}:${node.iteration}`, () =>
-    listRunDocs(runId ?? "").then((d) => d.documents),
+  const docs = useLoaded(
+    runId && `${runId}:${node.status}:${node.iteration}`,
+    () => listRunDocs(runId ?? "").then((d) => d.documents),
+    { keep: true },
   );
   const all = docs.value ?? [];
   if (all.length === 0) {
     return (
       <div className="tv-scroll">
-        <p className="tv-panel-note">{specEmptyHint(runId, run, workflowStatus)}</p>
+        {docs.state === "loading" || docs.state === "error" ? (
+          <LoadState
+            state={docs.state}
+            loading="Loading documents"
+            error="Couldn’t load this run’s documents."
+            onRetry={docs.retry}
+          />
+        ) : (
+          <p className="tv-panel-note">{specEmptyHint(runId, run, workflowStatus)}</p>
+        )}
       </div>
     );
   }

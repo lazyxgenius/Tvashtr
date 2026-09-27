@@ -878,7 +878,9 @@ export default function App({
                 onOpenDoc={openRunDoc}
               />
             )}
-        {docRoute && (
+        {/* Over a focus view, the viewer mounts after it (once the team is in), so the viewer is
+            the top overlay that owns Escape and Tab — a reload on the address included. */}
+        {docRoute && !(authoring && selectedNodeId && place.focus && !teamGraph) && (
           <DocumentViewer
             docId={docRoute.id}
             place={{ version: docRoute.version, compare: docRoute.compare }}

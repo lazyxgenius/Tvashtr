@@ -256,9 +256,10 @@ function AgentEditor({
   // Q7: a template sets the instructions and its default File access (thinker or worker: both run
   // the agent loop; only the entry agent stays read-only). Undo puts back what it replaced.
   const canSetFileAccess = !isEntry;
-  const applyTemplate = (template: NodeTemplate) => {
+  // `promptOnly`: the focus view's Templates dialog replaces only the instructions (OQ-5).
+  const applyTemplate = (template: NodeTemplate, promptOnly = false) => {
     const before = { prompt: draft.prompt, editsAllowed: draft.editsAllowed };
-    api.update(templateApplication(template, draft, canSetFileAccess).patch);
+    api.update(templateApplication(template, draft, canSetFileAccess && !promptOnly).patch);
     toast.show(templateAppliedText(template.title), {
       label: "Undo",
       onAction: () => api.update(before),
@@ -500,7 +501,10 @@ function AgentEditor({
           </>
         }
       >
-        {name} won’t be reminded of it again. You can’t undo this.
+        {note.tier === "repo" || note.tier === "account"
+          ? "Agents stop seeing it on their next run."
+          : `${name} won’t be reminded of it again.`}{" "}
+        You can’t undo this.
       </DrawerConfirm>
     );
   } else if (pending?.kind === "template") {
@@ -523,8 +527,9 @@ function AgentEditor({
         onClose={() => setTemplatesOpen(false)}
         onUse={(template) => {
           setTemplatesOpen(false);
-          // The dialog already says it replaces the instructions (FOCUS-38): no second confirm.
-          applyTemplate(template);
+          // The dialog already says it replaces the instructions (FOCUS-38): no second confirm,
+          // and only the instructions change (OQ-5).
+          applyTemplate(template, true);
         }}
       />
     );

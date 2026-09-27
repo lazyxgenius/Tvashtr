@@ -262,6 +262,27 @@ describe("The document viewer's address (spec §3.2)", () => {
     expect(onDocRoute).toHaveBeenCalledWith(null, { push: false });
   });
 
+  it("a reload on the viewer over the focus view: the viewer owns the keyboard", async () => {
+    const onDocRoute = vi.fn();
+    const onNodeRoute = vi.fn();
+    render(
+      <App
+        teamId="team-1"
+        node="tn-rev"
+        tab="docs"
+        focus
+        onNodeRoute={onNodeRoute}
+        doc={{ id: "d-notes" }}
+        onDocRoute={onDocRoute}
+      />,
+    );
+    await screen.findByRole("dialog", { name: "Reviewer in focus view" });
+    await screen.findByRole("dialog", { name: "build-notes" });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onDocRoute).toHaveBeenCalledWith(null, { push: false });
+    expect(onNodeRoute).not.toHaveBeenCalled();
+  });
+
   it("opening a document adds a history step; moving inside it doesn't", async () => {
     const onDocRoute = vi.fn();
     const { rerender } = render(<App teamId="team-1" onDocRoute={onDocRoute} />);

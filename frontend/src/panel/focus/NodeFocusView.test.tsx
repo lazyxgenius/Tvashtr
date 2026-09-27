@@ -365,6 +365,8 @@ describe("Focus mode — Templates dialog", () => {
     expect(editor()).toHaveValue("You are the engineer.");
     const toast = dialog().querySelector(".nd-toast-host") as HTMLElement;
     expect(within(toast).getByText("Engineer template applied")).toBeInTheDocument();
+    // Only the instructions change (OQ-5): the Reviewer stays read-only.
+    expect(within(dialog()).getByRole("button", { name: "1 unsaved change" })).toBeInTheDocument();
     // Nothing is saved: the draft holds it (Discard brings the text back).
     expect(fetchMock.mock.calls.some((c) => (c[1] as RequestInit)?.method === "PATCH")).toBe(false);
   });

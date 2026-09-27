@@ -8,7 +8,7 @@ import type { SkillLibraryItem, ToolLibraryItem } from "../../lib/api";
 import type { AgentDraft, ChangeGroup } from "../agentDraft";
 import { type DiffRow, diffLines } from "../setup/lineDiff";
 import { followsRules, MODE_LABELS, skillRows } from "../skills/nodeSkills";
-import { domainsOf, toolRows } from "../tools/nodeTools";
+import { domainsOf, serversOf, toolRows } from "../tools/nodeTools";
 
 export interface ReviewValue {
   text: string;
@@ -100,13 +100,18 @@ function nameLines(base: AgentDraft, draft: AgentDraft, ctx: ReviewContext): Rev
   return lines;
 }
 
-/** Rows present on one side only are added / removed; a row on both whose `detail` differs changed. */
+/**
+ * Rows present on one side only are added / removed; a row on both whose `detail` differs changed,
+ * and one whose other settings (`raw`: a skill's text, a server's env) differ was "edited". A change
+ * none of that names is the order.
+ */
 function rowLines<R>(
   before: readonly R[],
   after: readonly R[],
   key: (r: R) => string,
   name: (r: R) => string,
   detail: (r: R) => string,
+  raw: (r: R, side: "before" | "after") => string,
 ): ReviewLine[] {
   const lines: ReviewLine[] = [];
   const old = new Map(before.map((r) => [key(r), r]));
@@ -116,6 +121,8 @@ function rowLines<R>(
     if (!was) lines.push({ op: "add", text: `${name(r)} · ${detail(r)}` });
     else if (detail(was) !== detail(r)) {
       lines.push({ op: "change", text: `${name(r)}: ${detail(was)} → ${detail(r)}` });
+    } else if (raw(was, "before") !== raw(r, "after")) {
+      lines.push({ op: "change", text: `${name(r)}: edited` });
     }
   }
   for (const r of before) {
@@ -123,6 +130,10 @@ function rowLines<R>(
   }
   return lines;
 }
+
+/** The group changed but no row says how: its order did. */
+const orNewOrder = (lines: ReviewLine[]): ReviewLine[] =>
+  lines.length > 0 ? lines : [{ op: "change", text: "Order changed" }];
 
 function skillLines(base: AgentDraft, draft: AgentDraft, ctx: ReviewContext): ReviewLine[] {
   const rows = (d: AgentDraft) => skillRows(d.skills, ctx.skillLibrary);
@@ -132,6 +143,7 @@ function skillLines(base: AgentDraft, draft: AgentDraft, ctx: ReviewContext): Re
     (r) => `${r.badge.label}:${r.libraryId ?? r.name}`,
     (r) => r.name,
     (r) => [MODE_LABELS[r.mode], ...r.triggers].join(" "),
+    (r, side) => JSON.stringify((side === "before" ? base : draft).skills?.[r.index]),
   );
   if (followsRules(base.skills) !== followsRules(draft.skills)) {
     const on = (d: AgentDraft) => onOff(followsRules(d.skills));
@@ -140,7 +152,7 @@ function skillLines(base: AgentDraft, draft: AgentDraft, ctx: ReviewContext): Re
       text: `Follow the repo’s rules files: ${on(base)} → ${on(draft)}`,
     });
   }
-  return lines;
+  return orNewOrder(lines);
 }
 
 function toolLines(base: AgentDraft, draft: AgentDraft, ctx: ReviewContext): ReviewLine[] {
@@ -151,12 +163,16 @@ function toolLines(base: AgentDraft, draft: AgentDraft, ctx: ReviewContext): Rev
     (r) => r.key,
     (r) => r.name,
     (r) => `${r.enabled ? "On" : "Off"} · ${r.target}`,
+    (r, side) =>
+      r.source === "inline"
+        ? JSON.stringify(serversOf((side === "before" ? base : draft).toolConfig)[r.name])
+        : "",
   );
   if (domainsOf(base.toolConfig) !== domainsOf(draft.toolConfig)) {
     const on = (d: AgentDraft) => onOff(domainsOf(d.toolConfig));
     lines.push({ op: "change", text: `Domains: ${on(base)} → ${on(draft)}` });
   }
-  return lines;
+  return orNewOrder(lines);
 }
 
 export function reviewSections(

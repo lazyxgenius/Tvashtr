@@ -588,4 +588,50 @@ describe("RunNodeDrawer — the run's documents on a thinker", () => {
     fireEvent.click(within(cards[1]).getByRole("button", { name: "Open" }));
     expect(onOpenDoc).toHaveBeenLastCalledWith("d-notes");
   });
+
+  it("says when the documents can't load (Retry), and keeps them while a new round reloads", async () => {
+    const SPEC = {
+      run: { run_id: "r1", idea: "x", status: "running", created_at: "", live: true },
+      documents: [
+        {
+          id: "d-spec",
+          name: "spec",
+          is_shared_spec: true,
+          latest_version: { version_no: 3, created_at: "2026-01-01T00:00:00Z" },
+          written_by: [],
+          read_by: [],
+        },
+      ],
+    };
+    let answer: () => Promise<Response> = () =>
+      Promise.resolve(new Response(JSON.stringify({ detail: "down" }), { status: 500 }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => answer()),
+    );
+    const drawer = (status: string) => (
+      <RunNodeDrawer
+        node={gnode({ id: "c-n-pm", role_name: "pm", kind: "completion", invocations: [], status })}
+        runId="r1"
+        run={runRow({ status: "running" })}
+        workflowStatus={null}
+        onClose={() => {}}
+        onOpenDoc={vi.fn()}
+      />
+    );
+    const view = render(drawer("running"));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn’t load this run’s documents.");
+    expect(screen.queryByText("The product manager is drafting the spec…")).toBeNull();
+
+    answer = () => Promise.resolve(new Response(JSON.stringify(SPEC)));
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Shared spec")).toBeInTheDocument();
+
+    // The node's round moves on: the card stays while the documents reload.
+    answer = () => new Promise(() => undefined);
+    view.rerender(drawer("completed"));
+    expect(screen.getByText("Shared spec")).toBeInTheDocument();
+    expect(screen.queryByText("The product manager is drafting the spec…")).toBeNull();
+  });
 });
