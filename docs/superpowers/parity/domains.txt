@@ -191,7 +191,7 @@
 #   no drift item on either render.
 # blocked (all 8 boards, web + desktop) [ctl]+[txt] 'Run this team': font 13→14px, height 32→40, width 126→139 — F5's
 #   CanvasToolbar Run is 14px/40px/139px on F5's Main/Web-Setup/Desktop-Editing (13px/32px on the Domains frames).
-# blocked (the 7 boards with a drawer, web + desktop) [txt] 'Query domain' / 'Product manager': font 18→19px — F5's
+# blocked (the 6 boards with a drawer, web + desktop) [txt] 'Query domain' / 'Product manager': font 18→19px — F5's
 #   NodeHeader name is 19px Newsreader on every F5 board (18px on the Domains frames). On web the 30px shift makes
 #   DmF-Canvas-2's 'Query domain' pick the drawer subtitle instead (font 18→12.5px, family Newsreader→Inter): that
 #   subtitle also reads "Query domain" for a node still at the default title (the frame's "Look up support docs" there
@@ -203,7 +203,7 @@
 #   role presets is a canvas-wide call, not this area's (only the "Query domain" entry is).
 # blocked DmF-Canvas-2 (web + desktop) [txt] 'QUERY DOMAIN': font 9→12.5px — nearest-match artifact: the app writes
 #   the eyebrow "Query domain" (uppercase by CSS, as F5's "Start · entry"), so it keys like the card title under it;
-#   the frame's card sits ~65px lower than the fitted canvas draws it, so the title is nearer. The eyebrow is 9px/600.
+#   the frame's card sits 60–80px lower than the fitted canvas draws it, so the title is nearer. The eyebrow is 9px/600.
 # blocked Dm-AgentAccess (web + desktop) the drawer is F5's (OQ-2): tabs [txt] 'Setup' / 'Memory' / 'Runs' 13px/400 →
 #   13.5px/500 (F5's line tabs), 'Tools' / 'Skills' key to F5's section headings (13.5px/600; the tab is "Skills &
 #   tools"), [ctl] 'Save' height 32→13 (F5's SaveBar "Save ⌘S", as on Desktop-Editing) and [txt] 'Ship' 12.5px/600 →
