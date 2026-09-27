@@ -25,6 +25,7 @@ Response `200`:
       "key": "pm",
       "title": "Product manager",
       "description": "Drafts the spec",
+      "summary": "Turns your idea into a spec the team can build from.",
       "role_name": "pm",
       "node_kind": "thinker",
       "edits_allowed": false,
@@ -33,18 +34,24 @@ Response `200`:
       "prompt": "You are the PM on a software team. Write a concise mini-PRD (3-5 sentences) …"
     },
     { "key": "architect", "title": "Architect", "description": "Adds the technical design",
+      "summary": "Plans the change and adds a technical design to the spec.",
       "role_name": "architect", "node_kind": "thinker", "edits_allowed": false,
       "writes_to": null, "verdict_labels": [], "prompt": "You are the software architect …" },
     { "key": "engineer", "title": "Engineer", "description": "Writes & ships it",
+      "summary": "Builds the change the spec asks for.",
       "role_name": "engineer", "node_kind": "worker", "edits_allowed": true,
       "writes_to": null, "verdict_labels": [], "prompt": "Read the PRD below and create …" },
     { "key": "reviewer", "title": "Reviewer", "description": "Checks against the spec",
+      "summary": "Checks the build against the spec and gives a verdict.",
       "role_name": "reviewer", "node_kind": "worker", "edits_allowed": false,
       "writes_to": null, "verdict_labels": ["approved", "changes_requested"],
       "prompt": "You are the Reviewer on a software team. …" }
   ]
 }
 ```
+
+`summary` (additive, F6): one sentence on what the template's instructions do, for the focus view's
+Templates dialog list (`description` stays the short tagline a new node is seeded with).
 
 `edits_allowed` is the template's default File access for the UI to apply with the template (the
 server does not change a node's access when a preset is dropped — see POST below).
