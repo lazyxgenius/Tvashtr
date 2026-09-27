@@ -51,6 +51,8 @@ export function loadGetStarted(): Promise<void> {
     loading = getAccountPreferences()
       .then((p) => set({ hidden: Boolean(p.get_started_hidden) }))
       .catch(() => {
+        // Can't read it: the normal Home (a later load retries).
+        if (state.hidden === null) set({ hidden: true });
         loading = null;
       });
   }
