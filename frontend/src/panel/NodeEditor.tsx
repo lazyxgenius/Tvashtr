@@ -88,6 +88,8 @@ export interface NodeEditorProps {
   onProviderAdded?: (provider: string) => void;
   /** Open a Toolkit page (a library skill or tool: "Open in Toolkit"). */
   onOpenToolkit?: (route: Route) => void;
+  /** A Query domain node's unsaved card fields (domain, title, passing), for its canvas card. */
+  onCardPreview?: (config: Record<string, unknown>) => void;
 }
 
 /**
@@ -105,10 +107,32 @@ export function NodeEditor(props: NodeEditorProps) {
   return <AgentEditor {...props} />;
 }
 
-/** The Query domain node (Dm-QueryNode): the header reads "Query domain / <title> · run <n>". */
-function QueryDomainDrawer({ teamId, node, nodes, edges, onClose, onSaved }: NodeEditorProps) {
+/**
+ * The Query domain node (Dm-QueryNode): the header reads "Query domain / <title> · run <n>"; the
+ * card on the canvas previews the unsaved pick (DmF-Canvas-3).
+ */
+function QueryDomainDrawer({
+  teamId,
+  node,
+  nodes,
+  edges,
+  onClose,
+  onSaved,
+  onCardPreview,
+}: NodeEditorProps) {
   return (
-    <QueryDomainPanel teamId={teamId} node={node} nodes={nodes} edges={edges} onSaved={onSaved}>
+    <QueryDomainPanel
+      teamId={teamId}
+      node={node}
+      nodes={nodes}
+      edges={edges}
+      onSaved={onSaved}
+      onDraft={
+        onCardPreview &&
+        ((d) =>
+          onCardPreview({ domain_id: d.domain_id, title: d.title, pass_to_spec: d.pass_to_spec }))
+      }
+    >
       {({ title, subtitle, body }) => (
         <NodeDrawer
           name={title}

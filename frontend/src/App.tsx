@@ -567,6 +567,21 @@ export default function App({
     void pull();
   }, [runId, pull]);
 
+  // An open Query domain drawer's unsaved card fields: its card shows them before Save
+  // (DmF-Canvas-3). Only the selected node's are used; an unchanged report keeps the graph as is.
+  const [cardPreview, setCardPreview] = useState<{
+    nodeId: string;
+    config: Record<string, unknown>;
+  } | null>(null);
+  const previewCard = useCallback((nodeId: string, config: Record<string, unknown>) => {
+    setCardPreview((cur) =>
+      cur?.nodeId === nodeId && JSON.stringify(cur.config) === JSON.stringify(config)
+        ? cur
+        : { nodeId, config },
+    );
+  }, []);
+  const previewConfig = cardPreview?.nodeId === selectedNodeId ? cardPreview : null;
+
   // The persistent team rendered in the canvas's GraphData shape (no run → every node idle). The
   // canvas keys its topology on `run_id`, so we hand it the stable team_graph_id there.
   const teamAsGraph: GraphData | null = useMemo(() => {
@@ -580,6 +595,8 @@ export default function App({
       team_graph_id: teamGraph.team_graph_id,
       nodes: teamGraph.nodes.map((n) => ({
         ...n,
+        config:
+          previewConfig?.nodeId === n.id ? { ...n.config, ...previewConfig.config } : n.config,
         position: layout[n.id] ?? n.position,
         model: n.model ?? "",
         status: "idle",
@@ -588,7 +605,7 @@ export default function App({
       })),
       edges: teamGraph.edges,
     };
-  }, [teamGraph]);
+  }, [teamGraph, previewConfig]);
 
   // P1.8d: the authoring panel selects by node id (duplicate role names are possible now).
   const selectedTeamNode = teamGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null;
@@ -751,6 +768,7 @@ export default function App({
                     : undefined
                 }
                 onOpenToolkit={(route) => guardLeave(() => navigate(route))}
+                onCardPreview={(config) => previewCard(selectedTeamNode.id, config)}
                 onProviderAdded={(provider) =>
                   setCredentialGate((gate) =>
                     gate ? { ...gate, byok: new Set([...gate.byok, provider]) } : gate,

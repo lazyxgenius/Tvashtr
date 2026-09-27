@@ -103,27 +103,6 @@
   color: var(--text-secondary);
 }
 
-/* Phase 4a: Query domain card — blue border accent (domains secondary). */
-.rf-node--domain-query {
-  border-color: color-mix(in srgb, var(--blue-500) 45%, var(--border-hairline));
-}
-.rf-node__title {
-  font-size: 14px;
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-snug);
-  line-height: 1.2;
-  color: var(--text-primary);
-}
-.rf-node__blurb {
-  margin-top: 4px;
-  margin-bottom: 10px;
-  font-size: 11.5px;
-  color: var(--text-secondary);
-}
-.rf-node--domain-query .rf-node__eyebrow {
-  color: var(--blue-500);
-}
-
 /* The capability + engine + status-pill row (the pill moves up out of the old foot,
    pushed to the right by margin-left:auto). */
 .rf-node__meta {
@@ -613,21 +592,10 @@
   left: 16px;
   z-index: 8;
 }
+/* The trigger is the DS outline IconButton (40px); it floats over the canvas, so it keeps a shadow. */
 .tv-palette__trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  color: var(--ink-700);
   background: var(--surface-card);
-  border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  cursor: pointer;
-  transition:
-    color var(--dur-fast) var(--ease-standard),
-    border-color var(--dur-fast) var(--ease-standard);
 }
 .tv-palette__trigger:hover:not(:disabled) {
   color: var(--accent);
@@ -643,7 +611,7 @@
 }
 .tv-palette__panel {
   position: absolute;
-  top: 50px;
+  top: 48px;
   left: 0;
   z-index: 16;
   width: 236px;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 
+import { IconButton } from "../design-system/components";
 import type { CreateNodeBody } from "../lib/api";
 import { PALETTE_PRESETS, PALETTE_PRIMITIVES } from "./paletteItems";
 
@@ -44,8 +45,10 @@ export function NodePalette({
 
   return (
     <div className="tv-palette" onMouseEnter={openNow} onMouseLeave={closeSoon}>
-      <button
-        type="button"
+      {/* The DS outline IconButton (md, 40px) the canvas boards draw for "Add to canvas". */}
+      <IconButton
+        variant="outline"
+        size="md"
         className={`tv-palette__trigger${open ? " tv-palette__trigger--open" : ""}`}
         title="Add to canvas"
         aria-label="Add to canvas"
@@ -53,8 +56,8 @@ export function NodePalette({
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
       >
-        <Plus size={17} strokeWidth={1.8} />
-      </button>
+        <Plus size={16} strokeWidth={1.6} />
+      </IconButton>
       {open && (
         <div className="tv-palette__panel" role="menu" aria-label="Add to canvas">
           <div className="tv-palette__label">Add to canvas</div>

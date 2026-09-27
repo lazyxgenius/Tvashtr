@@ -21,8 +21,14 @@ describe("the Query domain card (DM-99)", () => {
   it("a new node needs a domain (Canvas-2)", () => {
     publishBadges({ domains: NAV });
     render(<QueryDomainCardBody config={{ domain_id: null, pass_to_spec: true }} />);
-    expect(screen.getByText("Query domain", { selector: ".rf-node__title" })).toBeInTheDocument();
-    expect(screen.getByText("Pick a domain")).toBeInTheDocument();
+    // The canvas card's anatomy (Dm-QueryNode): the book glyph, the coral eyebrow, the title as
+    // the agent cards' role line and the domain as their caption.
+    expect(document.querySelector(".rf-node__head .rf-node__glyph svg")).not.toBeNull();
+    expect(screen.getByText("Query domain", { selector: ".rf-node__eyebrow" })).toBeInTheDocument();
+    expect(screen.getByText("Query domain", { selector: ".rf-node__role" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Pick a domain", { selector: ".rf-node__caption" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Needs a domain")).toBeInTheDocument();
   });
 
@@ -34,8 +40,10 @@ describe("the Query domain card (DM-99)", () => {
         lastOutcome="answered"
       />,
     );
-    expect(screen.getByText("Look up support docs")).toBeInTheDocument();
-    expect(screen.getByText("Support docs")).toBeInTheDocument();
+    expect(
+      screen.getByText("Look up support docs", { selector: ".rf-node__role" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Support docs", { selector: ".rf-node__caption" })).toBeInTheDocument();
     expect(screen.getByText("Answered")).toBeInTheDocument();
     expect(screen.getByText("Passes the answer on")).toBeInTheDocument();
   });

@@ -97,7 +97,8 @@ const WRITER = agentNode(N.writer, "writer", 524, "anthropic/claude-sonnet-5", {
 });
 const REVIEWER = agentNode(N.reviewer, "reviewer", 756, "xai/grok-4.7");
 
-/** The Docs team: PM → [Query domain] → Writer → Reviewer → Ship. */
+/** The Docs team: PM → [Query domain] → Writer → Reviewer → Ship. Unconnected (Canvas-2…4),
+ *  the frames draw PM → Writer → Reviewer in a row and the new Query domain card below Writer. */
 function docsGraph(dq, { connected = true, exit = true } = {}) {
   const edges = [edge(N.writer, N.reviewer), edge(N.reviewer, N.ship)];
   if (!dq || !connected) edges.push(edge(N.pm, N.writer));
@@ -105,10 +106,21 @@ function docsGraph(dq, { connected = true, exit = true } = {}) {
     edges.push(edge(N.pm, N.dq));
     if (exit) edges.push(edge(N.dq, N.writer));
   }
+  const row = !dq || !connected;
+  const at = (node, x, y = node.position.y) => ({
+    ...node,
+    position: { x, y },
+  });
   return {
     team_graph_id: T.docs,
     name: "Docs team",
-    nodes: [PM, ...(dq ? [dq] : []), WRITER, REVIEWER, shipNode(N.ship, 988)],
+    nodes: [
+      PM,
+      ...(dq ? [row ? at(dq, 292, 470) : dq] : []),
+      row ? at(WRITER, 292) : WRITER,
+      row ? at(REVIEWER, 524) : REVIEWER,
+      shipNode(N.ship, row ? 756 : 988),
+    ],
     edges,
   };
 }
@@ -224,13 +236,10 @@ function canvasRoutes({
   };
 }
 
-// F5's drawer is the "Node settings" aside; today's agent editor is named after the agent.
-const drawer = (page) =>
-  page
-    .locator('aside[aria-label="Node settings"], aside[aria-label$=" editor"]')
-    .first();
+// F5's drawer: the "<Name> settings" aside ("Query domain settings" for a Query domain node).
+const drawer = (page) => page.locator("aside.nd-drawer").first();
 
-/** Select a node: F5's App opens it from `?node=`; today's opens it on a click. */
+/** Select a node: the App opens it from `?node=`; a click opens it otherwise. */
 async function select(page, title) {
   if (await drawer(page).isVisible()) return;
   await page
@@ -386,9 +395,10 @@ export default [
     },
   }),
   ...pair("canvas-4", {
-    path: `/#/teams/${T.docs}?node=${N.dq}`,
+    // The frame draws the card with its badge and the banner, no drawer.
+    path: `/#/teams/${T.docs}`,
     routes: canvasRoutes({
-      graph: docsGraph(queryNode(LOOKUP), { exit: false }),
+      graph: docsGraph(queryNode(LOOKUP), { connected: false }),
       validity: NO_EXIT,
     }),
     steps: async (page) => {
@@ -397,7 +407,7 @@ export default [
     },
   }),
   ...pair("agent-access", {
-    path: `/#/teams/${T.sprint}?node=${N.sprintPm}&tab=tools`,
+    path: `/#/teams/${T.sprint}?node=${N.sprintPm}&tab=skills`,
     // The frame's PM runs grok on its API key (no DM-96 plan note), so the Desktop render's
     // harness bridge reports Grok signed out. A no-op on the website render.
     init: () => {
@@ -441,13 +451,6 @@ export default [
     }),
     steps: async (page) => {
       await select(page, "Product manager");
-      // Today's Tools section is a closed <details>; F5's is the drawer's Tools tab.
-      const details = drawer(page).locator("details", {
-        has: page.locator("summary", { hasText: /^Tools/ }),
-      });
-      if ((await details.count()) && !(await details.evaluate((d) => d.open))) {
-        await details.locator("summary").click();
-      }
       const label = drawer(page).getByText("Support docs", { exact: true });
       await label.scrollIntoViewIfNeeded();
       await label.click();

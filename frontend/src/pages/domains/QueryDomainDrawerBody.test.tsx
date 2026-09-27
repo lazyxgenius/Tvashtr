@@ -102,6 +102,8 @@ const RUN = {
 
 let saved: ReturnType<typeof vi.fn>;
 
+let onDraft: ReturnType<typeof vi.fn>;
+
 function setup(node: TeamGraphNode, runs: object = { runs: [], run: null }, patch?: object) {
   const calls = mockApi({
     "GET /api/domains": { domains: sampleDomains() },
@@ -109,6 +111,7 @@ function setup(node: TeamGraphNode, runs: object = { runs: [], run: null }, patc
     "PATCH /api/teams/:t/nodes/:n": patch ?? {},
   });
   saved = vi.fn();
+  onDraft = vi.fn();
   render(
     <ToastProvider>
       <QueryDomainPanel
@@ -117,6 +120,7 @@ function setup(node: TeamGraphNode, runs: object = { runs: [], run: null }, patc
         nodes={[...NODES, node]}
         edges={EDGES}
         onSaved={saved}
+        onDraft={onDraft}
       >
         {({ title, subtitle, body }) => (
           <aside aria-label="Node settings">
@@ -203,6 +207,10 @@ describe("Query domain drawer — Setup (Dm-QueryNode)", () => {
       "What do our support docs say about {idea}?",
     );
     expect(within(d).getByText("Unsaved changes")).toBeInTheDocument();
+    // The canvas card follows the unsaved pick (DmF-Canvas-3).
+    expect(onDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({ domain_id: "d-support", title: "Look up support docs" }),
+    );
     fireEvent.change(within(d).getByLabelText("If the domain has no answer"), {
       target: { value: "stop" },
     });

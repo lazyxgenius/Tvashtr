@@ -313,7 +313,7 @@ export function QueryDomainDrawerBody({
   lastRun,
   onDomainsChanged,
   onSaved,
-  onDraftTitle,
+  onDraft,
 }: {
   teamId: string;
   node: TeamGraphNode;
@@ -325,8 +325,8 @@ export function QueryDomainDrawerBody({
   /** A domain was made from **New domain…** (reload the list). */
   onDomainsChanged: () => Promise<void> | void;
   onSaved: () => Promise<void> | void;
-  /** The title as edited, for the drawer's subtitle. */
-  onDraftTitle?: (title: string) => void;
+  /** The settings as edited (the drawer's subtitle and the canvas card follow them). */
+  onDraft?: (draft: QueryNodeSettings) => void;
 }) {
   const saved = useMemo(() => settingsOf(node), [node]);
   const [draft, setDraft] = useState<QueryNodeSettings>(saved);
@@ -336,7 +336,12 @@ export function QueryDomainDrawerBody({
   const round = lastRun?.rounds[0] ?? null;
   const [tab, setTab] = useState<Tab>("setup");
 
-  useEffect(() => onDraftTitle?.(draft.title), [draft.title, onDraftTitle]);
+  // Report each edit; the latest callback is read from a ref, so a new one doesn't re-report.
+  const onDraftRef = useRef(onDraft);
+  useEffect(() => {
+    onDraftRef.current = onDraft;
+  });
+  useEffect(() => onDraftRef.current?.(draft), [draft]);
 
   const changed = (Object.keys(draft) as (keyof QueryNodeSettings)[]).filter(
     (k) => draft[k] !== saved[k],
@@ -520,6 +525,7 @@ export function QueryDomainPanel({
   nodes,
   edges,
   onSaved,
+  onDraft,
   children,
 }: {
   teamId: string;
@@ -527,10 +533,19 @@ export function QueryDomainPanel({
   nodes: TeamGraphNode[];
   edges: GraphEdge[];
   onSaved: () => Promise<void> | void;
+  /** The drawer's unsaved settings, as edited (the canvas card previews them, DmF-Canvas-3). */
+  onDraft?: (draft: QueryNodeSettings) => void;
   children: (shell: { title: string; subtitle: string; body: ReactNode }) => ReactNode;
 }) {
   const { domains, lastRun, reloadDomains } = useQueryDomainData(teamId, node.id);
   const [title, setTitle] = useState(settingsOf(node).title);
+  const report = useCallback(
+    (draft: QueryNodeSettings) => {
+      setTitle(draft.title);
+      onDraft?.(draft);
+    },
+    [onDraft],
+  );
   return children({
     title: DEFAULT_TITLE,
     subtitle: drawerSubtitle(title.trim() || DEFAULT_TITLE, lastRun?.number),
@@ -544,7 +559,7 @@ export function QueryDomainPanel({
         lastRun={lastRun}
         onDomainsChanged={reloadDomains}
         onSaved={onSaved}
-        onDraftTitle={setTitle}
+        onDraft={report}
       />
     ),
   });

@@ -2,9 +2,11 @@
  * The Query domain node's card on the canvas (DM-99): the eyebrow, its title, the domain it asks
  * (or "Pick a domain"), badges — "Needs a domain" (none, or one that was deleted), "No way out",
  * then how the last run went ("Answered", "No answer", "Failed") — and "Passes the answer on".
- * The card frame, handles and hover affordances stay the canvas's.
+ * The card frame, handles and hover affordances stay the canvas's; the head is the agent cards'
+ * (glyph, eyebrow, title, caption).
  */
 import { useEffect } from "react";
+import { BookOpen } from "lucide-react";
 
 import { listDomainSummaries } from "../../lib/api/domains";
 import { type NavDomain, useNavBadges } from "../../lib/workspaceStatus";
@@ -50,9 +52,18 @@ export function QueryDomainCardBody({
   const badges = cardBadges({ hasDomain, errorCode, lastOutcome, failed });
   return (
     <>
-      <div className="rf-node__eyebrow">Query domain</div>
-      <div className="rf-node__title">{title}</div>
-      <div className="rf-node__blurb">{hasDomain ? (domain?.name ?? "") : "Pick a domain"}</div>
+      <div className="rf-node__head">
+        <span className="rf-node__glyph">
+          <BookOpen size={13} strokeWidth={1.7} />
+        </span>
+        <div className="rf-node__titles">
+          <div className="rf-node__eyebrow">Query domain</div>
+          <div className="rf-node__role">{title}</div>
+          <div className="rf-node__caption">
+            {hasDomain ? (domain?.name ?? "") : "Pick a domain"}
+          </div>
+        </div>
+      </div>
       {badges.length > 0 && (
         <div className="dm-qcard__badges">
           {badges.map((b) => (

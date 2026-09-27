@@ -1,10 +1,12 @@
-# Domains — parity sweep, branch feat/revamp-domains @ 6484395
+# Domains — parity sweep, branch feat/revamp-domains after the main merge (4ec187e) + the F5 wiring
 # skipped: Dm-BeforeAfter — rationale board, not a screen: a placeholder 'Before' image with the caption about today's page, and six 'What changes on Domains' bullets (PNG checked)
 # skipped: DmF-Index — index board: 'Domains flows' lists 21 flows / 74 screens with screen counts, plus the coral-ring legend (PNG checked)
 # sweep 2026-09-27 (FINISH stage): all 84 boards re-shot web + Desktop after the review fixes; every line reproduced the
 #   previous record (DmF-First-3 web was re-shot once: a shot under load caught the dialog mid-open, 27 not found).
 #   0 size/type drift on both renders for 67 boards; 9 web lines carry a 30px-shift `# waiver` (Desktop 0); the 8 canvas
-#   boards carry `# needs-F5` (every drift item is F5's canvas chrome; the Domains drawer body/checklist are 0 drift).
+#   boards carry `# blocked` notes (see G12: only F5-chrome conflicts and one nearest-match artifact are left).
+# sweep 2026-09-27 (after merging main: F5's drawer + canvas chrome): all 84 boards re-shot web + Desktop; every line
+#   of the 76 non-canvas boards reproduced the record; the 8 canvas boards were re-shot on F5's chrome (G12).
 # Every Domains board is drawn in Desktop mode (30px title strip): web renders are 30px higher ("only moved"),
 # and the one web "not found" is the strip's own title "Tvashtr — the living canvas" (Desktop-only chrome).
 # The header ⌘K search is only in the app (OQ-1: one shell). Scenarios: scripts/design-parity/scenarios/domains-*.mjs.
@@ -178,36 +180,43 @@
 #   start"). The rings on Add as a step / Give an agent access / Add step / Give access are keyboard focus (Tab).
 # note DmF-Agent-2: nothing starts picked — the scenario clicks Product manager (the frame's ring marks that click).
 #   DmF-Agent-3 is the flow (Give access → PUT → the usage re-read lists Product manager, the card tinted, the toast).
-# G12 (the Query domain node + an agent's Domains on the team canvas; scenarios domains-canvas.mjs). Every G12 board is
-#   drawn on F5's rebuilt canvas chrome — the canvas header ("Tvashtr" + avatar only), the toolbar (Back, Run this team
-#   13px/32px, the team name, $0.00, + Add to canvas at the right), the 172px node cards (9px eyebrows, 12.5px titles,
-#   9.5px mono model footers) and the 384px drawer shell (32px glyph tile, 18px serif title, 12.5px subtitle, Close only,
-#   tabs inside the body). Today's App still draws the old chrome (taller toolbar, 216px cards, the tv-panel header with
-#   the pop-up toggle), so every size/type drift on these boards is chrome or card — the Domains parts (drawer body,
-#   Last run, Domain list, Domains checklist + callout) measured 0 drift on Desktop on every board (checked item by item:
-#   no drift item sits in the drawer body). The lead re-runs these scenarios once F5 lands; the drawer body and
-#   checklist wire into F5's shell by the QueryDomainPanel render prop (title, subtitle, body) and DomainsChecklist.
-# needs-F5 Dm-QueryNode: canvas header/toolbar/cards/drawer header are F5's (drift: 'Run this team' 13→14px, card text
-#   9–12.5px vs 10–14px, drawer subtitle 12.5→13px, Add to canvas at the left of the canvas); drawer body 0 drift.
-# needs-F5 DmF-Step-4: as Dm-QueryNode (reached by the real flow: Use in teams → Add step → the canvas + the toast
-#   "Added after Product manager. Connected to Writer."); the toast centres on the window, the design's on the canvas.
-# needs-F5 DmF-Step-5: as Dm-QueryNode; the header subtitle "Look up support docs · run 14" is F5's NodeHeader (13px
-#   today); Last run body 0 drift except OQ-10 (the highlight is the whole cited sentence, as on Dm-Ask).
-# needs-F5 DmF-Canvas-1: the "Add to canvas" menu is F5's palette (w300, Agent/Gate/Ship/Stop/Query domain 12.5px
-#   chips at the toolbar's right); today's palette sits at the canvas's top-left (Thinker/Worker/Gate/Ship/Stop/Query
-#   domain + role presets, 13px).
-# needs-F5 DmF-Canvas-2: chrome/cards as Dm-QueryNode; the Domain list (w344) and its options are 0 drift. The frame's
-#   footer reads "Unsaved changes" for a just-added node; the app saves a palette node on drop, so it reads "Saved —".
-# needs-F5 DmF-Canvas-3: chrome/cards as Dm-QueryNode, and the frame's card follows the unsaved pick ("Look up support
-#   docs / Support docs" before Save) — today's card reads the saved node; a card preview of the drawer draft is F5's.
-# needs-F5 DmF-Canvas-4: the "Can't run yet … has no way out … Show me" banner is F5's (the canvas banner reads the
-#   validity message); the card's "No way out" badge is ours (validity code no_exit) — card size is F5's.
-# needs-F5 Dm-AgentAccess: the drawer's Setup | Tools | Skills | Memory | Runs tabs and the OTHER TOOLS rows are F5's
-#   ToolsPanel (OQ-2: F5's panel owns the drawer); today's drawer is one scroll with Tools in a <details>. The DOMAINS
-#   THIS AGENT CAN SEARCH checklist + callout are 0 drift. The scenario ticks Support docs (the frame's "Unsaved changes"),
-#   so the PM card's "Can search Support docs" line (saved access only) isn't drawn.
-Dm-AgentAccess web: matched 29/51 design items · 15 with size/type drift · 14 only moved · 22 not found in app
-Dm-AgentAccess desktop: matched 30/51 design items · 15 with size/type drift · 14 only moved · 21 not found in app
+# G12 (the Query domain node + an agent's Domains on the team canvas; scenarios domains-canvas.mjs), re-shot on F5's
+#   chrome after the main merge (merge 4ec187e + the F5 wiring). The Query domain drawer is QueryDomainPanel inside
+#   F5's NodeDrawer ("Query domain settings"); the checklist + callout replace F5's Domains switch in Skills & tools ›
+#   Tools (OQ-2); the card is F5's card anatomy (glyph, coral 9px eyebrow, 12.5px title, 10.5px caption) and previews
+#   the drawer's unsaved pick (DmF-Canvas-3); + Add to canvas is the DS outline IconButton (40px). No board reaches 0:
+#   every remaining drift item is canvas/drawer chrome where these frames draw an older chrome than F5's own boards
+#   (Main, Web-Setup, Desktop-Editing, Web-Skills) — matching the Domains frame there would break F5's 0-drift boards —
+#   or a nearest-match artifact. The Domains parts (card, drawer body, Last run, Domain list, checklist + callout) have
+#   no drift item on either render.
+# blocked (all 8 boards, web + desktop) [ctl]+[txt] 'Run this team': font 13→14px, height 32→40, width 126→139 — F5's
+#   CanvasToolbar Run is 14px/40px/139px on F5's Main/Web-Setup/Desktop-Editing (13px/32px on the Domains frames).
+# blocked (the 7 boards with a drawer, web + desktop) [txt] 'Query domain' / 'Product manager': font 18→19px — F5's
+#   NodeHeader name is 19px Newsreader on every F5 board (18px on the Domains frames). On web the 30px shift makes
+#   DmF-Canvas-2's 'Query domain' pick the drawer subtitle instead (font 18→12.5px, family Newsreader→Inter): that
+#   subtitle also reads "Query domain" for a node still at the default title (the frame's "Look up support docs" there
+#   is the design bug the analysis notes).
+# blocked DmF-Canvas-1 (web + desktop) the Add to canvas menu is F1b's palette, which F5 kept: [txt] 'Add to canvas'
+#   label 11px/600 vs 13px (web; on desktop it keys to the trigger, 13.33px Arial), [ctl] 'Gate' / 'Ship' / 'Stop' /
+#   'Query domain' chips 12.5px/30px/auto width vs 13px/32px/101px. The frame's palette (w300 at the toolbar's right:
+#   Agent, Gate, Ship, Stop, Query domain, no presets) is drawn only on this board; replacing Thinker/Worker and the
+#   role presets is a canvas-wide call, not this area's (only the "Query domain" entry is).
+# blocked DmF-Canvas-2 (web + desktop) [txt] 'QUERY DOMAIN': font 9→12.5px — nearest-match artifact: the app writes
+#   the eyebrow "Query domain" (uppercase by CSS, as F5's "Start · entry"), so it keys like the card title under it;
+#   the frame's card sits ~65px lower than the fitted canvas draws it, so the title is nearer. The eyebrow is 9px/600.
+# blocked Dm-AgentAccess (web + desktop) the drawer is F5's (OQ-2): tabs [txt] 'Setup' / 'Memory' / 'Runs' 13px/400 →
+#   13.5px/500 (F5's line tabs), 'Tools' / 'Skills' key to F5's section headings (13.5px/600; the tab is "Skills &
+#   tools"), [ctl] 'Save' height 32→13 (F5's SaveBar "Save ⌘S", as on Desktop-Editing) and [txt] 'Ship' 12.5px/600 →
+#   10.5px/500 (F5's endpoint card, as on F5's Main). The checklist + callout: 0 drift. The PM card's "Can search
+#   Support docs" (saved access only) isn't drawn: the scenario ticks Support docs unsaved, as the frame's footer says.
+# note DmF-Step-4: reached by the real flow (Use in teams → Add step → the canvas + the toast "Added after Product
+#   manager. Connected to Writer."). DmF-Step-5: the Last run body is 0 drift (OQ-10: the whole cited sentence is marked).
+# note DmF-Canvas-2: the frame's footer reads "Unsaved changes" for a just-added node; the app saves a palette node on
+#   drop, so it reads "Saved —" (not found). DmF-Canvas-2…4 place the unconnected card below Writer, as the frames do.
+# note DmF-Canvas-4: no drawer (as the frame). F5's banner reads "Can’t run yet." + the validity message; the frame's
+#   "<title> has no way out. Drag from its right edge to the next node." + Show me (DM-102) isn't built (not found).
+Dm-AgentAccess web: matched 30/51 design items · 10 with size/type drift · 20 only moved · 21 not found in app
+Dm-AgentAccess desktop: matched 39/51 design items · 10 with size/type drift · 27 only moved · 12 not found in app
 Dm-Ask web: matched 63/68 design items · 0 with size/type drift · 55 only moved · 5 not found in app
 Dm-Ask desktop: matched 64/68 design items · 0 with size/type drift · 1 only moved · 4 not found in app
 Dm-List web: matched 57/58 design items · 0 with size/type drift · 55 only moved · 1 not found in app
@@ -218,8 +227,8 @@ Dm-NewDialog web: matched 91/92 design items · 0 with size/type drift · 55 onl
 Dm-NewDialog desktop: matched 92/92 design items · 0 with size/type drift · 3 only moved · 0 not found in app
 Dm-Quality web: matched 87/88 design items · 0 with size/type drift · 85 only moved · 1 not found in app
 Dm-Quality desktop: matched 88/88 design items · 0 with size/type drift · 1 only moved · 0 not found in app
-Dm-QueryNode web: matched 34/40 design items · 18 with size/type drift · 13 only moved · 6 not found in app
-Dm-QueryNode desktop: matched 35/40 design items · 18 with size/type drift · 10 only moved · 5 not found in app
+Dm-QueryNode web: matched 36/40 design items · 3 with size/type drift · 30 only moved · 4 not found in app
+Dm-QueryNode desktop: matched 37/40 design items · 3 with size/type drift · 18 only moved · 3 not found in app
 Dm-Settings web: matched 66/69 design items · 1 with size/type drift · 63 only moved · 3 not found in app
 Dm-Settings desktop: matched 67/69 design items · 0 with size/type drift · 19 only moved · 2 not found in app
 Dm-Sources web: matched 96/98 design items · 0 with size/type drift · 94 only moved · 2 not found in app
@@ -240,14 +249,14 @@ DmF-Ask-3 web: matched 59/64 design items · 0 with size/type drift · 51 only m
 DmF-Ask-3 desktop: matched 60/64 design items · 0 with size/type drift · 1 only moved · 4 not found in app
 DmF-Ask-4 web: matched 63/68 design items · 0 with size/type drift · 55 only moved · 5 not found in app
 DmF-Ask-4 desktop: matched 64/68 design items · 0 with size/type drift · 1 only moved · 4 not found in app
-DmF-Canvas-1 web: matched 21/25 design items · 20 with size/type drift · 1 only moved · 4 not found in app
-DmF-Canvas-1 desktop: matched 22/25 design items · 20 with size/type drift · 2 only moved · 3 not found in app
-DmF-Canvas-2 web: matched 45/54 design items · 17 with size/type drift · 26 only moved · 9 not found in app
-DmF-Canvas-2 desktop: matched 46/54 design items · 17 with size/type drift · 26 only moved · 8 not found in app
-DmF-Canvas-3 web: matched 32/39 design items · 18 with size/type drift · 11 only moved · 7 not found in app
-DmF-Canvas-3 desktop: matched 33/39 design items · 18 with size/type drift · 9 only moved · 6 not found in app
-DmF-Canvas-4 web: matched 19/27 design items · 17 with size/type drift · 2 only moved · 8 not found in app
-DmF-Canvas-4 desktop: matched 20/27 design items · 17 with size/type drift · 3 only moved · 7 not found in app
+DmF-Canvas-1 web: matched 22/25 design items · 7 with size/type drift · 15 only moved · 3 not found in app
+DmF-Canvas-1 desktop: matched 23/25 design items · 7 with size/type drift · 14 only moved · 2 not found in app
+DmF-Canvas-2 web: matched 47/54 design items · 4 with size/type drift · 41 only moved · 7 not found in app
+DmF-Canvas-2 desktop: matched 48/54 design items · 4 with size/type drift · 17 only moved · 6 not found in app
+DmF-Canvas-3 web: matched 34/39 design items · 3 with size/type drift · 28 only moved · 5 not found in app
+DmF-Canvas-3 desktop: matched 35/39 design items · 3 with size/type drift · 17 only moved · 4 not found in app
+DmF-Canvas-4 web: matched 22/27 design items · 2 with size/type drift · 20 only moved · 5 not found in app
+DmF-Canvas-4 desktop: matched 23/27 design items · 2 with size/type drift · 19 only moved · 4 not found in app
 DmF-DelFile-1 web: matched 104/106 design items · 0 with size/type drift · 102 only moved · 2 not found in app
 DmF-DelFile-1 desktop: matched 105/106 design items · 0 with size/type drift · 1 only moved · 1 not found in app
 DmF-DelFile-2 web: matched 104/106 design items · 0 with size/type drift · 94 only moved · 2 not found in app
@@ -362,10 +371,10 @@ DmF-Step-2 web: matched 76/79 design items · 0 with size/type drift · 55 only 
 DmF-Step-2 desktop: matched 77/79 design items · 0 with size/type drift · 3 only moved · 2 not found in app
 DmF-Step-3 web: matched 72/75 design items · 0 with size/type drift · 55 only moved · 3 not found in app
 DmF-Step-3 desktop: matched 73/75 design items · 0 with size/type drift · 3 only moved · 2 not found in app
-DmF-Step-4 web: matched 35/41 design items · 18 with size/type drift · 14 only moved · 6 not found in app
-DmF-Step-4 desktop: matched 36/41 design items · 18 with size/type drift · 11 only moved · 5 not found in app
-DmF-Step-5 web: matched 34/44 design items · 18 with size/type drift · 16 only moved · 10 not found in app
-DmF-Step-5 desktop: matched 35/44 design items · 18 with size/type drift · 16 only moved · 9 not found in app
+DmF-Step-4 web: matched 37/41 design items · 3 with size/type drift · 31 only moved · 4 not found in app
+DmF-Step-4 desktop: matched 38/41 design items · 3 with size/type drift · 19 only moved · 3 not found in app
+DmF-Step-5 web: matched 36/44 design items · 3 with size/type drift · 33 only moved · 8 not found in app
+DmF-Step-5 desktop: matched 37/44 design items · 3 with size/type drift · 19 only moved · 7 not found in app
 DmF-Tune-1 web: matched 68/74 design items · 1 with size/type drift · 65 only moved · 6 not found in app
 DmF-Tune-1 desktop: matched 69/74 design items · 0 with size/type drift · 21 only moved · 5 not found in app
 DmF-Tune-2 web: matched 72/75 design items · 1 with size/type drift · 63 only moved · 3 not found in app
