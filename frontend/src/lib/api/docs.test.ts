@@ -32,7 +32,9 @@ describe("listRunDocs", () => {
               author: PM,
               note: "Revised in round 3",
             },
-            written_by: [{ node_id: "n-pm", clone_node_id: "c1", label: "Product manager" }],
+            written_by: [
+              { node_id: "n-pm", clone_node_id: "c1", role_name: "pm", label: "Product manager" },
+            ],
             read_by: [{ node_id: "n-rev", label: "Reviewer" }, { label: "no id" }],
           },
           { name: "orphan" },
@@ -58,8 +60,10 @@ describe("listRunDocs", () => {
             author: PM,
             note: "Revised in round 3",
           },
-          written_by: [{ node_id: "n-pm", clone_node_id: "c1", label: "Product manager" }],
-          read_by: [{ node_id: "n-rev", clone_node_id: "", label: "Reviewer" }],
+          written_by: [
+            { node_id: "n-pm", clone_node_id: "c1", role_name: "pm", label: "Product manager" },
+          ],
+          read_by: [{ node_id: "n-rev", clone_node_id: "", role_name: "", label: "Reviewer" }],
         },
       ],
     });

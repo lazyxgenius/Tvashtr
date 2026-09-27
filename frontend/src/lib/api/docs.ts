@@ -24,6 +24,7 @@ export interface RunDocAgent {
   node_id: string;
   /** The node in the run's snapshot graph (the run view's canvas). */
   clone_node_id: string;
+  role_name: string;
   label: string;
 }
 
@@ -111,6 +112,7 @@ const toAgents = (v: unknown): RunDocAgent[] =>
     .map((a) => ({
       node_id: str(a.node_id),
       clone_node_id: str(a.clone_node_id),
+      role_name: str(a.role_name),
       label: str(a.label),
     }))
     .filter((a) => a.node_id !== "");

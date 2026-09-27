@@ -141,15 +141,15 @@ describe("Docs tab", () => {
     expect(props.onOpenToolkit).not.toHaveBeenCalled();
   });
 
-  it("Open shows the document in the drawer; See all opens the run's Documents drawer", async () => {
+  it("Open opens the document viewer; See all opens the run's Documents drawer", async () => {
     const onOpenDocuments = vi.fn();
-    const props = renderDocs(reviewer({ last_run: ran }), { onOpenDocuments });
+    const onOpenDoc = vi.fn();
+    const props = renderDocs(reviewer({ last_run: ran }), { onOpenDocuments, onOpenDoc });
     await screen.findAllByText("Shared spec");
     fireEvent.click(card("build-notes").getByRole("button", { name: "Open" }));
-    const sheet = screen.getByRole("region", { name: "build-notes" });
-    expect(await within(sheet).findByText("Ran pytest: 12 passed")).toBeInTheDocument();
-    fireEvent.click(within(sheet).getByRole("button", { name: "Back" }));
-    expect(screen.queryByRole("region", { name: "build-notes" })).toBeNull();
+    expect(onOpenDoc).toHaveBeenLastCalledWith("d-notes");
+    fireEvent.click(card("Shared spec", 0).getByRole("button", { name: "Open" }));
+    expect(onOpenDoc).toHaveBeenLastCalledWith("d-spec");
 
     fireEvent.click(screen.getByRole("button", { name: "See all documents in this run" }));
     expect(onOpenDocuments).toHaveBeenCalledWith("r1");

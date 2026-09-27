@@ -12,7 +12,12 @@ import {
   writtenBy,
 } from "./agentDocs";
 
-const who = (node_id: string, label: string) => ({ node_id, clone_node_id: `c-${node_id}`, label });
+const who = (node_id: string, label: string) => ({
+  node_id,
+  clone_node_id: `c-${node_id}`,
+  role_name: node_id,
+  label,
+});
 const doc = (over: Partial<RunDoc>): RunDoc => ({
   id: "d",
   name: "spec",

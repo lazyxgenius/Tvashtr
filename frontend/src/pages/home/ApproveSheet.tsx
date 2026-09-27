@@ -1,7 +1,8 @@
 import { Maximize2, ShieldCheck } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useState } from "react";
 
-import { type DocumentDetail, getDocument, getGraph } from "../../lib/api";
+import { getGraph } from "../../lib/api";
+import { type DocDetail, getDocument } from "../../lib/api/docs";
 import type { InboxApproval } from "../../lib/api/home";
 import { Badge, Button, ConfirmDialog, Sheet, TextArea } from "../../design-system/components";
 import { approvalTitle, elapsedShort } from "./homeFormat";
@@ -91,7 +92,7 @@ export function ApproveSheet({
   onApprove: () => Promise<void>;
   onReject: (note: string) => Promise<void>;
 }) {
-  const [doc, setDoc] = useState<DocumentDetail | null>(null);
+  const [doc, setDoc] = useState<DocDetail | null>(null);
   const [docError, setDocError] = useState(false);
   const [author, setAuthor] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
@@ -133,7 +134,7 @@ export function ApproveSheet({
   if (!item) return null;
   const latest = doc?.versions[doc.versions.length - 1] ?? null;
   const writtenBy =
-    latest?.created_by === "human" ? "Edited by you" : author ? `Written by ${author}` : null;
+    latest?.author?.kind === "human" ? "Edited by you" : author ? `Written by ${author}` : null;
   const title = approvalTitle(item.task.kind);
   const teamName = item.team?.name ?? "This team";
 

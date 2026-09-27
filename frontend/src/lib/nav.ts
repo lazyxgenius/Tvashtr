@@ -18,6 +18,7 @@
  *   #/teams/<teamId>?node=<id>&tab=<tab>&focus=1
  *   #/teams/<teamId>/runs/<runId>
  *   #/teams/<teamId>/docs/<documentId>?v=<n>&compare=<m>
+ *   #/teams/<teamId>/runs/<runId>/docs/<documentId>?v=<n>&compare=<m> (the viewer over a run view)
  */
 import { useCallback, useSyncExternalStore } from "react";
 
@@ -131,7 +132,8 @@ export function parseRoute(hash: string): Route {
       if (!b) return HOME;
       const route: Extract<Route, { page: "team" }> = { page: "team", teamId: b };
       if (c === "runs" && parts[3]) route.runId = parts[3];
-      if (c === "docs" && parts[3]) route.docId = parts[3];
+      const docs = route.runId ? parts.slice(4) : parts.slice(2);
+      if (docs[0] === "docs" && docs[1]) route.docId = docs[1];
       const node = q.get("node");
       if (node) route.node = node;
       const tab = q.get("tab");
@@ -178,7 +180,7 @@ export function routeToHash(route: Route): string {
     case "team": {
       let path = `#/teams/${enc(route.teamId)}`;
       if (route.runId) path += `/runs/${enc(route.runId)}`;
-      else if (route.docId) path += `/docs/${enc(route.docId)}`;
+      if (route.docId) path += `/docs/${enc(route.docId)}`;
       const q = new URLSearchParams();
       if (route.node) q.set("node", route.node);
       if (route.tab) q.set("tab", route.tab);

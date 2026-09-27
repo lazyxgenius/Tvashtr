@@ -21,9 +21,10 @@ declare module "@tiptap/core" {
 // CodeBlock/Code/Bold/Italic/Strike — everything a mini-PRD uses. `link` is disabled: a PRD
 // is a spec, not hypertext, and linkify would silently rewrite a bare path/URL on load (a
 // round-trip hazard). `bulletListMarker: "-"` pins the dash the PM emits; `html: false` keeps
-// the surface markdown-only (no raw HTML smuggled through a Save).
+// the surface markdown-only (no raw HTML smuggled through a Save). `trailingNode` is off: it appends
+// an empty paragraph on the editor's first transaction, so an untouched spec read as edited.
 export const PRD_EDITOR_EXTENSIONS = [
-  StarterKit.configure({ link: false }),
+  StarterKit.configure({ link: false, trailingNode: false }),
   Markdown.configure({
     html: false,
     bulletListMarker: "-",

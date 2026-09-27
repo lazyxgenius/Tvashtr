@@ -9,14 +9,15 @@ import {
   type ProviderCatalogueEntry,
   type TeamGraphNode,
 } from "../lib/api";
-import type { RunDoc } from "../lib/api/docs";
 import { deleteMemory, type Memory } from "../lib/api/memory";
 import { getNodeRuns, type NodeTemplate } from "../lib/api/nodes";
 import type { EnginesTab, NodeTab, Route } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import { type AgentDraft, describeChanges } from "./agentDraft";
 import { DrawerConfirm } from "./DrawerConfirm";
-import { DocsTab, RunDocSheet } from "./docs/DocsTab";
+import { DocsTab } from "./docs/DocsTab";
+import type { DocPlace } from "./docs/docView";
+import { FocusDocsTab } from "./focus/FocusDocsTab";
 import { DrawerToast } from "./DrawerToast";
 import { NodeFocusView } from "./focus/NodeFocusView";
 import { DomainQueryBody } from "./legacy/DomainQueryBody";
@@ -91,6 +92,8 @@ export interface NodeEditorProps {
   onOpenToolkit?: (route: Route) => void;
   /** Docs "See all documents in this run": the page's Documents drawer on that run (DOCS-6). */
   onOpenDocuments?: (runId: string) => void;
+  /** A document's Open: the document viewer (DOCS-18), on that version or compare. */
+  onOpenDoc?: (docId: string, place?: DocPlace) => void;
 }
 
 /**
@@ -160,6 +163,7 @@ function AgentEditor({
   onProviderAdded,
   onOpenToolkit,
   onOpenDocuments,
+  onOpenDoc,
   cover: pageCover,
 }: NodeEditorProps) {
   const api = useAgentDraft(node, { teamId, onSaved: () => onSaved() });
@@ -191,8 +195,6 @@ function AgentEditor({
   const [skillSub, setSkillSub] = useState<SkillSub | null>(null);
   // The Tools sheet (add a server / library / paste mcp.json, or Edit connection; G9).
   const [toolSub, setToolSub] = useState<ToolSub | null>(null);
-  // A run document open over the Docs tab.
-  const [docSheet, setDocSheet] = useState<RunDoc | null>(null);
   const shelves = useShelves(tab === "skills");
   // Runs and Docs share this agent's history, keyed on its last run (a new round reloads it).
   const last = node.last_run;
@@ -223,8 +225,7 @@ function AgentEditor({
   // The drawer's Output format editor covers the Save footer; focus mode keeps it in view.
   const subCoversFooter =
     (schemaText !== null && tab === "setup" && !focus) ||
-    ((skillSub !== null || toolSub !== null) && tab === "skills") ||
-    (docSheet !== null && tab === "docs");
+    ((skillSub !== null || toolSub !== null) && tab === "skills");
   // ⌘S / Ctrl+S saves; while a confirm is open the confirm's own buttons decide.
   useSaveShortcut(() => {
     if (canSave && !guard.asking && !deleting && !pending && !forgetting && !subCoversFooter)
@@ -344,11 +345,6 @@ function AgentEditor({
         onOpenToolkit={onOpenToolkit}
         onClose={closeToolSub}
       />
-    ) : null;
-
-  const docEditor =
-    docSheet !== null && tab === "docs" ? (
-      <RunDocSheet doc={docSheet} onClose={() => setDocSheet(null)} />
     ) : null;
 
   // "Turn on File access in Setup" / "Set in Setup": the Setup tab, on that control.
@@ -552,7 +548,9 @@ function AgentEditor({
       );
       break;
     case "docs":
-      body = (focus && docEditor) || (
+      body = focus ? (
+        <FocusDocsTab history={history} onOpenDoc={(docId, at) => onOpenDoc?.(docId, at)} />
+      ) : (
         <DocsTab
           nodeId={node.id}
           name={name}
@@ -562,7 +560,7 @@ function AgentEditor({
           readsFrom={api.baseline.readsFrom}
           agentCount={nodes.filter((n) => n.kind === "agent" || n.kind === "completion").length}
           history={history}
-          onOpenDoc={setDocSheet}
+          onOpenDoc={(doc) => onOpenDoc?.(doc.id)}
           onOpenAll={(runId) => onOpenDocuments?.(runId)}
           onSetup={(row) => openSetup(`[data-setup-row="${row}"]`)}
         />
@@ -647,7 +645,7 @@ function AgentEditor({
         header={header}
         tabs={tabs}
         footer={footer}
-        scroll={tab !== "setup"}
+        scroll={tab !== "setup" && tab !== "docs"}
         toast={toastHost}
         overlay={overlay}
         onDock={() => onFocusChange(false)}
@@ -662,7 +660,7 @@ function AgentEditor({
       header={header}
       tabs={tabs}
       footer={footer}
-      sub={schemaEditor ?? skillEditor ?? toolEditor ?? docEditor}
+      sub={schemaEditor ?? skillEditor ?? toolEditor}
       toast={toastHost}
       overlay={overlay}
     >

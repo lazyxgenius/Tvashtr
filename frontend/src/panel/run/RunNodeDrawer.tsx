@@ -1,23 +1,21 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { LastRun } from "../../components/LastRun";
-import { type DocumentMeta, getRunDocuments, type GraphNode, type RunRow } from "../../lib/api";
+import type { GraphNode, RunRow } from "../../lib/api";
+import { listRunDocs } from "../../lib/api/docs";
 import { nodeTitle } from "../../lib/nodeNames";
-import {
-  deriveNodeStatus,
-  isPrdEditable,
-  type NodeStatus,
-  WORKFLOW_FAILED,
-} from "../../lib/status";
+import { deriveNodeStatus, type NodeStatus, WORKFLOW_FAILED } from "../../lib/status";
+import { docLabel, readersLine, specLine, versionLine, writtenBy } from "../docs/agentDocs";
+import { DocCard } from "../docs/DocCard";
 import { EventFeed } from "../EventFeed";
 import { modelLabel, statusBadge } from "../nodeBadges";
 import { NodeChat } from "../NodeChat";
 import { NodeDrawer } from "../NodeDrawer";
 import { glyphForNode } from "../nodeGlyph";
 import { NodeBadges, NodeHeader } from "../NodeHeader";
-import { PrdView } from "../PrdView";
 import { RunDiff } from "../RunDiff";
 import { RunMemory } from "../RunMemory";
+import { useLoaded } from "../runs/useLoaded";
 
 /** The thinker's placeholder copy when there is no spec document yet — derived from run-level
  *  signals directly (this panel stays run-level; it never receives the graph's documents). The
@@ -35,74 +33,45 @@ function specEmptyHint(
   return "The product manager is drafting the spec…";
 }
 
-/** M-docs: the run-view document PICKER. Lists EVERY document the run produced — the entry PM's spec
- *  plus any node's authored document (a Design Doc, etc.) — and opens the selected one in the SAME
- *  TipTap editor via {@link PrdView}. A single-document run (the common case) shows NO chip bar and
- *  is byte-identical to the old single-PrdView panel. Editability is run-level; every document shares
- *  it. Fetches the run's document list on open; each chip opens its document by id. */
-function PrdDocuments({
+/**
+ * The run's documents on a thinker's drawer: the shared spec first, then what the agents wrote, each
+ * opening in the document viewer (where a live run's spec is edited). Reloads when this node's round
+ * moves on, so a new version shows up.
+ */
+function RunDocuments({
+  node,
   runId,
   run,
   workflowStatus,
+  onOpenDoc,
 }: {
+  node: GraphNode;
   runId: string | null;
   run: RunRow | null;
   workflowStatus: string | null;
+  onOpenDoc?: (docId: string) => void;
 }) {
-  const [docs, setDocs] = useState<DocumentMeta[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!runId) {
-      setDocs([]);
-      return;
-    }
-    let cancelled = false;
-    getRunDocuments(runId)
-      .then((r) => {
-        if (!cancelled) setDocs(r.documents);
-      })
-      .catch(() => {
-        if (!cancelled) setDocs([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [runId]);
-
-  // Default to the run's primary spec (pm_document_id) when present, else the first document.
-  const primaryId = run?.pm_document_id ?? null;
-  const hasPrimary = docs.some((d) => d.id === primaryId);
-  const activeId = selectedId ?? (hasPrimary ? primaryId : (docs[0]?.id ?? primaryId));
-
+  const docs = useLoaded(runId && `${runId}:${node.status}:${node.iteration}`, () =>
+    listRunDocs(runId ?? "").then((d) => d.documents),
+  );
+  const all = docs.value ?? [];
+  if (all.length === 0) {
+    return <p className="tv-panel-note">{specEmptyHint(runId, run, workflowStatus)}</p>;
+  }
+  const ordered = [...all.filter((d) => d.is_shared_spec), ...all.filter((d) => !d.is_shared_spec)];
   return (
-    <div className="tv-prd-docs">
-      {docs.length > 1 && (
-        <div
-          className="tv-prd__versions"
-          role="group"
-          aria-label="Documents"
-          data-testid="doc-picker"
-        >
-          {docs.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              className={`tv-prd__version${d.id === activeId ? " tv-prd__version--active" : ""}`}
-              onClick={() => setSelectedId(d.id)}
-              data-doc-name={d.name ?? d.doc_type}
-            >
-              {d.name ?? d.title}
-            </button>
-          ))}
-        </div>
-      )}
-      <PrdView
-        documentId={activeId}
-        emptyHint={specEmptyHint(runId, run, workflowStatus)}
-        editable={isPrdEditable(run?.status ?? null, workflowStatus)}
-      />
-    </div>
+    <ul className="nd-docs__list tv-rundocs">
+      {ordered.map((d) => (
+        <DocCard
+          key={d.id}
+          shared={d.is_shared_spec}
+          title={docLabel(d)}
+          sub={d.is_shared_spec ? specLine(d) : writtenBy(d)}
+          meta={d.is_shared_spec ? versionLine(d) : readersLine(d)}
+          onOpen={onOpenDoc && (() => onOpenDoc(d.id))}
+        />
+      ))}
+    </ul>
   );
 }
 
@@ -120,7 +89,7 @@ const STATUS_SUBTITLE: Record<NodeStatus, string> = {
  * The run view's drawer (Q20): the agent drawer's shell and header — the node's name, a
  * STATUS-based subtitle (Working now / Finished / Not reached yet / Failed / Stopped) and its last
  * round's badge and model — over the uniform "Last run" brief and a kind-specific body: a thinker
- * (`completion`) shows the run's documents (`PrdView`, live-editable in-flight), a worker the
+ * (`completion`) shows the run's documents (open in the viewer), a worker the
  * step-by-step feed, its changes, Ask and Memory. No tabs and no Save: nothing here is edited.
  */
 export function RunNodeDrawer({
@@ -129,22 +98,31 @@ export function RunNodeDrawer({
   run,
   workflowStatus,
   onClose,
+  onOpenDoc,
 }: {
   node: GraphNode;
   runId: string | null;
   run: RunRow | null;
   workflowStatus: string | null;
   onClose: () => void;
+  /** A document's Open: the document viewer over the run's canvas. */
+  onOpenDoc?: (docId: string) => void;
 }) {
   const title = nodeTitle(node);
   const status = deriveNodeStatus(node.status, run, workflowStatus);
   const last = node.invocations[node.invocations.length - 1] ?? null;
 
-  // A thinker refines the SAME shared spec, so `PrdView` is correct for ANY thinker; editability is
-  // run-status-based (P1.7b), never role-based.
+  // A thinker refines the SAME shared spec, so its drawer lists the run's documents (any thinker);
+  // editing the spec happens in the viewer, while the run is live (P1.7b).
   const body: ReactNode =
     node.kind === "completion" ? (
-      <ThinkerBody node={node} runId={runId} run={run} workflowStatus={workflowStatus} />
+      <ThinkerBody
+        node={node}
+        runId={runId}
+        run={run}
+        workflowStatus={workflowStatus}
+        onOpenDoc={onOpenDoc}
+      />
     ) : (
       <WorkerBody node={node} runId={runId} run={run} workflowStatus={workflowStatus} />
     );
@@ -256,25 +234,35 @@ function WorkerBody({
 }
 
 /**
- * A thinker (`completion`) node's drawer body: the shared spec (`PrdView`, live-editable in-flight,
- * P1.7b). Once the node has a recorded run, a Spec|Ask segmented tab is added so the user can ask
- * what the thinker did (Mode A). Spec stays the default, so the run view is unchanged until asked;
- * before the node has run (no invocations) it is just the bare spec (byte-identical to before).
+ * A thinker (`completion`) node's drawer body: the run's documents (the shared spec first; Open shows
+ * one in the viewer, where a live run's spec is edited, P1.7b). Once the node has a recorded run, a
+ * Spec|Ask segmented tab is added so the user can ask what the thinker did (Mode A). Spec stays the
+ * default; before the node has run (no invocations) it is just the documents.
  */
 function ThinkerBody({
   node,
   runId,
   run,
   workflowStatus,
+  onOpenDoc,
 }: {
   node: GraphNode;
   runId: string | null;
   run: RunRow | null;
   workflowStatus: string | null;
+  onOpenDoc?: (docId: string) => void;
 }) {
   const canAsk = node.invocations.length > 0;
   const [tab, setTab] = useState<"spec" | "ask" | "memory">("spec");
-  const spec = <PrdDocuments runId={runId} run={run} workflowStatus={workflowStatus} />;
+  const spec = (
+    <RunDocuments
+      node={node}
+      runId={runId}
+      run={run}
+      workflowStatus={workflowStatus}
+      onOpenDoc={onOpenDoc}
+    />
+  );
   if (!canAsk) return spec;
   return (
     <>

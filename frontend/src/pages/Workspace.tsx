@@ -93,6 +93,18 @@ export function Workspace({
             { replace: true },
           )
         }
+        doc={
+          route.docId
+            ? { id: route.docId, version: route.version, compare: route.compare }
+            : undefined
+        }
+        // The viewer sits over the canvas or the focus view under it: closing keeps that place.
+        onDocRoute={(next, { push }) =>
+          navigate(
+            { ...route, docId: next?.id, version: next?.version, compare: next?.compare },
+            { replace: !push },
+          )
+        }
       />
     );
   }

@@ -13,6 +13,7 @@ import { TasksDrawer } from "./components/TasksDrawer";
 import { listTeamRuns, type RunDoc } from "./lib/api/docs";
 import { docChipsByNode } from "./panel/docs/agentDocs";
 import { DocumentsDrawer } from "./panel/docs/DocumentsDrawer";
+import { DocumentViewer } from "./panel/docs/DocumentViewer";
 import { useRunDocs } from "./panel/docs/useRunDocs";
 import { NodeEditor } from "./panel/NodeEditor";
 import { useLoaded } from "./panel/runs/useLoaded";
@@ -87,6 +88,18 @@ interface AppProps {
   focus?: boolean;
   /** Write the drawer's place back to the address. Without it the drawer keeps its own state. */
   onNodeRoute?: (next: { node?: string; tab?: NodeTab; focus?: boolean }) => void;
+  /** The document viewer's place from the address (`#/teams/<id>/docs/<doc>?v=&compare=`). */
+  doc?: DocRoute;
+  /** Write the viewer's place back to the address (null: closed); `push` when it opens. Without it
+   * the viewer keeps its own state. */
+  onDocRoute?: (next: DocRoute | null, opts: { push: boolean }) => void;
+}
+
+/** The open document, the version shown (none: the latest) and the one it's compared with. */
+export interface DocRoute {
+  id: string;
+  version?: number;
+  compare?: number;
 }
 
 /** Where the agent drawer is: which node, which tab, docked or in focus view. */
@@ -107,6 +120,8 @@ export default function App({
   tab: routeTab,
   focus: routeFocus,
   onNodeRoute,
+  doc: routeDoc,
+  onDocRoute,
 }: AppProps = {}) {
   const [runId, setRunId] = useState<string | null>(initialRunId ?? null);
   const [graph, setGraph] = useState<GraphData | null>(null);
@@ -172,20 +187,37 @@ export default function App({
   // drop its draft (Close, selecting another node, leaving the canvas) goes through `guardLeave`,
   // which runs at once when the draft is clean and otherwise asks "Save your changes to <Name>?".
   const leaveGuardRef = useRef<LeaveGuard | null>(null);
+  // The document viewer's unsaved live edit asks first (DOCS-31), then the agent drawer.
+  const docGuardRef = useRef<LeaveGuard | null>(null);
   // Bumped when the user keeps editing: a click on another card has already moved React Flow's
   // selection there, so the canvas rings the open agent again.
   const [ringKey, setRingKey] = useState(0);
   const guardLeave = useCallback((proceed: () => void) => {
-    const guard = leaveGuardRef.current;
-    if (guard) guard(proceed, () => setRingKey((k) => k + 1));
-    else proceed();
+    const agentGuard = () => {
+      const guard = leaveGuardRef.current;
+      if (guard) guard(proceed, () => setRingKey((k) => k + 1));
+      else proceed();
+    };
+    const docGuard = docGuardRef.current;
+    if (docGuard) docGuard(agentGuard);
+    else agentGuard();
   }, []);
-  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
-  // The toolbar's Documents drawer (DOCS-12): the run it shows, and (interim, until the document
-  // viewer) the document open inside it. Never beside an agent drawer (OQ-20).
-  const [docsDrawer, setDocsDrawer] = useState<{ runId: string; docId: string | null } | null>(
-    null,
+  // The document viewer (DOCS-18): its place lives in the address when the Workspace passes
+  // `onDocRoute`; opening it adds a history step, moving inside it doesn't.
+  const [localDoc, setLocalDoc] = useState<DocRoute | null>(routeDoc ?? null);
+  const docRoute = onDocRoute ? (routeDoc ?? null) : localDoc;
+  const setDocRoute = useCallback(
+    (next: DocRoute | null, push = false) =>
+      onDocRoute ? onDocRoute(next, { push }) : setLocalDoc(next),
+    [onDocRoute],
   );
+  const openDoc = useCallback(
+    (docId: string, at: Omit<DocRoute, "id"> = {}) => setDocRoute({ id: docId, ...at }, true),
+    [setDocRoute],
+  );
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+  // The toolbar's Documents drawer (DOCS-12): the run it shows. Never beside an agent drawer (OQ-20).
+  const [docsDrawer, setDocsDrawer] = useState<{ runId: string } | null>(null);
   // Credential preflight for Run (UX): null until the first successful providers load so we
   // don't flash-disable the CTA; once loaded, missing BYOK (and no Desktop subscription cover)
   // blocks launch and points at Engines.
@@ -630,19 +662,17 @@ export default function App({
   const docsOpen = docsDrawer !== null && !nodeDrawerOpen;
   // OQ-20: opening the Documents drawer closes the agent drawer (through its unsaved guard).
   const openDocuments = useCallback(
-    (docsRunId: string, docId: string | null = null) =>
+    (docsRunId: string) =>
       guardLeave(() => {
         if (selectedNodeId !== null) setPlace({ node: null, tab: "setup", focus: false });
         setSelectedRunNodeId(null);
-        setDocsDrawer({ runId: docsRunId, docId });
+        setDocsDrawer({ runId: docsRunId });
       }),
     [guardLeave, selectedNodeId, setPlace],
   );
-  // A canvas chip opens its document (interim: inside the Documents drawer, until the viewer).
-  const openChipDoc = useCallback(
-    (doc: RunDoc) => toolbarRunId && openDocuments(toolbarRunId, doc.id),
-    [openDocuments, toolbarRunId],
-  );
+  // A canvas chip opens its document in the viewer.
+  const openChipDoc = useCallback((doc: RunDoc) => openDoc(doc.id), [openDoc]);
+  const openRunDoc = useCallback((docId: string) => openDoc(docId), [openDoc]);
   // P1.8c: the team's start node is the one NOT targeted by any edge (same rule as the backend).
   // The panel locks its capability toggle to "thinker" (it writes the spec the rest of the team reads).
   const startNodeId = teamGraph
@@ -742,11 +772,9 @@ export default function App({
           <DocumentsDrawer
             runs={teamRuns}
             runId={docsDrawer.runId}
-            onPickRun={(id) => setDocsDrawer({ runId: id, docId: null })}
+            onPickRun={(id) => setDocsDrawer({ runId: id })}
             agentCount={agentCount}
-            onOpenDoc={(doc) => setDocsDrawer({ runId: docsDrawer.runId, docId: doc.id })}
-            openDocId={docsDrawer.docId}
-            onCloseDoc={() => setDocsDrawer({ runId: docsDrawer.runId, docId: null })}
+            onOpenDoc={(doc) => openDoc(doc.id)}
             onClose={() => setDocsDrawer(null)}
           />
         )}
@@ -827,6 +855,7 @@ export default function App({
                 }
                 onOpenToolkit={(route) => guardLeave(() => navigate(route))}
                 onOpenDocuments={(docsRunId) => openDocuments(docsRunId)}
+                onOpenDoc={openDoc}
                 onProviderAdded={(provider) =>
                   setCredentialGate((gate) =>
                     gate ? { ...gate, byok: new Set([...gate.byok, provider]) } : gate,
@@ -841,8 +870,19 @@ export default function App({
                 run={run}
                 workflowStatus={workflowStatus}
                 onClose={() => setSelectedRunNodeId(null)}
+                onOpenDoc={openRunDoc}
               />
             )}
+        {docRoute && (
+          <DocumentViewer
+            docId={docRoute.id}
+            place={{ version: docRoute.version, compare: docRoute.compare }}
+            runs={teamRuns.value}
+            onPlace={(id, p) => setDocRoute({ id, ...p })}
+            onClose={() => setDocRoute(null)}
+            guardRef={docGuardRef}
+          />
+        )}
       </main>
     </>
   );

@@ -24,7 +24,6 @@ import {
   getGithubRepos,
   getProviderCatalogue,
   getReviewMode,
-  getRunDocuments,
   inspectRepo,
   listMemories,
   presetsForProvider,
@@ -115,7 +114,6 @@ function bodyOf(call: unknown[]): unknown {
 afterEach(() => {
   vi.unstubAllGlobals();
 });
-
 
 describe("rewriteGithubInstallUrlForDesktop", () => {
   const flyUrl =
@@ -460,37 +458,6 @@ describe("updateTeamNode — writes_to / reads_from (M-docs)", () => {
       writes_to: "",
       reads_from: [],
     });
-  });
-});
-
-describe("getRunDocuments (M-docs run-view picker)", () => {
-  it("GETs the run's documents list", async () => {
-    const payload = {
-      run_id: "r1",
-      documents: [
-        {
-          id: "d1",
-          name: "spec",
-          title: "Mini-PRD",
-          doc_type: "prd",
-          created_at: "",
-          updated_at: "",
-        },
-        {
-          id: "d2",
-          name: "design",
-          title: "Document: design",
-          doc_type: "design",
-          created_at: "",
-          updated_at: "",
-        },
-      ],
-    };
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk(payload)));
-    vi.stubGlobal("fetch", fetchMock);
-    const out = await getRunDocuments("r1");
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/runs/r1/documents");
-    expect(out.documents.map((d) => d.name)).toEqual(["spec", "design"]);
   });
 });
 

@@ -3,12 +3,10 @@ import { ArrowRight, ChevronDown, FileText, History } from "lucide-react";
 
 import { listRunDocs, type RunDoc } from "../../lib/api/docs";
 import type { NodeRuns, NodeRunSummary } from "../../lib/api/nodes";
-import { PrdView } from "../PrdView";
 import { runLine, whenShort } from "../runs/rounds";
-import { SubView } from "../SubView";
 import { EmptyCard, LoadState } from "../runs/RunsTab";
 import { type Loaded, useLoaded } from "../runs/useLoaded";
-import { agentDocs, docLabel, readBy, specLine, versionLine, writtenBy } from "./agentDocs";
+import { agentDocs, readBy, specLine, versionLine, writtenBy } from "./agentDocs";
 import { DocCard } from "./DocCard";
 import { RunPicker } from "./RunPicker";
 import "./docs.css";
@@ -219,23 +217,6 @@ function RunDocs({
         </button>
       )}
     </div>
-  );
-}
-
-/**
- * One run document inside the drawer, read-only, with its versions (`PrdView`). Interim: the
- * document viewer replaces it.
- */
-export function RunDocSheet({ doc, onClose }: { doc: RunDoc; onClose: () => void }) {
-  return (
-    <SubView title={docLabel(doc)} onBack={onClose}>
-      <PrdView
-        documentId={doc.id}
-        editable={false}
-        emptyHint=""
-        subject={doc.is_shared_spec ? "spec" : "document"}
-      />
-    </SubView>
   );
 }
 

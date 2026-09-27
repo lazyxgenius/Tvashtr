@@ -119,6 +119,7 @@ beforeEach(() => {
       return ok({
         id: "d-notes",
         name: "build-notes",
+        run_id: "r-rsi",
         versions: [{ id: "v2", version_no: 2, content: "Ran pytest: 12 passed" }],
       });
     if (url.endsWith("/validate")) return ok({ errors: [], warnings: [], runnable: true });
@@ -189,18 +190,25 @@ describe("Documents on the canvas", () => {
     expect(within(drawer()).getByRole("button", { name: /^Run: Fix the MACD label/ }));
   });
 
-  it("Open shows the document in the drawer; a chip opens its document there too", async () => {
+  it("a chip and the drawer's Open show the document in the viewer", async () => {
     render(<App teamId="team-1" />);
     fireEvent.click(await screen.findByRole("button", { name: "build-notes v2" }));
-    const sheet = await within(drawer()).findByRole("region", { name: "build-notes" });
-    expect(await within(sheet).findByText("Ran pytest: 12 passed")).toBeInTheDocument();
-    fireEvent.click(within(sheet).getByRole("button", { name: "Back" }));
+    const viewer = await screen.findByRole("dialog", { name: "build-notes" });
+    expect(await within(viewer).findByText("Ran pytest: 12 passed")).toBeInTheDocument();
+    fireEvent.click(within(viewer).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "build-notes" })).toBeNull();
+
+    fireEvent.click(await toggle());
     fireEvent.click(
-      within(within(drawer()).getByText("Written by Engineer").closest("li")!).getByRole("button", {
-        name: "Open",
-      }),
+      within(
+        await within(drawer())
+          .findByText("Written by Engineer")
+          .then((el) => el.closest("li")!),
+      ).getByRole("button", { name: "Open" }),
     );
-    expect(within(drawer()).getByRole("region", { name: "build-notes" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "build-notes" })).toBeInTheDocument();
+    // The drawer stays docked under the viewer.
+    expect(drawer()).toBeInTheDocument();
   });
 
   it("the Documents drawer and the agent drawer never show together (OQ-20)", async () => {
@@ -231,5 +239,41 @@ describe("Documents on the canvas", () => {
     expect(
       await within(drawer()).findByRole("button", { name: /^Run: Add an RSI indicator/ }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("The document viewer's address (spec §3.2)", () => {
+  it("opens from the address, over the focus view, and closes back onto it", async () => {
+    const onDocRoute = vi.fn();
+    render(
+      <App
+        teamId="team-1"
+        node="tn-rev"
+        tab="docs"
+        focus
+        onNodeRoute={vi.fn()}
+        doc={{ id: "d-notes" }}
+        onDocRoute={onDocRoute}
+      />,
+    );
+    const viewer = await screen.findByRole("dialog", { name: "build-notes" });
+    expect(screen.getByRole("dialog", { name: "Reviewer in focus view" })).toBeInTheDocument();
+    fireEvent.click(within(viewer).getByRole("button", { name: "Close" }));
+    expect(onDocRoute).toHaveBeenCalledWith(null, { push: false });
+  });
+
+  it("opening a document adds a history step; moving inside it doesn't", async () => {
+    const onDocRoute = vi.fn();
+    const { rerender } = render(<App teamId="team-1" onDocRoute={onDocRoute} />);
+    fireEvent.click(await screen.findByRole("button", { name: "build-notes v2" }));
+    expect(onDocRoute).toHaveBeenLastCalledWith({ id: "d-notes" }, { push: true });
+    rerender(<App teamId="team-1" onDocRoute={onDocRoute} doc={{ id: "d-notes" }} />);
+    const viewer = await screen.findByRole("dialog", { name: "build-notes" });
+    fireEvent.click(
+      within(
+        await within(viewer).findByRole("complementary", { name: "This run’s documents" }),
+      ).getByRole("button", { name: /Shared spec/ }),
+    );
+    expect(onDocRoute).toHaveBeenLastCalledWith({ id: "d-spec" }, { push: false });
   });
 });

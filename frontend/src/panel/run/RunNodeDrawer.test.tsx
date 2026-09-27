@@ -522,3 +522,70 @@ describe("RunNodeDrawer — Memory tab (S5b) wiring by kind", () => {
     expect(screen.queryByRole("button", { name: "Memory" })).toBeNull();
   });
 });
+
+// ---- F6: a thinker's drawer lists the run's documents; Open shows one in the document viewer. ----
+describe("RunNodeDrawer — the run's documents on a thinker", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("lists the shared spec first, then what the agents wrote, each with Open", async () => {
+    const ref = (node_id: string, label: string) => ({
+      node_id,
+      clone_node_id: `c-${node_id}`,
+      role_name: node_id,
+      label,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              run: { run_id: "r1", idea: "x", status: "running", created_at: "", live: true },
+              documents: [
+                {
+                  id: "d-notes",
+                  name: "build-notes",
+                  latest_version: { version_no: 2, created_at: "2026-01-01T00:00:00Z" },
+                  written_by: [ref("n-eng", "Engineer")],
+                  read_by: [ref("n-rev", "Reviewer")],
+                },
+                {
+                  id: "d-spec",
+                  name: "spec",
+                  doc_type: "prd",
+                  is_shared_spec: true,
+                  latest_version: { version_no: 3, created_at: "2026-01-01T00:00:00Z" },
+                  written_by: [ref("n-pm", "Product manager")],
+                  read_by: [ref("n-eng", "Engineer")],
+                },
+              ],
+            }),
+          ),
+        ),
+      ),
+    );
+    const onOpenDoc = vi.fn();
+    render(
+      <RunNodeDrawer
+        node={gnode({ id: "c-n-pm", role_name: "pm", kind: "completion", invocations: [] })}
+        runId="r1"
+        run={runRow({ status: "running" })}
+        workflowStatus={null}
+        onClose={() => {}}
+        onOpenDoc={onOpenDoc}
+      />,
+    );
+    const shared = within(
+      (await screen.findByText("PRD · written by Product manager")).closest("li")!,
+    );
+    expect(shared.getByText("Shared spec")).toBeInTheDocument();
+    const cards = screen.getAllByRole("listitem");
+    expect(cards[0]).toHaveTextContent("Shared spec");
+    expect(cards[1]).toHaveTextContent("build-notes");
+    expect(within(cards[1]).getByText("Written by Engineer")).toBeInTheDocument();
+    fireEvent.click(shared.getByRole("button", { name: "Open" }));
+    expect(onOpenDoc).toHaveBeenCalledWith("d-spec");
+    fireEvent.click(within(cards[1]).getByRole("button", { name: "Open" }));
+    expect(onOpenDoc).toHaveBeenLastCalledWith("d-notes");
+  });
+});

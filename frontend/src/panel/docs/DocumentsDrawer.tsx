@@ -8,7 +8,6 @@ import { LoadState } from "../runs/RunsTab";
 import { type Loaded, useLoaded } from "../runs/useLoaded";
 import { docLabel, readersLine, specLine, versionLine, writtenBy } from "./agentDocs";
 import { DocCard } from "./DocCard";
-import { RunDocSheet } from "./DocsTab";
 import { RunPicker } from "./RunPicker";
 import "./docs.css";
 
@@ -31,10 +30,8 @@ export interface DocumentsDrawerProps {
   onPickRun: (runId: string) => void;
   /** The team's agents, for "read by all 3 agents". */
   agentCount: number;
+  /** Open a document in the viewer. */
   onOpenDoc: (doc: RunDoc) => void;
-  /** Interim until the document viewer: the document open inside the drawer. */
-  openDocId?: string | null;
-  onCloseDoc?: () => void;
   onClose: () => void;
 }
 
@@ -49,8 +46,6 @@ export function DocumentsDrawer({
   onPickRun,
   agentCount,
   onOpenDoc,
-  openDocId = null,
-  onCloseDoc,
   onClose,
 }: DocumentsDrawerProps) {
   const docs = useLoaded(runId, () => listRunDocs(runId));
@@ -58,7 +53,6 @@ export function DocumentsDrawer({
   const run = docs.value?.run;
   const idea = listed?.idea ?? run?.idea ?? "";
   const when = listed ? runWhen(listed) : run ? whenShort(run.created_at) : "";
-  const open = docs.value?.documents.find((d) => d.id === openDocId) ?? null;
 
   let body: ReactNode;
   if (docs.state !== "ready" || !docs.value) {
@@ -125,47 +119,43 @@ export function DocumentsDrawer({
           <X size={16} strokeWidth={1.6} />
         </IconButton>
       </header>
-      {open ? (
-        <RunDocSheet doc={open} onClose={() => onCloseDoc?.()} />
-      ) : (
-        <>
-          <div className="dv-drawer__run">
-            <RunPicker
-              runs={(runs.value ?? []).map((r) => ({
-                run_id: r.run_id,
-                idea: r.idea,
-                detail: [runWhen(r), statusWord(r.status)].filter(Boolean).join(" · "),
-              }))}
-              current={runId}
-              onPick={onPickRun}
-              trigger={(t) => (
-                <button type="button" className="dv-drawer__runbtn" {...t}>
-                  <History size={14} strokeWidth={1.6} aria-hidden />
-                  <span>
-                    Run: <b>{idea || "Untitled run"}</b>
-                    {when && ` · ${when}`}
-                  </span>
-                  <span className="dv-drawer__chev">
-                    <ChevronDown size={14} strokeWidth={1.6} aria-hidden />
-                  </span>
-                </button>
-              )}
-            />
+      <>
+        <div className="dv-drawer__run">
+          <RunPicker
+            runs={(runs.value ?? []).map((r) => ({
+              run_id: r.run_id,
+              idea: r.idea,
+              detail: [runWhen(r), statusWord(r.status)].filter(Boolean).join(" · "),
+            }))}
+            current={runId}
+            onPick={onPickRun}
+            trigger={(t) => (
+              <button type="button" className="dv-drawer__runbtn" {...t}>
+                <History size={14} strokeWidth={1.6} aria-hidden />
+                <span>
+                  Run: <b>{idea || "Untitled run"}</b>
+                  {when && ` · ${when}`}
+                </span>
+                <span className="dv-drawer__chev">
+                  <ChevronDown size={14} strokeWidth={1.6} aria-hidden />
+                </span>
+              </button>
+            )}
+          />
+        </div>
+        <div className="dv-drawer__body">
+          {body}
+          <div className="dv-drawer__foot">
+            <span className="dv-drawer__footicon">
+              <Info size={13} strokeWidth={1.6} aria-hidden />
+            </span>
+            <span>
+              Documents belong to a run. While a run is live you can edit the shared spec to steer
+              it.
+            </span>
           </div>
-          <div className="dv-drawer__body">
-            {body}
-            <div className="dv-drawer__foot">
-              <span className="dv-drawer__footicon">
-                <Info size={13} strokeWidth={1.6} aria-hidden />
-              </span>
-              <span>
-                Documents belong to a run. While a run is live you can edit the shared spec to steer
-                it.
-              </span>
-            </div>
-          </div>
-        </>
-      )}
+        </div>
+      </>
     </aside>
   );
 }
