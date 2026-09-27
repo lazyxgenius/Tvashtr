@@ -145,17 +145,17 @@
   line-height: 1.6;
   color: var(--ink-900);
 }
-.dm-qd__badge--ok {
+.dm-pill.dm-qd__badge--ok {
   background: var(--sage-100);
   color: #3f4d2f;
   border-color: #cdd6bf;
 }
-.dm-qd__badge--warn {
+.dm-pill.dm-qd__badge--warn {
   background: var(--amber-100);
   color: #6b4a1f;
   border-color: #ead8b4;
 }
-.dm-qd__badge--danger {
+.dm-pill.dm-qd__badge--danger {
   background: var(--red-100);
   color: var(--danger, #8f3b2f);
   border-color: #ecc7bf;
