@@ -56,22 +56,28 @@ function RunDocuments({
   );
   const all = docs.value ?? [];
   if (all.length === 0) {
-    return <p className="tv-panel-note">{specEmptyHint(runId, run, workflowStatus)}</p>;
+    return (
+      <div className="tv-scroll">
+        <p className="tv-panel-note">{specEmptyHint(runId, run, workflowStatus)}</p>
+      </div>
+    );
   }
   const ordered = [...all.filter((d) => d.is_shared_spec), ...all.filter((d) => !d.is_shared_spec)];
   return (
-    <ul className="nd-docs__list tv-rundocs">
-      {ordered.map((d) => (
-        <DocCard
-          key={d.id}
-          shared={d.is_shared_spec}
-          title={docLabel(d)}
-          sub={d.is_shared_spec ? specLine(d) : writtenBy(d)}
-          meta={d.is_shared_spec ? versionLine(d) : readersLine(d)}
-          onOpen={onOpenDoc && (() => onOpenDoc(d.id))}
-        />
-      ))}
-    </ul>
+    <div className="tv-scroll">
+      <ul className="nd-docs__list">
+        {ordered.map((d) => (
+          <DocCard
+            key={d.id}
+            shared={d.is_shared_spec}
+            title={docLabel(d)}
+            sub={d.is_shared_spec ? specLine(d) : writtenBy(d)}
+            meta={d.is_shared_spec ? versionLine(d) : readersLine(d)}
+            onOpen={onOpenDoc && (() => onOpenDoc(d.id))}
+          />
+        ))}
+      </ul>
+    </div>
   );
 }
 
