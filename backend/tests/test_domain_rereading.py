@@ -21,6 +21,7 @@ from tvashtr.control_plane.domain_embedding import (
 )
 from tvashtr.control_plane.domains import model_rereading
 from tvashtr.db import session_scope
+from tvashtr.gateway import EmbeddingResult
 from tvashtr.main import app
 from tvashtr.models import DomainChunk, DomainDocument, ProviderCredential
 
@@ -266,3 +267,95 @@ def test_a_reread_asked_for_during_another_joins_it(started):
     assert _doc(docs[1]).version == 3
     rereading = c.get(f"/api/domains/{did}").json()["rereading"]
     assert (rereading["total"], rereading["done"], rereading["reason"]) == (1, 0, "files")
+
+
+# ---- review findings (FINISH stage) ----
+
+
+def test_a_model_change_mid_read_leaves_the_file_to_the_running_read(started, monkeypatch):
+    """A new reading model while a file is being read must not start a second reader (OQ-24):
+    the file being read keeps its reader, and that reader puts it back to waiting when its
+    pieces lost their vectors, then carries on with the next file."""
+    c, owner = _fresh()
+    _key(owner)
+    _key(owner, "gemini")
+    did, cfg = _domain(c)
+    docs = [_read_doc(did, n) for n in ("a.md", "b.md", "c.md")]
+    with session_scope() as s:
+        s.get(DomainDocument, uuid.UUID(docs[1])).ingest_status = "indexing"  # read right now
+    r = c.patch(f"/api/domains/{did}", json={"config": _model(cfg, "gemini/gemini-embedding-001")})
+    assert r.status_code == 200, r.text
+    assert started == []  # the running read takes the re-read over
+    reading = _doc(docs[1])
+    assert reading.ingest_status == "indexing" and reading.version == 2
+    assert reading.error_message.startswith("embedding model")
+    assert [_doc(d).ingest_status for d in (docs[0], docs[2])] == ["pending", "pending"]
+    # The running read finishes its file: the old vectors are gone, so it goes back to waiting
+    # (keeping the mark) and the same read claims the oldest waiting file next.
+    nxt = domain_read.finish_document_step(str(owner), did, docs[1], None)
+    assert nxt == docs[0]
+    back = _doc(docs[1])
+    assert back.ingest_status == "pending" and back.error_message.startswith("embedding model")
+    assert model_rereading(uuid.UUID(did))
+
+
+def test_a_batch_embedded_with_the_old_model_is_not_stored(started, monkeypatch):
+    c, owner = _fresh()
+    _key(owner)
+    _key(owner, "gemini")
+    did, cfg = _domain(c)
+    doc = _read_doc(did, "a.md")
+    with session_scope() as s:
+        s.get(DomainDocument, uuid.UUID(doc)).ingest_status = "indexing"
+        for ch in s.execute(select(DomainChunk).where(DomainChunk.document_id == uuid.UUID(doc))):
+            ch[0].embedding = None
+
+    def _embed(req):
+        # The model changes while this batch is out at the provider.
+        c.patch(f"/api/domains/{did}", json={"config": _model(cfg, "gemini/gemini-embedding-001")})
+        return EmbeddingResult(
+            vectors=[[0.01] * 1536 for _ in req.input],
+            model=req.model,
+            prompt_tokens=1,
+            total_tokens=1,
+            cost_usd=0.0,
+            raw_provider="openai",
+            latency_ms=1.0,
+        )
+
+    monkeypatch.setattr(domain_read, "embed", _embed)
+    monkeypatch.setattr(domain_read, "resolve_owner_api_key", lambda oid, model: "sk-test")
+    monkeypatch.setattr(domain_read, "record_embedding_cost", lambda **kwargs: None)
+    assert domain_read.embed_batch_step(str(owner), did, doc, 0, 2) == {"error": None}
+    assert _embedded(doc) == 0
+
+
+def test_an_old_model_mark_on_a_first_read_does_not_pause_asking():
+    """Files reset by the pre-revamp dimension-change path carry the old mark at version 1: they
+    are a first read, not a model re-read, so asking isn't paused."""
+    c, owner = _fresh()
+    did, _ = _domain(c)
+    doc = _read_doc(did, "a.md")
+    with session_scope() as s:
+        row = s.get(DomainDocument, uuid.UUID(doc))
+        row.ingest_status = "pending"
+        row.error_message = "embedding model dimension changed — re-ingest required"
+    assert not model_rereading(uuid.UUID(did))
+
+
+def test_a_reread_with_the_same_model_keeps_the_files_searchable(started):
+    """DM-90: re-reading with new piece sizes keeps the old pieces answering questions until
+    each file's new pieces replace them."""
+    from tvashtr.control_plane.domain_ask import count_ready_chunks
+    from tvashtr.control_plane.domain_retrieve import retrieve_domain_chunks
+
+    c, owner = _fresh()
+    _key(owner)
+    did, _ = _domain(c)
+    for i in range(2):
+        _read_doc(did, f"f{i}.md")
+    assert c.post(f"/api/domains/{did}/reread", json={}).status_code == 202
+    assert c.get(f"/api/domains/{did}").json()["pieces"] == 4
+    with session_scope() as s:
+        assert count_ready_chunks(s, uuid.UUID(did)) == 4
+    assert len(retrieve_domain_chunks(uuid.UUID(did), [0.1] * 1536, 8)) == 4

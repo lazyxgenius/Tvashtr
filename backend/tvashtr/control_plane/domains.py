@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from copy import deepcopy
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, update
 
@@ -453,6 +454,8 @@ READ_DIM_CHANGED = "embedding model dimension changed — re-ingest required"
 READ_MODEL_CHANGED = "embedding model changed — re-read required"
 # A re-read asked to run the tests when it's done (DM-90): the workflow reading the file runs them.
 READ_TESTS_AFTER = "re-read: run tests after"
+# A file left "indexing" this long with no progress (a crashed process) may be claimed again.
+READ_STALE_AFTER = timedelta(minutes=10)
 
 
 def is_model_mark(message: str | None) -> bool:
@@ -491,6 +494,8 @@ def model_rereading(domain_id: uuid.UUID) -> bool:
                     DomainDocument.domain_id == domain_id,
                     DomainDocument.ingest_status.in_((INGEST_PENDING, INGEST_INDEXING)),
                     DomainDocument.error_message.startswith("embedding model"),
+                    # A pre-revamp mark on a file never read (version 1) is a first read.
+                    DomainDocument.version > 1,
                 )
                 .limit(1)
             ).first()
@@ -510,8 +515,13 @@ def _reread_for_model_change(session, domain: Domain, message: str) -> None:
         .scalars()
         .all()
     )
+    live = datetime.now(UTC) - READ_STALE_AFTER
     for doc in docs:
-        doc.ingest_status = INGEST_PENDING
+        # A file being read right now stays with its reader (a second reader would break
+        # one-file-at-a-time, OQ-24): it is marked, and that read puts it back to waiting when it
+        # finds its pieces lost their vectors (``domain_read.finish_document_step``).
+        if not (doc.ingest_status == INGEST_INDEXING and doc.updated_at >= live):
+            doc.ingest_status = INGEST_PENDING
         doc.version = version
         doc.error_message = message
     _apply_domain_aggregates(session, domain)

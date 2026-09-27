@@ -414,3 +414,29 @@ def test_tests_after_a_reread_run_even_when_a_read_was_already_running(
     assert ran == [did] and out["tests"] == {"ok": True}
     assert _status(b["document_id"]) == ("ready", 2)
     assert c.get(f"/api/domains/{did}").json()["rereading"] is None
+
+
+def test_files_left_waiting_start_reading_when_the_domain_is_opened(started):
+    """Files uploaded before reading was automatic (or left by a read that died) are picked up
+    the next time the list or the domain is loaded — not left "Reading" forever."""
+    c, owner = _fresh()
+    _key(owner)
+    dids = [_domain(c, "Support docs"), _domain(c, "Vendor contracts")]
+    with session_scope() as s:
+        for did in dids:
+            s.add(
+                DomainDocument(
+                    domain_id=uuid.UUID(did),
+                    filename="old.md",
+                    content_type="text/markdown",
+                    storage_path=f"x/{uuid.uuid4().hex}",
+                    byte_size=10,
+                    ingest_status="pending",
+                )
+            )
+    assert started == []
+    assert c.get(f"/api/domains/{dids[0]}").status_code == 200
+    assert [call[2] for call in started] == [dids[0]]
+    assert c.get(f"/api/domains/{dids[0]}").status_code == 200  # reading now: nothing new
+    assert c.get("/api/domains").status_code == 200
+    assert [call[2] for call in started] == dids

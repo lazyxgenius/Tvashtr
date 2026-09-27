@@ -2671,7 +2671,16 @@ def get_domain_templates(
 @router.get("/api/domains")
 def get_domains(current_user: Annotated[UserOut, Depends(get_current_user)]) -> dict:
     # Revamp (Domains list): each item also carries files/pieces/state/quality/usage summaries.
-    return {"domains": domain_views.list_summaries(uuid.UUID(current_user.id))}
+    owner_id = uuid.UUID(current_user.id)
+    items = domain_views.list_summaries(owner_id)
+    busy = [uuid.UUID(d["domain_id"]) for d in items if d.get("state") in _READING_STATES]
+    if busy:
+        domain_read.resume_stalled(owner_id, busy)
+    return {"domains": items}
+
+
+# A domain shown as reading must have a reader: files left waiting are picked up on load.
+_READING_STATES = ("reading", "rereading")
 
 
 @router.post("/api/domains")
@@ -2710,9 +2719,12 @@ def _parse_domain_id(domain_id: str) -> uuid.UUID:
 def get_domain_endpoint(
     domain_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
 ) -> dict:
-    row = domain_views.detail_summary(uuid.UUID(current_user.id), _parse_domain_id(domain_id))
+    owner_id = uuid.UUID(current_user.id)
+    row = domain_views.detail_summary(owner_id, _parse_domain_id(domain_id))
     if row is None:
         raise HTTPException(status_code=404, detail="domain not found")
+    if row.get("state") in _READING_STATES:
+        domain_read.resume_stalled(owner_id, [uuid.UUID(row["domain_id"])])
     return row
 
 

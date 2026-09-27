@@ -32,6 +32,7 @@ from tvashtr.control_plane.domain_embedding import (
     normalize_embedding_model,
     read_seconds,
 )
+from tvashtr.control_plane.domain_retrieve import searchable_piece
 from tvashtr.control_plane.domain_usage import usage_counts
 from tvashtr.control_plane.domains import (
     READ_TESTS_AFTER,
@@ -134,7 +135,7 @@ def summaries(session, owner_id: uuid.UUID, domains: list[Domain]) -> dict[uuid.
         session.execute(
             select(DomainChunk.domain_id, func.count())
             .join(DomainDocument, DomainDocument.id == DomainChunk.document_id)
-            .where(DomainChunk.domain_id.in_(ids), DomainDocument.ingest_status == "ready")
+            .where(DomainChunk.domain_id.in_(ids), searchable_piece())
             .group_by(DomainChunk.domain_id)
         ).all()
     )

@@ -25,6 +25,7 @@ from tvashtr.control_plane.domain_retrieve import (
     coerce_rerank_config,
     coerce_retrieval_mode,
     retrieve_for_query,
+    searchable_piece,
 )
 from tvashtr.control_plane.domain_views import answer_model_label
 from tvashtr.control_plane.domains import _owned_domain, model_rereading
@@ -188,7 +189,7 @@ def count_ready_chunks(session, domain_id: uuid.UUID) -> int:
             .where(
                 DomainChunk.domain_id == domain_id,
                 DomainChunk.embedding.isnot(None),
-                DomainDocument.ingest_status == "ready",
+                searchable_piece(),
             )
         ).scalar_one()
     )

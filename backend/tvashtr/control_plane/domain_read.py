@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import uuid
 import zlib
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from dbos import DBOS
 from sqlalchemy import and_, delete, func, or_, select, text, update
@@ -39,6 +39,7 @@ from tvashtr.control_plane.domains import (
     INGEST_INDEXING,
     INGEST_PENDING,
     INGEST_READY,
+    READ_STALE_AFTER,
     READ_TESTS_AFTER,
     _apply_domain_aggregates,
     _owned_domain,
@@ -53,8 +54,7 @@ from tvashtr.models import Domain, DomainChunk, DomainDocument
 # Advisory-lock namespace ("DM"); the second key is a 32-bit hash of the domain id.
 LOCK_NAMESPACE = 0x444D
 EMBED_BATCH = 16
-# A file left "indexing" this long with no progress (a crashed process) may be claimed again.
-STALE_AFTER = timedelta(minutes=10)
+STALE_AFTER = READ_STALE_AFTER
 
 
 class RereadConflict(Exception):
@@ -170,6 +170,36 @@ def ensure_reading(
             )
         raise
     return "started"
+
+
+def resume_stalled(owner_id: uuid.UUID, domain_ids: list[uuid.UUID]) -> None:
+    """Start reading the domains whose files wait while nothing reads them — files uploaded before
+    reading was automatic, or left by a read that died. The list and the detail call it for the
+    domains they show as reading, so a "Reading" state always has a reader behind it.
+    Best-effort: a failure is logged, never raised to the page."""
+    if not domain_ids:
+        return
+    with session_scope() as session:
+        live = select(DomainDocument.domain_id).where(
+            DomainDocument.ingest_status == INGEST_INDEXING,
+            DomainDocument.updated_at >= _now() - STALE_AFTER,
+        )
+        stalled = list(
+            session.execute(
+                select(DomainDocument.domain_id)
+                .where(
+                    DomainDocument.domain_id.in_(domain_ids),
+                    _claimable(),
+                    DomainDocument.domain_id.not_in(live),
+                )
+                .distinct()
+            ).scalars()
+        )
+    for did in stalled:
+        try:
+            ensure_reading(owner_id, did)
+        except Exception as exc:  # pragma: no cover - logged, never raised to a page load
+            DBOS.logger.warning(f"resume_stalled: domain {did} did not start: {exc}")
 
 
 def resume_waiting(owner_id: uuid.UUID, provider: str) -> int:
@@ -364,6 +394,11 @@ def embed_batch_step(owner_id: str, domain_id: str, document_id: str, start: int
             if len(vec) != want:
                 return {"error": f"embedding dim {len(vec)} != {want}"}
         with session_scope() as session:
+            current = _owned_domain(session, oid, did)
+            if current is None or reading_model_of(current) != model:
+                # The model changed while this batch was out: these vectors can't be compared
+                # with the new model's. Leave the pieces unembedded; the file is read again.
+                return {"error": None}
             for (chunk_id, _), vec in zip(rows, result.vectors, strict=True):
                 session.execute(
                     update(DomainChunk).where(DomainChunk.id == chunk_id).values(embedding=vec)
@@ -374,6 +409,17 @@ def embed_batch_step(owner_id: str, domain_id: str, document_id: str, start: int
         return {"error": None}
     except Exception as exc:
         return {"error": str(exc)[:2000] or exc.__class__.__name__}
+
+
+def _unembedded(session, document_id: uuid.UUID) -> bool:
+    return (
+        session.execute(
+            select(DomainChunk.id)
+            .where(DomainChunk.document_id == document_id, DomainChunk.embedding.is_(None))
+            .limit(1)
+        ).first()
+        is not None
+    )
 
 
 @DBOS.step()
@@ -390,7 +436,11 @@ def finish_document_step(
         doc = _doc(session, did, doc_id)
         # A file re-queued while it was being read (a second re-read) stays queued.
         if doc is not None and doc.ingest_status == INGEST_INDEXING:
-            if error is None:
+            if error is None and _unembedded(session, doc_id):
+                # The reading model changed while this file was read: its vectors were cleared,
+                # so it waits (keeping the model mark) and is read again with the new model.
+                doc.ingest_status = INGEST_PENDING
+            elif error is None:
                 doc.ingest_status = INGEST_READY
                 doc.error_message = None
             else:

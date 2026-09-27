@@ -6,7 +6,7 @@ import math
 import re
 import uuid
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from tvashtr.db import session_scope
 from tvashtr.models import DomainChunk, DomainDocument
@@ -21,14 +21,28 @@ def truncate_excerpt(text: str, max_chars: int = EXCERPT_MAX) -> str:
     return t[:max_chars]
 
 
+def searchable_piece():
+    """The pieces that answer questions: a read file's — and, while a file is re-read, its pieces
+    that still have a vector. A re-read with the same model keeps the old pieces searchable until
+    each file's new ones replace them (DM-90); a new reading model cleared them (asking pauses)."""
+    return or_(
+        DomainDocument.ingest_status == "ready",
+        and_(
+            DomainDocument.version > 1,
+            DomainDocument.ingest_status.in_(("pending", "indexing")),
+            DomainChunk.embedding.isnot(None),
+        ),
+    )
+
+
 def retrieve_domain_chunks(
     domain_id: uuid.UUID, query_embedding: list[float], top_k: int
 ) -> list[dict]:
     """Return up to ``top_k`` ready chunks ranked by cosine distance ascending.
 
-    Only chunks whose parent ``DomainDocument.ingest_status == "ready"`` and whose
-    ``embedding`` is non-null are considered. Mirrors ``memory_retrieval`` use of
-    ``embedding.cosine_distance(qvec)``.
+    Only chunks that are searchable (``searchable_piece``: a read file's, or a re-read file's
+    old pieces) and whose ``embedding`` is non-null are considered. Mirrors ``memory_retrieval``
+    use of ``embedding.cosine_distance(qvec)``.
     """
     try:
         k = int(top_k) if top_k is not None else 8
@@ -44,7 +58,7 @@ def retrieve_domain_chunks(
             .where(
                 DomainChunk.domain_id == domain_id,
                 DomainChunk.embedding.isnot(None),
-                DomainDocument.ingest_status == "ready",
+                searchable_piece(),
             )
             .order_by(dist)
             .limit(k)
@@ -279,7 +293,7 @@ def expand_chunks_by_shared_mentions(
             .join(DomainDocument, DomainDocument.id == DomainChunk.document_id)
             .where(
                 DomainChunk.domain_id == domain_id,
-                DomainDocument.ingest_status == "ready",
+                searchable_piece(),
                 or_(*mention_conds),
             )
             .limit(50)
@@ -390,7 +404,7 @@ def retrieve_lexical_chunks(domain_id: uuid.UUID, query: str, top_k: int) -> lis
             .join(DomainDocument, DomainDocument.id == DomainChunk.document_id)
             .where(
                 DomainChunk.domain_id == domain_id,
-                DomainDocument.ingest_status == "ready",
+                searchable_piece(),
                 DomainChunk.text_tsv.op("@@")(tsq),
             )
             .order_by(rank.desc())
