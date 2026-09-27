@@ -4,6 +4,8 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../../design-system/components";
+import { useSaveShortcut } from "../saveShortcut";
+import { useUnsavedGuard } from "../useUnsavedGuard";
 import { DocumentViewer } from "./DocumentViewer";
 import type { DocPlace } from "./docView";
 
@@ -304,15 +306,119 @@ describe("DocumentViewer — live edit (DOCS-26..32)", () => {
     expect(alert).toHaveTextContent(
       "Product manager saved v4 while you were editing. Compare, then save again.",
     );
-    // Compare leaves the edit (after asking) and compares the version it started on.
+    // Compare shows the version the edit started on against the newest, and keeps the edit.
     fireEvent.click(within(alert).getByRole("button", { name: "Compare" }));
-    const confirm = screen.getByRole("alertdialog", {
-      name: "Discard your edit to the Shared spec?",
-    });
-    fireEvent.click(within(confirm).getByRole("button", { name: "Discard edit" }));
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(await screen.findByText("Comparing", { exact: false })).toHaveTextContent(
       "Comparing v3 (Product manager) → v4 (Product manager)+1 line−0 lines",
     );
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Back to your edit" }));
+    const d = within(dialog());
+    expect(await d.findByText("Unsaved edit · saves as v5")).toBeInTheDocument();
+    // Save again: the edit is still there, now based on v4.
+    saveAnswer = { status: 200, body: version(5, "x", YOU, "Edited while the run was live", 0) };
+    fireEvent.click(d.getByRole("button", { name: "Save as v5" }));
+    expect(
+      await screen.findByText("Saved v5 — the agents read it on their next round."),
+    ).toBeInTheDocument();
+    const posts = fetchMock.mock.calls.filter(
+      (c) => (c[1] as RequestInit | undefined)?.method === "POST",
+    );
+    const body = JSON.parse((posts.at(-1)?.[1] as RequestInit).body as string) as {
+      base_version_no: number;
+      content: string;
+    };
+    expect(body.base_version_no).toBe(4);
+    expect(body.content).toContain("- More.");
+  });
+
+  it("⌘S saves the edit, never the agent drawer underneath", async () => {
+    const agentSave = vi.fn();
+    function AgentDrawer() {
+      useSaveShortcut(agentSave);
+      return null;
+    }
+    render(
+      <>
+        <AgentDrawer />
+        <Viewer />
+      </>,
+    );
+    await ready();
+    // Reading: ⌘S is the viewer's (nothing to save), not the agent's.
+    fireEvent.keyDown(dialog(), { key: "s", metaKey: true });
+    expect(agentSave).not.toHaveBeenCalled();
+    await startEditing();
+    setEditor(`${V3}\n- Saved with the keyboard.`);
+    fireEvent.keyDown(document.querySelector(".ProseMirror")!, { key: "s", metaKey: true });
+    expect(
+      await screen.findByText("Saved v4 — the agents read it on their next round."),
+    ).toBeInTheDocument();
+    expect(agentSave).not.toHaveBeenCalled();
+  });
+
+  it("browser Back while the edit is unsaved asks first, and keeps the address", async () => {
+    const here = "#/teams/t1/docs/d-spec";
+    window.history.replaceState(null, "", here);
+    const app = vi.fn();
+    window.addEventListener("hashchange", app);
+    try {
+      render(<Viewer />);
+      await startEditing();
+      setEditor(`${V3}\n- More.`);
+      // Back: the address leaves the document.
+      window.history.replaceState(null, "", "#/teams/t1");
+      act(() => {
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+      });
+      expect(app).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe(here);
+      const confirm = screen.getByRole("alertdialog", {
+        name: "Discard your edit to the Shared spec?",
+      });
+      fireEvent.click(within(confirm).getByRole("button", { name: "Keep editing" }));
+      expect(within(dialog()).getByText("Unsaved edit · saves as v4")).toBeInTheDocument();
+
+      window.history.replaceState(null, "", "#/teams/t1");
+      act(() => {
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Discard edit" }));
+      expect(window.location.hash).toBe("#/teams/t1");
+      expect(app).toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("hashchange", app);
+      window.history.replaceState(null, "", "#");
+    }
+  });
+
+  it("an ended edit leaves Tvashtr Desktop's quit guard to a dirty agent underneath", async () => {
+    const setUnsavedChanges = vi.fn();
+    window.tvashtrDesktop = {
+      app: { setUnsavedChanges },
+    } as unknown as typeof window.tvashtrDesktop;
+    function DirtyAgent() {
+      useUnsavedGuard({ dirty: true, agentName: "Reviewer" });
+      return null;
+    }
+    try {
+      render(
+        <>
+          <DirtyAgent />
+          <Viewer />
+        </>,
+      );
+      await startEditing();
+      setEditor(`${V3}\n- More.`);
+      expect(setUnsavedChanges).toHaveBeenLastCalledWith({
+        dirty: true,
+        agentName: "Shared spec",
+      });
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Discard" }));
+      expect(setUnsavedChanges).toHaveBeenLastCalledWith({ dirty: true, agentName: "Reviewer" });
+    } finally {
+      delete (window as { tvashtrDesktop?: unknown }).tvashtrDesktop;
+    }
   });
 
   it("the run ended meanwhile: says so, and Save stays off", async () => {

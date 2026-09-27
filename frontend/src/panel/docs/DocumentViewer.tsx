@@ -10,9 +10,12 @@ import {
   type RunDoc,
   type TeamRun,
 } from "../../lib/api/docs";
+import { NAVIGATION_KEPT, navigate, parseRoute } from "../../lib/nav";
+import { reportUnsaved } from "../../lib/unsavedChanges";
 import { useModalDialog } from "../../lib/useModalDialog";
 import { whenShort } from "../runs/rounds";
 import { useLoaded } from "../runs/useLoaded";
+import { useSaveShortcut } from "../saveShortcut";
 import type { LeaveGuard } from "../useUnsavedGuard";
 import { DocEditor } from "./DocEditor";
 import { DocAside, DocBody, DocColumns, DocRail, RunLine } from "./DocPanes";
@@ -63,12 +66,12 @@ export function DocumentViewer({
   const unsaved = editing && dirty;
   const label = detail ? detailLabel(detail) : "Document";
 
-  // DOCS-31: leaving an unsaved edit asks first.
-  const [asking, setAsking] = useState<(() => void) | null>(null);
+  // DOCS-31: leaving an unsaved edit asks first. `fromAddress`: the address already moved (Back).
+  const [asking, setAsking] = useState<{ proceed: () => void; fromAddress?: boolean } | null>(null);
   const unsavedRef = useRef(unsaved);
   unsavedRef.current = unsaved;
   const guard = useCallback<LeaveGuard>((proceed) => {
-    if (unsavedRef.current) setAsking(() => proceed);
+    if (unsavedRef.current) setAsking({ proceed });
     else proceed();
   }, []);
   useEffect(() => {
@@ -78,30 +81,48 @@ export function DocumentViewer({
       if (guardRef.current === guard) guardRef.current = null;
     };
   }, [guardRef, guard]);
-  // Reload / close the tab (web) and quit (Tvashtr Desktop) ask too while the edit is unsaved.
-  // ponytail: this only reports its own edit; an agent drawer that is dirty underneath re-reports
-  // on its next change, not when this edit ends.
+  // While the edit is unsaved: reload / close the tab (web) and quit (Tvashtr Desktop) ask first,
+  // and so does browser Back or any address change that isn't the viewer's own — the address is put
+  // back (before the app's own listener sees it) until the edit is discarded.
+  const [source] = useState(() => Symbol("document edit"));
   useEffect(() => {
     if (!unsaved) return;
-    const bridge = window.tvashtrDesktop;
-    const app = bridge && typeof bridge === "object" ? bridge.app : undefined;
-    app?.setUnsavedChanges?.({ dirty: true, agentName: label });
+    reportUnsaved(source, { dirty: true, agentName: label });
+    const here = window.location.hash;
+    const onHash = (e: HashChangeEvent) => {
+      const next = window.location.hash;
+      if (!unsavedRef.current || next === here) return;
+      e.stopImmediatePropagation();
+      const url = new URL(window.location.href);
+      url.hash = here;
+      window.history.replaceState(window.history.state, "", url);
+      setAsking({
+        proceed: () => navigate(parseRoute(next), { replace: true }),
+        fromAddress: true,
+      });
+    };
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
     };
+    window.addEventListener("hashchange", onHash, true);
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => {
+      window.removeEventListener("hashchange", onHash, true);
       window.removeEventListener("beforeunload", onBeforeUnload);
-      app?.setUnsavedChanges?.({ dirty: false });
+      reportUnsaved(source, { dirty: false });
     };
-  }, [unsaved, label]);
+  }, [unsaved, label, source]);
+  // ⌘S belongs to the viewer while it's open (its edit saves; the agent drawer underneath doesn't).
+  useSaveShortcut(() => undefined, true);
 
   const dialogRef = useModalDialog<HTMLElement>(true, () => guard(onClose));
   // Focus starts on the dialog itself (its name is read out), not on its first button.
   useEffect(() => dialogRef.current?.focus(), [dialogRef]);
 
   const leaveEdit = () => {
+    // At once: a move that follows in this same tick must not be asked about again.
+    unsavedRef.current = false;
     setEditing(false);
     setDirty(false);
   };
@@ -173,7 +194,6 @@ export function DocumentViewer({
           toast({ message: `Saved v${v.version_no} — the agents read it on their next round.` });
         }}
         onRefresh={reload}
-        onCompare={(from) => go({ compare: from })}
         onDiscard={leaveEdit}
       />
     ) : (
@@ -284,9 +304,12 @@ export function DocumentViewer({
         confirmLabel="Discard edit"
         cancelLabel="Keep editing"
         tone="danger"
-        onCancel={() => setAsking(null)}
+        onCancel={() => {
+          if (asking?.fromAddress) window.dispatchEvent(new Event(NAVIGATION_KEPT));
+          setAsking(null);
+        }}
         onConfirm={() => {
-          const proceed = asking;
+          const proceed = asking?.proceed;
           setAsking(null);
           leaveEdit();
           proceed?.();

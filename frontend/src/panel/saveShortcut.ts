@@ -15,18 +15,21 @@ export function isSaveShortcut(e: KeyboardEvent): boolean {
 
 /**
  * While the drawer is open, ⌘S / Ctrl+S calls `onSave` instead of the browser's "Save page"
- * (PANEL-19). `onSave` decides whether there is anything to save.
+ * (PANEL-19). `onSave` decides whether there is anything to save. `over`: a view opened on top of
+ * the drawer (the document viewer) takes the key for itself — it listens first (capture) and stops
+ * the key there, so the drawer underneath never saves by mistake.
  */
-export function useSaveShortcut(onSave: () => void): void {
+export function useSaveShortcut(onSave: () => void, over = false): void {
   const saveRef = useRef(onSave);
   saveRef.current = onSave;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!isSaveShortcut(e)) return;
       e.preventDefault();
+      if (over) e.stopPropagation();
       saveRef.current();
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+    document.addEventListener("keydown", onKey, over);
+    return () => document.removeEventListener("keydown", onKey, over);
+  }, [over]);
 }

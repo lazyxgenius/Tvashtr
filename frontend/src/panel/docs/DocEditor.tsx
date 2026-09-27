@@ -10,7 +10,8 @@ import {
   type DocVersion,
 } from "../../lib/api/docs";
 import { getMarkdown, PRD_EDITOR_EXTENSIONS } from "../../lib/prdEditor";
-import { DocColumns } from "./DocPanes";
+import { useSaveShortcut } from "../saveShortcut";
+import { DocBody, DocColumns } from "./DocPanes";
 
 const SAVE_FAILED = "Couldn't save — try again.";
 
@@ -18,7 +19,9 @@ const SAVE_FAILED = "Couldn't save — try again.";
  * Live edit (Docs-EditLive, DOCS-26..32): the shared spec's latest version in the TipTap markdown
  * editor, with the toolbar and a footer that saves it as the next version. The save names the version
  * the edit started on, so an agent's newer version is never overwritten silently (409
- * `stale_version`); a run that ended meanwhile refuses too (409 `run_finished`). Both say so plainly.
+ * `stale_version`); a run that ended meanwhile refuses too (409 `run_finished`). Both say so plainly;
+ * after a stale refusal Compare shows the newer version against the one the edit started on without
+ * leaving the edit, so it can be saved again.
  */
 export function DocEditor({
   detail,
@@ -27,7 +30,6 @@ export function DocEditor({
   onDirty,
   onSaved,
   onRefresh,
-  onCompare,
   onDiscard,
 }: {
   detail: DocDetail;
@@ -37,8 +39,6 @@ export function DocEditor({
   onSaved: (version: DocVersion) => void;
   /** Reload the document (someone saved a newer version, or the run ended). */
   onRefresh: () => void;
-  /** "Compare": the version this edit started on against the newest. */
-  onCompare: (from: number) => void;
   onDiscard: () => void;
 }) {
   const latestNo = detail.versions.at(-1)?.version_no ?? 0;
@@ -49,6 +49,8 @@ export function DocEditor({
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<{ kind: DocSaveErrorKind; message: string } | null>(null);
+  // After a stale refusal: the newest version against the one this edit started on (the edit stays).
+  const [comparing, setComparing] = useState(false);
 
   const editor = useEditor({
     extensions: PRD_EDITOR_EXTENSIONS,
@@ -106,6 +108,9 @@ export function DocEditor({
     }
   };
 
+  // ⌘S / Ctrl+S saves the edit (the viewer keeps the key from the agent drawer underneath).
+  useSaveShortcut(() => void save(), true);
+
   const tool = (label: string, title: string, on: boolean, run: () => void, className = "") => (
     <button
       type="button"
@@ -124,51 +129,68 @@ export function DocEditor({
   return (
     <>
       <DocColumns rail={rail} aside={aside}>
-        <div className="dv-live">
-          <span className="dv-live__dot" aria-hidden />
-          <span>
-            <b>The run is live.</b> Save and agents pick up your edit at their next step.
-          </span>
-        </div>
-        {editor && active && (
-          <div className="dv-tools" role="toolbar" aria-label="Formatting">
-            {tool(
-              "H1",
-              "Heading",
-              active.h1,
-              () => chain()?.toggleHeading({ level: 1 }).run(),
-              "dv-tool--strong",
-            )}
-            {tool(
-              "H2",
-              "Subheading",
-              active.h2,
-              () => chain()?.toggleHeading({ level: 2 }).run(),
-              "dv-tool--strong",
-            )}
-            {tool("B", "Bold", active.bold, () => chain()?.toggleBold().run(), "dv-tool--bold")}
-            {tool(
-              "I",
-              "Italic",
-              active.italic,
-              () => chain()?.toggleItalic().run(),
-              "dv-tool--italic",
-            )}
-            {tool("• List", "Bulleted list", active.list, () => chain()?.toggleBulletList().run())}
-            {tool("Code", "Inline code", active.code, () => chain()?.toggleCode().run())}
+        {comparing && (
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="dv-backedit"
+              onClick={() => setComparing(false)}
+            >
+              Back to your edit
+            </Button>
+            <DocBody detail={detail} place={{ compare: startedOn.current }} />
+          </>
+        )}
+        <div hidden={comparing}>
+          <div className="dv-live">
+            <span className="dv-live__dot" aria-hidden />
+            <span>
+              <b>The run is live.</b> Save and agents pick up your edit at their next step.
+            </span>
           </div>
-        )}
-        <EditorContent editor={editor} className="dv-editor dv-md" />
-        {error && (
-          <p className="dv-saveerr" role="alert">
-            {error.message}
-            {error.kind === "stale_version" && (
-              <Button variant="secondary" size="sm" onClick={() => onCompare(startedOn.current)}>
-                Compare
-              </Button>
-            )}
-          </p>
-        )}
+          {editor && active && (
+            <div className="dv-tools" role="toolbar" aria-label="Formatting">
+              {tool(
+                "H1",
+                "Heading",
+                active.h1,
+                () => chain()?.toggleHeading({ level: 1 }).run(),
+                "dv-tool--strong",
+              )}
+              {tool(
+                "H2",
+                "Subheading",
+                active.h2,
+                () => chain()?.toggleHeading({ level: 2 }).run(),
+                "dv-tool--strong",
+              )}
+              {tool("B", "Bold", active.bold, () => chain()?.toggleBold().run(), "dv-tool--bold")}
+              {tool(
+                "I",
+                "Italic",
+                active.italic,
+                () => chain()?.toggleItalic().run(),
+                "dv-tool--italic",
+              )}
+              {tool("• List", "Bulleted list", active.list, () =>
+                chain()?.toggleBulletList().run(),
+              )}
+              {tool("Code", "Inline code", active.code, () => chain()?.toggleCode().run())}
+            </div>
+          )}
+          <EditorContent editor={editor} className="dv-editor dv-md" />
+          {error && (
+            <p className="dv-saveerr" role="alert">
+              {error.message}
+              {error.kind === "stale_version" && (
+                <Button variant="secondary" size="sm" onClick={() => setComparing(true)}>
+                  Compare
+                </Button>
+              )}
+            </p>
+          )}
+        </div>
       </DocColumns>
       <footer className="dv-foot">
         <span className="dv-foot__state">

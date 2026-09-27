@@ -499,7 +499,7 @@ describe("NodeEditor — leaving with unsaved changes (PANEL-21)", () => {
       const clean = new Event("beforeunload", { cancelable: true });
       window.dispatchEvent(clean);
       expect(clean.defaultPrevented).toBe(false);
-      expect(setUnsavedChanges).toHaveBeenLastCalledWith({ dirty: false, agentName: "Reviewer" });
+      expect(setUnsavedChanges).toHaveBeenLastCalledWith({ dirty: false });
 
       fireEvent.click(within(drawer).getByRole("switch", { name: "Images" }));
       const dirty = new Event("beforeunload", { cancelable: true });
