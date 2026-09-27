@@ -1,14 +1,16 @@
 import { type ReactNode, useState } from "react";
-import { ArrowRight, Check, ChevronDown, FileText, History, Pin } from "lucide-react";
+import { ArrowRight, ChevronDown, FileText, History } from "lucide-react";
 
-import { Button, Menu } from "../../design-system/components";
-import { listRunDocs, type NodeRuns, type NodeRunSummary, type RunDoc } from "../../lib/api/nodes";
+import { listRunDocs, type RunDoc } from "../../lib/api/docs";
+import type { NodeRuns, NodeRunSummary } from "../../lib/api/nodes";
 import { PrdView } from "../PrdView";
 import { runLine, whenShort } from "../runs/rounds";
 import { SubView } from "../SubView";
 import { EmptyCard, LoadState } from "../runs/RunsTab";
 import { type Loaded, useLoaded } from "../runs/useLoaded";
-import { agentDocs, readBy, specLine, versionLine, writtenBy } from "./agentDocs";
+import { agentDocs, docLabel, readBy, specLine, versionLine, writtenBy } from "./agentDocs";
+import { DocCard } from "./DocCard";
+import { RunPicker } from "./RunPicker";
 import "./docs.css";
 
 export interface DocsTabProps {
@@ -23,10 +25,10 @@ export interface DocsTabProps {
   agentCount: number;
   /** This agent's runs (the same history the Runs tab shows); "idle" when it never ran. */
   history: Loaded<NodeRuns>;
-  /** Open a document (in the drawer). */
+  /** Open a document. */
   onOpenDoc: (doc: RunDoc) => void;
-  /** "See all documents in this run" (in the drawer). */
-  onOpenAll: (docs: RunDoc[]) => void;
+  /** "See all documents in this run": the Documents drawer on that run (DOCS-6). */
+  onOpenAll: (runId: string) => void;
   /** "Set in Setup": the Setup tab, on Reads or Writes. */
   onSetup: (row: "reads" | "writes") => void;
 }
@@ -83,7 +85,7 @@ function RunDocs({
   runs: NodeRunSummary[];
   onPick: (runId: string) => void;
 }) {
-  const docs = useLoaded(run.run_id, () => listRunDocs(run.run_id));
+  const docs = useLoaded(run.run_id, () => listRunDocs(run.run_id).then((d) => d.documents));
   const when = whenShort(run.last_round_at ?? run.created_at);
   const open = (doc: RunDoc) => () => onOpenDoc(doc);
 
@@ -189,20 +191,10 @@ function RunDocs({
           <History size={13} strokeWidth={1.6} aria-hidden />
           From run “{run.idea || "Untitled run"}”{when && ` · ${when}`}
         </span>
-        <Menu
-          label="Choose a run"
-          items={runs.map((r) => ({
-            key: r.run_id,
-            label: r.idea || "Untitled run",
-            description: runLine(r),
-            icon:
-              r.run_id === run.run_id ? (
-                <Check size={15} strokeWidth={1.6} aria-hidden />
-              ) : (
-                <span />
-              ),
-            onSelect: () => onPick(r.run_id),
-          }))}
+        <RunPicker
+          runs={runs.map((r) => ({ run_id: r.run_id, idea: r.idea, detail: runLine(r) }))}
+          current={run.run_id}
+          onPick={onPick}
           trigger={(t) => (
             <button type="button" className="nd-docs__change" {...t}>
               Change
@@ -216,7 +208,7 @@ function RunDocs({
         <button
           type="button"
           className="nd-link nd-docs__all"
-          onClick={() => onOpenAll(docs.value ?? [])}
+          onClick={() => onOpenAll(run.run_id)}
         >
           See all documents in this run
           <ArrowRight size={14} strokeWidth={1.6} aria-hidden />
@@ -226,63 +218,19 @@ function RunDocs({
   );
 }
 
-/** The Docs tab's sheet: one document open, over the run's list when it came from there. */
-export interface DocSheetState {
-  /** "See all documents in this run" (null: a document opened from the tab). */
-  docs: RunDoc[] | null;
-  open: RunDoc | null;
-}
-
-const docTitle = (doc: RunDoc) => (doc.is_shared_spec ? "Shared spec" : doc.name);
-
 /**
- * The run's documents inside the drawer (PANEL-76/79), read-only: every document of the run, or one
- * document with its versions (`PrdView`). The Docs area's viewer and documents drawer replace it.
+ * One run document inside the drawer, read-only, with its versions (`PrdView`). Interim: the
+ * document viewer replaces it.
  */
-export function RunDocSheet({
-  sheet,
-  onChange,
-  onClose,
-}: {
-  sheet: DocSheetState;
-  onChange: (next: DocSheetState) => void;
-  onClose: () => void;
-}) {
-  const { docs, open } = sheet;
-  if (open) {
-    return (
-      <SubView
-        title={docTitle(open)}
-        backLabel={docs ? "Back to documents" : "Back"}
-        onBack={docs ? () => onChange({ docs, open: null }) : onClose}
-      >
-        <PrdView
-          documentId={open.id}
-          editable={false}
-          emptyHint=""
-          subject={open.is_shared_spec ? "spec" : "document"}
-        />
-      </SubView>
-    );
-  }
+export function RunDocSheet({ doc, onClose }: { doc: RunDoc; onClose: () => void }) {
   return (
-    <SubView title="Documents in this run" onBack={onClose}>
-      {docs && docs.length > 0 ? (
-        <ul className="nd-docs__list">
-          {docs.map((d) => (
-            <DocCard
-              key={d.id}
-              shared={d.is_shared_spec}
-              title={docTitle(d)}
-              sub={d.is_shared_spec ? specLine(d) : writtenBy(d)}
-              meta={versionLine(d)}
-              onOpen={() => onChange({ docs, open: d })}
-            />
-          ))}
-        </ul>
-      ) : (
-        <Note>No documents in this run.</Note>
-      )}
+    <SubView title={docLabel(doc)} onBack={onClose}>
+      <PrdView
+        documentId={doc.id}
+        editable={false}
+        emptyHint=""
+        subject={doc.is_shared_spec ? "spec" : "document"}
+      />
     </SubView>
   );
 }
@@ -304,45 +252,5 @@ function Note({ children, action }: { children: ReactNode; action?: ReactNode })
       <span>{children}</span>
       {action}
     </div>
-  );
-}
-
-function DocCard({
-  title,
-  sub,
-  meta,
-  shared = false,
-  onOpen,
-}: {
-  title: string;
-  sub: string;
-  meta?: string;
-  shared?: boolean;
-  onOpen?: () => void;
-}) {
-  return (
-    <li className={`nd-doc${shared ? " nd-doc--shared" : ""}`}>
-      {shared && (
-        <span className="nd-doc__eyebrow">
-          <Pin size={11} strokeWidth={1.6} aria-hidden />
-          Shared · everyone reads this
-        </span>
-      )}
-      <div className="nd-doc__row">
-        <span className="nd-doc__icon">
-          <FileText size={15} strokeWidth={1.6} aria-hidden />
-        </span>
-        <div className="nd-doc__id">
-          <div className="nd-doc__title">{title}</div>
-          <div className="nd-doc__sub">{sub}</div>
-        </div>
-        {onOpen && (
-          <Button variant="secondary" size="sm" onClick={onOpen}>
-            Open
-          </Button>
-        )}
-      </div>
-      {meta && <div className="nd-doc__meta">{meta}</div>}
-    </li>
   );
 }

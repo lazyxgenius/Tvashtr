@@ -9,13 +9,14 @@ import {
   type ProviderCatalogueEntry,
   type TeamGraphNode,
 } from "../lib/api";
+import type { RunDoc } from "../lib/api/docs";
 import { deleteMemory, type Memory } from "../lib/api/memory";
 import { getNodeRuns, type NodeTemplate } from "../lib/api/nodes";
 import type { EnginesTab, NodeTab, Route } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import { type AgentDraft, describeChanges } from "./agentDraft";
 import { DrawerConfirm } from "./DrawerConfirm";
-import { type DocSheetState, DocsTab, RunDocSheet } from "./docs/DocsTab";
+import { DocsTab, RunDocSheet } from "./docs/DocsTab";
 import { DrawerToast } from "./DrawerToast";
 import { NodeFocusView } from "./focus/NodeFocusView";
 import { DomainQueryBody } from "./legacy/DomainQueryBody";
@@ -88,6 +89,8 @@ export interface NodeEditorProps {
   onProviderAdded?: (provider: string) => void;
   /** Open a Toolkit page (a library skill or tool: "Open in Toolkit"). */
   onOpenToolkit?: (route: Route) => void;
+  /** Docs "See all documents in this run": the page's Documents drawer on that run (DOCS-6). */
+  onOpenDocuments?: (runId: string) => void;
 }
 
 /**
@@ -156,6 +159,7 @@ function AgentEditor({
   onOpenEngines,
   onProviderAdded,
   onOpenToolkit,
+  onOpenDocuments,
   cover: pageCover,
 }: NodeEditorProps) {
   const api = useAgentDraft(node, { teamId, onSaved: () => onSaved() });
@@ -187,8 +191,8 @@ function AgentEditor({
   const [skillSub, setSkillSub] = useState<SkillSub | null>(null);
   // The Tools sheet (add a server / library / paste mcp.json, or Edit connection; G9).
   const [toolSub, setToolSub] = useState<ToolSub | null>(null);
-  // A run document (or the run's list of them) open over the Docs tab.
-  const [docSheet, setDocSheet] = useState<DocSheetState | null>(null);
+  // A run document open over the Docs tab.
+  const [docSheet, setDocSheet] = useState<RunDoc | null>(null);
   const shelves = useShelves(tab === "skills");
   // Runs and Docs share this agent's history, keyed on its last run (a new round reloads it).
   const last = node.last_run;
@@ -344,7 +348,7 @@ function AgentEditor({
 
   const docEditor =
     docSheet !== null && tab === "docs" ? (
-      <RunDocSheet sheet={docSheet} onChange={setDocSheet} onClose={() => setDocSheet(null)} />
+      <RunDocSheet doc={docSheet} onClose={() => setDocSheet(null)} />
     ) : null;
 
   // "Turn on File access in Setup" / "Set in Setup": the Setup tab, on that control.
@@ -558,8 +562,8 @@ function AgentEditor({
           readsFrom={api.baseline.readsFrom}
           agentCount={nodes.filter((n) => n.kind === "agent" || n.kind === "completion").length}
           history={history}
-          onOpenDoc={(doc) => setDocSheet({ docs: null, open: doc })}
-          onOpenAll={(docs) => setDocSheet({ docs, open: null })}
+          onOpenDoc={setDocSheet}
+          onOpenAll={(runId) => onOpenDocuments?.(runId)}
           onSetup={(row) => openSetup(`[data-setup-row="${row}"]`)}
         />
       );

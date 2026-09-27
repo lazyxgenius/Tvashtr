@@ -141,8 +141,9 @@ describe("Docs tab", () => {
     expect(props.onOpenToolkit).not.toHaveBeenCalled();
   });
 
-  it("Open shows the document in the drawer; See all lists every document of the run", async () => {
-    const props = renderDocs(reviewer({ last_run: ran }));
+  it("Open shows the document in the drawer; See all opens the run's Documents drawer", async () => {
+    const onOpenDocuments = vi.fn();
+    const props = renderDocs(reviewer({ last_run: ran }), { onOpenDocuments });
     await screen.findAllByText("Shared spec");
     fireEvent.click(card("build-notes").getByRole("button", { name: "Open" }));
     const sheet = screen.getByRole("region", { name: "build-notes" });
@@ -151,17 +152,7 @@ describe("Docs tab", () => {
     expect(screen.queryByRole("region", { name: "build-notes" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "See all documents in this run" }));
-    const all = screen.getByRole("region", { name: "Documents in this run" });
-    const items = within(all).getAllByRole("listitem");
-    expect(items.map((li) => li.querySelector(".nd-doc__title")?.textContent)).toEqual([
-      "Shared spec",
-      "build-notes",
-    ]);
-    fireEvent.click(within(items[1]).getByRole("button", { name: "Open" }));
-    const doc = screen.getByRole("region", { name: "build-notes" });
-    expect(await within(doc).findByText("Ran pytest: 12 passed")).toBeInTheDocument();
-    fireEvent.click(within(doc).getByRole("button", { name: "Back to documents" }));
-    expect(screen.getByRole("region", { name: "Documents in this run" })).toBeInTheDocument();
+    expect(onOpenDocuments).toHaveBeenCalledWith("r1");
     expect(props.onOpenToolkit).not.toHaveBeenCalled();
   });
 

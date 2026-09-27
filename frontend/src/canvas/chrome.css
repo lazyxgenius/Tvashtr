@@ -143,3 +143,71 @@
   display: inline-flex;
   align-items: center;
 }
+
+/* DOCS-10: the toolbar's "Documents {n}" toggle, coral while the Documents drawer is open. */
+.cv-docs {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  flex: none;
+  box-sizing: border-box;
+  padding: 0 12px;
+  margin-left: 10px;
+  border: 1px solid var(--line-300);
+  border-radius: 8px;
+  background: var(--surface-card);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink-800);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cv-docs[aria-pressed="true"] {
+  border-color: var(--coral-200);
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.cv-docs__count {
+  font-size: 11.5px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--panel-300);
+  color: var(--ink-600);
+}
+
+/* DOCS-11: the documents an agent wrote, as chips on its card's lower-left edge. */
+.cv-doc-chips {
+  position: absolute;
+  left: -1px;
+  top: 119px;
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+}
+.cv-doc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-card);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: normal;
+  color: var(--ink-700);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+}
+.cv-doc-chip--shared {
+  border-color: var(--coral-200);
+  background: var(--coral-100);
+  color: var(--coral-700);
+}

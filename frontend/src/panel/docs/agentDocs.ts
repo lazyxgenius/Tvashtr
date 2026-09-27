@@ -3,7 +3,7 @@
  * and the agent's own Reads / Writes: the shared spec, what this agent wrote, what it read, and
  * the names it's set to use that the run didn't produce ("Not written in this run").
  */
-import type { RunDoc } from "../../lib/api/nodes";
+import type { RunDoc } from "../../lib/api/docs";
 import { joinAnd } from "../nodeActions";
 import { whenShort } from "../runs/rounds";
 
@@ -67,4 +67,31 @@ export function versionLine(doc: RunDoc, agentCount?: number): string {
 export function specLine(doc: RunDoc): string {
   const kind = doc.doc_type === "prd" ? "PRD" : doc.name;
   return doc.written_by.length > 0 ? `${kind} · written by ${labels(doc.written_by)}` : kind;
+}
+
+/** "Shared spec" for the run's spec, else the document's name. */
+export const docLabel = (doc: RunDoc): string => (doc.is_shared_spec ? "Shared spec" : doc.name);
+
+/** The Documents drawer's "v2 · 36m ago · read by Reviewer" (readers who also write it left out). */
+export function readersLine(doc: RunDoc): string {
+  const writers = new Set(doc.written_by.map((a) => a.node_id));
+  const readers = doc.read_by.filter((a) => !writers.has(a.node_id));
+  const version = versionLine(doc);
+  return readers.length > 0 ? `${version} · read by ${labels(readers)}` : version;
+}
+
+/**
+ * The canvas chips (DOCS-11): each written document on its writers' cards, keyed by the canvas
+ * node id — the authored id on the team canvas, the snapshot clone's id in a run view.
+ */
+export function docChipsByNode(docs: readonly RunDoc[], runView: boolean): Map<string, RunDoc[]> {
+  const out = new Map<string, RunDoc[]>();
+  for (const doc of docs) {
+    if (!doc.latest_version) continue;
+    for (const w of doc.written_by) {
+      const id = runView ? w.clone_node_id : w.node_id;
+      if (id) out.set(id, [...(out.get(id) ?? []), doc]);
+    }
+  }
+  return out;
 }
