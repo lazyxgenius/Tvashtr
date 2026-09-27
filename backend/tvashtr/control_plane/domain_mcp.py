@@ -8,6 +8,7 @@ import uuid
 from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.types import Tool as MCPTool
 from sqlalchemy import select
 from starlette.requests import Request
 
@@ -46,29 +47,38 @@ def allowed_domains(header: str | None) -> set[str] | None:
     return {part.strip().lower() for part in header.split(",") if part.strip()}
 
 
-def resolve_domain_ref(owner_id: uuid.UUID, ref: str, allowed: set[str] | None) -> str:
-    """The id of the domain ``ref`` names — a name (any case) or an id — among the owner's domains
-    this agent may search. The only one when ``ref`` is empty and there is just one. Anything else
-    is a tool error listing the names it can use ("Domains you can search: Support docs, Vendor
-    contracts.")."""
+def _usable(owner_id: uuid.UUID, allowed: set[str] | None) -> list[tuple[str, str]]:
+    """``(id, name)`` of the owner's domains this agent may search, oldest first."""
     with session_scope() as session:
         rows = session.execute(
             select(Domain.id, Domain.name)
             .where(Domain.owner_id == owner_id)
             .order_by(Domain.created_at, Domain.id)
         ).all()
-    usable = [(str(i), n) for i, n in rows if allowed is None or str(i) in allowed]
+    return [(str(i), n) for i, n in rows if allowed is None or str(i) in allowed]
+
+
+def searchable_line(owner_id: uuid.UUID, allowed: set[str] | None) -> str:
+    """ "Domains you can search: Support docs, Vendor contracts." (DM-96)."""
+    names = [name for _, name in _usable(owner_id, allowed)]
+    if not names:
+        return "You can’t search any domains."
+    return "Domains you can search: " + ", ".join(names) + "."
+
+
+def resolve_domain_ref(owner_id: uuid.UUID, ref: str, allowed: set[str] | None) -> str:
+    """The id of the domain ``ref`` names — a name (any case) or an id — among the owner's domains
+    this agent may search. The only one when ``ref`` is empty and there is just one. Anything else
+    is a tool error listing the names it can use ("Domains you can search: Support docs, Vendor
+    contracts.")."""
+    usable = _usable(owner_id, allowed)
     want = (ref or "").strip()
     if not want and len(usable) == 1:
         return usable[0][0]
     for did, name in usable:
         if want.lower() in (did, name.strip().lower()):
             return did
-    if not usable:
-        raise DomainMcpToolError("You can’t search any domains.")
-    raise DomainMcpToolError(
-        "Domains you can search: " + ", ".join(name for _, name in usable) + "."
-    )
+    raise DomainMcpToolError(searchable_line(owner_id, allowed))
 
 
 def _json_ok(payload: dict[str, Any]) -> str:
@@ -135,36 +145,53 @@ def owner_id_from_headers(cookie_header: str | None) -> uuid.UUID:
         raise DomainMcpToolError("authentication required — invalid session subject") from e
 
 
+def _owner_from_ctx(ctx: Context) -> uuid.UUID:
+    # Prefer HTTP request cookie when mounted; fall back to env for stdio debug.
+    request: Request | None = None
+    try:
+        request = ctx.request_context.request  # type: ignore[attr-defined]
+    except Exception:
+        request = None
+    if request is not None:
+        raw = request.headers.get("cookie") or request.cookies.get(SESSION_COOKIE_NAME)
+        if request.cookies.get(SESSION_COOKIE_NAME):
+            return owner_id_from_headers(
+                f"{SESSION_COOKIE_NAME}={request.cookies.get(SESSION_COOKIE_NAME)}"
+            )
+        return owner_id_from_headers(raw)
+
+    env_oid = os.environ.get("TVASHTR_OWNER_ID")
+    if env_oid:
+        return uuid.UUID(env_oid)
+    raise DomainMcpToolError("authentication required")
+
+
+def _allowed_from_ctx(ctx: Context) -> set[str] | None:
+    try:
+        request = ctx.request_context.request  # type: ignore[attr-defined]
+    except Exception:
+        request = None
+    return allowed_domains(request.headers.get(DOMAINS_HEADER)) if request else None
+
+
+class _DomainsMCP(FastMCP):
+    async def list_tools(self) -> list[MCPTool]:
+        """The tools, each description ending with the domains this agent can search by name
+        (DM-96) — the agent picks one without a failed call first."""
+        tools = await super().list_tools()
+        ctx = self.get_context()
+        try:
+            line = searchable_line(_owner_from_ctx(ctx), _allowed_from_ctx(ctx))
+        except DomainMcpToolError:
+            return tools  # no session: the plain descriptions
+        for tool in tools:
+            tool.description = f"{tool.description or ''}\n\n{line}"
+        return tools
+
+
 def create_domains_fastmcp() -> FastMCP:
     """Build the Domains MCP server (tools domain_ask + domain_retrieve)."""
-    mcp = FastMCP("tvashtr-domains")
-
-    def _owner_from_ctx(ctx: Context) -> uuid.UUID:
-        # Prefer HTTP request cookie when mounted; fall back to env for stdio debug.
-        request: Request | None = None
-        try:
-            request = ctx.request_context.request  # type: ignore[attr-defined]
-        except Exception:
-            request = None
-        if request is not None:
-            raw = request.headers.get("cookie") or request.cookies.get(SESSION_COOKIE_NAME)
-            if request.cookies.get(SESSION_COOKIE_NAME):
-                return owner_id_from_headers(
-                    f"{SESSION_COOKIE_NAME}={request.cookies.get(SESSION_COOKIE_NAME)}"
-                )
-            return owner_id_from_headers(raw)
-
-        env_oid = os.environ.get("TVASHTR_OWNER_ID")
-        if env_oid:
-            return uuid.UUID(env_oid)
-        raise DomainMcpToolError("authentication required")
-
-    def _allowed_from_ctx(ctx: Context) -> set[str] | None:
-        try:
-            request = ctx.request_context.request  # type: ignore[attr-defined]
-        except Exception:
-            request = None
-        return allowed_domains(request.headers.get(DOMAINS_HEADER)) if request else None
+    mcp = _DomainsMCP("tvashtr-domains")
 
     @mcp.tool(name="domain_ask")
     def domain_ask(question: str, ctx: Context, domain: str = "", domain_id: str = "") -> str:

@@ -440,3 +440,43 @@ def test_ask_tool_uses_the_resolved_domain():
         did = resolve_domain_ref(owner, "Support docs", {support})
         domain_mcp.run_domain_ask_tool(owner, did, "Refunds?")
     assert str(ask.call_args.args[1]) == support
+
+
+def test_the_tool_list_names_the_domains_the_agent_can_search(monkeypatch):
+    """DM-96/106: an agent is told which domains it can search, by name, when it lists its tools
+    — so it picks one without a failed call first."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from starlette.requests import Request
+
+    from tvashtr.auth import SESSION_COOKIE_NAME, make_session_cookie_value
+
+    c, owner = _fresh()
+    support = _domain(c)
+    _domain(c, "Vendor contracts", "legal")
+    cookie = f"{SESSION_COOKIE_NAME}={make_session_cookie_value(str(owner))}"
+
+    def ctx(headers: dict) -> SimpleNamespace:
+        raw = [(k.lower().encode(), v.encode()) for k, v in headers.items()]
+        return SimpleNamespace(
+            request_context=SimpleNamespace(request=Request({"type": "http", "headers": raw}))
+        )
+
+    mcp = domain_mcp.create_domains_fastmcp()
+    monkeypatch.setattr(
+        mcp, "get_context", lambda: ctx({"cookie": cookie, DOMAINS_HEADER: support})
+    )
+    tools = asyncio.run(mcp.list_tools())
+    assert {t.name for t in tools} == {"domain_ask", "domain_retrieve"}
+    assert all(t.description.endswith("\n\nDomains you can search: Support docs.") for t in tools)
+    # The legacy switch (no header) searches every domain.
+    monkeypatch.setattr(mcp, "get_context", lambda: ctx({"cookie": cookie}))
+    tools = asyncio.run(mcp.list_tools())
+    assert all(
+        t.description.endswith("Domains you can search: Support docs, Vendor contracts.")
+        for t in tools
+    )
+    # No session (a stdio debug run): the plain descriptions.
+    monkeypatch.setattr(mcp, "get_context", lambda: ctx({}))
+    assert all("Domains you can search" not in t.description for t in asyncio.run(mcp.list_tools()))
