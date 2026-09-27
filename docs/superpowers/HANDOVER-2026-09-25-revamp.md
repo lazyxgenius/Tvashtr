@@ -6,9 +6,9 @@ artboards, git-excluded), per the brief `prompts/revamp-e2e.md`.
 
 ## Round 2 — revamp-e2e session (start here to resume)
 
-**Next:** F5 agent panel + canvas (building) → F6 Focus + Docs (branches from F5) → Domains
-(building; carries the session's one migration `0042`, so its deploy waits for the operator's Neon
-snapshot) → Desktop app screens (building) → website → Phase 3 close-out.
+**Next:** F6 Focus + Docs (branches from F5's final head) → Domains (building; carries the
+session's one migration `0042`, so its deploy waits for the operator's Neon snapshot) → Desktop app
+screens (built, waiting its turn) → website (built, waiting its turn) → Phase 3 close-out.
 
 ### NEEDS_HUMAN (2026-09-26 ~14:55 IST) — RESOLVED 15:04 IST (new key in `.env`, `make seed`)
 The OpenAI key in `.env` (`OPENAI_API_KEY`, ends `…IgoA`, also the operator account's saved openai
@@ -25,7 +25,38 @@ replaced. Remedy: new key on the `OPENAI_API_KEY` line of `.env` → `make seed`
 | Phase 1 — the core loop completes | `fix/entry-report` | `007019d` | v20 | `desktop-v0.4.0` — latest release; DMG app 0.4.0 bundles `index-DZBnS0zK.js` = the live site |
 | F2 — Engines | `feat/revamp-f2-engines` | `6acc726` | v21 | `desktop-v0.5.0` — latest release; DMG app 0.5.0 bundles `index-CGZUXJb0.js` = the live site |
 | F3 — Toolkit › Tools + Secrets (+ `fix/ship-identity`) | `feat/revamp-f3-tools-secrets` | `c1a0172`, then `f6e1d4e` | v22 | `desktop-v0.6.0` — latest release; DMG app 0.6.0 bundles `index-DlPFWcla.js` = the live site |
-| F4 — Toolkit › Skills + Memory | `feat/revamp-f4-skills-memory` | recorded at the next ship | recorded at the next ship | `desktop-v0.7.0` |
+| F4 — Toolkit › Skills + Memory | `feat/revamp-f4-skills-memory` | `055671a` | v23 | `desktop-v0.7.0` — latest release; DMG app 0.7.0 bundles `index-CMst77H3.js` = the live site |
+| F5 — Agent panel + canvas (+ `fix/integration-review`) | `feat/revamp-f5-panel` | recorded at the next ship | recorded at the next ship | `desktop-v0.8.0` |
+
+### F5 Agent panel + canvas — what shipped (`feat/revamp-f5-panel`)
+- The agent drawer rebuilt on the new design (`frontend/src/panel/`): the header with status and the
+  More menu, tabs Setup / Skills & tools / Memory / Runs / Docs, the save bar with unsaved-changes
+  guard (Keep editing / Discard; Desktop's quit guard via `setUnsavedChanges`), Templates, the model
+  picker (derived from `/api/config`'s provider catalogue; NVIDIA NIM never offered), access and
+  documents, routing, output format with the schema checks, the Focus view entry, skill and tool
+  sub-views (add from library / preset / GitHub repo, paste mcp.json), the Memory tab (remember
+  toggle, notes, Open Memory shelf), Runs (last run, earlier rounds) and Docs (run documents in an
+  in-drawer sheet). Canvas chrome: the blocked-run warn callout with Open Engines (Eng-Flow-Blocked-1,
+  moved from F2) and the run view keeps `RunWarnings`. `TeamNodePanel`, `SkillsSection`,
+  `ToolsSection`, `NodeMemorySection`, `DrawerShell`, `SidePanel` and `StatusPill` are gone. No backend
+  change (every endpoint the drawer needs already existed).
+- Parity (`docs/superpowers/parity/panel.txt`): all 65 artboards at 0 size/type drift on the website
+  AND Desktop. Flow-Docs-1/2 and Flow-Templates-1 each have one "not found in app" item by decision:
+  a verdict agent's Writes note no longer offers "Set in Setup" (its Writes control is disabled), and
+  the Templates item reads "Open in focus view" (no compare view exists yet; F6 can restore it).
+- Deviations: Q20's tabbed run-view drawer (Runs default, read-only Setup) is not built (recorded in
+  spec §4.7); the Docs tab opens documents in an in-drawer sheet until F6's viewer exists; the
+  Remember hint says captured lessons go to Toolkit › Memory (they are repo-tier, never node-tier).
+- Shipped with it, `fix/integration-review` (the cross-area review): nav badges re-count when the
+  canvas is left and after a key, subscription or memory change; a pending Home/Engines action is
+  cleared when a leave guard keeps you on the page; Toolkit's secret dialog and "Choose agents" toast
+  survive navigating away; dead dashboard CSS removed.
+- Found at ship time (team-edit e2e): a new account's Home drew the main layout while its
+  checklist data loaded, then switched to the first-time layout, remounting the composer and
+  dropping a typed idea. Home now picks its layout once that data is in (unreadable preference →
+  the main Home, as before); the 88 Home/shell parity renders are byte-identical before and after.
+- Left for later: the drawer's paste-mcp.json reader (`panel/tools/pasteMcpJson.ts`) and Toolkit's
+  (`pages/tools/mcpJson.ts`) are separate (different copy per screen); merge when one copy is chosen.
 
 ### F4 Toolkit › Skills + Memory — what shipped (`feat/revamp-f4-skills-memory`)
 - Toolkit › Skills on the new design: the list and presets, the row ⋯ menu (duplicate, turn on for
