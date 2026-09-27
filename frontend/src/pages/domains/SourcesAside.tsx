@@ -14,7 +14,14 @@ import { highlightRange, passageMeta, passageText, sentenceCiting } from "./answ
 
 export type AsideMode = "sources" | "found";
 
-function Excerpt({ passage, cited }: { passage: DomainPassage; cited: string | null }) {
+/** A passage's excerpt with the part nearest the answer highlighted (OQ-10). */
+export function PassageExcerpt({
+  passage,
+  cited,
+}: {
+  passage: DomainPassage;
+  cited: string | null;
+}) {
   const text = passageText(passage);
   const range = cited && highlightRange(text, cited);
   if (!range) return <div className="dm-passage__text">{text}</div>;
@@ -99,7 +106,7 @@ export function SourcesAside({
                     {passageMeta(p, !found && answer?.covered === false)}
                   </span>
                 </div>
-                <Excerpt
+                <PassageExcerpt
                   passage={p}
                   cited={found || !answer ? null : sentenceCiting(answer.answer_text, p.number)}
                 />

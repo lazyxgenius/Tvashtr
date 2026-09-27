@@ -1284,3 +1284,97 @@ export async function setDomainAgents(domainId: string, nodeIds: string[]): Prom
   if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
   return agentsOf((await res.json()) as unknown);
 }
+
+// ---- The Query domain node (G12): its settings and its last lookup ----
+
+/** What a Query domain node does with no answer (DM-100). */
+export type NoAnswerPolicy = "continue" | "stop";
+
+/** The node's settings as the drawer edits them (`config` + `prompt`). */
+export interface QueryNodeSettings {
+  domain_id: string | null;
+  prompt: string;
+  title: string;
+  pass_to_spec: boolean;
+  on_no_answer: NoAnswerPolicy;
+}
+
+/** Save the drawer's changes (only the keys sent change). */
+export async function saveQueryNode(
+  teamId: string,
+  nodeId: string,
+  body: Partial<QueryNodeSettings>,
+): Promise<void> {
+  const res = await send(
+    `/api/teams/${encodeURIComponent(teamId)}/nodes/${encodeURIComponent(nodeId)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+}
+
+/** One round of a Query domain node (DM-103; contract "GET …/nodes/{node}/runs (additions)"). */
+export interface QueryNodeRound {
+  iteration: number;
+  status: string;
+  outcome: string | null;
+  /** The failure reason (or the answer, for older rounds). */
+  detail: string | null;
+  question: string | null;
+  answer_text: string;
+  covered: boolean | null;
+  sources: DomainPassage[];
+  latency_ms: number | null;
+  cost_usd: number | null;
+  spec_section: string | null;
+}
+
+/** The node's latest run: its number ("run 14") and its rounds, newest first. */
+export interface QueryNodeLastRun {
+  run_id: string;
+  number: number | null;
+  rounds: QueryNodeRound[];
+}
+
+function normalizeQueryRound(raw: unknown): QueryNodeRound | null {
+  const r = obj(raw);
+  if (typeof r.iteration !== "number") return null;
+  const d = obj(r.domain);
+  const cost = obj(r.cost);
+  const sources = passages(d.sources, true);
+  return {
+    iteration: r.iteration,
+    status: str(r.status),
+    outcome: strOrNull(r.outcome),
+    detail: strOrNull(r.outcome_detail),
+    question: strOrNull(d.question),
+    answer_text: str(d.answer_text) || str(r.outcome_detail),
+    covered: typeof d.covered === "boolean" ? d.covered : null,
+    // A round from before the v2 steps has only its raw citations.
+    sources: sources.length ? sources : passages(d.citations, false),
+    latency_ms: numOrNull(d.latency_ms),
+    cost_usd: numOrNull(d.cost_usd) ?? numOrNull(cost.cost_usd),
+    spec_section: strOrNull(d.spec_section),
+  };
+}
+
+/** The node's newest run with its rounds; `null` when it never ran. */
+export async function getQueryNodeLastRun(
+  teamId: string,
+  nodeId: string,
+): Promise<QueryNodeLastRun | null> {
+  const res = await send(
+    `/api/teams/${encodeURIComponent(teamId)}/nodes/${encodeURIComponent(nodeId)}/runs?limit=1`,
+  );
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res, BACKEND_DOWN));
+  const run = obj(obj((await res.json()) as unknown).run);
+  if (!str(run.run_id)) return null;
+  return {
+    run_id: str(run.run_id),
+    number: numOrNull(run.number),
+    rounds: rows(run.rounds).flatMap((r) => normalizeQueryRound(r) ?? []),
+  };
+}

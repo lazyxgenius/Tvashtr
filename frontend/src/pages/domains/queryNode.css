@@ -1,0 +1,250 @@
+/* The Query domain node (Dm-QueryNode, DmF-Step-4/5, DmF-Canvas-1…4, Dm-AgentAccess): the drawer's
+   body + footer, its Last run, the canvas card's lines and badges, and the agent's Domains checklist.
+   Every value is the design's. */
+
+.dm-qd {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  font-family: var(--font-ui);
+}
+.dm-qd__body {
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+}
+.dm-qd__body--run {
+  padding: 16px 20px;
+  gap: 12px;
+}
+.dm-qd__lede {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.dm-qd__domain {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dm-qd__list {
+  width: 344px;
+}
+.dm-qd__sep {
+  flex: none;
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line-200);
+}
+.dm-qd__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #52613e;
+}
+.dm-qd__status > svg {
+  flex: none;
+}
+.dm-qd__status--warn {
+  color: #6b4a1f;
+}
+.dm-qd__status--muted {
+  color: var(--ink-500);
+}
+.dm-qd__status--danger {
+  color: var(--danger, #8f3b2f);
+}
+.dm-qd__switch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dm-qd__helper {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-500);
+}
+.dm-qd__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--line-200);
+}
+.dm-qd__note {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-qd__note--saved {
+  color: #52613e;
+}
+.dm-qd__note--error {
+  color: var(--danger, #8f3b2f);
+}
+
+/* Setup | Last run: 13px tabs, 8px 10px, the active one underlined in coral. */
+.dm-qd__tabs.ds-tabs--line {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  border-bottom: 1px solid var(--line-200);
+}
+.dm-qd__tabs.ds-tabs--line .ds-tab {
+  padding: 8px 10px;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.dm-qd__tabs.ds-tabs--line .ds-tab[aria-selected="true"] {
+  color: var(--coral-700);
+  border-bottom-color: var(--coral-500);
+}
+.dm-qd__tabs.ds-tabs--line .ds-tab[aria-selected="true"]::after {
+  display: none;
+}
+
+/* Last run */
+.dm-qd__round {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dm-qd__roundno {
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-qd__meta {
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-qd__asked {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-qd__answer {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dm-qd__badge--ok {
+  background: var(--sage-100);
+  color: #3f4d2f;
+  border-color: #cdd6bf;
+}
+.dm-qd__badge--warn {
+  background: var(--amber-100);
+  color: #6b4a1f;
+  border-color: #ead8b4;
+}
+.dm-qd__badge--danger {
+  background: var(--red-100);
+  color: var(--danger, #8f3b2f);
+  border-color: #ecc7bf;
+}
+.dm-aside.dm-qd__sources {
+  width: auto;
+}
+.dm-qd__passage {
+  cursor: default;
+}
+
+/* The canvas card's lines and badges (DM-99). */
+.dm-qcard__badges {
+  display: flex;
+  gap: 4px;
+}
+.dm-qcard__badge {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+.dm-qcard__badge--warn {
+  background: var(--amber-100);
+  color: #6b4a1f;
+}
+.dm-qcard__badge--ok {
+  background: var(--sage-100);
+  color: #3f4d2f;
+}
+.dm-qcard__badge--danger {
+  background: var(--red-100);
+  color: var(--danger, #8f3b2f);
+}
+.dm-qcard__foot {
+  font-size: 10px;
+  color: var(--ink-500);
+}
+.dm-qcard__access {
+  font-size: 10px;
+  color: var(--ink-500);
+}
+
+/* An agent's Domains (DM-105/106): the heading, the checklist and the info callout. */
+.dm-dlist {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-family: var(--font-ui);
+}
+.dm-dlist__head {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.dm-dlist__items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dm-dlist__empty {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dm-dlist__callout {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--blue-100);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #2f4f6f;
+}
+.dm-dlist__icon {
+  display: inline-flex;
+  margin-top: 2px;
+}
+.dm-dlist__text {
+  flex: 1;
+}
+.dm-dlist__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6b4a1f;
+}
