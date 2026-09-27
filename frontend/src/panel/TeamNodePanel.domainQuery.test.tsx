@@ -1,102 +1,66 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { TeamGraphNode } from "../lib/api";
+import { __resetBackendStatusForTests } from "../lib/backendStatus";
+import { __resetWorkspaceStatusForTests } from "../lib/workspaceStatus";
+import { mockApi, sampleDomains } from "../pages/domains/domainsTestUtils";
 import { TeamNodePanel } from "./TeamNodePanel";
 
-vi.mock("../lib/api", async () => {
-  const actual = await vi.importActual<typeof import("../lib/api")>("../lib/api");
-  return {
-    ...actual,
-    listDomains: vi.fn(async () => [
-      {
-        domain_id: "dom-1",
-        name: "Support",
-        template: "support",
-        config: {},
-        status: "ready",
-        doc_count: 2,
-        created_at: "x",
-        updated_at: "x",
-      },
-    ]),
-    updateDomainQueryNode: vi.fn(async (_t, _n, body) => ({
-      id: "n-dq",
-      role_name: "domain_query",
-      kind: "domain_query",
-      model: null,
-      engine: null,
-      prompt: body.prompt ?? "{idea}",
-      position: { x: 0, y: 0 },
-      config: { domain_id: body.domain_id ?? null },
-    })),
-  };
+const NODE = {
+  id: "n-dq",
+  role_name: "domain_query",
+  kind: "domain_query",
+  model: null,
+  engine: null,
+  prompt: "{idea}",
+  position: { x: 0, y: 0 },
+  config: { domain_id: null, pass_to_spec: true, on_no_answer: "continue" },
+} as TeamGraphNode;
+
+beforeEach(() => {
+  __resetWorkspaceStatusForTests();
+  __resetBackendStatusForTests();
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
 });
 
-const { updateDomainQueryNode } = await import("../lib/api");
-
 describe("TeamNodePanel domain_query", () => {
-  it("saves domain_id + prompt", async () => {
-    const user = userEvent.setup();
-    const node = {
-      id: "n-dq",
-      role_name: "domain_query",
-      kind: "domain_query",
-      model: null,
-      engine: null,
-      prompt: "{idea}",
-      position: { x: 0, y: 0 },
-      config: { domain_id: null },
-    };
+  it("shows the Query domain drawer in the panel and saves through it", async () => {
+    const calls = mockApi({
+      "GET /api/domains": { domains: sampleDomains() },
+      "GET /api/teams/:t/nodes/:n/runs": { runs: [], run: null },
+      "PATCH /api/teams/:t/nodes/:n": {},
+    });
+    const onSaved = vi.fn(async () => {});
     render(
       <TeamNodePanel
         teamId="team-1"
-        node={node as any}
+        node={NODE}
         edges={[]}
+        nodes={[NODE]}
         isStartNode={false}
         onClose={() => {}}
-        onSaved={() => {}}
+        onSaved={onSaved}
       />,
     );
-    // Wait until listDomains populates the select (exact "Domain" avoids the drawer title).
-    await screen.findByRole("option", { name: "Support" });
-    await user.selectOptions(screen.getByLabelText("Domain"), "dom-1");
-    const prompt = screen.getByLabelText(/prompt/i);
-    // fireEvent: userEvent treats `{…}` as special key sequences.
-    fireEvent.change(prompt, { target: { value: "Explain {idea}" } });
-    await user.click(screen.getByRole("button", { name: /save/i }));
-    await waitFor(() =>
-      expect(updateDomainQueryNode).toHaveBeenCalledWith(
-        "team-1",
-        "n-dq",
-        expect.objectContaining({ domain_id: "dom-1", prompt: "Explain {idea}" }),
-      ),
-    );
-  });
-
-  it("shows Query domain discoverability hint (#5)", async () => {
-    const node = {
-      id: "n-dq",
-      role_name: "domain_query",
-      kind: "domain_query",
-      model: null,
-      engine: null,
-      prompt: "{idea}",
-      position: { x: 0, y: 0 },
-      config: { domain_id: null },
-    };
-    render(
-      <TeamNodePanel
-        teamId="team-1"
-        node={node as any}
-        edges={[]}
-        isStartNode={false}
-        onClose={() => {}}
-        onSaved={() => {}}
-      />,
-    );
-    const hint = await screen.findByTestId("domains-query-hint");
-    expect(hint.textContent).toMatch(/Query domain/i);
-    expect(hint.textContent).toMatch(/Chat|Domains MCP/i);
+    const panel = screen.getByRole("complementary", { name: "Node settings" });
+    expect(
+      within(panel).getByText("Query domain", { selector: ".tv-panel__title" }),
+    ).toBeInTheDocument();
+    const trigger = within(panel).getByRole("button", { name: /^Domain / });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    fireEvent.click(trigger);
+    fireEvent.click(within(panel).getByRole("option", { name: /Support docs/ }));
+    expect(within(panel).getByText("Look up support docs")).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(calls.find((c) => c.method === "PATCH")?.body).toMatchObject({
+      domain_id: "d-support",
+      title: "Look up support docs",
+      prompt: "What do our support docs say about {idea}?",
+    });
   });
 });

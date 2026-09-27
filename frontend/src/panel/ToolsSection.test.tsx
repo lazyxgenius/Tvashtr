@@ -1,16 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  createToolLibraryItem,
-  listSecrets,
-  listToolCatalog,
-  listToolLibrary,
-} from "../lib/api";
+import { createToolLibraryItem, listSecrets, listToolCatalog, listToolLibrary } from "../lib/api";
+import { mockApi, sampleDomains } from "../pages/domains/domainsTestUtils";
 import { ToolsSection } from "./ToolsSection";
 
 // ToolsSection fetches secret NAMES, library tools, and (catalog MVP) the built-in tool catalog.
-vi.mock("../lib/api", () => ({
+vi.mock("../lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/api")>()),
   listSecrets: vi.fn(),
   listToolLibrary: vi.fn(),
   listToolCatalog: vi.fn(),
@@ -39,7 +36,10 @@ beforeEach(() => {
   ]);
   mockCreate.mockResolvedValue({ id: "new-fetch", name: "fetch" });
 });
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("ToolsSection (M-tools C7.A)", () => {
   it("round-trips a pasted mcp.json through onChange", () => {
@@ -170,18 +170,30 @@ describe("ToolsSection (M-tools C7.A)", () => {
 });
 
 describe("ToolsSection catalog MVP", () => {
-  it("Domains checkbox sets tvashtr.domains true from null", () => {
+  it("the Domains checklist ticks a domain into tvashtr.domains (DM-105)", async () => {
+    mockApi({ "GET /api/domains": { domains: sampleDomains() } });
     const onChange = vi.fn();
     render(<ToolsSection value={null} onChange={onChange} />);
-    fireEvent.click(screen.getByLabelText("Enable Domains MCP"));
-    expect(onChange).toHaveBeenCalledWith({ tvashtr: { domains: true } });
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Support docs/ }));
+    expect(onChange).toHaveBeenCalledWith({ tvashtr: { domains: ["d-support"] } });
   });
 
-  it("unchecking Domains with nothing else clears to null", () => {
+  it("unticking the last domain with nothing else clears to null", async () => {
+    mockApi({ "GET /api/domains": { domains: sampleDomains() } });
+    const onChange = vi.fn();
+    render(<ToolsSection value={{ tvashtr: { domains: ["d-support"] } }} onChange={onChange} />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Support docs/ }));
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("an agent that could search every domain keeps the others when one is unticked", async () => {
+    mockApi({ "GET /api/domains": { domains: sampleDomains() } });
     const onChange = vi.fn();
     render(<ToolsSection value={{ tvashtr: { domains: true } }} onChange={onChange} />);
-    fireEvent.click(screen.getByLabelText("Enable Domains MCP")); // was on → off
-    expect(onChange).toHaveBeenCalledWith(null);
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Q3 filings/ }));
+    expect(onChange).toHaveBeenCalledWith({
+      tvashtr: { domains: ["d-support", "d-vendor", "d-research"] },
+    });
   });
 
   it("Attach fetch uses the fallback when the catalog is empty", async () => {
@@ -217,14 +229,5 @@ describe("ToolsSection catalog MVP", () => {
       expect(onChange).toHaveBeenCalledWith({ tvashtr: { library: ["existing-fetch"] } }),
     );
     expect(mockCreate).not.toHaveBeenCalled();
-  });
-
-  it("shows Domains MCP discoverability hint (#5)", () => {
-    render(<ToolsSection value={null} onChange={vi.fn()} />);
-    expect(screen.getByLabelText("Enable Domains MCP")).toBeInTheDocument();
-    const hint = screen.getByTestId("domains-mcp-hint");
-    expect(hint.textContent).toMatch(/Domains MCP/i);
-    expect(hint.textContent).toMatch(/agent|thinker|worker/i);
-    expect(hint.textContent).toMatch(/Chat|Query domain/i);
   });
 });

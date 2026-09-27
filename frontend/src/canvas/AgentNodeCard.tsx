@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { StatusPill } from "../components/StatusPill";
+import { AgentDomainsLine, QueryDomainCardBody } from "../pages/domains/QueryDomainCardBody";
 import { AuthoringContext } from "./authoringContext";
 import type { GateConfig, NodeConfig, TerminalConfig } from "../lib/api";
 import type { GateState, NodeStatus, TerminalState } from "../lib/status";
@@ -47,6 +48,11 @@ export type AgentNodeData = {
   // F-canvas-fidelity-2 Part 1: true when this node is the hover-graced one (author mode) — drives the
   // +/trash affordance render from state (not CSS :hover), so they linger through the grace. VISUAL only.
   hovered?: boolean;
+  // Revamp Domains (DM-99): the first blocking validity code, the last round's outcome and the
+  // agent's tools (for "Can search <domain>"). VISUAL only.
+  errorCode?: string;
+  lastOutcome?: string | null;
+  toolConfig?: Record<string, unknown> | null;
 };
 
 /** The authoring overlay classes for a node (P1.8d): a red ring for a blocking issue, a dim for an
@@ -223,6 +229,7 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
         </div>
         {d.iteration >= 2 && <span className="rf-node__round">round {d.iteration}</span>}
       </div>
+      <AgentDomainsLine toolConfig={d.toolConfig} />
       <div className="rf-node__meta">
         <span className={`rf-node__cap${isReadOnly ? " rf-node__cap--thinker" : ""}`}>
           {capabilityLabel(d)}
@@ -312,16 +319,16 @@ function TerminalCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData
 
 /** Phase 4a: compact Query-domain card — eyebrow + title + domain-selected blurb. */
 function DomainQueryCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData }) {
-  const cfg = (d.config || {}) as { domain_id?: string | null };
   return (
     <div className={`rf-node rf-node--domain-query${flagClasses(d)}`} title={d.errorMessage}>
       <NodeHandles />
       <NodeAffordances nodeId={nodeId} hovered={d.hovered} />
-      <div className="rf-node__eyebrow">Query domain</div>
-      <div className="rf-node__title">Domain ask</div>
-      <div className="rf-node__blurb">
-        {cfg.domain_id ? "Domain selected" : "Select a Domain"}
-      </div>
+      <QueryDomainCardBody
+        config={d.config}
+        errorCode={d.errorCode}
+        lastOutcome={d.lastOutcome}
+        failed={d.status === "failed"}
+      />
       <StatusPill status={d.status} />
     </div>
   );

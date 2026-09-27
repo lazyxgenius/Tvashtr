@@ -3,11 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { LastRun } from "../components/LastRun";
 import {
   addProvider,
-  type DomainQueryConfig,
-  type DomainSummary,
   type GateConfig,
   type GraphEdge,
-  listDomains,
   listProviders,
   listSubscriptionStatuses,
   defaultForProvider,
@@ -17,7 +14,6 @@ import {
   type Capability,
   type TeamGraphNode,
   type TerminalConfig,
-  updateDomainQueryNode,
   updateGateNode,
   updateTeamNode,
   updateTerminalNode,
@@ -29,8 +25,8 @@ import {
   type SubscriptionProviderId,
   type SubscriptionStatus,
 } from "../lib/engines";
-import { domainsQueryNodeHint } from "../lib/domains";
 import { applyEmitContract, emitContract } from "../lib/topology";
+import { QueryDomainPanel } from "../pages/domains/QueryDomainDrawerBody";
 import { DrawerShell, type PanelMode } from "./DrawerShell";
 import { glyphForNode } from "./nodeGlyph";
 import { NodeMemorySection } from "./NodeMemorySection";
@@ -113,8 +109,8 @@ const AGENT_SUBTITLE = "Its prompt is its whole identity — edit, then run";
  *    guardrail config, dirty-aware Save via `updateGateNode`.
  *  - **terminal** (M-endpoint-editable) — an editable endpoint: live Ship/Stop control, dirty-aware
  *    Save via `updateTerminalNode` (persists `terminal_kind` + synced `role_name`).
- *  - **domain_query** (PolyRAG Phase 4a) — Domain select + prompt template; Save via
- *    `updateDomainQueryNode` (no model required).
+ *  - **domain_query** — the Query domain drawer from `pages/domains` (`QueryDomainPanel`: Setup +
+ *    Last run), inside this shell.
  *
  * The drawer⇄modal chrome + the sticky `panelMode` live in the shared `DrawerShell`. The node
  * card's model chip (author mode) opens this drawer with `focusModel` bumped, scrolling the Model
@@ -237,36 +233,12 @@ export function TeamNodePanel({
   const initialTerminalKind: "ship" | "stop" = termCfg.terminal_kind === "ship" ? "ship" : "stop";
   const [terminalKind, setTerminalKind] = useState<"ship" | "stop">(initialTerminalKind);
 
-  // Phase 4a: domain_query drawer — selected Domain + prompt template. Seeded from config/prompt;
-  // parent `key` remount resets. Unused/harmless for other kinds.
-  const dqCfg = (node?.config ?? {}) as DomainQueryConfig;
-  const initialDomainId = dqCfg.domain_id ?? "";
-  const [domainId, setDomainId] = useState<string>(initialDomainId || "");
-  const [domains, setDomains] = useState<DomainSummary[]>([]);
-
   // F1c: the model-chip express lane — a focus signal from the parent (a bumping nonce; 0 = a normal
   // open). On a bump, scroll the Model field into view + flash a transient coral ring.
   const modelFieldRef = useRef<HTMLDivElement>(null);
   const [modelFlash, setModelFlash] = useState(false);
 
   const isAgent = node?.kind === "agent" || node?.kind === "completion";
-  const isDomainQuery = node?.kind === "domain_query";
-
-  useEffect(() => {
-    // Phase 4a: load Domains for the domain_query select. Skip for other kinds.
-    if (!isDomainQuery) return;
-    let cancelled = false;
-    listDomains()
-      .then((rows) => {
-        if (!cancelled) setDomains(Array.isArray(rows) ? rows : []);
-      })
-      .catch(() => {
-        if (!cancelled) setDomains([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isDomainQuery]);
 
   useEffect(() => {
     // Only the agent/completion editor has a provider picker — skip the fetch for gate/terminal.
@@ -288,11 +260,10 @@ export function TeamNodePanel({
     // Prefer-subscription treatment: Desktop engines.getStatus when available, else mirror API.
     if (!isAgent) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const d = window.tvashtrDesktop;
-        const engines =
-          d && typeof d === "object" && d.engines ? d.engines : null;
+        const engines = d && typeof d === "object" && d.engines ? d.engines : null;
         const rows = engines?.getStatus
           ? await engines.getStatus()
           : await listSubscriptionStatuses();
@@ -870,99 +841,24 @@ export function TeamNodePanel({
     );
   }
 
-  // ---- Phase 4a: domain_query — Domain select + prompt template (no model). ----
+  // ---- domain_query: the Query domain drawer (revamp Domains DM-100…104, pages/domains). ----
   if (node.kind === "domain_query") {
-    const dqTitle = "Domain ask";
-    const domainDirty =
-      domainId !== (initialDomainId || "") || prompt !== (node.prompt ?? "");
-    const handleDomainQuerySave = async () => {
-      if (!domainDirty) return;
-      setSaving(true);
-      setSaveError(false);
-      try {
-        await updateDomainQueryNode(teamId, node.id, {
-          domain_id: domainId || null,
-          prompt,
-        });
-        setSaved(true);
-        await onSaved();
-      } catch {
-        setSaveError(true);
-      } finally {
-        setSaving(false);
-      }
-    };
     return (
-      <DrawerShell
-        glyph={glyphForNode("domain_query", node.role_name)}
-        title={dqTitle}
-        subtitle="Cited ask against a Domain"
-        ariaLabel="Cited ask editor"
-        panelMode={panelMode}
-        onTogglePanelMode={onTogglePanelMode}
-        onClose={onClose}
-      >
-        <div className="tv-scroll tv-node-edit">
-          <p className="tv-field__hint" data-testid="domains-query-hint">
-            {domainsQueryNodeHint()}
-          </p>
-          <label className="tv-field">
-            <span className="tv-field__label">Domain</span>
-            <select
-              className="tv-node-model"
-              aria-label="Domain"
-              value={domainId}
-              disabled={saving}
-              onChange={(e) => {
-                setDomainId(e.target.value);
-                setSaved(false);
-              }}
-            >
-              <option value="">Select a Domain…</option>
-              {domains.map((d) => (
-                <option key={d.domain_id} value={d.domain_id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="tv-field">
-            <span className="tv-field__label">Prompt template</span>
-            <span className="tv-field__hint">
-              Use <code>{"{idea}"}</code> for the run idea.
-            </span>
-            <textarea
-              className="tv-node-prompt"
-              aria-label="Prompt template"
-              value={prompt}
-              rows={8}
-              spellCheck={false}
-              onChange={(e) => {
-                setPrompt(e.target.value);
-                setSaved(false);
-              }}
-            />
-          </label>
-
-          <div className="tv-prd__editbar">
-            <button
-              className="tv-btn"
-              type="button"
-              onClick={() => void handleDomainQuerySave()}
-              disabled={!domainDirty || saving}
-            >
-              {saving ? "Saving…" : "Save"}
-            </button>
-            {domainDirty ? (
-              <span className="tv-prd__dirty">Unsaved changes</span>
-            ) : saved ? (
-              <span className="tv-prd__saved">Saved — this drives the next run you launch.</span>
-            ) : null}
-            {saveError && <span className="tv-prd__saveerr">Couldn’t save — try again.</span>}
-          </div>
-        </div>
-      </DrawerShell>
+      <QueryDomainPanel teamId={teamId} node={node} nodes={nodes} edges={edges} onSaved={onSaved}>
+        {({ title, subtitle, body }) => (
+          <DrawerShell
+            glyph={glyphForNode("domain_query", node.role_name)}
+            title={title}
+            subtitle={subtitle}
+            ariaLabel="Node settings"
+            panelMode={panelMode}
+            onTogglePanelMode={onTogglePanelMode}
+            onClose={onClose}
+          >
+            {body}
+          </DrawerShell>
+        )}
+      </QueryDomainPanel>
     );
   }
 
@@ -1120,7 +1016,9 @@ export function TeamNodePanel({
           </div>
           {treatment === "subscription" && (
             <span className="tv-engines__pill">
-              {subId ? subscriptionCoverLabel(subId) : "via your subscription · runs on this computer"}
+              {subId
+                ? subscriptionCoverLabel(subId)
+                : "via your subscription · runs on this computer"}
             </span>
           )}
           {treatment === "byok" && <span className="tv-engines__pill">via API key</span>}

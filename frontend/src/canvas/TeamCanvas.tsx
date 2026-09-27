@@ -95,6 +95,12 @@ function nodeData(
     errorMessage: flags.nodeErrors.get(n.id),
     isOrphan: flags.orphans.has(n.id),
     isEntry,
+    // Revamp Domains (DM-99): the Query domain card's badges and the agent card's domains line.
+    errorCode: flags.nodeCodes?.get(n.id),
+    lastOutcome:
+      n.invocations?.[n.invocations.length - 1]?.outcome ??
+      (n as Partial<TeamGraphNode>).last_run?.outcome,
+    toolConfig: (n as Partial<TeamGraphNode>).tool_config,
   };
 }
 

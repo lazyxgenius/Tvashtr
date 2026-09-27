@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GraphEdge, TeamGraphNode } from "../lib/api";
+import { sampleDomains } from "../pages/domains/domainsTestUtils";
 import { TeamNodePanel } from "./TeamNodePanel";
 
 // P1.8b/P1.8c → M-unify U3: the team-authoring editor — the Edits toggle (Edits allowed / Not allowed,
@@ -86,6 +87,10 @@ beforeEach(() => {
     }
     if (url === "/api/skill-presets" && method === "GET") {
       return Promise.resolve(jsonOk({ skills: [] }));
+    }
+    // The Tools section's "Domains this agent can search" checklist lists the account's domains.
+    if (url === "/api/domains" && method === "GET") {
+      return Promise.resolve(jsonOk({ domains: sampleDomains() }));
     }
     return Promise.resolve(jsonOk(node({ prompt: "edited" })));
   });
@@ -808,7 +813,7 @@ describe("TeamNodePanel — M-tools C7.0 tools + skills sections", () => {
     expect(screen.queryByText(/switch this node to Worker/i)).toBeNull();
   });
 
-  it("clears the Unsaved changes banner after a successful ToolsSection save (Domains MCP)", async () => {
+  it("clears the Unsaved changes banner after a successful ToolsSection save (Domains)", async () => {
     // Regression: dirty compared draft toolConfig to live node.tool_config via JSON.stringify.
     // After Save the parent refetch can lag (or JSONB key order can differ), so the banner stuck
     // even though the PATCH succeeded. Baselines must reset on successful Save.
@@ -826,7 +831,7 @@ describe("TeamNodePanel — M-tools C7.0 tools + skills sections", () => {
     await screen.findByRole("combobox", { name: "Provider" });
 
     expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-    await user.click(screen.getByLabelText("Enable Domains MCP"));
+    await user.click(await screen.findByRole("checkbox", { name: /Support docs/ }));
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
 
     const save = screen.getByRole("button", { name: "Save" });
@@ -836,7 +841,7 @@ describe("TeamNodePanel — M-tools C7.0 tools + skills sections", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(patchCall()).toBeDefined());
     const body = JSON.parse(patchCall()![1].body as string) as Record<string, unknown>;
-    expect(body.tool_config).toEqual({ tvashtr: { domains: true } });
+    expect(body.tool_config).toEqual({ tvashtr: { domains: ["d-support"] } });
 
     // Banner clears even though the `node` prop was NOT updated (parent refetch not simulated) —
     // proving the save-path baseline reset, not prop-equality, owns the clear.
@@ -845,7 +850,7 @@ describe("TeamNodePanel — M-tools C7.0 tools + skills sections", () => {
     expect(save).toBeDisabled();
 
     // Intentional dirty detection still works after the baseline reset.
-    await user.click(screen.getByLabelText("Enable Domains MCP")); // on → off
+    await user.click(screen.getByRole("checkbox", { name: /Support docs/ })); // on → off
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     expect(save).toBeEnabled();
   });

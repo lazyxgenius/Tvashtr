@@ -99,22 +99,26 @@ export interface ValidityFlags {
   nodeErrors: Map<string, string>; // node_id → message (a blocking issue)
   edgeErrors: Map<string, string>; // edge_id → message
   orphans: Set<string>; // node_id → a warning (dimmed, still runnable)
+  nodeCodes?: Map<string, string>; // node_id → the first blocking issue's code (the card's badges)
 }
 
 export function validityFlags(validity: GraphValidity | null): ValidityFlags {
   const nodeErrors = new Map<string, string>();
   const edgeErrors = new Map<string, string>();
   const orphans = new Set<string>();
-  if (!validity) return { nodeErrors, edgeErrors, orphans };
+  const nodeCodes = new Map<string, string>();
+  if (!validity) return { nodeErrors, edgeErrors, orphans, nodeCodes };
   for (const issue of validity.errors ?? []) {
     if (issue.edge_id) edgeErrors.set(issue.edge_id, issue.message);
-    if (issue.node_id && !nodeErrors.has(issue.node_id))
+    if (issue.node_id && !nodeErrors.has(issue.node_id)) {
       nodeErrors.set(issue.node_id, issue.message);
+      nodeCodes.set(issue.node_id, issue.code);
+    }
   }
   for (const issue of validity.warnings ?? []) {
     if (issue.code === "orphan" && issue.node_id) orphans.add(issue.node_id);
   }
-  return { nodeErrors, edgeErrors, orphans };
+  return { nodeErrors, edgeErrors, orphans, nodeCodes };
 }
 
 // ---- The branch-worker emit-contract (anti-drift — the Tvashtr-26 vanished-loop-back bug class) --

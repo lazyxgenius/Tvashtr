@@ -1,13 +1,9 @@
 import { useEffect, useState } from "react";
 
 import type { ToolCatalogEntry, ToolLibraryItem } from "../lib/api";
-import {
-  createToolLibraryItem,
-  listSecrets,
-  listToolCatalog,
-  listToolLibrary,
-} from "../lib/api";
-import { domainsMcpToggleHint } from "../lib/domains";
+import { createToolLibraryItem, listSecrets, listToolCatalog, listToolLibrary } from "../lib/api";
+import { DomainsChecklist } from "../pages/domains/DomainsChecklist";
+import { accessOf } from "../pages/domains/queryNodeFormat";
 
 /**
  * M-tools C7.A + C7.C — the per-node **Tools** (MCP) editor. A worker node gets a real editor:
@@ -71,9 +67,6 @@ function refsOf(cfg: Cfg): string[] {
 }
 // C7.C: the ids of the account-library servers this node REFERENCES (stored beside the allow-list).
 
-function domainsOf(cfg: Cfg): boolean {
-  return asRecord(asRecord(cfg)["tvashtr"])["domains"] === true;
-}
 function librariesOf(cfg: Cfg): string[] {
   const lib = asRecord(asRecord(cfg)["tvashtr"])["library"];
   return Array.isArray(lib) ? lib.filter((x): x is string => typeof x === "string") : [];
@@ -180,11 +173,12 @@ export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value
     apply({ ...base, tvashtr: { ...meta, library: librariesOf(cfg).filter((x) => x !== id) } });
   };
 
-  const setDomains = (enabled: boolean) => {
+  // Revamp Domains (DM-105): the checklist picks exactly which domains (a list of ids).
+  const setDomains = (ids: string[]) => {
     const base = asRecord(cfg);
     const meta = { ...asRecord(base["tvashtr"]) };
-    if (enabled) {
-      apply({ ...base, tvashtr: { ...meta, domains: true } });
+    if (ids.length > 0) {
+      apply({ ...base, tvashtr: { ...meta, domains: ids } });
       return;
     }
     delete meta.domains;
@@ -206,7 +200,8 @@ export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value
   };
 
   const attachFetch = async () => {
-    const fetchEntry = catalog.find((e) => e.key === "fetch" && e.attachable) ?? FETCH_CATALOG_FALLBACK;
+    const fetchEntry =
+      catalog.find((e) => e.key === "fetch" && e.attachable) ?? FETCH_CATALOG_FALLBACK;
     // Prefer an existing library row named fetch (avoid a redundant upsert when already present).
     const existing = libraryTools.find((t) => t.name === fetchEntry.name);
     setAttachBusy(true);
@@ -261,15 +256,6 @@ export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value
       </span>
 
       <div className="tv-mcp-add" style={{ marginBottom: "0.5rem" }}>
-        <label className="tv-mcp-toggle">
-          <input
-            type="checkbox"
-            aria-label="Enable Domains MCP"
-            checked={domainsOf(cfg)}
-            onChange={(e) => setDomains(e.currentTarget.checked)}
-          />
-          <span>Domains MCP</span>
-        </label>
         <button
           type="button"
           className="tv-btn tv-btn--ghost"
@@ -280,9 +266,7 @@ export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value
           Attach fetch
         </button>
       </div>
-      <span className="tv-field__hint" data-testid="domains-mcp-hint">
-        {domainsMcpToggleHint()}
-      </span>
+      <DomainsChecklist value={accessOf(cfg)} onChange={setDomains} />
 
       {(serverNames.length > 0 || referencedRows.length > 0) && (
         <ul className="tv-mcp-list">

@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   EMBEDDING_PRESETS,
   domainsMcpAccountToolsHint,
-  domainsMcpToggleHint,
-  domainsQueryNodeHint,
   sameEmbeddingWeights,
   normalizeEmbeddingModel,
   providerOfEmbedding,
@@ -64,20 +62,6 @@ describe("sameEmbeddingWeights (OQ-17)", () => {
 });
 
 describe("domains ask discoverability copy (#5)", () => {
-  it("Query domain hint: fixed canvas step in a team run", () => {
-    const copy = domainsQueryNodeHint();
-    expect(copy).toMatch(/Query domain/i);
-    expect(copy).toMatch(/canvas|team|run|flow|step/i);
-    expect(copy).toMatch(/Chat|Domains MCP/i);
-  });
-
-  it("Domains MCP hint: agent-driven ask/retrieve during a run", () => {
-    const copy = domainsMcpToggleHint();
-    expect(copy).toMatch(/Domains MCP/i);
-    expect(copy).toMatch(/agent|thinker|worker|tool/i);
-    expect(copy).toMatch(/Chat|Query domain/i);
-  });
-
   it("account Tools shelf hint points to node Tools for Domains MCP", () => {
     const copy = domainsMcpAccountToolsHint();
     expect(copy).toMatch(/Domains MCP/i);

@@ -1246,23 +1246,6 @@ export async function updateTerminalNode(
   return (await res.json()) as TeamGraphNode;
 }
 
-// Phase 4a: persist an edited domain_query node's selected domain + prompt. Same PATCH endpoint;
-// the backend branches on node.kind.
-export async function updateDomainQueryNode(
-  teamId: string,
-  nodeId: string,
-  body: { domain_id?: string | null; prompt?: string },
-): Promise<TeamGraphNode> {
-  const res = await fetch(`/api/teams/${teamId}/nodes/${nodeId}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok)
-    throw new Error(`PATCH domain_query /api/teams/${teamId}/nodes/${nodeId} -> ${res.status}`);
-  return (await res.json()) as TeamGraphNode;
-}
-
 // ---- Topology editing (P1.8d): node/edge CRUD + position persistence + the validity verdict ----
 
 // The canvas vocabulary the palette drops + the four edge roles the inline editor offers. Each maps
