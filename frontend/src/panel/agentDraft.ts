@@ -130,6 +130,11 @@ export function rebaseDraft(
   return out;
 }
 
+/** Review changes' "Undo this change": the saved values of one group's fields. */
+export function revertGroup(base: AgentDraft, group: ChangeGroup): Partial<AgentDraft> {
+  return Object.fromEntries(GROUP_FIELDS[group].map((f) => [f, base[f]]));
+}
+
 /** "the instructions and the model" / "the instructions, the model and images". */
 export function describeChanges(groups: ChangeGroup[]): string {
   const words = groups.map((g) => GROUP_PHRASE[g]);

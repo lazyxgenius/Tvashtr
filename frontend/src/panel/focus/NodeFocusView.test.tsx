@@ -191,7 +191,9 @@ describe("Focus mode — Setup", () => {
     fireEvent.change(editor(), { target: { value: "You are the Reviewer. Be brief." } });
     fireEvent.click(within(dialog()).getByRole("button", { name: "Preview as the agent sees it" }));
 
-    const preview = await within(dialog()).findByRole("region", { name: "What the agent sees" });
+    const preview = await within(dialog()).findByRole("region", {
+      name: "Preview as the agent sees it",
+    });
     expect(bodyOf(fetchMock, "POST", "/context-preview")).toMatchObject({
       prompt: "You are the Reviewer. Be brief.",
       model: "xai/grok-4.7",
@@ -254,5 +256,201 @@ describe("Focus mode — Setup", () => {
     fireEvent.click(within(sheet).getByRole("button", { name: "Done" }));
     expect(within(settings).getByRole("region", { name: "Routing" })).toBeInTheDocument();
     expect(within(dialog()).getByText("2 unsaved changes")).toBeInTheDocument();
+  });
+});
+
+describe("Focus mode — Review changes (OQ-4)", () => {
+  it("opens from the footer count, shows each change, undoes one at a time, then goes back", () => {
+    renderEditor({ node: reviewer({ config: { title: "Reviewer", multimodal: true } }) });
+    fireEvent.change(editor(), {
+      target: { value: REVIEWER_PROMPT.replace("Run the tests first.", "Run pytest.\nSay which.") },
+    });
+    fireEvent.click(within(dialog()).getByRole("switch", { name: "Images" }));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "2 unsaved changes" }));
+
+    const review = within(dialog()).getByRole("region", { name: "Review 2 changes" });
+    expect(review).toHaveTextContent(
+      "Nothing is saved yet. Saving changes the next run you launch.",
+    );
+    const instructions = within(review).getByRole("region", { name: "Instructions" });
+    expect(instructions).toHaveTextContent("+2 −1 lines");
+    expect(instructions.querySelector("del")).toHaveTextContent("Run the tests first.");
+    expect([...instructions.querySelectorAll("ins")].map((n) => n.textContent)).toEqual([
+      "Run pytest.",
+      "Say which.",
+    ]);
+    const images = within(review).getByRole("region", { name: "Images" });
+    expect(images).toHaveTextContent("Setup → Images");
+    expect(images).toHaveTextContent("On");
+    expect(images).toHaveTextContent("Off");
+    expect(within(review).getByRole("button", { name: "Back to editing" })).toHaveFocus();
+
+    fireEvent.click(within(images).getByRole("button", { name: "Undo this change" }));
+    expect(within(dialog()).getByRole("region", { name: "Review 1 change" })).toBeInTheDocument();
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Undo this change" }));
+    // Nothing left to review: back on the editor, with the saved text.
+    expect(editor()).toHaveValue(REVIEWER_PROMPT);
+    expect(within(dialog()).getByText("All changes saved")).toBeInTheDocument();
+  });
+
+  it("opens on the Setup tab from any tab; Escape goes back to editing before it docks", () => {
+    const { props, view } = renderEditor({ tab: "skills" });
+    fireEvent.click(within(dialog()).getByRole("switch", { name: "Domains" }));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "1 unsaved change" }));
+    expect(props.onTabChange).toHaveBeenCalledWith("setup");
+    view.rerender(<NodeEditor {...props} tab="setup" />);
+
+    const tools = within(dialog()).getByRole("region", { name: "Tools" });
+    expect(tools).toHaveTextContent("Domains: Off → On");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(props.onFocusChange).not.toHaveBeenCalled();
+    expect(editor()).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(props.onFocusChange).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("Focus mode — Templates dialog", () => {
+  const template = (key: string, title: string, summary: string, prompt: string) => ({
+    key,
+    title,
+    description: "",
+    summary,
+    role_name: key,
+    node_kind: "worker",
+    edits_allowed: key === "engineer",
+    writes_to: null,
+    verdict_labels: [],
+    prompt,
+  });
+  const TEMPLATES = [
+    template("pm", "Product manager", "Turns your idea into a spec.", "You are the PM."),
+    template(
+      "engineer",
+      "Engineer",
+      "Builds the change the spec asks for.",
+      "You are the engineer.",
+    ),
+    template("reviewer", "Reviewer", "Checks the build against the spec.", "You are the Reviewer!"),
+  ];
+
+  beforeEach(() => {
+    fetchMock = stubFetch(
+      () => reviewer(),
+      (url) => (url === "/api/node-templates" ? json({ templates: TEMPLATES }) : undefined),
+    );
+  });
+
+  it("starts on the agent's own template, previews another and applies it with a toast", async () => {
+    const { props } = renderEditor();
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Templates" }));
+    const chooser = screen.getByRole("dialog", { name: "Choose a template" });
+    const reviewerItem = await within(chooser).findByRole("button", { name: /^Reviewer/ });
+    expect(reviewerItem).toHaveAttribute("aria-pressed", "true");
+    const preview = within(chooser).getByRole("region", { name: "Preview" });
+    expect(preview).toHaveTextContent("You are the Reviewer!");
+
+    fireEvent.click(within(chooser).getByRole("button", { name: /^Engineer/ }));
+    expect(preview).toHaveTextContent("You are the engineer.");
+    // Escape closes only the dialog on top.
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Choose a template" })).toBeNull();
+    expect(props.onFocusChange).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Templates" }));
+    const again = screen.getByRole("dialog", { name: "Choose a template" });
+    fireEvent.click(await within(again).findByRole("button", { name: /^Engineer/ }));
+    fireEvent.click(within(again).getByRole("button", { name: "Use Engineer template" }));
+    expect(screen.queryByRole("dialog", { name: "Choose a template" })).toBeNull();
+    expect(editor()).toHaveValue("You are the engineer.");
+    const toast = dialog().querySelector(".nd-toast-host") as HTMLElement;
+    expect(within(toast).getByText("Engineer template applied")).toBeInTheDocument();
+    // Nothing is saved: the draft holds it (Discard brings the text back).
+    expect(fetchMock.mock.calls.some((c) => (c[1] as RequestInit)?.method === "PATCH")).toBe(false);
+  });
+
+  it("says when the templates can't load, and loads them again when it's reopened", async () => {
+    fetchMock = stubFetch(
+      () => reviewer(),
+      (url) => (url === "/api/node-templates" ? json({ detail: "down" }, 500) : undefined),
+    );
+    renderEditor();
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Templates" }));
+    const chooser = screen.getByRole("dialog", { name: "Choose a template" });
+    expect(await within(chooser).findByRole("alert")).toHaveTextContent(
+      "Couldn’t load templates — try again.",
+    );
+    expect(within(chooser).getByRole("button", { name: "Use template" })).toBeDisabled();
+    fireEvent.click(within(chooser).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Templates" }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.filter((c) => c[0] === "/api/node-templates")).toHaveLength(2),
+    );
+  });
+
+  it("Cancel leaves the instructions as they were", async () => {
+    renderEditor();
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Templates" }));
+    const chooser = screen.getByRole("dialog", { name: "Choose a template" });
+    await within(chooser).findByRole("button", { name: /^Engineer/ });
+    fireEvent.click(within(chooser).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "Choose a template" })).toBeNull();
+    expect(editor()).toHaveValue(REVIEWER_PROMPT);
+  });
+});
+
+describe("Focus mode — Preview cards", () => {
+  it("numbers the parts in the server's order, then the always-on skills; long parts fold", async () => {
+    const long = Array.from({ length: 9 }, (_, i) => `line ${i + 1}`).join("\n");
+    fetchMock = stubFetch(
+      () => reviewer(),
+      (url) =>
+        url.endsWith("/context-preview")
+          ? json({
+              ...PREVIEW,
+              source_run: { run_id: "r1", idea: "Add RSI", created_at: "2026-09-27T09:00:00Z" },
+              parts: [
+                { ...PREVIEW.parts[0], text: long },
+                { ...PREVIEW.parts[1], text: "--- ORIGINAL IDEA ---\nAdd RSI", placeholder: false },
+              ],
+              skills: [
+                {
+                  name: "house-style",
+                  mode: "always",
+                  triggers: [],
+                  delivery: "context",
+                  content: "# House style\nPlain words.",
+                  tokens: 7,
+                  source_type: "inline",
+                  fetched_at_run_time: false,
+                },
+              ],
+              skills_tokens: 7,
+            })
+          : undefined,
+    );
+    renderEditor();
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Preview as the agent sees it" }));
+    const preview = await within(dialog()).findByRole("region", {
+      name: "Preview as the agent sees it",
+    });
+    await within(preview).findByRole("region", { name: "Always-on skills" });
+    expect(preview).toHaveTextContent(
+      "Read-only. Built from the last run’s idea, plus your current instructions and always-on skills.",
+    );
+    const cards = within(preview).getAllByRole("region");
+    expect(cards.map((c) => c.getAttribute("aria-label"))).toEqual([
+      "Your instructions",
+      "The idea",
+      "Always-on skills",
+    ]);
+    // The section marker is the card's label, not its text.
+    expect(cards[1].querySelector("pre")).toHaveTextContent(/^Add RSI$/);
+    const yours = cards[0].querySelector("pre") as HTMLElement;
+    expect(yours.textContent).toBe("line 1\nline 2\nline 3\nline 4\nline 5\nline 6\n…");
+    fireEvent.click(within(cards[0]).getByRole("button", { name: "Show all 9 lines" }));
+    expect(yours.textContent).toBe(long);
+    expect(cards[2]).toHaveTextContent("house-style");
+    expect(cards[2]).toHaveTextContent("# House style Plain words.");
   });
 });

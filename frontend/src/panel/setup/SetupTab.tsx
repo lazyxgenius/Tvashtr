@@ -1,8 +1,9 @@
 import { type ReactNode, useState } from "react";
+import { Layers } from "lucide-react";
 
 import type { GraphEdge, TeamGraphNode } from "../../lib/api";
+import { Button } from "../../design-system/components";
 import type { NodeTemplate } from "../../lib/api/nodes";
-import { AgentPreview } from "../focus/AgentPreview";
 import { InstructionsEditor } from "../focus/InstructionsEditor";
 import type { AgentDraftApi } from "../useAgentDraft";
 import { AccessSection } from "./AccessSection";
@@ -26,11 +27,12 @@ import { useNodeTemplates } from "./useNodeTemplates";
  * shared draft; nothing is saved until Save. A new agent (Web-NewAgent) also gets the "Get this
  * agent ready" checklist and, while its instructions are empty, the template chooser.
  * `layout="focus"` is focus mode's Setup (Desktop-Focus): the full instructions editor on the left
- * and Routing, Model, Access & documents and Advanced (open) in a column on the right.
+ * and Routing, Model, Access & documents and Advanced (open) in a column on the right; its
+ * Templates button opens the Templates dialog and "Preview as the agent sees it" the preview (both
+ * owned by the editor, which renders them over / in place of this tab).
  */
 export function SetupTab({
   layout = "drawer",
-  teamId,
   node,
   nodes,
   edges,
@@ -43,11 +45,11 @@ export function SetupTab({
   onUpdateRouting,
   onNewDocument,
   onEditSchema,
+  onCompareTemplates,
+  onPreview,
   sub,
 }: {
   layout?: "drawer" | "focus";
-  /** The team (focus mode's preview compiles against it). */
-  teamId?: string;
   node: TeamGraphNode;
   nodes: TeamGraphNode[];
   edges: GraphEdge[];
@@ -66,6 +68,10 @@ export function SetupTab({
   onNewDocument?: () => void;
   /** Open the Output format editor. */
   onEditSchema?: () => void;
+  /** The drawer menu's "Compare templates in focus view"; focus mode's Templates button. */
+  onCompareTemplates?: () => void;
+  /** Focus mode: "Preview as the agent sees it". */
+  onPreview?: () => void;
   /** Focus mode: a sub-view (the Output format editor) in the settings column's place. */
   sub?: ReactNode;
 }) {
@@ -85,7 +91,6 @@ export function SetupTab({
       savedPrompt: api.baseline.prompt,
       savedModel: api.baseline.model,
     });
-  const [previewing, setPreviewing] = useState(false);
   const showChooser =
     !editorOpen && api.baseline.prompt.trim() === "" && draft.prompt.trim() === "";
   const checklist = gettingReady && (
@@ -154,11 +159,7 @@ export function SetupTab({
     </>
   );
   const templatesMenu = (
-    <TemplatesMenu
-      templates={templates}
-      onPick={onPickTemplate}
-      onCompare={layout === "focus" ? undefined : onOpenFullEditor}
-    />
+    <TemplatesMenu templates={templates} onPick={onPickTemplate} onCompare={onCompareTemplates} />
   );
 
   if (layout === "focus") {
@@ -169,26 +170,21 @@ export function SetupTab({
           saved={marking ? api.baseline.prompt : undefined}
           onChange={(v) => set("prompt", v)}
           banner={banner}
-          templates={templatesMenu}
-          autoFocus
-          preview={
-            previewing && teamId ? (
-              <AgentPreview
-                teamId={teamId}
-                nodeId={node.id}
-                draft={{
-                  prompt: draft.prompt,
-                  model: draft.model,
-                  edits_allowed: draft.editsAllowed,
-                  reads_from: draft.readsFrom,
-                  reads_default: draft.readsDefault,
-                  // [] (not absent): an absent key would preview the SAVED skills.
-                  skills: draft.skills ?? [],
-                }}
-              />
-            ) : null
+          templates={
+            // The icon sits inside the label, flush with the text, as the design draws it.
+            <Button
+              variant="ghost"
+              size="sm"
+              className="nd-btn-flush"
+              aria-haspopup="dialog"
+              onClick={onCompareTemplates}
+            >
+              <Layers size={14} strokeWidth={1.7} aria-hidden />
+              <span>Templates</span>
+            </Button>
           }
-          onTogglePreview={() => setPreviewing((p) => !p)}
+          autoFocus
+          onPreview={onPreview}
         />
         <div
           className={`fx-aside${sub ? " fx-aside--sub" : ""}`}

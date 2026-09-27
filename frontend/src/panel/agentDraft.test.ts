@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { TeamGraphNode } from "../lib/api";
-import { changedGroups, describeChanges, draftProblem, patchFor, seedDraft } from "./agentDraft";
+import {
+  changedGroups,
+  describeChanges,
+  draftProblem,
+  patchFor,
+  revertGroup,
+  seedDraft,
+} from "./agentDraft";
 
 function node(over: Partial<TeamGraphNode> = {}): TeamGraphNode {
   return {
@@ -92,6 +99,16 @@ describe("changedGroups / patchFor", () => {
     const base = seedDraft(node());
     const draft = { ...base, title: "QA lead", description: "Checks it" };
     expect(changedGroups(base, draft)).toEqual(["name"]);
+  });
+});
+
+describe("revertGroup", () => {
+  it("puts back only that group's saved fields (Undo this change)", () => {
+    const base = seedDraft(node());
+    const draft = { ...base, prompt: "Edited", readsFrom: [], readsDefault: false };
+    const next = { ...draft, ...revertGroup(base, "reads") };
+    expect(changedGroups(base, next)).toEqual(["instructions"]);
+    expect(revertGroup(base, "reads")).toEqual({ readsFrom: ["build-notes"], readsDefault: true });
   });
 });
 

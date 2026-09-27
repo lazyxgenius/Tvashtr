@@ -13,13 +13,17 @@ import { deleteMemory, type Memory } from "../lib/api/memory";
 import { getNodeRuns, type NodeTemplate } from "../lib/api/nodes";
 import type { EnginesTab, NodeTab, Route } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
-import { type AgentDraft, describeChanges } from "./agentDraft";
+import { type AgentDraft, describeChanges, revertGroup } from "./agentDraft";
 import { DrawerConfirm } from "./DrawerConfirm";
 import { DocsTab } from "./docs/DocsTab";
 import type { DocPlace } from "./docs/docView";
+import { AgentPreview } from "./focus/AgentPreview";
 import { FocusDocsTab } from "./focus/FocusDocsTab";
 import { DrawerToast } from "./DrawerToast";
 import { NodeFocusView } from "./focus/NodeFocusView";
+import { ReviewChanges } from "./focus/ReviewChanges";
+import { reviewSections } from "./focus/reviewSections";
+import { TemplatesDialog } from "./focus/TemplatesDialog";
 import { DomainQueryBody } from "./legacy/DomainQueryBody";
 import { GateBody } from "./legacy/GateBody";
 import { legacySubtitle } from "./legacy/legacyCopy";
@@ -189,13 +193,21 @@ function AgentEditor({
     | null
   >(null);
   const toast = useDrawerToast();
+  // Focus mode's Setup body: the editor, "Preview as the agent sees it" or Review changes (OQ-4).
+  const [setupView, setSetupView] = useState<"edit" | "preview" | "review">("edit");
+  // The Templates dialog (focus mode; the drawer menu's "Compare templates in focus view" opens it
+  // together with the focus view, so the flag lives here, above both).
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  // Review changes closes itself once nothing is left to review (the last Undo, or a Save).
+  if (setupView === "review" && !api.isDirty) setSetupView("edit");
+  const view = focus && tab === "setup" ? setupView : "edit";
   // The Output format editor's text while it's open (null: closed). Done writes it to the draft.
   const [schemaText, setSchemaText] = useState<string | null>(null);
   // The Skills sheet open over the Skills & tools tab (write / repo / presets / library; G8).
   const [skillSub, setSkillSub] = useState<SkillSub | null>(null);
   // The Tools sheet (add a server / library / paste mcp.json, or Edit connection; G9).
   const [toolSub, setToolSub] = useState<ToolSub | null>(null);
-  const shelves = useShelves(tab === "skills");
+  const shelves = useShelves(tab === "skills" || view === "review");
   // Runs and Docs share this agent's history, keyed on its last run (a new round reloads it).
   const last = node.last_run;
   const [historyWanted, setHistoryWanted] = useState(false);
@@ -207,9 +219,10 @@ function AgentEditor({
 
   // The header follows the draft, so a rename shows before it's saved.
   const cfg = (node.config as Record<string, unknown> | null) ?? {};
-  const name = draft.title.trim() || nodeTitle({ ...node, config: { ...cfg, title: "" } });
-  const description =
-    draft.description.trim() || nodeDescription({ ...node, config: { ...cfg, description: "" } });
+  const builtInName = nodeTitle({ ...node, config: { ...cfg, title: "" } });
+  const builtInDescription = nodeDescription({ ...node, config: { ...cfg, description: "" } });
+  const name = draft.title.trim() || builtInName;
+  const description = draft.description.trim() || builtInDescription;
   const glyph = isEntry ? Zap : glyphForNode(node.kind, node.role_name);
   // A new agent's header shows how it ran (not yet) and its model only (Web-NewAgent).
   const isNew = isGettingReady({
@@ -228,8 +241,8 @@ function AgentEditor({
     ((skillSub !== null || toolSub !== null) && tab === "skills");
   // ⌘S / Ctrl+S saves; while a confirm is open the confirm's own buttons decide.
   useSaveShortcut(() => {
-    if (canSave && !guard.asking && !deleting && !pending && !forgetting && !subCoversFooter)
-      void api.save();
+    const busy = guard.asking || deleting || pending || forgetting || templatesOpen;
+    if (canSave && !busy && !subCoversFooter) void api.save();
   });
 
   // Q7: a template sets the instructions and its default File access (thinker or worker: both run
@@ -246,6 +259,11 @@ function AgentEditor({
   const pickTemplate = (template: NodeTemplate) => {
     if (templateNeedsConfirm(draft.prompt)) setPending({ kind: "template", template });
     else applyTemplate(template);
+  };
+  // Templates: the drawer menu's "Compare templates in focus view" and focus mode's button.
+  const openTemplates = () => {
+    setTemplatesOpen(true);
+    if (!focus) onFocusChange(true);
   };
   const requestRoutingUpdate = () => {
     const update = contractUpdate(node.id, draft.prompt, edges);
@@ -490,6 +508,18 @@ function AgentEditor({
         }}
       />
     );
+  } else if (focus && templatesOpen) {
+    overlay = (
+      <TemplatesDialog
+        roleName={node.role_name}
+        onClose={() => setTemplatesOpen(false)}
+        onUse={(template) => {
+          setTemplatesOpen(false);
+          // The dialog already says it replaces the instructions (FOCUS-38): no second confirm.
+          applyTemplate(template);
+        }}
+      />
+    );
   } else if (pending?.kind === "routing") {
     const { update } = pending;
     overlay = (
@@ -567,10 +597,37 @@ function AgentEditor({
       );
       break;
     default:
-      body = (
+      body =
+        view === "preview" ? (
+          <AgentPreview
+            teamId={teamId}
+            nodeId={node.id}
+            draft={{
+              prompt: draft.prompt,
+              model: draft.model,
+              edits_allowed: draft.editsAllowed,
+              reads_from: draft.readsFrom,
+              reads_default: draft.readsDefault,
+              // [] (not absent): an absent key would preview the SAVED skills.
+              skills: draft.skills ?? [],
+            }}
+            onBack={() => setSetupView("edit")}
+          />
+        ) : view === "review" ? (
+          <ReviewChanges
+            sections={reviewSections(api.baseline, draft, api.changed, {
+              builtInName,
+              builtInDescription,
+              skillLibrary: shelves.skillLibrary,
+              toolLibrary: shelves.toolLibrary,
+            })}
+            onUndo={(group) => api.update(revertGroup(api.baseline, group))}
+            onBack={() => setSetupView("edit")}
+          />
+        ) : null;
+      body ??= (
         <SetupTab
           layout={focus ? "focus" : "drawer"}
-          teamId={teamId}
           node={node}
           nodes={nodes}
           edges={edges}
@@ -583,6 +640,8 @@ function AgentEditor({
           onUpdateRouting={requestRoutingUpdate}
           onNewDocument={() => toast.show(NEW_DOCUMENT_TOAST)}
           onEditSchema={() => setSchemaText(draft.outputSchema)}
+          onCompareTemplates={openTemplates}
+          onPreview={() => setSetupView("preview")}
           sub={focus ? schemaEditor : undefined}
         />
       );
@@ -634,6 +693,14 @@ function AgentEditor({
       memoryTab={tab === "memory"}
       onSave={() => void api.save()}
       onDiscard={api.discard}
+      onReview={
+        focus
+          ? () => {
+              onTabChange("setup");
+              setSetupView("review");
+            }
+          : undefined
+      }
     />
   );
   const toastHost = <DrawerToast toast={toast.toast} onDismiss={toast.dismiss} />;
@@ -648,7 +715,8 @@ function AgentEditor({
         scroll={tab !== "setup" && tab !== "docs"}
         toast={toastHost}
         overlay={overlay}
-        onDock={() => onFocusChange(false)}
+        // Escape leaves the preview / review first, then docks (FOCUS-13).
+        onDock={() => (view !== "edit" ? setSetupView("edit") : onFocusChange(false))}
       >
         {body}
       </NodeFocusView>

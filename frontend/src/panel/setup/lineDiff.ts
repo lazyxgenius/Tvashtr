@@ -69,3 +69,44 @@ export function changedLines(before: string, after: string): Set<number> {
   }
   return out;
 }
+
+/** One row of a unified line diff; "gap" stands for unchanged lines left out between hunks. */
+export interface DiffRow {
+  op: DiffOp | "gap";
+  text: string;
+}
+
+export interface LineDiff {
+  rows: DiffRow[];
+  added: number;
+  removed: number;
+}
+
+/**
+ * A unified line diff of `before` → `after` (Review changes): the changed lines with `context`
+ * unchanged lines around each change (3, as git shows them), a "gap" row where unchanged lines are
+ * left out, and the added / removed line counts ("+2 −1 lines").
+ */
+export function diffLines(before: string, after: string, context = 3): LineDiff {
+  const parts = before === after ? [] : diffSeq(before.split("\n"), after.split("\n"));
+  const near = parts.map(() => false);
+  parts.forEach((p, i) => {
+    if (p.op === "same") return;
+    for (let k = Math.max(0, i - context); k <= Math.min(parts.length - 1, i + context); k++) {
+      near[k] = true;
+    }
+  });
+  const rows: DiffRow[] = [];
+  let last = -1;
+  parts.forEach((p, i) => {
+    if (!near[i]) return;
+    if (last >= 0 && i > last + 1) rows.push({ op: "gap", text: "" });
+    rows.push(p);
+    last = i;
+  });
+  return {
+    rows,
+    added: parts.filter((p) => p.op === "add").length,
+    removed: parts.filter((p) => p.op === "del").length,
+  };
+}

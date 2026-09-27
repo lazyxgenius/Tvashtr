@@ -15,6 +15,7 @@ const tpl = (key: string, edits_allowed: boolean): NodeTemplate => ({
   key,
   title: key,
   description: "",
+  summary: "",
   role_name: key,
   node_kind: "worker",
   edits_allowed,

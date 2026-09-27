@@ -185,8 +185,8 @@ function renderEditor(over: Partial<NodeEditorProps> = {}) {
     onSaved: vi.fn(),
     ...over,
   };
-  render(<NodeEditor {...props} />);
-  return { props, drawer: screen.getByRole("complementary", { name: /settings$/ }) };
+  const view = render(<NodeEditor {...props} />);
+  return { props, view, drawer: screen.getByRole("complementary", { name: /settings$/ }) };
 }
 
 describe("NodeEditor — header, badges, tabs", () => {
@@ -626,16 +626,31 @@ describe("NodeEditor — templates, routing sync, new agent (G3)", () => {
       ...over,
     });
 
-  it("lists the four templates and 'Open in focus view'", async () => {
-    const { props, drawer } = renderEditor();
+  it("lists the four templates and 'Compare templates in focus view'", async () => {
+    const { props, drawer, view } = renderEditor();
     const menu = await openTemplates(drawer);
     expect(
       within(menu)
         .getAllByRole("menuitem")
         .map((i) => i.textContent),
-    ).toEqual(["Product manager", "Architect", "Engineer", "Reviewer", "Open in focus view"]);
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Open in focus view" }));
+    ).toEqual([
+      "Product manager",
+      "Architect",
+      "Engineer",
+      "Reviewer",
+      "Compare templates in focus view",
+    ]);
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "Compare templates in focus view" }),
+    );
     expect(props.onFocusChange).toHaveBeenCalledWith(true);
+    // The page switches to focus: the Templates dialog is already open over it.
+    view.rerender(<NodeEditor {...props} focus />);
+    const dialog = await screen.findByRole("dialog", { name: "Choose a template" });
+    expect(within(dialog).getByRole("button", { name: /^Reviewer/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("asks before replacing text; Cancel keeps it, Replace applies it with an Undo toast", async () => {

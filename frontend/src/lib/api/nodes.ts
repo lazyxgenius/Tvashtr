@@ -17,6 +17,8 @@ export interface NodeTemplate {
   key: string;
   title: string;
   description: string;
+  /** One sentence on what its instructions do (the Templates dialog); the tagline when absent. */
+  summary: string;
   role_name: string;
   node_kind: "thinker" | "worker";
   /** The template's default File access (the UI applies it with the template). */
@@ -233,6 +235,7 @@ export async function getNodeTemplates(): Promise<NodeTemplate[]> {
         key,
         title: str(t.title, key),
         description: str(t.description),
+        summary: str(t.summary, str(t.description)),
         role_name: str(t.role_name, key),
         node_kind: t.node_kind === "worker" ? "worker" : "thinker",
         edits_allowed: t.edits_allowed === true,

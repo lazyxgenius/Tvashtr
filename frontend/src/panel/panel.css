@@ -182,6 +182,21 @@
   color: var(--sage-500);
   display: inline-flex;
 }
+.nd-foot__review {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.nd-foot__review:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .nd-foot__dot {
   width: 7px;
   height: 7px;
