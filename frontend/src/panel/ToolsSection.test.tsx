@@ -196,6 +196,16 @@ describe("ToolsSection catalog MVP", () => {
     });
   });
 
+  it("an agent on a Desktop plan is told it gets no domain tools there (DM-106)", async () => {
+    mockApi({ "GET /api/domains": { domains: sampleDomains() } });
+    render(<ToolsSection value={null} onChange={vi.fn()} subscription="claude" />);
+    expect(
+      await screen.findByText(
+        "On Tvashtr Desktop with your Claude plan it can’t search domains yet.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("Attach fetch uses the fallback when the catalog is empty", async () => {
     const onChange = vi.fn();
     mockCatalog.mockResolvedValue([]);

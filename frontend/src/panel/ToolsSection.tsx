@@ -72,7 +72,16 @@ function librariesOf(cfg: Cfg): string[] {
   return Array.isArray(lib) ? lib.filter((x): x is string => typeof x === "string") : [];
 }
 
-export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value: Cfg) => void }) {
+export function ToolsSection({
+  value,
+  onChange,
+  subscription = null,
+}: {
+  value: Cfg;
+  onChange: (value: Cfg) => void;
+  /** "claude" / "grok" when the agent runs on a Desktop plan (no Domains tools there, DM-106). */
+  subscription?: string | null;
+}) {
   const [text, setText] = useState(value == null ? "" : JSON.stringify(value, null, 2));
   const [open, setOpen] = useState(true);
   const [secretNames, setSecretNames] = useState<string[]>([]);
@@ -266,7 +275,7 @@ export function ToolsSection({ value, onChange }: { value: Cfg; onChange: (value
           Attach fetch
         </button>
       </div>
-      <DomainsChecklist value={accessOf(cfg)} onChange={setDomains} />
+      <DomainsChecklist value={accessOf(cfg)} onChange={setDomains} subscription={subscription} />
 
       {(serverNames.length > 0 || referencedRows.length > 0) && (
         <ul className="tv-mcp-list">

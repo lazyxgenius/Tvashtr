@@ -1228,6 +1228,7 @@ export function TeamNodePanel({
             setToolConfig(v);
             setSaved(false);
           }}
+          subscription={treatment === "subscription" ? subId : null}
         />
 
         {/* M-memory S5b: the node's own private notes (its node-tier facts). Independent-fetch +
