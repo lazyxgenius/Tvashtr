@@ -199,6 +199,10 @@ describe("Shell", () => {
         "sh-nav__dot--empty",
       ]);
       rows.forEach((r) => expect(r).not.toHaveAttribute("aria-current"));
+      // DM-109: the dot's state is said in words too, not by colour alone.
+      rows.forEach((r, i) =>
+        expect(r).toHaveAccessibleDescription(["Ready", "Reading", "Needs attention", "Empty"][i]),
+      );
       expect(nav).toHaveTextContent(
         "Domains are libraries of your own files. You and your agents ask them questions and get answers with sources.",
       );

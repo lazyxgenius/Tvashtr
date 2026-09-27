@@ -28,6 +28,7 @@ import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
 import { navigate, type Route, sectionOf } from "../../lib/nav";
 import type { NavBadges, NavDomain } from "../../lib/workspaceStatus";
 import { formatRelativeTimeWords } from "../../lib/time";
+import { stateBadge } from "../domains/domainFormat";
 import { loadGetStarted, setGetStartedHidden, useGetStarted } from "../home/getStarted";
 import "./shell.css";
 
@@ -234,6 +235,7 @@ function Nav({
                 type="button"
                 className="sh-nav__item sh-nav__item--child sh-nav__item--domain"
                 aria-current={openDomainId === d.id ? "page" : undefined}
+                aria-describedby={`sh-domain-state-${d.id}`}
                 onClick={() => onNavigate({ page: "domains", domainId: d.id })}
               >
                 <span className="sh-nav__label">{d.name}</span>
@@ -244,6 +246,10 @@ function Nav({
                   />
                 </span>
               </button>
+              {/* DM-109: the dot's state in words, for screen readers (the name stays the domain's). */}
+              <span id={`sh-domain-state-${d.id}`} hidden>
+                {stateBadge(d.state).label}
+              </span>
             </li>
           ))}
         {top(
