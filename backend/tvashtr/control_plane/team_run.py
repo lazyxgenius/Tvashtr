@@ -1905,7 +1905,8 @@ def domain_query_step(run_id: str, domain_id: str, question: str) -> dict:
     except (ValueError, TypeError):
         return {"status": "failed", "error": "Query domain node has an invalid domain_id"}
     try:
-        result = domain_ask_mod.ask_domain(owner_id, did, question)
+        # Node asks stay out of the chat (OQ-13, finding 8); the recorded output is unchanged.
+        result = domain_ask_mod.ask_domain(owner_id, did, question, persist=False)
     except DomainAskError as exc:
         return {"status": "failed", "error": format_domain_ask_error(exc)}
     except Exception as exc:  # noqa: BLE001 — surface unexpected failures like other nodes

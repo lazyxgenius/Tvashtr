@@ -1,12 +1,9 @@
 """Phase 4a — domain_query_step + run_graph branch (ask_domain mocked)."""
 
 import uuid
-from unittest.mock import MagicMock
 
-import pytest
-
-from tvashtr.control_plane.domain_ask import DomainAskError
 from tvashtr.control_plane import team_run
+from tvashtr.control_plane.domain_ask import DomainAskError
 from tvashtr.control_plane.domain_query_node import domain_query_manifest
 
 
@@ -15,16 +12,15 @@ def test_domain_query_step_success(monkeypatch):
     domain_id = uuid.uuid4()
     run_id = str(uuid.uuid4())
 
-    monkeypatch.setattr(
-        team_run, "owner_for_run", lambda rid: owner
-    )
+    monkeypatch.setattr(team_run, "owner_for_run", lambda rid: owner)
     # Import path used inside the step — patch where resolved.
     import tvashtr.control_plane.domain_ask as domain_ask
 
-    def _ask(oid, did, q):
+    def _ask(oid, did, q, **kw):
         assert oid == owner
         assert did == domain_id
         assert q == "What is the refund policy?"
+        assert kw == {"persist": False}  # node asks stay out of the chat (OQ-13)
         return {
             "answer": "30 days",
             "citations": [
@@ -89,7 +85,9 @@ def test_run_graph_domain_query_branch_closes_invocation(monkeypatch):
     at minimum assert domain_query_step + helper wiring; if an existing run_graph unit harness
     exists (see test_next_node / team_run tests), extend it.
     """
-    citations = [{"document_id": "d", "filename": "a.md", "chunk_id": "c", "ordinal": 0, "excerpt": "e"}]
+    citations = [
+        {"document_id": "d", "filename": "a.md", "chunk_id": "c", "ordinal": 0, "excerpt": "e"}
+    ]
     manifest = domain_query_manifest(
         {"answer": "A", "citations": citations, "latency_ms": 1, "model": "m", "message_id": "mid"},
         "dom",

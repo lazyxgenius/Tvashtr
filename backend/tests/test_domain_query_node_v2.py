@@ -448,7 +448,8 @@ def test_a_node_from_before_the_settings_keeps_todays_lookup(client, monkeypatch
     monkeypatch.setattr(domain_ask_mod, "ask_domain", ask)
     run_id, result = _drive(monkeypatch, tmp_path, tid, _Adapter())
     assert result["status"] == "completed", result
-    assert seen == [{}]  # the legacy step: persisted, no NOT_FOUND rule
+    # The legacy step: no NOT_FOUND rule, and the ask stays out of the chat (OQ-13).
+    assert seen == [{"persist": False}]
     with session_scope() as s:
         spec_id = s.get(Run, uuid.UUID(run_id)).pm_document_id
     assert "What the docs say" not in get_latest_version(spec_id).content
