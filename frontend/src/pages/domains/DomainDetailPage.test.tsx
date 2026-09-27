@@ -205,6 +205,24 @@ describe("A domain's page (Dm-Sources)", () => {
   });
 });
 
+/** A window-level file drag, as the browser sends it when a file is dropped outside a drop area. */
+function windowFileDrag(type: "dragover" | "drop"): Event {
+  const ev = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(ev, "dataTransfer", { value: { types: ["Files"] } });
+  window.dispatchEvent(ev);
+  return ev;
+}
+
+describe("A file dropped outside a drop area (D1)", () => {
+  it("never replaces the page, on any tab", async () => {
+    mockApi(routes());
+    renderPage("#/domains/d-support/ask");
+    await screen.findByRole("heading", { name: "Support docs", level: 1 });
+    expect(windowFileDrag("dragover").defaultPrevented).toBe(true);
+    expect(windowFileDrag("drop").defaultPrevented).toBe(true);
+  });
+});
+
 describe("The first read (DmF-First-4 → DmF-First-5)", () => {
   const reading = detailView(
     domainItem({
@@ -613,6 +631,37 @@ describe("The file preview (DmF-Preview-1/2)", () => {
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(window.location.hash).toBe("#/domains/d-support");
+  });
+
+  it("opens at a piece past the first 200, then shows earlier and later pieces", async () => {
+    const seen: string[] = [];
+    const piecesAt = (offset: number, limit: number) =>
+      Array.from({ length: Math.max(0, Math.min(limit, 900 - offset)) }, (_, i) => ({
+        ordinal: offset + i,
+        number: offset + i + 1,
+        chars: 600,
+        page: null,
+        text: `Piece text ${offset + i + 1}.`,
+      }));
+    mockApi(
+      routes({
+        "GET /api/domains/d-support/documents/:doc/pieces": (_: unknown, url: URL) => {
+          seen.push(url.search);
+          const offset = Number(url.searchParams.get("offset") ?? 0);
+          const limit = Number(url.searchParams.get("limit") ?? 50);
+          return { ...pieces, pieces: piecesAt(offset, limit), total: 900 };
+        },
+      }),
+    );
+    renderPage(`#/domains/d-support?file=${FILES[0].document_id}&piece=350`);
+    const sheet = await screen.findByRole("dialog", { name: "refund-policy.md" });
+    const marked = await within(sheet).findByText("Piece 350 of 42");
+    expect(marked.closest("li")).toHaveClass("dm-piece--marked");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Show more" }));
+    expect(await within(sheet).findByText("Piece 399 of 42")).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Show earlier pieces" }));
+    expect(await within(sheet).findByText("Piece 300 of 42")).toBeInTheDocument();
+    expect(seen.map((q) => new URLSearchParams(q).get("offset"))).toEqual(["349", "399", "299"]);
   });
 
   it("opens from the address at a piece, and finds in the file", async () => {

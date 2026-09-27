@@ -298,6 +298,20 @@ describe("Domains list (Dm-List)", () => {
   });
 });
 
+describe("A file dropped on the list (D1)", () => {
+  it("never replaces the page", async () => {
+    mockApi(routes());
+    renderPage();
+    await screen.findByRole("article", { name: "Support docs" });
+    for (const type of ["dragover", "drop"]) {
+      const ev = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(ev, "dataTransfer", { value: { types: ["Files"] } });
+      window.dispatchEvent(ev);
+      expect(ev.defaultPrevented).toBe(true);
+    }
+  });
+});
+
 describe("No domains yet (Dm-ListEmpty, DmF-First-1)", () => {
   it("shows the empty card, four starting points and the key hint", async () => {
     mockApi(routes({ "GET /api/domains": { domains: [] } }));

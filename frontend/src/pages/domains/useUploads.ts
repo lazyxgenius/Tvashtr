@@ -7,12 +7,31 @@
  * This session's uploads sit on top of the table in the order they were added (Drag-2 draws the
  * new rows first); `withUploads` merges them into the server's list.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useToast } from "../../design-system/components";
 import { type DomainFile, uploadDomainFile } from "../../lib/api/domains";
 import { formatNumber, kindOfName, pickProblem, uploadProblem } from "./domainFormat";
 import { readStamp } from "./useFileDeletes";
+
+/**
+ * A file dropped outside a drop area must not replace the page — nor the Desktop window (D1): the
+ * Domains pages (and the New domain dialog, also opened from the canvas) cancel the window's file
+ * drags. Drop areas handle their own drop first.
+ */
+export function useFileDropGuard(): void {
+  useEffect(() => {
+    const stop = (e: globalThis.DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    };
+    window.addEventListener("dragover", stop);
+    window.addEventListener("drop", stop);
+    return () => {
+      window.removeEventListener("dragover", stop);
+      window.removeEventListener("drop", stop);
+    };
+  }, []);
+}
 
 /** Local rows' ids start with this (they have no ⋯ actions but Remove). */
 export const LOCAL_PREFIX = "local:";

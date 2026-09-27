@@ -28,6 +28,8 @@ import { SourcesTab } from "./SourcesTab";
 import { UseInTeamsTab } from "./UseInTeamsTab";
 import { useDomainDetail } from "./useDomainDetail";
 import { useFileDeletes } from "./useFileDeletes";
+import { useFileDropGuard } from "./useUploads";
+import { DomainKeySheet } from "./domainKeys";
 import "./domains.css";
 
 /** "now", re-read every 30 s so "Just now" and "updated 2 minutes ago" age on an open page. */
@@ -65,6 +67,7 @@ export function DomainDetailPage({
   const toast = useToast();
   // Files deleted from the Sources table: gone from every count at once, sent when Undo lapses.
   const deletes = useFileDeletes(domainId, () => void reload());
+  useFileDropGuard();
   const detail = loaded && detailWithout(loaded, deletes.gone(stamp));
   const names = (useNavBadges().domains ?? []).map((d) => d.name);
   const now = useClock();
@@ -227,6 +230,7 @@ export function DomainDetailPage({
           />
         )}
       </div>
+      <DomainKeySheet />
     </div>
   );
 }

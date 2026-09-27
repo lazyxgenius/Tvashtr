@@ -126,19 +126,6 @@ export function SourcesTab({
     };
   }, [domainId, query, filter, tick, toast]);
 
-  // A file dropped outside the drop area must not replace the page (or the Desktop window, D1).
-  useEffect(() => {
-    const stop = (e: globalThis.DragEvent) => {
-      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
-    };
-    window.addEventListener("dragover", stop);
-    window.addEventListener("drop", stop);
-    return () => {
-      window.removeEventListener("dragover", stop);
-      window.removeEventListener("drop", stop);
-    };
-  }, []);
-
   const openPreview = (f: DomainFile) =>
     navigate({ page: "domains", domainId, file: f.document_id }, { replace: true });
   const closePreview = () => navigate({ page: "domains", domainId }, { replace: true });

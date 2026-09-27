@@ -29,6 +29,7 @@ import { AnswerCard } from "./AnswerCard";
 import { AnswerModelPicker } from "./AnswerModelPicker";
 import { plainAnswer, suggestKeywords, suggestQuestions } from "./answerMarkers";
 import { answerModelLabel } from "./answerModels";
+import { requestDomainKey } from "./domainKeys";
 import { FilePreviewSheet } from "./FilePreviewSheet";
 import { type AsideMode, SourcesAside } from "./SourcesAside";
 import { type SheetMode, TestQuestionSheet } from "./TestQuestionSheet";
@@ -58,7 +59,7 @@ interface Problem {
 const article = (p: string) => (/^[aeiou]/i.test(p) ? "an" : "a");
 
 /** DM-66: what went wrong, in words, with the way out. */
-function askProblem(err: unknown, d: DomainDetailView): Problem {
+function askProblem(err: unknown, d: DomainDetailView, onKeySaved: () => void): Problem {
   const toSources = {
     label: "Go to Sources",
     onClick: () => navigate({ page: "domains", domainId: d.domain_id }),
@@ -66,10 +67,16 @@ function askProblem(err: unknown, d: DomainDetailView): Problem {
   if (!(err instanceof AskError)) return { text: BACKEND_DOWN };
   const p = err.missingProviders[0];
   if (p) {
-    const role = p === d.reading_model.provider ? "reads the question" : "writes the answer";
+    const reads = p === d.reading_model.provider;
+    const role = reads ? "reads the question" : "writes the answer";
+    const model = reads ? d.reading_model.label : (d.answer_model.label ?? p);
     return {
       text: `Add ${article(p)} ${p} key to ask — ${p} ${role}.`,
-      action: { label: `Add ${p} key`, onClick: () => navigate({ page: "engines", tab: "keys" }) },
+      // DM-66: the key sheet opens here, so the question typed stays in the composer.
+      action: {
+        label: `Add ${p} key`,
+        onClick: () => requestDomainKey(p, reads ? "reading" : "answering", model, onKeySaved),
+      },
     };
   }
   if (err.status === 422 && /ingest/i.test(err.message)) {
@@ -202,6 +209,14 @@ export function AskTab({
     });
   };
 
+  const keySaved = () => {
+    setProblem(null);
+    listProviders()
+      .then((ps) => setHeld(ps.map((p) => p.provider)))
+      .catch(() => undefined);
+    onChanged();
+  };
+
   const ask = async (text: string) => {
     const question = text.trim();
     if (!question || pending || paused || turns === null) return;
@@ -219,7 +234,7 @@ export function AskTab({
     } catch (err) {
       setTurns((t) => (t ?? []).slice(0, index));
       setDraft(question);
-      setProblem(askProblem(err, detail));
+      setProblem(askProblem(err, detail, keySaved));
     } finally {
       setPending(false);
     }

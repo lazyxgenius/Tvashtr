@@ -210,9 +210,14 @@ describe("Ask (Dm-Ask, DmF-Ask-1…4)", () => {
     expect(
       await screen.findByText("Add an openai key to ask — openai reads the question."),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add openai key" })).toBeInTheDocument();
     expect(composer()).toHaveValue("Refund window?");
     expect(screen.queryByRole("article", { name: "Answer" })).toBeNull();
+    // DM-66: the key sheet opens here — the tab and the question stay (F2 AddKeySheet).
+    fireEvent.click(screen.getByRole("button", { name: "Add openai key" }));
+    const sheet = await screen.findByRole("dialog", { name: "Add an API key" });
+    expect(sheet).toHaveTextContent("So Domains can read files with OpenAI text-embedding-3-small");
+    expect(window.location.hash).toBe("#/domains/d-support/ask");
+    expect(composer()).toHaveValue("Refund window?");
   });
 
   it("names the vendor that didn't answer", async () => {

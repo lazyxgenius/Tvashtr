@@ -11,6 +11,8 @@ import { type DomainFilePieces, domainFileUrl, getDomainFilePieces } from "../..
 import { formatAdded, formatNumber, formatSize, kindName, pieceExcerpt } from "./domainFormat";
 
 const PAGE = 50;
+/** The most pieces the API serves at once. */
+const MAX_PAGE = 200;
 const FIND_DELAY_MS = 250;
 
 export function FilePreviewSheet({
@@ -36,6 +38,9 @@ export function FilePreviewSheet({
   const [find, setFind] = useState("");
   const [query, setQuery] = useState("");
   const [more, setMore] = useState(false);
+  // The offset of the first piece loaded: a piece opened from Ask past the first 200 (the most the
+  // API serves at once) loads from that piece, with earlier pieces a click away.
+  const [first, setFirst] = useState(0);
   const marked = useRef<HTMLLIElement | null>(null);
 
   useEffect(() => {
@@ -46,11 +51,13 @@ export function FilePreviewSheet({
   useEffect(() => {
     let live = true;
     // Enough of the first page to reach a piece opened from Ask (the API serves 200 at most).
-    const limit = Math.min(200, Math.max(PAGE, piece ?? 0));
-    getDomainFilePieces(domainId, documentId, { q: query, limit })
+    const start = !query && piece !== undefined && piece > MAX_PAGE ? piece - 1 : 0;
+    const limit = start ? PAGE : Math.min(MAX_PAGE, Math.max(PAGE, piece ?? 0));
+    getDomainFilePieces(domainId, documentId, { q: query, offset: start || undefined, limit })
       .then((d) => {
         if (!live) return;
         setData(d);
+        setFirst(start);
         setError(null);
       })
       .catch((e: unknown) => {
@@ -65,10 +72,27 @@ export function FilePreviewSheet({
   const showMore = () => {
     if (!data || more) return;
     setMore(true);
-    getDomainFilePieces(domainId, documentId, { q: query, offset: data.pieces.length, limit: PAGE })
+    getDomainFilePieces(domainId, documentId, {
+      q: query,
+      offset: first + data.pieces.length,
+      limit: PAGE,
+    })
       .then((next) =>
         setData((cur) => (cur ? { ...next, pieces: [...cur.pieces, ...next.pieces] } : next)),
       )
+      .catch(() => undefined)
+      .finally(() => setMore(false));
+  };
+
+  const showEarlier = () => {
+    if (!data || more || first === 0) return;
+    const from = Math.max(0, first - PAGE);
+    setMore(true);
+    getDomainFilePieces(domainId, documentId, { q: query, offset: from, limit: first - from })
+      .then((prev) => {
+        setData((cur) => (cur ? { ...cur, pieces: [...prev.pieces, ...cur.pieces] } : prev));
+        setFirst(from);
+      })
       .catch(() => undefined)
       .finally(() => setMore(false));
   };
@@ -157,6 +181,13 @@ export function FilePreviewSheet({
               : "Its pieces show here once it has been read."}
         </p>
       )}
+      {data && data.pieces.length > 0 && first > 0 && (
+        <div>
+          <Button variant="ghost" size="sm" loading={more} onClick={showEarlier}>
+            Show earlier pieces
+          </Button>
+        </div>
+      )}
       {data && data.pieces.length > 0 && (
         <ul className="dm-pieces">
           {data.pieces.map((p) => (
@@ -179,7 +210,7 @@ export function FilePreviewSheet({
           ))}
         </ul>
       )}
-      {data && data.total > data.pieces.length && (
+      {data && data.total > first + data.pieces.length && (
         <div>
           <Button variant="ghost" size="sm" loading={more} onClick={showMore}>
             Show more

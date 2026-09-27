@@ -361,7 +361,16 @@ describe("Settings (Dm-Settings, DmF-Tune-1…4)", () => {
     expect(warn).toHaveTextContent(
       "This re-reads all 14 files with Gemini embedding-001 (about 2 minutes). Ask and team lookups pause until it’s done. You don’t have a gemini key yet.",
     );
-    expect(within(warn).getByRole("button", { name: "Add gemini key" })).toBeInTheDocument();
+    // The key sheet opens on the tab, the unsaved change kept.
+    fireEvent.click(within(warn).getByRole("button", { name: "Add gemini key" }));
+    expect(await screen.findByRole("dialog", { name: "Add an API key" })).toHaveTextContent(
+      "So Domains can read files with Gemini embedding-001",
+    );
+    expect(window.location.hash).toBe("#/domains/d-support/settings");
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Add an API key" })).toBeNull(),
+    );
     expect(within(bar()).getByText("1 unsaved change · Reading model")).toBeInTheDocument();
     expect(within(bar()).getByText("Re-reads 14 files")).toBeInTheDocument();
     expect(screen.getByText("No gemini key")).toBeInTheDocument();

@@ -32,6 +32,7 @@ import { ANSWER_MODELS } from "./answerModels";
 import { DeleteDomainDialog } from "./DeleteDomainDialog";
 import { deleteDomainInUse, templateLabel } from "./domainFormat";
 import { ReadingModelSelect } from "./ReadingModelSelect";
+import { requestDomainKey } from "./domainKeys";
 import { addKeyLabel, keySavedText, missingKeyText, readingModel } from "./readingModels";
 import { PieceSizeDialog, ReReadDialog } from "./RereadDialogs";
 import {
@@ -292,7 +293,9 @@ export function SettingsTab({
               variant="secondary"
               size="sm"
               className="dm-set__warn-action"
-              onClick={() => navigate({ page: "engines", tab: "keys" })}
+              onClick={() =>
+                requestDomainKey(reading.provider, "reading", reading.label, onChanged)
+              }
             >
               {addKeyLabel(reading.provider)}
             </Button>

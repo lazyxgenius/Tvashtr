@@ -29,6 +29,7 @@ import { HowDomainsWorkDialog, HowItWorksStrip } from "./HowItWorksStrip";
 import { NewDomainDialog } from "./NewDomainDialog";
 import { SortSelect } from "./SortSelect";
 import { publishDomainNav, useDomainList } from "./useDomainList";
+import { useFileDropGuard } from "./useUploads";
 import "./domains.css";
 
 /** "now", re-read every minute so "Updated just now" ages on an open page. */
@@ -43,6 +44,7 @@ function useMinuteClock(): Date {
 
 export function DomainsListPage() {
   const { items, error, reload } = useDomainList();
+  useFileDropGuard();
   const toast = useToast();
   const now = useMinuteClock();
   const sortLabelId = useId();

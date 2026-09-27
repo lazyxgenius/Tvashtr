@@ -45,6 +45,7 @@ import {
   readingExamples,
   readingModel,
 } from "./readingModels";
+import { useFileDropGuard } from "./useUploads";
 import "./newDomain.css";
 
 const CREATE_FAILED = "Couldn’t create the domain — is the backend running?";
@@ -157,17 +158,7 @@ function NewDomainBody({
   }, [focusNext]);
 
   // A file dropped outside the drop zone must not open in the window (D1, page side).
-  useEffect(() => {
-    const stop = (e: globalThis.DragEvent) => {
-      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
-    };
-    window.addEventListener("dragover", stop);
-    window.addEventListener("drop", stop);
-    return () => {
-      window.removeEventListener("dragover", stop);
-      window.removeEventListener("drop", stop);
-    };
-  }, []);
+  useFileDropGuard();
 
   const current = readingModel(model);
   const keySaved = held === null ? null : held.includes(current.provider);
