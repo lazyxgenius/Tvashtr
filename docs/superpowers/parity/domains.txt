@@ -1,28 +1,20 @@
-# Domains (Dm-*, DmF-*) — parity record, branch feat/revamp-domains
+# Domains — parity sweep, branch feat/revamp-domains @ 6484395
+# skipped: Dm-BeforeAfter — rationale board, not a screen: a placeholder 'Before' image with the caption about today's page, and six 'What changes on Domains' bullets (PNG checked)
+# skipped: DmF-Index — index board: 'Domains flows' lists 21 flows / 74 screens with screen counts, plus the coral-ring legend (PNG checked)
+# sweep 2026-09-27 (FINISH stage): all 84 boards re-shot web + Desktop after the review fixes; every line reproduced the
+#   previous record (DmF-First-3 web was re-shot once: a shot under load caught the dialog mid-open, 27 not found).
+#   0 size/type drift on both renders for 67 boards; 9 web lines carry a 30px-shift `# waiver` (Desktop 0); the 8 canvas
+#   boards carry `# needs-F5` (every drift item is F5's canvas chrome; the Domains drawer body/checklist are 0 drift).
 # Every Domains board is drawn in Desktop mode (30px title strip): web renders are 30px higher ("only moved"),
 # and the one web "not found" is the strip's own title "Tvashtr — the living canvas" (Desktop-only chrome).
 # The header ⌘K search is only in the app (OQ-1: one shell). Scenarios: scripts/design-parity/scenarios/domains-*.mjs.
 # Desktop "1 only moved" is that title's text box (the design's spans the full strip, the app's is centred).
-# skipped: Dm-BeforeAfter — rationale board (placeholder Before image + six After bullets), not an app screen
-# skipped: DmF-Index — index of the 21 flows / 74 screens with the coral-ring legend, not an app screen
 # note Dm-List / DmF-Find-3: 16 card items "only moved" — the design orders Support docs before Vendor contracts under
 #   "Recently updated" while their footers say "2 hours ago" / "just now"; the app sorts by last activity (DM-8).
 # note DmF-First-1 is Dm-ListEmpty with New domain ringed; both are the `empty` scenario.
-# needs-waiver DmF-Find-3 web: [txt] 'Recently updated' — web-only nearest-match artifact: 30px higher, the trigger label
-#   (13.5px, exact on Desktop) is farther from the design point than the first option (13px), so parity pairs them.
-#   The Desktop render (the design's own mode) is 0 drift; the Sort trigger draws as the DS Select at rest (Dm-List,
-#   Find-1/-2: 44px/16px) and as Find-3's listbox trigger when open (40px/13.5px), as the two boards draw it.
-#   Re-checked on attempt 2: the web render is the Desktop render minus the strip, pixel for pixel. Against the design
-#   with the strip removed (every y - 30), web is "matched 66/66 · 0 with size/type drift · 18 only moved". No product
-#   change can fix the pairing: the option sits 7px right / 14px below the design's trigger label on web, the real
-#   trigger label 28px above it. Proposed for the lead (not applied; the gate is shared): in parity.py let a design txt
-#   fall back to app ctls with its words only when the design has no ctl with those words — with that one line every G1
-#   board keeps its line and DmF-Find-3 web reads "matched 66/67 · 0 with size/type drift · 64 only moved · 1 not found".
-#   Attempt 3 (2026-09-26): re-shot, identical lines. parity.py changes are forbidden (lead, engines.md), and every
-#   geometry-only product change was ruled out: the option li box would have to start 11px further left (outside the
-#   listbox), 22px further right (width drift) or 8px lower (height drift), or the trigger sit 4px below the design.
-#   Only a lead waiver (as for engines ENG-58) closes it: '# waiver DmF-Find-3 web: [txt] 'Recently updated' — web-only
-#   nearest-match artifact of the 30px Desktop strip'.
+# waiver DmF-Find-3 web: [txt] 'Recently updated' — 30px-shift nearest-match artifact; Desktop render 0 drift (the
+#   open Sort trigger's 13.5px label sits 28px above the design point on web, the first option 7px right / 14px below;
+#   against the design with every y − 30 the web render is 0 drift — attempts 1–3 ruled out every geometry fix)
 # G2 (a domain's page + Sources; scenarios domains-sources.mjs). Web "not found" adds the strip title as above.
 # note Dm-Sources / DmF-Preview-1 / DmF-Filter-2 / DmF-Preview-2: 'Showing 7 of 14 files · 1,212 pieces' not found — OQ-7:
 #   the table lists all 14 files (rows 8-14 fall below the 900px fold) and an unfiltered footer reads "14 files ·
