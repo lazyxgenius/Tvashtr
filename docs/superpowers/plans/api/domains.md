@@ -178,6 +178,11 @@ A file whose reading key is missing waits (`phase: "waiting_for_key"`). Saving t
 (`POST /api/providers`, below) starts it. A file left `indexing` for 10 minutes with no progress (a
 crashed process) is picked up again by the next upload, re-read or key save.
 
+Loading `GET /api/domains` or `GET /api/domains/{id}` also starts reading any domain it shows as
+`reading`/`rereading` whose waiting files have no read running (files uploaded before reading was
+automatic, or left by a read that died) — best-effort, the answer is unchanged. A "Reading" state
+always has a reader behind it.
+
 ---
 
 ## `GET /api/domains/{id}` (G2 additions)
@@ -707,7 +712,14 @@ nodes and the MCP tools — refuse while `rereading.reason` is `reading_model`:
 |---|---|
 | `409` | `"Ask is paused while <domain name> re-reads its files."` |
 
-A piece-size or single-file re-read doesn't pause asking (files not read yet are left out until they are).
+A piece-size or single-file re-read doesn't pause asking: a file being re-read with the same model
+keeps its old pieces searchable (they count in `pieces`) until its new pieces replace them. Only files
+at `version > 1` pause asking — a pre-revamp "dimension changed" mark on a file never read (version 1)
+is a first read.
+
+A reading-model change while a file is being read leaves that file to the running read (no second
+reader, OQ-24): its vectors are cleared, so when the read finishes it the file goes back to waiting
+and is read again with the new model; a batch embedded with the old model after the change is dropped.
 
 
 ## Use in teams (G11 — Dm-Teams, DmF-Step-1…3, DmF-Agent-1…3; DM-92…97, OQ-19, OQ-20)
@@ -814,8 +826,11 @@ domain of the account as an explicit list. Answers `{"agents": [ …usage agent 
   take the domain by name (any case) or id (`domain_id` still works for older agents), within the
   header's allowlist; with one domain to search `domain` may be left out. Anything else errors with
   "Domains you can search: Support docs, Vendor contracts." (or "You can’t search any domains.").
-- Not built (a `team_run.py` step change): the context compiler's "Domains you can search: …" line —
-  the tools' own descriptions and the error above tell the agent the names.
+- The tool list names them: each tool's description (MCP `tools/list`) ends with a blank line and
+  "Domains you can search: Support docs, Vendor contracts." — the agent's allowlist, or every domain
+  of the account for the legacy switch; no session → the plain descriptions. Deviation: the analysis
+  put this line in the context compiler, which needs an edit inside the existing `agent_run_step`
+  (the brief allows only new `team_run.py` steps); the tool descriptions reach the same model prompt.
 
 ## The Query domain node (G12 — Dm-QueryNode, DmF-Step-4/5, DmF-Canvas-1…4; DM-98…104, OQ-21)
 
@@ -864,7 +879,8 @@ unconnected new node shows "Needs a domain" from the canvas's own check).
 
 ### What a run does (DM-104)
 
-- The lookup asks with the NOT_FOUND rule and stays out of the domain's chat.
+- The lookup asks with the NOT_FOUND rule and stays out of the domain's chat. A node from before
+  the settings (no `pass_to_spec`) keeps today's lookup but also stays out of the chat (OQ-13).
 - **Covered**, passing on: the spec gets a new version (note `"Added by <title>"`, authored by the
   node) ending in:
 
