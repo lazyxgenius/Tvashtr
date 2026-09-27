@@ -32,6 +32,114 @@ export const PM_HISTORY = {
   run: null,
 };
 
+const PM = {
+  kind: "agent",
+  node_id: "n-pm",
+  role_name: "pm",
+  label: "Product manager",
+};
+const ENG = {
+  kind: "agent",
+  node_id: "n-eng",
+  role_name: "engineer",
+  label: "Engineer",
+};
+const YOU = { kind: "human", node_id: null, role_name: null, label: "You" };
+
+/** The shared spec as Docs-Viewer draws it (v3), and v2 as Docs-Compare's diff implies. */
+export const SPEC_V3 = [
+  "# Add an RSI indicator",
+  "",
+  "Traders want a momentum signal in the strategy builder. Add the Relative Strength Index as a first-class indicator.",
+  "",
+  "## Goals",
+  "",
+  "- Compute RSI over a configurable period (default 14) on candle closes.",
+  "- Register it on `INDICATORS` so the builder, the tests and the TypeScript mirror all list it.",
+  "- Show it in the indicator picker with its parameters and outputs.",
+  "",
+  "## Acceptance",
+  "",
+  "- `TestRegistry` lists 29 indicators, including `rsi`.",
+  "- `web/lib/engine-facts.ts` sets `indicator_count` to 29.",
+  "- A unit test checks RSI against a known series.",
+  "",
+  "## Out of scope",
+  "",
+  "- Alerts on RSI crossovers.",
+].join("\n");
+const SPEC_V2 = SPEC_V3.replace(
+  "- `web/lib/engine-facts.ts` sets `indicator_count` to 29.\n- A unit test checks RSI against a known series.",
+  "- `TestRegistry` lists 28 indicators.",
+);
+/** Docs-EditLive: the editor holds the start of the spec with the third goal rewritten. */
+export const SPEC_EDIT = SPEC_V3.split("\n## Acceptance")[0]
+  .trimEnd()
+  .replace(
+    "Show it in the indicator picker with its parameters and outputs.",
+    "Show the RSI line under the price chart with 30 / 70 guides.",
+  );
+
+const version = (n, content, author, note, min) => ({
+  id: `v-${n}`,
+  version_no: n,
+  content,
+  created_at: ago(min),
+  author,
+  note,
+});
+
+/** GET /api/documents/d-spec: three versions (the run is live, so it's editable). */
+export const SPEC_DETAIL = {
+  id: "d-spec",
+  name: "spec",
+  title: "PRD",
+  doc_type: "prd",
+  run_id: "r-rsi",
+  is_shared_spec: true,
+  editable: true,
+  created_at: ago(52),
+  updated_at: ago(31),
+  versions: [
+    version(
+      1,
+      SPEC_V2.replace("- `TestRegistry` lists 28 indicators.\n", ""),
+      PM,
+      "First draft",
+      52,
+    ),
+    version(2, SPEC_V2, YOU, "Edited while the run was live", 40),
+    version(3, SPEC_V3, PM, "Revised in round 3", 31),
+  ],
+};
+export const NOTES_DETAIL = {
+  id: "d-notes",
+  name: "build-notes",
+  title: "build-notes",
+  doc_type: "build-notes",
+  run_id: "r-rsi",
+  is_shared_spec: false,
+  editable: true,
+  created_at: ago(50),
+  updated_at: ago(36),
+  versions: [
+    version(
+      1,
+      "# Build notes\n\n- Added `rsi` to `INDICATORS`.",
+      ENG,
+      "Round 1",
+      50,
+    ),
+    version(
+      2,
+      "# Build notes\n\n- Added `rsi` to `INDICATORS`.\n- Ran pytest.",
+      ENG,
+      "Round 2",
+      36,
+    ),
+  ],
+};
+
 /** The canvas page's API with the documents of the team's latest run. */
 export const docsRoutes = ({ nodes = NODES, over = {} } = {}) =>
   panelRoutes({
@@ -41,6 +149,8 @@ export const docsRoutes = ({ nodes = NODES, over = {} } = {}) =>
       [`GET /api/teams/${TEAM_ID}/nodes/n-rev/runs`]: HISTORY,
       [`GET /api/teams/${TEAM_ID}/nodes/n-pm/runs`]: PM_HISTORY,
       "GET /api/runs/r-rsi/documents": DOCS,
+      "GET /api/documents/d-spec": SPEC_DETAIL,
+      "GET /api/documents/d-notes": NOTES_DETAIL,
       ...over,
     },
   });

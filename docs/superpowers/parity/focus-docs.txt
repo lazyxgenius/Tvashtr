@@ -1,7 +1,17 @@
 # F6 Focus view + Documents — parity, branch feat/revamp-f6-focus-docs (sorted by artboard)
+Docs-Compare desktop: matched 104/106 design items · 0 with size/type drift · 50 only moved · 2 not found in app
+Docs-Compare web: matched 102/106 design items · 0 with size/type drift · 49 only moved · 4 not found in app
 Docs-Drawer desktop: matched 62/62 design items · 0 with size/type drift · 33 only moved · 0 not found in app
 Docs-Drawer web: matched 60/62 design items · 0 with size/type drift · 32 only moved · 2 not found in app
+Docs-EditLive desktop: matched 100/102 design items · 0 with size/type drift · 50 only moved · 2 not found in app
+Docs-EditLive web: matched 98/102 design items · 0 with size/type drift · 49 only moved · 4 not found in app
 Docs-PanelPM desktop: matched 73/74 design items · 0 with size/type drift · 30 only moved · 1 not found in app
 Docs-PanelPM web: matched 73/74 design items · 0 with size/type drift · 30 only moved · 1 not found in app
 Docs-PanelReviewer desktop: matched 83/84 design items · 0 with size/type drift · 31 only moved · 1 not found in app
 Docs-PanelReviewer web: matched 81/84 design items · 0 with size/type drift · 30 only moved · 3 not found in app
+Docs-Viewer desktop: matched 99/101 design items · 0 with size/type drift · 50 only moved · 2 not found in app
+Docs-Viewer web: matched 97/101 design items · 0 with size/type drift · 49 only moved · 4 not found in app
+Docs-ViewerWeb desktop: matched 97/100 design items · 0 with size/type drift · 49 only moved · 3 not found in app
+Docs-ViewerWeb web: matched 97/100 design items · 0 with size/type drift · 49 only moved · 3 not found in app
+Focus-Docs desktop: matched 113/115 design items · 0 with size/type drift · 48 only moved · 2 not found in app
+Focus-Docs web: matched 111/115 design items · 0 with size/type drift · 47 only moved · 4 not found in app
