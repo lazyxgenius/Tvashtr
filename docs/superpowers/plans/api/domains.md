@@ -50,6 +50,12 @@ in `routers.py` and changed there in place.
 | `GET /api/domains/{id}/agents` | **new** — every agent and whether it can search the domain | G11 |
 | `PUT /api/domains/{id}/agents` | **new** — exactly these agents can search the domain | G11 |
 | agent tools (`tool_config.tvashtr.domains`) | a list of domain ids now works (sends `X-Tvashtr-Domains`); the Domains MCP tools take the domain by name | G11 |
+| `POST /api/teams/{team_id}/nodes` (`domain_query`) | a new node's `config` gains `pass_to_spec: true`, `on_no_answer: "continue"` | G12 |
+| `PATCH /api/teams/{team_id}/nodes/{node_id}` (`domain_query`) | optional `pass_to_spec`, `on_no_answer` (`"continue"`/`"stop"`, else `422`) | G12 |
+| `GET /api/teams/{team_id}/validate`, `POST /api/runs` | `domain_query_no_domain` also for a domain that isn't one of the account's (deleted) | G12 |
+| `GET /api/teams/{team_id}/nodes/{node_id}/runs` | `run` gains `number`; a Query domain node's rounds gain `domain` | G12 |
+| runs (Query domain nodes with the settings) | the answer goes into the spec, a not-covered answer can stop the run (`failure_code: "domain_no_answer"`), the lookup waits while the domain re-reads, its spend is on the run | G12 |
+| `POST /api/domains/{id}/ask` | answer gains `usage` (tokens + cost, question embedding included) | G12 |
 
 Schema: migration `0042_domain_message_meta` adds `domain_messages.meta JSONB NULL` (the Ask tab's
 answer meta `{model, used_history, source}`; written from the Ask group on).
@@ -810,4 +816,124 @@ domain of the account as an explicit list. Answers `{"agents": [ …usage agent 
   "Domains you can search: Support docs, Vendor contracts." (or "You can’t search any domains.").
 - Not built (a `team_run.py` step change): the context compiler's "Domains you can search: …" line —
   the tools' own descriptions and the error above tell the agent the names.
+
+## The Query domain node (G12 — Dm-QueryNode, DmF-Step-4/5, DmF-Canvas-1…4; DM-98…104, OQ-21)
+
+### `POST /api/teams/{team_id}/nodes` with `node_kind: "domain_query"` (changed)
+
+A new node passes its answer on and keeps going when there's none (DM-98):
+
+```json
+{
+  "id": "5b0e…",
+  "kind": "domain_query",
+  "role_name": "domain_query",
+  "prompt": "{idea}",
+  "config": { "domain_id": null, "pass_to_spec": true, "on_no_answer": "continue" }
+}
+```
+
+### `PATCH /api/teams/{team_id}/nodes/{node_id}` on a `domain_query` node (changed)
+
+Body (every key optional; only sent keys change):
+
+```json
+{
+  "domain_id": "3c9d…",
+  "prompt": "What do our support docs say about {idea}?",
+  "title": "Look up support docs",
+  "pass_to_spec": true,
+  "on_no_answer": "stop"
+}
+```
+
+Response `200`: the node, `config` carrying the keys. Errors: `422` for an `on_no_answer` other than
+`"continue"` / `"stop"` (FastAPI's validation body), `400 {"detail": "invalid domain_id"}`, `404` for
+another account's team.
+
+**Which run steps a node uses (OQ-21).** A node whose `config` has the `pass_to_spec` key (new nodes,
+Add step, any drawer save) runs the new steps below. A node without it keeps today's lookup, unchanged:
+its answer never reaches the spec and a not-covered answer never stops the run.
+
+### Validity (DM-102)
+
+`GET /api/teams/{team_id}/validate` and the `POST /api/runs` guard flag
+`{"code": "domain_query_no_domain", "message": "Select a Domain on this Query domain node before running."}`
+also when `domain_id` is not one of the account's domains. Only nodes the walk reaches are checked (an
+unconnected new node shows "Needs a domain" from the canvas's own check).
+
+### What a run does (DM-104)
+
+- The lookup asks with the NOT_FOUND rule and stays out of the domain's chat.
+- **Covered**, passing on: the spec gets a new version (note `"Added by <title>"`, authored by the
+  node) ending in:
+
+  ```md
+  ## What the docs say
+
+  **Asked Support docs:** What do our support docs say about a self-serve refund button?
+
+  Refunds are requested from Billing → Refunds within 30 days [1]. Annual plans are prorated after that [2].
+
+  Sources:
+  1. refund-policy.md · piece 3 of 42
+  2. billing-faq.pdf · page 4 · piece 17 of 86
+  ```
+
+  The round closes `done` / `answered`.
+- **Not covered**, "Keep going": the section reads `Support docs had no answer for: “<question>”` (when
+  passing on); the round closes `done` / `no_answer` and the run goes on.
+- **Not covered**, "Stop the run and tell me": the round closes `failed` / `no_answer`; the run fails with
+  `failure_code: "domain_no_answer"`, `failure_message`
+  `"Look up support docs stopped the run: Support docs has no answer for “<question>”."`.
+- **Re-reading** with a new reading model: it waits (checks every 30 s) up to 10 minutes, then fails
+  with `failure_code: "domain_query"`, message `"<title>: Support docs was still re-reading its files."`.
+- A missing key, no files or a deleted domain fail as before (`domain_query`, humanised reason).
+- The lookup's spend (answer + question embedding) is a cost row on the run against the round
+  (`idempotency_key` `<run>:domain-cost:<node>:<round>`).
+
+### `GET /api/teams/{team_id}/nodes/{node_id}/runs` (additions)
+
+`run` gains `number` — its place among the library team's runs ("run 14"; `null` for a run launched
+without a library team). Each round of a Query domain node gains `domain`:
+
+```json
+{
+  "run": {
+    "run_id": "0f7c…",
+    "number": 14,
+    "rounds": [
+      {
+        "iteration": 1,
+        "status": "done",
+        "outcome": "answered",
+        "cost": { "prompt_tokens": 940, "completion_tokens": 40, "total_tokens": 980, "cost_usd": 0.0012 },
+        "domain": {
+          "question": "What do our support docs say about a self-serve refund button?",
+          "answer_text": "Refunds are requested from Billing → Refunds within 30 days [1]. Annual plans are prorated after that [2].",
+          "covered": true,
+          "sources": [
+            { "number": 1, "document_id": "…", "filename": "refund-policy.md", "chunk_id": "…",
+              "piece_number": 3, "pieces_in_file": 42, "page": null,
+              "excerpt": "Customers may request a full refund within 30 days of their original purchase date." }
+          ],
+          "citations": [ { "document_id": "…", "filename": "refund-policy.md", "chunk_id": "…", "ordinal": 2, "excerpt": "…" } ],
+          "latency_ms": 1900,
+          "cost_usd": 0.0012,
+          "spec_section": "What the docs say"
+        }
+      }
+    ]
+  }
+}
+```
+
+- `spec_section`: `"What the docs say"` when the answer went into the spec, else `null`.
+- A round from before these steps has `question: null`, `sources: []`, `spec_section: null`;
+  `answer_text` is its `outcome_detail` and `covered` follows its outcome.
+
+### `POST /api/domains/{id}/ask` (addition)
+
+The answer gains `usage: {prompt_tokens, completion_tokens, total_tokens, cost_usd}` — the answer's
+tokens plus the question embedding's.
 
