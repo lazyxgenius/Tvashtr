@@ -70,6 +70,7 @@ function tnode(
 function teamGraph(): TeamGraphData {
   return {
     team_graph_id: "team-1",
+    name: "Indicator sprint team",
     nodes: [
       tnode({ id: "tn-pm", role_name: "pm", kind: "completion", prompt: "PM behavior" }),
       tnode({
@@ -194,11 +195,12 @@ beforeEach(() => {
     if (url === "/api/providers")
       return Promise.resolve(
         jsonOk({
-          providers: [{ provider: "openai", key_last4: "test", created_at: "2026-01-01T00:00:00Z" }],
+          providers: [
+            { provider: "openai", key_last4: "test", created_at: "2026-01-01T00:00:00Z" },
+          ],
         }),
       );
-    if (url === "/api/engines/subscriptions")
-      return Promise.resolve(jsonOk({ subscriptions: [] }));
+    if (url === "/api/engines/subscriptions") return Promise.resolve(jsonOk({ subscriptions: [] }));
     return Promise.resolve(jsonOk({}));
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -234,11 +236,11 @@ describe("App — poll lifecycle (keystone)", () => {
     // The canvas left the empty landing state (a graph is mounted).
     expect(screen.queryByText("Nothing on the loom yet")).toBeNull();
 
-    // Poll a couple of intervals in the running phase — the engineer node reads "Working…".
+    // Poll a couple of intervals in the running phase — the engineer card reads "● Working…".
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3700);
     });
-    expect(screen.getAllByText("Working…").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("● Working…").length).toBeGreaterThan(0);
     expect(runStatusCalls()).toBeGreaterThan(0);
 
     // The run reaches a terminal status. The NEXT poll must (a) reflect it on the canvas + banner
@@ -251,7 +253,7 @@ describe("App — poll lifecycle (keystone)", () => {
     // (a) the POLLED terminal state reached the DOM — banner "Shipped" + a "Done" node. Under the
     //     mountedRef freeze, `run` stays null and the polled graph is dropped, so neither appears.
     expect(screen.getAllByText("Shipped").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Done").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("✓ Done").length).toBeGreaterThan(0);
 
     // (b) polling STOPPED at terminal: no further GET /api/runs/{id} once settled. Under the
     //     freeze, `terminal` never flips (run never set) so the interval would poll forever.
@@ -263,99 +265,206 @@ describe("App — poll lifecycle (keystone)", () => {
   });
 });
 
+describe("App — the agent drawer (F5)", () => {
+  function nodeCard(label: string): Element {
+    const card = screen
+      .getAllByText(label)
+      .map((el) => el.closest(".react-flow__node"))
+      .find((el): el is Element => el !== null);
+    expect(card).toBeTruthy();
+    return card as Element;
+  }
 
-describe("App — persistent team authoring (P1.8b)", () => {
-  it("opens the editable panel for an agent node + a READ-ONLY drawer for a gate (F1c Decision 4)", async () => {
+  it("opens '<Name> settings' for an agent (Setup first) and the gate's own body for a gate", async () => {
     render(
       <StrictMode>
         <App />
       </StrictMode>,
     );
-
-    // The canvas opens to the persistent team (no run): the agent + gate nodes render. ("Product
-    // manager" is unique to the node card — the palette uses the short "PM" — so it's the safe wait.)
+    // "Product manager" is unique to the node card (the palette uses the short "PM").
     await screen.findByText("Product manager");
-    expect(screen.getByText("Product manager")).toBeInTheDocument();
-    // No editable panel before a node is selected.
-    expect(screen.queryByLabelText("Engineer editor")).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Engineer settings" })).toBeNull();
 
-    // Click the ENGINEER agent NODE (not the palette preset chip of the same label) -> the editable
-    // panel opens with its prompt + a model field.
-    const engineerNode = screen
-      .getAllByText("Engineer")
-      .map((el) => el.closest(".react-flow__node"))
-      .find((el): el is Element => el !== null);
-    expect(engineerNode).toBeTruthy();
-    fireEvent.click(engineerNode as Element);
+    fireEvent.click(nodeCard("Engineer"));
+    const panel = await screen.findByRole("complementary", { name: "Engineer settings" });
+    expect(within(panel).getByRole("tab", { name: "Setup" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    const instructions = within(panel).getByRole<HTMLTextAreaElement>("textbox", {
+      name: /^Instructions/,
+    });
+    expect(instructions.value).toContain("ENGINEER behavior");
+    // The catalogue no longer lists gpt-4o-mini, so the button shows the whole slug (no provider
+    // tile) and the soft unknown-model warning says what that means.
+    expect(
+      within(panel).getByRole("button", { name: "Model openai/gpt-4o-mini" }),
+    ).toBeInTheDocument();
+    expect(within(panel).getByText(/^No provider matches/)).toHaveTextContent(
+      "No provider matches openai/gpt-4o-mini. It will fail at run time",
+    );
+    expect(within(panel).getByText("All changes saved")).toBeInTheDocument();
 
-    const panel = await screen.findByLabelText("Engineer editor");
-    const promptBox = within(panel).getByRole<HTMLTextAreaElement>("textbox", { name: /prompt/i });
-    expect(promptBox.value).toContain("ENGINEER behavior");
-    // The model field carries the node's model (the panel now also has a Provider select combobox).
-    expect(within(panel).getByRole<HTMLInputElement>("combobox", { name: "Model" }).value).toBe(
-      "openai/gpt-4o-mini",
+    fireEvent.click(within(panel).getByRole("button", { name: "Close panel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Engineer settings" })).toBeNull(),
     );
 
-    // Close the panel back to a CLEAN state, then click a GATE node. M-rails C8: a gate now OPENS an
-    // EDITABLE checkpoint drawer (not the agent editor) — a Gate type picker (Human approval / Secret
-    // leak scan) + title/description + a Save, but NO agent "prompt" field. Asserting from the closed
-    // state distinguishes "the gate opened its own drawer" from "an earlier agent panel lingered".
-    fireEvent.click(within(panel).getByRole("button", { name: "Close panel" }));
-    await waitFor(() => expect(screen.queryByLabelText("Engineer editor")).toBeNull());
-
-    const gateNode = screen.getByText("PRD approval").closest(".react-flow__node");
-    fireEvent.click(gateNode as Element);
-    // The gate's OWN config title is in the drawer's aria-label — proving the gate view mounted,
-    // distinct from any agent "…editor".
-    const gatePanel = await screen.findByLabelText("Approve the PRD checkpoint");
-    // The editable guardrail-gate surface: the Gate type picker + a Save; no agent "prompt" field.
+    // A gate keeps its own editable body in the same shell, without tabs or instructions.
+    fireEvent.click(nodeCard("PRD approval"));
+    const gatePanel = await screen.findByRole("complementary", {
+      name: "Approve the PRD settings",
+    });
     expect(within(gatePanel).getByRole("button", { name: "Secret leak scan" })).toBeInTheDocument();
     expect(within(gatePanel).getByRole("button", { name: "Save" })).toBeInTheDocument();
-    expect(within(gatePanel).queryByRole("textbox", { name: /prompt/i })).toBeNull();
-    expect(screen.queryByLabelText("Engineer editor")).toBeNull();
+    expect(within(gatePanel).queryByRole("tab")).toBeNull();
+    expect(within(gatePanel).queryByRole("textbox", { name: /^Instructions/ })).toBeNull();
   });
-});
 
-// ---- F1c Decision 1: the dock⇄pop-up toggle is a SESSION-STICKY viewing preference (App state) ----
-
-describe("App — F1c sticky dock⇄pop-up panelMode (Decision 1)", () => {
-  it("the toggle flips drawer↔modal (scrim appears) and the mode HOLDS across close/reopen + reselect", async () => {
-    const { container } = render(
+  it("keeps the open tab when another agent is selected, and opens the focus view and docks back", async () => {
+    render(
       <StrictMode>
         <App />
       </StrictMode>,
     );
     await screen.findByText("Product manager");
+    fireEvent.click(nodeCard("Engineer"));
+    let panel = await screen.findByRole("complementary", { name: "Engineer settings" });
+    fireEvent.click(within(panel).getByRole("tab", { name: "Runs" }));
+    expect(within(panel).getByRole("tab", { name: "Runs" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
 
-    // Open the Engineer node's drawer — DOCKED (no scrim, a fresh mount starts docked).
-    const engineerNode = screen
-      .getAllByText("Engineer")
+    fireEvent.click(nodeCard("Product manager"));
+    panel = await screen.findByRole("complementary", { name: "Product manager settings" });
+    expect(within(panel).getByRole("tab", { name: "Runs" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Focus mode" }));
+    const dialog = await screen.findByRole("dialog", { name: "Product manager in focus view" });
+    expect(screen.queryByRole("complementary", { name: "Product manager settings" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Dock to the side" }));
+    await screen.findByRole("complementary", { name: "Product manager settings" });
+  });
+
+  it("follows the address: node, tab and focus come in as props and go out through onNodeRoute", async () => {
+    const onNodeRoute = vi.fn();
+    const { rerender } = render(
+      <App teamId="team-1" node="tn-eng" tab="memory" onNodeRoute={onNodeRoute} />,
+    );
+    const panel = await screen.findByRole("complementary", { name: "Engineer settings" });
+    expect(within(panel).getByRole("tab", { name: "Memory" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    fireEvent.click(within(panel).getByRole("tab", { name: "Docs" }));
+    expect(onNodeRoute).toHaveBeenLastCalledWith({ node: "tn-eng", tab: "docs", focus: undefined });
+    fireEvent.click(within(panel).getByRole("tab", { name: "Setup" }));
+    // Setup is the default, so it leaves the address clean.
+    expect(onNodeRoute).toHaveBeenLastCalledWith({
+      node: "tn-eng",
+      tab: undefined,
+      focus: undefined,
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close panel" }));
+    expect(onNodeRoute).toHaveBeenLastCalledWith({
+      node: undefined,
+      tab: undefined,
+      focus: undefined,
+    });
+
+    // Back/forward change the props; the drawer follows.
+    rerender(<App teamId="team-1" onNodeRoute={onNodeRoute} />);
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Engineer settings" })).toBeNull(),
+    );
+  });
+});
+
+describe("App — the drawer asks before dropping unsaved changes (F5 G2)", () => {
+  function nodeCard(label: string): Element {
+    const card = screen
+      .getAllByText(label)
       .map((el) => el.closest(".react-flow__node"))
       .find((el): el is Element => el !== null);
-    fireEvent.click(engineerNode as Element);
-    await screen.findByLabelText("Engineer editor");
-    expect(container.querySelector(".tv-scrim")).toBeNull();
+    expect(card).toBeTruthy();
+    return card as Element;
+  }
 
-    // Toggle to pop-up (modal): a click-to-close scrim appears.
-    fireEvent.click(screen.getByRole("button", { name: "Open as a pop-up" }));
-    expect(container.querySelector(".tv-scrim")).not.toBeNull();
+  async function dirtyEngineer(onBack = vi.fn()) {
+    render(<App teamId="team-1" node="tn-eng" onBackToDashboard={onBack} />);
+    const panel = await screen.findByRole("complementary", { name: "Engineer settings" });
+    fireEvent.click(within(panel).getByRole("switch", { name: "Images" }));
+    expect(within(panel).getByText("1 unsaved change")).toBeInTheDocument();
+    return { panel, onBack };
+  }
 
-    // Close the drawer, then reopen the SAME node → STILL modal (sticky across close/reopen).
-    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
-    await waitFor(() => expect(screen.queryByLabelText("Engineer editor")).toBeNull());
-    fireEvent.click(engineerNode as Element);
-    await screen.findByLabelText("Engineer editor");
-    expect(container.querySelector(".tv-scrim")).not.toBeNull();
+  it("the model picker's 'Add a provider' asks first, then opens Engines › API keys (F5 G4)", async () => {
+    const { panel } = await dirtyEngineer();
+    const model = within(panel).getByRole("region", { name: "Model" });
+    fireEvent.click(within(model).getByRole("button", { name: "Model openai/gpt-4o-mini" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Add a provider" }));
+    const dialog = within(panel).getByRole("alertdialog", { name: "Unsaved changes" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard" }));
+    expect(window.location.hash).toBe("#/engines/keys");
+    window.location.hash = "";
+  });
 
-    // Select a DIFFERENT node (PM) → STILL modal (sticky across reselect).
-    const pmNode = screen.getByText("Product manager").closest(".react-flow__node");
-    fireEvent.click(pmNode as Element);
-    await screen.findByLabelText("Product manager editor");
-    expect(container.querySelector(".tv-scrim")).not.toBeNull();
+  it("selecting another agent asks first; Keep editing stays, Discard moves on", async () => {
+    const { panel } = await dirtyEngineer();
+    fireEvent.click(nodeCard("Product manager"));
+    const dialog = within(panel).getByRole("alertdialog", { name: "Unsaved changes" });
+    expect(dialog).toHaveTextContent("Save your changes to Engineer?");
+    expect(dialog).toHaveAccessibleDescription("You changed images.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+    expect(screen.getByRole("complementary", { name: "Engineer settings" })).toBeInTheDocument();
 
-    // Dock it back → the scrim is gone (the same session preference, flipped).
-    fireEvent.click(screen.getByRole("button", { name: "Dock to the side" }));
-    expect(container.querySelector(".tv-scrim")).toBeNull();
+    fireEvent.click(nodeCard("Product manager"));
+    fireEvent.click(
+      within(within(panel).getByRole("alertdialog")).getByRole("button", { name: "Discard" }),
+    );
+    await screen.findByRole("complementary", { name: "Product manager settings" });
+    expect(fetchMock.mock.calls.some((c) => (c[1] as RequestInit)?.method === "PATCH")).toBe(false);
+  });
+
+  it("Close and Back to teams ask too", async () => {
+    const { panel, onBack } = await dirtyEngineer();
+    fireEvent.click(within(panel).getByRole("button", { name: "Close panel" }));
+    fireEvent.click(
+      within(within(panel).getByRole("alertdialog")).getByRole("button", { name: "Keep editing" }),
+    );
+    expect(screen.getByRole("complementary", { name: "Engineer settings" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to teams" }));
+    expect(onBack).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(within(panel).getByRole("alertdialog")).getByRole("button", { name: "Discard" }),
+    );
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("Delete agent (⋯) deletes the node and closes the drawer", async () => {
+    render(<App teamId="team-1" node="tn-eng" />);
+    const panel = await screen.findByRole("complementary", { name: "Engineer settings" });
+    fireEvent.click(within(panel).getByRole("button", { name: "More actions" }));
+    fireEvent.click(within(panel).getByRole("menuitem", { name: /^Delete agent/ }));
+    const dialog = within(panel).getByRole("alertdialog", { name: "Delete Engineer?" });
+    expect(dialog).toHaveTextContent("Past runs keep their results.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete agent" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Engineer settings" })).toBeNull(),
+    );
+    expect(
+      fetchMock.mock.calls.some(
+        (c) =>
+          urlOf(c[0] as RequestInfo | URL) === "/api/teams/team-1/nodes/tn-eng" &&
+          (c[1] as RequestInit)?.method === "DELETE",
+      ),
+    ).toBe(true);
   });
 });
 
@@ -460,7 +569,7 @@ describe("App — F-canvas-fidelity-1 screen shell", () => {
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 
-  it("Part C: toolbar = back arrow + Run + always-on spend ($0.00) + status dot, no hint line, no A/B toggle", async () => {
+  it("Part C: toolbar = Back to teams + Run + the team name + spend ($0.00) + 'Connected'", async () => {
     const user = userEvent.setup();
     const onBack = vi.fn();
     render(
@@ -470,16 +579,18 @@ describe("App — F-canvas-fidelity-1 screen shell", () => {
     );
     await screen.findByText("Product manager");
 
-    // The back-to-dashboard arrow (replaces the header's "← Dashboard" text button) — wired.
-    const back = screen.getByRole("button", { name: "Back to dashboard" });
+    // The back arrow returns to the teams (Home).
+    const back = screen.getByRole("button", { name: "Back to teams" });
 
     expect(screen.getByRole("button", { name: "Run this team" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "A/B compare" })).toBeNull();
     expect(screen.queryByRole("group", { name: "View mode" })).toBeNull();
 
-    // The always-on spend ("$0.00" while idle) + the backend status dot; the old drag hint line is GONE.
+    // The team's name from the graph, the always-on spend ("$0.00" while idle) and the backend
+    // status with its label; the old drag hint line is GONE.
+    expect(await screen.findByText("Indicator sprint team")).toBeInTheDocument();
     expect(screen.getByText("$0.00")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /backend/i })).toBeInTheDocument();
+    expect(await screen.findByText("Connected")).toBeInTheDocument();
     expect(screen.queryByText(/Drag from a node.*edge to wire it/i)).toBeNull();
 
     await user.click(back);
@@ -531,26 +642,18 @@ describe("App — F-canvas-fidelity-1 screen shell", () => {
     );
     await screen.findByText("Product manager");
 
-    // Primary CTA becomes Configure providers; Run this team is gone.
-    // Hosted (no Desktop dataset): CTA must require API keys — subscriptions cannot satisfy Fly runs.
-    const configure = await screen.findByRole("button", { name: "Configure providers" });
-    expect(configure).toHaveAttribute(
-      "title",
-      "Add an API key under Engines on the Dashboard (subscriptions only work on local Desktop)",
-    );
-    expect(screen.queryByRole("button", { name: "Run this team" })).toBeNull();
-    const banner = screen.getByTestId("missing-providers");
-    expect(banner).toHaveTextContent(/openai/i);
-    expect(banner).toHaveTextContent(/hosted runs need an API key/i);
-    expect(banner).toHaveTextContent(/subscriptions are Desktop-only/i);
-    expect(banner).not.toHaveTextContent(/or connect a subscription/i);
+    // Run stays, disabled, and the warn callout says why — no more "Configure providers" swap.
+    // Hosted (no Desktop dataset): only an API key can cover openai.
+    const run = await screen.findByRole("button", { name: "Run this team" });
+    await waitFor(() => expect(run).toBeDisabled());
+    expect(screen.queryByRole("button", { name: "Configure providers" })).toBeNull();
+    const banner = screen.getByTestId("run-blocked");
+    expect(banner).toHaveTextContent("Can’t run on the website yet. No API key for openai.");
+    // openai has no Desktop subscription, so the callout doesn't mention one.
+    expect(banner).not.toHaveTextContent(/Subscriptions only work/i);
 
-    await user.click(screen.getByRole("button", { name: "Open Engines" }));
+    await user.click(within(banner).getByRole("button", { name: "Open Engines" }));
     expect(onBack).toHaveBeenCalledTimes(1);
-    expect(onBack).toHaveBeenLastCalledWith("engines");
-
-    await user.click(configure);
-    expect(onBack).toHaveBeenCalledTimes(2);
     expect(onBack).toHaveBeenLastCalledWith("engines");
   });
 });

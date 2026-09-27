@@ -190,7 +190,12 @@ describe("App — Desktop subscription launch (M-subs-desktop F1)", () => {
       return Promise.resolve(jsonOk({}));
     });
     render(<App />);
-    expect(await screen.findByRole("button", { name: "Configure providers" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Run this team" })).toBeNull();
+    const run = await screen.findByRole("button", { name: "Run this team" });
+    await waitFor(() => expect(run).toBeDisabled());
+    // Desktop copy: a key OR a connected subscription (this runner hasn't checked in) would cover it.
+    expect(await screen.findByTestId("run-blocked")).toHaveTextContent(
+      /Can’t run yet\. No API key or connected subscription for/,
+    );
+    expect(screen.queryByRole("button", { name: "Configure providers" })).toBeNull();
   });
 });

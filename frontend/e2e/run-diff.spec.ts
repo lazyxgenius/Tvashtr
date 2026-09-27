@@ -91,14 +91,14 @@ test("run-diff: the Changes tab renders the run's changed file(s)", async ({ pag
 
   await expect(page.getByText(firstPath, { exact: true }).first()).toBeVisible({ timeout: 30_000 });
   const filesShot = path.join(SHOTS_DIR, "changes-tab-files.png");
-  await page.locator(".tv-panel").screenshot({ path: filesShot });
+  await page.locator(".nd-drawer").screenshot({ path: filesShot });
   console.log(`[run-diff-e2e] Changes tab shows "${firstPath}"; screenshot -> ${filesShot}`);
 
   // 7. Expand the first file to its per-file patch.
   await page.locator(".tv-diff__row").first().click();
   await expect(page.locator(".tv-diff__patch").first()).toBeVisible({ timeout: 10_000 });
   const patchShot = path.join(SHOTS_DIR, "changes-tab-patch.png");
-  await page.locator(".tv-panel").screenshot({ path: patchShot });
+  await page.locator(".nd-drawer").screenshot({ path: patchShot });
   console.log(`[run-diff-e2e] per-file patch expands; screenshot -> ${patchShot}`);
 
   expect(fs.existsSync(filesShot) && fs.existsSync(patchShot), "both screenshots saved").toBe(true);

@@ -125,11 +125,12 @@ export function HomePage({ user = null }: { user?: AuthUser | null } = {}) {
 
   return (
     <HomeContext.Provider value={value}>
+      {/* Pick the layout once its data is in: switching later would remount the composer. */}
       {decideAtLaunch ? (
         <HomeMain />
       ) : readyCardPending ? null : showReadyCard && teams.length > 0 ? (
         <DesktopReadyCard user={user} onDecideAtLaunch={setDecideAtLaunch} />
-      ) : getStarted.firstTime ? (
+      ) : !getStarted.ready ? null : getStarted.firstTime ? (
         <FirstTimeHome progress={getStarted} />
       ) : (
         <HomeMain />

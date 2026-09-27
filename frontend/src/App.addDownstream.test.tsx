@@ -172,8 +172,8 @@ describe("App — inline '+' adds a downstream node with a FORWARD edge (F1b)", 
       target_node_id: "tn-new",
       role: "forward",
     });
-    // 3. the new node is auto-selected → the existing editable side panel opens on it.
-    const panel = await screen.findByRole("textbox", { name: /prompt/i });
-    expect(panel).toBeInTheDocument();
+    // 3. the new node is auto-selected → its agent drawer opens on it.
+    const panel = await screen.findByRole("complementary", { name: /settings$/ });
+    expect(within(panel).getByRole("textbox", { name: /^Instructions/ })).toBeInTheDocument();
   });
 });

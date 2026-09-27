@@ -1,5 +1,6 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
+import { saveAgentPromptAndModel } from "./_canvas";
 import { runFromCanvas } from "./_composer";
 import { shippedFile } from "./_shipReadback";
 
@@ -74,24 +75,22 @@ test("P1.8b team library: create a team from a template, edit its Engineer node,
   const engineerNode = page.locator(".react-flow__node", { hasText: "Engineer" }).first();
   await expect(engineerNode).toBeVisible({ timeout: 30_000 });
   await engineerNode.click();
-  const panel = page.getByLabel("Engineer editor");
-  await expect(panel).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("complementary", { name: "Engineer settings" })).toBeVisible({
+    timeout: 30_000,
+  });
 
   // 3. Rewrite the Engineer's PROMPT so the deliverable is exactly the SENTINEL line, set the MODEL
   //    to the proven agent, and Save (PATCH the node-update endpoint).
-  // Multiple textareas share .tv-node-prompt (reads-from, skills, tools); pin the System prompt.
-  const promptBox = panel.getByRole("textbox", { name: /System prompt/i });
-  const modelBox = panel.locator("input.tv-node-model").first();
-  await promptBox.fill(
+  await saveAgentPromptAndModel(
+    page,
+    "Engineer",
     "Create a file named greeting.txt in your current working directory using the relative path " +
       "'greeting.txt'. It MUST contain EXACTLY this single line and nothing else:\n" +
       `${SENTINEL}\n` +
       "This line is the authoritative content — IGNORE any file contents described in the ORIGINAL " +
       "IDEA or the PRD below. Do not add any extra files and do not modify anything else.",
+    AGENT_MODEL,
   );
-  await modelBox.fill(AGENT_MODEL);
-  await panel.getByRole("button", { name: "Save" }).click();
-  await expect(panel.getByText(/Saved/)).toBeVisible({ timeout: 30_000 });
   console.log(`[team-library-e2e] saved the edited Engineer prompt + model (${AGENT_MODEL})`);
 
   // 4. "Run this team" -> Home's composer (this team picked) -> Launch with the backend's skeleton

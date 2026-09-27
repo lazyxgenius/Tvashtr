@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { reportFetchFailed, reportFetchOk } from "../../lib/backendStatus";
+import { registerBadgeLoader } from "../../lib/workspaceStatus";
 import {
   type Call,
   DOCS_RUN,
@@ -156,6 +157,9 @@ describe("Start a run", () => {
 
   it("stops a launch with missing keys and walks through the Add-an-API-key sheets", async () => {
     localStorage.setItem("tvashtr.home.lastTeam", "t-ind");
+    // A saved key changes other areas' counts too (Engines "N to fix"): the nav re-counts.
+    let engineLoads = 0;
+    registerBadgeLoader("engines", () => Promise.resolve({ enginesToFix: ++engineLoads }));
     const calls = mockApi(
       homeRoutes({ "POST /api/providers": { provider: "x", key_last4: "wQ3f" } }),
     );
@@ -185,6 +189,7 @@ describe("Start a run", () => {
       { provider: "anthropic", api_key: "sk-ant-1" },
       { provider: "xai", api_key: "xai-2" },
     ]);
+    await waitFor(() => expect(engineLoads).toBeGreaterThanOrEqual(2));
   });
 
   it("shows the server's branch refusal in plain words", async () => {

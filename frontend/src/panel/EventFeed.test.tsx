@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -152,5 +154,28 @@ describe("EventFeed (M-ledger C6) — node-scoped, round-grouped, uniquely keyed
       />,
     );
     expect(await screen.findByText(/No activity yet/)).toBeInTheDocument();
+  });
+});
+
+// The feed's layout lives in panel.css; the run view broke once when a cleanup dropped these rules.
+describe("EventFeed styles", () => {
+  it("keeps the feed and badge rules its markup uses", () => {
+    const css = readFileSync(`${process.cwd()}/src/panel.css`, "utf8");
+    for (const rule of [
+      ".tv-feed {",
+      ".tv-feed__row {",
+      ".tv-feed__main {",
+      ".tv-feed__lead {",
+      ".tv-feed__detail {",
+      ".tv-feed__time {",
+      ".tv-feed__note {",
+      ".tv-badge {",
+      ".tv-badge--neutral {",
+      ".tv-badge--accent {",
+      ".tv-badge--outline {",
+      ".tv-badge--danger {",
+    ]) {
+      expect(css).toContain(rule);
+    }
   });
 });

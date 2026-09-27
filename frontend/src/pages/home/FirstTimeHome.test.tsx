@@ -7,7 +7,19 @@ import { __resetBackendStatusForTests } from "../../lib/backendStatus";
 import { __resetGetStartedForTests } from "./getStarted";
 import { HomePage } from "./HomePage";
 
-vi.mock("./Composer", () => ({ Composer: () => <div>COMPOSER</div> }));
+// Counts mounts: a remount loses whatever the user typed into the composer.
+let composerMounts = 0;
+vi.mock("./Composer", async () => {
+  const { useEffect } = await import("react");
+  return {
+    Composer: () => {
+      useEffect(() => {
+        composerMounts += 1;
+      }, []);
+      return <div>COMPOSER</div>;
+    },
+  };
+});
 vi.mock("./RunningNow", () => ({ RunningNow: () => <div>RUNNING NOW</div> }));
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
@@ -38,6 +50,7 @@ beforeEach(() => {
   __resetBackendStatusForTests();
   fx = { hidden: false, teams: [], runs: [], providers: [] };
   patches = [];
+  composerMounts = 0;
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
@@ -119,6 +132,30 @@ describe("First-time Home", () => {
 
     await userEvent.click(within(card).getByRole("button", { name: "Open Engines" }));
     expect(window.location.hash).toBe("#/engines");
+  });
+
+  it("picks the layout once its data has loaded, so the composer isn't remounted", async () => {
+    fx.providers = [{ provider: "anthropic", key_last4: "abcd", created_at: ago(9) }];
+    fx.teams = [TEAM];
+    renderHome();
+    expect(await screen.findByRole("region", { name: "Get started" })).toBeInTheDocument();
+    expect(screen.getByText("COMPOSER")).toBeInTheDocument();
+    expect(composerMounts).toBe(1);
+  });
+
+  it("shows the main Home when the checklist preference can't be read", async () => {
+    vi.mocked(fetch).mockImplementation((url) =>
+      Promise.resolve(
+        new URL(url as string, "http://x").pathname === "/api/account/preferences"
+          ? new Response("{}", { status: 500 })
+          : new Response(JSON.stringify({ teams: [TEAM], runs: [], providers: [] }), {
+              status: 200,
+            }),
+      ),
+    );
+    renderHome();
+    expect(await screen.findByText("RUNNING NOW")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Get started" })).toBeNull();
   });
 
   it("Use template opens New team with that template", async () => {

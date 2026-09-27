@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef } from "react";
 
-import { navigate } from "./nav";
+import { NAVIGATION_KEPT, navigate } from "./nav";
 
 export type HomeAction =
   | { kind: "new-run"; teamId?: string }
@@ -14,6 +14,9 @@ export type HomeAction =
 
 let handler: ((action: HomeAction) => void) | null = null;
 let pending: HomeAction | null = null;
+window.addEventListener(NAVIGATION_KEPT, () => {
+  pending = null;
+});
 
 export function requestHomeAction(action: HomeAction): void {
   if (handler) {

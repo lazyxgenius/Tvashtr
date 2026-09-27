@@ -1,11 +1,10 @@
 import type { ContextManifest, DomainCitation, InvocationCost } from "../lib/api";
 import { reviewerVerdictLabel } from "../lib/status";
 import { titleCase } from "../lib/text";
-import { formatRelativeTime } from "../lib/time";
 import { ContextManifest as ContextManifestTable } from "../panel/ContextManifest";
 
-/** One round of a node's run history — a structural subset of `NodeInvocation`. The run-view passes
- *  the node's full `invocations`; the authoring view passes a one-element list of the latest run. */
+/** One round of a node's run history — a structural subset of `NodeInvocation` (the run view
+ *  passes the node's full `invocations`). */
 export interface LastRunRound {
   iteration: number;
   outcome: string | null;
@@ -19,13 +18,15 @@ export interface LastRunRound {
   // the node's `invocations` (which carry both from the /graph contract); the AUTHORING caller
   // passes NEITHER, so its render stays byte-identical. Present ⇒ a cost line / the manifest table.
   cost?: InvocationCost | null;
-  context_manifest?: (ContextManifest & {
-    citations?: DomainCitation[];
-    domain_id?: string;
-    latency_ms?: number | null;
-    model?: string | null;
-    message_id?: string | null;
-  }) | null;
+  context_manifest?:
+    | (ContextManifest & {
+        citations?: DomainCitation[];
+        domain_id?: string;
+        latency_ms?: number | null;
+        model?: string | null;
+        message_id?: string | null;
+      })
+    | null;
 }
 
 // Humanized labels for the per-round "Last run" outcomes. The reviewer outcomes (approved /
@@ -55,19 +56,9 @@ function costSummary(cost: InvocationCost): string {
  * each "Round {iteration} — {humanized outcome}" with the `outcome_detail` brief beneath. The tone
  * reuses `reviewerVerdictLabel`, and the reviewer labels match it, so the §14.1 verdict styling
  * holds.
- *
- * - The RUN-view `SidePanel` passes the node's full `invocations` and NO `provenance` — the render
- *   is byte-identical to the original local `LastRun` (its `SidePanel.test.tsx` is unchanged).
- * - The AUTHORING `TeamNodePanel` passes a one-element list of the node's latest run + `provenance`,
- *   which renders a muted relative-time tag ("ran 2h ago") beneath the brief.
+ * The run view's `RunNodeDrawer` passes the node's full `invocations`.
  */
-export function LastRun({
-  rounds,
-  provenance,
-}: {
-  rounds: LastRunRound[];
-  provenance?: { startedAt: string; runId: string };
-}) {
+export function LastRun({ rounds }: { rounds: LastRunRound[] }) {
   if (rounds.length === 0) {
     return <p className="tv-panel-note">No run yet.</p>;
   }
@@ -109,11 +100,6 @@ export function LastRun({
           );
         })}
       </ol>
-      {provenance && (
-        <p className="tv-lastrun__when" title={`run ${provenance.runId}`}>
-          ran {formatRelativeTime(provenance.startedAt)}
-        </p>
-      )}
     </>
   );
 }

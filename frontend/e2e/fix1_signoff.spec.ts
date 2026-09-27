@@ -47,7 +47,7 @@ async function nodeCount(page: Page): Promise<number> {
   return page.locator(".react-flow__node").count();
 }
 
-// A keyless account's canvas shows "Configure providers" in place of "Run this team". The checks
+// A keyless account's canvas disables "Run this team" (the "Can’t run" callout). The checks
 // that assert Run's state hold a DUMMY deepseek key first (deepseek serves both seats, so every node
 // the defaults stamp is covered; no run is launched, so the key is never used).
 async function holdDummyKey(page: Page): Promise<void> {
@@ -130,8 +130,9 @@ test("check3: an invalid graph greys out Run with reasons + flags the node, then
   await paletteAdd(page, "Worker");
   await expect(page.getByText(/Can.t run yet/)).toBeVisible({ timeout: 30_000 });
   await expect(runBtn).toBeDisabled();
-  // a reasons list renders and the offending node is flagged (invalid/orphan red-ring class).
-  await expect(page.locator(".tv-validity__lead")).toBeVisible();
+  // the canvas's warn callout says why (the reasons follow its "Can’t run yet." lead) and the
+  // offending node is flagged (invalid/orphan red-ring class).
+  await expect(page.getByTestId("run-blocked")).toHaveText(/Can.t run yet\.\s+\S/);
   await expect
     .poll(() => page.locator(".tv-node--orphan, .tv-node--invalid").count(), {
       timeout: 30_000,

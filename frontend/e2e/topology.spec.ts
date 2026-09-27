@@ -97,7 +97,7 @@ test("P1.8d: an invalid graph greys out Run with the reason and the server refus
 }) => {
   test.setTimeout(2 * 60 * 1000);
   await registerFresh(page, "topology-invalid");
-  // A keyless account's canvas shows "Configure providers" in place of "Run this team"; hold a DUMMY
+  // A keyless account's canvas disables "Run this team" (the "Can’t run" callout); hold a DUMMY
   // deepseek key (it serves both seats; this test never starts a run, so it is never used).
   const key = await page.request.post("/api/providers", {
     data: { provider: "deepseek", api_key: "dummy-deepseek-key-0000" },

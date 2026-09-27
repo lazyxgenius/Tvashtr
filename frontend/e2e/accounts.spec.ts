@@ -17,7 +17,7 @@ import { expect, test } from "@playwright/test";
 //   Home     — first time: "Welcome to Tvashtr…" + the "Get started" checklist ("N of 4 done").
 //   Keys     — Engines › API keys (#/engines/keys): "Provider"/"API key" + "Add key"; a saved key
 //              shows as `provider` + "Saved · •••• last4" (the secret is never shown).
-//   Canvas   — "the living canvas"; the toolbar's "Back to dashboard" arrow.
+//   Canvas   — "the living canvas"; the toolbar's "Back to teams" arrow.
 
 const SHOTS_DIR = process.env.TVASHTR_ACCOUNTS_SHOTS_DIR ?? "/tmp/tvashtr_accounts_shots";
 
@@ -67,10 +67,16 @@ test("accounts journey: landing → register → first-time Home → add key →
   await expect(page).toHaveURL(/#\/engines\/keys$/);
   const keys = page.locator("section[aria-labelledby='tv-engines-keys']");
   await expect(keys).toBeVisible({ timeout: 30_000 });
-  await keys.getByLabel("Provider", { exact: true }).fill("openrouter");
-  await keys.getByLabel("API key").fill("sk-or-e2e-fake-1234");
-  await keys.getByRole("button", { name: "Add key" }).click();
-  await expect(keys.locator(".tv-dash__prov-name")).toHaveText(["openrouter"], {
+  // The Add key sheet (ENG-61): pick openrouter from the provider list, paste, Save key.
+  await keys.getByRole("button", { name: "Add key", exact: true }).first().click();
+  const sheet = page.getByRole("dialog", { name: "Add an API key" });
+  await sheet.getByRole("button", { name: /^Provider / }).click();
+  await sheet.getByRole("textbox", { name: "Search providers" }).fill("openrouter");
+  await sheet.getByRole("option", { name: /^openrouter/ }).click();
+  await sheet.getByLabel("API key").fill("sk-or-e2e-fake-1234");
+  await sheet.getByRole("button", { name: "Save key" }).click();
+  await expect(sheet).toBeHidden({ timeout: 30_000 });
+  await expect(keys.getByTestId("engines-key-provider")).toHaveText(["openrouter"], {
     timeout: 30_000,
   });
   await expect(keys.getByText(/•••• 1234/)).toBeVisible();
@@ -93,7 +99,7 @@ test("accounts journey: landing → register → first-time Home → add key →
   await page.screenshot({ path: path.join(SHOTS_DIR, "step4-canvas.png") });
   console.log("[accounts-e2e] STEP 4 PASS — created a team → reached its canvas");
 
-  await page.getByRole("button", { name: "Back to dashboard" }).click();
+  await page.getByRole("button", { name: "Back to teams" }).click();
   await expect(nav).toBeVisible({ timeout: 30_000 });
   await expect(page).toHaveURL(/#\/(home)?$/);
   await expect(page.getByText(teamName).first()).toBeVisible({ timeout: 30_000 });

@@ -89,14 +89,14 @@ test("work-brief: the run-view panel surfaces each node's 'Last run' brief (thin
   await page.locator(`[data-id="${pmId}"]`).first().click();
   await expect(page.getByText("Drafted the spec from the idea.")).toBeVisible({ timeout: 30_000 });
   const thinkerShot = path.join(SHOTS_DIR, "thinker-last-run.png");
-  await page.locator(".tv-panel").screenshot({ path: thinkerShot });
+  await page.locator(".nd-drawer").screenshot({ path: thinkerShot });
   console.log(`[work-brief-e2e] THINKER panel brief visible; screenshot -> ${thinkerShot}`);
 
   // WORKER (Engineer): click -> the panel shows the files-changed brief + the step feed.
   await page.locator(`[data-id="${engId}"]`).first().click();
   await expect(page.getByText(WORKER_BRIEF).first()).toBeVisible({ timeout: 30_000 });
   const workerShot = path.join(SHOTS_DIR, "worker-last-run.png");
-  await page.locator(".tv-panel").screenshot({ path: workerShot });
+  await page.locator(".nd-drawer").screenshot({ path: workerShot });
   console.log(`[work-brief-e2e] WORKER panel brief visible; screenshot -> ${workerShot}`);
 
   expect(fs.existsSync(thinkerShot) && fs.existsSync(workerShot), "both screenshots saved").toBe(
