@@ -20,10 +20,11 @@ export function sameEmbeddingWeights(a: string, b: string): boolean {
   return weights(a) === weights(b);
 }
 
-/** Account Tools shelf one-liner — Domains MCP is on node Tools, not the library. */
+/** Account Tools shelf one-liner — agents get domains on their node or a domain's page, not here. */
 export function domainsMcpAccountToolsHint(): string {
   return (
-    "Domains MCP is enabled on each team node's Tools panel (not here). " +
-    "This shelf holds reusable MCP servers you reference from those panels."
+    "Domains aren’t added on this shelf: pick them in an agent’s “Domains this agent can " +
+    "search”, or from a domain’s Use in teams tab. This shelf holds reusable MCP servers you " +
+    "reference from node panels."
   );
 }

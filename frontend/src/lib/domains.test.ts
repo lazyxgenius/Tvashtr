@@ -43,10 +43,12 @@ describe("sameEmbeddingWeights (OQ-17)", () => {
 });
 
 describe("domains ask discoverability copy (#5)", () => {
-  it("account Tools shelf hint points to node Tools for Domains MCP", () => {
+  it("account Tools shelf hint points to the node's domain checklist and Use in teams", () => {
     const copy = domainsMcpAccountToolsHint();
-    expect(copy).toMatch(/Domains MCP/i);
-    expect(copy).toMatch(/node|Tools panel|team/i);
-    expect(copy).toMatch(/not here|library/i);
+    // The node's "Domains MCP" switch is gone: the checklist and the domain's tab replace it.
+    expect(copy).not.toMatch(/Domains MCP/i);
+    expect(copy).toMatch(/Domains this agent can search/);
+    expect(copy).toMatch(/Use in teams/);
+    expect(copy).toMatch(/aren’t added on this shelf/);
   });
 });

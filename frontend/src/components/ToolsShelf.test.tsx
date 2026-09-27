@@ -124,11 +124,11 @@ describe("buildServerConfig (pure)", () => {
 });
 
 describe("ToolsShelf (M-tools C7.C)", () => {
-  it("points operators to node Tools for Domains MCP", () => {
+  it("points operators to where agents get domains (not this shelf)", () => {
     render(<ToolsShelf />);
     const note = screen.getByRole("note", { name: /Domains MCP location/i });
-    expect(note.textContent).toMatch(/Domains MCP/i);
-    expect(note.textContent).toMatch(/node|Tools panel/i);
+    expect(note.textContent).toMatch(/Domains this agent can search/);
+    expect(note.textContent).toMatch(/Use in teams/);
   });
 
   // ── existing behaviors (unchanged) ──
@@ -229,7 +229,9 @@ describe("ToolsShelf (M-tools C7.C)", () => {
     await waitFor(() => screen.getByText("remotesrv"));
     fireEvent.click(screen.getByRole("button", { name: "Edit remotesrv" }));
     // transport flips to Remote and the field becomes URL, pre-filled from server_config
-    expect(screen.getByRole("button", { name: "Remote" }).className).toContain("tv-seg__btn--active");
+    expect(screen.getByRole("button", { name: "Remote" }).className).toContain(
+      "tv-seg__btn--active",
+    );
     expect(screen.getByLabelText<HTMLInputElement>("URL").value).toBe("https://ex/mcp");
   });
 
