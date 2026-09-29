@@ -2,7 +2,7 @@ import fs from "node:fs";
 
 import { type Page, expect, test } from "@playwright/test";
 
-import { paletteAdd } from "./_canvas";
+import { openNodeDrawer, paletteAdd } from "./_canvas";
 import { openTeamViaPalette, registerFresh } from "./_home";
 import { openMyTeam } from "./_myTeam";
 
@@ -170,11 +170,12 @@ test("check4: the palette drops a blank Agent; the drawer's Templates pre-fill i
   await selectTeam(page, name);
   await expect.poll(() => nodeCount(page), { timeout: 30_000 }).toBe(2); // blank skeleton: thinker→Ship
 
-  // Ruling 2: the palette's "Agent" chip adds a blank worker and opens its drawer.
+  // Ruling 2: the palette's "Agent" chip adds a blank worker; open its drawer.
   await paletteAdd(page, "Agent");
   await expect.poll(() => nodeCount(page), { timeout: 30_000 }).toBe(3);
-  const panel = page.getByRole("complementary", { name: / settings$/ });
-  await expect(panel).toBeVisible({ timeout: 30_000 });
+  const dropped = (await (await request.get(`/api/teams/${teamId}/graph`)).json()) as Graph;
+  const agentId = dropped.nodes.find((n) => n.kind === "agent")!.id;
+  const panel = await openNodeDrawer(page, agentId);
 
   // The role starting points live in the drawer's Templates — all four are offered.
   await panel.getByRole("button", { name: "Templates" }).click();

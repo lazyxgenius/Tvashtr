@@ -1,6 +1,6 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
-import { applyDrawerTemplate, paletteAdd } from "./_canvas";
+import { applyDrawerTemplate, openNodeDrawer, paletteAdd } from "./_canvas";
 import { runFromCanvas } from "./_composer";
 import { registerFresh } from "./_home";
 import { seedProviderKeys } from "./_keys";
@@ -157,9 +157,11 @@ test("P1.8d: author root thinker → Engineer → Ship from a blank team, Run it
   await expect
     .poll(async () => (await graphOf(request, teamId)).nodes.length, { timeout: 30_000 })
     .toBe(3);
-  await applyDrawerTemplate(page, "Engineer");
   const withWorker = await graphOf(request, teamId);
   const engineer = withWorker.nodes.find((n) => n.kind === "agent")!;
+  const drawer = await openNodeDrawer(page, engineer.id);
+  await applyDrawerTemplate(page, drawer, "Engineer");
+  await drawer.getByRole("button", { name: "Close panel" }).click();
 
   // Wire root thinker → Engineer → Ship (the same team-edge endpoint the connect-gesture calls);
   // drop the blank skeleton's thinker → Ship edge so there's a single spec-first path.

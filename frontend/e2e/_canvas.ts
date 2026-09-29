@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
  * The canvas palette (f1b) is an "Add to canvas" menu that opens on hover: open it, then pick a
@@ -12,13 +12,23 @@ export async function paletteAdd(page: Page, label: string): Promise<void> {
   await menu.getByRole("button", { name: label, exact: true }).click();
 }
 
-/**
- * Ruling 2: role starting points come from the drawer's Templates. In the open agent drawer, apply
- * the `title` template (e.g. "Engineer") to a blank agent and Save.
- */
-export async function applyDrawerTemplate(page: Page, title: string): Promise<void> {
+/** Click a node's card on the canvas and return its open drawer ("<Name> settings"). */
+export async function openNodeDrawer(page: Page, nodeId: string): Promise<Locator> {
+  await page.locator(`.react-flow__node[data-id="${nodeId}"]`).click();
   const panel = page.getByRole("complementary", { name: / settings$/ });
   await expect(panel).toBeVisible({ timeout: 30_000 });
+  return panel;
+}
+
+/**
+ * Ruling 2: role starting points come from the drawer's Templates. In the open agent drawer
+ * `panel`, apply the `title` template (e.g. "Engineer") and Save.
+ */
+export async function applyDrawerTemplate(
+  page: Page,
+  panel: Locator,
+  title: string,
+): Promise<void> {
   await panel.getByRole("button", { name: "Templates" }).click();
   await page
     .getByRole("menu", { name: "Templates" })
