@@ -6,10 +6,21 @@ artboards, git-excluded), per the brief `prompts/revamp-e2e.md`.
 
 ## Round 2 — revamp-e2e session (start here to resume)
 
-**Next (revamp-finish session, brief `prompts/revamp-e2e.md` Sidechat-16 version):** Domains
-(`feat/revamp-domains`: rulings 1 and 2 are on the branch; its review findings are being fixed; migration
-`0042` + `team_run.py`, so the deploy pauses for the operator's Neon snapshot and the in-flight prod
-runs) → Phase 3 close-out.
+**Next (revamp-finish session, brief `prompts/revamp-e2e.md` Sidechat-16 version):** the Domains
+deploy is paused at Ship Protocol step 6 — see NEEDS_HUMAN below; after the operator's "go": `fly
+deploy`, smoke, `desktop-v0.12.0`, DMG check, then Phase 3 close-out.
+
+### NEEDS_HUMAN (2026-09-30 ~01:35 IST) — Domains deploy paused at Ship Protocol step 6
+`main` has Domains merged and pushed; it is NOT deployed (prod still runs Fly v27 = F6). Domains adds
+migration `0042_domain_message_meta` (one nullable JSONB column `domain_messages.meta`, no backfill;
+the Fly release_command applies it) and new steps in `team_run.py`. Before the deploy the operator:
+1. Takes a Neon snapshot of the prod database: Neon console → the Tvashtr project → Branches → New
+   branch → parent `main`, "Current point in time" (e.g. `pre-0042-2026-09-30`).
+2. Stops or waits out every run in flight on https://tvashtr.fly.dev (Home › Running now), so no run
+   replays across the new `team_run.py`.
+Then tell the session "go". Rollback if needed: `fly deploy --image
+registry.fly.io/tvashtr:deployment-01M3Q8WMF1XTADQDEDDDN8HXW9` (v27; 0042 is additive, so v27 runs on
+the migrated database).
 
 ### NEEDS_HUMAN (2026-09-26 ~14:55 IST) — RESOLVED 15:04 IST (new key in `.env`, `make seed`)
 The OpenAI key in `.env` (`OPENAI_API_KEY`, ends `…IgoA`, also the operator account's saved openai
@@ -30,7 +41,55 @@ replaced. Remedy: new key on the `OPENAI_API_KEY` line of `.env` → `make seed`
 | F5 — Agent panel + canvas (+ `fix/integration-review`) | `feat/revamp-f5-panel` | `b33c630` | v24 | `desktop-v0.8.0` — latest release; DMG app 0.8.0 bundles `index-DUzUTMWb.js` = the live site |
 | Desktop app screens | `feat/revamp-desktop-app` | `9e2aaa0` | v25 | `desktop-v0.9.0` — latest release; DMG app 0.9.0 bundles `index-O26nkR8a.js` = the live site |
 | Website pages | `feat/revamp-website` | `c7848be` | v26 | `desktop-v0.10.0` — latest release; DMG app 0.10.0 bundles `index-gm2lGZ9k.js` = the live site |
-| F6 — Focus view + Documents (+ Q20 run drawer) | `feat/revamp-f6-focus-docs` | recorded at the next ship | recorded at the next ship | `desktop-v0.11.0` |
+| F6 — Focus view + Documents (+ Q20 run drawer) | `feat/revamp-f6-focus-docs` | `dc8fe9c` | v27 | `desktop-v0.11.0` — latest release; DMG app 0.11.0 bundles `index-CDpUAiQy.js` = the live site |
+| Domains (+ architect rulings 1 and 2) | `feat/revamp-domains` | recorded at deploy (Phase 3) | recorded at deploy (Phase 3) | `desktop-v0.12.0` (tagged at deploy) |
+
+### Domains — what shipped (`feat/revamp-domains`)
+- Domains pages: the list and its nav group; a domain's page (header, setup and summary strips,
+  Sources table with preview, pieces and download); the New domain dialog (name, starting point,
+  reading key, files); adding files by drag or pick; files are read automatically once a reading key
+  is saved; ⋯ menus (rename, duplicate, delete a domain, delete a file with Undo); Ask (cited
+  answers, numbered sources, follow-ups, not-covered answers, answer model, Clear chat); Quality (score
+  cards, compare, background test runs, test questions); Settings (four cards, save bar, Save and run
+  tests, re-reads when the reading model or piece size changes); Use in teams (its steps and agents,
+  Add as a step, per-domain agent access).
+- Canvas: the Query domain node (drawer, card, passes its answer to the spec, can stop on no answer)
+  and an agent's "Domains this agent can search" checklist (replaces the round-1 switch, OQ-2).
+  Architect ruling 2: "+ Add to canvas" and the inline "+" picker are Agent · Gate · Ship · Stop ·
+  Query domain (no Presets row; Agent = a blank worker; role starting points from the drawer's
+  Templates; the API still takes `thinker` and `preset`); an Agent at the start can be made the
+  starting thinker from the "Can't run yet" callout.
+- Backend: migration `0042_domain_message_meta` (one nullable JSONB column, no backfill); new
+  `team_run.py` steps `domain_query_step_v2` and `append_domain_answer_to_spec_step` behind a v2
+  branch (legacy `domain_query_step` byte-identical; OQ-13 keeps legacy lookups out of the chat as
+  planned); every new route owner-scoped with a cross-account 404 test.
+- Independent review: no cross-account leak; 10 findings — fixed test-first: a domain test run could
+  stay "running" forever (a search crash now fails the case; a stale run reads as failed); a reading
+  model change raced the reader (now under the domain's lock); no UI way out of a worker at the start
+  (the callout's "Make it the starting thinker"; the empty-team message names what the canvas
+  offers); Desktop 0.10.0's old Ingest button double-read files (it now joins the automatic read);
+  Query domain nodes accepted another account's domain id (now 404); the legacy all-domains switch
+  showed nothing ticked; answer-model errors hid the reason and Undo re-sent the whole config.
+  Added the missing cross-account tests (Add step, key-save resume, run launch, the Domains MCP, the
+  v2 step). Not changed: #5 (OQ-13 explicitly keeps legacy node lookups out of the chat), #9 (a
+  concurrent same-name create — needs a unique index, i.e. a migration; follow-up), #10 (Run tests
+  after a re-read of a file already being read — not a small fix; follow-up).
+- Architect ruling 1: the 8 canvas boards waive only F5's shared chrome (Run button, drawer header
+  name, tabs, save bar, endpoint card), each naming the F5 board; DmF-Canvas-2's eyebrow measured
+  9px/600. DmF-Canvas-1's menu chips are at 0 drift; its label keys to the trigger on Desktop only
+  (measured 11px/600, recorded with the measurement).
+- Merge of `main` (F6): Review changes reads domain access (Off, All domains, N domains) instead of
+  the round-1 switch; F5's panel boards and F6's Focus-Skills no longer find that switch (noted).
+- Gates at ship: `make test` 2087 passed / 1 xfailed on `tvashtr_gate` (the first run failed 13
+  domain tests only because `tvashtr_gate` was still at 0041; `alembic upgrade head` → re-run green);
+  vitest 1976; tsc 0; build; desktop 138; docker; eslint 111 + prettier 123 + ruff 45 clean; e2e
+  steering, tools_c7c, capability_edit, team_edit, endpoint_edit, memory_shelf, node_ask, domains (its
+  sign-up moved to `registerFresh` — the old landing is gone), fix1_signoff (6), topology (2, a real
+  ship), tools-c7a, revamp-shell; `make demo-proof` C1–C12 PR https://github.com/lazyxgenius/trade_mcp/pull/28.
+- Parity: `docs/superpowers/parity/domains.txt` 84 boards web + Desktop at 0 size/type drift or a
+  ruling-1 waiver; `panel.txt` 130 and `focus-docs.txt` 34 lines at 0 size/type drift.
+- Follow-ups: domain files live under /tmp on Fly (a volume is the operator's call); #9 and #10 above;
+  F6 review #5 (a whole-line delete shows no band in the focus editor).
 
 ### F6 Focus view + Documents — what shipped (`feat/revamp-f6-focus-docs`)
 - Documents: the canvas toolbar's Documents toggle and count, doc chips on the cards, the Documents
