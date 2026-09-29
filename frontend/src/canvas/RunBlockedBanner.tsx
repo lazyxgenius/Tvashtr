@@ -7,9 +7,12 @@ import type { RunBlock } from "./runBlocked";
 export function RunBlockedBanner({
   block,
   onOpenEngines,
+  onMakeThinker,
 }: {
   block: RunBlock;
   onOpenEngines?: () => void;
+  /** An Agent is the first node: the palette has no Thinker, so the callout offers the fix. */
+  onMakeThinker?: () => void;
 }) {
   return (
     <div className="cv-blocked" role="status" data-testid="run-blocked">
@@ -19,6 +22,11 @@ export function RunBlockedBanner({
       <span className="cv-blocked__text">
         <b>{block.title}</b> {block.detail}
       </span>
+      {onMakeThinker && (
+        <Button variant="primary" size="sm" onClick={onMakeThinker}>
+          Make it the starting thinker
+        </Button>
+      )}
       {block.openEngines && onOpenEngines && (
         <Button variant="primary" size="sm" onClick={onOpenEngines}>
           Open Engines

@@ -48,6 +48,7 @@ import {
   type SubscriptionProviderId,
   type SubscriptionStatus,
 } from "./lib/engines";
+import { patchAgentNode } from "./lib/api/nodes";
 import type { EdgeConfirm } from "./canvas/EdgeRoleEditor";
 import { nextDropPosition, withLayout } from "./lib/topology";
 import { requestHomeAction } from "./lib/homeActions";
@@ -390,6 +391,24 @@ export default function App({
     [currentTeamId, loadTeam],
   );
 
+  // An Agent at the start (`root_not_thinker`): the palette has no Thinker and the drawer no
+  // capability control, so the callout's one fix flips that node to a thinker (the backend allows it).
+  const handleMakeThinker = useCallback(
+    async (nodeId: string) => {
+      if (!currentTeamId) return;
+      setEditBusy(true);
+      try {
+        await patchAgentNode(currentTeamId, nodeId, { capability: "thinker" });
+        await loadTeam(currentTeamId);
+      } catch {
+        if (mountedRef.current) setTeamError(true);
+      } finally {
+        if (mountedRef.current) setEditBusy(false);
+      }
+    },
+    [currentTeamId, loadTeam],
+  );
+
   // Persist a node's dragged position (best-effort, no reload — validity is layout-independent).
   // Mirror it into local state so the canvas stays consistent without a refetch/snap.
   const handleMoveNode = useCallback(
@@ -658,6 +677,17 @@ export default function App({
   const openEngines = onBackToDashboard
     ? () => guardLeave(() => onBackToDashboard("engines"))
     : undefined;
+  // Only an Agent can become the thinker (a Query domain or a control node at the start can't).
+  const rootAgentId =
+    validityErrors.find(
+      (e) =>
+        e.code === "root_not_thinker" &&
+        teamGraph?.nodes.some((n) => n.id === e.node_id && n.kind === "agent"),
+    )?.node_id ?? null;
+  const makeThinker =
+    runBlock && !teamRunnable && rootAgentId
+      ? () => void handleMakeThinker(rootAgentId)
+      : undefined;
 
   return (
     <>
@@ -735,7 +765,13 @@ export default function App({
             busy={editBusy}
             selectedNodeId={authoring ? selectedNodeId : undefined}
           />
-          {runBlock && <RunBlockedBanner block={runBlock} onOpenEngines={openEngines} />}
+          {runBlock && (
+            <RunBlockedBanner
+              block={runBlock}
+              onOpenEngines={openEngines}
+              onMakeThinker={makeThinker}
+            />
+          )}
         </div>
         {authoring
           ? selectedTeamNode &&

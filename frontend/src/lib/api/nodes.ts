@@ -5,7 +5,7 @@
  * tools or skills. Every call reports whether the backend answered, and every answer is shape-checked
  * here so one unexpected answer never blanks the drawer.
  */
-import { ApiError, apiUrl, type TeamGraphNode } from "../api";
+import { ApiError, apiUrl, type Capability, type TeamGraphNode } from "../api";
 import { reportFetchFailed, reportFetchOk } from "../backendStatus";
 import { type Memory, type MemoryStatus, parseMemory } from "./memory";
 import { apiRequest } from "./runs";
@@ -139,6 +139,8 @@ export interface ContextPreviewDraft {
  * (`title`, `description`, `reads_default`, `fallback_model`, `output_schema`).
  */
 export interface AgentPatch {
+  /** Thinker ↔ worker (the canvas's "Make it the starting thinker"; the backend keeps the root a thinker). */
+  capability?: Capability;
   prompt?: string;
   model?: string;
   title?: string | null;
