@@ -551,6 +551,12 @@ def update_domain(
     their pieces until re-read (DM-90); else ``none``. A domain with no files needs none."""
     reread: dict = {"needed": "none", "reason": None}
     with session_scope() as session:
+        if config is not None:
+            # The reader's lock: a model change never interleaves with a batch being stored or a
+            # file being finished (``domain_read``), so no file is left ready with stale vectors.
+            from tvashtr.control_plane.domain_read import _lock
+
+            _lock(session, domain_id)
         row = session.execute(
             select(Domain).where(Domain.id == domain_id, Domain.owner_id == owner_id)
         ).scalar_one_or_none()

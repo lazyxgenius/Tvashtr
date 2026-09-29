@@ -7,13 +7,16 @@ meant (``reread``), the detail carries the running re-read (``rereading``), and 
 a model change is being read.
 """
 
+import threading
+import time
 import uuid
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from tvashtr.control_plane import domain_read
+from tvashtr.control_plane import domains as domains_cp
 from tvashtr.control_plane.domain_embedding import (
     READ_PIECES_PER_SECOND,
     read_seconds,
@@ -359,3 +362,140 @@ def test_a_reread_with_the_same_model_keeps_the_files_searchable(started):
     with session_scope() as s:
         assert count_ready_chunks(s, uuid.UUID(did)) == 4
     assert len(retrieve_domain_chunks(uuid.UUID(did), [0.1] * 1536, 8)) == 4
+
+
+# ---- review finding 2: a model change is serialized with the reader (the domain's lock) ----
+#
+# Each test pauses one side at the racy point in a thread, lets the other side run until it either
+# finishes or waits on a database lock (read from ``pg_stat_activity``), then lets the first go on.
+# Without the domain's advisory lock on both sides the second side never waits, so the stale write
+# lands; with it, the second side waits and the two run one after the other.
+
+
+def _until_a_lock_waiter_or(done: threading.Event, timeout: float = 10.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and not done.is_set():
+        with session_scope() as s:
+            waiting = s.execute(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity"
+                    " WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                )
+            ).scalar_one()
+        if waiting:
+            return
+        time.sleep(0.02)
+
+
+def _in_thread(fn, *args, **kwargs) -> tuple[threading.Thread, threading.Event, dict]:
+    done, out = threading.Event(), {}
+
+    def _run():
+        try:
+            out["value"] = fn(*args, **kwargs)
+        except BaseException as exc:  # surfaced by the test's asserts
+            out["error"] = exc
+        finally:
+            done.set()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return t, done, out
+
+
+def test_a_model_change_mid_finish_leaves_no_file_ready_without_vectors(monkeypatch):
+    """Interleaving: the model change clears the vectors while the reader is finishing the file.
+    The reader must see the cleared vectors (file back to waiting), never mark it ready."""
+    c, owner = _fresh()
+    _key(owner)
+    _key(owner, "gemini")
+    did, cfg = _domain(c)
+    doc = _read_doc(did, "a.md")
+    with session_scope() as s:
+        s.get(DomainDocument, uuid.UUID(doc)).ingest_status = "indexing"
+
+    paused, release = threading.Event(), threading.Event()
+    real = domains_cp._apply_domain_aggregates
+
+    def _slow(session, domain):
+        session.flush()  # the model change's writes are made; it has not committed yet
+        paused.set()
+        release.wait(10)
+        return real(session, domain)
+
+    monkeypatch.setattr(domains_cp, "_apply_domain_aggregates", _slow)
+    change, change_done, change_out = _in_thread(
+        domains_cp.update_domain,
+        owner,
+        uuid.UUID(did),
+        config=_model(cfg, "gemini/gemini-embedding-001"),
+    )
+    assert paused.wait(10)
+    finish, finish_done, finish_out = _in_thread(
+        domain_read.finish_document_step, str(owner), did, doc, None
+    )
+    _until_a_lock_waiter_or(finish_done)
+    release.set()
+    change.join(10)
+    finish.join(10)
+    assert "error" not in change_out and "error" not in finish_out
+    assert _embedded(doc) == 0
+    assert _doc(doc).ingest_status != "ready"
+    assert finish_out["value"] == doc  # back to waiting, and claimed again for the new model
+
+
+def test_a_batch_checked_against_the_old_model_is_not_stored_after_the_change(monkeypatch):
+    """Interleaving: the reader checks the model, the model change commits, then the reader writes
+    its old-model vectors. With the lock the change waits until the batch is written, then clears
+    it — no old-model vector survives the change."""
+    c, owner = _fresh()
+    _key(owner)
+    _key(owner, "gemini")
+    did, cfg = _domain(c)
+    doc = _read_doc(did, "a.md")
+    with session_scope() as s:
+        s.get(DomainDocument, uuid.UUID(doc)).ingest_status = "indexing"
+        for ch in s.execute(select(DomainChunk).where(DomainChunk.document_id == uuid.UUID(doc))):
+            ch[0].embedding = None
+
+    monkeypatch.setattr(
+        domain_read,
+        "embed",
+        lambda req: EmbeddingResult(
+            vectors=[[0.01] * 1536 for _ in req.input],
+            model=req.model,
+            prompt_tokens=1,
+            total_tokens=1,
+            cost_usd=0.0,
+            raw_provider="openai",
+            latency_ms=1.0,
+        ),
+    )
+    monkeypatch.setattr(domain_read, "resolve_owner_api_key", lambda oid, model: "sk-test")
+    monkeypatch.setattr(domain_read, "record_embedding_cost", lambda **kwargs: None)
+    paused, release = threading.Event(), threading.Event()
+    real, calls = domain_read.reading_model_of, []
+
+    def _slow(domain):
+        calls.append(1)
+        model = real(domain)
+        if len(calls) == 2:  # the re-check just before the vectors are written
+            paused.set()
+            release.wait(10)
+        return model
+
+    monkeypatch.setattr(domain_read, "reading_model_of", _slow)
+    batch, _, batch_out = _in_thread(domain_read.embed_batch_step, str(owner), did, doc, 0, 2)
+    assert paused.wait(10)
+    change, change_done, change_out = _in_thread(
+        domains_cp.update_domain,
+        owner,
+        uuid.UUID(did),
+        config=_model(cfg, "gemini/gemini-embedding-001"),
+    )
+    _until_a_lock_waiter_or(change_done)
+    release.set()
+    batch.join(10)
+    change.join(10)
+    assert batch_out.get("value") == {"error": None} and "error" not in change_out
+    assert _embedded(doc) == 0

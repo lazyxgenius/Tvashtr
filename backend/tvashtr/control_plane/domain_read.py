@@ -394,6 +394,7 @@ def embed_batch_step(owner_id: str, domain_id: str, document_id: str, start: int
             if len(vec) != want:
                 return {"error": f"embedding dim {len(vec)} != {want}"}
         with session_scope() as session:
+            _lock(session, did)  # a model change waits until this batch is stored, then clears it
             current = _owned_domain(session, oid, did)
             if current is None or reading_model_of(current) != model:
                 # The model changed while this batch was out: these vectors can't be compared
