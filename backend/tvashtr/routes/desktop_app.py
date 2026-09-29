@@ -14,6 +14,7 @@ The logic lives in :mod:`tvashtr.control_plane.desktop_auth`, ``desktop_release`
 
 import uuid
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
@@ -85,16 +86,24 @@ def desktop_start(
         if user is not None:
             code = desktop_auth.make_code(user.id, challenge)
             link = desktop_auth.done_link(state=state, code=code)
-            return desktop_auth.return_page(link, "signed_in")
-    url = desktop_auth.authorize_url(desktop_auth.sign_state(challenge, state))
+            other = "/api/auth/desktop/start?" + urlencode(
+                {"challenge": challenge, "state": state, "account": "github"}
+            )
+            return desktop_auth.confirm_page(link, login=user.display_name, other_account_url=other)
+    nonce = desktop_auth.new_flow_nonce()
+    url = desktop_auth.authorize_url(
+        desktop_auth.sign_state(challenge, state, nonce), select_account=account == "github"
+    )
     if not url:
         # Hosted mode without a GitHub App client id: nothing to send the browser to.
         return desktop_auth.return_page(desktop_auth.DONE_LINK, "broken", status_code=400)
-    return RedirectResponse(
+    response = RedirectResponse(
         url=url,
         status_code=302,
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
+    desktop_auth.set_flow_cookie(response, nonce)
+    return response
 
 
 class DesktopExchangeRequest(BaseModel):
