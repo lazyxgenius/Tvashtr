@@ -4,13 +4,16 @@
  * Engines. The mounted Engines page listens and opens its sheet; when none is mounted, the request
  * waits here, the page goes back to Engines, and Engines opens the sheet as it mounts.
  */
-import { type EnginesTab, navigate } from "../../lib/nav";
+import { type EnginesTab, NAVIGATION_KEPT, navigate } from "../../lib/nav";
 import type { AddKeyOptions } from "./ApiKeysPage";
 
 type OpenSheet = (provider: string | undefined, options: AddKeyOptions | undefined) => void;
 
 let listener: OpenSheet | null = null;
 let pending: { provider?: string; options?: AddKeyOptions } | null = null;
+window.addEventListener(NAVIGATION_KEPT, () => {
+  pending = null;
+});
 
 /** The mounted Engines page opens the sheet for every request (and one left waiting). */
 export function listenForAddKey(open: OpenSheet): () => void {

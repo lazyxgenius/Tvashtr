@@ -135,7 +135,17 @@ function nodeCard(page: Page, roleTitle: string): Locator {
 /** Open a node's config drawer the way a user does: click its model strip. */
 async function openNodeDrawer(page: Page, roleTitle: string): Promise<void> {
   await nodeCard(page, roleTitle).locator(".rf-node__model").click();
-  await expect(page.locator("input[aria-label='Fallback model']")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("complementary", { name: `${roleTitle} settings` })).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+/** The drawer's backup model, read from the Advanced summary ("Backup model: <slug|none> · …"). */
+async function backupModelOf(page: Page, roleTitle: string): Promise<string> {
+  const drawer = page.getByRole("complementary", { name: `${roleTitle} settings` });
+  const summary = (await drawer.getByRole("button", { name: /^Advanced/ }).textContent()) ?? "";
+  const slug = /Backup model: (.+?) · Output format/.exec(summary)?.[1] ?? "";
+  return slug === "none" ? "" : slug;
 }
 
 /** The slices of the API payloads this harness reads. Typed so `String(...)` never stringifies an
@@ -148,18 +158,6 @@ interface TrajectoryRow {
   role_name?: string;
   outcome?: string;
   outcome_label?: string;
-}
-
-/** Expand a `<details>` if it is closed.
- *
- * `getAttribute("open")` answers `""` for `<details open>` — falsy in JS — so a naive
- * `if (!open) click()` guard toggles an already-open block SHUT, and the rows inside then report
- * `innerText === ""` because innerText is layout-dependent. Compare against `null`. */
-async function openDetails(details: Locator): Promise<void> {
-  if ((await details.getAttribute("open")) === null) {
-    await details.locator("summary").click();
-  }
-  await expect(details).toHaveAttribute("open", "");
 }
 
 async function jsonOf<T>(api: APIRequestContext, url: string): Promise<T> {
@@ -394,7 +392,7 @@ test.describe("M-proof", () => {
       // nothing, so the fallback walks the same capability as the primary.
       for (const [role, capability] of roles) {
         await openNodeDrawer(page, role);
-        const value = await page.locator("input[aria-label='Fallback model']").inputValue();
+        const value = await backupModelOf(page, role);
         console.log(`[C6] ${role} (${capability}) fallback model value = ${JSON.stringify(value)}`);
         expect(value, `${role} fallback model (${capability} seat; value, not placeholder)`).toBe(
           expected[capability].fallback,
@@ -407,20 +405,24 @@ test.describe("M-proof", () => {
       await shot(page, 6, "fallback-model");
 
       // ---- C7: caveman on the workers ---------------------------------------------------------
-      for (const role of ["Engineer", "Reviewer"]) {
+      // The skills live on the drawer's Skills & tools tab: one row per source, badged by kind.
+      const skillsOf = async (role: string) => {
         await openNodeDrawer(page, role);
-        const skills = page.locator("details.tv-skills");
-        await expect(skills.locator("summary"), `${role} skills summary`).toHaveText("Skills · 1");
-        await openDetails(skills);
-        await expect(skills.locator(".tv-skills__rows")).toBeVisible();
-        const labels = (await skills.locator(".tv-skills__label").allInnerTexts()).map((s) =>
-          s.trim(),
+        const drawer = page.getByRole("complementary", { name: `${role} settings` });
+        await drawer.getByRole("tab", { name: /^Skills & tools/ }).click();
+        return drawer.getByRole("region", { name: /^Skills/ });
+      };
+      for (const role of ["Engineer", "Reviewer"]) {
+        const skills = await skillsOf(role);
+        await expect(skills.getByRole("heading"), `${role} skills heading`).toHaveText(
+          /^Skills\s*1/,
         );
+        const rows = skills.getByRole("listitem");
+        const labels = (await rows.locator(".nd-skill__name").allInnerTexts()).map((s) => s.trim());
         console.log(`[C7] ${role} skills = ${JSON.stringify(labels)}`);
         expect(labels, `${role} skill rows`).toEqual(["caveman"]);
-        // The badge renders capitalised ("Inline"); the brief wrote the underlying `type` value.
-        // Assert the rendered DOM, case-insensitively, on the ROW rather than the whole block.
-        await expect(skills.locator(".tv-skills__row").first()).toContainText(/inline/i);
+        // An inline skill is badged "Custom".
+        await expect(rows.first()).toContainText("Custom");
       }
       console.log(
         "[C7] PASS — Engineer and Reviewer each carry exactly one inline 'caveman' skill",
@@ -428,13 +430,11 @@ test.describe("M-proof", () => {
       await shot(page, 7, "caveman-worker");
 
       // ---- C8: caveman NOT on the thinker -----------------------------------------------------
-      await openNodeDrawer(page, "Product manager");
-      const pmSkills = page.locator("details.tv-skills");
-      await expect(pmSkills.locator("summary"), "PM skills summary").toHaveText("Skills");
-      await openDetails(pmSkills);
-      const pmLabels = await pmSkills.locator(".tv-skills__label").allInnerTexts();
-      console.log(`[C8] PM skills = ${JSON.stringify(pmLabels)}`);
-      expect(pmLabels, "the thinker must carry NO stamped skill").toEqual([]);
+      const pmSkills = await skillsOf("Product manager");
+      await expect(
+        pmSkills.getByText("No skills yet"),
+        "the thinker carries NO stamped skill",
+      ).toBeVisible();
       console.log("[C8] PASS — the caveman stamp did not leak onto the thinker");
       await shot(page, 8, "caveman-not-thinker");
 
@@ -641,6 +641,12 @@ test.describe("M-proof", () => {
     } finally {
       // ---- C12: cleanup — delete the team, never the PR (the PR is the artifact) --------------
       try {
+        // An account with no runs when the proof began saw Home's first-time checklist, and the
+        // browser remembers that (localStorage) so the layout never flips mid-session. The account
+        // now has a run, so a browser without that memory opens the main Home and its Teams
+        // section — forget it, as a fresh browser would (revamp-finish: without this C12 failed
+        // every other proof, after a successful C12 had deleted the teams and their runs).
+        await page.evaluate(() => window.localStorage.removeItem("tv.home.getStarted.shown"));
         await page.goto("/");
         const teamsSection = page.locator("section[aria-label='Teams']");
         await expect(teamsSection).toBeVisible({ timeout: 30_000 });

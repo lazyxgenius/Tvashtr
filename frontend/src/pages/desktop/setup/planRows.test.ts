@@ -11,6 +11,7 @@ import {
   planRowView,
   planRowViews,
   prePickProvider,
+  runnableKeys,
   savedKeysLine,
   usePlanCopy,
 } from "./planRows";
@@ -255,5 +256,24 @@ describe("API keys (DT-26)", () => {
         { provider: "xai", key_last4: "77aa" },
       ]),
     ).toBe("anthropic, xai keys saved");
+  });
+});
+
+describe("runnableKeys (review finding: a key that serves nothing is no way to run)", () => {
+  const dir = [
+    { provider: "nvidia_nim", serves_models: false },
+    { provider: "anthropic", serves_models: true },
+  ];
+  it("drops keys whose provider serves no model and keeps the rest", () => {
+    const keys = [
+      { provider: "nvidia_nim", key_last4: "1234" },
+      { provider: "anthropic", key_last4: "9c1e" },
+      { provider: "mistral", key_last4: "7777" }, // an "Other" prefix: not in the directory
+    ];
+    expect(runnableKeys(keys, dir).map((k) => k.provider)).toEqual(["anthropic", "mistral"]);
+  });
+  it("an unreadable directory blocks nobody", () => {
+    const keys = [{ provider: "nvidia_nim", key_last4: "1234" }];
+    expect(runnableKeys(keys, [])).toEqual(keys);
   });
 });

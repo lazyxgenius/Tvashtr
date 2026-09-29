@@ -41,7 +41,7 @@ import {
 } from "../../lib/api/engines";
 import { isDesktopApp } from "../../lib/desktopRepos";
 import type { SubscriptionStatus } from "../../lib/engines";
-import { publishBadges } from "../../lib/workspaceStatus";
+import { publishBadges, refreshBadges } from "../../lib/workspaceStatus";
 import { enginesBridge, readLiveStatuses } from "./engineBridge";
 import { type EngineInputs, type Surface, engineBadges } from "./engineModel";
 
@@ -211,6 +211,7 @@ export function EnginesDataProvider({ children }: { children: ReactNode }) {
         ...prev,
         subs: prev.subs.map((s) => (s.provider === status.provider ? status : s)),
       });
+      void refreshBadges(); // Home's "Needs you" counts setup gaps too
     },
     [apply],
   );
@@ -229,6 +230,7 @@ export function EnginesDataProvider({ children }: { children: ReactNode }) {
     (keys: SavedKey[]) => {
       keysVersion.current += 1;
       apply({ ...current.current, keys });
+      void refreshBadges(); // Home's "Needs you" counts setup gaps too
     },
     [apply],
   );

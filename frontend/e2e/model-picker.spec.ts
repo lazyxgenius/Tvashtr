@@ -15,11 +15,14 @@ import { openMyTeam } from "./_myTeam";
 // Revamp round 1: the account registers through the API (the email sign-up form is hidden in the
 // hosted posture .env sets), the team is created (new accounts start with none), and the saved keys
 // are read back on Engines › API keys (the old dashboard's providers section).
+// Revamp round 2 (F5 G4): the drawer's model picker groups models by provider (a listbox each) for the
+// node's seat, with an inline key field for a provider with no key yet; the recommendation hint is the
+// same-model advisory under the Model row.
 
 const SHOTS_DIR = process.env.TVASHTR_MODEL_PICKER_SHOTS_DIR ?? "/tmp/tvashtr_model_picker_shots";
 const SEEDED = ["openrouter", "nvidia_nim", "openai"];
 
-test("model picker: provider-gated picker + inline add + the same-model reviewer hint", async ({
+test("model picker: seat-grouped picker + inline key add + the same-model advisory", async ({
   page,
 }) => {
   test.setTimeout(2 * 60 * 1000);
@@ -45,29 +48,45 @@ test("model picker: provider-gated picker + inline add + the same-model reviewer
   await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
   console.log("[model-picker-e2e] CHECK 1 PASS — registered, seeded providers, opened the canvas");
 
-  // CHECK 2 — click the Engineer node → the panel: the Provider select lists the seeded providers AND
-  // the Model field shows the node's model.
+  // CHECK 2 — click the Engineer node → its drawer: the Model button opens the picker, whose groups
+  // are the worker seat's providers with how this account runs each. NIM serves no seat, so it is
+  // never offered even though the account holds its key; the held keys read "API key".
   await page.locator(".react-flow__node", { hasText: "Engineer" }).first().click();
-  const panel = page.getByLabel("Engineer editor");
+  const panel = page.getByRole("complementary", { name: "Engineer settings" });
   await expect(panel).toBeVisible({ timeout: 30_000 });
-  const provider = panel.getByLabel("Provider", { exact: true });
-  await expect(provider.getByRole("option", { name: "openrouter" })).toHaveCount(1);
-  await expect(provider.getByRole("option", { name: "nvidia_nim" })).toHaveCount(1);
-  const engineerModel = await panel.getByLabel("Model", { exact: true }).inputValue(); // not "Fallback model"
+  const modelSection = panel.getByRole("region", { name: "Model" });
+  const modelButton = modelSection.locator('button[aria-haspopup="dialog"]');
+  const engineerModel = ((await modelButton.textContent()) ?? "").trim();
   expect(engineerModel.length).toBeGreaterThan(0);
-  expect(engineerModel).toContain("/"); // a full provider/model slug
+  await modelButton.click();
+  const picker = panel.getByRole("dialog", { name: "Choose a model" });
+  await expect(picker).toBeVisible({ timeout: 30_000 });
+  const group = (provider: string) =>
+    picker.getByRole("group", { name: new RegExp(`^${provider}\\b`) });
+  await expect(group("openai").getByText("API key")).toBeVisible();
+  await expect(group("openrouter").getByText("API key")).toBeVisible();
+  await expect(group("nvidia_nim")).toHaveCount(0);
+  await expect(picker.getByRole("option", { selected: true })).toHaveCount(1);
+  await expect(group("groq").getByText("No key yet")).toBeVisible();
   await page.screenshot({ path: path.join(SHOTS_DIR, "check2-engineer-picker.png") });
-  console.log(`[model-picker-e2e] CHECK 2 PASS — picker lists providers; model=${engineerModel}`);
+  console.log(
+    `[model-picker-e2e] CHECK 2 PASS — picker groups by seat, no NIM; model=${engineerModel}`,
+  );
 
-  // CHECK 3 — the inline "Add a provider" reaches the SAME store the dashboard reads.
-  await provider.selectOption("__add_provider__");
-  await panel.getByLabel("New provider", { exact: true }).fill("groq"); // exact: not "…API key"
-  await panel.getByLabel("New provider API key").fill("dummy-groq-key-9999");
-  await panel.getByRole("button", { name: "Add", exact: true }).click(); // not "Add skill", "Add repo", …
-  await expect(provider.getByRole("option", { name: "groq" })).toHaveCount(1, { timeout: 30_000 });
+  // CHECK 3 — a key pasted into the "No key yet" group reaches the SAME store the dashboard reads,
+  // and the model lands on that provider's model with the "saved to Engines" toast.
+  await group("groq").getByLabel("Paste your Groq API key").fill("dummy-groq-key-9999");
+  await group("groq").getByRole("button", { name: "Add", exact: true }).click();
+  await expect(picker).toHaveCount(0, { timeout: 30_000 });
+  await expect(panel.getByText("Groq key saved to Engines")).toBeVisible({ timeout: 30_000 });
+  await expect(modelSection.getByText(/Uses your Groq API key \(saved in Engines\)/)).toBeVisible();
   await page.screenshot({ path: path.join(SHOTS_DIR, "check3-inline-add.png") });
-  // Persisted: back in the shell, Engines › API keys lists groq too.
-  await page.getByRole("button", { name: "Back to dashboard" }).click();
+  // Persisted: back in the shell (discarding the unsaved model change), Engines › API keys lists groq.
+  await page.getByRole("button", { name: "Back to teams" }).click();
+  await panel
+    .getByRole("alertdialog", { name: "Unsaved changes" })
+    .getByRole("button", { name: "Discard" })
+    .click();
   await shellNav(page)
     .getByRole("button", { name: /^Engines/ })
     .click();
@@ -79,15 +98,15 @@ test("model picker: provider-gated picker + inline add + the same-model reviewer
     timeout: 30_000,
   });
   console.log(
-    "[model-picker-e2e] CHECK 3 PASS — inline-added groq appears in the panel + Engines › API keys",
+    "[model-picker-e2e] CHECK 3 PASS — the inline key lands in Engines › API keys and on the model",
   );
 
-  // CHECK 4 — the recommendation hint: the Reviewer shares the Engineer's model → hint VISIBLE; a
-  // thinker (the PM) → hint ABSENT (the discriminating pair).
+  // CHECK 4 — the same-model advisory: the Reviewer (a verdict agent) shares the Engineer's model
+  // → advisory VISIBLE; the PM (no verdict) → ABSENT (the discriminating pair).
   await page.goto(`/#/teams/${myTeamId}`);
   await expect(page.getByText("the living canvas")).toBeVisible({ timeout: 30_000 });
   await page.locator(".react-flow__node", { hasText: "Reviewer" }).first().click();
-  const reviewerPanel = page.getByLabel("Reviewer editor");
+  const reviewerPanel = page.getByRole("complementary", { name: "Reviewer settings" });
   await expect(reviewerPanel).toBeVisible({ timeout: 30_000 });
   await expect(reviewerPanel.getByText(/Reviews are stronger when the reviewer runs/i)).toBeVisible(
     {
@@ -95,13 +114,13 @@ test("model picker: provider-gated picker + inline add + the same-model reviewer
     },
   );
   await page.screenshot({ path: path.join(SHOTS_DIR, "check4-reviewer-hint.png") });
-  // Absent on a thinker (the PM / Product manager node).
+  // Absent on the PM (the Product manager node).
   await page.locator(".react-flow__node", { hasText: "Product manager" }).first().click();
-  const pmPanel = page.getByLabel("Product manager editor");
+  const pmPanel = page.getByRole("complementary", { name: "Product manager settings" });
   await expect(pmPanel).toBeVisible({ timeout: 30_000 });
   await expect(pmPanel.getByText(/Reviews are stronger when the reviewer runs/i)).toHaveCount(0);
   console.log(
-    "[model-picker-e2e] CHECK 4 PASS — hint present on Reviewer (same model), absent on PM",
+    "[model-picker-e2e] CHECK 4 PASS — advisory present on Reviewer (same model), absent on PM",
   );
 
   for (const f of [

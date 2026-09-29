@@ -205,7 +205,8 @@ function registerRepoIpc() {
     api,
     userDataDir: app.getPath("userData"),
     // The first commit of "Set up git here" falls back to the signed-in login (DB-5).
-    login: () => (lastUser && lastUser.get() ? lastUser.get().login : null),
+    // Only a real GitHub login becomes a <login>@users.noreply.github.com identity.
+    login: () => (lastUser ? lastUser.githubLogin() : null),
     log: (m) => console.log(m),
   });
 

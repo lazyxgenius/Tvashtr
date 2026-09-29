@@ -61,15 +61,18 @@ export function SetupKeySheet({
     };
   }, [open]);
 
-  // Every opening starts clean from the pre-pick.
+  // Every opening starts clean from the pre-pick. Only an opening resets: a plan status that
+  // arrives while the sheet is open changes the pre-pick, but must not wipe what the user typed.
+  const prePickRef = useRef(prePick);
+  prePickRef.current = prePick;
   useEffect(() => {
     if (!open) return;
-    setProvider(prePick);
+    setProvider(prePickRef.current);
     setApiKey("");
     setFormError(null);
     setKeyError(null);
     setSaving(false);
-  }, [open, prePick]);
+  }, [open]);
 
   // A pre-pick the directory says can't serve a model is dropped (NIM is never pre-picked).
   useEffect(() => {

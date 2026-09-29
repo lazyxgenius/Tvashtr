@@ -334,3 +334,7 @@ export function useNav(): {
   );
   return { route: parseRoute(hash), navigate: nav };
 }
+
+/** Fired when a page keeps the user where they are (a leave guard's "Keep editing"): anything
+ * queued to run on the page they were heading to must be dropped, not run on a later visit. */
+export const NAVIGATION_KEPT = "tvashtr:navigation-kept";

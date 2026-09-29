@@ -16,12 +16,15 @@ Stateless PKCE over two short-lived, signed itsdangerous payloads — no table:
 
 import base64
 import hashlib
+import hmac
 import html
 import json
 import re
+import secrets
 from typing import Literal
 from urllib.parse import quote, urlencode
 
+from fastapi import Response
 from fastapi.responses import HTMLResponse
 from itsdangerous import BadData, SignatureExpired, URLSafeTimedSerializer
 
@@ -32,6 +35,12 @@ STATE_SALT = "tv-desktop-state"
 CODE_SALT = "tv-desktop-code"
 STATE_MAX_AGE_SECONDS = 15 * 60
 CODE_MAX_AGE_SECONDS = 5 * 60
+
+# Binds a GitHub-path sign-in to the browser that started it: ``/start`` sets this cookie to a
+# fresh nonce that the signed state also carries, and the callback signs no one in without it —
+# so a state + GitHub code replayed into someone else's browser plants no session there.
+FLOW_COOKIE = "tv_desktop_flow"
+_NONCE_RE = re.compile(r"^[A-Za-z0-9_-]{22,64}$")
 
 # The only place a return page ever points. Never a caller-supplied URL (no open redirect).
 DONE_LINK = "tvashtr://auth/done"
@@ -77,14 +86,38 @@ def challenge_for(verifier: str) -> str:
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
-def sign_state(challenge: str, state: str) -> str:
-    return _serializer(STATE_SALT).dumps({"c": challenge, "s": state})
+def new_flow_nonce() -> str:
+    return secrets.token_urlsafe(24)
+
+
+def sign_state(challenge: str, state: str, nonce: str) -> str:
+    return _serializer(STATE_SALT).dumps({"c": challenge, "s": state, "n": nonce})
+
+
+def set_flow_cookie(response: Response, nonce: str) -> None:
+    response.set_cookie(
+        key=FLOW_COOKIE,
+        value=nonce,
+        max_age=STATE_MAX_AGE_SECONDS,
+        httponly=True,
+        samesite="lax",  # GitHub's redirect back is a top-level GET, which Lax still sends
+        secure=get_settings().cookie_secure,
+        path="/api/auth",
+    )
+
+
+def clear_flow_cookie(response: Response) -> None:
+    response.delete_cookie(key=FLOW_COOKIE, path="/api/auth")
+
+
+def flow_matches(cookie_value: str | None, nonce: str) -> bool:
+    return bool(cookie_value) and hmac.compare_digest(cookie_value, nonce)
 
 
 def read_state(token: str | None, max_age: int = STATE_MAX_AGE_SECONDS) -> dict | None:
-    """``{"c", "s", "expired": bool}`` when ``token`` is a desktop state this server signed, else
-    ``None``. An expired one is still recognised (so the browser shows the expired page instead of
-    signing in to the website by mistake); a forged or foreign one is not."""
+    """``{"c", "s", "n", "expired": bool}`` when ``token`` is a desktop state this server signed,
+    else ``None``. An expired one is still recognised (so the browser shows the expired page
+    instead of signing in to the website by mistake); a forged or foreign one is not."""
     if not token:
         return None
     serializer = _serializer(STATE_SALT)
@@ -102,10 +135,13 @@ def read_state(token: str | None, max_age: int = STATE_MAX_AGE_SECONDS) -> dict 
         return None
     if not isinstance(payload, dict):
         return None
-    c, s = payload.get("c"), payload.get("s")
+    c, s, n = payload.get("c"), payload.get("s"), payload.get("n")
     if not (isinstance(c, str) and isinstance(s, str) and valid_challenge(c) and valid_state(s)):
         return None
-    return {"c": c, "s": s, "expired": expired}
+    # A state signed before the flow binding existed carries no nonce: it can't be tied to a
+    # browser, so it is treated as expired (the user signs in again).
+    nonce_ok = isinstance(n, str) and bool(_NONCE_RE.fullmatch(n))
+    return {"c": c, "s": s, "n": n if nonce_ok else "", "expired": expired or not nonce_ok}
 
 
 def make_code(user_id: str, challenge: str) -> str:
@@ -130,14 +166,16 @@ def redeem_code(code: str, verifier: str, max_age: int = CODE_MAX_AGE_SECONDS) -
     return user_id
 
 
-def authorize_url(signed_state: str) -> str:
+def authorize_url(signed_state: str, *, select_account: bool = False) -> str:
     """GitHub's authorize page with the SAME explicit callback as the website's sign-in
-    (``github_app.build_install_url``) plus the signed desktop state. Empty when no client id is
-    configured."""
+    (``github_app.build_install_url``) plus the signed desktop state. ``select_account`` forces
+    GitHub's account picker ("Use a different account": GitHub otherwise skips straight back with
+    the account the browser is signed in to). Empty when no client id is configured."""
     base = github_app.build_install_url()
     if not base:
         return ""
-    return f"{base}&state={quote(signed_state, safe='')}"
+    picker = "&prompt=select_account" if select_account else ""
+    return f"{base}&state={quote(signed_state, safe='')}{picker}"
 
 
 def done_link(*, state: str, code: str | None = None, error: str | None = None) -> str:
@@ -165,6 +203,25 @@ _COPY: dict[str, tuple[str, str]] = {
 }
 
 
+def confirm_page(link: str, *, login: str, other_account_url: str) -> HTMLResponse:
+    """``account=current``: this browser is already signed in. Name that account and wait for a
+    click — never hand a code out by itself, so neither a planted browser session nor another app
+    that claims ``tvashtr://`` gets one without the person seeing whose account it is."""
+    if not link.startswith(DONE_LINK + "?"):
+        link = DONE_LINK
+    return _page(
+        title=f"Continue as {login}?",
+        body=(
+            f"Tvashtr Desktop asked to sign in with the account this browser uses: {login}. "
+            "Continue only if you started this from Tvashtr Desktop."
+        ),
+        button=(f"Continue as {login}", link),
+        secondary=("Use a different account", other_account_url),
+        script="",
+        status_code=200,
+    )
+
+
 def return_page(link: str, outcome: Outcome, status_code: int = 200) -> HTMLResponse:
     """The page the browser shows after a Desktop sign-in. It opens ``link`` once by itself (when
     the link carries a result) and offers the same link as a button. ``link`` must start with
@@ -174,6 +231,32 @@ def return_page(link: str, outcome: Outcome, status_code: int = 200) -> HTMLResp
     title, body = _COPY[outcome]
     auto = link != DONE_LINK
     script = f"<script>window.location.href = {json.dumps(link)};</script>" if auto else ""
+    return _page(
+        title=title,
+        body=body,
+        button=("Open Tvashtr Desktop", link),
+        secondary=None,
+        script=script,
+        status_code=status_code,
+    )
+
+
+def _page(
+    *,
+    title: str,
+    body: str,
+    button: tuple[str, str],
+    secondary: tuple[str, str] | None,
+    script: str,
+    status_code: int,
+) -> HTMLResponse:
+    label, href = button
+    extra = ""
+    if secondary is not None:
+        extra = (
+            f'<a class="link" href="{html.escape(secondary[1], quote=True)}">'
+            f"{html.escape(secondary[0])}</a>"
+        )
     page = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -195,13 +278,15 @@ a.button {{ display: inline-flex; align-items: center; height: 40px; padding: 0 
   border-radius: 10px; background: #d97757; color: #fff; font-size: 14px; font-weight: 500;
   text-decoration: none; }}
 a.button:hover {{ background: #c8623f; }}
+a.link {{ font-size: 13.5px; color: #a8492a; }}
 </style>
 </head>
 <body>
 <main>
 <h1>{html.escape(title)}</h1>
 <p>{html.escape(body)}</p>
-<a class="button" href="{html.escape(link, quote=True)}">Open Tvashtr Desktop</a>
+<a class="button" href="{html.escape(href, quote=True)}">{html.escape(label)}</a>
+{extra}
 </main>
 {script}
 </body>

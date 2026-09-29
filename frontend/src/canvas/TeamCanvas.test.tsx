@@ -125,9 +125,9 @@ const gateTask: HumanTask = {
 describe("TeamCanvas — derived status reaches the DOM", () => {
   it("renders each node/gate/terminal with its DERIVED state", () => {
     render(<TeamCanvas graph={graph} run={mkRun()} workflowStatus="PENDING" tasks={[gateTask]} />);
-    // deriveNodeStatus: running -> "Working…", done -> "Done"
-    expect(screen.getAllByText("Working…").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Done").length).toBeGreaterThan(0);
+    // deriveNodeStatus: running -> "● Working…", done -> "✓ Done" (the card's status chip)
+    expect(screen.getAllByText("● Working…").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("✓ Done").length).toBeGreaterThan(0);
     // deriveGateState: pending matching task on a live run -> "Awaiting approval"
     expect(screen.getByText("Awaiting approval")).toBeInTheDocument();
     // deriveTerminalState: ship + done -> "Shipped"

@@ -3,9 +3,11 @@
 # Live M-accounts Slice B model-picker E2E — the provider-gated picker + the recommendation hint (.env-FREE).
 #
 #   1. Register a fresh account (API), seed its own dummy provider creds, create + open "My team".
-#   2. The Engineer's Provider select lists the held providers; its Model is a full slug.
-#   3. The panel's inline "Add a provider" lands in the same store Engines › API keys reads.
-#   4. The same-model reviewer hint shows on the Reviewer and not on the PM.
+#   2. The Engineer's model picker groups the seat's providers (held keys read "API key"; NIM, which
+#      serves no seat, is never offered).
+#   3. A key pasted into the picker's "No key yet" group lands in the same store Engines › API keys
+#      reads, and the model moves to that provider.
+#   4. The same-model advisory shows on the Reviewer and not on the PM.
 #
 # Orchestration mirrors scripts/auth_e2e.sh (Postgres + migrate + seed + a real backend on the LOCAL
 # sandbox + the Vite dev server + a headless Playwright run). NO agent run is driven — it needs NO

@@ -387,7 +387,8 @@ def github_callback(
         raise HTTPException(status_code=404, detail="Not found")
     desktop = desktop_auth.read_state(state)
     if desktop is not None:
-        return _desktop_callback(desktop, code, installation_id, error)
+        flow = request.cookies.get(desktop_auth.FLOW_COOKIE)
+        return _desktop_callback(desktop, code, installation_id, error, flow)
     if web_signin.STATE_COOKIE in request.cookies:
         return _website_callback(request, code, installation_id, state, error)
     if not code:
@@ -455,18 +456,32 @@ def _website_callback(
 
 
 def _desktop_callback(
-    desktop: dict, code: str | None, installation_id: str | None, error: str | None
+    desktop: dict,
+    code: str | None,
+    installation_id: str | None,
+    error: str | None,
+    flow_cookie: str | None,
 ) -> Response:
     """The callback's Desktop branch: sign the browser in, then hand a one-time code (bound to the
-    PKCE challenge in the signed state) back to Desktop through the return page."""
+    PKCE challenge in the signed state) back to Desktop through the return page. Only the browser
+    that started the flow (its ``tv_desktop_flow`` cookie matches the state's nonce) is signed
+    in."""
     state = desktop["s"]
-    if desktop["expired"]:
+    if desktop["expired"] or not desktop_auth.flow_matches(flow_cookie, desktop["n"]):
         link = desktop_auth.done_link(state=state, error="expired")
         return desktop_auth.return_page(link, "expired")
-    if error or not code:
-        # ``error=access_denied``: the user cancelled on GitHub. Nothing was changed.
+    if error == "access_denied":
+        # The user cancelled on GitHub. Nothing was changed.
         link = desktop_auth.done_link(state=state, error="cancelled")
-        return desktop_auth.return_page(link, "cancelled")
+        response = desktop_auth.return_page(link, "cancelled")
+        desktop_auth.clear_flow_cookie(response)
+        return response
+    if error or not code:
+        # Any other GitHub error (a callback mismatch, a suspended App, …) is not the user's cancel.
+        link = desktop_auth.done_link(state=state, error="failed")
+        response = desktop_auth.return_page(link, "failed", status_code=400)
+        desktop_auth.clear_flow_cookie(response)
+        return response
     try:
         user_id = _complete_github_sign_in(code, installation_id, None)
     except HTTPException:
@@ -476,6 +491,7 @@ def _desktop_callback(
     link = desktop_auth.done_link(state=state, code=desktop_auth.make_code(user_id, desktop["c"]))
     response = desktop_auth.return_page(link, "signed_in")
     set_session_cookie(response, user_id)
+    desktop_auth.clear_flow_cookie(response)
     return response
 
 

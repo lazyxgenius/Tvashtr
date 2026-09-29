@@ -85,7 +85,11 @@ export async function getLaunchContext(): Promise<LaunchContext> {
   }
 }
 
-export async function rememberUser(user: { login: string; displayName: string }): Promise<void> {
+export async function rememberUser(user: {
+  login: string;
+  displayName: string;
+  github: boolean;
+}): Promise<void> {
   try {
     await authBridge()?.rememberUser?.(user);
   } catch {

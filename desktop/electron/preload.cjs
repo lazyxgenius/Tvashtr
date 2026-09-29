@@ -107,6 +107,7 @@ const auth = {
     call("tvashtr:auth:rememberUser", {
       login: user && typeof user.login === "string" ? user.login : "",
       displayName: user && typeof user.displayName === "string" ? user.displayName : "",
+      github: Boolean(user && user.github === true),
     }).then(() => undefined),
   forgetUser: () => call("tvashtr:auth:forgetUser").then(() => undefined),
 };

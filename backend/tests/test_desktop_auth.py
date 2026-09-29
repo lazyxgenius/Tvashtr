@@ -126,7 +126,13 @@ def test_start_sends_the_browser_to_github_with_a_signed_desktop_state(unauth_cl
     assert q["client_id"] == "Iv1.desktopclient"
     assert q["redirect_uri"] == "https://tvashtr.example/api/auth/github/callback"
     signed = desktop_auth.read_state(unquote(q["state"]))
-    assert signed == {"c": challenge, "s": state, "expired": False}
+    assert signed is not None
+    assert (signed["c"], signed["s"], signed["expired"]) == (challenge, state, False)
+    # "Use a different account" must be able to pick another GitHub account (review finding).
+    assert q["prompt"] == "select_account"
+    # The flow is bound to this browser: GitHub's callback must come back to it.
+    flow = unauth_client.cookies.get(desktop_auth.FLOW_COOKIE)
+    assert flow and flow == signed["n"]
     assert resp.headers["cache-control"] == "no-store"
 
 
@@ -156,9 +162,17 @@ def test_handoff_account_current_reuses_the_browser_session(client, monkeypatch)
     )
     assert resp.status_code == 200
     _assert_return_page_headers(resp)
-    assert "You’re signed in" in resp.text
-    assert "Open Tvashtr Desktop" in resp.text
-    params = _done_link(resp)
+    # Review finding: never hand a code out by itself — name the account this browser is signed
+    # in as and wait for a click (a planted session or another tvashtr:// handler gets nothing).
+    assert "window.location" not in resp.text
+    login = reg.json()["display_name"]
+    assert f"Continue as {login}" in resp.text
+    assert (
+        f'href="/api/auth/desktop/start?challenge={challenge}&amp;state={state}&amp;account=github"'
+        in resp.text
+    ), "Use a different account starts the GitHub path with the same Desktop sign-in"
+    link = _LINK_RE.findall(resp.text)[0].replace("&amp;", "&")
+    params = {k: v[0] for k, v in parse_qs(urlparse(link).query).items()}
     assert params["state"] == state
     assert "error" not in params
 
@@ -176,8 +190,16 @@ def test_handoff_account_current_reuses_the_browser_session(client, monkeypatch)
 # ---------------------------------------------------------------- the GitHub callback's branch
 
 
-def _start_state(challenge: str, state: str) -> str:
-    return desktop_auth.sign_state(challenge, state)
+def _start_state(browser: TestClient, challenge: str, state: str) -> str:
+    """Start the flow the way Desktop does, in ``browser``: the signed state GitHub will echo back,
+    and ``browser`` now holds the flow cookie that binds the sign-in to it."""
+    resp = browser.get(
+        f"/api/auth/desktop/start?challenge={challenge}&state={state}&account=github",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302, resp.text
+    q = parse_qs(urlparse(resp.headers["location"]).query)
+    return unquote(q["state"][0])
 
 
 def test_callback_with_a_desktop_state_signs_in_and_hands_back_a_code(unauth_client, monkeypatch):
@@ -186,7 +208,7 @@ def test_callback_with_a_desktop_state_signs_in_and_hands_back_a_code(unauth_cli
     verifier, challenge, state = _pkce()
     resp = unauth_client.get(
         "/api/auth/github/callback",
-        params={"code": "gh-code", "state": _start_state(challenge, state)},
+        params={"code": "gh-code", "state": _start_state(unauth_client, challenge, state)},
         follow_redirects=False,
     )
     assert resp.status_code == 200, resp.text
@@ -218,7 +240,7 @@ def test_callback_cancelled_on_github_links_back_with_cancelled(unauth_client, m
         params={
             "error": "access_denied",
             "error_description": "The user has denied your application access.",
-            "state": _start_state(challenge, state),
+            "state": _start_state(unauth_client, challenge, state),
         },
         follow_redirects=False,
     )
@@ -240,7 +262,7 @@ def test_callback_whose_github_exchange_fails_links_back_with_failed(unauth_clie
     _, challenge, state = _pkce()
     resp = unauth_client.get(
         "/api/auth/github/callback",
-        params={"code": "gh-code", "state": _start_state(challenge, state)},
+        params={"code": "gh-code", "state": _start_state(unauth_client, challenge, state)},
         follow_redirects=False,
     )
     assert resp.status_code == 400
@@ -260,7 +282,7 @@ def test_callback_with_an_expired_desktop_state_links_back_with_expired(unauth_c
     _, challenge, state = _pkce()
     resp = unauth_client.get(
         "/api/auth/github/callback",
-        params={"code": "gh-code", "state": _start_state(challenge, state)},
+        params={"code": "gh-code", "state": _start_state(unauth_client, challenge, state)},
         follow_redirects=False,
     )
     assert resp.status_code == 200
@@ -355,3 +377,58 @@ def test_pkce_challenge_matches_rfc7636():
     # RFC 7636 appendix B test vector.
     verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
     assert desktop_auth.challenge_for(verifier) == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+
+
+# ------------------------------------------------------------ independent review (revamp-finish)
+
+
+def test_account_current_without_a_session_goes_to_github_without_the_account_picker(
+    unauth_client, monkeypatch
+):
+    _hosted(monkeypatch)
+    _, challenge, state = _pkce()
+    resp = unauth_client.get(
+        f"/api/auth/desktop/start?challenge={challenge}&state={state}&account=current",
+        follow_redirects=False,
+    )
+    q = parse_qs(urlparse(resp.headers["location"]).query)
+    assert "prompt" not in q
+
+
+def test_callback_in_a_browser_that_did_not_start_the_flow_signs_no_one_in(
+    unauth_client, monkeypatch
+):
+    """An attacker's own desktop state + their GitHub code, replayed into a victim's browser, must
+    not plant the attacker's session there."""
+    _hosted(monkeypatch)
+    monkeypatch.setattr(github_app, "_http", _fake_github())
+    _, challenge, state = _pkce()
+    attacker = _bare()
+    signed = _start_state(attacker, challenge, state)
+    victim = _bare()
+    resp = victim.get(
+        "/api/auth/github/callback",
+        params={"code": "gh-code", "state": signed},
+        follow_redirects=False,
+    )
+    assert "tv_session" not in resp.headers.get("set-cookie", "")
+    assert victim.get("/api/auth/me").status_code == 401
+    assert _done_link(resp) == {"error": "expired", "state": state}
+
+
+def test_callback_with_a_github_error_other_than_access_denied_is_failed_not_cancelled(
+    unauth_client, monkeypatch
+):
+    _hosted(monkeypatch)
+    monkeypatch.setattr(github_app, "_http", _fake_github())
+    for params in ({"error": "redirect_uri_mismatch"}, {}):
+        _, challenge, state = _pkce()
+        resp = unauth_client.get(
+            "/api/auth/github/callback",
+            params={**params, "state": _start_state(unauth_client, challenge, state)},
+            follow_redirects=False,
+        )
+        assert "Sign-in cancelled" not in resp.text, params
+        assert "Sign-in didn’t finish" in resp.text, params
+        assert "tv_session" not in resp.headers.get("set-cookie", "")
+        assert _done_link(resp) == {"error": "failed", "state": state}, params

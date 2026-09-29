@@ -3,19 +3,19 @@ import { useEffect, useState } from "react";
 import App from "../App";
 import { DomainsPage } from "../components/DomainsPage";
 import type { AuthUser, Config } from "../lib/api";
-import { useDesktopDeepLinks } from "../lib/desktopDeepLinks";
 import {
   rememberAfterSetup,
   resumeStep,
   setupUnfinished,
   useDesktopSetup,
 } from "../lib/desktopSetup";
+import { useDesktopDeepLinks } from "../lib/desktopDeepLinks";
 import { requestHomeAction } from "../lib/homeActions";
 import { type DashView, HOME, type Route, isPublicRoute, navigate, useNav } from "../lib/nav";
 import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
 import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
-import { EnginesPage } from "./engines/EnginesPage";
 import { SetupPage } from "./desktop/setup/SetupPage";
+import { EnginesPage } from "./engines/EnginesPage";
 import { CommandPalette } from "./home/CommandPalette";
 import { HomePage } from "./home/HomePage";
 import { MemoryPage } from "./memory/MemoryPage";
@@ -67,9 +67,10 @@ export function Workspace({
   const setup = useDesktopSetup(user.id);
   const needsSetup = setupUnfinished(setup);
 
+  // On arrival and on every return from the canvas: the drawer changes other areas' counts.
   useEffect(() => {
-    void refreshBadges();
-  }, []);
+    if (!onCanvas) void refreshBadges();
+  }, [onCanvas]);
   useGithubReturn(); // Desktop: back from the GitHub App install → Toolkit › Tools › Browse
   // Tvashtr Desktop: follow `tvashtr://` links (a no-op on the website).
   useDesktopDeepLinks();
@@ -120,6 +121,15 @@ export function Workspace({
         initialRunId={route.runId ?? null}
         onBackToDashboard={(view) => navigate(dashViewRoute(view))}
         config={config}
+        node={route.node}
+        tab={route.tab}
+        focus={route.focus}
+        onNodeRoute={(next) =>
+          navigate(
+            { page: "team", teamId: route.teamId, runId: route.runId, ...next },
+            { replace: true },
+          )
+        }
       />
     );
   }

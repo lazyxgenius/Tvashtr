@@ -163,7 +163,7 @@ interface TvashtrDesktopBridge {
       lastUser: { login: string; displayName: string } | null;
     }>;
     /** Remember who is signed in (login + display name only) for "Last signed in as". */
-    rememberUser?: (user: { login: string; displayName: string }) => Promise<void>;
+    rememberUser?: (user: { login: string; displayName: string; github: boolean }) => Promise<void>;
     /** Switch / sign out: forget the last user on this Mac. */
     forgetUser: () => Promise<void>;
   };

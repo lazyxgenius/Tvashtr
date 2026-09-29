@@ -253,6 +253,11 @@ Open questions are answered here; the numbers refer to each analysis file's §6.
   the memory `requeue` endpoint. Q13 Edit for custom skills only; library/preset → "Open in Toolkit".
   Q14 add Headers/Env rows to the add-server form. Q15 Web fetch is added inline. Q18 rename inline.
   Q20 the run view reuses the new drawer shell with Runs as the default tab. Q22 singular copy.
+- F5 deviation from Q20 (recorded at F5 finish): the run view's drawer reuses the agent drawer's shell
+  and header (name, status subtitle, last-round / access / model badges) but keeps the run
+  inspector's own body — Last run, then Activity · Changes · Ask · Memory for a worker or the spec
+  for a thinker — with no five-tab row and no read-only Setup. No artboard draws the run-view
+  drawer; the tabbed version is left for a later slice.
 
 ## 5. Out of scope (stated, not silently dropped)
 

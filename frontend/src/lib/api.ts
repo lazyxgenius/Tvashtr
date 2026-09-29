@@ -219,6 +219,15 @@ export interface ProviderCatalogueEntry {
   worker_default: string | null;
   thinker_presets: string[];
   worker_presets: string[];
+  // Revamp (B-ENGINES): display metadata. Optional so older fixtures and callers keep compiling.
+  /** The provider's display name ("xAI", "Anthropic"). */
+  label?: string;
+  /** A friendly name per slug the entry declares ("xai/grok-4.7" → "Grok 4.7"). */
+  model_labels?: Record<string, string>;
+  /** The Desktop subscription that can run this provider's models ("claude" / "grok"), or null. */
+  subscription?: string | null;
+  /** Whether the seat presets were proven to run a full build on an API key. */
+  byok_probed?: boolean;
 }
 
 export interface Config {
@@ -715,6 +724,9 @@ export interface TeamGraphNode {
     run_id: string;
     iteration: number;
     started_at: string;
+    // B-NODES (additive): running | done | failed | stopped, and when the round ended.
+    status?: string | null;
+    ended_at?: string | null;
   } | null;
 }
 
@@ -887,6 +899,8 @@ export async function listSkillPresets(): Promise<SkillPresetEntry[]> {
 
 export interface TeamGraphData {
   team_graph_id: string;
+  /** The team's name (B-NODES, additive — the canvas toolbar shows it). */
+  name?: string;
   nodes: TeamGraphNode[];
   edges: GraphEdge[];
 }

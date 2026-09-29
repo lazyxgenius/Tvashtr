@@ -86,9 +86,9 @@ export function installDesktopBridge(opts: FakeBridgeOptions = {}) {
         lastUser: opts.lastUser ?? null,
       }),
     ),
-    rememberUser: vi.fn<(u: { login: string; displayName: string }) => Promise<void>>(() =>
-      Promise.resolve(),
-    ),
+    rememberUser: vi.fn<
+      (u: { login: string; displayName: string; github: boolean }) => Promise<void>
+    >(() => Promise.resolve()),
     forgetUser: vi.fn(() => Promise.resolve()),
   };
   const app = {

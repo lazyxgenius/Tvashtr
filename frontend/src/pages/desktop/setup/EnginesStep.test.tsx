@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../../../design-system/components";
+import { resetProviderDirectoryCache } from "../../../lib/api/desktop";
 import { type DesktopSetup, loadDesktopSetup } from "../../../lib/desktopSetup";
 import type { SubscriptionStatus } from "../../../lib/engines";
 import {
@@ -25,6 +26,7 @@ async function renderStep(
     plans?: SubscriptionStatus[];
     setup?: Partial<DesktopSetup>;
     keys?: { provider: string; key_last4: string; created_at: string }[];
+    directory?: { provider: string; name: string; serves_models: boolean }[];
     connect?: Partial<Record<SubscriptionStatus["provider"], SubscriptionStatus["state"]>>;
   } = {},
 ) {
@@ -33,7 +35,12 @@ async function renderStep(
     setup: { step: "engines", ...opts.setup },
     connect: opts.connect,
   });
-  stubFetch({ "GET /api/providers": { body: { providers: opts.keys ?? [] } } });
+  stubFetch({
+    "GET /api/providers": { body: { providers: opts.keys ?? [] } },
+    ...(opts.directory
+      ? { "GET /api/config": { body: { provider_directory: opts.directory } } }
+      : {}),
+  });
   const setup = await loadDesktopSetup(ME.id);
   const props = { onSwitch: vi.fn() };
   render(
@@ -59,6 +66,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetProviderDirectoryCache();
   uninstallDesktopBridge();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -263,6 +271,21 @@ describe("EnginesStep — consent and Continue (DT-27, DtF-Run-5)", () => {
     });
     await waitFor(() => expect(continueButton()).toBeEnabled());
     expect(screen.getByRole("checkbox")).not.toBeChecked();
+  });
+
+  it("a saved key for a provider that serves no model doesn't count (review finding)", async () => {
+    await renderStep({
+      plans: [plan("claude", "needs_install"), plan("grok", "needs_login")],
+      keys: [{ provider: "nvidia_nim", key_last4: "1234", created_at: "2026-09-26T10:00:00Z" }],
+      directory: [
+        { provider: "nvidia_nim", name: "NVIDIA NIM", serves_models: false },
+        { provider: "anthropic", name: "Anthropic", serves_models: true },
+      ],
+    });
+    await screen.findByRole("button", { name: "Use an API key instead" });
+    await new Promise((r) => setTimeout(r, 50)); // the directory has answered
+    expect(continueButton()).toBeDisabled();
+    expect(screen.queryByText(/nvidia_nim key saved/)).toBeNull();
   });
 
   it("Continue saves the next step and goes to Project", async () => {

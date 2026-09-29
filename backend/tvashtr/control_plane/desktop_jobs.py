@@ -448,6 +448,17 @@ def release_job(owner_id: uuid.UUID, job_id: str) -> dict:
         job.status = "queued"
         job.claimed_at = None
         job.heartbeat_at = None
+        # The runner that held the job has its plan, but its last poll left that plan out (a busy
+        # plan isn't offered), so the adapter's "not connected" rule would expire the queued job a
+        # poll later. Record the plan as offered; the relaunched runner's first poll overwrites it,
+        # and if Desktop never returns the offline rule still fails the node.
+        now = _now()
+        beat = session.get(DesktopRunnerHeartbeat, owner_id)
+        if beat is None:
+            beat = DesktopRunnerHeartbeat(owner_id=owner_id, last_seen_at=now, providers=[])
+            session.add(beat)
+        beat.last_seen_at = now
+        beat.providers = sorted({*(beat.providers or []), job.provider})
         run_id, invocation_id, released_id = job.run_id, job.invocation_id, str(job.id)
         releases = _release_count(session, run_id, invocation_id)
     seq = RUNNER_SEQ_OFFSET + (releases + 1) * RUNNER_CLAIM_SEQS - 1

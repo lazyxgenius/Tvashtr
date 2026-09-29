@@ -115,6 +115,8 @@ function createRunner({
 }) {
   let stopped = false;
   let looping = false;
+  /** The claim poll in flight, so stop() can wait for it to hand a late job back. */
+  let polling = null;
   /** @type {Map<string, { jobId: string, child: any, cancelled: boolean, promise: Promise<void> }>} */
   const active = new Map();
 
@@ -201,6 +203,7 @@ function createRunner({
         text: `Running on this computer with your own ${name}: ${inv.display}`,
       });
       await flush();
+      if (entry.cancelled || stopped) return; // quit while preparing: never start the CLI
 
       const parser = job.provider === "claude" ? createClaudeStreamParser() : createGrokStreamParser();
       const stderrTail = [];
@@ -211,7 +214,14 @@ function createRunner({
           stdio: ["pipe", "pipe", "pipe"],
         });
         entry.child = child;
-        if (entry.cancelled) cancel("stopped before start");
+        // cancel() is idempotent, so a cancel that landed while spawning must kill directly.
+        if (entry.cancelled || stopped) {
+          try {
+            child.kill("SIGTERM");
+          } catch {
+            /* already gone */
+          }
+        }
         child.on("error", (err) => {
           stderrTail.push(String(err && err.message ? err.message : err));
           resolve({ code: -1 });
@@ -310,15 +320,11 @@ function createRunner({
    */
   async function tickOnce({ wait = true } = {}) {
     if (stopped) return;
-    let job = null;
-    try {
-      job = await api.claim(freeProviders());
-      onPollOk();
-    } catch (e) {
-      log(`[runner] poll failed: ${e && e.message ? e.message : e}`);
-      return;
-    }
-    if (!job || stopped) return;
+    const claiming = claimStep();
+    polling = claiming;
+    const job = await claiming;
+    if (polling === claiming) polling = null;
+    if (!job) return;
     if (!RUNNABLE_PROVIDERS.includes(job.provider) || active.has(job.provider)) {
       log(`[runner] ignoring job ${job.id} for busy/unknown provider ${job.provider}`);
       return;
@@ -329,6 +335,30 @@ function createRunner({
       if (active.get(job.provider) === entry) active.delete(job.provider);
     });
     if (wait) await entry.promise;
+  }
+
+  /** A poll; a job it brings back after stop() began is handed straight back (DB-7). */
+  async function claimStep() {
+    let job = null;
+    try {
+      job = await api.claim(freeProviders());
+      onPollOk();
+    } catch (e) {
+      log(`[runner] poll failed: ${e && e.message ? e.message : e}`);
+      return null;
+    }
+    if (job && stopped) {
+      log(`[runner] job ${job.id} arrived while quitting — handing it back`);
+      if (api.releaseJob) {
+        try {
+          await api.releaseJob(job.id);
+        } catch (e) {
+          log(`[runner] release failed for ${job.id}: ${e && e.message ? e.message : e}`);
+        }
+      }
+      return null;
+    }
+    return job;
   }
 
   function start() {
@@ -350,13 +380,14 @@ function createRunner({
    */
   async function stop({ release = false } = {}) {
     stopped = true;
+    const inFlightPoll = polling;
     const entries = [...active.values()];
     for (const entry of entries) {
       if (entry.cancel) entry.cancel("Tvashtr Desktop is quitting");
       else entry.cancelled = true;
     }
     await Promise.race([
-      Promise.allSettled(entries.map((e) => e.promise)),
+      Promise.allSettled([...entries.map((e) => e.promise), inFlightPoll]),
       sleep(5000),
     ]);
     if (release && entries.length && api.releaseJob) {

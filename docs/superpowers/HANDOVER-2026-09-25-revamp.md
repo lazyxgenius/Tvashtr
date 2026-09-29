@@ -6,9 +6,12 @@ artboards, git-excluded), per the brief `prompts/revamp-e2e.md`.
 
 ## Round 2 — revamp-e2e session (start here to resume)
 
-**Next:** F5 agent panel + canvas (building) → F6 Focus + Docs (branches from F5) → Domains
-(building; carries the session's one migration `0042`, so its deploy waits for the operator's Neon
-snapshot) → Desktop app screens (building) → website → Phase 3 close-out.
+**Next (revamp-finish session, brief `prompts/revamp-e2e.md` Sidechat-16 version):** website
+(merge `main` after the Desktop app ship) → F6 Focus + Docs, which now also carries the run view's
+agent drawer on the new tabbed design (spec Q20 — operator bug 2026-09-29: after a run starts, the
+run canvas still opened the old run inspector; built on `feat/revamp-f6-focus-docs`) → Domains
+(migration `0042` + `team_run.py`: the deploy pauses for the operator's Neon snapshot and in-flight
+prod runs) → Phase 3 close-out.
 
 ### NEEDS_HUMAN (2026-09-26 ~14:55 IST) — RESOLVED 15:04 IST (new key in `.env`, `make seed`)
 The OpenAI key in `.env` (`OPENAI_API_KEY`, ends `…IgoA`, also the operator account's saved openai
@@ -25,7 +28,79 @@ replaced. Remedy: new key on the `OPENAI_API_KEY` line of `.env` → `make seed`
 | Phase 1 — the core loop completes | `fix/entry-report` | `007019d` | v20 | `desktop-v0.4.0` — latest release; DMG app 0.4.0 bundles `index-DZBnS0zK.js` = the live site |
 | F2 — Engines | `feat/revamp-f2-engines` | `6acc726` | v21 | `desktop-v0.5.0` — latest release; DMG app 0.5.0 bundles `index-CGZUXJb0.js` = the live site |
 | F3 — Toolkit › Tools + Secrets (+ `fix/ship-identity`) | `feat/revamp-f3-tools-secrets` | `c1a0172`, then `f6e1d4e` | v22 | `desktop-v0.6.0` — latest release; DMG app 0.6.0 bundles `index-DlPFWcla.js` = the live site |
-| F4 — Toolkit › Skills + Memory | `feat/revamp-f4-skills-memory` | recorded at the next ship | recorded at the next ship | `desktop-v0.7.0` |
+| F4 — Toolkit › Skills + Memory | `feat/revamp-f4-skills-memory` | `055671a` | v23 | `desktop-v0.7.0` — latest release; DMG app 0.7.0 bundles `index-CMst77H3.js` = the live site |
+| F5 — Agent panel + canvas (+ `fix/integration-review`) | `feat/revamp-f5-panel` | `b33c630` | v24 | `desktop-v0.8.0` — latest release; DMG app 0.8.0 bundles `index-DUzUTMWb.js` = the live site |
+| Desktop app screens | `feat/revamp-desktop-app` | recorded at the next ship | recorded at the next ship | `desktop-v0.9.0` |
+
+### Desktop app screens — what shipped (`feat/revamp-desktop-app`)
+- Tvashtr Desktop's own first-run and launch screens (`frontend/src/pages/desktop/`, bridge v6):
+  Welcome / Handoff / Waiting / Sign-in didn't finish / Expired / Splash / Offline / Reconnected,
+  setup (Engines with the plan rows, Terminal sign-in, the Claude/Grok "Use your plan" sheets and
+  the Add-key sheet; Project with folder + git set-up + GitHub; First team), the ready card on Home
+  and the in-app updater card. Signed-out Desktop never shows the website's landing page.
+- Backend: browser sign-in with PKCE (`/api/auth/desktop/start`, the GitHub callback's desktop
+  branch, `/api/auth/desktop/exchange`), `GET /api/desktop/release`, `POST
+  /api/desktop-runner/jobs/{id}/release`, `GET /api/templates?for=desktop` and `POST /api/teams
+  {use_plans}` (plan-first models), `provider_directory[].serves_models`. Contract:
+  `docs/superpowers/plans/api/desktop-app.md`. No migration.
+- Architect rulings applied: the privacy page `docs/what-tvashtr-stores.md` (ruling 3: the
+  user-facing header line and "Who else handles your data", every sentence re-checked against the
+  code by two independent reviewers); "Spec only" stays hidden (ruling 5: not offered by the setup
+  UI nor listed by `?for=desktop`; `POST /api/teams` still builds it, pinned by a strict xfail).
+- Independent review (6 dimensions, each finding adversarially verified): 22 findings, 20 real, all
+  fixed test-first — a released Desktop job was failed "not connected" instead of re-run; the
+  browser sign-in could be replayed into another browser and `account=current` handed out a code
+  without asking (now a flow cookie binds the sign-in to its browser, and a consent page names the
+  account); "Use a different account" now shows GitHub's account picker; only `access_denied`
+  reads as "cancelled"; a stale DMG mount could wedge the updater; "Set up git here" credited an
+  email-only account's commit to a stranger's GitHub noreply address; a job claimed mid-quit was
+  never released and a CLI spawned after cancel was orphaned; a new account inherited the previous
+  one's `#/setup/<step>`; a NIM key turned Continue on; the Add-key sheet reset while typing; nine
+  privacy-page corrections. One finding refuted (a local app hijacking `tvashtr://` needs malware
+  already on the Mac).
+- Gates at ship: `make test` 1892 passed / 1 xfailed on `tvashtr_gate`; vitest 1626; tsc 0; build;
+  desktop 135; docker; eslint 66 + prettier 70 + ruff 16 clean; e2e auth, accounts, memory_shelf,
+  team-library, revamp-shell; `make demo-proof` C1–C12 PR https://github.com/lazyxgenius/trade_mcp/pull/24
+  (C12's cleanup now also works when Home shows its first-time checklist).
+- Parity (`docs/superpowers/parity/desktop-app.txt`): all 39 Desktop boards at 0 size/type drift
+  (web n/a: Desktop-only screens); every "not found in app" item is a noted deviation (honest copy
+  OQ-4/10/11/12, Spec only hidden, the OS Terminal window).
+- Follow-ups found on the way (not built): Domain files live on the Fly machine's disk under
+  `/tmp` (`TVASHTR_DOMAIN_FILES_DIR` unset, no volume) so uploads are lost on a restart — needs a
+  volume (infrastructure, operator's call); fonts load from Google Fonts (self-host to drop that
+  data flow); the Codex status hint can carry the email Codex prints; a local app registered for
+  `tvashtr://` could still take the auto-returned code after an interactive GitHub step (accepted:
+  it needs local malware).
+
+### F5 Agent panel + canvas — what shipped (`feat/revamp-f5-panel`)
+- The agent drawer rebuilt on the new design (`frontend/src/panel/`): the header with status and the
+  More menu, tabs Setup / Skills & tools / Memory / Runs / Docs, the save bar with unsaved-changes
+  guard (Keep editing / Discard; Desktop's quit guard via `setUnsavedChanges`), Templates, the model
+  picker (derived from `/api/config`'s provider catalogue; NVIDIA NIM never offered), access and
+  documents, routing, output format with the schema checks, the Focus view entry, skill and tool
+  sub-views (add from library / preset / GitHub repo, paste mcp.json), the Memory tab (remember
+  toggle, notes, Open Memory shelf), Runs (last run, earlier rounds) and Docs (run documents in an
+  in-drawer sheet). Canvas chrome: the blocked-run warn callout with Open Engines (Eng-Flow-Blocked-1,
+  moved from F2) and the run view keeps `RunWarnings`. `TeamNodePanel`, `SkillsSection`,
+  `ToolsSection`, `NodeMemorySection`, `DrawerShell`, `SidePanel` and `StatusPill` are gone. No backend
+  change (every endpoint the drawer needs already existed).
+- Parity (`docs/superpowers/parity/panel.txt`): all 65 artboards at 0 size/type drift on the website
+  AND Desktop. Flow-Docs-1/2 and Flow-Templates-1 each have one "not found in app" item by decision:
+  a verdict agent's Writes note no longer offers "Set in Setup" (its Writes control is disabled), and
+  the Templates item reads "Open in focus view" (no compare view exists yet; F6 can restore it).
+- Deviations: Q20's tabbed run-view drawer (Runs default, read-only Setup) is not built (recorded in
+  spec §4.7); the Docs tab opens documents in an in-drawer sheet until F6's viewer exists; the
+  Remember hint says captured lessons go to Toolkit › Memory (they are repo-tier, never node-tier).
+- Shipped with it, `fix/integration-review` (the cross-area review): nav badges re-count when the
+  canvas is left and after a key, subscription or memory change; a pending Home/Engines action is
+  cleared when a leave guard keeps you on the page; Toolkit's secret dialog and "Choose agents" toast
+  survive navigating away; dead dashboard CSS removed.
+- Found at ship time (team-edit e2e): a new account's Home drew the main layout while its
+  checklist data loaded, then switched to the first-time layout, remounting the composer and
+  dropping a typed idea. Home now picks its layout once that data is in (unreadable preference →
+  the main Home, as before); the 88 Home/shell parity renders are byte-identical before and after.
+- Left for later: the drawer's paste-mcp.json reader (`panel/tools/pasteMcpJson.ts`) and Toolkit's
+  (`pages/tools/mcpJson.ts`) are separate (different copy per screen); merge when one copy is chosen.
 
 ### F4 Toolkit › Skills + Memory — what shipped (`feat/revamp-f4-skills-memory`)
 - Toolkit › Skills on the new design: the list and presets, the row ⋯ menu (duplicate, turn on for
@@ -147,6 +222,11 @@ replaced. Remedy: new key on the `OPENAI_API_KEY` line of `.env` → `make seed`
   app 40, website 25; Home was round 1), `render/notes/<area>.md` (each area's builder notes).
 - Parity lines per area land in `docs/superpowers/parity/<area>.txt` (two lines per artboard: web and
   Desktop).
+- revamp-finish (2026-09-29): `make test` runs on its own database `tvashtr_gate` — pass it as a
+  make variable (`make test DATABASE_URL=…/tvashtr_gate`); in the environment it is overridden by
+  the Makefile's `include .env`. Every active worktree `.env` now says `POSTGRES_DB=tvashtr` (each
+  used to name its own database, so an e2e script's `docker compose up -d` from another checkout
+  recreated the shared Postgres mid-run).
 
 ## Round 1 — where things stood at its end
 

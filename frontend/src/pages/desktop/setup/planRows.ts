@@ -276,6 +276,22 @@ export function prePickProvider(
 }
 
 /**
+ * The saved keys that are a way to run: a provider the directory marks `serves_models: false`
+ * (NVIDIA NIM today) can't run an agent, so its key neither shows as saved nor turns Continue on.
+ * Providers the directory doesn't list ("Other" prefixes) count; an unreadable (empty) directory
+ * blocks nobody.
+ */
+export function runnableKeys<T extends { provider: string }>(
+  keys: T[],
+  directory: { provider: string; serves_models: boolean }[],
+): T[] {
+  if (directory.length === 0) return keys;
+  return keys.filter(
+    (k) => directory.find((d) => d.provider === k.provider)?.serves_models !== false,
+  );
+}
+
+/**
  * The API-keys row once a key is saved (DtF-Key-3): "<p> key saved · •••• <last4>", or
  * "<p1>, <p2> keys saved" for several; null when none is saved.
  */

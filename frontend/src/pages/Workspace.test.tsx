@@ -144,6 +144,22 @@ describe("Workspace", () => {
     expect(screen.getByRole("button", { name: /Home 2/ })).toBeInTheDocument();
   });
 
+  it("re-counts the nav badges when the canvas is left", async () => {
+    // Drawer changes (keep a memory, add a tool, change a model) move other areas' counts.
+    let loads = 0;
+    registerBadgeLoader("home", () => Promise.resolve({ home: ++loads }));
+    const go = (hash: string) =>
+      act(() => {
+        window.location.hash = hash;
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+      });
+    renderAt("#/home");
+    await waitFor(() => expect(loads).toBe(1));
+    go("#/teams/t1");
+    go("#/home");
+    await waitFor(() => expect(loads).toBe(2));
+  });
+
   it("? shows the keyboard shortcuts, and Done closes them", async () => {
     renderAt("#/");
     await userEvent.keyboard("?");
