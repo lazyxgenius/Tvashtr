@@ -69,6 +69,8 @@ export interface InvocationCost {
 // P1.5c (§14.1): one persisted AgentInvocation row — a single round of a node's
 // execution. The Reviewer panel renders the per-round verdict history from these.
 export interface NodeInvocation {
+  /** B-NODES (additive): the invocation's id (a history round's `invocation_id`). */
+  invocation_id?: number;
   iteration: number;
   status: string; // running | done | failed | stopped
   outcome: string | null; // reviewer: approved | changes_requested ; engineer: built ; …
@@ -110,6 +112,11 @@ export interface GraphNode {
   edits_allowed?: boolean;
   // P1.5b: gate/terminal node metadata (null for completion/agent).
   config: NodeConfig | null;
+  // The run's copy of the agent's skills and tools (the run drawer shows them read-only).
+  tool_config?: Record<string, unknown> | null;
+  skills?: unknown[] | null;
+  // B-NODES: the team's node this run's node was copied from (null when not a copy).
+  origin_node_id?: string | null;
   // P1.5a: the node's live per-invocation state (backend owns this now).
   status: string; // idle | running | done | failed | stopped
   iteration: number; // 1-based count of this node's runs; 0 before it is reached
@@ -170,6 +177,8 @@ export interface RunRow {
   cost_total_usd: number | null;
   created_at: string;
   updated_at: string;
+  // Revamp P11 (additive): the library team this run was launched from.
+  library_team_id?: string | null;
 }
 
 export interface CostRow {

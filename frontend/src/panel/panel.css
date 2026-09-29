@@ -141,6 +141,34 @@
   flex-direction: column;
   gap: 22px;
 }
+/* The run drawer's read-only Setup and Skills & tools: one disabled fieldset with no box of its own. */
+.nd-readonly {
+  display: contents;
+}
+/* The run drawer's Runs tab: Activity · Changes · Ask under the rounds. Those views own a scroll
+   region when they fill a pane; here they flow in the tab's scroll. */
+.nd-runtools {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.nd-runtools .tv-seg {
+  align-self: flex-start;
+}
+.nd-runtools .tv-scroll {
+  padding: 0;
+  overflow: visible;
+}
+.nd-runtools .tv-chat__form {
+  padding: 12px 0 0;
+}
+/* A round's exact tokens and cost, and its context manifest. */
+.nd-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
 .nd-foot {
   flex: none;
   display: flex;

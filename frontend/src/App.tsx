@@ -31,6 +31,7 @@ import {
   deleteTeamEdge,
   deleteTeamNode,
   type GraphData,
+  type GraphNode,
   type GraphValidity,
   getGraph,
   getRunStatus,
@@ -147,20 +148,18 @@ export default function App({
   // cleared here now; kept for the canvas' blocked-reason plumbing).
   const [error, setError] = useState<string | null>(null);
   const blockedNodes: string[] = [];
-  // Run-view selection is by NODE ID (Option A): a topology-edited team can carry duplicate role
-  // names (e.g. two blank thinkers), so the run panel keys on the unique node id — the run-view twin
-  // of the authoring `selectedNodeId` below.
-  const [selectedRunNodeId, setSelectedRunNodeId] = useState<string | null>(null);
-  // P1.8d: authoring selection is by NODE ID too (duplicate role names possible after topology edits).
-  // The drawer's place (node, tab, focus) lives in the page address when the Workspace passes
-  // `onNodeRoute` (spec §3.2: refresh and back/forward keep it); a bare mount keeps it here.
+  // P1.8d: selection is by NODE ID (duplicate role names possible after topology edits), in the
+  // authoring view and the run view alike. The drawer's place (node, tab, focus) lives in the page
+  // address when the Workspace passes `onNodeRoute` (spec §3.2: refresh and back/forward keep it); a
+  // bare mount keeps it here. The run view's drawer opens on Runs (Q20), the Team screen's on Setup.
+  const defaultTab: NodeTab = runId === null ? "setup" : "runs";
   const [localPlace, setLocalPlace] = useState<DrawerPlace>({
     node: routeNode ?? null,
-    tab: routeTab ?? "setup",
+    tab: routeTab ?? defaultTab,
     focus: routeFocus ?? false,
   });
   const place: DrawerPlace = onNodeRoute
-    ? { node: routeNode ?? null, tab: routeTab ?? "setup", focus: routeFocus ?? false }
+    ? { node: routeNode ?? null, tab: routeTab ?? defaultTab, focus: routeFocus ?? false }
     : localPlace;
   const selectedNodeId = place.node;
   const setPlace = useCallback(
@@ -168,20 +167,20 @@ export default function App({
       if (onNodeRoute) {
         onNodeRoute({
           node: next.node ?? undefined,
-          tab: next.node && next.tab !== "setup" ? next.tab : undefined,
+          tab: next.node && next.tab !== defaultTab ? next.tab : undefined,
           focus: next.node && next.focus ? true : undefined,
         });
       } else {
         setLocalPlace(next);
       }
     },
-    [onNodeRoute],
+    [onNodeRoute, defaultTab],
   );
   // Select a node (keeping the open tab) or close the drawer (null).
   const setSelectedNodeId = useCallback(
     (id: string | null) =>
-      setPlace({ node: id, tab: id ? place.tab : "setup", focus: id ? place.focus : false }),
-    [setPlace, place.tab, place.focus],
+      setPlace({ node: id, tab: id ? place.tab : defaultTab, focus: id ? place.focus : false }),
+    [setPlace, place.tab, place.focus, defaultTab],
   );
   // PANEL-21: the open agent drawer registers its unsaved-changes guard here. Everything that would
   // drop its draft (Close, selecting another node, leaving the canvas) goes through `guardLeave`,
@@ -510,7 +509,6 @@ export default function App({
     setCosts([]);
     setTasks([]);
     resolvedIdsRef.current = new Set();
-    setSelectedRunNodeId(null);
     setSelectedNodeId(null);
     setFocusNodeId(null);
   }, [setSelectedNodeId]);
@@ -640,8 +638,13 @@ export default function App({
 
   // P1.8d: the authoring panel selects by node id (duplicate role names are possible now).
   const selectedTeamNode = teamGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null;
-  // The run-view selected node (Option A): found by id so two same-role nodes select independently.
-  const selectedRunNode = graph?.nodes.find((n) => n.id === selectedRunNodeId) ?? null;
+  // The run view's selected agent, by id so two same-role nodes select independently. Only an agent
+  // opens there (a gate's approval lives in the Tasks drawer), even from a hand-typed address.
+  const selectedRunNode = authoring
+    ? null
+    : (graph?.nodes.find(
+        (n) => n.id === selectedNodeId && (n.kind === "agent" || n.kind === "completion"),
+      ) ?? null);
 
   // Documents (DOCS-10..17): the toolbar's run is the team's latest run while authoring, else the
   // run on screen. A finished round in the run view refetches its documents (new versions).
@@ -664,11 +667,10 @@ export default function App({
   const openDocuments = useCallback(
     (docsRunId: string) =>
       guardLeave(() => {
-        if (selectedNodeId !== null) setPlace({ node: null, tab: "setup", focus: false });
-        setSelectedRunNodeId(null);
+        if (selectedNodeId !== null) setPlace({ node: null, tab: defaultTab, focus: false });
         setDocsDrawer({ runId: docsRunId });
       }),
-    [guardLeave, selectedNodeId, setPlace],
+    [guardLeave, selectedNodeId, setPlace, defaultTab],
   );
   // A canvas chip opens its document in the viewer.
   const openChipDoc = useCallback((doc: RunDoc) => openDoc(doc.id), [openDoc]);
@@ -720,6 +722,15 @@ export default function App({
   const openEngines = onBackToDashboard
     ? () => guardLeave(() => onBackToDashboard("engines"))
     : undefined;
+  // The run drawer's "Edit on the team": the team this run came from, with the agent the run
+  // copied open on Setup.
+  const editOnTeam = (node: GraphNode) => {
+    const teamOfRun = run?.library_team_id ?? currentTeamId;
+    const origin = node.origin_node_id;
+    return teamOfRun && origin
+      ? () => navigate({ page: "team", teamId: teamOfRun, node: origin })
+      : undefined;
+  };
 
   return (
     <>
@@ -802,7 +813,7 @@ export default function App({
             panelOpen={docsOpen ? "docs" : nodeDrawerOpen}
             onSelectNode={(id) => {
               if (id) setDocsDrawer(null);
-              setSelectedRunNodeId(id);
+              setSelectedNodeId(id);
             }}
             editable={authoring}
             teamNodes={teamGraph?.nodes ?? []}
@@ -817,7 +828,7 @@ export default function App({
             ringKey={ringKey}
             onOpenModel={handleOpenModel}
             busy={editBusy}
-            selectedNodeId={authoring ? selectedNodeId : undefined}
+            selectedNodeId={selectedNodeId}
             docChips={docChips}
             onOpenDoc={openChipDoc}
           />
@@ -868,14 +879,22 @@ export default function App({
                 }
               />
             )
-          : selectedRunNode && (
+          : selectedRunNode &&
+            graph && (
               <RunNodeDrawer
+                key={selectedRunNode.id}
                 node={selectedRunNode}
+                nodes={graph.nodes}
+                edges={graph.edges}
+                isEntry={!graph.edges.some((e) => e.target_node_id === selectedRunNode.id)}
                 runId={runId}
                 run={run}
                 workflowStatus={workflowStatus}
-                onClose={() => setSelectedRunNodeId(null)}
+                tab={place.tab}
+                onTabChange={(tab) => setPlace({ ...place, tab })}
+                onClose={() => setSelectedNodeId(null)}
                 onOpenDoc={openRunDoc}
+                onEditOnTeam={editOnTeam(selectedRunNode)}
               />
             )}
         {/* Over a focus view, the viewer mounts after it (once the team is in), so the viewer is

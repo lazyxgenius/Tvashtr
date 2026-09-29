@@ -40,7 +40,7 @@ describe("TIER_LABEL", () => {
   it("names the three tiers", () => {
     expect(TIER_LABEL.account).toBe("Account");
     expect(TIER_LABEL.repo).toBe("This repo");
-    expect(TIER_LABEL.node).toBe("Per-node");
+    expect(TIER_LABEL.node).toBe("This agent");
   });
 });
 

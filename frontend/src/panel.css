@@ -137,99 +137,7 @@
   box-shadow: var(--shadow-focus);
 }
 
-/* ---- Per-node "Last run" brief (Option A) — a bounded section above the kind-specific body.
-   Sits at the top of the panel body (a thinker's PRD / a worker's feed scrolls beneath it). ---- */
-.tv-lastrun {
-  flex: none;
-  max-height: 42%;
-  overflow-y: auto;
-  padding: var(--space-5) var(--space-5) 0;
-}
-.tv-lastrun__head {
-  font-family: var(--font-ui);
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-medium);
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-/* ---- Reviewer verdict history (P1.5c §14.1) ---- */
-/* A tight, calm list of per-round verdicts. Tones reuse the established pill token
-   patterns (sage = approved, coral = changes requested, panel = neutral); no ad-hoc hex,
-   no animation. */
-.tv-verdicts {
-  list-style: none;
-  margin: var(--space-4) 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.tv-verdict {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border: var(--border-width) solid transparent;
-  border-radius: var(--radius-sm);
-}
-/* The round label + verdict on one line; §14.3 reasons (when present) stack beneath. */
-.tv-verdict__line {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-.tv-verdict__round {
-  flex: none;
-  font-family: var(--font-code);
-  font-size: var(--fs-micro);
-  color: var(--text-tertiary);
-}
-.tv-verdict__label {
-  font-family: var(--font-ui);
-  font-size: var(--fs-body-sm);
-  font-weight: var(--fw-medium);
-}
-.tv-verdict--approved {
-  background: var(--sage-100);
-  color: color-mix(in srgb, var(--sage-500) 62%, var(--ink-900));
-}
-.tv-verdict--changes {
-  background: var(--coral-100);
-  color: var(--coral-700);
-}
-.tv-verdict--neutral {
-  background: var(--panel-300);
-  color: var(--ink-600);
-}
-/* M-legible: a FAILED round — the danger tone (red family, distinct from the coral "changes"
-   review outcome) so a node that died is visibly the failure, not an em-dash-grey round. */
-.tv-verdict--failed {
-  background: var(--red-100);
-  color: var(--red-500);
-}
-/* §14.3: the persisted verdict reasons under a changes_requested round — muted, readable,
-   wraps multi-line; no ad-hoc hex, no animation. */
-.tv-verdict__reasons {
-  margin: 0;
-  font-size: var(--fs-body-sm);
-  line-height: var(--lh-normal);
-  color: var(--text-secondary);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* ---- Per-round ledger (M-ledger C6) — the token/$ cost line + the worker's context-budget
-   manifest, rendered under a round in the "Last run" brief. Muted + token-driven; mirrors the
-   verdict block's restraint (no ad-hoc hex, no animation). ---- */
-.tv-verdict__cost {
-  margin: 0;
-  font-family: var(--font-code);
-  font-size: var(--fs-micro);
-  color: var(--text-tertiary);
-}
+/* ---- A round's context-budget manifest (M-ledger C6), under a round in the run drawer's Runs tab. */
 .tv-manifest {
   margin-top: var(--space-1);
 }
@@ -705,11 +613,8 @@
   color: var(--text-primary);
 }
 
-/* ---- M-changes: the run-view "Changes" tab — a per-file diff of what the run shipped. Colors reuse
-   the established sage(add)/red(del) token pair + the .tv-verdict color-mix recipe; no ad-hoc hex. */
-.tv-worktabs {
-  padding: var(--space-4) var(--space-5) 0;
-}
+/* ---- M-changes: the run drawer's "Changes" — a per-file diff of what the run shipped. Colors reuse
+   the established sage(add)/red(del) token pair; no ad-hoc hex. */
 .tv-diff {
   display: flex;
   flex-direction: column;
@@ -811,9 +716,9 @@
   color: var(--text-secondary);
 }
 
-/* Mode A — "Ask the node" chat (NodeChat): a transcript + input inside the run-view drawer. Reuses
-   the shared .tv-seg tab control (SidePanel), .tv-scroll region, and .tv-btn Send button; only the
-   message log, bubbles, and input row are new here. */
+/* Mode A — "Ask the node" chat (NodeChat): a transcript + input in the run drawer's Runs tab. Reuses
+   the shared .tv-scroll region and .tv-btn Send button; only the message log, bubbles, and input row
+   are new here. */
 .tv-chat {
   display: flex;
   flex-direction: column;
@@ -878,161 +783,3 @@
 .tv-chat__send {
   white-space: nowrap;
 }
-
-/* ===== M-memory — fact chips and the 6 polarity badges (the agent drawer's Memory section and a
-   run's memories; Toolkit › Memory has its own pages/memory/memory.css). */
-
-.tv-mem-facts {
-  margin-top: 0.85rem;
-}
-
-.tv-mem select {
-  font: inherit;
-  font-size: var(--fs-micro);
-  color: var(--ink-900);
-  background: var(--panel-300);
-  border: var(--border-width) solid var(--border-strong);
-  border-radius: var(--radius-md);
-  padding: 0.32rem 0.5rem;
-}
-.tv-mem select:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
-}
-
-/* Section headings + the fact list reset. */
-.tv-mem-section + .tv-mem-section {
-  margin-top: 0.6rem;
-}
-.tv-mem-section__head {
-  margin: 0 0 0.35rem;
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-medium);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--ink-500);
-}
-.tv-mem-section__sub {
-  margin: 0.4rem 0 0.3rem;
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-medium);
-  color: var(--ink-500);
-}
-.tv-mem-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-/* One fact chip. */
-.tv-mem-fact {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.5rem 0.6rem;
-  background: var(--cream-100, #fbfaf5);
-  border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-md);
-}
-.tv-mem-fact__row {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-.tv-mem-fact__content {
-  flex: 1 1 12rem;
-  min-width: 0;
-  font-size: var(--fs-small, 0.86rem);
-  color: var(--ink-900);
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-.tv-mem-fact__edit {
-  flex: 1 1 100%;
-  font: inherit;
-  color: var(--ink-900);
-  background: var(--cream-100, #fff);
-  border: var(--border-width) solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  padding: 0.35rem 0.45rem;
-  resize: vertical;
-}
-.tv-mem-fact__meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: var(--fs-micro);
-  color: var(--stone-400);
-}
-.tv-mem-fact__pinned {
-  color: var(--coral-700);
-  font-weight: var(--fw-medium);
-}
-.tv-mem-fact__status {
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-.tv-mem-fact__actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
-}
-.tv-mem-fact__confirm {
-  font-size: var(--fs-micro);
-  color: var(--ink-600);
-}
-.tv-mem-fact__polarity {
-  margin-right: 0.15rem;
-}
-
-/* The 6 polarity badges — a fork of .tv-badge--danger's tint + color-mix recipe, one hue per
-   force: require→sage, prefer→coral, allow→blue, context→neutral, avoid→amber, forbid→red. */
-.tv-mem-badge {
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-.tv-mem-badge--require {
-  background: var(--sage-100);
-  color: color-mix(in srgb, var(--sage-500) 64%, var(--ink-900));
-  border-color: color-mix(in srgb, var(--sage-500) 26%, transparent);
-}
-.tv-mem-badge--prefer {
-  background: var(--coral-100);
-  color: var(--coral-700);
-  border-color: var(--coral-200);
-}
-.tv-mem-badge--allow {
-  background: var(--blue-100);
-  color: color-mix(in srgb, var(--blue-500) 64%, var(--ink-900));
-  border-color: color-mix(in srgb, var(--blue-500) 26%, transparent);
-}
-.tv-mem-badge--context {
-  background: var(--panel-300);
-  color: var(--ink-600);
-  border-color: var(--border-hairline);
-}
-.tv-mem-badge--avoid {
-  background: var(--amber-100);
-  color: color-mix(in srgb, var(--amber-500) 64%, var(--ink-900));
-  border-color: color-mix(in srgb, var(--amber-500) 30%, transparent);
-}
-.tv-mem-badge--forbid {
-  background: var(--red-100);
-  color: color-mix(in srgb, var(--red-500) 62%, var(--ink-900));
-  border-color: color-mix(in srgb, var(--red-500) 28%, transparent);
-}
-/* ===== end M-memory S5a shelf styles ========================================================= */
-
-/* ===== M-memory S5b — the two scoped views (run-inspector Memory tab + authoring-drawer section).
-   Reuses the S5a fact/badge/section vocabulary above; only these two presentational rules are new. */
-.tv-mem-fact__gone {
-  color: var(--stone-400);
-  font-style: italic;
-}
-/* ===== end M-memory S5b view styles ========================================================== */

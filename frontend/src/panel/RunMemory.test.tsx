@@ -1,13 +1,13 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getRunMemories, listMemories, promoteMemory, rejectMemory } from "../lib/api";
 import type { NodeInvocation, NodeMemoryRow } from "../lib/api";
 import { RunMemory } from "./RunMemory";
 
-// S5b Surface 1 — the run-inspector Memory tab. Mock the api client (MemoryShelf pattern) so the two
-// zones ("Used this run" = injected refs resolved client-side; "Learned this run" = getRunMemories)
-// and the inline Confirm/Discard are exercised without a backend.
+// The run drawer's Memory tab. Mock the api client (MemoryShelf pattern) so the two groups ("Used this
+// run" = injected refs resolved client-side; "Learned this run" = getRunMemories) and the inline
+// Keep/Discard are exercised without a backend.
 
 vi.mock("../lib/api", () => ({
   listMemories: vi.fn(),
@@ -98,17 +98,17 @@ describe("RunMemory — Learned this run", () => {
     ]);
     render(<RunMemory invocations={[]} runId="r1" />);
     expect(await screen.findByText("prefers small PRs")).toBeInTheDocument();
-    expect(screen.getByText(/shown on every node/i)).toBeInTheDocument();
+    expect(screen.getByText(/every agent in it shows the same list/i)).toBeInTheDocument();
     expect(mRun).toHaveBeenCalledWith("r1");
   });
 
-  it("offers Confirm on a pending taught fact and promotes it, dropping it from pending", async () => {
+  it("offers Keep on a pending taught fact and promotes it, dropping it from pending", async () => {
     mRun.mockResolvedValueOnce([
       mem({ id: "P", content: "always lint", status: "pending_review" }),
     ]);
     render(<RunMemory invocations={[]} runId="r1" />);
-    const confirm = await screen.findByRole("button", { name: "Confirm always lint" });
-    fireEvent.click(confirm);
+    const keep = await screen.findByRole("button", { name: "Keep always lint" });
+    fireEvent.click(keep);
     await waitFor(() => expect(mPromote).toHaveBeenCalledWith("P"));
     // the post-promote reload (default []) drops it out of the pending list
     await waitFor(() => expect(screen.queryByText("always lint")).toBeNull());
@@ -124,5 +124,15 @@ describe("RunMemory — Learned this run", () => {
   it("empties the Learned zone when the run taught nothing", async () => {
     render(<RunMemory invocations={[]} runId="r1" />);
     expect(await screen.findByText(/hasn.t taught any durable memory/i)).toBeInTheDocument();
+  });
+
+  it("says when the memory can't load, and Retry loads it again", async () => {
+    mRun.mockRejectedValueOnce(new Error("down"));
+    render(<RunMemory invocations={[]} runId="r1" />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn’t load this run’s memory.");
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText(/hasn.t taught any durable memory/i)).toBeInTheDocument();
+    expect(mRun).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,14 +1,14 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { type ComponentProps, useState } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GraphNode, NodeInvocation, NodeMemoryRow, RunRow } from "../../lib/api";
+import type { NodeTab } from "../../lib/nav";
 import { RunNodeDrawer } from "./RunNodeDrawer";
 
-// Option A: the run-view panel is keyed on the node's KIND (not a hardcoded role) and surfaces a
-// uniform "Last run" brief (the per-node `outcome_detail`) for ANY agent/thinker node — incl. a
-// topology-authored CUSTOM node. The Reviewer's §14.1 per-round verdict history must stay identical.
-
-const EMPTY_SPEC_HINT = "No spec yet. Start a run and the product manager drafts the first one.";
+// Q20: the run view's drawer is the Team screen's agent drawer — the same header, badges and five
+// tabs — opening on Runs. Runs holds this run's rounds and the run-only tools (Activity, Changes,
+// Ask); Setup and Skills & tools are the run's copy of the agent, read-only.
 
 function gnode(over: Partial<GraphNode> & Pick<GraphNode, "id" | "role_name" | "kind">): GraphNode {
   return {
@@ -37,132 +37,6 @@ function inv(over: Partial<NodeInvocation> & Pick<NodeInvocation, "iteration">):
   };
 }
 
-describe("RunNodeDrawer — the agent drawer's shell (Q20)", () => {
-  it("names the node's run drawer and badges its last round, access and model", () => {
-    const onClose = vi.fn();
-    render(
-      <RunNodeDrawer
-        node={gnode({
-          id: "n-rev",
-          role_name: "reviewer",
-          kind: "agent",
-          model: "xai/grok-4.7",
-          edits_allowed: false,
-          config: { title: "Checker" },
-          invocations: [inv({ iteration: 1, outcome: "changes_requested" })],
-        })}
-        runId={null}
-        run={null}
-        workflowStatus={null}
-        onClose={onClose}
-      />,
-    );
-    const drawer = within(screen.getByRole("complementary", { name: "Checker in this run" }));
-    expect(drawer.getByTitle("See the last run")).toHaveTextContent(/^Changes requested/);
-    expect(drawer.getByText("Read-only")).toBeInTheDocument();
-    expect(drawer.getByText("grok-4.7")).toBeInTheDocument();
-    expect(drawer.queryByRole("tab")).toBeNull();
-    fireEvent.click(drawer.getByRole("button", { name: "Close panel" }));
-    expect(onClose).toHaveBeenCalled();
-  });
-});
-
-describe("RunNodeDrawer — generalized 'Last run' brief by node kind (Option A)", () => {
-  it("renders a CUSTOM thinker's brief + the PRD body (NOT an empty event feed)", () => {
-    const node = gnode({
-      id: "n-arch",
-      role_name: "architect", // a topology-authored custom role — no hardcoded TITLES entry
-      kind: "completion",
-      invocations: [
-        inv({
-          iteration: 2,
-          outcome: "prd_written",
-          outcome_detail: "Refined the spec (version 2).",
-        }),
-      ],
-    });
-    const { container } = render(
-      <RunNodeDrawer
-        node={node}
-        runId={null}
-        run={null}
-        workflowStatus={null}
-        onClose={() => {}}
-      />,
-    );
-    // the custom role is title-cased into the header
-    expect(screen.getByText("Architect")).toBeInTheDocument();
-    // its per-node work-brief renders (this is the bug fix — a custom node showed a raw feed before)
-    expect(screen.getByText("Refined the spec (version 2).")).toBeInTheDocument();
-    // the kind-specific body is the PRD view (its empty hint), NOT the event feed
-    expect(screen.getByText(EMPTY_SPEC_HINT)).toBeInTheDocument();
-    expect(container.querySelector(".tv-feed__note")).toBeNull();
-  });
-
-  it("renders an Engineer worker's files-changed brief + the event feed (NOT the PRD)", () => {
-    const brief = "Built the feature — changed 2 file(s): greeting.txt, main.py";
-    const node = gnode({
-      id: "n-eng",
-      role_name: "engineer",
-      kind: "agent",
-      invocations: [inv({ iteration: 1, outcome: "built", outcome_detail: brief })],
-    });
-    const { container } = render(
-      <RunNodeDrawer
-        node={node}
-        runId={null}
-        run={null}
-        workflowStatus={null}
-        onClose={() => {}}
-      />,
-    );
-    expect(screen.getByText("Engineer")).toBeInTheDocument();
-    expect(screen.getByText(brief)).toBeInTheDocument();
-    // the kind-specific body is the event feed, NOT the PRD empty hint
-    expect(container.querySelector(".tv-feed__note")).not.toBeNull();
-    expect(screen.queryByText(EMPTY_SPEC_HINT)).toBeNull();
-  });
-
-  it("renders the Reviewer per-round verdicts identical to the §14.1 view", () => {
-    const reason = "Missing the overdue-check pure function.";
-    const node = gnode({
-      id: "n-rev",
-      role_name: "reviewer",
-      kind: "agent",
-      invocations: [
-        inv({ iteration: 1, outcome: "changes_requested", outcome_detail: reason }),
-        inv({ iteration: 2, outcome: "approved", outcome_detail: null }),
-      ],
-    });
-    const { container } = render(
-      <RunNodeDrawer
-        node={node}
-        runId={null}
-        run={null}
-        workflowStatus={null}
-        onClose={() => {}}
-      />,
-    );
-    const round1 = screen.getByText("Round 1");
-    const round2 = screen.getByText("Round 2");
-    expect(screen.getByText("Changes requested")).toBeInTheDocument();
-    expect(screen.getByText("Approved")).toBeInTheDocument();
-    expect(round1.compareDocumentPosition(round2) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // the reasons render once, UNDER the changes_requested round only (NOT the approved one)
-    expect(screen.getAllByText(reason)).toHaveLength(1);
-    const changesLi = screen.getByText("Changes requested").closest("li");
-    const approvedLi = screen.getByText("Approved").closest("li");
-    expect(within(changesLi as HTMLElement).getByText(reason)).toBeInTheDocument();
-    expect((approvedLi as HTMLElement).querySelector(".tv-verdict__reasons")).toBeNull();
-    // the §14.1 verdict tones still drive the styling (sage = approved, coral = changes)
-    expect(container.querySelector(".tv-verdict--changes")).not.toBeNull();
-    expect(container.querySelector(".tv-verdict--approved")).not.toBeNull();
-  });
-});
-
-// ---- F1c Decision 2: the run-view subtitle is STATUS-based (from the SAME derived status the node
-// card uses), reading what the node is doing right now — not a role blurb. ----
-
 function runRow(over: Partial<RunRow> = {}): RunRow {
   return {
     id: "r1",
@@ -179,230 +53,388 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
   };
 }
 
-describe("RunNodeDrawer — F1c status-based subtitle (Decision 2)", () => {
-  it("maps the node's live run status → the subtitle (Working now / Finished / Not reached yet)", () => {
-    // A running node in an in-flight run → "Working now". runId=null keeps the EventFeed body inert
-    // (no network) — the subtitle is a pure function of node.status + run + workflowStatus.
-    const running = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "running" });
+type DrawerProps = ComponentProps<typeof RunNodeDrawer>;
+
+/** The drawer with its tab held in state, as the page does (the address). No run id unless a test
+ * reads the run's data (the step feed, the diff, memories, documents), so nothing else loads. */
+function Drawer(props: Partial<DrawerProps> & Pick<DrawerProps, "node">) {
+  const [tab, setTab] = useState<NodeTab>(props.tab ?? "runs");
+  return (
+    <RunNodeDrawer
+      nodes={[props.node]}
+      edges={[]}
+      runId={null}
+      run={runRow({ status: "completed" })}
+      workflowStatus={null}
+      onClose={() => {}}
+      {...props}
+      tab={tab}
+      onTabChange={setTab}
+    />
+  );
+}
+
+function urlOf(input: RequestInfo | URL): string {
+  return typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+}
+
+// Every request the drawer can make answers something empty unless a test says otherwise: the step
+// feed, the run's memories, the memory store, the documents, the Toolkit shelves and templates.
+let answers: (url: string) => unknown;
+beforeEach(() => {
+  answers = () => undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((input: RequestInfo | URL) => {
+      const url = urlOf(input);
+      const body = answers(url) ?? (url.includes("run-events") ? { run_id: "r1", events: [] } : {});
+      return Promise.resolve(new Response(JSON.stringify(body)));
+    }),
+  );
+});
+afterEach(() => vi.unstubAllGlobals());
+
+const drawer = (name: string) => within(screen.getByRole("complementary", { name }));
+
+describe("RunNodeDrawer — the Team screen's drawer, opening on Runs", () => {
+  it("shows the agent's name, tagline and badges over the five tabs, on Runs", () => {
+    const onClose = vi.fn();
+    render(
+      <Drawer
+        node={gnode({
+          id: "n-rev",
+          role_name: "reviewer",
+          kind: "agent",
+          model: "xai/grok-4.7",
+          edits_allowed: false,
+          config: { title: "Checker", description: "Checks against the spec" },
+          invocations: [inv({ iteration: 1, outcome: "changes_requested" })],
+        })}
+        onClose={onClose}
+      />,
+    );
+    const d = drawer("Checker in this run");
+    expect(d.getByRole("heading", { name: "Checker" })).toBeInTheDocument();
+    expect(d.getByText("Checks against the spec")).toBeInTheDocument();
+    expect(d.getByTitle("See the last run")).toHaveTextContent(/^Changes requested/);
+    expect(d.getByText("Read-only")).toBeInTheDocument();
+    expect(d.getByText("grok-4.7")).toBeInTheDocument();
+    expect(d.getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Setup",
+      "Skills & tools",
+      "Memory",
+      "Runs",
+      "Docs",
+    ]);
+    expect(d.getByRole("tab", { name: "Runs" })).toHaveAttribute("aria-selected", "true");
+    // Nothing on Runs is saved: no Save footer.
+    expect(d.queryByRole("button", { name: /^Save/ })).toBeNull();
+    fireEvent.click(d.getByRole("button", { name: "Close panel" }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("badges what the agent is doing in THIS run", () => {
+    const eng = (over: Partial<GraphNode>) =>
+      gnode({ id: "n-eng", role_name: "engineer", kind: "agent", ...over });
     const { rerender } = render(
-      <RunNodeDrawer
-        node={running}
-        runId={null}
+      <Drawer
+        node={eng({ status: "running", invocations: [inv({ iteration: 1, status: "running" })] })}
         run={runRow({ status: "running" })}
         workflowStatus="PENDING"
-        onClose={() => {}}
       />,
     );
-    expect(screen.getByText("Working now")).toBeInTheDocument();
+    const badge = () => screen.getByTitle("See the last run");
+    expect(badge()).toHaveTextContent("Running");
 
-    // A completed node → "Finished" (done is sticky, independent of the run).
     rerender(
-      <RunNodeDrawer
-        node={gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "done" })}
-        runId={null}
-        run={null}
-        workflowStatus={null}
-        onClose={() => {}}
+      <Drawer
+        node={eng({ status: "idle", iteration: 0 })}
+        run={runRow({ status: "running" })}
+        workflowStatus="PENDING"
       />,
     );
-    expect(screen.getByText("Finished")).toBeInTheDocument();
+    expect(badge()).toHaveTextContent("Waiting");
 
-    // An idle / never-reached node → "Not reached yet" (it did not fail — it was simply not reached).
     rerender(
-      <RunNodeDrawer
-        node={gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "idle" })}
-        runId={null}
-        run={null}
-        workflowStatus={null}
-        onClose={() => {}}
+      <Drawer node={eng({ status: "idle", iteration: 0 })} run={runRow({ status: "completed" })} />,
+    );
+    expect(badge()).toHaveTextContent("Not reached");
+
+    rerender(
+      <Drawer
+        node={eng({ status: "failed", invocations: [inv({ iteration: 1, status: "failed" })] })}
+        run={runRow({ status: "failed" })}
       />,
     );
-    expect(screen.getByText("Not reached yet")).toBeInTheDocument();
+    expect(badge()).toHaveTextContent(/^Failed/);
+
+    rerender(
+      <Drawer
+        node={eng({ invocations: [inv({ iteration: 1, outcome: "built" })] })}
+        run={runRow({ status: "completed" })}
+      />,
+    );
+    expect(badge()).toHaveTextContent(/^Done/);
+  });
+
+  it("the status badge goes back to Runs from another tab", () => {
+    render(
+      <Drawer node={gnode({ id: "n-eng", role_name: "engineer", kind: "agent" })} tab="docs" />,
+    );
+    fireEvent.click(screen.getByTitle("See the last run"));
+    expect(screen.getByRole("tab", { name: "Runs" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("uses the entry agent's glyph and keeps its Setup locked to the idea", async () => {
+    const { container } = render(
+      <Drawer
+        node={gnode({ id: "n-pm", role_name: "pm", kind: "completion", prompt: "Write the PRD." })}
+        isEntry
+        tab="setup"
+      />,
+    );
+    expect(container.querySelector(".nd-glyph .lucide-zap")).not.toBeNull();
+    expect(screen.getByText(/The idea you type when you press Run/)).toBeInTheDocument();
+    await act(async () => {}); // the templates list lands
   });
 });
 
-// ---- M-ledger C6: the run-view panel surfaces each worker round's cost + context-manifest (via the
-// generalized "Last run" brief), and passes the selected node into EventFeed so the feed scopes to
-// it. Re-pointed (not gutted) — the Option A / Decision-2 tests above stand. ----
-describe("RunNodeDrawer — C6 per-round ledger + node-scoped feed", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  it("surfaces a worker round's per-round cost + context-manifest in the 'Last run' brief", () => {
-    const node = gnode({
-      id: "n-eng",
-      role_name: "engineer",
-      kind: "agent",
-      invocations: [
-        inv({
-          iteration: 1,
-          outcome: "built",
-          outcome_detail: "Built it.",
-          cost: {
-            prompt_tokens: 1240,
-            completion_tokens: 320,
-            total_tokens: 1560,
-            cost_usd: 0.0041,
-          },
-          context_manifest: {
-            parts: [
-              { name: "system", tokens: 900 },
-              { name: "spec", tokens: 2100 },
-            ],
-            total_tokens: 3000,
-            budget: 8000,
-            handle_used: true,
-          },
-        }),
-      ],
-    });
-    const { container } = render(
-      <RunNodeDrawer
-        node={node}
-        runId={null}
-        run={null}
-        workflowStatus={null}
-        onClose={() => {}}
+describe("RunNodeDrawer — Runs: this run's rounds", () => {
+  it("shows the latest round as Last run and the earlier ones below, newest first", () => {
+    const reason = "Missing the overdue-check pure function.";
+    render(
+      <Drawer
+        node={gnode({
+          id: "n-rev",
+          role_name: "reviewer",
+          kind: "agent",
+          invocations: [
+            inv({ iteration: 1, outcome: "changes_requested", outcome_detail: reason }),
+            inv({ iteration: 2, outcome: "approved", outcome_detail: "Looks right." }),
+          ],
+        })}
       />,
     );
-    expect(screen.getByText("1,240 in / 320 out · $0.0041")).toBeInTheDocument();
-    expect(container.querySelector(".tv-manifest")).not.toBeNull();
-    expect(screen.getByText("Budget")).toBeInTheDocument();
-    expect(screen.getByText("Spec offloaded to SPEC.md")).toBeInTheDocument();
+    const last = within(screen.getByRole("region", { name: "Last run" }));
+    expect(last.getByText("Approved")).toBeInTheDocument();
+    expect(last.getByText(/^Round 2/)).toBeInTheDocument();
+    expect(last.getByText("Looks right.")).toBeInTheDocument();
+    // Round 1 waits folded under Earlier rounds; opening it shows its reasons.
+    const earlier = screen.getByRole("button", { name: /Round 1/ });
+    expect(earlier).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(reason)).toBeNull();
+    fireEvent.click(earlier);
+    expect(screen.getByText(reason)).toBeInTheDocument();
   });
 
-  it("passes the selected node into EventFeed → the feed scopes to that node's events only", async () => {
-    const events = [
-      {
-        seq: 1,
-        kind: "action",
-        payload: { thought: "engineer step one" },
-        created_at: "2026-01-01T00:00:00Z",
-        invocation_id: 10,
-        node_id: "n-eng",
-        iteration: 1,
-      },
-      {
-        seq: 1,
-        kind: "action",
-        payload: { thought: "OTHER node step" },
-        created_at: "2026-01-01T00:00:00Z",
-        invocation_id: 20,
-        node_id: "n-other",
-        iteration: 1,
-      },
-    ];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>(() =>
-        Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({ run_id: "r1", events }),
-        } as unknown as Response),
-      ),
-    );
-    const node = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "done" });
+  it("gives a round its exact tokens, cost and context manifest", () => {
     render(
-      <RunNodeDrawer
-        node={node}
-        runId="r1"
-        run={runRow({ status: "completed" })}
-        workflowStatus={null}
-        onClose={() => {}}
+      <Drawer
+        node={gnode({
+          id: "n-eng",
+          role_name: "engineer",
+          kind: "agent",
+          invocations: [
+            inv({
+              iteration: 1,
+              outcome: "built",
+              outcome_detail: "Built it.",
+              cost: {
+                prompt_tokens: 1240,
+                completion_tokens: 320,
+                total_tokens: 1560,
+                cost_usd: 0.0041,
+              },
+              context_manifest: {
+                parts: [
+                  { name: "system", tokens: 900 },
+                  { name: "spec", tokens: 2100 },
+                ],
+                total_tokens: 3000,
+                budget: 8000,
+                handle_used: true,
+              },
+            }),
+          ],
+        })}
       />,
     );
-    // the selected node's step renders under a Round header; the OTHER node's step never does
+    const last = within(screen.getByRole("region", { name: "Last run" }));
+    expect(last.getByText("1,240 in / 320 out")).toBeInTheDocument();
+    expect(last.getByText("$0.0041")).toBeInTheDocument();
+    expect(last.getByLabelText("Context manifest")).toBeInTheDocument();
+    expect(last.getByText("Budget")).toBeInTheDocument();
+    expect(last.getByText("Spec offloaded to SPEC.md")).toBeInTheDocument();
+  });
+
+  it("says the agent wasn't reached yet (live) or at all (finished)", () => {
+    const idle = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "idle" });
+    const { rerender } = render(
+      <Drawer node={idle} run={runRow({ status: "running" })} workflowStatus="PENDING" />,
+    );
+    expect(screen.getByText("Not reached in this run")).toBeInTheDocument();
+    expect(
+      screen.getByText("Its rounds show up here once the run gets to it."),
+    ).toBeInTheDocument();
+    rerender(<Drawer node={idle} run={runRow({ status: "completed" })} />);
+    expect(screen.getByText("The run ended before it got to this agent.")).toBeInTheDocument();
+  });
+});
+
+describe("RunNodeDrawer — Runs: Activity, Changes and Ask", () => {
+  it("a worker's Activity is its own step feed, round by round", async () => {
+    answers = (url) =>
+      url.includes("run-events")
+        ? {
+            run_id: "r1",
+            events: [
+              {
+                seq: 1,
+                kind: "action",
+                payload: { thought: "engineer step one" },
+                created_at: "2026-01-01T00:00:00Z",
+                invocation_id: 10,
+                node_id: "n-eng",
+                iteration: 1,
+              },
+              {
+                seq: 1,
+                kind: "action",
+                payload: { thought: "OTHER node step" },
+                created_at: "2026-01-01T00:00:00Z",
+                invocation_id: 20,
+                node_id: "n-other",
+                iteration: 1,
+              },
+            ],
+          }
+        : undefined;
+    render(
+      <Drawer runId="r1" node={gnode({ id: "n-eng", role_name: "engineer", kind: "agent" })} />,
+    );
+    expect(screen.getByRole("button", { name: "Activity" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(await screen.findByText("engineer step one")).toBeInTheDocument();
-    expect(screen.getByText("Round 1")).toBeInTheDocument();
     expect(screen.queryByText("OTHER node step")).toBeNull();
   });
-});
 
-// ---- Mode A ("Ask the node"): the run-view drawer gains an Ask tab on BOTH a worker (agent) and a
-// thinker (completion) node, but ONLY once the node has a recorded run (invocations.length > 0). ----
-describe("RunNodeDrawer — Ask tab (Mode A) wiring by kind", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+  it("a worker's Changes shows the run's changed files", async () => {
+    answers = (url) =>
+      url.endsWith("/diff")
+        ? {
+            run_id: "r1",
+            files: [{ path: "src/app.py", status: "modified", additions: 3, deletions: 1 }],
+            total: 1,
+          }
+        : undefined;
+    render(
+      <Drawer runId="r1" node={gnode({ id: "n-eng", role_name: "engineer", kind: "agent" })} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+    expect(await screen.findByText("src/app.py")).toBeInTheDocument();
   });
 
-  function stubEmptyFetch() {
-    // A worker's default Activity tab mounts EventFeed, which polls; keep it inert with empty events.
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>(() =>
-        Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({ run_id: "r1", events: [] }),
-        } as unknown as Response),
-      ),
-    );
-  }
-
-  it("a WORKER node with a recorded run shows an Ask tab that opens the chat", () => {
-    stubEmptyFetch();
-    const node = gnode({
-      id: "n-eng",
-      role_name: "engineer",
-      kind: "agent",
-      invocations: [inv({ iteration: 1, outcome: "built", outcome_detail: "did it" })],
-    });
-    render(
-      <RunNodeDrawer
-        node={node}
-        runId="r1"
-        run={runRow({ status: "completed" })}
-        workflowStatus={null}
-        onClose={() => {}}
+  it("Ask opens the chat once the agent has run, on a worker and a thinker", () => {
+    const ran = [inv({ iteration: 1, outcome: "built", outcome_detail: "did it" })];
+    const { rerender } = render(
+      <Drawer
+        node={gnode({ id: "n-eng", role_name: "engineer", kind: "agent", invocations: ran })}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
     expect(screen.getByLabelText("Ask this node")).toBeInTheDocument();
-  });
 
-  it("a THINKER (completion) node with a recorded run shows a Spec | Ask seg", () => {
-    const node = gnode({
-      id: "n-pm",
-      role_name: "pm",
-      kind: "completion",
-      invocations: [inv({ iteration: 1, outcome: "prd_written", outcome_detail: "drafted spec" })],
-    });
-    render(
-      <RunNodeDrawer
-        node={node}
-        runId="r1"
-        run={runRow({ status: "completed", pm_document_id: null })}
-        workflowStatus={null}
-        onClose={() => {}}
+    // A thinker has no step feed or file changes here: Ask only.
+    rerender(
+      <Drawer
+        key="pm"
+        node={gnode({ id: "n-pm", role_name: "pm", kind: "completion", invocations: ran })}
       />,
     );
-    expect(screen.getByRole("button", { name: "Spec" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(screen.queryByRole("button", { name: "Activity" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Changes" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Ask" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("Ask this node")).toBeInTheDocument();
   });
 
-  it("hides Ask on a node that has not run yet (no invocations)", () => {
-    stubEmptyFetch();
-    const node = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", invocations: [] });
+  it("hides Ask on an agent that hasn't run yet", () => {
     render(
-      <RunNodeDrawer
-        node={node}
-        runId="r1"
+      <Drawer
+        node={gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "idle" })}
         run={runRow({ status: "running" })}
-        workflowStatus={null}
-        onClose={() => {}}
       />,
     );
+    expect(screen.getByRole("button", { name: "Activity" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
   });
 });
 
-// ---- M-memory S5b: the run-view drawer gains a Memory tab on BOTH a worker (Activity | Changes |
-// Ask | Memory) and a thinker (Spec | Ask | Memory), gated (like Ask) on the node having a run. ----
-describe("RunNodeDrawer — Memory tab (S5b) wiring by kind", () => {
-  afterEach(() => vi.unstubAllGlobals());
+describe("RunNodeDrawer — Setup and Skills & tools are the run's copy, read-only", () => {
+  it("Setup shows the run's instructions and settings, none of them editable", async () => {
+    const onEditOnTeam = vi.fn();
+    render(
+      <Drawer
+        node={gnode({
+          id: "n-eng",
+          role_name: "engineer",
+          kind: "agent",
+          prompt: "Build the feature.",
+          edits_allowed: true,
+          config: { multimodal: true },
+        })}
+        tab="setup"
+        onEditOnTeam={onEditOnTeam}
+      />,
+    );
+    const instructions = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: /^Instructions/,
+    });
+    expect(instructions.value).toBe("Build the feature.");
+    expect(instructions).toHaveAttribute("readonly");
+    expect(screen.getByRole("switch", { name: "Images" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Templates/ })).toBeDisabled();
+    // Advanced starts open (its controls can't be opened from a disabled toggle).
+    expect(screen.getByRole("button", { name: /Advanced/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    // The footer says where changes go, with no Save.
+    expect(
+      screen.getByText(
+        "This run uses a copy of the team from when it started. Change the agent on the team to change the next run.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Save/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Edit on the team" }));
+    expect(onEditOnTeam).toHaveBeenCalled();
+    await act(async () => {}); // the templates list lands
+  });
 
+  it("Skills & tools lists the run's skills with every control off", async () => {
+    render(
+      <Drawer
+        node={gnode({
+          id: "n-eng",
+          role_name: "engineer",
+          kind: "agent",
+          skills: [{ type: "inline", name: "house-style", content: "Be terse.", mode: "always" }],
+        })}
+        tab="skills"
+      />,
+    );
+    expect(screen.getByRole("tab", { name: /^Skills & tools\s*1$/ })).toBeInTheDocument();
+    const row = screen.getByText("house-style").closest("li") as HTMLElement;
+    expect(within(row).getByRole("button", { name: "Always on" })).toBeDisabled();
+    expect(screen.getByText(/This run uses a copy of the team/)).toBeInTheDocument();
+    // No team to go back to (not a copy): no button.
+    expect(screen.queryByRole("button", { name: "Edit on the team" })).toBeNull();
+    await act(async () => {}); // the Toolkit shelves land
+  });
+});
+
+describe("RunNodeDrawer — Memory: what the agent was given and what the run taught", () => {
   function memRow(over: Partial<NodeMemoryRow> = {}): NodeMemoryRow {
     return {
       id: "m1",
@@ -425,108 +457,51 @@ describe("RunNodeDrawer — Memory tab (S5b) wiring by kind", () => {
     };
   }
 
-  // A URL-aware stub: the run-memories endpoint feeds "Learned this run", /api/memories feeds the
-  // used-id store, and everything else (EventFeed's poll) stays inert with empty events.
-  function stubMemFetch(store: NodeMemoryRow[], learned: NodeMemoryRow[]) {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>((input: RequestInfo | URL) => {
-        const url =
-          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        const body = /\/api\/runs\/[^/]+\/memories/.test(url)
-          ? { memories: learned }
-          : url.includes("/api/memories")
-            ? { memories: store }
-            : { run_id: "r1", events: [] };
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve(body),
-        } as unknown as Response);
-      }),
-    );
-  }
-
-  it("a WORKER with a run shows a Memory tab that resolves used facts + lists learned facts", async () => {
-    stubMemFetch(
-      [memRow({ id: "u1", content: "prefer pnpm", polarity: "prefer" })],
-      [memRow({ id: "l1", content: "run the linter", polarity: "require", status: "active" })],
-    );
-    const node = gnode({
-      id: "n-eng",
-      role_name: "engineer",
-      kind: "agent",
-      invocations: [
-        inv({
-          iteration: 1,
-          outcome: "built",
-          outcome_detail: "did it",
-          context_manifest: {
-            parts: [],
-            total_tokens: 0,
-            budget: 0,
-            handle_used: false,
-            memory: [{ id: "u1", polarity: "prefer" }],
-          },
-        }),
-      ],
-    });
+  it("resolves the notes this agent used and lists what the run learned", async () => {
+    answers = (url) =>
+      /\/api\/runs\/[^/]+\/memories/.test(url)
+        ? {
+            memories: [
+              memRow({ id: "l1", content: "run the linter", polarity: "require", tier: "repo" }),
+            ],
+          }
+        : url.includes("/api/memories")
+          ? { memories: [memRow({ id: "u1", content: "prefer pnpm", polarity: "prefer" })] }
+          : undefined;
     render(
-      <RunNodeDrawer
-        node={node}
+      <Drawer
+        node={gnode({
+          id: "n-eng",
+          role_name: "engineer",
+          kind: "agent",
+          invocations: [
+            inv({
+              iteration: 1,
+              outcome: "built",
+              context_manifest: {
+                parts: [],
+                total_tokens: 0,
+                budget: 0,
+                handle_used: false,
+                memory: [{ id: "u1", polarity: "prefer" }],
+              },
+            }),
+          ],
+        })}
+        tab="memory"
         runId="r1"
-        run={runRow({ status: "completed" })}
-        workflowStatus={null}
-        onClose={() => {}}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Memory" }));
-    expect(await screen.findByText("prefer pnpm")).toBeInTheDocument(); // used, resolved client-side
-    expect(await screen.findByText("run the linter")).toBeInTheDocument(); // learned this run
-  });
-
-  it("a THINKER with a run shows a Spec | Ask | Memory seg", async () => {
-    stubMemFetch([], []);
-    const node = gnode({
-      id: "n-pm",
-      role_name: "pm",
-      kind: "completion",
-      invocations: [inv({ iteration: 1, outcome: "prd_written", outcome_detail: "drafted spec" })],
-    });
-    render(
-      <RunNodeDrawer
-        node={node}
-        runId="r1"
-        run={runRow({ status: "completed", pm_document_id: null })}
-        workflowStatus={null}
-        onClose={() => {}}
-      />,
-    );
-    expect(screen.getByRole("button", { name: "Spec" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Memory" }));
-    expect(await screen.findByText(/No memory was injected/i)).toBeInTheDocument();
-  });
-
-  it("hides Memory on a node that has not run yet (no invocations)", () => {
-    stubMemFetch([], []);
-    const node = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", invocations: [] });
-    render(
-      <RunNodeDrawer
-        node={node}
-        runId="r1"
-        run={runRow({ status: "running" })}
-        workflowStatus={null}
-        onClose={() => {}}
-      />,
-    );
-    expect(screen.queryByRole("button", { name: "Memory" })).toBeNull();
+    const used = within(await screen.findByRole("region", { name: "Used this run" }));
+    expect(used.getByText("prefer pnpm")).toBeInTheDocument();
+    expect(used.getByText("SHOULD")).toBeInTheDocument();
+    const learned = within(screen.getByRole("region", { name: "Learned this run" }));
+    expect(learned.getByText("run the linter")).toBeInTheDocument();
+    expect(learned.getByText("This repo")).toBeInTheDocument();
   });
 });
 
-// ---- F6: a thinker's drawer lists the run's documents; Open shows one in the document viewer. ----
-describe("RunNodeDrawer — the run's documents on a thinker", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
+describe("RunNodeDrawer — Docs: the run's documents", () => {
   it("lists the shared spec first, then what the agents wrote, each with Open", async () => {
     const ref = (node_id: string, label: string) => ({
       node_id,
@@ -534,44 +509,37 @@ describe("RunNodeDrawer — the run's documents on a thinker", () => {
       role_name: node_id,
       label,
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({
-              run: { run_id: "r1", idea: "x", status: "running", created_at: "", live: true },
-              documents: [
-                {
-                  id: "d-notes",
-                  name: "build-notes",
-                  latest_version: { version_no: 2, created_at: "2026-01-01T00:00:00Z" },
-                  written_by: [ref("n-eng", "Engineer")],
-                  read_by: [ref("n-rev", "Reviewer")],
-                },
-                {
-                  id: "d-spec",
-                  name: "spec",
-                  doc_type: "prd",
-                  is_shared_spec: true,
-                  latest_version: { version_no: 3, created_at: "2026-01-01T00:00:00Z" },
-                  written_by: [ref("n-pm", "Product manager")],
-                  read_by: [ref("n-eng", "Engineer")],
-                },
-              ],
-            }),
-          ),
-        ),
-      ),
-    );
+    answers = (url) =>
+      url.includes("/documents")
+        ? {
+            run: { run_id: "r1", idea: "x", status: "running", created_at: "", live: true },
+            documents: [
+              {
+                id: "d-notes",
+                name: "build-notes",
+                latest_version: { version_no: 2, created_at: "2026-01-01T00:00:00Z" },
+                written_by: [ref("n-eng", "Engineer")],
+                read_by: [ref("n-rev", "Reviewer")],
+              },
+              {
+                id: "d-spec",
+                name: "spec",
+                doc_type: "prd",
+                is_shared_spec: true,
+                latest_version: { version_no: 3, created_at: "2026-01-01T00:00:00Z" },
+                written_by: [ref("n-pm", "Product manager")],
+                read_by: [ref("n-eng", "Engineer")],
+              },
+            ],
+          }
+        : undefined;
     const onOpenDoc = vi.fn();
     render(
-      <RunNodeDrawer
-        node={gnode({ id: "c-n-pm", role_name: "pm", kind: "completion", invocations: [] })}
-        runId="r1"
+      <Drawer
+        node={gnode({ id: "c-n-eng", role_name: "engineer", kind: "agent" })}
         run={runRow({ status: "running" })}
-        workflowStatus={null}
-        onClose={() => {}}
+        tab="docs"
+        runId="r1"
         onOpenDoc={onOpenDoc}
       />,
     );
@@ -609,17 +577,16 @@ describe("RunNodeDrawer — the run's documents on a thinker", () => {
       "fetch",
       vi.fn(() => answer()),
     );
-    const drawer = (status: string) => (
-      <RunNodeDrawer
-        node={gnode({ id: "c-n-pm", role_name: "pm", kind: "completion", invocations: [], status })}
-        runId="r1"
+    const docsOf = (status: string) => (
+      <Drawer
+        node={gnode({ id: "c-n-pm", role_name: "pm", kind: "completion", status })}
         run={runRow({ status: "running" })}
-        workflowStatus={null}
-        onClose={() => {}}
+        tab="docs"
+        runId="r1"
         onOpenDoc={vi.fn()}
       />
     );
-    const view = render(drawer("running"));
+    const view = render(docsOf("running"));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Couldn’t load this run’s documents.");
     expect(screen.queryByText("The product manager is drafting the spec…")).toBeNull();
@@ -630,8 +597,22 @@ describe("RunNodeDrawer — the run's documents on a thinker", () => {
 
     // The node's round moves on: the card stays while the documents reload.
     answer = () => new Promise(() => undefined);
-    view.rerender(drawer("completed"));
+    view.rerender(docsOf("completed"));
     expect(screen.getByText("Shared spec")).toBeInTheDocument();
     expect(screen.queryByText("The product manager is drafting the spec…")).toBeNull();
+  });
+
+  it("says what's coming when the run has no documents yet", async () => {
+    answers = (url) => (url.includes("/documents") ? { documents: [] } : undefined);
+    render(
+      <Drawer
+        node={gnode({ id: "n-pm", role_name: "pm", kind: "completion" })}
+        run={runRow({ status: "running" })}
+        tab="docs"
+        runId="r1"
+      />,
+    );
+    expect(await screen.findByText("No documents yet")).toBeInTheDocument();
+    expect(screen.getByText("The product manager is drafting the spec…")).toBeInTheDocument();
   });
 });

@@ -107,6 +107,8 @@ function graphFor(phase: Phase): GraphData {
         id: "n-eng",
         role_name: "engineer",
         kind: "agent",
+        prompt: "ENGINEER behavior",
+        origin_node_id: "tn-eng",
         status: done ? "done" : "running",
       }),
       gnode({ id: "n-rev", role_name: "reviewer", kind: "agent", status: done ? "done" : "idle" }),
@@ -201,6 +203,8 @@ beforeEach(() => {
         }),
       );
     if (url === "/api/engines/subscriptions") return Promise.resolve(jsonOk({ subscriptions: [] }));
+    if (url.startsWith("/api/spike/run-events/"))
+      return Promise.resolve(jsonOk({ run_id: RUN_ID, events: [] }));
     return Promise.resolve(jsonOk({}));
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -382,6 +386,58 @@ describe("App — the agent drawer (F5)", () => {
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: "Engineer settings" })).toBeNull(),
     );
+  });
+
+  it("the run view opens the same tabbed drawer on Runs, its place in the address (Q20)", async () => {
+    const onNodeRoute = vi.fn();
+    const { rerender } = render(
+      <App teamId="team-1" initialRunId={RUN_ID} onNodeRoute={onNodeRoute} />,
+    );
+    await screen.findByText("Product manager");
+    fireEvent.click(nodeCard("Engineer"));
+    // Runs is the run view's default tab, so it stays out of the address.
+    expect(onNodeRoute).toHaveBeenLastCalledWith({
+      node: "n-eng",
+      tab: undefined,
+      focus: undefined,
+    });
+
+    rerender(<App teamId="team-1" initialRunId={RUN_ID} node="n-eng" onNodeRoute={onNodeRoute} />);
+    const panel = await screen.findByRole("complementary", { name: "Engineer in this run" });
+    expect(within(panel).getByRole("tab", { name: "Runs" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(within(panel).getByTitle("See the last run")).toHaveTextContent("Running");
+    expect(within(panel).getByRole("button", { name: "Activity" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Changes" })).toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("tab", { name: "Setup" }));
+    expect(onNodeRoute).toHaveBeenLastCalledWith({ node: "n-eng", tab: "setup", focus: undefined });
+    rerender(
+      <App
+        teamId="team-1"
+        initialRunId={RUN_ID}
+        node="n-eng"
+        tab="setup"
+        onNodeRoute={onNodeRoute}
+      />,
+    );
+    const setup = within(screen.getByRole("complementary", { name: "Engineer in this run" }));
+    const instructions = setup.getByRole<HTMLTextAreaElement>("textbox", { name: /^Instructions/ });
+    expect(instructions.value).toBe("ENGINEER behavior");
+    expect(instructions).toHaveAttribute("readonly");
+    // "Edit on the team": the team's canvas with the agent this run copied, on Setup.
+    fireEvent.click(setup.getByRole("button", { name: "Edit on the team" }));
+    expect(window.location.hash).toBe("#/teams/team-1?node=tn-eng");
+    window.location.hash = "";
+
+    fireEvent.click(setup.getByRole("button", { name: "Close panel" }));
+    expect(onNodeRoute).toHaveBeenLastCalledWith({
+      node: undefined,
+      tab: undefined,
+      focus: undefined,
+    });
   });
 });
 

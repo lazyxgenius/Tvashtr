@@ -30,6 +30,8 @@ import { useNodeTemplates } from "./useNodeTemplates";
  * and Routing, Model, Access & documents and Advanced (open) in a column on the right; its
  * Templates button opens the Templates dialog and "Preview as the agent sees it" the preview (both
  * owned by the editor, which renders them over / in place of this tab).
+ * `readOnly` is the run view's Setup: what the run's copy of the agent had, with every control
+ * disabled (the instructions stay readable and Advanced starts open).
  */
 export function SetupTab({
   layout = "drawer",
@@ -48,6 +50,7 @@ export function SetupTab({
   onCompareTemplates,
   onPreview,
   sub,
+  readOnly = false,
 }: {
   layout?: "drawer" | "focus";
   node: TeamGraphNode;
@@ -74,6 +77,7 @@ export function SetupTab({
   onPreview?: () => void;
   /** Focus mode: a sub-view (the Output format editor) in the settings column's place. */
   sub?: ReactNode;
+  readOnly?: boolean;
 }) {
   const { draft, set, update } = api;
   const templates = useNodeTemplates();
@@ -85,6 +89,7 @@ export function SetupTab({
   const marking = api.saveState !== "saving";
   const changed = marking ? api.changed : [];
   const gettingReady =
+    !readOnly &&
     !readyHidden &&
     isGettingReady({
       hasRun: node.last_run != null,
@@ -92,7 +97,7 @@ export function SetupTab({
       savedModel: api.baseline.model,
     });
   const showChooser =
-    !editorOpen && api.baseline.prompt.trim() === "" && draft.prompt.trim() === "";
+    !readOnly && !editorOpen && api.baseline.prompt.trim() === "" && draft.prompt.trim() === "";
   const checklist = gettingReady && (
     <GetReadyChecklist
       items={readyItems(draft, { modelNeeded: draft.model.trim() === "", isEntry })}
@@ -113,10 +118,10 @@ export function SetupTab({
       routing={routing}
       // Shows the verdict lines the arrows route on, then writes them into the draft
       // (Discard or the toast's Undo brings the text back); nothing is saved until Save.
-      onUpdate={isEntry ? undefined : onUpdateRouting}
+      onUpdate={isEntry || readOnly ? undefined : onUpdateRouting}
     />
   );
-  const settings = (
+  const controls = (
     <>
       <ModelSection
         nodeId={node.id}
@@ -153,10 +158,18 @@ export function SetupTab({
         onBackupChange={(v) => set("fallbackModel", v)}
         picker={picker}
         onEditSchema={onEditSchema}
-        defaultOpen={layout === "focus"}
+        defaultOpen={layout === "focus" || readOnly}
         changed={changed}
       />
     </>
+  );
+  // Read-only: one disabled fieldset turns off every control in it.
+  const settings = readOnly ? (
+    <fieldset className="nd-readonly" disabled>
+      {controls}
+    </fieldset>
+  ) : (
+    controls
   );
   const templatesMenu = (
     <TemplatesMenu templates={templates} onPick={onPickTemplate} onCompare={onCompareTemplates} />
@@ -216,7 +229,8 @@ export function SetupTab({
           set("prompt", v);
         }}
         focusEditor={editorOpen}
-        templates={templatesMenu}
+        readOnly={readOnly}
+        templates={readOnly ? undefined : templatesMenu}
         chooser={
           showChooser ? (
             <TemplateChooser
