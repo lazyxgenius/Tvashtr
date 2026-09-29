@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button, Checkbox, useToast } from "../../../design-system/components";
-import { listSavedKeys, type SavedKey } from "../../../lib/api/desktop";
+import {
+  getProviderDirectoryOnce,
+  listSavedKeys,
+  type ProviderDirectoryEntry,
+  type SavedKey,
+} from "../../../lib/api/desktop";
 import {
   cancelPlanConnect,
   connectPlan,
@@ -24,6 +29,7 @@ import {
   planInUse,
   planRowViews,
   prePickProvider,
+  runnableKeys,
   savedKeysLine,
 } from "./planRows";
 import { SetupFrame, SetupHead } from "./SetupFrame";
@@ -65,6 +71,7 @@ export function EnginesStep({
   const mac = thisComputer();
   const [statuses, setStatuses] = useState<Statuses>({});
   const [keys, setKeys] = useState<SavedKey[]>([]);
+  const [directory, setDirectory] = useState<ProviderDirectoryEntry[]>([]);
   const [planSheet, setPlanSheet] = useState<PlanProvider | null>(null);
   const [keySheet, setKeySheet] = useState(false);
   const planSheetRef = useRef(planSheet);
@@ -97,6 +104,9 @@ export function EnginesStep({
         if (alive) setKeys(list);
       })
       .catch(() => undefined);
+    void getProviderDirectoryOnce().then((list) => {
+      if (alive) setDirectory(list);
+    });
     const unsubscribe = onPlanStatus((s) => {
       put(s);
       if (signingInRef.current === s.provider && SIGN_IN_DONE.has(s.state)) setSigningIn(null);
@@ -192,7 +202,8 @@ export function EnginesStep({
   }, []);
 
   const rows = planRowViews(statuses, { mac, signingIn });
-  const keysLine = savedKeysLine(keys);
+  const usableKeys = runnableKeys(keys, directory);
+  const keysLine = savedKeysLine(usableKeys);
   const inUse = planInUse(statuses);
   const codex = codexRow(statuses.codex ?? null, mac);
 
@@ -206,7 +217,7 @@ export function EnginesStep({
         onSkip: next,
         primary: {
           label: "Continue",
-          disabled: !canContinue({ planInUse: inUse, consent, savedKeys: keys.length }),
+          disabled: !canContinue({ planInUse: inUse, consent, savedKeys: usableKeys.length }),
           onClick: next,
         },
       }}
