@@ -386,6 +386,26 @@ describe("Focus mode — Templates dialog", () => {
     expect(fetchMock.mock.calls.some((c) => (c[1] as RequestInit)?.method === "PATCH")).toBe(false);
   });
 
+  it("the toast's Undo puts back only the instructions, not a File access change made since", async () => {
+    renderEditor();
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Templates" }));
+    const chooser = screen.getByRole("dialog", { name: "Choose a template" });
+    fireEvent.click(await within(chooser).findByRole("button", { name: /^Engineer/ }));
+    fireEvent.click(within(chooser).getByRole("button", { name: "Use Engineer template" }));
+    const access = within(dialog()).getByRole("group", { name: "File access" });
+    fireEvent.click(within(access).getByRole("button", { name: "Can edit files" }));
+    // A Reviewer routes on its verdict, so it asks first.
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Allow edits" }));
+
+    const toast = dialog().querySelector(".nd-toast-host") as HTMLElement;
+    fireEvent.click(within(toast).getByRole("button", { name: "Undo" }));
+    expect(editor()).toHaveValue(REVIEWER_PROMPT);
+    expect(within(access).getByRole("button", { name: "Can edit files" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
   it("says when the templates can't load, and loads them again when it's reopened", async () => {
     fetchMock = stubFetch(
       () => reviewer(),

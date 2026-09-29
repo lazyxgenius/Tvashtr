@@ -267,8 +267,11 @@ function AgentEditor({
   const canSetFileAccess = !isEntry;
   // `promptOnly`: the focus view's Templates dialog replaces only the instructions (OQ-5).
   const applyTemplate = (template: NodeTemplate, promptOnly = false) => {
-    const before = { prompt: draft.prompt, editsAllowed: draft.editsAllowed };
-    api.update(templateApplication(template, draft, canSetFileAccess && !promptOnly).patch);
+    const { patch } = templateApplication(template, draft, canSetFileAccess && !promptOnly);
+    // Undo puts back only what the template changed (a File access switch since stays).
+    const before: Partial<AgentDraft> = { prompt: draft.prompt };
+    if ("editsAllowed" in patch) before.editsAllowed = draft.editsAllowed;
+    api.update(patch);
     toast.show(templateAppliedText(template.title), {
       label: "Undo",
       onAction: () => api.update(before),
