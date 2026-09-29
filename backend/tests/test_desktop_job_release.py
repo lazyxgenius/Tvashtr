@@ -8,6 +8,7 @@ relaunched runner re-claims it, and a Desktop that never comes back still fails 
 import threading
 import time
 import uuid
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -228,3 +229,54 @@ def test_a_released_job_whose_desktop_never_returns_still_fails_offline(tmp_path
     assert box["result"].status == "failed"
     assert box["result"].error == OFFLINE_ERROR
     assert _job_row(job["id"]).status == "expired"
+
+
+def test_a_released_long_running_job_waits_for_desktop_instead_of_failing_not_connected(tmp_path):
+    """Independent review (revamp-finish): a busy runner polls with ``providers=[]`` (its only
+    plan is running the job), so after a release the adapter's queued-branch "not connected" rule
+    used to expire any job older than ``desktop_runner_offline_seconds`` about one poll later —
+    the step never started again when Desktop came back."""
+    c, owner = _account()
+    run_id = _run_for(owner)
+    ws = Path(tmp_path) / "ws"
+    ws.mkdir()
+    init_workspace_repo(str(ws))
+    (ws / "README.md").write_text("# demo\n")
+    task = AgentTask(
+        instruction="Create hello.txt",
+        workspace_dir=str(ws),
+        model="anthropic/claude-sonnet-5",
+        desktop=DesktopJobSpec(
+            run_id=run_id,
+            node_id="n-long",
+            iteration=1,
+            invocation_id=7171,
+            owner_id=str(owner),
+            provider="claude",
+        ),
+    )
+    box: dict = {}
+
+    def go():
+        box["result"] = DesktopRunnerAdapter().run(task, on_event=make_run_event_sink(run_id, 7171))
+
+    t = threading.Thread(target=go, daemon=True)
+    t.start()
+    job = _claim(c)
+    # What the real runner sends while its only plan is busy with this job (runner.cjs
+    # freeProviders).
+    c.post("/api/desktop-runner/claim", json={"providers": []})
+    # The step has been running longer than the offline window.
+    with db.session_scope() as session:
+        row = session.get(DesktopNodeJob, uuid.UUID(job["id"]))
+        row.created_at = row.created_at - timedelta(seconds=60)
+
+    assert c.post(f"/api/desktop-runner/jobs/{job['id']}/release").status_code == 200
+    time.sleep(0.6)  # ~12 adapter polls
+    assert _job_row(job["id"]).status == "queued", _job_row(job["id"]).error
+    assert "result" not in box
+
+    # The relaunched Desktop claims the same job.
+    assert _claim(c)["id"] == job["id"]
+    desktop_jobs.expire_job(job["id"], OFFLINE_ERROR)  # end the adapter loop
+    t.join(10)
