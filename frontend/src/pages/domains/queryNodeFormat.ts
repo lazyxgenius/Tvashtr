@@ -213,11 +213,17 @@ export function toggleAccess(
   return on ? [...next, id] : next;
 }
 
-/** The agent's `tool_config.tvashtr.domains` (`null` when it has none). */
+/** The agent's `tool_config.tvashtr.domains` (`null` when it has none). The legacy object form
+ * (`{"enabled": true}`, any non-empty object not `enabled: false`) is every domain, as the backend
+ * reads it (`domain_usage.agent_domain_scope`, `node_tools._domains_opt_in`). */
 export function accessOf(toolConfig: unknown): DomainAccess | null {
   const meta = (toolConfig as { tvashtr?: { domains?: unknown } } | null)?.tvashtr;
   const v = meta?.domains;
   if (v === true) return true;
+  if (typeof v === "object" && v !== null && !Array.isArray(v))
+    return Object.keys(v).length > 0 && (v as { enabled?: unknown }).enabled !== false
+      ? true
+      : null;
   if (Array.isArray(v)) {
     const ids = v.filter((x): x is string => typeof x === "string");
     return ids.length ? ids : null;

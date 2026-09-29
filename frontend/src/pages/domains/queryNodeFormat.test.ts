@@ -174,6 +174,16 @@ describe("an agent's domains (DM-105)", () => {
     expect(accessOf(null)).toBeNull();
   });
 
+  it("reads the legacy {enabled: true} switch as every domain, like the backend (finding 7)", () => {
+    expect(accessOf({ tvashtr: { domains: { enabled: true } } })).toBe(true);
+    expect(accessOf({ tvashtr: { domains: { server: "tvashtr-domains" } } })).toBe(true);
+    expect(accessOf({ tvashtr: { domains: { enabled: false } } })).toBeNull();
+    expect(accessOf({ tvashtr: { domains: {} } })).toBeNull();
+    // Unticking one from it keeps the others ticked, explicitly.
+    const legacy = accessOf({ tvashtr: { domains: { enabled: true } } });
+    expect(toggleAccess(legacy, "d-vendor", false, all)).toEqual(["d-support", "d-research"]);
+  });
+
   it("ticks one, and unticking from every domain keeps the others", () => {
     expect(toggleAccess(null, "d-support", true, all)).toEqual(["d-support"]);
     expect(toggleAccess(true, "d-vendor", false, all)).toEqual(["d-support", "d-research"]);
