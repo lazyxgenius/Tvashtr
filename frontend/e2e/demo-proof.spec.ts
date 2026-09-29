@@ -174,7 +174,7 @@ test.describe("M-proof", () => {
     test.skip(LEG !== "login", "login leg only");
     test.setTimeout(LOGIN_TIMEOUT_MS + 60_000);
 
-    await page.goto("/");
+    await page.goto("/#/signin");
     console.log(
       "\n============================================================\n" +
         "  ACTION NEEDED — a browser window is open.\n" +
@@ -641,6 +641,12 @@ test.describe("M-proof", () => {
     } finally {
       // ---- C12: cleanup — delete the team, never the PR (the PR is the artifact) --------------
       try {
+        // An account with no runs when the proof began saw Home's first-time checklist, and the
+        // browser remembers that (localStorage) so the layout never flips mid-session. The account
+        // now has a run, so a browser without that memory opens the main Home and its Teams
+        // section — forget it, as a fresh browser would (revamp-finish: without this C12 failed
+        // every other proof, after a successful C12 had deleted the teams and their runs).
+        await page.evaluate(() => window.localStorage.removeItem("tv.home.getStarted.shown"));
         await page.goto("/");
         const teamsSection = page.locator("section[aria-label='Teams']");
         await expect(teamsSection).toBeVisible({ timeout: 30_000 });

@@ -24,11 +24,14 @@ import {
 import { Avatar, Button, Logo } from "../../design-system/components";
 import { cx, useDismiss } from "../../design-system/components/utils";
 import { checkBackend, useBackendStatus } from "../../lib/backendStatus";
+import { useUpdateState } from "../../lib/desktopApp";
 import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
 import { navigate, type Route, sectionOf } from "../../lib/nav";
 import type { NavBadges, NavDomain } from "../../lib/workspaceStatus";
 import { formatRelativeTimeWords } from "../../lib/time";
 import { stateBadge } from "../domains/domainFormat";
+import { useReadyCardShown } from "../desktop/readyCard";
+import { UpdateCard } from "../desktop/UpdateCard";
 import { loadGetStarted, setGetStartedHidden, useGetStarted } from "../home/getStarted";
 import "./shell.css";
 
@@ -285,7 +288,19 @@ function Nav({
 }
 
 function NavFoot({ section }: { section: ReturnType<typeof sectionOf> }) {
-  if (section === "domains") {
+  // Desktop: a waiting update replaces the section's foot on every page (DT-43).
+  const update = useUpdateState();
+  const readyCard = useReadyCardShown();
+  if (update.state === "ready" || update.state === "manual") {
+    return (
+      <div className="sh-nav__foot">
+        <UpdateCard update={update} />
+      </div>
+    );
+  }
+  // The Domains section (DM-2) and Desktop Home before the first job (the ready card, DT-Ready)
+  // both introduce Domains.
+  if (section === "domains" || (section === "home" && readyCard)) {
     return (
       <div className="sh-nav__foot">
         <span>

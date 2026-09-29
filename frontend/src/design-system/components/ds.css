@@ -1041,6 +1041,25 @@
 .ds-toast__icon--error {
   color: #efb9ab;
 }
+/* Tvashtr Desktop's setup frame (DtF-Run-3, DtF-Hand-2; OQ-32): 90px up, centred on the main
+   column right of the 320px rail, with the setup boards' own toast geometry. */
+.ds-toasts--setup {
+  bottom: 90px;
+  left: calc(50% + 160px);
+}
+.ds-toasts--setup .ds-toast {
+  gap: 10px;
+  padding: 11px 16px;
+  box-shadow: 0 14px 40px -12px rgba(20, 20, 19, 0.4);
+}
+.ds-toasts--setup .ds-toast__icon {
+  color: inherit;
+}
+.ds-toasts--setup .ds-toast__icon svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.6;
+}
 .ds-toast__action {
   border: 0;
   background: none;

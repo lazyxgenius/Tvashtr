@@ -74,7 +74,7 @@ jobs:
 
             Download **Tvashtr-mac.dmg**, open it, drag Tvashtr to Applications.
 
-            **First launch (unsigned):** right-click the app → **Open** (or System Settings → Privacy & Security → Open Anyway). Gatekeeper will warn because this build is not Apple-notarized.
+            **First launch (unsigned):** drag Tvashtr to Applications, then run `xattr -dr com.apple.quarantine /Applications/Tvashtr.app` once in Terminal. This build is not Apple-notarized, so without that step macOS says Tvashtr is damaged.
 
             Web app remains at https://tvashtr.fly.dev — Desktop adds local subscription harnesses and OS-secure credential storage.
           files: |

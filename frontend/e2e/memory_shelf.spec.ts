@@ -4,6 +4,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 import { shellNav } from "./_home";
+import { passwordSignIn, siteSignIn } from "./_site";
 
 // Live FE sign-off for Toolkit › Memory (the revamp's Memory page: Inbox / Active / Archive tabs
 // and the Add memory sheet). Logs in as the SEEDED operator (whose .env OpenAI key was imported by
@@ -42,18 +43,15 @@ test("memory page: add / pin / edit / review-toggle / keep-pending / delete", as
   const reviewSwitch = () =>
     page.getByRole("switch", { name: "Review new memories before they apply" });
 
-  // ---- Sign in as the seeded operator → Home, then Toolkit › Memory. The landing's nav "Sign in"
-  // CTA opens the AuthWizard in login mode (its submit is also "Sign in"); the landing is replaced by
-  // the wizard, so there is never more than one "Sign in" button on screen at once. The email form
+  // ---- Sign in as the seeded operator → Home, then Toolkit › Memory. The landing's "Sign in"
+  // opens the sign-in page (#/signin), whose submit is also "Sign in"; the landing is gone by then,
+  // so there is never more than one on screen. #/signin/done opens Home by itself. The email form
   // exists only in the self-hosted posture, so scripts/memory_shelf_e2e.sh pins
   // TVASHTR_HOSTED_MODE=false. ----
   await page.goto("/");
-  await page.getByRole("button", { name: "Sign in" }).click(); // landing nav CTA → login mode
-  await page.getByLabel("Email").fill(SEED_EMAIL);
-  await page.getByLabel("Password").fill(SEED_PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click(); // the AuthWizard submit
-  // Sign-in ends on a "success" step; onAuthed (→ Home) fires only on "Enter Tvashtr".
-  await page.getByRole("button", { name: "Enter Tvashtr" }).click();
+  await siteSignIn(page).click();
+  await passwordSignIn(page, SEED_EMAIL, SEED_PASSWORD);
+  await expect(shellNav(page)).toBeVisible({ timeout: 30_000 });
   await shellNav(page)
     .getByRole("button", { name: /^Toolkit/ })
     .click();

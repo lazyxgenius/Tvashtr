@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetBackendStatusForTests } from "../../lib/backendStatus";
 import type { Route } from "../../lib/nav";
+import { useMarkReadyCardShown } from "../desktop/readyCard";
 import { __resetGetStartedForTests, setFirstTime } from "../home/getStarted";
 import { type NavBadges, Shell } from "./Shell";
 
@@ -61,6 +62,21 @@ describe("Shell", () => {
     expect(within(nav).getByRole("button", { name: /Toolkit 1 missing/ })).toBeInTheDocument();
     expect(within(nav).getByText("Shortcuts")).toBeInTheDocument();
     expect(screen.getByText("page body")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Connected"));
+  });
+
+  it("introduces Domains in Home's foot while the Desktop ready card shows (DT-Ready)", async () => {
+    function ReadyCard() {
+      useMarkReadyCardShown();
+      return null;
+    }
+    const { unmount } = render(<ReadyCard />);
+    renderShell({ page: "home" });
+    const nav = screen.getByRole("navigation", { name: "Dashboard" });
+    expect(within(nav).getByText(/are libraries of your own files/)).toBeInTheDocument();
+    expect(within(nav).queryByText("Shortcuts")).toBeNull();
+    act(() => unmount());
+    expect(within(nav).getByText("Shortcuts")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Connected"));
   });
 

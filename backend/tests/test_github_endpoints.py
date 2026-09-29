@@ -15,6 +15,7 @@ import base64
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlparse
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -112,6 +113,15 @@ def _github_linked_account(github_user_id: int) -> tuple[TestClient, uuid.UUID]:
     return c, uid
 
 
+def _start(client: TestClient) -> str:
+    """Start a website sign-in in ``client`` (it now holds the ``tv_oauth_state`` cookie) and
+    return the ``state`` GitHub echoes back. A GitHub ``code`` only signs a browser in on a flow
+    this server started (login CSRF — independent review, revamp-finish)."""
+    resp = client.get("/api/auth/github/start", follow_redirects=False)
+    assert resp.status_code == 302, resp.text
+    return parse_qs(urlparse(resp.headers["location"]).query)["state"][0]
+
+
 # ---------------------------------------------------------------- /api/config
 
 
@@ -169,14 +179,19 @@ def test_callback_404_when_not_hosted(unauth_client, monkeypatch):
 
 def test_callback_creates_user_records_installation_and_issues_session(unauth_client, monkeypatch):
     _configure_hosted(monkeypatch)
-    monkeypatch.setattr(github_app, "_http", _fake_github_http([]))
+    # Right after an install GitHub lists the new installation for the user (discovery).
+    monkeypatch.setattr(
+        github_app, "_http", _fake_github_http([], installations=[{"id": 147133756}])
+    )
+    state = _start(unauth_client)
     resp = unauth_client.get(
-        "/api/auth/github/callback?code=abc&installation_id=147133756&setup_action=install",
+        "/api/auth/github/callback?code=abc&installation_id=147133756&setup_action=install"
+        f"&state={state}",
         follow_redirects=False,
     )
     assert resp.status_code == 302
     # Rider 4: redirect to the configurable FE origin (default), not the backend root "/".
-    assert resp.headers["location"] == "http://localhost:5173"
+    assert resp.headers["location"] == "http://localhost:5173/#/signin/done"
     assert "tv_session" in resp.headers.get("set-cookie", "")
     # The SECRETS the callback handled never appear in the redirect response.
     for secret in (USER_TOKEN_SENTINEL, CLIENT_SECRET_SENTINEL, PRIVATE_KEY_PEM):
@@ -216,7 +231,10 @@ def test_callback_links_an_existing_email_account_instead_of_duplicating(
         raise AssertionError(url)
 
     monkeypatch.setattr(github_app, "_http", fake_http)
-    resp = unauth_client.get("/api/auth/github/callback?code=abc", follow_redirects=False)
+    state = _start(unauth_client)
+    resp = unauth_client.get(
+        f"/api/auth/github/callback?code=abc&state={state}", follow_redirects=False
+    )
     assert resp.status_code == 302
     with session_scope() as s:
         rows = s.execute(select(User).where(User.email == email)).scalars().all()
@@ -231,14 +249,15 @@ def test_callback_redirects_to_the_configured_frontend_origin(unauth_client, mon
     _configure_hosted(monkeypatch)
     monkeypatch.setattr(get_settings(), "frontend_origin", "https://app.tvashtr.example")
     monkeypatch.setattr(github_app, "_http", _fake_github_http([]))
-    resp = unauth_client.get("/api/auth/github/callback?code=abc", follow_redirects=False)
+    state = _start(unauth_client)
+    resp = unauth_client.get(
+        f"/api/auth/github/callback?code=abc&state={state}", follow_redirects=False
+    )
     assert resp.status_code == 302
-    assert resp.headers["location"] == "https://app.tvashtr.example"
+    assert resp.headers["location"] == "https://app.tvashtr.example/#/signin/done"
 
 
-def test_callback_desktop_headers_redirect_and_exchange_with_loopback(
-    unauth_client, monkeypatch
-):
+def test_callback_desktop_headers_redirect_and_exchange_with_loopback(unauth_client, monkeypatch):
     """Desktop proxy sends allowlisted X-Tvashtr-* headers: token exchange gets the loopback
     redirect_uri and the browser bounces to the local SPA (not settings.frontend_origin)."""
     _configure_hosted(monkeypatch)
@@ -320,8 +339,11 @@ def test_callback_rejects_non_allowlisted_desktop_headers(unauth_client, monkeyp
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert resp.headers["location"] == "https://tvashtr.fly.dev"
-    assert "redirect_uri" not in seen["exchange_body"]
+    # Never the evil origin; and a stateless code in a signed-out browser signs no one in, so
+    # GitHub is never even asked (login CSRF — independent review, revamp-finish).
+    assert resp.headers["location"] == "https://tvashtr.fly.dev/#/signin?error=expired"
+    assert "exchange_body" not in seen
+    assert "tv_session" not in resp.headers.get("set-cookie", "")
 
 
 def test_callback_without_installation_id_records_discovered_installations(
@@ -357,7 +379,10 @@ def test_callback_without_installation_id_records_discovered_installations(
 
     monkeypatch.setattr(github_app, "_http", fake_http)
     # Primary sign-in door: code only — no ?installation_id.
-    resp = unauth_client.get("/api/auth/github/callback?code=abc", follow_redirects=False)
+    state = _start(unauth_client)
+    resp = unauth_client.get(
+        f"/api/auth/github/callback?code=abc&state={state}", follow_redirects=False
+    )
     assert resp.status_code == 302
     assert "tv_session" in resp.headers.get("set-cookie", "")
     with session_scope() as s:
@@ -398,8 +423,10 @@ def test_callback_with_installation_id_and_discovery_does_not_duplicate(unauth_c
         raise AssertionError(f"unexpected GitHub URL: {url!r}")
 
     monkeypatch.setattr(github_app, "_http", fake_http)
+    state = _start(unauth_client)
     resp = unauth_client.get(
-        f"/api/auth/github/callback?code=abc&installation_id={inst_id}&setup_action=install",
+        f"/api/auth/github/callback?code=abc&installation_id={inst_id}&setup_action=install"
+        f"&state={state}",
         follow_redirects=False,
     )
     assert resp.status_code == 302
@@ -710,3 +737,130 @@ def test_backfill_path_never_leaks_the_app_jwt_or_tokens(monkeypatch, caplog):
         assert secret not in resp.text
         assert secret not in str(resp.headers)
         assert secret not in caplog.text
+
+
+# ------------------------------------------------------------ independent review (revamp-finish)
+
+
+def _gh(gh_id: int, login: str, *, installations: list[int] | None = None, email=None):
+    def fake_http(method, url, *, token=None, body=None, accept=None):
+        if url.endswith("/login/oauth/access_token"):
+            return {"access_token": USER_TOKEN_SENTINEL}
+        if "/user/installations" in url:
+            ids = installations or []
+            return {"total_count": len(ids), "installations": [{"id": i} for i in ids]}
+        if url.endswith("/user"):
+            return {"id": gh_id, "login": login, "email": email}
+        raise AssertionError(url)
+
+    return fake_http
+
+
+def _uid() -> int:
+    return uuid.uuid4().int % 2_000_000_000
+
+
+def test_a_query_installation_id_github_does_not_list_is_never_recorded(unauth_client, monkeypatch):
+    """Installation takeover: an attacker appends another account's installation id to their own
+    sign-in callback. Only ids GitHub lists for the signing-in user may be recorded."""
+    _configure_hosted(monkeypatch)
+    _victim, victim_id = _fresh_account()
+    stolen, own = _uid(), _uid()
+    with session_scope() as s:
+        s.add(GithubInstallation(owner_id=victim_id, installation_id=stolen))
+    monkeypatch.setattr(
+        github_app, "_http", _gh(_uid(), f"att-{uuid.uuid4().hex[:8]}", installations=[own])
+    )
+    state = _start(unauth_client)
+    resp = unauth_client.get(
+        f"/api/auth/github/callback?code=abc&installation_id={stolen}&setup_action=install"
+        f"&state={state}",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    with session_scope() as s:
+        row = s.execute(
+            select(GithubInstallation).where(GithubInstallation.installation_id == stolen)
+        ).scalar_one()
+        assert row.owner_id == victim_id  # still the victim's
+        mine = s.execute(
+            select(GithubInstallation).where(GithubInstallation.installation_id == own)
+        ).scalar_one()
+        assert mine.owner_id != victim_id
+
+
+def test_a_stateless_code_never_signs_in_a_signed_out_browser(unauth_client, monkeypatch):
+    """Login CSRF: an attacker's own GitHub code sent to a victim's browser must not sign the victim
+    in as the attacker. A code only signs in on a flow this server started."""
+    _configure_hosted(monkeypatch)
+    monkeypatch.setattr(get_settings(), "frontend_origin", "https://tvashtr.fly.dev")
+    monkeypatch.setattr(github_app, "_http", _gh(_uid(), f"att-{uuid.uuid4().hex[:8]}"))
+    resp = unauth_client.get("/api/auth/github/callback?code=attacker", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "https://tvashtr.fly.dev/#/signin?error=expired"
+    assert "tv_session" not in resp.headers.get("set-cookie", "")
+    assert unauth_client.get("/api/auth/me").status_code == 401
+
+
+def test_a_stateless_code_never_switches_a_signed_in_browser_to_another_account(monkeypatch):
+    _configure_hosted(monkeypatch)
+    victim, victim_id = _github_linked_account(_uid())
+    monkeypatch.setattr(github_app, "_http", _gh(_uid(), f"att-{uuid.uuid4().hex[:8]}"))
+    resp = victim.get("/api/auth/github/callback?code=attacker", follow_redirects=False)
+    assert resp.status_code == 302
+    assert victim.get("/api/auth/me").json()["id"] == str(victim_id)
+
+
+def test_the_in_app_install_return_still_records_the_users_own_installation(monkeypatch):
+    """Connect GitHub from inside the app (no website state): the same GitHub user comes back with
+    their new installation — recorded, and the browser stays signed in as them."""
+    _configure_hosted(monkeypatch)
+    gh_id, inst = _uid(), _uid()
+    me, my_id = _github_linked_account(gh_id)
+    monkeypatch.setattr(
+        github_app, "_http", _gh(gh_id, f"me-{uuid.uuid4().hex[:8]}", installations=[inst])
+    )
+    resp = me.get(
+        f"/api/auth/github/callback?code=abc&installation_id={inst}&setup_action=install",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert me.get("/api/auth/me").json()["id"] == str(my_id)
+    with session_scope() as s:
+        row = s.execute(
+            select(GithubInstallation).where(GithubInstallation.installation_id == inst)
+        ).scalar_one()
+        assert row.owner_id == my_id
+
+
+def test_github_sign_in_revokes_a_password_someone_else_set_on_that_email(
+    unauth_client, monkeypatch
+):
+    """Account pre-hijack: an attacker registers <victim>@users.noreply.github.com with a password
+    before the victim ever signs in with GitHub. Linking the victim's GitHub identity must end the
+    attacker's password access."""
+    _configure_hosted(monkeypatch)
+    login = f"victim-{uuid.uuid4().hex[:8]}"
+    email = f"{login}@users.noreply.github.com"
+    attacker = TestClient(app)
+    attacker.cookies.clear()
+    assert (
+        attacker.post(
+            "/api/auth/register", json={"email": email, "password": "attacker-pass-1"}
+        ).status_code
+        == 200
+    )
+    monkeypatch.setattr(github_app, "_http", _gh(_uid(), login))  # GitHub keeps the email private
+    state = _start(unauth_client)
+    resp = unauth_client.get(
+        f"/api/auth/github/callback?code=abc&state={state}", follow_redirects=False
+    )
+    assert resp.status_code == 302
+    again = TestClient(app)
+    again.cookies.clear()
+    assert (
+        again.post(
+            "/api/auth/login", json={"email": email, "password": "attacker-pass-1"}
+        ).status_code
+        == 401
+    )

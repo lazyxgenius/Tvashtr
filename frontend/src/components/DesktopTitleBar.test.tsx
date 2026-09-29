@@ -1,19 +1,28 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { setDesktopTitle, TITLE_CANVAS, TITLE_LAUNCH } from "../lib/desktopApp";
 import { DesktopTitleBar } from "./DesktopTitleBar";
 
 afterEach(() => {
   delete window.tvashtrDesktop;
   delete window.tvashtrDesktopInfo;
+  setDesktopTitle(TITLE_LAUNCH);
 });
 
 describe("DesktopTitleBar", () => {
-  it("draws the design's title strip on macOS Desktop", () => {
+  it("draws the design's title strip on macOS Desktop, titled by the current screen (DT-3)", () => {
     window.tvashtrDesktop = true;
     window.tvashtrDesktopInfo = { shell: "electron", version: 4, platform: "darwin" };
     render(<DesktopTitleBar />);
-    expect(screen.getByTestId("desktop-titlebar")).toHaveTextContent("Tvashtr — the living canvas");
+    const strip = screen.getByTestId("desktop-titlebar");
+    expect(strip).toHaveTextContent(/^Tvashtr$/);
+    act(() => setDesktopTitle(TITLE_CANVAS));
+    expect(strip).toHaveTextContent("Tvashtr — the living canvas");
+    expect(document.title).toBe("Tvashtr — the living canvas");
+    act(() => setDesktopTitle(TITLE_LAUNCH));
+    expect(strip).toHaveTextContent(/^Tvashtr$/);
+    expect(document.title).toBe("Tvashtr");
   });
 
   it("renders nothing on the website", () => {

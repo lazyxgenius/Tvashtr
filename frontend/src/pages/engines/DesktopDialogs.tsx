@@ -19,6 +19,7 @@ import {
   DESKTOP_MAC_DMG_URL,
   DESKTOP_RELEASES_URL,
   isMacPlatform,
+  QUARANTINE_FIX,
 } from "../../lib/desktopDownload";
 import type { ConnectTarget } from "../../lib/nav";
 import { useModalDialog } from "../../lib/useModalDialog";
@@ -26,8 +27,6 @@ import { useEngines } from "./enginesData";
 
 /** How often the Opening dialog asks whether Desktop has checked in (ENG-48). */
 const CHECK_IN_POLL_MS = 3_000;
-
-const QUARANTINE_FIX = "xattr -dr com.apple.quarantine /Applications/Tvashtr.app";
 
 export function OpenDesktopDialog({
   connect,

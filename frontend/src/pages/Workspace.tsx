@@ -2,11 +2,18 @@ import { useEffect, useState } from "react";
 
 import App from "../App";
 import type { AuthUser, Config } from "../lib/api";
+import {
+  rememberAfterSetup,
+  resumeStep,
+  setupUnfinished,
+  useDesktopSetup,
+} from "../lib/desktopSetup";
 import { useDesktopDeepLinks } from "../lib/desktopDeepLinks";
 import { requestHomeAction } from "../lib/homeActions";
-import { type DashView, type Route, navigate, useNav } from "../lib/nav";
+import { type DashView, HOME, type Route, isPublicRoute, navigate, useNav } from "../lib/nav";
 import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
 import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
+import { SetupPage } from "./desktop/setup/SetupPage";
 import { DomainDetailPage } from "./domains/DomainDetailPage";
 import { DomainsListPage } from "./domains/DomainsListPage";
 import { EnginesPage } from "./engines/EnginesPage";
@@ -56,6 +63,10 @@ export function Workspace({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const onCanvas = route.page === "team";
+  const onSetup = route.page === "setup";
+  // Tvashtr Desktop: this Mac's first-run setup for the account (DT-17). "none" on the website.
+  const setup = useDesktopSetup(user.id);
+  const needsSetup = setupUnfinished(setup);
 
   // On arrival and on every return from the canvas: the drawer changes other areas' counts.
   useEffect(() => {
@@ -65,6 +76,24 @@ export function Workspace({
   // Tvashtr Desktop: follow `tvashtr://` links (a no-op on the website).
   useDesktopDeepLinks();
 
+  // While setup isn't finished the app sits on #/setup/<saved step>; a deep link that asked for
+  // somewhere else opens when setup finishes (OQ-34). No setup to do → setup addresses go Home.
+  useEffect(() => {
+    if (setup.status === "loading") return;
+    if (needsSetup && setup.status === "ready" && !onSetup) {
+      rememberAfterSetup(route.page === "home" ? null : window.location.hash);
+      navigate({ page: "setup", step: resumeStep(setup.setup) }, { replace: true });
+    } else if (onSetup && setup.status === "none") {
+      navigate({ page: "home" }, { replace: true });
+    }
+  }, [needsSetup, onSetup, route.page, setup]);
+
+  // The website's public pages never show in the app: Tvashtr Desktop signed in goes Home (WEB-3).
+  const onPublic = isPublicRoute(route);
+  useEffect(() => {
+    if (onPublic) navigate(HOME, { replace: true });
+  }, [onPublic]);
+
   useGlobalShortcuts(
     {
       onSearch: () => setSearchOpen(true),
@@ -72,8 +101,16 @@ export function Workspace({
       onNewTeam: () => requestHomeAction({ kind: "new-team" }),
       onShowShortcuts: () => setShortcutsOpen(true),
     },
-    !onCanvas,
+    !onCanvas && !onSetup,
   );
+
+  // Desktop: the few ms the setup store takes to answer, and the redirect into setup.
+  if (onPublic || setup.status === "loading" || (needsSetup && !onSetup)) return null;
+
+  if (route.page === "setup") {
+    if (setup.status !== "ready") return null;
+    return <SetupPage step={route.step} user={user} setup={setup.setup} onLogout={onLogout} />;
+  }
 
   if (route.page === "team") {
     return (

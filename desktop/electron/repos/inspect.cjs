@@ -4,7 +4,9 @@
  * `worktree.repo_inspect` + `repo_subpaths` so a picked scope passes `create_run`'s validation
  * after the bundle is cloned server side.
  *
- * Non-git folders are a RESULT (`{is_git:false, error}`), not a throw, so the UI can show it inline.
+ * Non-git folders are a RESULT (`{is_git:false, error, reason}`), not a throw, so the UI can show it
+ * inline. `reason` (bridge v6, additive): "not_git" (offer "Set up git here"), "inside_repo",
+ * "missing".
  */
 const fs = require("fs");
 const path = require("path");
@@ -65,12 +67,12 @@ async function inspectRepo(dir, { git, home }) {
   try {
     repo = requireDirectory(dir);
   } catch (e) {
-    return { is_git: false, error: /** @type {Error} */ (e).message };
+    return { is_git: false, error: /** @type {Error} */ (e).message, reason: "missing" };
   }
 
   const inside = await git.tryRun(repo, ["rev-parse", "--is-inside-work-tree"]);
   if (!inside || inside.trim() !== "true") {
-    return { is_git: false, error: "This folder isn't a git repository." };
+    return { is_git: false, error: "This folder isn't a git repository.", reason: "not_git" };
   }
   // The bundle carries the whole repository and Scope is relative to its top, so the folder
   // must BE the top of the work tree, not somewhere inside one.
@@ -91,6 +93,7 @@ async function inspectRepo(dir, { git, home }) {
     return {
       is_git: false,
       error: `This folder is inside the git repository at ${shown}. Choose that folder instead.`,
+      reason: "inside_repo",
     };
   }
 

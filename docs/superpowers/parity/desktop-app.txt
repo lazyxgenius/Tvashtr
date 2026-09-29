@@ -1,0 +1,92 @@
+# Tvashtr Desktop app screens — parity sweep, branch feat/revamp-desktop-app @ a1e3c80
+# skipped: DtF-Index — an index board ("Desktop first-run flows": a list of 10 flows / 28 screens and the coral-ring legend), not an app screen; its rule that the Mac app never shows the website's marketing page is built as DT-1
+# lead re-render 2026-09-29 (revamp-finish, cc102b7): all 39 Desktop lines reproduced byte-for-byte; web n/a (Desktop-only).
+# note "not found in app", each a decided deviation (no control is missing):
+#   DT-Welcome / DT-Handoff / DtF-Run-1 / DtF-Hand-1: 'This app runs your agent teams on this Mac…' and 'Runs happen on
+#     this Mac. Quit the app and they stop.' — honest copy OQ-4: only steps on a Claude/Grok plan run on the Mac, so the
+#     app says "…runs your agents on this Mac with your own Claude or Grok plan…" / "Steps on your plan run on this Mac."
+#   DT-Team / DtF-Run-7: 'Spec only' + 'Turns an idea into a reviewed spec. No code changes.' — ruling 5: the Spec only
+#     template stays hidden (it can't finish a run without a team_run.py walk change). 'Pick a starting point. It opens on
+#     the canvas…' — OQ-12 (Create team lands on Home). 'Start empty and add your own agents.' — OQ-11 (blank = one agent).
+#   DT-Ready / DT-Update / DtF-Launch-2 / DtF-Run-8 / DtF-Upd-1: 'Spec only, or build your own.' — ruling 5; the card
+#     reads "Pick a template, or build your own."
+#   DtF-Run-4: 'Terminal' and '$ grok login …' — the real macOS Terminal window, which the app doesn't draw (OQ-33).
+#   DtF-Run-5: 'signed in with SuperGrok' — OQ-10: the Grok CLI exposes no plan name; the row says "your Grok plan".
+DT-Engines web: n/a — Desktop-only screen (desktop-app.md §1)
+DT-Engines desktop: matched 43/43 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DT-Expired web: n/a — Desktop-only screen (desktop-app.md §1)
+DT-Expired desktop: matched 9/9 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DT-Handoff web: n/a — Desktop-only screen (desktop-app.md §1)
+DT-Handoff desktop: matched 14/16 design items · 0 with size/type drift · 10 only moved · 2 not found in app
+DT-Offline web: n/a — Desktop-only screen (desktop-app.md §1)
+DT-Offline desktop: matched 11/11 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DT-Project web: n/a — Desktop-only screen (desktop-app.md §1)
+DT-Project desktop: matched 31/31 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DT-Ready web: n/a — Desktop-only screen (desktop-app.md §1)
+DT-Ready desktop: matched 27/28 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+DT-Splash web: n/a — Desktop-only screen (desktop-app.md §1)
+DT-Splash desktop: matched 9/9 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DT-Team web: n/a — Desktop-only screen (desktop-app.md §1)
+DT-Team desktop: matched 37/41 design items · 0 with size/type drift · 7 only moved · 4 not found in app
+DT-Update web: n/a — Desktop-only screen (desktop-app.md §1)
+DT-Update desktop: matched 29/30 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+DT-Waiting web: n/a — Desktop-only screen (desktop-app.md §1)
+DT-Waiting desktop: matched 12/12 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DT-Welcome web: n/a — Desktop-only screen (desktop-app.md §1)
+DT-Welcome desktop: matched 13/15 design items · 0 with size/type drift · 9 only moved · 2 not found in app
+DtF-Claude-1 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Claude-1 desktop: matched 44/44 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Claude-2 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Claude-2 desktop: matched 62/62 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Claude-3 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Claude-3 desktop: matched 44/44 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DtF-Exp-1 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Exp-1 desktop: matched 9/9 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Git-1 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Git-1 desktop: matched 29/29 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Git-2 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Git-2 desktop: matched 33/33 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Git-3 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Git-3 desktop: matched 31/31 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Hand-1 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Hand-1 desktop: matched 14/16 design items · 0 with size/type drift · 10 only moved · 2 not found in app
+DtF-Hand-2 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Hand-2 desktop: matched 44/44 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DtF-Key-1 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Key-1 desktop: matched 44/44 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Key-2 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Key-2 desktop: matched 59/59 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Key-3 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Key-3 desktop: matched 44/44 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Launch-1 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Launch-1 desktop: matched 9/9 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Launch-2 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Launch-2 desktop: matched 27/28 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+DtF-Off-1 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Off-1 desktop: matched 11/11 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Off-2 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Off-2 desktop: matched 8/8 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Run-1 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Run-1 desktop: matched 13/15 design items · 0 with size/type drift · 9 only moved · 2 not found in app
+DtF-Run-2 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Run-2 desktop: matched 12/12 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Run-3 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Run-3 desktop: matched 44/44 design items · 0 with size/type drift · 1 only moved · 0 not found in app
+DtF-Run-4 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Run-4 desktop: matched 46/48 design items · 0 with size/type drift · 0 only moved · 2 not found in app
+DtF-Run-5 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Run-5 desktop: matched 41/42 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+DtF-Run-6 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Run-6 desktop: matched 31/31 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Run-7 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Run-7 desktop: matched 37/41 design items · 0 with size/type drift · 7 only moved · 4 not found in app
+DtF-Run-8 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Run-8 desktop: matched 27/28 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+DtF-Sign-1 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Sign-1 desktop: matched 12/12 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Sign-2 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Sign-2 desktop: matched 11/11 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+DtF-Upd-1 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Upd-1 desktop: matched 29/30 design items · 0 with size/type drift · 0 only moved · 1 not found in app
+DtF-Upd-2 web: n/a — Desktop-only screen (desktop-app.md §1)
+DtF-Upd-2 desktop: matched 7/7 design items · 0 with size/type drift · 0 only moved · 0 not found in app

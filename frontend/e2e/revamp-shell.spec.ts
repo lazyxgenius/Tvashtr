@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { passwordSignIn, siteSignIn, startBuilding } from "./_site";
+
 /**
  * Live gate for the revamp's dashboard shell (no model needed): sign up, then every section at its
  * own address inside the new header + nav, refresh and back/forward keeping the place, the
@@ -15,16 +17,8 @@ test("the dashboard shell: addresses, nav, refresh, back, shortcuts, account, ca
 
   // Sign up from the landing page → Home inside the new shell.
   await page.goto("/");
-  await page.getByRole("button", { name: "Get started" }).first().click();
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Create account" }).click();
-  // The sign-up wizard's scene-setting steps (nothing is saved).
-  await page.getByRole("button", { name: /^Engineer/ }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: /^A fresh idea/ }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Enter Tvashtr" }).click();
+  await startBuilding(page).click();
+  await passwordSignIn(page, email, password, true);
   await expect(nav).toBeVisible({ timeout: 30_000 });
   await expect(nav.getByRole("button", { name: /^Home/ })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("status").filter({ hasText: "Connected" })).toBeVisible({
@@ -118,17 +112,9 @@ test("the dashboard shell: addresses, nav, refresh, back, shortcuts, account, ca
   const menu = page.getByRole("menu", { name: "Account" });
   await expect(menu).toContainText(email);
   await menu.getByRole("menuitem", { name: /Log out/ }).click();
-  await expect(page.getByRole("button", { name: "Get started" }).first()).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(startBuilding(page)).toBeVisible({ timeout: 30_000 });
   await page.goto("/");
-  await page
-    .getByRole("button", { name: /Log in|Sign in/ })
-    .first()
-    .click();
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: /^(Log in|Sign in)$/ }).click();
-  await page.getByRole("button", { name: "Enter Tvashtr" }).click();
+  await siteSignIn(page).click();
+  await passwordSignIn(page, email, password);
   await expect(nav).toBeVisible({ timeout: 30_000 });
 });

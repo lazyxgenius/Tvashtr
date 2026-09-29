@@ -29,7 +29,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from tvashtr.config import get_settings
@@ -42,6 +42,7 @@ from tvashtr.models import (
     DesktopRunnerHeartbeat,
     EngineSubscriptionStatus,
     Run,
+    RunEvent,
 )
 
 OFFLINE_ERROR = "Tvashtr Desktop went offline — reopen it and retry."
@@ -54,6 +55,10 @@ _ACTIVE_JOB_STATUSES = ("queued", "claimed")
 # Runner events share the node invocation's ``seq`` space with the adapter's own messages
 # (0, 1, …): offsetting them keeps both, in order, and a runner retry of the same batch dedups.
 RUNNER_SEQ_OFFSET = 100
+# Each claim of a job gets its own band of runner seqs (a relaunched runner restarts at 0): claim k
+# (0-based) persists at ``RUNNER_SEQ_OFFSET + k * RUNNER_CLAIM_SEQS + seq``, and the release note
+# that ends claim k is its band's last seq. ponytail: int seq column caps ~2000 releases per node.
+RUNNER_CLAIM_SEQS = 1_000_000
 
 # Top-level + nested KEY names a runner body must never carry (compared lower-cased, exact). The
 # status mirror uses the same idea; this list is wider because runner bodies are richer.
@@ -382,7 +387,10 @@ def record_events(owner_id: uuid.UUID, job_id: str, events: list[dict]) -> dict:
             return {"ok": True, "cancelled": True}
         job.heartbeat_at = _now()
         run_id, invocation_id = job.run_id, job.invocation_id
-    sink = make_run_event_sink(run_id, invocation_id, seq_offset=RUNNER_SEQ_OFFSET)
+        releases = _release_count(session, run_id, invocation_id)
+    sink = make_run_event_sink(
+        run_id, invocation_id, seq_offset=RUNNER_SEQ_OFFSET + releases * RUNNER_CLAIM_SEQS
+    )
     for ev in events:
         sink(EngineEvent(seq=int(ev["seq"]), kind=ev["kind"], payload=ev["payload"]))
     return {"ok": True, "cancelled": False}
@@ -409,6 +417,59 @@ def submit_result(
         job.usage = usage
         job.finished_at = _now()
         job.heartbeat_at = job.finished_at
+
+
+RELEASED_MESSAGE = "Tvashtr Desktop restarted — this step starts again when it's back."
+NOT_CLAIMED_ERROR = "This job isn't running on Tvashtr Desktop."
+
+
+def _release_count(session, run_id: str, invocation_id: int | None) -> int:
+    """How many times this node's job was released = how many claim bands the log already has."""
+    return session.execute(
+        select(func.count()).where(
+            RunEvent.run_id == run_id,
+            RunEvent.invocation_id == invocation_id,
+            RunEvent.seq >= RUNNER_SEQ_OFFSET,
+            (RunEvent.seq - RUNNER_SEQ_OFFSET + 1) % RUNNER_CLAIM_SEQS == 0,
+        )
+    ).scalar_one()
+
+
+def release_job(owner_id: uuid.UUID, job_id: str) -> dict:
+    """Hand a claimed job back to the queue (Desktop is quitting or restarting to update): status
+    ``queued`` again, ``claimed_at``/``heartbeat_at`` cleared, and one note in the node's run log.
+    The relaunched runner re-claims it with the unchanged :func:`claim_next`; if Desktop doesn't
+    come back, the adapter's queued-offline rule fails the node as before. Raises
+    :class:`JobNotFound` (unknown / another owner's) or :class:`JobConflict` (not claimed)."""
+    with session_scope() as session:
+        job = _owned_job(session, owner_id, job_id)
+        if job.status != "claimed":
+            raise JobConflict(NOT_CLAIMED_ERROR)
+        job.status = "queued"
+        job.claimed_at = None
+        job.heartbeat_at = None
+        # The runner that held the job has its plan, but its last poll left that plan out (a busy
+        # plan isn't offered), so the adapter's "not connected" rule would expire the queued job a
+        # poll later. Record the plan as offered; the relaunched runner's first poll overwrites it,
+        # and if Desktop never returns the offline rule still fails the node.
+        now = _now()
+        beat = session.get(DesktopRunnerHeartbeat, owner_id)
+        if beat is None:
+            beat = DesktopRunnerHeartbeat(owner_id=owner_id, last_seen_at=now, providers=[])
+            session.add(beat)
+        beat.last_seen_at = now
+        beat.providers = sorted({*(beat.providers or []), job.provider})
+        run_id, invocation_id, released_id = job.run_id, job.invocation_id, str(job.id)
+        releases = _release_count(session, run_id, invocation_id)
+    seq = RUNNER_SEQ_OFFSET + (releases + 1) * RUNNER_CLAIM_SEQS - 1
+    make_run_event_sink(run_id, invocation_id)(
+        EngineEvent(
+            seq=seq,
+            kind="message",
+            payload={"source": "tvashtr", "text": RELEASED_MESSAGE},
+        )
+    )
+    return {"job_id": released_id, "status": "queued"}
 
 
 def expire_job(job_id: str, error: str) -> bool:
