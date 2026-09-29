@@ -23,6 +23,12 @@ import { type DocPlace, detailLabel, docSubtitle, pickVersions } from "./docView
 import "../focus/focus.css";
 import "./viewer.css";
 
+/** How often an open viewer looks for a newer version while its run is live. */
+const LIVE_LOOK_MS = 10_000;
+/** A late answer never replaces a newer one (versions only grow). */
+const newest = (prev: DocDetail | null, next: DocDetail) =>
+  prev?.id === next.id && prev.versions.length > next.versions.length ? prev : next;
+
 export interface DocumentViewerProps {
   docId: string;
   /** The version shown (none: the latest) and the one it's compared with. */
@@ -60,7 +66,30 @@ export function DocumentViewer({
       ? fresh
       : loaded.value;
   const runId = detail?.run_id ?? null;
-  const runDocs = useLoaded(runId, () => listRunDocs(runId ?? ""));
+  // Each reload looks at the run's documents again too, keeping the last answer meanwhile.
+  const [looks, setLooks] = useState(0);
+  const runDocs = useLoaded(runId && `${runId}:${looks}`, () => listRunDocs(runId ?? ""), {
+    keep: true,
+  });
+  const reload = useCallback(() => {
+    getDocument(docId).then(
+      (next) => setFresh((prev) => newest(prev, next)),
+      () => undefined,
+    );
+    setLooks((n) => n + 1);
+  }, [docId]);
+  // While the run is live an agent can save a newer version at any time: look again every few
+  // seconds and when the window comes back (an open edit stays as it is).
+  const live = detail?.editable === true;
+  useEffect(() => {
+    if (!live) return;
+    const id = window.setInterval(reload, LIVE_LOOK_MS);
+    window.addEventListener("focus", reload);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", reload);
+    };
+  }, [live, reload]);
   const [editing, setEditing] = useState(false);
   const [dirty, setDirty] = useState(false);
   const unsaved = editing && dirty;
@@ -131,10 +160,16 @@ export function DocumentViewer({
       leaveEdit();
       onPlace(id, next);
     });
-  const reload = () => {
-    getDocument(docId).then(setFresh, () => undefined);
-    runDocs.retry();
-  };
+  // Edit starts on the real latest version (an agent may have saved one since the last look), and
+  // not at all once the run has ended.
+  const startEdit = () =>
+    getDocument(docId).then(
+      (next) => {
+        setFresh((prev) => newest(prev, next));
+        setEditing(next.editable);
+      },
+      () => setEditing(true),
+    );
 
   let body;
   if (!detail) {
@@ -277,7 +312,7 @@ export function DocumentViewer({
                 variant="secondary"
                 size="sm"
                 className="nd-btn-flush"
-                onClick={() => setEditing(true)}
+                onClick={() => void startEdit()}
               >
                 <Pencil size={13} strokeWidth={1.6} aria-hidden />
                 <span>Edit</span>

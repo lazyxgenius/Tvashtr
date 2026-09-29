@@ -783,6 +783,7 @@ export default function App({
           <DocumentsDrawer
             runs={teamRuns}
             runId={docsDrawer.runId}
+            tick={roundsTick}
             onPickRun={(id) => setDocsDrawer({ runId: id })}
             agentCount={agentCount}
             onOpenDoc={(doc) => openDoc(doc.id)}

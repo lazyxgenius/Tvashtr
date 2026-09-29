@@ -479,3 +479,70 @@ describe("DocumentViewer — live edit (DOCS-26..32)", () => {
     expect(within(dialog()).getByRole("button", { name: "Edit" })).toBeInTheDocument();
   });
 });
+
+describe("DocumentViewer — a live run moves on under it", () => {
+  const V4 = version(4, `${V3}\n- Agent's line.`, PM, "Revised in round 4", 1);
+  const rows = () =>
+    versions()
+      .getAllByRole("button", { name: /^v\d/ })
+      .map((r) => r.textContent?.slice(0, 2));
+  afterEach(() => vi.useRealTimers());
+
+  it("an agent's newer version shows up on its own, every few seconds and when you come back", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    render(<Viewer />);
+    await ready();
+    newer = [V4];
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(await within(dialog()).findByRole("button", { name: "v4 · latest" })).toBeVisible();
+    expect(rows()).toEqual(["v4", "v3", "v2", "v1"]);
+
+    // Back on the window after the run ended: no more Edit.
+    editable = false;
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() =>
+      expect(within(dialog()).queryByRole("button", { name: "Edit" })).toBeNull(),
+    );
+  });
+
+  it("Edit starts on the real latest version, even one saved since the viewer last looked", async () => {
+    render(<Viewer />);
+    await ready();
+    newer = [V4];
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Edit" }));
+    await waitFor(() => expect(document.querySelector(".ProseMirror")).not.toBeNull());
+    expect(document.querySelector(".ProseMirror")).toHaveTextContent("Agent's line.");
+    const d = within(dialog());
+    expect(d.getByText("No changes yet · saves as v5")).toBeInTheDocument();
+    setEditor(`${V3}\n- Agent's line.\n- Mine.`);
+    saveAnswer = { status: 200, body: version(5, "x", YOU, "Edited while the run was live", 0) };
+    fireEvent.click(d.getByRole("button", { name: "Save as v5" }));
+    await screen.findByText("Saved v5 — the agents read it on their next round.");
+    const post = fetchMock.mock.calls.find(
+      (c) => (c[1] as RequestInit | undefined)?.method === "POST",
+    );
+    expect(JSON.parse((post?.[1] as RequestInit).body as string)).toMatchObject({
+      base_version_no: 4,
+    });
+  });
+
+  it("a look while you edit keeps your edit as it is", async () => {
+    render(<Viewer />);
+    await ready();
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Edit" }));
+    await waitFor(() => expect(document.querySelector(".ProseMirror")).not.toBeNull());
+    setEditor(`${V3}\n- Mine.`);
+    newer = [V4];
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(rows()).toEqual(["v4", "v3", "v2", "v1"]));
+    expect(document.querySelector(".ProseMirror")).toHaveTextContent("Mine.");
+    expect(document.querySelector(".ProseMirror")).not.toHaveTextContent("Agent's line.");
+    expect(within(dialog()).getByText("Unsaved edit", { exact: false })).toBeInTheDocument();
+  });
+});

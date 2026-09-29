@@ -27,6 +27,8 @@ export interface DocumentsDrawerProps {
   runs: Loaded<TeamRun[]>;
   /** The run whose documents are shown. */
   runId: string;
+  /** Changes when a round finishes (the run view): the list looks again. */
+  tick?: string;
   onPickRun: (runId: string) => void;
   /** The team's agents, for "read by all 3 agents". */
   agentCount: number;
@@ -43,19 +45,22 @@ export interface DocumentsDrawerProps {
 export function DocumentsDrawer({
   runs,
   runId,
+  tick = "",
   onPickRun,
   agentCount,
   onOpenDoc,
   onClose,
 }: DocumentsDrawerProps) {
-  const docs = useLoaded(runId, () => listRunDocs(runId));
+  // A finished round looks again, keeping the last answer meanwhile (never another run's).
+  const docs = useLoaded(`${runId}:${tick}`, () => listRunDocs(runId), { keep: true });
+  const value = docs.value?.run?.run_id === runId ? docs.value : null;
   const listed = runs.value?.find((r) => r.run_id === runId);
-  const run = docs.value?.run;
+  const run = value?.run;
   const idea = listed?.idea ?? run?.idea ?? "";
   const when = listed ? runWhen(listed) : run ? whenShort(run.created_at) : "";
 
   let body: ReactNode;
-  if (docs.state !== "ready" || !docs.value) {
+  if (!value) {
     body = (
       <LoadState
         state={docs.state === "error" ? "error" : "loading"}
@@ -65,7 +70,7 @@ export function DocumentsDrawer({
       />
     );
   } else {
-    const all = docs.value.documents;
+    const all = value.documents;
     const shared = all.find((d) => d.is_shared_spec);
     const written = all.filter((d) => !d.is_shared_spec);
     body = (
