@@ -509,6 +509,59 @@ describe("Answer model (DmF-Model-1…3)", () => {
     expect(screen.queryByRole("listbox", { name: "Answer model" })).toBeNull();
   });
 
+  it("a refused change says the server's reason (finding 8)", async () => {
+    routes({
+      "PATCH /api/domains/d-support": new Response(
+        JSON.stringify({ detail: "Use a number from 1 to 30." }),
+        { status: 422 },
+      ),
+    });
+    renderAsk();
+    await screen.findByText("Ask Support docs anything");
+    fireEvent.click(screen.getByRole("button", { name: "Answer model: Account default" }));
+    fireEvent.click(screen.getByRole("option", { name: /^OpenAI gpt-4o-mini/ }));
+    expect(
+      await screen.findByText("Couldn’t change the answer model. Use a number from 1 to 30."),
+    ).toBeInTheDocument();
+  });
+
+  it("Undo changes only the answer model, on the settings as they are now (finding 8)", async () => {
+    // The server's config: the pick saves it; then the reading model changes (Settings, another
+    // tab) before Undo. Undo must not send the old reading model back.
+    let server: Record<string, unknown> = {
+      chunking: { size: 800 },
+      embedding: { model: "text-embedding-3-small" },
+      retrieval: { top_k: 8 },
+      generation: { model: null },
+    };
+    const calls = routes({
+      "GET /api/domains/d-support": () => ({ ...SUPPORT, config: server }),
+      "PATCH /api/domains/d-support": (init?: RequestInit) => {
+        const sent = typeof init?.body === "string" ? init.body : "{}";
+        server = (JSON.parse(sent) as { config: Record<string, unknown> }).config;
+        return { ...SUPPORT, config: server };
+      },
+    });
+    renderAsk();
+    await screen.findByText("Ask Support docs anything");
+    fireEvent.click(screen.getByRole("button", { name: "Answer model: Account default" }));
+    fireEvent.click(screen.getByRole("option", { name: /^OpenAI gpt-4o-mini/ }));
+    await screen.findByText("Answer model set to OpenAI gpt-4o-mini for this domain");
+    server = { ...server, embedding: { model: "gemini/gemini-embedding-001" } };
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    const patches = () => calls.filter((c) => c.method === "PATCH");
+    await waitFor(() => expect(patches()).toHaveLength(2));
+    expect(patches()[1].body).toEqual({
+      config: {
+        chunking: { size: 800 },
+        embedding: { model: "gemini/gemini-embedding-001" },
+        retrieval: { top_k: 8 },
+        generation: { model: null },
+      },
+    });
+  });
+
   it("Escape closes the list without saving", async () => {
     const calls = routes();
     renderAsk();

@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, Lock, MessageSquare } from "lucide-react";
 
 import { Button, Switch, TextArea, useToast } from "../../design-system/components";
-import { listProviders } from "../../lib/api";
+import { ApiError, listProviders } from "../../lib/api";
 import {
   AskError,
   type DomainChatTurn,
@@ -19,6 +19,7 @@ import {
   type DomainPassage,
   askDomainQuestion,
   clearDomainChat,
+  getDomainDetail,
   listDomainChat,
   listDomainFiles,
   rereadDomainFiles,
@@ -242,12 +243,17 @@ export function AskTab({
 
   const changeModel = useCallback(
     async (slug: string | null) => {
-      const config = detail.config;
       const before = detail.answer_model.configured;
+      // The server's reason (a setting saved out of range before the limits: "Use a number…").
+      const refused = (err: unknown) =>
+        toast({
+          message: `Couldn’t change the answer model.${err instanceof ApiError && err.message ? ` ${err.message}` : ""}`,
+          tone: "error",
+        });
       try {
-        await setDomainAnswerModel(domainId, config, slug);
-      } catch {
-        toast({ message: "Couldn’t change the answer model.", tone: "error" });
+        await setDomainAnswerModel(domainId, detail.config, slug);
+      } catch (err) {
+        refused(err);
         return;
       }
       onChanged();
@@ -255,10 +261,11 @@ export function AskTab({
         message: `Answer model set to ${answerModelLabel(slug)} for this domain`,
         action: {
           label: "Undo",
+          // The settings as they are now: a reading-model change made since must not be undone.
           onClick: () =>
-            void setDomainAnswerModel(domainId, config, before).then(onChanged, () =>
-              toast({ message: "Couldn’t change the answer model.", tone: "error" }),
-            ),
+            void getDomainDetail(domainId)
+              .then((now) => setDomainAnswerModel(domainId, now.config, before))
+              .then(onChanged, refused),
         },
       });
     },
