@@ -16,7 +16,12 @@ from sqlalchemy import select
 from tvashtr.control_plane import team_run
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
 from tvashtr.control_plane.shipping import init_workspace_repo
-from tvashtr.control_plane.teams import build_spec_only_team, plan_first_models
+from tvashtr.control_plane.teams import (
+    _TEMPLATES_BY_KEY,
+    _template_dict,
+    build_spec_only_team,
+    plan_first_models,
+)
 from tvashtr.db import session_scope
 from tvashtr.main import app
 from tvashtr.models import (
@@ -127,17 +132,24 @@ def test_plain_templates_answer_is_unchanged(client):
             assert set(node) == {"id", "kind", "role", "label"}
 
 
-def test_desktop_templates_add_spec_only_and_where_each_node_runs(client):
+def _model_nodes(template: dict) -> list[dict]:
+    return [n for n in template["shape"]["nodes"] if n["role"] not in ("gate", "ship", "stop")]
+
+
+def test_desktop_templates_say_where_each_node_runs_and_keep_spec_only_hidden(client):
     c, owner = _fresh()
     _connect(owner, "claude", "grok")
     body = _desktop(c)
     by_key = _by_key(body)
-    assert list(by_key) == ["two_node", "review_loop", "plan_review", "full_squad", "spec_only"]
-    spec = by_key["spec_only"]
-    assert spec["name"] == "Spec only"
-    assert spec["description"] == "Turns an idea into a reviewed spec. No code changes."
-    assert spec["shape"]["loops"] == []
-    assert _placements(spec) == [("pm", _GROK, "grok"), ("reviewer", _CLAUDE, "claude")]
+    # Architect ruling 5 (revamp-finish): Spec only stays hidden until its runs can finish without
+    # shipping — the Desktop list never offers it (POST /api/teams still builds it; see below).
+    assert list(by_key) == ["two_node", "review_loop", "plan_review", "full_squad"]
+    assert _placements(by_key["two_node"]) == [
+        ("pm", _GROK, "grok"),
+        ("gate", None, None),
+        ("engineer", _CLAUDE, "claude"),
+        ("ship", None, None),
+    ]
     assert _placements(by_key["review_loop"]) == [
         ("pm", _GROK, "grok"),
         ("gate", None, None),
@@ -150,12 +162,12 @@ def test_desktop_templates_add_spec_only_and_where_each_node_runs(client):
 
 def test_without_a_plan_nodes_run_on_a_held_key_or_need_setup(client):
     c, owner = _fresh()
-    spec = _by_key(_desktop(c))["spec_only"]
-    assert [n["runs_on"] for n in spec["shape"]["nodes"]] == [None, None]
+    team = _by_key(_desktop(c))["two_node"]
+    assert [n["runs_on"] for n in _model_nodes(team)] == [None, None]
 
     _hold(owner, "deepseek")
-    spec = _by_key(_desktop(c))["spec_only"]
-    assert [(n["model"], n["runs_on"]) for n in spec["shape"]["nodes"]] == [
+    team = _by_key(_desktop(c))["two_node"]
+    assert [(n["model"], n["runs_on"]) for n in _model_nodes(team)] == [
         ("deepseek/deepseek-chat", "api_key"),
         ("deepseek/deepseek-chat", "api_key"),
     ]
@@ -165,20 +177,21 @@ def test_a_disconnected_plan_does_not_count(client):
     c, owner = _fresh()
     _connect(owner, "claude")
     _connect(owner, "grok", connected=False)
-    spec = _by_key(_desktop(c))["spec_only"]
-    assert _placements(spec) == [("pm", _CLAUDE, "claude"), ("reviewer", _CLAUDE, "claude")]
+    team = _by_key(_desktop(c))["two_node"]
+    assert [(n["role"], n["model"], n["runs_on"]) for n in _model_nodes(team)] == [
+        ("pm", _CLAUDE, "claude"),
+        ("engineer", _CLAUDE, "claude"),
+    ]
 
 
 def test_placements_are_owner_scoped(client):
     other, other_owner = _fresh()
     _connect(other_owner, "claude", "grok")
     mine, _owner = _fresh()
-    spec = _by_key(_desktop(mine))["spec_only"]
-    assert [n["runs_on"] for n in spec["shape"]["nodes"]] == [None, None]
-    assert [n["runs_on"] for n in _by_key(_desktop(other))["spec_only"]["shape"]["nodes"]] == [
-        "grok",
-        "claude",
-    ]
+    team = _by_key(_desktop(mine))["two_node"]
+    assert [n["runs_on"] for n in _model_nodes(team)] == [None, None]
+    theirs = _by_key(_desktop(other))["two_node"]
+    assert [n["runs_on"] for n in _model_nodes(theirs)] == ["grok", "claude"]
 
 
 def test_templates_need_a_session(unauth_client):
@@ -188,7 +201,7 @@ def test_templates_need_a_session(unauth_client):
 # ---- POST /api/teams {use_plans} ---------------------------------------------------------------
 
 
-@pytest.mark.parametrize("template", ["review_loop", "spec_only", "blank"])
+@pytest.mark.parametrize("template", ["two_node", "review_loop", "blank"])
 def test_use_plans_stamps_what_the_strip_showed(client, template):
     c, owner = _fresh()
     _connect(owner, "claude", "grok")
@@ -242,10 +255,17 @@ def test_create_still_rejects_a_blank_name_with_use_plans(client):
 
 
 def test_spec_only_team_is_valid_and_its_strip_matches_the_declared_one(client):
-    c, _owner = _fresh()
-    declared = _by_key(_desktop(c))["spec_only"]["shape"]
-    team = c.post("/api/teams", json={"template": "spec_only", "name": "Specs"}).json()
+    c, owner = _fresh()
+    # Not listed for Desktop (ruling 5), so its strip is declared by the template itself.
+    t = _TEMPLATES_BY_KEY["spec_only"]
+    declared = _template_dict(t.key, t.name, t.description, t.roles, t.loops)["shape"]
+    _connect(owner, "claude", "grok")
+    team = c.post(
+        "/api/teams", json={"template": "spec_only", "name": "Specs", "use_plans": True}
+    ).json()
     assert team["template_name"] == "Spec only"
+    # Plans stamp the reviewer-uses-the-other-vendor rule, as the design labels it.
+    assert _models_by_role(team["team_graph_id"]) == {"pm": _GROK, "reviewer": _CLAUDE}
 
     def strip(shape):
         return [(n["kind"], n["role"], n["label"]) for n in shape["nodes"]], shape["loops"]

@@ -26,18 +26,22 @@ Opened in the user's **default browser** (not the app window). `account` default
 |---|---|
 | `hosted_mode` off | 404 `{"detail":"Not found"}` |
 | `challenge` not `^[A-Za-z0-9_-]{43}$`, `state` not `^[A-Za-z0-9_-]{16,64}$`, or `account` not `current`/`github` | 400 HTML return page "This link doesn't work" / "This sign-in link is broken. Go back to Tvashtr Desktop and try again." (links bare `tvashtr://auth/done`, no auto-open) |
-| `account=current` and this browser holds a valid `tv_session` | 200 HTML return page (signed in), link `tvashtr://auth/done?code=<code>&state=<state>` — no GitHub step (the handoff) |
-| otherwise | 302 → `https://github.com/login/oauth/authorize?client_id=…&redirect_uri=<public_base_url>/api/auth/github/callback&state=<signed desktop state>` |
+| `account=current` and this browser holds a valid `tv_session` | 200 HTML consent page "Continue as <login>?" / "Tvashtr Desktop asked to sign in with the account this browser uses: <login>. Continue only if you started this from Tvashtr Desktop." — button **Continue as <login>** = `tvashtr://auth/done?code=<code>&state=<state>` (NOT opened by itself: a click is required), link **Use a different account** = this `start` with `account=github`. No GitHub step (the handoff) |
+| otherwise | 302 → `https://github.com/login/oauth/authorize?client_id=…&redirect_uri=<public_base_url>/api/auth/github/callback&state=<signed desktop state>` (+ `&prompt=select_account` when `account=github`, so GitHub shows its account picker) and `Set-Cookie: tv_desktop_flow=<nonce>; Max-Age=900; HttpOnly; SameSite=Lax; Path=/api/auth` |
 
 The signed desktop state is itsdangerous, salt `tv-desktop-state`, valid 15 minutes, payload
-`{"c": challenge, "s": state}`.
+`{"c": challenge, "s": state, "n": nonce}` — `n` equals the `tv_desktop_flow` cookie, which binds the
+sign-in to the browser that started it (independent review, revamp-finish). A state without `n`
+(signed before the binding) reads as expired.
 
 ### `GET /api/auth/github/callback` (changed in place, additive)
 New optional query params `state` and `error`. When `state` verifies as a desktop state:
 
 | Case | Answer |
 |---|---|
-| `error` present (e.g. `access_denied`, the user cancelled on GitHub) or no `code` | 200 return page "Sign-in cancelled" / "Nothing was changed. Go back to Tvashtr Desktop."; link `tvashtr://auth/done?error=cancelled&state=<s>`; no cookie |
+| the browser has no `tv_desktop_flow` cookie matching the state's `n` (a state replayed into another browser) | 200 return page "This sign-in expired"; link `…?error=expired&state=<s>`; nobody is signed in |
+| `error=access_denied` (the user cancelled on GitHub) | 200 return page "Sign-in cancelled" / "Nothing was changed. Go back to Tvashtr Desktop."; link `tvashtr://auth/done?error=cancelled&state=<s>`; no cookie |
+| any other `error` (e.g. `redirect_uri_mismatch`), or no `code` | 400 return page "Sign-in didn’t finish"; link `…?error=failed&state=<s>`; no cookie |
 | the desktop state is older than 15 minutes | 200 return page "This sign-in expired" / "This sign-in has expired. Sign in again."; link `tvashtr://auth/done?error=expired&state=<s>`; no cookie |
 | `code` present | the normal GitHub find-or-link + installations, the browser gets `tv_session`, then 200 return page "You're signed in" / "Go back to Tvashtr Desktop to continue. You can close this tab."; link `tvashtr://auth/done?code=<code>&state=<s>` |
 | GitHub exchange fails | 400 return page "Sign-in didn’t finish" / "GitHub didn’t sign you in. Go back to Tvashtr Desktop and try again."; link `tvashtr://auth/done?error=failed&state=<s>`; no cookie (Desktop shows "Sign-in didn't finish" at once). The website's callback (no desktop state) still answers 400 `{"detail":"GitHub sign-in failed."}` |
@@ -138,18 +142,20 @@ Setup screens list such a provider disabled and never pre-pick it.
 ## `GET /api/templates?for=desktop` (DT-34, DT-35, OQ-27, OQ-29) — session, owner-scoped
 Without `for` the answer is unchanged (`{templates: [4], blank}`, nodes `{id, kind, role, label}`).
 With `for=desktop`:
-- `templates` also lists the Desktop-only `spec_only` (after the four; Home's dialog never sees it);
+- `templates` lists the same four (architect ruling 5, revamp-finish: the Desktop-only `spec_only`
+  stays hidden and is NOT listed until its runs can end without shipping);
 - every `shape.nodes[]` (templates and `blank`) gains `model` (slug or `null`) and `runs_on`
   (`"claude" | "grok" | "api_key" | null`), computed for THIS owner exactly as a
   `POST /api/teams {use_plans: true}` would stamp them. `runs_on` is the plan when the model's
   provider maps to a *connected* Claude/Grok plan (the engines mirror), else `"api_key"` when the
   owner holds a key for it, else `null` ("Needs setup"). Gates and terminals: both `null`.
 ```json
-{"template": "spec_only", "name": "Spec only",
- "description": "Turns an idea into a reviewed spec. No code changes.",
+{"template": "two_node", "name": "…",
  "shape": {"nodes": [
    {"id": null, "kind": "thinker", "role": "pm", "label": "PM", "model": "xai/grok-4.7", "runs_on": "grok"},
-   {"id": null, "kind": "worker", "role": "reviewer", "label": "Reviewer", "model": "anthropic/claude-sonnet-5", "runs_on": "claude"}],
+   {"id": null, "kind": "gate", "role": "gate", "label": "…", "model": null, "runs_on": null},
+   {"id": null, "kind": "worker", "role": "engineer", "label": "Engineer", "model": "anthropic/claude-sonnet-5", "runs_on": "claude"},
+   {"id": null, "kind": "ship", "role": "ship", "label": "…", "model": null, "runs_on": null}],
   "loops": []}}
 ```
 Model choice (`teams.plan_first_models`, pure): one plan → every model node uses it; both → a
@@ -173,5 +179,6 @@ No Ship node: no code change, no PR. KNOWN GAPS (walk changes in `team_run.py`, 
 slice): a run ends `rejected` at the Stop terminal even when approved (pinned by a strict xfail in
 `tests/test_desktop_templates.py`), and there is no rework loop (a loop back to the entry PM
 leaves the team without a start node). Because of both, Desktop setup's First team step leaves
-the designed "Spec only" card out (a first run would read Stopped); the template stays served and
-creatable for when the walk supports it.
+the designed "Spec only" card out (a first run would read Stopped), and `?for=desktop` no longer
+lists it (ruling 5); `POST /api/teams {template:"spec_only"}` still builds it for when the walk
+supports it.

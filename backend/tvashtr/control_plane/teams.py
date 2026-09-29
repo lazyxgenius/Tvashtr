@@ -1809,8 +1809,10 @@ def _with_placements(template: dict, roles, plans: set[str], held: set[str]) -> 
 
 
 def desktop_templates(owner_id: uuid.UUID) -> dict:
-    """``GET /api/templates?for=desktop``: the catalog plus the Desktop-only templates, and Blank,
-    each strip node carrying the ``model``/``runs_on`` a Desktop create would give it."""
+    """``GET /api/templates?for=desktop``: the catalog and Blank, each strip node carrying the
+    ``model``/``runs_on`` a Desktop create would give it. The Desktop-only Spec only template is
+    NOT listed (architect ruling: it stays hidden until a run can end without shipping — pinned by
+    the strict xfail in test_desktop_templates.py); ``POST /api/teams`` still builds it."""
     plans = connected_plans(owner_id)
     held = held_provider_slugs(owner_id)
     return {
@@ -1818,7 +1820,7 @@ def desktop_templates(owner_id: uuid.UUID) -> dict:
             _with_placements(
                 _template_dict(t.key, t.name, t.description, t.roles, t.loops), t.roles, plans, held
             )
-            for t in (*_TEMPLATE_CATALOG, *_DESKTOP_TEMPLATES)
+            for t in _TEMPLATE_CATALOG
         ],
         "blank": _with_placements(blank_template(), _BLANK_ROLES, plans, held),
     }
