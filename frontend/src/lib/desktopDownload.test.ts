@@ -2,10 +2,18 @@
  * The download page states these as facts (website.md §5 "Constants"): pin them to the Desktop
  * build that produces the DMG, so bumping Electron or renaming the artifact fails here first.
  */
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
-import desktopPkg from "../../../desktop/package.json";
 import { DESKTOP_MAC_DMG_URL, DESKTOP_MIN_MACOS_LABEL } from "./desktopDownload";
+
+// Read at test time, not imported: the image builds the frontend on its own (no desktop/ there),
+// and its `tsc --noEmit` must not need a file outside frontend/.
+const desktopPkg = JSON.parse(readFileSync(`${process.cwd()}/../desktop/package.json`, "utf8")) as {
+  devDependencies: { electron: string };
+  build: { mac: { artifactName: string } };
+};
 
 /** Electron major → the oldest macOS it runs on (Electron's release notes). A major missing here
  *  fails the test: look its floor up and add it. */
