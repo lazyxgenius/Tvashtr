@@ -2,6 +2,9 @@
 # lead re-render 2026-09-29 (revamp-finish, after merging main c7848be + the Q20 run drawer): all 34 lines at 0 size/type
 #   drift; the 14 Desktop lines each have one fewer "only moved" item — the Desktop title strip, which the Desktop app
 #   ship aligned with the design; nothing else changed.
+# lead re-render 2026-09-30 (on feat/revamp-domains after merging main dc8fe9c): all 34 lines at 0 size/type drift;
+#   Focus-Skills (web + Desktop) finds 2 fewer items, 'Domains' and 'Let it ask and search your domains during a run.'
+#   — the round-1 Domains switch, which Domains replaces with its checklist + callout (OQ-2, Dm-AgentAccess).
 Docs-Compare desktop: matched 104/106 design items · 0 with size/type drift · 49 only moved · 2 not found in app
 Docs-Compare web: matched 102/106 design items · 0 with size/type drift · 49 only moved · 4 not found in app
 Docs-Drawer desktop: matched 62/62 design items · 0 with size/type drift · 32 only moved · 0 not found in app
@@ -32,7 +35,7 @@ Focus-SetupEditing desktop: matched 112/114 design items · 0 with size/type dri
 Focus-SetupEditing web: matched 109/114 design items · 0 with size/type drift · 53 only moved · 5 not found in app
 Focus-SetupWeb desktop: matched 107/110 design items · 0 with size/type drift · 82 only moved · 3 not found in app
 Focus-SetupWeb web: matched 106/110 design items · 0 with size/type drift · 87 only moved · 4 not found in app
-Focus-Skills desktop: matched 98/100 design items · 0 with size/type drift · 30 only moved · 2 not found in app
-Focus-Skills web: matched 96/100 design items · 0 with size/type drift · 30 only moved · 4 not found in app
+Focus-Skills desktop: matched 96/100 design items · 0 with size/type drift · 30 only moved · 4 not found in app
+Focus-Skills web: matched 94/100 design items · 0 with size/type drift · 30 only moved · 6 not found in app
 Focus-Templates desktop: matched 126/133 design items · 0 with size/type drift · 46 only moved · 7 not found in app
 Focus-Templates web: matched 123/133 design items · 0 with size/type drift · 53 only moved · 10 not found in app
