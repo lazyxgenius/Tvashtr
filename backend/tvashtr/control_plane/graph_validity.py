@@ -83,7 +83,11 @@ def validate_graph(
     root_ids = sorted(nid for nid in nodes_by_id if nid not in all_targets)
     root: str | None = None
     if not nodes_by_id:
-        err("empty_graph", "The team is empty — add a starting thinker and an ending node.")
+        err(
+            "empty_graph",
+            "The team is empty — add an Agent and an ending node (Ship or Stop), then make the "
+            "Agent the starting thinker.",
+        )
     elif len(root_ids) == 0:
         err(
             "no_root",

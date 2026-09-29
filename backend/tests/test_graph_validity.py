@@ -224,3 +224,18 @@ def test_graph_dicts_round_trips_the_stored_shape(client):
     assert all(
         {"source_node_id", "target_node_id", "edge_type", "conditions"} <= set(e) for e in edges
     )
+
+
+def test_an_empty_team_says_how_to_start_with_what_the_canvas_offers():
+    """Review finding 3: the palette has no Thinker any more (Agent · Gate · Ship · Stop · Query
+    domain), so the empty-team finding names what can be added and how the Agent becomes the
+    starting thinker (the "Can't run yet" callout's button)."""
+    result = validate_graph([], [])
+    assert not result["runnable"]
+    assert [(i["code"], i["message"]) for i in result["errors"]] == [
+        (
+            "empty_graph",
+            "The team is empty — add an Agent and an ending node (Ship or Stop), then make the "
+            "Agent the starting thinker.",
+        )
+    ]
