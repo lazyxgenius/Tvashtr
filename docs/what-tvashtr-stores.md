@@ -1,8 +1,6 @@
 # What Tvashtr stores
 
-> **Interim page — not a privacy policy.** This is a factual list written from Tvashtr's code
-> (September 2026) so the "Privacy" link in Tvashtr Desktop points somewhere true. The operator's
-> privacy statement replaces it.
+A plain list of what Tvashtr keeps and who else handles it. It is not a legal privacy policy.
 
 ## On Tvashtr's servers
 
@@ -45,3 +43,29 @@ Step workspaces the Desktop runner uses are temporary and removed when the app s
 - **Your Claude Code and Grok logins.** You sign in inside those tools, in Terminal. Tvashtr runs
   the tool you installed and never reads its login files.
 - **Your browser's GitHub password.** Signing in happens on GitHub's own page.
+
+## Who else handles your data
+
+Tvashtr hands your data to these services to do what you ask.
+
+- **The model providers you add keys or plans for.** When an agent runs, Tvashtr sends its
+  instructions, your idea, the spec and the code and files it works on to the provider of the
+  model you picked for it (for example OpenAI, Anthropic, Google Gemini, xAI, Groq, DeepSeek or
+  OpenRouter), using your key for that provider. Steps that run on your Claude or Grok plan go to
+  Anthropic or xAI through the Claude Code or Grok you installed on your Mac.
+- **Fly.io, where Tvashtr is hosted.** Tvashtr's server runs on Fly.io in Singapore. Steps that
+  run on Tvashtr's servers work in a Fly.io machine made for that run, where your code is cloned;
+  the machine is deleted when the run ends. Tvashtr tries Singapore first, then Virginia (US), then
+  Frankfurt.
+- **Neon, where the database runs.** Tvashtr's database is a Postgres database run by Neon.
+- **GitHub.** You sign in with GitHub. On the repositories where you install the Tvashtr GitHub
+  App, Tvashtr clones the code for a run, pushes the run's branch and opens a pull request.
+  Tvashtr Desktop downloads its updates from GitHub's release page.
+- **The embeddings providers for Domains and memory.** The text of files you add to a Domain goes
+  to that Domain's reading model (OpenAI, OpenRouter, Google Gemini or Hugging Face), and your
+  questions go to its reading and answer models, with your keys. To learn lessons from a run,
+  Tvashtr sends the run's activity to OpenAI (`gpt-4o-mini`) and stores each lesson with an OpenAI
+  embedding (`text-embedding-3-small`), using your OpenAI key, or Tvashtr's own OpenAI key when you
+  have none. Memories you add yourself are embedded with Tvashtr's own OpenAI key.
+- **Tools you add.** A tool server you give an agent receives what the agent sends it when it
+  calls that tool.
