@@ -295,6 +295,16 @@ describe("Add an API key (DT-26, DtF-Key-2)", () => {
     expect(s.queryByText(/Used by/)).toBeNull();
   });
 
+  it("a plan status that arrives while typing keeps the typed key and provider (review finding)", async () => {
+    const { s, bridge } = await openSheet();
+    expect(providerButton()).toHaveTextContent("anthropic");
+    fireEvent.change(s.getByLabelText("API key"), { target: { value: "sk-ant-typed-0001" } });
+    // Claude turns out to be connected: the pre-pick would now be xai.
+    act(() => bridge.fireStatus(plan("claude", "connected")));
+    expect(providerButton()).toHaveTextContent("anthropic");
+    expect(s.getByLabelText<HTMLInputElement>("API key").value).toBe("sk-ant-typed-0001");
+  });
+
   it("pre-picks xai when only Claude runs here", async () => {
     await openSheet({ claude: "connected", grok: "needs_login" });
     expect(providerButton()).toHaveTextContent("xai");
