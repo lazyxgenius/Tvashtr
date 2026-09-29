@@ -1,6 +1,6 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
-import { paletteAdd } from "./_canvas";
+import { applyDrawerTemplate, paletteAdd } from "./_canvas";
 import { runFromCanvas } from "./_composer";
 import { registerFresh } from "./_home";
 import { seedProviderKeys } from "./_keys";
@@ -112,7 +112,7 @@ test("P1.8d: an invalid graph greys out Run with the reason and the server refus
   await expect(page.getByRole("button", { name: "Run this team" })).toBeEnabled({
     timeout: 30_000,
   });
-  await paletteAdd(page, "Worker");
+  await paletteAdd(page, "Agent");
 
   // The Run gate greys out with the per-issue reason, and the server agrees (validate → not runnable).
   await expect(page.getByText(/Can.t run yet/)).toBeVisible({ timeout: 30_000 });
@@ -134,7 +134,7 @@ test("P1.8d: author root thinker → Engineer → Ship from a blank team, Run it
   page,
 }) => {
   test.setTimeout(5 * 60 * 1000);
-  // The thinker is authored onto openai/gpt-4o-mini and the Engineer preset defaults to the held
+  // The thinker is authored onto openai/gpt-4o-mini and the blank Agent defaults to the held
   // provider's worker model, so the account holds both keys (from .env) before the team is made.
   await registerFresh(page, "topology-run");
   await seedProviderKeys(page, ["deepseek", "openai"]);
@@ -151,13 +151,15 @@ test("P1.8d: author root thinker → Engineer → Ship from a blank team, Run it
     data: { prompt: PM_PROMPT, model: "openai/gpt-4o-mini" },
   });
 
-  // Drop an Engineer worker from the canvas palette (a pre-filled worker preset).
-  await paletteAdd(page, "Engineer");
+  // Drop a blank Agent from the canvas palette and start it from the drawer's Engineer template
+  // (ruling 2: role starting points live in Templates).
+  await paletteAdd(page, "Agent");
   await expect
     .poll(async () => (await graphOf(request, teamId)).nodes.length, { timeout: 30_000 })
     .toBe(3);
+  await applyDrawerTemplate(page, "Engineer");
   const withWorker = await graphOf(request, teamId);
-  const engineer = withWorker.nodes.find((n) => n.role_name === "engineer")!;
+  const engineer = withWorker.nodes.find((n) => n.kind === "agent")!;
 
   // Wire root thinker → Engineer → Ship (the same team-edge endpoint the connect-gesture calls);
   // drop the blank skeleton's thinker → Ship edge so there's a single spec-first path.

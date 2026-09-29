@@ -3,10 +3,9 @@ import { Plus } from "lucide-react";
 
 import { IconButton } from "../design-system/components";
 import type { CreateNodeBody } from "../lib/api";
-import { PALETTE_PRESETS, PALETTE_PRIMITIVES } from "./paletteItems";
+import { PALETTE_PRIMITIVES } from "./paletteItems";
 
-// The canvas palette (P1.8d): drop blank primitives or a pre-filled-but-editable role preset onto
-// the open team (node-granularity drop-and-edit). Distinct from the left teams rail: this adds
+// The canvas palette (P1.8d): drop a blank node onto the open team (node-granularity drop-and-edit). Distinct from the left teams rail: this adds
 // NODES to the current team. The parent fills in the drop `position` (auto, via nextDropPosition).
 //
 // F1b: relocated to the design's compact top-left "+" that opens an "Add to canvas" popover (was a
@@ -61,28 +60,12 @@ export function NodePalette({
       {open && (
         <div className="tv-palette__panel" role="menu" aria-label="Add to canvas">
           <div className="tv-palette__label">Add to canvas</div>
-          <div className="tv-palette__grid">
+          <div className="tv-palette__chips">
             {PALETTE_PRIMITIVES.map((c) => (
               <button
                 key={c.label}
                 type="button"
                 className="tv-palette__chip"
-                title={c.title}
-                disabled={disabled}
-                onClick={() => add(c.body)}
-              >
-                <c.Icon size={13} strokeWidth={1.6} />
-                {c.label}
-              </button>
-            ))}
-          </div>
-          <div className="tv-palette__label">Presets</div>
-          <div className="tv-palette__grid">
-            {PALETTE_PRESETS.map((c) => (
-              <button
-                key={c.label}
-                type="button"
-                className="tv-palette__chip tv-palette__chip--preset"
                 title={c.title}
                 disabled={disabled}
                 onClick={() => add(c.body)}

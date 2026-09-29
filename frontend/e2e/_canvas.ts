@@ -13,6 +13,22 @@ export async function paletteAdd(page: Page, label: string): Promise<void> {
 }
 
 /**
+ * Ruling 2: role starting points come from the drawer's Templates. In the open agent drawer, apply
+ * the `title` template (e.g. "Engineer") to a blank agent and Save.
+ */
+export async function applyDrawerTemplate(page: Page, title: string): Promise<void> {
+  const panel = page.getByRole("complementary", { name: / settings$/ });
+  await expect(panel).toBeVisible({ timeout: 30_000 });
+  await panel.getByRole("button", { name: "Templates" }).click();
+  await page
+    .getByRole("menu", { name: "Templates" })
+    .getByRole("menuitem", { name: title })
+    .click();
+  await panel.getByRole("button", { name: /^Save/ }).click();
+  await expect(panel.getByText(/Saved/)).toBeVisible({ timeout: 30_000 });
+}
+
+/**
  * In an open agent drawer ("<Name> settings"): replace the instructions, pick `model` through the
  * model picker's "Use a custom model ID", and Save.
  */

@@ -1,10 +1,9 @@
 import type { CreateNodeBody } from "../lib/api";
-import { type PaletteChip, PALETTE_PRESETS, PALETTE_PRIMITIVES } from "./paletteItems";
+import { type PaletteChip, PALETTE_PRIMITIVES } from "./paletteItems";
 
 // F1b: the inline "+" kind picker — opened when a thinker/worker node's hover "+" is clicked. It
-// reuses the EXACT palette menu (single source of truth), so Add primitives (Thinker/Worker/Gate/
-// Ship/Stop) + Presets (PM/Architect/Engineer/Reviewer) stay identical between the top-left palette
-// and this inline picker. Picking an item adds the next node DOWNSTREAM of the source (a forward
+// reuses the EXACT palette menu (single source of truth), so Agent · Gate · Ship · Stop · Query
+// domain stay identical between the top-left palette and this inline picker (ruling 2). Picking an item adds the next node DOWNSTREAM of the source (a forward
 // edge), via the parent's `onAddDownstream`. Anchored near the node at (x, y) in canvas-local px.
 export function NodePicker({
   x,
@@ -28,8 +27,6 @@ export function NodePicker({
       >
         <div className="tv-picker__label">Add node</div>
         <PickerGroup items={PALETTE_PRIMITIVES} onPick={onPick} />
-        <div className="tv-picker__divider" />
-        <PickerGroup items={PALETTE_PRESETS} onPick={onPick} />
       </div>
     </>
   );

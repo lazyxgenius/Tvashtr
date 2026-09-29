@@ -127,7 +127,7 @@ test("check3: an invalid graph greys out Run with reasons + flags the node, then
   await expect(runBtn).toBeEnabled({ timeout: 30_000 });
 
   // Drop an UNCONNECTED worker → a second entry point → invalid.
-  await paletteAdd(page, "Worker");
+  await paletteAdd(page, "Agent");
   await expect(page.getByText(/Can.t run yet/)).toBeVisible({ timeout: 30_000 });
   await expect(runBtn).toBeDisabled();
   // the canvas's warn callout says why (the reasons follow its "Can’t run yet." lead) and the
@@ -158,7 +158,7 @@ test("check3: an invalid graph greys out Run with reasons + flags the node, then
 });
 
 // ── Check 4 ────────────────────────────────────────────────────────────────────────────────────
-test("check4: the palette drops a primitive (Worker) and a pre-filled preset (Engineer)", async ({
+test("check4: the palette drops a blank Agent; the drawer's Templates pre-fill it (Engineer)", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -170,20 +170,34 @@ test("check4: the palette drops a primitive (Worker) and a pre-filled preset (En
   await selectTeam(page, name);
   await expect.poll(() => nodeCount(page), { timeout: 30_000 }).toBe(2); // blank skeleton: thinker→Ship
 
-  // Primitive: a Worker chip adds a node.
-  await paletteAdd(page, "Worker");
+  // Ruling 2: the palette's "Agent" chip adds a blank worker and opens its drawer.
+  await paletteAdd(page, "Agent");
   await expect.poll(() => nodeCount(page), { timeout: 30_000 }).toBe(3);
+  const panel = page.getByRole("complementary", { name: / settings$/ });
+  await expect(panel).toBeVisible({ timeout: 30_000 });
 
-  // Preset: an Engineer chip adds a node pre-filled with the ENGINEER prompt (verified at the source).
-  await paletteAdd(page, "Engineer");
-  await expect.poll(() => nodeCount(page), { timeout: 30_000 }).toBe(4);
+  // The role starting points live in the drawer's Templates — all four are offered.
+  await panel.getByRole("button", { name: "Templates" }).click();
+  const menu = page.getByRole("menu", { name: "Templates" });
+  for (const title of ["Product manager", "Architect", "Engineer", "Reviewer"]) {
+    await expect(menu.getByRole("menuitem", { name: title })).toBeVisible();
+  }
+  // The Engineer template pre-fills the blank agent with the ENGINEER prompt (verified at the source).
+  await menu.getByRole("menuitem", { name: "Engineer" }).click();
+  await panel.getByRole("button", { name: /^Save/ }).click();
+  await expect(panel.getByText(/Saved/)).toBeVisible({ timeout: 30_000 });
+  const templates = (await (await request.get("/api/node-templates")).json()) as {
+    templates: { key: string; prompt: string }[];
+  };
+  const engineerPrompt = templates.templates.find((t) => t.key === "engineer")!.prompt;
+  expect(engineerPrompt.length, "the Engineer template has a prompt").toBeGreaterThan(20);
   const g = (await (await request.get(`/api/teams/${teamId}/graph`)).json()) as Graph;
-  const engineer = g.nodes.find((n) => n.role_name === "engineer");
-  expect(engineer, "the Engineer preset node exists").toBeTruthy();
-  expect((engineer!.prompt ?? "").length, "the Engineer preset is pre-filled").toBeGreaterThan(20);
+  const agent = g.nodes.find((n) => n.kind === "agent");
+  expect(agent, "the dropped Agent exists").toBeTruthy();
+  expect(agent!.prompt, "the Agent is pre-filled with the Engineer template").toBe(engineerPrompt);
   assertNoRenderLoop();
   await page.screenshot({ path: `${SHOTS}/check4-palette-drop.png` });
-  console.log("[fix1-signoff] check4 PASS — Worker+Engineer dropped; Engineer preset pre-filled");
+  console.log("[fix1-signoff] check4 PASS — Agent dropped; Engineer template pre-filled it");
 });
 
 // ── Check 5 ────────────────────────────────────────────────────────────────────────────────────

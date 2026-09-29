@@ -584,8 +584,8 @@
 /* ---- Topology editing (P1.8d): palette, edge-role editor, validity flags ---- */
 
 /* F1b: the palette relocated to the design's compact top-left "+" that opens an "Add to canvas"
-   popover (was a persistent bottom tray). Trigger + panel reuse the premium card look; the panel's
-   menu (Add primitives incl. Ship + Stop, and Presets) is the same one the inline "+" picker uses. */
+   popover (was a persistent bottom tray). The panel's menu is the same one the inline "+" picker
+   uses (paletteItems.ts). */
 .tv-palette {
   position: absolute;
   top: 16px;
@@ -609,52 +609,51 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* Ruling 2: the popover is DmF-Canvas-1's "Add to canvas" menu — 300px, 12px in, an 11px eyebrow
+   8px over a wrapping row of 30px chips (6px apart). */
 .tv-palette__panel {
   position: absolute;
-  top: 48px;
+  top: 46px;
   left: 0;
   z-index: 16;
-  width: 236px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
+  width: 300px;
+  padding: 12px;
   background: var(--surface-card);
   border: var(--border-width) solid var(--border-hairline);
   border-radius: 12px;
-  box-shadow: var(--shadow-pop);
+  box-shadow: 0 14px 40px -12px rgba(20, 20, 19, 0.22);
   animation: tv-pop-in 0.16s var(--ease-out);
 }
 .tv-palette__label {
-  font-size: var(--fs-caption);
+  margin-bottom: 8px;
+  font-size: 11px;
   font-weight: var(--fw-semibold);
+  line-height: 1.6;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--text-tertiary);
+  color: var(--ink-500);
 }
-.tv-palette__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
+.tv-palette__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .tv-palette__chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  height: 32px;
-  padding: 0 var(--space-2);
-  font-size: var(--fs-caption);
-  color: var(--text-primary);
-  background: var(--surface-page);
-  border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-sm);
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  line-height: 20px;
+  color: var(--ink-800);
+  background: var(--cream-50);
+  border: var(--border-width) solid var(--line-300);
+  border-radius: 8px;
   cursor: pointer;
 }
 .tv-palette__chip:hover:not(:disabled) {
   border-color: var(--border-strong);
-}
-.tv-palette__chip--preset {
-  border-style: dashed;
 }
 .tv-palette__chip:disabled {
   opacity: 0.45;
@@ -908,11 +907,6 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-tertiary);
-}
-.tv-picker__divider {
-  height: var(--border-width);
-  margin: var(--space-1);
-  background: var(--border-faint);
 }
 .tv-picker__item {
   display: flex;

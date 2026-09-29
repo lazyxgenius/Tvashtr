@@ -142,13 +142,13 @@ describe("App — inline '+' adds a downstream node with a FORWARD edge (F1b)", 
     // The persistent team is on the canvas.
     await screen.findByText("Product manager");
 
-    // Click the "+" on the Engineer (worker) node → the inline kind picker opens → pick Worker.
+    // Click the "+" on the Engineer (worker) node → the inline kind picker opens → pick Agent (a blank worker).
     // F-canvas-fidelity-2: the affordances now render on hover (state-driven, not CSS), so hover first.
     const engNode = container.querySelector('[data-id="tn-eng"]') as HTMLElement;
     fireEvent.mouseOver(engNode);
     fireEvent.click(within(engNode).getByRole("button", { name: "Add a downstream node" }));
     const picker = screen.getByRole("dialog", { name: "Add a downstream node" });
-    fireEvent.click(within(picker).getByText("Worker"));
+    fireEvent.click(within(picker).getByText("Agent"));
 
     // The forward EDGE POST lands (the key proof — not just the node).
     await waitFor(() =>

@@ -65,7 +65,7 @@ function renderEditable() {
 }
 
 describe("TeamCanvas — inline authoring affordances (F1b)", () => {
-  it("the node '+' opens the kind picker; picking Worker adds a downstream node from that source", () => {
+  it("the node '+' opens the kind picker; picking Agent adds a downstream worker from that source", () => {
     const { container, onAddDownstream } = renderEditable();
     const pmNode = container.querySelector('[data-id="n-pm"]') as HTMLElement;
     // F-canvas-fidelity-2: the node affordances now render on hover (state-driven, not CSS), so hover
@@ -73,7 +73,7 @@ describe("TeamCanvas — inline authoring affordances (F1b)", () => {
     fireEvent.mouseOver(pmNode);
     fireEvent.click(within(pmNode).getByRole("button", { name: "Add a downstream node" }));
     const picker = screen.getByRole("dialog", { name: "Add a downstream node" });
-    fireEvent.click(within(picker).getByText("Worker"));
+    fireEvent.click(within(picker).getByText("Agent"));
     expect(onAddDownstream).toHaveBeenCalledTimes(1);
     expect(onAddDownstream).toHaveBeenCalledWith("n-pm", { node_kind: "worker" });
   });
