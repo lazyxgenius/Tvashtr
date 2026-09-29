@@ -211,8 +211,10 @@ function AgentEditor({
   useEffect(() => {
     if (focus && templates === "wanted") setTemplates("open");
   }, [focus, templates]);
-  // Review changes closes itself once nothing is left to review (the last Undo, or a Save).
-  if (setupView === "review" && !api.isDirty) setSetupView("edit");
+  // Review changes closes itself once nothing is left to review (the last Undo, or a Save); docking
+  // (Dock to the side, the address) leaves Preview and Review, so focus opens on the editor again.
+  if (setupView !== "edit" && (!focus || (setupView === "review" && !api.isDirty)))
+    setSetupView("edit");
   const view = focus && tab === "setup" ? setupView : "edit";
   // The Output format editor's text while it's open (null: closed). Done writes it to the draft.
   const [schemaText, setSchemaText] = useState<string | null>(null);

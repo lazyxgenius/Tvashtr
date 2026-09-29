@@ -216,6 +216,21 @@ describe("Focus mode — Setup", () => {
     expect(editor()).toHaveValue("You are the Reviewer. Be brief.");
   });
 
+  it("opens on the editor again after docking from the preview", async () => {
+    const { props, view } = renderEditor();
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Preview as the agent sees it" }));
+    await within(dialog()).findByRole("region", { name: "Preview as the agent sees it" });
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Dock to the side" }));
+    expect(props.onFocusChange).toHaveBeenLastCalledWith(false);
+    view.rerender(<NodeEditor {...props} focus={false} />);
+    // The drawer's "Open full editor" opens the editor, not the preview left open before.
+    view.rerender(<NodeEditor {...props} focus />);
+    expect(editor()).toHaveValue(REVIEWER_PROMPT);
+    expect(
+      within(dialog()).queryByRole("region", { name: "Preview as the agent sees it" }),
+    ).toBeNull();
+  });
+
   it("says so when the preview can't be built, and tries again", async () => {
     fetchMock.mockImplementation((url: string) =>
       url.endsWith("/context-preview")
