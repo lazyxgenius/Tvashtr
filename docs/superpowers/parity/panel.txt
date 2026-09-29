@@ -1,9 +1,12 @@
 # F5 Agent panel + canvas chrome — parity sweep, branch feat/revamp-f5-panel @ 957961b
-Desktop-Editing desktop: matched 84/84 design items · 0 with size/type drift · 31 only moved · 0 not found in app
+# lead re-render 2026-09-29 (revamp-finish, on feat/revamp-f6-focus-docs: shared drawer components changed by F6 and
+#   the Q20 run drawer): all 130 lines at 0 size/type drift and every committed line reproduced, except 4 Desktop lines
+#   with one fewer "only moved" item (the Desktop title strip, aligned by the Desktop app ship).
+Desktop-Editing desktop: matched 84/84 design items · 0 with size/type drift · 30 only moved · 0 not found in app
 Desktop-Editing web: matched 81/84 design items · 0 with size/type drift · 31 only moved · 3 not found in app
-Desktop-Focus desktop: matched 109/111 design items · 0 with size/type drift · 47 only moved · 2 not found in app
+Desktop-Focus desktop: matched 109/111 design items · 0 with size/type drift · 46 only moved · 2 not found in app
 Desktop-Focus web: matched 106/111 design items · 0 with size/type drift · 53 only moved · 5 not found in app
-Desktop-ModelPicker desktop: matched 103/103 design items · 0 with size/type drift · 37 only moved · 0 not found in app
+Desktop-ModelPicker desktop: matched 103/103 design items · 0 with size/type drift · 36 only moved · 0 not found in app
 Desktop-ModelPicker web: matched 97/103 design items · 0 with size/type drift · 43 only moved · 6 not found in app
 Eng-Flow-Blocked-1 desktop: matched 40/43 design items · 0 with size/type drift · 30 only moved · 3 not found in app
 Eng-Flow-Blocked-1 web: matched 42/43 design items · 0 with size/type drift · 30 only moved · 1 not found in app
@@ -91,7 +94,7 @@ Flow-Writes-1 desktop: matched 56/62 design items · 0 with size/type drift · 7
 Flow-Writes-1 web: matched 55/62 design items · 0 with size/type drift · 11 only moved · 7 not found in app
 Flow-Writes-2 desktop: matched 50/56 design items · 0 with size/type drift · 7 only moved · 6 not found in app
 Flow-Writes-2 web: matched 49/56 design items · 0 with size/type drift · 11 only moved · 7 not found in app
-Main desktop: matched 81/81 design items · 0 with size/type drift · 31 only moved · 0 not found in app
+Main desktop: matched 81/81 design items · 0 with size/type drift · 30 only moved · 0 not found in app
 Main web: matched 78/81 design items · 0 with size/type drift · 32 only moved · 3 not found in app
 Panel-AddMenu desktop: matched 56/57 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 Panel-AddMenu web: matched 56/57 design items · 0 with size/type drift · 0 only moved · 1 not found in app
