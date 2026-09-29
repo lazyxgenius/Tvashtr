@@ -3,6 +3,14 @@
 #   Desktop n/a (website-only). Every "not found in app" item is one of the decisions noted below.
 # waiver WbF-Err-1 web: [ctl] 'read the sign-in help' height 37→16, width 404→128 — the OQ-15 help line (cookies, not
 #   pop-ups) is longer, so the link wraps whole onto line 2; accepted by the architect (prompts/revamp-e2e.md, 2026-09-27).
+# note (revamp-finish independent review, honest copy): Desktop runs only the steps on a Claude or Grok plan on the
+#   Mac (the rest of a Desktop run is on Tvashtr's servers) and nothing forces a reviewer before Ship, so these design
+#   strings are "not found in app" by decision: 'Your computer' → 'Your computer, for steps on your plan'; 'Stop when
+#   you quit the app' → 'Steps on your plan stop; the rest go on'; 'Run your teams on this computer…' → 'Agents on your
+#   Claude or Grok plan run on this computer…'; 'Runs stop when you quit the app.' → 'Steps on your plan stop when you
+#   quit the app.'; '· runs on your Mac with your Claude or Grok plan.' → '· runs your Claude or Grok plan’s steps on
+#   your Mac.'; 'Every change reviewed before it ships' → 'Review loops and approval gates before it ships'.
+#   0 size/type drift on every board after the change (lead re-render).
 # skipped: WbF-Index — index board ("Website flows": intro, 8 flows / 18 screens, coral-ring legend), not an app screen; its rule that the site is not what the desktop app shows is WEB-3, pinned by pages/website/desktopRouting.test.tsx
 # scenarios: scripts/design-parity/scenarios/website-download.mjs (web-download = Web-Download, WbF-Mac-2; web-download2 = Web-Download2, WbF-Mac-3; web-mac-4 = WbF-Mac-4; web-download-win = Web-DownloadWin, WbF-Win-2 — the WbF boards are the same screens with a coral ring); website-signin.mjs (web-signin = Web-SignIn, WbF-Start-2; web-signin-done = WbF-Start-3, held on "Opening Home…" by blocking the hand-off to #/home; web-signin-cancelled = WbF-Err-1); website-landing.mjs (web-landing = Web-Landing, 1440×6640; web-landing-top = WbF-Start-1, WbF-Mac-1, WbF-Win-1 — the same 1440×900 landing top, the ring is annotation; web-signed-1 = WbF-Signed-1, the top with the signed-in header)
 # not found in app, by decision: "Intel Mac? Get that version" + "· [version] · [minimum macOS]" → "Needs a Mac with Apple silicon (M1 or later) · v<version> · macOS 11 or later" (no Intel build, OQ-6/OQ-8); "Tvashtr-[version].dmg is in…" → "Tvashtr-mac.dmg is in…" (stable file name, OQ-5); the email Input + "Tell me" → "Watch for releases on GitHub" (no email service, OQ-9)
@@ -22,7 +30,7 @@ WbF-Faq-2 web: matched 23/23 design items · 0 with size/type drift · 0 only mo
 WbF-Faq-2 desktop: n/a — website-only page (website.md §1)
 WbF-Mac-1 web: matched 39/41 design items · 0 with size/type drift · 0 only moved · 2 not found in app
 WbF-Mac-1 desktop: n/a — website-only page (website.md §1)
-WbF-Mac-2 web: matched 19/21 design items · 0 with size/type drift · 0 only moved · 2 not found in app
+WbF-Mac-2 web: matched 17/21 design items · 0 with size/type drift · 0 only moved · 4 not found in app
 WbF-Mac-2 desktop: n/a — website-only page (website.md §1)
 WbF-Mac-3 web: matched 21/22 design items · 0 with size/type drift · 6 only moved · 1 not found in app
 WbF-Mac-3 desktop: n/a — website-only page (website.md §1)
@@ -42,23 +50,23 @@ WbF-Start-2 web: matched 25/26 design items · 0 with size/type drift · 0 only 
 WbF-Start-2 desktop: n/a — website-only page (website.md §1)
 WbF-Start-3 web: matched 24/24 design items · 0 with size/type drift · 0 only moved · 0 not found in app
 WbF-Start-3 desktop: n/a — website-only page (website.md §1)
-WbF-Two-1 web: matched 36/36 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+WbF-Two-1 web: matched 34/36 design items · 0 with size/type drift · 0 only moved · 2 not found in app
 WbF-Two-1 desktop: n/a — website-only page (website.md §1)
-WbF-Two-2 web: matched 36/36 design items · 0 with size/type drift · 0 only moved · 0 not found in app
+WbF-Two-2 web: matched 34/36 design items · 0 with size/type drift · 0 only moved · 2 not found in app
 WbF-Two-2 desktop: n/a — website-only page (website.md §1)
 WbF-Win-1 web: matched 39/41 design items · 0 with size/type drift · 0 only moved · 2 not found in app
 WbF-Win-1 desktop: n/a — website-only page (website.md §1)
 WbF-Win-2 web: matched 16/19 design items · 0 with size/type drift · 0 only moved · 3 not found in app
 WbF-Win-2 desktop: n/a — website-only page (website.md §1)
-Web-Download web: matched 19/21 design items · 0 with size/type drift · 0 only moved · 2 not found in app
+Web-Download web: matched 17/21 design items · 0 with size/type drift · 0 only moved · 4 not found in app
 Web-Download desktop: n/a — website-only page (website.md §1)
 Web-Download2 web: matched 21/22 design items · 0 with size/type drift · 6 only moved · 1 not found in app
 Web-Download2 desktop: n/a — website-only page (website.md §1)
 Web-DownloadWin web: matched 16/19 design items · 0 with size/type drift · 0 only moved · 3 not found in app
 Web-DownloadWin desktop: n/a — website-only page (website.md §1)
-Web-Landing web: matched 193/199 design items · 0 with size/type drift · 18 only moved · 6 not found in app
+Web-Landing web: matched 190/199 design items · 0 with size/type drift · 18 only moved · 9 not found in app
 Web-Landing desktop: n/a — website-only page (website.md §1)
-Web-Mobile web: matched 41/44 design items · 0 with size/type drift · 0 only moved · 3 not found in app
+Web-Mobile web: matched 40/44 design items · 0 with size/type drift · 0 only moved · 4 not found in app
 Web-Mobile desktop: n/a — website-only page (website.md §1)
 Web-SignIn web: matched 25/26 design items · 0 with size/type drift · 0 only moved · 1 not found in app
 Web-SignIn desktop: n/a — website-only page (website.md §1)
