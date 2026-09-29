@@ -224,6 +224,9 @@ export function DocumentViewer({
         onDirty={setDirty}
         onSaved={(v: DocVersion) => {
           leaveEdit();
+          // The saved version shows at once (the save's answer holds it), whatever the reload does.
+          if (!detail.versions.some((x) => x.version_no === v.version_no))
+            setFresh((prev) => newest(prev, { ...detail, versions: [...detail.versions, v] }));
           reload();
           onPlace(docId, {});
           toast({ message: `Saved v${v.version_no} — the agents read it on their next round.` });

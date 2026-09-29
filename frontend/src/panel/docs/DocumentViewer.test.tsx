@@ -285,6 +285,28 @@ describe("DocumentViewer — live edit (DOCS-26..32)", () => {
     expect(d.queryByRole("toolbar", { name: "Formatting" })).toBeNull();
   });
 
+  it("after a save the saved version shows at once, even when the reload fails", async () => {
+    saveAnswer = {
+      status: 200,
+      body: version(4, `${V3}\n- Saved line.`, YOU, "Edited while the run was live", 0),
+    };
+    render(<Viewer />);
+    await startEditing();
+    setEditor(`${V3}\n- Saved line.`);
+    const served = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+      url === "/api/documents/d-spec" ? answer({ detail: "Bad gateway" }, 502) : served(url, init),
+    );
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Save as v4" }));
+    await screen.findByText("Saved v4 — the agents read it on their next round.");
+    expect(within(dialog()).getByRole("button", { name: "v4 · latest" })).toBeInTheDocument();
+    expect(within(dialog()).getByText("Saved line.")).toBeInTheDocument();
+    expect(versions().getAllByRole("button", { name: /^v\d/ })[0]).toHaveTextContent(/^v4/);
+  });
+
   it("an agent's newer version: the server's sentence, plainly, with Compare", async () => {
     saveAnswer = {
       status: 409,
