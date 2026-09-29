@@ -709,17 +709,3 @@ html:has(.tv-titlebar) .ds-scrim {
   color: var(--text-tertiary);
 }
 
-/* Phase 4a: domain_query citations under Last run rounds */
-.tv-verdict__citations {
-  margin: 0.35rem 0 0;
-  padding-left: 1rem;
-  font-size: 0.85rem;
-  list-style: disc;
-}
-.tv-verdict__cite-file {
-  font-weight: 600;
-  margin-right: 0.35rem;
-}
-.tv-verdict__cite-excerpt {
-  opacity: 0.85;
-}

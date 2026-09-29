@@ -1,5 +1,7 @@
 import { createContext } from "react";
 
+import type { RunDoc } from "../lib/api/docs";
+
 // F1b: the inline authoring affordances (the hover "+" and the hover trash) live INSIDE the custom
 // node component (`AgentNodeCard`), which React Flow renders deep in its own subtree. Threading
 // per-node callbacks through node `data` would rebuild the node set (the topoKey memo) on every
@@ -16,6 +18,10 @@ export interface CanvasAuthoring {
   // config drawer focused on + briefly highlighting the Model field. Undefined in the run view, so
   // the chip stays a static, non-clickable label there.
   onOpenModel?: (nodeId: string) => void;
+  // DOCS-11: the documents each card's agent wrote in the team's latest run (the run view: that
+  // run), keyed by canvas node id, and what a chip's click opens. Both views; absent = no chips.
+  docChips?: ReadonlyMap<string, readonly RunDoc[]>;
+  onOpenDoc?: (doc: RunDoc) => void;
 }
 
 export const AuthoringContext = createContext<CanvasAuthoring>({ editable: false });

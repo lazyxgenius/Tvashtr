@@ -17,6 +17,8 @@ export interface NodeTemplate {
   key: string;
   title: string;
   description: string;
+  /** One sentence on what its instructions do (the Templates dialog); the tagline when absent. */
+  summary: string;
   role_name: string;
   node_kind: "thinker" | "worker";
   /** The template's default File access (the UI applies it with the template). */
@@ -32,6 +34,9 @@ export interface NodeRunSummary {
   status: string;
   created_at: string;
   live: boolean;
+  /** The run's memory repo (`memory.repo_key_for_run`); null for a greenfield run. */
+  repo_key: string | null;
+  repo_label: string | null;
   rounds_count: number;
   last_outcome: string | null;
   last_status: string | null;
@@ -235,6 +240,7 @@ export async function getNodeTemplates(): Promise<NodeTemplate[]> {
         key,
         title: str(t.title, key),
         description: str(t.description),
+        summary: str(t.summary, str(t.description)),
         role_name: str(t.role_name, key),
         node_kind: t.node_kind === "worker" ? "worker" : "thinker",
         edits_allowed: t.edits_allowed === true,
@@ -257,6 +263,8 @@ function toRunSummary(r: Record<string, unknown>): NodeRunSummary | null {
     status: str(r.status),
     created_at: str(r.created_at),
     live: r.live === true,
+    repo_key: strOrNull(r.repo_key),
+    repo_label: strOrNull(r.repo_label),
     rounds_count: num(r.rounds_count),
     last_outcome: strOrNull(r.last_outcome),
     last_status: strOrNull(r.last_status),
@@ -360,57 +368,6 @@ export async function getNodeRuns(
         }
       : null;
   return { runs, run };
-}
-
-// ---- A run's documents (Docs tab) -------------------------------------------------------------
-
-export interface RunDocAgent {
-  /** The authored node's id. */
-  node_id: string;
-  label: string;
-}
-
-export interface RunDoc {
-  id: string;
-  name: string;
-  title: string;
-  doc_type: string;
-  is_shared_spec: boolean;
-  latest_version: { version_no: number; created_at: string } | null;
-  written_by: RunDocAgent[];
-  read_by: RunDocAgent[];
-}
-
-const toAgents = (v: unknown): RunDocAgent[] =>
-  (Array.isArray(v) ? v : [])
-    .filter(isObj)
-    .map((a) => ({ node_id: str(a.node_id), label: str(a.label) }))
-    .filter((a) => a.node_id !== "");
-
-/** GET /api/runs/{id}/documents — the run's documents with latest version, writers and readers. */
-export async function listRunDocs(runId: string): Promise<RunDoc[]> {
-  const res = await send(`/api/runs/${encodeURIComponent(runId)}/documents`);
-  if (!res.ok)
-    throw new ApiError(res.status, await detailOf(res, "Couldn’t load this run’s documents."));
-  const body: unknown = await res.json();
-  if (!isObj(body) || !Array.isArray(body.documents)) return [];
-  return body.documents.filter(isObj).flatMap((d) => {
-    const id = str(d.id);
-    if (!id) return [];
-    const v = isObj(d.latest_version) ? d.latest_version : null;
-    return [
-      {
-        id,
-        name: str(d.name),
-        title: str(d.title),
-        doc_type: str(d.doc_type),
-        is_shared_spec: d.is_shared_spec === true,
-        latest_version: v ? { version_no: num(v.version_no), created_at: str(v.created_at) } : null,
-        written_by: toAgents(d.written_by),
-        read_by: toAgents(d.read_by),
-      },
-    ];
-  });
 }
 
 // ---- Context preview -------------------------------------------------------------------------

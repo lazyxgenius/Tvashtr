@@ -107,19 +107,41 @@ export function RunsTab({
       </EmptyCard>
     );
   }
+  return <RoundsList rounds={rounds} onOpenFocus={onOpenFocus} />;
+}
+
+/**
+ * The latest round ("Last run") over the same run's earlier rounds, newest first. The run view hands
+ * it the rounds of the run on screen; `more` adds what that view knows about a round (its exact
+ * cost and context) under the Last run card and inside an opened round.
+ */
+export function RoundsList({
+  rounds,
+  onOpenFocus,
+  more,
+}: {
+  rounds: NodeRound[];
+  onOpenFocus?: () => void;
+  more?: (round: NodeRound) => ReactNode;
+}) {
   const [last, ...earlier] = rounds;
   return (
     <div className="nd-runs">
       <div className="nd-section__head">
         <span className="nd-section__title">Last run</span>
       </div>
-      <LastRunCard round={last} />
+      <LastRunCard round={last} more={more?.(last)} />
       {earlier.length > 0 && (
         <div className="nd-runs__earlier">
           <span className="nd-section__title">Earlier rounds</span>
           <ul className="nd-runs__list">
             {earlier.map((r) => (
-              <RoundItem key={r.invocation_id} round={r} onOpenFocus={onOpenFocus} />
+              <RoundItem
+                key={r.invocation_id}
+                round={r}
+                onOpenFocus={onOpenFocus}
+                more={more?.(r)}
+              />
             ))}
           </ul>
         </div>
@@ -128,7 +150,7 @@ export function RunsTab({
   );
 }
 
-function LastRunCard({ round }: { round: NodeRound }) {
+function LastRunCard({ round, more }: { round: NodeRound; more?: ReactNode }) {
   const [all, setAll] = useState(false);
   const badge = statusBadge(round, false);
   const detail = round.outcome_detail?.trim() ?? "";
@@ -158,11 +180,20 @@ function LastRunCard({ round }: { round: NodeRound }) {
           </button>
         </div>
       )}
+      {more}
     </section>
   );
 }
 
-function RoundItem({ round, onOpenFocus }: { round: NodeRound; onOpenFocus?: () => void }) {
+function RoundItem({
+  round,
+  onOpenFocus,
+  more,
+}: {
+  round: NodeRound;
+  onOpenFocus?: () => void;
+  more?: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const badge = statusBadge(round, false);
   const when = roundTime(round);
@@ -198,6 +229,7 @@ function RoundItem({ round, onOpenFocus }: { round: NodeRound; onOpenFocus?: () 
             {round.cost && <span>${round.cost.cost_usd.toFixed(2)}</span>}
             {when && <span>{when}</span>}
           </div>
+          {more}
           {onOpenFocus && (
             <button type="button" className="nd-link nd-round__focus" onClick={onOpenFocus}>
               Open in focus view

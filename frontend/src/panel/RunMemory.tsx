@@ -1,32 +1,33 @@
 import { useEffect, useRef, useState } from "react";
 
-import { MemoryFact } from "../components/MemoryFact";
+import { Badge, Button } from "../design-system/components";
 import {
   getRunMemories,
   listMemories,
+  type MemoryPolarity,
   type NodeInvocation,
   type NodeMemoryRow,
   promoteMemory,
   rejectMemory,
 } from "../lib/api";
-import { POLARITY_META, usedFacts } from "../lib/memory";
+import { TIER_LABEL, usedFacts } from "../lib/memory";
+import { FORCE_VARIANT, forceLabel } from "../pages/memory/memoryModel";
+import { LoadState } from "./runs/RunsTab";
+import "./memory/memory.css";
 
-type LoadState = "idle" | "loading" | "ready" | "error";
+type Phase = "idle" | "loading" | "ready" | "error";
 
 /**
- * M-memory S5b — the run-inspector **Memory** tab for one node's run. Two read zones:
- *  - **Used this run** — the facts injected into THIS node's context, gathered from every round's
- *    `context_manifest.memory` ({id, polarity} stubs) and resolved CLIENT-SIDE against the store
- *    (`include_superseded`, so a since-superseded fact still resolves; a deleted one renders
- *    "(no longer stored)"), ordered by directive force via `usedFacts`.
- *  - **Learned this run** — the durable facts this RUN taught (`GET /api/runs/{id}/memories`). Shown
- *    RUN-LEVEL (identical on every node's tab): the endpoint rows carry `source_invocation_id`, but
- *    the FE invocation objects carry no id to join on, and `node_id` is null for the common
- *    repo/account fact — so per-node attribution would HIDE run-wide lessons. A hint states the
- *    scope. Pending rows (`pending_review`) get inline Confirm / Discard.
+ * The run drawer's Memory tab, in the agent drawer's Memory layout. Two groups:
+ *  - **Used this run** — the notes put into THIS agent's context, gathered from every round's
+ *    `context_manifest.memory` ({id, polarity} stubs) and resolved against the store
+ *    (`include_superseded`, so a since-replaced note still resolves; a deleted one reads
+ *    "(no longer stored)"), strongest first (`usedFacts`).
+ *  - **Learned this run** — what this RUN taught (`GET /api/runs/{id}/memories`), the same on every
+ *    agent: the rows carry no per-agent link for the common repo/account note. Notes waiting for
+ *    review get Keep / Discard.
  *
- * Fetches lazily (this content mounts only when the Memory segment is active, like `RunDiff`) and is
- * READ/mutate-only against the EXISTING memory endpoints — no run-path or backend change (S5b).
+ * It loads when the tab opens, and only reads and reviews through the existing memory endpoints.
  */
 export function RunMemory({
   invocations,
@@ -37,7 +38,8 @@ export function RunMemory({
 }) {
   const [store, setStore] = useState<Map<string, NodeMemoryRow>>(new Map());
   const [learned, setLearned] = useState<NodeMemoryRow[]>([]);
-  const [state, setState] = useState<LoadState>("idle");
+  const [state, setState] = useState<Phase>("idle");
+  const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
 
@@ -60,10 +62,10 @@ export function RunMemory({
     return () => {
       mounted.current = false;
     };
-    // Re-fetch when the run changes; the injected refs come from `invocations` (static per run) and
-    // are read at render, so they need no effect dependency.
+    // Re-fetch when the run changes (or on Retry); the injected refs come from `invocations` and are
+    // read at render, so they need no effect dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId]);
+  }, [runId, attempt]);
 
   // Swallow a rejected mutation into the error banner without an unhandled rejection.
   const guard = (p: Promise<unknown>, msg: string): Promise<void> =>
@@ -73,95 +75,86 @@ export function RunMemory({
         if (mounted.current) setError(msg);
       });
 
-  // Promote/reject re-reads the learned list (the pending row leaves) AND the store (a promoted fact
+  // Keep/Discard re-reads the learned list (the pending row leaves) AND the store (a kept note
   // becomes resolvable in "Used this run").
   const handleConfirm = (m: NodeMemoryRow) =>
     void guard(
       promoteMemory(m.id).then(() => Promise.all([reloadLearned(), reloadStore()])),
-      "Couldn't confirm the memory.",
+      "Couldn’t keep that note. Try again.",
     );
   const handleDiscard = (m: NodeMemoryRow) =>
-    void guard(rejectMemory(m.id).then(reloadLearned), "Couldn't discard the memory.");
+    void guard(rejectMemory(m.id).then(reloadLearned), "Couldn’t discard that note. Try again.");
 
   const refs = invocations.flatMap((inv) => inv.context_manifest?.memory ?? []);
   const used = usedFacts(refs, store);
   const pendingLearned = learned.filter((m) => m.status === "pending_review");
   const settledLearned = learned.filter((m) => m.status !== "pending_review");
 
-  if (state === "idle" || state === "loading") {
+  if (state !== "ready") {
     return (
-      <div className="tv-scroll">
-        <p className="tv-panel-note">Loading memory…</p>
-      </div>
-    );
-  }
-  if (state === "error") {
-    return (
-      <div className="tv-scroll">
-        <p className="tv-panel-note">Couldn’t load this run’s memory.</p>
-      </div>
+      <LoadState
+        state={state === "error" ? "error" : "loading"}
+        loading="Loading memory"
+        error="Couldn’t load this run’s memory."
+        onRetry={() => setAttempt((a) => a + 1)}
+      />
     );
   }
 
   return (
-    <div className="tv-scroll">
-      <section className="tv-mem-section" aria-label="Used this run">
-        <h3 className="tv-mem-section__head">Used this run</h3>
+    <div className="nd-mem">
+      <section className="nd-mem__group" aria-label="Used this run">
+        <h4 className="nd-mem__head">Used this run{used.length > 0 && ` · ${used.length}`}</h4>
         {used.length === 0 ? (
-          <p className="tv-panel-note">No memory was injected into this node’s context this run.</p>
+          <p className="nd-mem__intro">
+            No memory was injected into this agent’s context this run.
+          </p>
         ) : (
-          <ul className="tv-mem-list">
-            {used.map((u) => {
-              if (u.row)
-                return <MemoryFact key={u.id} memory={u.row} variant="archived" showTier />;
-              // A used id no longer in the store (edited-away / deleted): the polarity survives on the
-              // ref, the content is gone.
-              const meta = POLARITY_META[u.polarity] ?? {
-                label: String(u.polarity).toUpperCase(),
-                cls: "context",
-              };
-              return (
-                <li className="tv-mem-fact" key={u.id}>
-                  <div className="tv-mem-fact__row">
-                    <span
-                      className={`tv-badge tv-mem-badge tv-mem-badge--${meta.cls}`}
-                      title={u.polarity}
-                    >
-                      {meta.label}
-                    </span>
-                    <span className="tv-mem-fact__content tv-mem-fact__gone">
-                      (no longer stored)
-                    </span>
-                  </div>
-                </li>
-              );
-            })}
+          <ul className="nd-mem__list">
+            {used.map((u) => (
+              // A used id no longer in the store keeps the force it was given; its text is gone.
+              <Note
+                key={u.id}
+                content={u.row?.content ?? "(no longer stored)"}
+                polarity={u.row?.polarity ?? u.polarity}
+                scope={u.row ? TIER_LABEL[u.row.tier] : "Deleted since"}
+              />
+            ))}
           </ul>
         )}
       </section>
 
-      <section className="tv-mem-section" aria-label="Learned this run">
-        <h3 className="tv-mem-section__head">Learned this run</h3>
+      <section className="nd-mem__group" aria-label="Learned this run">
+        <h4 className="nd-mem__head">
+          Learned this run{learned.length > 0 && ` · ${learned.length}`}
+        </h4>
         {learned.length === 0 ? (
-          <p className="tv-panel-note">This run hasn’t taught any durable memory.</p>
+          <p className="nd-mem__intro">This run hasn’t taught any durable memory.</p>
         ) : (
           <>
-            <p className="tv-field__hint">
-              Facts this run taught — shared by the whole team, shown on every node.
+            <p className="nd-mem__intro">
+              What this run taught the whole team, so every agent in it shows the same list.
             </p>
-            <ul className="tv-mem-list">
+            <ul className="nd-mem__list">
               {pendingLearned.map((m) => (
-                <MemoryFact
+                <Note
                   key={m.id}
-                  memory={m}
-                  variant="pending"
-                  showTier
-                  onConfirm={handleConfirm}
-                  onDiscard={handleDiscard}
+                  content={m.content}
+                  polarity={m.polarity}
+                  scope={TIER_LABEL[m.tier]}
+                  review={{
+                    onKeep: () => handleConfirm(m),
+                    onDiscard: () => handleDiscard(m),
+                  }}
                 />
               ))}
               {settledLearned.map((m) => (
-                <MemoryFact key={m.id} memory={m} variant="archived" showTier />
+                <Note
+                  key={m.id}
+                  content={m.content}
+                  polarity={m.polarity}
+                  scope={TIER_LABEL[m.tier]}
+                />
               ))}
             </ul>
           </>
@@ -169,10 +162,53 @@ export function RunMemory({
       </section>
 
       {error && (
-        <p className="tv-panel-note tv-chat__error" role="alert">
+        <div className="nd-mem__error" role="alert">
           {error}
-        </p>
+        </div>
       )}
     </div>
+  );
+}
+
+/** One note: its text, where it applies and its force; a note waiting for review adds Keep / Discard. */
+function Note({
+  content,
+  polarity,
+  scope,
+  review,
+}: {
+  content: string;
+  polarity: MemoryPolarity;
+  scope: string;
+  review?: { onKeep: () => void; onDiscard: () => void };
+}) {
+  return (
+    <li className={`nd-mem__note${review ? " nd-mem__note--pending" : ""}`}>
+      <div className="nd-mem__text">{content}</div>
+      <div className="nd-mem__meta">
+        <span className="nd-mem__origin">{scope}</span>
+        <Badge variant={FORCE_VARIANT[polarity]}>{forceLabel(polarity)}</Badge>
+      </div>
+      {review && (
+        <div className="nd-mem__review">
+          <Button
+            variant="primary"
+            size="sm"
+            aria-label={`Keep ${content}`}
+            onClick={review.onKeep}
+          >
+            Keep
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Discard ${content}`}
+            onClick={review.onDiscard}
+          >
+            Discard
+          </Button>
+        </div>
+      )}
+    </li>
   );
 }

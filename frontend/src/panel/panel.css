@@ -141,6 +141,40 @@
   flex-direction: column;
   gap: 22px;
 }
+/* The run drawer's read-only Setup and Skills & tools: one disabled fieldset with no box of its own. */
+.nd-readonly {
+  display: contents;
+}
+.nd-readonly :disabled {
+  cursor: default;
+}
+/* The run drawer's Runs tab: Activity · Changes · Ask under the rounds. Those views own a scroll
+   region when they fill a pane; here they flow in the tab's scroll. */
+.nd-runtools {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.nd-runtools .tv-seg {
+  align-self: flex-start;
+}
+.nd-runtools .tv-scroll {
+  padding: 0;
+  overflow: visible;
+}
+.nd-runtools .tv-chat__form {
+  padding: 12px 0 0;
+}
+/* A round's exact tokens and cost, and its context manifest (in the Last run card, lined up with its
+   detail). */
+.nd-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nd-lastrun .nd-ledger {
+  padding: 0 12px 12px;
+}
 .nd-foot {
   flex: none;
   display: flex;
@@ -181,6 +215,21 @@
 .nd-foot__ok {
   color: var(--sage-500);
   display: inline-flex;
+}
+.nd-foot__review {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.nd-foot__review:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .nd-foot__dot {
   width: 7px;

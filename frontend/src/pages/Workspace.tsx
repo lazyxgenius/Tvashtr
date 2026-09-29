@@ -45,6 +45,11 @@ function dashViewRoute(view: DashView | undefined): Route {
   }
 }
 
+// The mark on a history step the canvas pushed to open the document viewer (Back closes it).
+const DOC_STEP = "tvashtrDocStep";
+const historyState = () => (window.history.state ?? {}) as Record<string, unknown>;
+const onDocStep = () => historyState()[DOC_STEP] === true;
+
 /**
  * The signed-in app: every dashboard page inside the Shell, chosen by the page address
  * (`lib/nav.ts`), and a team's canvas full-window. Back/forward and refresh keep the place.
@@ -131,6 +136,27 @@ export function Workspace({
             { replace: true },
           )
         }
+        doc={
+          route.docId
+            ? { id: route.docId, version: route.version, compare: route.compare }
+            : undefined
+        }
+        // The viewer sits over the canvas or the focus view under it: closing keeps that place.
+        // Closing one the canvas opened goes Back over its history step, so the canvas's address
+        // isn't left in history twice (a dead Back step); one opened from the address replaces.
+        onDocRoute={(next, { push }) => {
+          if (!next && onDocStep()) {
+            window.history.back();
+            return;
+          }
+          const from = window.location.hash;
+          navigate(
+            { ...route, docId: next?.id, version: next?.version, compare: next?.compare },
+            { replace: !push },
+          );
+          if (push && window.location.hash !== from)
+            window.history.replaceState({ ...historyState(), [DOC_STEP]: true }, "");
+        }}
       />
     );
   }

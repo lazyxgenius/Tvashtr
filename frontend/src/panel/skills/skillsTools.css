@@ -526,3 +526,16 @@
 .nd-paste__count > svg {
   flex: none;
 }
+
+/* Focus mode (Focus-Skills): a row is picked for the detail pane beside the list. */
+.nd-skill--pick {
+  cursor: pointer;
+}
+.nd-skill--on {
+  border-color: var(--coral-200);
+}
+.nd-skill--pick .nd-skill__name:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--shadow-focus);
+}

@@ -17,6 +17,7 @@ from sqlalchemy import func, or_, select
 
 from tvashtr.control_plane.context_compiler import resolve_reads_from
 from tvashtr.control_plane.credentials import provider_for_model
+from tvashtr.control_plane.memory import repo_key_for_run, repo_label
 from tvashtr.control_plane.team_run import node_emits_outcome
 from tvashtr.db import session_scope
 from tvashtr.models import (
@@ -66,12 +67,16 @@ def _iso(value: datetime | None) -> str | None:
 
 
 def _run_brief(run: Run) -> dict:
+    # The run's memory repo (the key its repo-tier lessons carry): Focus-Memory's "This repo".
+    repo_key = repo_key_for_run(run.github_repo, run.repo_path, run.local_repo_label)
     return {
         "run_id": str(run.id),
         "idea": run.idea,
         "status": run.status,
         "created_at": run.created_at.isoformat(),
         "live": run.status not in TERMINAL_RUN_STATUSES,
+        "repo_key": repo_key,
+        "repo_label": repo_label(repo_key),
     }
 
 
@@ -86,10 +91,10 @@ def node_run_history(
     """``{"runs": [...], "run": {...} | None}`` for one authored agent.
 
     ``runs`` — every run of the caller's where a clone of this node has at least one round, newest
-    first (``limit``-capped): ``{run_id, idea, status, created_at, live, rounds_count,
-    last_outcome, last_status, last_round_at}``. ``run`` — the selected run (``run_id``, else the
-    newest in ``runs``) with its ``rounds`` newest first; ``None`` when the agent never ran. A
-    ``run_id`` that is not one of the caller's runs containing this agent raises
+    first (``limit``-capped): ``{run_id, idea, status, created_at, live, repo_key, repo_label,
+    rounds_count, last_outcome, last_status, last_round_at}``. ``run`` — the selected run
+    (``run_id``, else the newest in ``runs``) with its ``rounds`` newest first; ``None`` when the
+    agent never ran. A ``run_id`` that is not one of the caller's runs containing this agent raises
     :class:`NodeHistoryNotFound`."""
     limit = max(1, min(int(limit or DEFAULT_LIMIT), MAX_LIMIT))
     with session_scope() as session:

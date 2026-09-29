@@ -71,6 +71,8 @@ export interface InvocationCost {
 // P1.5c (§14.1): one persisted AgentInvocation row — a single round of a node's
 // execution. The Reviewer panel renders the per-round verdict history from these.
 export interface NodeInvocation {
+  /** B-NODES (additive): the invocation's id (a history round's `invocation_id`). */
+  invocation_id?: number;
   iteration: number;
   status: string; // running | done | failed | stopped
   outcome: string | null; // reviewer: approved | changes_requested ; engineer: built ; …
@@ -112,6 +114,11 @@ export interface GraphNode {
   edits_allowed?: boolean;
   // P1.5b: gate/terminal node metadata (null for completion/agent).
   config: NodeConfig | null;
+  // The run's copy of the agent's skills and tools (the run drawer shows them read-only).
+  tool_config?: Record<string, unknown> | null;
+  skills?: unknown[] | null;
+  // B-NODES: the team's node this run's node was copied from (null when not a copy).
+  origin_node_id?: string | null;
   // P1.5a: the node's live per-invocation state (backend owns this now).
   status: string; // idle | running | done | failed | stopped
   iteration: number; // 1-based count of this node's runs; 0 before it is reached
@@ -172,6 +179,8 @@ export interface RunRow {
   cost_total_usd: number | null;
   created_at: string;
   updated_at: string;
+  // Revamp P11 (additive): the library team this run was launched from.
+  library_team_id?: string | null;
 }
 
 export interface CostRow {
@@ -1403,36 +1412,6 @@ export async function cancelRun(runId: string): Promise<CancelResponse> {
   return (await res.json()) as CancelResponse;
 }
 
-// ---- Documents (the PM panel) ----
-
-export interface DocumentVersion {
-  id: string;
-  version_no: number;
-  content: string;
-  created_by: string;
-  created_at: string;
-}
-
-export interface DocumentDetail {
-  id: string;
-  title: string;
-  doc_type: string;
-  created_at: string;
-  updated_at: string;
-  versions: DocumentVersion[]; // ascending by version_no
-}
-
-// M-docs: the run-view document PICKER's list-item shape (metadata only, no versions) — the backend
-// `_document_meta`. Fetched via getRunDocuments; each item opens in the shared TipTap editor by id.
-export interface DocumentMeta {
-  id: string;
-  title: string;
-  doc_type: string;
-  name: string | null; // the run-scoped name ("spec", "design", …); null for legacy docs
-  created_at: string;
-  updated_at: string;
-}
-
 // ---- Run events (the Engineer panel) ----
 
 export interface RunEvent {
@@ -1451,40 +1430,6 @@ export interface RunEvent {
 export interface RunEventsResponse {
   run_id: string;
   events: RunEvent[]; // ascending by seq
-}
-
-export const getDocument = (documentId: string): Promise<DocumentDetail> =>
-  getJSON<DocumentDetail>(`/api/documents/${documentId}`);
-
-// M-docs: every document THIS run produced (metadata only, oldest first) — backs the run-view
-// document picker. Owner-scoped server-side; the picker opens any one by id via getDocument.
-export const getRunDocuments = (
-  runId: string,
-): Promise<{ run_id: string; documents: DocumentMeta[] }> =>
-  getJSON<{ run_id: string; documents: DocumentMeta[] }>(`/api/runs/${runId}/documents`);
-
-// P1.7b live steering: append a human edit as a NEW version (the server stamps
-// created_by="human" + a fresh idempotency key per POST, so every Save is a new version the
-// running agents re-source on their next node entry). The response is a PARTIAL shape (no
-// version `id`, no `created_by`) — refetch via `getDocument` after a save to refresh the panel.
-export interface AddedDocumentVersion {
-  document_id: string;
-  version_no: number;
-  content: string;
-  created_at: string;
-}
-
-export async function addDocumentVersion(
-  documentId: string,
-  content: string,
-): Promise<AddedDocumentVersion> {
-  const res = await fetch(`/api/documents/${documentId}/versions`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
-  if (!res.ok) throw new Error(`POST /api/documents/${documentId}/versions -> ${res.status}`);
-  return (await res.json()) as AddedDocumentVersion;
 }
 
 export const getRunEvents = (runId: string): Promise<RunEventsResponse> =>

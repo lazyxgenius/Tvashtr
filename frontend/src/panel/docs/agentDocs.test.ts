@@ -1,16 +1,36 @@
 import { describe, expect, it } from "vitest";
 
-import type { RunDoc } from "../../lib/api/nodes";
-import { agentDocs, readBy, specLine, versionLine, writtenBy } from "./agentDocs";
+import type { RunDoc } from "../../lib/api/docs";
+import {
+  agentDocs,
+  docChipsByNode,
+  docLabel,
+  readBy,
+  readersLine,
+  specLine,
+  versionLine,
+  writtenBy,
+} from "./agentDocs";
 
-const who = (node_id: string, label: string) => ({ node_id, label });
+const who = (node_id: string, label: string) => ({
+  node_id,
+  clone_node_id: `c-${node_id}`,
+  role_name: node_id,
+  label,
+});
 const doc = (over: Partial<RunDoc>): RunDoc => ({
   id: "d",
   name: "spec",
   title: "PRD",
   doc_type: "prd",
   is_shared_spec: false,
-  latest_version: { version_no: 2, created_at: new Date(Date.now() - 36 * 60_000).toISOString() },
+  version_count: 2,
+  latest_version: {
+    version_no: 2,
+    created_at: new Date(Date.now() - 36 * 60_000).toISOString(),
+    author: null,
+    note: null,
+  },
   written_by: [],
   read_by: [],
   ...over,
@@ -54,5 +74,23 @@ describe("agentDocs (PANEL-76..80)", () => {
     expect(versionLine(SPEC, 4)).toBe("v2 · 36m ago · read by 3 agents");
     expect(writtenBy(NOTES)).toBe("Written by Engineer");
     expect(readBy(NOTES)).toBe("Read by Reviewer");
+  });
+});
+
+describe("the Documents drawer and the canvas chips", () => {
+  it("labels the spec, lists readers who don't write it", () => {
+    expect([docLabel(SPEC), docLabel(NOTES)]).toEqual(["Shared spec", "build-notes"]);
+    expect(readersLine(NOTES)).toBe("v2 · 36m ago · read by Reviewer");
+    expect(readersLine(doc({ read_by: [] }))).toBe("v2 · 36m ago");
+  });
+
+  it("puts each written document on its writers' cards, by authored or clone id", () => {
+    const unwritten = doc({ id: "d-x", latest_version: null, written_by: [who("n-rev", "R")] });
+    const team = docChipsByNode([SPEC, NOTES, unwritten], false);
+    expect([...team.entries()].map(([k, v]) => [k, v.map((d) => d.id)])).toEqual([
+      ["n-pm", ["d-spec"]],
+      ["n-eng", ["d-notes"]],
+    ]);
+    expect([...docChipsByNode([SPEC], true).keys()]).toEqual(["c-n-pm"]);
   });
 });

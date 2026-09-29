@@ -5,14 +5,14 @@
 
 import type { MemoryPolarity, MemoryTier, NodeMemoryRow } from "./api";
 
-// The 6 directive forces → their RFC-2119 badge label + the CSS modifier suffix (`.tv-mem-badge--X`).
-export const POLARITY_META: Record<MemoryPolarity, { label: string; cls: string }> = {
-  require: { label: "MUST", cls: "require" },
-  prefer: { label: "SHOULD", cls: "prefer" },
-  allow: { label: "MAY", cls: "allow" },
-  context: { label: "CONTEXT", cls: "context" },
-  avoid: { label: "SHOULD NOT", cls: "avoid" },
-  forbid: { label: "MUST NOT", cls: "forbid" },
+// The 6 directive forces → their RFC-2119 badge label.
+export const POLARITY_META: Record<MemoryPolarity, { label: string }> = {
+  require: { label: "MUST" },
+  prefer: { label: "SHOULD" },
+  allow: { label: "MAY" },
+  context: { label: "CONTEXT" },
+  avoid: { label: "SHOULD NOT" },
+  forbid: { label: "MUST NOT" },
 };
 
 // Strongest → weakest, positive before negative — the order the authoring polarity picker offers.
@@ -25,10 +25,11 @@ export const POLARITY_ORDER: MemoryPolarity[] = [
   "forbid",
 ];
 
+// Where a note applies (the run drawer's Memory tab).
 export const TIER_LABEL: Record<MemoryTier, string> = {
   account: "Account",
   repo: "This repo",
-  node: "Per-node",
+  node: "This agent",
 };
 
 export interface RepoOption {

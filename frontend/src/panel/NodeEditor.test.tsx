@@ -185,8 +185,8 @@ function renderEditor(over: Partial<NodeEditorProps> = {}) {
     onSaved: vi.fn(),
     ...over,
   };
-  render(<NodeEditor {...props} />);
-  return { props, drawer: screen.getByRole("complementary", { name: /settings$/ }) };
+  const view = render(<NodeEditor {...props} />);
+  return { props, view, drawer: screen.getByRole("complementary", { name: /settings$/ }) };
 }
 
 describe("NodeEditor — header, badges, tabs", () => {
@@ -499,7 +499,7 @@ describe("NodeEditor — leaving with unsaved changes (PANEL-21)", () => {
       const clean = new Event("beforeunload", { cancelable: true });
       window.dispatchEvent(clean);
       expect(clean.defaultPrevented).toBe(false);
-      expect(setUnsavedChanges).toHaveBeenLastCalledWith({ dirty: false, agentName: "Reviewer" });
+      expect(setUnsavedChanges).toHaveBeenLastCalledWith({ dirty: false });
 
       fireEvent.click(within(drawer).getByRole("switch", { name: "Images" }));
       const dirty = new Event("beforeunload", { cancelable: true });
@@ -626,16 +626,64 @@ describe("NodeEditor — templates, routing sync, new agent (G3)", () => {
       ...over,
     });
 
-  it("lists the four templates and 'Open in focus view'", async () => {
-    const { props, drawer } = renderEditor();
+  it("lists the four templates and 'Compare templates in focus view'", async () => {
+    const { props, drawer, view } = renderEditor();
     const menu = await openTemplates(drawer);
     expect(
       within(menu)
         .getAllByRole("menuitem")
         .map((i) => i.textContent),
-    ).toEqual(["Product manager", "Architect", "Engineer", "Reviewer", "Open in focus view"]);
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Open in focus view" }));
+    ).toEqual([
+      "Product manager",
+      "Architect",
+      "Engineer",
+      "Reviewer",
+      "Compare templates in focus view",
+    ]);
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "Compare templates in focus view" }),
+    );
     expect(props.onFocusChange).toHaveBeenCalledWith(true);
+    // The page switches to focus: the Templates dialog is already open over it.
+    view.rerender(<NodeEditor {...props} focus />);
+    const dialog = await screen.findByRole("dialog", { name: "Choose a template" });
+    expect(within(dialog).getByRole("button", { name: /^Reviewer/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("'Compare templates in focus view' puts the dialog on top: it keeps the keyboard, Escape closes only it, and docking closes it", async () => {
+    const { props, drawer, view } = renderEditor();
+    fireEvent.click(
+      within(await openTemplates(drawer)).getByRole("menuitem", {
+        name: "Compare templates in focus view",
+      }),
+    );
+    view.rerender(<NodeEditor {...props} focus />);
+    const chooser = await screen.findByRole("dialog", { name: "Choose a template" });
+    // The focus editor's own caret timer has had its turn: the keyboard stays in the dialog.
+    await act(() => new Promise((resolve) => window.setTimeout(resolve, 20)));
+    expect(chooser).toContainElement(document.activeElement as HTMLElement);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Choose a template" })).toBeNull();
+    expect(props.onFocusChange).not.toHaveBeenCalledWith(false);
+
+    // Docked with the dialog up (the address changed): it closes with the focus view, ⌘S saves in
+    // the drawer, and the focus view opens again without it.
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Reviewer in focus view" })).getByRole("button", {
+        name: "Templates",
+      }),
+    );
+    expect(screen.getByRole("dialog", { name: "Choose a template" })).toBeInTheDocument();
+    view.rerender(<NodeEditor {...props} focus={false} />);
+    const docked = screen.getByRole("complementary", { name: /settings$/ });
+    fireEvent.click(within(docked).getByRole("switch", { name: "Images" }));
+    fireEvent.keyDown(document, { key: "s", ctrlKey: true });
+    await waitFor(() => expect(patchBody()).toEqual({ multimodal: true }));
+    view.rerender(<NodeEditor {...props} focus />);
+    expect(screen.queryByRole("dialog", { name: "Choose a template" })).toBeNull();
   });
 
   it("asks before replacing text; Cancel keeps it, Replace applies it with an Undo toast", async () => {

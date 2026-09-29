@@ -15,15 +15,28 @@ vi.mock("../App", () => ({
     teamId,
     initialRunId,
     onBackToDashboard,
+    doc,
+    onDocRoute,
   }: {
     teamId: string;
     initialRunId: string | null;
     onBackToDashboard: (view: string) => void;
+    doc?: { id: string };
+    onDocRoute: (next: { id: string; version?: number } | null, opts: { push: boolean }) => void;
   }) => (
     <div>
-      CANVAS {teamId} {initialRunId ?? "-"}
+      CANVAS {teamId} {initialRunId ?? "-"} {doc ? `DOC ${doc.id}` : ""}
       <button type="button" onClick={() => onBackToDashboard("engines")}>
         Open Engines
+      </button>
+      <button type="button" onClick={() => onDocRoute({ id: "d1" }, { push: true })}>
+        Open doc
+      </button>
+      <button type="button" onClick={() => onDocRoute({ id: "d1", version: 2 }, { push: false })}>
+        Show v2
+      </button>
+      <button type="button" onClick={() => onDocRoute(null, { push: false })}>
+        Close doc
       </button>
     </div>
   ),
@@ -114,6 +127,34 @@ describe("Workspace", () => {
     renderAt("#/teams/t1");
     act(() => screen.getByRole("button", { name: "Open Engines" }).click());
     expect(window.location.hash).toBe("#/engines?fix=1");
+  });
+
+  it("closing a document the canvas opened leaves no dead Back step", async () => {
+    renderAt("#/engines");
+    act(() => {
+      window.location.hash = "#/teams/t1";
+    });
+    await screen.findByText(/CANVAS t1/);
+    act(() => screen.getByRole("button", { name: "Open doc" }).click());
+    await screen.findByText(/DOC d1/);
+    // Moving inside the viewer is no step of its own.
+    act(() => screen.getByRole("button", { name: "Show v2" }).click());
+    act(() => screen.getByRole("button", { name: "Close doc" }).click());
+    await waitFor(() => expect(window.location.hash).toBe("#/teams/t1"));
+    expect(screen.queryByText(/DOC d1/)).toBeNull();
+    // One Back leaves the team, as it would have before the document was opened.
+    act(() => window.history.back());
+    await waitFor(() => expect(window.location.hash).toBe("#/engines"));
+  });
+
+  it("closing a document opened from the address stays on the team", async () => {
+    renderAt("#/engines");
+    act(() => {
+      window.location.hash = "#/teams/t1/docs/d1";
+    });
+    await screen.findByText(/DOC d1/);
+    act(() => screen.getByRole("button", { name: "Close doc" }).click());
+    await waitFor(() => expect(window.location.hash).toBe("#/teams/t1"));
   });
 
   it("follows the address when it changes", async () => {

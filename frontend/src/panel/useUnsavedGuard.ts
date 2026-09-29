@@ -8,6 +8,8 @@
  */
 import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
 
+import { reportUnsaved } from "../lib/unsavedChanges";
+
 /**
  * Run `proceed` now, or once the user has saved or discarded their changes; `onStay` runs when they
  * keep editing instead (the canvas puts its ring back on this agent).
@@ -24,13 +26,6 @@ export interface UnsavedGuard {
   leave: () => void;
 }
 
-/** Tell Tvashtr Desktop (v5 bridge) whether an agent has unsaved edits; a no-op on the website. */
-function reportUnsaved(state: { dirty: boolean; agentName?: string }): void {
-  const bridge = typeof window === "undefined" ? undefined : window.tvashtrDesktop;
-  if (!bridge || typeof bridge !== "object") return;
-  bridge.app?.setUnsavedChanges?.(state);
-}
-
 export function useUnsavedGuard({
   dirty,
   agentName,
@@ -45,6 +40,7 @@ export function useUnsavedGuard({
   const staying = useRef<(() => void) | null>(null);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
+  const [source] = useState(() => Symbol("agent draft"));
 
   const request = useCallback<LeaveGuard>((proceed, onStay) => {
     if (!dirtyRef.current) {
@@ -95,13 +91,13 @@ export function useUnsavedGuard({
 
   // Desktop: tell the app, so closing the window or quitting asks first.
   useEffect(() => {
-    reportUnsaved({ dirty, agentName });
-  }, [dirty, agentName]);
+    reportUnsaved(source, { dirty, agentName });
+  }, [source, dirty, agentName]);
   useEffect(
     () => () => {
-      reportUnsaved({ dirty: false });
+      reportUnsaved(source, { dirty: false });
     },
-    [],
+    [source],
   );
 
   return { asking, request, keepEditing, leave };

@@ -25,6 +25,8 @@ export function SkillsToolsTab({
   onEditServer,
   onOpenToolkit,
   shelves,
+  selected,
+  onSelect,
 }: {
   skills: unknown[] | null;
   toolConfig: ToolConfig;
@@ -38,6 +40,9 @@ export function SkillsToolsTab({
   onEditServer: (name: string) => void;
   onOpenToolkit?: (route: Route) => void;
   shelves: Shelves;
+  /** Focus mode: the skill shown in the detail pane. */
+  selected?: number | null;
+  onSelect?: (index: number) => void;
 }) {
   const { skillLibrary, toolLibrary, secrets } = shelves;
   return (
@@ -58,6 +63,8 @@ export function SkillsToolsTab({
         onAdd={onAddSkill}
         onEdit={onEditSkill}
         onOpenToolkit={onOpenToolkit}
+        selected={selected}
+        onSelect={onSelect}
       />
       <ToolsPanel
         config={toolConfig}

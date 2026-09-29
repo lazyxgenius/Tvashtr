@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Eye, Lock, Pencil } from "lucide-react";
+import { Eye, Lock } from "lucide-react";
 
 import { Button } from "../../design-system/components";
 import { InfoTip } from "../InfoTip";
@@ -11,7 +11,7 @@ import { caretPosition, sizeLine } from "./editorStats";
  * The focus view's instructions (Desktop-Focus, PANEL-100): the full editor with a line-number
  * gutter (one number per line of text, however it wraps), the run-time banner, and a status line
  * under it — where the caret is ("Line 12, column 38") and how long it is ("1,284 characters ·
- * about 320 tokens"). "Preview as the agent sees it" swaps the editor for `preview`.
+ * about 320 tokens"). "Preview as the agent sees it" opens the preview in the Setup body.
  */
 export function InstructionsEditor({
   prompt,
@@ -19,8 +19,7 @@ export function InstructionsEditor({
   onChange,
   banner,
   templates,
-  preview,
-  onTogglePreview,
+  onPreview,
   autoFocus = false,
   readOnly = false,
 }: {
@@ -29,11 +28,9 @@ export function InstructionsEditor({
   saved?: string;
   onChange: (next: string) => void;
   banner: string;
-  /** The Templates button and its menu. */
+  /** The Templates button. */
   templates: ReactNode;
-  /** The compiled context, while previewing (null: editing). */
-  preview: ReactNode | null;
-  onTogglePreview: () => void;
+  onPreview?: () => void;
   /** Put the caret in the editor when the view opens. */
   autoFocus?: boolean;
   readOnly?: boolean;
@@ -48,10 +45,15 @@ export function InstructionsEditor({
   );
   const { line, column } = caretPosition(prompt, caret);
 
-  // The dialog's focus trap lands on its first button; the full editor starts in the text instead.
+  // The dialog's focus trap lands on its first button; the full editor starts in the text instead,
+  // unless a dialog opened on top of it (the Templates dialog) has the keyboard by then.
   useEffect(() => {
     if (!autoFocus) return;
-    const id = window.setTimeout(() => textRef.current?.focus({ preventScroll: true }), 0);
+    const id = window.setTimeout(() => {
+      const on = document.activeElement?.closest('[aria-modal="true"]');
+      if (on && !on.contains(textRef.current)) return;
+      textRef.current?.focus({ preventScroll: true });
+    }, 0);
     return () => window.clearTimeout(id);
   }, [autoFocus]);
 
@@ -77,63 +79,55 @@ export function InstructionsEditor({
           <InfoTip text={TIPS.instructions} />
         </h3>
         <div className="fx-main__tools">
-          <Button variant="ghost" size="sm" className="nd-btn-flush" onClick={onTogglePreview}>
-            {preview ? (
-              <Pencil size={14} strokeWidth={1.6} aria-hidden />
-            ) : (
-              <Eye size={14} strokeWidth={1.6} aria-hidden />
-            )}
-            <span>{preview ? "Back to editing" : "Preview as the agent sees it"}</span>
+          <Button variant="ghost" size="sm" className="nd-btn-flush" onClick={onPreview}>
+            <Eye size={14} strokeWidth={1.6} aria-hidden />
+            <span>Preview as the agent sees it</span>
           </Button>
-          {!preview && templates}
+          {templates}
         </div>
       </div>
-      {preview ?? (
-        <>
-          <div className="fx-banner">
-            <Lock size={12} strokeWidth={1.6} aria-hidden />
-            {banner}
-          </div>
-          <div className="fx-editor">
-            <div className="fx-editor__inner">
-              {/* One row per line of text: its number, and the line itself in hidden glyphs that
+      <div className="fx-banner">
+        <Lock size={12} strokeWidth={1.6} aria-hidden />
+        {banner}
+      </div>
+      <div className="fx-editor">
+        <div className="fx-editor__inner">
+          {/* One row per line of text: its number, and the line itself in hidden glyphs that
                   wrap exactly like the text above them, so each number sits on its line's first
                   row and changed lines get their band. */}
-              <div className="fx-editor__rows" aria-hidden>
-                {lines.map((text, i) => (
-                  <div key={i} className="fx-row">
-                    <div className="fx-row__n">{i + 1}</div>
-                    <div className={`fx-row__text${marks.has(i) ? " fx-row__text--changed" : ""}`}>
-                      {text || " "}
-                    </div>
-                  </div>
-                ))}
+          <div className="fx-editor__rows" aria-hidden>
+            {lines.map((text, i) => (
+              <div key={i} className="fx-row">
+                <div className="fx-row__n">{i + 1}</div>
+                <div className={`fx-row__text${marks.has(i) ? " fx-row__text--changed" : ""}`}>
+                  {text || " "}
+                </div>
               </div>
-              <textarea
-                ref={textRef}
-                className="fx-editor__text"
-                aria-labelledby={labelId}
-                value={prompt}
-                spellCheck={false}
-                readOnly={readOnly}
-                onChange={(e) => {
-                  setCaret(e.target.selectionStart);
-                  onChange(e.target.value);
-                }}
-                onSelect={track}
-                onKeyUp={track}
-                onClick={track}
-              />
-            </div>
+            ))}
           </div>
-          <div className="fx-status">
-            <span>
-              Line {line}, column {column}
-            </span>
-            <span>{sizeLine(prompt.length)}</span>
-          </div>
-        </>
-      )}
+          <textarea
+            ref={textRef}
+            className="fx-editor__text"
+            aria-labelledby={labelId}
+            value={prompt}
+            spellCheck={false}
+            readOnly={readOnly}
+            onChange={(e) => {
+              setCaret(e.target.selectionStart);
+              onChange(e.target.value);
+            }}
+            onSelect={track}
+            onKeyUp={track}
+            onClick={track}
+          />
+        </div>
+      </div>
+      <div className="fx-status">
+        <span>
+          Line {line}, column {column}
+        </span>
+        <span>{sizeLine(prompt.length)}</span>
+      </div>
     </div>
   );
 }

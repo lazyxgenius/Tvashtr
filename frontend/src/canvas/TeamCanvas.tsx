@@ -33,6 +33,7 @@ import type {
 import { deriveGateState, deriveNodeStatus, deriveTerminalState } from "../lib/status";
 import { closesLoop, type ValidityFlags, validityFlags } from "../lib/topology";
 import { AgentNodeCard, type AgentNodeData } from "./AgentNodeCard";
+import type { RunDoc } from "../lib/api/docs";
 import { AuthoringContext } from "./authoringContext";
 import { CanvasEmpty } from "./CanvasEmpty";
 import { type EdgeConfirm, EdgeRoleEditor, type PendingConnect } from "./EdgeRoleEditor";
@@ -157,13 +158,16 @@ export function TeamCanvas({
   blockedReason = "",
   selectedNodeId,
   ringKey = 0,
+  docChips,
+  onOpenDoc,
 }: {
   graph: GraphData | null;
   run: RunRow | null;
   workflowStatus: string | null;
   tasks?: HumanTask[];
   focusNodeId?: string | null;
-  panelOpen?: boolean;
+  /** A drawer is open beside the canvas (`"docs"`: the Documents drawer, on the other side). */
+  panelOpen?: boolean | "docs";
   onSelectNode?: (nodeId: string | null) => void;
   editable?: boolean;
   teamNodes?: TeamGraphNode[];
@@ -183,6 +187,9 @@ export function TeamCanvas({
   selectedNodeId?: string | null;
   /** A change rings `selectedNodeId` again (the page kept the drawer's node after a click elsewhere). */
   ringKey?: number;
+  /** DOCS-11: each card's written documents (by canvas node id) and what a chip's click opens. */
+  docChips?: ReadonlyMap<string, readonly RunDoc[]>;
+  onOpenDoc?: (doc: RunDoc) => void;
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
   const [pending, setPending] = useState<PendingConnect | null>(null);
@@ -383,8 +390,10 @@ export function TeamCanvas({
       },
       requestDelete: (nodeId: string) => onDeleteNodes?.([nodeId]),
       onOpenModel,
+      docChips,
+      onOpenDoc,
     }),
-    [editable, onDeleteNodes, onOpenModel],
+    [editable, onDeleteNodes, onOpenModel, docChips, onOpenDoc],
   );
 
   return (
@@ -438,7 +447,7 @@ export function TeamCanvas({
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={26} size={1.1} />
-          <FitView trigger={graph ? `${graph.run_id}:${panelOpen ? "p" : "f"}` : null} />
+          <FitView trigger={graph ? `${graph.run_id}:${panelOpen || "f"}` : null} />
           <FocusNode focusNodeId={focusNodeId} />
           {graph && <Controls showInteractive={false} />}
           {graph && (

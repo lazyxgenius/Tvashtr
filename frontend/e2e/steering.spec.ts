@@ -40,7 +40,7 @@ async function openSeededTeam(page: import("@playwright/test").Page): Promise<vo
   console.log(`[steering-e2e] registered ${email} and opened seeded My team`);
 }
 
-test("J3 live steering: a human rewrites the PRD at the gate through the real TipTap editor and the agent ships it", async ({
+test("J3 live steering: a human rewrites the PRD at the gate in the document viewer and the agent ships it", async ({
   page,
 }) => {
   // A real PM + Engineer + Reviewer chain on the live agent — give it room.
@@ -73,15 +73,25 @@ test("J3 live steering: a human rewrites the PRD at the gate through the real Ti
     .toBe("awaiting_human");
   console.log("[steering-e2e] paused at the PRD gate (awaiting_human)");
 
-  // 3. Open the PM panel; assert the TipTap editor renders the PM's PRD.
+  // 3. Open the PM's run drawer (it opens on Runs); its Docs tab lists the run's documents. Open
+  //    the shared spec in the document viewer and start a live edit (Edit shows only while the run
+  //    is live).
   await page.locator(".react-flow__node", { hasText: "Product manager" }).first().click();
-  const prose = page.locator(".tv-prd__editor .ProseMirror");
+  const drawer = page.getByRole("complementary", { name: /in this run$/ });
+  await drawer.getByRole("tab", { name: "Docs" }).click({ timeout: 30_000 });
+  await drawer
+    .locator("li", { hasText: "Shared spec" })
+    .getByRole("button", { name: "Open" })
+    .click({ timeout: 30_000 });
+  const viewer = page.getByRole("dialog", { name: "Shared spec" });
+  await viewer.getByRole("button", { name: "Edit" }).click({ timeout: 30_000 });
+  const prose = viewer.locator(".dv-editor .ProseMirror");
   await expect(prose).toBeVisible({ timeout: 30_000 });
   await expect(prose).not.toBeEmpty();
-  console.log("[steering-e2e] TipTap editor rendered the PM PRD");
+  console.log("[steering-e2e] the viewer's TipTap editor rendered the PM PRD");
 
   // 4. Clear the editor and type a known minimal PRD specifying greeting.txt = SENTINEL. Save ->
-  //    a new `human` version appears.
+  //    a new version by "You" appears in Versions.
   await prose.click();
   await page.keyboard.press("Meta+a");
   await page.keyboard.press("Backspace");
@@ -91,10 +101,18 @@ test("J3 live steering: a human rewrites the PRD at the gate through the real Ti
   await page.keyboard.press("Enter");
   await page.keyboard.type(SENTINEL);
 
-  await page.getByRole("button", { name: "Save new version" }).click();
-  await expect(page.locator(".tv-prd__saved")).toContainText("Saved v", { timeout: 30_000 });
-  await expect(page.locator(".tv-prd__version", { hasText: "human" })).toBeVisible();
-  console.log("[steering-e2e] saved a new human version of the PRD");
+  await viewer.getByRole("button", { name: /^Save as v\d+$/ }).click();
+  await expect(
+    page.getByText(/^Saved v\d+ — the agents read it on their next round\.$/),
+  ).toBeVisible({
+    timeout: 30_000,
+  });
+  const versions = viewer.getByRole("complementary", { name: "Versions" });
+  await expect(
+    versions.getByRole("button", { name: /You · Edited while the run was live/ }),
+  ).toBeVisible();
+  await viewer.getByRole("button", { name: "Close" }).click();
+  console.log("[steering-e2e] saved a new version of the PRD by You");
 
   // 5 + 6. Approve the PRD gate (and, if the real Reviewer cycles to the cap, the escalation
   //    gate too — both ship the last build, which is deterministically the SENTINEL greeting)

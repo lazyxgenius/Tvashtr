@@ -1,13 +1,15 @@
 import { useContext } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, NodeToolbar, Position, type NodeProps } from "@xyflow/react";
 import {
   Check,
   ClipboardCheck,
   DraftingCompass,
+  FileText,
   type LucideIcon,
   OctagonX,
   Package,
   PenLine,
+  Pin,
   Plus,
   ShieldCheck,
   Sparkle,
@@ -19,6 +21,7 @@ import {
 
 import { AgentDomainsLine, QueryDomainCardBody } from "../pages/domains/QueryDomainCardBody";
 import { AuthoringContext } from "./authoringContext";
+import { docLabel } from "../panel/docs/agentDocs";
 import type { GateConfig, NodeConfig, TerminalConfig } from "../lib/api";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import type { GateState, NodeStatus, TerminalState } from "../lib/status";
@@ -184,6 +187,43 @@ function ModelChip({ nodeId, model }: { nodeId: string; model: string }) {
   );
 }
 
+/** DOCS-11: the documents this agent wrote, as chips straddling the card's lower-left edge ("Shared
+ *  spec v3" coral, "build-notes v2" neutral); a click opens the document. A `NodeToolbar`, so the
+ *  chips keep their size at any zoom. */
+function DocChips({ nodeId }: { nodeId: string }) {
+  const { docChips, onOpenDoc } = useContext(AuthoringContext);
+  const docs = docChips?.get(nodeId);
+  if (!docs?.length) return null;
+  return (
+    <NodeToolbar
+      isVisible
+      position={Position.Bottom}
+      align="start"
+      offset={-12}
+      className="cv-doc-chips nodrag nopan"
+    >
+      {docs.map((doc) => (
+        <button
+          key={doc.id}
+          type="button"
+          className={`cv-doc-chip${doc.is_shared_spec ? " cv-doc-chip--shared" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenDoc?.(doc);
+          }}
+        >
+          {doc.is_shared_spec ? (
+            <Pin size={11} strokeWidth={1.6} aria-hidden />
+          ) : (
+            <FileText size={11} strokeWidth={1.6} aria-hidden />
+          )}
+          {docLabel(doc)} v{doc.latest_version?.version_no}
+        </button>
+      ))}
+    </NodeToolbar>
+  );
+}
+
 /** The agent/completion team-node: a warm paper card — glyph + title + role caption + optional
  *  "round N" badge in the head, a capability + engine + status-pill row, and a clickable model
  *  footer. The entry node adds a coral left-bar + "Start · entry" eyebrow. Running breathes coral;
@@ -230,6 +270,7 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
       </div>
       {/* F1c: the model footer opens the drawer's Model field in author mode; inert in the run view. */}
       <ModelChip nodeId={nodeId} model={d.model} />
+      <DocChips nodeId={nodeId} />
       {d.status === "done" && (
         <span className="rf-node__badge rf-node__badge--done" aria-hidden>
           <Check size={12} strokeWidth={3} />

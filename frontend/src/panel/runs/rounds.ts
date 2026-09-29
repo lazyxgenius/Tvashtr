@@ -2,9 +2,12 @@
  * Pure copy for the Runs and Docs tabs (PANEL-72..75): a round's detail with its `code` runs and
  * the "Show all" cut, compact token counts, and a run's line in the run switcher.
  */
-import type { NodeRunSummary } from "../../lib/api/nodes";
+import type { MemoryPolarity } from "../../lib/api";
+import type { NodeRound, NodeRunSummary } from "../../lib/api/nodes";
+import { displayNameForSubscription, type SubscriptionProviderId } from "../../lib/engines";
+import { POLARITY_META, POLARITY_ORDER } from "../../lib/memory";
 import { formatRelativeTime } from "../../lib/time";
-import { statusBadge } from "../nodeBadges";
+import { providerLabel, statusBadge } from "../nodeBadges";
 
 /** A detail longer than this many characters is cut at a word and gets "Show all". */
 export const DETAIL_LIMIT = 360;
@@ -73,4 +76,63 @@ export function runLine(run: NodeRunSummary): string {
           false,
         ).label.toLowerCase();
   return when ? `${when} · ${what}` : what;
+}
+
+/** How long a round took: "2m 14s", "45s", "1h 5m"; "" while it runs or when unknown. */
+export function roundDuration(round: Pick<NodeRound, "started_at" | "ended_at">): string {
+  const ms = new Date(round.ended_at ?? "").getTime() - new Date(round.started_at ?? "").getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+}
+
+/**
+ * What a round cost and who paid (FOCUS-68): "$0.00 · Grok subscription", "$0.01 · xAI API key".
+ * A round with no cost row names only the route (a subscription still costs nothing).
+ */
+export function billingLine(round: Pick<NodeRound, "cost" | "runs_on">): string {
+  const via = round.runs_on;
+  const sub = via?.via === "subscription";
+  const route = !via
+    ? ""
+    : sub
+      ? `${displayNameForSubscription(via.provider as SubscriptionProviderId) ?? via.provider} subscription`
+      : `${providerLabel(via.provider)} API key`;
+  const money = round.cost ? `$${round.cost.cost_usd.toFixed(2)}` : sub ? "$0.00" : "";
+  return [money, route].filter(Boolean).join(" · ");
+}
+
+/** The lessons a round was given, by force: "MUST · SHOULD" (strongest first, once each). */
+export function forcesLine(memory: readonly { polarity: string }[]): string {
+  const got = new Set(memory.map((m) => m.polarity));
+  return POLARITY_ORDER.filter((p: MemoryPolarity) => got.has(p))
+    .map((p) => POLARITY_META[p].label)
+    .join(" · ");
+}
+
+/** A verdict's reasons cut to their first clause: "No new indicator was added…". */
+export function firstClause(text: string, limit = 60): string {
+  const t = text.trim();
+  const stop = t.search(/[:.;](\s|$)/);
+  if (stop >= 0 && stop <= limit) return stop === t.length - 1 ? t : `${t.slice(0, stop)}…`;
+  if (t.length <= limit) return t;
+  const space = t.lastIndexOf(" ", limit);
+  return `${t.slice(0, space > 0 ? space : limit)}…`;
+}
+
+/** The verdict file as the round wrote it (FOCUS-67), its reasons cut to a clause. */
+export function verdictFileText(verdict: {
+  file: string;
+  verdict: string;
+  reasons: string;
+}): string {
+  return [
+    verdict.file,
+    "{",
+    `  "verdict": ${JSON.stringify(verdict.verdict)},`,
+    `  "reasons": ${JSON.stringify(firstClause(verdict.reasons))}`,
+    "}",
+  ].join("\n");
 }

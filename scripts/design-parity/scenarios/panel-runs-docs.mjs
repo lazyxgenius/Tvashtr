@@ -38,7 +38,7 @@ const round = (iteration, min, detail, tokens) => ({
   given: null,
   produced: null,
 });
-const RSI = {
+export const RSI = {
   run_id: "r-rsi",
   idea: "Add an RSI indicator",
   status: "completed",
@@ -56,7 +56,7 @@ const past = (run_id, idea, day) => ({
   last_status: "done",
   last_round_at: `2026-09-${day}T10:30:00Z`,
 });
-const HISTORY = {
+export const HISTORY = {
   runs: [
     {
       ...RSI,
@@ -92,7 +92,7 @@ const agent = (id, label) => ({
 const PM = agent("n-pm", "Product manager");
 const ENG = agent("n-eng", "Engineer");
 const REV = agent("n-rev", "Reviewer");
-const DOCS = {
+export const DOCS = {
   run_id: "r-rsi",
   run: RSI,
   documents: [

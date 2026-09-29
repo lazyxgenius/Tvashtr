@@ -24,7 +24,6 @@ import {
   getGithubRepos,
   getProviderCatalogue,
   getReviewMode,
-  getRunDocuments,
   inspectRepo,
   listMemories,
   presetsForProvider,
@@ -116,7 +115,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-
 describe("rewriteGithubInstallUrlForDesktop", () => {
   const flyUrl =
     "https://github.com/login/oauth/authorize?client_id=Iv1.abc" +
@@ -134,16 +132,10 @@ describe("rewriteGithubInstallUrlForDesktop", () => {
   it("rewrites redirect_uri to the current loopback origin when tvashtrDesktop is set", () => {
     window.tvashtrDesktop = {
       engines: {
-        getStatus: async () => [],
-        connect: async () => {
-          throw new Error("not implemented in test stub");
-        },
-        disconnect: async () => {
-          throw new Error("not implemented in test stub");
-        },
-        refresh: async () => {
-          throw new Error("not implemented in test stub");
-        },
+        getStatus: () => Promise.resolve([]),
+        connect: () => Promise.reject(new Error("not implemented in test stub")),
+        disconnect: () => Promise.reject(new Error("not implemented in test stub")),
+        refresh: () => Promise.reject(new Error("not implemented in test stub")),
       },
     };
     // jsdom location is http://localhost:3000 by default in this suite setup — accept whatever origin.
@@ -460,37 +452,6 @@ describe("updateTeamNode — writes_to / reads_from (M-docs)", () => {
       writes_to: "",
       reads_from: [],
     });
-  });
-});
-
-describe("getRunDocuments (M-docs run-view picker)", () => {
-  it("GETs the run's documents list", async () => {
-    const payload = {
-      run_id: "r1",
-      documents: [
-        {
-          id: "d1",
-          name: "spec",
-          title: "Mini-PRD",
-          doc_type: "prd",
-          created_at: "",
-          updated_at: "",
-        },
-        {
-          id: "d2",
-          name: "design",
-          title: "Document: design",
-          doc_type: "design",
-          created_at: "",
-          updated_at: "",
-        },
-      ],
-    };
-    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonOk(payload)));
-    vi.stubGlobal("fetch", fetchMock);
-    const out = await getRunDocuments("r1");
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/runs/r1/documents");
-    expect(out.documents.map((d) => d.name)).toEqual(["spec", "design"]);
   });
 });
 

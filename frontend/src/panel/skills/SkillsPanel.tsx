@@ -79,6 +79,8 @@ export function SkillsPanel({
   onAdd,
   onEdit,
   onOpenToolkit,
+  selected,
+  onSelect,
 }: {
   skills: unknown[] | null;
   /** The account's library skills (null while unknown). */
@@ -88,6 +90,9 @@ export function SkillsPanel({
   onAdd: (kind: AddSkillKind) => void;
   onEdit: (index: number) => void;
   onOpenToolkit?: (route: Route) => void;
+  /** Focus mode: the row whose detail shows beside the list (FOCUS-52). */
+  selected?: number | null;
+  onSelect?: (index: number) => void;
 }) {
   const rows = skillRows(skills, library);
   // The trigger words being typed under a row (Q12: choosing When triggered asks for them).
@@ -164,6 +169,8 @@ export function SkillsPanel({
                   : undefined
               }
               onRemove={() => remove(row)}
+              selected={selected === row.index}
+              onSelect={onSelect && (() => onSelect(row.index))}
               words={
                 words?.index === row.index ? (
                   <TriggerWords
@@ -206,6 +213,8 @@ function SkillRow({
   onEdit,
   onOpenToolkit,
   onRemove,
+  selected,
+  onSelect,
   words,
 }: {
   row: SkillRowData;
@@ -213,6 +222,9 @@ function SkillRow({
   onEdit?: () => void;
   onOpenToolkit?: () => void;
   onRemove: () => void;
+  selected: boolean;
+  /** Focus mode: a click on the row shows its detail; its name is the keyboard's way in. */
+  onSelect?: () => void;
   words: ReactNode;
 }) {
   const more: MenuEntry[] = [];
@@ -234,13 +246,30 @@ function SkillRow({
     danger: true,
     onSelect: onRemove,
   });
+  const pick = onSelect
+    ? {
+        role: "button",
+        tabIndex: 0,
+        "aria-pressed": selected,
+        onKeyDown: (e: KeyboardEvent) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          onSelect();
+        },
+      }
+    : {};
   return (
-    <li className="nd-skill">
+    <li
+      className={`nd-skill${onSelect ? " nd-skill--pick" : ""}${selected ? " nd-skill--on" : ""}`}
+      onClick={onSelect}
+    >
       <div className="nd-skill__top">
         <span className="nd-kit__icon">
           <Sparkle size={14} strokeWidth={1.6} aria-hidden />
         </span>
-        <span className="nd-skill__name">{row.name}</span>
+        <span className="nd-skill__name" {...pick}>
+          {row.name}
+        </span>
         <span className="nd-skill__more">
           <Menu
             label={`More actions for ${row.name}`}

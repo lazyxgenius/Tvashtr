@@ -6,12 +6,10 @@ artboards, git-excluded), per the brief `prompts/revamp-e2e.md`.
 
 ## Round 2 — revamp-e2e session (start here to resume)
 
-**Next (revamp-finish session, brief `prompts/revamp-e2e.md` Sidechat-16 version):** F6 Focus +
-Docs, which also carries the run view's agent drawer on the new tabbed design (spec Q20 — operator
-bug 2026-09-29: after a run starts, the run canvas opened the old run inspector; built on
-`feat/revamp-f6-focus-docs`) and the "Show all 1 lines" miscount → Domains (migration `0042` +
-`team_run.py`: the deploy pauses for the operator's Neon snapshot and in-flight prod runs) → Phase 3
-close-out.
+**Next (revamp-finish session, brief `prompts/revamp-e2e.md` Sidechat-16 version):** Domains
+(`feat/revamp-domains`: rulings 1 and 2 are on the branch; its review findings are being fixed; migration
+`0042` + `team_run.py`, so the deploy pauses for the operator's Neon snapshot and the in-flight prod
+runs) → Phase 3 close-out.
 
 ### NEEDS_HUMAN (2026-09-26 ~14:55 IST) — RESOLVED 15:04 IST (new key in `.env`, `make seed`)
 The OpenAI key in `.env` (`OPENAI_API_KEY`, ends `…IgoA`, also the operator account's saved openai
@@ -31,7 +29,40 @@ replaced. Remedy: new key on the `OPENAI_API_KEY` line of `.env` → `make seed`
 | F4 — Toolkit › Skills + Memory | `feat/revamp-f4-skills-memory` | `055671a` | v23 | `desktop-v0.7.0` — latest release; DMG app 0.7.0 bundles `index-CMst77H3.js` = the live site |
 | F5 — Agent panel + canvas (+ `fix/integration-review`) | `feat/revamp-f5-panel` | `b33c630` | v24 | `desktop-v0.8.0` — latest release; DMG app 0.8.0 bundles `index-DUzUTMWb.js` = the live site |
 | Desktop app screens | `feat/revamp-desktop-app` | `9e2aaa0` | v25 | `desktop-v0.9.0` — latest release; DMG app 0.9.0 bundles `index-O26nkR8a.js` = the live site |
-| Website pages | `feat/revamp-website` | recorded at the next ship | recorded at the next ship | `desktop-v0.10.0` |
+| Website pages | `feat/revamp-website` | `c7848be` | v26 | `desktop-v0.10.0` — latest release; DMG app 0.10.0 bundles `index-gm2lGZ9k.js` = the live site |
+| F6 — Focus view + Documents (+ Q20 run drawer) | `feat/revamp-f6-focus-docs` | recorded at the next ship | recorded at the next ship | `desktop-v0.11.0` |
+
+### F6 Focus view + Documents — what shipped (`feat/revamp-f6-focus-docs`)
+- Documents: the canvas toolbar's Documents toggle and count, doc chips on the cards, the Documents
+  drawer, and the document viewer (versions, compare, live edit with ⌘S, browser Back, Copy of the
+  shown version). The focus view's Docs tab.
+- Focus view: Setup (numbered agent preview, Review changes, the Templates dialog with a one-sentence
+  summary per template), Skills, Memory and Runs in two panes.
+- Q20 (operator bug 2026-09-29): the run view's agent drawer is now the Team screen's tabbed drawer,
+  opening on Runs (this run's rounds with exact tokens and cost, then Activity · Changes · Ask);
+  Setup and Skills & tools show the run's copy read-only with "Edit on the team"; Memory and Docs are
+  the run's. The old run inspector is gone from the run canvas.
+- "Show all 1 lines" on a wrapped instruction now reads "Show all" (the line count shows only past
+  nine lines).
+- Backend (additive, owner-scoped, no migration): node history runs carry the run's memory repo key
+  and label; node templates carry a one-sentence summary.
+- Independent review: 14 findings, 10 real, all fixed test-first — the Templates dialog now opens on
+  top of the focus view with the keyboard; docking resets Preview/Review to the editor; a template's
+  Undo restores only what it changed; an open viewer and the Documents drawer keep up with a live run
+  (an edit in progress keeps its text; Edit starts from the real latest version); "The run is live"
+  goes once the run has finished; a save shows the saved version at once; closing a viewer the canvas
+  opened leaves no dead Back step; no "Edit on the team" for an agent since deleted from the team;
+  an opened earlier round shows one exact cost; the steering e2e opens the Docs tab first. Not
+  changed: #3 (already fixed on the branch), #5 (a whole-line delete shows no band in the focus
+  editor — the same on `main`, not this branch's; follow-up), #9 (Copy copies the shown stored
+  version, as DOCS-19 specifies).
+- Gates at ship: `make test` 1924 passed / 1 xfailed on `tvashtr_gate`; vitest 1791; tsc 0;
+  build; desktop 135; docker; eslint 88 + prettier 98 + ruff 3 clean (four `require-await` errors in
+  `api.test.ts`, there since `main`, fixed); e2e steering, run_diff, node_ask, team_edit,
+  authoring_brief, edits_toggle, memory_shelf, tools_c7c, capability_edit, model_picker, work_brief,
+  revamp-shell, tools-c7a; `make demo-proof` C1–C12 PR https://github.com/lazyxgenius/trade_mcp/pull/27.
+- Parity: `docs/superpowers/parity/focus-docs.txt` 34/34 lines and `panel.txt` 130/130 reproduced at
+  0 size/type drift, web and Desktop.
 
 ### Website pages — what shipped (`feat/revamp-website`)
 - The public site (`frontend/src/pages/site/`): the landing (1440 and phone), sign-in with its

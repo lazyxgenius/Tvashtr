@@ -1,27 +1,383 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { useState } from "react";
+import { FileText, Zap } from "lucide-react";
 
-import { LastRun } from "../../components/LastRun";
-import { type DocumentMeta, getRunDocuments, type GraphNode, type RunRow } from "../../lib/api";
-import { nodeTitle } from "../../lib/nodeNames";
+import { Button } from "../../design-system/components";
+import {
+  type GraphEdge,
+  type GraphNode,
+  getProviderCatalogue,
+  type NodeInvocation,
+  type RunRow,
+} from "../../lib/api";
+import { listRunDocs } from "../../lib/api/docs";
+import type { NodeRound } from "../../lib/api/nodes";
+import type { NodeTab } from "../../lib/nav";
+import { nodeDescription, nodeTitle } from "../../lib/nodeNames";
 import {
   deriveNodeStatus,
-  isPrdEditable,
+  isRunTerminal,
   type NodeStatus,
   WORKFLOW_FAILED,
 } from "../../lib/status";
+import { seedDraft } from "../agentDraft";
+import { ContextManifest } from "../ContextManifest";
+import { docLabel, readersLine, specLine, versionLine, writtenBy } from "../docs/agentDocs";
+import { DocCard } from "../docs/DocCard";
 import { EventFeed } from "../EventFeed";
-import { modelLabel, statusBadge } from "../nodeBadges";
+import { modelLabel, type StatusBadge, statusBadge } from "../nodeBadges";
 import { NodeChat } from "../NodeChat";
+import { skillsAndToolsCount } from "../nodeCounts";
 import { NodeDrawer } from "../NodeDrawer";
 import { glyphForNode } from "../nodeGlyph";
 import { NodeBadges, NodeHeader } from "../NodeHeader";
-import { PrdView } from "../PrdView";
+import { NodeTabs } from "../NodeTabs";
 import { RunDiff } from "../RunDiff";
 import { RunMemory } from "../RunMemory";
+import { EmptyCard, LoadState, RoundsList } from "../runs/RunsTab";
+import { useLoaded } from "../runs/useLoaded";
+import { seatOf } from "../setup/modelCatalog";
+import { isDesktopApp } from "../setup/modelCopy";
+import { SetupTab } from "../setup/SetupTab";
+import { SkillsToolsTab } from "../skills/SkillsToolsTab";
+import { useShelves } from "../skills/useShelves";
+import type { AgentDraftApi } from "../useAgentDraft";
+import "../panel.css";
 
-/** The thinker's placeholder copy when there is no spec document yet — derived from run-level
- *  signals directly (this panel stays run-level; it never receives the graph's documents). The
- *  copy is generic enough for any thinker (every thinker refines the SAME shared spec). */
+const noop = () => {};
+
+/** The run's copy of the agent as a draft nothing can change (the read-only Setup and Skills). */
+function readOnlyDraft(node: GraphNode): AgentDraftApi {
+  const draft = seedDraft(node);
+  return {
+    draft,
+    baseline: draft,
+    set: noop,
+    update: noop,
+    changed: [],
+    dirtyCount: 0,
+    isDirty: false,
+    problem: null,
+    discard: noop,
+    save: () => Promise.resolve(false),
+    saveState: "idle",
+    saveError: null,
+  };
+}
+
+/**
+ * The header's status badge from what the agent is doing in THIS run: "Waiting" (the run hasn't
+ * reached it yet), "Not reached" (the run ended first), "Running", or how its last round ended.
+ */
+function runStatusBadge(
+  status: NodeStatus,
+  last: NodeInvocation | null,
+  live: boolean,
+): StatusBadge {
+  if (status === "idle") {
+    return {
+      label: live ? "Waiting" : "Not reached",
+      variant: "neutral",
+      dot: true,
+      hasRun: false,
+    };
+  }
+  return statusBadge({ ...(last ?? { outcome: null }), status });
+}
+
+/**
+ * The node's rounds in this run, newest first, in the Runs tab's shape. A round still "running" when
+ * the run failed or stopped reads as the run ended (`status`, the node's derived status).
+ */
+function roundsOf(node: GraphNode, status: NodeStatus): NodeRound[] {
+  return [...node.invocations].reverse().map((inv) => ({
+    invocation_id: inv.invocation_id ?? inv.iteration,
+    iteration: inv.iteration,
+    status: inv.status === "running" ? status : inv.status,
+    outcome: inv.outcome,
+    outcome_detail: inv.outcome_detail,
+    started_at: inv.started_at,
+    ended_at: inv.ended_at,
+    // The round's ledger shows its exact tokens and cost; the row doesn't round them again.
+    cost: null,
+    model_used: null,
+    runs_on: null,
+    given: null,
+    produced: null,
+  }));
+}
+
+/**
+ * The run view's agent drawer (Q20): the Team screen's drawer — the same header, badges and five
+ * tabs — opening on Runs. Runs is this run's rounds with the run-only tools (Activity, Changes, Ask);
+ * Memory is what the agent was given and what the run taught; Docs is the run's documents. Setup and
+ * Skills & tools show the run's copy of the agent, read-only, with "Edit on the team" to change it
+ * for the next run.
+ */
+export function RunNodeDrawer({
+  node,
+  nodes,
+  edges,
+  isEntry = false,
+  runId,
+  run,
+  workflowStatus,
+  tab,
+  onTabChange,
+  onClose,
+  onOpenDoc,
+  onEditOnTeam,
+  offTeam = false,
+}: {
+  node: GraphNode;
+  /** The run's graph: the read-only Setup's routing, reads and writes. */
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  /** The run's entry agent (no arrow into it). */
+  isEntry?: boolean;
+  runId: string | null;
+  run: RunRow | null;
+  workflowStatus: string | null;
+  tab: NodeTab;
+  onTabChange: (tab: NodeTab) => void;
+  onClose: () => void;
+  /** A document's Open: the document viewer over the run's canvas. */
+  onOpenDoc?: (docId: string) => void;
+  /** "Edit on the team": the team's canvas with this agent open on Setup. Omitted: no button. */
+  onEditOnTeam?: () => void;
+  /** The agent this run copied has since been deleted from the team. */
+  offTeam?: boolean;
+}) {
+  const shelves = useShelves(tab === "skills");
+  const title = nodeTitle(node);
+  const status = deriveNodeStatus(node.status, run, workflowStatus);
+  const live = !isRunTerminal(run, workflowStatus);
+  const last = node.invocations[node.invocations.length - 1] ?? null;
+  const copy = readOnlyDraft(node);
+
+  let body;
+  switch (tab) {
+    case "setup":
+      body = (
+        <SetupTab
+          readOnly
+          node={node}
+          nodes={nodes}
+          edges={edges}
+          isEntry={isEntry}
+          draft={copy}
+          picker={{
+            catalogue: getProviderCatalogue(),
+            seat: seatOf(node),
+            cover: null,
+            desktop: isDesktopApp(),
+            justAdded: new Set<string>(),
+          }}
+          agentName={title}
+          onPickTemplate={noop}
+          onUpdateRouting={noop}
+        />
+      );
+      break;
+    case "skills":
+      body = (
+        <fieldset className="nd-readonly" disabled>
+          <SkillsToolsTab
+            skills={copy.draft.skills}
+            toolConfig={copy.draft.toolConfig}
+            onSkillsChange={noop}
+            onToolsChange={noop}
+            note={null}
+            notify={noop}
+            onAddSkill={noop}
+            onEditSkill={noop}
+            onAddTool={noop}
+            onEditServer={noop}
+            shelves={shelves}
+          />
+        </fieldset>
+      );
+      break;
+    case "memory":
+      body = <RunMemory invocations={node.invocations} runId={runId} />;
+      break;
+    case "docs":
+      body = (
+        <RunDocuments
+          node={node}
+          runId={runId}
+          run={run}
+          workflowStatus={workflowStatus}
+          onOpenDoc={onOpenDoc}
+        />
+      );
+      break;
+    default:
+      body = (
+        <RunRounds
+          node={node}
+          runId={runId}
+          run={run}
+          workflowStatus={workflowStatus}
+          status={status}
+          live={live}
+        />
+      );
+  }
+
+  // Setup and Skills & tools say where a change goes instead of offering Save.
+  const footer =
+    tab === "setup" || tab === "skills" ? (
+      <footer className="nd-foot">
+        <span className="nd-foot__status">
+          This run uses a copy of the team from when it started.{" "}
+          {offTeam
+            ? "This agent is no longer on the team."
+            : "Change the agent on the team to change the next run."}
+        </span>
+        {onEditOnTeam && (
+          <Button variant="secondary" size="sm" onClick={onEditOnTeam}>
+            Edit on the team
+          </Button>
+        )}
+      </footer>
+    ) : undefined;
+
+  return (
+    <NodeDrawer
+      name={title}
+      label={`${title} in this run`}
+      header={
+        <NodeHeader
+          glyph={isEntry ? Zap : glyphForNode(node.kind, node.role_name)}
+          name={title}
+          description={nodeDescription(node)}
+          onClose={onClose}
+          badges={
+            <NodeBadges
+              status={runStatusBadge(status, last, live)}
+              editsAllowed={node.edits_allowed ?? null}
+              model={modelLabel(node.model ?? "") || null}
+              onOpenRuns={() => onTabChange("runs")}
+            />
+          }
+        />
+      }
+      tabs={
+        <NodeTabs
+          value={tab}
+          onChange={onTabChange}
+          skillsCount={skillsAndToolsCount(copy.draft.skills, copy.draft.toolConfig)}
+          memoryCount={0}
+        />
+      }
+      footer={footer}
+    >
+      {body}
+    </NodeDrawer>
+  );
+}
+
+type RunTool = "activity" | "changes" | "ask";
+const TOOL_LABEL: Record<RunTool, string> = {
+  activity: "Activity",
+  changes: "Changes",
+  ask: "Ask",
+};
+
+/**
+ * The Runs tab in a run: this agent's rounds in the run (the Team drawer's Last run card and earlier
+ * rounds, each with its exact cost and context), then the run-only tools. A worker has its step
+ * feed (Activity) and the run's file changes (Changes); once the agent has run, Ask explains what
+ * it did.
+ */
+function RunRounds({
+  node,
+  runId,
+  run,
+  workflowStatus,
+  status,
+  live,
+}: {
+  node: GraphNode;
+  runId: string | null;
+  run: RunRow | null;
+  workflowStatus: string | null;
+  status: NodeStatus;
+  live: boolean;
+}) {
+  const tools: RunTool[] = [
+    ...(node.kind === "agent" ? (["activity", "changes"] as const) : []),
+    ...(node.invocations.length > 0 ? (["ask"] as const) : []),
+  ];
+  const [picked, setPicked] = useState<RunTool | null>(null);
+  const tool = picked && tools.includes(picked) ? picked : (tools[0] ?? null);
+  const rounds = roundsOf(node, status);
+  const byIteration = new Map(node.invocations.map((inv) => [inv.iteration, inv]));
+
+  return (
+    <div className="nd-stack">
+      {rounds.length === 0 ? (
+        <EmptyCard title="Not reached in this run">
+          {live
+            ? "Its rounds show up here once the run gets to it."
+            : "The run ended before it got to this agent."}
+        </EmptyCard>
+      ) : (
+        <RoundsList
+          rounds={rounds}
+          more={(r) => <RoundLedger inv={byIteration.get(r.iteration)} />}
+        />
+      )}
+      {tool && (
+        <section className="nd-runtools" aria-label="In this run">
+          <div className="tv-seg" role="group" aria-label="Run tools">
+            {tools.map((t) => (
+              <button
+                key={t}
+                type="button"
+                aria-pressed={tool === t}
+                className={`tv-seg__btn${tool === t ? " tv-seg__btn--active" : ""}`}
+                onClick={() => setPicked(t)}
+              >
+                {TOOL_LABEL[t]}
+              </button>
+            ))}
+          </div>
+          {tool === "activity" ? (
+            <EventFeed node={node} runId={runId} run={run} workflowStatus={workflowStatus} />
+          ) : tool === "changes" ? (
+            <RunDiff runId={runId} />
+          ) : (
+            <NodeChat runId={runId} nodeId={node.id} />
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+/** A round's exact tokens and cost, and the context it was given (worker rounds). */
+function RoundLedger({ inv }: { inv: NodeInvocation | undefined }) {
+  const cost = inv?.cost;
+  const manifest = inv?.context_manifest;
+  const hasManifest = Array.isArray(manifest?.parts);
+  if (!cost && !hasManifest) return null;
+  return (
+    <div className="nd-ledger">
+      {cost && (
+        <div className="nd-round__meta">
+          <span>
+            {cost.prompt_tokens.toLocaleString()} in / {cost.completion_tokens.toLocaleString()} out
+          </span>
+          <span>${cost.cost_usd.toFixed(4)}</span>
+        </div>
+      )}
+      {manifest && hasManifest && <ContextManifest manifest={manifest} />}
+    </div>
+  );
+}
+
+/** The placeholder when the run has no documents yet — from run-level signals. */
 function specEmptyHint(
   runId: string | null,
   run: RunRow | null,
@@ -35,284 +391,60 @@ function specEmptyHint(
   return "The product manager is drafting the spec…";
 }
 
-/** M-docs: the run-view document PICKER. Lists EVERY document the run produced — the entry PM's spec
- *  plus any node's authored document (a Design Doc, etc.) — and opens the selected one in the SAME
- *  TipTap editor via {@link PrdView}. A single-document run (the common case) shows NO chip bar and
- *  is byte-identical to the old single-PrdView panel. Editability is run-level; every document shares
- *  it. Fetches the run's document list on open; each chip opens its document by id. */
-function PrdDocuments({
+/**
+ * The Docs tab in a run: the run's documents — the shared spec first, then what the agents wrote —
+ * each opening in the document viewer (where a live run's spec is edited). Reloads when this
+ * agent's round moves on, so a new version shows up.
+ */
+function RunDocuments({
+  node,
   runId,
   run,
   workflowStatus,
+  onOpenDoc,
 }: {
+  node: GraphNode;
   runId: string | null;
   run: RunRow | null;
   workflowStatus: string | null;
+  onOpenDoc?: (docId: string) => void;
 }) {
-  const [docs, setDocs] = useState<DocumentMeta[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!runId) {
-      setDocs([]);
-      return;
-    }
-    let cancelled = false;
-    getRunDocuments(runId)
-      .then((r) => {
-        if (!cancelled) setDocs(r.documents);
-      })
-      .catch(() => {
-        if (!cancelled) setDocs([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [runId]);
-
-  // Default to the run's primary spec (pm_document_id) when present, else the first document.
-  const primaryId = run?.pm_document_id ?? null;
-  const hasPrimary = docs.some((d) => d.id === primaryId);
-  const activeId = selectedId ?? (hasPrimary ? primaryId : (docs[0]?.id ?? primaryId));
-
-  return (
-    <div className="tv-prd-docs">
-      {docs.length > 1 && (
-        <div
-          className="tv-prd__versions"
-          role="group"
-          aria-label="Documents"
-          data-testid="doc-picker"
-        >
-          {docs.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              className={`tv-prd__version${d.id === activeId ? " tv-prd__version--active" : ""}`}
-              onClick={() => setSelectedId(d.id)}
-              data-doc-name={d.name ?? d.doc_type}
-            >
-              {d.name ?? d.title}
-            </button>
-          ))}
-        </div>
-      )}
-      <PrdView
-        documentId={activeId}
-        emptyHint={specEmptyHint(runId, run, workflowStatus)}
-        editable={isPrdEditable(run?.status ?? null, workflowStatus)}
+  const docs = useLoaded(
+    runId && `${runId}:${node.status}:${node.iteration}`,
+    () => listRunDocs(runId ?? "").then((d) => d.documents),
+    { keep: true },
+  );
+  const all = docs.value ?? [];
+  if (all.length === 0) {
+    return docs.state === "loading" || docs.state === "error" ? (
+      <LoadState
+        state={docs.state}
+        loading="Loading documents"
+        error="Couldn’t load this run’s documents."
+        onRetry={docs.retry}
       />
-    </div>
-  );
-}
-
-// F1c Decision 2: the run-view subtitle is STATUS-based (from the SAME derived status the node card
-// uses — `deriveNodeStatus`), not role-based. Reads what the node is doing right now.
-const STATUS_SUBTITLE: Record<NodeStatus, string> = {
-  running: "Working now",
-  done: "Finished",
-  idle: "Not reached yet",
-  failed: "Failed",
-  stopped: "Stopped",
-};
-
-/**
- * The run view's drawer (Q20): the agent drawer's shell and header — the node's name, a
- * STATUS-based subtitle (Working now / Finished / Not reached yet / Failed / Stopped) and its last
- * round's badge and model — over the uniform "Last run" brief and a kind-specific body: a thinker
- * (`completion`) shows the run's documents (`PrdView`, live-editable in-flight), a worker the
- * step-by-step feed, its changes, Ask and Memory. No tabs and no Save: nothing here is edited.
- */
-export function RunNodeDrawer({
-  node,
-  runId,
-  run,
-  workflowStatus,
-  onClose,
-}: {
-  node: GraphNode;
-  runId: string | null;
-  run: RunRow | null;
-  workflowStatus: string | null;
-  onClose: () => void;
-}) {
-  const title = nodeTitle(node);
-  const status = deriveNodeStatus(node.status, run, workflowStatus);
-  const last = node.invocations[node.invocations.length - 1] ?? null;
-
-  // A thinker refines the SAME shared spec, so `PrdView` is correct for ANY thinker; editability is
-  // run-status-based (P1.7b), never role-based.
-  const body: ReactNode =
-    node.kind === "completion" ? (
-      <ThinkerBody node={node} runId={runId} run={run} workflowStatus={workflowStatus} />
     ) : (
-      <WorkerBody node={node} runId={runId} run={run} workflowStatus={workflowStatus} />
+      <EmptyCard
+        title="No documents yet"
+        icon={<FileText size={28} strokeWidth={1.4} aria-hidden />}
+      >
+        {specEmptyHint(runId, run, workflowStatus)}
+      </EmptyCard>
     );
-
+  }
+  const ordered = [...all.filter((d) => d.is_shared_spec), ...all.filter((d) => !d.is_shared_spec)];
   return (
-    <NodeDrawer
-      name={title}
-      label={`${title} in this run`}
-      bare
-      header={
-        <NodeHeader
-          glyph={glyphForNode(node.kind, node.role_name)}
-          name={title}
-          description={STATUS_SUBTITLE[status] ?? "Inspector"}
-          onClose={onClose}
-          badges={
-            <NodeBadges
-              status={statusBadge(last)}
-              editsAllowed={node.edits_allowed ?? null}
-              model={modelLabel(node.model ?? "") || null}
-            />
-          }
+    <ul className="nd-docs__list">
+      {ordered.map((d) => (
+        <DocCard
+          key={d.id}
+          shared={d.is_shared_spec}
+          title={docLabel(d)}
+          sub={d.is_shared_spec ? specLine(d) : writtenBy(d)}
+          meta={d.is_shared_spec ? versionLine(d) : readersLine(d)}
+          onOpen={onOpenDoc && (() => onOpenDoc(d.id))}
         />
-      }
-    >
-      <section className="tv-lastrun" aria-label="Last run">
-        <div className="tv-lastrun__head">Last run</div>
-        <LastRun rounds={node.invocations} />
-      </section>
-      {body}
-    </NodeDrawer>
-  );
-}
-
-/**
- * A worker (`agent`) node's drawer body: the action/observation feed and the run's per-file diff,
- * behind an Activity|Changes segmented tab (M-changes). A diff is the product of a worker editing
- * the repo, so it lives on the worker; it can't stack under the auto-scrolling feed, so the tab
- * shows one at a time. "Activity" is the default (so nothing about the run view changes until the
- * reviewer clicks "Changes"), and RunDiff only fetches once it's the active tab.
- */
-function WorkerBody({
-  node,
-  runId,
-  run,
-  workflowStatus,
-}: {
-  node: GraphNode;
-  runId: string | null;
-  run: RunRow | null;
-  workflowStatus: string | null;
-}) {
-  // Mode A: the Ask + Memory tabs appear only once the node has a recorded run to explain / inspect.
-  const canAsk = node.invocations.length > 0;
-  const [tab, setTab] = useState<"activity" | "changes" | "ask" | "memory">("activity");
-  return (
-    <>
-      <div className="tv-worktabs">
-        <div className="tv-seg" role="group" aria-label="Worker view">
-          <button
-            type="button"
-            aria-pressed={tab === "activity"}
-            className={`tv-seg__btn${tab === "activity" ? " tv-seg__btn--active" : ""}`}
-            onClick={() => setTab("activity")}
-          >
-            Activity
-          </button>
-          <button
-            type="button"
-            aria-pressed={tab === "changes"}
-            className={`tv-seg__btn${tab === "changes" ? " tv-seg__btn--active" : ""}`}
-            onClick={() => setTab("changes")}
-          >
-            Changes
-          </button>
-          {canAsk ? (
-            <>
-              <button
-                type="button"
-                aria-pressed={tab === "ask"}
-                className={`tv-seg__btn${tab === "ask" ? " tv-seg__btn--active" : ""}`}
-                onClick={() => setTab("ask")}
-              >
-                Ask
-              </button>
-              <button
-                type="button"
-                aria-pressed={tab === "memory"}
-                className={`tv-seg__btn${tab === "memory" ? " tv-seg__btn--active" : ""}`}
-                onClick={() => setTab("memory")}
-              >
-                Memory
-              </button>
-            </>
-          ) : null}
-        </div>
-      </div>
-      {tab === "activity" ? (
-        <EventFeed node={node} runId={runId} run={run} workflowStatus={workflowStatus} />
-      ) : tab === "changes" ? (
-        <RunDiff runId={runId} />
-      ) : tab === "memory" ? (
-        <RunMemory invocations={node.invocations} runId={runId} />
-      ) : (
-        <NodeChat runId={runId} nodeId={node.id} />
-      )}
-    </>
-  );
-}
-
-/**
- * A thinker (`completion`) node's drawer body: the shared spec (`PrdView`, live-editable in-flight,
- * P1.7b). Once the node has a recorded run, a Spec|Ask segmented tab is added so the user can ask
- * what the thinker did (Mode A). Spec stays the default, so the run view is unchanged until asked;
- * before the node has run (no invocations) it is just the bare spec (byte-identical to before).
- */
-function ThinkerBody({
-  node,
-  runId,
-  run,
-  workflowStatus,
-}: {
-  node: GraphNode;
-  runId: string | null;
-  run: RunRow | null;
-  workflowStatus: string | null;
-}) {
-  const canAsk = node.invocations.length > 0;
-  const [tab, setTab] = useState<"spec" | "ask" | "memory">("spec");
-  const spec = <PrdDocuments runId={runId} run={run} workflowStatus={workflowStatus} />;
-  if (!canAsk) return spec;
-  return (
-    <>
-      <div className="tv-worktabs">
-        <div className="tv-seg" role="group" aria-label="Thinker view">
-          <button
-            type="button"
-            aria-pressed={tab === "spec"}
-            className={`tv-seg__btn${tab === "spec" ? " tv-seg__btn--active" : ""}`}
-            onClick={() => setTab("spec")}
-          >
-            Spec
-          </button>
-          <button
-            type="button"
-            aria-pressed={tab === "ask"}
-            className={`tv-seg__btn${tab === "ask" ? " tv-seg__btn--active" : ""}`}
-            onClick={() => setTab("ask")}
-          >
-            Ask
-          </button>
-          <button
-            type="button"
-            aria-pressed={tab === "memory"}
-            className={`tv-seg__btn${tab === "memory" ? " tv-seg__btn--active" : ""}`}
-            onClick={() => setTab("memory")}
-          >
-            Memory
-          </button>
-        </div>
-      </div>
-      {tab === "spec" ? (
-        spec
-      ) : tab === "memory" ? (
-        <RunMemory invocations={node.invocations} runId={runId} />
-      ) : (
-        <NodeChat runId={runId} nodeId={node.id} />
-      )}
-    </>
+      ))}
+    </ul>
   );
 }

@@ -18,6 +18,7 @@ export function SaveBar({
   memoryTab = false,
   onSave,
   onDiscard,
+  onReview,
 }: {
   dirtyCount: number;
   saveState: SaveState;
@@ -29,8 +30,11 @@ export function SaveBar({
   memoryTab?: boolean;
   onSave: () => void;
   onDiscard: () => void;
+  /** Focus mode (spec OQ-4): the dirty count is a button that opens Review changes. */
+  onReview?: () => void;
 }) {
   const changes = `${dirtyCount} ${dirtyCount === 1 ? "change" : "changes"}`;
+  const unsaved = problem || `${dirtyCount} unsaved ${dirtyCount === 1 ? "change" : "changes"}`;
   if (saveState === "saving") {
     return (
       <footer className="nd-foot">
@@ -65,8 +69,22 @@ export function SaveBar({
     return (
       <footer className="nd-foot">
         <span className="nd-foot__status nd-foot__status--dirty" role="status">
-          <span className="nd-foot__dot" aria-hidden />
-          {problem || `${dirtyCount} unsaved ${dirtyCount === 1 ? "change" : "changes"}`}
+          {onReview ? (
+            <button
+              type="button"
+              className="nd-foot__review"
+              title={`Review ${changes}`}
+              onClick={onReview}
+            >
+              <span className="nd-foot__dot" aria-hidden />
+              {unsaved}
+            </button>
+          ) : (
+            <>
+              <span className="nd-foot__dot" aria-hidden />
+              {unsaved}
+            </>
+          )}
         </span>
         <div className="nd-foot__actions">
           <Button variant="ghost" size="sm" onClick={onDiscard}>

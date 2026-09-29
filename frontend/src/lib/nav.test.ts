@@ -57,6 +57,16 @@ describe("parseRoute / routeToHash", () => {
       "#/teams/t1/docs/d1?v=3&compare=2",
       { page: "team", teamId: "t1", docId: "d1", version: 3, compare: 2 },
     ],
+    // The viewer over a run view keeps the run's canvas under it.
+    [
+      "#/teams/t1/runs/r1/docs/d1?v=2",
+      { page: "team", teamId: "t1", runId: "r1", docId: "d1", version: 2 },
+    ],
+    // Opened from the focus view: closing it lands back there.
+    [
+      "#/teams/t1/docs/d1?node=n1&tab=docs&focus=1",
+      { page: "team", teamId: "t1", docId: "d1", node: "n1", tab: "docs", focus: true },
+    ],
   ];
 
   it.each(cases)("%s round-trips", (hash, route) => {

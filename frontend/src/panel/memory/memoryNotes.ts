@@ -55,3 +55,26 @@ export function noteOrigin(note: Memory): string {
   const date = shortDate(note.created_at);
   return date ? `${what} · ${date}` : what;
 }
+
+/**
+ * Focus-Memory's provenance line (FOCUS-58): "Learned in round 2 · confirmed 3× · pinned" or
+ * "Added by you · Sep 20".
+ */
+export function noteProvenance(note: Memory): string {
+  const parts =
+    note.source.kind === "manual"
+      ? ["Added by you", shortDate(note.created_at)]
+      : [
+          note.source.round !== null ? `Learned in round ${note.source.round}` : "Learned in a run",
+          `confirmed ${note.confirmation_count}×`,
+        ];
+  if (note.pinned) parts.push("pinned");
+  return parts.filter(Boolean).join(" · ");
+}
+
+/** A suggestion's origin (FOCUS-57): "Suggested after round 3 of “Add an RSI indicator”". */
+export function suggestedLine(note: Memory): string {
+  const round = note.source.round !== null ? `round ${note.source.round}` : "a round";
+  const run = note.source.run_title;
+  return run ? `Suggested after ${round} of “${run}”` : `Suggested after ${round}`;
+}

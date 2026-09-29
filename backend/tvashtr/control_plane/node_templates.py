@@ -6,10 +6,13 @@ the drawer's Templates menu offers (``GET /api/node-templates``). Moved out of
 ``teams.py`` constants the builders seed.
 
 Each template carries the display ``title`` / ``description`` a new node is seeded with
-(``config.title`` / ``config.description``), its ``role_name`` (stable — memory distillation and
-trajectories key on it), the canvas ``node_kind`` (``thinker`` = a ``completion`` node, ``worker`` =
-an ``agent`` node), the default File access the UI applies with the template (``edits_allowed``),
-the document it writes by default (``writes_to``) and the verdict labels its instructions emit.
+(``config.title`` / ``config.description``), a one-sentence ``summary`` of what the template's
+instructions do (the focus view's Templates dialog lists it; true to the prompt — the Architect
+refines the shared spec, it writes no document of its own), its ``role_name`` (stable — memory
+distillation and trajectories key on it), the canvas ``node_kind`` (``thinker`` = a ``completion``
+node, ``worker`` = an ``agent`` node), the default File access the UI applies with the template
+(``edits_allowed``), the document it writes by default (``writes_to``) and the verdict labels its
+instructions emit.
 Pure data — no DB, no DBOS."""
 
 from tvashtr.control_plane.teams import (
@@ -24,6 +27,7 @@ NODE_TEMPLATES: tuple[dict, ...] = (
         "key": "pm",
         "title": "Product manager",
         "description": "Drafts the spec",
+        "summary": "Turns your idea into a spec the team can build from.",
         "role_name": "pm",
         "node_kind": "thinker",
         "edits_allowed": False,
@@ -35,6 +39,7 @@ NODE_TEMPLATES: tuple[dict, ...] = (
         "key": "architect",
         "title": "Architect",
         "description": "Adds the technical design",
+        "summary": "Plans the change and adds a technical design to the spec.",
         "role_name": "architect",
         "node_kind": "thinker",
         "edits_allowed": False,
@@ -46,6 +51,7 @@ NODE_TEMPLATES: tuple[dict, ...] = (
         "key": "engineer",
         "title": "Engineer",
         "description": "Writes & ships it",
+        "summary": "Builds the change the spec asks for.",
         "role_name": "engineer",
         "node_kind": "worker",
         "edits_allowed": True,
@@ -57,6 +63,7 @@ NODE_TEMPLATES: tuple[dict, ...] = (
         "key": "reviewer",
         "title": "Reviewer",
         "description": "Checks against the spec",
+        "summary": "Checks the build against the spec and gives a verdict.",
         "role_name": "reviewer",
         "node_kind": "worker",
         "edits_allowed": False,

@@ -15,6 +15,8 @@ export interface NodeMemories {
   retry: () => void;
   /** Make one change, then reload both lists. `null` when the change failed. */
   change: <T>(call: () => Promise<T>) => Promise<{ value: T } | null>;
+  /** Counts the changes made here (a view of other notes reloads when it moves). */
+  changes: number;
 }
 
 /**
@@ -25,6 +27,7 @@ export function useNodeMemories(nodeId: string): NodeMemories {
   const [state, setState] = useState<NodeMemories["state"]>("loading");
   const [active, setActive] = useState<Memory[]>([]);
   const [pending, setPending] = useState<Memory[]>([]);
+  const [changes, setChanges] = useState(0);
   const live = useRef(true);
 
   const reload = useCallback(async () => {
@@ -60,6 +63,7 @@ export function useNodeMemories(nodeId: string): NodeMemories {
       try {
         const value = await call();
         await reload();
+        if (live.current) setChanges((n) => n + 1);
         return { value };
       } catch (e) {
         // The app answered; only the embedding service behind it didn't.
@@ -77,5 +81,6 @@ export function useNodeMemories(nodeId: string): NodeMemories {
     count: state === "ready" ? active.length + pending.length : 0,
     retry,
     change,
+    changes,
   };
 }

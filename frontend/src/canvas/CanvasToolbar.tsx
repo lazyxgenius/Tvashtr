@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ArrowLeft, Play } from "lucide-react";
+import { ArrowLeft, FileText, Play } from "lucide-react";
 
 import { Button, IconButton } from "../design-system/components";
 import { useBackendStatus } from "../lib/backendStatus";
@@ -28,6 +28,7 @@ export function CanvasToolbar({
   run,
   teamName,
   spend,
+  docs,
   children,
 }: {
   onBack?: () => void;
@@ -35,6 +36,8 @@ export function CanvasToolbar({
   run?: { disabled: boolean; title?: string; onRun: () => void };
   teamName: string;
   spend: string;
+  /** DOCS-10: the "Documents {n}" toggle, once the team has a run (count null while loading). */
+  docs?: { count: number | null; open: boolean; onToggle: () => void };
   children?: ReactNode;
 }) {
   return (
@@ -65,6 +68,18 @@ export function CanvasToolbar({
         )}
         {children}
         {teamName && <span className="cv-team">{teamName}</span>}
+        {docs && (
+          <button
+            type="button"
+            className="cv-docs"
+            aria-pressed={docs.open}
+            onClick={docs.onToggle}
+          >
+            <FileText size={15} strokeWidth={1.6} aria-hidden />
+            Documents
+            {docs.count !== null && <span className="cv-docs__count">{docs.count}</span>}
+          </button>
+        )}
       </div>
       <div className="cv-right">
         <span title="Spend this run">{spend}</span>
