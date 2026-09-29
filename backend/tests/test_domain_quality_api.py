@@ -275,3 +275,64 @@ def test_newest_runs_first_numbered_within_the_domain(started):
             )
     runs = c.get(f"/api/domains/{did}/eval/runs?limit=2").json()["runs"]
     assert [(r["number"], r["hit_at_k"]) for r in runs] == [(3, 1.0), (2, 0.5)]
+
+
+def test_a_search_crash_fails_the_case_and_the_run_still_finishes(client, started, monkeypatch):
+    """Review finding 1: any error in search (not only DomainAskError) is that case's error, so
+    the workflow reaches ``finish_eval_run_step`` and the run never stays "running"."""
+    c, _ = _fresh()
+    did = _domain(c)
+    _case(c, did, expected_keywords=["a"])
+
+    def _boom(owner_id, domain_id, question):
+        raise RuntimeError("vector store exploded")
+
+    monkeypatch.setattr(domain_eval, "retrieve_domain", _boom)
+    run = c.post(f"/api/domains/{did}/eval/runs").json()
+    fn, *args = started[0]
+    assert fn(*args)["status"] == "failed"
+    detail = c.get(f"/api/domains/{did}/eval/runs/{run['run_id']}").json()
+    assert (detail["status"], detail["error_message"]) == ("failed", "vector store exploded")
+
+
+def test_tests_after_a_reread_never_leave_a_running_row(monkeypatch):
+    """Review finding 1: ``run_domain_eval`` (run after a re-read) with a crashing search ends."""
+    c, uid = _fresh()
+    did = _domain(c)
+    _case(c, did, expected_keywords=["a"])
+
+    def _boom(owner_id, domain_id, question):
+        raise RuntimeError("vector store exploded")
+
+    monkeypatch.setattr(domain_eval, "retrieve_domain", _boom)
+    out = domain_eval.run_domain_eval(uid, uuid.UUID(did))
+    assert out["status"] != "running"
+    with session_scope() as s:
+        statuses = [
+            r.status
+            for r in s.query(DomainEvalRun).filter(DomainEvalRun.domain_id == uuid.UUID(did))
+        ]
+    assert statuses and "running" not in statuses
+
+
+def test_a_run_left_running_past_the_stale_limit_reads_as_failed(started):
+    """Review finding 1: a run whose workflow died stays "running" in the row; the views say
+    ``failed`` once it is older than ``RUN_STALE_AFTER`` so the Quality tab stops polling."""
+    c, _ = _fresh()
+    did = _domain(c)
+    _case(c, did, expected_keywords=["a"])
+    with session_scope() as s:
+        row = DomainEvalRun(
+            domain_id=uuid.UUID(did),
+            status="running",
+            scores={"per_case": [], "cases_total": 1},
+            created_at=datetime.now(UTC) - domain_eval.RUN_STALE_AFTER - timedelta(minutes=1),
+        )
+        s.add(row)
+        s.flush()
+        rid = str(row.id)
+    listed = c.get(f"/api/domains/{did}/eval/runs").json()["runs"]
+    assert [(r["run_id"], r["status"]) for r in listed] == [(rid, "failed")]
+    assert listed[0]["error_message"]
+    detail = c.get(f"/api/domains/{did}/eval/runs/{rid}").json()
+    assert detail["status"] == "failed"

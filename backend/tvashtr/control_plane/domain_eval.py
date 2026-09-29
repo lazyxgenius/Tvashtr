@@ -34,6 +34,7 @@ CASE_LIMIT = "You can have up to 50 test questions."
 NO_CASES = "Add a test question first."
 # A run still "running" after this long died with its process (the old sync runs had no workflow).
 RUN_STALE_AFTER = timedelta(minutes=15)
+RUN_STOPPED = "The test run stopped before it finished."
 # Passages kept per case for "What search found (top 3 of k)" (DM-77).
 TOP_PASSAGES = 3
 
@@ -327,6 +328,8 @@ def score_case(owner_id: uuid.UUID, domain_id: uuid.UUID, snap: dict) -> dict:
     except DomainAskError as e:
         detail = e.detail
         entry["error"] = detail.get("message") if isinstance(detail, dict) else str(detail)
+    except Exception as e:  # any search failure is this case's error, never a stuck run
+        entry["error"] = str(e)[:2000] or e.__class__.__name__
     return entry
 
 
@@ -383,10 +386,14 @@ def run_view(run: DomainEvalRun, number: int, *, full: bool = True) -> dict:
     """A run for the Quality tab: flat scores, progress and (``full``) every case's result."""
     scores = dict(run.scores or {})
     per_case = list(scores.get("per_case") or [])
+    status, error = run.status, run.error_message
+    if status == "running" and run.created_at < datetime.now(UTC) - RUN_STALE_AFTER:
+        # Its workflow died (the row can't finish itself): say so, so the page stops waiting.
+        status, error = "failed", error or RUN_STOPPED
     view = {
         "run_id": str(run.id),
         "number": number,
-        "status": run.status,
+        "status": status,
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "completed_at": run.completed_at.isoformat() if run.completed_at else None,
         "hit_at_k": scores.get("hit_at_k"),
@@ -395,7 +402,7 @@ def run_view(run: DomainEvalRun, number: int, *, full: bool = True) -> dict:
         "top_k": scores.get("top_k"),
         "config": scores.get("config"),
         "progress": {"done": len(per_case), "total": int(scores.get("cases_total") or 0)},
-        "error_message": run.error_message,
+        "error_message": error,
     }
     if full:
         view["domain_id"] = str(run.domain_id)
