@@ -132,16 +132,10 @@ describe("rewriteGithubInstallUrlForDesktop", () => {
   it("rewrites redirect_uri to the current loopback origin when tvashtrDesktop is set", () => {
     window.tvashtrDesktop = {
       engines: {
-        getStatus: async () => [],
-        connect: async () => {
-          throw new Error("not implemented in test stub");
-        },
-        disconnect: async () => {
-          throw new Error("not implemented in test stub");
-        },
-        refresh: async () => {
-          throw new Error("not implemented in test stub");
-        },
+        getStatus: () => Promise.resolve([]),
+        connect: () => Promise.reject(new Error("not implemented in test stub")),
+        disconnect: () => Promise.reject(new Error("not implemented in test stub")),
+        refresh: () => Promise.reject(new Error("not implemented in test stub")),
       },
     };
     // jsdom location is http://localhost:3000 by default in this suite setup — accept whatever origin.
