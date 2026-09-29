@@ -295,6 +295,7 @@ function DesktopGateInner({ onSetup }: { onSetup: boolean }) {
     void rememberUser({
       login: authedUser.github_login || authedUser.display_name || authedUser.email,
       displayName: authedUser.display_name || authedUser.github_login || authedUser.email,
+      github: Boolean(authedUser.github_login),
     });
     // Back to where the session ended (DT-11), unless a deep link asked for somewhere else.
     if (returnTo.current && window.location.hash !== returnTo.current) {

@@ -201,7 +201,11 @@ function createDesktopSignIn({
         display_name: typeof body.display_name === "string" ? body.display_name : "",
       };
       try {
-        lastUser.save({ login: user.github_login || user.display_name, displayName: user.display_name });
+        lastUser.save({
+          login: user.github_login || user.display_name,
+          displayName: user.display_name,
+          github: Boolean(user.github_login),
+        });
       } catch (e) {
         log(`[tvashtr-desktop] couldn't remember the last user: ${e}`);
       }

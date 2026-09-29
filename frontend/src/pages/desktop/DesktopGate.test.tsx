@@ -189,6 +189,7 @@ describe("DesktopGate — browser sign-in (DT-6..DT-9)", () => {
     expect(bridge.auth.rememberUser).toHaveBeenCalledWith({
       login: "lazyxgenius",
       displayName: "lazyxgenius",
+      github: true,
     });
     expect(document.title).toBe("Tvashtr — the living canvas");
   });

@@ -123,7 +123,7 @@ test("a matching code is exchanged with the verifier; the cookie lands on the lo
   assert.deepEqual(cookies, [
     { url: "http://127.0.0.1:5178", value: "signed.cookie.value", maxAgeSeconds: 1209600 },
   ]);
-  assert.deepEqual(saved, [{ login: "lazyxgenius", displayName: "lazyxgenius" }]);
+  assert.deepEqual(saved, [{ login: "lazyxgenius", displayName: "lazyxgenius", github: true }]);
   assert.equal(focused(), 1);
   assert.deepEqual(events.at(-1), { state: "signed_in", user: USER });
   assert.equal(signIn.isPending(), false);
@@ -230,14 +230,30 @@ test("challengeFor matches RFC 7636's S256 test vector", () => {
   assert.match(challengeFor(v), /^[A-Za-z0-9_-]{43}$/);
 });
 
-test("lastUser round trip keeps only the login and display name", () => {
+test("lastUser round trip keeps only the login, display name and whether it's a GitHub login", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tv-last-user-"));
   const store = createLastUser({ userDataDir: dir });
   assert.equal(store.get(), null);
-  assert.equal(store.save({ login: "lazyxgenius", displayName: "lazyxgenius", token: "x" }), true);
-  assert.deepEqual(store.get(), { login: "lazyxgenius", displayName: "lazyxgenius" });
+  assert.equal(store.githubLogin(), null);
+  assert.equal(
+    store.save({ login: "lazyxgenius", displayName: "lazyxgenius", github: true, token: "x" }),
+    true,
+  );
+  assert.deepEqual(store.get(), { login: "lazyxgenius", displayName: "lazyxgenius", github: true });
+  assert.equal(store.githubLogin(), "lazyxgenius");
   const raw = JSON.parse(fs.readFileSync(path.join(dir, LAST_USER_FILENAME), "utf8"));
-  assert.deepEqual(Object.keys(raw).sort(), ["displayName", "login"]);
+  assert.deepEqual(Object.keys(raw).sort(), ["displayName", "github", "login"]);
+  // Independent review: an email-only account's "login" is its display name ("Lazyx"), which is
+  // not a GitHub login — "Set up git here" must never turn it into Lazyx@users.noreply.github.com.
+  assert.equal(store.save({ login: "Lazyx", displayName: "Lazyx", github: false }), true);
+  assert.equal(store.githubLogin(), null);
+  // A file written before the flag existed can't vouch for its login either.
+  fs.writeFileSync(
+    path.join(dir, LAST_USER_FILENAME),
+    JSON.stringify({ login: "Lazyx", displayName: "Lazyx" }),
+  );
+  assert.equal(store.get().login, "Lazyx");
+  assert.equal(store.githubLogin(), null);
   assert.equal(store.save({ login: "../../etc" }), false, "a login is a login, not a path");
   store.forget();
   assert.equal(store.get(), null);
