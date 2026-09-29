@@ -15,7 +15,8 @@ import { InfoTip } from "../InfoTip";
 import { changedLines } from "./lineDiff";
 import { TIPS } from "./setupCopy";
 
-/** The editor is collapsed to this height, with a fade and "Show all N lines" (PANEL-29). */
+/** The editor is collapsed to this height, with a fade and "Show all N lines" (PANEL-29) — or
+ *  just "Show all" when a few long lines only overflow by wrapping (no "Show all 1 lines"). */
 const COLLAPSED_PX = 196;
 
 /**
@@ -152,7 +153,7 @@ export function InstructionsCard({
               aria-expanded={expanded}
               onClick={() => setExpanded((x) => !x)}
             >
-              {expanded ? "Show less" : `Show all ${lines} lines`}
+              {expanded ? "Show less" : lines > 9 ? `Show all ${lines} lines` : "Show all"}
             </button>
           )}
         </div>
