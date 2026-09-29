@@ -566,3 +566,27 @@ def test_pointing_a_query_node_at_another_accounts_domain_is_404():
     assert (r.status_code, r.json()["detail"]) == (404, "domain not found")
     with session_scope() as s:
         assert s.get(AgentNode, uuid.UUID(node["id"])).config["domain_id"] is None
+
+
+def test_the_v2_step_uses_nothing_from_another_accounts_domain(monkeypatch):
+    """Review (missing cross-account test): ``domain_query_step_v2`` handed another account's
+    domain id (a stale node, or one set behind the API's back) fails the round without asking."""
+    _, owner = _fresh()
+    theirs = _theirs()
+    run_id = str(uuid.uuid4())
+    with session_scope() as s:
+        s.add(
+            Run(
+                id=uuid.UUID(run_id),
+                team_graph_id=uuid.UUID(build_two_node_team()),
+                owner_id=owner,
+                idea="refunds",
+                workflow_id=run_id,
+                status="running",
+            )
+        )
+    asked: list = []
+    monkeypatch.setattr(domain_ask_mod, "ask_domain", lambda *a, **k: asked.append(a) or _answer())
+    out = team_run.domain_query_step_v2(run_id, str(uuid.uuid4()), 0, 0, theirs, "Refunds?")
+    assert out == {"status": "failed", "error": "This Query domain node’s domain was deleted."}
+    assert asked == []

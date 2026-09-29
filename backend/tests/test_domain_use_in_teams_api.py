@@ -317,6 +317,50 @@ def test_add_step_to_another_accounts_team_is_404():
     assert resp.json()["detail"] == "library team not found"
 
 
+def test_add_step_for_another_accounts_domain_is_404():
+    """Review (missing cross-account test): the caller's own team, a domain that isn't theirs."""
+    c, owner = _fresh()
+    docs = _docs_team(owner)
+    stranger, _ = _fresh()
+    theirs = _domain(stranger, "Secret docs")
+    resp = c.post(
+        f"/api/domains/{theirs}/steps",
+        json={"team_id": str(docs["team"]), "after_node_id": str(docs["pm"]), "prompt": "q"},
+    )
+    assert (resp.status_code, resp.json()["detail"]) == (404, "domain not found")
+    with session_scope() as s:
+        nodes, _ = graph_dicts(s, docs["team"])
+    assert not any(n["kind"] == "domain_query" for n in nodes)
+
+
+def test_a_run_whose_step_points_at_another_accounts_domain_is_refused(monkeypatch):
+    """Review (missing cross-account test): a Query domain step holding another account's domain id
+    (set behind the API's back) is refused at launch with the missing-domain finding — no run, no
+    workflow, nothing read from that domain."""
+    c, owner = _fresh()
+    docs = _docs_team(owner)
+    mine = _domain(c)
+    step = c.post(
+        f"/api/domains/{mine}/steps",
+        json={"team_id": str(docs["team"]), "after_node_id": str(docs["pm"]), "prompt": "q"},
+    ).json()["node_id"]
+    stranger, _ = _fresh()
+    theirs = _domain(stranger, "Secret docs")
+    with session_scope() as s:
+        node = s.get(AgentNode, uuid.UUID(step))
+        node.config = {**node.config, "domain_id": theirs}
+    started: list = []
+    monkeypatch.setattr("tvashtr.routers.DBOS.start_workflow", lambda *a, **k: started.append(a))
+
+    resp = c.post("/api/runs", json={"team_graph_id": str(docs["team"]), "idea": "refunds"})
+    assert resp.status_code == 422, resp.text
+    errors = resp.json()["detail"]["errors"]
+    assert [(e["code"], e["node_id"]) for e in errors] == [("domain_query_no_domain", step)]
+    assert started == []
+    with session_scope() as s:
+        assert s.query(Run).filter(Run.owner_id == owner).count() == 0
+
+
 def test_step_title_keeps_acronyms():
     assert step_title("Support docs") == "Look up support docs"
     assert step_title("Q3 filings") == "Look up Q3 filings"
@@ -480,3 +524,38 @@ def test_the_tool_list_names_the_domains_the_agent_can_search(monkeypatch):
     # No session (a stdio debug run): the plain descriptions.
     monkeypatch.setattr(mcp, "get_context", lambda: ctx({}))
     assert all("Domains you can search" not in t.description for t in asyncio.run(mcp.list_tools()))
+
+
+def test_a_foreign_domain_in_the_allowlist_header_is_not_usable(monkeypatch):
+    """Review (missing cross-account test): another account's domain id in the agent's
+    ``X-Tvashtr-Domains`` header is never searched — by id or by name, with either tool."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from starlette.requests import Request
+
+    from tvashtr.auth import SESSION_COOKIE_NAME, make_session_cookie_value
+
+    c, owner = _fresh()
+    _domain(c)
+    stranger, _ = _fresh()
+    theirs = _domain(stranger, "Secret docs")
+    cookie = f"{SESSION_COOKIE_NAME}={make_session_cookie_value(str(owner))}"
+    raw = [(b"cookie", cookie.encode()), (DOMAINS_HEADER.lower().encode(), theirs.encode())]
+    ctx = SimpleNamespace(
+        request_context=SimpleNamespace(request=Request({"type": "http", "headers": raw}))
+    )
+    mcp = domain_mcp.create_domains_fastmcp()
+    monkeypatch.setattr(mcp, "get_context", lambda: ctx)
+    used: list = []
+    monkeypatch.setattr(domain_mcp, "ask_domain", lambda *a, **k: used.append(a))
+    monkeypatch.setattr(domain_mcp, "retrieve_domain", lambda *a, **k: used.append(a))
+
+    for tool, args in (("domain_ask", {"question": "q"}), ("domain_retrieve", {"query": "q"})):
+        for ref in ({"domain_id": theirs}, {"domain": "Secret docs"}, {}):
+            with pytest.raises(Exception) as ei:
+                asyncio.run(mcp.call_tool(tool, {**args, **ref}))
+            assert "You can’t search any domains." in str(ei.value)
+    assert used == []
+    tools = asyncio.run(mcp.list_tools())
+    assert all(t.description.endswith("You can’t search any domains.") for t in tools)

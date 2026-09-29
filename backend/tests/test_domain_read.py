@@ -293,6 +293,20 @@ def test_saving_the_reading_key_starts_waiting_files(started):
     assert _status(doc["document_id"]) == ("indexing", 1)
 
 
+def test_saving_a_key_starts_only_the_callers_waiting_files(started):
+    """Review (missing cross-account test): another account's files waiting for the same
+    provider's key stay waiting — a key save never reads them."""
+    c, _ = _fresh()
+    mine = _upload(c, _domain(c), "refund-policy.md", b"# Refunds")
+    other, _ = _fresh()
+    theirs = _upload(other, _domain(other), "secret.md", b"# Secret")
+    assert (mine["reading"], theirs["reading"]) == ("waiting_for_key", "waiting_for_key")
+    r = c.post("/api/providers", json={"provider": "openai", "api_key": "sk-test-1234"})
+    assert r.status_code == 200, r.text
+    assert [call[3] for call in started] == [mine["document_id"]]
+    assert _status(theirs["document_id"]) == ("pending", 1)
+
+
 def test_saving_another_providers_key_starts_nothing(started):
     c, owner = _fresh()
     did = _domain(c)
