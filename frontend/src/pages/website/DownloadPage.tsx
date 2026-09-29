@@ -82,8 +82,8 @@ function ForMac({ badge, phone }: { badge: string | null; phone: boolean }) {
       )}
       <h1 className="web-dl__title">Tvashtr for Mac</h1>
       <p className="web-dl__lede">
-        Run your teams on this computer, with the Claude or Grok plan you already pay for. Same
-        account, teams and keys as the website.
+        Agents on your Claude or Grok plan run on this computer, with the plan you already pay for.
+        Same account, teams and keys as the website.
       </p>
       {phone ? (
         <SendLink />
@@ -115,7 +115,7 @@ function ForMac({ badge, phone }: { badge: string | null; phone: boolean }) {
         </div>
         <div className="web-dl__need">
           <Power size={16} strokeWidth={1.6} aria-hidden />
-          Runs stop when you quit the app.
+          Steps on your plan stop when you quit the app.
         </div>
       </div>
     </section>

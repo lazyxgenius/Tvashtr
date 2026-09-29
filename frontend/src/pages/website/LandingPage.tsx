@@ -90,10 +90,12 @@ const STEPS = [
 ];
 
 const TWO_WAYS = [
-  ["Where it runs", "Tvashtr’s servers", "Your computer"],
+  // Honest copy (independent review): only steps on a Claude or Grok plan run on the Mac; the
+  // rest of a Desktop run happens on Tvashtr's servers, as on the website.
+  ["Where it runs", "Tvashtr’s servers", "Your computer, for steps on your plan"],
   ["Models", "Any provider, with your API keys", "Your Claude or Grok plan first, then API keys"],
   ["Your code", "Your GitHub repos", "GitHub repos and local folders"],
-  ["Runs when you close it", "Keep going", "Stop when you quit the app"],
+  ["Runs when you close it", "Keep going", "Steps on your plan stop; the rest go on"],
   ["Best for", "Trying it out, Domains, long hosted runs", "Using the plan you already pay for"],
 ];
 
@@ -208,7 +210,7 @@ export function LandingPage({
           </li>
           <li>
             <ClipboardCheck size={18} strokeWidth={1.6} aria-hidden />
-            Every change reviewed before it ships
+            Review loops and approval gates before it ships
           </li>
           <li>
             <KeyRound size={18} strokeWidth={1.6} aria-hidden />

@@ -93,7 +93,7 @@ export function LandingMobile({
             <b>Website</b> · runs on Tvashtr’s servers with your API keys.
           </div>
           <div className="web-m__way">
-            <b>Desktop app</b> · runs on your Mac with your Claude or Grok plan.
+            <b>Desktop app</b> · runs your Claude or Grok plan’s steps on your Mac.
           </div>
         </section>
 

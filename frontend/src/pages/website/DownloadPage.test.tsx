@@ -55,6 +55,16 @@ describe("Download on a Mac (WEB-33)", () => {
     expect(screen.queryByText("We detected a Mac with Apple silicon")).toBeNull();
   });
 
+  it("says what runs on the Mac: only steps on your plan (review finding)", () => {
+    setUaHints("macOS", "arm");
+    renderPage();
+    expect(screen.queryByText(/Runs stop when you quit the app/)).toBeNull();
+    expect(screen.getByText("Steps on your plan stop when you quit the app.")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Agents on your Claude or Grok plan run on this computer/),
+    ).toBeInTheDocument();
+  });
+
   it("omits the version when it's unknown", async () => {
     stubFetch({ "GET /api/public/site": { status: 500 } });
     setUaHints("macOS", "arm");

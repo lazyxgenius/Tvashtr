@@ -177,7 +177,15 @@ describe("The landing (WEB-9..18)", () => {
     expect(within(table).getByRole("columnheader", { name: /Desktop app/ })).toBeInTheDocument();
     const row = within(table).getByRole("row", { name: /Where it runs/ });
     expect(within(row).getByRole("rowheader", { name: "Where it runs" })).toBeInTheDocument();
-    expect(within(row).getByText("Your computer")).toBeInTheDocument();
+    // Honest copy (independent review): only steps on a Claude or Grok plan run on the Mac.
+    expect(within(row).getByText("Your computer, for steps on your plan")).toBeInTheDocument();
+    const closing = within(table).getByRole("row", { name: /Runs when you close it/ });
+    expect(
+      within(closing).getByText("Steps on your plan stop; the rest go on"),
+    ).toBeInTheDocument();
+    // Nothing forces a review before Ship: say what the product offers, not "every change".
+    expect(screen.queryByText("Every change reviewed before it ships")).toBeNull();
+    expect(screen.getByText("Review loops and approval gates before it ships")).toBeInTheDocument();
   });
 });
 

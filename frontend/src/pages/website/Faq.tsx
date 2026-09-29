@@ -40,7 +40,7 @@ export function faqItems(config: Config | null): FaqItem[] {
     },
     {
       q: "What is Tvashtr Desktop for?",
-      a: "Running your teams on your own Mac with the Claude or Grok plan you already pay for, on a local folder or a GitHub repo. It uses the same account, teams and keys as the website. Runs stop when you quit the app. Mac only for now.",
+      a: "Running your agents with the Claude or Grok plan you already pay for: those steps run on your Mac, on a local folder or a GitHub repo, and stop when you quit the app. Steps on API keys run on Tvashtr’s servers. It uses the same account, teams and keys as the website. Mac only for now.",
     },
     { q: "Is it open source?", a: COPY.faqOpenSource },
   ];
