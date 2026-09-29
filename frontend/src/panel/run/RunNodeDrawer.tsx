@@ -84,12 +84,15 @@ function runStatusBadge(
   return statusBadge({ ...(last ?? { outcome: null }), status });
 }
 
-/** The node's rounds in this run, newest first, in the Runs tab's shape. */
-function roundsOf(node: GraphNode): NodeRound[] {
+/**
+ * The node's rounds in this run, newest first, in the Runs tab's shape. A round still "running" when
+ * the run failed or stopped reads as the run ended (`status`, the node's derived status).
+ */
+function roundsOf(node: GraphNode, status: NodeStatus): NodeRound[] {
   return [...node.invocations].reverse().map((inv) => ({
     invocation_id: inv.invocation_id ?? inv.iteration,
     iteration: inv.iteration,
-    status: inv.status,
+    status: inv.status === "running" ? status : inv.status,
     outcome: inv.outcome,
     outcome_detail: inv.outcome_detail,
     started_at: inv.started_at,
@@ -211,6 +214,7 @@ export function RunNodeDrawer({
           runId={runId}
           run={run}
           workflowStatus={workflowStatus}
+          status={status}
           live={live}
         />
       );
@@ -286,12 +290,14 @@ function RunRounds({
   runId,
   run,
   workflowStatus,
+  status,
   live,
 }: {
   node: GraphNode;
   runId: string | null;
   run: RunRow | null;
   workflowStatus: string | null;
+  status: NodeStatus;
   live: boolean;
 }) {
   const tools: RunTool[] = [
@@ -300,7 +306,7 @@ function RunRounds({
   ];
   const [picked, setPicked] = useState<RunTool | null>(null);
   const tool = picked && tools.includes(picked) ? picked : (tools[0] ?? null);
-  const rounds = roundsOf(node);
+  const rounds = roundsOf(node, status);
   const byIteration = new Map(node.invocations.map((inv) => [inv.iteration, inv]));
 
   return (

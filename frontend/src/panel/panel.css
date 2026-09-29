@@ -162,12 +162,15 @@
 .nd-runtools .tv-chat__form {
   padding: 12px 0 0;
 }
-/* A round's exact tokens and cost, and its context manifest. */
+/* A round's exact tokens and cost, and its context manifest (in the Last run card, lined up with its
+   detail). */
 .nd-ledger {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 8px;
+}
+.nd-lastrun .nd-ledger {
+  padding: 0 12px 12px;
 }
 .nd-foot {
   flex: none;

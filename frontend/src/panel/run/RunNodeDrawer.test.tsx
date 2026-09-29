@@ -267,6 +267,24 @@ describe("RunNodeDrawer — Runs: this run's rounds", () => {
     expect(last.getByText("Spec offloaded to SPEC.md")).toBeInTheDocument();
   });
 
+  it("a round still running when the run failed reads as failed", () => {
+    render(
+      <Drawer
+        node={gnode({
+          id: "n-eng",
+          role_name: "engineer",
+          kind: "agent",
+          status: "running",
+          invocations: [inv({ iteration: 1, status: "running", ended_at: null })],
+        })}
+        run={runRow({ status: "failed" })}
+      />,
+    );
+    const last = within(screen.getByRole("region", { name: "Last run" }));
+    expect(last.getByText("Failed")).toBeInTheDocument();
+    expect(last.queryByText("Running")).toBeNull();
+  });
+
   it("says the agent wasn't reached yet (live) or at all (finished)", () => {
     const idle = gnode({ id: "n-eng", role_name: "engineer", kind: "agent", status: "idle" });
     const { rerender } = render(
