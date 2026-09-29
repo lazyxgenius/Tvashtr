@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, Info, Zap } from "lucide-react";
+import { FileText, Zap } from "lucide-react";
 
 import { Button } from "../../design-system/components";
 import {
@@ -225,7 +225,6 @@ export function RunNodeDrawer({
     tab === "setup" || tab === "skills" ? (
       <footer className="nd-foot">
         <span className="nd-foot__status">
-          <Info size={13} strokeWidth={1.6} aria-hidden />
           This run uses a copy of the team from when it started. Change the agent on the team to
           change the next run.
         </span>

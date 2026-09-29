@@ -145,6 +145,9 @@
 .nd-readonly {
   display: contents;
 }
+.nd-readonly :disabled {
+  cursor: default;
+}
 /* The run drawer's Runs tab: Activity · Changes · Ask under the rounds. Those views own a scroll
    region when they fill a pane; here they flow in the tab's scroll. */
 .nd-runtools {
