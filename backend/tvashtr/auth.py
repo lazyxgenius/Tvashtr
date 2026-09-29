@@ -277,10 +277,22 @@ def _find_or_link_github_user(
         )
         session.add(user)
     else:
+        if user.github_user_id is None and user.password_hash != UNUSABLE_PASSWORD_HASH:
+            # Linked by email: nobody ever proved that email (register sends no mail), so a
+            # password set on it may be an attacker's who registered the victim's address first
+            # (e.g. <login>@users.noreply.github.com). The GitHub identity now owns the account.
+            user.password_hash = UNUSABLE_PASSWORD_HASH
         user.github_user_id = github_user_id
         user.github_login = github_login
     session.flush()
     return user
+
+
+def _as_int(value: str) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _store_installation(session, owner_id, installation_id: str) -> None:
@@ -399,15 +411,29 @@ def github_callback(
         # session is left as it is — just send the browser back to the app, which re-reads status.
         frontend = _desktop_frontend_origin_from_request(request) or settings.frontend_origin
         return RedirectResponse(url=frontend, status_code=302)
+    loopback = _desktop_frontend_origin_from_request(request)
+    # Rider 4 (M-h1b): bounce to the CONFIGURABLE FE origin, not the backend root "/" (which 404s on
+    # the API port). Desktop may override with an allowlisted loopback origin via proxy header.
+    frontend = loopback or settings.frontend_origin
+    current = None
+    if loopback is None:
+        # A code with no state this server issued (no website cookie, no desktop state) must never
+        # decide who this browser is: anyone can hand a browser their own code (login CSRF). A
+        # signed-out browser is not signed in; a signed-in one only refreshes ITS OWN account — the
+        # in-app "Connect GitHub" return. (Pre-v6 Desktop's in-window sign-in comes through the
+        # allow-listed loopback proxy and keeps its flow.)
+        raw = request.cookies.get(SESSION_COOKIE_NAME)
+        current = read_session_cookie(raw) if raw else None
+        if current is None:
+            return RedirectResponse(
+                url=f"{frontend.rstrip('/')}/#/signin?error=expired", status_code=302
+            )
     user_id = _complete_github_sign_in(
         code, installation_id, _desktop_redirect_uri_from_request(request)
     )
-
-    # Rider 4 (M-h1b): bounce to the CONFIGURABLE FE origin, not the backend root "/" (which 404s on
-    # the API port). Desktop may override with an allowlisted loopback origin via proxy header.
-    frontend = _desktop_frontend_origin_from_request(request) or settings.frontend_origin
     response = RedirectResponse(url=frontend, status_code=302)
-    set_session_cookie(response, user_id)
+    if current is None or current == user_id:
+        set_session_cookie(response, user_id)
     return response
 
 
@@ -524,10 +550,12 @@ def _complete_github_sign_in(
             session, int(identity["id"]), identity.get("login"), _github_email(identity)
         )
         user_id = str(user.id)
-        # Prefer the explicit ?installation_id (install flow) AND every id discovered from
-        # GET /user/installations. _store_installation is idempotent on the unique installation_id
-        # constraint (re-owns to the current user; no duplicate rows).
-        if installation_id:
+        # The explicit ?installation_id (install flow) counts only when GitHub lists it for THIS
+        # user: the query string is the caller's to write, and _store_installation re-owns an
+        # existing row, so an unlisted id would take over another account's installation. When
+        # discovery failed nothing unverified is recorded (the App-side backfill heals it).
+        # _store_installation is idempotent on the unique installation_id constraint.
+        if installation_id and _as_int(installation_id) in set(discovered_ids):
             _store_installation(session, user.id, installation_id)
         for iid in discovered_ids:
             _store_installation(session, user.id, str(iid))

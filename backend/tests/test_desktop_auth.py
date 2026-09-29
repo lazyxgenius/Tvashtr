@@ -295,14 +295,16 @@ def test_callback_with_an_expired_desktop_state_links_back_with_expired(unauth_c
 def test_callback_without_a_desktop_state_is_unchanged(unauth_client, monkeypatch):
     _hosted(monkeypatch)
     monkeypatch.setattr(github_app, "_http", _fake_github())
-    # A foreign/forged state is not a desktop state: the website redirect, as before.
+    # A foreign/forged state is not a desktop state: the stateless path, which never signs a
+    # signed-out browser in (login CSRF — independent review, revamp-finish).
     resp = unauth_client.get(
         "/api/auth/github/callback",
         params={"code": "gh-code", "state": "not-a-signed-state"},
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert resp.headers["location"] == get_settings().frontend_origin
+    assert resp.headers["location"] == f"{get_settings().frontend_origin}/#/signin?error=expired"
+    assert "tv_session" not in resp.headers.get("set-cookie", "")
 
 
 # ---------------------------------------------------------------- exchange
