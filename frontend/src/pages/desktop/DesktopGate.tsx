@@ -110,8 +110,9 @@ function DesktopGateInner({ onSetup }: { onSetup: boolean }) {
   const pendingLink = useRef<TvashtrDeepLinkTarget | null>(null);
   // Set when this session signed in through the browser: the next "authed" says so in a toast.
   const justSignedIn = useRef<"browser" | "handoff" | null>(null);
-  // The address the user was on when the session ended (DT-11): restored after signing in again.
-  const returnTo = useRef<string | null>(null);
+  // The address the user was on when the session ended (DT-11), and whose session it was: only
+  // the same account goes back there after signing in again.
+  const returnTo = useRef<{ hash: string; userId: string } | null>(null);
   // Each launch check bumps this; an older one that is still waiting then drops its answers.
   const launchEpoch = useRef(0);
 
@@ -201,7 +202,7 @@ function DesktopGateInner({ onSetup }: { onSetup: boolean }) {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       if (stateRef.current.kind !== "authed") return;
-      returnTo.current = window.location.hash;
+      returnTo.current = { hash: window.location.hash, userId: stateRef.current.user.id };
       resetDesktopSetup();
       void toSignedOut();
     });
@@ -298,8 +299,12 @@ function DesktopGateInner({ onSetup }: { onSetup: boolean }) {
       github: Boolean(authedUser.github_login),
     });
     // Back to where the session ended (DT-11), unless a deep link asked for somewhere else.
-    if (returnTo.current && window.location.hash !== returnTo.current) {
-      window.location.hash = returnTo.current;
+    const back = returnTo.current;
+    if (back && back.userId === authedUser.id && window.location.hash !== back.hash) {
+      window.location.hash = back.hash;
+    } else if (back && back.userId !== authedUser.id) {
+      // Another account signed in: never inherit the previous one's place (e.g. a setup step).
+      window.location.hash = "#/home";
     }
     returnTo.current = null;
     if (pendingLink.current) {
@@ -365,6 +370,8 @@ function DesktopGateInner({ onSetup }: { onSetup: boolean }) {
     await forgetUser();
     resetDesktopSetup();
     returnTo.current = null;
+    // The next account starts at Home, not on this one's page (e.g. #/setup/<step>).
+    window.location.hash = "#/home";
     setHandoff(null);
     setState({ kind: "signed_out" });
   }, []);

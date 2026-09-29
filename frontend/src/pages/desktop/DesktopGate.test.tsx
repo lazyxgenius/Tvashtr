@@ -344,6 +344,47 @@ describe("DesktopGate — signed in", () => {
     ).toBeInTheDocument();
   });
 
+  it("a 401 returns to the same address only for the same account (review finding)", async () => {
+    const bridge = installDesktopBridge({
+      lastUser: { login: "lazyxgenius", displayName: "lazyxgenius" },
+    });
+    const OTHER = { ...ME, id: "00000000-0000-4000-8000-00000000beef", github_login: "someone" };
+    let who: typeof ME | null = ME;
+    stubFetch({
+      "GET /api/auth/me": () => (who ? { body: who } : { status: 401 }),
+      "GET /api/config": { body: HOSTED_CONFIG },
+    });
+    render(<DesktopGate />);
+    await screen.findByRole("button", { name: "WORKSPACE STUB" });
+    window.location.hash = "#/setup/team";
+    who = null;
+    await act(async () => {
+      await getMe();
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in with GitHub" }));
+    await screen.findByRole("heading", { name: "Finish signing in in your browser" });
+    who = OTHER;
+    act(() => bridge.fireSignIn({ state: "signed_in", user: OTHER }));
+    await screen.findByRole("button", { name: "WORKSPACE STUB" });
+    // Another account never inherits the previous one's place (here: a setup step it never saw).
+    expect(window.location.hash).not.toBe("#/setup/team");
+  });
+
+  it("signing out leaves no address behind for the next account (review finding)", async () => {
+    installDesktopBridge({ lastUser: { login: "lazyxgenius", displayName: "lazyxgenius" } });
+    stubFetch({
+      "GET /api/auth/me": { body: ME },
+      "GET /api/config": { body: HOSTED_CONFIG },
+      "POST /api/auth/logout": { status: 204 },
+    });
+    render(<DesktopGate />);
+    const stub = await screen.findByRole("button", { name: "WORKSPACE STUB" });
+    window.location.hash = "#/setup/team";
+    fireEvent.click(stub);
+    expect(await screen.findByRole("heading", { name: "Welcome to Tvashtr" })).toBeInTheDocument();
+    expect(window.location.hash).toBe("#/home");
+  });
+
   it("signing out goes to Welcome and forgets the user (DT-12)", async () => {
     const bridge = installDesktopBridge({
       lastUser: { login: "lazyxgenius", displayName: "lazyxgenius" },
