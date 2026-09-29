@@ -439,6 +439,28 @@ describe("DocumentViewer — live edit (DOCS-26..32)", () => {
       "This run has finished — edits can’t reach its agents.",
     );
     expect(within(dialog()).getByRole("button", { name: "Save as v4" })).toBeDisabled();
+    // The editor no longer says the run is live.
+    expect(within(dialog()).queryByText("The run is live.", { exact: false })).toBeNull();
+    expect(
+      within(dialog()).queryByText("Save and agents pick up your edit", { exact: false }),
+    ).toBeNull();
+  });
+
+  it("the run ends while you edit: the editor says so before you save, and Save is off", async () => {
+    render(<Viewer />);
+    await startEditing();
+    setEditor(`${V3}\n- More.`);
+    expect(within(dialog()).getByText("The run is live.", { exact: false })).toBeInTheDocument();
+    editable = false;
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This run has finished — edits can’t reach its agents.",
+    );
+    expect(within(dialog()).queryByText("The run is live.", { exact: false })).toBeNull();
+    expect(within(dialog()).getByRole("button", { name: "Save as v4" })).toBeDisabled();
+    expect(within(dialog()).getByText("Unsaved edit · saves as v4")).toBeInTheDocument();
   });
 
   it("leaving an unsaved edit asks first, and tells Tvashtr Desktop", async () => {

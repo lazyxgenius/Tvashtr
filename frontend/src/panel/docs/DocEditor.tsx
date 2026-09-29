@@ -14,6 +14,8 @@ import { useSaveShortcut } from "../saveShortcut";
 import { DocBody, DocColumns } from "./DocPanes";
 
 const SAVE_FAILED = "Couldn't save — try again.";
+// The server's run_finished sentence, for a run the viewer saw end before a save was tried.
+const RUN_FINISHED = "This run has finished — edits can’t reach its agents.";
 
 /**
  * Live edit (Docs-EditLive, DOCS-26..32): the shared spec's latest version in the TipTap markdown
@@ -84,7 +86,12 @@ export function DocEditor({
     editor?.setEditable(!saving);
   }, [editor, saving]);
 
-  const finished = error?.kind === "run_finished";
+  // The run ended: a save was refused, or the viewer's last look saw it (the edit stays).
+  const finished = error?.kind === "run_finished" || !detail.editable;
+  const alert =
+    finished && error?.kind !== "run_finished"
+      ? { kind: "run_finished", message: RUN_FINISHED }
+      : error;
   const next = latestNo + 1;
   const save = async () => {
     if (!editor || !dirty || saving || finished) return;
@@ -143,12 +150,14 @@ export function DocEditor({
           </>
         )}
         <div hidden={comparing}>
-          <div className="dv-live">
-            <span className="dv-live__dot" aria-hidden />
-            <span>
-              <b>The run is live.</b> Save and agents pick up your edit at their next step.
-            </span>
-          </div>
+          {!finished && (
+            <div className="dv-live">
+              <span className="dv-live__dot" aria-hidden />
+              <span>
+                <b>The run is live.</b> Save and agents pick up your edit at their next step.
+              </span>
+            </div>
+          )}
           {editor && active && (
             <div className="dv-tools" role="toolbar" aria-label="Formatting">
               {tool(
@@ -180,10 +189,10 @@ export function DocEditor({
             </div>
           )}
           <EditorContent editor={editor} className="dv-editor dv-md" />
-          {error && (
+          {alert && (
             <p className="dv-saveerr" role="alert">
-              {error.message}
-              {error.kind === "stale_version" && (
+              {alert.message}
+              {alert.kind === "stale_version" && (
                 <Button variant="secondary" size="sm" onClick={() => setComparing(true)}>
                   Compare
                 </Button>
