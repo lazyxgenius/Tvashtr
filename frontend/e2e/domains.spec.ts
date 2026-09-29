@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { registerFresh } from "./_home";
+
 /**
  * Live gate for Domains (no model or key needed): sign up, create a domain from the empty page with
  * a Markdown file, land on its page with the file waiting for a reading key (reading is automatic,
@@ -7,19 +9,10 @@ import { expect, test } from "@playwright/test";
  * empty page. Run against a live backend + Vite (see scripts/accounts_e2e.sh for the boot steps).
  */
 test("Domains: create with a file, wait for the key, rename, delete", async ({ page }) => {
-  const email = `domains-${Date.now()}@tvashtr.dev`;
   const nav = page.getByRole("navigation", { name: "Dashboard" });
 
-  await page.goto("/");
-  await page.getByRole("button", { name: "Get started" }).first().click();
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("domains-e2e-pass");
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.getByRole("button", { name: /^Engineer/ }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: /^A fresh idea/ }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Enter Tvashtr" }).click();
+  // Sign up the way every live spec does since the public site replaced the old landing.
+  await registerFresh(page, "domains");
   await expect(nav).toBeVisible({ timeout: 30_000 });
 
   // The empty page (Dm-ListEmpty) → New domain.
