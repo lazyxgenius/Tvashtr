@@ -440,6 +440,61 @@ describe("App — the agent drawer (F5)", () => {
     });
   });
 
+  it("the run view's PM drawer: Runs first, the shared spec under Docs, Open then Edit (the J3 e2e path)", async () => {
+    const served = fetchMock.getMockImplementation() as (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    const author = { kind: "agent", node_id: "n-pm", role_name: "pm", label: "Product manager" };
+    const latest = { version_no: 1, created_at: "2026-01-01T00:00:00Z", author, note: null };
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = urlOf(input);
+      if (url === `/api/runs/${RUN_ID}/documents`)
+        return Promise.resolve(
+          jsonOk({
+            run: { run_id: RUN_ID, idea: "idea", status: "awaiting_human", created_at: "" },
+            documents: [
+              {
+                id: "d-spec",
+                name: "spec",
+                is_shared_spec: true,
+                latest_version: latest,
+                written_by: [{ ...author, clone_node_id: "n-pm" }],
+                read_by: [],
+              },
+            ],
+          }),
+        );
+      if (url === "/api/documents/d-spec")
+        return Promise.resolve(
+          jsonOk({
+            id: "d-spec",
+            name: "spec",
+            run_id: RUN_ID,
+            is_shared_spec: true,
+            editable: true,
+            versions: [{ ...latest, id: "v1", content: "# The spec" }],
+          }),
+        );
+      return served(input, init);
+    });
+    render(<App teamId="team-1" initialRunId={RUN_ID} />);
+    await screen.findByText("Product manager");
+    fireEvent.click(nodeCard("Product manager"));
+    const drawer = await screen.findByRole("complementary", { name: /in this run$/ });
+    expect(within(drawer).getByRole("tab", { name: "Runs" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    // Not on Runs: the documents live under Docs.
+    expect(within(drawer).queryByText("Shared spec")).toBeNull();
+    fireEvent.click(within(drawer).getByRole("tab", { name: "Docs" }));
+    const card = (await within(drawer).findByText("Shared spec")).closest("li") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: "Open" }));
+    const viewer = await screen.findByRole("dialog", { name: "Shared spec" });
+    expect(await within(viewer).findByRole("button", { name: "Edit" })).toBeInTheDocument();
+  });
+
   it("no 'Edit on the team' for an agent deleted from the team since the run; it says so", async () => {
     const served = fetchMock.getMockImplementation() as (
       input: RequestInfo | URL,

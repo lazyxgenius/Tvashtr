@@ -73,10 +73,12 @@ test("J3 live steering: a human rewrites the PRD at the gate in the document vie
     .toBe("awaiting_human");
   console.log("[steering-e2e] paused at the PRD gate (awaiting_human)");
 
-  // 3. Open the PM's run drawer; its Spec lists the run's documents. Open the shared spec in the
-  //    document viewer and start a live edit (Edit shows only while the run is live).
+  // 3. Open the PM's run drawer (it opens on Runs); its Docs tab lists the run's documents. Open
+  //    the shared spec in the document viewer and start a live edit (Edit shows only while the run
+  //    is live).
   await page.locator(".react-flow__node", { hasText: "Product manager" }).first().click();
   const drawer = page.getByRole("complementary", { name: /in this run$/ });
+  await drawer.getByRole("tab", { name: "Docs" }).click({ timeout: 30_000 });
   await drawer
     .locator("li", { hasText: "Shared spec" })
     .getByRole("button", { name: "Open" })
