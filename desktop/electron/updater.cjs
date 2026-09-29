@@ -137,10 +137,13 @@ function createUpdater({
   };
 
   async function stage(version) {
-    fs.rmSync(updatesDir, { recursive: true, force: true });
-    fs.mkdirSync(updatesDir, { recursive: true });
     const dmg = path.join(updatesDir, "Tvashtr-mac.dmg");
     const mount = path.join(updatesDir, "mnt");
+    // A DMG an earlier launch left mounted here (it quit mid-copy, or a detach failed) makes the
+    // folder undeletable; detach it first.
+    if (fs.existsSync(mount)) await run("hdiutil", ["detach", mount, "-force"]).catch(() => {});
+    fs.rmSync(updatesDir, { recursive: true, force: true });
+    fs.mkdirSync(updatesDir, { recursive: true });
     // Tell the page once per whole percent, not per HTTP chunk (each message re-renders the app).
     let percent = -1;
     await download(DMG_URL, dmg, (progress) => {
@@ -187,7 +190,11 @@ function createUpdater({
         await stage(version);
         return set({ state: "ready", version });
       } catch {
-        fs.rmSync(updatesDir, { recursive: true, force: true });
+        try {
+          fs.rmSync(updatesDir, { recursive: true, force: true });
+        } catch {
+          /* still stuck (e.g. a volume that won't detach): the next check detaches again */
+        }
         return set({ state: "manual", version, reason: "download_failed" });
       }
     })().finally(() => {

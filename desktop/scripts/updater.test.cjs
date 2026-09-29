@@ -178,3 +178,58 @@ test("the swap script moves the staged app in and opens it once the old app exit
   );
   assert.equal(fs.readFileSync(path.join(dir, "opened"), "utf8").trim(), app);
 });
+
+// Independent review (revamp-finish): a DMG left mounted under updates/mnt (the app quit mid-copy,
+// or a failed detach) made updates/ undeletable, check() rejected, and the state stayed
+// "downloading" forever.
+test("a DMG left mounted by an earlier launch is detached before staging again", async () => {
+  const h = harness();
+  const mnt = path.join(h.dir, "updates", "mnt");
+  fs.mkdirSync(mnt, { recursive: true });
+  fs.writeFileSync(path.join(mnt, "stale"), "x");
+  fs.chmodSync(mnt, 0o555); // like a read-only volume: its entries can't be removed
+  const u = createUpdater({
+    currentVersion: "0.7.0",
+    latestRelease: async () => ({ version: "0.8.0" }),
+    bundleInfo: () => ({ bundlePath: "/Applications/Tvashtr.app", bundleWritable: true }),
+    updatesDir: path.join(h.dir, "updates"),
+    emit: (s) => h.states.push(s),
+    confirmRestart: () => true,
+    stopRunner: async () => {},
+    exit: () => {},
+    openExternal: async () => {},
+    download: async (url, dest) => fs.writeFileSync(dest, "dmg"),
+    run: async (cmd, args) => {
+      h.calls.push(`${cmd} ${args[0]}`);
+      if (cmd === "hdiutil" && args[0] === "detach" && fs.existsSync(args[1])) {
+        fs.chmodSync(args[1], 0o755); // the volume is gone: its mount point is a plain folder
+      }
+      if (cmd === "ditto") fs.mkdirSync(args[1], { recursive: true });
+      if (cmd === "plutil") return `${h.plist[args[1]]}\n`;
+      return "";
+    },
+    spawnHelper: () => {},
+    pid: 1,
+  });
+  assert.equal((await u.check()).state, "ready");
+  assert.equal(h.calls[0], "hdiutil detach", "the stale mount is detached first");
+});
+
+test("an updates folder that can't be cleared never wedges the updater in downloading", async () => {
+  const h = harness({ run: async () => "" }); // detach does nothing: the folder stays stuck
+  const mnt = path.join(h.dir, "updates", "mnt");
+  fs.mkdirSync(mnt, { recursive: true });
+  fs.writeFileSync(path.join(mnt, "stale"), "x");
+  fs.chmodSync(mnt, 0o555);
+  try {
+    const first = await h.updater.check(); // resolves — never rejects
+    assert.deepEqual([first.state, first.reason], ["manual", "download_failed"]);
+    assert.equal(h.updater.getState().state, "manual");
+    // The next check runs again (manual allows it) instead of returning a stuck state.
+    fs.chmodSync(mnt, 0o755);
+    const second = await h.updater.check();
+    assert.notEqual(second.state, "downloading");
+  } finally {
+    if (fs.existsSync(mnt)) fs.chmodSync(mnt, 0o755);
+  }
+});
