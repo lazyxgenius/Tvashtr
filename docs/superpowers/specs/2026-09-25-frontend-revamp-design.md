@@ -258,6 +258,12 @@ Open questions are answered here; the numbers refer to each analysis file's §6.
   inspector's own body — Last run, then Activity · Changes · Ask · Memory for a worker or the spec
   for a thinker — with no five-tab row and no read-only Setup. No artboard draws the run-view
   drawer; the tabbed version is left for a later slice.
+- Q20 delivered (F6): the run view's drawer is the Team screen's tabbed drawer, opening on Runs, its
+  node and tab in the address. Runs = this run's rounds (from the run graph's live invocations, each
+  with its exact tokens, cost and context manifest) then Activity · Changes · Ask (a thinker: Ask);
+  Setup and Skills & tools = the run's copy, read-only, with "Edit on the team" (the library team's
+  agent via `origin_node_id`); Memory = what it used and what the run taught; Docs = the run's
+  documents. No Focus or ⋯ in the run view (nothing there is edited).
 
 ## 5. Out of scope (stated, not silently dropped)
 
