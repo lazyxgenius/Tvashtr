@@ -40,7 +40,8 @@ you sign in from.
   sent to Desktop and its changes (a git diff) come back. When a team works in a folder on your Mac,
   a git bundle of the branch you chose, with its whole history, is uploaded for that run, and the
   folder's path (shown like `~/code/app`) is kept on the run. The upload is emptied once the run
-  has copied it, or deleted after 24 hours if no run uses it.
+  has copied it; an upload no run used is deleted the next time you upload a folder, once it is
+  more than 24 hours old.
 
 ## On your Mac (Tvashtr Desktop)
 
