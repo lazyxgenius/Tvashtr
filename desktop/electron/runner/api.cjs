@@ -83,6 +83,15 @@ function createRunnerApi({ baseUrl, cookieHeader, fetchImpl = fetch, timeoutMs =
       const res = await request("POST", jobPath(jobId, "result"), body);
       return res.json();
     },
+    /** DB-7: hand a claimed job back to the queue (quit / update restart). */
+    async releaseJob(jobId) {
+      await request("POST", jobPath(jobId, "release"), {});
+    },
+    /** DB-6: the latest Desktop release `{version, dmg_url, …}` (public; nulls when unknown). */
+    async latestRelease() {
+      const res = await request("GET", "/api/desktop/release");
+      return res.json();
+    },
     async putStatus(provider, body) {
       await request("PUT", `/api/engines/subscriptions/${encodeURIComponent(provider)}`, body);
     },

@@ -15,6 +15,15 @@
  *   tvashtr://toolkit/tools|skills|secrets           → /toolkit/<same>
  *   tvashtr://toolkit/memory                         → /toolkit/memory/inbox
  *   tvashtr://teams/<uuid>                           → /teams/<uuid>
+ *
+ * v6 (desktop-app.md DB-2):
+ *   - Every allowed link may carry a sign-in HINT from the website, `?from=web&login=<github
+ *     login>&host=<api host>`. It is returned as `hint` only when `host` is the configured API host;
+ *     main keeps it for `auth.getLaunchContext()` (a display label, never proof of identity) and it
+ *     is never a navigation param.
+ *   - `tvashtr://auth/done?code=&state=` / `?error=cancelled|expired&state=` is the browser
+ *     sign-in's return link. `parseAuthLink` hands it to main's sign-in only; the page never sees
+ *     it (`parseDeepLink` rejects it).
  */
 const SCHEME = "tvashtr";
 const MAX_LINK_LENGTH = 2048;
@@ -28,12 +37,18 @@ const TOOLKIT = {
 };
 const CONNECT_PROVIDERS = ["claude", "grok"];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+// v6: the sign-in return link's pieces (a signed itsdangerous code, main's own state) and the
+// website's display hint (a GitHub login).
+const AUTH_CODE_RE = /^[A-Za-z0-9_.-]{1,1500}$/;
+const AUTH_STATE_RE = /^[A-Za-z0-9_-]{16,64}$/;
+const AUTH_ERRORS = ["cancelled", "expired", "failed"];
+const HINT_LOGIN_RE = /^[A-Za-z0-9-]{1,39}$/;
 
 /**
+ * The URL and its lower-cased path segments, or null when the link isn't a clean tvashtr: link.
  * @param {unknown} link
- * @returns {{ path: string, params?: Record<string, string> } | null}
  */
-function parseDeepLink(link) {
+function splitLink(link) {
   if (typeof link !== "string" || link.length === 0 || link.length > MAX_LINK_LENGTH) return null;
   let url;
   try {
@@ -51,27 +66,74 @@ function parseDeepLink(link) {
     .filter((s) => s.length > 0)
     .map((s) => s.toLowerCase());
   if (segments.some((s) => !/^[a-z0-9-]+$/.test(s))) return null;
+  return { url, segments };
+}
+
+/**
+ * The website's "who you are there" hint, when it names the configured API host.
+ * @param {URL} url
+ * @param {string | undefined} apiHost
+ * @returns {{ login: string, host: string } | null}
+ */
+function readHint(url, apiHost) {
+  if (!apiHost || url.searchParams.get("from") !== "web") return null;
+  const login = url.searchParams.get("login") || "";
+  const host = (url.searchParams.get("host") || "").toLowerCase();
+  if (!HINT_LOGIN_RE.test(login) || host !== String(apiHost).toLowerCase()) return null;
+  return { login, host };
+}
+
+/**
+ * @param {unknown} link
+ * @param {{ apiHost?: string }} [opts] the API host a `from=web` hint must name
+ * @returns {{ path: string, params?: Record<string, string>, hint?: { login: string, host: string } } | null}
+ */
+function parseDeepLink(link, opts = {}) {
+  const split = splitLink(link);
+  if (!split) return null;
+  const { url, segments } = split;
 
   const [area, page, ...rest] = segments;
   if (rest.length > 0) return null;
 
-  if (area === "home" && page === undefined) return { path: "/home" };
-
-  if (area === "engines" && page !== undefined && Object.hasOwn(ENGINES, page)) {
-    const target = { path: ENGINES[/** @type {keyof typeof ENGINES} */ (page)] };
+  /** @type {{ path: string, params?: Record<string, string> } | null} */
+  let target = null;
+  if (area === "home" && page === undefined) target = { path: "/home" };
+  else if (area === "engines" && page !== undefined && Object.hasOwn(ENGINES, page)) {
+    target = { path: ENGINES[/** @type {keyof typeof ENGINES} */ (page)] };
     const connect = (url.searchParams.get("connect") || "").toLowerCase();
-    if (CONNECT_PROVIDERS.includes(connect)) return { ...target, params: { connect } };
-    return target;
+    if (CONNECT_PROVIDERS.includes(connect)) target = { ...target, params: { connect } };
+  } else if (area === "toolkit" && page !== undefined && Object.hasOwn(TOOLKIT, page)) {
+    target = { path: TOOLKIT[/** @type {keyof typeof TOOLKIT} */ (page)] };
+  } else if (area === "teams" && page !== undefined && UUID_RE.test(page)) {
+    target = { path: `/teams/${page}` };
   }
+  if (!target) return null;
+  const hint = readHint(url, opts.apiHost);
+  return hint ? { ...target, hint } : target;
+}
 
-  if (area === "toolkit" && page !== undefined && Object.hasOwn(TOOLKIT, page)) {
-    return { path: TOOLKIT[/** @type {keyof typeof TOOLKIT} */ (page)] };
+/**
+ * `tvashtr://auth/done…` — the browser sign-in's return link (main only).
+ * @param {unknown} link
+ * @returns {{ code?: string, error?: "cancelled" | "expired" | "failed", state?: string } | null}
+ *   null when it isn't an auth link or its pieces are malformed; `{}` for the bare link (the
+ *   return page's button without a result: just bring the window forward).
+ */
+function parseAuthLink(link) {
+  const split = splitLink(link);
+  if (!split) return null;
+  const { url, segments } = split;
+  if (segments.length !== 2 || segments[0] !== "auth" || segments[1] !== "done") return null;
+  const code = url.searchParams.get("code");
+  const error = url.searchParams.get("error");
+  const state = url.searchParams.get("state");
+  if (code === null && error === null && state === null) return {};
+  if (state === null || !AUTH_STATE_RE.test(state)) return null;
+  if (code !== null && error === null && AUTH_CODE_RE.test(code)) return { code, state };
+  if (error !== null && code === null && AUTH_ERRORS.includes(error)) {
+    return { error: /** @type {"cancelled" | "expired" | "failed"} */ (error), state };
   }
-
-  if (area === "teams" && page !== undefined && UUID_RE.test(page)) {
-    return { path: `/teams/${page}` };
-  }
-
   return null;
 }
 
@@ -123,4 +185,10 @@ function createNavigationQueue({ send }) {
   };
 }
 
-module.exports = { SCHEME, parseDeepLink, findDeepLinkArg, createNavigationQueue };
+module.exports = {
+  SCHEME,
+  parseDeepLink,
+  parseAuthLink,
+  findDeepLinkArg,
+  createNavigationQueue,
+};

@@ -213,9 +213,9 @@ export interface AuthUser {
   display_name?: string | null;
 }
 
-// M-h1a: the PUBLIC client bootstrap (GET /api/config) — the posture the AuthWizard needs BEFORE
+// M-h1a: the PUBLIC client bootstrap (GET /api/config) — the posture the sign-in page needs BEFORE
 // login. Only public fields (never a client secret / private key). Self-hosted default: hosted_mode
-// false + an empty install URL, so the wizard stays the email/password flow.
+// false + an empty install URL, so sign-in stays the email/password form.
 // M-runnable: one served catalogue entry — provider + model SLUGS only (never keys). The FE holds NO
 // hardcoded model/provider list; it DERIVES its quick-picks + provider suggestions from these.
 // M-seat: split by SEAT. A thinker makes one completion; a worker drives the agent loop, and a model

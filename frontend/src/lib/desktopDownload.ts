@@ -7,6 +7,19 @@ export const DESKTOP_MAC_DMG_URL =
 
 export const DESKTOP_RELEASES_URL = "https://github.com/lazyxgenius/Tvashtr/releases/latest";
 
+export const GITHUB_REPO_URL = "https://github.com/lazyxgenius/Tvashtr";
+/** Every release (the footer's Changelog, "Watch for releases on GitHub"). */
+export const GITHUB_RELEASES_PAGE_URL = `${GITHUB_REPO_URL}/releases`;
+/** The docs are the repo's README for now (website.md OQ-14). */
+export const DOCS_URL = `${GITHUB_REPO_URL}#readme`;
+/** Why sign-in can fail and what to do (website.md OQ-15). */
+export const SIGNIN_HELP_URL = `${GITHUB_REPO_URL}/blob/main/docs/help/sign-in.md`;
+/** Electron 35's floor (website.md OQ-8). */
+export const DESKTOP_MIN_MACOS_LABEL = "macOS 11 or later";
+
+/** The app isn't signed or notarized yet: macOS may call it "damaged" until this is run once. */
+export const QUARANTINE_FIX = "xattr -dr com.apple.quarantine /Applications/Tvashtr.app";
+
 /** True on a Mac (the only platform with a Tvashtr Desktop build for now, OQ-18). */
 export function isMacPlatform(): boolean {
   if (typeof navigator === "undefined") return false;

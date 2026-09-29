@@ -94,6 +94,7 @@ from tvashtr.control_plane.teams import (
     create_blank_team,
     create_team_from_template,
     delete_library_team_and_runs,
+    desktop_templates,
     engineer_model,
     get_team_summary,
     list_library_teams,
@@ -327,10 +328,14 @@ class CreateTeamRequest(BaseModel):
     (one of ``GET /api/templates``) + a user-chosen ``name``. The team is materialized from the
     code-resident builder and flipped to a library team — a drop-and-edit preset. P1.8d: the
     sentinel ``template == "blank"`` seeds the minimal valid skeleton (root thinker → Ship) instead
-    of a catalog builder — a from-scratch starting point the user wires up."""
+    of a catalog builder — a from-scratch starting point the user wires up.
+
+    Revamp (Desktop setup, DT-36): ``use_plans`` gives the model nodes the owner's connected
+    Desktop plans (``plan_first_models``) instead of the BYOK defaults."""
 
     template: str
     name: str
+    use_plans: bool = False
 
 
 class CreateDomainRequest(BaseModel):
@@ -2598,11 +2603,20 @@ def _require_library_team(session, team_id: str, owner_id: uuid.UUID) -> TeamGra
 
 
 @router.get("/api/templates")
-def get_templates() -> dict:
+def get_templates(
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    for_: Annotated[str | None, Query(alias="for")] = None,
+) -> dict:
     """The curated starter templates the New-team picker offers (``{template, name, description,
     shape}``); the FE renders the picker from this, never a hardcoded list. ``blank`` is the Blank
     starting point in the same shape (not in the list — the FE keeps its own Blank card so it can
-    still offer it when this call fails)."""
+    still offer it when this call fails).
+
+    Revamp (Desktop setup, DT-34/35): ``?for=desktop`` adds the Desktop-only templates
+    (``spec_only``) and gives every strip node the ``model``/``runs_on`` a ``use_plans`` create
+    would stamp for this owner. Without it the answer is unchanged."""
+    if for_ == "desktop":
+        return desktop_templates(uuid.UUID(current_user.id))
     return {"templates": list_templates(), "blank": blank_template()}
 
 
@@ -2634,9 +2648,11 @@ def create_team(
     if not name:
         raise HTTPException(status_code=422, detail="A team name is required.")
     if body.template == "blank":
-        return get_team_summary(create_blank_team(name, owner_id))
+        return get_team_summary(create_blank_team(name, owner_id, use_plans=body.use_plans))
     try:
-        team_graph_id = create_team_from_template(body.template, name, owner_id)
+        team_graph_id = create_team_from_template(
+            body.template, name, owner_id, use_plans=body.use_plans
+        )
     except KeyError as exc:
         raise HTTPException(status_code=400, detail="unknown template") from exc
     return get_team_summary(team_graph_id)

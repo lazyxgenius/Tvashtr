@@ -356,7 +356,17 @@ interface ToastEntry extends ToastOptions {
   id: number;
 }
 
-export function ToastProvider({ children }: { children: ReactNode }) {
+/**
+ * `placement` (additive): "center" (default) is bottom-centre of the window; "setup" sits 90px up,
+ * centred on the main column right of Tvashtr Desktop's 320px setup rail (desktop-app.md OQ-32).
+ */
+export function ToastProvider({
+  children,
+  placement = "center",
+}: {
+  children: ReactNode;
+  placement?: "center" | "setup";
+}) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const nextId = useRef(1);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
@@ -392,7 +402,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       {createPortal(
-        <div className="ds-toasts" aria-live="polite">
+        <div
+          className={cx("ds-toasts", placement === "setup" && "ds-toasts--setup")}
+          aria-live="polite"
+        >
           {toasts.map((t) => (
             <div key={t.id} role="status" className="ds-toast">
               <span className={cx("ds-toast__icon", t.tone === "error" && "ds-toast__icon--error")}>

@@ -2,6 +2,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  desktopHomeLink,
   desktopLink,
   openTvashtrDesktop,
   routeForDeepLink,
@@ -133,5 +134,19 @@ describe("useDesktopDeepLinks", () => {
     window.tvashtrDesktop = { engines: {} } as unknown as TvashtrDesktopBridge;
     renderHook(() => useDesktopDeepLinks());
     expect(window.location.hash).toBe("");
+  });
+});
+
+describe("desktopHomeLink (the website's Open Tvashtr, desktop-app.md §6)", () => {
+  it("is bare signed out, and carries a display hint for the signed-in login", () => {
+    expect(desktopHomeLink()).toBe("tvashtr://home");
+    expect(desktopHomeLink(null)).toBe("tvashtr://home");
+    const link = new URL(desktopHomeLink("lazyxgenius"));
+    expect(`${link.protocol}//${link.host}`).toBe("tvashtr://home");
+    expect(Object.fromEntries(link.searchParams)).toEqual({
+      from: "web",
+      login: "lazyxgenius",
+      host: window.location.host,
+    });
   });
 });

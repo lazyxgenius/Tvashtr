@@ -14,6 +14,10 @@ models …" one, else ``None``).
 Derived, not re-declared: names, example models and subscriptions come from the model catalogue, and
 the embeddings flag from ``domain_embedding.EMBEDDING_CATALOGUE``, so a provider added to either
 appears here automatically (pinned by a test). Static; no DB, no network, no key material.
+
+Revamp (Desktop app, DT-26 / OQ-38): ``serves_models`` is true when the catalogue declares a model
+for either seat or a Domains embedding model uses the provider. A provider that serves nothing
+(NVIDIA NIM today) gets :func:`no_model_hint` as its hint, so no screen invites a key for it.
 """
 
 from tvashtr.control_plane.domain_embedding import EMBEDDING_CATALOGUE
@@ -57,6 +61,11 @@ _DISPLAY: dict[str, dict] = {
 }
 
 
+def no_model_hint(name: str) -> str:
+    """``"NVIDIA NIM serves no model Tvashtr can run right now."`` for a provider named ``name``."""
+    return f"{name} serves no model Tvashtr can run right now."
+
+
 def _embedding_providers() -> dict[str, str]:
     """``provider -> first embedding slug`` for every provider a Domains embedding model uses."""
     out: dict[str, str] = {}
@@ -87,16 +96,26 @@ def public_provider_directory() -> list[dict]:
             or catalogue.get("worker_default")
             or embedding.get(provider)
         )
+        name = catalogue.get("label") or display.get("name") or provider
+        serves_models = (
+            catalogue.get("thinker_default") is not None
+            or catalogue.get("worker_default") is not None
+            or provider in embedding
+        )
+        hint = display.get("hint")
+        if not serves_models:
+            hint = no_model_hint(name)
         out.append(
             {
                 "provider": provider,
                 "monogram": display.get("monogram") or provider[:1].upper(),
-                "name": catalogue.get("label") or display.get("name") or provider,
+                "name": name,
                 "label": display.get("label") or f"{provider} models",
                 "example_model": example,
                 "subscription": catalogue.get("subscription"),
                 "embeddings": provider in embedding,
-                "hint": display.get("hint"),
+                "hint": hint,
+                "serves_models": serves_models,
             }
         )
     return out

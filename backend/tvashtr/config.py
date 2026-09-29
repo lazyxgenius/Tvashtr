@@ -639,6 +639,12 @@ class Settings(BaseSettings):
             "TVASHTR_DESKTOP_RUNNER_POLL_SECONDS", "desktop_runner_poll_seconds"
         ),
     )
+    # Revamp (Desktop app, DT-43): the GitHub repo whose ``desktop-v*`` releases are Tvashtr
+    # Desktop's. ``GET /api/desktop/release`` reads its latest one (public data only).
+    desktop_release_repo: str = Field(
+        default="lazyxgenius/Tvashtr",
+        validation_alias=AliasChoices("TVASHTR_DESKTOP_RELEASE_REPO", "desktop_release_repo"),
+    )
     # Workspace snapshots larger than this are refused (the job fails readably instead).
     desktop_snapshot_max_bytes: int = Field(
         default=200 * 1024 * 1024,

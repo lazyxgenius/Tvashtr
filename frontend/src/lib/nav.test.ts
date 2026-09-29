@@ -1,7 +1,16 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { navigate, parseRoute, type Route, routeToHash, sectionOf, useNav } from "./nav";
+import {
+  appAddress,
+  isPublicRoute,
+  navigate,
+  parseRoute,
+  type Route,
+  routeToHash,
+  sectionOf,
+  useNav,
+} from "./nav";
 
 afterEach(() => {
   window.history.replaceState(null, "", "/");
@@ -112,5 +121,64 @@ describe("useNav", () => {
     act(() => result.current.navigate({ page: "secrets" }, { replace: true }));
     expect(result.current.route).toEqual({ page: "secrets" });
     expect(window.history.length).toBe(before);
+  });
+});
+
+describe("Tvashtr Desktop's setup addresses (DT-17)", () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.tvashtrDesktop;
+  });
+
+  it("on Desktop #/setup/<step> is the setup step; an unknown step starts at Engines", () => {
+    document.documentElement.dataset.tvashtrDesktop = "true";
+    expect(parseRoute("#/setup/engines")).toEqual({ page: "setup", step: "engines" });
+    expect(parseRoute("#/setup/project")).toEqual({ page: "setup", step: "project" });
+    expect(parseRoute("#/setup/team")).toEqual({ page: "setup", step: "team" });
+    expect(parseRoute("#/setup/nowhere")).toEqual({ page: "setup", step: "engines" });
+    expect(routeToHash({ page: "setup", step: "project" })).toBe("#/setup/project");
+    expect(sectionOf({ page: "setup", step: "team" })).toBe("home");
+  });
+
+  it("the website has no setup: the address goes Home", () => {
+    expect(parseRoute("#/setup/engines")).toEqual({ page: "home" });
+  });
+});
+
+describe("the public website's addresses (website.md WEB-1)", () => {
+  const cases: [string, Route][] = [
+    ["#/welcome", { page: "welcome" }],
+    ["#/welcome?s=two-ways", { page: "welcome", section: "two-ways" }],
+    ["#/download", { page: "download" }],
+    ["#/download?os=windows", { page: "download", os: "windows" }],
+    ["#/download/started", { page: "download", started: true }],
+    ["#/signin", { page: "signin" }],
+    ["#/signin/done", { page: "signin", done: true }],
+    ["#/signin?error=cancelled", { page: "signin", error: "cancelled" }],
+    ["#/signin?next=%2Fteams%2Fabc%3Fnode%3Dpm", { page: "signin", next: "/teams/abc?node=pm" }],
+  ];
+  it.each(cases)("%s round-trips", (hash, route) => {
+    expect(parseRoute(hash)).toEqual(route);
+    expect(routeToHash(route)).toBe(hash);
+    expect(isPublicRoute(route)).toBe(true);
+  });
+
+  it("drops unknown values rather than failing", () => {
+    expect(parseRoute("#/welcome?s=pricing")).toEqual({ page: "welcome" });
+    expect(parseRoute("#/download?os=beos")).toEqual({ page: "download" });
+    expect(parseRoute("#/signin?error=nope")).toEqual({ page: "signin" });
+  });
+
+  it("keeps `next` only when it is an app address (no open redirect, no loop)", () => {
+    expect(appAddress("/engines/keys")).toBe("/engines/keys");
+    expect(appAddress("//evil.example")).toBeUndefined();
+    expect(appAddress("https://evil.example")).toBeUndefined();
+    expect(appAddress("/signin")).toBeUndefined();
+    expect(appAddress("/download")).toBeUndefined();
+    expect(parseRoute("#/signin?next=%2F%2Fevil.example")).toEqual({ page: "signin" });
+  });
+
+  it("the app's pages aren't public", () => {
+    expect(isPublicRoute({ page: "home" })).toBe(false);
+    expect(isPublicRoute(parseRoute("#/teams/t1"))).toBe(false);
   });
 });

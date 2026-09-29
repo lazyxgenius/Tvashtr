@@ -1,0 +1,412 @@
+/* Tvashtr Desktop launch and sign-in screens (desktop-app.md §1 "Launch frame"). Every value is the
+   design's own (DT-Welcome, DT-Waiting, DT-Handoff, DtF-Sign-2 .dc.html). */
+
+.dt-launch {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  background: var(--surface-page);
+  font-family: var(--font-ui);
+  color: var(--ink-900);
+}
+.dt-launch__wash {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: radial-gradient(
+    90% 70% at 50% 0%,
+    #f7e7df 0%,
+    rgba(247, 231, 223, 0.2) 45%,
+    transparent 70%
+  );
+}
+.dt-launch__col {
+  max-width: calc(100% - 32px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+}
+.dt-launch__foot {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 18px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dt-launch__links {
+  display: flex;
+  gap: 16px;
+}
+.dt-launch__foot a {
+  color: var(--ink-500);
+  text-decoration: none;
+}
+.dt-launch__foot a:hover {
+  color: var(--ink-900);
+}
+
+.dt-mark {
+  width: 64px;
+  height: 64px;
+}
+.dt-h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dt-h1--46 {
+  font-size: 46px;
+  letter-spacing: -0.02em;
+}
+.dt-h1--36 {
+  font-size: 36px;
+}
+.dt-h1--30 {
+  font-size: 30px;
+}
+.dt-lede {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-600);
+  max-width: 520px;
+  text-wrap: pretty;
+}
+.dt-para {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--ink-600);
+  max-width: 480px;
+}
+.dt-help {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-500);
+  max-width: 460px;
+}
+.dt-handoff-note {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.dt-hint {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+/* An inline text link that is an action (the design draws an <a>). */
+.dt-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: normal;
+  color: var(--coral-700);
+  text-decoration: none;
+  cursor: pointer;
+}
+.dt-link:hover {
+  color: var(--coral-600);
+}
+.dt-link:focus-visible {
+  outline: 2px solid var(--coral-500);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.dt-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.dt-tile {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dt-tile--coral {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.dt-tile--amber {
+  background: var(--amber-100);
+  color: #6b4a1f;
+}
+
+.dt-cards {
+  display: flex;
+  gap: 12px;
+  width: 820px;
+  max-width: 100%;
+  margin-top: 18px;
+}
+.dt-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-card);
+  text-align: left;
+}
+.dt-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  color: var(--coral-700);
+}
+.dt-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.dt-card__body {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+
+/* Self-hosted backend (OQ-37): the email/password form inside the Welcome frame. */
+.dt-form {
+  width: 360px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+.dt-form__error {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--danger);
+}
+
+.dt-spin {
+  animation: dt-spin 0.9s linear infinite;
+}
+@keyframes dt-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dt-spin {
+    animation: none;
+  }
+}
+
+.dt-tile--panel {
+  background: var(--panel-300);
+  color: var(--ink-700);
+}
+.dt-para--500 {
+  max-width: 500px;
+}
+.dt-detail {
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* The status checklist card (DT-Splash, DtF-Off-2, DtF-Upd-2): 12.5px lines, each with its icon. */
+.dt-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--line-300);
+}
+.dt-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  text-align: left;
+}
+.dt-check--done {
+  color: #52613e;
+}
+.dt-check--warn {
+  color: #7a5423;
+}
+.dt-check--busy {
+  color: var(--ink-600);
+}
+.dt-check--note {
+  color: var(--ink-500);
+}
+
+/* The design's buttons carry their icon inside the label (svg + span, laid out inline), not as a
+   flex item; keep the svg inline here (Tailwind's preflight makes every svg a block). */
+.dt-launch .ds-btn > span > svg,
+.dt-ready .ds-btn > span > svg,
+.dt-update .ds-btn > span > svg {
+  display: inline;
+  vertical-align: baseline;
+}
+
+/* ---- Desktop Home's ready card (DT-Ready, DtF-Launch-2; DT-38–41) ---- */
+/* The round-1 Shell's Home main is 28px 40px / gap 20 / max 1100; the board's is 26px 40px / 22 /
+   1000. */
+.dt-ready {
+  max-width: 1000px;
+  margin-top: -2px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  line-height: 1.6;
+}
+.dt-ready__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dt-ready__h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1.6;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+.dt-ready__card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 26px 28px;
+  border: 1px solid var(--coral-200);
+  border-radius: 18px;
+  background: #fdf6f2;
+}
+.dt-ready__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dt-ready__h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 26px;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+  color: var(--ink-900);
+}
+.dt-ready__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dt-ready__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #52613e;
+}
+.dt-ready__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dt-ready__later-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-700);
+}
+.dt-ready__later {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.dt-ready__next {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--line-300);
+  border-radius: 14px;
+  background: var(--surface-card);
+  font: inherit;
+  line-height: 1.6;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dt-ready__next:hover {
+  border-color: var(--coral-200);
+}
+.dt-ready__next:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.dt-ready__next-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.dt-ready__next-head > svg {
+  color: var(--ink-600);
+}
+.dt-ready__next-body {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+}
+
+/* ---- The update card in the Shell's nav foot (DT-Update, DtF-Upd-1; DT-43–46) ---- */
+.dt-update {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dt-update b {
+  font-weight: 600;
+}
+.dt-update__fix {
+  font-size: 11.5px;
+  color: var(--ink-600);
+}
+.dt-update__fix code {
+  font-family: var(--font-code);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}

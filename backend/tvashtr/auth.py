@@ -15,7 +15,7 @@ see :mod:`tvashtr.control_plane.credentials`.)
 import logging
 import uuid
 from typing import Annotated
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import github_app
+from tvashtr.control_plane import desktop_auth, github_app, web_signin
 from tvashtr.db import session_scope
 from tvashtr.models import GithubInstallation, User
 
@@ -277,10 +277,22 @@ def _find_or_link_github_user(
         )
         session.add(user)
     else:
+        if user.github_user_id is None and user.password_hash != UNUSABLE_PASSWORD_HASH:
+            # Linked by email: nobody ever proved that email (register sends no mail), so a
+            # password set on it may be an attacker's who registered the victim's address first
+            # (e.g. <login>@users.noreply.github.com). The GitHub identity now owns the account.
+            user.password_hash = UNUSABLE_PASSWORD_HASH
         user.github_user_id = github_user_id
         user.github_login = github_login
     session.flush()
     return user
+
+
+def _as_int(value: str) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _store_installation(session, owner_id, installation_id: str) -> None:
@@ -358,7 +370,9 @@ def github_callback(
     code: str | None = None,
     installation_id: str | None = None,
     setup_action: str | None = None,
-) -> RedirectResponse:
+    state: str | None = None,
+    error: str | None = None,
+) -> Response:
     """Complete GitHub App sign-in (HOSTED mode). GitHub redirects the browser here after the user
     authorizes/installs:``?code`` identifies the user; ``?installation_id`` + ``?setup_action``
     name the installation they granted. Exchange the code for a user token, read the identity,
@@ -371,10 +385,24 @@ def github_callback(
     local SPA — without changing fly.dev web login.
 
     Unauthenticated by design — it is how a GitHub user obtains their first session, so it lives on
-    ``auth_router`` (mounted WITHOUT ``get_current_user``). 404s when ``hosted_mode`` is off."""
+    ``auth_router`` (mounted WITHOUT ``get_current_user``). 404s when ``hosted_mode`` is off.
+
+    Desktop browser sign-in (desktop-app.md §3): when ``state`` is a desktop state this server
+    signed (``desktop_auth``), the browser is signed in the same way but answers with the return
+    page linking ``tvashtr://auth/done`` (a one-time code, or ``error=cancelled|expired``) instead
+    of redirecting.
+
+    Website sign-in (website.md B-3): a ``tv_oauth_state`` cookie (from ``/api/auth/github/start``)
+    takes :func:`_website_callback`. Without one, an older client's flow is unchanged."""
     settings = get_settings()
     if not settings.hosted_mode:
         raise HTTPException(status_code=404, detail="Not found")
+    desktop = desktop_auth.read_state(state)
+    if desktop is not None:
+        flow = request.cookies.get(desktop_auth.FLOW_COOKIE)
+        return _desktop_callback(desktop, code, installation_id, error, flow)
+    if web_signin.STATE_COOKIE in request.cookies:
+        return _website_callback(request, code, installation_id, state, error)
     if not code:
         # Revamp (Toolkit › Browse "Install GitHub App"): an App whose Setup URL is this callback
         # but which does not request user authorization on install returns ``?installation_id`` +
@@ -383,7 +411,121 @@ def github_callback(
         # session is left as it is — just send the browser back to the app, which re-reads status.
         frontend = _desktop_frontend_origin_from_request(request) or settings.frontend_origin
         return RedirectResponse(url=frontend, status_code=302)
-    desktop_redirect_uri = _desktop_redirect_uri_from_request(request)
+    loopback = _desktop_frontend_origin_from_request(request)
+    # Rider 4 (M-h1b): bounce to the CONFIGURABLE FE origin, not the backend root "/" (which 404s on
+    # the API port). Desktop may override with an allowlisted loopback origin via proxy header.
+    frontend = loopback or settings.frontend_origin
+    current = None
+    if loopback is None:
+        # A code with no state this server issued (no website cookie, no desktop state) must never
+        # decide who this browser is: anyone can hand a browser their own code (login CSRF). A
+        # signed-out browser is not signed in; a signed-in one only refreshes ITS OWN account — the
+        # in-app "Connect GitHub" return. (Pre-v6 Desktop's in-window sign-in comes through the
+        # allow-listed loopback proxy and keeps its flow.)
+        raw = request.cookies.get(SESSION_COOKIE_NAME)
+        current = read_session_cookie(raw) if raw else None
+        if current is None:
+            return RedirectResponse(
+                url=f"{frontend.rstrip('/')}/#/signin?error=expired", status_code=302
+            )
+    user_id = _complete_github_sign_in(
+        code, installation_id, _desktop_redirect_uri_from_request(request)
+    )
+    response = RedirectResponse(url=frontend, status_code=302)
+    if current is None or current == user_id:
+        set_session_cookie(response, user_id)
+    return response
+
+
+def _website_callback(
+    request: Request,
+    code: str | None,
+    installation_id: str | None,
+    state: str | None,
+    error: str | None,
+) -> Response:
+    """The website's sign-in (website.md B-3, started by ``/api/auth/github/start``): every outcome
+    returns to the sign-in screens — ``#/signin?error=cancelled|expired|failed`` or, signed in,
+    ``#/signin/done[?next=]`` — and the one-attempt ``tv_oauth_state`` cookie is cleared. GitHub's
+    ``state`` must equal the cookie's nonce (login CSRF)."""
+    settings = get_settings()
+    frontend = _desktop_frontend_origin_from_request(request) or settings.frontend_origin
+    signin = f"{frontend.rstrip('/')}/#/signin"
+    web = web_signin.read_state(request.cookies.get(web_signin.STATE_COOKIE))
+    user_id = None
+    if error:
+        target = f"{signin}?error={'cancelled' if error == 'access_denied' else 'failed'}"
+    elif web is None or state != web["n"]:
+        target = f"{signin}?error=expired"
+    elif not code:
+        target = f"{signin}?error=failed"
+    else:
+        try:
+            user_id = _complete_github_sign_in(
+                code, installation_id, _desktop_redirect_uri_from_request(request)
+            )
+        except HTTPException:
+            user_id = None
+        after = f"?next={quote(web['next'], safe='')}" if web["next"] else ""
+        target = f"{signin}/done{after}" if user_id else f"{signin}?error=failed"
+    response = RedirectResponse(url=target, status_code=302)
+    response.delete_cookie(
+        key=web_signin.STATE_COOKIE,
+        path=web_signin.COOKIE_PATH,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        httponly=True,
+    )
+    if user_id:
+        set_session_cookie(response, user_id)
+    return response
+
+
+def _desktop_callback(
+    desktop: dict,
+    code: str | None,
+    installation_id: str | None,
+    error: str | None,
+    flow_cookie: str | None,
+) -> Response:
+    """The callback's Desktop branch: sign the browser in, then hand a one-time code (bound to the
+    PKCE challenge in the signed state) back to Desktop through the return page. Only the browser
+    that started the flow (its ``tv_desktop_flow`` cookie matches the state's nonce) is signed
+    in."""
+    state = desktop["s"]
+    if desktop["expired"] or not desktop_auth.flow_matches(flow_cookie, desktop["n"]):
+        link = desktop_auth.done_link(state=state, error="expired")
+        return desktop_auth.return_page(link, "expired")
+    if error == "access_denied":
+        # The user cancelled on GitHub. Nothing was changed.
+        link = desktop_auth.done_link(state=state, error="cancelled")
+        response = desktop_auth.return_page(link, "cancelled")
+        desktop_auth.clear_flow_cookie(response)
+        return response
+    if error or not code:
+        # Any other GitHub error (a callback mismatch, a suspended App, …) is not the user's cancel.
+        link = desktop_auth.done_link(state=state, error="failed")
+        response = desktop_auth.return_page(link, "failed", status_code=400)
+        desktop_auth.clear_flow_cookie(response)
+        return response
+    try:
+        user_id = _complete_github_sign_in(code, installation_id, None)
+    except HTTPException:
+        # GitHub refused the code (expired, or a hiccup): tell Desktop now, not after 10 minutes.
+        link = desktop_auth.done_link(state=state, error="failed")
+        return desktop_auth.return_page(link, "failed", status_code=400)
+    link = desktop_auth.done_link(state=state, code=desktop_auth.make_code(user_id, desktop["c"]))
+    response = desktop_auth.return_page(link, "signed_in")
+    set_session_cookie(response, user_id)
+    desktop_auth.clear_flow_cookie(response)
+    return response
+
+
+def _complete_github_sign_in(
+    code: str, installation_id: str | None, desktop_redirect_uri: str | None
+) -> str:
+    """Exchange ``code``, find-or-create-or-link the account, record its installations and return
+    its id. Shared by the website redirect and the Desktop return page."""
     try:
         user_token = github_app.exchange_code_for_user_token(
             code, redirect_uri=desktop_redirect_uri
@@ -408,17 +550,13 @@ def github_callback(
             session, int(identity["id"]), identity.get("login"), _github_email(identity)
         )
         user_id = str(user.id)
-        # Prefer the explicit ?installation_id (install flow) AND every id discovered from
-        # GET /user/installations. _store_installation is idempotent on the unique installation_id
-        # constraint (re-owns to the current user; no duplicate rows).
-        if installation_id:
+        # The explicit ?installation_id (install flow) counts only when GitHub lists it for THIS
+        # user: the query string is the caller's to write, and _store_installation re-owns an
+        # existing row, so an unlisted id would take over another account's installation. When
+        # discovery failed nothing unverified is recorded (the App-side backfill heals it).
+        # _store_installation is idempotent on the unique installation_id constraint.
+        if installation_id and _as_int(installation_id) in set(discovered_ids):
             _store_installation(session, user.id, installation_id)
         for iid in discovered_ids:
             _store_installation(session, user.id, str(iid))
-
-    # Rider 4 (M-h1b): bounce to the CONFIGURABLE FE origin, not the backend root "/" (which 404s on
-    # the API port). Desktop may override with an allowlisted loopback origin via proxy header.
-    frontend = _desktop_frontend_origin_from_request(request) or settings.frontend_origin
-    response = RedirectResponse(url=frontend, status_code=302)
-    set_session_cookie(response, user_id)
-    return response
+    return user_id

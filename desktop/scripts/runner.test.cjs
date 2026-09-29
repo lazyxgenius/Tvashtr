@@ -168,6 +168,23 @@ test("stop() kills an in-flight CLI and posts no result (the server times the jo
   assert.deepEqual(fs.readdirSync(workRoot), []);
 });
 
+test("stop({release: true}) hands the in-flight job back to the queue (DB-7)", async () => {
+  const api = fakeApi([job("job-q", "claude", "anthropic/claude-sonnet-5")]);
+  api.released = [];
+  api.releaseJob = async (id) => {
+    api.released.push(id);
+  };
+  const { runner } = runnerFor(api, {
+    baseEnv: { ...LEAKY_BASE_ENV, FAKE_CLI_SLEEP_MS: "5000" },
+  });
+  const inFlight = runner.tickOnce();
+  await new Promise((r) => setTimeout(r, 300));
+  await runner.stop({ release: true });
+  await inFlight;
+  assert.deepEqual(api.released, ["job-q"]);
+  assert.equal(api.results.length, 0);
+});
+
 test("a result POST that hits a control-plane restart is retried, not lost", async () => {
   const api = fakeApi([job("job-r", "claude", "anthropic/claude-sonnet-5")]);
   let failures = 2;
@@ -253,4 +270,55 @@ test("a snapshot 404 (not this user's job) is not retried", async () => {
   await runner.tickOnce();
   assert.equal(calls, 1);
   assert.equal(api.results[0].status, "failed");
+});
+
+// Independent review (revamp-finish), DB-7 gaps.
+test("a job whose claim returns after stop() is handed straight back, never run", async () => {
+  const api = fakeApi([job("job-late", "claude", "anthropic/claude-sonnet-5")]);
+  api.released = [];
+  api.releaseJob = async (id) => {
+    api.released.push(id);
+  };
+  let answer;
+  const realClaim = api.claim.bind(api);
+  api.claim = (providers) =>
+    new Promise((resolve) => {
+      answer = () => resolve(realClaim(providers));
+    });
+  const { runner } = runnerFor(api);
+  const tick = runner.tickOnce();
+  await new Promise((r) => setTimeout(r, 50)); // the poll is in flight
+  const stopping = runner.stop({ release: true });
+  answer(); // …and it comes back with a job after the quit began
+  await stopping;
+  await tick;
+  assert.deepEqual(api.released, ["job-late"]);
+  assert.equal(api.results.length, 0);
+  assert.deepEqual(runner.activeJobs(), []);
+});
+
+test("a stop that lands before the CLI starts leaves no CLI running", async () => {
+  const api = fakeApi([job("job-early", "claude", "anthropic/claude-sonnet-5")]);
+  let release;
+  const gate = new Promise((r) => {
+    release = r;
+  });
+  const { runner } = runnerFor(api, {
+    baseEnv: { ...LEAKY_BASE_ENV, FAKE_CLI_SLEEP_MS: "5000" },
+    binaryFor: async () => {
+      await gate; // still looking for the CLI when the user quits
+      return FAKE_CLAUDE;
+    },
+  });
+  const tick = runner.tickOnce();
+  await new Promise((r) => setTimeout(r, 300));
+  const t0 = Date.now();
+  const stopping = runner.stop();
+  setTimeout(() => release(), 50);
+  await stopping;
+  await tick;
+  // Before the fix the CLI spawned anyway, the "stopped before start" kill was a no-op, and
+  // stop() sat out its whole 5 s cap waiting for the orphan.
+  assert.ok(Date.now() - t0 < 3000, `stop took ${Date.now() - t0} ms`);
+  assert.equal(api.results.length, 0);
 });
