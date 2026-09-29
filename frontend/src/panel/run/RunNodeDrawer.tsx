@@ -125,6 +125,7 @@ export function RunNodeDrawer({
   onClose,
   onOpenDoc,
   onEditOnTeam,
+  offTeam = false,
 }: {
   node: GraphNode;
   /** The run's graph: the read-only Setup's routing, reads and writes. */
@@ -142,6 +143,8 @@ export function RunNodeDrawer({
   onOpenDoc?: (docId: string) => void;
   /** "Edit on the team": the team's canvas with this agent open on Setup. Omitted: no button. */
   onEditOnTeam?: () => void;
+  /** The agent this run copied has since been deleted from the team. */
+  offTeam?: boolean;
 }) {
   const shelves = useShelves(tab === "skills");
   const title = nodeTitle(node);
@@ -225,8 +228,10 @@ export function RunNodeDrawer({
     tab === "setup" || tab === "skills" ? (
       <footer className="nd-foot">
         <span className="nd-foot__status">
-          This run uses a copy of the team from when it started. Change the agent on the team to
-          change the next run.
+          This run uses a copy of the team from when it started.{" "}
+          {offTeam
+            ? "This agent is no longer on the team."
+            : "Change the agent on the team to change the next run."}
         </span>
         {onEditOnTeam && (
           <Button variant="secondary" size="sm" onClick={onEditOnTeam}>

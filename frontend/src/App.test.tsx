@@ -439,6 +439,34 @@ describe("App — the agent drawer (F5)", () => {
       focus: undefined,
     });
   });
+
+  it("no 'Edit on the team' for an agent deleted from the team since the run; it says so", async () => {
+    const served = fetchMock.getMockImplementation() as (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = urlOf(input);
+      if (url === "/api/teams/team-1/graph" || !url.endsWith("/graph")) return served(input, init);
+      const graph = graphFor(phase);
+      graph.nodes = graph.nodes.map((n) =>
+        n.id === "n-eng" ? { ...n, origin_node_id: "tn-deleted" } : n,
+      );
+      return Promise.resolve(jsonOk(graph));
+    });
+    render(
+      <App teamId="team-1" initialRunId={RUN_ID} node="n-eng" tab="setup" onNodeRoute={vi.fn()} />,
+    );
+    const setup = within(
+      await screen.findByRole("complementary", { name: "Engineer in this run" }),
+    );
+    expect(
+      await setup.findByText(
+        "This run uses a copy of the team from when it started. This agent is no longer on the team.",
+      ),
+    ).toBeInTheDocument();
+    expect(setup.queryByRole("button", { name: "Edit on the team" })).toBeNull();
+  });
 });
 
 describe("App — the drawer asks before dropping unsaved changes (F5 G2)", () => {

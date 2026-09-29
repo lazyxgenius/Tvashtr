@@ -723,11 +723,17 @@ export default function App({
     ? () => guardLeave(() => onBackToDashboard("engines"))
     : undefined;
   // The run drawer's "Edit on the team": the team this run came from, with the agent the run
-  // copied open on Setup.
+  // copied open on Setup — unless that agent has since been deleted from the team (the run view
+  // loads the team, so it can tell).
+  const teamOfRun = run?.library_team_id ?? currentTeamId;
+  const offTeam = (node: GraphNode) =>
+    node.origin_node_id != null &&
+    teamOfRun === currentTeamId &&
+    teamGraph !== null &&
+    !teamGraph.nodes.some((n) => n.id === node.origin_node_id);
   const editOnTeam = (node: GraphNode) => {
-    const teamOfRun = run?.library_team_id ?? currentTeamId;
     const origin = node.origin_node_id;
-    return teamOfRun && origin
+    return teamOfRun && origin && !offTeam(node)
       ? () => navigate({ page: "team", teamId: teamOfRun, node: origin })
       : undefined;
   };
@@ -896,6 +902,7 @@ export default function App({
                 onClose={() => setSelectedNodeId(null)}
                 onOpenDoc={openRunDoc}
                 onEditOnTeam={editOnTeam(selectedRunNode)}
+                offTeam={offTeam(selectedRunNode)}
               />
             )}
         {/* Over a focus view, the viewer mounts after it (once the team is in), so the viewer is
