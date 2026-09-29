@@ -1,4 +1,4 @@
-import { type MutableRefObject, useState } from "react";
+import { type MutableRefObject, useEffect, useState } from "react";
 import { Zap } from "lucide-react";
 
 import { Button } from "../design-system/components";
@@ -202,8 +202,15 @@ function AgentEditor({
   // Focus mode's Setup body: the editor, "Preview as the agent sees it" or Review changes (OQ-4).
   const [setupView, setSetupView] = useState<"edit" | "preview" | "review">("edit");
   // The Templates dialog (focus mode; the drawer menu's "Compare templates in focus view" opens it
-  // together with the focus view, so the flag lives here, above both).
-  const [templatesOpen, setTemplatesOpen] = useState(false);
+  // together with the focus view, so the flag lives here, above both). From the drawer it's
+  // "wanted" until the focus view is up, then opens on top of it (so it gets Escape, Tab and the
+  // keyboard focus: this effect runs after the focus view's). Docking closes it.
+  const [templates, setTemplates] = useState<"closed" | "wanted" | "open">("closed");
+  const templatesOpen = templates === "open";
+  if (!focus && templatesOpen) setTemplates("closed");
+  useEffect(() => {
+    if (focus && templates === "wanted") setTemplates("open");
+  }, [focus, templates]);
   // Review changes closes itself once nothing is left to review (the last Undo, or a Save).
   if (setupView === "review" && !api.isDirty) setSetupView("edit");
   const view = focus && tab === "setup" ? setupView : "edit";
@@ -271,7 +278,7 @@ function AgentEditor({
   };
   // Templates: the drawer menu's "Compare templates in focus view" and focus mode's button.
   const openTemplates = () => {
-    setTemplatesOpen(true);
+    setTemplates(focus ? "open" : "wanted");
     if (!focus) onFocusChange(true);
   };
   const requestRoutingUpdate = () => {
@@ -524,9 +531,9 @@ function AgentEditor({
     overlay = (
       <TemplatesDialog
         roleName={node.role_name}
-        onClose={() => setTemplatesOpen(false)}
+        onClose={() => setTemplates("closed")}
         onUse={(template) => {
-          setTemplatesOpen(false);
+          setTemplates("closed");
           // The dialog already says it replaces the instructions (FOCUS-38): no second confirm,
           // and only the instructions change (OQ-5).
           applyTemplate(template, true);

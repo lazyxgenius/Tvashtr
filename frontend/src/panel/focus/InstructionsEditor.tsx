@@ -45,10 +45,15 @@ export function InstructionsEditor({
   );
   const { line, column } = caretPosition(prompt, caret);
 
-  // The dialog's focus trap lands on its first button; the full editor starts in the text instead.
+  // The dialog's focus trap lands on its first button; the full editor starts in the text instead,
+  // unless a dialog opened on top of it (the Templates dialog) has the keyboard by then.
   useEffect(() => {
     if (!autoFocus) return;
-    const id = window.setTimeout(() => textRef.current?.focus({ preventScroll: true }), 0);
+    const id = window.setTimeout(() => {
+      const on = document.activeElement?.closest('[aria-modal="true"]');
+      if (on && !on.contains(textRef.current)) return;
+      textRef.current?.focus({ preventScroll: true });
+    }, 0);
     return () => window.clearTimeout(id);
   }, [autoFocus]);
 

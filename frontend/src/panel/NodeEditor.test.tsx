@@ -653,6 +653,39 @@ describe("NodeEditor — templates, routing sync, new agent (G3)", () => {
     );
   });
 
+  it("'Compare templates in focus view' puts the dialog on top: it keeps the keyboard, Escape closes only it, and docking closes it", async () => {
+    const { props, drawer, view } = renderEditor();
+    fireEvent.click(
+      within(await openTemplates(drawer)).getByRole("menuitem", {
+        name: "Compare templates in focus view",
+      }),
+    );
+    view.rerender(<NodeEditor {...props} focus />);
+    const chooser = await screen.findByRole("dialog", { name: "Choose a template" });
+    // The focus editor's own caret timer has had its turn: the keyboard stays in the dialog.
+    await act(() => new Promise((resolve) => window.setTimeout(resolve, 20)));
+    expect(chooser).toContainElement(document.activeElement as HTMLElement);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Choose a template" })).toBeNull();
+    expect(props.onFocusChange).not.toHaveBeenCalledWith(false);
+
+    // Docked with the dialog up (the address changed): it closes with the focus view, ⌘S saves in
+    // the drawer, and the focus view opens again without it.
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Reviewer in focus view" })).getByRole("button", {
+        name: "Templates",
+      }),
+    );
+    expect(screen.getByRole("dialog", { name: "Choose a template" })).toBeInTheDocument();
+    view.rerender(<NodeEditor {...props} focus={false} />);
+    const docked = screen.getByRole("complementary", { name: /settings$/ });
+    fireEvent.click(within(docked).getByRole("switch", { name: "Images" }));
+    fireEvent.keyDown(document, { key: "s", ctrlKey: true });
+    await waitFor(() => expect(patchBody()).toEqual({ multimodal: true }));
+    view.rerender(<NodeEditor {...props} focus />);
+    expect(screen.queryByRole("dialog", { name: "Choose a template" })).toBeNull();
+  });
+
   it("asks before replacing text; Cancel keeps it, Replace applies it with an Undo toast", async () => {
     const { drawer } = renderEditor();
     fireEvent.click(
