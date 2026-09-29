@@ -65,7 +65,7 @@ from tvashtr.control_plane.domain_eval import (
     run_domain_eval,
 )
 from tvashtr.control_plane.domain_files import MAX_UPLOAD_BYTES
-from tvashtr.control_plane.domain_ingest import ingest_domain, normalize_embedding_model
+from tvashtr.control_plane.domain_ingest import normalize_embedding_model
 from tvashtr.control_plane.domains import (
     DOMAIN_TEMPLATE_KEYS,
     DomainNameTaken,
@@ -2909,10 +2909,12 @@ def post_domain_ingest(
                 "missing_providers": [provider],
             },
         )
-    handle = DBOS.start_workflow(ingest_domain, str(owner_id), str(did))
+    # Reading is automatic now: the old Ingest button joins it (never a second reader beside it);
+    # the old ingest_domain workflow stays registered (routers imports domain_ingest) for replay.
+    # ``workflow_id`` is the read this call started, "" when a running read takes the files.
     return {
         "domain_id": str(did),
-        "workflow_id": str(handle.workflow_id),
+        "workflow_id": domain_read.read_for_ingest(owner_id, did),
         "status": "indexing",
     }
 

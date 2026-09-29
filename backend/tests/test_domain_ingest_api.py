@@ -5,7 +5,9 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
+from tvashtr.db import session_scope
 from tvashtr.main import app
+from tvashtr.models import ProviderCredential
 
 
 def _fresh() -> TestClient:
@@ -48,6 +50,16 @@ def test_ingest_starts_workflow(monkeypatch):
         "tvashtr.routers.held_provider_slugs",
         lambda owner_id: {"openai"},
     )
+    # Reading checks the account's saved keys itself (review finding 4: /ingest joins it).
+    with session_scope() as s:
+        s.add(
+            ProviderCredential(
+                owner_id=uuid.UUID(c.get("/api/auth/me").json()["id"]),
+                provider="openai",
+                secret_encrypted="x",
+                key_last4="abcd",
+            )
+        )
     handle = MagicMock()
     handle.workflow_id = "wf-domain-ingest-1"
     monkeypatch.setattr("tvashtr.routers.DBOS.start_workflow", lambda *a, **k: handle)

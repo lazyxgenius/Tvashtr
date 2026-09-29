@@ -12,7 +12,8 @@ embedding (plus ``meta.page`` for PDFs, DM-60), ``embed_batch_step`` fills 16 at
 file's progress is embedded ÷ total. A file whose reading key is missing stays ``pending`` —
 "Waiting for a <provider> key" — and ``resume_waiting`` starts it when that key is saved.
 
-The old ``ingest_domain`` workflow and ``POST /ingest`` are untouched (in-flight workflows replay).
+The old ``ingest_domain`` workflow stays defined (in-flight workflows replay); ``POST /ingest`` (the
+old Ingest button) now reads through ``read_for_ingest``.
 """
 
 from __future__ import annotations
@@ -130,13 +131,17 @@ def _claim_next(session, domain: Domain) -> uuid.UUID | None:
 
 
 def ensure_reading(
-    owner_id: uuid.UUID, domain_id: uuid.UUID, *, run_tests_after: bool = False
+    owner_id: uuid.UUID,
+    domain_id: uuid.UUID,
+    *,
+    run_tests_after: bool = False,
+    handles: list | None = None,
 ) -> str:
     """Start reading the domain's waiting files if nothing is reading them yet.
 
     Returns ``"started"`` (a workflow was started), ``"queued"`` (a read is running and will take
     the files), ``"waiting_for_key"`` (files wait for the reading model's key) or ``"idle"``
-    (nothing to read, or no such domain).
+    (nothing to read, or no such domain). ``handles`` gets the started workflow's handle.
     """
     with session_scope() as session:
         _lock(session, domain_id)
@@ -157,7 +162,7 @@ def ensure_reading(
             return "idle"
         _apply_domain_aggregates(session, domain)
     try:
-        DBOS.start_workflow(
+        handle = DBOS.start_workflow(
             read_domain_files, str(owner_id), str(domain_id), str(first), run_tests_after
         )
     except Exception:
@@ -169,7 +174,31 @@ def ensure_reading(
                 .values(ingest_status=INGEST_PENDING)
             )
         raise
+    if handles is not None:
+        handles.append(handle)
     return "started"
+
+
+def read_for_ingest(owner_id: uuid.UUID, domain_id: uuid.UUID) -> str:
+    """``POST /ingest`` (Desktop 0.10.0's Ingest button): files that failed go back to waiting, as
+    the old ingest retried them, then reading starts — or the read already running takes them, so a
+    file is never read by two readers. Returns the started workflow's id, else ``""``."""
+    with session_scope() as session:
+        _lock(session, domain_id)
+        domain = _owned_domain(session, owner_id, domain_id)
+        if domain is None:
+            return ""
+        session.execute(
+            update(DomainDocument)
+            .where(
+                DomainDocument.domain_id == domain_id, DomainDocument.ingest_status == INGEST_ERROR
+            )
+            .values(ingest_status=INGEST_PENDING, error_message=None)
+        )
+        _apply_domain_aggregates(session, domain)
+    handles: list = []
+    ensure_reading(owner_id, domain_id, handles=handles)
+    return str(handles[0].workflow_id) if handles else ""
 
 
 def resume_stalled(owner_id: uuid.UUID, domain_ids: list[uuid.UUID]) -> None:

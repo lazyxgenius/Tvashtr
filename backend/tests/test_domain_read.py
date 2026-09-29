@@ -440,3 +440,58 @@ def test_files_left_waiting_start_reading_when_the_domain_is_opened(started):
     assert c.get(f"/api/domains/{dids[0]}").status_code == 200  # reading now: nothing new
     assert c.get("/api/domains").status_code == 200
     assert [call[2] for call in started] == dids
+
+
+# ---- review finding 4: Desktop 0.10.0's Ingest button (POST /ingest) joins the automatic read ----
+
+
+@pytest.fixture
+def handles(monkeypatch):
+    """Record ``DBOS.start_workflow`` calls; each returns a handle with a known workflow id."""
+    calls: list[tuple] = []
+
+    def _record(fn, *args, **kwargs):
+        calls.append((fn, *args))
+        return type("Handle", (), {"workflow_id": f"wf-{len(calls)}"})()
+
+    monkeypatch.setattr(domain_read.DBOS, "start_workflow", _record)
+    return calls
+
+
+def test_the_old_ingest_button_never_starts_a_second_read(handles):
+    """Uploading with a key starts reading; the old Ingest button then must not start the legacy
+    ``ingest_domain`` workflow (which re-marks every waiting/reading file ``indexing`` and reads
+    them again beside the running read). The answer keeps its old fields."""
+    c, owner = _fresh()
+    _key(owner)
+    did = _domain(c)
+    a = _upload(c, did, "refund-policy.md", b"# Refunds\nWithin 30 days.")
+    b = _upload(c, did, "billing-faq.md", b"# Billing\nInvoices monthly.")
+    assert (a["reading"], b["reading"]) == ("started", "queued")
+
+    r = c.post(f"/api/domains/{did}/ingest")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert (body["domain_id"], body["status"]) == (did, "indexing")
+    assert isinstance(body["workflow_id"], str)
+    assert [call[0] for call in handles] == [domain_read.read_domain_files]
+    assert _status(a["document_id"])[0] == "indexing"  # still its one reader's
+    assert _status(b["document_id"])[0] == "pending"  # still queued for that same read
+
+
+def test_the_old_ingest_button_reads_failed_files_again(handles):
+    """The old Ingest retried files that failed; it still does — through the automatic read."""
+    c, owner = _fresh()
+    _key(owner)
+    did = _domain(c)
+    a = _upload(c, did, "refund-policy.md", b"# Refunds\nWithin 30 days.")
+    with session_scope() as s:
+        doc = s.get(DomainDocument, uuid.UUID(a["document_id"]))
+        doc.ingest_status, doc.error_message = "error", "no extractable text"
+
+    r = c.post(f"/api/domains/{did}/ingest")
+    assert r.status_code == 200, r.text
+    assert r.json()["workflow_id"] == "wf-2"
+    assert [call[0] for call in handles] == [domain_read.read_domain_files] * 2
+    assert handles[1][3] == a["document_id"]
+    assert _status(a["document_id"])[0] == "indexing"
