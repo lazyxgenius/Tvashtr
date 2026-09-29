@@ -97,7 +97,8 @@ function roundsOf(node: GraphNode, status: NodeStatus): NodeRound[] {
     outcome_detail: inv.outcome_detail,
     started_at: inv.started_at,
     ended_at: inv.ended_at,
-    cost: inv.cost,
+    // The round's ledger shows its exact tokens and cost; the row doesn't round them again.
+    cost: null,
     model_used: null,
     runs_on: null,
     given: null,

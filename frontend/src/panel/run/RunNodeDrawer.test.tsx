@@ -267,6 +267,34 @@ describe("RunNodeDrawer — Runs: this run's rounds", () => {
     expect(last.getByText("Spec offloaded to SPEC.md")).toBeInTheDocument();
   });
 
+  it("an opened earlier round shows its cost once, exactly", () => {
+    const cost = {
+      prompt_tokens: 1240,
+      completion_tokens: 320,
+      total_tokens: 1560,
+      cost_usd: 0.0041,
+    };
+    render(
+      <Drawer
+        node={gnode({
+          id: "n-rev",
+          role_name: "reviewer",
+          kind: "agent",
+          invocations: [
+            inv({ iteration: 1, outcome: "changes_requested", cost }),
+            inv({ iteration: 2, outcome: "approved" }),
+          ],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Round 1/ }));
+    const round = screen.getByRole("button", { name: /Round 1/ }).closest("li") as HTMLElement;
+    expect(within(round).getByText("1,240 in / 320 out")).toBeInTheDocument();
+    expect(within(round).getByText("$0.0041")).toBeInTheDocument();
+    expect(within(round).queryByText("$0.00")).toBeNull();
+    expect(within(round).queryByText("1.6k tokens")).toBeNull();
+  });
+
   it("a round still running when the run failed reads as failed", () => {
     render(
       <Drawer
