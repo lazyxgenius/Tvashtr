@@ -536,3 +536,33 @@ def test_a_round_from_before_v2_reads_from_its_outcome(outcome, covered):
     assert got["answer_text"] == "30 days"
     assert got["citations"] == [{"filename": "a.md"}]
     assert got["question"] is None
+
+
+# ---- review finding 6: a node can only point at the caller's own domain -------------------------
+
+
+def _theirs() -> str:
+    b, _ = _fresh()
+    r = b.post("/api/domains", json={"name": "Secret docs", "template": "support"})
+    assert r.status_code == 200, r.text
+    return r.json()["domain_id"]
+
+
+def test_adding_a_query_node_for_another_accounts_domain_is_404():
+    a, _ = _fresh()
+    tid = _team(a)
+    body = {"node_kind": "domain_query", "domain_id": _theirs()}
+    r = a.post(f"/api/teams/{tid}/nodes", json=body)
+    assert (r.status_code, r.json()["detail"]) == (404, "domain not found")
+    kinds = [n["kind"] for n in a.get(f"/api/teams/{tid}/graph").json()["nodes"]]
+    assert "domain_query" not in kinds
+
+
+def test_pointing_a_query_node_at_another_accounts_domain_is_404():
+    a, _ = _fresh()
+    tid = _team(a)
+    node = a.post(f"/api/teams/{tid}/nodes", json={"node_kind": "domain_query"}).json()
+    r = a.patch(f"/api/teams/{tid}/nodes/{node['id']}", json={"domain_id": _theirs()})
+    assert (r.status_code, r.json()["detail"]) == (404, "domain not found")
+    with session_scope() as s:
+        assert s.get(AgentNode, uuid.UUID(node["id"])).config["domain_id"] is None

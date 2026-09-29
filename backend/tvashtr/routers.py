@@ -3236,9 +3236,11 @@ def update_team_node(
                     cfg["domain_id"] = None
                 else:
                     try:
-                        uuid.UUID(str(body.domain_id))
+                        picked = uuid.UUID(str(body.domain_id))
                     except ValueError as exc:
                         raise HTTPException(status_code=400, detail="invalid domain_id") from exc
+                    if _owned_domain(session, uuid.UUID(current_user.id), picked) is None:
+                        raise HTTPException(status_code=404, detail="domain not found")
                     cfg["domain_id"] = str(body.domain_id)
             if body.pass_to_spec is not None:
                 cfg["pass_to_spec"] = body.pass_to_spec
@@ -3657,6 +3659,9 @@ def create_team_node(
     with db.session_scope() as session:
         graph = _require_library_team(session, team_id, owner_id)
         node = _build_node(graph.id, body, held_providers)
+        picked = (node.config or {}).get("domain_id") if node.kind == "domain_query" else None
+        if picked and _owned_domain(session, owner_id, uuid.UUID(picked)) is None:
+            raise HTTPException(status_code=404, detail="domain not found")
         session.add(node)
         session.flush()
         return _node_base_dict(node)
