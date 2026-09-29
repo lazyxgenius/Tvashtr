@@ -42,6 +42,8 @@ export function DownloadPage({
   user: AuthUser | null | undefined;
 }) {
   const platform = usePlatform();
+  // A phone never gets the DMG (WEB-25), whatever `?os=` says: it is decided by the device.
+  if (platform.os === "phone") return <ForMac badge={null} phone />;
   const detected = chosen === undefined;
   const os = chosen ?? platform.os;
   if (os === "windows" || os === "linux") {
@@ -56,7 +58,7 @@ export function DownloadPage({
   } else if (detected && os === "mac" && platform.arch === "unknown") {
     badge = "We detected a Mac";
   }
-  return <ForMac badge={badge} phone={os === "phone"} />;
+  return <ForMac badge={badge} phone={false} />;
 }
 
 function ForMac({ badge, phone }: { badge: string | null; phone: boolean }) {

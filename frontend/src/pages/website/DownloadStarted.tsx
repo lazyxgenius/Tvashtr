@@ -11,9 +11,12 @@ import { Button, ButtonLink, Dialog } from "../../design-system/components";
 import type { AuthUser } from "../../lib/api";
 import { desktopHomeLink, openDesktopLink } from "../../lib/desktopDeepLinks";
 import { DESKTOP_MAC_DMG_URL } from "../../lib/desktopDownload";
+import { usePlatform } from "../../lib/platform";
+import { SendLink } from "./DownloadPage";
 import { QuarantineFix } from "./QuarantineFix";
 
 export function DownloadStarted({ user }: { user: AuthUser | null | undefined }) {
+  const phone = usePlatform().os === "phone";
   const [asking, setAsking] = useState(false);
   return (
     <section className="web-dl">
@@ -57,9 +60,14 @@ export function DownloadStarted({ user }: { user: AuthUser | null | undefined })
           <ExternalLink size={15} strokeWidth={1.6} aria-hidden />
           <span>I’ve installed it — open Tvashtr</span>
         </Button>
-        <ButtonLink variant="ghost" size="md" href={DESKTOP_MAC_DMG_URL}>
-          Download again
-        </ButtonLink>
+        {phone ? (
+          // A phone never gets the DMG (WEB-25): send the page to a computer instead.
+          <SendLink />
+        ) : (
+          <ButtonLink variant="ghost" size="md" href={DESKTOP_MAC_DMG_URL}>
+            Download again
+          </ButtonLink>
+        )}
       </div>
       <Dialog
         open={asking}

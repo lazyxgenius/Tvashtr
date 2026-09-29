@@ -149,6 +149,15 @@ describe("on a phone (OQ-24, OQ-10)", () => {
     expect(within(toast).getByText("Link copied")).toBeInTheDocument();
   });
 
+  it("?os=mac on a phone still never offers the DMG (review finding, WEB-25)", () => {
+    setUaHints("Android", undefined, true);
+    renderPage("mac");
+    expect(downloadLinks()).toEqual([]);
+    expect(
+      screen.getByRole("button", { name: /Copy the link|Send me the link/ }),
+    ).toBeInTheDocument();
+  });
+
   it("shares the link where the phone can", () => {
     const share = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, "share", { configurable: true, value: share });

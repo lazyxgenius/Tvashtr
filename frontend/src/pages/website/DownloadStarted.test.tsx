@@ -5,7 +5,7 @@ import { ToastProvider } from "../../design-system/components";
 import { openDesktopLink } from "../../lib/desktopDeepLinks";
 import { DESKTOP_MAC_DMG_URL, QUARANTINE_FIX } from "../../lib/desktopDownload";
 import { DownloadStarted } from "./DownloadStarted";
-import { downloadLinks } from "./testUtils";
+import { clearUaHints, downloadLinks, setUaHints } from "./testUtils";
 
 vi.mock(import("../../lib/desktopDeepLinks"), async (original) => ({
   ...(await original()),
@@ -89,5 +89,17 @@ describe("Open Tvashtr? (WEB-35)", () => {
       login: "lazyxgenius",
       host: window.location.host,
     });
+  });
+});
+
+describe("on a phone (review finding, WEB-25)", () => {
+  afterEach(() => clearUaHints());
+  it("#/download/started offers no DMG, only a link to send to a computer", () => {
+    setUaHints("Android", undefined, true);
+    renderPage();
+    expect(downloadLinks()).toEqual([]);
+    expect(
+      screen.getByRole("button", { name: /Copy the link|Send me the link/ }),
+    ).toBeInTheDocument();
   });
 });
