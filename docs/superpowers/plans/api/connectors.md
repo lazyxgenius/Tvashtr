@@ -983,6 +983,9 @@ provider took (`forwarded`): a write whose answer was lost or was an error may s
 data, so it counts, and it is in `calls` with `ok: false`. Blocked calls, calls that were never
 sent and failed reads are in `calls` but not in the counts, so a connector whose calls were all
 refused is in `used` with `0` and `0`. `recent_use` on the connection's page counts the same way.
+Both are read from the proxy's own band only (`seq >= 1_000_000_000`, a range on the `(run_id,
+invocation_id, seq)` index): the run view polls the graph every 1.8 s, and without the range
+each poll read every engine event of the run to look at its kind.
 Each call carries `forwarded` as its event does (a round recorded before the field existed reads
 as `ok`), so the UI can tell the two kinds of call that aren't `ok` apart: a write that is
 `forwarded` reads "May have gone through", anything else "Failed" ("Not run: read only for this

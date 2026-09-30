@@ -637,6 +637,9 @@ def connector_use(session: Session, run_id: object, invocation_ids: list[int]) -
         .where(
             RunEvent.run_id == str(run_id),
             RunEvent.invocation_id.in_(invocation_ids),
+            # The proxy's own band: a range on the (run, round, seq) index. Without it every
+            # event of the run is read to look at its kind, on each poll of the run view.
+            RunEvent.seq >= EVENT_SEQ_BAND,
             RunEvent.kind.in_(_EVENT_KINDS),
         )
         .order_by(RunEvent.seq)
@@ -716,6 +719,7 @@ def recent_use(session: Session, owner_id: uuid.UUID, connection_id: uuid.UUID) 
         .outerjoin(AgentNode, AgentNode.id == AgentInvocation.node_id)
         .where(
             RunEvent.run_id.in_(runs),
+            RunEvent.seq >= EVENT_SEQ_BAND,  # as in ``connector_use``
             RunEvent.kind == "connector_call",
             RunEvent.payload["connection_id"].astext == str(connection_id),
         )

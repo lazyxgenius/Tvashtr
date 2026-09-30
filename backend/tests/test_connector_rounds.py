@@ -247,6 +247,31 @@ def test_a_round_with_no_calls_and_nothing_skipped_has_no_block(owner):
     assert _use(other_run, busy) == {}
 
 
+def test_connector_events_are_read_from_the_proxys_own_band_only(owner):
+    """Every connector event is written at ``seq >= EVENT_SEQ_BAND``, and the reads say so. The
+    band is a range on the ``(run, round, seq)`` index; without it the run view's 1.8 s poll read
+    every engine event of the run to look at its kind, connectors or not."""
+    _c, owner_id, tid, _nodes = owner
+    run_id, clone = _run(owner_id, tid)
+    row = _connection(owner_id)
+    inv = _round(run_id, clone["reviewer"])
+    record_call(_grant(run_id, clone["reviewer"], row), row, "list_tables", write=False, result=OK)
+    with session_scope() as s:
+        mine = s.execute(select(RunEvent).where(RunEvent.invocation_id == inv)).scalar_one()
+        assert mine.seq == BAND
+        # Rows below the band are the engine's. One that happens to carry the kind is not read.
+        s.add(RunEvent(run_id=run_id, invocation_id=inv, seq=0, kind="action", payload={}))
+        s.add(
+            RunEvent(
+                run_id=run_id, invocation_id=inv, seq=1, kind=mine.kind, payload=dict(mine.payload)
+            )
+        )
+
+    block = _use(run_id, inv)[inv]
+    assert block["total_calls"] == 1 and block["used"][0]["reads"] == 1
+    assert [use["reads"] for use in _recent(owner_id, row)] == [1]
+
+
 def test_a_round_that_only_skipped_a_connector(owner):
     _c, owner_id, tid, _nodes = owner
     run_id, clone = _run(owner_id, tid)
