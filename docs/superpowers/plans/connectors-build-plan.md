@@ -69,7 +69,7 @@ order, each with `--no-ff`. The one conflict was `backend/tests/test_connector_s
 and B3's deletions against B1's): every stub-test deletion in the table below applies. From the
 merge on, the contract and this plan have one owner, and the file ownership below is history.
 What the merge changed on top of each stream is in that stream's "At the merge" note (§4 to §9).
-Still to build: F2.5 and the wiring listed in §8, then Stream T (§10).
+F2.5 and the wiring listed in §8 are built. Still to build: Stream T (§10).
 
 | Stream | Owns (nobody else edits these) |
 |---|---|
@@ -301,10 +301,13 @@ cross-stream table can be imported with its final signature.
   returning `[]`.
 - `routes/connectors.py` (`router`), `routes/connectors_oauth.py` (`router`, `public_router`),
   `tvashtr/mcp/connectors.py` (`get_connectors_mcp()`: mcp SDK `FastMCP("tvashtr-connectors",
-  stateless_http=True, json_response=True, streamable_http_path="/")`, no tools yet). It is built
-  with `TransportSecuritySettings(enable_dns_rebinding_protection=False)`: FastMCP's default for
-  a localhost-bound server answers **421** to any `Host` that isn't localhost, and agents reach
-  the proxy by the public host or the docker host. The run token is what guards it.
+  stateless_http=True, json_response=True, streamable_http_path="/")`, no tools yet). FastMCP's
+  default for a localhost-bound server answers **421** to any `Host` that isn't localhost, and
+  agents reach the proxy by the public host or the docker host. Phase 0 switched the check off
+  (`enable_dns_rebinding_protection=False`); since the Domains fix it is on with an explicit
+  list, `tvashtr.mcp.agent_transport_security()`: the host of `public_base_url`, the docker host
+  (`litellm_proxy_host_docker`) and localhost, each with or without a port, and no `Origin` (a
+  request that carries one gets 403). Both mounts use it.
 - `main.py`: import both route modules (:43-53); add both `router`s to the authenticated tuple
   (:130-141); include `connectors_oauth.public_router` bare next to the other public routers
   (:122-124); build the proxy app like Domains (:59-61), enter its lifespan inside `_lifespan`
@@ -990,15 +993,8 @@ connectors. Saving is the existing `tool_config` patch (`panel/agentDraft.ts`), 
   next save. While the list is loading or failed to load the checklist writes nothing (a failed
   fetch must not wipe grants). A draft saved without touching the checklist keeps the id; the
   run then skips it with `it was disconnected`.
-- As built, two things wait for F2.5, because they need files no stream owns
-  (`panel/skills/SkillsToolsTab.tsx`, `panel/NodeEditor.tsx`) or F1's routes:
-  - the in-checklist plan note and the agent's name in the Access select. `ToolsPanel` takes
-    `agentName` and `plan` (the name `desktopSubscriptionName` returns) and hands them to the
-    checklist; nothing passes them yet. Until then a plan agent sees the tab's own note
-    (`desktopSubscriptionNote`), which now names connectors, and its rows are not disabled;
-  - "Sign in again" is a plain address (`#/toolkit/connectors/<id>`), so it leaves without the
-    drawer's "Save your changes?" question. F2.5 sends it through `onOpenToolkit` with F1.1's
-    `{page: "connector"}` route.
+- The plan note, the agent's name in the Access select and the leave guard on the checklist's
+  links needed files no stream owned; they landed with F2.5 (below).
 - Tests first: `ConnectorsChecklist.test.tsx` (including: a draft holding an unknown id and a
   known one saves only the known one; a failed load leaves the draft as it was),
   `panel/skills/SkillsToolsTab.test.tsx`.
@@ -1047,26 +1043,33 @@ contract, so the link reads "Open result".
 - A call that isn't `ok` reads "May have gone through" when it is a write the provider took
   (`forwarded`), else "Failed".
 
-**Left for F2.5** (none of it is built; the props above are in place):
-- `panel/skills/SkillsToolsTab.tsx`: props `agentName`, `plan`, `savedToolConfig`, forwarded to
-  `ToolsPanel` (`savedConfig`). `panel/NodeEditor.tsx`, the `skillsTab` object: `agentName:
-  name`, `plan: desktopSubscriptionName(draft.model, cover, isDesktopApp())`, `savedToolConfig:
-  api.baseline.toolConfig`. Until then a plan agent's checkboxes are not disabled and the
-  read-only note outlives a save. Test: a plan agent's rows are disabled and the amber note shows.
-- `panel/NodeEditor.tsx`: `<RunsTab onOpenConnector=…>` with the same two routes, so "Sign in" on
-  a skipped line goes through the leave guard.
-- The save toast of `CnF-Grant-4`: after a save that changed `tool_config.tvashtr.connectors`,
-  "Reviewer can use Supabase, Notion and Linear. All read only." ("All read only." only when no
-  grant is `write`).
-- Focus mode's Runs tab (`panel/focus/FocusRunsTab.tsx`, `RoundDetail`): render
-  `<ConnectorsSkipped>` and `<ConnectorsUsed key={round.invocation_id}>`.
-- Optional: move the feed filter from `getRunEvents` into `panel/EventFeed.tsx`.
-
-**F2.5 Connect from the drawer** (after the F1 merge, not in the parallel phase: F2's worktree
-merges `feat/connectors` with F1 in it first). "Connect an app" in the checklist header opens a
-dialog with the Featured cards and "Open Connectors"; picking one opens `ConnectSheet`; on success
-the new connection is ticked in the draft and the drawer toast says "Neon is connected and ticked
-for Reviewer. Save to keep it." Test first.
+**F2.5 Connect from the drawer, and the drawer's wiring** (built after the F1 merge):
+- `panel/connectors/ConnectAppDialog.tsx`: "Connect an app" in the checklist head opens
+  "Connect an app for Reviewer": the Featured entries of the catalog's first page that are
+  available and not connected, each with its tile, "Sign in" or "API key" and Connect; a search
+  box that narrows them by name; "Open Connectors" (Browse, through `onOpenToolkit`, so the leave
+  guard asks first). Picking one opens F1's `ConnectSheet`. When it connects, the checklist puts
+  the connection first with a "New" badge, ticks it read only in the draft, and its callout reads
+  "Neon is connected and ticked for Reviewer. Save to keep it." (green, `role="status"`) until the
+  saved grants include it. The canvas draws that line as the section's callout, so it is not a
+  toast. The button is off while the list loads, for an agent on a plan, and in the run view.
+  A sign-in finished after its sheet was closed shows the next time the tab opens.
+- `panel/skills/SkillsToolsTab.tsx` takes `agentName`, `plan`, `savedToolConfig` and hands them to
+  `ToolsPanel`; `panel/NodeEditor.tsx` fills them (`name`, `desktopSubscriptionName(…)`,
+  `api.baseline.toolConfig`). A plan agent's rows and "Connect an app" are disabled and the amber
+  note shows; focus mode gets the same through `FocusSkillsTab`.
+- `panel/NodeEditor.tsx`: `RunsTab` and `FocusRunsTab` get `onOpenConnector`
+  (`connectorsRoute(id)` through `onOpenToolkit`), so "Sign in" on a skipped line asks "Save your
+  changes?" first. `App.test.tsx` proves the guard on a checklist link with a dirty draft.
+- The save toast of `CnF-Grant-4` (`savedGrantsToast`): after a save that changed
+  `tool_config.tvashtr.connectors`, "Reviewer can use Supabase, Notion and Linear. All read
+  only." The last part only when no grant can write (a grant's `write` on a read-only connection
+  can't); one connector reads "Read only."; a save that leaves none, or whose connections can't
+  be read, shows no toast.
+- Focus mode's Runs tab (`panel/focus/FocusRunsTab.tsx`, `RoundDetail`): a "Connectors" card with
+  `<ConnectorsSkipped>` and `<ConnectorsUsed key={round.invocation_id}>`, only on a round that
+  used or skipped one.
+- Not done (optional): moving the feed filter from `getRunEvents` into `panel/EventFeed.tsx`.
 
 ## 9. Stream D: Desktop
 
@@ -1244,17 +1247,19 @@ DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`),
   than its issuer. A Featured entry gets `oauth_hosts`; B2.7 prints every endpoint host so the
   pins are known before release. A registry or custom server gets `cannot_register`.
 
-- **The Domains proxy answers 421 to any non-local `Host`** (found in Phase 0). `/mcp/domains`
-  is built with FastMCP's defaults, which turn on the SDK's localhost-only `Host` check, so an
-  agent that calls it as `tvashtr.fly.dev` or `host.docker.internal:8000` gets `421 Invalid Host
-  header`. It predates this work and is not fixed here; `/mcp/connectors` turns the check off
-  (0.6). Follow-up: the same one-line setting for Domains, with a test.
-- **The Domains proxy also answers 405 at its own address behind the SPA catch-all** (found by
-  the Phase 0 review). `domains_mcp_url()` gives agents `{base}/mcp/domains`, a Starlette mount
-  only matches `/mcp/domains/…`, and in the hosted image the GET catch-all takes the bare path and
-  answers a POST `405 Method Not Allowed` (locally, with no built frontend, it is a 307 that MCP
-  clients follow). `/mcp/connectors` has a route for the exact path (0.6). Not fixed here;
-  follow-up: mount Domains the same way, in the same change as the `Host` check above.
+- **Fixed: the Domains proxy answered 421 to any non-local `Host`, and 405 at its own address
+  behind the SPA catch-all** (found in Phase 0, live on production). `/mcp/domains` was built
+  with FastMCP's defaults (the SDK's localhost-only `Host` check) and mounted with a Starlette
+  mount alone, which only matches `/mcp/domains/…`. It is now mounted like `/mcp/connectors`
+  (`tvashtr.mcp.mount_streamable`: a route for the exact address plus the mount) and both use
+  one `Host` allow-list (`agent_transport_security()`, see 0.6). Proved by a subprocess probe in
+  `tests/test_domain_mcp_http.py` (public host, docker host, localhost, both spellings of the
+  path, a real MCP client listing the two tools, and 421 / 403 for another `Host` / a browser
+  `Origin`). What remains a risk: a deploy reached by a host that is not the one in
+  `TVASHTR_PUBLIC_BASE_URL` answers 421 on both mounts, so that setting must name the public
+  host (fly.toml does). Not changed here: the Domains server keeps each session in the memory
+  of the machine that started it (the Connectors proxy is stateless), so with more than one
+  backend machine a follow-up request can reach another machine and get 404 "Session not found".
 - **`make lint` is not clean on the base commit** (389ab84): over `backend` and `scripts`,
   `ruff check` reports 37 errors and `ruff format --check` 21 files (Domains tests, the
   subscription pre-flight tests, `scripts/design-parity`), none of them connector files. Every

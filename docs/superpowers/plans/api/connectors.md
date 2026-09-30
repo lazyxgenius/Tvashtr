@@ -765,11 +765,14 @@ does not expire with the provider's token.
 
 ### The proxy: `POST {public base}/mcp/connectors`
 A streamable-HTTP MCP server inside the backend (stateless, JSON replies), mounted next to
-`/mcp/domains`. The agent's sandbox talks only to it. The MCP SDK's localhost-only `Host` check is
-off for this mount (agents call it by the public or docker host; the run token authorizes every
-request). The address has no trailing slash and is answered as written: the path has its own
-route next to the mount (`mount_connectors_mcp`), because a mount alone only matches
-`/mcp/connectors/…` and the app's page catch-all would answer the bare path 405.
+`/mcp/domains`. The agent's sandbox talks only to it. The MCP SDK's `Host` check is on with a list
+instead of its localhost-only default (`tvashtr.mcp.agent_transport_security`): the host of
+`TVASHTR_PUBLIC_BASE_URL`, the docker host and localhost, with or without a port. Any other
+`Host` gets 421, and a request that carries an `Origin` (a browser page; agents send none) gets
+403. The run token still authorizes every request. The address has no trailing slash and is
+answered as written: the path has its own route next to the mount (`mount_connectors_mcp`),
+because a mount alone only matches `/mcp/connectors/…` and the app's page catch-all would answer
+the bare path 405. `/mcp/domains` is mounted the same way, with the same list.
 - **`tools/list`**: the provider's tools that are reads for this token's effective access (all of
   them when it is `write`). Every field has a ceiling, so a server can't pour text into an
   agent's context: a tool is offered with its `name`, `title` (≤ 200 characters), `description`
