@@ -1,0 +1,546 @@
+# CONNECTORS API contract (Toolkit › Connectors)
+
+Source of truth for the Connectors backend and frontend streams. Decisions and operator answers:
+`docs/superpowers/plans/connectors-decisions.md` (§3, §6). Build order:
+`docs/superpowers/plans/connectors-build-plan.md`.
+
+All `/api/connectors…` routes need a session (401 otherwise) and are owner-scoped: another
+account's connection or agent answers exactly like an absent one (**404**), with a test per route.
+Three routes are public because the browser that finishes a sign-in may hold no Tvashtr session
+(Desktop opens the system browser): the OAuth callback, its confirm step, and the client metadata
+document. Timestamps are ISO 8601 with offset. `detail` is a user-facing string unless shown as a
+`{code, message, …}` object. Every change to an existing endpoint only **adds** fields.
+
+Code: `backend/tvashtr/routes/connectors.py` (catalog, connections, agents),
+`routes/connectors_oauth.py` (`router` for start, `public_router` for the three public routes),
+`control_plane/connectors.py` (rules, grants), `connector_catalog.py` (Featured + registry
+snapshot), `connector_oauth.py` (discovery, registration, tokens), `connector_net.py` (outbound URL
+guard), `connector_upstream.py` (MCP client to the provider), `connector_proxy.py` +
+`tvashtr/mcp/connectors.py` (the run-time proxy), `node_tools.py` (run config).
+
+## Words
+
+- **Catalog entry**: something you can connect. Featured (curated by Tvashtr) or from the bundled
+  snapshot of the public MCP Registry, or a custom address. Identified by `key`.
+- **Connection**: one account's sign-in to one catalog entry. One per `(owner, key)` in v1.
+- **Grant**: a connection switched on for one agent, in `tool_config.tvashtr.connectors`.
+- **Run token**: the only credential an agent's sandbox gets. It is signed by Tvashtr, names one
+  run, one agent and one connection, and stops working when the run ends. The provider sign-in
+  (refresh token, access token or key) never leaves the server.
+
+## Data model: migration `0043_connector_connections` (one table)
+
+`down_revision = "0042_domain_message_meta"`. Template: `0023_tool_skill_library.py`. Model
+`ConnectorConnection` in `models.py`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid PK | `default=uuid.uuid4` |
+| `owner_id` | uuid, not null | FK `users.id` (`fk_connector_connections_owner_id_users`), index `ix_connector_connections_owner_id` |
+| `connector_key` | text, not null | catalog key; unique `(owner_id, connector_key)` → `uq_connector_connections_owner_key` |
+| `name` | text, not null | display name |
+| `slug` | text, not null | MCP server name in the agent's config, so also the tool-name prefix. `^[a-z0-9][a-z0-9-]{0,39}$`; unique `(owner_id, slug)` → `uq_connector_connections_owner_slug`. Fixed at creation |
+| `url` | text, not null | the provider's MCP address, without Tvashtr-added query parameters |
+| `transport` | text, not null, default `streamable-http` | check `ck_connector_connections_transport`: `streamable-http` \| `sse` |
+| `auth_kind` | text, not null | check: `oauth` \| `api_key` \| `none` |
+| `access` | text, not null, default `read` | check: `read` \| `write` (gate 1) |
+| `scope` | JSONB, null | `{"value": "abcd1234", "label": "trade-mcp-prod · ap-southeast-1"}`; null = whole account |
+| `status` | text, not null | check: `pending` \| `connected` \| `needs_signin` |
+| `secret_encrypted` | text, null | Fernet (`credentials.encrypt_secret`) of the sign-in JSON below |
+| `pending_encrypted` | text, null | Fernet of the in-flight sign-in (PKCE verifier and so on) |
+| `state_hash` | text, null | `sha256(state)` hex of the in-flight sign-in; unique `uq_connector_connections_state_hash` |
+| `tools` | JSONB, null | last tool list seen: `[{"name","title","read_only"}]` |
+| `last_error` | text, null | user-facing reason for `needs_signin`, or why the last sign-in failed |
+| `connected_at` | timestamptz, null | last successful sign-in or key check |
+| `created_at`, `updated_at` | timestamptz | `server_default now()`, `onupdate now()` |
+
+Encrypted JSON (never returned by any endpoint, never logged):
+- `secret_encrypted`, `oauth`: `{"issuer", "client": {"client_id", "client_secret"?, "auth_method",
+  "kind": "preregistered"|"cimd"|"dcr", "secret_expires_at"?}, "token_endpoint",
+  "revocation_endpoint"?, "resource", "scope"?, "access_token", "refresh_token"?, "expires_at"?}`.
+- `secret_encrypted`, `api_key`: `{"headers": {"Authorization": "Bearer …"}}` (final header values).
+- `pending_encrypted`: `{"code_verifier", "issuer", "iss_supported", "authorization_endpoint",
+  "token_endpoint", "revocation_endpoint"?, "resource", "scope"?, "client": {…}, "redirect_uri",
+  "started_at"}`.
+
+Why one table is enough:
+- **Pending sign-in** lives on the row (`pending_encrypted` + `state_hash`). A signed cookie can't
+  hold it: itsdangerous signs but doesn't encrypt, the verifier and a registered `client_secret`
+  must stay secret, and on Desktop the browser that finishes isn't the one that started. Keeping it
+  apart from `secret_encrypted` means "Sign in again" never clobbers a working sign-in until the
+  new one succeeds.
+- **Client registrations** are stored per connection inside the encrypted JSON, keyed by `issuer`
+  (the spec requires credentials to be bound to the issuer). Reused on "Sign in again" when the
+  issuer is unchanged. A shared per-issuer cache would be a second table; add it only if a provider
+  rate-limits registration.
+- **Calls** are `run_events` rows of a new `kind` (below). `run_events.payload` is JSONB, so no
+  schema change.
+- **Warnings** are `run_warnings` rows with `source_kind = "connector"` (free text since 0022).
+
+## Shapes
+
+**Catalog entry**
+```json
+{"key": "supabase", "name": "Supabase", "publisher": "Supabase", "featured": true,
+ "reviewed": true, "category": "databases",
+ "description": "Read tables, run read-only SQL and check logs in one project.",
+ "website": "https://supabase.com", "host": "mcp.supabase.com",
+ "auth": "oauth", "key_fields": [],
+ "access_modes": ["read", "write"], "read_only_by": "provider",
+ "scope_picker": {"param": "project_ref", "label": "Project"},
+ "available": true, "unavailable_reason": null,
+ "connection_id": null, "connection_status": null}
+```
+- `key`: a Featured id (`supabase`), a registry server name (`com.apify/apify-mcp-server`), or
+  `custom:<host><path>` for a custom address. Keys travel in bodies and query strings, never in a
+  path.
+- `category`: `databases` | `docs` | `analytics` | `crm` | `work` for Featured; `null` for registry.
+- `reviewed`: `true` only for Featured. The UI labels the rest "From the MCP Registry · not reviewed
+  by Tvashtr".
+- `auth`: `oauth` | `api_key` | `none` | `unknown`. Registry entries are `api_key` when the registry
+  declares a secret or required header, else `unknown` (decided by discovery when you connect).
+- `key_fields` (`api_key` only): `[{"id": "Authorization", "label": "API key", "hint": "Apify API
+  token", "secret": true}]`. `id` is the header name. `hint` is the registry's description.
+- `read_only_by`: `provider` (the provider's own URL flag: Supabase, Neon) | `scopes` (read-only
+  OAuth scopes: Google) | `annotations` (only tools the server marks `readOnlyHint: true`).
+- `access_modes`: `["read"]` when the connector can only read (Google in v1).
+- `available: false` + `unavailable_reason: "coming_soon"` → the card shows "Coming soon" and can't
+  be connected. Google Drive, Docs and Sheets are unavailable until both
+  `TVASHTR_GOOGLE_OAUTH_CLIENT_ID` and `TVASHTR_GOOGLE_OAUTH_CLIENT_SECRET` are set; HubSpot is
+  unavailable in v1.
+- `connection_id` / `connection_status`: this account's connection to it, if any (`pending` rows
+  are reported as `null`).
+
+**Connection** (every connection endpoint)
+```json
+{"id": "7c1e…", "connector_key": "supabase", "name": "Supabase", "slug": "supabase",
+ "publisher": "Supabase", "featured": true, "reviewed": true, "category": "databases",
+ "host": "mcp.supabase.com", "auth_kind": "oauth",
+ "signin_host": "api.supabase.com", "signin_host_differs": false,
+ "access": "read", "access_modes": ["read", "write"], "read_only_by": "provider",
+ "scope": {"value": "abcd1234", "label": "trade-mcp-prod · ap-southeast-1"},
+ "scope_picker": {"param": "project_ref", "label": "Project"},
+ "status": "connected", "signin_pending": false, "last_error": null,
+ "tools": [{"name": "list_tables", "title": null, "write": false, "on": true},
+           {"name": "apply_migration", "title": null, "write": true, "on": false}],
+ "used_by": {"agent_count": 2, "team_count": 1},
+ "connected_at": "2026-09-28T10:02:11.482+00:00",
+ "created_at": "…", "updated_at": "…"}
+```
+- `status`: `connected` (UI "Ready"), `needs_signin` (UI "Needs attention"; `last_error` says why),
+  `pending` (created, first sign-in not finished; only `GET /api/connectors/{id}` and the OAuth
+  routes ever return it).
+- `signin_pending`: a sign-in was started and hasn't finished or timed out (10 minutes). The
+  frontend polls `GET /api/connectors/{id}` until it turns `false`, then reads `status` and
+  `last_error`.
+- `signin_host`: where the browser is sent to sign in (`null` for `api_key`/`none`).
+  `signin_host_differs` is `true` when its last two host labels differ from `host`'s; the UI then
+  shows the sign-in host prominently before continuing.
+- `tools`: `null` until the first successful tool listing. `write` = Tvashtr counts the tool as a
+  write (below). `on` = agents can call it at this connection's `access`.
+- `used_by`: counted over the owner's **library** teams only, `agent`/`completion` nodes, like
+  tools.
+
+**Usage row** (`used_by_agents`, PUT agents): `{"node_id", "role_name", "title", "team_id",
+"team_name", "access"}`; `access` is the agent's effective access (`read` | `write`).
+
+**Read or write** (one rule, used for `tools[].write`, the run-time filter and the counts):
+- `read_only_by: "provider"` and effective access `read`: every tool the provider lists under its
+  read-only flag is a read (the provider enforces it).
+- Otherwise a tool is a read only when its MCP annotation has `readOnlyHint: true`. A missing
+  annotation is a write.
+
+## Catalog
+
+### `GET /api/connectors/catalog?q=&category=&offset=&limit=`
+```json
+{"items": [entry…], "total": 15036, "next_offset": 48,
+ "categories": ["databases", "docs", "analytics", "crm", "work"]}
+```
+- Order: Featured first (catalog order), then registry entries by name. No network call: Featured
+  is a module constant and the registry is a JSON Lines snapshot bundled in the repo.
+- `q`: case-insensitive substring over name, publisher, description and host. `category`: one of
+  `categories` (Featured only) or absent for everything.
+- `limit` default 48, max 100. `offset` default 0. `next_offset` is `null` on the last page.
+- A registry entry whose host is a Featured host is left out (the Featured card wins).
+- Errors: 422 `limit must be between 1 and 100.`
+
+Featured in v1 (availability as probed on 2026-09-30):
+
+| Key | Category | Address | Read-only by | Scope picker | Available |
+|---|---|---|---|---|---|
+| `supabase` | databases | `https://mcp.supabase.com/mcp` | provider: `read_only=true` | `project_ref` | yes |
+| `neon` | databases | `https://mcp.neon.tech/mcp` | provider: `readonly=true` | `projectId` | yes |
+| `notion` | docs | `https://mcp.notion.com/mcp` | annotations | — | yes |
+| `google-drive` | docs | `https://drivemcp.googleapis.com/mcp/v1` | scopes (`drive.readonly`) | — | needs the Google client |
+| `google-docs` | docs | `https://docsmcp.googleapis.com/mcp/v1` | scopes (`documents.readonly`) | — | needs the Google client |
+| `google-sheets` | docs | `https://sheetsmcp.googleapis.com/mcp/v1` | scopes (`spreadsheets.readonly`) | — | needs the Google client |
+| `posthog` | analytics | `https://mcp.posthog.com/mcp` | annotations | — | yes |
+| `mixpanel` | analytics | `https://mcp.mixpanel.com/mcp` | annotations | — | yes |
+| `amplitude` | analytics | `https://mcp.amplitude.com/mcp` | annotations | — | yes |
+| `hubspot` | crm | `https://mcp.hubspot.com/` | annotations | — | no (Coming soon) |
+| `intercom` | crm | `https://mcp.intercom.com/mcp` | annotations | — | yes |
+| `linear` | work | `https://mcp.linear.app/mcp` | annotations | — | yes |
+| `sentry` | work | `https://mcp.sentry.dev/mcp` | annotations | — | yes |
+| `atlassian` | work | `https://mcp.atlassian.com/v2/mcp` | annotations | — | yes |
+
+## Connections
+
+| Method + path | Body | Response | Errors |
+|---|---|---|---|
+| `GET /api/connectors` | — | `{"connections": [connection…]}` oldest first, `pending` rows left out | — |
+| `POST /api/connectors` | below | 201, connection | below |
+| `GET /api/connectors/{id}` | — | connection + `used_by_agents`, `recent_use`, `revoke_hint` | 404 `Connector not found.` |
+| `PATCH /api/connectors/{id}` | `{"access"?, "scope"?, "name"?, "credentials"?}` | connection | 404; 422 below |
+| `DELETE /api/connectors/{id}` | — | `{"removed_from_agents": 2, "revoked": true}` | 404 |
+| `POST /api/connectors/{id}/check` | — | connection (fresh `tools`, `status`) | 404; 502 `unreachable` |
+| `GET /api/connectors/{id}/scope-options` | — | below | 404; 409 `no_scope`; 502 `unreachable` |
+
+An unparseable, absent or foreign `{id}` is always 404 `Connector not found.` (same rule as
+`toolkit.get_owner_tool_row`).
+
+### `POST /api/connectors`
+Body, one of:
+- `{"key": "supabase", "access": "read"}` (a catalog entry)
+- `{"key": "com.apify/apify-mcp-server", "access": "read", "credentials": {"Authorization": "apify_api_…"}}`
+- `{"url": "https://mcp.acme.dev/mcp", "name": "Acme", "access": "read"}` (custom)
+
+`access` defaults to `read`. What happens:
+1. The entry is resolved. A `pending` row for the same key is reused; any other existing row is a
+   409.
+2. `auth: "api_key"` entries: `credentials` is required. Each value is turned into its header (the
+   registry's `value` template such as `Bearer {api_key}` when there is one; a bare value for an
+   `Authorization` header with no template gets `Bearer ` in front). Tvashtr lists the server's
+   tools with those headers. Success → `connected`, `tools` filled.
+3. Everything else: Tvashtr runs MCP authorization discovery on the address (see OAuth).
+   - Sign-in found → the row is created `pending` with `auth_kind: "oauth"` and `signin_host` set.
+     Nothing is registered yet. Call `oauth/start` next.
+   - No sign-in, and the server lists its tools without credentials → catalog entries become
+     `connected` with `auth_kind: "none"`; a **custom** address is refused (`no_signin`).
+   - No sign-in and the server wants credentials → `no_signin`.
+
+Errors:
+- 404 `{"code": "unknown_connector", "message": "We couldn’t find that connector."}`
+- 409 `{"code": "already_connected", "message": "Supabase is already connected.", "connection_id": "…"}`
+- 409 `{"code": "coming_soon", "message": "Google Drive isn’t available yet."}`
+- 422 `{"code": "invalid_url", "message": "Use an https:// address, like https://mcp.example.com/mcp."}`
+  (also: an address that resolves to a private, loopback or link-local network)
+- 422 `{"code": "invalid_access", "message": "Google Drive can only be connected read only."}`
+- 422 `{"code": "key_required", "message": "Apify needs a key.", "fields": [key field…]}`
+- 422 `{"code": "key_rejected", "message": "Apify didn’t accept the key."}` (nothing stored)
+- 422 `{"code": "no_signin", "message": "This server didn’t offer an OAuth sign-in. If it takes a key, add it in Tools and keep the key as a secret."}`
+- 422 `{"code": "cannot_register", "message": "Acme needs an app registered with it before Tvashtr can sign in."}`
+  (sign-in found, but no pre-registered client, no client metadata document support, no dynamic
+  registration; or the server doesn't advertise PKCE S256)
+- 502 `{"code": "unreachable", "message": "We couldn’t reach mcp.acme.dev. Try again."}`
+
+### `GET /api/connectors/{id}` extras
+```json
+{"used_by_agents": [usage row…],
+ "recent_use": [{"run_id": "…", "run_number": 42, "agent": "Reviewer", "reads": 6, "writes": 0,
+                 "at": "2026-09-30T10:04:12+00:00"}],
+ "revoke_hint": "To remove Tvashtr on Supabase’s side too, revoke it in Supabase’s settings."}
+```
+`recent_use`: up to 10 rows, newest first, one per run and agent, read from `connector_call` events
+of the owner's last 30 runs.
+
+### `PATCH /api/connectors/{id}`
+- `access`: `read` | `write`. 422 `invalid_access` when the mode isn't in `access_modes`. Narrowing
+  to `read` applies at once, also to a run that is going.
+- `scope`: `{"value", "label"}` or `null`. 409 `{"code": "no_scope", …}` when the connector has no
+  `scope_picker`. `label` is display text (≤ 120 characters).
+- `name`: 1–60 characters. The `slug` never changes, so tool names stay stable.
+- `credentials` (`api_key` only): replaces the key after the same check as POST; `key_rejected`
+  stores nothing and leaves the status alone. 409 `{"code": "not_api_key", …}` otherwise.
+
+### `DELETE /api/connectors/{id}`
+In one transaction: removes the grant from every library-team agent
+(`removed_from_agents` = agents that had it), then deletes the row. Before that, a best-effort
+RFC 7009 revoke at the provider's `revocation_endpoint` (`revoked` says whether it answered 2xx; a
+failure never blocks the delete). A run that is going gets tool errors from that connector from
+then on and finishes without it.
+
+### `POST /api/connectors/{id}/check`
+Makes sure the sign-in still works (refreshing the token if needed) and re-lists the tools.
+Success → `connected`, fresh `tools`, `last_error: null`. A refused sign-in or key → 200 with
+`status: "needs_signin"` and `last_error`. The provider not answering → 502 `unreachable`, status
+unchanged.
+
+### `GET /api/connectors/{id}/scope-options`
+```json
+{"param": "project_ref", "label": "Project", "manual": false,
+ "options": [{"value": "abcd1234", "label": "trade-mcp-prod", "detail": "ap-southeast-1"}]}
+```
+Calls the provider's own project-listing tool (`list_projects` for Supabase and Neon) on the
+unscoped address and reads `id`/`name`/`region` from its JSON answer. When that answer can't be
+read: `{"manual": true, "options": []}` and the UI asks for the id in a text field.
+
+## OAuth (MCP authorization, spec revision 2026-07-28)
+
+Tvashtr's backend is the OAuth client. One redirect address for every connector:
+`{TVASHTR_PUBLIC_BASE_URL}/api/connectors/oauth/callback`. Never `request.base_url` and never the
+frontend origin (on Desktop that is `127.0.0.1`).
+
+**Discovery** (at `POST /api/connectors`, repeated at `oauth/start`):
+1. Protected-resource metadata: the `resource_metadata` address from an unauthenticated request's
+   `WWW-Authenticate` header, else `/.well-known/oauth-protected-resource<path>`, else the root
+   `/.well-known/oauth-protected-resource`. Several servers answer 405 or 404 to a GET, so the
+   well-known addresses are tried whatever the first request returns.
+2. Authorization-server metadata for `authorization_servers[0]`, in the spec's order (path-style
+   issuers included). When step 1 found nothing: the MCP origin's own
+   `/.well-known/oauth-authorization-server` (Intercom).
+3. Checks: the metadata's `issuer` equals the issuer the address was built from (compared as raw
+   strings, never through a URL type); `code_challenge_methods_supported` contains `S256`; the
+   resource metadata's `resource` covers the MCP address (`check_resource_allowed`);
+   `authorization_endpoint` is `https://`.
+
+**Client** (at `oauth/start`, first match):
+1. Pre-registered: only Featured entries that name one (`google`), only on their pinned address.
+   Never offered to a registry or custom address.
+2. Client ID metadata document, when the server advertises
+   `client_id_metadata_document_supported` and `TVASHTR_PUBLIC_BASE_URL` is `https://`.
+3. Dynamic registration (`registration_endpoint`): `application_type: "web"`,
+   `token_endpoint_auth_method` `none` when the server lists it, else `client_secret_post`, else
+   `client_secret_basic` (Supabase, Vercel). A stored registration for the same `issuer` is reused.
+4. None of these → 422 `cannot_register`.
+
+### `POST /api/connectors/{id}/oauth/start`
+No body. Works on a `pending`, `needs_signin` or `connected` row ("Sign in again").
+```json
+{"authorize_url": "https://api.supabase.com/v1/oauth/authorize?response_type=code&client_id=…",
+ "signin_host": "api.supabase.com", "expires_in": 600}
+```
+Stores `pending_encrypted` and `state_hash`; `status` is not changed. The authorize address carries
+`response_type=code`, `client_id`, `redirect_uri`, `state` (`secrets.token_urlsafe(32)`),
+`code_challenge` + `code_challenge_method=S256`, `resource` (the metadata's value, verbatim) and
+`scope` (the 401's `scope`, else `scopes_supported`, else left out; Featured entries may pin it, as
+Google's read-only scopes do).
+Errors: 404; 409 `{"code": "not_oauth", "message": "This connector doesn’t sign in."}`; 422
+`cannot_register`; 502 `unreachable`.
+
+### `GET /api/connectors/oauth/callback?state=&code=&iss=&error=` (public)
+Always answers an HTML page (200), never JSON and never a redirect into the app. The owner comes
+from the row found by `sha256(state)`, not from a cookie.
+
+1. No row for `state`, or `started_at` older than 10 minutes → page "This sign-in link has expired.
+   Go back to Tvashtr and try again."
+2. `iss`: when present it must equal the stored issuer exactly; when absent the sign-in is refused
+   only if the server advertised `authorization_response_iss_parameter_supported`. On a mismatch
+   nothing else in the request is acted on (not `error` either).
+3. `error` present (for example `access_denied`) → the in-flight sign-in is cleared, `last_error`
+   = "You didn’t allow access on Supabase.", page says the same.
+4. A `tv_session` cookie is present:
+   - it is the row's owner → complete (below);
+   - it is another account → in-flight sign-in cleared, page "You’re signed in to Tvashtr as a
+     different account. Nothing was connected."
+5. No `tv_session` cookie (Desktop's browser) → a confirm page: "Connect Supabase to the Tvashtr
+   account a•••@example.com?" with one button that posts `state`, `code` and `iss` to the confirm
+   route. This stops someone sending you their own sign-in link to capture your data in their
+   account.
+
+### `POST /api/connectors/oauth/confirm` (public, form-encoded `state`, `code`, `iss`)
+Repeats steps 1–2, then completes. Answers the same HTML pages.
+
+**Complete** (both routes): `state_hash` is cleared first, so a `state` works once. Then the code
+is exchanged (`grant_type=authorization_code`, `code`, `redirect_uri`, `client_id`,
+`code_verifier`, `resource`, plus client authentication for a registered secret). Success →
+`secret_encrypted` written, `status: "connected"`, `connected_at` now, `last_error` null, tools
+listed (a failed listing leaves `tools: null` and doesn't fail the sign-in). Page: "Supabase is
+connected. You can close this window." and a `window.close()` (closes the web popup; a normal
+browser tab stays open with the message). Failure → `last_error` = "Supabase didn’t finish the
+sign-in. Try again.", status unchanged, page says the same.
+
+### `GET /oauth/client-metadata.json` (public)
+```json
+{"client_id": "https://tvashtr.fly.dev/oauth/client-metadata.json", "client_name": "Tvashtr",
+ "client_uri": "https://tvashtr.fly.dev",
+ "redirect_uris": ["https://tvashtr.fly.dev/api/connectors/oauth/callback"],
+ "grant_types": ["authorization_code", "refresh_token"], "response_types": ["code"],
+ "token_endpoint_auth_method": "none"}
+```
+Built from `TVASHTR_PUBLIC_BASE_URL`. 404 when that isn't `https://` (local development then uses
+dynamic registration).
+
+### Tokens
+- `ensure_access_token(connection_id)`: returns the stored access token when it has more than 5
+  minutes left (or no expiry). Otherwise refreshes (`grant_type=refresh_token`, `refresh_token`,
+  `client_id`, `resource`, client authentication) **under `SELECT … FOR UPDATE` on the row** and
+  commits the rotated refresh token before anyone uses the new access token. A reply without a new
+  refresh token keeps the old one.
+- `invalid_grant`, or no refresh token and an expired access token → tokens cleared,
+  `status: "needs_signin"`, `last_error` = "Its sign-in expired."
+- `invalid_client` → the same, and the stored registration is dropped so the next sign-in
+  registers again.
+- A 5xx or network error → the connector is left out of what asked for it; status unchanged.
+
+### Outbound address rules (`connector_net`)
+Every address the backend fetches for a connector comes from outside: the MCP address, metadata
+addresses, registration, token and revocation endpoints, and every proxied call.
+- `https://` only. Every address the host resolves to must be public (no loopback, private,
+  link-local or unique-local ranges, which covers Fly's `fdaa::/16`).
+- No redirects followed. 10 s timeout for sign-in calls, 120 s for a proxied tool call. Metadata
+  bodies capped at 1 MB.
+- `TVASHTR_CONNECTORS_ALLOW_LOCAL=1` lifts the https and public-address rules for local development
+  and the e2e fake server. It is ignored when `hosted_mode` is on.
+
+## Agents (grants)
+
+**On the node** (saved through the existing node PATCH, like Domains):
+```json
+{"tool_config": {"tvashtr": {"connectors": [{"id": "7c1e…", "access": "read"}]}}}
+```
+`access` absent = `read`. The agent's effective access is `write` only when the connection's
+`access` **and** the grant's `access` are both `write`. An empty list is removed by the frontend's
+`tidy()`. An id that is not the owner's connection is skipped at run time with a warning.
+
+### `GET /api/connectors/{id}/agents`
+```json
+{"teams": [{"team_id": "…", "team_name": "Indicator sprint team", "agents": [
+  {"node_id": "…", "role_name": "Reviewer", "title": "Reviewer", "kind": "agent",
+   "edits_allowed": false, "enabled": true, "access": "read", "subscription": null}]}]}
+```
+Library teams oldest first, agents left to right, `agent`/`completion` nodes only. `enabled` = has
+the grant. `access` = the grant's access (`null` when not enabled). `subscription` = `claude` |
+`grok` when the agent runs on a connected Desktop plan (connectors don't reach it yet), else
+`null`. 404 `Connector not found.`
+
+### `PUT /api/connectors/{id}/agents`
+Body `{"node_ids": ["…"]}`: the full set of agents that should have it afterwards. A listed agent
+without the grant gets `{"id", "access": "read"}`; a listed agent keeps the access it has; an
+unlisted agent loses the grant.
+```json
+{"agents": [usage row…], "agent_count": 2, "team_count": 1}
+```
+Errors: 404 `Connector not found.`; 404 `Agent not found.` (any id that isn't the owner's
+library-team agent; nothing is written); 409 `{"code": "not_connected", "message": "Finish
+connecting Supabase first."}` for a `pending` row.
+
+## Toolkit summary (additive)
+
+### `GET /api/toolkit/summary`
+```json
+{"tools": 3, "tools_needing_attention": 1, "skills": 3,
+ "memory": {"inbox": 2, "active": 14, "archive": 5}, "secrets_missing": 1,
+ "connectors": 4, "connectors_needing_attention": 1}
+```
+`connectors` = rows that are `connected` or `needs_signin`. `connectors_needing_attention` =
+`needs_signin` rows. The nav shows the first as the Connectors count and the second as "N to fix".
+
+## Run time
+
+### What `build_mcp_config` emits
+Signature gains one optional keyword: `build_mcp_config(tool_config, run_id, *, node_id=None)`.
+`team_run.agent_run_step` passes `node_id`. Without `tvashtr.connectors` the output is byte-for-byte
+what it is today. It runs inside the `agent_run_step` DBOS step; nothing it produces is
+checkpointed.
+
+For each grant, in order, after the inline and library servers and before Domains:
+1. Load the owner's row. Gone, another account's, or `pending` → warning, skip.
+2. `needs_signin` → warning, skip.
+3. `oauth`: `ensure_access_token`. Refused → the row becomes `needs_signin`, warning, skip. Not
+   reachable → warning, skip, status unchanged.
+4. Emit one server:
+```json
+{"mcpServers": {"supabase": {"url": "https://tvashtr.fly.dev/mcp/connectors",
+   "headers": {"Authorization": "Bearer <run token>"}}}}
+```
+The server name is the row's `slug`; when an inline or library server already has that name the
+connector takes `conn-<slug>`. The address comes from the same helper as Domains (in docker mode a
+localhost base is rewritten to the docker host).
+
+**Run token**: `URLSafeTimedSerializer(session_secret, salt="tvashtr.connector-run")` over
+`{"r": run_id, "n": node_id, "c": connection_id, "a": "read"|"write"}`. It is accepted when the
+signature is good, it is under 14 days old, the run exists, belongs to the connection's owner and
+is not in `run_views.TERMINAL_STATUSES`, and the connection exists and isn't `pending`. `a` is the
+grant's access; the proxy applies the lower of `a` and the row's current `access` on every request.
+A warm sandbox that keeps its first-round config across rounds keeps working, because the token
+does not expire with the provider's token.
+
+### The proxy: `POST {public base}/mcp/connectors`
+A streamable-HTTP MCP server inside the backend (stateless, JSON replies), mounted next to
+`/mcp/domains`. The agent's sandbox talks only to it.
+- **`tools/list`**: the provider's tools that are reads for this token's effective access (all of
+  them when it is `write`). Descriptions are capped at 2,000 characters; `outputSchema` is dropped.
+  A bad token or an unreachable provider answers an empty list, never an error (one failing server
+  must not stop the agent from starting); the unreachable case also writes a warning.
+- **`tools/call`**: a tool that isn't allowed returns a tool error "Supabase is read only for this
+  agent. apply_migration can change data, so it’s off." Otherwise the call is forwarded with the
+  provider credential added server-side, and its result returned as-is.
+- **Provider address**: the row's `url`, plus the provider's read-only parameter when the effective
+  access is `read` and the entry is `read_only_by: "provider"`, plus the scope parameter when
+  `scope` is set. The agent can't change either.
+- A provider `401` → one `ensure_access_token` and one retry; still refused → `needs_signin`, a
+  warning, and a tool error "Supabase needs you to sign in again."
+- Every `tools/call` (allowed, refused or failed) writes one `connector_call` event.
+
+### Warnings
+`run_warnings` rows with `source_kind: "connector"`, shown by `GET /api/runs/{id}/graph` in
+`resolution_warnings` (shape unchanged: `{source_kind, name, reason}`). `name` is the connection's
+name. The UI renders "Ran without `<name>`: `<reason>`." with an "Open Connectors" button.
+
+| `reason` | When |
+|---|---|
+| `its sign-in expired` | `needs_signin` at run start, a refused refresh, or a 401 that a refresh didn't fix |
+| `its key stopped working` | the same for an `api_key` connection |
+| `it was disconnected` | the grant names a row that is gone (`name` = `a connector`) |
+| `we couldn’t reach it` | the token endpoint or the provider didn't answer |
+
+**Desktop plan agents** (Claude or Grok plan): unchanged behaviour, `mcp_config = {}`. The existing
+`("tools", …)` warning's name list gains `N connector(s)`.
+
+## What a run shows
+
+### `connector_call` events (`GET /api/spike/run-events/{run_id}`, additive `kind`)
+```json
+{"seq": 1000000003, "kind": "connector_call", "created_at": "2026-09-30T10:03:41+00:00",
+ "invocation_id": 9123, "node_id": "…", "iteration": 2,
+ "payload": {"connection_id": "7c1e…", "connector": "Supabase", "slug": "supabase",
+             "tool": "execute_sql", "write": false, "ok": true, "blocked": false,
+             "arg": "SELECT count(*) FROM indicator_values WHERE name = 'rsi_14'",
+             "duration_ms": 312, "result_url": null}}
+```
+- Written by the proxy, so the connector, the tool and read/write are authoritative (they don't
+  depend on how the engine prefixes tool names).
+- `invocation_id` = the latest `agent_invocations` row for the token's run and node (the round
+  that is running); `null` when the token has no node.
+- `seq` = `1_000_000_000 + n`, its own band per invocation (the same trick as the Desktop runner's
+  band), so it never collides with the engine's own events.
+- `arg`: the first string argument, preferring `query`, `sql`, `q`, `title`, `name`; ≤ 200
+  characters. Full arguments and results are not stored here.
+- `result_url`: for a write, the first `https://` address in the result text, else `null`.
+- `blocked: true` = refused by the read-only rule (`ok` is then `false`).
+- The engine's own `action`/`observation` events for the same call are unchanged. The Activity feed
+  skips `connector_call` rows so a call isn't shown twice.
+
+### Rounds (additive `connectors` on each round)
+Added to each round of `GET /api/teams/{team_id}/nodes/{node_id}/runs` (the Team drawer's Runs tab)
+and to each invocation of `GET /api/runs/{id}/graph` (the run drawer):
+```json
+{"connectors": {
+  "used": [{"connection_id": "7c1e…", "name": "Supabase", "slug": "supabase", "reads": 6, "writes": 0}],
+  "calls": [{"connection_id": "7c1e…", "name": "Supabase", "tool": "execute_sql", "write": false,
+             "ok": true, "blocked": false, "arg": "SELECT …", "at": "2026-09-30T10:03:41+00:00",
+             "duration_ms": 312, "result_url": null}],
+  "total_calls": 7}}
+```
+`connectors` is `null` for a round with no calls. `used` is ordered by first call. `calls` lists
+writes first, then by time, capped at 50 (`total_calls` is the real number). Blocked calls are in
+`calls` but not in the `reads`/`writes` counts.
+
+## Settings (`config.py`, all optional)
+
+| Env | Field | Default | Meaning |
+|---|---|---|---|
+| `TVASHTR_GOOGLE_OAUTH_CLIENT_ID` | `google_oauth_client_id: str` | `""` | with the secret, turns the three Google cards on |
+| `TVASHTR_GOOGLE_OAUTH_CLIENT_SECRET` | `google_oauth_client_secret: SecretStr` | `""` | |
+| `TVASHTR_CONNECTORS_ALLOW_LOCAL` | `connectors_allow_local: bool` | `false` | development and e2e only; ignored in hosted mode |
+
+Existing settings used: `public_base_url` (redirect address, client metadata document, proxy
+address), `session_secret` (run tokens), `secret_key` (Fernet), `hosted_mode`.
+
+## Not in v1
+- Google Analytics by key file and a Tvashtr-hosted CleverTap server (decisions §6 C): a tool with
+  no remote server goes through Tools.
+- One Google sign-in for Drive, Docs and Sheets together (each connects on its own).
+- Narrowing OAuth scopes for read-only on providers other than Google; a second account of the same
+  connector; per-call approval of writes; connectors on Claude or Grok plan agents.
