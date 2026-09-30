@@ -541,6 +541,29 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("TVASHTR_PUBLIC_BASE_URL", "public_base_url"),
     )
 
+    # Connectors (docs/superpowers/plans/api/connectors.md, Settings). All optional.
+    #   * The Google pair is the pre-registered OAuth client for the three Google cards (Drive,
+    #     Docs, Sheets): they show "Coming soon" until BOTH are set. The secret is never returned,
+    #     logged or serialized.
+    #   * ``connectors_allow_local`` lets connector traffic use ``http://`` and non-public
+    #     addresses, for local development and the e2e fake server. ``connector_net`` IGNORES it
+    #     when ``hosted_mode`` is on, so a hosted deploy can't be talked into fetching its own
+    #     private network.
+    google_oauth_client_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("TVASHTR_GOOGLE_OAUTH_CLIENT_ID", "google_oauth_client_id"),
+    )
+    google_oauth_client_secret: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices(
+            "TVASHTR_GOOGLE_OAUTH_CLIENT_SECRET", "google_oauth_client_secret"
+        ),
+    )
+    connectors_allow_local: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("TVASHTR_CONNECTORS_ALLOW_LOCAL", "connectors_allow_local"),
+    )
+
     # M-h4: where the BUILT frontend lives, for one-origin serving (``main.mount_frontend``). The
     # default is the path the Dockerfile copies Vite's output to INSIDE the image; on a laptop that
     # path does not exist, and a missing dist is a deliberate no-op (no mount, no catch-all), so a

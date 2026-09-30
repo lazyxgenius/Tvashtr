@@ -37,9 +37,10 @@ SECRET_ENV = {
     "GITHUB_APP_CLIENT_SECRET": "leakcanary-github-client-secret-eee",
     "GITHUB_APP_PRIVATE_KEY_B64": "leakcanary-github-private-key-b64-fff",
     "LITELLM_MASTER_KEY": "leakcanary-litellm-master-key-ggg",
+    "TVASHTR_GOOGLE_OAUTH_CLIENT_SECRET": "leakcanary-google-oauth-client-secret-hhh",
 }
 
-# The attribute behind each env var, in the same order — the read side of the same seven fields.
+# The attribute behind each env var, in the same order — the read side of the same eight fields.
 SECRET_FIELDS = (
     "fly_api_token",
     "fly_session_secret",
@@ -48,6 +49,7 @@ SECRET_FIELDS = (
     "github_app_client_secret",
     "github_app_private_key_b64",
     "litellm_master_key",
+    "google_oauth_client_secret",
 )
 
 MASK = "**********"
