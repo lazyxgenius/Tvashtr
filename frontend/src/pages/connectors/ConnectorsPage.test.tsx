@@ -605,3 +605,132 @@ describe("connecting", () => {
     await waitFor(() => expect(calls.filter((c) => c.path === "/api/connectors")).toHaveLength(2));
   });
 });
+
+describe("agents and disconnecting", () => {
+  const TEAMS = {
+    teams: [
+      {
+        team_id: "t1",
+        team_name: "Indicator sprint team",
+        agents: [
+          {
+            node_id: "n-eng",
+            role_name: "engineer",
+            title: null,
+            kind: "agent",
+            edits_allowed: true,
+            enabled: false,
+            access: null,
+            subscription: null,
+          },
+        ],
+      },
+    ],
+  };
+  const SAVED = {
+    agents: [
+      {
+        node_id: "n-eng",
+        role_name: "engineer",
+        title: null,
+        team_id: "t1",
+        team_name: "Indicator sprint team",
+        access: "read",
+      },
+    ],
+    agent_count: 1,
+    team_count: 1,
+  };
+
+  it("gives an agent access from a row nobody uses yet", async () => {
+    let connections = [SUPABASE, POSTHOG];
+    const calls = mockApi({
+      "GET /api/connectors": () => ({ connections }),
+      "GET /api/connectors/c4/agents": TEAMS,
+      "PUT /api/connectors/c4/agents": () => {
+        connections = [SUPABASE, { ...POSTHOG, used_by: { agent_count: 1, team_count: 1 } }];
+        return SAVED;
+      },
+    });
+    renderWithProviders(<ConnectorsPage view="connected" />);
+    const row = await screen.findByRole("row", { name: /PostHog/ });
+    fireEvent.click(within(row).getByRole("button", { name: "Give an agent access" }));
+    const dialog = screen.getByRole("dialog", { name: "Give agents access to PostHog" });
+    fireEvent.click(await within(dialog).findByRole("checkbox", { name: "Engineer" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText("Engineer can now use PostHog (read only)."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole("row", { name: /PostHog/ })).toHaveTextContent("1 agent · 1 team"),
+    );
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ node_ids: ["n-eng"] });
+    expect(refreshBadges).toHaveBeenCalled();
+  });
+
+  it("disconnects from a row’s menu, naming who loses access", async () => {
+    let connections = [SUPABASE, NOTION];
+    const calls = mockApi({
+      "GET /api/connectors": () => ({ connections }),
+      "GET /api/connectors/c1": {
+        ...SUPABASE,
+        used_by_agents: [{ ...SAVED.agents[0] }],
+        recent_use: [],
+        revoke_hint: "To remove Tvashtr on Supabase’s side too, revoke it in Supabase’s settings.",
+      },
+      "DELETE /api/connectors/c1": () => {
+        connections = [NOTION];
+        return { removed_from_agents: 1, revoked: true };
+      },
+    });
+    renderWithProviders(<ConnectorsPage view="connected" />);
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for Supabase" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Disconnect" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Disconnect Supabase?" });
+    expect(dialog).toHaveTextContent(
+      "Engineer in Indicator sprint team uses it. It loses access now, and a run that’s going finishes without it. Tvashtr deletes its copy of your sign-in. To remove Tvashtr on Supabase’s side too, revoke it in Supabase’s settings.",
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Disconnect" }));
+
+    expect(
+      await screen.findByText("Supabase is disconnected. It’s back in Browse if you need it."),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("row", { name: /Supabase/ })).toBeNull());
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getByRole("tab", { name: "Connected 1" })).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(true);
+    expect(refreshBadges).toHaveBeenCalled();
+  });
+
+  it("opens Give access from the toast of a fresh connection", async () => {
+    const KEYED = connection({
+      ...plain,
+      id: "c9",
+      connector_key: APIFY.key,
+      name: "Apify",
+      auth_kind: "api_key",
+      used_by: { agent_count: 0, team_count: 0 },
+    });
+    let connections = [SUPABASE];
+    mockApi({
+      "GET /api/connectors": () => ({ connections }),
+      "GET /api/connectors/catalog": catalog,
+      "GET /api/connectors/c9/agents": TEAMS,
+      "POST /api/connectors": () => {
+        connections = [SUPABASE, KEYED];
+        return KEYED;
+      },
+    });
+    renderWithProviders(<ConnectorsPage view="browse" />);
+    const reg = await screen.findByRole("region", { name: "From the MCP Registry" });
+    fireEvent.click(
+      within(within(reg).getAllByRole("listitem")[0]).getByRole("button", { name: "Connect" }),
+    );
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "k" } });
+    fireEvent.click(screen.getByRole("button", { name: "Check and connect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Give an agent access" }));
+    expect(screen.getByRole("dialog", { name: "Give agents access to Apify" })).toBeInTheDocument();
+  });
+});

@@ -3,7 +3,8 @@
  * with Custom connector, the Connected N / Browse pill tabs driven by the address, each tab's
  * search box, and the tab's content. Owns this account's connections, which both tabs read: a
  * first visit with none lands on Browse. Also owns the sheets a button opens: the connect sheet
- * (connect, sign in again, replace a key, change project) and the custom connector sheet.
+ * (connect, sign in again, replace a key, change project), the custom connector sheet, and the
+ * Give access and Disconnect dialogs.
  */
 import { Plug } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,8 +20,10 @@ import { BrowseTab } from "./BrowseTab";
 import { type ConnectDone, ConnectSheet } from "./ConnectSheet";
 import { ConnectedTab } from "./ConnectedTab";
 import { CustomConnectorSheet } from "./CustomConnectorSheet";
+import { DisconnectDialog } from "./DisconnectDialog";
+import { GiveAccessDialog } from "./GiveAccessDialog";
 import { prepareSignInWindow } from "./connectSignIn";
-import { connectedToast, searchPlaceholder, usesKey } from "./connectorFormat";
+import { accessGivenToast, connectedToast, searchPlaceholder, usesKey } from "./connectorFormat";
 import { useCatalog } from "./useCatalog";
 import "../tools/tools.css";
 import "./connectors.css";
@@ -68,7 +71,6 @@ export function ConnectorsPage({ view }: { view: ConnectorsView }) {
   const catalog = useCatalog(view === "browse");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
-  // The dialogs (give access, disconnect) are mounted by the task that builds them (F1.6).
   const [overlay, setOverlay] = useState<ConnectorOverlay>(null);
   // Connected during this visit: their rows say "New".
   const [freshIds, setFreshIds] = useState<string[]>([]);
@@ -249,6 +251,30 @@ export function ConnectorsPage({ view }: { view: ConnectorsView }) {
       )}
       {overlay?.kind === "custom" && (
         <CustomConnectorSheet onClose={closeSheet} onDone={(c) => void onDone(c, "connected")} />
+      )}
+      {overlay?.kind === "give" && (
+        <GiveAccessDialog
+          connection={overlay.connection}
+          onClose={() => setOverlay(null)}
+          onSaved={(added) => {
+            setOverlay(null);
+            toast({ message: accessGivenToast(added, overlay.connection.name) });
+            void changed();
+          }}
+        />
+      )}
+      {overlay?.kind === "disconnect" && (
+        <DisconnectDialog
+          connection={overlay.connection}
+          onClose={() => setOverlay(null)}
+          onDisconnected={() => {
+            setOverlay(null);
+            toast({
+              message: `${overlay.connection.name} is disconnected. It’s back in Browse if you need it.`,
+            });
+            void changed();
+          }}
+        />
       )}
     </>
   );

@@ -420,6 +420,70 @@ describe("ConnectorDetailPage", () => {
     ]);
   });
 
+  it("gives another agent access", async () => {
+    const calls = serve(detail(), {
+      "GET /api/connectors/c1/agents": {
+        teams: [
+          {
+            team_id: "team-ind",
+            team_name: "Indicator sprint team",
+            agents: ["pm", "engineer", "reviewer"].map((role_name) => ({
+              node_id: `n-${role_name}`,
+              role_name,
+              title: null,
+              kind: "agent",
+              edits_allowed: false,
+              enabled: role_name !== "pm",
+              access: role_name === "pm" ? null : "read",
+              subscription: null,
+            })),
+          },
+        ],
+      },
+      "PUT /api/connectors/c1/agents": (_u: URL, body: { node_ids: string[] }) => ({
+        agents: body.node_ids.map((id) => usage(id.slice(2))),
+        agent_count: 3,
+        team_count: 1,
+      }),
+    });
+    await open();
+    click("Give an agent access");
+    const dialog = screen.getByRole("dialog", { name: "Give agents access to Supabase" });
+    fireEvent.click(await within(dialog).findByRole("checkbox", { name: "Product manager" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Product manager can now use Supabase (read only)."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
+      node_ids: ["n-pm", "n-engineer", "n-reviewer"],
+    });
+    // The page reads the connection again.
+    expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/api/connectors/c1" });
+    expect(refreshBadges).toHaveBeenCalled();
+  });
+
+  it("disconnects and goes back to the list", async () => {
+    const calls = serve(detail(), {
+      "DELETE /api/connectors/c1": { removed_from_agents: 2, revoked: true },
+    });
+    await open();
+    click("More actions for Supabase");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Disconnect" }));
+    // The page already knows who uses it: the dialog opens at once, with no second read.
+    const dialog = screen.getByRole("alertdialog", { name: "Disconnect Supabase?" });
+    expect(dialog).toHaveTextContent(
+      "Engineer and Reviewer in Indicator sprint team use it. They lose access now",
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Disconnect" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/toolkit/connectors"));
+    expect(
+      await screen.findByText("Supabase is disconnected. It’s back in Browse if you need it."),
+    ).toBeInTheDocument();
+    expect(calls.map((c) => c.method)).toEqual(["GET", "DELETE"]);
+    expect(refreshBadges).toHaveBeenCalled();
+  });
+
   it("labels a server Tvashtr hasn’t reviewed", async () => {
     serve(detail({ featured: false, reviewed: false, publisher: null, host: "mcp.apify.com" }));
     await open();

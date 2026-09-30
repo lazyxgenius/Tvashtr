@@ -37,9 +37,17 @@ import { ChangeAccessDialog } from "./ChangeAccessDialog";
 import { type ConnectDone, ConnectSheet } from "./ConnectSheet";
 import { ConnectorRowMenu } from "./ConnectorRowMenu";
 import { ConnectorTile } from "./ConnectorTile";
+import { DisconnectDialog } from "./DisconnectDialog";
+import { GiveAccessDialog } from "./GiveAccessDialog";
 import { Note } from "./connectParts";
 import { prepareSignInWindow } from "./connectSignIn";
-import { accessLabel, recentUseLine, toolsHint, usesKey } from "./connectorFormat";
+import {
+  accessGivenToast,
+  accessLabel,
+  recentUseLine,
+  toolsHint,
+  usesKey,
+} from "./connectorFormat";
 import "../tools/tools.css";
 import "./connectors.css";
 
@@ -457,6 +465,29 @@ function Connector({
           target={{ connection: c, mode: "project" }}
           onClose={closeSheet}
           onDone={(saved, what) => void onSheetDone(saved, what)}
+        />
+      )}
+      {overlay?.kind === "give" && (
+        <GiveAccessDialog
+          connection={c}
+          onClose={() => setOverlay(null)}
+          onSaved={(added) => {
+            setOverlay(null);
+            toast({ message: accessGivenToast(added, c.name) });
+            void changed();
+          }}
+        />
+      )}
+      {overlay?.kind === "disconnect" && (
+        <DisconnectDialog
+          connection={c}
+          detail={c}
+          onClose={() => setOverlay(null)}
+          onDisconnected={() => {
+            void refreshBadges();
+            toast({ message: `${c.name} is disconnected. It’s back in Browse if you need it.` });
+            navigate(LIST, { replace: true });
+          }}
         />
       )}
       {overlay?.kind === "access" && (

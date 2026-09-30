@@ -339,13 +339,15 @@ describe("signing in to a catalog connector", () => {
     const calls = serve();
     show({ entry: NOTION });
     click("Continue to Notion");
-    await screen.findByText("Waiting for you to finish in the Notion window");
+    // The window is open (the button is live): from here the sheet is listening.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Open the window again" })).toBeEnabled(),
+    );
+    await act(async () => {}); // …once its effects have run
     expect(polls(calls)).toBe(0);
-    await act(async () => {
-      window.dispatchEvent(new Event("focus"));
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(polls(calls)).toBe(1);
+    act(() => void window.dispatchEvent(new Event("focus")));
+    // At once, not at the next two-second poll.
+    await waitFor(() => expect(polls(calls)).toBe(1), { timeout: 500 });
   });
 });
 
