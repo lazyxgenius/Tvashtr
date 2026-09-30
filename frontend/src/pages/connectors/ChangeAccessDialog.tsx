@@ -8,6 +8,7 @@ import { Button, Dialog } from "../../design-system/components";
 import {
   type Connection,
   type ConnectorAccess,
+  checkConnection,
   connectorRefusal,
   updateConnection,
 } from "../../lib/api/connectors";
@@ -30,7 +31,10 @@ export function ChangeAccessDialog({
     setBusy(true);
     setError(null);
     try {
-      onSaved(await updateConnection(connection.id, { access }));
+      const saved = await updateConnection(connection.id, { access });
+      // The PATCH keeps the stored tool list, and what a provider lists can depend on the access
+      // (Supabase's read-only mode): list them again. The change stands if that fails.
+      onSaved(await checkConnection(saved.id).catch(() => saved));
     } catch (e) {
       setBusy(false);
       setError(connectorRefusal(e)?.message ?? "Couldn’t change the access. Try again.");

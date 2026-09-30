@@ -22,6 +22,7 @@ import {
   type ConnectorRefusal,
   type KeyField,
   type ScopeOptions,
+  checkConnection,
   connectorRefusal,
   createConnection,
   getScopeOptions,
@@ -298,7 +299,10 @@ export function ConnectSheet({
         scope: { value: scopeValue, label },
         ...(access !== conn.access ? { access } : {}),
       });
-      done(saved, mode === "project" ? "project" : "connected");
+      // The PATCH keeps the stored tool list, and what a provider lists depends on the project
+      // (and the access): list them again. The change stands if that fails.
+      const listed = await checkConnection(saved.id).catch(() => saved);
+      done(listed, mode === "project" ? "project" : "connected");
     } catch (err) {
       setNotice(serverWords(err, connectorRefusal(err)) ?? "Couldn’t save the project. Try again.");
     } finally {

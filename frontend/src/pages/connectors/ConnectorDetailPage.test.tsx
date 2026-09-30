@@ -379,7 +379,8 @@ describe("ConnectorDetailPage", () => {
     );
     fireEvent.click(save);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(calls.at(-2)).toEqual({
+    // PATCH, then the tools are listed again, then the page reads the connection.
+    expect(calls.at(-3)).toEqual({
       method: "PATCH",
       path: "/api/connectors/c1",
       body: { access: "write" },
@@ -391,6 +392,63 @@ describe("ConnectorDetailPage", () => {
     // The card's Change opens the same dialog.
     click("Change what agents may do");
     expect(screen.getByRole("dialog", { name: "Change access" })).toBeInTheDocument();
+  });
+
+  it("lists the tools again after the access or the project changes", async () => {
+    // What a provider lists depends on both, and the PATCH doesn't ask it again.
+    const calls = serve(
+      detail(),
+      {
+        "GET /api/connectors/c1/scope-options": {
+          param: "project_ref",
+          label: "Project",
+          manual: true,
+          options: [],
+        },
+      },
+      { tools: [tool("list_tables"), tool("apply_migration", true, true)] },
+    );
+    await open();
+    click("Change access");
+    const dialog = screen.getByRole("dialog", { name: "Change access" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Read & write" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await screen.findByText("Supabase is now read & write.");
+    const after = (method: string, path: string) =>
+      calls.findIndex((c) => c.method === method && c.path === path);
+    expect(after("POST", "/api/connectors/c1/check")).toBeGreaterThan(
+      after("PATCH", "/api/connectors/c1"),
+    );
+    const list = within(card("What agents can call")).getAllByRole("listitem");
+    expect(list.map((li) => li.textContent)).toEqual(["list_tablesRead", "apply_migrationWrite"]);
+
+    calls.length = 0;
+    click("Change project");
+    const sheet = screen.getByRole("dialog", { name: "Change project" });
+    fireEvent.change(await within(sheet).findByRole("textbox", { name: "Project id" }), {
+      target: { value: "efgh5678" },
+    });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Save" }));
+    await screen.findByText("Supabase now uses efgh5678.");
+    expect(after("POST", "/api/connectors/c1/check")).toBeGreaterThan(
+      after("PATCH", "/api/connectors/c1"),
+    );
+  });
+
+  it("keeps the change when the tools can’t be listed again", async () => {
+    serve(detail(), {
+      "POST /api/connectors/c1/check": new Response(
+        JSON.stringify({ detail: { code: "unreachable", message: "We couldn’t reach it." } }),
+        { status: 502 },
+      ),
+    });
+    await open();
+    click("Change access");
+    const dialog = screen.getByRole("dialog", { name: "Change access" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Read & write" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Supabase is now read & write.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("says why an access change was refused", async () => {

@@ -216,11 +216,13 @@ describe("signing in to a catalog connector", () => {
     fireEvent.click(options[1]);
     click("Finish");
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
-    expect(calls.at(-1)).toEqual({
+    expect(calls.at(-2)).toEqual({
       method: "PATCH",
       path: "/api/connectors/c1",
       body: { scope: { value: "efgh5678", label: "trade-mcp-staging · ap-southeast-1" } },
     });
+    // Then the tools are listed again: what the provider lists depends on the project.
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: "/api/connectors/c1/check" });
     expect(onDone.mock.calls[0][0]).toMatchObject({
       id: "c1",
       scope: { value: "efgh5678", label: "trade-mcp-staging · ap-southeast-1" },
@@ -248,7 +250,7 @@ describe("signing in to a catalog connector", () => {
     await screen.findAllByRole("radio");
     click("Finish");
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
-    expect(calls.at(-1)?.body).toEqual({
+    expect(calls.at(-2)?.body).toEqual({
       scope: { value: "abcd1234", label: "trade-mcp-prod · ap-southeast-1" },
       access: "read",
     });
@@ -313,7 +315,7 @@ describe("signing in to a catalog connector", () => {
     fireEvent.change(field, { target: { value: " abcd1234 " } });
     click("Finish");
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
-    expect(calls.at(-1)?.body).toEqual({ scope: { value: "abcd1234", label: "abcd1234" } });
+    expect(calls.at(-2)?.body).toEqual({ scope: { value: "abcd1234", label: "abcd1234" } });
   });
 
   it("says why a project id was refused", async () => {
@@ -895,9 +897,26 @@ describe("for a connection you already have", () => {
     fireEvent.click(options[2]);
     click("Save");
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
-    expect(calls.at(-1)?.body).toEqual({ scope: { value: "ijkl9012", label: "landing-page" } });
+    expect(calls.at(-2)?.body).toEqual({ scope: { value: "ijkl9012", label: "landing-page" } });
     expect(onDone.mock.calls[0][1]).toBe("project");
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("reports the tools the provider lists for the new project", async () => {
+    const tools = [{ name: "list_branches", title: null, write: false, on: true }];
+    serve({
+      "POST /api/connectors/c1/check": () => ({
+        ...connection(),
+        scope: { value: "ijkl9012", label: "landing-page" },
+        tools,
+      }),
+    });
+    row = connection();
+    const { onDone } = show({ connection: connection(), mode: "project" });
+    fireEvent.click((await screen.findAllByRole("radio"))[2]);
+    click("Save");
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+    expect(onDone.mock.calls[0][0]).toMatchObject({ scope: { value: "ijkl9012" }, tools });
   });
 
   it("falls back to the id field when the project list can’t be loaded", async () => {
