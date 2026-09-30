@@ -90,6 +90,20 @@
   color: var(--danger, #b3261e);
 }
 
+/* What the run went without (`RunWarnings`), between the toolbar and the canvas. No height of
+   its own when there is nothing to say; a long list scrolls instead of taking the canvas. */
+.cv-warnings {
+  flex: none;
+  box-sizing: border-box;
+  max-height: 30vh;
+  overflow-y: auto;
+  padding: 0 20px;
+  background: var(--surface-raised);
+}
+.cv-warnings:not(:empty) {
+  border-bottom: 1px solid var(--border-hairline);
+}
+
 /* The canvas area: the drawer docks beside it (push) or floats over it (≤1280px). */
 .cv-main {
   position: relative;

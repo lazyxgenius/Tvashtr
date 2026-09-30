@@ -1022,7 +1022,9 @@ contract, so the link reads "Open result".
   `javascript:` `result_url` is not a link), `panel/runs/RunsTab.test.tsx`, the events test.
 
 **F2.4 Run warning.** `components/RunWarnings.tsx` (:4): a `connector` kind renders "Ran without
-`<name>`: `<reason>`." with "Open Connectors". Test first.
+`<name>`: `<reason>`." with "Open Connectors". Test first. The run view shows the banner in a
+row of its own under the toolbar (`.cv-warnings` in `App.tsx`), not inside the toolbar's one 56px
+line, where a banner of two lines hid "Open Connectors" under the canvas (fixed after review).
 
 **F2 after review** (F2.1 to F2.4):
 - The checklist says "Loading your connectors…" while it loads, its "Try again" works inside the

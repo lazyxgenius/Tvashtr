@@ -822,7 +822,6 @@ export default function App({
             </button>
             {inFlight && <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />}
             <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
-            <RunWarnings warnings={graph?.resolution_warnings ?? []} />
           </>
         )}
         {error && <span className="cv-error">{error}</span>}
@@ -830,6 +829,12 @@ export default function App({
           <span className="cv-error">Couldn't load your team — is the backend running?</span>
         )}
       </CanvasToolbar>
+      {/* A row of its own: the toolbar is one 56px line, and this can be several. */}
+      {!authoring && (
+        <div className="cv-warnings">
+          <RunWarnings warnings={graph?.resolution_warnings ?? []} />
+        </div>
+      )}
 
       <main className="cv-main">
         {docsOpen && docsDrawer && (

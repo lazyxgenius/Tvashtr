@@ -101,6 +101,7 @@ function graphFor(phase: Phase): GraphData {
   return {
     run_id: RUN_ID,
     team_graph_id: "g1",
+    resolution_warnings: runWarnings,
     nodes: [
       gnode({ id: "n-pm", role_name: "pm", kind: "completion", status: "done" }),
       gnode({
@@ -151,10 +152,13 @@ let fetchMock: ReturnType<typeof vi.fn>;
 // The run's pending tasks the poll returns (default empty → the tasks drawer renders null). A test
 // that needs the drawer to render seeds a pending task here before launching.
 let extraTasks: HumanTask[];
+// What the run went without (`resolution_warnings` on its graph).
+let runWarnings: NonNullable<GraphData["resolution_warnings"]>;
 
 beforeEach(() => {
   phase = "running";
   extraTasks = [];
+  runWarnings = [];
   fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = urlOf(input);
     const method = init?.method ?? "GET";
@@ -438,6 +442,24 @@ describe("App — the agent drawer (F5)", () => {
       tab: undefined,
       focus: undefined,
     });
+  });
+
+  it("lists what the run went without under the toolbar, not inside its one 56px line", async () => {
+    runWarnings = [
+      { source_kind: "connector", name: "Acme", reason: "its sign-in expired" },
+      { source_kind: "connector", name: "a connector", reason: "it was disconnected" },
+    ];
+    render(<App teamId="team-1" initialRunId={RUN_ID} />);
+    const banner = await screen.findByRole("status", { name: "Resolution warnings" });
+    // Inside the toolbar a banner of more than one line spills over the header and under the
+    // canvas, and Open Connectors can't be clicked.
+    expect(banner.closest(".cv-bar")).toBeNull();
+    expect(banner.parentElement).toHaveClass("cv-warnings");
+    expect(banner.parentElement?.nextElementSibling).toHaveClass("cv-main");
+    expect(within(banner).getByRole("link", { name: "Open Connectors" })).toHaveAttribute(
+      "href",
+      "#/toolkit/connectors",
+    );
   });
 
   it("the run view's PM drawer: Runs first, the shared spec under Docs, Open then Edit (the J3 e2e path)", async () => {
