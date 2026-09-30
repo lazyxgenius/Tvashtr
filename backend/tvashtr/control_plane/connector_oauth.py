@@ -1,15 +1,25 @@
 """Connectors: MCP authorization (discovery, client registration, tokens).
 
-Phase 0 skeleton: the exceptions and ``Discovery`` are final; ``discover``,
-``ensure_access_token`` and ``revoke`` are stubs with their final signatures, filled by stream B2
-(build plan B2.1 and B2.5). Contract: ``docs/superpowers/plans/api/connectors.md`` (OAuth, Tokens).
-All HTTP here goes through ``connector_net.client()``.
+Tvashtr's backend is the OAuth client. Contract: ``docs/superpowers/plans/api/connectors.md``
+(OAuth, Tokens). All HTTP here goes through ``connector_net.client()``, and every address is
+passed through ``connector_net.check_url`` first. Metadata is read as plain dicts: the ``issuer``
+comparisons are on the raw strings (a URL type adds a trailing slash).
 """
 
 import uuid
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
+import httpx
+from mcp.client.auth.utils import (
+    build_oauth_authorization_server_metadata_discovery_urls,
+    build_protected_resource_metadata_discovery_urls,
+    extract_resource_metadata_from_www_auth,
+    extract_scope_from_www_auth,
+)
+from mcp.shared.auth_utils import check_resource_allowed
+
+from tvashtr.control_plane import connector_net
 from tvashtr.db import session_scope
 from tvashtr.models import ConnectorConnection
 
@@ -53,14 +63,148 @@ class Discovery:
         return urlsplit(self.authorization_endpoint).hostname or ""
 
 
+def _pins(entry: dict | None, url: str) -> dict:
+    """``entry`` when it may pin sign-in details (``oauth_hosts``, ``scope``, ``client``): a
+    Featured entry, and only for its own address. A registry or custom entry never can, so a
+    custom server that names Google's sign-in is never treated like Google's own."""
+    if entry and entry.get("featured") is True and entry.get("url") == url:
+        return entry
+    return {}
+
+
+def _document(response: httpx.Response | None) -> dict:
+    """The JSON object of a 200 answer, else ``{}``."""
+    if response is None or response.status_code != 200:
+        return {}
+    try:
+        body = response.json()
+    except ValueError:
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+def _scopes(document: dict) -> str | None:
+    listed = document.get("scopes_supported")
+    if isinstance(listed, list) and listed and all(isinstance(s, str) for s in listed):
+        return " ".join(listed)
+    return None
+
+
 def discover(url: str, entry: dict | None = None) -> Discovery | None:
     """Run MCP authorization discovery on ``url``. ``None`` when the server offers no sign-in.
     ``entry`` is the catalog entry (a Featured one may pin ``oauth_hosts``). Raises
     :class:`CannotRegister` when a sign-in is there but fails a check, :class:`Unreachable` when
-    the server doesn't answer.
+    the server doesn't answer or ``url`` isn't an address Tvashtr opens."""
+    pins = _pins(entry, url)
+    try:
+        connector_net.check_url(url)
+    except connector_net.UnsafeUrl as exc:
+        raise Unreachable(str(exc)) from exc
+    answered = False
 
-    Phase 0 stub: finds nothing. Stream B2.1 fills it."""
-    return None
+    with connector_net.client(headers={"Accept": "application/json, text/event-stream"}) as http:
+
+        def get(address: str) -> httpx.Response | None:
+            """``None`` for an address Tvashtr won't open and for one that doesn't answer."""
+            nonlocal answered
+            try:
+                response = http.get(connector_net.check_url(address))
+            except (connector_net.UnsafeUrl, httpx.HTTPError):
+                return None
+            answered = answered or response.status_code < 500
+            return response
+
+        # 1. Protected-resource metadata: where the 401's header says, then the well-known
+        # addresses. They are tried whatever the first request answers (several servers answer a
+        # GET 405 or 404).
+        try:
+            first = http.get(url)
+            answered = first.status_code < 500
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            raise Unreachable(f"{urlsplit(url).hostname} can't be connected to") from exc
+        except (connector_net.UnsafeUrl, httpx.HTTPError):
+            first = None  # e.g. a stream that stays open: the well-known addresses still say
+        challenged = first is not None and first.status_code == 401
+        named = extract_resource_metadata_from_www_auth(first) if challenged else None
+        scope = extract_scope_from_www_auth(first) if challenged else None
+        resource: dict = {}
+        # (``dict.fromkeys``: the header usually names the well-known address itself.)
+        candidates = build_protected_resource_metadata_discovery_urls(named, url)
+        for address in dict.fromkeys(candidates):
+            found = _document(get(address))
+            servers = found.get("authorization_servers")
+            if isinstance(found.get("resource"), str) and isinstance(servers, list) and servers:
+                resource = found
+                break
+        if resource and not check_resource_allowed(url, resource["resource"]):
+            raise CannotRegister("the resource metadata is for another address")
+
+        # 2. Authorization-server metadata, in the spec's order. With no resource metadata: the
+        # MCP origin's own (Intercom).
+        parts = urlsplit(url)
+        issuer = resource["authorization_servers"][0] if resource else None
+        if issuer is not None and not isinstance(issuer, str):
+            raise CannotRegister("the resource metadata names no sign-in server")
+        server: dict = {}
+        for address in build_oauth_authorization_server_metadata_discovery_urls(issuer, url):
+            server = _document(get(address))
+            if server:
+                break
+
+    if not server:
+        if resource:
+            raise CannotRegister("the sign-in server's metadata can't be read")
+        if not answered:
+            raise Unreachable(f"{parts.hostname} didn't answer")
+        return None
+
+    # 3. The metadata must be the issuer's own, and offer PKCE S256.
+    issuer = issuer or f"{parts.scheme}://{parts.netloc}"
+    if server.get("issuer") != issuer:
+        raise CannotRegister("the sign-in server's metadata names another issuer")
+    if "S256" not in (server.get("code_challenge_methods_supported") or ()):
+        raise CannotRegister("the sign-in server doesn't advertise PKCE S256")
+
+    # 4. Mix-up: every endpoint is an address Tvashtr opens, on the issuer's site (or on a host
+    # a Featured entry pins).
+    home = connector_net.site(urlsplit(issuer).hostname or "")
+    pinned = pins.get("oauth_hosts") or ()
+
+    def endpoint(name: str) -> str | None:
+        """The endpoint when it is usable, ``None`` when it is absent, else ``CannotRegister``."""
+        value = server.get(name)
+        if value is None:
+            return None
+        try:
+            host = urlsplit(connector_net.check_url(value)).hostname or ""
+        except (connector_net.UnsafeUrl, TypeError, AttributeError) as exc:
+            raise CannotRegister(f"{name} isn't an address Tvashtr opens") from exc
+        if connector_net.site(host) != home and host not in pinned:
+            raise CannotRegister(f"{name} is on another site than its issuer")
+        return value
+
+    authorization, token = endpoint("authorization_endpoint"), endpoint("token_endpoint")
+    if not authorization or not token:
+        raise CannotRegister("the sign-in server's metadata is missing an endpoint")
+    try:
+        revocation = endpoint("revocation_endpoint")
+    except CannotRegister:
+        revocation = None  # revoking is best effort: an unusable address is just not used
+    methods = server.get("token_endpoint_auth_methods_supported")
+    return Discovery(
+        issuer=issuer,
+        authorization_endpoint=authorization,
+        token_endpoint=token,
+        resource=resource["resource"] if resource else url,
+        registration_endpoint=endpoint("registration_endpoint"),
+        revocation_endpoint=revocation,
+        scope=scope or _scopes(resource) or _scopes(server),
+        iss_supported=server.get("authorization_response_iss_parameter_supported") is True,
+        cimd_supported=server.get("client_id_metadata_document_supported") is True,
+        token_auth_methods=tuple(m for m in methods if isinstance(m, str))
+        if isinstance(methods, list)
+        else (),
+    )
 
 
 def ensure_access_token(connection_id: uuid.UUID, *, rejected: str | None = None) -> str:

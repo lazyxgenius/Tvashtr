@@ -121,15 +121,6 @@ def test_every_cross_stream_name_has_its_final_signature():
 # ---- the stubs: what each answers until its stream fills it ----
 
 
-# Stub test: task B2.1 (discovery) deletes it with its own tests (build plan §2).
-def test_discover_finds_nothing_yet():
-    assert connector_oauth.discover("https://mcp.supabase.com/mcp") is None
-    assert (
-        connector_oauth.discover("https://mcp.supabase.com/mcp", connector_catalog.FEATURED["neon"])
-        is None
-    )
-
-
 def test_discovery_is_the_final_dataclass():
     found = connector_oauth.Discovery(
         issuer="https://api.supabase.com",
