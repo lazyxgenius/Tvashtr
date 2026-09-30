@@ -434,7 +434,9 @@ def registry() -> dict[str, tuple[dict, str]]:
     use, not at import. An entry on a Featured host is left out (the Featured card wins). No
     snapshot file is an empty registry."""
     try:
-        lines = REGISTRY_PATH.read_text(encoding="utf-8").splitlines()
+        # JSON Lines: only a line feed ends a line (``splitlines`` also cuts at U+2028 and U+0085,
+        # which a description may carry).
+        lines = REGISTRY_PATH.read_text(encoding="utf-8").split("\n")
     except FileNotFoundError:
         return {}
     entries = [_registry_entry(json.loads(line)) for line in lines if line.strip()]

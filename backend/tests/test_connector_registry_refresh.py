@@ -64,6 +64,31 @@ def test_render_is_one_compact_json_object_per_line_and_reads_back(refresh):
     assert refresh.read_snapshot_text(text) == {e["key"]: e for e in built}
 
 
+def test_a_unicode_line_separator_in_a_description_stays_inside_its_line(
+    refresh, tmp_path, monkeypatch
+):
+    """U+2028, U+2029 and U+0085 are line breaks to ``str.splitlines`` and plain characters to
+    JSON Lines: a snapshot that carries one still reads back, in the script and in the catalog."""
+    description = "Acme\u2028things\u2029and\x85more"
+    items = [_item("dev.alpha/mcp"), _item("dev.beta/mcp")]
+    items[0]["server"]["description"] = description
+    built = refresh.build(items)
+    text = refresh.render(built)
+    assert text.count("\n") == 2
+    assert refresh.read_snapshot_text(text) == {e["key"]: e for e in built}
+
+    path = tmp_path / "connector_registry.jsonl"
+    path.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(connector_catalog, "REGISTRY_PATH", path)
+    connector_catalog.registry.cache_clear()
+    try:
+        assert connector_catalog.resolve("dev.alpha/mcp")["description"] == description
+        assert connector_catalog.resolve("dev.beta/mcp") is not None
+    finally:
+        monkeypatch.undo()  # the real path back before the cache is dropped
+        connector_catalog.registry.cache_clear()
+
+
 def test_summary_names_added_removed_and_changed_keys_and_is_empty_for_the_same_file(refresh):
     old = {
         e["key"]: e
@@ -132,7 +157,9 @@ def test_snapshot_loads(refresh):
     path = connector_catalog.REGISTRY_PATH
     assert path == refresh.SNAPSHOT
     raw = path.read_bytes()
-    lines = raw.decode("utf-8").splitlines()
+    text = raw.decode("utf-8")
+    assert text.endswith("\n")
+    lines = text[:-1].split("\n")  # JSON Lines: only a line feed ends a line
     assert 1_000 < len(lines) <= refresh.MAX_ENTRIES and len(raw) <= refresh.MAX_BYTES
     keys = []
     for line in lines:

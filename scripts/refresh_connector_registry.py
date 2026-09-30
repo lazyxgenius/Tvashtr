@@ -83,7 +83,10 @@ def render(entries: list[dict]) -> str:
 
 
 def read_snapshot_text(text: str) -> dict[str, dict]:
-    return {entry["key"]: entry for line in text.splitlines() if (entry := json.loads(line))}
+    # Only a line feed ends a JSON Lines line: ``splitlines`` would also cut at a U+2028 that a
+    # description carries (``render`` writes it as it is).
+    lines = filter(str.strip, text.split("\n"))
+    return {entry["key"]: entry for entry in map(json.loads, lines)}
 
 
 def check_caps(entries: list[dict], text: str) -> None:
