@@ -344,8 +344,7 @@ frontend origin (on Desktop that is `127.0.0.1`).
    resource metadata names `https://accounts.google.com/` and its server metadata says
    `https://accounts.google.com`. The server's own spelling is the issuer that is stored and that
    the callback's `iss` is compared with); `code_challenge_methods_supported` is a list that
-   contains `S256`; the
-   resource metadata's `resource` covers the MCP address (`check_resource_allowed`); every endpoint
+   contains `S256`; the resource metadata's `resource` covers the MCP address (`check_resource_allowed`); every endpoint
    passes `connector_net.check_url` (`https://`, a public address, no user name or backslash).
    Everything in either document is untrusted: a value of the wrong type, or one that can't be
    read as an address, is `cannot_register` (never a 500), and a document nested too deep to
@@ -479,7 +478,8 @@ exchanged
 plus client authentication for a registered secret), and on success the tools are listed with the
 new token. Whatever goes wrong in the exchange (no answer, an answer that can't be read, anything
 unexpected) is a failure, never a 500: the write below always runs, so the claim is always
-cleared. An `expires_in` that isn't a usable number (`1e999`) is no expiry. Then, under the row lock (see Tokens), everything is written at once. Success →
+cleared. An `expires_in` that isn't a usable number (`1e999`) is no expiry. Then, under the row
+lock (see Tokens), everything is written at once. Success →
 `secret_encrypted` written, `status: "connected"`, `connected_at` now, `last_error` null, `tools`
 set (a failed listing leaves `tools` as it was, `null` on a first sign-in, and doesn't fail the
 sign-in), `pending_encrypted` and `state_hash` cleared. Page: "Supabase is
@@ -489,7 +489,8 @@ sign-in. Try again.", status and the stored sign-in unchanged, the in-flight sig
 steps 3 and 4, page says the same. When the token endpoint refused the client itself (a 401, or
 the `error` `invalid_client` or `unauthorized_client`), the cleared sign-in also records the
 client's id as `refused_client`, so the next `oauth/start` registers again instead of reusing it
-(from the cleared sign-in or from the stored one, which is still left as it was). When `state_hash` is no longer the claim at that write (a newer
+(from the cleared sign-in or from the stored one, which is still left as it was). When
+`state_hash` is no longer the claim at that write (a newer
 `oauth/start` ran while the code was exchanged), the newer sign-in's `state_hash` and
 `pending_encrypted` are left alone. A connection disconnected meanwhile gets the failure page.
 
