@@ -470,11 +470,36 @@ def test_registry_entries_take_a_key_when_the_registry_declares_a_secret_or_requ
         ("io.github.acme/mcp_weather_tools", "Weather Tools"),
         ("dev.acme/mcp", "Acme"),
         ("dev.acme/server", "Acme"),
+        # "site" names nothing either: 521 registry servers are called just that.
+        ("com.409acost/site", "409Acost"),
+        ("com.409acost/site-mcp", "409Acost"),
+        ("com.santosautomation/site-audit", "Site Audit"),  # a word of a longer name stays
     ],
 )
 def test_a_registry_entry_without_a_title_is_named_after_its_server_name(registry_file, key, name):
     registry_file(_server(key))
     assert resolve(key)["name"] == name
+
+
+def test_a_name_several_registry_servers_share_is_shown_with_its_publisher(registry_file):
+    """Browse showed hundreds of cards with one name ("Docs", "Catalog", "My MCP Server"…), and
+    connecting one made a connection, and an MCP server for the agent, called just that."""
+    registry_file(
+        _server("dev.acme/docs", remotes=[_remote("https://mcp.acme.dev/mcp")]),
+        _server("io.github.zed/docs-mcp", remotes=[_remote("https://mcp.zed.dev/mcp")]),
+        _server("dev.first/x", title="My MCP Server", remotes=[_remote("https://a.first.dev/mcp")]),
+        _server("dev.second/y", title="my mcp  server", remotes=[_remote("https://b.second.dev/")]),
+        _server("dev.solo/weather", remotes=[_remote("https://mcp.solo.dev/mcp")]),
+    )
+    assert {key: resolve(key)["name"] for key in connector_catalog.registry()} == {
+        "dev.acme/docs": "Docs (acme.dev)",
+        "io.github.zed/docs-mcp": "Docs (github.com/zed)",
+        "dev.first/x": "My MCP Server (first.dev)",
+        "dev.second/y": "my mcp  server (second.dev)",  # compared as names are: case and spacing
+        "dev.solo/weather": "Weather",  # nobody else's name: as it was
+    }
+    found = [e["name"] for e in search("docs")[0] if not e["featured"]]
+    assert found == ["Docs (acme.dev)", "Docs (github.com/zed)"]
 
 
 def test_search_lists_featured_first_then_the_registry_by_name(registry_file):

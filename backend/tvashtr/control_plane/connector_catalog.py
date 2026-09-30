@@ -28,6 +28,7 @@ Contract: ``docs/superpowers/plans/api/connectors.md`` (Catalog, Read or write).
 
 import json
 import re
+from collections import Counter
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -385,6 +386,8 @@ def _name_from_key(key: str) -> str:
     boilerplate (``apify-mcp-server`` → ``Apify``), else its publisher's last label."""
     namespace, _, tail = key.partition("/")
     words = [w for w in re.split(r"[-_.\s]+", tail) if w and w.lower() not in _GENERIC_WORDS]
+    if [w.lower() for w in words] == ["site"]:
+        words = []  # "site" alone names nothing either (521 registry servers are called that)
     return " ".join(words).title() or namespace.rsplit(".", 1)[-1].title()
 
 
@@ -487,6 +490,12 @@ def registry() -> dict[str, tuple[dict, str]]:
         return {}
     entries = [_registry_entry(json.loads(line)) for line in lines if line.strip()]
     entries = [e for e in entries if _host(e) not in _FEATURED_HOSTS]
+    # A name several servers share is shown with its publisher, as a Featured name is: a card, a
+    # connection and an agent's MCP server are all named after it.
+    shared = Counter(_name_key(e["name"]) for e in entries)
+    for e in entries:
+        if shared[_name_key(e["name"])] > 1:
+            e["name"] = f"{e['name']} ({e['publisher']})"
     entries.sort(key=lambda e: (e["name"].lower(), e["key"]))
     return {e["key"]: (e, _haystack(e)) for e in entries}
 

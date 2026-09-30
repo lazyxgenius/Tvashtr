@@ -4,6 +4,7 @@ snapshot it committed. No network: the crawl is replaced by a list of pages."""
 import importlib.util
 import json
 import re
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -190,6 +191,9 @@ def test_snapshot_loads(refresh):
     connector_catalog.registry.cache_clear()
     loaded = connector_catalog.registry()
     assert 1_000 < len(loaded) <= len(keys)  # minus the entries on a Featured host
+    # No wall of cards with one name (521 were once all called "Site").
+    names = Counter(entry["name"] for entry, _text in loaded.values())
+    assert names.most_common(1)[0][1] <= 3, names.most_common(5)
     for known in ("com.apify/apify-mcp-server", "com.stripe/mcp"):
         assert connector_catalog.resolve(known)["featured"] is False
     # The vendors' own registry entries are hidden behind their Featured cards.

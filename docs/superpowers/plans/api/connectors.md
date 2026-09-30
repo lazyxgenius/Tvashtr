@@ -119,7 +119,13 @@ Why one table is enough:
 - `name`: a display name. A registry entry's is its `title`, else its server name without the MCP
   boilerplate (`com.apify/apify-mcp-server` → "Apify"). One that is a Featured connector's name
   is shown with its publisher (`Supabase (waystation.ai)`): only the Featured card is called
-  "Supabase". `publisher` of a registry entry is its verified namespace read as a domain
+  "Supabase". A server name that says nothing (`mcp`, `server`, `remote`, or `site` alone) is
+  named after its publisher's last label (`com.409acost/site` → "409Acost"). A name that several
+  registry entries share (compared without case, spacing or punctuation) is shown with its
+  publisher too (`Docs (acme.dev)`), so no wall of cards has one name and no two connections or
+  agent MCP servers are called the same by default; the snapshot test holds the largest group of
+  same-named cards to 3 (one publisher listing one title three times). `publisher` of a registry
+  entry is its verified namespace read as a domain
   (`apify.com`, `github.com/getsentry`).
 - `category`: `databases` | `docs` | `analytics` | `crm` | `work` for Featured; `null` for registry.
 - `reviewed`: `true` only for Featured. The UI labels the rest "From the MCP Registry · not reviewed
