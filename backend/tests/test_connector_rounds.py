@@ -171,6 +171,33 @@ def test_a_rounds_connectors_block(owner):
     )
 
 
+def test_writes_count_what_the_provider_took_and_reads_what_worked(owner):
+    _c, owner_id, tid, _nodes = owner
+    run_id, clone = _run(owner_id, tid)
+    row = _connection(owner_id)
+    inv = _round(run_id, clone["reviewer"])
+    grant = _grant(run_id, clone["reviewer"], row)
+
+    record_call(grant, row, "create_issue", write=True, result=OK)
+    record_call(grant, row, "create_issue", write=True, result=FAILED)  # it ran and said no
+    record_call(grant, row, "create_issue", write=True, forwarded=True)  # its answer was lost
+    record_call(grant, row, "create_issue", write=True)  # never reached the provider
+    record_call(grant, row, "create_issue", write=True, blocked=True)
+    record_call(grant, row, "list_issues", write=False, result=OK)
+    record_call(grant, row, "list_issues", write=False, result=FAILED)
+    record_call(grant, row, "list_issues", write=False, forwarded=True)
+
+    assert [(u["reads"], u["writes"]) for u in _use(run_id, inv)[inv]["used"]] == [(1, 3)]
+    assert [(r["reads"], r["writes"]) for r in _recent(owner_id, row)] == [(1, 3)]
+    with session_scope() as s:
+        flags = s.execute(
+            select(RunEvent.payload["forwarded"].as_boolean())
+            .where(RunEvent.invocation_id == inv)
+            .order_by(RunEvent.seq)
+        ).scalars()
+        assert list(flags) == [True, True, True, False, False, True, True, True]
+
+
 def test_calls_are_capped_at_50_and_total_calls_is_the_real_number(owner):
     _c, owner_id, tid, _nodes = owner
     run_id, clone = _run(owner_id, tid)
@@ -343,8 +370,8 @@ def test_the_run_events_endpoint_lists_the_new_kinds_after_the_engines_events(ow
         1,
     )
     assert set(call["payload"]) == {
-        "connection_id", "connector", "slug", "tool", "write", "ok", "blocked", "arg",
-        "duration_ms", "result_url",
+        "connection_id", "connector", "slug", "tool", "write", "ok", "blocked", "forwarded",
+        "arg", "duration_ms", "result_url",
     }  # fmt: skip
     assert events[2]["payload"] == {
         "connection_id": None,

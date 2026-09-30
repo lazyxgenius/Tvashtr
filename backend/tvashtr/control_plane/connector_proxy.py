@@ -250,13 +250,16 @@ def record_call(
     *,
     write: bool,
     blocked: bool = False,
+    forwarded: bool = False,
     arguments: object = None,
     duration_ms: int = 0,
     result: CallToolResult | None = None,
 ) -> None:
     """One ``connector_call`` event for one ``tools/call``: allowed, refused (``blocked``) or
-    failed (``result`` is ``None``, or a result with ``isError``). Full arguments and results are
-    not stored. Sync database work: call it off the event loop."""
+    failed (``result`` is ``None``, or a result with ``isError``). ``forwarded`` says the provider
+    took the call (a result says so too): it was sent and not turned away, whatever became of the
+    answer. Full arguments and results are not stored. Sync database work: call it off the event
+    loop."""
     ok = result is not None and not result.isError
     _write_event(
         grant.run_id,
@@ -270,6 +273,7 @@ def record_call(
             "write": write,
             "ok": ok,
             "blocked": blocked,
+            "forwarded": forwarded or result is not None,
             "arg": _short_arg(arguments),
             "duration_ms": duration_ms,
             "result_url": _result_url(result) if ok and write else None,
@@ -303,6 +307,11 @@ _read_only_hints: dict[tuple[uuid.UUID, str], tuple[float, dict[str, bool]]] = {
 
 class _Failed(Exception):
     """A request that got no usable answer. Its text is what the agent is told."""
+
+
+class _Unanswered(_Failed):
+    """No answer at all: the token endpoint or the provider couldn't be reached, or was too slow.
+    A request that was sent may still have been carried out."""
 
 
 async def _thread[T](func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
@@ -360,7 +369,7 @@ async def _provider[T](
     except (connector_oauth.Unreachable, connector_upstream.UpstreamUnreachable, TimeoutError):
         if not quiet:
             await _thread(record_skip, grant.run_id, grant.node_id, row.id, row.name, UNREACHABLE)
-        raise _Failed(f"We couldn’t reach {row.name}. Try again.") from None
+        raise _Unanswered(f"We couldn’t reach {row.name}. Try again.") from None
     except connector_upstream.UpstreamRefused as exc:
         raise _Failed(f"{row.name} refused the request ({exc.status}).") from None
     except McpError as exc:
@@ -484,6 +493,7 @@ async def proxy_call_tool(
         return _tool_error(UNAVAILABLE)
     row, entry, access = found
     write, blocked, result = True, False, None  # a tool nothing is known about is a write
+    forwarded = False  # the provider took the call: sent, and not turned away with a 4xx
     try:
         write = await _is_write(grant, row, entry, access, name, upstream)
         if write and access != "write":
@@ -493,14 +503,27 @@ async def proxy_call_tool(
             )
 
         async def request(url: str, transport: str, headers: dict) -> CallToolResult:
-            return await upstream.call_tool(
-                url, transport, headers, name, arguments, timeout=CALL_TIMEOUT_SECONDS
-            )
+            nonlocal forwarded
+            forwarded = True
+            try:
+                return await upstream.call_tool(
+                    url, transport, headers, name, arguments, timeout=CALL_TIMEOUT_SECONDS
+                )
+            except (connector_upstream.UpstreamUnauthorized, connector_upstream.UpstreamRefused):
+                forwarded = False
+                raise
 
         result = await _provider(grant, row, access, request)
         answer = result
     except _Failed as exc:
-        answer = _tool_error(str(exc))
+        # A write that was sent and never answered may have been carried out: "try again" is how
+        # an issue gets made twice.
+        lost = write and forwarded and isinstance(exc, _Unanswered)
+        answer = _tool_error(
+            f"{row.name} didn’t answer. {name} may have gone through, so check before you retry."
+            if lost
+            else str(exc)
+        )
     try:
         await _thread(
             record_call,
@@ -509,6 +532,7 @@ async def proxy_call_tool(
             name,
             write=write,
             blocked=blocked,
+            forwarded=forwarded,
             arguments=arguments,
             duration_ms=int((time.monotonic() - started) * 1000),
             result=result,
@@ -526,12 +550,21 @@ RECENT_USE_ROWS = 10
 _EVENT_KINDS = ("connector_call", "connector_skipped")
 
 
+def _count(use: dict, payload: dict) -> None:
+    """``reads`` are the reads that worked. ``writes`` are the writes the provider took
+    (``forwarded``): one whose answer was lost, or was an error, may still have changed data."""
+    if payload.get("write"):
+        use["writes"] += bool(payload.get("forwarded", payload.get("ok")))
+    else:
+        use["reads"] += bool(payload.get("ok"))
+
+
 def connector_use(session: Session, run_id: object, invocation_ids: list[int]) -> dict[int, dict]:
     """``{invocation_id: connectors}`` for the rounds of ``run_id`` that called or skipped a
     connector; a round that did neither has no key (its ``connectors`` is ``null``).
 
-    ``used`` is ordered by first call and counts the calls that worked (not the blocked or failed
-    ones); ``calls`` lists writes first, then by time, at most ``CALLS_LIMIT`` of ``total_calls``;
+    ``used`` is ordered by first call and counts as ``_count`` does (never a blocked call);
+    ``calls`` lists writes first, then by time, at most ``CALLS_LIMIT`` of ``total_calls``;
     ``skipped`` has one entry per connection and reason."""
     if not invocation_ids:
         return {}
@@ -565,8 +598,7 @@ def connector_use(session: Session, run_id: object, invocation_ids: list[int]) -
                 "writes": 0,
             },
         )
-        if payload.get("ok"):
-            used["writes" if payload.get("write") else "reads"] += 1
+        _count(used, payload)
         block["calls"].append(
             {
                 "connection_id": connection_id,
@@ -596,7 +628,7 @@ def connector_use(session: Session, run_id: object, invocation_ids: list[int]) -
 def recent_use(session: Session, owner_id: uuid.UUID, connection_id: uuid.UUID) -> list:
     """Up to 10 rows, newest first, one per run and agent, read from the ``connector_call`` events
     of the owner's last 30 runs: ``{"run_id", "run_number", "agent", "reads", "writes", "at"}``.
-    The counts are the calls that worked."""
+    The counts are ``_count``'s, as on a round."""
     # ``node_history`` imports ``team_run``, which imports ``node_tools``, which imports this.
     from tvashtr.control_plane.node_history import _run_number
 
@@ -634,8 +666,7 @@ def recent_use(session: Session, owner_id: uuid.UUID, connection_id: uuid.UUID) 
                 "reads": 0,
                 "writes": 0,
             }
-        if event.payload.get("ok"):
-            use["writes" if event.payload.get("write") else "reads"] += 1
+        _count(use, event.payload)
         use["at"] = event.created_at.isoformat()  # the latest call: events come oldest first
     # Python's sort is stable and ``uses`` is in order of first call, so reversing puts the row
     # whose last call is newest first even when two stamps are equal.

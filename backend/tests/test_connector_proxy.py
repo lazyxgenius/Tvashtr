@@ -422,6 +422,7 @@ def test_a_blocked_write_returns_the_contracts_error_and_is_recorded_blocked():
         "write": True,
         "ok": False,
         "blocked": True,
+        "forwarded": False,
         "arg": "Ship it",
         "duration_ms": event.payload["duration_ms"],
         "result_url": None,
@@ -465,6 +466,7 @@ def test_an_allowed_call_is_forwarded_with_the_credential_and_returned_as_is():
         "write": False,
         "ok": True,
         "blocked": False,
+        "forwarded": True,
         "arg": "is:open",
         "duration_ms": event.payload["duration_ms"],
         "result_url": None,
@@ -799,6 +801,53 @@ def test_a_call_the_provider_does_not_answer_or_answers_with_an_error():
     assert result.isError
     assert _text(result) == "Linear answered an error: Unknown tool: list_issues"
     assert [e.payload["ok"] for e in _events(grant)] == [False, False]
+
+
+def test_a_write_the_provider_took_counts_even_when_its_answer_is_lost_or_an_error(monkeypatch):
+    """A write whose answer never came back (a timeout, an answer too large) or came back as an
+    error may still have changed data. It counts as a write, and the agent isn't told to simply
+    try again: that is how an issue gets made twice."""
+    upstream = FakeUpstream()
+    grant = _grant("write", access="write")
+    assert _list(grant, upstream) == ALL
+    maybe = "Linear didn’t answer. create_issue may have gone through, so check before you retry."
+
+    upstream.fail = [connector_upstream.UpstreamUnreachable("timed out")]
+    lost = _call(grant, upstream, "create_issue", {"title": "One"})
+    assert lost.isError and _text(lost) == maybe
+    upstream.result = CallToolResult(content=[TextContent(type="text", text="no")], isError=True)
+    assert _call(grant, upstream, "create_issue", {"title": "Two"}) is upstream.result
+    # Turned away at the door: nothing ran.
+    upstream.fail = [connector_upstream.UpstreamRefused(403)]
+    assert _text(_call(grant, upstream, "create_issue")) == "Linear refused the request (403)."
+    # A read can be tried again.
+    upstream.fail = [connector_upstream.UpstreamUnreachable("timed out")]
+    read = _call(grant, upstream, "list_issues")
+    assert _text(read) == "We couldn’t reach Linear. Try again."
+    # Never sent: the key stopped being readable, say.
+    monkeypatch.setattr(
+        connectors, "upstream_headers", lambda row, **_: _raise(connector_oauth.Unreachable("x"))
+    )
+    unsent = _call(grant, upstream, "create_issue", {"title": "Three"})
+    assert _text(unsent) == "We couldn’t reach Linear. Try again."
+
+    events = _events(grant)
+    assert [(e.payload["write"], e.payload["ok"], e.payload["forwarded"]) for e in events] == [
+        (True, False, True),
+        (True, False, True),
+        (True, False, False),
+        (False, False, True),
+        (True, False, False),
+    ]
+    with session_scope() as s:
+        (block,) = connector_proxy.connector_use(
+            s, grant.run_id, [events[0].invocation_id]
+        ).values()
+    assert [(use["reads"], use["writes"]) for use in block["used"]] == [(0, 2)]
+
+
+def _raise(exc: Exception):
+    raise exc
 
 
 # ---- never on the event loop, never the credential ----
