@@ -746,8 +746,8 @@ def _project(raw: object) -> dict | None:
     name, region = raw.get("name"), raw.get("region") or raw.get("region_id")
     return {
         "value": str(value),
-        "label": name if isinstance(name, str) and name else str(value),
-        "detail": region if isinstance(region, str) and region else None,
+        "label": name[:LABEL_LIMIT] if isinstance(name, str) and name else str(value),
+        "detail": region[:LABEL_LIMIT] if isinstance(region, str) and region else None,
     }
 
 
@@ -762,7 +762,7 @@ def _projects(result: CallToolResult) -> list[dict]:
         if getattr(item, "type", None) == "text":
             try:
                 payloads.append(json.loads(item.text))
-            except ValueError:
+            except (ValueError, RecursionError):  # not JSON, or nested deeper than the reader goes
                 continue
     payloads.append(result.structuredContent)
     for payload in payloads:

@@ -621,6 +621,7 @@ def test_scope_options_read_the_shapes_providers_answer_in(upstream, tokens, pay
         _text_result("Here are your projects: trade-mcp-prod, trade-mcp-dev"),
         _text_result([]),
         _text_result({"projects": "none"}),
+        _text_result("[" * 200_000),  # nested deeper than the JSON reader goes
         _text_result(PROJECTS, error=True),
         CallToolResult(content=[]),
         connector_upstream.UpstreamUnauthorized(),
@@ -642,6 +643,21 @@ def test_scope_options_ask_for_the_id_by_hand_when_the_list_cant_be_read(upstrea
         "options": [],
     }
     assert _snapshot(cid) == before
+
+
+def test_scope_options_cut_a_projects_name_and_region(upstream, tokens):
+    c, owner = fresh_account()
+    cid = add_connection(owner, "supabase", secret=OAUTH_SECRET)
+    upstream.result = _text_result(
+        [{"id": "abcd1234", "name": "n" * 40_000, "region": "r" * 40_000}] * 300
+    )
+    resp = c.get(f"/api/connectors/{cid}/scope-options")
+    assert resp.status_code == 200, resp.text
+    assert (
+        resp.json()["options"]
+        == [{"value": "abcd1234", "label": "n" * 120, "detail": "r" * 120}] * 200
+    )
+    assert len(resp.content) < 100_000
 
 
 def test_scope_options_refusals(upstream, tokens):
