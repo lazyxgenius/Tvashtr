@@ -282,15 +282,21 @@ def _dict(value: object) -> dict:
 
 def _fixed_https(url: object) -> bool:
     """A plain ``https://`` address: no ``{template}``, no user name, nothing a browser and Python
-    would read differently. (Whether it is a public address is checked when it is connected.)"""
-    if not isinstance(url, str) or not url.startswith("https://") or _UNSAFE_ADDRESS.search(url):
+    would read differently, and nothing that prints like another host: ASCII only (a Cyrillic
+    ``а`` makes ``mcp.supаbase.com``) and no trailing dot on the host (``mcp.supabase.com.`` is
+    the same server under another name). (Whether it is a public address is checked when it is
+    connected.)"""
+    if not isinstance(url, str) or not url.isascii() or not url.startswith("https://"):
+        return False
+    if _UNSAFE_ADDRESS.search(url):
         return False
     try:
         parts = urlsplit(url)
         parts.port  # noqa: B018  (raises on a port that isn't a number)
     except ValueError:
         return False
-    return bool(parts.hostname) and "@" not in parts.netloc
+    host = parts.hostname or ""
+    return bool(host) and not host.endswith(".") and "@" not in parts.netloc
 
 
 def _slim_header(header: object) -> dict | None:
@@ -392,6 +398,24 @@ def _key_label(header_name: str) -> str:
     return "API key" if header_name.lower() in ("authorization", "x-api-key") else header_name
 
 
+def _name_key(name: str) -> str:
+    """A name as it is compared: its letters and digits in lower case, so case, spacing,
+    punctuation and zero-width characters don't make another name."""
+    return "".join(ch for ch in name.casefold() if ch.isalnum())
+
+
+_FEATURED_NAMES = frozenset(_name_key(entry["name"]) for entry in _ENTRIES)
+
+
+def _registry_name(slim: dict) -> str:
+    """The registry entry's display name. One that is a Featured connector's name is shown with
+    its publisher (``Supabase (waystation.ai)``): only the Featured card is called ``Supabase``."""
+    name = slim.get("title") or _name_from_key(slim["key"])
+    if _name_key(name) in _FEATURED_NAMES:
+        return f"{name} ({_publisher(slim['key'])})"
+    return name
+
+
 def _registry_entry(slim: dict) -> dict:
     headers = slim.get("headers") or []
     # The user is asked only for what the registry calls secret or required.
@@ -406,7 +430,7 @@ def _registry_entry(slim: dict) -> dict:
         if h["secret"] or h["required"]
     ]
     return _plain(
-        slim.get("title") or _name_from_key(slim["key"]),
+        _registry_name(slim),
         key=slim["key"],
         publisher=_publisher(slim["key"]),
         description=slim.get("description") or "",

@@ -228,6 +228,22 @@ def test_slim_drops_what_cant_be_a_connector(item):
 
 
 @pytest.mark.parametrize(
+    "url",
+    [
+        "https://mcp.sup\u0430base.com/mcp",  # a Cyrillic а: it prints like mcp.supabase.com
+        "https://m\u00fcnchen.example/mcp",
+        "https://mcp.supabase.com./mcp",  # the Featured host with a trailing dot
+        "https://mcp.acme.dev./mcp",
+        "https://mcp.acme.dev.:8443/mcp",
+    ],
+)
+def test_slim_drops_an_address_that_can_pass_for_another_host(url):
+    assert slim_registry_entry(_server(remotes=[_remote(url)])) is None
+    # The same address can't be reached through a ``custom:`` key either.
+    assert resolve("custom:" + url.removeprefix("https://")) is None
+
+
+@pytest.mark.parametrize(
     "name",
     [
         "X-PAYMENT",
@@ -413,7 +429,7 @@ def test_registry_entries_take_a_key_when_the_registry_declares_a_secret_or_requ
 
     linear = resolve("app.linear/linear")
     assert (linear["name"], linear["publisher"], linear["auth"], linear["key_fields"]) == (
-        "Linear",
+        "Linear (linear.app)",  # off the Featured host, so not the Featured card: never bare
         "linear.app",
         "unknown",  # decided by discovery when you connect
         [],
@@ -433,7 +449,8 @@ def test_registry_entries_take_a_key_when_the_registry_declares_a_secret_or_requ
     ("key", "name"),
     [
         ("com.apify/apify-mcp-server", "Apify"),
-        ("io.github.getsentry/sentry-mcp", "Sentry"),
+        ("io.github.getsentry/sentry-mcp", "Sentry (github.com/getsentry)"),  # a Featured name
+        ("io.github.getsentry/sentry-tools", "Sentry Tools"),
         ("io.github.acme/mcp_weather_tools", "Weather Tools"),
         ("dev.acme/mcp", "Acme"),
         ("dev.acme/server", "Acme"),
@@ -512,6 +529,37 @@ def test_a_registry_entry_on_a_featured_host_is_left_out(registry_file):
     items, total = search(limit=100)
     assert total == 15 and [e["key"] for e in items[14:]] == ["dev.kept/mcp"]
     assert resolve("com.supabase/mcp") is None and resolve("dev.squat/mcp") is None
+
+
+def test_a_registry_entry_never_carries_a_featured_connectors_bare_name(registry_file):
+    registry_file(
+        _server(
+            "ai.waystation/supabase",
+            title="Supabase",
+            remotes=[_remote("https://waystation.ai/supabase/mcp")],
+        ),
+        # Spelled another way: case, spacing and a zero-width space don't make it another name.
+        _server(
+            "dev.shout/mcp",
+            title="GOOGLE  drive\u200b",
+            remotes=[_remote("https://mcp.shout.dev/mcp")],
+        ),
+        # Named from its key, with no title.
+        _server("io.github.squat/neon-mcp", remotes=[_remote("https://neon.squat.dev/mcp")]),
+        _server(
+            "dev.tools/mcp", title="Supabase Tools", remotes=[_remote("https://mcp.tools.dev/mcp")]
+        ),
+    )
+    assert resolve("ai.waystation/supabase")["name"] == "Supabase (waystation.ai)"
+    assert resolve("dev.shout/mcp")["name"] == "GOOGLE  drive\u200b (shout.dev)"
+    assert resolve("io.github.squat/neon-mcp")["name"] == "Neon (github.com/squat)"
+    assert resolve("dev.tools/mcp")["name"] == "Supabase Tools"  # only the exact name is taken
+    assert [e["name"] for e in search("supabase")[0]] == [
+        "Supabase",
+        "Supabase (waystation.ai)",
+        "Supabase Tools",
+    ]
+    assert FEATURED["supabase"]["name"] == "Supabase"
 
 
 def test_custom_entry_is_keyed_by_host_and_path():
