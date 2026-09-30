@@ -2,10 +2,12 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setProviderCatalogue, type TeamGraphNode } from "../../lib/api";
+import type { NodeRound } from "../../lib/api/nodes";
 import { __resetBackendStatusForTests } from "../../lib/backendStatus";
 import { CATALOGUE, edges, engineer, json, pm, reviewer, ship, stubFetch } from "../editorTestKit";
 import { NodeEditor, type NodeEditorProps } from "../NodeEditor";
 import { resetNodeTemplates } from "../setup/useNodeTemplates";
+import { RoundsList, RunsTab } from "./RunsTab";
 
 // The Runs tab (Web-Runs, Flow-Runs-1/2, Panel-RunsEmpty).
 
@@ -189,5 +191,72 @@ describe("Runs tab", () => {
     fail = false;
     fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("region", { name: "Last run" })).toBeInTheDocument();
+  });
+});
+
+// The rounds list on its own: what it hands each round's connectors block.
+describe("RoundsList — connectors", () => {
+  const seven = (iteration: number): NodeRound => ({
+    invocation_id: 900 + iteration,
+    iteration,
+    status: "done",
+    outcome: "approved",
+    outcome_detail: "Fine.",
+    started_at: ago(4),
+    ended_at: ago(2),
+    cost: null,
+    model_used: null,
+    runs_on: null,
+    given: null,
+    produced: null,
+    connectors: {
+      used: [{ connection_id: "c1", name: "Supabase", slug: "supabase", reads: 7, writes: 0 }],
+      calls: Array.from({ length: 7 }, (_, i) => ({ ...SUPABASE_CALL, tool: `tool_${i}` })),
+      total_calls: 7,
+      skipped: [{ connection_id: "c4", name: "Sentry", reason: "its sign-in expired" }],
+    },
+  });
+  const shown = () => within(screen.getByRole("list", { name: "Calls" })).getAllByRole("listitem");
+
+  it("a new last round starts with its calls folded again", () => {
+    const { rerender } = render(<RoundsList rounds={[seven(1)]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show all 7 calls" }));
+    expect(shown()).toHaveLength(7);
+    // A live run: round 2 becomes the last round.
+    rerender(<RoundsList rounds={[seven(2), seven(1)]} />);
+    expect(shown()).toHaveLength(4);
+  });
+
+  it("hands Sign in to the drawer when it asks to open connectors itself", () => {
+    const onOpenConnector = vi.fn();
+    render(
+      <RunsTab
+        history={{
+          state: "ready",
+          retry: () => {},
+          value: {
+            runs: [],
+            run: {
+              run_id: "r1",
+              idea: "Add RSI",
+              status: "done",
+              created_at: ago(9),
+              live: false,
+              rounds: [seven(2), seven(1)],
+            },
+          },
+        }}
+        onOpenConnector={onOpenConnector}
+      />,
+    );
+    const card = screen.getByRole("region", { name: "Last run" });
+    expect(fireEvent.click(within(card).getByRole("link", { name: "Sign in" }))).toBe(false);
+    expect(onOpenConnector).toHaveBeenLastCalledWith("c4");
+    // An opened earlier round gets it too.
+    const one = screen.getByRole("button", { name: /^Round 1/ });
+    fireEvent.click(one);
+    const item = within(one.closest("li") as HTMLElement);
+    expect(fireEvent.click(item.getByRole("link", { name: "Sign in" }))).toBe(false);
+    expect(onOpenConnector).toHaveBeenCalledTimes(2);
   });
 });

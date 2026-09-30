@@ -17,6 +17,20 @@ export function accessLine(c: Connection): string {
   return `${access} · ${(c.scope_picker?.label ?? "Project").toLowerCase()} ${c.scope.label}`;
 }
 
+/** Open one connection's page, or the Connectors list (`null`). */
+export type OpenConnector = (connectionId: string | null) => void;
+
+/**
+ * The click for a link to Connectors. The Team drawer gives `onOpen` so leaving goes through its
+ * "Save your changes?" question; without it the link follows its own address.
+ */
+export const opening = (onOpen: OpenConnector | undefined, id: string | null) =>
+  onOpen &&
+  ((e: { preventDefault: () => void }) => {
+    e.preventDefault();
+    onOpen(id);
+  });
+
 // ---- What a round called (the Runs tab) ----
 
 /** The two letters on a connector's tile: "Supabase" → "Su". */

@@ -8,7 +8,7 @@
  * drops out on the next save, and "Remove" drops it right away. Until the list has loaded there is
  * nothing to tick, so a failed load can't wipe the agent's grants.
  */
-import { type MouseEvent, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Info, Pencil, TriangleAlert } from "lucide-react";
 
 import { Checkbox, Select } from "../../design-system/components";
@@ -16,7 +16,7 @@ import { listConnections } from "../../lib/api/connectors";
 import { InfoTip } from "../InfoTip";
 import { useLoaded } from "../runs/useLoaded";
 import type { ConnectorGrant } from "../tools/nodeTools";
-import { accessLine, connectorsHref } from "./connectorFormat";
+import { type OpenConnector, accessLine, connectorsHref, opening } from "./connectorFormat";
 import "../../pages/domains/queryNode.css";
 import "./connectors.css";
 
@@ -42,7 +42,7 @@ export function ConnectorsChecklist({
    * Open one connection's page (`null`: the Connectors list). The drawer gives it so leaving asks
    * "Save your changes?" first; without it the links are plain addresses.
    */
-  onOpen?: (connectionId: string | null) => void;
+  onOpen?: OpenConnector;
   /** "Reviewer": names the agent in the Access select and the notes. */
   agentName?: string;
   /** "Claude" / "Grok" when the agent runs on that plan in Tvashtr Desktop (no connectors yet). */
@@ -68,12 +68,6 @@ export function ConnectorsChecklist({
   );
   // Grants whose connection no longer exists (known only once the list has loaded).
   const gone = value.length - granted.length;
-  const open = (id: string | null) =>
-    onOpen &&
-    ((e: MouseEvent) => {
-      e.preventDefault();
-      onOpen(id);
-    });
   // "Try again" leaves the page when the list reloads, so focus moves to the heading.
   const retry = () => {
     list.retry();
@@ -121,7 +115,7 @@ export function ConnectorsChecklist({
       ) : connections && connections.length === 0 ? (
         <p className="dm-dlist__empty">
           You haven’t connected an app yet.{" "}
-          <a className="nd-link" href={connectorsHref()} onClick={open(null)}>
+          <a className="nd-link" href={connectorsHref()} onClick={opening(onOpen, null)}>
             Open Connectors
           </a>
         </p>
@@ -148,7 +142,11 @@ export function ConnectorsChecklist({
                   />
                 </div>
                 {c.status === "needs_signin" ? (
-                  <a className="nd-link" href={connectorsHref(c.id)} onClick={open(c.id)}>
+                  <a
+                    className="nd-link"
+                    href={connectorsHref(c.id)}
+                    onClick={opening(onOpen, c.id)}
+                  >
                     Sign in again
                   </a>
                 ) : (

@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ConnectorCall, RoundConnectors } from "../../lib/api/roundConnectors";
 import { ConnectorsSkipped, ConnectorsUsed } from "./ConnectorsUsed";
@@ -150,6 +150,22 @@ describe("ConnectorsUsed — chips and calls", () => {
     expect(screen.queryByRole("button", { name: /^Show all/ })).toBeNull();
   });
 
+  it("Show all is one toggle that stays put, says its state and names the list", () => {
+    const seven = Array.from({ length: 7 }, (_, i) => call({ tool: `tool_${i}` }));
+    render(<ConnectorsUsed connectors={round({ calls: seven, total_calls: 7 })} />);
+    const toggle = screen.getByRole("button", { name: "Show all 7 calls" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveAttribute("aria-controls", screen.getByRole("list", { name: "Calls" }).id);
+    fireEvent.click(toggle);
+    // The same button, so keyboard focus stays where it was.
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveAccessibleName("Show fewer calls");
+    fireEvent.click(toggle);
+    expect(calls()).toHaveLength(4);
+    expect(toggle).toHaveAccessibleName("Show all 7 calls");
+  });
+
   it("four calls or fewer need no Show all; a capped list says how many there were", () => {
     const four = Array.from({ length: 4 }, (_, i) => call({ tool: `tool_${i}` }));
     const { unmount } = render(
@@ -159,7 +175,7 @@ describe("ConnectorsUsed — chips and calls", () => {
     unmount();
     const fifty = Array.from({ length: 50 }, (_, i) => call({ tool: `tool_${i}` }));
     render(<ConnectorsUsed connectors={round({ calls: fifty, total_calls: 73 })} />);
-    fireEvent.click(screen.getByRole("button", { name: "Show all 73 calls" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show the first 50 calls" }));
     expect(calls()).toHaveLength(50);
     expect(screen.getByText("The first 50 of 73 calls.")).toBeInTheDocument();
   });
@@ -204,5 +220,29 @@ describe("ConnectorsSkipped — what the round ran without", () => {
     );
     // No chips and no calls for a round that called nothing.
     expect(screen.getByTestId("used")).toBeEmptyDOMElement();
+    // Plain addresses when nothing asks to open them.
+    expect(fireEvent.click(within(notion).getByRole("link", { name: "Sign in" }))).toBe(true);
+  });
+
+  it("given onOpen, Sign in and Open Connectors ask the drawer instead of leaving", () => {
+    const onOpen = vi.fn();
+    render(
+      <ConnectorsSkipped
+        onOpen={onOpen}
+        connectors={round({
+          skipped: [
+            { connection_id: "9d2a", name: "Notion", reason: "its sign-in expired" },
+            { connection_id: null, name: "a connector", reason: "it was disconnected" },
+          ],
+        })}
+      />,
+    );
+    const signIn = screen.getByRole("link", { name: "Sign in" });
+    expect(signIn).toHaveAttribute("href", "#/toolkit/connectors/9d2a");
+    // `fireEvent` answers false when the click's default (following the address) was prevented.
+    expect(fireEvent.click(signIn)).toBe(false);
+    expect(onOpen).toHaveBeenLastCalledWith("9d2a");
+    expect(fireEvent.click(screen.getByRole("link", { name: "Open Connectors" }))).toBe(false);
+    expect(onOpen).toHaveBeenLastCalledWith(null);
   });
 });

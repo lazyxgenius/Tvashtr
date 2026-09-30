@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, History } from "lucide-react";
 import { Badge, Button } from "../../design-system/components";
 import type { NodeRound, NodeRuns } from "../../lib/api/nodes";
 import { formatRelativeTime } from "../../lib/time";
+import type { OpenConnector } from "../connectors/connectorFormat";
 import { ConnectorsSkipped, ConnectorsUsed } from "../connectors/ConnectorsUsed";
 import { statusBadge } from "../nodeBadges";
 import { clipDetail, compactTokens, detailParts } from "./rounds";
@@ -85,10 +86,13 @@ export function EmptyCard({
 export function RunsTab({
   history,
   onOpenFocus,
+  onOpenConnector,
 }: {
   /** "idle" when the agent never ran (nothing to load). */
   history: Loaded<NodeRuns>;
   onOpenFocus?: () => void;
+  /** Open a connection's page through the drawer's unsaved-changes guard ("Sign in"). */
+  onOpenConnector?: OpenConnector;
 }) {
   if (history.state === "loading" || history.state === "error") {
     return (
@@ -108,7 +112,7 @@ export function RunsTab({
       </EmptyCard>
     );
   }
-  return <RoundsList rounds={rounds} onOpenFocus={onOpenFocus} />;
+  return <RoundsList rounds={rounds} onOpenFocus={onOpenFocus} onOpenConnector={onOpenConnector} />;
 }
 
 /**
@@ -120,10 +124,12 @@ export function RunsTab({
 export function RoundsList({
   rounds,
   onOpenFocus,
+  onOpenConnector,
   more,
 }: {
   rounds: NodeRound[];
   onOpenFocus?: () => void;
+  onOpenConnector?: OpenConnector;
   more?: (round: NodeRound) => ReactNode;
 }) {
   const [last, ...earlier] = rounds;
@@ -136,12 +142,13 @@ export function RoundsList({
         round={last}
         more={
           <>
-            <ConnectorsSkipped connectors={last.connectors} />
+            <ConnectorsSkipped connectors={last.connectors} onOpen={onOpenConnector} />
             {more?.(last)}
           </>
         }
       />
-      <ConnectorsUsed connectors={last.connectors} />
+      {/* Keyed on the round: a new last round starts with its calls folded. */}
+      <ConnectorsUsed key={last.invocation_id} connectors={last.connectors} />
       {earlier.length > 0 && (
         <div className="nd-runs__earlier">
           <span className="nd-section__title">Earlier rounds</span>
@@ -151,6 +158,7 @@ export function RoundsList({
                 key={r.invocation_id}
                 round={r}
                 onOpenFocus={onOpenFocus}
+                onOpenConnector={onOpenConnector}
                 more={more?.(r)}
               />
             ))}
@@ -199,10 +207,12 @@ function LastRunCard({ round, more }: { round: NodeRound; more?: ReactNode }) {
 function RoundItem({
   round,
   onOpenFocus,
+  onOpenConnector,
   more,
 }: {
   round: NodeRound;
   onOpenFocus?: () => void;
+  onOpenConnector?: OpenConnector;
   more?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -240,7 +250,7 @@ function RoundItem({
             {round.cost && <span>${round.cost.cost_usd.toFixed(2)}</span>}
             {when && <span>{when}</span>}
           </div>
-          <ConnectorsSkipped connectors={round.connectors} />
+          <ConnectorsSkipped connectors={round.connectors} onOpen={onOpenConnector} />
           <ConnectorsUsed connectors={round.connectors} />
           {more}
           {onOpenFocus && (

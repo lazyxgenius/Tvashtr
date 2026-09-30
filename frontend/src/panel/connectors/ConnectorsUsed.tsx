@@ -9,7 +9,14 @@ import { Ban, Eye, Pencil, TriangleAlert } from "lucide-react";
 
 import { Badge, ButtonLink } from "../../design-system/components";
 import type { ConnectorCall, RoundConnectors } from "../../lib/api/roundConnectors";
-import { callMeta, connectorsHref, tileLetters, usedLabel } from "./connectorFormat";
+import {
+  type OpenConnector,
+  callMeta,
+  connectorsHref,
+  opening,
+  tileLetters,
+  usedLabel,
+} from "./connectorFormat";
 import "./connectors.css";
 
 /** Calls shown before "Show all N calls". */
@@ -20,8 +27,11 @@ export function ConnectorsUsed({ connectors }: { connectors: RoundConnectors | n
   const [all, setAll] = useState(false);
   const usedId = useId();
   const callsId = useId();
+  const listId = useId();
   if (!connectors) return null;
   const { used, calls, total_calls: total } = connectors;
+  // The server sends at most the first 50 calls of a round; `total` counts them all.
+  const capped = total > calls.length;
   const shown = all ? calls : calls.slice(0, FIRST_CALLS);
   return (
     <>
@@ -53,21 +63,28 @@ export function ConnectorsUsed({ connectors }: { connectors: RoundConnectors | n
           <span className="nd-section__title" id={callsId}>
             Calls
           </span>
-          <ul className="nd-conn-calls" aria-labelledby={callsId}>
+          <ul className="nd-conn-calls" id={listId} aria-labelledby={callsId}>
             {shown.map((call, i) => (
               <Call key={i} call={call} />
             ))}
           </ul>
-          {!all && calls.length > FIRST_CALLS && (
+          {calls.length > FIRST_CALLS && (
+            // One button for both ways, so keyboard focus stays on it.
             <button
               type="button"
               className="nd-link nd-conn-used__more"
-              onClick={() => setAll(true)}
+              aria-expanded={all}
+              aria-controls={listId}
+              onClick={() => setAll(!all)}
             >
-              Show all {total} calls
+              {all
+                ? "Show fewer calls"
+                : capped
+                  ? `Show the first ${calls.length} calls`
+                  : `Show all ${total} calls`}
             </button>
           )}
-          {all && total > calls.length && (
+          {all && capped && (
             <p className="nd-conn-used__cap">
               The first {calls.length} of {total} calls.
             </p>
@@ -128,8 +145,11 @@ function Call({ call }: { call: ConnectorCall }) {
 
 export function ConnectorsSkipped({
   connectors,
+  onOpen,
 }: {
   connectors: RoundConnectors | null | undefined;
+  /** The Team drawer opens Connectors itself (it may have unsaved changes); else a plain link. */
+  onOpen?: OpenConnector;
 }) {
   return (
     <>
@@ -139,7 +159,12 @@ export function ConnectorsSkipped({
           <span className="nd-conn-skip__text">
             Ran without <b>{s.name}</b>: {s.reason}.
           </span>
-          <ButtonLink variant="secondary" size="sm" href={connectorsHref(s.connection_id)}>
+          <ButtonLink
+            variant="secondary"
+            size="sm"
+            href={connectorsHref(s.connection_id)}
+            onClick={opening(onOpen, s.connection_id)}
+          >
             {s.connection_id ? "Sign in" : "Open Connectors"}
           </ButtonLink>
         </div>
