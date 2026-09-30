@@ -207,17 +207,25 @@ def sign_in_expired(run_id: str, node_id: object, row: ConnectorConnection) -> N
     """The provider no longer takes ``row``'s sign-in (or key, or now asks one of a connection
     that never signed in): the row becomes ``needs_signin``
     (a row that already is keeps its own ``last_error``) and the run records the skip. Takes the
-    row lock in its own session, like every writer of the sign-in. A key replaced since ``row``
-    was read is not the one that was refused, so the row stays as it is."""
+    row lock in its own session, like every writer of the sign-in. ``row`` is what the caller
+    read, with no lock held. The row is only marked when that is still the sign-in it holds: a
+    key replaced since is not the one that was refused, a sign-in finished since (it stamps
+    ``connected_at``) was never tried, and a row read as already not connected told the caller
+    nothing new. Otherwise a call that read the row a moment before "Sign in again" finished
+    would undo it."""
     reason = _SIGN_IN_GONE[row.auth_kind]
     with session_scope() as session:
         live = session.get(ConnectorConnection, row.id, with_for_update=True)
-        replaced = (
-            row.auth_kind == "api_key"
-            and live is not None
-            and live.secret_encrypted != row.secret_encrypted
+        replaced = live is not None and (
+            live.connected_at != row.connected_at
+            or (row.auth_kind == "api_key" and live.secret_encrypted != row.secret_encrypted)
         )
-        if live is not None and live.status == "connected" and not replaced:
+        if (
+            live is not None
+            and row.status == "connected"
+            and live.status == "connected"
+            and not replaced
+        ):
             live.status = "needs_signin"
             live.last_error = connectors.SIGN_IN_GONE[row.auth_kind]
     record_skip(run_id, node_id, row.id, row.name, reason)

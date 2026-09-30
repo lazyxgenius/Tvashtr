@@ -18,6 +18,7 @@ import sys
 import threading
 import time
 import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import anyio
@@ -884,6 +885,42 @@ def test_sign_in_expired_leaves_a_key_that_was_replaced_since_the_row_was_read()
     assert (row.status, row.last_error) == ("connected", None)
     # The call that got the 401 still went without the connector.
     assert _warnings(grant) == [("connector", "Linear", "its key stopped working")]
+
+
+def test_sign_in_expired_leaves_a_sign_in_that_finished_since_the_row_was_read(monkeypatch):
+    """A call reads the row as ``needs_signin`` a moment before the user finishes "Sign in
+    again". Nothing was refused by the provider, so the fresh sign-in must not be marked expired;
+    the call itself still went without the connector."""
+    upstream = FakeUpstream()
+    grant = _grant(
+        "read", auth_kind="oauth", status="needs_signin", last_error="Its sign-in expired."
+    )
+    real = connector_proxy._connection
+
+    def read_then_the_sign_in_finishes(g):
+        found = real(g)  # the call's snapshot: needs_signin, no lock held
+        _set(grant, status="connected", last_error=None, connected_at=datetime.now(UTC))
+        return found
+
+    monkeypatch.setattr(connector_proxy, "_connection", read_then_the_sign_in_finishes)
+    result = _call(grant, upstream, "list_issues")
+
+    assert result.isError and _text(result) == "Linear needs you to sign in again."
+    row = _row(grant)
+    assert (row.status, row.last_error) == ("connected", None)
+    assert _warnings(grant) == [("connector", "Linear", "its sign-in expired")]
+    assert upstream.lists == [] and upstream.calls == []
+
+    # The other order: read as connected, its refresh refused, and a new sign-in stored before
+    # this takes the lock. The sign-in that was refused is not the one the row holds now.
+    stale = _row(grant)
+    _set(grant, connected_at=datetime.now(UTC))
+    connector_proxy.sign_in_expired(grant.run_id, grant.node_id, stale)
+    assert _row(grant).status == "connected"
+    # With nothing in between, a refused sign-in is still marked.
+    connector_proxy.sign_in_expired(grant.run_id, grant.node_id, _row(grant))
+    row = _row(grant)
+    assert (row.status, row.last_error) == ("needs_signin", "Its sign-in expired.")
 
 
 def test_a_403_is_a_tool_error_and_changes_nothing(monkeypatch):

@@ -839,7 +839,10 @@ the bare path 405. `/mcp/domains` is mounted the same way, with the same list.
   the key that is still stored marks the row `needs_signin`. A key that can't be decrypted is
   handled like a 401 for it, with nothing sent. A connection with no sign-in (`auth_kind:
   "none"`) that gets a 401 becomes `needs_signin` too, with its own `last_error` and reason
-  (`it now asks for a sign-in`).
+  (`it now asks for a sign-in`). The row is marked only while it still holds the sign-in the
+  call read (it was `connected` when read, and `connected_at` hasn't moved since): a call, or a
+  run start, that read the row a moment before "Sign in again" finished records its skip and
+  leaves the fresh sign-in alone.
 - Every `tools/call` (allowed, refused or failed) writes one `connector_call` event, also when
   calls arrive at the same moment (writers of one round take their `seq` one at a time, under a
   transaction advisory lock).
