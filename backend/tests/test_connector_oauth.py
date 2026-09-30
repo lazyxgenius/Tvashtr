@@ -40,7 +40,8 @@ from tvashtr.control_plane.connector_oauth import (
     ensure_access_token,
     revoke,
 )
-from tvashtr.db import get_engine
+from tvashtr.db import get_engine, session_scope
+from tvashtr.models import ConnectorConnection
 
 BASE = "https://mcp.fake.test"
 MCP = f"{BASE}/mcp"
@@ -390,6 +391,32 @@ def test_resource_metadata_that_doesnt_name_addresses_is_cannot_register(monkeyp
     wire(monkeypatch, _rewrite(fake, RESOURCE_PATH, lambda meta: meta | bad))
     with pytest.raises(CannotRegister):
         discover(MCP)
+
+
+@pytest.mark.parametrize("address", [f"{BASE}/" + "a" * 70_000, "https://☃.-/oauth"])
+def test_an_address_the_http_client_cant_build_is_never_a_crash(monkeypatch, address):
+    """``urlsplit`` reads both; httpx refuses the first as too long and the second as a host
+    name that can't be encoded, with an error that is neither ``UnsafeUrl`` nor an HTTP error."""
+    fake = FakeConnectorServer(BASE)
+    named = {"authorization_servers": [address]}
+    wire(monkeypatch, _rewrite(fake, RESOURCE_PATH, lambda meta: meta | named))
+    with pytest.raises(CannotRegister):
+        discover(MCP)
+
+    for name in ("authorization_endpoint", "token_endpoint", "registration_endpoint"):
+        bad = {name: address}
+        wire(monkeypatch, _rewrite(fake, SERVER_PATH, lambda meta, bad=bad: meta | bad))
+        with pytest.raises(CannotRegister):
+            discover(MCP)
+
+    # A stored endpoint like that (from before this check) doesn't crash a refresh either.
+    wire(monkeypatch, fake.handle)
+    cid = connection(user(), fake, status="connected", secret=signed_in(fake, expires_in=10))
+    with session_scope() as session:
+        row = session.get(ConnectorConnection, cid)
+        connectors.write_secret(row, connectors.read_secret(row) | {"token_endpoint": address})
+    with pytest.raises(Unreachable):
+        ensure_access_token(cid)
 
 
 def test_metadata_nested_too_deep_to_parse_is_skipped(monkeypatch):

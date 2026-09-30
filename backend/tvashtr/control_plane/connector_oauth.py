@@ -77,6 +77,12 @@ class Discovery:
         return urlsplit(self.authorization_endpoint).hostname or ""
 
 
+# What opening an address that came from outside raises when the address can't be opened:
+# ``UnsafeUrl`` (a ``ValueError``; so is a host name the resolver can't encode), httpx's network
+# errors, and ``InvalidURL`` for an address httpx itself won't build (too long, a bad host name).
+_NOT_OPENED = (ValueError, httpx.HTTPError, httpx.InvalidURL)
+
+
 def _pins(entry: dict | None, url: str) -> dict:
     """``entry`` when it may pin sign-in details (``oauth_hosts``, ``scope``, ``client``): a
     Featured entry, and only for its own address. A registry or custom entry never can, so a
@@ -125,7 +131,8 @@ def discover(url: str, entry: dict | None = None) -> Discovery | None:
 def _discover(url: str, pins: dict) -> Discovery | None:
     try:
         connector_net.check_url(url)
-    except connector_net.UnsafeUrl as exc:
+        httpx.URL(url)
+    except (ValueError, httpx.InvalidURL) as exc:
         raise Unreachable(str(exc)) from exc
     answered = False
     # One deadline for every request below. Each has its own ten seconds, and there can be seven
@@ -142,7 +149,7 @@ def _discover(url: str, pins: dict) -> Discovery | None:
                 raise Unreachable(f"{urlsplit(url).hostname} took too long to answer")
             try:
                 response = http.get(connector_net.check_url(address), timeout=min(10.0, left))
-            except (connector_net.UnsafeUrl, httpx.HTTPError):
+            except _NOT_OPENED:
                 return None
             answered = answered or response.status_code < 500
             return response
@@ -217,7 +224,8 @@ def _discover(url: str, pins: dict) -> Discovery | None:
             return None
         try:
             host = urlsplit(connector_net.check_url(value)).hostname or ""
-        except (connector_net.UnsafeUrl, TypeError, AttributeError) as exc:
+            httpx.URL(value)  # and one the HTTP client will build
+        except (ValueError, TypeError, AttributeError, httpx.InvalidURL) as exc:
             raise CannotRegister(f"{name} isn't an address Tvashtr opens") from exc
         if connector_net.site(host) != home and host not in pinned:
             raise CannotRegister(f"{name} is on {host}, another site than its issuer {issuer}")
@@ -304,11 +312,19 @@ def _post(url: str, **request: object) -> httpx.Response:
     try:
         with connector_net.client() as http:
             response = http.post(connector_net.check_url(url), **request)
-    except (connector_net.UnsafeUrl, httpx.HTTPError) as exc:
-        raise Unreachable(f"{urlsplit(url).hostname} didn't answer") from exc
+    except _NOT_OPENED as exc:
+        raise Unreachable(f"{_host(url)} didn't answer") from exc
     if response.status_code >= 500 or response.status_code == 429:
-        raise Unreachable(f"{urlsplit(url).hostname} answered {response.status_code}")
+        raise Unreachable(f"{_host(url)} answered {response.status_code}")
     return response
+
+
+def _host(url: str) -> str:
+    """The host of a sign-in endpoint, for a message. The address may be one that can't be read."""
+    try:
+        return urlsplit(url).hostname or "the sign-in endpoint"
+    except ValueError:
+        return "the sign-in endpoint"
 
 
 def _register(found: Discovery) -> dict:
