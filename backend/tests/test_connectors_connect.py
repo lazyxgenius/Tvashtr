@@ -23,6 +23,7 @@ from tvashtr.control_plane.connector_catalog import FEATURED
 pytest_plugins = ["connector_helpers"]
 
 FAKE_KEY = "test.fake/things"
+PUBLIC_IP = "93.184.216.34"
 TOOLS = [
     Tool(name="list_things", inputSchema={}, annotations=ToolAnnotations(readOnlyHint=True)),
     Tool(name="create_thing", inputSchema={}),
@@ -341,6 +342,32 @@ def test_invalid_url(monkeypatch, upstream, discovery, url):
     )
     assert detail["message"] == "Use an https:// address, like https://mcp.example.com/mcp."
     assert upstream.calls == [] and discovery.calls == [] and connections_of(owner) == []
+
+
+def test_a_custom_key_is_checked_like_a_custom_address(monkeypatch, upstream, discovery):
+    """``{"key": "custom:<host><path>"}`` names the same thing as ``{"url": …}``: the address
+    guard isn't skipped by spelling it as a key."""
+    monkeypatch.setattr(get_settings(), "connectors_allow_local", False)
+
+    def getaddrinfo(host, port, **_):
+        literal = host[0].isdigit() or ":" in host  # an IP address resolves to itself
+        address = host if literal else "10.0.0.5" if host.startswith("private.") else PUBLIC_IP
+        return [(2, 1, 6, "", (address, port))]
+
+    monkeypatch.setattr(connector_net, "_getaddrinfo", getaddrinfo)
+    c, owner = fresh_account()
+    for key in ("custom:private.acme.dev/mcp", "custom:127.0.0.1/mcp", "custom:[::1]:8443/mcp"):
+        _refused(c.post("/api/connectors", json={"key": key}), 422, "invalid_url")
+    assert upstream.calls == [] and discovery.calls == [] and connections_of(owner) == []
+
+    discovery.answer = DISCOVERY
+    resp = c.post("/api/connectors", json={"key": "custom:mcp.acme.dev/mcp", "name": "Acme"})
+    assert resp.status_code == 201, resp.text
+    assert (resp.json()["connector_key"], resp.json()["name"]) == (
+        "custom:mcp.acme.dev/mcp",
+        "Acme",
+    )
+    assert discovery.calls[0][0] == "https://mcp.acme.dev/mcp"
 
 
 # ---- no key: sign-in discovery, or no sign-in at all ----

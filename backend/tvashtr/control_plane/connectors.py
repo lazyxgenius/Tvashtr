@@ -26,11 +26,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+# ``connector_oauth`` (and ``connector_proxy``, imported where it is used) call back into this
+# module, so nothing of theirs is read while this module is being imported: no module-level
+# constant or evaluated annotation names one of their attributes.
 from tvashtr.control_plane import (
     connector_catalog,
     connector_net,
     connector_oauth,
-    connector_proxy,
     connector_upstream,
 )
 from tvashtr.control_plane.credential_gate import subscription_for_model
@@ -365,6 +367,8 @@ def list_connections(owner_id: uuid.UUID) -> list[dict]:
 def get_connection(owner_id: uuid.UUID, connection_id: object) -> dict:
     """``GET /api/connectors/{id}``: the connection (a ``pending`` one too) with who uses it,
     its recent use and how to revoke Tvashtr at the provider."""
+    from tvashtr.control_plane import connector_proxy
+
     with session_scope() as session:
         row = get_owned(session, owner_id, connection_id)
         users = _users(owner_agent_nodes(session, owner_id), row)
@@ -399,7 +403,9 @@ def _entry_for(key: object, url: object, name: object) -> dict:
         entry = connector_catalog.resolve(key) if key else None
         if entry is None:
             raise _refusal(404, "unknown_connector", "We couldn’t find that connector.")
-        return entry
+        if not entry["key"].startswith("custom:"):
+            return entry
+        url = entry["url"]  # a custom address spelled as its key: the same checks apply
     try:
         if not isinstance(url, str) or len(url) > URL_LIMIT:
             raise connector_net.UnsafeUrl("not an address")
@@ -463,7 +469,7 @@ def _list_tools(row: ConnectorConnection, headers: dict, wants_credentials: Conn
         raise _unreachable(row.url) from None
 
 
-def _discover(entry: dict, url: str) -> connector_oauth.Discovery | None:
+def _discover(entry: dict, url: str) -> "connector_oauth.Discovery | None":
     try:
         return connector_oauth.discover(url, entry)
     except connector_oauth.CannotRegister:
@@ -476,7 +482,7 @@ def _discover(entry: dict, url: str) -> connector_oauth.Discovery | None:
         raise _unreachable(url) from None
 
 
-def _found_signin(found: connector_oauth.Discovery) -> dict:
+def _found_signin(found: "connector_oauth.Discovery") -> dict:
     """What discovery found, as ``pending_encrypted`` holds it before a sign-in is started: no
     verifier, no client and no ``started_at`` (``oauth/start`` repeats discovery and adds them)."""
     pending = {
@@ -686,8 +692,14 @@ def _with_sign_in[T](row: ConnectorConnection, use: Callable[[dict], T]) -> T:
         return use(upstream_headers(row, rejected=refused))
 
 
-_SIGN_IN_GONE = (connector_oauth.SignInRefused, connector_upstream.UpstreamUnauthorized)
-_NO_ANSWER = (connector_upstream.UpstreamUnreachable, connector_oauth.Unreachable)
+def _sign_in_gone() -> tuple:
+    """What ``_with_sign_in`` raises when the sign-in (or key) no longer works."""
+    return (connector_oauth.SignInRefused, connector_upstream.UpstreamUnauthorized)
+
+
+def _no_answer() -> tuple:
+    """The provider, or its token endpoint, didn't answer."""
+    return (connector_upstream.UpstreamUnreachable, connector_oauth.Unreachable)
 
 
 def check(owner_id: uuid.UUID, connection_id: object) -> dict:
@@ -701,11 +713,11 @@ def check(owner_id: uuid.UUID, connection_id: object) -> dict:
         tools = _with_sign_in(
             row, lambda headers: connector_upstream.list_tools_sync(url, transport, headers)
         )
-    except _SIGN_IN_GONE:
+    except _sign_in_gone():
         tools = None
     except connector_upstream.UpstreamRefused:
         raise _refusal(502, "refused", f"{row.name} refused the request.") from None
-    except (*_NO_ANSWER, McpError):
+    except (*_no_answer(), McpError):
         raise _unreachable(row.url) from None
 
     key = row.auth_kind == "api_key"
@@ -781,9 +793,9 @@ def scope_options(owner_id: uuid.UUID, connection_id: object) -> dict:
 
     try:
         options = _projects(_with_sign_in(row, ask))
-    except _NO_ANSWER:
+    except _no_answer():
         raise _unreachable(row.url) from None
-    except (*_SIGN_IN_GONE, connector_upstream.UpstreamRefused, McpError):
+    except (*_sign_in_gone(), connector_upstream.UpstreamRefused, McpError):
         options = []
     return {
         "param": picker["param"],
