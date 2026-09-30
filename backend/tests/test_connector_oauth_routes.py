@@ -167,6 +167,27 @@ def test_start_on_a_connected_row_changes_neither_its_status_nor_its_sign_in(mon
     assert row.state_hash is not None
 
 
+def test_sign_in_again_works_on_a_row_whose_sign_in_cant_be_decrypted(monkeypatch, unauth_client):
+    """After ``TVASHTR_SECRET_KEY`` is rotated neither the stored sign-in nor one in flight can
+    be read. They count as none: a new sign-in starts (and registers afresh), and a callback for
+    the old one is the expired page, not a crash."""
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    c, owner = fresh_account()
+    broken = {"secret_encrypted": "not-a-fernet-token", "pending_encrypted": "nor-is-this"}
+    state = f"OLD-{uuid.uuid4().hex}"  # the hash is unique across the whole table
+    cid = connection(owner, fake, status="needs_signin", state_hash=_sha256(state), **broken)
+
+    old = unauth_client.get(CALLBACK_PATH, params={"state": state, "code": "x"})
+    assert old.status_code == 200 and EXPIRED in old.text
+
+    resp = _start(c, cid)
+    assert resp.status_code == 200, resp.text
+    row = load(cid)
+    assert connectors.read_secret(row, pending=True)["client"]["client_id"] == "client-1"
+    assert (row.status, row.secret_encrypted) == ("needs_signin", "not-a-fernet-token")
+
+
 def test_start_refuses_a_connection_that_doesnt_sign_in(monkeypatch):
     fake = FakeConnectorServer(BASE)
     wire(monkeypatch, fake.handle)

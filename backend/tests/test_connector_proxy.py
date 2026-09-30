@@ -766,6 +766,23 @@ def test_a_key_the_provider_stops_taking_is_not_retried():
     assert _warnings(grant) == [("connector", "Linear", "its key stopped working")]
 
 
+def test_a_key_that_cant_be_decrypted_has_stopped_working():
+    """A rotated ``TVASHTR_SECRET_KEY``, or a corrupt column: the key can't be sent. That is a key
+    that stopped working (the row says so and the round records it), not "this connector isn't
+    available" with nothing to show for it."""
+    upstream = FakeUpstream()
+    grant = _grant("read")
+    _set(grant, secret_encrypted="not-a-fernet-token")
+
+    assert _list(grant, upstream) == []
+    row = _row(grant)
+    assert (row.status, row.last_error) == ("needs_signin", "Its key stopped working.")
+    result = _call(grant, upstream, "list_issues")
+    assert result.isError and _text(result) == "Linear needs you to sign in again."
+    assert upstream.lists == [] and upstream.calls == []  # there was no key to send
+    assert set(_warnings(grant)) == {("connector", "Linear", "its key stopped working")}
+
+
 def _replace_key(grant: RunGrant, key: str) -> None:
     with session_scope() as s:
         row = s.get(ConnectorConnection, grant.connection_id)

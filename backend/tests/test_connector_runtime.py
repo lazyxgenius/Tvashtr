@@ -491,6 +491,22 @@ def test_a_refused_refresh_marks_the_row_and_skips_it(local_base, monkeypatch):
         assert s.get(ConnectorConnection, key).status == "connected"
 
 
+def test_a_sign_in_that_cant_be_decrypted_is_a_sign_in_to_renew(local_base):
+    """The real ``ensure_access_token`` on a row whose stored sign-in can't be read (a rotated
+    secret key): the row needs a new sign-in and says so, instead of "we couldn't reach it" on
+    every round of every run while its page says Ready."""
+    owner = _user()
+    run_id = _run(owner)
+    cid = _connection(owner, auth_kind="oauth", secret_encrypted="not-a-fernet-token")
+
+    assert build_mcp_config(_grants(cid), run_id) == {"mcpServers": {}}
+
+    assert _warnings(run_id) == [("connector", "Linear", "its sign-in expired")]
+    with session_scope() as s:
+        row = s.get(ConnectorConnection, cid)
+        assert (row.status, row.last_error) == ("needs_signin", "Its sign-in expired.")
+
+
 def test_a_token_endpoint_that_does_not_answer_skips_it_and_leaves_the_status(
     local_base, monkeypatch
 ):

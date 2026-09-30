@@ -916,6 +916,21 @@ def test_a_row_that_never_signed_in_is_refused_and_left_as_it_is(monkeypatch):
     assert (row.status, row.last_error, row.secret_encrypted) == ("pending", None, None)
 
 
+def test_a_sign_in_that_cant_be_decrypted_is_refused_not_a_crash(monkeypatch):
+    """After ``TVASHTR_SECRET_KEY`` is rotated (or a column is corrupt) the row reads as having no
+    sign-in, as everywhere else: ``SignInRefused``, which every caller handles, and the row is
+    left for the caller to mark."""
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, _no_network)
+    broken = {"secret_encrypted": "not-a-fernet-token", "pending_encrypted": "nor-is-this"}
+    cid = connection(user(), fake, status="connected", **broken)
+    with pytest.raises(SignInRefused):
+        ensure_access_token(cid)
+    row = load(cid)
+    assert (row.status, row.secret_encrypted) == ("connected", "not-a-fernet-token")
+    assert revoke(cid) is False
+
+
 def test_a_token_endpoint_that_doesnt_answer_is_unreachable_and_changes_nothing(monkeypatch):
     fake = FakeConnectorServer(BASE, fail_refresh=503)
     wire(monkeypatch, fake.handle)

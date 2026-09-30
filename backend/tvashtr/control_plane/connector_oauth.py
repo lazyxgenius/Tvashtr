@@ -481,7 +481,11 @@ def start(owner_id: uuid.UUID, connection_id: object) -> dict:
                 raise not_oauth
             with session_scope() as session:
                 row = connectors.get_owned(session, owner_id, connection_id)
-                known = [connectors.read_secret(row, pending=True), connectors.read_secret(row)]
+                # (A sign-in that can't be decrypted counts as none, here and below.)
+                known = [
+                    connectors.secret_or_none(row, pending=True),
+                    connectors.secret_or_none(row),
+                ]
             client = choose_client(found, entry, url, known)
             pkce = PKCEParameters.generate()
             state = secrets.token_urlsafe(32)
@@ -504,7 +508,7 @@ def start(owner_id: uuid.UUID, connection_id: object) -> dict:
                 # could change it since (the turn above); another process's refresh may have
                 # been told the client is gone. Then nothing is stored, and the next start
                 # registers again.
-                in_flight = connectors.read_secret(row, pending=True) or {}
+                in_flight = connectors.secret_or_none(row, pending=True) or {}
                 if in_flight.get("refused_client") == client["client_id"]:
                     raise Unreachable("the registration was refused while the sign-in started")
                 connectors.write_secret(row, pending, pending=True)
@@ -645,7 +649,7 @@ def _arrive(state: str, iss: str | None) -> Outcome:
         row = session.execute(
             select(ConnectorConnection).where(ConnectorConnection.state_hash == state_hash(state))
         ).scalar_one_or_none()
-        pending = (connectors.read_secret(row, pending=True) if row else None) or {}
+        pending = (connectors.secret_or_none(row, pending=True) if row else None) or {}
         started = pending.get("started_at")
         if not isinstance(started, int | float) or time.time() - started >= SIGNIN_TTL_SECONDS:
             return Outcome("expired")
@@ -807,8 +811,8 @@ def ensure_access_token(connection_id: uuid.UUID, *, rejected: str | None = None
     than five minutes left (or no expiry) and isn't ``rejected`` (the token a provider just
     answered 401 to); otherwise refreshes. Opens its own session and takes ``FOR UPDATE`` on the
     row, so never call it while holding that row's lock in another session. Raises
-    :class:`SignInRefused` (the row is ``needs_signin`` by then, or gone) or :class:`Unreachable`
-    (nothing was changed)."""
+    :class:`SignInRefused` (the row is ``needs_signin`` by then, or gone, or has no sign-in that
+    can be read and is left as it is) or :class:`Unreachable` (nothing was changed)."""
     # ponytail: the refresh call runs while the row is locked (10 s timeout), so each connection
     # being refreshed holds one pooled database connection for that long (callers waiting behind
     # it hold none). Callers on an event loop run this in a worker thread. Move to a version
@@ -821,10 +825,11 @@ def ensure_access_token(connection_id: uuid.UUID, *, rejected: str | None = None
         ).scalar_one_or_none()
         # Read only now that the lock is held: a refresh or a new sign-in that was in flight has
         # committed, so this is the sign-in as it is, and what is written below is on top of it.
-        stored = (connectors.read_secret(row) if row is not None else None) or {}
+        stored = (connectors.secret_or_none(row) if row is not None else None) or {}
         token = stored.get("access_token")
         if not token and not stored.get("refresh_token"):
-            raise SignInRefused("no stored sign-in")  # gone, never signed in, or already cleared
+            # Gone, never signed in, already cleared, or one that can't be decrypted.
+            raise SignInRefused("no stored sign-in")
         expires = stored.get("expires_at")
         fresh = expires is None or expires - time.time() > REFRESH_MARGIN_SECONDS
         if token and token != rejected and fresh:
@@ -838,7 +843,7 @@ def ensure_access_token(connection_id: uuid.UUID, *, rejected: str | None = None
             return refreshed["access_token"]
         dropped = _TOKEN_KEYS + (("client",) if refreshed == "invalid_client" else ())
         connectors.write_secret(row, {k: v for k, v in stored.items() if k not in dropped})
-        in_flight = connectors.read_secret(row, pending=True)
+        in_flight = connectors.secret_or_none(row, pending=True)
         if refreshed == "invalid_client" and in_flight:
             # A sign-in in flight (or the last one cleared) may hold the same registration: say
             # so there too, or the next ``oauth/start`` would reuse the client that is gone.

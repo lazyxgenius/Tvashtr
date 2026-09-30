@@ -2,7 +2,8 @@
 shares.
 
 Shared with the OAuth and run-time streams: :class:`ConnectorError`, :func:`get_owned`,
-:func:`read_secret`, :func:`write_secret`, :func:`stored_tools`, :func:`serialize`,
+:func:`read_secret`, :func:`secret_or_none`, :func:`write_secret`, :func:`stored_tools`,
+:func:`serialize`,
 :func:`upstream_headers`, :func:`upstream_target`, and :func:`provider_slot` (the cap on
 requests that wait on a provider: a sync route that does wraps the wait in it). The rest is what
 the routes in ``routes/connectors.py`` call. Contract:
@@ -129,7 +130,7 @@ def write_secret(row: ConnectorConnection, value: dict | None, *, pending: bool 
     setattr(row, _column(pending), encrypt_secret(json.dumps(value)) if value is not None else None)
 
 
-def _secret_or_none(row: ConnectorConnection, *, pending: bool = False) -> dict | None:
+def secret_or_none(row: ConnectorConnection, *, pending: bool = False) -> dict | None:
     """``read_secret``, or ``None`` when the column can't be read (``TVASHTR_SECRET_KEY`` was
     rotated, or the value is corrupt). The row then reads as having no sign-in, so it can still
     be listed, signed in again or disconnected."""
@@ -164,8 +165,8 @@ def _signin(row: ConnectorConnection) -> tuple[str | None, bool]:
     then the stored one."""
     if row.auth_kind != "oauth":
         return None, False
-    pending = _secret_or_none(row, pending=True) or {}
-    stored = _secret_or_none(row) or {}
+    pending = secret_or_none(row, pending=True) or {}
+    stored = secret_or_none(row) or {}
     endpoint = (
         pending.get("authorization_endpoint")
         or stored.get("authorization_endpoint")
@@ -238,10 +239,16 @@ def upstream_headers(row: ConnectorConnection, *, rejected: str | None = None) -
     """The credential headers for a request to the provider: the key's stored headers, or
     ``Authorization: Bearer`` with a token from ``connector_oauth.ensure_access_token`` (which may
     refresh; ``rejected`` is the token the provider just answered 401 to), or nothing. Raises
-    ``connector_oauth.SignInRefused`` / ``Unreachable`` for an OAuth connection. Don't call it
-    while holding this row's lock: the token call takes that lock in its own session."""
+    ``connector_oauth.SignInRefused`` (also for a key that can't be decrypted) / ``Unreachable``
+    (an OAuth connection only). Don't call it while holding this row's lock: the token call takes
+    that lock in its own session."""
     if row.auth_kind == "api_key":
-        return dict((read_secret(row) or {}).get("headers") or {})
+        try:
+            return dict((read_secret(row) or {}).get("headers") or {})
+        except (InvalidToken, ValueError):
+            # A key that can't be decrypted is a key that stopped working: the same answer as
+            # an OAuth sign-in that can't be read.
+            raise connector_oauth.SignInRefused("the stored key can't be read") from None
     if row.auth_kind == "oauth":
         token = connector_oauth.ensure_access_token(row.id, rejected=rejected)
         return {"Authorization": f"Bearer {token}"}
@@ -544,7 +551,7 @@ def _key_entry(entry: dict, row: ConnectorConnection) -> dict:
     is the headers the connection stores: each is asked for, and sent as it is given."""
     if any(h["secret"] or h["required"] for h in entry.get("headers") or []):
         return entry
-    names = list((_secret_or_none(row) or {}).get("headers") or {})
+    names = list((secret_or_none(row) or {}).get("headers") or {})
     return {
         "headers": [{"name": n, "secret": True, "required": True, "template": None} for n in names],
         "key_fields": [
@@ -809,7 +816,7 @@ def _stored_headers(row: ConnectorConnection) -> dict:
     """The credential headers the stored sign-in gives as it is, with no refresh and no network:
     a key's headers, or the stored access token. Empty when there is none, or it can't be
     read."""
-    secret = _secret_or_none(row) or {}
+    secret = secret_or_none(row) or {}
     if row.auth_kind == "api_key":
         return dict(secret.get("headers") or {})
     token = secret.get("access_token") if row.auth_kind == "oauth" else None
