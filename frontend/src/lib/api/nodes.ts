@@ -8,6 +8,7 @@
 import { ApiError, apiUrl, type Capability, type TeamGraphNode } from "../api";
 import { reportFetchFailed, reportFetchOk } from "../backendStatus";
 import { type Memory, type MemoryStatus, parseMemory } from "./memory";
+import { parseRoundConnectors, type RoundConnectors } from "./roundConnectors";
 import { apiRequest } from "./runs";
 
 // ---- Types -----------------------------------------------------------------------------------
@@ -78,6 +79,8 @@ export interface NodeRound {
     documents: RoundDocument[];
     files: string[] | null;
   } | null;
+  /** What the round called through connectors and what it ran without; null when neither. */
+  connectors?: RoundConnectors | null;
 }
 
 export interface NodeRunDetail {
@@ -331,6 +334,7 @@ function toRound(r: Record<string, unknown>): NodeRound {
     runs_on: runsOn,
     given,
     produced,
+    connectors: parseRoundConnectors(r.connectors),
   };
 }
 

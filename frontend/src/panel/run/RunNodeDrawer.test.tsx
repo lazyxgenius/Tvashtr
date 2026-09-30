@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GraphNode, NodeInvocation, NodeMemoryRow, RunRow } from "../../lib/api";
 import type { NodeTab } from "../../lib/nav";
+import { connection } from "../../pages/connectors/connectorsTestUtils";
 import { RunNodeDrawer } from "./RunNodeDrawer";
 
 // Q20: the run view's drawer is the Team screen's agent drawer — the same header, badges and five
@@ -295,6 +296,56 @@ describe("RunNodeDrawer — Runs: this run's rounds", () => {
     expect(within(round).queryByText("1.6k tokens")).toBeNull();
   });
 
+  it("shows what a round called through connectors and what it ran without", () => {
+    const connectors = {
+      used: [{ connection_id: "c1", name: "Supabase", slug: "supabase", reads: 2, writes: 0 }],
+      calls: [
+        {
+          connection_id: "c1",
+          name: "Supabase",
+          tool: "list_tables",
+          write: false,
+          ok: true,
+          blocked: false,
+          arg: "schema: public",
+          at: "2026-01-01T00:00:30Z",
+          duration_ms: 400,
+          result_url: null,
+        },
+      ],
+      total_calls: 2,
+      skipped: [{ connection_id: null, name: "a connector", reason: "it was disconnected" }],
+    };
+    render(
+      <Drawer
+        node={gnode({
+          id: "n-rev",
+          role_name: "reviewer",
+          kind: "agent",
+          invocations: [
+            inv({ iteration: 1, outcome: "changes_requested", connectors }),
+            inv({ iteration: 2, outcome: "approved", connectors: null }),
+          ],
+        })}
+      />,
+    );
+    // Round 2 (the last run) used none.
+    expect(screen.queryByText("Connectors used this round")).toBeNull();
+    expect(screen.queryByRole("note")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Round 1/ }));
+    const round = within(
+      screen.getByRole("button", { name: /Round 1/ }).closest("li") as HTMLElement,
+    );
+    expect(round.getByText("Supabase · 2 reads")).toBeInTheDocument();
+    expect(round.getByText("list_tables")).toBeInTheDocument();
+    const skipped = round.getByRole("note");
+    expect(skipped).toHaveTextContent("Ran without a connector: it was disconnected.");
+    expect(within(skipped).getByRole("link", { name: "Open Connectors" })).toHaveAttribute(
+      "href",
+      "#/toolkit/connectors",
+    );
+  });
+
   it("a round still running when the run failed reads as failed", () => {
     render(
       <Drawer
@@ -477,6 +528,40 @@ describe("RunNodeDrawer — Setup and Skills & tools are the run's copy, read-on
     // No team to go back to (not a copy): no button.
     expect(screen.queryByRole("button", { name: "Edit on the team" })).toBeNull();
     await act(async () => {}); // the Toolkit shelves land
+  });
+
+  it("Skills & tools: a connectors list that failed to load can be tried again, though every control is off", async () => {
+    let fail = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) =>
+        Promise.resolve(
+          urlOf(input).includes("/api/connectors")
+            ? fail
+              ? new Response("{}", { status: 500 })
+              : new Response(JSON.stringify({ connections: [connection()] }))
+            : new Response("{}"),
+        ),
+      ),
+    );
+    render(
+      <Drawer
+        node={gnode({
+          id: "n-eng",
+          role_name: "engineer",
+          kind: "agent",
+          tool_config: { tvashtr: { connectors: [{ id: "c1", access: "read" }] } },
+        })}
+        tab="skills"
+      />,
+    );
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    expect(retry).toBeEnabled();
+    fail = false;
+    fireEvent.click(retry);
+    const box = await screen.findByRole("checkbox", { name: /^Supabase/ });
+    expect(box).toBeChecked();
+    expect(box).toBeDisabled();
   });
 });
 

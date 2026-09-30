@@ -877,15 +877,25 @@ F2.1–F2.4 run in the parallel phase. F2.5 waits for the F1 merge (§2).
 **F2.2 Checklist.** `panel/connectors/ConnectorsChecklist.tsx` (copy
 `pages/domains/DomainsChecklist.tsx:22-90`): loads `listConnections()`, DS `Checkbox` rows, an
 Access `Select` only on rows whose connection is `write`, a `needs_signin` row shows "Sign in
-again" linking to Connectors, the plan note when the agent runs on a Claude or Grok plan. Mount it
-in `panel/tools/ToolsPanel.tsx` beside `DomainsChecklist` (:110-113). `panel/nodeCounts.ts` (:3-15)
-counts grants. `panel/skills/nodeSkills.ts` `desktopSubscriptionNote` (:244-253) mentions
+again" linking to Connectors, the plan note when the agent runs on a Claude or Grok plan.
+`panel/tools/ToolsPanel.tsx` renders it as its own "Connectors" section above Tools (where the
+canvas draws it), not inside the Tools section beside `DomainsChecklist`. `panel/nodeCounts.ts`
+(:3-15) counts grants. `panel/skills/nodeSkills.ts` `desktopSubscriptionNote` (:244-253) mentions
 connectors. Saving is the existing `tool_config` patch (`panel/agentDraft.ts`), no new save path.
 - Grants that point at nothing: once `listConnections()` has loaded, every list the checklist
   writes keeps only ids that are in it, so the grant of a disconnected connector drops out on the
   next save. While the list is loading or failed to load the checklist writes nothing (a failed
   fetch must not wipe grants). A draft saved without touching the checklist keeps the id; the
   run then skips it with `it was disconnected`.
+- As built, two things wait for F2.5, because they need files no stream owns
+  (`panel/skills/SkillsToolsTab.tsx`, `panel/NodeEditor.tsx`) or F1's routes:
+  - the in-checklist plan note and the agent's name in the Access select. `ToolsPanel` takes
+    `agentName` and `plan` (the name `desktopSubscriptionName` returns) and hands them to the
+    checklist; nothing passes them yet. Until then a plan agent sees the tab's own note
+    (`desktopSubscriptionNote`), which now names connectors, and its rows are not disabled;
+  - "Sign in again" is a plain address (`#/toolkit/connectors/<id>`), so it leaves without the
+    drawer's "Save your changes?" question. F2.5 sends it through `onOpenToolkit` with F1.1's
+    `{page: "connector"}` route.
 - Tests first: `ConnectorsChecklist.test.tsx` (including: a draft holding an unknown id and a
   known one saves only the known one; a failed load leaves the draft as it was),
   `panel/skills/SkillsToolsTab.test.tsx`.
@@ -894,13 +904,18 @@ connectors. Saving is the existing `tool_config` patch (`panel/agentDraft.ts`), 
 "Linear · 1 write") and the call list (writes first and marked, tool, `arg`, time and duration,
 `result_url` as a link only when it starts with `https://`, "Show all N calls"), and one line
 per `skipped` entry: "Ran without Notion: its sign-in expired." with "Sign in", which opens that
-connection's page ("Open Connectors" when `connection_id` is `null`). Compose it into the `more` slot in
-`panel/runs/RunsTab.tsx` (:118-186) and beside `RoundLedger` in `panel/run/RunNodeDrawer.tsx`
-(:326-329). Types: `connectors` on `NodeRound` (`lib/api/nodes.ts:60-81`) and on `NodeInvocation`
-(`lib/api.ts:126`). In `lib/api.ts` the parser and the type come from `./api/roundConnectors`
-(the leaf module), not from `./api/connectors`: that import is a load-time cycle (0.7).
-`lib/events.ts`: the Activity feed skips the kinds `connector_call` and
-`connector_skipped`.
+connection's page ("Open Connectors" when `connection_id` is `null`). `RoundsList` in
+`panel/runs/RunsTab.tsx` (:118-186) renders it from `round.connectors`, so both drawers show it
+with no `more` slot of their own: the skipped lines inside the Last run card, the chips and calls
+after the card, all of it inside an opened earlier round. `panel/run/RunNodeDrawer.tsx` only
+passes `connectors` through `roundsOf`. Types: `connectors` on `NodeRound`
+(`lib/api/nodes.ts:60-81`) and on `NodeInvocation` (`lib/api.ts:126`). In `lib/api.ts` the parser
+and the type come from `./api/roundConnectors` (the leaf module), not from `./api/connectors`:
+that import is a load-time cycle (0.7).
+`lib/events.ts`: `isFeedEvent(kind)` is false for the kinds `connector_call` and
+`connector_skipped`. `getRunEvents` (`lib/api.ts`, the feed's only loader) applies it, because
+the feed itself (`panel/EventFeed.tsx`) is not an F2 file. `result_url` has no label in the
+contract, so the link reads "Open result".
 - Tests first: `ConnectorsUsed.test.tsx` (including: a round with only `skipped`; a
   `javascript:` `result_url` is not a link), `panel/runs/RunsTab.test.tsx`, the events test.
 

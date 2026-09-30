@@ -95,6 +95,54 @@ describe("getNodeRuns", () => {
     expect(out.run?.rounds[0].produced?.files).toBeNull();
   });
 
+  it("reads a round's connectors block; a round without one has none", async () => {
+    const round = (iteration: number, connectors?: unknown) => ({
+      invocation_id: 800 + iteration,
+      iteration,
+      status: "done",
+      connectors,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        json({
+          runs: [],
+          run: {
+            run_id: "r1",
+            rounds: [
+              round(2, {
+                used: [{ connection_id: "c1", name: "Supabase", slug: "supabase", reads: 6 }],
+                calls: [
+                  {
+                    connection_id: "c1",
+                    name: "Supabase",
+                    tool: "execute_sql",
+                    write: false,
+                    ok: true,
+                  },
+                ],
+                total_calls: 7,
+                skipped: [{ connection_id: "c9", name: "Notion", reason: "its sign-in expired" }],
+              }),
+              round(1),
+            ],
+          },
+        }),
+      ),
+    );
+    const out = await getNodeRuns("t", "n");
+    const [second, first] = out.run?.rounds ?? [];
+    expect(second.connectors?.used).toEqual([
+      { connection_id: "c1", name: "Supabase", slug: "supabase", reads: 6, writes: 0 },
+    ]);
+    expect(second.connectors?.calls[0]).toMatchObject({ tool: "execute_sql", write: false });
+    expect(second.connectors?.total_calls).toBe(7);
+    expect(second.connectors?.skipped).toEqual([
+      { connection_id: "c9", name: "Notion", reason: "its sign-in expired" },
+    ]);
+    expect(first.connectors).toBeNull();
+  });
+
   it("a never-run agent is empty", async () => {
     vi.stubGlobal(
       "fetch",

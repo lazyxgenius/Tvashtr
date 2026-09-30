@@ -1,0 +1,213 @@
+/* ---- Connectors in the agent drawer (Page-Agent-Skills-tools, CnF-Grant-1..4). Every value is
+   the design's px. The section head, sub-head and callout reuse `nd-kit` and `dm-dlist`. ---- */
+.nd-conn {
+  gap: 12px;
+}
+.nd-conn__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nd-conn__check {
+  flex: 1;
+  min-width: 0;
+}
+.nd-conn__access {
+  flex: none;
+  width: 124px;
+}
+/* The stack's 18px between the list and the callout, inside the section's 12px gap. */
+.nd-conn__callout {
+  margin-top: 6px;
+}
+.nd-conn__callout--plain {
+  background: var(--surface-sunk);
+  color: var(--ink-600);
+}
+/* An agent on a plan: the drawer's amber warning notice (Page-Agent-on-a-Claude-plan). */
+.nd-conn__callout--warn {
+  background: #fbf3e6;
+  border: 1px solid var(--amber-100);
+  color: #6b4a1f;
+}
+/* A line with its one action: the failed load's "Try again", a gone connector's "Remove". */
+.nd-conn__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+
+/* ---- What a round called (Page-Agent-Runs-what-it-read, CnF-Run-1/2) and what it ran without
+   (CnF-Expired-2). ---- */
+.nd-conn-used {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nd-conn-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.nd-conn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px 0 4px;
+  border-radius: 999px;
+  background: var(--panel-300);
+  border: 1px solid var(--line-300);
+  font-size: 12px;
+  color: var(--ink-800);
+}
+.nd-conn-tile {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--panel-300);
+  border: 1px solid var(--line-300);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink-800);
+}
+.nd-conn-chip .nd-conn-tile {
+  width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  font-size: 8px;
+}
+.nd-conn-note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-600);
+}
+.nd-conn-note svg {
+  flex: none;
+  margin-top: 2px;
+}
+.nd-conn-calls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nd-conn-call {
+  display: flex;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+}
+.nd-conn-call--write {
+  background: var(--coral-100);
+  border-color: var(--coral-200);
+}
+.nd-conn-call__body {
+  flex: 1;
+  min-width: 0;
+}
+.nd-conn-call__top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nd-conn-call__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.nd-conn-call__tool {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  color: var(--ink-600);
+}
+.nd-conn-call__kind {
+  flex: none;
+  margin-left: auto;
+}
+.nd-conn-call__arg {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--ink-500);
+}
+.nd-conn-call__meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ink-500);
+}
+.nd-conn-call__meta a {
+  color: var(--coral-700);
+}
+.nd-conn-used__more {
+  align-self: flex-start;
+}
+.nd-conn-used__cap {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+/* "Ran without Notion: its sign-in expired." The amber pair is the drawer's warning notice. */
+.nd-conn-skip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fbf3e6;
+  border: 1px solid var(--amber-100);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #6b4a1f;
+}
+.nd-conn-skip svg {
+  flex: none;
+}
+.nd-conn-skip__text {
+  flex: 1;
+}
+.nd-conn-skip__text b {
+  font-weight: 600;
+}
+/* Inside the Last run card it sits under the detail, inset like the card's own text. */
+.nd-lastrun .nd-conn-skip {
+  margin: 0 12px 12px;
+}
+.nd-lastrun__head + .nd-conn-skip {
+  margin-top: 12px;
+}
+
+/* The run banner's way to Connectors (`components/RunWarnings`): a button as wide as its words. */
+.tv-runwarn__open {
+  align-self: flex-start;
+}

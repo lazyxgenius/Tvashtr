@@ -4,6 +4,8 @@ import { ChevronDown, ChevronRight, History } from "lucide-react";
 import { Badge, Button } from "../../design-system/components";
 import type { NodeRound, NodeRuns } from "../../lib/api/nodes";
 import { formatRelativeTime } from "../../lib/time";
+import type { OpenConnector } from "../connectors/connectorFormat";
+import { ConnectorsSkipped, ConnectorsUsed } from "../connectors/ConnectorsUsed";
 import { statusBadge } from "../nodeBadges";
 import { clipDetail, compactTokens, detailParts } from "./rounds";
 import type { Loaded } from "./useLoaded";
@@ -79,15 +81,18 @@ export function EmptyCard({
 
 /**
  * Runs (PANEL-72..74): this agent's latest round in its newest run ("Last run"), then that run's
- * earlier rounds, each expanding in place to its detail, tokens, cost and time.
+ * earlier rounds, each expanding in place to its detail, tokens, cost, time and connector calls.
  */
 export function RunsTab({
   history,
   onOpenFocus,
+  onOpenConnector,
 }: {
   /** "idle" when the agent never ran (nothing to load). */
   history: Loaded<NodeRuns>;
   onOpenFocus?: () => void;
+  /** Open a connection's page through the drawer's unsaved-changes guard ("Sign in"). */
+  onOpenConnector?: OpenConnector;
 }) {
   if (history.state === "loading" || history.state === "error") {
     return (
@@ -107,21 +112,24 @@ export function RunsTab({
       </EmptyCard>
     );
   }
-  return <RoundsList rounds={rounds} onOpenFocus={onOpenFocus} />;
+  return <RoundsList rounds={rounds} onOpenFocus={onOpenFocus} onOpenConnector={onOpenConnector} />;
 }
 
 /**
  * The latest round ("Last run") over the same run's earlier rounds, newest first. The run view hands
  * it the rounds of the run on screen; `more` adds what that view knows about a round (its exact
- * cost and context) under the Last run card and inside an opened round.
+ * cost and context) under the Last run card and inside an opened round. A round's connectors show
+ * in both views: what it ran without inside the card, its chips and calls after it.
  */
 export function RoundsList({
   rounds,
   onOpenFocus,
+  onOpenConnector,
   more,
 }: {
   rounds: NodeRound[];
   onOpenFocus?: () => void;
+  onOpenConnector?: OpenConnector;
   more?: (round: NodeRound) => ReactNode;
 }) {
   const [last, ...earlier] = rounds;
@@ -130,7 +138,17 @@ export function RoundsList({
       <div className="nd-section__head">
         <span className="nd-section__title">Last run</span>
       </div>
-      <LastRunCard round={last} more={more?.(last)} />
+      <LastRunCard
+        round={last}
+        more={
+          <>
+            <ConnectorsSkipped connectors={last.connectors} onOpen={onOpenConnector} />
+            {more?.(last)}
+          </>
+        }
+      />
+      {/* Keyed on the round: a new last round starts with its calls folded. */}
+      <ConnectorsUsed key={last.invocation_id} connectors={last.connectors} />
       {earlier.length > 0 && (
         <div className="nd-runs__earlier">
           <span className="nd-section__title">Earlier rounds</span>
@@ -140,6 +158,7 @@ export function RoundsList({
                 key={r.invocation_id}
                 round={r}
                 onOpenFocus={onOpenFocus}
+                onOpenConnector={onOpenConnector}
                 more={more?.(r)}
               />
             ))}
@@ -188,10 +207,12 @@ function LastRunCard({ round, more }: { round: NodeRound; more?: ReactNode }) {
 function RoundItem({
   round,
   onOpenFocus,
+  onOpenConnector,
   more,
 }: {
   round: NodeRound;
   onOpenFocus?: () => void;
+  onOpenConnector?: OpenConnector;
   more?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -229,6 +250,8 @@ function RoundItem({
             {round.cost && <span>${round.cost.cost_usd.toFixed(2)}</span>}
             {when && <span>{when}</span>}
           </div>
+          <ConnectorsSkipped connectors={round.connectors} onOpen={onOpenConnector} />
+          <ConnectorsUsed connectors={round.connectors} />
           {more}
           {onOpenFocus && (
             <button type="button" className="nd-link nd-round__focus" onClick={onOpenFocus}>

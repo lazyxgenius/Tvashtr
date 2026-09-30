@@ -239,7 +239,8 @@ export const referencedLibraryIds = (skills: readonly unknown[] | null): Set<str
 
 /**
  * PANEL-103: on Tvashtr Desktop an agent whose model runs on a subscription gets its skills folded
- * into its instructions, but no tools, Domains or rules files (team_run `_desktop_instruction`).
+ * into its instructions, but no tools, connectors, Domains or rules files (team_run
+ * `_desktop_instruction`).
  */
 export function desktopSubscriptionNote(
   model: string,
@@ -248,7 +249,7 @@ export function desktopSubscriptionNote(
 ): string | null {
   const name = desktopSubscriptionName(model, cover, desktop);
   if (!name) return null;
-  return `Runs on your ${name} subscription on this computer. Its skills are added to its instructions, but tools, Domains and the repo’s rules files aren’t used there yet.`;
+  return `Runs on your ${name} subscription on this computer. Its skills are added to its instructions, but tools, connectors, Domains and the repo’s rules files aren’t used there yet.`;
 }
 
 /** The subscription ("Grok") an agent runs on on Tvashtr Desktop; null when it doesn't. */

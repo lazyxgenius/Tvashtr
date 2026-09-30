@@ -1,7 +1,7 @@
 /**
  * An agent's `tool_config` (moved from the old ToolsSection): its inline MCP servers
  * (`mcpServers`), the Tvashtr metadata beside them (`tvashtr.servers.<name>.enabled`,
- * `tvashtr.library` ids, `tvashtr.domains`) and the rows the Tools list shows (PANEL-94). The run
+ * `tvashtr.library` ids, `tvashtr.domains`, `tvashtr.connectors`) and the rows the Tools list shows (PANEL-94). The run
  * resolves it in control_plane/node_tools.py. Every edit returns a new config, or null when nothing
  * is left.
  */
@@ -67,6 +67,29 @@ export function setDomains(cfg: ToolConfig, ids: string[]): ToolConfig {
   const meta = { ...metaOf(cfg) };
   if (ids.length > 0) meta.domains = ids;
   else delete meta.domains;
+  return tidy({ ...asRecord(cfg), tvashtr: meta });
+}
+
+/** A connection switched on for this agent (contract: Agents (grants)). */
+export interface ConnectorGrant {
+  id: string;
+  access: "read" | "write";
+}
+
+/** The connectors this agent can use. A grant with no `access` is read only. */
+export function connectorsOf(cfg: ToolConfig): ConnectorGrant[] {
+  const raw = metaOf(cfg).connectors;
+  return (Array.isArray(raw) ? raw : [])
+    .map(asRecord)
+    .filter((g): g is Rec & { id: string } => typeof g.id === "string")
+    .map((g) => ({ id: g.id, access: g.access === "write" ? "write" : "read" }));
+}
+
+/** Set the connectors this agent can use; an empty list clears it. */
+export function setConnectors(cfg: ToolConfig, grants: readonly ConnectorGrant[]): ToolConfig {
+  const meta = { ...metaOf(cfg) };
+  if (grants.length > 0) meta.connectors = grants.map(({ id, access }) => ({ id, access }));
+  else delete meta.connectors;
   return tidy({ ...asRecord(cfg), tvashtr: meta });
 }
 

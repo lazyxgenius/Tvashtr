@@ -5,6 +5,10 @@ import type { SubscriptionProviderId, SubscriptionSource, SubscriptionStatus } f
 export type { SubscriptionProviderId, SubscriptionStatus } from "./engines";
 
 import type { DomainCitation } from "./api/domains";
+// The leaf module, never `./api/connectors`: that one imports `./api/runs`, which extends
+// `ApiError` from this file when it loads (a cycle that throws for any entry loading this first).
+import { parseRoundConnectors, type RoundConnectors } from "./api/roundConnectors";
+import { isFeedEvent } from "./events";
 
 // Absolute API origin when set at build time. Empty = same-origin relative paths (preferred).
 // Desktop v1 leaves this empty and reverse-proxies /api → https://tvashtr.fly.dev from localhost
@@ -95,6 +99,8 @@ export interface NodeInvocation {
       })
     | null;
   cost: InvocationCost | null;
+  /** Connectors (additive): what the round called and what it ran without; null when neither. */
+  connectors?: RoundConnectors | null;
 }
 
 export interface GraphNode {
@@ -641,8 +647,14 @@ export async function inspectRepo(path: string): Promise<RepoInspect> {
   return (await res.json()) as RepoInspect;
 }
 
-export const getGraph = (runId: string): Promise<GraphData> =>
-  getJSON<GraphData>(`/api/runs/${runId}/graph`);
+export async function getGraph(runId: string): Promise<GraphData> {
+  const graph = await getJSON<GraphData>(`/api/runs/${runId}/graph`);
+  // The one block read field by field: a call's `result_url` is shown as a link.
+  for (const node of graph.nodes ?? []) {
+    for (const inv of node.invocations ?? []) inv.connectors = parseRoundConnectors(inv.connectors);
+  }
+  return graph;
+}
 
 // ---- Run diff (M-changes — the run-view "Changes" tab): the files the run changed on its ship
 // branch, so a reviewer can SEE the shipped change before accepting it. ----
@@ -1416,7 +1428,7 @@ export async function cancelRun(runId: string): Promise<CancelResponse> {
 
 export interface RunEvent {
   seq: number;
-  kind: string; // action | observation | message | error
+  kind: string; // action | observation | message | error (the connector kinds are left out)
   payload: Record<string, unknown>;
   created_at: string;
   // M-ledger C6 (additive): the invocation this event belongs to, the node that invocation ran on,
@@ -1432,8 +1444,11 @@ export interface RunEventsResponse {
   events: RunEvent[]; // ascending by seq
 }
 
-export const getRunEvents = (runId: string): Promise<RunEventsResponse> =>
-  getJSON<RunEventsResponse>(`/api/spike/run-events/${runId}`);
+/** The Activity feed's events: the run's events minus the ones the feed skips (`isFeedEvent`). */
+export async function getRunEvents(runId: string): Promise<RunEventsResponse> {
+  const res = await getJSON<RunEventsResponse>(`/api/spike/run-events/${runId}`);
+  return { ...res, events: (res.events ?? []).filter((e) => isFeedEvent(e.kind)) };
+}
 
 // ===== M-memory S5 — the owner-scoped agentic-memory client (the account Memory shelf + S5b) =====
 // The store the shelf makes visible/controllable: facts the agents learned across runs, tier-scoped
