@@ -7,6 +7,8 @@ module builds an httpx client for connector traffic (``tests/test_connector_net.
 
 The rules (contract: ``docs/superpowers/plans/api/connectors.md``, Outbound address rules):
 
+* No space, control character, backslash or user name (``user@host``) in the address: those are
+  where Python and a browser read a different host out of the same string.
 * ``https://`` only, and every address the host resolves to must be public
   (``ipaddress.is_global`` and not multicast; an IPv4-mapped or NAT64 IPv6 address is judged by
   the IPv4 address inside it, and any other IPv6 address must be global unicast, ``2000::/3``).
@@ -104,6 +106,12 @@ def _resolve(host: str, port: int | None) -> str:
 def check_url(url: str) -> str:
     """Return ``url`` when Tvashtr may open it, else raise :class:`UnsafeUrl`."""
     allow_local = _allow_local()
+    # Python and browsers must agree on the host, because the host Tvashtr checks (and shows as
+    # the sign-in host) is Python's and the one a sign-in window opens is the browser's. They
+    # differ on a backslash (a browser reads it as ``/``), and ``urlsplit`` quietly drops tabs,
+    # newlines and leading spaces. None of these belongs in an address, so none is accepted.
+    if any(c <= " " or c in "\\\x7f" for c in url):
+        raise UnsafeUrl("the address has a space, a control character or a backslash in it")
     try:
         parts = urlsplit(url)
         host, port = parts.hostname, parts.port
@@ -111,6 +119,8 @@ def check_url(url: str) -> str:
         raise UnsafeUrl("not an address") from exc
     if parts.scheme != "https" and not (allow_local and parts.scheme == "http"):
         raise UnsafeUrl("only https:// addresses are allowed")
+    if "@" in parts.netloc:
+        raise UnsafeUrl("the address has a user name in it")
     if not host:
         raise UnsafeUrl("the address has no host")
     if not allow_local:

@@ -351,6 +351,40 @@ describe("connectors API — a malformed answer throws", () => {
     }
   });
 
+  it("refuses a sign-in address whose host isn't the sign-in host the server named", async () => {
+    // A browser reads `\\` as `/`: the window would open phish.evil.example while the page says
+    // accounts.google.com.
+    for (const authorize_url of [
+      "https://phish.evil.example\\@accounts.google.com/o/oauth2/v2/auth",
+      "https://user:pw@accounts.google.com/o/oauth2/v2/auth",
+      "https://user@accounts.google.com/o/oauth2/v2/auth",
+      "https://evil.example/o/oauth2/v2/auth",
+      "https://[bad/o/oauth2/v2/auth",
+    ]) {
+      mockApi({
+        "POST /api/connectors/:id/oauth/start": {
+          authorize_url,
+          signin_host: "accounts.google.com",
+        },
+      });
+      await expect(startSignIn("c1")).rejects.toThrow("The server sent a sign-in address");
+    }
+  });
+
+  it("reads the sign-in host off the address when the server names none", async () => {
+    mockApi({
+      "POST /api/connectors/:id/oauth/start": { authorize_url: "http://[::1]:9911/authorize" },
+    });
+    expect((await startSignIn("c1")).signin_host).toBe("::1");
+    mockApi({
+      "POST /api/connectors/:id/oauth/start": {
+        authorize_url: "https://Accounts.Google.com/auth",
+        signin_host: "accounts.google.com",
+      },
+    });
+    expect((await startSignIn("c1")).signin_host).toBe("accounts.google.com");
+  });
+
   it("refuses scope options and a disconnect answer it can't read", async () => {
     mockApi({
       "GET /api/connectors/:id/scope-options": "nope",

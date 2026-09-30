@@ -117,6 +117,20 @@ def strict(monkeypatch):
         "data:text/html,hi",
         "https:///mcp",
         "",
+        # A browser reads ``\\`` as ``/``, so it opens phish.evil.example here while Python (and
+        # the sign-in host Tvashtr shows) says mcp.example.com.
+        "https://phish.evil.example\\@mcp.example.com/mcp",
+        "https://mcp.example.com\\.evil.example/mcp",
+        "https://mcp.example.com/mcp\\x",
+        "https://user:pw@mcp.example.com/mcp",
+        "https://user@mcp.example.com/mcp",
+        "https://@mcp.example.com/mcp",
+        " https://mcp.example.com/mcp",
+        "https://mcp.example.com/m cp",
+        "https://mcp.example.com/mcp\n",
+        "https://mcp.example.com/\tmcp",
+        "https://mcp.example.com/mcp\x7f",
+        "https://mcp.example.com/mcp\x00",
     ],
 )
 def test_only_https_addresses_pass(strict, monkeypatch, url):
@@ -273,7 +287,13 @@ def test_allow_local_lets_http_and_loopback_through_but_no_third_scheme(monkeypa
 
     assert check_url("http://127.0.0.1:9911/mcp") == "http://127.0.0.1:9911/mcp"
     assert check_url("http://localhost:9911/mcp") == "http://localhost:9911/mcp"
-    for url in ("javascript:alert(1)", "file:///etc/passwd", "data:text/html,hi"):
+    for url in (
+        "javascript:alert(1)",
+        "file:///etc/passwd",
+        "data:text/html,hi",
+        "http://evil.example\\@127.0.0.1:9911/authorize",
+        "http://user@127.0.0.1:9911/mcp",
+    ):
         with pytest.raises(UnsafeUrl):
             check_url(url)
     # The clients are plain: no pinning transport in the way of localhost.

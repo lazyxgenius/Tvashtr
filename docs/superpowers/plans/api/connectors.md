@@ -360,6 +360,10 @@ changed. The authorize address carries
 Google's read-only scopes do).
 `authorize_url` is always an `https://` address (`http://` only under
 `TVASHTR_CONNECTORS_ALLOW_LOCAL`). The web app and Desktop check that again before they open it.
+`signin_host` is the host of `authorize_url`, and the client holds the server to it: it reads the
+host out of `authorize_url` the way a browser does (`new URL`), and refuses the answer when that
+host isn't `signin_host` or when the address carries a user name or password. So the host that is
+shown is always the host the window opens.
 Errors: 404; 409 `{"code": "not_oauth", "message": "This connector doesn’t sign in."}`; 422
 `cannot_register`; 502 `unreachable`.
 
@@ -439,6 +443,10 @@ Every address the backend fetches for a connector comes from outside: the MCP ad
 addresses, registration, token and revocation endpoints, and every proxied call. All of it goes
 through `connector_net.client()` (sync) or `connector_net.async_client()` (the MCP client to the
 provider). No other code builds an HTTP client for connector traffic.
+- No space, control character, backslash or user name (`user@host`) anywhere in the address. Those
+  are where Python and a browser read a different host out of one string
+  (`https://evil.example\@accounts.google.com/` is `accounts.google.com` to Python and
+  `evil.example` to a browser).
 - `https://` only. The host is resolved once and every address it resolves to must be public:
   `ipaddress.ip_address(a).is_global` and not multicast. An IPv4-mapped (`::ffff:a.b.c.d`) or
   NAT64 (`64:ff9b::/96`) IPv6 address is judged by the IPv4 address inside it; any other IPv6

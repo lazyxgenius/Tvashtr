@@ -571,16 +571,22 @@ export async function getScopeOptions(id: string): Promise<ScopeOptions> {
 export async function startSignIn(id: string): Promise<SignInStart> {
   const data = await request("POST", `/api/connectors/${enc(id)}/oauth/start`);
   const url = isRecord(data) ? data.authorize_url : null;
+  const unusable = new Error("The server sent a sign-in address we couldn’t use.");
   // The address is opened in a window: anything but http(s) is refused here, at the boundary.
-  if (typeof url !== "string" || !/^https?:\/\/[^\s/]+/i.test(url)) {
-    throw new Error("The server sent a sign-in address we couldn’t use.");
+  if (typeof url !== "string" || !/^https?:\/\/[^\s/]+/i.test(url)) throw unusable;
+  // The host that is shown must be the host the window opens, and that is what the browser
+  // reads out of the address, not what the server says (the two differ on `https://a\@b/`).
+  let opened: URL;
+  try {
+    opened = new URL(url);
+  } catch {
+    throw unusable;
   }
+  const host = opened.hostname.replace(/^\[|\]$/g, ""); // an IPv6 host, without its brackets
   const d = data as Json;
-  return {
-    authorize_url: url,
-    signin_host: str(d.signin_host, new URL(url).hostname),
-    expires_in: count(d.expires_in),
-  };
+  const signinHost = str(d.signin_host, host).toLowerCase();
+  if (opened.username || opened.password || signinHost !== host) throw unusable;
+  return { authorize_url: url, signin_host: host, expires_in: count(d.expires_in) };
 }
 
 /** GET /api/connectors/{id}/agents — library teams oldest first, agents left to right. */
