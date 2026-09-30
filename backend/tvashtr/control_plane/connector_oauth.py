@@ -169,9 +169,14 @@ def discover(url: str, entry: dict | None = None) -> Discovery | None:
             raise Unreachable(f"{parts.hostname} didn't answer")
         return None
 
-    # 3. The metadata must be the issuer's own, and offer PKCE S256.
-    issuer = issuer or f"{parts.scheme}://{parts.netloc}"
-    if server.get("issuer") != issuer:
+    # 3. The metadata must be the issuer's own, and offer PKCE S256. The two are compared as raw
+    # strings, but for one trailing slash: Google's resource metadata names
+    # ``https://accounts.google.com/`` and its server metadata ``https://accounts.google.com``,
+    # and a trailing slash can't name another server or tenant. The server's own spelling is the
+    # one kept, because that is what it sends as ``iss``.
+    asked = issuer or f"{parts.scheme}://{parts.netloc}"
+    issuer = server.get("issuer")
+    if not isinstance(issuer, str) or issuer.removesuffix("/") != asked.removesuffix("/"):
         raise CannotRegister("the sign-in server's metadata names another issuer")
     if "S256" not in (server.get("code_challenge_methods_supported") or ()):
         raise CannotRegister("the sign-in server doesn't advertise PKCE S256")

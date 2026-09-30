@@ -244,7 +244,7 @@ def test_a_featured_entry_pins_its_client_its_scope_and_extra_authorize_paramete
 
     def handle(request: httpx.Request) -> httpx.Response:
         if "oauth-protected-resource" in request.url.path:
-            resource = {"resource": entry["url"], "authorization_servers": [google]}
+            resource = {"resource": entry["url"], "authorization_servers": [f"{google}/"]}
             return httpx.Response(200, json=resource)
         if request.url.host == "accounts.google.com":
             return httpx.Response(200, json=server)

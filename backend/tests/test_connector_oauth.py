@@ -159,13 +159,36 @@ def test_a_path_style_issuer_is_looked_up_in_the_specs_order(monkeypatch):
     ]
 
 
-@pytest.mark.parametrize("issuer", ["https://login.other-site.test", f"{BASE}/"])
+@pytest.mark.parametrize(
+    "issuer",
+    ["https://login.other-site.test", f"{BASE}/tenant", f"{BASE}//", BASE.upper(), None, 7],
+)
 def test_an_issuer_that_isnt_the_one_asked_for_is_rejected(monkeypatch, issuer):
-    """Compared as raw strings: a trailing slash is a different issuer."""
+    """Compared as raw strings, never through a URL type."""
     fake = FakeConnectorServer(BASE)
     wire(monkeypatch, _rewrite(fake, SERVER_PATH, lambda meta: meta | {"issuer": issuer}))
     with pytest.raises(CannotRegister):
         discover(MCP)
+
+
+def test_one_trailing_slash_is_the_same_issuer_and_the_servers_own_spelling_is_kept(monkeypatch):
+    """Found by the live probe: Google's resource metadata names ``https://accounts.google.com/``
+    and its server metadata says ``https://accounts.google.com``. One trailing slash can't name
+    another server or another tenant. The spelling kept is the server's own: it is what the
+    callback's ``iss`` is compared with."""
+    fake = FakeConnectorServer(BASE)
+    slashed = {"authorization_servers": [f"{BASE}/"]}
+    wire(monkeypatch, _rewrite(fake, RESOURCE_PATH, lambda meta: meta | slashed))
+    assert discover(MCP).issuer == BASE
+
+    # The other way round, and with a path-style issuer.
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, _rewrite(fake, SERVER_PATH, lambda meta: meta | {"issuer": f"{BASE}/"}))
+    assert discover(MCP).issuer == f"{BASE}/"
+    fake = FakeConnectorServer(BASE, path_issuer=True)
+    slashed = {"authorization_servers": [f"{BASE}/oauth/"]}
+    wire(monkeypatch, _rewrite(fake, RESOURCE_PATH, lambda meta: meta | slashed))
+    assert discover(MCP).issuer == f"{BASE}/oauth"
 
 
 def test_a_server_without_pkce_s256_is_rejected(monkeypatch):
@@ -384,12 +407,19 @@ def _google_like(mcp_host: str):
         "token_endpoint": "https://oauth2.googleapis.com/token",
         "revocation_endpoint": "https://oauth2.googleapis.com/revoke",
         "code_challenge_methods_supported": ["plain", "S256"],
+        "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"],
+        "authorization_response_iss_parameter_supported": True,
     }
 
     def handle(request: httpx.Request) -> httpx.Response:
         host, path = request.url.host, request.url.path
-        if host == mcp_host and "oauth-protected-resource" in path:
-            resource = {"resource": f"https://{mcp_host}/mcp/v1", "authorization_servers": [google]}
+        if host == mcp_host and path == "/.well-known/oauth-protected-resource/mcp/v1":
+            # As Google serves it (probed 2026-09-30): the issuer is named with a trailing slash.
+            resource = {
+                "resource": f"https://{mcp_host}/mcp/v1",
+                "authorization_servers": [f"{google}/"],
+                "scopes_supported": ["https://www.googleapis.com/auth/drive"],
+            }
             return httpx.Response(200, json=resource)
         if host == "accounts.google.com" and path == SERVER_PATH:
             return httpx.Response(200, json=server)
@@ -402,6 +432,7 @@ def test_googles_own_cards_pass_the_mix_up_check_and_a_copy_of_them_doesnt(monke
     entry = connector_catalog.FEATURED["google-drive"]
     wire(monkeypatch, _google_like("drivemcp.googleapis.com"))
     found = discover(entry["url"], entry)
+    assert found.issuer == "https://accounts.google.com" and found.iss_supported is True
     assert found.signin_host == "accounts.google.com"
     assert found.token_endpoint == "https://oauth2.googleapis.com/token"
     assert found.revocation_endpoint == "https://oauth2.googleapis.com/revoke"
