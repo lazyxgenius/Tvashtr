@@ -139,6 +139,16 @@ function Nav({
 
   const toolkitChildren: NavLeaf[] = [
     {
+      key: "connectors",
+      label: "Connectors",
+      route: { page: "connectors", view: "connected" },
+      active: route.page === "connectors" || route.page === "connector",
+      // An expired sign-in replaces the count, like Engines › Overview's "N to fix".
+      badge:
+        warn(badges.connectorsToFix, "to fix") ??
+        (badges.connectors ? <Badge>{badges.connectors}</Badge> : null),
+    },
+    {
       key: "tools",
       label: "Tools",
       route: { page: "tools", view: "installed" },
@@ -274,10 +284,10 @@ function Nav({
           "toolkit",
           "Toolkit",
           <Wrench {...iconProps} />,
-          { page: "tools", view: "installed" },
+          { page: "connectors", view: "connected" },
           {
             open: inToolkit,
-            badge: warn(badges.secretsMissing, "missing"),
+            badge: warn(badges.connectorsToFix, "to fix") ?? warn(badges.secretsMissing, "missing"),
           },
         )}
         {inToolkit && toolkitChildren.map(leaf)}

@@ -156,7 +156,14 @@ describe("tools API — shapes are checked at the boundary", () => {
         secrets: [{ name: "GITHUB_TOKEN", used_by_tools: [{ id: "g", name: "github" }] }, {}],
         missing: [{ name: "LINEAR_TOKEN", used_by_tools: [{ id: "l", name: "linear" }] }],
       },
-      "GET /api/toolkit/summary": { tools: 3, skills: 3, memory: { inbox: 2 }, secrets_missing: 1 },
+      "GET /api/toolkit/summary": {
+        tools: 3,
+        skills: 3,
+        memory: { inbox: 2 },
+        secrets_missing: 1,
+        connectors: 4,
+        connectors_needing_attention: "x",
+      },
       "GET /api/github/status": { hosted: true, installed: true, installation_count: 1 },
       "GET /api/tool-catalog": { tools: [{ key: "fetch", title: "Web fetch" }, { title: "x" }] },
     });
@@ -173,6 +180,8 @@ describe("tools API — shapes are checked at the boundary", () => {
       skills: 3,
       memory: { inbox: 2, active: 0, archive: 0 },
       secrets_missing: 1,
+      connectors: 4,
+      connectors_needing_attention: 0,
     });
     expect(await getGithubStatus()).toEqual({
       hosted: true,
@@ -186,7 +195,7 @@ describe("tools API — shapes are checked at the boundary", () => {
 });
 
 describe("the Toolkit nav-badge loader", () => {
-  it("publishes Tools, Skills, Memory inbox and Secrets missing from the summary", async () => {
+  it("publishes Connectors, Tools, Skills, Memory inbox and Secrets missing from the summary", async () => {
     mockApi({
       "GET /api/inbox": { items: [] },
       "GET /api/toolkit/summary": {
@@ -195,6 +204,8 @@ describe("the Toolkit nav-badge loader", () => {
         skills: 2,
         memory: { inbox: 4, active: 1, archive: 0 },
         secrets_missing: 1,
+        connectors: 5,
+        connectors_needing_attention: 1,
       },
     });
     await import("../../pages/badgeLoaders");
@@ -206,6 +217,8 @@ describe("the Toolkit nav-badge loader", () => {
         skills: 2,
         memoryInbox: 4,
         secretsMissing: 1,
+        connectors: 5,
+        connectorsToFix: 1,
       }),
     );
   });

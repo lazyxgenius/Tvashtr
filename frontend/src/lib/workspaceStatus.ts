@@ -27,6 +27,10 @@ export interface NavBadges {
   subscriptions?: { connected: number; total: number };
   /** Engines › API keys: saved keys. */
   apiKeys?: number;
+  /** Toolkit › Connectors: connections that are ready or need a sign-in. */
+  connectors?: number;
+  /** Toolkit › Connectors: connections whose sign-in expired ("N to fix"). */
+  connectorsToFix?: number;
   tools?: number;
   skills?: number;
   /** Toolkit › Memory: memories waiting in the Inbox ("N new"). */

@@ -344,6 +344,10 @@ export interface ToolkitSummary {
   skills: number;
   memory: { inbox: number; active: number; archive: number };
   secrets_missing: number;
+  /** Connections that are connected or need a sign-in. */
+  connectors: number;
+  /** Connections whose sign-in expired. */
+  connectors_needing_attention: number;
 }
 
 /** GET /api/toolkit/summary — the counts behind the Toolkit nav badges. */
@@ -361,6 +365,8 @@ export async function getToolkitSummary(): Promise<ToolkitSummary> {
       archive: count(memory.archive),
     },
     secrets_missing: count(d.secrets_missing),
+    connectors: count(d.connectors),
+    connectors_needing_attention: count(d.connectors_needing_attention),
   };
 }
 

@@ -115,6 +115,44 @@ describe("Shell", () => {
     expect(onNavigate).toHaveBeenCalledWith({ page: "secrets" });
   });
 
+  it("puts Connectors first in Toolkit, with its count or what needs fixing", async () => {
+    const { onNavigate } = renderShell(
+      { page: "connector", connectorId: "c1" },
+      { connectors: 4, tools: 3 },
+    );
+    const nav = screen.getByRole("navigation", { name: "Dashboard" });
+    const items = within(nav)
+      .getAllByRole("button")
+      .map((b) => b.textContent);
+    expect(items.indexOf("Connectors4")).toBe(items.indexOf("Toolkit") + 1);
+    expect(items.indexOf("Tools3")).toBe(items.indexOf("Connectors4") + 1);
+    expect(within(nav).getByRole("button", { name: /Connectors 4/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await userEvent.click(within(nav).getByRole("button", { name: /Connectors/ }));
+    expect(onNavigate).toHaveBeenCalledWith({ page: "connectors", view: "connected" });
+  });
+
+  it("says how many connectors need fixing, on Connectors and on a folded Toolkit", async () => {
+    const badges = { connectors: 5, connectorsToFix: 1, secretsMissing: 2 };
+    const { onNavigate } = renderShell({ page: "home" }, badges);
+    const nav = screen.getByRole("navigation", { name: "Dashboard" });
+    const toolkit = within(nav).getByRole("button", { name: /Toolkit 1 to fix/ });
+    // The Toolkit item opens its first page.
+    await userEvent.click(toolkit);
+    expect(onNavigate).toHaveBeenCalledWith({ page: "connectors", view: "connected" });
+  });
+
+  it("shows the to-fix badge on the Connectors leaf in place of the count", () => {
+    renderShell({ page: "connectors", view: "browse" }, { connectors: 5, connectorsToFix: 1 });
+    const nav = screen.getByRole("navigation", { name: "Dashboard" });
+    expect(within(nav).getByRole("button", { name: /Connectors 1 to fix/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
   it("opens search and the account menu", async () => {
     const { onOpenSearch, onShowShortcuts, onLogout } = renderShell({ page: "home" });
     await userEvent.click(screen.getByRole("button", { name: "Search teams, runs and actions" }));

@@ -23,12 +23,14 @@ registerBadgeLoader("domains", async () => ({
   })),
 }));
 
-// Toolkit: one loader for the whole group (spec §3.3) — Tools / Skills counts, Memory "N new" and
-// Secrets "N missing", from GET /api/toolkit/summary. Toolkit pages call `refreshBadges()` after a
+// Toolkit: one loader for the whole group (spec §3.3) — Connectors (count, "N to fix"), Tools /
+// Skills counts, Memory "N new" and Secrets "N missing", from GET /api/toolkit/summary. Toolkit pages call `refreshBadges()` after a
 // change.
 registerBadgeLoader("toolkit", async () => {
   const s = await getToolkitSummary();
   return {
+    connectors: s.connectors,
+    connectorsToFix: s.connectors_needing_attention,
     tools: s.tools,
     skills: s.skills,
     memoryInbox: s.memory.inbox,
