@@ -8,7 +8,8 @@ module builds an httpx client for connector traffic (``tests/test_connector_net.
 The rules (contract: ``docs/superpowers/plans/api/connectors.md``, Outbound address rules):
 
 * ``https://`` only, and every address the host resolves to must be public
-  (``ipaddress.is_global``, an IPv4-mapped IPv6 address unwrapped first).
+  (``ipaddress.is_global`` and not multicast; an IPv4-mapped or NAT64 IPv6 address is judged by
+  the IPv4 address inside it, and any other IPv6 address must be global unicast, ``2000::/3``).
 * The address that was checked is the address connected to. The clients run on a pinning
   transport: it resolves a host once for the client's life, checks it, and sends the request to
   that IP with the ``Host`` header kept and the TLS server name set to the host, so the
@@ -59,13 +60,25 @@ def _allow_local() -> bool:
     return settings.connectors_allow_local and not settings.hosted_mode
 
 
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+_GLOBAL_UNICAST_V6 = ipaddress.ip_network("2000::/3")
+
+
 def _is_public(address: str) -> bool:
     try:
         ip = ipaddress.ip_address(address.split("%", 1)[0])  # drop an IPv6 zone id
     except ValueError:
         return False
-    mapped = getattr(ip, "ipv4_mapped", None)
-    return (mapped or ip).is_global
+    if ip.version == 6:
+        # ``is_global`` alone calls several IPv6 forms that carry an IPv4 address public
+        # (NAT64, IPv4-compatible, IPv4-translated), and site-local and multicast too. So: an
+        # IPv4-mapped or NAT64 address is judged by the IPv4 address inside it, and anything else
+        # must be global unicast.
+        if ip.ipv4_mapped or ip in _NAT64:
+            ip = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+        elif ip not in _GLOBAL_UNICAST_V6:
+            return False
+    return ip.is_global and not ip.is_multicast
 
 
 # The lookup, as a name tests replace. They must not patch ``socket.getaddrinfo`` itself: that is

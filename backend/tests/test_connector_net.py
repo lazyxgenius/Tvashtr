@@ -143,12 +143,29 @@ def test_a_public_https_address_passes_and_is_returned(strict, monkeypatch):
         "100.64.0.1",
         "192.168.1.10",
         "fe80::1",
+        # IPv6 forms that carry an IPv4 address, which ``is_global`` alone calls public.
+        "64:ff9b::a9fe:a9fe",  # NAT64 of 169.254.169.254
+        "64:ff9b::a00:1",  # NAT64 of 10.0.0.1
+        "::a9fe:a9fe",  # IPv4-compatible
+        "::ffff:0:a9fe:a9fe",  # IPv4-translated
+        "2002:a9fe:a9fe::1",  # 6to4
+        "fec0::1",  # site-local
+        "ff02::1",  # multicast
+        "224.0.0.1",
     ],
 )
 def test_a_host_resolving_to_a_non_public_address_is_refused(strict, monkeypatch, address):
     _dns(monkeypatch, {"sneaky.example.com": [address]})
     with pytest.raises(UnsafeUrl):
         check_url("https://sneaky.example.com/mcp")
+    with pytest.raises(UnsafeUrl):
+        check_url(f"https://[{address}]/mcp" if ":" in address else f"https://{address}/mcp")
+
+
+def test_a_nat64_address_of_a_public_ipv4_passes(strict, monkeypatch):
+    """An IPv6-only network with DNS64 answers an IPv4-only provider like this."""
+    _dns(monkeypatch, {"v4only.example.com": ["64:ff9b::5db8:d822"]})  # 93.184.216.34
+    assert check_url("https://v4only.example.com/mcp")
 
 
 def test_one_private_address_among_public_ones_is_refused(strict, monkeypatch):

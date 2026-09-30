@@ -440,9 +440,12 @@ addresses, registration, token and revocation endpoints, and every proxied call.
 through `connector_net.client()` (sync) or `connector_net.async_client()` (the MCP client to the
 provider). No other code builds an HTTP client for connector traffic.
 - `https://` only. The host is resolved once and every address it resolves to must be public:
-  `ipaddress.ip_address(a).is_global`, with an IPv4-mapped IPv6 address unwrapped first. That
-  refuses loopback, private, link-local and unique-local ranges (which covers Fly's `fdaa::/16`),
-  carrier-grade NAT (`100.64.0.0/10`) and `0.0.0.0`.
+  `ipaddress.ip_address(a).is_global` and not multicast. An IPv4-mapped (`::ffff:a.b.c.d`) or
+  NAT64 (`64:ff9b::/96`) IPv6 address is judged by the IPv4 address inside it; any other IPv6
+  address must be global unicast (`2000::/3`), because `is_global` alone passes the
+  IPv4-compatible, IPv4-translated, site-local and multicast forms. That refuses loopback,
+  private, link-local and unique-local ranges (which covers Fly's `fdaa::/16`), carrier-grade NAT
+  (`100.64.0.0/10`) and `0.0.0.0`.
 - **The address that was checked is the address connected to.** The client sends the request to the
   validated IP, keeps the `Host` header and sets the TLS server name (`sni_hostname`) to the
   original host, so the certificate is still checked against the name. The name is never resolved
