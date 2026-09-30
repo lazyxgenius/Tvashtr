@@ -65,7 +65,8 @@ export function CustomConnectorSheet({
     if (outcome.kind !== "connected") setWaiting(false);
     if (outcome.kind === "connected") {
       let made: Connection = outcome.connection;
-      // The row was made at the check, before the name was final and the access chosen.
+      // The row was made at the check, before the access was chosen (and the name, if it
+      // couldn't be saved before the sign-in).
       if (made.name !== label) {
         // A refused name keeps the one it was checked with.
         made = await updateConnection(made.id, { name: label }).catch(() => made);
@@ -138,13 +139,23 @@ export function CustomConnectorSheet({
   };
 
   /** "Continue to <site>" and "Try again": in the click, so the popup isn't blocked. */
-  const toProvider = () => {
-    if (!conn || !label) return;
+  const toProvider = async () => {
+    if (!conn || !label || busy) return;
     signIn.prepare();
     setNotice(null);
     setTrouble(null);
     setWaiting(true);
-    void signIn.start(conn);
+    let named = conn;
+    if (conn.name !== label) {
+      // The row was made at the check, before the name was final. Until it is connected the
+      // server takes its slug (the prefix of its tools' names) from its name, so the last name
+      // goes in now. One that can't be saved is sent again after the sign-in.
+      setBusy(true);
+      named = await updateConnection(conn.id, { name: label }).catch(() => conn);
+      setBusy(false);
+      setConn(named);
+    }
+    void signIn.start(named);
   };
 
   const close = () => {
@@ -207,7 +218,7 @@ export function CustomConnectorSheet({
     };
   } else if (trouble?.kind === "failed") {
     body = (
-      <Problem title={firstSentence(trouble.message)} onRetry={toProvider}>
+      <Problem title={firstSentence(trouble.message)} onRetry={() => void toProvider()}>
         {`Nothing was connected. Try again when you’re ready; you can pick a different ${label} account in the window.`}
       </Problem>
     );
@@ -270,7 +281,7 @@ export function CustomConnectorSheet({
         size="sm"
         iconLeft={<ExternalLink size={14} strokeWidth={1.6} aria-hidden />}
         disabled={!label}
-        onClick={toProvider}
+        onClick={() => void toProvider()}
       >
         {`Continue to ${site}`}
       </Button>

@@ -215,15 +215,44 @@ describe("CustomConnectorSheet", () => {
     expect(screen.getByText(/You’ll sign in at/)).toBeInTheDocument();
     click("Continue to auth.acme.dev");
     await screen.findByText("Waiting for you to finish in the Acme Metrics window");
-    row = { ...PENDING, status: "connected" };
-    await poll();
-    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
-    expect(calls.filter((c) => c.path === "/api/connectors")).toHaveLength(1);
-    expect(calls.at(-1)).toEqual({
+    await waitFor(() => expect(popup?.location.href).toBe(AUTHORIZE));
+    // The name goes in while the connection is still pending, before the sign-in starts: until
+    // it is connected the server takes its slug (its tools' prefix) from the name it has.
+    const sent = calls.map((c) => `${c.method} ${c.path}`);
+    const renamed = sent.indexOf("PATCH /api/connectors/c1");
+    expect(calls[renamed]).toEqual({
       method: "PATCH",
       path: "/api/connectors/c1",
       body: { name: "Acme Metrics" },
     });
+    expect(renamed).toBeLessThan(sent.indexOf("POST /api/connectors/c1/oauth/start"));
+
+    row = { ...PENDING, name: "Acme Metrics", status: "connected" };
+    await poll();
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+    expect(calls.filter((c) => c.path === "/api/connectors")).toHaveLength(1);
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(1);
+    expect(onDone.mock.calls[0][0]).toMatchObject({ name: "Acme Metrics" });
+  });
+
+  it("sends the name again after the sign-in when it couldn’t be saved before it", async () => {
+    let refusals = 1;
+    const calls = serve({
+      "PATCH /api/connectors/c1": (_u: URL, body: Partial<Connection>) =>
+        refusals-- > 0 ? new Response("oops", { status: 500 }) : { ...row, ...body },
+    });
+    const { onDone } = show();
+    fill();
+    click("Check the server");
+    await screen.findByText(/You’ll sign in at/);
+    type("Name", "Acme Metrics");
+    click("Continue to auth.acme.dev");
+    // A name that couldn't be saved doesn't stop the sign-in.
+    await waitFor(() => expect(popup?.location.href).toBe(AUTHORIZE));
+    row = { ...PENDING, status: "connected" };
+    await poll();
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(2);
     expect(onDone.mock.calls[0][0]).toMatchObject({ name: "Acme Metrics" });
   });
 
