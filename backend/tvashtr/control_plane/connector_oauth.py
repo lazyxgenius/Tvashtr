@@ -472,8 +472,10 @@ def start(owner_id: uuid.UUID, connection_id: object) -> dict:
     pins = _pins(entry, url)
     try:
         # The provider is asked (discovery, a registration) with no database connection held and
-        # the row not locked: only the write at the end takes the lock.
-        with _one_at_a_time(row_id):
+        # the row not locked: only the write at the end takes the lock. It can take twenty
+        # seconds of a worker thread, so it holds one of the places for such requests (a 429
+        # ``busy`` when there is none).
+        with connectors.provider_slot(owner_id), _one_at_a_time(row_id):
             found = discover(url, entry)
             if found is None:
                 raise not_oauth

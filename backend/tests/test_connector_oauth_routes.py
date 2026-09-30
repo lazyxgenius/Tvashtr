@@ -7,6 +7,7 @@ import hashlib
 import threading
 import time
 import uuid
+from contextlib import ExitStack
 from urllib.parse import parse_qs, parse_qsl, urlsplit
 
 import httpx
@@ -229,6 +230,40 @@ def test_start_says_cannot_register_and_unreachable_and_stores_nothing(monkeypat
     )
     row = load(cid)
     assert (row.state_hash, row.pending_encrypted, row.status) == (None, None, "pending")
+
+
+def test_start_is_capped_like_every_request_that_waits_on_a_provider(monkeypatch):
+    """Discovery and a registration keep a worker thread for up to twenty seconds, as a connect
+    does: past the cap a start is refused at once, and while it asks it holds a place."""
+    fake = FakeConnectorServer(BASE)
+    during: list[int] = []
+
+    def network(request: httpx.Request) -> httpx.Response:
+        during.append(connectors._waiting[owner])
+        return fake.handle(request)
+
+    wire(monkeypatch, network)
+    c, owner = fresh_account()
+    cid = connection(owner, fake)
+    keyed = connection(owner, fake, auth_kind="api_key", status="connected")
+    busy = {
+        "code": "busy",
+        "message": "Too many connector requests at once. Try again in a moment.",
+    }
+    with ExitStack() as held:
+        for _ in range(connectors.OWNER_PROVIDER_CALLS):
+            held.enter_context(connectors.provider_slot(owner))
+        resp = _start(c, cid)
+        assert (resp.status_code, resp.json()["detail"]) == (429, busy)
+        row = load(cid)
+        assert (row.state_hash, row.pending_encrypted) == (None, None)
+        # A request is refused for what is wrong with it before it is refused for the crowd.
+        assert _start(c, keyed).json()["detail"]["code"] == "not_oauth"
+        assert fake.requests == []
+
+    assert _start(c, cid).status_code == 200
+    assert during and set(during) == {1}  # its own place, for as long as it asks
+    assert owner not in connectors._waiting  # and given back
 
 
 def test_start_holds_no_database_connection_while_it_asks_the_provider(monkeypatch):
@@ -1005,6 +1040,21 @@ def test_no_text_from_outside_is_rendered_raw(monkeypatch, listed, unauth_client
     page = _page(c.get(CALLBACK_PATH, params=denied))
     assert "<script>alert" not in page and breakout not in page
     assert load(cid).last_error == f"You didn’t allow access on {hostile}."  # text, escaped on use
+
+
+def test_a_name_with_markup_is_escaped_on_the_connected_and_the_failed_page(monkeypatch, listed):
+    """A connection's name only loses what doesn't print, so it can carry ``<``: every page that
+    names the connection escapes it."""
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    c, owner = fresh_account()
+    cid = connection(owner, fake, name="<img src=x onerror=alert(1)>")
+    escaped = "&lt;img src=x onerror=alert(1)&gt;"
+
+    failed = _page(c.get(CALLBACK_PATH, params=_allow(fake, c, cid) | {"code": "not-the-code"}))
+    assert f"{escaped} didn’t finish the sign-in. Try again." in failed and "<img" not in failed
+    page = _page(c.get(CALLBACK_PATH, params=_allow(fake, c, cid)))
+    assert f"{escaped} is connected. You can close this window." in page and "<img" not in page
 
 
 # ---- the whole path over real HTTP ----
