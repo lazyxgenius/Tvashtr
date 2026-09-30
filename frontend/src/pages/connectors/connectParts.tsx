@@ -56,6 +56,21 @@ export function SignInStaysNote() {
   );
 }
 
+/**
+ * Before a sign-in to a server Tvashtr hasn't reviewed (the registry's, a custom address). Such a
+ * server's sign-in page can send the browser on to another service's, and an Allow there would
+ * hand that service's data to this server (the contract's "mix-up by redirect"). Only the person
+ * looking at the page can tell.
+ */
+export function OwnSignInNote({ name }: { name: string }) {
+  return (
+    <Note kind="warn">
+      The sign-in page that opens should be {name}’s own. If it asks for access to a different
+      service, close it.
+    </Note>
+  );
+}
+
 /** "What agents may do": Read only | Read & write, with the line that says what read only means. */
 export function AccessChoice({
   value,

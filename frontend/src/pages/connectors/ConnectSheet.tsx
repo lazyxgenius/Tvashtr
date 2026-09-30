@@ -30,7 +30,14 @@ import {
   updateConnection,
 } from "../../lib/api/connectors";
 import { navigate } from "../../lib/nav";
-import { AccessChoice, Note, Problem, SignInStaysNote, SignInWait } from "./connectParts";
+import {
+  AccessChoice,
+  Note,
+  OwnSignInNote,
+  Problem,
+  SignInStaysNote,
+  SignInWait,
+} from "./connectParts";
 import { firstSentence, readOnlyHint, usesKey } from "./connectorFormat";
 import { type SignInOutcome, useAlive, useConnectSignIn } from "./useConnectSignIn";
 
@@ -531,6 +538,7 @@ export function ConnectSheet({
                 you know it.
               </Note>
             )}
+            {!reviewed && entry?.auth !== "none" && <OwnSignInNote name={name} />}
             {choice(true)}
           </>
         ) : (

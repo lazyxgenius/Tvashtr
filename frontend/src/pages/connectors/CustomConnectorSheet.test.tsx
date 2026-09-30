@@ -125,6 +125,10 @@ describe("CustomConnectorSheet", () => {
       "Read only lets agents call only the tools the server marks as read-only. A tool the server doesn’t mark counts as a write.",
     );
     expect(sheet).toHaveTextContent("Your sign-in stays on Tvashtr’s servers, encrypted.");
+    // Nobody reviewed this server: the page it opens could be another service's.
+    expect(sheet).toHaveTextContent(
+      "The sign-in page that opens should be acme-metrics’s own. If it asks for access to a different service, close it.",
+    );
     // Checking opens nothing: the window opens when you continue.
     expect(open).not.toHaveBeenCalled();
 

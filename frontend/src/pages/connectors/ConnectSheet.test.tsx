@@ -559,6 +559,21 @@ describe("when the sign-in goes wrong", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it("says whose sign-in page to expect, for a server Tvashtr hasn’t reviewed", () => {
+    const OWN =
+      "The sign-in page that opens should be Apify’s own. If it asks for access to a different service, close it.";
+    serve();
+    show({ entry: { ...APIFY, auth: "unknown", key_fields: [] } });
+    expect(screen.getByRole("dialog")).toHaveTextContent(OWN);
+    cleanup();
+    // A key opens no sign-in page, and a Featured connector's sign-in is one Tvashtr checked.
+    show({ entry: APIFY });
+    expect(screen.getByRole("dialog")).not.toHaveTextContent("should be Apify’s own");
+    cleanup();
+    show({ entry: entry() });
+    expect(screen.getByRole("dialog")).not.toHaveTextContent("should be Supabase’s own");
+  });
+
   it("shows where you’ll sign in when it is a different site, before it opens anything", async () => {
     const pending = {
       ...PENDING,

@@ -18,7 +18,14 @@ import {
   updateConnection,
 } from "../../lib/api/connectors";
 import { navigate } from "../../lib/nav";
-import { AccessChoice, Note, Problem, SignInStaysNote, SignInWait } from "./connectParts";
+import {
+  AccessChoice,
+  Note,
+  OwnSignInNote,
+  Problem,
+  SignInStaysNote,
+  SignInWait,
+} from "./connectParts";
 import { firstSentence } from "./connectorFormat";
 import { type SignInOutcome, useAlive, useConnectSignIn } from "./useConnectSignIn";
 
@@ -235,6 +242,7 @@ export function CustomConnectorSheet({
                 You’ll sign in at <b>{site}</b>.
               </Note>
             )}
+            <OwnSignInNote name={label || "this server"} />
             <AccessChoice
               value={access}
               onChange={setAccess}
