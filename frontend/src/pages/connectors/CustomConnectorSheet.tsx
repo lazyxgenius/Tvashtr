@@ -6,7 +6,7 @@
  * Tools.
  */
 import { ChevronRight, ExternalLink } from "lucide-react";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
 
 import { Button, Input, Sheet, useToast } from "../../design-system/components";
 import { ApiDetailError } from "../../lib/api/runs";
@@ -15,6 +15,7 @@ import {
   type ConnectorAccess,
   connectorRefusal,
   createConnection,
+  deleteConnection,
   updateConnection,
 } from "../../lib/api/connectors";
 import { navigate } from "../../lib/nav";
@@ -105,9 +106,20 @@ export function CustomConnectorSheet({
   };
   const signIn = useConnectSignIn((outcome) => void onOutcome(outcome));
 
+  // The check makes a pending row that no list shows and that holds its server name. One the
+  // sheet lets go of is removed, unless a sign-in was started for it: that can still finish in
+  // its window (Desktop's browser stays open), and must find its connection.
+  const signInStarted = useRef(false);
+  const letGo = () => {
+    if (conn?.status === "pending" && !signInStarted.current) {
+      void deleteConnection(conn.id).catch(() => {});
+    }
+  };
+
   const editUrl = (value: string) => {
     setUrl(value);
     // Another address is another server: check it again. (The name is only a name.)
+    letGo();
     setConn(null);
     setUrlError(null);
     setNotice(null);
@@ -125,6 +137,7 @@ export function CustomConnectorSheet({
     try {
       const made = await createConnection({ url: url.trim(), name: label, access: "read" });
       if (made.status === "connected") return done(made);
+      signInStarted.current = false;
       setConn(made);
     } catch (err) {
       const refusal = connectorRefusal(err);
@@ -158,6 +171,7 @@ export function CustomConnectorSheet({
       setBusy(false);
       setConn(named);
     }
+    signInStarted.current = true;
     void signIn.start(named);
   };
 
@@ -165,6 +179,7 @@ export function CustomConnectorSheet({
     // The check would carry on behind a closed sheet: it closes once that answers.
     if (busy) return;
     signIn.cancel();
+    letGo();
     onClose();
   };
   const toTools = () => {

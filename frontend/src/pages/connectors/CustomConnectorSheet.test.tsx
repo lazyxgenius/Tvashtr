@@ -366,6 +366,51 @@ describe("CustomConnectorSheet", () => {
     expect(screen.getByRole("button", { name: "Check the server" })).toBeEnabled();
   });
 
+  it("removes the row a check made when the address is changed or the sheet is closed", async () => {
+    // The check makes a pending connection that no list shows. Left behind it keeps its server
+    // name, and the connector that is connected next is called "acme-metrics-2".
+    const removed = (calls: { method: string; path: string }[]) =>
+      calls.filter((c) => c.method === "DELETE").map((c) => c.path);
+    let calls = serve({ "DELETE /api/connectors/c1": { removed_from_agents: 0, revoked: false } });
+    show();
+    fill();
+    click("Check the server");
+    await screen.findByText(/You’ll sign in at/);
+    type("Server address", "https://mcp.acme.dev/v2");
+    expect(removed(calls)).toEqual(["/api/connectors/c1"]);
+    // Nothing is checked now: closing removes nothing more.
+    click("Cancel");
+    expect(removed(calls)).toEqual(["/api/connectors/c1"]);
+    cleanup();
+
+    calls = serve({ "DELETE /api/connectors/c1": { removed_from_agents: 0, revoked: false } });
+    const { onClose } = show();
+    fill();
+    click("Check the server");
+    await screen.findByText(/You’ll sign in at/);
+    click("Cancel");
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(removed(calls)).toEqual(["/api/connectors/c1"]);
+  });
+
+  it("leaves the row alone once a sign-in was started for it", async () => {
+    // The window may still be open (Desktop's browser always is): the sign-in can finish behind
+    // a cancelled wait or a closed sheet, and must find its connection.
+    const calls = serve({
+      "DELETE /api/connectors/c1": { removed_from_agents: 0, revoked: false },
+    });
+    show();
+    fill();
+    click("Check the server");
+    await screen.findByText(/You’ll sign in at/);
+    click("Continue to auth.acme.dev");
+    await screen.findByText("Waiting for you to finish in the acme-metrics window");
+    click("Cancel"); // the wait
+    type("Server address", "https://mcp.acme.dev/v2");
+    click("Cancel"); // the sheet
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
   it("doesn’t close while the server is being checked", async () => {
     let answer: (row: Connection) => void = () => {};
     serve({

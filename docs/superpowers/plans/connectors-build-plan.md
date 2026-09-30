@@ -927,6 +927,10 @@ on Browse. Calls `refreshBadges()` after every mutation.
     `Authorization` default is only for a connection that names no field. (It first searched
     the catalog by host and read one page, which dead-ended for the 42 key connectors on
     `mcp.apify.com` past the first 48. Fixed after review.)
+  - The custom sheet removes the pending row its check made (`DELETE`, best effort) when the
+    address is edited or the sheet is closed, unless a sign-in was started for that row (its
+    window may still finish it). Left behind, the row was listed nowhere and kept its slug, so
+    the connector connected next got a `-2` server name (fixed after review).
   - A custom connector is made read only (the check comes before the choice); Read & write is a
     `PATCH access` once the sign-in is through, and a failed one is said in a toast. A name
     changed after the check is a `PATCH name` sent before the sign-in starts, while the row is
