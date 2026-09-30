@@ -411,7 +411,7 @@ describe("ConnectorDetailPage", () => {
     expect(dialog).toHaveTextContent("Read only applies at once, also to a run that is going.");
     fireEvent.click(within(dialog).getByRole("button", { name: "Read & write" }));
     expect(dialog).toHaveTextContent(
-      "Each agent stays read only until you choose Read & write for it in its Skills & tools tab.",
+      "Each agent stays read only until you choose Read & write for it in its Skills & tools tab. A run that is going keeps the access it started with.",
     );
     fireEvent.click(save);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

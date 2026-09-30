@@ -39,6 +39,10 @@ OAUTH_SECRET = {
 }
 
 
+def grant_of(tool_config: dict, connection_id: str) -> str | None:
+    return connectors.grant_access(tool_config, uuid.UUID(connection_id))
+
+
 def _refused(resp, status: int, code: str) -> dict:
     assert resp.status_code == status, resp.text
     detail = resp.json()["detail"]
@@ -214,6 +218,50 @@ def test_patch_access_narrows_and_widens(upstream, tokens):
     assert narrow["access"] == "read"
     assert [(t["write"], t["on"]) for t in narrow["tools"]] == [(False, True), (True, False)]
     assert upstream.lists == [] and tokens.asked == []  # no provider call for an access change
+
+
+def test_narrowing_a_connection_takes_read_and_write_back_from_every_agent():
+    """A grant left at ``write`` under a read-only connection shows nowhere, and widening the
+    connection later would hand that agent write again with nobody choosing it. Narrowing makes
+    every library agent's grant ``read``, so "each agent stays read only until you choose Read &
+    write for it" is true."""
+    c, owner = fresh_account()
+    cid = add_connection(owner, "linear", access="write")
+    keep = add_connection(owner, "supabase", access="write")
+    team = make_team(owner, "Team")
+    clone = make_team(owner, "Run snapshot", library=False)
+    both = {
+        "mcpServers": {"fetch": {"command": "uvx"}},
+        "tvashtr": {
+            "connectors": [{"id": keep, "access": "write"}, {"id": cid, "access": "write"}]
+        },
+    }
+    engineer = make_node(team, "Engineer", tool_config=both)
+    reviewer = make_node(team, "Reviewer", x=1, tool_config=grant(cid))
+    snapshot = make_node(clone, "Engineer", tool_config=grant(cid, "write"))
+
+    def users(body: dict) -> dict:
+        return {a["role_name"]: a["access"] for a in body["used_by_agents"]}
+
+    before = c.get(f"/api/connectors/{cid}").json()
+    assert users(before) == {"Engineer": "write", "Reviewer": "read"}
+
+    narrow = c.patch(f"/api/connectors/{cid}", json={"access": "read"})
+    assert narrow.status_code == 200, narrow.text
+    assert node_row(engineer).tool_config == {
+        "mcpServers": {"fetch": {"command": "uvx"}},
+        "tvashtr": {"connectors": [{"id": keep, "access": "write"}, {"id": cid, "access": "read"}]},
+    }
+    assert node_row(reviewer).tool_config == grant(cid)  # untouched: it named no access
+    assert node_row(snapshot).tool_config == grant(cid, "write")  # run history stays as it ran
+
+    wide = c.patch(f"/api/connectors/{cid}", json={"access": "write"})
+    assert wide.status_code == 200, wide.text
+    after = c.get(f"/api/connectors/{cid}").json()
+    assert users(after) == {"Engineer": "read", "Reviewer": "read"}
+    # Widening, renaming and a PATCH that names no access change no grant.
+    assert c.patch(f"/api/connectors/{keep}", json={"name": "Db"}).status_code == 200
+    assert grant_of(node_row(engineer).tool_config, keep) == "write"
 
 
 def test_patch_access_a_connector_doesnt_have_is_invalid():

@@ -764,9 +764,9 @@ def _new_scope(entry: dict, raw: object, name: str) -> dict | None:
 def change(owner_id: uuid.UUID, connection_id: object, body: dict) -> dict:
     """``PATCH /api/connectors/{id}``: ``access``, ``scope``, ``name`` and, for a key connection,
     ``credentials``. Every field is checked before anything is written, so a refused request
-    changes nothing. A name never changes the slug, except on a ``pending`` connection. A new key
-    is checked against the provider first; a rejected one leaves the old key and the status
-    alone."""
+    changes nothing. ``access: read`` also makes every library agent's grant for it ``read``. A
+    name never changes the slug, except on a ``pending`` connection. A new key is checked
+    against the provider first; a rejected one leaves the old key and the status alone."""
     changes: dict = {}
     headers = tools = None
     with session_scope() as session:
@@ -799,11 +799,27 @@ def change(owner_id: uuid.UUID, connection_id: object, body: dict) -> dict:
         with provider_slot(owner_id):
             tools = _list_tools(draft, headers, rejected)
 
+    narrowed = changes.get("access") == "read"
     with session_scope() as session:
-        # The key is part of the stored sign-in: its writer holds the row lock.
-        row = get_owned(session, owner_id, connection_id, for_update=headers is not None)
+        # The key is part of the stored sign-in: its writer holds the row lock. So does a writer
+        # of grants (the same order as ``disconnect`` and ``set_agents``: the row, then the nodes).
+        row = get_owned(
+            session, owner_id, connection_id, for_update=headers is not None or narrowed
+        )
         for field, value in changes.items():
             setattr(row, field, value)
+        if narrowed:
+            # A grant left at ``write`` would show nowhere while the connection is read only, and
+            # come back by itself when it is widened. Run snapshots keep what they ran with.
+            nodes = owner_agent_nodes(session, owner_id)
+            _lock_nodes(session, nodes)
+            for node, _team in nodes:
+                if grant_access(node.tool_config, row.id) == "write":
+                    grants = [
+                        {**g, "access": "read"} if _is_grant(g, row.id) else g
+                        for g in _grants(node.tool_config)
+                    ]
+                    node.tool_config = _with_grants(node.tool_config, grants)
         if "name" in changes and row.status == "pending":
             # Not connected yet, so no agent's tools are named after the slug: it follows the
             # name (a custom connector is named after its address is checked).

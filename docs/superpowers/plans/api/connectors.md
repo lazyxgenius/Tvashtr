@@ -340,7 +340,13 @@ of the owner's last 30 runs.
 
 ### `PATCH /api/connectors/{id}`
 - `access`: `read` | `write`. 422 `invalid_access` when the mode isn't in `access_modes`. Narrowing
-  to `read` applies at once, also to a run that is going.
+  to `read` applies at once, also to a run that is going. It also rewrites the grant of every
+  library-team agent that has this connection with `access: "write"` to `"read"`, in the same
+  transaction (row lock, then the agent nodes' locks, as `DELETE` does), so widening later hands
+  no agent write back: each stays read only until Read & write is chosen for it again. Run
+  snapshots are not rewritten, and a run that is going keeps the access its token was signed
+  with (the proxy applies the lower of that and the row's), so a run started with Read & write
+  before the narrowing writes again once the connection is widened.
 - `scope`: `{"value", "label"}` or `null`. 409 `{"code": "no_scope", …}` when the connector has no
   `scope_picker`. `value` must match `^[A-Za-z0-9_.-]{1,80}$`, else 422
   `{"code": "invalid_scope", "message": "That doesn’t look like a project id."}` (it becomes a query

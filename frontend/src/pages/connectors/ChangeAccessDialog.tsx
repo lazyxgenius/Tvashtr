@@ -70,7 +70,7 @@ export function ChangeAccessDialog({
         disabled={busy}
         hint={
           access === "write"
-            ? "Each agent stays read only until you choose Read & write for it in its Skills & tools tab."
+            ? "Each agent stays read only until you choose Read & write for it in its Skills & tools tab. A run that is going keeps the access it started with."
             : "Read only applies at once, also to a run that is going."
         }
       />
