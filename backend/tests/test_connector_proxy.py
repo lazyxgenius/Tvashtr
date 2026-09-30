@@ -502,6 +502,49 @@ def test_a_listing_is_trusted_for_a_minute_and_replaced_not_added_to(monkeypatch
     assert connector_proxy._read_only_hints == {}
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        connector_upstream.UpstreamRefused(403),
+        connector_upstream.UpstreamUnreachable("timed out"),
+        connector_upstream.UpstreamUnauthorized(),
+        McpError(ErrorData(code=-32601, message="Method not found")),
+        "hang",
+    ],
+)
+def test_with_write_access_a_call_does_not_wait_on_the_listing(monkeypatch, error):
+    """The proxy lists before a call only to tell a read from a write. With write access the rule
+    allows the call either way, so a provider that won't list (after a restart, say) still gets
+    the call; what it was is unknown, so it is recorded as a write."""
+    monkeypatch.setattr(connector_proxy, "LIST_TIMEOUT_SECONDS", 0.05)
+    upstream = FakeUpstream()
+    grant = _grant("write", access="write")  # nothing listed on this process yet
+    if error == "hang":
+        upstream.hang = True
+    else:
+        upstream.fail = [error]
+
+    result = _call(grant, upstream, "list_issues", {"query": "is:open"})
+
+    assert result is upstream.result
+    assert len(upstream.lists) == 1 and len(upstream.calls) == 1
+    (event,) = _events(grant)
+    assert (event.payload["write"], event.payload["ok"]) == (True, True)
+    # The provider answered the call: the run did not go without it.
+    assert _warnings(grant) == [] and _events(grant, "connector_skipped") == []
+    assert _row(grant).status == "connected"
+    # The next call doesn't wait on a listing again.
+    assert _call(grant, upstream, "get_issue") is upstream.result
+    assert len(upstream.lists) == 1 and len(upstream.calls) == 2
+
+    # With read access the listing decides, so without it the call is not made.
+    upstream = FakeUpstream()
+    upstream.hang, upstream.fail = error == "hang", [] if error == "hang" else [error]
+    grant = _grant("read")
+    assert _call(grant, upstream, "list_issues").isError
+    assert upstream.calls == []
+
+
 def test_the_rows_access_narrowed_mid_run_wins_over_the_token():
     upstream = FakeUpstream()
     grant = _grant("write", access="write")

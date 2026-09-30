@@ -325,10 +325,13 @@ async def _provider[T](
     row: ConnectorConnection,
     access: str,
     request: Callable[[str, str, dict], Awaitable[T]],
+    *,
+    quiet: bool = False,
 ) -> T:
     """``request(url, transport, headers)`` against the provider, the credential added here. Only
     a 401 means the sign-in expired: one refresh and one retry, then ``needs_signin``. Anything
-    else changes nothing. Raises :class:`_Failed`."""
+    else changes nothing. Raises :class:`_Failed`. ``quiet`` is for a request the agent's call
+    doesn't depend on: its failure marks and records nothing."""
     unauthorized = connector_upstream.UpstreamUnauthorized
     try:
         if row.status != "connected":
@@ -347,10 +350,12 @@ async def _provider[T](
             except unauthorized:
                 raise connector_oauth.SignInRefused from None
     except connector_oauth.SignInRefused:
-        await _thread(sign_in_expired, grant.run_id, grant.node_id, row)
+        if not quiet:
+            await _thread(sign_in_expired, grant.run_id, grant.node_id, row)
         raise _Failed(f"{row.name} needs you to sign in again.") from None
     except (connector_oauth.Unreachable, connector_upstream.UpstreamUnreachable, TimeoutError):
-        await _thread(record_skip, grant.run_id, grant.node_id, row.id, row.name, UNREACHABLE)
+        if not quiet:
+            await _thread(record_skip, grant.run_id, grant.node_id, row.id, row.name, UNREACHABLE)
         raise _Failed(f"We couldn’t reach {row.name}. Try again.") from None
     except connector_upstream.UpstreamRefused as exc:
         raise _Failed(f"{row.name} refused the request ({exc.status}).") from None
@@ -358,7 +363,9 @@ async def _provider[T](
         raise _Failed(f"{row.name} answered an error: {exc.error.message}") from None
 
 
-async def _listed(grant: RunGrant, row: ConnectorConnection, access: str, upstream: Any) -> list:
+async def _listed(
+    grant: RunGrant, row: ConnectorConnection, access: str, upstream: Any, *, quiet: bool = False
+) -> list:
     """The provider's own tool list, within ``LIST_TIMEOUT_SECONDS``."""
 
     async def request(url: str, transport: str, headers: dict) -> list[Tool]:
@@ -372,7 +379,7 @@ async def _listed(grant: RunGrant, row: ConnectorConnection, access: str, upstre
             # went without the connector all the same.
             raise connector_upstream.UpstreamUnreachable(type(exc).__name__) from None
 
-    tools = await _provider(grant, row, access, request)
+    tools = await _provider(grant, row, access, request, quiet=quiet)
     _read_only_hints[row.id, access] = (
         time.monotonic(),
         {tool["name"]: tool["read_only"] for tool in connectors.stored_tools(tools)},
@@ -419,7 +426,15 @@ async def _is_write(
         return False  # a read whatever its annotation (the provider's own flag is on)
     seen = _read_only_hints.get((row.id, access))
     if seen is None or time.monotonic() - seen[0] > HINTS_MAX_AGE_SECONDS:
-        await _listed(grant, row, access, upstream)
+        try:
+            await _listed(grant, row, access, upstream, quiet=access == "write")
+        except _Failed:
+            if access != "write":
+                raise
+            # With write access the rule allows the call whatever the list says; the list only
+            # tells the record a read from a write. The call goes on (as a write when nothing
+            # is known), and the provider isn't asked to list again for a while.
+            _read_only_hints[row.id, access] = (time.monotonic(), seen[1] if seen else {})
         seen = _read_only_hints.get((row.id, access))
     read_only = seen is not None and seen[1].get(name, False)
     return connector_catalog.is_write(entry, {"name": name, "read_only": read_only}, access)
