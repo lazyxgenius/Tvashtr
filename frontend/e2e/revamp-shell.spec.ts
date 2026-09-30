@@ -43,9 +43,16 @@ test("the dashboard shell: addresses, nav, refresh, back, shortcuts, account, ca
   await nav.getByRole("button", { name: /^Subscriptions/ }).click();
   await expect(page).toHaveURL(/#\/engines\/subscriptions$/);
 
-  // Toolkit expands into Tools / Skills / Memory / Secrets, each with its own address.
+  // Toolkit opens on Connectors, its first page (a new account, with nothing connected, is sent on
+  // to Browse), and expands into Connectors / Tools / Skills / Memory / Secrets, each with its own
+  // address.
   await nav.getByRole("button", { name: /^Toolkit/ }).click();
-  await expect(page).toHaveURL(/#\/toolkit\/tools$/);
+  await expect(page).toHaveURL(/#\/toolkit\/connectors\/browse$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Connectors" })).toBeVisible();
+  await expect(nav.getByRole("button", { name: /^Connectors/ })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   for (const [label, url] of [
     ["Skills", /#\/toolkit\/skills$/],
     ["Memory", /#\/toolkit\/memory/],

@@ -31,7 +31,9 @@ test("M-tools C7.C: library shelves + Add-from-library pickers + taken tool name
   // (a) Add a tool on Toolkit › Tools (the Add tool wizard: Basics → a Local command → Add tool)
   //     and a skill on Toolkit › Skills, then screenshot each page. Each name is matched EXACTLY
   //     so a built-in catalog/preset entry can't satisfy the check.
+  //     Toolkit opens on Connectors, its first page; Tools is the next one in the nav.
   await nav.getByRole("button", { name: /^Toolkit/ }).click();
+  await nav.getByRole("button", { name: /^Tools/ }).click();
   await expect(page).toHaveURL(/#\/toolkit\/tools$/);
   await expect(page.getByRole("heading", { level: 1, name: "Tools" })).toBeVisible({
     timeout: 30_000,
