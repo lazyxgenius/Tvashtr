@@ -6,11 +6,18 @@ artboards, git-excluded), per the brief `prompts/revamp-e2e.md`.
 
 ## Round 2 — revamp-e2e session (start here to resume)
 
-**Next (revamp-finish session, brief `prompts/revamp-e2e.md` Sidechat-16 version):** the Domains
-deploy is paused at Ship Protocol step 6 — see NEEDS_HUMAN below; after the operator's "go": `fly
-deploy`, smoke, `desktop-v0.12.0`, DMG check, then Phase 3 close-out.
+**Round 2 is DONE (2026-09-30, revamp-finish session).** Every area is shipped (ship log below),
+the Phase 3 e2e table is green on `main` 13a6e28 (25/25 specs), and the local worktrees and test
+databases are removed. What is left over is listed under "Round 2 — left over" with where each item
+is recorded. Next queued work (not part of the revamp): the Connectors use case in `STATE.md`.
 
 ### NEEDS_HUMAN (2026-09-30 ~01:35 IST) — Domains deploy paused at Ship Protocol step 6
+
+**RESOLVED 2026-09-30 09:27 IST:** the operator signed the Neon CLI in and said "take the snapshot and
+continue". The session created Neon branch `pre-0042-2026-09-30` (`br-spring-night-azbi4vfk`, parent
+`production`, LSN 0/74437D8, 03:56:20 UTC, no compute) in project `billowing-mud-37479513`; no
+`tv-run-*` Fly app existed and the prod logs showed only an idle Desktop runner polling, so no run
+was in flight. Deployed as Fly v28.
 `main` has Domains merged and pushed; it is NOT deployed (prod still runs Fly v27 = F6). Domains adds
 migration `0042_domain_message_meta` (one nullable JSONB column `domain_messages.meta`, no backfill;
 the Fly release_command applies it) and new steps in `team_run.py`. Before the deploy the operator:
@@ -42,7 +49,63 @@ replaced. Remedy: new key on the `OPENAI_API_KEY` line of `.env` → `make seed`
 | Desktop app screens | `feat/revamp-desktop-app` | `9e2aaa0` | v25 | `desktop-v0.9.0` — latest release; DMG app 0.9.0 bundles `index-O26nkR8a.js` = the live site |
 | Website pages | `feat/revamp-website` | `c7848be` | v26 | `desktop-v0.10.0` — latest release; DMG app 0.10.0 bundles `index-gm2lGZ9k.js` = the live site |
 | F6 — Focus view + Documents (+ Q20 run drawer) | `feat/revamp-f6-focus-docs` | `dc8fe9c` | v27 | `desktop-v0.11.0` — latest release; DMG app 0.11.0 bundles `index-CDpUAiQy.js` = the live site |
-| Domains (+ architect rulings 1 and 2) | `feat/revamp-domains` | recorded at deploy (Phase 3) | recorded at deploy (Phase 3) | `desktop-v0.12.0` (tagged at deploy) |
+| Domains (+ architect rulings 1 and 2) | `feat/revamp-domains` | `13a6e28` | v28 (migration `0042` applied by the release_command) | `desktop-v0.12.0` — latest release; DMG app 0.12.0 bundles `index-5faX1Gj9.js` = the live site |
+
+### Phase 3 — full e2e table (2026-09-30, `main` 13a6e28, one spec at a time)
+Real stack: backend + Vite on the Domains worktree (= `main`), LOCAL sandbox, database `tvashtr_dm`,
+stale runs and PENDING DBOS workflows cleared before every spec. Phase 3 changed no code, so there
+was no final ship.
+
+| Spec | How it ran | Result |
+|---|---|---|
+| `accounts` | `scripts/accounts_e2e.sh` | pass — 1 passed (4.6s) |
+| `auth` | `scripts/auth_e2e.sh` | pass — 1 passed (4.3s) |
+| `authoring-brief` | `scripts/authoring_brief_e2e.sh` | pass — 1 passed (25.5s) |
+| `capability-edit` | `scripts/capability_edit_e2e.sh` | pass — 1 passed (6.3s) |
+| `edits-toggle` | `scripts/edits_toggle_e2e.sh` | pass — 1 passed (5.7s) |
+| `endpoint-edit` | `scripts/endpoint_edit_e2e.sh` | pass — 1 passed (5.5s) |
+| `launch-panel` | `scripts/launch_panel_e2e.sh` | pass — 1 passed (6.2s) |
+| `memory_shelf` | `scripts/memory_shelf_e2e.sh` | pass — 1 passed (12.4s) |
+| `model-picker` | `scripts/model_picker_e2e.sh` | pass — 1 passed (2.0s) |
+| `node-ask` | `scripts/node_ask_e2e.sh` | pass — 1 passed (21.1s) |
+| `run-diff` | `scripts/run_diff_e2e.sh` | pass — 1 passed (17.1s) |
+| `scope-picker` | `scripts/scope_picker_e2e.sh` | pass — 1 passed (1.6s) |
+| `secret-gate` | `scripts/secret_gate_e2e.sh` | pass — 1 passed (1.6s) |
+| `steering` | `scripts/steering_e2e.sh` | pass — 1 passed (1.4m) |
+| `team-edit` | `scripts/team_edit_e2e.sh` | pass — 1 passed (13.8s) |
+| `team-library` | `scripts/team_library_e2e.sh` | pass — 1 passed (17.4s) |
+| `tools-c7c` | `scripts/tools_c7c_e2e.sh` | pass — 1 passed (3.4s) |
+| `topology` | `scripts/topology_e2e.sh` | pass — 2 passed (20.5s) |
+| `work-brief` | `scripts/work_brief_e2e.sh` | pass — 1 passed (17.5s) |
+| `domains` | `run_specs` | pass — 1 passed (3.0s) |
+| `fix1_signoff` | `run_specs` | pass — 6 passed (9.8s) |
+| `revamp-shell` | `run_specs` | pass — 1 passed (5.3s) |
+| `tools-c7a` | `run_specs` | pass — 1 passed (2.3s) |
+| `website` | `run_specs` | pass — 8 passed (5.3s) |
+| `demo-proof` | `make demo-proof` | pass — PR_URL(local): https://github.com/lazyxgenius/trade_mcp/pull/29 1 passed (1.4m) |
+
+### Round 2 — left over (not built; each is recorded where named)
+- Engines › "Get Tvashtr Desktop" dialog still says "Runs stop when you quit the app" (F2's parity
+  record) — recorded under "Website pages — what shipped" › Follow-ups.
+- A `tv_oauth_state` cookie from a sign-in abandoned in the last 10 minutes sends a GitHub App install
+  return (no code) to "sign-in expired" — same place.
+- Domain files are stored under `/tmp` on the Fly machine, so a restart loses uploaded files (a Fly
+  volume is the operator's call) — "Domains — what shipped" › Follow-ups.
+- Domains review #9 (two same-name creates at once can both succeed; a unique index needs a
+  migration) and #10 (Run tests after re-reading a file that is already being read) — same place.
+- F6 review #5: a whole-line delete shows no band in the focus editor (the same on `main` before F6) —
+  "F6 … what shipped".
+- Self-host the fonts to drop the Google Fonts data flow (the privacy page discloses it today); the
+  Codex status hint can carry the email Codex prints; a local app registered for `tvashtr://` could
+  take the auto-returned code after an interactive GitHub step (accepted: needs local malware) —
+  "Desktop app screens — what shipped" › Follow-ups.
+- `DmF-Canvas-1` Desktop: the menu label keys to the trigger in the matcher (measured 11px/600 =
+  design) — `docs/superpowers/parity/domains.txt` waiver.
+- LOCAL-sandbox live gates can leave the PM's `REPORT.md` / `REVIEW_VERDICT.json` outside the run
+  workspace (seen at a checkout root and in `backend/`) — recorded here only; check `git status`
+  after local live gates (the Fly sandbox used in prod has no such path).
+- Neon snapshot branches `before-revamp-r1` (2026-09-26) and `pre-0042-2026-09-30` can be deleted by
+  the operator once the revamp has run clean in prod for a while.
 
 ### Domains — what shipped (`feat/revamp-domains`)
 - Domains pages: the list and its nav group; a domain's page (header, setup and summary strips,
@@ -340,6 +403,11 @@ replaced. Remedy: new key on the `OPENAI_API_KEY` line of `.env` → `make seed`
   deploy are not resumed by the new code.
 
 ### Round-2 working setup (for a session that resumes)
+- Closed out 2026-09-30: the worktrees `.claude/worktrees/{f2-engines, f3-tools-secrets,
+  f4-skills-memory, f5-panel, desktop-app, website, f6-focus-docs, domains}` (every branch shipped and
+  pushed) and the databases `tvashtr_f2`…`tvashtr_f6`, `tvashtr_dt`, `tvashtr_web`, `tvashtr_dm`,
+  `tvashtr_gate` are removed locally; remote branches and tags are kept. The notes below describe how
+  round 2 ran.
 - Builders run as Workflow scripts, one per area, each in its own worktree + database + ports, at most
   3 at once: `.claude/worktrees/f2-engines` (`feat/revamp-f2-engines`, db `tvashtr_f2`, backend 8011,
   e2e Vite 5181, parity Vite 5191), `f3-tools-secrets` (`feat/revamp-f3-tools-secrets`, `tvashtr_f3`,
@@ -443,12 +511,8 @@ The design canvas is too big for a browser to open, so read it file by file:
 
 ## Known issues and follow-ups
 
-- **Old e2e specs are stale.** The landing page changed on Sep 22 (before round 1), and several
-  specs still drive the old dashboard ("Open <team>", a seeded "My team"). Updated so far:
-  `revamp-shell`, and partly `team-library`, `edits-toggle`, `node-ask`, `run-diff`,
-  `scope-picker`, `steering`, `team-edit`, `model-picker`, `fix1_signoff` (via
-  `e2e/_myTeam.ts`). Still to rewrite for the new UI: `accounts`, `auth`, `demo-proof`,
-  `capability-edit`, `endpoint-edit`, and re-verify the rest.
+- ~~Old e2e specs are stale.~~ Resolved in round 2: all 25 specs in `frontend/e2e` pass on `main`
+  13a6e28 (the Phase 3 table above).
 - Lint baseline (unchanged by round 1): 69 eslint errors and ~29 prettier-unformatted files in
   older frontend files; ~38 ruff errors in older backend files.
 - Adding a memory needs the OpenAI embedding service (it can't be exercised offline); its unit
