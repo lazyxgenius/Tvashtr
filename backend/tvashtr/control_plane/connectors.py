@@ -182,6 +182,14 @@ def _signin(row: ConnectorConnection) -> tuple[str | None, bool]:
     return (urlsplit(endpoint).hostname if endpoint else None), in_flight
 
 
+# The engine's own tools (the two the adapter gives every agent, and the OpenHands SDK's
+# built-ins). An agent with one MCP server sees that server's tool names with no prefix, and a
+# name it has twice stops it from starting: the proxy never offers a provider's tool of that name.
+ENGINE_TOOL_NAMES = frozenset(
+    {"terminal", "file_editor", "finish", "think", "invoke_skill", "switch_llm"}
+)
+
+
 def serialize(row: ConnectorConnection, users: list[dict] | None = None) -> dict:
     """One connection as every connection endpoint returns it. ``users`` are the usage rows of the
     agents that have it (they become ``used_by``). Nothing encrypted and no ``state_hash`` is ever
@@ -201,7 +209,8 @@ def serialize(row: ConnectorConnection, users: list[dict] | None = None) -> dict
                     "name": tool.get("name"),
                     "title": tool.get("title"),
                     "write": write,
-                    "on": row.access == "write" or not write,
+                    "on": (row.access == "write" or not write)
+                    and tool.get("name") not in ENGINE_TOOL_NAMES,
                 }
             )
     return {

@@ -183,7 +183,8 @@ Why one table is enough:
   `signin_host_differs` is `true` when it is not on the same site as `host` (`connector_net.site`,
   see Outbound address rules); the UI then shows the sign-in host prominently before continuing.
 - `tools`: `null` until the first successful tool listing; at most 500. `write` = Tvashtr counts
-  the tool as a write (below). `on` = agents can call it at this connection's `access`.
+  the tool as a write (below). `on` = agents can call it at this connection's `access` (never
+  for a tool named like one of the engine's own, see The proxy).
 - `used_by`: counted over the owner's **library** teams only, `agent`/`completion` nodes, like
   tools.
 - `used_by_agents` (usage rows): always on `GET /api/connectors/{id}`. On the rows of
@@ -798,8 +799,12 @@ the bare path 405. `/mcp/domains` is mounted the same way, with the same list.
   (≤ 2,000), `inputSchema` and the four hints of `annotations` (its `title` ≤ 200), and nothing
   else (`outputSchema`, `icons`, `_meta` and any extra field are dropped). A tool whose name is
   over 200 characters or whose `inputSchema` is over 32,000 characters of JSON is left out, and
-  only the provider's first 200 tools are read. A tool that is left out is not callable as a
-  read either. The provider gets 10 s to answer. A bad token, an unreachable provider or a
+  only the provider's first 200 tools are read. So is a tool named like one of the engine's own
+  (`terminal`, `file_editor`, `finish`, `think`, `invoke_skill`, `switch_llm`:
+  `connectors.ENGINE_TOOL_NAMES`) or like one already listed: an agent whose only MCP server is
+  this connector sees the provider's names with no prefix, and a name it has twice stops it from
+  starting. The connection's `tools` show such a tool with `on: false`. A tool that is left out
+  is not callable as a read either. The provider gets 10 s to answer. A bad token, an unreachable provider or a
   provider that is too slow answers an empty list, never an error (one failing server must not
   stop the agent from starting); the unreachable and too-slow cases also write a warning. So
   does a provider that

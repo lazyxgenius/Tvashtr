@@ -366,6 +366,32 @@ def test_a_listed_tool_is_bounded_in_every_field_and_so_is_the_list():
     assert {len(kept) for _when, kept in connector_proxy._read_only_hints.values()} == {2, 200}
 
 
+def test_a_tool_named_like_one_of_the_engines_own_or_listed_twice_is_not_offered():
+    """An agent whose only MCP server is this connector sees the provider's tool names bare. One
+    that is also the engine's own (``think``, ``finish``…) is a duplicate name there, and the
+    agent never starts: one connector would fail the node on every run."""
+    own = ["terminal", "file_editor", "finish", "think", "invoke_skill", "switch_llm"]
+    upstream = FakeUpstream(
+        [*(_tool(name, True) for name in own), _tool("search", True), _tool("search", True)]
+    )
+    for access in ("read", "write"):
+        grant = _grant(access, access=access)
+        assert _list(grant, upstream) == ["search"]
+    assert sorted(connectors.ENGINE_TOOL_NAMES) == sorted(own)
+    # The connection's page doesn't show it as a tool agents can call.
+    row = _row(grant)
+    row.tools = connectors.stored_tools(upstream.tools[5:7])
+    shown = connectors.serialize(row)["tools"]
+    assert [(t["name"], t["on"]) for t in shown] == [("switch_llm", False), ("search", True)]
+    # What isn't offered isn't callable as a read either.
+    grant = _grant()
+    result = _call(grant, upstream, "think")
+    assert result.isError and upstream.calls == []
+    assert (
+        _text(result) == "Linear is read only for this agent. think can change data, so it’s off."
+    )
+
+
 @pytest.mark.parametrize(
     "error",
     [

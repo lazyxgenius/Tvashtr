@@ -429,13 +429,18 @@ def _bounded(tools: list[Tool]) -> list[Tool]:
     """A provider's tools as an agent may see them: the first ``TOOLS_LIMIT``, each with only the
     fields below and a ceiling on every one, so an unreviewed server can't pour text into an
     agent's context (or into what this process keeps). A tool whose name or input schema is over
-    its ceiling is left out: cut, it would be another tool."""
+    its ceiling is left out: cut, it would be another tool. So is one named like a tool of the
+    engine's own, or like one already kept: one connector must not fail the round."""
     kept: list[Tool] = []
+    names: set[str] = set(connectors.ENGINE_TOOL_NAMES)
     for tool in tools:
         if len(kept) == TOOLS_LIMIT:
             break
         if len(tool.name) > NAME_LIMIT or len(json.dumps(tool.inputSchema)) > SCHEMA_LIMIT:
             continue
+        if tool.name in names:
+            continue
+        names.add(tool.name)
         notes = tool.annotations
         kept.append(
             Tool(
