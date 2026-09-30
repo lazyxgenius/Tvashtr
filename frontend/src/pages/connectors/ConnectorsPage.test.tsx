@@ -3,7 +3,7 @@
  * CnF-Expired-1): the tabs and their counts, the Connected table, the "sign-in expired" banner,
  * and Browse (Featured, From the MCP Registry, search, categories, Show more, Coming soon, Custom).
  */
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CatalogEntry, Connection } from "../../lib/api/connectors";
@@ -17,12 +17,24 @@ vi.mock("../../lib/workspaceStatus", async (importOriginal) => ({
   refreshBadges: vi.fn(async () => {}),
 }));
 
+function fakePopup() {
+  return { location: { href: "about:blank" }, opener: window as unknown, close: vi.fn() };
+}
+let popup: ReturnType<typeof fakePopup>;
+
 beforeEach(() => {
   resetToolkitStores();
   window.location.hash = "#/toolkit/connectors";
+  popup = fakePopup();
+  vi.stubGlobal(
+    "open",
+    vi.fn(() => popup),
+  );
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
+  delete document.documentElement.dataset.tvashtrDesktop;
   vi.unstubAllGlobals();
   vi.mocked(refreshBadges).mockClear();
   resetToolkitStores();
@@ -425,5 +437,171 @@ describe("Browse", () => {
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("region", { name: "Featured" })).toBeInTheDocument();
+  });
+});
+
+describe("connecting", () => {
+  const APIFY_ROW = connection({
+    ...plain,
+    id: "c9",
+    connector_key: APIFY.key,
+    name: "Apify",
+    slug: "apify",
+    publisher: null,
+    featured: false,
+    reviewed: false,
+    category: null,
+    host: "mcp.apify.com",
+    auth_kind: "api_key",
+    signin_host: null,
+    used_by: { agent_count: 0, team_count: 0 },
+  });
+
+  /** Connect Apify with a key from Browse; the list then holds it. */
+  async function connectApify() {
+    let connections = [SUPABASE];
+    const calls = mockApi({
+      "GET /api/connectors": () => ({ connections }),
+      "GET /api/connectors/catalog": catalog,
+      "POST /api/connectors": () => {
+        connections = [SUPABASE, APIFY_ROW];
+        return APIFY_ROW;
+      },
+    });
+    const view = renderWithProviders(<ConnectorsPage view="browse" />);
+    const reg = await screen.findByRole("region", { name: "From the MCP Registry" });
+    const row = within(reg).getAllByRole("listitem")[0];
+    fireEvent.click(within(row).getByRole("button", { name: "Connect" }));
+    const sheet = screen.getByRole("dialog", { name: "Connect Apify" });
+    fireEvent.change(within(sheet).getByLabelText("API key"), { target: { value: "k" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Check and connect" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    return { calls, view, row };
+  }
+
+  it("connects from Browse, lands on Connected and says no agent has it yet", async () => {
+    const { view, row } = await connectApify();
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Apify is connected. No agent can use it until you turn it on.Give an agent access",
+    );
+    expect(window.location.hash).toBe("#/toolkit/connectors");
+    expect(refreshBadges).toHaveBeenCalled();
+    // Browse shows it as connected without asking the catalog again.
+    await waitFor(() => expect(row).toHaveTextContent("ConnectedOpen"));
+
+    view.rerender(<ConnectorsPage view="connected" />);
+    expect(screen.getByRole("tab", { name: "Connected 2" })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /Apify/ })).toHaveTextContent("ReadyNew");
+    expect(screen.getByRole("row", { name: /Supabase/ })).not.toHaveTextContent("New");
+  });
+
+  it("says on Desktop that the connection works from both", async () => {
+    document.documentElement.dataset.tvashtrDesktop = "true";
+    await connectApify();
+    const toast = await screen.findByRole("status");
+    expect(toast).toHaveTextContent(
+      "Apify is connected. It works for runs from the website and from Desktop.",
+    );
+    expect(within(toast).queryByRole("button")).toBeNull();
+  });
+
+  it("opens the custom sheet from the header and from the Custom card", async () => {
+    serve([SUPABASE]);
+    renderWithProviders(<ConnectorsPage view="browse" />);
+    fireEvent.click(screen.getByRole("button", { name: "Custom connector" }));
+    const sheet = screen.getByRole("dialog", { name: "Custom connector" });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add custom" }));
+    expect(screen.getByRole("dialog", { name: "Custom connector" })).toBeInTheDocument();
+  });
+
+  it("signs in again from the banner: the window opens with the click", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let connections = [SENTRY, SUPABASE];
+    let signedIn = false;
+    const calls = mockApi({
+      "GET /api/connectors": () => ({ connections }),
+      "GET /api/connectors/catalog": catalog,
+      "POST /api/connectors/c5/oauth/start": {
+        authorize_url: "https://sentry.io/oauth/authorize?state=s",
+        signin_host: "sentry.io",
+        expires_in: 600,
+      },
+      "GET /api/connectors/c5": () => ({
+        ...(signedIn ? { ...SENTRY, status: "connected", last_error: null } : SENTRY),
+        signin_pending: !signedIn,
+        used_by_agents: [],
+        recent_use: [],
+        revoke_hint: null,
+      }),
+    });
+    renderWithProviders(<ConnectorsPage view="connected" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in to Sentry" }));
+    expect(window.open).toHaveBeenCalledExactlyOnceWith(
+      "",
+      "tv-connect",
+      "popup,width=520,height=720",
+    );
+    expect(screen.getByRole("dialog", { name: "Sign in to Sentry" })).toBeInTheDocument();
+    await screen.findByText("Waiting for you to finish in the Sentry window");
+    expect(popup.location.href).toBe("https://sentry.io/oauth/authorize?state=s");
+
+    signedIn = true;
+    connections = [{ ...SENTRY, status: "connected", last_error: null }, SUPABASE];
+    await act(async () => void (await vi.advanceTimersByTimeAsync(2000)));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(await screen.findByText("Sentry is ready again.")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("row", { name: /Sentry/ })).toHaveTextContent("Ready"),
+    );
+    expect(screen.queryByRole("button", { name: "Sign in to Sentry" })).toBeNull();
+    expect(refreshBadges).toHaveBeenCalled();
+    expect(calls.filter((c) => c.path === "/api/connectors")).toHaveLength(2);
+  });
+
+  it("changes the project from a row’s menu", async () => {
+    const STAGING = { value: "efgh5678", label: "trade-mcp-staging · ap-southeast-1" };
+    let connections = [SUPABASE];
+    mockApi({
+      "GET /api/connectors": () => ({ connections }),
+      "GET /api/connectors/c1/scope-options": {
+        param: "project_ref",
+        label: "Project",
+        manual: false,
+        options: [
+          { value: "abcd1234", label: "trade-mcp-prod", detail: "ap-southeast-1" },
+          { value: "efgh5678", label: "trade-mcp-staging", detail: "ap-southeast-1" },
+        ],
+      },
+      "PATCH /api/connectors/c1": () => {
+        connections = [{ ...SUPABASE, scope: STAGING }];
+        return connections[0];
+      },
+    });
+    renderWithProviders(<ConnectorsPage view="connected" />);
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for Supabase" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Change project" }));
+    const sheet = screen.getByRole("dialog", { name: "Change project" });
+    fireEvent.click((await within(sheet).findAllByRole("radio"))[1]);
+    fireEvent.click(within(sheet).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Supabase now uses trade-mcp-staging.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole("row", { name: /Supabase/ })).toHaveTextContent(
+        "Project trade-mcp-staging",
+      ),
+    );
+  });
+
+  it("reads the list again when a sheet is closed (a sign-in may have finished)", async () => {
+    const calls = serve([SUPABASE]);
+    renderWithProviders(<ConnectorsPage view="connected" />);
+    await screen.findByRole("row", { name: /Supabase/ });
+    fireEvent.click(screen.getByRole("button", { name: "Custom connector" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(calls.filter((c) => c.path === "/api/connectors")).toHaveLength(2));
   });
 });

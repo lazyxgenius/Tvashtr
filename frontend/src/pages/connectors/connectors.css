@@ -308,3 +308,141 @@
 .cn-reg__host {
   color: var(--ink-500);
 }
+
+/* ---- The connect sheets (CnF-Sign-*, CnF-Key-*, CnF-Custom-*, CnF-Prob-*) ---- */
+.cn-note__text {
+  flex: 1;
+}
+.cn-lead {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-700);
+}
+.cn-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-500);
+}
+.cn-hint--field {
+  font-size: 12.5px;
+}
+.cn-error {
+  font-size: 12.5px;
+  color: var(--danger);
+}
+.cn-wait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 36px 20px;
+  border: 1px solid var(--line-200);
+  border-radius: 12px;
+  background: var(--surface-page);
+  text-align: center;
+}
+.cn-wait--warn {
+  border-color: var(--amber-100);
+  background: #fbf3e6;
+}
+.cn-wait__icon {
+  display: inline-flex;
+  color: var(--coral-500);
+}
+.cn-wait--warn .cn-wait__icon {
+  color: #7a5423;
+}
+.cn-wait__icon--spin svg {
+  animation: cn-spin 1s linear infinite;
+}
+@keyframes cn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cn-wait__icon--spin svg {
+    animation: none;
+  }
+}
+.cn-wait__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cn-wait__body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-500);
+  max-width: 360px;
+}
+.cn-wait--warn .cn-wait__body {
+  color: #6b4a1f;
+  max-width: 380px;
+}
+
+/* Step 3: one project per row */
+.cn-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cn-ask__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-900);
+}
+.cn-ask__sub {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.cn-picks {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cn-pick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-card);
+  cursor: pointer;
+}
+.cn-pick:has(input:checked) {
+  border-color: var(--coral-200);
+  background: var(--coral-100);
+}
+.cn-pick input {
+  accent-color: var(--coral-600);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+.cn-pick__text {
+  flex: 1;
+  min-width: 0;
+}
+.cn-pick__name {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cn-pick__detail {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.cn-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

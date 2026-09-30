@@ -1,5 +1,5 @@
 /** Copy helpers for the Connectors screens (labels, tiles, the "sign-in expired" banner). */
-import type { Connection, ConnectorAccess } from "../../lib/api/connectors";
+import type { Connection, ConnectorAccess, ReadOnlyBy } from "../../lib/api/connectors";
 import { titleCase } from "../../lib/text";
 import { joinNames } from "../secrets/secretFormat";
 import { agentNames } from "../tools/toolFormat";
@@ -97,4 +97,28 @@ export function registryCount(count: number, searching: boolean): string {
       ? "server"
       : "servers";
   return `${n} ${what} · listed by their makers · not reviewed by Tvashtr`;
+}
+
+/** Under "What agents may do": what keeps a read-only connection read only. */
+export function readOnlyHint(by: ReadOnlyBy): string {
+  // The provider's own flag (Supabase, the only one in v1).
+  if (by === "provider") {
+    return "Read only runs SQL as a read-only database user, so a query can’t change data.";
+  }
+  if (by === "scopes") {
+    return "Read only asks the provider for read-only access, so it refuses a write itself.";
+  }
+  return "Read only lets agents call only the tools this server marks as read-only. A tool it doesn’t mark counts as a write.";
+}
+
+/** "You didn’t allow access on Supabase." → the sentence without its full stop (a panel title). */
+export function firstSentence(message: string): string {
+  return message.split(/\.(?:\s|$)/)[0];
+}
+
+/** The toast after a connector is connected (CnF-Sign-5, CnF-Desk-4). */
+export function connectedToast(name: string, desktop: boolean): string {
+  return desktop
+    ? `${name} is connected. It works for runs from the website and from Desktop.`
+    : `${name} is connected. No agent can use it until you turn it on.`;
 }
