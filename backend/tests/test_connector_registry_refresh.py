@@ -3,6 +3,7 @@ snapshot it committed. No network: the crawl is replaced by a list of pages."""
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from tvashtr.control_plane import connector_catalog
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "refresh_connector_registry.py"
 OFFICIAL = "io.modelcontextprotocol.registry/official"
+_PAYS = re.compile(r"payment|wallet|private[-_]?key|pay[-_]?id", re.IGNORECASE)
 
 
 @pytest.fixture(scope="module")
@@ -177,6 +179,9 @@ def test_snapshot_loads(refresh):
         assert entry["transport"] in ("streamable-http", "sse")
         assert len(entry["description"]) <= 200
         assert entry["website"] is None or entry["website"].startswith("https://")
+        # No server whose key form would ask for a wallet, a private key or a pay-per-call token.
+        for declared in entry["headers"]:
+            assert not _PAYS.search(declared["name"]), line
         keys.append(entry["key"])
     assert keys == sorted(keys) and len(set(keys)) == len(keys)  # sorted, one line per key
     # No namespace is a link farm, and the catalog reads the whole file.

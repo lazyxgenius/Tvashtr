@@ -257,6 +257,10 @@ _REFUSED_HEADERS = frozenset(
         "connection",
     }
 )
+# A header that carries money: an x402 payment, a crypto wallet or its private key, a pay-per-call
+# token. A server that declares one is not a connector (the key form would ask for it, and the
+# proxy would then send it on every agent call).
+_PAYMENT_HEADER = re.compile(r"payment|wallet|private[-_]?key|pay[-_]?id", re.IGNORECASE)
 _SERVER_NAME = re.compile(r"[A-Za-z0-9.-]+/[A-Za-z0-9._-]+")  # the registry's own rule
 _HEADER_NAME = re.compile(r"[A-Za-z0-9!#$%&'*+.^_`|~-]+")
 _PLACEHOLDER = re.compile(r"\{[^{}]*\}")
@@ -315,10 +319,11 @@ def slim_registry_entry(server_json: object) -> dict | None:
     """One item of the MCP Registry's server list (``{"server": …, "_meta": …}``) as a line of the
     snapshot, or ``None`` when it can't be a connector: not ``active``, a Smithery proxy (it needs
     a Smithery key, not the vendor's), no remote with a fixed ``https://`` address, or a server
-    that takes payment per call (a ``Payment-Signature`` header). The first ``streamable-http``
-    remote is kept, else the first ``sse`` one. No icons: the UI uses letter tiles. An item that
-    breaks the registry's own shape is dropped too, never an exception (one bad item must not
-    stop a refresh)."""
+    that takes payment per call or asks for a wallet (a header named like ``Payment-Signature``,
+    ``X-PAYMENT``, ``X-Wallet-Key`` or ``…-Private-Key``, on any remote). The first
+    ``streamable-http`` remote is kept, else the first ``sse`` one. No icons: the UI uses letter
+    tiles. An item that breaks the registry's own shape is dropped too, never an exception (one
+    bad item must not stop a refresh)."""
     if not isinstance(server_json, dict) or not isinstance(server_json.get("server"), dict):
         return None
     server = server_json["server"]
@@ -330,7 +335,7 @@ def slim_registry_entry(server_json: object) -> dict | None:
         return None
     remotes = [r for r in _list(server.get("remotes")) if isinstance(r, dict)]
     declared = [h for r in remotes for h in _list(r.get("headers")) if isinstance(h, dict)]
-    if any(_text(h.get("name")).lower() == "payment-signature" for h in declared):
+    if any(_PAYMENT_HEADER.search(_text(h.get("name"))) for h in declared):
         return None
     fixed = [r for r in remotes if r.get("type") in _TRANSPORTS and _fixed_https(r.get("url"))]
     if not fixed:

@@ -228,6 +228,35 @@ def test_slim_drops_what_cant_be_a_connector(item):
 
 
 @pytest.mark.parametrize(
+    "name",
+    [
+        "X-PAYMENT",
+        "X-Payment-Token",
+        "X-Wallet-Key",
+        "X-Skim-Wallet-Key",
+        "X-IMBA-Agent-Private-Key",
+        "x-economyos-private-key",
+        "X-Private_Key",
+        "X-PrivateKey",
+        "skyfire-pay-id",
+    ],
+)
+def test_slim_drops_a_server_that_asks_for_a_payment_a_wallet_or_a_private_key(name):
+    """The key form must never ask for a wallet's private key or a pay-per-call token."""
+    picked = _remote(headers=[{"name": name, "isSecret": True}])
+    assert slim_registry_entry(_server(remotes=[picked])) is None
+    # Declared on a remote that isn't the one picked: the server still takes payment per call.
+    other = _remote("https://pay.acme.dev/sse", kind="sse", headers=[{"name": name}])
+    assert slim_registry_entry(_server(remotes=[_remote(), other])) is None
+
+
+def test_slim_keeps_a_payment_services_own_api_key():
+    for name in ("TgPayCrypto-API-Token", "x-wavepay-service-key", "X-Stripe-Key"):
+        slim = slim_registry_entry(_server(remotes=[_remote(headers=[{"name": name}])]))
+        assert [h["name"] for h in slim["headers"]] == [name]
+
+
+@pytest.mark.parametrize(
     "item",
     [
         _server(remotes=5),
