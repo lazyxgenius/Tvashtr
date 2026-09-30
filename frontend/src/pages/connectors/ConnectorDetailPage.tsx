@@ -46,6 +46,7 @@ import {
   accessGivenToast,
   accessLabel,
   recentUseLine,
+  reconnectReason,
   toolsHint,
   usesKey,
 } from "./connectorFormat";
@@ -307,17 +308,32 @@ function Connector({
                     </Button>
                   </dd>
                 </>
+              ) : c.auth_kind === "oauth" ? (
+                <>
+                  <dt>Sign-in</dt>
+                  <dd>
+                    {c.last_error ??
+                      (c.status === "pending" ? "Not finished yet" : "Renews by itself")}
+                  </dd>
+                  <dd>
+                    <Button variant="ghost" size="sm" onClick={signInAgain}>
+                      {c.status === "pending" ? "Sign in" : "Sign in again"}
+                    </Button>
+                  </dd>
+                </>
               ) : (
-                c.auth_kind === "oauth" && (
+                // It never signed in, so there is nothing to renew: it is connected again.
+                c.status === "needs_signin" && (
                   <>
                     <dt>Sign-in</dt>
+                    <dd>{reconnectReason(c)}</dd>
                     <dd>
-                      {c.last_error ??
-                        (c.status === "pending" ? "Not finished yet" : "Renews by itself")}
-                    </dd>
-                    <dd>
-                      <Button variant="ghost" size="sm" onClick={signInAgain}>
-                        {c.status === "pending" ? "Sign in" : "Sign in again"}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setOverlay({ kind: "disconnect" })}
+                      >
+                        Disconnect
                       </Button>
                     </dd>
                   </>

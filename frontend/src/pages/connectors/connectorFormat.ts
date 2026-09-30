@@ -74,14 +74,34 @@ export function usesKey(c: Pick<Connection, "auth_kind">): boolean {
   return c.auth_kind === "api_key";
 }
 
+/** A connection that never signed in has no sign-in to renew and no key to replace: when its
+ *  server starts asking for one, it is disconnected and connected again. */
+export function reconnects(c: Pick<Connection, "auth_kind">): boolean {
+  return c.auth_kind === "none";
+}
+
+const ASKS_FOR_SIGN_IN = "It now asks for a sign-in. Disconnect it and connect it again.";
+
+/** Why a connection that `reconnects` needs attention: the server's own words. */
+export function reconnectReason(c: Pick<Connection, "last_error">): string {
+  return c.last_error ?? ASKS_FOR_SIGN_IN;
+}
+
 /**
- * The "sign-in expired" banner after the bold "<Name>’s": what happened and which agents run
- * without it (the row's `used_by_agents`).
+ * The "sign-in expired" banner after the bold "<Name>’s" (or "<Name>" for one that `reconnects`):
+ * what happened and which agents run without it (the row's `used_by_agents`).
  */
 export function expiredSentence(c: Connection): string {
+  const names = agentNames(c.used_by_agents ?? []);
+  if (reconnects(c)) {
+    const who =
+      names.length === 0
+        ? ""
+        : ` ${joinNames(names)} ${names.length === 1 ? "runs" : "run"} without it until then.`;
+    return `: ${reconnectReason(c)}${who}`;
+  }
   const fix = usesKey(c) ? "replace the key" : "sign in again";
   const what = usesKey(c) ? "key stopped working" : "sign-in expired";
-  const names = agentNames(c.used_by_agents ?? []);
   const who =
     names.length === 0
       ? `No agent can use it until you ${fix}.`

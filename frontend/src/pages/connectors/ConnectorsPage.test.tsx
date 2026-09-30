@@ -267,6 +267,46 @@ describe("Connected", () => {
     expect(screen.getByRole("row", { name: /Supabase/ })).toHaveTextContent("Ready");
   });
 
+  it("says a server with no sign-in now asks for one, and offers Disconnect, not a sign-in", async () => {
+    const OPEN = connection({
+      ...plain,
+      id: "c6",
+      connector_key: "com.acme/mcp",
+      name: "Acme",
+      slug: "acme",
+      publisher: null,
+      featured: false,
+      reviewed: false,
+      host: "mcp.acme.dev",
+      auth_kind: "none",
+      signin_host: null,
+      status: "needs_signin",
+      last_error: "It now asks for a sign-in. Disconnect it and connect it again.",
+      used_by: { agent_count: 1, team_count: 1 },
+      used_by_agents: SENTRY.used_by_agents,
+    });
+    mockApi({
+      "GET /api/connectors": { connections: [OPEN] },
+      "GET /api/connectors/c6": { ...OPEN, recent_use: [], revoke_hint: null },
+    });
+    renderWithProviders(<ConnectorsPage view="connected" />);
+
+    const banner = await screen.findByRole("status");
+    expect(banner).toHaveTextContent(
+      "Acme: It now asks for a sign-in. Disconnect it and connect it again. Reviewer runs without it until then.",
+    );
+    const row = screen.getByRole("row", { name: /Acme/ });
+    expect(row).toHaveTextContent("Connect it again");
+    // It has no sign-in to renew: `oauth/start` would only answer "doesn't sign in".
+    expect(screen.queryByRole("button", { name: /Sign in/ })).toBeNull();
+    expect(within(row).getByRole("button", { name: "Disconnect" })).toBeInTheDocument();
+
+    fireEvent.click(within(banner).getByRole("button", { name: "Disconnect Acme" }));
+    expect(
+      await screen.findByRole("alertdialog", { name: "Disconnect Acme?" }),
+    ).toBeInTheDocument();
+  });
+
   it("filters the table by the search words and the Status select", async () => {
     serve([SENTRY, SUPABASE, NOTION]);
     renderWithProviders(<ConnectorsPage view="connected" />);

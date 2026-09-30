@@ -313,6 +313,26 @@ describe("ConnectorDetailPage", () => {
     );
   });
 
+  it("says a server with no sign-in now asks for one, and offers Disconnect", async () => {
+    serve(
+      detail({
+        auth_kind: "none",
+        signin_host: null,
+        status: "needs_signin",
+        last_error: "It now asks for a sign-in. Disconnect it and connect it again.",
+      }),
+    );
+    await open();
+    const conn = card("Connection");
+    expect(conn).toHaveTextContent(
+      "Sign-inIt now asks for a sign-in. Disconnect it and connect it again.",
+    );
+    // Nothing to renew: no "Sign in again", which `oauth/start` would refuse.
+    expect(screen.queryByRole("button", { name: /Sign in/ })).toBeNull();
+    fireEvent.click(within(conn).getByRole("button", { name: "Disconnect" }));
+    expect(screen.getByRole("alertdialog", { name: "Disconnect Supabase?" })).toBeInTheDocument();
+  });
+
   it("shows a connection whose first sign-in never finished", async () => {
     serve(detail({ status: "pending", connected_at: null, tools: null, used_by_agents: [] }));
     await open();

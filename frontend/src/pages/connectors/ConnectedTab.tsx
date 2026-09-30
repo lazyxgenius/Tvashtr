@@ -16,7 +16,13 @@ import type { StatusFilter } from "../tools/toolsState";
 import { AccessBadge } from "./AccessBadge";
 import { ConnectorRowMenu } from "./ConnectorRowMenu";
 import { ConnectorTile } from "./ConnectorTile";
-import { connectionSubline, expiredSentence, filterConnections, usesKey } from "./connectorFormat";
+import {
+  connectionSubline,
+  expiredSentence,
+  filterConnections,
+  reconnects,
+  usesKey,
+} from "./connectorFormat";
 
 const pageOf = (c: Connection) => ({ page: "connector", connectorId: c.id }) as const;
 
@@ -110,12 +116,18 @@ export function ConnectedTab({
         <div key={c.id} className="cn-banner" role="status">
           <TriangleAlert size={16} strokeWidth={1.6} aria-hidden />
           <span className="cn-banner__text">
-            <b>{`${c.name}’s`}</b>
+            <b>{reconnects(c) ? c.name : `${c.name}’s`}</b>
             {expiredSentence(c)}
           </span>
-          <Button variant="secondary" size="sm" onClick={() => actions.onSignIn(c)}>
-            {usesKey(c) ? `Replace ${c.name}’s key` : `Sign in to ${c.name}`}
-          </Button>
+          {reconnects(c) ? (
+            <Button variant="secondary" size="sm" onClick={() => actions.onDisconnect(c)}>
+              {`Disconnect ${c.name}`}
+            </Button>
+          ) : (
+            <Button variant="secondary" size="sm" onClick={() => actions.onSignIn(c)}>
+              {usesKey(c) ? `Replace ${c.name}’s key` : `Sign in to ${c.name}`}
+            </Button>
+          )}
         </div>
       ))}
       {rows.length === 0 ? (
@@ -205,11 +217,21 @@ function ConnectionsTable({
                   <div className="tk-needs">
                     <span className="tk-needs__label">
                       <TriangleAlert size={13} strokeWidth={1.6} aria-hidden />
-                      {usesKey(c) ? "Key stopped working" : "Sign in again"}
+                      {reconnects(c)
+                        ? "Connect it again"
+                        : usesKey(c)
+                          ? "Key stopped working"
+                          : "Sign in again"}
                     </span>
-                    <Button variant="tint" size="sm" onClick={() => actions.onSignIn(c)}>
-                      {usesKey(c) ? "Replace key" : "Sign in"}
-                    </Button>
+                    {reconnects(c) ? (
+                      <Button variant="tint" size="sm" onClick={() => actions.onDisconnect(c)}>
+                        Disconnect
+                      </Button>
+                    ) : (
+                      <Button variant="tint" size="sm" onClick={() => actions.onSignIn(c)}>
+                        {usesKey(c) ? "Replace key" : "Sign in"}
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <span className="cn-status">
