@@ -806,10 +806,14 @@ DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`),
   subscription pre-flight tests, `scripts/design-parity`), none of them connector files. Every
   file this work touches passes both.
   §10 step 1 needs that cleaned up first, or a lint scoped to the files this work touches.
-- **`npm run test` can exit 1 with every test passing**: `panel/docs/DocumentViewer.test.tsx`
-  leaves a tiptap focus timer that calls `Range.getClientRects`, which jsdom doesn't have, and
-  vitest counts the uncaught error. It predates this work (see the Phase 0 report for what was
-  done about it).
+- **`npm run test` exited 1 with every test passing** on the base commit:
+  `panel/docs/DocumentViewer.test.tsx` leaves a tiptap focus timer that calls
+  `Range.getClientRects`, which jsdom doesn't have, and vitest counts the uncaught error. Phase 0
+  added a two-method `Range` shim to `frontend/src/test/setup.ts` (no test changed), because a red
+  gate would have blocked every later stream.
+- **`tests/test_workspace_gc.py` re-drives the app lifespan** and stubs each run-once MCP session
+  manager it enters. Phase 0 added the Connectors one to that list; a third mount would need the
+  same line.
 
 ## 12. Needs an operator decision
 
