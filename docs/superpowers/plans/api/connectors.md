@@ -325,14 +325,27 @@ frontend origin (on Desktop that is `127.0.0.1`).
 1. Protected-resource metadata: the `resource_metadata` address from an unauthenticated request's
    `WWW-Authenticate` header, else `/.well-known/oauth-protected-resource<path>`, else the root
    `/.well-known/oauth-protected-resource`. Several servers answer 405 or 404 to a GET, so the
-   well-known addresses are tried whatever the first request returns.
+   well-known addresses are tried whatever the first request returns. The first request is a
+   `GET` with no credentials. Only a failure to connect on it is `unreachable` at once; any other
+   outcome (a 405, a 5xx, a stream that stays open until the deadline) moves on. A metadata
+   address that isn't one Tvashtr opens, or a document that isn't a JSON object with a `resource`
+   and at least one `authorization_servers` entry, is skipped.
 2. Authorization-server metadata for `authorization_servers[0]`, in the spec's order (path-style
    issuers included). When step 1 found nothing: the MCP origin's own
    `/.well-known/oauth-authorization-server` (Intercom).
+   What discovery answers: a sign-in, or "no sign-in" when neither document was found, or
+   `cannot_register` when resource metadata names a sign-in server whose metadata can't be read,
+   or `unreachable` when nothing answered at all (or the MCP address itself isn't one Tvashtr
+   opens).
 3. Checks: the metadata's `issuer` equals the issuer the address was built from (compared as raw
-   strings, never through a URL type); `code_challenge_methods_supported` contains `S256`; the
+   strings, never through a URL type; **one trailing slash is not a difference**, because Google's
+   resource metadata names `https://accounts.google.com/` and its server metadata says
+   `https://accounts.google.com`. The server's own spelling is the issuer that is stored and that
+   the callback's `iss` is compared with); `code_challenge_methods_supported` contains `S256`; the
    resource metadata's `resource` covers the MCP address (`check_resource_allowed`); every endpoint
-   is `https://`.
+   passes `connector_net.check_url` (`https://`, a public address, no user name or backslash).
+   `scope` is the 401's `scope`, else the resource metadata's `scopes_supported`, else the
+   sign-in server's, else nothing.
 4. Mix-up check: `authorization_endpoint`, `token_endpoint` and `registration_endpoint` must be on
    the issuer's site (its registrable domain, `connector_net.site`), else 422 `cannot_register`. A
    `revocation_endpoint` somewhere else is ignored. Without this rule a custom server could name a
@@ -342,12 +355,20 @@ frontend origin (on Desktop that is `127.0.0.1`).
 
 **Client** (at `oauth/start`, first match):
 1. Pre-registered: only Featured entries that name one (`google`), only on their pinned address.
-   Never offered to a registry or custom address.
+   Never offered to a registry or custom address. Its secret is read from the settings whenever
+   it is sent and is not stored on the connection (`client` then has no `client_secret`).
 2. Client ID metadata document, when the server advertises
    `client_id_metadata_document_supported` and `TVASHTR_PUBLIC_BASE_URL` is `https://`.
-3. Dynamic registration (`registration_endpoint`): `application_type: "web"`,
+3. Dynamic registration (`registration_endpoint`): `client_name`, `redirect_uris`, `grant_types`,
+   `response_types`, `scope` (when discovery found one), `application_type: "web"` (`"native"`
+   when the redirect address isn't `https://`, that is local development: a server that holds
+   web clients to https redirects would refuse it),
    `token_endpoint_auth_method` `none` when the server lists it, else `client_secret_post`, else
-   `client_secret_basic` (Supabase, Vercel). A stored registration for the same `issuer` is reused.
+   `client_secret_basic` (Supabase, Vercel). A stored registration is reused when it was made
+   with the same `issuer` **and for the same redirect address** (the stored `client` of a
+   registration also carries `redirect_uri`) and its secret hasn't expired; it is looked for in
+   the sign-in in flight and in the stored sign-in. A refused registration (any 4xx, or an
+   answer without a `client_id`) is `cannot_register`.
 4. None of these → 422 `cannot_register`.
 
 ### `POST /api/connectors/{id}/oauth/start`
@@ -361,15 +382,18 @@ changed. The authorize address carries
 `response_type=code`, `client_id`, `redirect_uri`, `state` (`secrets.token_urlsafe(32)`),
 `code_challenge` + `code_challenge_method=S256`, `resource` (the metadata's value, verbatim) and
 `scope` (the 401's `scope`, else `scopes_supported`, else left out; Featured entries may pin it, as
-Google's read-only scopes do).
+Google's read-only scopes do). A Featured entry on its pinned address may also name extra
+parameters for its provider's authorize page (`authorize_params`; Google hands out a refresh
+token only with `access_type=offline`).
 `authorize_url` is always an `https://` address (`http://` only under
 `TVASHTR_CONNECTORS_ALLOW_LOCAL`). The web app and Desktop check that again before they open it.
 `signin_host` is the host of `authorize_url`, and the client holds the server to it: it reads the
 host out of `authorize_url` the way a browser does (`new URL`), and refuses the answer when that
 host isn't `signin_host` or when the address carries a user name or password. So the host that is
 shown is always the host the window opens.
-Errors: 404; 409 `{"code": "not_oauth", "message": "This connector doesn’t sign in."}`; 422
-`cannot_register`; 502 `unreachable`.
+Errors: 404; 409 `{"code": "not_oauth", "message": "This connector doesn’t sign in."}` (the row
+isn't `oauth`, or its server no longer offers a sign-in); 422 `cannot_register`; 502
+`unreachable`. Nothing is stored on any of them.
 
 ### `GET /api/connectors/oauth/callback?state=&code=&iss=&error=` (public)
 Always answers an HTML page (200), never JSON and never a redirect into the app. The owner comes
@@ -449,17 +473,26 @@ dynamic registration).
   `client_id`, `resource`, client authentication) **under `SELECT … FOR UPDATE` on the row** and
   commits the rotated refresh token before anyone uses the new access token. A reply without a new
   refresh token keeps the old one. When `rejected` is given and the stored token is already a
-  different one (someone else refreshed), that one is returned without a network call.
+  different one (someone else refreshed), that one is returned without a network call (unless it
+  is itself within five minutes of expiring, which is an ordinary refresh).
 - **One lock for every writer of the sign-in.** Refresh, Complete, `oauth/start`, `PATCH`
   credentials and `DELETE` all take `SELECT … FOR UPDATE` on the row, and read the stored sign-in
   only after they hold it. Otherwise a refresh that started earlier commits the old sign-in over a
   new one. A refresh that finds the row gone raises `SignInRefused` and writes nothing.
-- `invalid_grant`, or no refresh token and an expired access token → tokens cleared,
-  `status: "needs_signin"`, `last_error` = "Its sign-in expired." Raises `SignInRefused`.
-- `invalid_client` → the same, and the stored registration is dropped so the next sign-in
-  registers again.
-- A 5xx or network error → `Unreachable`: the connector is left out of what asked for it; status
-  unchanged.
+- `invalid_grant`, or no refresh token and an expired (or `rejected`) access token → tokens
+  cleared, `status: "needs_signin"`, `last_error` = "Its sign-in expired." Raises `SignInRefused`.
+  Any other 4xx answer to a refresh is treated the same. What stays in `secret_encrypted` is the
+  issuer, the endpoints and the registration, so the sign-in host still shows and "Sign in again"
+  reuses the client.
+- `invalid_client` (or a 401) → the same, and the stored registration is dropped so the next
+  sign-in registers again.
+- A 5xx, a 429, a network error, or a 200 that carries no token → `Unreachable`: the connector is
+  left out of what asked for it; status unchanged.
+- A row with no stored sign-in at all (never signed in, or already cleared) raises `SignInRefused`
+  and is not touched: a `pending` row stays `pending`.
+- `revoke(connection_id)` posts the refresh token (the access token when there is none) to the
+  `revocation_endpoint` with the client's authentication. It reads the row without locking it and
+  writes nothing, so a disconnect may call it before or while it holds the row lock.
 
 ### Outbound address rules (`connector_net`)
 Every address the backend fetches for a connector comes from outside: the MCP address, metadata

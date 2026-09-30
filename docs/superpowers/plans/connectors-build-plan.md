@@ -452,6 +452,10 @@ metadata document → dynamic registration (`application_type: "web"`; auth meth
 `client_secret_post`, else `client_secret_basic`) → `CannotRegister`. Reuse a stored registration
 when the issuer matches. The pinned client, the pinned `scope` and `oauth_hosts` come from
 `connector_catalog.resolve(row.connector_key)`, and only from an entry with `featured: True`.
+- As built: `client_kind(found, entry, url)` names the choice without registering (the probe uses
+  it) and `choose_client(found, entry, url, known)` makes it. A registration is reused only for
+  the same issuer and the same redirect address. `application_type` is `native` when the
+  redirect isn't `https://`. The Google secret is never copied onto a connection.
 - Tests first: each branch; a custom address never gets the Google client even when its metadata
   names `accounts.google.com`; confidential-only server gets a secret; re-registration when the
   issuer changed.
@@ -460,6 +464,11 @@ when the issuer matches. The pinned client, the pinned `scope` and `oauth_hosts`
 - Tests first (`tests/test_connector_oauth_routes.py`): the authorize address has every parameter
   in the contract, `resource` verbatim from the metadata; only `sha256(state)` is stored; status is
   unchanged on a `connected` row; `not_oauth`; **another account → 404**.
+- As built: discovery runs before the row is locked; the client choice (it reads the stored
+  registration, and may register) and the write run under the lock. A Featured entry on its own
+  address may carry `authorize_params` (extra authorize parameters); the catalog has none yet,
+  and Google needs `{"access_type": "offline", "prompt": "consent"}` there to get a refresh token
+  (B1 owns the catalog).
 
 **B2.4 Callback, confirm, pages.** The two public routes and the small HTML pages (pattern:
 `desktop_auth.return_page()`). Page text is escaped; no provider-supplied text is rendered raw.
@@ -516,6 +525,25 @@ entry that needs `oauth_hosts` for the mix-up check is found here); `--register`
 registration. Accept:
 every available Featured entry reaches an authorize address. An entry that fails is switched to
 "Coming soon" before release.
+- Run: `cd backend && uv run python ../scripts/connector_probe.py --base-url
+  https://tvashtr.fly.dev` (`--all` adds the entries that can't be connected yet; `key …` limits
+  the run). Its plumbing is tested against the fake in `tests/test_connector_probe.py`.
+- Result on 2026-09-30, discovery only (no `--register`), base `https://tvashtr.fly.dev`: all ten
+  available entries reach an authorize address and **none needs `oauth_hosts`** (every endpoint is
+  on its issuer's site). Client: a metadata document for Notion, PostHog, Linear, Sentry and
+  Atlassian; dynamic registration for Supabase, Neon, Mixpanel, Amplitude and Intercom. The
+  sign-in host is not the MCP host for Supabase (`api.supabase.com`), PostHog
+  (`oauth.posthog.com`), Mixpanel (`mixpanel.com`) and Atlassian (`auth.atlassian.com`); all four
+  are on the MCP host's site.
+- The same run with `--all` found the one defect: Google's three cards were refused, because
+  Google names its issuer with a trailing slash in the resource metadata and without one in the
+  server metadata. Fixed (B2.1's issuer check now ignores one trailing slash). Their endpoints
+  are on `accounts.google.com` and `oauth2.googleapis.com`, which is what `oauth_hosts` pins.
+  HubSpot offers neither registration nor metadata documents, as expected.
+- Not covered by a discovery-only run: whether each provider accepts the registration and the
+  authorize request as sent (Intercom gets no `scope`, PostHog gets all 155 it lists), and the
+  tool annotations (Neon's `run_sql`, Google's). Those need `--register` and one real sign-in
+  per provider.
 
 ## 6. Stream B3: run time
 
