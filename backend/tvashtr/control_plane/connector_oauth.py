@@ -6,13 +6,16 @@ passed through ``connector_net.check_url`` first. Metadata is read as plain dict
 comparisons are on the raw strings (a URL type adds a trailing slash).
 """
 
+import hashlib
+import secrets
 import time
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 import httpx
+from mcp.client.auth import PKCEParameters
 from mcp.client.auth.utils import (
     build_oauth_authorization_server_metadata_discovery_urls,
     build_protected_resource_metadata_discovery_urls,
@@ -22,7 +25,9 @@ from mcp.client.auth.utils import (
 from mcp.shared.auth_utils import check_resource_allowed
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import connector_net
+
+# ``connectors`` imports this module too: neither may use the other while it is being imported.
+from tvashtr.control_plane import connector_catalog, connector_net, connectors
 from tvashtr.db import session_scope
 from tvashtr.models import ConnectorConnection
 
@@ -345,6 +350,91 @@ def choose_client(
         if client := _reusable(sign_in, found.issuer):
             return client
     return _register(found)
+
+
+# ---- starting a sign-in ----
+
+SIGNIN_TTL_SECONDS = 600  # how long a started sign-in can be finished
+
+
+def state_hash(state: str) -> str:
+    """What is stored of a ``state``: its SHA-256, never the value."""
+    return hashlib.sha256(state.encode()).hexdigest()
+
+
+def _refusal(exc: Exception, name: str, url: str) -> "connectors.ConnectorError":
+    """The route's answer to a sign-in that can't be started."""
+    if isinstance(exc, CannotRegister):
+        message = f"{name} needs an app registered with it before Tvashtr can sign in."
+        return connectors.ConnectorError(422, {"code": "cannot_register", "message": message})
+    message = f"We couldn’t reach {urlsplit(url).hostname}. Try again."
+    return connectors.ConnectorError(502, {"code": "unreachable", "message": message})
+
+
+def start(owner_id: uuid.UUID, connection_id: object) -> dict:
+    """``POST /api/connectors/{id}/oauth/start``: repeat discovery, pick the client, store the
+    sign-in in flight under the row lock, and answer where to send the browser. The row's
+    ``status`` and its stored sign-in are not touched. Raises ``connectors.ConnectorError``."""
+    not_oauth = connectors.ConnectorError(
+        409, {"code": "not_oauth", "message": "This connector doesn’t sign in."}
+    )
+    with session_scope() as session:
+        row = connectors.get_owned(session, owner_id, connection_id)
+        if row.auth_kind != "oauth":
+            raise not_oauth
+        url, name, entry = row.url, row.name, connector_catalog.resolve(row.connector_key)
+    pins = _pins(entry, url)
+    try:
+        found = discover(url, entry)
+        if found is None:
+            raise not_oauth
+        # ponytail: a registration (one 10 s call at most) runs while the row is locked, because
+        # the stored registration may only be read under the lock. Register before locking and
+        # re-check under it if lock waits show up.
+        with session_scope() as session:
+            row = connectors.get_owned(session, owner_id, connection_id, for_update=True)
+            in_flight = connectors.read_secret(row, pending=True)
+            client = choose_client(found, entry, url, [in_flight, connectors.read_secret(row)])
+            pkce = PKCEParameters.generate()
+            state = secrets.token_urlsafe(32)
+            pending = {
+                "code_verifier": pkce.code_verifier,
+                "issuer": found.issuer,
+                "iss_supported": found.iss_supported,
+                "authorization_endpoint": found.authorization_endpoint,
+                "token_endpoint": found.token_endpoint,
+                "revocation_endpoint": found.revocation_endpoint,
+                "resource": found.resource,
+                "scope": pins.get("scope") or found.scope,  # a Featured entry may pin it
+                "client": client,
+                "redirect_uri": redirect_uri(),
+                "started_at": time.time(),
+            }
+            connectors.write_secret(row, pending, pending=True)
+            row.state_hash = state_hash(state)
+    except (CannotRegister, Unreachable) as exc:
+        raise _refusal(exc, name, url) from exc
+
+    params = {
+        "response_type": "code",
+        "client_id": client["client_id"],
+        "redirect_uri": pending["redirect_uri"],
+        "state": state,
+        "code_challenge": pkce.code_challenge,
+        "code_challenge_method": "S256",
+        "resource": found.resource,  # the metadata's value, verbatim
+    }
+    if pending["scope"]:
+        params["scope"] = pending["scope"]
+    # What one provider's authorize page needs on top (Google: a refresh token is only handed out
+    # with ``access_type=offline``). Only a Featured entry on its own address can say so.
+    params |= pins.get("authorize_params") or {}
+    separator = "&" if urlsplit(found.authorization_endpoint).query else "?"
+    return {
+        "authorize_url": found.authorization_endpoint + separator + urlencode(params),
+        "signin_host": found.signin_host,
+        "expires_in": SIGNIN_TTL_SECONDS,
+    }
 
 
 def ensure_access_token(connection_id: uuid.UUID, *, rejected: str | None = None) -> str:

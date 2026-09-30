@@ -55,11 +55,12 @@ def connection(owner_id: uuid.UUID, fake: FakeConnectorServer, **over) -> uuid.U
     """An OAuth connection to the fake, ``pending`` unless told otherwise. ``secret`` and
     ``pending_secret`` are written encrypted."""
     secret, pending = over.pop("secret", None), over.pop("pending_secret", None)
+    tag = uuid.uuid4().hex[:8]  # an owner has one row per key and per slug
     fields = {
         "owner_id": owner_id,
-        "connector_key": "custom:mcp.fake.test/mcp",
+        "connector_key": f"custom:mcp.fake.test/{tag}",
         "name": "Fake",
-        "slug": "fake",
+        "slug": f"fake-{tag}",
         "url": fake.mcp_url,
         "auth_kind": "oauth",
         "status": "pending",
