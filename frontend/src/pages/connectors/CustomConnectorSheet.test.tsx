@@ -177,6 +177,83 @@ describe("CustomConnectorSheet", () => {
     expect(onDone.mock.calls[0][0]).toMatchObject({ access: "write" });
   });
 
+  it("says so when it is connected but couldn’t be switched to read & write", async () => {
+    serve({
+      "PATCH /api/connectors/c1": refuse(502, "unreachable", "We couldn’t reach mcp.acme.dev."),
+    });
+    const { onDone } = show();
+    fill();
+    click("Check the server");
+    await screen.findByText(/You’ll sign in at/);
+    click("Read & write");
+    click("Continue to auth.acme.dev");
+    await screen.findByText("Waiting for you to finish in the acme-metrics window");
+    row = { ...PENDING, status: "connected" };
+    await poll();
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+    expect(onDone.mock.calls[0][0]).toMatchObject({ status: "connected", access: "read" });
+    expect(
+      screen.getByText(
+        "acme-metrics is connected read only. Tvashtr couldn’t switch it to read & write: change that on its page.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("takes a name changed after the check, without checking the server again", async () => {
+    const calls = serve();
+    const { onDone } = show();
+    fill();
+    click("Check the server");
+    await screen.findByText(/You’ll sign in at/);
+
+    type("Name", "Acme Metrics");
+    // The name isn't the server: what was checked still stands.
+    expect(screen.getByText(/You’ll sign in at/)).toBeInTheDocument();
+    click("Continue to auth.acme.dev");
+    await screen.findByText("Waiting for you to finish in the Acme Metrics window");
+    row = { ...PENDING, status: "connected" };
+    await poll();
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+    expect(calls.filter((c) => c.path === "/api/connectors")).toHaveLength(1);
+    expect(calls.at(-1)).toEqual({
+      method: "PATCH",
+      path: "/api/connectors/c1",
+      body: { name: "Acme Metrics" },
+    });
+    expect(onDone.mock.calls[0][0]).toMatchObject({ name: "Acme Metrics" });
+  });
+
+  it("doesn’t continue without a name", async () => {
+    serve();
+    show();
+    fill();
+    click("Check the server");
+    await screen.findByText(/You’ll sign in at/);
+    type("Name", " ");
+    expect(screen.getByRole("button", { name: "Continue to auth.acme.dev" })).toBeDisabled();
+  });
+
+  it.each([
+    ["a check", {}],
+    [
+      "a server it can’t connect",
+      { "POST /api/connectors": refuse(422, "cannot_register", "Acme needs an app registered.") },
+    ],
+  ])("keeps the field you are typing in after %s", async (_what, routes) => {
+    serve(routes);
+    show();
+    fill();
+    click("Check the server");
+    await screen.findByText(/You’ll sign in at|needs an app registered/);
+    const field = screen.getByLabelText("Server address");
+    field.focus();
+    type("Server address", "https://mcp.acme.dev/v2");
+    // The same input, still focused: not a new one the next keystroke misses.
+    expect(field).toBeInTheDocument();
+    expect(document.activeElement).toBe(field);
+    expect(screen.getByRole("button", { name: "Check the server" })).toBeEnabled();
+  });
+
   it("checks again after the address is edited", async () => {
     serve();
     show();
@@ -198,6 +275,9 @@ describe("CustomConnectorSheet", () => {
     click("Check the server");
     click("Close");
     expect(onClose).not.toHaveBeenCalled();
+    // Nor can the address change under the check: its answer is about what was sent.
+    expect(screen.getByLabelText("Name")).toBeDisabled();
+    expect(screen.getByLabelText("Server address")).toBeDisabled();
     await act(async () => {
       answer(PENDING);
       await Promise.resolve();

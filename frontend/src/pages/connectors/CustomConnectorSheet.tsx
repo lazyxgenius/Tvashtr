@@ -8,7 +8,7 @@
 import { ChevronRight, ExternalLink } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 
-import { Button, Input, Sheet } from "../../design-system/components";
+import { Button, Input, Sheet, useToast } from "../../design-system/components";
 import { ApiDetailError } from "../../lib/api/runs";
 import {
   type Connection,
@@ -46,6 +46,7 @@ export function CustomConnectorSheet({
   const [notice, setNotice] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<Trouble | null>(null);
   const label = name.trim();
+  const toast = useToast();
   // A sheet that is gone reports nothing: the page that opened it may be gone too.
   const alive = useAlive();
   const done = (connection: Connection) => {
@@ -53,17 +54,26 @@ export function CustomConnectorSheet({
   };
 
   const onOutcome = async (outcome: SignInOutcome) => {
-    setWaiting(false);
+    // Connected: the wait panel stays up while the name and the access are saved.
+    if (outcome.kind !== "connected") setWaiting(false);
     if (outcome.kind === "connected") {
-      // The row was made read only (the check came before the choice): widen it now.
+      let made: Connection = outcome.connection;
+      // The row was made at the check, before the name was final and the access chosen.
+      if (made.name !== label) {
+        // A refused name keeps the one it was checked with.
+        made = await updateConnection(made.id, { name: label }).catch(() => made);
+      }
       if (access === "write") {
         try {
-          return done(await updateConnection(outcome.connection.id, { access }));
+          made = await updateConnection(made.id, { access });
         } catch {
-          // It is connected, read only; its page can change that.
+          toast({
+            message: `${made.name} is connected read only. Tvashtr couldn’t switch it to read & write: change that on its page.`,
+            tone: "error",
+          });
         }
       }
-      return done(outcome.connection);
+      return done(made);
     }
     if (outcome.kind === "failed") return setTrouble({ kind: "failed", message: outcome.message });
     if (outcome.kind === "refused" && outcome.refusal?.code === "cannot_register") {
@@ -84,9 +94,9 @@ export function CustomConnectorSheet({
   };
   const signIn = useConnectSignIn((outcome) => void onOutcome(outcome));
 
-  const edit = (set: (value: string) => void) => (value: string) => {
-    set(value);
-    // An edited server is another server: check it again.
+  const editUrl = (value: string) => {
+    setUrl(value);
+    // Another address is another server: check it again. (The name is only a name.)
     setConn(null);
     setUrlError(null);
     setNotice(null);
@@ -95,10 +105,12 @@ export function CustomConnectorSheet({
 
   const check = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!label || !url.trim() || busy) return;
+    // A checked server isn't checked again by Enter in a field.
+    if (!label || !url.trim() || busy || conn) return;
     setBusy(true);
     setUrlError(null);
     setNotice(null);
+    setTrouble(null);
     try {
       const made = await createConnection({ url: url.trim(), name: label, access: "read" });
       if (made.status === "connected") return done(made);
@@ -120,7 +132,7 @@ export function CustomConnectorSheet({
 
   /** "Continue to <site>" and "Try again": in the click, so the popup isn't blocked. */
   const toProvider = () => {
-    if (!conn) return;
+    if (!conn || !label) return;
     signIn.prepare();
     setNotice(null);
     setTrouble(null);
@@ -157,7 +169,8 @@ export function CustomConnectorSheet({
         spellCheck={false}
         maxLength={60}
         value={name}
-        onChange={(e) => edit(setName)(e.target.value)}
+        disabled={busy}
+        onChange={(e) => setName(e.target.value)}
       />
       <Input
         label="Server address"
@@ -167,7 +180,9 @@ export function CustomConnectorSheet({
         placeholder="https://mcp.example.com/mcp"
         value={url}
         error={urlError ?? undefined}
-        onChange={(e) => edit(setUrl)(e.target.value)}
+        // The check's answer is about the address that was sent.
+        disabled={busy}
+        onChange={(e) => editUrl(e.target.value)}
       />
     </>
   );
@@ -190,72 +205,68 @@ export function CustomConnectorSheet({
       </Problem>
     );
     primary = null;
-  } else if (trouble) {
+  } else {
+    const site = conn ? (conn.signin_host ?? conn.host) : "";
     body = (
-      <>
+      // One form in every state: the field being typed in is never remounted (and keeps focus).
+      <form className="cn-form" onSubmit={(e) => void check(e)} noValidate>
         {fields}
-        <Note kind="warn" role="alert">
-          {trouble.kind === "no_signin" ? (
-            `${trouble.message} Its tools then work the same way.`
-          ) : (
-            <>
-              <b>{label}</b> needs an app registered with it before Tvashtr can sign in, and it
-              doesn’t let Tvashtr register by itself. Ask its maker, or add it in Tools if it also
-              takes a key.
-            </>
-          )}
-        </Note>
-      </>
-    );
-    primary = addInTools(trouble.kind === "no_signin" ? "primary" : "secondary");
-  } else if (conn) {
-    const site = conn.signin_host ?? conn.host;
-    body = (
-      <>
-        {fields}
-        {conn.signin_host_differs ? (
-          <Note kind="warn">
-            You’ll sign in at <b>{site}</b>, a different site from {conn.host}. Only continue if you
-            know it.
+        {trouble ? (
+          <Note kind="warn" role="alert">
+            {trouble.kind === "no_signin" ? (
+              `${trouble.message} Its tools then work the same way.`
+            ) : (
+              <>
+                <b>{label}</b> needs an app registered with it before Tvashtr can sign in, and it
+                doesn’t let Tvashtr register by itself. Ask its maker, or add it in Tools if it also
+                takes a key.
+              </>
+            )}
           </Note>
+        ) : conn ? (
+          <>
+            {conn.signin_host_differs ? (
+              <Note kind="warn">
+                You’ll sign in at <b>{site}</b>, a different site from {conn.host}. Only continue if
+                you know it.
+              </Note>
+            ) : (
+              <Note kind="info">
+                You’ll sign in at <b>{site}</b>.
+              </Note>
+            )}
+            <AccessChoice
+              value={access}
+              onChange={setAccess}
+              hint="Read only lets agents call only the tools the server marks as read-only. A tool the server doesn’t mark counts as a write."
+            />
+            <SignInStaysNote />
+            {notice && (
+              <div className="cn-error" role="alert">
+                {notice}
+              </div>
+            )}
+          </>
         ) : (
           <Note kind="info">
-            You’ll sign in at <b>{site}</b>.
+            For remote MCP servers that sign in with OAuth, like everything in Browse. A server that
+            takes a key in a header, or runs as a local command, goes in <b>Tools</b>.
           </Note>
         )}
-        <AccessChoice
-          value={access}
-          onChange={setAccess}
-          hint="Read only lets agents call only the tools the server marks as read-only. A tool the server doesn’t mark counts as a write."
-        />
-        <SignInStaysNote />
-        {notice && (
-          <div className="cn-error" role="alert">
-            {notice}
-          </div>
-        )}
-      </>
+      </form>
     );
-    primary = (
+    primary = trouble ? (
+      addInTools(trouble.kind === "no_signin" ? "primary" : "secondary")
+    ) : conn ? (
       <Button
         size="sm"
         iconLeft={<ExternalLink size={14} strokeWidth={1.6} aria-hidden />}
+        disabled={!label}
         onClick={toProvider}
       >
         {`Continue to ${site}`}
       </Button>
-    );
-  } else {
-    body = (
-      <form className="cn-form" onSubmit={(e) => void check(e)} noValidate>
-        {fields}
-        <Note kind="info">
-          For remote MCP servers that sign in with OAuth, like everything in Browse. A server that
-          takes a key in a header, or runs as a local command, goes in <b>Tools</b>.
-        </Note>
-      </form>
-    );
-    primary = (
+    ) : (
       <Button
         size="sm"
         disabled={!label || !url.trim()}
