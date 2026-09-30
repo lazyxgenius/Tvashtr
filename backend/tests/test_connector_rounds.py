@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 from mcp.types import CallToolResult, TextContent
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, event, select, update
 
 from tvashtr.control_plane import connector_proxy
 from tvashtr.control_plane.connector_proxy import (
@@ -427,3 +427,28 @@ def test_recent_use_is_at_most_10_rows_from_the_owners_last_30_runs(owner):
         s.execute(delete(RunEvent).where(RunEvent.run_id.in_(runs[2:])))
     assert _recent(owner_id, row) == []
     assert connector_proxy.RECENT_USE_RUNS == 30 and connector_proxy.RECENT_USE_ROWS == 10
+
+
+def test_recent_use_asks_for_a_runs_number_once_not_once_per_call(owner):
+    _c, owner_id, tid, _nodes = owner
+    row = _connection(owner_id)
+    run_id, clone = _run(owner_id, tid)
+    _round(run_id, clone["reviewer"])
+    grant = _grant(run_id, clone["reviewer"], row)
+    for _ in range(40):
+        record_call(grant, row, "list_tables", write=False, result=OK)
+
+    statements: list[str] = []
+
+    def count(_conn, _cursor, statement, *_rest) -> None:
+        statements.append(statement)
+
+    with session_scope() as s:
+        event.listen(s.get_bind(), "before_cursor_execute", count)
+        try:
+            rows = recent_use(s, owner_id, row.id)
+        finally:
+            event.remove(s.get_bind(), "before_cursor_execute", count)
+
+    assert [(r["run_number"], r["reads"]) for r in rows] == [(1, 40)]
+    assert len(statements) <= 4  # the runs, the events, one run's number: never one per call

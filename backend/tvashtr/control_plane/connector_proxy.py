@@ -549,16 +549,16 @@ def recent_use(session: Session, owner_id: uuid.UUID, connection_id: uuid.UUID) 
     ).all()
     uses: dict[tuple, dict] = {}
     for event, node in events:
-        use = uses.setdefault(
-            (event.run_id, node.id if node is not None else None),
-            {
+        key = (event.run_id, node.id if node is not None else None)
+        use = uses.get(key)
+        if use is None:  # built once per run and agent: the run's number is a query of its own
+            use = uses[key] = {
                 "run_id": event.run_id,
                 "run_number": _run_number(session, runs[event.run_id]),
                 "agent": node_label(node.role_name, node.kind, node.config) if node else None,
                 "reads": 0,
                 "writes": 0,
-            },
-        )
+            }
         if event.payload.get("ok"):
             use["writes" if event.payload.get("write") else "reads"] += 1
         use["at"] = event.created_at.isoformat()  # the latest call: events come oldest first
