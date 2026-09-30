@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, History } from "lucide-react";
 import { Badge, Button } from "../../design-system/components";
 import type { NodeRound, NodeRuns } from "../../lib/api/nodes";
 import { formatRelativeTime } from "../../lib/time";
+import { ConnectorsSkipped, ConnectorsUsed } from "../connectors/ConnectorsUsed";
 import { statusBadge } from "../nodeBadges";
 import { clipDetail, compactTokens, detailParts } from "./rounds";
 import type { Loaded } from "./useLoaded";
@@ -79,7 +80,7 @@ export function EmptyCard({
 
 /**
  * Runs (PANEL-72..74): this agent's latest round in its newest run ("Last run"), then that run's
- * earlier rounds, each expanding in place to its detail, tokens, cost and time.
+ * earlier rounds, each expanding in place to its detail, tokens, cost, time and connector calls.
  */
 export function RunsTab({
   history,
@@ -113,7 +114,8 @@ export function RunsTab({
 /**
  * The latest round ("Last run") over the same run's earlier rounds, newest first. The run view hands
  * it the rounds of the run on screen; `more` adds what that view knows about a round (its exact
- * cost and context) under the Last run card and inside an opened round.
+ * cost and context) under the Last run card and inside an opened round. A round's connectors show
+ * in both views: what it ran without inside the card, its chips and calls after it.
  */
 export function RoundsList({
   rounds,
@@ -130,7 +132,16 @@ export function RoundsList({
       <div className="nd-section__head">
         <span className="nd-section__title">Last run</span>
       </div>
-      <LastRunCard round={last} more={more?.(last)} />
+      <LastRunCard
+        round={last}
+        more={
+          <>
+            <ConnectorsSkipped connectors={last.connectors} />
+            {more?.(last)}
+          </>
+        }
+      />
+      <ConnectorsUsed connectors={last.connectors} />
       {earlier.length > 0 && (
         <div className="nd-runs__earlier">
           <span className="nd-section__title">Earlier rounds</span>
@@ -229,6 +240,8 @@ function RoundItem({
             {round.cost && <span>${round.cost.cost_usd.toFixed(2)}</span>}
             {when && <span>{when}</span>}
           </div>
+          <ConnectorsSkipped connectors={round.connectors} />
+          <ConnectorsUsed connectors={round.connectors} />
           {more}
           {onOpenFocus && (
             <button type="button" className="nd-link nd-round__focus" onClick={onOpenFocus}>

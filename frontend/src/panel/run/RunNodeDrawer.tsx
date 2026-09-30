@@ -103,6 +103,7 @@ function roundsOf(node: GraphNode, status: NodeStatus): NodeRound[] {
     runs_on: null,
     given: null,
     produced: null,
+    connectors: inv.connectors,
   }));
 }
 
@@ -286,7 +287,7 @@ const TOOL_LABEL: Record<RunTool, string> = {
 
 /**
  * The Runs tab in a run: this agent's rounds in the run (the Team drawer's Last run card and earlier
- * rounds, each with its exact cost and context), then the run-only tools. A worker has its step
+ * rounds, each with its exact cost and context and its connector calls), then the run-only tools. A worker has its step
  * feed (Activity) and the run's file changes (Changes); once the agent has run, Ask explains what
  * it did.
  */

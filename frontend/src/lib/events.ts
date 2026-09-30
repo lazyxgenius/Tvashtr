@@ -3,6 +3,13 @@
 
 export type EventTone = "neutral" | "danger";
 
+// The connectors proxy's own rows (contract: What a run shows). The engine already has an action
+// and an observation for the same call, and the round's Connectors block lists it.
+const NOT_IN_FEED = new Set(["connector_call", "connector_skipped"]);
+
+/** Whether the Activity feed lists an event of this kind. */
+export const isFeedEvent = (kind: string): boolean => !NOT_IN_FEED.has(kind);
+
 export interface EventSummary {
   tone: EventTone;
   label: string; // the event kind — drives the row badge

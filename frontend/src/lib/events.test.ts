@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeEvent } from "./events";
+import { isFeedEvent, summarizeEvent } from "./events";
 
 describe("summarizeEvent", () => {
   it("summarizes an action (tool_name + thought)", () => {
@@ -73,5 +73,18 @@ describe("summarizeEvent", () => {
     expect(s.detail.length).toBeLessThanOrEqual(140);
     expect(s.detail.endsWith("…")).toBe(true);
     expect(s.full).toBe(long);
+  });
+});
+
+describe("isFeedEvent — what the Activity feed lists", () => {
+  it("skips the proxy's connector rows, which the engine's own action already shows", () => {
+    expect(isFeedEvent("connector_call")).toBe(false);
+    expect(isFeedEvent("connector_skipped")).toBe(false);
+  });
+
+  it("keeps the engine's events and kinds it doesn't know", () => {
+    for (const kind of ["action", "observation", "message", "error", "weird", ""]) {
+      expect(isFeedEvent(kind)).toBe(true);
+    }
   });
 });

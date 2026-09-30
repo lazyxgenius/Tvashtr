@@ -22,8 +22,10 @@ import {
   getConfig,
   rewriteGithubInstallUrlForDesktop,
   getGithubRepos,
+  getGraph,
   getProviderCatalogue,
   getReviewMode,
+  getRunEvents,
   inspectRepo,
   listMemories,
   presetsForProvider,
@@ -932,5 +934,95 @@ describe("updateTeamNode — per-node capabilities (Session A)", () => {
       output_schema: null,
       multimodal: false,
     });
+  });
+});
+
+describe("connectors in a run (contract: What a run shows)", () => {
+  const call = (over: Record<string, unknown>) => ({
+    connection_id: "c1",
+    name: "Linear",
+    tool: "create_issue",
+    write: true,
+    ok: true,
+    blocked: false,
+    arg: "Follow-up",
+    at: "2026-09-30T10:06:00+00:00",
+    duration_ms: 900,
+    ...over,
+  });
+
+  it("getGraph reads each invocation's connectors block, and only an https result is an address", async () => {
+    const graph = {
+      run_id: "r1",
+      team_graph_id: "g1",
+      edges: [],
+      nodes: [
+        {
+          id: "n1",
+          invocations: [
+            {
+              iteration: 1,
+              connectors: {
+                used: [{ connection_id: "c1", name: "Linear", slug: "linear", writes: 2 }],
+                calls: [
+                  call({ result_url: "https://linear.app/x/issue/LIN-214" }),
+                  call({ result_url: "javascript:alert(1)" }),
+                ],
+                total_calls: 2,
+                skipped: [
+                  { connection_id: null, name: "a connector", reason: "it was disconnected" },
+                ],
+              },
+            },
+            { iteration: 2, connectors: null },
+            { iteration: 3 },
+          ],
+        },
+        { id: "gate", invocations: [] },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() => Promise.resolve(jsonOk(graph))),
+    );
+    const out = await getGraph("r1");
+    const [first, second, third] = out.nodes[0].invocations;
+    expect(first.connectors?.used).toEqual([
+      { connection_id: "c1", name: "Linear", slug: "linear", reads: 0, writes: 2 },
+    ]);
+    expect(first.connectors?.calls.map((c) => c.result_url)).toEqual([
+      "https://linear.app/x/issue/LIN-214",
+      null,
+    ]);
+    expect(first.connectors?.skipped).toEqual([
+      { connection_id: null, name: "a connector", reason: "it was disconnected" },
+    ]);
+    expect(second.connectors).toBeNull();
+    expect(third.connectors).toBeNull();
+  });
+
+  it("getRunEvents leaves the connector rows out of the feed", async () => {
+    const event = (seq: number, kind: string) => ({
+      seq,
+      kind,
+      payload: {},
+      created_at: "2026-09-30T10:03:41+00:00",
+      invocation_id: 1,
+      node_id: "n1",
+      iteration: 1,
+    });
+    const events = [
+      event(1, "action"),
+      event(2, "observation"),
+      event(1_000_000_000, "connector_skipped"),
+      event(1_000_000_001, "connector_call"),
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() => Promise.resolve(jsonOk({ run_id: "r1", events }))),
+    );
+    const out = await getRunEvents("r1");
+    expect(out.run_id).toBe("r1");
+    expect(out.events.map((e) => e.kind)).toEqual(["action", "observation"]);
   });
 });
