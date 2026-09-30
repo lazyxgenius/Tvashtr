@@ -12,7 +12,7 @@ from toolkit_helpers import fresh_account, make_node, make_team, node_row
 
 from tvashtr.control_plane import connector_oauth, connector_upstream, connectors
 
-pytest_plugins = ["connector_helpers"]
+pytest_plugins = ["connector_fixtures"]
 
 NOT_FOUND = {"detail": "Connector not found."}
 TOOLS = [

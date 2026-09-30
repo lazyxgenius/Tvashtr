@@ -19,7 +19,7 @@ from tvashtr.db import session_scope
 from tvashtr.main import app
 from tvashtr.models import ConnectorConnection
 
-pytest_plugins = ["connector_helpers"]  # the ``registry_file`` and ``local_addresses`` fixtures
+pytest_plugins = ["connector_fixtures"]  # the ``registry_file`` and ``local_addresses`` fixtures
 
 NOT_FOUND = {"detail": "Connector not found."}
 

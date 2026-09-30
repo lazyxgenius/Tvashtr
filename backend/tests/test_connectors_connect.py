@@ -20,7 +20,7 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_net, connector_oauth, connector_upstream, connectors
 from tvashtr.control_plane.connector_catalog import FEATURED
 
-pytest_plugins = ["connector_helpers"]
+pytest_plugins = ["connector_fixtures"]
 
 FAKE_KEY = "test.fake/things"
 PUBLIC_IP = "93.184.216.34"

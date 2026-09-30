@@ -391,10 +391,10 @@ holds `FEATURED`, `available`, `resolve` and `is_write` from Phase 0 (0.6). B1 a
 
 **B1.3 Read routes.** `GET /api/connectors/catalog`, `GET /api/connectors`,
 `GET /api/connectors/{id}` in `routes/connectors.py` (idiom: `routes/toolkit.py:47-55`).
-- As built: `tests/connector_helpers.py` holds the shared helpers and two fixtures
-  (`registry_file`: a snapshot made of given registry items; `local_addresses`: lets
-  `connector_net` open the fake server). A test module that uses them says
-  `pytest_plugins = ["connector_helpers"]` (`tests/conftest.py` is not B1's to edit).
+- As built: `tests/connector_helpers.py` holds the shared helpers, and
+  `tests/connector_fixtures.py` two fixtures (`registry_file`: a snapshot made of given registry
+  items; `local_addresses`: lets `connector_net` open the fake server). A test module that uses
+  them says `pytest_plugins = ["connector_fixtures"]` (`tests/conftest.py` is not B1's to edit).
 - Tests first (`tests/test_connectors_api.py`, helpers from `tests/toolkit_helpers.py`): list hides
   `pending`; the catalog marks this account's connections and not another account's; **another
   account's id and a random uuid are 404 on GET** (`fresh_account()`, as

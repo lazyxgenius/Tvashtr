@@ -36,7 +36,7 @@ CONTRACT = [
 ]
 GOOGLE = ("google-drive", "google-docs", "google-sheets")
 
-pytest_plugins = ["connector_helpers"]  # the ``registry_file`` fixture
+pytest_plugins = ["connector_fixtures"]  # the ``registry_file`` fixture
 
 
 def test_the_fourteen_featured_entries_match_the_contract_table():
