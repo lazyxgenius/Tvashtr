@@ -597,6 +597,40 @@ connector isn’t available for this run."
   at `RUNNER_SEQ_OFFSET = 100` (`control_plane/desktop_jobs.py:57`) and stays far below
   1,000,000,000. The two never share an invocation either (plan agents get no connectors).
 
+**B3 as built** (where it differs from the tasks above):
+- **`record_skip` landed with B3.2 and `record_call` with B3.3**, not B3.5: those tasks call them
+  and their tests read the rows they write. B3.5 is `connector_use`, `recent_use` and the two
+  endpoint fields. Both writers go through one `_write_event` (the band, the `invocation_id` rule,
+  the retry on `IntegrityError`).
+- **`sign_in_expired(run_id, node_id, row)`** is the one place a row becomes `needs_signin` at run
+  time (under the row lock; a row that already is keeps its `last_error`) and always writes the
+  skip. `build_mcp_config` and the proxy both call it, so a refused refresh marks the row whether
+  or not `ensure_access_token` already did.
+- **Read or write on `tools/call`** needs the tool's annotation, and a call carries only a name.
+  The proxy keeps each connection's `{tool: readOnlyHint}` from every listing it makes, per
+  process, and lists the provider first for a tool it hasn't seen (`# ponytail:` in the code).
+  The row's stored `tools` isn't used: it was listed at the row's access, not the agent's.
+- **The mount replaces the SDK's `tools/call` handler.** The SDK's own looks the tool up in a
+  cache it fills by calling `list_tools`, one cache for every agent and connector, so with two
+  connectors almost every call would list the provider again first. With input validation off
+  nothing reads what it finds. The handler is four lines in `tvashtr/mcp/connectors.py`.
+- **The HTTP path is tested here as well**, not only by T.1:
+  `tests/test_connector_proxy.py::test_the_proxy_over_http_lists_and_calls_the_provider_for_a_run_token`
+  runs the mounted proxy in a subprocess (never `tvashtr.main`) against the fake provider with
+  the SDK's own client. T.1's probe still covers the running backend and the delete.
+- **`reads`/`writes` count the calls that worked.** A failed call changed nothing, and a call
+  that failed before the proxy could learn the tool's annotation would otherwise count as a
+  write. The contract's Rounds paragraph says so now.
+- **A refused list writes the `we couldn’t reach it` skip** (contract, `tools/list`), so a
+  provider that answers 403 to the listing doesn't leave an agent silently without its tools.
+- **`tests/test_graph_endpoint.py`** asserts the exact key set of a graph invocation; it gained
+  `connectors`, like the additive fields before it.
+- **`routers.py` imports `connector_proxy`, so the Phase 0 guard now reads it**
+  (`test_connector_net.py::test_no_other_connector_module_builds_an_http_client` scans every
+  module that imports a connector module). It builds no HTTP client, but a comment at :159 ended
+  in the word "requests." and the guard's pattern took it for the library. The comment was
+  reworded; the guard is untouched.
+
 ## 7. Stream F1: pages, nav, badges
 
 Reuse the Tools page classes (`tk-head`, `tk-bar`, `tk-cat`, `tk-card`, `tk-crumbs`, `tk-dhead` in
