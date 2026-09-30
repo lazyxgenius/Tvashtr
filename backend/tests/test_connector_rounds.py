@@ -7,6 +7,7 @@ The events are written by the real writers (``record_call``, ``record_skip``).
 
 Contract: ``docs/superpowers/plans/api/connectors.md`` (What a run shows)."""
 
+import threading
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -452,3 +453,36 @@ def test_recent_use_asks_for_a_runs_number_once_not_once_per_call(owner):
 
     assert [(r["run_number"], r["reads"]) for r in rows] == [(1, 40)]
     assert len(statements) <= 4  # the runs, the events, one run's number: never one per call
+
+
+@pytest.mark.parametrize("with_node", [True, False])
+def test_calls_made_at_the_same_moment_are_all_recorded(owner, with_node):
+    _c, owner_id, tid, _nodes = owner
+    row = _connection(owner_id)
+    run_id, clone = _run(owner_id, tid)
+    inv = _round(run_id, clone["reviewer"])
+    grant = _grant(run_id, clone["reviewer"], row)
+    if not with_node:  # a token with no node: its events share one band for the run
+        grant = RunGrant(run_id=run_id, node_id=None, connection_id=row.id, access="write")
+    writers = 12
+    together = threading.Barrier(writers)
+
+    def call(n: int) -> None:
+        together.wait()
+        record_call(grant, row, f"tool_{n}", write=True, result=OK)
+
+    threads = [threading.Thread(target=call, args=(n,)) for n in range(writers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    with session_scope() as s:
+        rows = s.execute(
+            select(RunEvent.invocation_id, RunEvent.seq, RunEvent.payload["tool"].astext).where(
+                RunEvent.run_id == run_id
+            )
+        ).all()
+    assert sorted(tool for _inv, _seq, tool in rows) == sorted(f"tool_{n}" for n in range(writers))
+    assert sorted(seq for _inv, seq, _tool in rows) == [BAND + n for n in range(writers)]
+    assert {invocation for invocation, _seq, _tool in rows} == {inv if with_node else None}

@@ -10,6 +10,7 @@ import logging
 import re
 import time
 import uuid
+import zlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -18,7 +19,7 @@ import anyio
 from itsdangerous import BadData, URLSafeTimedSerializer
 from mcp import McpError
 from mcp.types import CallToolResult, TextContent, Tool
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -117,6 +118,7 @@ UNREACHABLE = "we couldn’t reach it"
 # they ever need to.
 EVENT_SEQ_BAND = 1_000_000_000
 _SEQ_ATTEMPTS = 5
+_LOCK_NAMESPACE = 0x434E  # advisory-lock namespace ("CN"), next to ``domain_read``'s "DM"
 
 
 def _latest_invocation(session: Session, run_id: str, node_id: object) -> int | None:
@@ -145,12 +147,22 @@ def _next_seq(session: Session, run_id: str, invocation_id: int | None) -> int:
 
 
 def _write_event(run_id: str, node_id: object, kind: str, payload: dict) -> None:
-    """One ``run_events`` row in the proxy's band. Two writers can read the same next ``seq``; the
-    loser of ``(run_id, invocation_id, seq)`` reads again."""
+    """One ``run_events`` row in the proxy's band. Writers of one band take their ``seq`` one at a
+    time, under a transaction lock on ``(run_id, invocation_id)``: calls made at the same moment
+    are all recorded, and the band with no round (where the unique constraint sees only NULLs)
+    gets no ``seq`` twice. The retry on ``(run_id, invocation_id, seq)`` stays as a backstop."""
     for _ in range(_SEQ_ATTEMPTS):
         try:
             with session_scope() as session:
                 invocation_id = _latest_invocation(session, run_id, node_id)
+                session.execute(
+                    text("SELECT pg_advisory_xact_lock(:ns, :k)"),
+                    {
+                        "ns": _LOCK_NAMESPACE,
+                        # a signed int4, like ``domain_read._lock``
+                        "k": zlib.crc32(f"{run_id}:{invocation_id}".encode()) - 2**31,
+                    },
+                )
                 session.add(
                     RunEvent(
                         run_id=run_id,
