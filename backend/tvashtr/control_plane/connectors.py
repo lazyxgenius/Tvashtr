@@ -3,8 +3,10 @@ shares.
 
 Shared with the OAuth and run-time streams: :class:`ConnectorError`, :func:`get_owned`,
 :func:`read_secret`, :func:`write_secret`, :func:`stored_tools`, :func:`serialize`,
-:func:`upstream_headers`, :func:`upstream_target`. The rest is what the routes in
-``routes/connectors.py`` call. Contract: ``docs/superpowers/plans/api/connectors.md``.
+:func:`upstream_headers`, :func:`upstream_target`, and :func:`provider_slot` (the cap on
+requests that wait on a provider: a sync route that does wraps the wait in it). The rest is what
+the routes in ``routes/connectors.py`` call. Contract:
+``docs/superpowers/plans/api/connectors.md``.
 
 A grant is an item of an agent node's ``tool_config.tvashtr.connectors``: ``{"id", "access"?}``.
 Only the owner's LIBRARY teams and their ``agent``/``completion`` nodes count, as for tools
