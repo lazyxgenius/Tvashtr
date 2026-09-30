@@ -571,7 +571,13 @@ def _key_entry(entry: dict, row: ConnectorConnection) -> dict:
     return {
         "headers": [{"name": n, "secret": True, "required": True, "template": None} for n in names],
         "key_fields": [
-            {"id": n, "label": connector_catalog._key_label(n), "hint": "", "secret": True}
+            {
+                "id": n,
+                "label": connector_catalog._key_label(n),
+                "hint": "",
+                "secret": True,
+                "required": True,
+            }
             for n in names
         ],
     }

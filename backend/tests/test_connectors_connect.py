@@ -153,8 +153,15 @@ def test_a_key_connector_needs_its_key(registry_file, upstream):
     )
     c, owner = fresh_account()
     fields = [
-        {"id": "X-App-Id", "label": "X-App-Id", "hint": "Your app id", "secret": False},
-        {"id": "X-Token", "label": "X-Token", "hint": "", "secret": True},
+        # ``required``: the form asks for the rest too, and sends only what is filled in.
+        {
+            "id": "X-App-Id",
+            "label": "X-App-Id",
+            "hint": "Your app id",
+            "secret": False,
+            "required": True,
+        },
+        {"id": "X-Token", "label": "X-Token", "hint": "", "secret": True, "required": False},
     ]
     for body in (
         {"key": "dev.two/keys"},

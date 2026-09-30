@@ -428,6 +428,9 @@ def _registry_entry(slim: dict) -> dict:
             "label": _key_label(h["name"]),
             "hint": h.get("hint") or "",
             "secret": h["secret"],
+            # An optional one may be left empty (``connectors._key_headers`` needs the required
+            # ones and at least one value).
+            "required": h["required"],
         }
         for h in headers
         if h["secret"] or h["required"]

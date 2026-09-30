@@ -64,7 +64,13 @@ interface ProblemState {
 const CANCELLED = "Sign-in cancelled. Nothing was connected.";
 const TIMED_OUT = "The sign-in wasn’t finished in time. Try again.";
 const COULDNT_OPEN = "Tvashtr couldn’t open the sign-in page. Try again.";
-const DEFAULT_KEY: KeyField = { id: "Authorization", label: "API key", hint: "", secret: true };
+const DEFAULT_KEY: KeyField = {
+  id: "Authorization",
+  label: "API key",
+  hint: "",
+  secret: true,
+  required: true,
+};
 
 /** The server's words for a refusal or another 4xx, else null. */
 function serverWords(e: unknown, refusal: ConnectorRefusal | null): string | null {
@@ -259,11 +265,18 @@ export function ConnectSheet({
   };
 
   const fields = keyFields;
-  const keysFilled = fields.length > 0 && fields.every((f) => (keys[f.id] ?? "").trim() !== "");
+  // The server's rule (`connectors._key_headers`): every required key, and at least one key.
+  // Only what is filled in is sent: an optional field left empty is no header at all.
+  const filled = fields.flatMap((f) => {
+    const value = (keys[f.id] ?? "").trim();
+    return value === "" ? [] : [[f.id, value] as const];
+  });
+  const keysFilled =
+    filled.length > 0 && fields.every((f) => !f.required || filled.some(([id]) => id === f.id));
   const submitKey = async (e?: FormEvent) => {
     e?.preventDefault();
     if (!keysFilled || busy) return;
-    const credentials = Object.fromEntries(fields.map((f) => [f.id, keys[f.id].trim()]));
+    const credentials = Object.fromEntries(filled);
     setBusy(true);
     setKeyError(null);
     setNotice(null);

@@ -127,7 +127,11 @@ Why one table is enough:
 - `auth`: `oauth` | `api_key` | `none` | `unknown`. Registry entries are `api_key` when the registry
   declares a secret or required header, else `unknown` (decided by discovery when you connect).
 - `key_fields` (`api_key` only): `[{"id": "Authorization", "label": "API key", "hint": "Apify API
-  token", "secret": true}]`. `id` is the header name. `hint` is the registry's description.
+  token", "secret": true, "required": true}]`. `id` is the header name. `hint` is the registry's
+  description. `required` is the registry's flag: a field with `false` may be left empty (27
+  registry servers take one of several keys and mark none as required). The form needs every
+  required field and at least one value, which is the server's own rule (POST step 2), and
+  sends only the fields that are filled in. An answer without `required` reads as `true`.
 - `read_only_by`: what keeps a read-only connection read only, which is also what the UI says
   about it. `provider` (the provider's own URL flag, trusted on its own: Supabase) | `scopes`
   (the sign-in asks for read-only OAuth scopes, so the provider refuses a write itself: Google) |

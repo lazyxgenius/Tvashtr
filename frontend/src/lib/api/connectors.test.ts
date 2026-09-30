@@ -424,7 +424,13 @@ describe("connectors API — a malformed answer throws", () => {
 describe("connectors API — refusals", () => {
   it("keeps the server's copy and the structured detail", async () => {
     const fields = [
-      { id: "Authorization", label: "API key", hint: "Apify API token", secret: true },
+      {
+        id: "Authorization",
+        label: "API key",
+        hint: "Apify API token",
+        secret: true,
+        required: true,
+      },
     ];
     mockApi({
       "POST /api/connectors": (_u: URL, body: unknown) =>

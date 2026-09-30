@@ -281,7 +281,13 @@ def test_catalog_is_featured_first_then_the_registry_and_needs_a_session(
         "host": "mcp.apify.com",
         "auth": "api_key",
         "key_fields": [
-            {"id": "Authorization", "label": "API key", "hint": "Apify API token", "secret": True}
+            {
+                "id": "Authorization",
+                "label": "API key",
+                "hint": "Apify API token",
+                "secret": True,
+                "required": True,
+            }
         ],
         "access_modes": ["read", "write"],
         "read_only_by": "annotations",

@@ -439,7 +439,13 @@ def test_a_key_connection_says_which_key_fields_it_takes(registry_file):
     its key replaced."""
     c, owner = fresh_account()
     cid = _key_connection(owner, registry_file)
-    listed = {"id": "Authorization", "label": "API key", "hint": "", "secret": True}
+    listed = {
+        "id": "Authorization",
+        "label": "API key",
+        "hint": "",
+        "secret": True,
+        "required": True,
+    }
     assert c.get(f"/api/connectors/{cid}").json()["key_fields"] == [listed]
     [row] = c.get("/api/connectors").json()["connections"]
     assert row["key_fields"] == [listed]
@@ -454,8 +460,8 @@ def test_a_key_connection_says_which_key_fields_it_takes(registry_file):
         secret={"headers": {"Authorization": "Bearer OLD", "X-Team": "7"}},
     )
     assert c.get(f"/api/connectors/{gone}").json()["key_fields"] == [
-        {"id": "Authorization", "label": "API key", "hint": "", "secret": True},
-        {"id": "X-Team", "label": "X-Team", "hint": "", "secret": True},
+        {"id": "Authorization", "label": "API key", "hint": "", "secret": True, "required": True},
+        {"id": "X-Team", "label": "X-Team", "hint": "", "secret": True, "required": True},
     ]
     # A connection that signs in takes none.
     signs_in = add_connection(owner, "supabase")
@@ -536,8 +542,8 @@ def test_patch_credentials_when_the_catalog_no_longer_lists_the_key(registry_fil
         c.patch(path, json={"credentials": {"Authorization": "k"}}), 422, "key_required"
     )
     assert detail["fields"] == [
-        {"id": "Authorization", "label": "API key", "hint": "", "secret": True},
-        {"id": "X-Team", "label": "X-Team", "hint": "", "secret": True},
+        {"id": "Authorization", "label": "API key", "hint": "", "secret": True, "required": True},
+        {"id": "X-Team", "label": "X-Team", "hint": "", "secret": True, "required": True},
     ]
     assert upstream.lists == [] and connection_row(cid).status == "needs_signin"
 

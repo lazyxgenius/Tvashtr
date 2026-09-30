@@ -43,6 +43,8 @@ export interface KeyField {
   label: string;
   hint: string;
   secret: boolean;
+  /** False: it may be left empty (the server then takes one of several keys). */
+  required: boolean;
 }
 
 export interface ScopePicker {
@@ -224,6 +226,7 @@ function parseKeyField(raw: unknown): KeyField | null {
     label: str(raw.label, raw.id),
     hint: str(raw.hint),
     secret: raw.secret !== false,
+    required: raw.required !== false,
   };
 }
 

@@ -425,7 +425,13 @@ def test_registry_entries_take_a_key_when_the_registry_declares_a_secret_or_requ
         "auth": "api_key",
         # Only what the user has to give: the optional, non-secret header isn't asked for.
         "key_fields": [
-            {"id": "Authorization", "label": "API key", "hint": "Apify API token", "secret": True}
+            {
+                "id": "Authorization",
+                "label": "API key",
+                "hint": "Apify API token",
+                "secret": True,
+                "required": True,
+            }
         ],
         "headers": None,
         "read_only_by": "annotations",
@@ -450,7 +456,8 @@ def test_registry_entries_take_a_key_when_the_registry_declares_a_secret_or_requ
         "api_key",
     )
     assert exa["key_fields"] == [
-        {"id": "X-API-Key", "label": "API key", "hint": "", "secret": True}
+        # The registry calls it secret, not required.
+        {"id": "X-API-Key", "label": "API key", "hint": "", "secret": True, "required": False}
     ]
 
 

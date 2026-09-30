@@ -136,7 +136,15 @@ const registry = (key: string, name: string, host: string, over: Partial<Catalog
 const APIFY = registry("com.apify/apify-mcp-server", "Apify", "mcp.apify.com", {
   auth: "api_key",
   description: "Run web scrapers and read their results.",
-  key_fields: [{ id: "Authorization", label: "API key", hint: "Apify API token", secret: true }],
+  key_fields: [
+    {
+      id: "Authorization",
+      label: "API key",
+      hint: "Apify API token",
+      secret: true,
+      required: true,
+    },
+  ],
 });
 const STRIPE = registry("com.stripe/mcp", "Stripe", "mcp.stripe.com");
 const ZAPIER = registry("com.zapier/mcp", "Zapier", "mcp.zapier.com");

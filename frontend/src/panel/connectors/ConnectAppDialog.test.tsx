@@ -19,7 +19,7 @@ const POSTHOG = entry({
   category: "analytics",
   host: "mcp.posthog.com",
   auth: "api_key",
-  key_fields: [{ id: "Authorization", label: "API key", hint: "", secret: true }],
+  key_fields: [{ id: "Authorization", label: "API key", hint: "", secret: true, required: true }],
   access_modes: ["read"],
   scope_picker: null,
 });

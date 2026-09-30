@@ -53,7 +53,15 @@ const APIFY = entry({
   website: null,
   host: "mcp.apify.com",
   auth: "api_key",
-  key_fields: [{ id: "Authorization", label: "API key", hint: "Apify API token", secret: true }],
+  key_fields: [
+    {
+      id: "Authorization",
+      label: "API key",
+      hint: "Apify API token",
+      secret: true,
+      required: true,
+    },
+  ],
   read_only_by: "annotations",
   scope_picker: null,
 });
@@ -766,6 +774,53 @@ describe("connecting with an API key", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
+  it("asks for every key the server takes and needs only the required ones", async () => {
+    // A server that takes one of two kinds of key marks neither as required (27 registry
+    // entries). Both used to be demanded, and whatever was typed into the spare was sent.
+    const either = {
+      ...APIFY,
+      key_fields: [
+        {
+          id: "X-Agent-Key",
+          label: "X-Agent-Key",
+          hint: "Optional",
+          secret: true,
+          required: false,
+        },
+        { id: "X-Api-Key", label: "API key", hint: "Optional", secret: true, required: false },
+      ],
+    };
+    const calls = serve({ "POST /api/connectors": APIFY_ROW });
+    const { onDone, unmount } = show({ entry: either });
+    const button = () => screen.getByRole("button", { name: "Check and connect" });
+    expect(button()).toBeDisabled(); // a server that takes a key needs at least one
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: " k2 " } });
+    expect(button()).toBeEnabled();
+    click("Check and connect");
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+    // Only what was filled in is sent.
+    expect(calls[0].body).toMatchObject({ credentials: { "X-Api-Key": "k2" } });
+    expect(Object.keys((calls[0].body as { credentials: object }).credentials)).toEqual([
+      "X-Api-Key",
+    ]);
+    unmount();
+
+    // One required, one optional: the required one is needed, the other can stay empty.
+    const mixed = {
+      ...APIFY,
+      key_fields: [
+        { id: "X-App-Id", label: "X-App-Id", hint: "", secret: false, required: true },
+        { id: "X-Token", label: "X-Token", hint: "", secret: true, required: false },
+      ],
+    };
+    show({ entry: mixed });
+    fireEvent.change(screen.getByLabelText("X-Token"), { target: { value: "t" } });
+    expect(button()).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("X-App-Id"), { target: { value: "app" } });
+    fireEvent.change(screen.getByLabelText("X-Token"), { target: { value: "" } });
+    expect(button()).toBeEnabled();
+  });
+
   it.each([
     ["key_rejected", "Apify didn’t accept the key."],
     ["invalid_key", "That isn’t a key Apify takes. Check it and try again."],
@@ -783,7 +838,9 @@ describe("connecting with an API key", () => {
   });
 
   it("asks for the key when the server says it needs one", async () => {
-    const fields = [{ id: "X-Api-Key", label: "API key", hint: "Acme key", secret: true }];
+    const fields = [
+      { id: "X-Api-Key", label: "API key", hint: "Acme key", secret: true, required: true },
+    ];
     let first = true;
     const calls = serve({
       "POST /api/connectors": () => {
@@ -962,8 +1019,8 @@ describe("for a connection you already have", () => {
       name: "lintlab PDF To Markdown",
       status: "needs_signin" as const,
       key_fields: [
-        { id: "Authorization", label: "API key", hint: "", secret: true },
-        { id: "X-Team", label: "X-Team", hint: "", secret: true },
+        { id: "Authorization", label: "API key", hint: "", secret: true, required: true },
+        { id: "X-Team", label: "X-Team", hint: "", secret: true, required: true },
       ],
     };
     show({ connection: row, mode: "signin", prepared: null });
