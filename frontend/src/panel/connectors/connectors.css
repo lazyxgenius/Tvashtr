@@ -199,3 +199,8 @@
 .nd-lastrun__head + .nd-conn-skip {
   margin-top: 12px;
 }
+
+/* The run banner's way to Connectors (`components/RunWarnings`): a button as wide as its words. */
+.tv-runwarn__open {
+  align-self: flex-start;
+}
