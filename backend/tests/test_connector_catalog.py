@@ -482,6 +482,14 @@ def test_search_lists_featured_first_then_the_registry_by_name(registry_file):
     assert [e["name"] for e in items[14:]] == ["alpha", "Beta", "zeta"]  # case-insensitive order
 
 
+def test_every_featured_entry_fits_on_the_first_page():
+    """Browse reads the registry's count as ``total`` minus the Featured cards on the page it
+    loaded, and asks for the default page. So the Featured list must fit on one."""
+    assert len(FEATURED) <= connector_catalog.DEFAULT_LIMIT
+    items, _total = search()
+    assert [e["key"] for e in items if e["featured"]] == list(FEATURED)
+
+
 def test_search_pages_with_offset_and_limit(registry_file):
     registry_file(
         *[
