@@ -548,6 +548,12 @@ every available Featured entry reaches an authorize address. An entry that fails
   server metadata. Fixed (B2.1's issuer check now ignores one trailing slash). Their endpoints
   are on `accounts.google.com` and `oauth2.googleapis.com`, which is what `oauth_hosts` pins.
   HubSpot offers neither registration nor metadata documents, as expected.
+- The probe also prints `iss`: whether the server sends the `iss` answer parameter. Same date:
+  yes for Linear, Sentry and Google; no for Supabase, Neon, Notion, PostHog, Mixpanel, Amplitude,
+  Intercom, Atlassian and HubSpot. A provider that doesn't can be the target of a **mix-up by
+  redirect** from a custom or registry connector's sign-in server, which the backend cannot
+  close (contract, Discovery step 4). Open: a warning in the app before such a sign-in (F1), and
+  the operator's decision on shipping custom and registry OAuth connectors with that residual.
 - Not covered by a discovery-only run: whether each provider accepts the registration and the
   authorize request as sent (Intercom gets no `scope`, PostHog gets all 155 it lists), and the
   tool annotations (Neon's `run_sql`, Google's). Those need `--register` and one real sign-in

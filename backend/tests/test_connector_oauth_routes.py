@@ -587,6 +587,29 @@ def test_an_issuer_is_checked_when_sent_even_if_the_server_never_promised_one(mo
     assert CONNECTED in _page(c.get(CALLBACK_PATH, params=back))
 
 
+def test_a_callback_that_names_a_parameter_twice_is_not_acted_on(
+    monkeypatch, listed, unauth_client
+):
+    """``iss`` is the one defence against a sign-in server that sends the browser on to another
+    provider's authorize page. A redirect address registered with an ``iss`` of its own makes the
+    callback carry two, and which one is read must not depend on the order they come in."""
+    fake = FakeConnectorServer(BASE, iss=True)
+    wire(monkeypatch, fake.handle)
+    c, owner = fresh_account()
+    cid = connection(owner, fake)
+    back = _allow(fake, c, cid)
+    started = load(cid)
+    seeded = ("iss", "https://login.other-site.test")
+
+    for query in ([seeded, *back.items()], [*back.items(), seeded]):
+        assert EXPIRED in _page(c.get(CALLBACK_PATH, params=query))
+        assert EXPIRED in _page(unauth_client.get(CALLBACK_PATH, params=query))
+    row = load(cid)
+    assert (row.state_hash, row.status, row.last_error) == (started.state_hash, "pending", None)
+    assert _token_requests(fake) == []
+    assert CONNECTED in _page(c.get(CALLBACK_PATH, params=back))  # said once, it still finishes
+
+
 def test_access_denied_clears_the_sign_in_and_says_why(monkeypatch, listed, unauth_client):
     fake = FakeConnectorServer(BASE)
     wire(monkeypatch, fake.handle)

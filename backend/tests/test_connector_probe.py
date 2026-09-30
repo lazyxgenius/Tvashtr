@@ -31,6 +31,7 @@ def test_a_probe_row_says_how_tvashtr_would_sign_in_and_registers_nothing(monkey
         "key": "fake",
         "ok": True,
         "issuer": BASE,
+        "iss": "no",
         "client": "cimd",
         "authorize_host": "mcp.fake.test",
         "endpoint_hosts": "token=mcp.fake.test registration=mcp.fake.test revocation=mcp.fake.test",
@@ -38,6 +39,10 @@ def test_a_probe_row_says_how_tvashtr_would_sign_in_and_registers_nothing(monkey
         "note": "",
     }
     assert "/register" not in paths(fake) and all(r.method == "GET" for r in fake.requests)
+
+    # A server that sends ``iss`` with its answer can't be used for a mix-up by redirect.
+    wire(monkeypatch, FakeConnectorServer(BASE, iss=True).handle)
+    assert probe.probe(ENTRY)["iss"] == "yes"
 
     # Asked to, it registers where registration is how Tvashtr would get a client.
     fake = FakeConnectorServer(BASE)

@@ -125,6 +125,11 @@ def oauth_callback(
 ) -> HTMLResponse:
     """Where the provider sends the browser back. Always an HTML page, never JSON and never a
     redirect into the app (the app polls the connection instead)."""
+    # A parameter is named once (RFC 6749, 3.1). A redirect address registered with an ``iss`` of
+    # its own would otherwise make this read one of two, by the order they happen to come in.
+    names = ("state", "code", "iss", "error")
+    if any(len(request.query_params.getlist(name)) > 1 for name in names):
+        return _render(Outcome("expired"), "", "", "")
     cookie = request.cookies.get(SESSION_COOKIE_NAME)
     session_user = read_session_cookie(cookie) if cookie else None
     outcome = connector_oauth.callback(state, code, iss or None, error or None, session_user)

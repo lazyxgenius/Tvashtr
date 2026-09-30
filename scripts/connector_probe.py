@@ -6,7 +6,9 @@ that can be connected it runs the discovery and the client choice the backend ru
 ``oauth/start``, against the real server, and prints one row: the issuer, the kind of client
 Tvashtr would sign in as, the host the browser is sent to, the host of every other sign-in
 endpoint (an endpoint off its issuer's site needs the entry's ``oauth_hosts``: the note names the
-host), and the scope that would be asked for.
+host), and the scope that would be asked for. ``iss`` says whether the server sends the ``iss``
+answer parameter (RFC 9207). A provider that doesn't can be the target of a mix-up by redirect
+from a custom or registry connector's sign-in server (the contract's discovery step 4).
 
     cd backend && uv run python ../scripts/connector_probe.py --base-url https://tvashtr.fly.dev
 
@@ -31,7 +33,17 @@ from urllib.parse import urlsplit
 from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_catalog, connector_oauth
 
-_COLUMNS = ("key", "ok", "issuer", "client", "authorize_host", "endpoint_hosts", "scope", "note")
+_COLUMNS = (
+    "key",
+    "ok",
+    "issuer",
+    "iss",
+    "client",
+    "authorize_host",
+    "endpoint_hosts",
+    "scope",
+    "note",
+)
 
 
 def _short(scope: str) -> str:
@@ -55,6 +67,7 @@ def probe(entry: dict, *, register: bool = False) -> dict:
         }
         row |= {
             "issuer": found.issuer,
+            "iss": "yes" if found.iss_supported else "no",
             "authorize_host": found.signin_host,
             "endpoint_hosts": " ".join(
                 f"{name}={urlsplit(address).hostname}"

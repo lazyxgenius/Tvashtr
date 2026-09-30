@@ -359,6 +359,29 @@ frontend origin (on Desktop that is `127.0.0.1`).
    verifier. A Featured entry can pin extra endpoint hosts (`oauth_hosts`; Google's token endpoint
    is on `oauth2.googleapis.com`). A registry or custom entry never can.
 
+   **What this rule does not stop: a mix-up by redirect (known residual, found in review).** A
+   custom or registry server can name its *own* authorize page, which passes the rule, and have
+   that page send the browser on to a real provider's authorize page with the same query. The
+   `client_id` works there: a client metadata document is the same for every provider, and where
+   the provider registers clients the attacker registers one with Tvashtr's redirect address.
+   The real provider sends its code to Tvashtr's callback under the custom row's `state`, and
+   Tvashtr posts the code and the PKCE verifier to the custom server's token endpoint, which
+   redeems them at the real provider. The user has to press Allow on the real provider's page
+   for a connector they added from somewhere else.
+   - The only defence is the callback's `iss` check (callback step 2), and it holds only for a
+     provider that sends `iss`. On 2026-09-30 (the probe's `iss` column) Linear, Sentry and Google
+     do. Supabase, Neon, Notion, PostHog, Mixpanel, Amplitude, Intercom and Atlassian don't, and
+     all of them take a metadata document or open registration.
+   - Nothing on the backend closes it for those. A redirect address per issuer doesn't (the
+     attacker registers whichever address Tvashtr accepts). Requiring `iss` from every
+     non-Featured server doesn't (a registered redirect address can carry `?iss=` already; the
+     callback refuses a parameter named twice, which only helps where the provider sends its
+     own).
+   - What is left to the user: the page that opens must belong to the connector being added.
+     The app should say so before a custom or registry sign-in (not built; F1's `ConnectSheet`).
+   - Operator decision: whether custom and registry connectors that sign in ship in v1 with this
+     residual.
+
 **Client** (at `oauth/start`, first match):
 1. Pre-registered: only Featured entries that name one (`google`), only on their pinned address.
    Never offered to a registry or custom address. Its secret is read from the settings whenever
@@ -411,7 +434,9 @@ confirm route is sent with `Referrer-Policy: no-referrer`, `Cache-Control: no-st
 
 1. No row for `state`, or `started_at` older than 10 minutes → page "This sign-in link has expired.
    Go back to Tvashtr and try again." Finding the row does not use the `state` up; only steps 3
-   and 4 and Complete do.
+   and 4 and Complete do. A callback that names `state`, `code`, `iss` or `error` more than once
+   gets the same page and nothing is read or written (a parameter is named once; a redirect
+   address registered with an `iss` of its own must not decide which of two is read).
 2. `iss`: when present it must equal the stored issuer exactly; when absent the sign-in is refused
    only if the server advertised `authorization_response_iss_parameter_supported`. On a mismatch
    nothing else in the request is acted on (not `error` either) and nothing is written: the page
