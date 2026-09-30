@@ -88,6 +88,9 @@ def _google(key: str, name: str, host: str, scope: str, description: str) -> dic
         client="google",
         scope=f"https://www.googleapis.com/auth/{scope}",
         oauth_hosts=_GOOGLE_OAUTH_HOSTS,
+        # Google gives a refresh token only with ``offline``, and on a later sign-in only when
+        # it asks for consent again.
+        authorize_params={"access_type": "offline", "prompt": "consent"},
         access_modes=["read"],
         revoke_hint=(
             "To remove Tvashtr on Google’s side too, open your Google Account, "

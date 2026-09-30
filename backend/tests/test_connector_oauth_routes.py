@@ -304,8 +304,7 @@ def test_a_featured_entry_pins_its_client_its_scope_and_extra_authorize_paramete
     wire(monkeypatch, handle)
     monkeypatch.setattr(get_settings(), "google_oauth_client_id", "tvashtr.apps.example")
     monkeypatch.setattr(get_settings(), "google_oauth_client_secret", SecretStr("G-SECRET"))
-    offline = {"access_type": "offline", "prompt": "consent"}
-    monkeypatch.setitem(entry, "authorize_params", offline)
+    offline = {"access_type": "offline", "prompt": "consent"}  # the entry's own, from the catalog
     c, owner = fresh_account()
     fake = FakeConnectorServer("https://drivemcp.googleapis.com")
     cid = connection(owner, fake, connector_key="google-drive", url=entry["url"])

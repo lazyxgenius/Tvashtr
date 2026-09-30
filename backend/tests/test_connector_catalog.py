@@ -91,6 +91,15 @@ def test_google_entries_pin_the_client_the_read_only_scope_and_the_endpoint_host
     assert all("client" not in e for k, e in FEATURED.items() if k not in GOOGLE)
 
 
+def test_google_entries_ask_for_a_refresh_token():
+    """Google hands out a refresh token only with ``access_type=offline``, and again on a later
+    sign-in only with ``prompt=consent``. Without both, a Google connection needs a new sign-in
+    about an hour after every one."""
+    for key in GOOGLE:
+        assert FEATURED[key]["authorize_params"] == {"access_type": "offline", "prompt": "consent"}
+    assert all("authorize_params" not in e for k, e in FEATURED.items() if k not in GOOGLE)
+
+
 def test_google_cards_turn_available_when_both_settings_are_set(monkeypatch):
     from pydantic import SecretStr
 
