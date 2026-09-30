@@ -33,9 +33,17 @@ from tvashtr.control_plane import (
     connector_proxy,
     connector_upstream,
 )
+from tvashtr.control_plane.credential_gate import subscription_for_model
 from tvashtr.control_plane.credentials import decrypt_secret, encrypt_secret
+from tvashtr.control_plane.domain_usage import _connected_subscriptions
 from tvashtr.control_plane.node_library import _as_uuid
-from tvashtr.control_plane.tool_usage import owner_agent_nodes, usage_counts, usage_row
+from tvashtr.control_plane.tool_usage import (
+    _select_nodes,
+    node_title,
+    owner_agent_nodes,
+    usage_counts,
+    usage_row,
+)
 from tvashtr.db import session_scope
 from tvashtr.models import ConnectorConnection
 
@@ -808,3 +816,62 @@ def disconnect(owner_id: uuid.UUID, connection_id: object) -> dict:
                 removed += 1
         session.delete(row)
     return {"removed_from_agents": removed, "revoked": revoked}
+
+
+# ---- grants (``/api/connectors/{id}/agents``) ----
+
+
+def list_agents(owner_id: uuid.UUID, connection_id: object) -> dict:
+    """``GET /api/connectors/{id}/agents``: the owner's library-team agents by team (teams oldest
+    first, agents left to right), each saying whether it has this connection (``enabled``) and
+    with which access (the grant's own; ``null`` without one). ``subscription`` names the
+    connected Desktop plan an agent runs on: connectors don't reach those agents yet."""
+    with session_scope() as session:
+        row = get_owned(session, owner_id, connection_id)
+        plans = _connected_subscriptions(session, owner_id)
+        teams: dict[uuid.UUID, dict] = {}
+        for node, team in owner_agent_nodes(session, owner_id):
+            group = teams.setdefault(
+                team.id, {"team_id": str(team.id), "team_name": team.name, "agents": []}
+            )
+            access = grant_access(node.tool_config, row.id)
+            plan = subscription_for_model(node.model) if node.model else None
+            group["agents"].append(
+                {
+                    "node_id": str(node.id),
+                    "role_name": node.role_name,
+                    "title": node_title(node),
+                    "kind": node.kind,
+                    "edits_allowed": bool(node.edits_allowed),
+                    "enabled": access is not None,
+                    "access": access,
+                    "subscription": plan if plan in plans else None,
+                }
+            )
+        return {"teams": list(teams.values())}
+
+
+def set_agents(owner_id: uuid.UUID, connection_id: object, node_ids: list[str]) -> dict:
+    """``PUT /api/connectors/{id}/agents``: ``node_ids`` is the full set of agents that have the
+    connection afterwards. A listed agent without the grant gets it with ``read``; a listed agent
+    keeps the access it has; an unlisted one loses the grant. An id that isn't one of the owner's
+    library-team agents is a 404 and nothing is written."""
+    with session_scope() as session:
+        row = get_owned(session, owner_id, connection_id)
+        if row.status == "pending":
+            raise _refusal(409, "not_connected", f"Finish connecting {row.name} first.")
+        try:
+            nodes, wanted = _select_nodes(session, owner_id, node_ids)
+        except LookupError:
+            raise ConnectorError(404, "Agent not found.") from None
+        for node, _team in nodes:
+            has = grant_access(node.tool_config, row.id) is not None
+            if node.id in wanted and not has:
+                grants = [*_grants(node.tool_config), {"id": str(row.id), "access": "read"}]
+                node.tool_config = _with_grants(node.tool_config, grants)
+            elif node.id not in wanted and has:
+                node.tool_config = _without_grant(node.tool_config, row.id)
+        session.flush()
+        users = _users(nodes, row)
+        agent_count, team_count = usage_counts(users)
+        return {"agents": users, "agent_count": agent_count, "team_count": team_count}

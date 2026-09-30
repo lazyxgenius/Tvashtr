@@ -13,12 +13,20 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from tvashtr.auth import UserOut, get_current_user
 from tvashtr.control_plane import connector_catalog, connectors
 from tvashtr.control_plane.connectors import ConnectorError
 
 router = APIRouter()
+
+
+class AgentsBody(BaseModel):
+    """``PUT …/agents``: the FULL set of agents that should have the connection afterwards."""
+
+    node_ids: list[str]
+
 
 CurrentUser = Annotated[UserOut, Depends(get_current_user)]
 
@@ -106,5 +114,24 @@ def scope_options(connection_id: str, current_user: CurrentUser) -> dict:
     "options"}``."""
     try:
         return connectors.scope_options(_owner(current_user), connection_id)
+    except ConnectorError as exc:
+        raise _http(exc) from None
+
+
+@router.get("/api/connectors/{connection_id}/agents")
+def list_agents(connection_id: str, current_user: CurrentUser) -> dict:
+    """The account's library-team agents by team, each saying whether it has this connection."""
+    try:
+        return connectors.list_agents(_owner(current_user), connection_id)
+    except ConnectorError as exc:
+        raise _http(exc) from None
+
+
+@router.put("/api/connectors/{connection_id}/agents")
+def set_agents(connection_id: str, body: AgentsBody, current_user: CurrentUser) -> dict:
+    """Make ``node_ids`` exactly the agents that have this connection →
+    ``{"agents", "agent_count", "team_count"}``."""
+    try:
+        return connectors.set_agents(_owner(current_user), connection_id, body.node_ids)
     except ConnectorError as exc:
         raise _http(exc) from None
