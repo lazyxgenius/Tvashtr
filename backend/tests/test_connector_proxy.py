@@ -765,6 +765,62 @@ def test_a_key_the_provider_stops_taking_is_not_retried():
     assert _warnings(grant) == [("connector", "Linear", "its key stopped working")]
 
 
+def _replace_key(grant: RunGrant, key: str) -> None:
+    with session_scope() as s:
+        row = s.get(ConnectorConnection, grant.connection_id)
+        connectors.write_secret(row, {"headers": {"Authorization": f"Bearer {key}"}})
+
+
+def test_a_401_for_a_key_that_was_replaced_meanwhile_does_not_condemn_the_new_key():
+    """The 401 is for the key the call left with. If the user replaced it while the call was
+    out, the key now stored was never tried: try it once before saying it stopped working."""
+
+    class ReplacedMidCall(FakeUpstream):
+        still_bad = False
+
+        async def call_tool(self, url, transport, headers, name, arguments, timeout=120):
+            self.calls.append(headers["Authorization"])
+            if headers["Authorization"] == "Bearer KEY-PLAINTEXT":
+                _replace_key(grant, "NEW-KEY")  # saved while this call was in flight
+                raise connector_upstream.UpstreamUnauthorized
+            if self.still_bad:
+                raise connector_upstream.UpstreamUnauthorized
+            return self.result
+
+    upstream = ReplacedMidCall()
+    grant = _grant("read")
+    assert _list(grant, upstream) == READS
+
+    assert _call(grant, upstream, "list_issues") is upstream.result
+    assert upstream.calls == ["Bearer KEY-PLAINTEXT", "Bearer NEW-KEY"]
+    row = _row(grant)
+    assert (row.status, row.last_error) == ("connected", None)
+    assert _warnings(grant) == []
+
+    # The new key tried and refused too: now it is the stored key that stopped working.
+    upstream, upstream.still_bad = ReplacedMidCall(), True
+    grant = _grant("read")
+    assert _list(grant, upstream) == READS
+    result = _call(grant, upstream, "list_issues")
+    assert result.isError and _text(result) == "Linear needs you to sign in again."
+    assert upstream.calls == ["Bearer KEY-PLAINTEXT", "Bearer NEW-KEY"]
+    row = _row(grant)
+    assert (row.status, row.last_error) == ("needs_signin", "Its key stopped working.")
+
+
+def test_sign_in_expired_leaves_a_key_that_was_replaced_since_the_row_was_read():
+    grant = _grant("read")
+    stale = _row(grant)
+    _replace_key(grant, "NEW-KEY")
+
+    connector_proxy.sign_in_expired(grant.run_id, grant.node_id, stale)
+
+    row = _row(grant)
+    assert (row.status, row.last_error) == ("connected", None)
+    # The call that got the 401 still went without the connector.
+    assert _warnings(grant) == [("connector", "Linear", "its key stopped working")]
+
+
 def test_a_403_is_a_tool_error_and_changes_nothing(monkeypatch):
     asked = _oauth(monkeypatch)
     upstream = FakeUpstream()

@@ -201,11 +201,17 @@ def record_skip(
 def sign_in_expired(run_id: str, node_id: object, row: ConnectorConnection) -> None:
     """The provider no longer takes ``row``'s sign-in (or key): the row becomes ``needs_signin``
     (a row that already is keeps its own ``last_error``) and the run records the skip. Takes the
-    row lock in its own session, like every writer of the sign-in."""
+    row lock in its own session, like every writer of the sign-in. A key replaced since ``row``
+    was read is not the one that was refused, so the row stays as it is."""
     reason = KEY_STOPPED if row.auth_kind == "api_key" else SIGNIN_EXPIRED
     with session_scope() as session:
         live = session.get(ConnectorConnection, row.id, with_for_update=True)
-        if live is not None and live.status == "connected":
+        replaced = (
+            row.auth_kind == "api_key"
+            and live is not None
+            and live.secret_encrypted != row.secret_encrypted
+        )
+        if live is not None and live.status == "connected" and not replaced:
             live.status = "needs_signin"
             live.last_error = f"{reason[0].upper()}{reason[1:]}."
     record_skip(run_id, node_id, row.id, row.name, reason)
@@ -342,8 +348,9 @@ async def _provider[T](
     quiet: bool = False,
 ) -> T:
     """``request(url, transport, headers)`` against the provider, the credential added here. Only
-    a 401 means the sign-in expired: one refresh and one retry, then ``needs_signin``. Anything
-    else changes nothing. Raises :class:`_Failed`. ``quiet`` is for a request the agent's call
+    a 401 means the sign-in expired: one refresh (for a key: one look at whether it was replaced
+    meanwhile) and one retry, then ``needs_signin``. Anything else changes nothing. Raises
+    :class:`_Failed`. ``quiet`` is for a request the agent's call
     doesn't depend on: its failure marks and records nothing."""
     unauthorized = connector_upstream.UpstreamUnauthorized
     try:
@@ -354,10 +361,17 @@ async def _provider[T](
         try:
             return await request(url, transport, headers)
         except unauthorized:
-            if row.auth_kind != "oauth":
-                raise connector_oauth.SignInRefused from None  # a key can't be refreshed
-            rejected = headers.get("Authorization", "").removeprefix("Bearer ")
-            headers = await _thread(connectors.upstream_headers, row, rejected=rejected)
+            if row.auth_kind == "oauth":
+                rejected = headers.get("Authorization", "").removeprefix("Bearer ")
+                headers = await _thread(connectors.upstream_headers, row, rejected=rejected)
+            else:
+                # A key can't be refreshed, but it can have been replaced while the call was
+                # out: the 401 was for the old one, and the stored one hasn't been tried.
+                live = await _thread(_connection, grant)
+                if live is None or live[0].secret_encrypted == row.secret_encrypted:
+                    raise connector_oauth.SignInRefused from None
+                row = live[0]
+                headers = await _thread(connectors.upstream_headers, row)
             try:
                 return await request(url, transport, headers)
             except unauthorized:
