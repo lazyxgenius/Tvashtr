@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GraphNode, NodeInvocation, NodeMemoryRow, RunRow } from "../../lib/api";
 import type { NodeTab } from "../../lib/nav";
+import { connection } from "../../pages/connectors/connectorsTestUtils";
 import { RunNodeDrawer } from "./RunNodeDrawer";
 
 // Q20: the run view's drawer is the Team screen's agent drawer — the same header, badges and five
@@ -527,6 +528,40 @@ describe("RunNodeDrawer — Setup and Skills & tools are the run's copy, read-on
     // No team to go back to (not a copy): no button.
     expect(screen.queryByRole("button", { name: "Edit on the team" })).toBeNull();
     await act(async () => {}); // the Toolkit shelves land
+  });
+
+  it("Skills & tools: a connectors list that failed to load can be tried again, though every control is off", async () => {
+    let fail = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) =>
+        Promise.resolve(
+          urlOf(input).includes("/api/connectors")
+            ? fail
+              ? new Response("{}", { status: 500 })
+              : new Response(JSON.stringify({ connections: [connection()] }))
+            : new Response("{}"),
+        ),
+      ),
+    );
+    render(
+      <Drawer
+        node={gnode({
+          id: "n-eng",
+          role_name: "engineer",
+          kind: "agent",
+          tool_config: { tvashtr: { connectors: [{ id: "c1", access: "read" }] } },
+        })}
+        tab="skills"
+      />,
+    );
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    expect(retry).toBeEnabled();
+    fail = false;
+    fireEvent.click(retry);
+    const box = await screen.findByRole("checkbox", { name: /^Supabase/ });
+    expect(box).toBeChecked();
+    expect(box).toBeDisabled();
   });
 });
 
