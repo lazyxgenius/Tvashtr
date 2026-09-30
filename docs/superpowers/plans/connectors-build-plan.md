@@ -626,6 +626,11 @@ on Browse. Calls `refreshBadges()` after every mutation.
 - Tests first: `ConnectorsPage.test.tsx` (tabs and counts, first-time lands on Browse, banner for
   `needs_signin` naming its agents, "Coming soon" has no Connect button, search hits `q=`, Show more uses
   `next_offset`).
+- As built (F1, after review): the Connected table shows the newest first (the API answers oldest
+  first). A connection Tvashtr hasn't reviewed has a "Not reviewed" badge and its host under the
+  name (`CnF-Key-4`); one with a project picker and no project says "The whole account". Browse
+  says "Loading the catalog…" while it loads and "Couldn’t load more. Try again." when Show more
+  fails.
 
 **F1.4 Connect sheet and sign-in.**
 - `pages/connectors/connectSignIn.ts`: the helper from the Desktop map. Web: open the popup
@@ -670,11 +675,24 @@ on Browse. Calls `refreshBadges()` after every mutation.
     (the click that opens the sheet also opens the popup, `prepareSignInWindow()`), a key
     connection gets "Replace key" (`PATCH credentials`; the fields come from the catalog entry,
     looked up with `q=<host>`), and "Change project" opens on the project step.
-  - A sign-in that ends with a `last_error` it didn't start with is a failure; one that ends with
-    the same `last_error` (or none, not connected) is the time cap. A `needs_signin` row carries
-    "Its sign-in expired." the whole time it waits.
+  - A sign-in that ends not connected, with a `last_error`, is a failure when the words are new
+    or when it ended more than ten seconds before the ten-minute cap (`oauth/start` leaves
+    `last_error` alone, so the same words can be a second failure). Otherwise it is the time cap.
+    A `needs_signin` row carries "Its sign-in expired." the whole time it waits. A 404 while
+    polling ends the wait ("… was disconnected before the sign-in finished.").
+  - A sheet doesn't close (Escape, scrim, ✕) while a request of its own is going. One that is
+    unmounted opens no window and calls no `onDone` (`useAlive`).
+  - A new connection's sheet closed on the project step calls `onDone(conn, "connected")`: the
+    sign-in went through, so it is connected to the whole account.
+  - After a scope or access `PATCH` the sheet and `ChangeAccessDialog` call `POST …/check`
+    (best effort) and report its answer: B1's PATCH keeps the stored tool list.
+  - "Replace key" shows "Couldn’t load which key `<name>` takes." with Retry when the catalog
+    lookup fails or doesn't list the entry; the `Authorization` default is only for an entry
+    that names no field.
   - A custom connector is made read only (the check comes before the choice); Read & write is a
-    `PATCH access` once the sign-in is through.
+    `PATCH access` once the sign-in is through, and a failed one is said in a toast. A name
+    changed after the check is a `PATCH name` then too (the slug stays the first name's: B1).
+    The custom sheet is one `<form>` in every state; its fields are disabled during the check.
   - The DS `Sheet` has no icon slot, so the sheet header has the title and subtitle without the
     letter tile. The account name ("Signed in to Supabase as organization lazyx") is cut (§1.7):
     step 3 says "Signed in to Supabase."
@@ -690,7 +708,9 @@ state.
 - As built (F1): "Change access" is a small dialog (`ChangeAccessDialog.tsx`, `PATCH access`); a
   key connection has "Replace key" in place of "Sign in again"; a connection whose tools were
   never listed (`tools: null`) offers "Check again" (`POST …/check`); each Used-by row's ✕ removes
-  that agent (`PUT …/agents` with the rest). "Signed in as" is cut (§1.7).
+  that agent (`PUT …/agents` with the rest, read from `GET …/agents` at the click, not from the
+  page's snapshot). A `custom:` connection's badge says "Custom · not reviewed by Tvashtr".
+  "Signed in as" is cut (§1.7).
 
 **F1.6 Dialogs.** `GiveAccessDialog.tsx` (copy `pages/tools/TurnOnForAgentsDialog.tsx`: team
 picker, ticks, the plan note per `subscription`) on `GET`/`PUT …/agents`; `DisconnectDialog.tsx`
