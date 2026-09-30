@@ -1197,6 +1197,17 @@ DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`),
 `create_thing` (`blocked`), `connectors.used` on the round, and no provider token anywhere in
 `run_events`. Repeat on docker mode once to prove the sandbox reaches `/mcp/connectors`.
 
+**T.2 as built:** `scripts/connectors_run_check.py --backend … --fake …` drives a running backend
+over HTTP as the seeded operator (it never imports `tvashtr.main`): it connects the fake with its
+sign-in, makes a Blank team and gives its one agent the connection. A read-only agent is never
+offered `create_thing`, so it can't be asked to call it. The check therefore starts the run with
+Read & write (connection and grant) and sets the connection to read only the moment the
+`list_things` call is recorded: the agent still holds the tool, and the proxy refuses the write
+(the contract's "narrowing applies at once, also to a run that is going"). The instruction makes
+the second call depend on the first one's answer, so the two are not sent together. It asserts
+the four things above and that no `create_thing` reached the provider; the run's own outcome is
+printed, not asserted.
+
 **T.3 Final gates** (all on the merged `feat/connectors`):
 1. `make lint`.
 2. Backend: `createdb tvashtr_conn_gate`; `make migrate DATABASE_URL=…`;
