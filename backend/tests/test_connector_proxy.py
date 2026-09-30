@@ -9,6 +9,7 @@ that does what the contract says it does: the entry's read-only parameters at ac
 Contract: ``docs/superpowers/plans/api/connectors.md`` (The proxy, ``connector_call`` events)."""
 
 import asyncio
+import dataclasses
 import json
 import logging
 import os
@@ -443,6 +444,62 @@ def test_a_call_for_a_tool_the_proxy_has_not_seen_listed_asks_the_provider_first
 
     assert len(upstream.lists) == 1  # one listing told it about all three
     assert [call[3] for call in upstream.calls] == ["list_issues", "get_issue"]
+
+
+def test_what_was_listed_in_read_mode_is_not_mixed_with_what_was_listed_in_write_mode():
+    """A provider can annotate a tool differently under its read-only flag (``run_sql`` is a read
+    at ``readonly=true`` and a write without it). Each mode's calls go by that mode's listing."""
+
+    class FlagAware(FakeUpstream):
+        async def list_tools(self, url, transport, headers, timeout=10):
+            await super().list_tools(url, transport, headers, timeout)
+            return [_tool("list_issues", True), _tool("run_sql", "readonly=true" in url)]
+
+    upstream = FlagAware()
+    writer = _grant(
+        "write", access="write", connector_key="neon", name="Neon", url="https://mcp.neon.tech/mcp"
+    )
+    reader = dataclasses.replace(writer, access="read")
+
+    assert _list(reader, upstream) == ["list_issues", "run_sql"]
+    # The read agent's listing must not make the write agent's ``run_sql`` a read...
+    assert not _call(writer, upstream, "run_sql", {"sql": "DROP TABLE t"}).isError
+    assert upstream.calls[-1][0] == "https://mcp.neon.tech/mcp"
+    assert _events(writer)[-1].payload["write"] is True
+    # ...and the write agent's listing must not take away a tool the read agent was offered.
+    assert _list(writer, upstream) == ["list_issues", "run_sql"]
+    assert not _call(reader, upstream, "run_sql", {"sql": "select 1"}).isError
+    assert upstream.calls[-1][0] == "https://mcp.neon.tech/mcp?readonly=true"
+    assert [e.payload["write"] for e in _events(writer)] == [True, False]
+
+
+def test_a_listing_is_trusted_for_a_minute_and_replaced_not_added_to(monkeypatch):
+    upstream = FakeUpstream()
+    grant = _grant("read")
+    assert _list(grant, upstream) == READS
+
+    # The provider stops listing ``get_issue`` (or now lists it as a write).
+    upstream.tools = [tool for tool in TOOLS if tool.name != "get_issue"]
+    # Within the minute the last listing stands, and a tool it didn't have is a write: no call
+    # makes the proxy list again.
+    assert not _call(grant, upstream, "get_issue").isError
+    for _ in range(3):
+        assert _call(grant, upstream, "no_such_tool").isError
+    assert len(upstream.lists) == 1
+
+    monkeypatch.setattr(connector_proxy, "HINTS_MAX_AGE_SECONDS", 0)  # the minute is over
+    result = _call(grant, upstream, "get_issue")
+    assert result.isError and "can change data" in _text(result)
+    assert len(upstream.lists) == 2 and len(upstream.calls) == 1
+    # What is kept is the last listing, not every name ever listed.
+    ((_when, kept),) = connector_proxy._read_only_hints.values()
+    assert sorted(kept) == sorted(tool.name for tool in upstream.tools)
+
+    # A connection that is gone takes what was kept about it with it.
+    with session_scope() as s:
+        s.delete(s.get(ConnectorConnection, grant.connection_id))
+    assert _call(grant, upstream, "list_issues").isError
+    assert connector_proxy._read_only_hints == {}
 
 
 def test_the_rows_access_narrowed_mid_run_wins_over_the_token():

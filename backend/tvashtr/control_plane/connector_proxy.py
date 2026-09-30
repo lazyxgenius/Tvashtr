@@ -288,10 +288,13 @@ CALL_TIMEOUT_SECONDS = 120.0
 DESCRIPTION_LIMIT = 2000
 UNAVAILABLE = "This connector isn’t available for this run."
 
-# ponytail: each connection's ``{tool: readOnlyHint}`` as the provider last listed it, kept per
-# process and refreshed by every listing; a call for a tool that isn't in it lists first. Keep it
-# on the row if an extra listing after a restart (or on a second machine) ever costs too much.
-_read_only_hints: dict[uuid.UUID, dict[str, bool]] = {}
+# ponytail: ``{(connection, effective access): (when, {tool: readOnlyHint})}``, the provider's
+# last listing in that mode (a provider can annotate a tool differently under its read-only
+# flag), kept per process and replaced by every listing. A call lists first when there is none
+# or it is over ``HINTS_MAX_AGE_SECONDS`` old. Keep it on the row if an extra listing after a
+# restart (or on a second machine) ever costs too much.
+HINTS_MAX_AGE_SECONDS = 60.0
+_read_only_hints: dict[tuple[uuid.UUID, str], tuple[float, dict[str, bool]]] = {}
 
 
 class _Failed(Exception):
@@ -310,6 +313,8 @@ def _connection(grant: RunGrant) -> tuple[ConnectorConnection, dict | None, str]
     with session_scope() as session:
         row = session.get(ConnectorConnection, grant.connection_id)
     if row is None or row.status == "pending":
+        for access in ("read", "write"):
+            _read_only_hints.pop((grant.connection_id, access), None)
         return None
     access = "write" if grant.access == "write" and row.access == "write" else "read"
     return row, connector_catalog.resolve(row.connector_key), access
@@ -368,8 +373,9 @@ async def _listed(grant: RunGrant, row: ConnectorConnection, access: str, upstre
             raise connector_upstream.UpstreamUnreachable(type(exc).__name__) from None
 
     tools = await _provider(grant, row, access, request)
-    _read_only_hints.setdefault(row.id, {}).update(
-        {tool["name"]: tool["read_only"] for tool in connectors.stored_tools(tools)}
+    _read_only_hints[row.id, access] = (
+        time.monotonic(),
+        {tool["name"]: tool["read_only"] for tool in connectors.stored_tools(tools)},
     )
     return tools
 
@@ -407,12 +413,15 @@ async def _is_write(
     upstream: Any,
 ) -> bool:
     """``connector_catalog.is_write`` for a tool known only by name. The provider is asked for
-    its list when this process hasn't seen the tool listed; one it doesn't list is a write."""
+    its list when this process has no recent one for this access; a tool that list doesn't have
+    is a write."""
     if not connector_catalog.is_write(entry, {"name": name, "read_only": False}, access):
         return False  # a read whatever its annotation (the provider's own flag is on)
-    if name not in _read_only_hints.get(row.id, {}):
+    seen = _read_only_hints.get((row.id, access))
+    if seen is None or time.monotonic() - seen[0] > HINTS_MAX_AGE_SECONDS:
         await _listed(grant, row, access, upstream)
-    read_only = _read_only_hints.get(row.id, {}).get(name, False)
+        seen = _read_only_hints.get((row.id, access))
+    read_only = seen is not None and seen[1].get(name, False)
     return connector_catalog.is_write(entry, {"name": name, "read_only": read_only}, access)
 
 
