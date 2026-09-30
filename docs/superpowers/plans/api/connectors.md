@@ -505,8 +505,13 @@ frontend origin (on Desktop that is `127.0.0.1`).
 No body. Works on a `pending`, `needs_signin` or `connected` row ("Sign in again").
 ```json
 {"authorize_url": "https://api.supabase.com/v1/oauth/authorize?response_type=code&client_id=…",
+ "open_url": "https://tvashtr.fly.dev/api/connectors/oauth/go?state=…",
  "signin_host": "api.supabase.com", "expires_in": 600}
 ```
+`open_url` is what the app opens (the popup on the web, the system browser on Desktop), not
+`authorize_url`: Tvashtr's own address on `TVASHTR_PUBLIC_BASE_URL`, which marks the browser and
+sends it on to `authorize_url` (see `GET /api/connectors/oauth/go`). A client opens
+`authorize_url` itself only when the answer has no `open_url`.
 Stores `pending_encrypted` and `state_hash` under the row lock (see Tokens); `status` is not
 changed. The authorize address carries
 `response_type=code`, `client_id`, `redirect_uri`, `state` (`secrets.token_urlsafe(32)`),
@@ -529,15 +534,39 @@ holds one of the places for requests that wait on a provider, see Connections); 
 `unreachable`. Nothing is stored on any of them. A row whose stored sign-in can't be decrypted
 starts a sign-in like one that never signed in (and registers afresh).
 
+### `GET /api/connectors/oauth/go?state=` (public)
+The `state` is sent to the connector's own sign-in server, so holding it does not make a request
+the person who started the sign-in. This route binds the sign-in to the browser it is opened in:
+
+- The first request for a `state` in flight stores the SHA-256 of a fresh random value in
+  `pending_encrypted` (`browser`, under the row lock) and sets that value as the cookie
+  `tv_signin_<first 16 hex of sha256(state)>` (`HttpOnly`, `SameSite=Lax`,
+  `Path=/api/connectors/oauth`, `Max-Age=600`, `Secure` as the session cookie is). One cookie per
+  sign-in, so two sign-ins open at once don't take each other's. Then `302` to the provider's
+  authorize address, rebuilt from the stored sign-in: exactly the `authorize_url` that
+  `oauth/start` answered.
+- The same browser may open it again ("Open the window again"): the cookie matches, the same
+  `302`, no new cookie.
+- Any other request (another browser once one is marked, an unknown `state`, a sign-in started
+  over 10 minutes ago) gets the "expired" page and nothing is written.
+
+The callback and the confirm route act only for a request that carries that cookie or the owner's
+`tv_session`. Whatever is kept of a sign-in once it is over (cleared or completed) has no
+`browser`.
+
 ### `GET /api/connectors/oauth/callback?state=&code=&iss=&error=` (public)
 Always answers an HTML page (200), never JSON and never a redirect into the app. The owner comes
 from the row found by `sha256(state)`, not from a cookie. Every page from this route and from the
 confirm route is sent with `Referrer-Policy: no-referrer`, `Cache-Control: no-store` and
 `X-Frame-Options: DENY` (the address carries `code` and `state`).
 
-1. No row for `state`, `started_at` older than 10 minutes, or a sign-in in flight that can't be
-   decrypted → page "This sign-in link has expired.
-   Go back to Tvashtr and try again." Finding the row does not use the `state` up; only steps 3
+1. No row for `state`, `started_at` older than 10 minutes, a sign-in in flight that can't be
+   decrypted, or a request that is neither from the browser the sign-in was opened in (its
+   `tv_signin_…` cookie, above) nor from one with the owner's `tv_session` → page "This sign-in
+   link has expired.
+   Go back to Tvashtr and try again." So the sign-in server, which holds the `state`, can't read
+   the confirm page (the account's email), finish the sign-in with a code of its own or cancel
+   it from its own backend. Finding the row does not use the `state` up; only steps 3
    and 4 and Complete do. A callback that names `state`, `code`, `iss` or `error` more than once
    gets the same page and nothing is read or written (a parameter is named once; a redirect
    address registered with an `iss` of its own must not decide which of two is read).
@@ -569,7 +598,8 @@ confirm route is sent with `Referrer-Policy: no-referrer`, `Cache-Control: no-st
    someone sending you their own sign-in link to capture your data in their account.
 
 ### `POST /api/connectors/oauth/confirm` (public, form-encoded `state`, `code`, `iss`)
-Repeats steps 1–2, then completes. Answers the same HTML pages.
+Repeats steps 1–2 (the same cookie or session is needed), then completes. Answers the same HTML
+pages.
 
 **Complete** (both routes): a place for a request that waits on a provider is taken first (none
 free → the "busy" page above, nothing used up). Then the `state` is used up, in one statement:

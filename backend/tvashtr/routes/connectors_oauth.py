@@ -13,9 +13,10 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from tvashtr.auth import SESSION_COOKIE_NAME, UserOut, get_current_user, read_session_cookie
+from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_oauth
 from tvashtr.control_plane.connector_oauth import Outcome
 from tvashtr.control_plane.connectors import ConnectorError
@@ -139,20 +140,52 @@ def oauth_callback(
     names = ("state", "code", "iss", "error")
     if any(len(request.query_params.getlist(name)) > 1 for name in names):
         return _render(Outcome("expired"), "", "", "")
-    cookie = request.cookies.get(SESSION_COOKIE_NAME)
-    session_user = read_session_cookie(cookie) if cookie else None
-    outcome = connector_oauth.callback(state, code, iss or None, error or None, session_user)
+    outcome = connector_oauth.callback(
+        state, code, iss or None, error or None, *_who(request, state)
+    )
     return _render(outcome, state, code, iss)
 
 
 @public_router.post(CONFIRM_PATH, response_class=HTMLResponse)
 def oauth_confirm(
+    request: Request,
     state: Annotated[str, Form()] = "",
     code: Annotated[str, Form()] = "",
     iss: Annotated[str, Form()] = "",
 ) -> HTMLResponse:
     """The confirm page's button (a browser with no Tvashtr session)."""
-    return _render(connector_oauth.confirm(state, code, iss or None), state, code, iss)
+    outcome = connector_oauth.confirm(state, code, iss or None, *_who(request, state))
+    return _render(outcome, state, code, iss)
+
+
+def _who(request: Request, state: str) -> tuple[str | None, str | None]:
+    """``(the user id of the browser's Tvashtr session, its cookie for this sign-in)``."""
+    cookie = request.cookies.get(SESSION_COOKIE_NAME)
+    session_user = read_session_cookie(cookie) if cookie else None
+    return session_user, request.cookies.get(connector_oauth.browser_cookie(state))
+
+
+@public_router.get(connector_oauth.GO_PATH, response_class=HTMLResponse)
+def oauth_go(request: Request, state: str = "") -> Response:
+    """What the app opens to start a sign-in: marks this browser as the one the sign-in is
+    finished in (a cookie, once per sign-in), then sends it on to the provider."""
+    name = connector_oauth.browser_cookie(state)
+    found = connector_oauth.go(state, request.cookies.get(name))
+    if found is None:
+        return _page(_EXPIRED)
+    address, value = found
+    response = RedirectResponse(address, status_code=302, headers=_PAGE_HEADERS)
+    if value is not None:
+        response.set_cookie(
+            key=name,
+            value=value,
+            max_age=connector_oauth.SIGNIN_TTL_SECONDS,
+            httponly=True,
+            samesite="lax",  # sent when the provider sends the browser back (a top-level GET)
+            secure=get_settings().cookie_secure,
+            path="/api/connectors/oauth",
+        )
+    return response
 
 
 @public_router.get(connector_oauth.CLIENT_METADATA_PATH)

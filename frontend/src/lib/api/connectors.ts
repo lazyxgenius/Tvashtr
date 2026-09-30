@@ -170,7 +170,11 @@ export interface ScopeOptions {
 }
 
 export interface SignInStart {
+  /** The provider's sign-in page. */
   authorize_url: string;
+  /** What to open instead when the server names it: Tvashtr's own address, which marks the
+   *  browser as the one the sign-in is finished in and sends it on to `authorize_url`. */
+  open_url?: string;
   signin_host: string;
   expires_in: number;
 }
@@ -495,7 +499,11 @@ export async function startSignIn(id: string): Promise<SignInStart> {
   const d = data as Json;
   const signinHost = str(d.signin_host, host).toLowerCase();
   if (opened.username || opened.password || signinHost !== host) throw unusable;
-  return { authorize_url: url, signin_host: host, expires_in: count(d.expires_in) };
+  const open = d.open_url;
+  if (open !== undefined && (typeof open !== "string" || !/^https?:\/\/[^\s/]+/i.test(open))) {
+    throw unusable;
+  }
+  return { authorize_url: url, open_url: open, signin_host: host, expires_in: count(d.expires_in) };
 }
 
 /** GET /api/connectors/{id}/agents — library teams oldest first, agents left to right. */

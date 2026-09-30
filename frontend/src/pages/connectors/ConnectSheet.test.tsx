@@ -479,6 +479,16 @@ describe("when the sign-in goes wrong", () => {
     expect(calls.filter((c) => c.path.endsWith("/oauth/start"))).toHaveLength(2);
   });
 
+  it("opens the address the server says to open, which leads to the provider", async () => {
+    // Tvashtr's own address: the browser that opens it is the one the sign-in is finished in.
+    const open_url = "https://tvashtr.test/api/connectors/oauth/go?state=s1";
+    serve({ "POST /api/connectors/c1/oauth/start": { ...START, open_url } });
+    show({ entry: entry() });
+    click("Continue to Supabase");
+    await screen.findByText("Waiting for you to finish in the Supabase window");
+    expect(popup?.location.href).toBe(open_url);
+  });
+
   it("never opens a sign-in address that isn’t http(s)", async () => {
     serve({
       "POST /api/connectors/c1/oauth/start": {

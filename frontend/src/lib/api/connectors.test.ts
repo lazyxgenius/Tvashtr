@@ -351,6 +351,28 @@ describe("connectors API — a malformed answer throws", () => {
     }
   });
 
+  it("names the address to open when the server gives one, and refuses one that isn't http(s)", async () => {
+    const start = {
+      authorize_url: "https://api.supabase.com/v1/oauth/authorize?response_type=code",
+      signin_host: "api.supabase.com",
+      expires_in: 600,
+    };
+    // Tvashtr's own address: it marks the browser, then sends it on to `authorize_url`.
+    const open_url = "https://tvashtr.test/api/connectors/oauth/go?state=s1";
+    mockApi({ "POST /api/connectors/:id/oauth/start": { ...start, open_url } });
+    expect(await startSignIn("c1")).toEqual({ ...start, open_url });
+    for (const bad of [
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "",
+      7,
+      "/api/connectors/oauth/go",
+    ]) {
+      mockApi({ "POST /api/connectors/:id/oauth/start": { ...start, open_url: bad } });
+      await expect(startSignIn("c1")).rejects.toThrow("The server sent a sign-in address");
+    }
+  });
+
   it("refuses a sign-in address whose host isn't the sign-in host the server named", async () => {
     // A browser reads `\\` as `/`: the window would open phish.evil.example while the page says
     // accounts.google.com.

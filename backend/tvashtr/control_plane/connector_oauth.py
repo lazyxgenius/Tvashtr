@@ -6,7 +6,9 @@ passed through ``connector_net.check_url`` first. Metadata is read as plain dict
 comparisons are on the raw strings (a URL type adds a trailing slash).
 """
 
+import base64
 import hashlib
+import hmac
 import secrets
 import threading
 import time
@@ -258,6 +260,7 @@ def _discover(url: str, pins: dict) -> Discovery | None:
 # ---- the client Tvashtr signs in as ----
 
 CALLBACK_PATH = "/api/connectors/oauth/callback"
+GO_PATH = "/api/connectors/oauth/go"
 CLIENT_METADATA_PATH = "/oauth/client-metadata.json"
 
 
@@ -487,10 +490,9 @@ def start(owner_id: uuid.UUID, connection_id: object) -> dict:
                     connectors.secret_or_none(row),
                 ]
             client = choose_client(found, entry, url, known)
-            pkce = PKCEParameters.generate()
             state = secrets.token_urlsafe(32)
             pending = {
-                "code_verifier": pkce.code_verifier,
+                "code_verifier": PKCEParameters.generate().code_verifier,
                 "issuer": found.issuer,
                 "iss_supported": found.iss_supported,
                 "authorization_endpoint": found.authorization_endpoint,
@@ -516,26 +518,86 @@ def start(owner_id: uuid.UUID, connection_id: object) -> dict:
     except (CannotRegister, Unreachable) as exc:
         raise _refusal(exc, name, url) from exc
 
+    return {
+        "authorize_url": _authorize_url(entry, url, pending, state),
+        # What the app opens. It marks the browser, then sends it on to ``authorize_url``.
+        "open_url": f"{_base_url()}{GO_PATH}?{urlencode({'state': state})}",
+        "signin_host": found.signin_host,
+        "expires_in": SIGNIN_TTL_SECONDS,
+    }
+
+
+def _authorize_url(entry: dict | None, url: str, pending: dict, state: str) -> str:
+    """The provider's authorize address for the sign-in in flight. Built from what is stored, so
+    the address the hop sends a browser to is the one ``start`` answered."""
+    challenge = hashlib.sha256(pending["code_verifier"].encode()).digest()
     params = {
         "response_type": "code",
-        "client_id": client["client_id"],
+        "client_id": pending["client"]["client_id"],
         "redirect_uri": pending["redirect_uri"],
         "state": state,
-        "code_challenge": pkce.code_challenge,
+        "code_challenge": base64.urlsafe_b64encode(challenge).rstrip(b"=").decode(),
         "code_challenge_method": "S256",
-        "resource": found.resource,  # the metadata's value, verbatim
+        "resource": pending["resource"],  # the metadata's value, verbatim
     }
     if pending["scope"]:
         params["scope"] = pending["scope"]
     # What one provider's authorize page needs on top (Google: a refresh token is only handed out
     # with ``access_type=offline``). Only a Featured entry on its own address can say so.
-    params |= pins.get("authorize_params") or {}
-    separator = "&" if urlsplit(found.authorization_endpoint).query else "?"
-    return {
-        "authorize_url": found.authorization_endpoint + separator + urlencode(params),
-        "signin_host": found.signin_host,
-        "expires_in": SIGNIN_TTL_SECONDS,
-    }
+    params |= _pins(entry, url).get("authorize_params") or {}
+    endpoint = pending["authorization_endpoint"]
+    return endpoint + ("&" if urlsplit(endpoint).query else "?") + urlencode(params)
+
+
+def _in_time(pending: dict) -> bool:
+    started = pending.get("started_at")
+    return isinstance(started, int | float) and time.time() - started < SIGNIN_TTL_SECONDS
+
+
+# ---- the browser a sign-in is opened in ----
+#
+# The ``state`` is handed to the connector's own sign-in server, so whoever holds it is not
+# thereby the person who started the sign-in. The app opens the sign-in through ``GO_PATH``,
+# which leaves a cookie in that browser (its hash is kept with the sign-in in flight) before it
+# sends the browser on. The callback and the confirm step act only for that browser, or for one
+# that holds the owner's Tvashtr session.
+
+
+def browser_cookie(state: str) -> str:
+    """The cookie's name: one per sign-in, so two sign-ins open at once don't take each other's."""
+    return f"tv_signin_{state_hash(state)[:16]}"
+
+
+def _is_browser(pending: dict, held: str | None) -> bool:
+    marked = pending.get("browser")
+    return bool(held) and isinstance(marked, str) and hmac.compare_digest(state_hash(held), marked)
+
+
+def go(state: str, held: str | None) -> tuple[str, str | None] | None:
+    """``GET /api/connectors/oauth/go``: ``(the provider's authorize address, the cookie value to
+    set)`` for the browser that opens a sign-in. The first browser to open it is the one it is
+    finished in; the value is ``None`` when that browser opens it again. ``None`` for an unknown
+    or timed-out ``state`` and for any other browser. ``held`` is the cookie the request came
+    with."""
+    if not state:
+        return None
+    with session_scope() as session:
+        row = session.execute(
+            select(ConnectorConnection)
+            .where(ConnectorConnection.state_hash == state_hash(state))
+            .with_for_update()  # the lock every writer of the sign-in takes
+        ).scalar_one_or_none()
+        pending = (connectors.secret_or_none(row, pending=True) if row else None) or {}
+        if not _in_time(pending):
+            return None
+        value = None
+        if "browser" not in pending:
+            value = secrets.token_urlsafe(32)
+            connectors.write_secret(row, pending | {"browser": state_hash(value)}, pending=True)
+        elif not _is_browser(pending, held):
+            return None
+        entry = connector_catalog.resolve(row.connector_key)
+        return _authorize_url(entry, row.url, pending, state), value
 
 
 # ---- finishing a sign-in: the callback and its confirm step ----
@@ -622,7 +684,8 @@ def _discovered(pending: dict, *, client_refused: bool = False) -> dict:
     known and a registration can be reused), the PKCE verifier goes. ``client_refused``: the token
     endpoint refused the client itself, so its id is recorded as ``refused_client`` and no later
     sign-in reuses that registration (from here or from the stored sign-in)."""
-    kept = {k: v for k, v in pending.items() if k not in ("code_verifier", "started_at")}
+    over = ("code_verifier", "started_at", "browser")
+    kept = {k: v for k, v in pending.items() if k not in over}
     if client_refused:
         kept["refused_client"] = pending["client"]["client_id"]
     return kept
@@ -640,10 +703,11 @@ def _clear(state: str, last_error: str, kind: str, name: str) -> Outcome:
     return Outcome(kind, name)
 
 
-def _arrive(state: str, iss: str | None) -> Outcome:
+def _arrive(state: str, iss: str | None, session_user: str | None, browser: str | None) -> Outcome:
     """Callback steps 1 and 2. ``confirm`` (with the row's name and its owner) when ``state``
-    belongs to a sign-in started under ten minutes ago and the answer is from its issuer.
-    Nothing is used up and nothing is written."""
+    belongs to a sign-in started under ten minutes ago, the request comes from the browser it
+    was opened in (``browser``, its cookie) or one with the owner's session (``session_user``),
+    and the answer is from its issuer. Nothing is used up and nothing is written."""
     if not state:
         return Outcome("expired")
     with session_scope() as session:
@@ -651,8 +715,11 @@ def _arrive(state: str, iss: str | None) -> Outcome:
             select(ConnectorConnection).where(ConnectorConnection.state_hash == state_hash(state))
         ).scalar_one_or_none()
         pending = (connectors.secret_or_none(row, pending=True) if row else None) or {}
-        started = pending.get("started_at")
-        if not isinstance(started, int | float) or time.time() - started >= SIGNIN_TTL_SECONDS:
+        if not _in_time(pending):
+            return Outcome("expired")
+        # Anyone else holding the state (the sign-in server was sent it) is told nothing about
+        # the sign-in, and can neither finish nor cancel it.
+        if session_user != str(row.owner_id) and not _is_browser(pending, browser):
             return Outcome("expired")
         # RFC 9207. A sent ``iss`` must be the issuer the sign-in was started with, exactly; a
         # missing one is refused only when the server said it sends one. On a mismatch nothing
@@ -747,12 +814,18 @@ def _finish(arrived: Outcome, state: str, code: str) -> Outcome:
 
 
 def callback(
-    state: str, code: str, iss: str | None, error: str | None, session_user: str | None
+    state: str,
+    code: str,
+    iss: str | None,
+    error: str | None,
+    session_user: str | None,
+    browser: str | None = None,
 ) -> Outcome:
     """``GET /api/connectors/oauth/callback``. ``session_user`` is the user id of the browser's
-    Tvashtr session, ``None`` without one (Desktop's browser). The owner comes from the row the
-    ``state`` finds, never from the session."""
-    arrived = _arrive(state, iss)
+    Tvashtr session, ``None`` without one (Desktop's browser); ``browser`` is its
+    :func:`browser_cookie`. The owner comes from the row the ``state`` finds, never from the
+    session."""
+    arrived = _arrive(state, iss, session_user, browser)
     if arrived.kind != "confirm":
         return arrived
     name = arrived.name
@@ -767,10 +840,16 @@ def callback(
     return _finish(arrived, state, code)
 
 
-def confirm(state: str, code: str, iss: str | None) -> Outcome:
+def confirm(
+    state: str,
+    code: str,
+    iss: str | None,
+    session_user: str | None = None,
+    browser: str | None = None,
+) -> Outcome:
     """``POST /api/connectors/oauth/confirm``: the confirm page's button. Repeats steps 1 and 2,
     then completes."""
-    arrived = _arrive(state, iss)
+    arrived = _arrive(state, iss, session_user, browser)
     if arrived.kind != "confirm":
         return arrived
     if not code:

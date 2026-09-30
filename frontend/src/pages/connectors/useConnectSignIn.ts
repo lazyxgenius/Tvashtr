@@ -97,12 +97,14 @@ export function useConnectSignIn(onOutcome: (outcome: SignInOutcome) => void): C
       setState({ phase: "starting" });
       let refusal: ConnectorRefusal | null = null;
       try {
-        const { authorize_url } = await startSignIn(connection.id);
+        const { authorize_url, open_url } = await startSignIn(connection.id);
         if (run.current !== mine) return;
         if (!alive.current) return closeWindow();
-        const opened = openSignIn(authorize_url, popup.current);
+        // Tvashtr's own address when the server names one: it leads to `authorize_url`.
+        const target = open_url ?? authorize_url;
+        const opened = openSignIn(target, popup.current);
         if (opened !== "refused") {
-          address.current = authorize_url;
+          address.current = target;
           setState({
             phase: "waiting",
             id: connection.id,

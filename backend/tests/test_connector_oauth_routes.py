@@ -8,11 +8,11 @@ import threading
 import time
 import uuid
 from contextlib import ExitStack
-from urllib.parse import parse_qs, parse_qsl, urlsplit
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit
 
 import httpx
 import pytest
-from connector_oauth_helpers import CALLBACK, connection, load, paths, signed_in, wire
+from connector_oauth_helpers import CALLBACK, TVASHTR, connection, load, paths, signed_in, wire
 from fake_connector_server import FakeConnectorServer
 from fastapi.testclient import TestClient
 from mcp.types import Tool, ToolAnnotations
@@ -57,10 +57,12 @@ def test_start_answers_the_authorize_address_with_every_parameter(monkeypatch):
     resp = _start(c, cid)
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert set(body) == {"authorize_url", "signin_host", "expires_in"}
+    assert set(body) == {"authorize_url", "open_url", "signin_host", "expires_in"}
     assert (body["signin_host"], body["expires_in"]) == ("mcp.fake.test", 600)
     assert body["authorize_url"].startswith(f"{BASE}/authorize?")
     query = _query(body["authorize_url"])
+    # What the app opens: Tvashtr's own address, which sends the browser on to ``authorize_url``.
+    assert body["open_url"] == f"{TVASHTR}{GO_PATH}?" + urlencode({"state": query["state"]})
     assert query.keys() == {
         "response_type", "client_id", "redirect_uri", "state", "code_challenge",
         "code_challenge_method", "resource", "scope",
@@ -388,6 +390,7 @@ def test_a_featured_entry_pins_its_client_its_scope_and_extra_authorize_paramete
 # ---- B2.4: the callback, the confirm step and their pages ----
 
 CALLBACK_PATH = "/api/connectors/oauth/callback"
+GO_PATH = "/api/connectors/oauth/go"
 CONFIRM_PATH = "/api/connectors/oauth/confirm"
 EXPIRED = "This sign-in link has expired. Go back to Tvashtr and try again."
 CONNECTED = "Fake is connected. You can close this window."
@@ -424,11 +427,22 @@ def listed(monkeypatch) -> list[tuple]:
     return asked
 
 
-def _allow(fake: FakeConnectorServer, client, connection_id) -> dict:
+def _open(browser, started: dict) -> httpx.Response:
+    """``browser`` opens the address the app was given: Tvashtr's own, which marks the browser
+    and sends it on to the provider."""
+    opened = urlsplit(started["open_url"])
+    return browser.get(f"{opened.path}?{opened.query}", follow_redirects=False)
+
+
+def _allow(fake: FakeConnectorServer, client, connection_id, browser=None) -> dict:
     """Start a sign-in and press Allow on the provider's page: the query the provider sends the
-    browser back to the callback with."""
+    browser back to the callback with. ``browser`` is the one the sign-in is opened in when it
+    isn't the owner's own (Desktop's system browser, which holds no Tvashtr session)."""
     started = _start(client, connection_id)
     assert started.status_code == 200, started.text
+    if browser is not None:
+        hop = _open(browser, started.json())
+        assert (hop.status_code, hop.headers["location"]) == (302, started.json()["authorize_url"])
     allowed = fake.handle(httpx.Request("POST", started.json()["authorize_url"]))
     assert allowed.status_code == 302, allowed.text
     back = urlsplit(allowed.headers["location"])
@@ -520,7 +534,7 @@ def test_without_a_session_the_callback_asks_first_and_the_confirm_step_connects
     wire(monkeypatch, fake.handle)
     c, owner = fresh_account()
     cid = connection(owner, fake)
-    back = _allow(fake, c, cid)
+    back = _allow(fake, c, cid, unauth_client)
     assert back["iss"] == BASE
 
     page = _page(unauth_client.get(CALLBACK_PATH, params=back))
@@ -540,6 +554,99 @@ def test_without_a_session_the_callback_asks_first_and_the_confirm_step_connects
     row = load(cid)
     assert (row.status, row.state_hash) == ("connected", None)
     assert len(_token_requests(fake)) == 1 and len(listed) == 1
+
+
+def test_the_sign_in_is_opened_through_tvashtr_which_marks_the_browser(monkeypatch, unauth_client):
+    """The ``state`` goes to the connector's own sign-in server, so holding it proves nothing.
+    The browser the sign-in is opened in gets a cookie on the way there, once per sign-in."""
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    c, owner = fresh_account()
+    cid = connection(owner, fake)
+    started = _start(c, cid).json()
+    state = _query(started["authorize_url"])["state"]
+    cookie = f"tv_signin_{_sha256(state)[:16]}"
+
+    hop = _open(unauth_client, started)
+    assert (hop.status_code, hop.headers["location"]) == (302, started["authorize_url"])
+    assert hop.headers["referrer-policy"] == "no-referrer"
+    assert hop.headers["cache-control"] == "no-store"
+    set_cookie = hop.headers["set-cookie"]
+    assert set_cookie.startswith(f"{cookie}=")
+    for attribute in ("HttpOnly", "Max-Age=600", "Path=/api/connectors/oauth", "SameSite=lax"):
+        assert attribute in set_cookie
+    value = unauth_client.cookies[cookie]
+    # Only its hash is stored, and the app never sees it.
+    pending = connectors.read_secret(load(cid), pending=True)
+    assert pending["browser"] == _sha256(value) and value not in repr(started)
+
+    # The same browser may open it again ("Open the window again"); no other one can take it over.
+    again = _open(unauth_client, started)
+    assert (again.status_code, again.headers["location"]) == (302, started["authorize_url"])
+    assert "set-cookie" not in again.headers
+    other = TestClient(app)
+    other.cookies.clear()
+    late = _open(other, started)
+    assert EXPIRED in _page(late) and "set-cookie" not in late.headers
+    assert connectors.read_secret(load(cid), pending=True)["browser"] == _sha256(value)
+
+    # An unknown state, and a sign-in started over ten minutes ago, open nothing.
+    assert EXPIRED in _page(unauth_client.get(GO_PATH, params={"state": "never-issued"}))
+    assert EXPIRED in _page(unauth_client.get(GO_PATH))
+    with session_scope() as session:
+        row = session.get(ConnectorConnection, cid)
+        connectors.write_secret(row, pending | {"started_at": time.time() - 601}, pending=True)
+    assert EXPIRED in _page(_open(unauth_client, started))
+
+
+def test_holding_the_state_alone_shows_nothing_and_finishes_nothing(monkeypatch, listed):
+    """The connector's sign-in server is handed the ``state`` before anyone consents to anything.
+    From its own backend, with no cookie, it must not read the account's email off the confirm
+    page, finish the sign-in with a code of its own, or cancel it."""
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    c, owner = fresh_account()
+    cid = connection(owner, fake)
+    users_browser = TestClient(app)
+    users_browser.cookies.clear()
+    back = _allow(fake, c, cid, users_browser)
+    started = load(cid)
+    server = TestClient(app)  # the sign-in server's own backend: the state, and no cookie
+    server.cookies.clear()
+
+    def untouched() -> bool:
+        row = load(cid)
+        return (row.state_hash, row.pending_encrypted, row.last_error, row.status) == (
+            started.state_hash,
+            started.pending_encrypted,
+            None,
+            "pending",
+        )
+
+    email = _email(c)
+    for answer in (
+        server.get(CALLBACK_PATH, params=back),
+        server.get(CALLBACK_PATH, params={"state": back["state"], "code": "its-own"}),
+        server.post(CONFIRM_PATH, data=back),
+        server.get(CALLBACK_PATH, params={"state": back["state"], "error": "access_denied"}),
+        # A cookie of the right name with a value it made up is no better.
+        server.get(
+            CALLBACK_PATH,
+            params=back,
+            headers={"Cookie": f"tv_signin_{_sha256(back['state'])[:16]}=guess"},
+        ),
+    ):
+        page = _page(answer)
+        assert EXPIRED in page and email not in page and "Fake" not in page
+        assert untouched() and _token_requests(fake) == [] and listed == []
+
+    # The browser it was opened in still finishes it.
+    assert f"Connect Fake to the Tvashtr account {email}?" in _page(
+        users_browser.get(CALLBACK_PATH, params=back)
+    )
+    assert CONNECTED in _page(users_browser.post(CONFIRM_PATH, data=back))
+    # What is kept of a finished sign-in names no browser.
+    assert "browser" not in (connectors.secret_or_none(load(cid), pending=True) or {})
 
 
 BUSY = "Tvashtr is busy right now. Try again in a moment."
@@ -563,7 +670,7 @@ def test_finishing_a_sign_in_is_capped_like_every_request_that_waits_on_a_provid
     wire(monkeypatch, network)
     c, owner = fresh_account()
     cid = connection(owner, fake)
-    back = _allow(fake, c, cid)
+    back = _allow(fake, c, cid, unauth_client)
 
     def finish() -> str:
         if with_session:
@@ -596,7 +703,7 @@ def test_another_accounts_session_connects_nothing_and_says_how_to_go_on(monkeyp
     c, owner = fresh_account()
     other, _ = fresh_account()
     cid = connection(owner, fake)
-    back = _allow(fake, c, cid)
+    back = _allow(fake, c, cid, other)
 
     page = _page(other.get(CALLBACK_PATH, params=back))
     assert "This browser is signed in to Tvashtr as a different account." in page
@@ -648,7 +755,7 @@ def test_an_answer_from_another_issuer_is_not_acted_on(monkeypatch, listed, unau
     wire(monkeypatch, fake.handle)
     c, owner = fresh_account()
     cid = connection(owner, fake)
-    back = _allow(fake, c, cid)
+    back = _allow(fake, c, cid, unauth_client)
     good_iss = back.pop("iss")
     started = load(cid)
 
@@ -718,7 +825,7 @@ def test_access_denied_clears_the_sign_in_and_says_why(monkeypatch, listed, unau
     wire(monkeypatch, fake.handle)
     c, owner = fresh_account()
     cid = connection(owner, fake)
-    back = _allow(fake, c, cid)
+    back = _allow(fake, c, cid, unauth_client)
     denied = {"state": back["state"], "error": "access_denied"}
 
     # No session is needed to be told no.
@@ -942,12 +1049,16 @@ def test_two_callbacks_at_once_with_one_state_make_one_token_request(monkeypatch
     wire(monkeypatch, slow_token)
     c, owner = fresh_account()
     cid = connection(owner, fake)
-    back = _allow(fake, c, cid)
+    opened_in = TestClient(app)
+    opened_in.cookies.clear()
+    back = _allow(fake, c, cid, opened_in)
     pages: list[str] = []
 
     def arrive() -> None:
-        browser = TestClient(app)
+        browser = TestClient(app)  # the same browser twice: a double click on Connect
         browser.cookies.clear()
+        for name, value in opened_in.cookies.items():
+            browser.cookies.set(name, value)
         together.wait(timeout=10)
         pages.append(_page(browser.post(CONFIRM_PATH, data=back)))
 
@@ -1097,7 +1208,7 @@ def test_no_text_from_outside_is_rendered_raw(monkeypatch, listed, unauth_client
     c, owner = fresh_account()
     hostile = '<script>alert("name")</script>'
     cid = connection(owner, fake, name=hostile)
-    back = _allow(fake, c, cid)
+    back = _allow(fake, c, cid, unauth_client)
     breakout = '"><script>alert(1)</script>'
 
     confirm = _page(unauth_client.get(CALLBACK_PATH, params=back | {"code": breakout}))

@@ -876,7 +876,9 @@ on Browse. Calls `refreshBadges()` after every mutation.
   **Check the protocol before either**: `new URL(authorize_url).protocol` must be `https:` or
   `http:`. The web popup is a same-origin blank window, so a `javascript:` address assigned to it
   would run in Tvashtr's origin. Anything else closes the popup and shows the "couldn’t open" line
-  below.
+  below. (Since the review the address opened is the answer's `open_url`, Tvashtr's own hop to
+  `authorize_url`; `authorize_url` is still read and checked, and opened only when there is no
+  `open_url`.)
 - `useConnectSignIn.ts`: poll `GET /api/connectors/{id}` every 2 s until `signin_pending` is false
   (10 minute cap, Cancel, refetch on `focus`/`visibilitychange` like
   `pages/tools/useGithubStatus.ts:69-74`). Never use `popup.closed` as a cancel signal.
@@ -1213,7 +1215,11 @@ DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`),
 - **Supabase and Vercel need a confidential registered client**; the secret can expire
   (`client_secret_expires_at`). That surfaces as `needs_signin` and a fresh registration.
 - **Login CSRF.** The session match and the confirm page cover it; on Desktop the confirm page is
-  the only protection.
+  the only protection. Since the review, the callback and the confirm step also act only for the
+  browser the sign-in was opened in (a cookie set by `GET /api/connectors/oauth/go`, which the
+  app opens instead of the provider's address) or one with the owner's session. Before that,
+  whoever held the `state` (the connector's own sign-in server is sent it) could read the
+  account's email off the confirm page and finish or cancel the sign-in from its own backend.
 - **Proxy latency.** Each call opens a provider session, and the engine's own MCP timeout can cut
   a slow provider tool before the proxy's 120 s.
 - **Snapshot size in git.** 4–5 MB of JSON Lines, growing a little per refresh.
