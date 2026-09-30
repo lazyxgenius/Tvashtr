@@ -9,6 +9,7 @@ import threading
 import httpx
 import pytest
 from fake_connector_server import STATIC_TOKEN
+from mcp import McpError
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_net, connector_upstream
@@ -203,6 +204,32 @@ def _serve(monkeypatch, handle) -> None:
 
 
 MOCK = "http://127.0.0.1:1/mcp"
+
+
+def test_a_5xx_is_unreachable(monkeypatch):
+    _serve(monkeypatch, _mcp_server(lambda cursor: {"tools": []}, initialize_status=503))
+    with pytest.raises(UpstreamUnreachable, match="503"):
+        asyncio.run(list_tools(MOCK, HTTP, BEARER))
+
+
+def test_a_json_rpc_error_over_http_200_is_the_sdks_mcp_error(monkeypatch):
+    """Not an HTTP problem, so none of the three upstream errors."""
+    boom = {"error": {"code": -32603, "message": "boom"}}
+    _serve(monkeypatch, _mcp_server(lambda cursor: boom))
+    with pytest.raises(McpError, match="boom") as raised:
+        asyncio.run(list_tools(MOCK, HTTP, BEARER))
+    assert raised.value.error.code == -32603
+
+
+def test_list_tools_follows_the_cursor_to_the_last_page(monkeypatch):
+    pages = {
+        None: {"tools": [_tool("a")], "nextCursor": "p2"},
+        "p2": {"tools": [_tool("b"), _tool("c")], "nextCursor": "p3"},
+        "p3": {"tools": [_tool("d")]},
+    }
+    _serve(monkeypatch, _mcp_server(lambda cursor: pages[cursor]))
+    tools = asyncio.run(list_tools(MOCK, HTTP, BEARER))
+    assert [t.name for t in tools] == ["a", "b", "c", "d"]
 
 
 def test_a_tool_list_that_never_ends_is_cut_off(monkeypatch):
