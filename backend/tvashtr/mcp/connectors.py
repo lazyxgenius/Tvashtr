@@ -3,12 +3,17 @@
 The only thing an agent's sandbox talks to for a connector: a stateless streamable-HTTP MCP server
 (JSON replies) that reads the run token, applies the read-only rule and forwards to the provider
 with the credential added server-side. Phase 0 mounts it with no tools; stream B3.4 adds the
-``list_tools`` / ``call_tool`` overrides. Contract: ``docs/superpowers/plans/api/connectors.md``
+``list_tools`` / ``call_tool`` overrides. The address agents are given is ``{public base}`` +
+``PATH``, with no trailing slash. Contract: ``docs/superpowers/plans/api/connectors.md``
 (Run time).
 """
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.applications import Starlette
+from starlette.routing import Route
+
+PATH = "/mcp/connectors"
 
 _mcp: FastMCP | None = None
 
@@ -28,3 +33,15 @@ def get_connectors_mcp() -> FastMCP:
             transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
         )
     return _mcp
+
+
+def mount_connectors_mcp(app: Starlette, http_app: Starlette) -> None:
+    """Put the proxy (``get_connectors_mcp().streamable_http_app()``) on ``app`` at ``PATH``, both
+    ways: the exact address agents are given, and a mount for anything under it.
+
+    The mount alone isn't enough. It only matches ``/mcp/connectors/…``, so a POST to the address
+    itself answers 307 locally and, once the SPA's GET catch-all is registered (the hosted image),
+    **405**. Call it before ``mount_frontend``."""
+    endpoint = next(route.endpoint for route in http_app.routes if isinstance(route, Route))
+    app.add_route(PATH, endpoint, methods=None, include_in_schema=False)
+    app.mount(PATH, http_app)

@@ -278,7 +278,13 @@ cross-stream table can be imported with its final signature.
 - `main.py`: import both route modules (:43-53); add both `router`s to the authenticated tuple
   (:130-141); include `connectors_oauth.public_router` bare next to the other public routers
   (:122-124); build the proxy app like Domains (:59-61), enter its lifespan inside `_lifespan`
-  (:81) and mount `/mcp/connectors` beside `/mcp/domains` (:379-380).
+  (:81) and mount `/mcp/connectors` beside `/mcp/domains` (:379-380) with
+  `mount_connectors_mcp(app, http_app)` (`tvashtr/mcp/connectors.py`), which adds a route for the
+  exact path as well as the mount. A mount alone only matches `/mcp/connectors/…`: the address
+  agents are given has no trailing slash, and it answered 307 locally and **405** behind the SPA
+  catch-all (the hosted image), so every connector would have failed in production with every
+  local gate green. `tests/test_connectors_api.py` probes both forms in a subprocess, behind a
+  catch-all and with a public `Host`, and checks that `_lifespan` starts the session manager.
 - Tests first: `tests/test_connectors_api.py::test_list_is_empty_and_needs_a_session`
   (`{"connections": []}`; 401 with `unauth_client`); `tests/test_connector_stubs.py`: every name in
   §2's table imports, and each stub answers what the table says.
@@ -498,7 +504,8 @@ access)` and `read_run_token(value) -> RunGrant | None` (signature, age, run own
   writes the warning (`record_resolution_warning(run_id, "connector", name, reason)`) and the
   `connector_skipped` event.
 - Split the base-address part of `domains_mcp_url()` (:84-99) into a shared helper and add
-  `connectors_mcp_url()`.
+  `connectors_mcp_url()`. It returns `{base}/mcp/connectors`, with no trailing slash (the form
+  Phase 0 tests behind the catch-all; assert the exact string).
 - `control_plane/team_run.py`: pass `node_id=node_id` at :1522; add `N connector(s)` to
   `_tool_names` (:266-279).
 - Tests first: no `connectors` key → output identical to today (the existing
@@ -816,6 +823,12 @@ DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`),
   agent that calls it as `tvashtr.fly.dev` or `host.docker.internal:8000` gets `421 Invalid Host
   header`. It predates this work and is not fixed here; `/mcp/connectors` turns the check off
   (0.6). Follow-up: the same one-line setting for Domains, with a test.
+- **The Domains proxy also answers 405 at its own address behind the SPA catch-all** (found by
+  the Phase 0 review). `domains_mcp_url()` gives agents `{base}/mcp/domains`, a Starlette mount
+  only matches `/mcp/domains/…`, and in the hosted image the GET catch-all takes the bare path and
+  answers a POST `405 Method Not Allowed` (locally, with no built frontend, it is a 307 that MCP
+  clients follow). `/mcp/connectors` has a route for the exact path (0.6). Not fixed here;
+  follow-up: mount Domains the same way, in the same change as the `Host` check above.
 - **`make lint` is not clean on the base commit** (389ab84): over `backend` and `scripts`,
   `ruff check` reports 37 errors and `ruff format --check` 21 files (Domains tests, the
   subscription pre-flight tests, `scripts/design-parity`), none of them connector files. Every

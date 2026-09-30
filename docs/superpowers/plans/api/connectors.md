@@ -557,7 +557,9 @@ does not expire with the provider's token.
 A streamable-HTTP MCP server inside the backend (stateless, JSON replies), mounted next to
 `/mcp/domains`. The agent's sandbox talks only to it. The MCP SDK's localhost-only `Host` check is
 off for this mount (agents call it by the public or docker host; the run token authorizes every
-request).
+request). The address has no trailing slash and is answered as written: the path has its own
+route next to the mount (`mount_connectors_mcp`), because a mount alone only matches
+`/mcp/connectors/…` and the app's page catch-all would answer the bare path 405.
 - **`tools/list`**: the provider's tools that are reads for this token's effective access (all of
   them when it is `write`). Descriptions are capped at 2,000 characters; `outputSchema` is dropped.
   The provider gets 10 s to answer. A bad token, an unreachable provider or a provider that is too

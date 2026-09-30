@@ -37,7 +37,7 @@ from tvashtr.control_plane.tool_skill_catalog import (
 )
 from tvashtr.control_plane.workspace_reaper import sweep_orphaned_workspaces
 from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
-from tvashtr.mcp.connectors import get_connectors_mcp
+from tvashtr.mcp.connectors import get_connectors_mcp, mount_connectors_mcp
 from tvashtr.mcp.domains import get_domains_mcp
 from tvashtr.models import SpikeHelloEvent
 from tvashtr.routers import router as api_router
@@ -392,8 +392,9 @@ def mount_frontend(app: FastAPI, dist_dir: str) -> bool:
 
 # Phase 4b: Domains MCP streamable HTTP — before SPA catch-all so /mcp/domains is not swallowed.
 app.mount("/mcp/domains", _domains_mcp_http)
-# Connectors proxy, next to it and for the same reason.
-app.mount("/mcp/connectors", _connectors_mcp_http)
+# Connectors proxy, next to it and for the same reason. Its exact address gets a route as well as
+# the mount: behind the catch-all a mount alone answers 405 to ``POST /mcp/connectors``.
+mount_connectors_mcp(app, _connectors_mcp_http)
 
 # LAST, deliberately (see mount_frontend): every API router above is already registered, so the
 # catch-all can only ever see paths nothing else claimed.
