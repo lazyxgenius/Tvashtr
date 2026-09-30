@@ -11,6 +11,8 @@
  *   #/engines?fix=1 (Overview with the rows that need a fix highlighted — the canvas's Open Engines)
  *   #/engines/subscriptions?connect=claude|grok (that card highlighted — a `tvashtr://` deep link)
  *   #/engines/keys?embeddings=1 (API keys scrolled to Domains embeddings — Domains' Open Engines)
+ *   #/toolkit/connectors · #/toolkit/connectors/browse · #/toolkit/connectors/<id>
+ *   (a bare #/toolkit is Connectors, Toolkit's first page)
  *   #/toolkit/tools · #/toolkit/tools/browse · #/toolkit/tools/<id>
  *   #/toolkit/skills · #/toolkit/skills/presets · #/toolkit/skills/new · #/toolkit/skills/<id>
  *   #/toolkit/memory (the page picks Inbox or Active) · #/toolkit/memory/inbox|active|archive
@@ -66,6 +68,8 @@ export type Route =
       connect?: ConnectTarget;
       embeddings?: boolean;
     }
+  | { page: "connectors"; view: "connected" | "browse" }
+  | { page: "connector"; connectorId: string }
   | { page: "tools"; view: "installed" | "browse" }
   | { page: "tool"; toolId: string }
   | { page: "skills"; view: "mine" | "presets" }
@@ -176,7 +180,9 @@ export function parseRoute(hash: string): Route {
         : { page: "engines", tab };
     }
     case "toolkit":
-      if (b === undefined || b === "tools") {
+      if (b === "connectors" && c === "browse") return { page: "connectors", view: "browse" };
+      if (b === "connectors" && c !== undefined) return { page: "connector", connectorId: c };
+      if (b === "tools") {
         if (c === undefined) return { page: "tools", view: "installed" };
         if (c === "browse") return { page: "tools", view: "browse" };
         return { page: "tool", toolId: c };
@@ -194,7 +200,8 @@ export function parseRoute(hash: string): Route {
         };
       }
       if (b === "secrets") return { page: "secrets" };
-      return { page: "tools", view: "installed" };
+      // Connectors is Toolkit's first page: the bare address and an unknown child land there.
+      return { page: "connectors", view: "connected" };
     case "setup":
       // Setup lives on this Mac; the website has none (DT-17).
       if (!onDesktop()) return HOME;
@@ -267,6 +274,10 @@ export function routeToHash(route: Route): string {
       if (route.tab === "keys" && route.embeddings) return "#/engines/keys?embeddings=1";
       if (route.tab !== "overview") return `#/engines/${route.tab}`;
       return route.fix ? "#/engines?fix=1" : "#/engines";
+    case "connectors":
+      return route.view === "browse" ? "#/toolkit/connectors/browse" : "#/toolkit/connectors";
+    case "connector":
+      return `#/toolkit/connectors/${enc(route.connectorId)}`;
     case "tools":
       return route.view === "browse" ? "#/toolkit/tools/browse" : "#/toolkit/tools";
     case "tool":

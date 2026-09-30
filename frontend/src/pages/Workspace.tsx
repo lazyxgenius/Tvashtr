@@ -13,6 +13,8 @@ import { requestHomeAction } from "../lib/homeActions";
 import { type DashView, HOME, type Route, isPublicRoute, navigate, useNav } from "../lib/nav";
 import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
 import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
+import { ConnectorDetailPage } from "./connectors/ConnectorDetailPage";
+import { ConnectorsPage } from "./connectors/ConnectorsPage";
 import { SetupPage } from "./desktop/setup/SetupPage";
 import { DomainDetailPage } from "./domains/DomainDetailPage";
 import { DomainsListPage } from "./domains/DomainsListPage";
@@ -205,6 +207,10 @@ function WorkspacePage({ route, user }: { route: Route; user: AuthUser }) {
           embeddings={route.embeddings}
         />
       );
+    case "connectors":
+      return <ConnectorsPage view={route.view} />;
+    case "connector":
+      return <ConnectorDetailPage key={route.connectorId} connectorId={route.connectorId} />;
     case "tools":
       return <ToolsPage view={route.view} />;
     case "tool":

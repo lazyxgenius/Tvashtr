@@ -772,6 +772,11 @@ on Browse. Calls `refreshBadges()` after every mutation.
 - Tests first: `ConnectorsPage.test.tsx` (tabs and counts, first-time lands on Browse, banner for
   `needs_signin` naming its agents, "Coming soon" has no Connect button, search hits `q=`, Show more uses
   `next_offset`).
+- As built (F1, after review): the Connected table shows the newest first (the API answers oldest
+  first). A connection Tvashtr hasn't reviewed has a "Not reviewed" badge and its host under the
+  name (`CnF-Key-4`); one with a project picker and no project says "The whole account". Browse
+  says "Loading the catalog…" while it loads and "Couldn’t load more. Try again." when Show more
+  fails.
 
 **F1.4 Connect sheet and sign-in.**
 - `pages/connectors/connectSignIn.ts`: the helper from the Desktop map. Web: open the popup
@@ -793,19 +798,52 @@ on Browse. Calls `refreshBadges()` after every mutation.
   inline `key_rejected` and `invalid_key`. `CustomConnectorSheet.tsx`: address → "Check the
   server" → the sign-in host line (flagged when `signin_host_differs`) → Continue, or the
   `no_signin` panel with "Add it in Tools".
-- Copy for the states the canvas doesn't draw:
-  - popup blocked (`window.open` returned `null`): "Your browser blocked the sign-in window. Allow
-    pop-ups for Tvashtr, then open it again." with "Open the window again";
+- Copy for the states the canvas doesn't draw (two of the five are drawn after all, and the
+  canvas's copy is what was built: popup blocked is `CnF-Prob-1`, and `cannot_register` for a
+  custom address is `CnF-Prob-3`):
+  - popup blocked (`window.open` returned `null`): as `CnF-Prob-1`, "Your browser blocked the
+    sign-in window" / "Allow pop-ups for Tvashtr, or open the window yourself. This sheet moves on
+    when you finish there." with "Open the window again";
   - Cancel pressed: polling stops, the sheet goes back to the access step and says "Sign-in
     cancelled. Nothing was connected.";
   - the 10 minute cap: "The sign-in wasn’t finished in time. Try again.";
-  - `cannot_register` (from POST or `oauth/start`): a panel titled "Tvashtr can’t sign in to
-    `<name>` yet" with the API's `message`, "Close", and for a custom address "Add it in Tools";
+  - `cannot_register` (from POST or `oauth/start`) on a catalog entry: a panel titled "Tvashtr
+    can’t sign in to `<name>` yet" with the API's `message` and "Close" (`no_signin` gets the same
+    panel plus "Add it in Tools"). On a custom address it is `CnF-Prob-3`: the amber note under
+    the two fields, with "Add it in Tools";
   - a refused `authorize_url`: "Tvashtr couldn’t open the sign-in page. Try again."
 - Tests first: `connectSignIn.test.ts` (web and Desktop branches; a `javascript:` and a `data:`
   address are never assigned to the popup or opened), `ConnectSheet.test.tsx` (each step, each
   error code, popup blocked, Cancel, the time cap, polling ends on `connected` and on
   `last_error`).
+- As built (F1):
+  - `ConnectSheet` also serves a connection that exists: "Sign in again" opens on the wait step
+    (the click that opens the sheet also opens the popup, `prepareSignInWindow()`), a key
+    connection gets "Replace key" (`PATCH credentials`; the fields come from the catalog entry,
+    looked up with `q=<host>`), and "Change project" opens on the project step.
+  - A sign-in that ends not connected, with a `last_error`, is a failure when the words are new
+    or when it ended more than ten seconds before the ten-minute cap (`oauth/start` leaves
+    `last_error` alone, so the same words can be a second failure). Otherwise it is the time cap.
+    A `needs_signin` row carries "Its sign-in expired." the whole time it waits. A 404 while
+    polling ends the wait ("… was disconnected before the sign-in finished.").
+  - A sheet doesn't close (Escape, scrim, ✕) while a request of its own is going. One that is
+    unmounted opens no window and calls no `onDone` (`useAlive`).
+  - A new connection's sheet closed on the project step calls `onDone(conn, "connected")`: the
+    sign-in went through, so it is connected to the whole account.
+  - After a scope or access `PATCH` the sheet and `ChangeAccessDialog` call `POST …/check`
+    (best effort) and report its answer: B1's PATCH keeps the stored tool list.
+  - "Replace key" shows "Couldn’t load which key `<name>` takes." with Retry when the catalog
+    lookup fails or doesn't list the entry; the `Authorization` default is only for an entry
+    that names no field.
+  - A custom connector is made read only (the check comes before the choice); Read & write is a
+    `PATCH access` once the sign-in is through, and a failed one is said in a toast. A name
+    changed after the check is a `PATCH name` then too (the slug stays the first name's: B1).
+    The custom sheet is one `<form>` in every state; its fields are disabled during the check.
+  - The DS `Sheet` has no icon slot, so the sheet header has the title and subtitle without the
+    letter tile. The account name ("Signed in to Supabase as organization lazyx") is cut (§1.7):
+    step 3 says "Signed in to Supabase."
+  - A registry entry whose sign-in is on another site shows the `CnF-Custom-2` warning on the
+    access step and asks for a second click ("Continue to `<signin_host>`") before it opens.
 
 **F1.5 Detail page.** `ConnectorDetailPage.tsx` (model: `pages/tools/ToolDetailPage.tsx` :122-415):
 Connection card (project and Change, access and Change, connected date, "Sign in again"), "What
@@ -813,6 +851,12 @@ agents can call" (Read / Off · write; a warning when no tool is a read: "This s
 any tool as read-only. Agents can’t call anything until access is Read & write."), Used by with
 "Give an agent access", Recent use. Test first: `ConnectorDetailPage.test.tsx`, including the 404
 state.
+- As built (F1): "Change access" is a small dialog (`ChangeAccessDialog.tsx`, `PATCH access`); a
+  key connection has "Replace key" in place of "Sign in again"; a connection whose tools were
+  never listed (`tools: null`) offers "Check again" (`POST …/check`); each Used-by row's ✕ removes
+  that agent (`PUT …/agents` with the rest, read from `GET …/agents` at the click, not from the
+  page's snapshot). A `custom:` connection's badge says "Custom · not reviewed by Tvashtr".
+  "Signed in as" is cut (§1.7).
 
 **F1.6 Dialogs.** `GiveAccessDialog.tsx` (copy `pages/tools/TurnOnForAgentsDialog.tsx`: team
 picker, ticks, the plan note per `subscription`) on `GET`/`PUT …/agents`; `DisconnectDialog.tsx`
