@@ -387,7 +387,10 @@ holds `FEATURED`, `available`, `resolve` and `is_write` from Phase 0 (0.6). B1 a
   ten never answers, a page can stay that way for a minute or two, and a small `limit` with
   `version=latest` times out every time. The script waits 15 s for a page and tries it 8 times
   with a growing pause, so a crawl is 376 pages and about 20 minutes, not 10. The first snapshot:
-  37,625 servers read, 15,058 kept, 4.91 MB. A crawl that gives up writes nothing.
+  37,625 servers read, 15,058 kept, 4.91 MB. A crawl that gives up writes nothing. A second
+  run 35 minutes later printed `added 9, removed 1, changed 6` (the registry's own edits in
+  between; 22 changed lines of 15,058), so "an empty diff summary" holds only for an unchanged
+  registry, which `test_summary_names_added_removed_and_changed_keys…` checks without a network.
 
 **B1.3 Read routes.** `GET /api/connectors/catalog`, `GET /api/connectors`,
 `GET /api/connectors/{id}` in `routes/connectors.py` (idiom: `routes/toolkit.py:47-55`).
