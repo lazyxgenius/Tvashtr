@@ -15,9 +15,9 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import CallToolRequest, CallToolResult, ServerResult, TextContent, Tool
 from starlette.applications import Starlette
-from starlette.routing import Route
 
 from tvashtr.control_plane import connector_proxy
+from tvashtr.mcp import mount_streamable
 
 logger = logging.getLogger(__name__)
 
@@ -94,12 +94,6 @@ def get_connectors_mcp() -> FastMCP:
 
 
 def mount_connectors_mcp(app: Starlette, http_app: Starlette) -> None:
-    """Put the proxy (``get_connectors_mcp().streamable_http_app()``) on ``app`` at ``PATH``, both
-    ways: the exact address agents are given, and a mount for anything under it.
-
-    The mount alone isn't enough. It only matches ``/mcp/connectors/…``, so a POST to the address
-    itself answers 307 locally and, once the SPA's GET catch-all is registered (the hosted image),
-    **405**. Call it before ``mount_frontend``."""
-    endpoint = next(route.endpoint for route in http_app.routes if isinstance(route, Route))
-    app.add_route(PATH, endpoint, methods=None, include_in_schema=False)
-    app.mount(PATH, http_app)
+    """Put the proxy (``get_connectors_mcp().streamable_http_app()``) on ``app`` at ``PATH``: the
+    exact address agents are given, and a mount for anything under it (``mount_streamable``)."""
+    mount_streamable(app, PATH, http_app)

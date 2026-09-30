@@ -72,7 +72,9 @@ def test_the_proxy_is_mounted_next_to_domains():
     # TestClient can tear down the DBOS lifespan (test_domain_mcp_http.py).
     paths = [getattr(r, "path", None) for r in app.routes]
     assert "/mcp/connectors" in paths
-    assert paths.index("/mcp/connectors") == paths.index("/mcp/domains") + 1
+    # Right after Domains' own pair (its exact address and its mount).
+    first = paths.index("/mcp/domains")
+    assert paths[first : first + 4] == ["/mcp/domains"] * 2 + ["/mcp/connectors"] * 2
     # Both forms of the address are there: the exact path agents are given (a route), and the
     # mount for everything under it. ``mount_connectors_mcp`` adds the pair; the probe below
     # shows why both are needed.

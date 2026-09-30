@@ -38,7 +38,7 @@ from tvashtr.control_plane.tool_skill_catalog import (
 from tvashtr.control_plane.workspace_reaper import sweep_orphaned_workspaces
 from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
 from tvashtr.mcp.connectors import get_connectors_mcp, mount_connectors_mcp
-from tvashtr.mcp.domains import get_domains_mcp
+from tvashtr.mcp.domains import get_domains_mcp, mount_domains_mcp
 from tvashtr.models import SpikeHelloEvent
 from tvashtr.routers import router as api_router
 from tvashtr.routes import account as revamp_account
@@ -57,11 +57,9 @@ from tvashtr.routes import website as revamp_website
 
 settings = get_settings()
 
-# Phase 4b: Domains MCP (streamable HTTP). path="/" so the mount root is the MCP endpoint
-# (client URL ends at /mcp/domains). http_app() is unavailable on this FastMCP version.
-_domains_mcp = get_domains_mcp()
-_domains_mcp.settings.streamable_http_path = "/"
-_domains_mcp_http = _domains_mcp.streamable_http_app()
+# Phase 4b: Domains MCP (streamable HTTP). The mount root is the MCP endpoint (client URL ends at
+# /mcp/domains). http_app() is unavailable on this FastMCP version.
+_domains_mcp_http = get_domains_mcp().streamable_http_app()
 # Connectors: the run-time proxy agents talk to (stateless streamable HTTP), built the same way.
 _connectors_mcp_http = get_connectors_mcp().streamable_http_app()
 
@@ -391,9 +389,9 @@ def mount_frontend(app: FastAPI, dist_dir: str) -> bool:
 
 
 # Phase 4b: Domains MCP streamable HTTP — before SPA catch-all so /mcp/domains is not swallowed.
-app.mount("/mcp/domains", _domains_mcp_http)
-# Connectors proxy, next to it and for the same reason. Its exact address gets a route as well as
-# the mount: behind the catch-all a mount alone answers 405 to ``POST /mcp/connectors``.
+# Connectors proxy, next to it and for the same reason. Each exact address gets a route as well as
+# the mount: behind the catch-all a mount alone answers 405 to ``POST /mcp/domains``.
+mount_domains_mcp(app, _domains_mcp_http)
 mount_connectors_mcp(app, _connectors_mcp_http)
 
 # LAST, deliberately (see mount_frontend): every API router above is already registered, so the
