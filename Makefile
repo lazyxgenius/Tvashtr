@@ -34,7 +34,7 @@ TVASHTR_PR_FLY_E2E_MODEL ?= $(TVASHTR_AGENT_MODEL)
 # launch URL; the registered tvashtr.online cutover just overrides this.
 TVASHTR_DEPLOY_URL ?= https://tvashtr.fly.dev
 
-.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check reaper-check memory-smoke memory-distill-gate memory-review-gate memory-shelf-e2e brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e docs-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e node-ask-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e scope-picker-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e endpoint-edit-e2e skills-e2e tools-e2e memory-injection-check github-app-e2e github-pr-e2e github-pr-fly-e2e fly-probe fly-reconstruct-probe fly-egress-check fly-reaper-check fly-suspend-restart-e2e clone-gc-check workspace-gc-check deploy-smoke demo-proof demo-proof-prod demo-proof-login seed lint fmt help
+.PHONY: setup db-up db-down migrate backend frontend test test-frontend build-frontend connectors-registry smoke agent-smoke model-bench proxy-smoke skeleton-run skeleton-run-docker skeleton-crash skeleton-crash-docker loop-run loop-crash loop-run-docker loop-feature-docker sandbox-reuse-check reaper-check memory-smoke memory-distill-gate memory-review-gate memory-shelf-e2e brownfield-check brownfield-loop-check brownfield-rung2 seeding-smoke containment-smoke containment-demo crash-demo hitl-demo budget-demo proxy-budget-demo steering-e2e team-edit-e2e team-library-e2e thinker-chain-e2e docs-chain-e2e capability-edit-e2e edits-toggle-e2e run-diff-e2e node-ask-e2e topology-e2e work-brief-e2e authoring-brief-e2e launch-panel-e2e scope-picker-e2e auth-e2e accounts-e2e model-picker-e2e secret-gate-e2e endpoint-edit-e2e skills-e2e tools-e2e memory-injection-check github-app-e2e github-pr-e2e github-pr-fly-e2e fly-probe fly-reconstruct-probe fly-egress-check fly-reaper-check fly-suspend-restart-e2e clone-gc-check workspace-gc-check deploy-smoke demo-proof demo-proof-prod demo-proof-login seed lint fmt help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -85,6 +85,9 @@ test-frontend: ## Run the frontend vitest suite (jsdom; no DB — kept separate 
 
 build-frontend: ## Frontend build gate: tsc --noEmit (strict types) + vite build
 	cd frontend && npm run build
+
+connectors-registry: ## Refresh the bundled MCP Registry snapshot (Toolkit > Connectors, Browse). Network, about 20 minutes; prints added/removed/changed keys. Review the diff before committing the .jsonl
+	cd backend && uv run python ../scripts/refresh_connector_registry.py
 
 smoke: ## Live gateway smoke — one real LLM call (needs OPENROUTER_API_KEY; skips cleanly otherwise)
 	cd backend && uv run python ../scripts/smoke_gateway.py
