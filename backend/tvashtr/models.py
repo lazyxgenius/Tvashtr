@@ -1009,6 +1009,64 @@ class ToolLibraryItem(Base):
     )
 
 
+class ConnectorConnection(Base):
+    """One account's sign-in to one connector (Toolkit › Connectors, migration ``0043``).
+
+    One row per ``(owner_id, connector_key)``. ``slug`` is the MCP server name in the agent's
+    config (so also the tool-name prefix) and never changes after creation. ``url`` is the
+    provider's MCP address without the query parameters Tvashtr adds (scope, read-only).
+
+    The two encrypted columns are Fernet ciphertext (``credentials.encrypt_secret``) and are NEVER
+    returned by any endpoint and never logged: ``secret_encrypted`` is the stored sign-in (tokens
+    and the client registration for ``oauth``, final header values for ``api_key``);
+    ``pending_encrypted`` is the sign-in that is in flight (PKCE verifier and so on), found by
+    ``state_hash`` = ``sha256(state)``. Shapes: ``docs/superpowers/plans/api/connectors.md``."""
+
+    __tablename__ = "connector_connections"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "connector_key", name="uq_connector_connections_owner_key"),
+        UniqueConstraint("owner_id", "slug", name="uq_connector_connections_owner_slug"),
+        UniqueConstraint("state_hash", name="uq_connector_connections_state_hash"),
+        CheckConstraint(
+            "transport IN ('streamable-http', 'sse')", name="ck_connector_connections_transport"
+        ),
+        CheckConstraint(
+            "auth_kind IN ('oauth', 'api_key', 'none')", name="ck_connector_connections_auth_kind"
+        ),
+        CheckConstraint("access IN ('read', 'write')", name="ck_connector_connections_access"),
+        CheckConstraint(
+            "status IN ('pending', 'connected', 'needs_signin')",
+            name="ck_connector_connections_status",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    connector_key: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    slug: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    transport: Mapped[str] = mapped_column(
+        Text, nullable=False, default="streamable-http", server_default="streamable-http"
+    )
+    auth_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    access: Mapped[str] = mapped_column(Text, nullable=False, default="read", server_default="read")
+    scope: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pending_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    state_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tools: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class SkillLibraryItem(Base):
     """One account's reusable skill (M-tools C7.C, migration ``0023``).
 
