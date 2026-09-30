@@ -3,14 +3,25 @@ against the fake sign-in server behind ``connector_net.client()``.
 Contract: ``docs/superpowers/plans/api/connectors.md`` (OAuth, Tokens)."""
 
 import json
+import time
+from dataclasses import replace
 
 import httpx
 import pytest
-from connector_oauth_helpers import PRIVATE_HOST, paths, wire
+from connector_oauth_helpers import CALLBACK, PRIVATE_HOST, TVASHTR, paths, wire
 from fake_connector_server import OTHER_SITE, FakeConnectorServer
+from pydantic import SecretStr
 
+from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_catalog
-from tvashtr.control_plane.connector_oauth import CannotRegister, Discovery, Unreachable, discover
+from tvashtr.control_plane.connector_oauth import (
+    CannotRegister,
+    Discovery,
+    Unreachable,
+    choose_client,
+    client_kind,
+    discover,
+)
 
 BASE = "https://mcp.fake.test"
 MCP = f"{BASE}/mcp"
@@ -383,3 +394,194 @@ def test_googles_own_cards_pass_the_mix_up_check_and_a_copy_of_them_doesnt(monke
     for other in (None, custom, entry):  # not even Google's own entry, on another address
         with pytest.raises(CannotRegister):
             discover("https://mcp.evil.test/mcp/v1", other)
+
+
+# ---- B2.2: which client Tvashtr signs in as ----
+
+GOOGLE = Discovery(
+    issuer="https://accounts.google.com",
+    authorization_endpoint="https://accounts.google.com/o/oauth2/v2/auth",
+    token_endpoint="https://oauth2.googleapis.com/token",
+    resource="https://drivemcp.googleapis.com/mcp/v1",
+)
+
+
+def _google_client(monkeypatch, client_id="tvashtr.apps.googleusercontent.com", secret="G-SECRET"):
+    monkeypatch.setattr(get_settings(), "google_oauth_client_id", client_id)
+    monkeypatch.setattr(get_settings(), "google_oauth_client_secret", SecretStr(secret))
+
+
+def _no_network(request: httpx.Request) -> httpx.Response:
+    raise AssertionError(f"unexpected request to {request.url}")
+
+
+def test_a_featured_entry_on_its_own_address_gets_the_pre_registered_client(monkeypatch):
+    wire(monkeypatch, _no_network)
+    _google_client(monkeypatch)
+    entry = connector_catalog.FEATURED["google-drive"]
+
+    assert client_kind(GOOGLE, entry, entry["url"]) == "preregistered"
+    client = choose_client(GOOGLE, entry, entry["url"])
+    # The operator's secret stays in the settings: it is read when it is sent, never copied
+    # onto a connection.
+    assert client == {
+        "client_id": "tvashtr.apps.googleusercontent.com",
+        "auth_method": "client_secret_post",
+        "kind": "preregistered",
+    }
+
+    # Until both settings are there, Google can't be signed in to at all.
+    _google_client(monkeypatch, secret="")
+    with pytest.raises(CannotRegister):
+        choose_client(GOOGLE, entry, entry["url"])
+
+
+def test_a_custom_address_never_gets_the_google_client(monkeypatch):
+    """Even when its metadata names ``accounts.google.com``: Google's tokens aren't bound to an
+    audience, so the user's Drive token would go to that server."""
+    fake = FakeConnectorServer("https://accounts.google.com")
+    wire(monkeypatch, fake.handle)
+    _google_client(monkeypatch)
+    google_entry = connector_catalog.FEATURED["google-drive"]
+    custom = {"key": "custom:mcp.evil.test/mcp", "client": "google", "featured": False}
+    url = "https://mcp.evil.test/mcp"
+
+    for entry in (None, custom, google_entry):
+        with pytest.raises(CannotRegister):
+            choose_client(GOOGLE, entry, url)
+    # Offered dynamic registration, it registers like anyone else, and still isn't the Google one.
+    registering = replace(GOOGLE, registration_endpoint="https://accounts.google.com/register")
+    client = choose_client(registering, custom, url)
+    assert client["kind"] == "dcr" and client["client_id"] == "client-1"
+
+
+def test_a_client_metadata_document_is_used_when_offered_and_tvashtr_is_on_https(monkeypatch):
+    fake = FakeConnectorServer(BASE, cimd=True)
+    wire(monkeypatch, fake.handle)
+    found = discover(MCP)
+    fake.requests.clear()
+
+    assert client_kind(found, None, MCP) == "cimd"
+    assert choose_client(found, None, MCP) == {
+        "client_id": f"{TVASHTR}/oauth/client-metadata.json",
+        "auth_method": "none",
+        "kind": "cimd",
+    }
+    assert fake.requests == []  # nothing to register
+    # It beats a stored registration: first match in the contract's order.
+    stored = {"issuer": BASE, "client": {"client_id": "client-9", "kind": "dcr"}}
+    assert choose_client(found, None, MCP, [stored])["kind"] == "cimd"
+
+    # Local development (an http:// base): the document can't be fetched, so register instead.
+    monkeypatch.setattr(get_settings(), "public_base_url", "http://localhost:8000")
+    assert client_kind(found, None, MCP) == "dcr"
+
+
+def test_dynamic_registration_asks_for_a_public_web_client(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    found = discover(MCP)
+    fake.requests.clear()
+
+    client = choose_client(found, None, MCP)
+    assert client == {
+        "client_id": "client-1",
+        "auth_method": "none",
+        "kind": "dcr",
+        "redirect_uri": CALLBACK,
+    }
+    [request] = fake.requests
+    assert (request.method, request.url.path) == ("POST", "/register")
+    assert json.loads(request.content) == {
+        "client_name": "Tvashtr",
+        "client_uri": TVASHTR,
+        "redirect_uris": [CALLBACK],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "application_type": "web",
+        "token_endpoint_auth_method": "none",
+        "scope": "read",
+    }
+
+
+def test_a_confidential_only_server_gets_a_secret(monkeypatch):
+    fake = FakeConnectorServer(BASE, confidential=True)  # as Supabase and Vercel
+    wire(monkeypatch, fake.handle)
+    client = choose_client(discover(MCP), None, MCP)
+    assert client["auth_method"] == "client_secret_post" and client["kind"] == "dcr"
+    assert client["client_secret"] == fake.clients["client-1"]["client_secret"]
+    assert "secret_expires_at" not in client  # the fake's 0 means "never"
+
+    # A server that lists only Basic, and one that lists nothing (the RFC's default is Basic).
+    for methods in (("client_secret_basic",), ()):
+        found = replace(discover(MCP), token_auth_methods=methods)
+        assert choose_client(found, None, MCP)["auth_method"] == "client_secret_basic"
+
+
+def test_a_stored_registration_is_reused_only_for_the_same_issuer(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    found = discover(MCP)
+    first = choose_client(found, None, MCP)
+    stored = {"issuer": BASE, "client": first}
+    fake.requests.clear()
+
+    # "Sign in again": the sign-in in flight has none, the stored one does.
+    assert choose_client(found, None, MCP, [None, {"issuer": BASE}, stored]) == first
+    assert fake.requests == []
+
+    def registers_again(known: dict) -> bool:
+        fake.requests.clear()
+        client = choose_client(found, None, MCP, [known])
+        return paths(fake) == ["/register"] and client["client_id"] != first["client_id"]
+
+    assert registers_again({"issuer": "https://login.elsewhere.test", "client": first})
+    expired = first | {"client_secret": "s", "secret_expires_at": time.time() - 1}
+    assert registers_again({"issuer": BASE, "client": expired})
+    # Registered for another redirect address (the public base URL changed since).
+    moved = first | {"redirect_uri": "https://old.tvashtr.test/api/connectors/oauth/callback"}
+    assert registers_again({"issuer": BASE, "client": moved})
+    # A client metadata document isn't a registration to reuse where documents aren't offered.
+    assert registers_again({"issuer": BASE, "client": {"client_id": "https://x", "kind": "cimd"}})
+
+
+def test_no_way_to_get_a_client_is_cannot_register(monkeypatch):
+    fake = FakeConnectorServer(BASE, dcr=False)  # as HubSpot, Slack, Box
+    wire(monkeypatch, fake.handle)
+    found = discover(MCP)
+    with pytest.raises(CannotRegister):
+        client_kind(found, None, MCP)
+    with pytest.raises(CannotRegister):
+        choose_client(found, None, MCP)
+
+
+def test_a_refused_registration_is_cannot_register_and_a_5xx_is_unreachable(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    found = discover(MCP)
+
+    def answering(reply: httpx.Response):
+        def handle(request: httpx.Request) -> httpx.Response:
+            return reply if request.url.path == "/register" else fake.handle(request)
+
+        return handle
+
+    for refusal in (
+        httpx.Response(403, json={"error": "access_denied"}),  # Figma's allowlist
+        httpx.Response(201, json={"no": "client id"}),
+        httpx.Response(201, text="<html>"),
+    ):
+        wire(monkeypatch, answering(refusal))
+        with pytest.raises(CannotRegister):
+            choose_client(found, None, MCP)
+
+    wire(monkeypatch, answering(httpx.Response(503)))
+    with pytest.raises(Unreachable):
+        choose_client(found, None, MCP)
+
+    def down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    wire(monkeypatch, down)
+    with pytest.raises(Unreachable):
+        choose_client(found, None, MCP)

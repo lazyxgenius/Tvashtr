@@ -6,7 +6,9 @@ passed through ``connector_net.check_url`` first. Metadata is read as plain dict
 comparisons are on the raw strings (a URL type adds a trailing slash).
 """
 
+import time
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -19,6 +21,7 @@ from mcp.client.auth.utils import (
 )
 from mcp.shared.auth_utils import check_resource_allowed
 
+from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_net
 from tvashtr.db import session_scope
 from tvashtr.models import ConnectorConnection
@@ -72,9 +75,9 @@ def _pins(entry: dict | None, url: str) -> dict:
     return {}
 
 
-def _document(response: httpx.Response | None) -> dict:
-    """The JSON object of a 200 answer, else ``{}``."""
-    if response is None or response.status_code != 200:
+def _document_of(response: httpx.Response | None, statuses: tuple[int, ...] = (200,)) -> dict:
+    """The JSON object of an answer with one of ``statuses``, else ``{}``."""
+    if response is None or response.status_code not in statuses:
         return {}
     try:
         body = response.json()
@@ -131,7 +134,7 @@ def discover(url: str, entry: dict | None = None) -> Discovery | None:
         # (``dict.fromkeys``: the header usually names the well-known address itself.)
         candidates = build_protected_resource_metadata_discovery_urls(named, url)
         for address in dict.fromkeys(candidates):
-            found = _document(get(address))
+            found = _document_of(get(address))
             servers = found.get("authorization_servers")
             if isinstance(found.get("resource"), str) and isinstance(servers, list) and servers:
                 resource = found
@@ -147,7 +150,7 @@ def discover(url: str, entry: dict | None = None) -> Discovery | None:
             raise CannotRegister("the resource metadata names no sign-in server")
         server: dict = {}
         for address in build_oauth_authorization_server_metadata_discovery_urls(issuer, url):
-            server = _document(get(address))
+            server = _document_of(get(address))
             if server:
                 break
 
@@ -205,6 +208,143 @@ def discover(url: str, entry: dict | None = None) -> Discovery | None:
         if isinstance(methods, list)
         else (),
     )
+
+
+# ---- the client Tvashtr signs in as ----
+
+CALLBACK_PATH = "/api/connectors/oauth/callback"
+CLIENT_METADATA_PATH = "/oauth/client-metadata.json"
+
+
+def _base_url() -> str:
+    return get_settings().public_base_url.rstrip("/")
+
+
+def redirect_uri() -> str:
+    """The one redirect address for every connector. Built from ``TVASHTR_PUBLIC_BASE_URL``,
+    never from the request (on Desktop the frontend's origin is ``127.0.0.1``)."""
+    return _base_url() + CALLBACK_PATH
+
+
+def client_metadata() -> dict | None:
+    """Tvashtr's client ID metadata document, or ``None`` when the public base URL isn't
+    ``https://`` (a sign-in server couldn't fetch it; local development registers instead)."""
+    base = _base_url()
+    if not base.startswith("https://"):
+        return None
+    return {
+        "client_id": base + CLIENT_METADATA_PATH,
+        "client_name": "Tvashtr",
+        "client_uri": base,
+        "redirect_uris": [redirect_uri()],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none",
+    }
+
+
+def _google_secret() -> str:
+    return get_settings().google_oauth_client_secret.get_secret_value()
+
+
+def client_kind(found: Discovery, entry: dict | None, url: str) -> str:
+    """How Tvashtr gets a client for this sign-in, first match: ``preregistered`` (a Featured
+    entry that names one, on its pinned address only), ``cimd`` (a client ID metadata document),
+    ``dcr`` (dynamic registration). :class:`CannotRegister` when there is no way."""
+    if _pins(entry, url).get("client") == "google":
+        if get_settings().google_oauth_client_id and _google_secret():
+            return "preregistered"
+    if found.cimd_supported and client_metadata() is not None:
+        return "cimd"
+    if found.registration_endpoint:
+        return "dcr"
+    raise CannotRegister("no pre-registered client, no client metadata document, no registration")
+
+
+def _post(url: str, **request: object) -> httpx.Response:
+    """POST to a sign-in endpoint. :class:`Unreachable` when it doesn't answer: an address
+    Tvashtr won't open, a network error, a timeout, a 5xx or a 429."""
+    try:
+        with connector_net.client() as http:
+            response = http.post(connector_net.check_url(url), **request)
+    except (connector_net.UnsafeUrl, httpx.HTTPError) as exc:
+        raise Unreachable(f"{urlsplit(url).hostname} didn't answer") from exc
+    if response.status_code >= 500 or response.status_code == 429:
+        raise Unreachable(f"{urlsplit(url).hostname} answered {response.status_code}")
+    return response
+
+
+def _register(found: Discovery) -> dict:
+    """Dynamic client registration (RFC 7591). A public client where the server takes one, else
+    one with a secret (Supabase, Vercel)."""
+    methods = found.token_auth_methods
+    method = next(
+        (m for m in ("none", "client_secret_post") if m in methods), "client_secret_basic"
+    )
+    body = {
+        "client_name": "Tvashtr",
+        "client_uri": _base_url(),
+        "redirect_uris": [redirect_uri()],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "application_type": "web",
+        "token_endpoint_auth_method": method,
+    }
+    if found.scope:
+        body["scope"] = found.scope
+    reply = _document_of(_post(found.registration_endpoint, json=body), (200, 201))
+    if not isinstance(reply.get("client_id"), str):
+        raise CannotRegister("the sign-in server refused the registration")
+    client = {
+        "client_id": reply["client_id"],
+        "auth_method": reply.get("token_endpoint_auth_method") or method,
+        "kind": "dcr",
+        "redirect_uri": redirect_uri(),
+    }
+    if reply.get("client_secret"):
+        client["client_secret"] = reply["client_secret"]
+        if reply.get("client_secret_expires_at"):  # 0 means it never expires
+            client["secret_expires_at"] = reply["client_secret_expires_at"]
+    return client
+
+
+def _reusable(known: dict | None, issuer: str) -> dict | None:
+    """The registration stored in the sign-in ``known``, when it is still good for ``issuer``:
+    credentials are bound to the issuer they were registered with, and to the redirect address."""
+    client = (known or {}).get("client") or {}
+    expires = client.get("secret_expires_at")
+    if (
+        (known or {}).get("issuer") == issuer
+        and client.get("kind") == "dcr"
+        and client.get("client_id")
+        and client.get("redirect_uri") == redirect_uri()
+        and not (expires and expires < time.time() + 60)
+    ):
+        return client
+    return None
+
+
+def choose_client(
+    found: Discovery, entry: dict | None, url: str, known: Iterable[dict | None] = ()
+) -> dict:
+    """The client for this sign-in, as stored under ``client``: ``{"client_id", "auth_method",
+    "kind", …}``. ``known`` are the row's sign-ins (the one in flight, the stored one): a
+    registration made with the same issuer is reused. Registers when it has to. Raises
+    :class:`CannotRegister` or :class:`Unreachable`."""
+    kind = client_kind(found, entry, url)
+    if kind == "preregistered":
+        # The secret is not copied here: ``_client_auth`` reads it from the settings.
+        return {
+            "client_id": get_settings().google_oauth_client_id,
+            "auth_method": "client_secret_post",
+            "kind": kind,
+        }
+    if kind == "cimd":
+        return {"client_id": client_metadata()["client_id"], "auth_method": "none", "kind": kind}
+    for sign_in in known:
+        if client := _reusable(sign_in, found.issuer):
+            return client
+    return _register(found)
 
 
 def ensure_access_token(connection_id: uuid.UUID, *, rejected: str | None = None) -> str:
