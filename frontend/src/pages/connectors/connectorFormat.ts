@@ -46,9 +46,10 @@ export function accessLabel(access: ConnectorAccess): string {
   return access === "write" ? "Read & write" : "Read only";
 }
 
-/** Under a connection's name: its project when it has one, else who makes it. */
+/** Under a connection's name: its project (or that none is picked), else who makes it. */
 export function connectionSubline(c: Connection): string {
   if (c.scope) return `${c.scope_picker?.label ?? "Project"} ${c.scope.label.split(" · ")[0]}`;
+  if (c.scope_picker) return "The whole account";
   return c.publisher ? `By ${c.publisher}` : c.host;
 }
 

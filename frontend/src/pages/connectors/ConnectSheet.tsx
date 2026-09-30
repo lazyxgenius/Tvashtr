@@ -310,6 +310,9 @@ export function ConnectSheet({
     // A request that is going would carry on behind a closed sheet: it closes once that answers.
     if (busy) return;
     signIn.cancel();
+    // Left on the project step: the sign-in went through, so it is connected (to the whole
+    // account). The page says so rather than quietly flipping a card.
+    if (mode === "new" && conn?.status === "connected") return done(conn, "connected");
     onClose();
   };
 

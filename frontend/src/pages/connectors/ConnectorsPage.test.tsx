@@ -208,6 +208,13 @@ describe("Connected", () => {
     expect(window.location.hash).toBe("#/toolkit/connectors/browse");
   });
 
+  it("says a connector with projects covers the whole account until one is picked", async () => {
+    serve([connection({ scope: null })]);
+    renderWithProviders(<ConnectorsPage view="connected" />);
+    const rows = await screen.findAllByRole("row");
+    expect(rows[1]).toHaveTextContent("SbSupabaseThe whole accountRead onlyReady");
+  });
+
   it("says whose sign-in expired and which agents run without it", async () => {
     serve([SENTRY, SUPABASE]);
     renderWithProviders(<ConnectorsPage view="connected" />);

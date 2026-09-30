@@ -272,6 +272,32 @@ describe("signing in to a catalog connector", () => {
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(2);
   });
 
+  it.each([
+    ["the sheet’s ✕", () => click("Close")],
+    [
+      "Back, then Cancel",
+      () => {
+        click("Back");
+        footerClick("Cancel");
+      },
+    ],
+  ])("is connected, to the whole account, when it is left with %s", async (_how, leave) => {
+    serve();
+    const { onDone, onClose } = show({ entry: entry() });
+    click("Continue to Supabase");
+    await screen.findByText("Waiting for you to finish in the Supabase window");
+    row = CONNECTED;
+    await poll();
+    await screen.findAllByRole("radio");
+
+    leave();
+    // The sign-in went through: the page hears of a connection, not of a sheet that was closed.
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalledOnce();
+    expect(onDone.mock.calls[0][0]).toMatchObject({ id: "c1", status: "connected", scope: null });
+    expect(onDone.mock.calls[0][1]).toBe("connected");
+  });
+
   it("asks for the project id when the provider’s list can’t be read", async () => {
     const calls = serve({
       "GET /api/connectors/c1/scope-options": { ...OPTIONS, manual: true, options: [] },
