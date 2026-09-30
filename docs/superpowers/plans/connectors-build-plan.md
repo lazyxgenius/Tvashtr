@@ -496,6 +496,10 @@ metadata document → dynamic registration (`application_type: "web"`; auth meth
 `client_secret_post`, else `client_secret_basic`) → `CannotRegister`. Reuse a stored registration
 when the issuer matches. The pinned client, the pinned `scope` and `oauth_hosts` come from
 `connector_catalog.resolve(row.connector_key)`, and only from an entry with `featured: True`.
+- As built: `client_kind(found, entry, url)` names the choice without registering (the probe uses
+  it) and `choose_client(found, entry, url, known)` makes it. A registration is reused only for
+  the same issuer and the same redirect address. `application_type` is `native` when the
+  redirect isn't `https://`. The Google secret is never copied onto a connection.
 - Tests first: each branch; a custom address never gets the Google client even when its metadata
   names `accounts.google.com`; confidential-only server gets a secret; re-registration when the
   issuer changed.
@@ -504,14 +508,28 @@ when the issuer matches. The pinned client, the pinned `scope` and `oauth_hosts`
 - Tests first (`tests/test_connector_oauth_routes.py`): the authorize address has every parameter
   in the contract, `resource` verbatim from the metadata; only `sha256(state)` is stored; status is
   unchanged on a `connected` row; `not_oauth`; **another account → 404**.
+- As built: discovery, the read of the row's registrations and the client choice (it may
+  register) all run before the row is locked and with no database connection held; only the
+  write takes the lock, and it re-checks that the chosen client wasn't marked `refused_client`
+  meanwhile. One `oauth/start` per connection runs at a time in a process (the same in-process
+  turn a refresh takes; see B2.5). A Featured entry on its own
+  address may carry `authorize_params` (extra authorize parameters); the catalog has none yet,
+  and Google needs `{"access_type": "offline", "prompt": "consent"}` there to get a refresh token
+  (B1 owns the catalog).
 
 **B2.4 Callback, confirm, pages.** The two public routes and the small HTML pages (pattern:
 `desktop_auth.return_page()`). Page text is escaped; no provider-supplied text is rendered raw.
 - Every page is sent with `Referrer-Policy: no-referrer`, `Cache-Control: no-store` and
   `X-Frame-Options: DENY`.
-- The `state` is used up with one statement (`UPDATE … SET state_hash = NULL WHERE state_hash = :h
+- The `state` is used up with one statement (`UPDATE … SET state_hash = … WHERE state_hash = :h
   RETURNING id`) at the start of Complete and when a sign-in is cleared (callback steps 3 and 4).
-  The callback GET that shows the confirm page does not use it up.
+  The callback GET that shows the confirm page does not use it up. A cleared sign-in sets `NULL`.
+  **Complete sets the hash of a random value instead of `NULL`** and clears it in its final
+  write: the plan first said `NULL` there too, but `signin_pending` is read from `state_hash` and
+  the app stops polling when it turns false, so for the length of the code exchange a poll would
+  have found a sign-in that ended with no `connected` and no `last_error`.
+- The tools are listed before the final write, so the row changes once: `connected`, the sign-in,
+  the tools and `signin_pending: false` together.
 - The write after the exchange takes the row lock (`get_owned(…, for_update=True)`) before it
   reads or writes the stored sign-in. The stored sign-in keeps `authorization_endpoint` (the
   contract's `secret_encrypted` shape), so `signin_host` still reads right once
@@ -543,6 +561,11 @@ on the row and reads the stored sign-in only after it holds the lock.
 - `# ponytail:` the refresh call runs while the row is locked (10 s timeout). Callers on an event
   loop run it in a worker thread (B3.3). Move to a version column and a lock-free refresh if lock
   waits show up.
+- As built after review: callers first take an in-process turn per connection
+  (`_one_at_a_time`, 15 s wait, then `Unreachable`) and only the caller whose turn it is opens a
+  session, so callers waiting behind a slow token endpoint hold no pooled database connection.
+  What is left of the ponytail note: each connection being refreshed still holds one pooled
+  connection for up to 10 s.
 
 **B2.6 Client metadata document.** `GET /oauth/client-metadata.json`; 404 unless
 `public_base_url` is https. Test both cases.
@@ -554,6 +577,31 @@ entry that needs `oauth_hosts` for the mix-up check is found here); `--register`
 registration. Accept:
 every available Featured entry reaches an authorize address. An entry that fails is switched to
 "Coming soon" before release.
+- Run: `cd backend && uv run python ../scripts/connector_probe.py --base-url
+  https://tvashtr.fly.dev` (`--all` adds the entries that can't be connected yet; `key …` limits
+  the run). Its plumbing is tested against the fake in `tests/test_connector_probe.py`.
+- Result on 2026-09-30, discovery only (no `--register`), base `https://tvashtr.fly.dev`: all ten
+  available entries reach an authorize address and **none needs `oauth_hosts`** (every endpoint is
+  on its issuer's site). Client: a metadata document for Notion, PostHog, Linear, Sentry and
+  Atlassian; dynamic registration for Supabase, Neon, Mixpanel, Amplitude and Intercom. The
+  sign-in host is not the MCP host for Supabase (`api.supabase.com`), PostHog
+  (`oauth.posthog.com`), Mixpanel (`mixpanel.com`) and Atlassian (`auth.atlassian.com`); all four
+  are on the MCP host's site.
+- The same run with `--all` found the one defect: Google's three cards were refused, because
+  Google names its issuer with a trailing slash in the resource metadata and without one in the
+  server metadata. Fixed (B2.1's issuer check now ignores one trailing slash). Their endpoints
+  are on `accounts.google.com` and `oauth2.googleapis.com`, which is what `oauth_hosts` pins.
+  HubSpot offers neither registration nor metadata documents, as expected.
+- The probe also prints `iss`: whether the server sends the `iss` answer parameter. Same date:
+  yes for Linear, Sentry and Google; no for Supabase, Neon, Notion, PostHog, Mixpanel, Amplitude,
+  Intercom, Atlassian and HubSpot. A provider that doesn't can be the target of a **mix-up by
+  redirect** from a custom or registry connector's sign-in server, which the backend cannot
+  close (contract, Discovery step 4). Open: a warning in the app before such a sign-in (F1), and
+  the operator's decision on shipping custom and registry OAuth connectors with that residual.
+- Not covered by a discovery-only run: whether each provider accepts the registration and the
+  authorize request as sent (Intercom gets no `scope`, PostHog gets all 155 it lists), and the
+  tool annotations (Neon's `run_sql`, Google's). Those need `--register` and one real sign-in
+  per provider.
 
 ## 6. Stream B3: run time
 

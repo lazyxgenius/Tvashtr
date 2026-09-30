@@ -333,14 +333,32 @@ frontend origin (on Desktop that is `127.0.0.1`).
 1. Protected-resource metadata: the `resource_metadata` address from an unauthenticated request's
    `WWW-Authenticate` header, else `/.well-known/oauth-protected-resource<path>`, else the root
    `/.well-known/oauth-protected-resource`. Several servers answer 405 or 404 to a GET, so the
-   well-known addresses are tried whatever the first request returns.
+   well-known addresses are tried whatever the first request returns. The first request is a
+   `GET` with no credentials. Only a failure to connect on it is `unreachable` at once; any other
+   outcome (a 405, a 5xx, a stream that stays open until the deadline) moves on. A metadata
+   address that isn't one Tvashtr opens, or a document that isn't a JSON object with a `resource`
+   and at least one `authorization_servers` entry, is skipped.
 2. Authorization-server metadata for `authorization_servers[0]`, in the spec's order (path-style
    issuers included). When step 1 found nothing: the MCP origin's own
    `/.well-known/oauth-authorization-server` (Intercom).
+   What discovery answers: a sign-in, or "no sign-in" when neither document was found, or
+   `cannot_register` when resource metadata names a sign-in server whose metadata can't be read,
+   or `unreachable` when nothing answered at all (or the MCP address itself isn't one Tvashtr
+   opens). Steps 1 and 2 share one deadline of 20 seconds: each request is given ten seconds or
+   what is left of the twenty, whichever is less, and once they are up discovery is
+   `unreachable` (there can be seven requests, one after the other).
 3. Checks: the metadata's `issuer` equals the issuer the address was built from (compared as raw
-   strings, never through a URL type); `code_challenge_methods_supported` contains `S256`; the
-   resource metadata's `resource` covers the MCP address (`check_resource_allowed`); every endpoint
-   is `https://`.
+   strings, never through a URL type; **one trailing slash is not a difference**, because Google's
+   resource metadata names `https://accounts.google.com/` and its server metadata says
+   `https://accounts.google.com`. The server's own spelling is the issuer that is stored and that
+   the callback's `iss` is compared with); `code_challenge_methods_supported` is a list that
+   contains `S256`; the resource metadata's `resource` covers the MCP address (`check_resource_allowed`); every endpoint
+   passes `connector_net.check_url` (`https://`, a public address, no user name or backslash).
+   Everything in either document is untrusted: a value of the wrong type, or one that can't be
+   read as an address, is `cannot_register` (never a 500), and a document nested too deep to
+   parse is skipped like one that isn't JSON.
+   `scope` is the 401's `scope`, else the resource metadata's `scopes_supported`, else the
+   sign-in server's, else nothing.
 4. Mix-up check: `authorization_endpoint`, `token_endpoint` and `registration_endpoint` must be on
    the issuer's site (its registrable domain, `connector_net.site`), else 422 `cannot_register`. A
    `revocation_endpoint` somewhere else is ignored. Without this rule a custom server could name a
@@ -348,14 +366,47 @@ frontend origin (on Desktop that is `127.0.0.1`).
    verifier. A Featured entry can pin extra endpoint hosts (`oauth_hosts`; Google's token endpoint
    is on `oauth2.googleapis.com`). A registry or custom entry never can.
 
+   **What this rule does not stop: a mix-up by redirect (known residual, found in review).** A
+   custom or registry server can name its *own* authorize page, which passes the rule, and have
+   that page send the browser on to a real provider's authorize page with the same query. The
+   `client_id` works there: a client metadata document is the same for every provider, and where
+   the provider registers clients the attacker registers one with Tvashtr's redirect address.
+   The real provider sends its code to Tvashtr's callback under the custom row's `state`, and
+   Tvashtr posts the code and the PKCE verifier to the custom server's token endpoint, which
+   redeems them at the real provider. The user has to press Allow on the real provider's page
+   for a connector they added from somewhere else.
+   - The only defence is the callback's `iss` check (callback step 2), and it holds only for a
+     provider that sends `iss`. On 2026-09-30 (the probe's `iss` column) Linear, Sentry and Google
+     do. Supabase, Neon, Notion, PostHog, Mixpanel, Amplitude, Intercom and Atlassian don't, and
+     all of them take a metadata document or open registration.
+   - Nothing on the backend closes it for those. A redirect address per issuer doesn't (the
+     attacker registers whichever address Tvashtr accepts). Requiring `iss` from every
+     non-Featured server doesn't (a registered redirect address can carry `?iss=` already; the
+     callback refuses a parameter named twice, which only helps where the provider sends its
+     own).
+   - What is left to the user: the page that opens must belong to the connector being added.
+     The app should say so before a custom or registry sign-in (not built; F1's `ConnectSheet`).
+   - Operator decision: whether custom and registry connectors that sign in ship in v1 with this
+     residual.
+
 **Client** (at `oauth/start`, first match):
 1. Pre-registered: only Featured entries that name one (`google`), only on their pinned address.
-   Never offered to a registry or custom address.
+   Never offered to a registry or custom address. Its secret is read from the settings whenever
+   it is sent and is not stored on the connection (`client` then has no `client_secret`).
 2. Client ID metadata document, when the server advertises
    `client_id_metadata_document_supported` and `TVASHTR_PUBLIC_BASE_URL` is `https://`.
-3. Dynamic registration (`registration_endpoint`): `application_type: "web"`,
+3. Dynamic registration (`registration_endpoint`): `client_name`, `redirect_uris`, `grant_types`,
+   `response_types`, `scope` (when discovery found one), `application_type: "web"` (`"native"`
+   when the redirect address isn't `https://`, that is local development: a server that holds
+   web clients to https redirects would refuse it),
    `token_endpoint_auth_method` `none` when the server lists it, else `client_secret_post`, else
-   `client_secret_basic` (Supabase, Vercel). A stored registration for the same `issuer` is reused.
+   `client_secret_basic` (Supabase, Vercel). A stored registration is reused when it was made
+   with the same `issuer` **and for the same redirect address** (the stored `client` of a
+   registration also carries `redirect_uri`) and its secret hasn't expired; it is looked for in
+   the sign-in in flight and in the stored sign-in. A refused registration (any 4xx, or an
+   answer without a `client_id`) is `cannot_register`. From the reply, `client_secret` and
+   `token_endpoint_auth_method` are kept only when they are strings and
+   `client_secret_expires_at` only when it is a number.
 4. None of these → 422 `cannot_register`.
 
 ### `POST /api/connectors/{id}/oauth/start`
@@ -369,15 +420,18 @@ changed. The authorize address carries
 `response_type=code`, `client_id`, `redirect_uri`, `state` (`secrets.token_urlsafe(32)`),
 `code_challenge` + `code_challenge_method=S256`, `resource` (the metadata's value, verbatim) and
 `scope` (the 401's `scope`, else `scopes_supported`, else left out; Featured entries may pin it, as
-Google's read-only scopes do).
+Google's read-only scopes do). A Featured entry on its pinned address may also name extra
+parameters for its provider's authorize page (`authorize_params`; Google hands out a refresh
+token only with `access_type=offline`).
 `authorize_url` is always an `https://` address (`http://` only under
 `TVASHTR_CONNECTORS_ALLOW_LOCAL`). The web app and Desktop check that again before they open it.
 `signin_host` is the host of `authorize_url`, and the client holds the server to it: it reads the
 host out of `authorize_url` the way a browser does (`new URL`), and refuses the answer when that
 host isn't `signin_host` or when the address carries a user name or password. So the host that is
 shown is always the host the window opens.
-Errors: 404; 409 `{"code": "not_oauth", "message": "This connector doesn’t sign in."}`; 422
-`cannot_register`; 502 `unreachable`.
+Errors: 404; 409 `{"code": "not_oauth", "message": "This connector doesn’t sign in."}` (the row
+isn't `oauth`, or its server no longer offers a sign-in); 422 `cannot_register`; 502
+`unreachable`. Nothing is stored on any of them.
 
 ### `GET /api/connectors/oauth/callback?state=&code=&iss=&error=` (public)
 Always answers an HTML page (200), never JSON and never a redirect into the app. The owner comes
@@ -387,18 +441,30 @@ confirm route is sent with `Referrer-Policy: no-referrer`, `Cache-Control: no-st
 
 1. No row for `state`, or `started_at` older than 10 minutes → page "This sign-in link has expired.
    Go back to Tvashtr and try again." Finding the row does not use the `state` up; only steps 3
-   and 4 and Complete do.
+   and 4 and Complete do. A callback that names `state`, `code`, `iss` or `error` more than once
+   gets the same page and nothing is read or written (a parameter is named once; a redirect
+   address registered with an `iss` of its own must not decide which of two is read).
 2. `iss`: when present it must equal the stored issuer exactly; when absent the sign-in is refused
    only if the server advertised `authorization_response_iss_parameter_supported`. On a mismatch
-   nothing else in the request is acted on (not `error` either).
+   nothing else in the request is acted on (not `error` either) and nothing is written: the page
+   says "Supabase didn’t finish the sign-in. Try again." and the row is left as it was.
 3. `error` present (for example `access_denied`) → the in-flight sign-in is cleared, `last_error`
-   = "You didn’t allow access on Supabase.", page says the same.
-4. A `tv_session` cookie is present:
+   = "You didn’t allow access on Supabase.", page says the same. A callback with neither `error`
+   nor `code` is cleared the same way, with the "didn’t finish the sign-in" line.
+4. A `tv_session` cookie is present (a cookie that doesn't read as a session counts as none):
    - it is the row's owner → complete (below);
-   - it is another account → in-flight sign-in cleared, page "This browser is signed in to Tvashtr
+   - it is another account → in-flight sign-in cleared, `last_error` = "That browser is signed in
+     to Tvashtr as a different account. Nothing was connected." (so the app's poll has a reason
+     to show), page "This browser is signed in to Tvashtr
      as a different account. Nothing was connected. Log out of Tvashtr in this browser, then start
      the sign-in again." (After logging out, the retry takes step 5. Without this line a Desktop
      user whose browser holds another account has no way through.)
+
+   "Cleared" (steps 3 and 4) is one transaction: `UPDATE connector_connections SET state_hash =
+   NULL WHERE state_hash = :h RETURNING id`, then `last_error`, and `pending_encrypted` loses its
+   `code_verifier` and `started_at`. What discovery found and the `client` stay there, so
+   `signin_host` still reads right on a row that was never connected and the next `oauth/start`
+   reuses the registration.
 5. No `tv_session` cookie (Desktop's browser) → a confirm page: "Connect Supabase to the Tvashtr
    account asha@example.com?" with one button that posts `state`, `code` and `iss` to the confirm
    route. The page shows the owner's **full** email: a masked one (`a•••@example.com`) is matched
@@ -409,16 +475,32 @@ confirm route is sent with `Referrer-Policy: no-referrer`, `Cache-Control: no-st
 Repeats steps 1–2, then completes. Answers the same HTML pages.
 
 **Complete** (both routes): the `state` is used up first, in one statement:
-`UPDATE connector_connections SET state_hash = NULL WHERE state_hash = :h RETURNING id`. No row
+`UPDATE connector_connections SET state_hash = :claim WHERE state_hash = :h RETURNING id`. No row
 back → the "expired" page and nothing else happens, so a `state` works once and two callbacks that
-arrive together make one code exchange. Then the code is exchanged
+arrive together make one code exchange. `:claim` is the hash of a fresh random value that nobody
+is ever given, not `NULL`: `signin_pending` is read from `state_hash`, and the app polls it and
+reads the outcome the moment it turns false. With `NULL` the row would say "not pending, not
+connected, no error" for as long as the code exchange and the tool listing take. Then the code is
+exchanged
 (`grant_type=authorization_code`, `code`, `redirect_uri`, `client_id`, `code_verifier`, `resource`,
-plus client authentication for a registered secret). Success → under the row lock (see Tokens),
-`secret_encrypted` written, `status: "connected"`, `connected_at` now, `last_error` null, tools
-listed (a failed listing leaves `tools: null` and doesn't fail the sign-in). Page: "Supabase is
+plus client authentication for a registered secret), and on success the tools are listed with the
+new token. Whatever goes wrong in the exchange (no answer, an answer that can't be read, anything
+unexpected) is a failure, never a 500: the write below always runs, so the claim is always
+cleared. An `expires_in` that isn't a usable number (`1e999`) is no expiry. Then, under the row
+lock (see Tokens), everything is written at once. Success →
+`secret_encrypted` written, `status: "connected"`, `connected_at` now, `last_error` null, `tools`
+set (a failed listing leaves `tools` as it was, `null` on a first sign-in, and doesn't fail the
+sign-in), `pending_encrypted` and `state_hash` cleared. Page: "Supabase is
 connected. You can close this window." and a `window.close()` (closes the web popup; a normal
 browser tab stays open with the message). Failure → `last_error` = "Supabase didn’t finish the
-sign-in. Try again.", status unchanged, page says the same.
+sign-in. Try again.", status and the stored sign-in unchanged, the in-flight sign-in cleared as in
+steps 3 and 4, page says the same. When the token endpoint refused the client itself (a 401, or
+the `error` `invalid_client` or `unauthorized_client`), the cleared sign-in also records the
+client's id as `refused_client`, so the next `oauth/start` registers again instead of reusing it
+(from the cleared sign-in or from the stored one, which is still left as it was). When
+`state_hash` is no longer the claim at that write (a newer
+`oauth/start` ran while the code was exchanged), the newer sign-in's `state_hash` and
+`pending_encrypted` are left alone. A connection disconnected meanwhile gets the failure page.
 
 ### `GET /oauth/client-metadata.json` (public)
 ```json
@@ -438,17 +520,41 @@ dynamic registration).
   `client_id`, `resource`, client authentication) **under `SELECT … FOR UPDATE` on the row** and
   commits the rotated refresh token before anyone uses the new access token. A reply without a new
   refresh token keeps the old one. When `rejected` is given and the stored token is already a
-  different one (someone else refreshed), that one is returned without a network call.
+  different one (someone else refreshed), that one is returned without a network call (unless it
+  is itself within five minutes of expiring, which is an ordinary refresh).
 - **One lock for every writer of the sign-in.** Refresh, Complete, `oauth/start`, `PATCH`
   credentials and `DELETE` all take `SELECT … FOR UPDATE` on the row, and read the stored sign-in
   only after they hold it. Otherwise a refresh that started earlier commits the old sign-in over a
   new one. A refresh that finds the row gone raises `SignInRefused` and writes nothing.
-- `invalid_grant`, or no refresh token and an expired access token → tokens cleared,
-  `status: "needs_signin"`, `last_error` = "Its sign-in expired." Raises `SignInRefused`.
-- `invalid_client` → the same, and the stored registration is dropped so the next sign-in
-  registers again.
-- A 5xx or network error → `Unreachable`: the connector is left out of what asked for it; status
-  unchanged.
+  `oauth/start` is the one exception to "read after": it only writes the sign-in in flight, so it
+  reads the row's registrations before the lock, asks the provider (discovery, a registration)
+  with no database connection held, and under the lock checks that the client it chose wasn't
+  marked `refused_client` meanwhile (then 502 `unreachable` and nothing is stored).
+- **Waiting callers hold no database connection.** A refresh and `oauth/start` first take a turn
+  per connection inside the process, and only the caller whose turn it is opens a session. So a
+  slow token endpoint costs one pooled connection per connection being refreshed, not one per
+  caller. A caller that doesn't get its turn within 15 seconds gets `Unreachable` (502
+  `unreachable` from `oauth/start`). The row lock still orders writers across processes.
+- A refusal is the token endpoint's own: a 4xx answer whose JSON body names the OAuth `error`.
+  `invalid_grant`, or no refresh token and an expired (or `rejected`) access token → tokens
+  cleared, `status: "needs_signin"`, `last_error` = "Its sign-in expired." Raises `SignInRefused`.
+  What stays in `secret_encrypted` is the issuer, the endpoints and the registration, so the
+  sign-in host still shows and "Sign in again" reuses the client.
+- `invalid_client` or `unauthorized_client` → the same, and the stored registration is dropped so
+  the next sign-in registers again. A sign-in in flight (or the last one cleared) may hold that
+  same registration in `pending_encrypted`: it gets `refused_client` (the client's id), and
+  `oauth/start` never reuses a registration whose id either of the row's sign-ins names there.
+- Every other answer → `Unreachable`: the connector is left out of what asked for it, and the
+  status and the stored sign-in are unchanged. That is a 5xx, a 429, a network error, a 200 that
+  carries no token, a redirect (never followed), a 2xx other than 200, and a 4xx that isn't one
+  of the refusals above (a gateway's 403 page, a 404, a 408, a 400 or 401 with no OAuth `error`,
+  any other `error` code). A working refresh token is only given up when the provider says it is
+  dead: a passing fault in front of the token endpoint must not make everyone sign in again.
+- A row with no stored sign-in at all (never signed in, or already cleared) raises `SignInRefused`
+  and is not touched: a `pending` row stays `pending`.
+- `revoke(connection_id)` posts the refresh token (the access token when there is none) to the
+  `revocation_endpoint` with the client's authentication. It reads the row without locking it and
+  writes nothing, so a disconnect may call it before or while it holds the row lock.
 
 ### Outbound address rules (`connector_net`)
 Every address the backend fetches for a connector comes from outside: the MCP address, metadata
