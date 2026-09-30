@@ -917,7 +917,11 @@ line is shown on the round it happened in, from `skipped` (see Rounds), with a "
 
 ## What a run shows
 
-### `connector_call` events (`GET /api/spike/run-events/{run_id}`, additive `kind`)
+### `connector_call` events (`run_events` rows, additive `kind`)
+`GET /api/spike/run-events/{run_id}` does **not** return these rows, nor `connector_skipped`
+ones: the app reads them as each round's `connectors` (below). Served there they sort after
+every engine event, and an app that doesn't know the kinds (the frontend bundled in Desktop
+0.12.0) lists them as the last rows of the Activity feed. The row, as stored:
 ```json
 {"seq": 1000000003, "kind": "connector_call", "created_at": "2026-09-30T10:03:41+00:00",
  "invocation_id": 9123, "node_id": "…", "iteration": 2,
@@ -947,11 +951,11 @@ line is shown on the round it happened in, from `skipped` (see Rounds), with a "
 - `result_url`: for a write, the first `https://` address in the result text, else `null`
   (also `null` when that address is over 2,000 characters).
 - `blocked: true` = refused by the read-only rule (`ok` is then `false`).
-- The engine's own `action`/`observation` events for the same call are unchanged. The Activity feed
-  skips `connector_call` and `connector_skipped` rows so a call isn't shown twice.
-- The endpoint orders by `seq`, so these rows come after all of the engine's events.
+- The engine's own `action`/`observation` events for the same call are unchanged. The Activity
+  feed never gets `connector_call` and `connector_skipped` rows (the endpoint leaves them out,
+  and the app's `isFeedEvent` would skip them too), so a call isn't shown twice.
 
-### `connector_skipped` events (same endpoint, additive `kind`)
+### `connector_skipped` events (`run_events` rows, additive `kind`)
 ```json
 {"seq": 1000000000, "kind": "connector_skipped", "invocation_id": 9123, "node_id": "…",
  "iteration": 2,

@@ -611,7 +611,7 @@ async def proxy_call_tool(
 CALLS_LIMIT = 50
 RECENT_USE_RUNS = 30
 RECENT_USE_ROWS = 10
-_EVENT_KINDS = ("connector_call", "connector_skipped")
+EVENT_KINDS = ("connector_call", "connector_skipped")
 
 
 def _count(use: dict, payload: dict) -> None:
@@ -640,7 +640,7 @@ def connector_use(session: Session, run_id: object, invocation_ids: list[int]) -
             # The proxy's own band: a range on the (run, round, seq) index. Without it every
             # event of the run is read to look at its kind, on each poll of the run view.
             RunEvent.seq >= EVENT_SEQ_BAND,
-            RunEvent.kind.in_(_EVENT_KINDS),
+            RunEvent.kind.in_(EVENT_KINDS),
         )
         .order_by(RunEvent.seq)
     ).scalars()

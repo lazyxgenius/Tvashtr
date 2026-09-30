@@ -1262,10 +1262,11 @@ DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`),
   and so widen a connection for the rest of its run (when its grant is `write`) or for later runs.
   It predates this work, and it is the one hole in "read-only is enforced for real". Follow-up:
   move Domains to the run token.
-- **Desktop 0.12.0 shows connector rows as unknown events.** `get_run_events` orders by `seq` only
-  (`routers.py:663`), so `connector_call` and `connector_skipped` rows (seq ≥ 1,000,000,000) come
-  after every engine event, and a frontend that doesn't know the kinds lists them at the end of
-  the Activity feed. The 0.13.0 release skips them (F2.3).
+- **Fixed after review: Desktop 0.12.0 showed connector rows as unknown events.**
+  `get_run_events` served `connector_call` and `connector_skipped` rows (seq ≥ 1,000,000,000)
+  after every engine event, and a frontend that doesn't know the kinds listed them at the end of
+  the Activity feed. The endpoint now leaves the two kinds out (rounds carry them as
+  `connectors`); the 0.13.0 frontend's own skip (F2.3) stays as a second guard.
 - **The callback address carries `code` and `state`**, so both land in access logs (Fly and any
   proxy in front). Both work once, and the `code` is useless without the PKCE verifier that stays
   on the server. The pages send `Referrer-Policy: no-referrer`.

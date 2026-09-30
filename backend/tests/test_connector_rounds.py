@@ -388,29 +388,39 @@ def test_the_run_graph_carries_connectors_on_each_invocation(owner):
     assert stranger.get(f"/api/spike/run-events/{run_id}").status_code == 404
 
 
-def test_the_run_events_endpoint_lists_the_new_kinds_after_the_engines_events(owner):
+def test_the_run_events_endpoint_leaves_the_connector_kinds_out(owner):
+    """The Activity feed reads this endpoint. An app that doesn't know the two kinds (the
+    frontend bundled in Desktop 0.12.0) lists every row it gets, and these sort after every
+    engine event, so the feed would end on stale connector rows. A round carries them as its
+    ``connectors`` instead."""
     c, owner_id, tid, _nodes = owner
     run_id, clone, _quiet, busy = _seed_round_with_a_call(owner_id, tid)
     with session_scope() as s:
         s.add(RunEvent(run_id=run_id, invocation_id=busy, seq=0, kind="action", payload={}))
 
     events = c.get(f"/api/spike/run-events/{run_id}").json()["events"]
-    assert [(e["seq"], e["kind"]) for e in events] == [
-        (0, "action"),
-        (BAND, "connector_call"),
-        (BAND + 1, "connector_skipped"),
-    ]
-    call = events[1]
-    assert (call["invocation_id"], call["node_id"], call["iteration"]) == (
+    assert [(e["seq"], e["kind"]) for e in events] == [(0, "action")]
+    assert (events[0]["invocation_id"], events[0]["node_id"], events[0]["iteration"]) == (
         busy,
         str(clone["reviewer"]),
         1,
     )
-    assert set(call["payload"]) == {
+    # They are rows of the run all the same, after the engine's, on the round they happened in.
+    with session_scope() as s:
+        rows = s.execute(
+            select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)
+        ).scalars()
+        rows = list(rows)
+    assert [(r.seq, r.kind, r.invocation_id) for r in rows] == [
+        (0, "action", busy),
+        (BAND, "connector_call", busy),
+        (BAND + 1, "connector_skipped", busy),
+    ]
+    assert set(rows[1].payload) == {
         "connection_id", "connector", "slug", "tool", "write", "ok", "blocked", "forwarded",
         "arg", "duration_ms", "result_url",
     }  # fmt: skip
-    assert events[2]["payload"] == {
+    assert rows[2].payload == {
         "connection_id": None,
         "connector": "a connector",
         "reason": "it was disconnected",

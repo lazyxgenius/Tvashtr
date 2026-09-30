@@ -36,6 +36,7 @@ from tvashtr.control_plane import (
     run_views,
     toolkit,
 )
+from tvashtr.control_plane.connector_proxy import EVENT_KINDS as CONNECTOR_EVENT_KINDS
 from tvashtr.control_plane.connector_proxy import connector_use
 from tvashtr.control_plane.context_compiler import resolve_fallback_model, resolve_multimodal
 from tvashtr.control_plane.credential_gate import (
@@ -660,7 +661,13 @@ def get_run_events(
         rows = session.execute(
             select(RunEvent, AgentInvocation)
             .outerjoin(AgentInvocation, RunEvent.invocation_id == AgentInvocation.id)
-            .where(RunEvent.run_id == run_id)
+            .where(
+                RunEvent.run_id == run_id,
+                # The proxy's own rows reach the app as each round's ``connectors``. Here they
+                # would sort after every engine event, and an app that doesn't know the kinds
+                # (Desktop 0.12.0's) lists them as the last rows of the Activity feed.
+                RunEvent.kind.notin_(CONNECTOR_EVENT_KINDS),
+            )
             .order_by(RunEvent.seq)
         ).all()
         return {
