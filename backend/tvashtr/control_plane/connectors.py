@@ -606,14 +606,20 @@ def _found_signin(found: "connector_oauth.Discovery") -> dict:
     return pending
 
 
-def _new_slug(session: Session, owner_id: uuid.UUID, name: str) -> str:
+def _new_slug(
+    session: Session, owner_id: uuid.UUID, name: str, *, renaming: uuid.UUID | None = None
+) -> str:
     """The connection's MCP server name: the name in ``[a-z0-9-]``, at most 40 characters, made
-    unique among the owner's connections with ``-2``, ``-3``, …"""
+    unique among the owner's connections with ``-2``, ``-3``, … ``renaming`` is the row that
+    gets the slug when it already exists: its own slug doesn't count as taken."""
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:SLUG_LIMIT].strip("-")
     base = base or "connector"
     taken = set(
         session.execute(
-            select(ConnectorConnection.slug).where(ConnectorConnection.owner_id == owner_id)
+            select(ConnectorConnection.slug).where(
+                ConnectorConnection.owner_id == owner_id,
+                ConnectorConnection.id.is_distinct_from(renaming),
+            )
         ).scalars()
     )
     slug, n = base, 1
@@ -712,7 +718,7 @@ def _store(
         row = _by_key(session, owner_id, key, for_update=True)
         if row is not None and row.status != "pending":
             raise _already_connected(row)
-        if row is None:  # else the pending row is reused: its name and slug stay
+        if row is None:
             row = ConnectorConnection(
                 owner_id=owner_id,
                 connector_key=key,
@@ -720,6 +726,10 @@ def _store(
                 slug=_new_slug(session, owner_id, name),
             )
             session.add(row)
+        elif row.name != name:
+            # The pending row is reused. No agent can have it yet, so nothing is named after its
+            # slug: it takes the name it is given now, and the slug that goes with that.
+            row.name, row.slug = name, _new_slug(session, owner_id, name, renaming=row.id)
         for field, value in fields.items():
             setattr(row, field, value)
         row.connected_at = datetime.now(UTC) if row.status == "connected" else None
@@ -754,8 +764,9 @@ def _new_scope(entry: dict, raw: object, name: str) -> dict | None:
 def change(owner_id: uuid.UUID, connection_id: object, body: dict) -> dict:
     """``PATCH /api/connectors/{id}``: ``access``, ``scope``, ``name`` and, for a key connection,
     ``credentials``. Every field is checked before anything is written, so a refused request
-    changes nothing. A new key is checked against the provider first; a rejected one leaves the
-    old key and the status alone."""
+    changes nothing. A name never changes the slug, except on a ``pending`` connection. A new key
+    is checked against the provider first; a rejected one leaves the old key and the status
+    alone."""
     changes: dict = {}
     headers = tools = None
     with session_scope() as session:
@@ -793,6 +804,12 @@ def change(owner_id: uuid.UUID, connection_id: object, body: dict) -> dict:
         row = get_owned(session, owner_id, connection_id, for_update=headers is not None)
         for field, value in changes.items():
             setattr(row, field, value)
+        if "name" in changes and row.status == "pending":
+            # Not connected yet, so no agent's tools are named after the slug: it follows the
+            # name (a custom connector is named after its address is checked).
+            # ponytail: no retry when a connect takes the same slug at this very moment (a 500,
+            # nothing stored). ``connect`` has one; give this one too if it ever happens.
+            row.slug = _new_slug(session, owner_id, row.name, renaming=row.id)
         if headers is not None:
             write_secret(row, {"headers": headers})
             row.tools, row.status, row.last_error = tools, "connected", None

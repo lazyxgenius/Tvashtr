@@ -657,6 +657,41 @@ def test_the_slug_comes_from_the_name_and_is_unique_per_account(discovery, publi
     assert resp.json()["name"] == "n" * 60
 
 
+def test_until_it_is_connected_a_connection_takes_its_slug_from_its_last_name(
+    discovery, public_dns
+):
+    """No agent can have a ``pending`` connection, so nothing is named after its slug yet. A
+    custom connector checked as "acm" and then named "Acme" gets tools called ``acme_…``; once
+    it is connected the slug is fixed, whatever the connection is called later."""
+    discovery.answer = DISCOVERY
+    c, owner = fresh_account()
+    url = "https://mcp.acme.dev/mcp"
+    first = c.post("/api/connectors", json={"url": url, "name": "acm"}).json()
+    assert (first["name"], first["slug"], first["status"]) == ("acm", "acm", "pending")
+    cid = first["id"]
+
+    # Connecting it again (the row is reused) takes the name given now.
+    again = c.post("/api/connectors", json={"url": url, "name": "Acme"}).json()
+    assert (again["id"], again["name"], again["slug"]) == (cid, "Acme", "acme")
+    same = c.post("/api/connectors", json={"url": url, "name": "Acme"}).json()
+    assert (same["id"], same["slug"]) == (cid, "acme")  # its own slug isn't "taken"
+
+    # So does a rename before the sign-in.
+    renamed = c.patch(f"/api/connectors/{cid}", json={"name": "Acme Metrics"}).json()
+    assert (renamed["name"], renamed["slug"]) == ("Acme Metrics", "acme-metrics")
+    add_connection(owner, "custom:other.acme.dev/mcp", name="Taken", slug="taken")
+    assert c.patch(f"/api/connectors/{cid}", json={"name": "Taken"}).json()["slug"] == "taken-2"
+    assert c.patch(f"/api/connectors/{cid}", json={"access": "write"}).json()["slug"] == "taken-2"
+
+    from tvashtr.db import session_scope
+    from tvashtr.models import ConnectorConnection
+
+    with session_scope() as s:
+        s.get(ConnectorConnection, connection_row(cid).id).status = "connected"
+    later = c.patch(f"/api/connectors/{cid}", json={"name": "Production"}).json()
+    assert (later["name"], later["slug"]) == ("Production", "taken-2")
+
+
 def test_a_slug_taken_at_the_same_moment_gets_the_next_one(monkeypatch, discovery, public_dns):
     """Two connects that both read the taken slugs before either stored its row: the second
     one's slug is gone when it writes. It takes the next one: nothing is "already connected"."""
