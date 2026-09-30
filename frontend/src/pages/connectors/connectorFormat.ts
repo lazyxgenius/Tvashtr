@@ -1,8 +1,8 @@
 /** Copy helpers for the Connectors screens (labels, tiles, the "sign-in expired" banner). */
-import type { Connection, ConnectorAccess, ReadOnlyBy } from "../../lib/api/connectors";
+import type { Connection, ConnectorAccess, ReadOnlyBy, RecentUse } from "../../lib/api/connectors";
 import { titleCase } from "../../lib/text";
 import { joinNames } from "../secrets/secretFormat";
-import { agentNames } from "../tools/toolFormat";
+import { agentNames, plural } from "../tools/toolFormat";
 import type { StatusFilter } from "../tools/toolsState";
 
 // The design's tiles where they aren't the name's first two letters.
@@ -121,4 +121,24 @@ export function connectedToast(name: string, desktop: boolean): string {
   return desktop
     ? `${name} is connected. It works for runs from the website and from Desktop.`
     : `${name} is connected. No agent can use it until you turn it on.`;
+}
+
+/** Under "What agents can call" on a connector's page. */
+export function toolsHint(c: Pick<Connection, "access" | "read_only_by">): string {
+  if (c.access === "write") {
+    return "An agent can call the write tools only when its own access is Read & write too.";
+  }
+  // The provider's own flag (Supabase, the only one in v1).
+  return c.read_only_by === "provider"
+    ? "Write tools stay off while access is read only. execute_sql runs as a read-only database user."
+    : "Write tools stay off while access is read only. A tool the server doesn’t mark as read-only counts as a write.";
+}
+
+/** "Reviewer · 6 reads", "Engineer · 3 reads, 1 write". */
+export function recentUseLine(r: RecentUse): string {
+  const counts = [
+    (r.reads > 0 || r.writes === 0) && plural(r.reads, "read"),
+    r.writes > 0 && plural(r.writes, "write"),
+  ].filter(Boolean);
+  return `${r.agent} · ${counts.join(", ")}`;
 }
