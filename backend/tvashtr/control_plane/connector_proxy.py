@@ -648,6 +648,9 @@ def connector_use(session: Session, run_id: object, invocation_ids: list[int]) -
                 "write": bool(payload.get("write")),
                 "ok": bool(payload.get("ok")),
                 "blocked": bool(payload.get("blocked")),
+                # The provider took the call (what ``writes`` counts). An event from before the
+                # field existed took it when it worked.
+                "forwarded": bool(payload.get("forwarded", payload.get("ok"))),
                 "arg": payload.get("arg"),
                 "at": event.created_at.isoformat(),
                 "duration_ms": payload.get("duration_ms"),

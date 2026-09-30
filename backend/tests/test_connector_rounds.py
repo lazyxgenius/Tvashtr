@@ -158,6 +158,7 @@ def test_a_rounds_connectors_block(owner):
         "write": True,
         "ok": True,
         "blocked": False,
+        "forwarded": True,
         "arg": "RSI",
         "at": first_write["at"],
         "duration_ms": 0,
@@ -189,6 +190,17 @@ def test_writes_count_what_the_provider_took_and_reads_what_worked(owner):
 
     assert [(u["reads"], u["writes"]) for u in _use(run_id, inv)[inv]["used"]] == [(1, 3)]
     assert [(r["reads"], r["writes"]) for r in _recent(owner_id, row)] == [(1, 3)]
+    # A call says so itself, so a write that counts isn't shown as one that simply failed.
+    assert [(c["ok"], c["forwarded"]) for c in _use(run_id, inv)[inv]["calls"]] == [
+        (True, True),
+        (False, True),
+        (False, True),
+        (False, False),
+        (False, False),
+        (True, True),
+        (False, True),
+        (False, True),
+    ]
     with session_scope() as s:
         flags = s.execute(
             select(RunEvent.payload["forwarded"].as_boolean())
