@@ -11,6 +11,8 @@ from mcp.types import CallToolResult, ErrorData, TextContent, Tool, ToolAnnotati
 from toolkit_helpers import fresh_account, make_node, make_team, node_row
 
 from tvashtr.control_plane import connector_oauth, connector_upstream, connectors
+from tvashtr.db import session_scope
+from tvashtr.models import ConnectorConnection
 
 pytest_plugins = ["connector_fixtures"]
 
@@ -641,6 +643,72 @@ def test_check_a_key_that_cant_be_decrypted_stopped_working_and_can_be_replaced(
     assert connectors.read_secret(connection_row(cid)) == {
         "headers": {"Authorization": "Bearer NEW-KEY"}
     }
+
+
+def _replace_sign_in(connection_id: str, secret: dict) -> None:
+    """What a finished "Sign in again", or a key replaced by PATCH, writes."""
+    with session_scope() as s:
+        row = s.get(ConnectorConnection, uuid.UUID(connection_id))
+        connectors.write_secret(row, secret)
+        row.status, row.last_error = "connected", None
+
+
+@pytest.mark.parametrize(
+    ("auth_kind", "old", "new"),
+    [
+        ("oauth", OAUTH_SECRET, OAUTH_SECRET | {"access_token": "ACCESS-NEW"}),
+        ("api_key", KEY_SECRET, {"headers": {"Authorization": "Bearer NEW-KEY"}}),
+    ],
+)
+def test_check_leaves_a_sign_in_alone_that_was_replaced_while_the_provider_answered(
+    monkeypatch, tokens, auth_kind, old, new
+):
+    """The provider's 401 is about the credential that was sent. One stored since then hasn't
+    been refused by anyone, so the check must not mark it as gone."""
+    c, owner = fresh_account()
+    cid = add_connection(owner, "linear", auth_kind=auth_kind, secret=old, tools=STORED)
+
+    def list_tools_sync(url, transport, headers, timeout=10):
+        _replace_sign_in(cid, new)  # …while the provider is refusing the old one
+        raise connector_upstream.UpstreamUnauthorized()
+
+    monkeypatch.setattr(connector_upstream, "list_tools_sync", list_tools_sync)
+    resp = c.post(f"/api/connectors/{cid}/check")
+    assert resp.status_code == 200, resp.text
+    assert (resp.json()["status"], resp.json()["last_error"]) == ("connected", None)
+    row = connection_row(cid)
+    assert (row.status, row.last_error, row.tools) == ("connected", None, STORED)
+    assert connectors.read_secret(row) == new
+
+
+def test_check_needs_a_sign_in_when_the_token_its_own_refresh_stored_is_refused_too(
+    monkeypatch, upstream
+):
+    """The refresh the check itself asked for rewrites the stored sign-in. That is not someone
+    else's new sign-in: refused as well, the connection needs one."""
+    c, owner = fresh_account()
+    cid = add_connection(owner, "linear", secret=OAUTH_SECRET, tools=STORED)
+
+    def ensure_access_token(connection_id, *, rejected=None):
+        if rejected is None:
+            return "ACCESS-1"
+        with session_scope() as s:  # what a real refresh does: the rotated tokens are stored
+            row = s.get(ConnectorConnection, uuid.UUID(cid))
+            connectors.write_secret(row, OAUTH_SECRET | {"access_token": "ACCESS-2"})
+        return "ACCESS-2"
+
+    monkeypatch.setattr(connector_oauth, "ensure_access_token", ensure_access_token)
+    upstream.tools = connector_upstream.UpstreamUnauthorized()
+    resp = c.post(f"/api/connectors/{cid}/check")
+    assert resp.status_code == 200, resp.text
+    assert (resp.json()["status"], resp.json()["last_error"]) == (
+        "needs_signin",
+        "Its sign-in expired.",
+    )
+    assert [h["Authorization"] for _, _, h in upstream.lists] == [
+        "Bearer ACCESS-1",
+        "Bearer ACCESS-2",
+    ]
 
 
 def test_check_a_server_with_no_sign_in_that_now_asks_for_one(upstream, tokens):

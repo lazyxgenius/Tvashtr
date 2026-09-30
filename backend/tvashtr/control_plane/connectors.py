@@ -747,6 +747,17 @@ def _loaded(owner_id: uuid.UUID, connection_id: object) -> ConnectorConnection:
         return row
 
 
+def _stored_headers(row: ConnectorConnection) -> dict:
+    """The credential headers the stored sign-in gives as it is, with no refresh and no network:
+    a key's headers, or the stored access token. Empty when there is none, or it can't be
+    read."""
+    secret = _secret_or_none(row) or {}
+    if row.auth_kind == "api_key":
+        return dict(secret.get("headers") or {})
+    token = secret.get("access_token") if row.auth_kind == "oauth" else None
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 def _with_sign_in[T](row: ConnectorConnection, use: Callable[[dict], T]) -> T:
     """``use(headers)`` with the connection's credentials. Only a 401 means the sign-in may have
     expired: an OAuth connection then gets one refresh (the refused token is named, so it is
@@ -786,14 +797,19 @@ _GONE = {
 def check(owner_id: uuid.UUID, connection_id: object) -> dict:
     """``POST /api/connectors/{id}/check``: make sure the sign-in (or key) still works and list
     the tools again. A 401, or a refused refresh, is ``needs_signin`` (a 200: that is an answer,
-    not a failure). A 403 or another 4xx is ``refused`` and a provider that doesn't answer is
-    ``unreachable``; neither changes the status."""
+    not a failure), unless the sign-in was replaced while the provider was answering. A 403 or
+    another 4xx is ``refused`` and a provider that doesn't answer is ``unreachable``; neither
+    changes the status."""
     row = _loaded(owner_id, connection_id)
     url, transport = upstream_target(row, row.access)
+    tried = [_stored_headers(row)]  # what the row held when the check began, then what was sent
+
+    def ask(headers: dict) -> list[Tool]:
+        tried.append(headers)
+        return connector_upstream.list_tools_sync(url, transport, headers)
+
     try:
-        tools = _with_sign_in(
-            row, lambda headers: connector_upstream.list_tools_sync(url, transport, headers)
-        )
+        tools = _with_sign_in(row, ask)
     except _sign_in_gone():
         tools = None
     except connector_upstream.UpstreamRefused:
@@ -805,7 +821,11 @@ def check(owner_id: uuid.UUID, connection_id: object) -> dict:
     with session_scope() as session:
         row = get_owned(session, owner_id, connection_id, for_update=True)
         if tools is None:
-            row.status, row.last_error = "needs_signin", _GONE[row.auth_kind]
+            # The refusal is about what was sent. A sign-in (or key) stored since then, by "Sign
+            # in again" or a PATCH, hasn't been refused by anyone: the row is left as it is.
+            held = _stored_headers(row)
+            if not held or held in tried:
+                row.status, row.last_error = "needs_signin", _GONE[row.auth_kind]
         else:
             row.status, row.tools, row.last_error = "connected", stored_tools(tools), None
             if key:
