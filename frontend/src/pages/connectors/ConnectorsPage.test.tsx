@@ -1,0 +1,429 @@
+/**
+ * Toolkit › Connectors (Page-Connected-tab, Page-Browse-tab-*, Page-First-time-lands-on-Browse,
+ * CnF-Expired-1): the tabs and their counts, the Connected table, the "sign-in expired" banner,
+ * and Browse (Featured, From the MCP Registry, search, categories, Show more, Coming soon, Custom).
+ */
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { CatalogEntry, Connection } from "../../lib/api/connectors";
+import { refreshBadges } from "../../lib/workspaceStatus";
+import { mockApi, renderWithProviders, resetToolkitStores } from "../tools/toolsTestUtils";
+import { ConnectorsPage } from "./ConnectorsPage";
+import { connection, entry } from "./connectorsTestUtils";
+
+vi.mock("../../lib/workspaceStatus", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/workspaceStatus")>()),
+  refreshBadges: vi.fn(async () => {}),
+}));
+
+beforeEach(() => {
+  resetToolkitStores();
+  window.location.hash = "#/toolkit/connectors";
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  vi.mocked(refreshBadges).mockClear();
+  resetToolkitStores();
+});
+
+const plain = { scope: null, scope_picker: null, read_only_by: "annotations" as const };
+const SUPABASE = connection();
+const NOTION = connection({
+  ...plain,
+  id: "c2",
+  connector_key: "notion",
+  name: "Notion",
+  slug: "notion",
+  publisher: "Notion",
+  host: "mcp.notion.com",
+  used_by: { agent_count: 1, team_count: 1 },
+});
+const LINEAR = connection({
+  ...plain,
+  id: "c3",
+  connector_key: "linear",
+  name: "Linear",
+  slug: "linear",
+  publisher: "Linear",
+  host: "mcp.linear.app",
+  access: "write",
+  used_by: { agent_count: 1, team_count: 1 },
+});
+const POSTHOG = connection({
+  ...plain,
+  id: "c4",
+  connector_key: "posthog",
+  name: "PostHog",
+  slug: "posthog",
+  publisher: "PostHog",
+  host: "mcp.posthog.com",
+  used_by: { agent_count: 0, team_count: 0 },
+});
+const SENTRY = connection({
+  ...plain,
+  id: "c5",
+  connector_key: "sentry",
+  name: "Sentry",
+  slug: "sentry",
+  publisher: "Sentry",
+  host: "mcp.sentry.dev",
+  status: "needs_signin",
+  last_error: "Its sign-in expired.",
+  used_by: { agent_count: 1, team_count: 1 },
+  used_by_agents: [
+    {
+      node_id: "n-rev",
+      role_name: "reviewer",
+      title: null,
+      team_id: "t1",
+      team_name: "Indicator sprint team",
+      access: "read",
+    },
+  ],
+});
+
+const FEATURED: CatalogEntry[] = [
+  entry({ connection_id: "c1", connection_status: "connected" }),
+  entry({
+    key: "neon",
+    name: "Neon",
+    publisher: "Neon",
+    description: "Read schemas and run queries on one Neon project.",
+    host: "mcp.neon.tech",
+  }),
+  entry({
+    key: "google-drive",
+    name: "Google Drive",
+    publisher: "Google",
+    category: "docs",
+    description: "Search and read files in your Drive.",
+    host: "drivemcp.googleapis.com",
+    scope_picker: null,
+    available: false,
+    unavailable_reason: "coming_soon",
+  }),
+];
+const registry = (key: string, name: string, host: string, over: Partial<CatalogEntry> = {}) =>
+  entry({
+    key,
+    name,
+    publisher: null,
+    featured: false,
+    reviewed: false,
+    category: null,
+    description: `${name} tools.`,
+    website: null,
+    host,
+    auth: "unknown",
+    read_only_by: "annotations",
+    scope_picker: null,
+    ...over,
+  });
+const APIFY = registry("com.apify/apify-mcp-server", "Apify", "mcp.apify.com", {
+  auth: "api_key",
+  description: "Run web scrapers and read their results.",
+  key_fields: [{ id: "Authorization", label: "API key", hint: "Apify API token", secret: true }],
+});
+const STRIPE = registry("com.stripe/mcp", "Stripe", "mcp.stripe.com");
+const ZAPIER = registry("com.zapier/mcp", "Zapier", "mcp.zapier.com");
+const CATEGORIES = ["databases", "docs", "analytics", "crm", "work"];
+
+/** A fake catalog: the first page, a second page at offset 48, and a search for "apify". */
+function catalog(url: URL) {
+  const q = url.searchParams.get("q");
+  const category = url.searchParams.get("category");
+  if (q === "apify") {
+    return { items: [APIFY], total: 1, next_offset: null, categories: CATEGORIES };
+  }
+  if (category === "docs") {
+    return { items: [FEATURED[2]], total: 1, next_offset: null, categories: CATEGORIES };
+  }
+  if (url.searchParams.get("offset") === "48") {
+    return { items: [ZAPIER], total: 15039, next_offset: null, categories: CATEGORIES };
+  }
+  return {
+    items: [...FEATURED, APIFY, STRIPE],
+    total: 15039,
+    next_offset: 48,
+    categories: CATEGORIES,
+  };
+}
+
+function serve(connections: Connection[]) {
+  return mockApi({
+    "GET /api/connectors": { connections },
+    "GET /api/connectors/catalog": catalog,
+  });
+}
+
+const catalogCalls = (calls: { path: string }[]) =>
+  calls.map((c) => c.path).filter((p) => p.startsWith("/api/connectors/catalog"));
+
+describe("Connected", () => {
+  it("lists the connections with their access, status and who uses them", async () => {
+    serve([SUPABASE, NOTION, LINEAR, POSTHOG]);
+    renderWithProviders(<ConnectorsPage view="connected" />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Connectors" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Custom connector" })).toBeInTheDocument();
+    const rows = await screen.findAllByRole("row");
+    expect(rows[0]).toHaveTextContent("ConnectorAccessStatusUsed byActions");
+    expect(rows.slice(1).map((r) => r.textContent)).toEqual([
+      "SbSupabaseProject trade-mcp-prodRead onlyReady2 agents · 1 team",
+      "NoNotionBy NotionRead onlyReady1 agent · 1 team",
+      "LiLinearBy LinearRead & writeReady1 agent · 1 team",
+      "PhPostHogBy PostHogRead onlyReadyNot used yet · Give an agent access",
+    ]);
+    expect(screen.getByRole("tab", { name: "Connected 4" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "Browse" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Supabase" })).toHaveAttribute(
+      "href",
+      "#/toolkit/connectors/c1",
+    );
+    expect(
+      screen.getByText(/Connecting doesn’t give any agent access\. You turn a connector on/),
+    ).toHaveTextContent(
+      "Connecting doesn’t give any agent access. You turn a connector on per agent in its Skills & tools tab, and it starts read-only. Agents never hold your sign-in: their calls go through Tvashtr, which adds it.",
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
+    expect(window.location.hash).toBe("#/toolkit/connectors/browse");
+  });
+
+  it("says whose sign-in expired and which agents run without it", async () => {
+    serve([SENTRY, SUPABASE]);
+    renderWithProviders(<ConnectorsPage view="connected" />);
+
+    const banner = await screen.findByRole("status");
+    expect(banner).toHaveTextContent(
+      "Sentry’s sign-in expired. Reviewer runs without it until you sign in again.",
+    );
+    expect(within(banner).getByRole("button", { name: "Sign in to Sentry" })).toBeInTheDocument();
+    const row = screen.getByRole("row", { name: /Sentry/ });
+    expect(row).toHaveTextContent("Sign in again");
+    expect(within(row).getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /Supabase/ })).toHaveTextContent("Ready");
+  });
+
+  it("filters the table by the search words and the Status select", async () => {
+    serve([SENTRY, SUPABASE, NOTION]);
+    renderWithProviders(<ConnectorsPage view="connected" />);
+    await screen.findByRole("row", { name: /Notion/ });
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search connectors" }), {
+      target: { value: "supa" },
+    });
+    expect(screen.getAllByRole("row")).toHaveLength(2);
+    expect(screen.getByRole("row", { name: /Supabase/ })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search connectors" }), {
+      target: { value: "zzz" },
+    });
+    expect(screen.getByText("No connectors match “zzz”")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search connectors" }), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: "Status" }));
+    fireEvent.click(screen.getByRole("option", { name: "Needs attention" }));
+    expect(screen.getAllByRole("row")).toHaveLength(2);
+    expect(screen.getByRole("row", { name: /Sentry/ })).toBeInTheDocument();
+  });
+
+  it("offers Open, Change project and Disconnect in a row’s menu", async () => {
+    serve([SUPABASE, NOTION]);
+    renderWithProviders(<ConnectorsPage view="connected" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for Supabase" }));
+    expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual([
+      "Open",
+      "Change project",
+      "Disconnect",
+    ]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(window.location.hash).toBe("#/toolkit/connectors/c1");
+
+    // No project to pick on a connector without a scope picker.
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Notion" }));
+    expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual([
+      "Open",
+      "Disconnect",
+    ]);
+  });
+
+  it("says the list couldn’t load, and retries", async () => {
+    let fail = true;
+    mockApi({
+      "GET /api/connectors": () =>
+        fail
+          ? new Response(JSON.stringify({ detail: "boom" }), { status: 500 })
+          : { connections: [SUPABASE] },
+      "GET /api/connectors/catalog": catalog,
+    });
+    renderWithProviders(<ConnectorsPage view="connected" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn’t load your connectors.");
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("row", { name: /Supabase/ })).toBeInTheDocument();
+  });
+});
+
+describe("the first visit", () => {
+  it("lands on Browse when nothing is connected", async () => {
+    serve([]);
+    renderWithProviders(<ConnectorsPage view="connected" />);
+    await waitFor(() => expect(window.location.hash).toBe("#/toolkit/connectors/browse"));
+  });
+
+  it("stays on Connected when something is", async () => {
+    serve([SUPABASE]);
+    renderWithProviders(<ConnectorsPage view="connected" />);
+    await screen.findByRole("row", { name: /Supabase/ });
+    expect(window.location.hash).toBe("#/toolkit/connectors");
+  });
+
+  it("explains connectors on Browse until the first one is connected", async () => {
+    serve([]);
+    renderWithProviders(<ConnectorsPage view="browse" />);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Connect the apps your agents should read. Nothing is shared with an agent until you turn a connector on for it, and every connector starts read-only.",
+    );
+    // No count on an empty Connected tab.
+    expect(screen.getByRole("tab", { name: "Connected" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Browse" })).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+describe("Browse", () => {
+  it("shows Featured cards, the Custom card and the registry list", async () => {
+    serve([SUPABASE]);
+    renderWithProviders(<ConnectorsPage view="browse" />);
+
+    const featured = await screen.findByRole("region", { name: "Featured" });
+    expect(featured).toHaveTextContent("FeaturedChecked by Tvashtr");
+    const cards = within(featured).getAllByRole("article");
+    expect(cards.map((c) => c.textContent)).toEqual([
+      "SbSupabaseBy SupabaseSign inRead tables, run read-only SQL and check logs in one project.ConnectedOpen",
+      "NeNeonBy NeonSign inRead schemas and run queries on one Neon project.Connect",
+      "DrGoogle DriveBy GoogleSearch and read files in your Drive.Coming soon",
+      "Custom connectorAny server that signs inPaste the address of any remote MCP server that signs in with OAuth.Add custom",
+    ]);
+    // A "Coming soon" card can't be connected.
+    expect(within(cards[2]).queryByRole("button")).toBeNull();
+    expect(within(cards[1]).getByRole("button", { name: "Connect" })).toBeInTheDocument();
+    fireEvent.click(within(cards[0]).getByRole("button", { name: "Open" }));
+    expect(window.location.hash).toBe("#/toolkit/connectors/c1");
+
+    const reg = screen.getByRole("region", { name: "From the MCP Registry" });
+    expect(reg).toHaveTextContent(
+      "From the MCP Registry15,036 servers · listed by their makers · not reviewed by Tvashtr",
+    );
+    expect(
+      within(reg)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual([
+      "ApApifycom.apify/apify-mcp-serverRun web scrapers and read their results. · mcp.apify.comAPI keyConnect",
+      "StStripecom.stripe/mcpStripe tools. · mcp.stripe.comConnect",
+    ]);
+    expect(screen.getByRole("textbox", { name: "Search connectors" })).toHaveAttribute(
+      "placeholder",
+      "Search 15,000+ connectors",
+    );
+    // Somebody with a connection doesn't get the first-time explainer.
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("searches the whole catalog with q=", async () => {
+    const calls = serve([SUPABASE]);
+    renderWithProviders(<ConnectorsPage view="browse" />);
+    await screen.findByRole("region", { name: "Featured" });
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search connectors" }), {
+      target: { value: " apify " },
+    });
+    await waitFor(() =>
+      expect(catalogCalls(calls)).toEqual([
+        "/api/connectors/catalog",
+        "/api/connectors/catalog?q=apify",
+      ]),
+    );
+    expect(await screen.findByText("No featured connector matches “apify”.")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Featured" })).toBeNull();
+    const reg = screen.getByRole("region", { name: "From the MCP Registry" });
+    expect(reg).toHaveTextContent("1 result · listed by their makers · not reviewed by Tvashtr");
+    expect(within(reg).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("filters Featured by category", async () => {
+    const calls = serve([SUPABASE]);
+    renderWithProviders(<ConnectorsPage view="browse" />);
+    await screen.findByRole("region", { name: "Featured" });
+
+    const chips = within(screen.getByRole("group", { name: "Category" })).getAllByRole("button");
+    expect(chips.map((c) => c.textContent)).toEqual([
+      "All",
+      "Databases",
+      "Docs & files",
+      "Analytics",
+      "CRM & support",
+      "Work tracking",
+    ]);
+    expect(chips[0]).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(chips[2]);
+    await waitFor(() =>
+      expect(catalogCalls(calls)).toEqual([
+        "/api/connectors/catalog",
+        "/api/connectors/catalog?category=docs",
+      ]),
+    );
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("region", { name: "Featured" })).getAllByRole("article"),
+      ).toHaveLength(2),
+    );
+    expect(screen.getByRole("button", { name: "Docs & files" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // Registry servers have no category.
+    expect(screen.queryByRole("region", { name: "From the MCP Registry" })).toBeNull();
+  });
+
+  it("loads the next page from next_offset with Show more", async () => {
+    const calls = serve([SUPABASE]);
+    renderWithProviders(<ConnectorsPage view="browse" />);
+    const reg = await screen.findByRole("region", { name: "From the MCP Registry" });
+    expect(within(reg).getAllByRole("listitem")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    await waitFor(() => expect(within(reg).getAllByRole("listitem")).toHaveLength(3));
+    expect(catalogCalls(calls)).toEqual([
+      "/api/connectors/catalog",
+      "/api/connectors/catalog?offset=48",
+    ]);
+    expect(within(reg).getAllByRole("listitem")[2]).toHaveTextContent("Zapier");
+    // The last page: nothing more to show.
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+  });
+
+  it("says the catalog couldn’t load, and retries", async () => {
+    let fail = true;
+    mockApi({
+      "GET /api/connectors": { connections: [SUPABASE] },
+      "GET /api/connectors/catalog": (url: URL) =>
+        fail ? new Response(JSON.stringify({ detail: "boom" }), { status: 500 }) : catalog(url),
+    });
+    renderWithProviders(<ConnectorsPage view="browse" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn’t load the catalog.");
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("region", { name: "Featured" })).toBeInTheDocument();
+  });
+});

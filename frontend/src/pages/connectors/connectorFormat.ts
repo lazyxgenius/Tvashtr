@@ -1,0 +1,100 @@
+/** Copy helpers for the Connectors screens (labels, tiles, the "sign-in expired" banner). */
+import type { Connection, ConnectorAccess } from "../../lib/api/connectors";
+import { titleCase } from "../../lib/text";
+import { joinNames } from "../secrets/secretFormat";
+import { agentNames } from "../tools/toolFormat";
+import type { StatusFilter } from "../tools/toolsState";
+
+// The design's tiles where they aren't the name's first two letters.
+const TILE: Record<string, string> = {
+  supabase: "Sb",
+  "google-drive": "Dr",
+  "google-docs": "Dc",
+  "google-sheets": "Sh",
+  posthog: "Ph",
+  mixpanel: "Mx",
+  hubspot: "Hs",
+};
+
+/** The two letters on a connector's tile: "Sb" for Supabase, else the name's first two ("No"). */
+export function tileLetters(key: string, name: string): string {
+  if (TILE[key]) return TILE[key];
+  const letters = name.replace(/[^A-Za-z0-9]/g, "").slice(0, 2);
+  return letters ? letters.charAt(0).toUpperCase() + letters.slice(1).toLowerCase() : "?";
+}
+
+const CATEGORY: Record<string, string> = {
+  databases: "Databases",
+  docs: "Docs & files",
+  analytics: "Analytics",
+  crm: "CRM & support",
+  work: "Work tracking",
+};
+
+export function categoryLabel(category: string): string {
+  return CATEGORY[category] ?? titleCase(category);
+}
+
+export function accessLabel(access: ConnectorAccess): string {
+  return access === "write" ? "Read & write" : "Read only";
+}
+
+/** Under a connection's name: its project when it has one, else who makes it. */
+export function connectionSubline(c: Connection): string {
+  if (c.scope) return `${c.scope_picker?.label ?? "Project"} ${c.scope.label.split(" · ")[0]}`;
+  return c.publisher ? `By ${c.publisher}` : c.host;
+}
+
+/** The rows the search words (name, maker, host) and the Status filter keep, in order. */
+export function filterConnections(
+  rows: Connection[],
+  query: string,
+  status: StatusFilter,
+): Connection[] {
+  const q = query.trim().toLowerCase();
+  const want = status === "ready" ? "connected" : "needs_signin";
+  return rows.filter(
+    (c) =>
+      (status === "all" || c.status === want) &&
+      (q === "" || [c.name, c.publisher ?? "", c.host].some((s) => s.toLowerCase().includes(q))),
+  );
+}
+
+/** A key connection doesn't sign in: it needs its key replaced. */
+export function usesKey(c: Pick<Connection, "auth_kind">): boolean {
+  return c.auth_kind === "api_key";
+}
+
+/**
+ * The "sign-in expired" banner after the bold "<Name>’s": what happened and which agents run
+ * without it (the row's `used_by_agents`).
+ */
+export function expiredSentence(c: Connection): string {
+  const fix = usesKey(c) ? "replace the key" : "sign in again";
+  const what = usesKey(c) ? "key stopped working" : "sign-in expired";
+  const names = agentNames(c.used_by_agents ?? []);
+  const who =
+    names.length === 0
+      ? `No agent can use it until you ${fix}.`
+      : `${joinNames(names)} ${names.length === 1 ? "runs" : "run"} without it until you ${fix}.`;
+  return ` ${what}. ${who}`;
+}
+
+/** "Search 15,000+ connectors" once the catalog's size is known. */
+export function searchPlaceholder(catalogSize: number | null): string {
+  if (catalogSize === null || catalogSize < 1000) return "Search connectors";
+  return `Search ${(Math.floor(catalogSize / 1000) * 1000).toLocaleString("en-US")}+ connectors`;
+}
+
+/** Beside "From the MCP Registry": how many servers, or how many the search found. */
+export function registryCount(count: number, searching: boolean): string {
+  const n = count.toLocaleString("en-US");
+  const what = searching
+    ? count === 1
+      ? "result"
+      : "results"
+    : count === 1
+      ? "server"
+      : "servers";
+  return `${n} ${what} · listed by their makers · not reviewed by Tvashtr`;
+}

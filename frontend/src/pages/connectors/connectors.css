@@ -1,0 +1,310 @@
+/* Toolkit › Connectors. The page reuses Tools' classes (tk-head, tk-bar, tk-card, tk-table…);
+   what is new is here. Sizes are copied from the design screens (Page-*, CnF-*). The amber, blue
+   and sage callout colours are the design's own (no token carries them yet), as elsewhere in the
+   app. */
+
+/* ---- Header ---- */
+.tk-head__lede.cn-lede {
+  line-height: 1.6;
+  max-width: none;
+}
+.cn-search.ds-input {
+  width: 260px;
+}
+
+/* ---- Letter tile: 32px in lists, 40px in a sheet, 44px on the connector's page ---- */
+.cn-tile {
+  box-sizing: content-box;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--panel-300);
+  border: 1px solid var(--line-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink-800);
+}
+.cn-tile--icon {
+  color: var(--ink-700);
+}
+.cn-tile--md {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.cn-tile--lg {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 15px;
+}
+
+/* ---- Banners: "sign-in expired" (amber) and the first-time explainer (blue) ---- */
+.cn-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #fbf3e6;
+  border: 1px solid var(--amber-100);
+  color: #6b4a1f;
+  font-size: 13px;
+}
+.cn-banner > svg {
+  flex: none;
+}
+.cn-banner__text {
+  flex: 1;
+}
+.cn-banner b {
+  font-weight: 600;
+}
+.cn-banner--info {
+  background: var(--blue-100);
+  border-color: transparent;
+  color: #2f4f6f;
+}
+
+/* ---- Connected table ---- */
+.cn-sub {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.cn-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.cn-unused {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.cn-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--coral-700);
+  cursor: pointer;
+}
+.cn-link:hover {
+  color: var(--coral-600);
+}
+.cn-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.tk-table td.cn-actions {
+  width: 44px;
+}
+.cn-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--surface-sunk);
+  color: var(--ink-600);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.cn-note__icon {
+  display: inline-flex;
+  margin-top: 2px;
+}
+.cn-note b {
+  font-weight: 600;
+}
+.cn-note--warn {
+  background: #fbf3e6;
+  border: 1px solid var(--amber-100);
+  color: #6b4a1f;
+}
+.cn-note--ok {
+  background: #eef2e6;
+  border: 1px solid #d5dfc4;
+  color: #3f4b30;
+}
+
+/* ---- Browse: category chips ---- */
+.cn-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cn-chip {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-300);
+  background: var(--surface-card);
+  color: var(--ink-700);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.cn-chip[aria-pressed="true"] {
+  border-color: var(--coral-200);
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.cn-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* ---- Browse: a section ("Featured · Checked by Tvashtr") ---- */
+.cn-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.cn-sechead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.cn-sechead__title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+.cn-sechead__sub {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+.cn-nomatch {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+
+/* ---- Browse: Featured, four cards to a row ---- */
+.cn-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.cn-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+.cn-card--custom {
+  border: 1px dashed var(--line-400);
+  background: var(--surface-page);
+}
+.cn-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cn-card__id {
+  min-width: 0;
+  flex: 1;
+}
+.cn-card__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cn-card__by {
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+.cn-card__desc {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-600);
+  flex: 1;
+}
+.cn-card__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 1180px) {
+  .cn-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 960px) {
+  .cn-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .cn-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---- Browse: From the MCP Registry, one row each ---- */
+.cn-reg {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cn-reg__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+.cn-reg__main {
+  flex: 1;
+  min-width: 0;
+}
+.cn-reg__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cn-reg__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.cn-reg__key {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--ink-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cn-reg__desc {
+  font-size: 12.5px;
+  color: var(--ink-600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cn-reg__host {
+  color: var(--ink-500);
+}
