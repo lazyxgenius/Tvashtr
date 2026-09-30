@@ -37,6 +37,9 @@ describe("parseRoute / routeToHash", () => {
       { page: "engines", tab: "subscriptions", connect: "grok" },
     ],
     ["#/engines/keys?embeddings=1", { page: "engines", tab: "keys", embeddings: true }],
+    ["#/toolkit/connectors", { page: "connectors", view: "connected" }],
+    ["#/toolkit/connectors/browse", { page: "connectors", view: "browse" }],
+    ["#/toolkit/connectors/7c1e-42", { page: "connector", connectorId: "7c1e-42" }],
     ["#/toolkit/tools", { page: "tools", view: "installed" }],
     ["#/toolkit/tools/browse", { page: "tools", view: "browse" }],
     ["#/toolkit/tools/abc-123", { page: "tool", toolId: "abc-123" }],
@@ -94,7 +97,9 @@ describe("parseRoute / routeToHash", () => {
       tab: "subscriptions",
     });
     expect(parseRoute("#/toolkit/memory/zzz")).toEqual({ page: "memory", tab: "inbox" });
-    expect(parseRoute("#/toolkit")).toEqual({ page: "tools", view: "installed" });
+    // Connectors is Toolkit's first page: the bare address and an unknown child land there.
+    expect(parseRoute("#/toolkit")).toEqual({ page: "connectors", view: "connected" });
+    expect(parseRoute("#/toolkit/zzz")).toEqual({ page: "connectors", view: "connected" });
   });
 
   it("reads a domain address: sources is the bare id, unknown tabs and stray pieces drop", () => {
@@ -117,6 +122,13 @@ describe("parseRoute / routeToHash", () => {
   it("encodes ids", () => {
     expect(routeToHash({ page: "tool", toolId: "a b" })).toBe("#/toolkit/tools/a%20b");
     expect(parseRoute("#/toolkit/tools/a%20b")).toEqual({ page: "tool", toolId: "a b" });
+    expect(routeToHash({ page: "connector", connectorId: "a b" })).toBe(
+      "#/toolkit/connectors/a%20b",
+    );
+    expect(parseRoute("#/toolkit/connectors/a%20b")).toEqual({
+      page: "connector",
+      connectorId: "a b",
+    });
   });
 });
 
@@ -124,6 +136,8 @@ describe("sectionOf", () => {
   it("groups the Toolkit pages", () => {
     expect(sectionOf({ page: "secrets" })).toBe("toolkit");
     expect(sectionOf({ page: "tool", toolId: "x" })).toBe("toolkit");
+    expect(sectionOf({ page: "connectors", view: "browse" })).toBe("toolkit");
+    expect(sectionOf({ page: "connector", connectorId: "x" })).toBe("toolkit");
     expect(sectionOf({ page: "engines", tab: "keys" })).toBe("engines");
   });
 });
