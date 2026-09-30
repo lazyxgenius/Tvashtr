@@ -821,6 +821,28 @@ describe("connecting with an API key", () => {
     expect(button()).toBeEnabled();
   });
 
+  it("connects on Enter: the footer’s button is the key form’s submit button", async () => {
+    // With two key fields and the button outside the form, Enter did nothing.
+    const two = {
+      ...APIFY,
+      key_fields: [
+        { id: "X-App-Id", label: "X-App-Id", hint: "", secret: false, required: true },
+        { id: "X-Token", label: "X-Token", hint: "", secret: true, required: true },
+      ],
+    };
+    const calls = serve({ "POST /api/connectors": APIFY_ROW });
+    const { onDone } = show({ entry: two });
+    const form = screen.getByLabelText("X-Token").closest("form");
+    const button = screen.getByRole<HTMLButtonElement>("button", { name: "Check and connect" });
+    expect(button).toHaveAttribute("type", "submit");
+    expect(button.form).toBe(form);
+    fireEvent.change(screen.getByLabelText("X-App-Id"), { target: { value: "app" } });
+    fireEvent.change(screen.getByLabelText("X-Token"), { target: { value: "t" } });
+    fireEvent.submit(form as HTMLFormElement); // what Enter in a field does
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+    expect(calls).toHaveLength(1);
+  });
+
   it.each([
     ["key_rejected", "Apify didn’t accept the key."],
     ["invalid_key", "That isn’t a key Apify takes. Check it and try again."],

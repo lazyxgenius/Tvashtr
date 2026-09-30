@@ -11,7 +11,15 @@
  * and "Change project" opens on the project step.
  */
 import { ArrowLeft, ChevronRight, ExternalLink } from "lucide-react";
-import { type FormEvent, Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 
 import { Button, Input, Sheet } from "../../design-system/components";
 import { ApiDetailError } from "../../lib/api/runs";
@@ -90,6 +98,7 @@ export function ConnectSheet({
   onClose: () => void;
   onDone: (connection: Connection, what: ConnectDone) => void;
 }) {
+  const formId = useId(); // one step's form at a time; its button is in the sheet's footer
   const entry = "entry" in target ? target.entry : null;
   const existing = "connection" in target ? target.connection : null;
   const mode = "mode" in target ? target.mode : "new";
@@ -405,7 +414,7 @@ export function ConnectSheet({
   } else if (step === "project") {
     const what = (options?.label ?? picker?.label ?? "Project").toLowerCase();
     body = (
-      <form className="cn-form" onSubmit={(e) => void saveProject(e)} noValidate>
+      <form id={formId} className="cn-form" onSubmit={(e) => void saveProject(e)} noValidate>
         {mode === "new" && <Note kind="ok">{`Signed in to ${name}.`}</Note>}
         <div className="cn-ask">
           <span className="cn-ask__title">{`Which ${what} can agents use?`}</span>
@@ -468,17 +477,18 @@ export function ConnectSheet({
     }
     right = (
       <Button
+        type="submit"
+        form={formId}
         size="sm"
         disabled={options === null || scopeValue === ""}
         loading={busy}
-        onClick={() => void saveProject()}
       >
         {mode === "new" ? "Finish" : "Save"}
       </Button>
     );
   } else if (step === "key") {
     body = (
-      <form className="cn-form" onSubmit={(e) => void submitKey(e)} noValidate>
+      <form id={formId} className="cn-form" onSubmit={(e) => void submitKey(e)} noValidate>
         {unreviewed}
         {fields.map((f, i) => (
           <Fragment key={f.id}>
@@ -509,7 +519,8 @@ export function ConnectSheet({
     );
     if (existing) title = `Replace ${name}’s key`;
     right = (
-      <Button size="sm" disabled={!keysFilled} loading={busy} onClick={() => void submitKey()}>
+      // The form's submit button, from the footer: Enter in a field submits it too.
+      <Button type="submit" form={formId} size="sm" disabled={!keysFilled} loading={busy}>
         {existing ? "Check and replace" : "Check and connect"}
       </Button>
     );

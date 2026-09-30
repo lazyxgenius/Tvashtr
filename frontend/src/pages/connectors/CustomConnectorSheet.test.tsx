@@ -411,6 +411,29 @@ describe("CustomConnectorSheet", () => {
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
   });
 
+  it("checks the server on Enter: the footer’s button is the form’s submit button", async () => {
+    // The button lives in the sheet's footer, outside the form. A form with two fields and no
+    // submit button of its own does nothing on Enter.
+    const calls = serve();
+    show();
+    fill();
+    const form = screen.getByLabelText("Server address").closest("form");
+    const button = screen.getByRole<HTMLButtonElement>("button", { name: "Check the server" });
+    expect(button).toHaveAttribute("type", "submit");
+    expect(button.form).toBe(form);
+    fireEvent.submit(form as HTMLFormElement); // what Enter in a field does
+    await screen.findByText(/You’ll sign in at/);
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    // Checked: Enter doesn't check it again, and opens no window (that takes the click).
+    const next = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Continue to auth.acme.dev",
+    });
+    expect(next).toHaveAttribute("type", "button");
+    fireEvent.submit(form as HTMLFormElement);
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("doesn’t close while the server is being checked", async () => {
     let answer: (row: Connection) => void = () => {};
     serve({

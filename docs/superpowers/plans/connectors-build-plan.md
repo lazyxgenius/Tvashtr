@@ -927,6 +927,10 @@ on Browse. Calls `refreshBadges()` after every mutation.
     `Authorization` default is only for a connection that names no field. (It first searched
     the catalog by host and read one page, which dead-ended for the 42 key connectors on
     `mcp.apify.com` past the first 48. Fixed after review.)
+  - A sheet's primary button is in its footer, outside the form, so it is the form's submit
+    button by id (`type="submit" form={id}`): Enter in a field checks the server, or submits
+    the key or the project, as the click does (it did nothing with two fields; fixed after
+    review).
   - The custom sheet removes the pending row its check made (`DELETE`, best effort) when the
     address is edited or the sheet is closed, unless a sign-in was started for that row (its
     window may still finish it). Left behind, the row was listed nowhere and kept its slug, so

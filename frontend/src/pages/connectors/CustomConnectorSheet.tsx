@@ -6,7 +6,7 @@
  * Tools.
  */
 import { ChevronRight, ExternalLink } from "lucide-react";
-import { type FormEvent, type ReactNode, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 
 import { Button, Input, Sheet, useToast } from "../../design-system/components";
 import { ApiDetailError } from "../../lib/api/runs";
@@ -43,6 +43,7 @@ export function CustomConnectorSheet({
   onClose: () => void;
   onDone: (connection: Connection) => void;
 }) {
+  const formId = useId();
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -245,7 +246,7 @@ export function CustomConnectorSheet({
     const site = conn ? (conn.signin_host ?? conn.host) : "";
     body = (
       // One form in every state: the field being typed in is never remounted (and keeps focus).
-      <form className="cn-form" onSubmit={(e) => void check(e)} noValidate>
+      <form id={formId} className="cn-form" onSubmit={(e) => void check(e)} noValidate>
         {fields}
         {trouble ? (
           <Note kind="warn" role="alert">
@@ -304,12 +305,8 @@ export function CustomConnectorSheet({
         {`Continue to ${site}`}
       </Button>
     ) : (
-      <Button
-        size="sm"
-        disabled={!label || !url.trim()}
-        loading={busy}
-        onClick={() => void check()}
-      >
+      // The form's submit button, from the footer: Enter in a field checks the server too.
+      <Button type="submit" form={formId} size="sm" disabled={!label || !url.trim()} loading={busy}>
         Check the server
       </Button>
     );
