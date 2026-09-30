@@ -61,8 +61,10 @@ export function filterTools(tools: ToolItem[], query: string, status: StatusFilt
 }
 
 /** "Engineer and Reviewer in Indicator sprint team, Writer in Docs team" — teams in order met. */
-function agentsByTeam(rows: UsageRow[]): string {
-  const teams = new Map<string, { name: string; rows: UsageRow[] }>();
+export function agentsByTeam<
+  T extends Pick<UsageRow, "role_name" | "title" | "team_id" | "team_name">,
+>(rows: T[]): string {
+  const teams = new Map<string, { name: string; rows: T[] }>();
   for (const row of rows) {
     const team = teams.get(row.team_id) ?? { name: row.team_name, rows: [] };
     team.rows.push(row);

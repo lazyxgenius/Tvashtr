@@ -3,13 +3,12 @@ import type {
   Connection,
   ConnectionDetail,
   ConnectorAccess,
-  ConnectorUsageRow,
   ReadOnlyBy,
   RecentUse,
 } from "../../lib/api/connectors";
 import { titleCase } from "../../lib/text";
 import { joinNames } from "../secrets/secretFormat";
-import { agentNames, plural, usedByLabel } from "../tools/toolFormat";
+import { agentNames, agentsByTeam, plural, usedByLabel } from "../tools/toolFormat";
 import type { StatusFilter } from "../tools/toolsState";
 
 // The design's tiles where they aren't the name's first two letters.
@@ -171,17 +170,6 @@ export function recentUseLine(r: RecentUse): string {
     r.writes > 0 && plural(r.writes, "write"),
   ].filter(Boolean);
   return `${r.agent} · ${counts.join(", ")}`;
-}
-
-/** "Engineer and Reviewer in Indicator sprint team, Writer in Docs team": teams in order met. */
-function agentsByTeam(rows: ConnectorUsageRow[]): string {
-  const teams = new Map<string, { name: string; rows: ConnectorUsageRow[] }>();
-  for (const row of rows) {
-    const team = teams.get(row.team_id) ?? { name: row.team_name, rows: [] };
-    team.rows.push(row);
-    teams.set(row.team_id, team);
-  }
-  return [...teams.values()].map((t) => `${joinNames(agentNames(t.rows))} in ${t.name}`).join(", ");
 }
 
 /**
