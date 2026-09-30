@@ -66,8 +66,14 @@ PlanetScale, Microsoft 365 — they can come in later, or by the custom-connecto
    reachable:
    - from the connector's page ("Give an agent access": team → agents);
    - from the drawer's "Connect an app" (connecting there ticks it for that agent, then Save).
-7. **Tokens:** the stored sign-in (refresh token or key) never leaves the server. At run start Tvashtr
-   mints a short-lived access token and puts it in the run's MCP config as a header, like `${SECRET}` today.
+7. **Tokens:** the provider sign-in (refresh token, access token or key) never leaves the server, and
+   the agent never holds it. The run's MCP config points each granted connector at a Tvashtr proxy
+   (`/mcp/connectors`) and carries a **Tvashtr run token**: signed by Tvashtr, naming one run, one agent
+   and one connection, and dead when the run ends. The proxy adds the provider credential server-side,
+   refreshes it when it expires, applies the read-only rule and records every call. *Why:* the agent has
+   a shell, so a provider token in its config could call write tools directly or drop the provider's
+   read-only flag; a one-hour provider token would also die inside a warm sandbox mid-run. (This replaces
+   the first wording, "mint a short-lived access token and put it in the run's MCP config as a header".)
 8. **What a run shows:** the agent's Runs tab gets "Connectors used this round" (chips with read/write
    counts) and a call list (connector, tool, short argument, time). **Writes are listed first and marked**,
    with a link to what they made (e.g. LIN-214).
@@ -125,8 +131,8 @@ PlanetScale, Microsoft 365 — they can come in later, or by the custom-connecto
   - `PUT /api/connectors/{id}/agents`.
   - Every read and write is owner-scoped (another account gets 404), with tests.
 - **Node:** `tool_config.tvashtr.connectors = [{id, access}]`. `build_mcp_config` adds each granted
-  connector with a freshly minted token, filters tools by access, or drops the connector and writes a
-  `run_warnings` row.
+  connector as a proxy server with a run token (decision 7); the proxy filters tools by access. A
+  connector that can't be used is dropped with a `run_warnings` row.
 - **UI:**
   - `pages/connectors/` (Connected, Browse, detail, sheets);
   - a Connectors checklist in `ToolsPanel`;
