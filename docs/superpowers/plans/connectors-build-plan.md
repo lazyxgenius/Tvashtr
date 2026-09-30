@@ -343,11 +343,25 @@ holds `FEATURED`, `available`, `resolve` and `is_write` from Phase 0 (0.6). B1 a
   headers: [{name, secret, required, template, hint}]}`.
   - `website` is kept only when it is an `https://` address, else `null` (it becomes a link).
   - A header declaration named `Host`, `Cookie`, `Content-Length` or `Transfer-Encoding` (any case)
-    is dropped: a registry entry must not set those on Tvashtr's requests.
+    is dropped: a registry entry must not set those on Tvashtr's requests. As built, so are
+    `Accept`, `Accept-Encoding`, `Content-Type` and `Connection` (they would break the MCP client
+    or the response limits of `connector_net`), and a name that isn't an HTTP token.
+  - `template` is kept only when the registry's `value` has exactly one `{placeholder}`
+    (`Bearer {api_key}`). A fixed value (`Bearer ak_YOUR_KEY`) is the publisher's example, and a
+    two-part one (`{public}:{private}`, one server) can't be filled from one field: both are
+    `null`, and the user types the whole header value.
+  - `secret` is true when the header or one of its `variables` is `isSecret`.
+  - A server name that doesn't match the registry's own `namespace/name` rule is dropped, so a
+    registry key can never look like a Featured key or a `custom:` key.
   - No icons (the UI uses letter tiles; no third-party image loads).
 - `registry()` (`lru_cache`, reads the JSON Lines file on first use, not at import), `search(q,
   category, offset, limit)`, `custom_entry(url, name)`, and `resolve(key)` extended to registry and
   `custom:` keys (`featured: False`).
+  - As built: a registry entry with no `title` is named after its server name without the MCP
+    boilerplate (`com.apify/apify-mcp-server` → "Apify"), and its `publisher` is its verified
+    namespace read as a domain (`apify.com`, `github.com/getsentry`).
+  - As built: `card(entry)` (the catalog route's shape) and `header_value(declaration, value)`
+    (a key as the header it is sent as) live here too.
 - Tests first: `tests/test_connector_catalog.py` (added to the Phase 0 file): the filter keeps and
   drops the right fixtures (payment header, template-only address, Smithery, deprecated, SSE-only,
   secret-header template, a `javascript:` website → `null`, a `Host` header declaration dropped);
@@ -355,7 +369,8 @@ holds `FEATURED`, `available`, `resolve` and `is_write` from Phase 0 (0.6). B1 a
   and a custom key and marks neither `featured`.
 
 **B1.2 Snapshot generator and first snapshot.**
-- `scripts/refresh_connector_registry.py`: pages
+- `scripts/refresh_connector_registry.py` (run as
+  `cd backend && uv run python ../scripts/refresh_connector_registry.py`): pages
   `https://registry.modelcontextprotocol.io/v0.1/servers?version=latest&limit=100` by
   `metadata.nextCursor` (about 380 pages, 10 minutes) with stdlib `urllib`; applies
   `slim_registry_entry`; drops any namespace with more than 20 kept servers (link farms); writes
@@ -363,12 +378,23 @@ holds `FEATURED`, `available`, `resolve` and `is_write` from Phase 0 (0.6). B1 a
   removed and changed keys against the previous file.
 - **Size cap: 6 MB and 20,000 entries; the script exits non-zero above either.** Expected: about
   15,000 entries, 4–5 MB. The Dockerfile already copies `backend/tvashtr` whole (line 54).
-- Test: the filter is covered in B1.1; `tests/test_connector_catalog.py::test_snapshot_loads` reads
-  the committed file and checks every line has `key` and an `https://` `url`, and the caps hold.
+- Test: the filter is covered in B1.1; `test_snapshot_loads` reads the committed file and checks
+  every line has `key` and an `https://` `url`, and the caps hold. As built it is in
+  `tests/test_connector_registry_refresh.py`, next to the tests of the script's own rules (the
+  crawl is replaced by a list of pages, no network).
 - Accept: the snapshot is committed; a second run prints an empty diff summary.
+- **As found on 2026-09-30:** the registry is slower than the probe said. About one request in
+  ten never answers, a page can stay that way for a minute or two, and a small `limit` with
+  `version=latest` times out every time. The script waits 15 s for a page and tries it 8 times
+  with a growing pause, so a crawl is 376 pages and about 20 minutes, not 10. The first snapshot:
+  37,625 servers read, 15,058 kept, 4.91 MB. A crawl that gives up writes nothing.
 
 **B1.3 Read routes.** `GET /api/connectors/catalog`, `GET /api/connectors`,
 `GET /api/connectors/{id}` in `routes/connectors.py` (idiom: `routes/toolkit.py:47-55`).
+- As built: `tests/connector_helpers.py` holds the shared helpers and two fixtures
+  (`registry_file`: a snapshot made of given registry items; `local_addresses`: lets
+  `connector_net` open the fake server). A test module that uses them says
+  `pytest_plugins = ["connector_helpers"]` (`tests/conftest.py` is not B1's to edit).
 - Tests first (`tests/test_connectors_api.py`, helpers from `tests/toolkit_helpers.py`): list hides
   `pending`; the catalog marks this account's connections and not another account's; **another
   account's id and a random uuid are 404 on GET** (`fresh_account()`, as
@@ -382,6 +408,10 @@ path, and the hand-off to `connector_oauth.discover`. Slug from the name, de-dup
 (`-2`, `-3`). When discovery finds a sign-in, its fields are written to `pending_encrypted`
 (`connectors.write_secret(row, {…}, pending=True)`, no `started_at`, `state_hash` left null):
 that is where `serialize` reads `signin_host` from before `oauth/start` has run.
+- As built: tests are in `tests/test_connectors_connect.py`. A provider answer that is neither a
+  tool list nor a 401/403 (another 4xx, a JSON-RPC error) is `unreachable`. A custom address
+  with no sign-in is refused without asking it for its tools. A key value must be printable
+  ASCII of at most 4,096 characters (`invalid_key` otherwise); that covers the line-break rule.
 - Tests first: key accepted → `connected` with tools; key rejected → 422 `key_rejected`, no row;
   `key_required`; `already_connected` with the id; `coming_soon`; `invalid_url` (private address);
   custom address without sign-in → `no_signin`; discovery found (patched `discover`) → `pending`
@@ -403,6 +433,17 @@ that is where `serialize` reads `signin_host` from before `oauth/start` has run.
 - check and scope-options take their headers from `connectors.upstream_headers(row)`.
   `UpstreamUnauthorized` (401) or `SignInRefused` → `needs_signin`; `UpstreamRefused` (403) → 502
   `refused`, status unchanged.
+- As built (tests in `tests/test_connectors_change.py`):
+  - check gives an OAuth connection one refresh and one retry on a 401
+    (`upstream_headers(row, rejected=<the refused token>)`), as the proxy does, before it says
+    `needs_signin`. A key connection's `last_error` is "Its key stopped working."
+  - check and scope-options on a `pending` row are 409 `not_connected` (there is no sign-in to
+    use, and B2's `ensure_access_token` would mark the row `needs_signin`).
+  - scope-options answers `manual: true` for a 401, a 403 or a JSON-RPC error from the project
+    tool as well as for an answer it can't read; only a provider that doesn't answer is 502.
+  - `PATCH` checks every field before it writes anything. A bad `name` is 422 `invalid_name`.
+    It does not list the tools again: after an access or scope change the stored `tools` are
+    the ones last listed, until the next check.
 - Tests first: `invalid_access` for Google; narrowing and widening; scope set and cleared and
   reflected in `upstream_target`; a scope value of `x&read_only=false` → 422 `invalid_scope`; in
   `upstream_target` the read-only parameter is last and appears once, also when the row's `url`
