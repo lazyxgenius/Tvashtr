@@ -810,3 +810,34 @@ def test_no_text_from_outside_is_rendered_raw(monkeypatch, listed, unauth_client
     page = _page(c.get(CALLBACK_PATH, params=denied))
     assert "<script>alert" not in page and breakout not in page
     assert load(cid).last_error == f"You didn’t allow access on {hostile}."  # text, escaped on use
+
+
+# ---- B2.6: the client metadata document ----
+
+
+def test_the_client_metadata_document_is_public_and_built_from_the_public_base_url(
+    monkeypatch, unauth_client
+):
+    monkeypatch.setattr(get_settings(), "public_base_url", "https://tvashtr.fly.dev/")
+    resp = unauth_client.get("/oauth/client-metadata.json")
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"].startswith("application/json")
+    assert resp.json() == {
+        "client_id": "https://tvashtr.fly.dev/oauth/client-metadata.json",
+        "client_name": "Tvashtr",
+        "client_uri": "https://tvashtr.fly.dev",
+        "redirect_uris": ["https://tvashtr.fly.dev/api/connectors/oauth/callback"],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none",
+    }
+
+
+def test_there_is_no_client_metadata_document_unless_the_public_base_url_is_https(
+    monkeypatch, unauth_client
+):
+    """Local development: a sign-in server couldn't fetch it, so dynamic registration is used."""
+    for base in ("http://localhost:8000", "http://tvashtr.fly.dev", ""):
+        monkeypatch.setattr(get_settings(), "public_base_url", base)
+        resp = unauth_client.get("/oauth/client-metadata.json")
+        assert resp.status_code == 404, base

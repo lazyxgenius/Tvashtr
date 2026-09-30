@@ -139,3 +139,13 @@ def oauth_confirm(
 ) -> HTMLResponse:
     """The confirm page's button (a browser with no Tvashtr session)."""
     return _render(connector_oauth.confirm(state, code, iss or None), state, code, iss)
+
+
+@public_router.get(connector_oauth.CLIENT_METADATA_PATH)
+def client_metadata_document() -> dict:
+    """Tvashtr's client ID metadata document: what a sign-in server fetches when Tvashtr names
+    this address as its ``client_id``. 404 unless ``TVASHTR_PUBLIC_BASE_URL`` is ``https://``."""
+    document = connector_oauth.client_metadata()
+    if document is None:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return document
