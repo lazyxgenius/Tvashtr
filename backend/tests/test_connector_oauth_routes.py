@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, parse_qsl, urlsplit
 
 import httpx
 import pytest
-from connector_oauth_helpers import CALLBACK, connection, load, paths, wire
+from connector_oauth_helpers import CALLBACK, connection, load, paths, signed_in, wire
 from fake_connector_server import FakeConnectorServer
 from fastapi.testclient import TestClient
 from mcp.types import Tool, ToolAnnotations
@@ -19,7 +19,7 @@ from pydantic import SecretStr
 from toolkit_helpers import fresh_account
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import connector_catalog, connector_upstream, connectors
+from tvashtr.control_plane import connector_catalog, connector_oauth, connector_upstream, connectors
 from tvashtr.db import session_scope
 from tvashtr.main import app
 from tvashtr.models import ConnectorConnection
@@ -724,6 +724,52 @@ def test_a_sign_in_started_during_the_exchange_is_left_in_flight(monkeypatch, li
     # The newer sign-in is still there to be finished.
     assert row.state_hash == _sha256(newer[0])
     assert "code_verifier" in connectors.read_secret(row, pending=True)
+
+
+def test_a_sign_in_that_completes_while_a_refresh_is_in_flight_is_what_is_stored(
+    monkeypatch, listed
+):
+    """One lock for every writer of the sign-in. Without it the refresh, which read the old
+    sign-in first, would commit its tokens over the new sign-in's."""
+    fake = FakeConnectorServer(BASE)
+    refreshing, release = threading.Event(), threading.Event()
+    issued: dict[str, str] = {}
+
+    def network(request: httpx.Request) -> httpx.Response:
+        grant = parse_qs(request.content.decode()).get("grant_type", [""])[0]
+        if grant == "refresh_token":
+            refreshing.set()
+            assert release.wait(timeout=20)
+        reply = fake.handle(request)
+        if request.url.path == "/token":
+            issued[grant] = reply.json()["access_token"]
+        return reply
+
+    wire(monkeypatch, network)
+    c, owner = fresh_account()
+    cid = connection(owner, fake, status="connected", secret=signed_in(fake, expires_in=10))
+    back = _allow(fake, c, cid)  # "Sign in again", started before the refresh takes the row
+    results: dict[str, object] = {}
+
+    refresh = threading.Thread(
+        target=lambda: results.update(refreshed=connector_oauth.ensure_access_token(cid))
+    )
+    refresh.start()
+    assert refreshing.wait(timeout=20)
+    sign_in = threading.Thread(
+        target=lambda: results.update(page=_page(c.get(CALLBACK_PATH, params=back)))
+    )
+    sign_in.start()
+    time.sleep(0.4)
+    assert sign_in.is_alive() and "page" not in results  # it waits for the refresh to let go
+    release.set()
+    refresh.join(timeout=30)
+    sign_in.join(timeout=30)
+
+    assert results["refreshed"] == issued["refresh_token"]
+    assert CONNECTED in results["page"]
+    stored = connectors.read_secret(load(cid))
+    assert stored["access_token"] == issued["authorization_code"] != issued["refresh_token"]
 
 
 def test_a_connection_removed_during_the_exchange_is_a_failure_page_not_a_crash(

@@ -139,31 +139,11 @@ def test_discovery_is_the_final_dataclass():
         found.issuer = "https://evil.example"  # frozen
 
 
-# Stub test: task B2.5 (tokens) deletes it with its own tests (build plan §2).
-def test_ensure_access_token_returns_the_stored_token_and_never_refreshes(monkeypatch):
-    def no_network(*args, **kwargs):
-        raise AssertionError("the Phase 0 stub must not open a connection")
-
-    monkeypatch.setattr(connector_net, "client", no_network)
-    cid = _connection(_user())
-    with session_scope() as s:
-        row = s.get(ConnectorConnection, cid)
-        connectors.write_secret(row, {"access_token": "stored-token", "expires_at": 1})
-
-    assert connector_oauth.ensure_access_token(cid) == "stored-token"
-    assert connector_oauth.ensure_access_token(cid, rejected="stored-token") == "stored-token"
-
-
 def test_ensure_access_token_refuses_a_row_that_is_gone_or_has_no_token():
     with pytest.raises(connector_oauth.SignInRefused):
         connector_oauth.ensure_access_token(uuid.uuid4())
     with pytest.raises(connector_oauth.SignInRefused):
         connector_oauth.ensure_access_token(_connection(_user()))
-
-
-# Stub test: task B2.5 (tokens) deletes it with its own tests (build plan §2).
-def test_revoke_says_nothing_was_revoked():
-    assert connector_oauth.revoke(_connection(_user())) is False
 
 
 # Stub test: task B1.5 (the address parameters) deletes it with its own tests (build plan §2).

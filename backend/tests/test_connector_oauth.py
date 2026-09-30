@@ -2,26 +2,44 @@
 against the fake sign-in server behind ``connector_net.client()``.
 Contract: ``docs/superpowers/plans/api/connectors.md`` (OAuth, Tokens)."""
 
+import base64
 import json
+import threading
 import time
 from dataclasses import replace
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
-from connector_oauth_helpers import CALLBACK, PRIVATE_HOST, TVASHTR, paths, wire
+from connector_oauth_helpers import (
+    CALLBACK,
+    PRIVATE_HOST,
+    TVASHTR,
+    connection,
+    load,
+    paths,
+    signed_in,
+    user,
+    wire,
+)
 from fake_connector_server import OTHER_SITE, FakeConnectorServer
 from pydantic import SecretStr
+from sqlalchemy import text
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import connector_catalog
+from tvashtr.control_plane import connector_catalog, connectors
 from tvashtr.control_plane.connector_oauth import (
     CannotRegister,
     Discovery,
+    SignInRefused,
     Unreachable,
     choose_client,
     client_kind,
     discover,
+    ensure_access_token,
+    revoke,
 )
+from tvashtr.db import get_engine
 
 BASE = "https://mcp.fake.test"
 MCP = f"{BASE}/mcp"
@@ -585,3 +603,313 @@ def test_a_refused_registration_is_cannot_register_and_a_5xx_is_unreachable(monk
     wire(monkeypatch, down)
     with pytest.raises(Unreachable):
         choose_client(found, None, MCP)
+
+
+# ---- B2.5: tokens ----
+
+
+def _forms(fake: FakeConnectorServer, path: str = "/token") -> list[dict]:
+    return [
+        {key: value[0] for key, value in parse_qs(request.content.decode()).items()}
+        for request in fake.requests
+        if request.url.path == path
+    ]
+
+
+def _connected(fake: FakeConnectorServer, **sign_in) -> tuple:
+    """A connected row with a stored sign-in to the fake. Returns ``(id, the stored sign-in)``."""
+    stored = signed_in(fake, **sign_in)
+    return connection(user(), fake, status="connected", secret=stored), stored
+
+
+def _in_threads(*calls) -> list:
+    """Run the calls at once. Each result, or the exception it raised, in the calls' order."""
+    results: list = [None] * len(calls)
+
+    def run(index: int, call) -> None:
+        try:
+            results[index] = call()
+        except Exception as exc:  # handed to the test
+            results[index] = exc
+
+    threads = [threading.Thread(target=run, args=item) for item in enumerate(calls)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+    return results
+
+
+def test_a_token_with_more_than_five_minutes_left_is_returned_without_a_network_call(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, _no_network)
+    cid, stored = _connected(fake, expires_in=301 + 30)
+    assert ensure_access_token(cid) == stored["access_token"]
+
+    # No expiry named: good until the provider says otherwise.
+    forever = signed_in(fake)
+    del forever["expires_at"]
+    cid = connection(user(), fake, status="connected", secret=forever)
+    assert ensure_access_token(cid) == forever["access_token"]
+    # The token a provider just refused, when someone else has refreshed since: the stored one
+    # is already a different token, so that one is returned.
+    assert ensure_access_token(cid, rejected="the-old-token") == forever["access_token"]
+
+
+def test_a_token_about_to_expire_is_refreshed_and_the_rotated_refresh_token_is_stored(monkeypatch):
+    fake = FakeConnectorServer(BASE, expires_in=7200)
+    wire(monkeypatch, fake.handle)
+    cid, stored = _connected(fake, expires_in=299)
+
+    token = ensure_access_token(cid)
+    assert token != stored["access_token"] and token in fake.access_tokens
+    assert _forms(fake) == [
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": stored["refresh_token"],
+            "client_id": stored["client"]["client_id"],
+            "resource": MCP,
+        }
+    ]
+    row = load(cid)
+    now = connectors.read_secret(row)
+    assert now["access_token"] == token
+    assert now["refresh_token"] != stored["refresh_token"]
+    assert now["refresh_token"] in fake.refresh_tokens  # the new one is what was committed
+    assert abs(now["expires_at"] - (time.time() + 7200)) < 30
+    rest = ("issuer", "client", "token_endpoint", "revocation_endpoint", "resource", "scope")
+    assert {key: now[key] for key in rest} == {key: stored[key] for key in rest}
+    assert (row.status, row.last_error) == ("connected", None)
+    # It is fresh now: the next call asks nobody.
+    assert ensure_access_token(cid) == token and len(_forms(fake)) == 1
+
+
+def test_a_rejected_token_is_refreshed_even_when_it_looks_fresh(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    cid, stored = _connected(fake)
+
+    assert ensure_access_token(cid, rejected="some-other-token") == stored["access_token"]
+    assert _forms(fake) == []
+    token = ensure_access_token(cid, rejected=stored["access_token"])
+    assert token != stored["access_token"] and len(_forms(fake)) == 1
+    # A second caller that was refused the same old token gets the new one without a request.
+    assert ensure_access_token(cid, rejected=stored["access_token"]) == token
+    assert len(_forms(fake)) == 1
+
+
+def test_a_reply_without_a_refresh_token_keeps_the_old_one(monkeypatch):
+    fake = FakeConnectorServer(BASE, rotate_refresh=False, expires_in=None)
+    wire(monkeypatch, fake.handle)
+    cid, stored = _connected(fake, expires_in=-5)
+
+    token = ensure_access_token(cid)
+    now = connectors.read_secret(load(cid))
+    assert now["access_token"] == token != stored["access_token"]
+    assert now["refresh_token"] == stored["refresh_token"]
+    assert "expires_at" not in now  # the reply named none, so the old expiry doesn't linger
+
+
+@pytest.mark.parametrize("error", ["invalid_grant", "invalid_client"])
+def test_a_refused_refresh_clears_the_tokens_and_asks_for_a_new_sign_in(monkeypatch, error):
+    fake = FakeConnectorServer(BASE, fail_refresh=error)
+    wire(monkeypatch, fake.handle)
+    cid, stored = _connected(fake, expires_in=10)
+
+    with pytest.raises(SignInRefused):
+        ensure_access_token(cid)
+    row = load(cid)
+    assert (row.status, row.last_error) == ("needs_signin", "Its sign-in expired.")
+    now = connectors.read_secret(row)
+    assert not {"access_token", "refresh_token", "expires_at"} & set(now)
+    # ``invalid_client`` also drops the registration, so the next sign-in registers again.
+    assert ("client" in now) == (error == "invalid_grant")
+    assert now["issuer"] == BASE and now["authorization_endpoint"] == f"{BASE}/authorize"
+    assert connectors.serialize(row)["signin_host"] == "mcp.fake.test"
+
+    # Nothing left to try with: refused again, without a request.
+    fake.requests.clear()
+    with pytest.raises(SignInRefused):
+        ensure_access_token(cid)
+    assert fake.requests == []
+
+
+def test_no_refresh_token_and_a_token_that_is_expired_or_rejected_needs_a_new_sign_in(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, _no_network)
+    for expires_in, rejected in ((-5, False), (3600, True)):
+        stored = signed_in(fake, expires_in=expires_in)
+        del stored["refresh_token"]
+        cid = connection(user(), fake, status="connected", secret=stored)
+        with pytest.raises(SignInRefused):
+            ensure_access_token(cid, rejected=stored["access_token"] if rejected else None)
+        row = load(cid)
+        assert (row.status, row.last_error) == ("needs_signin", "Its sign-in expired.")
+        assert "access_token" not in connectors.read_secret(row)
+
+
+def test_a_row_that_never_signed_in_is_refused_and_left_as_it_is(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, _no_network)
+    cid = connection(user(), fake, pending_secret={"issuer": BASE})
+    with pytest.raises(SignInRefused):
+        ensure_access_token(cid)
+    row = load(cid)
+    assert (row.status, row.last_error, row.secret_encrypted) == ("pending", None, None)
+
+
+def test_a_token_endpoint_that_doesnt_answer_is_unreachable_and_changes_nothing(monkeypatch):
+    fake = FakeConnectorServer(BASE, fail_refresh=503)
+    wire(monkeypatch, fake.handle)
+    cid, stored = _connected(fake, expires_in=10)
+
+    def unchanged() -> bool:
+        row = load(cid)
+        return row.status == "connected" and connectors.read_secret(row) == stored
+
+    with pytest.raises(Unreachable):
+        ensure_access_token(cid)
+    assert unchanged()
+
+    def down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("the provider took too long to answer")
+
+    unreadable = httpx.Response(200, text="<html>a login page</html>")
+    for network in (down, lambda request: httpx.Response(429), lambda request: unreadable):
+        wire(monkeypatch, network)
+        with pytest.raises(Unreachable):
+            ensure_access_token(cid)
+        assert unchanged()
+
+
+def test_a_registered_secret_is_sent_the_way_the_client_was_registered(monkeypatch):
+    fake = FakeConnectorServer(BASE, confidential=True)
+    wire(monkeypatch, fake.handle)
+
+    cid, stored = _connected(fake, expires_in=10, method="client_secret_post")
+    assert ensure_access_token(cid) in fake.access_tokens
+    [form] = _forms(fake)
+    assert form["client_secret"] == stored["client"]["client_secret"]
+    assert "authorization" not in fake.requests[-1].headers
+
+    fake.requests.clear()
+    cid, stored = _connected(fake, expires_in=10, method="client_secret_basic")
+    assert ensure_access_token(cid) in fake.access_tokens
+    [form] = _forms(fake)
+    assert "client_secret" not in form
+    client = stored["client"]
+    basic = base64.b64encode(f"{client['client_id']}:{client['client_secret']}".encode())
+    assert fake.requests[-1].headers["authorization"] == f"Basic {basic.decode()}"
+
+
+def test_the_pre_registered_clients_secret_comes_from_the_settings(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    _google_client(monkeypatch, secret="ROTATED-SINCE")
+    stored = signed_in(fake, expires_in=10)
+    stored["client"] = {
+        "client_id": stored["client"]["client_id"],
+        "auth_method": "client_secret_post",
+        "kind": "preregistered",
+    }
+    cid = connection(user(), fake, status="connected", secret=stored)
+    assert ensure_access_token(cid) in fake.access_tokens
+    assert _forms(fake)[0]["client_secret"] == "ROTATED-SINCE"
+
+
+def test_two_callers_at_once_make_one_refresh_request(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+
+    def slow(request: httpx.Request) -> httpx.Response:
+        time.sleep(0.3)  # the second caller arrives while this refresh holds the row
+        return fake.handle(request)
+
+    wire(monkeypatch, slow)
+    cid, stored = _connected(fake, expires_in=10)
+
+    first, second = _in_threads(lambda: ensure_access_token(cid), lambda: ensure_access_token(cid))
+    assert first == second and first in fake.access_tokens  # no spent refresh token was sent
+    assert len(_forms(fake)) == 1
+    assert connectors.read_secret(load(cid))["access_token"] == first
+
+
+def test_a_row_deleted_while_a_refresh_waits_for_the_lock_is_refused(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    cid, _ = _connected(fake, expires_in=10)
+    outcome: list = []
+
+    with get_engine().connect() as holder:
+        locked = text("SELECT 1 FROM connector_connections WHERE id = :id FOR UPDATE")
+        holder.execute(locked, {"id": cid})
+        waiting = threading.Thread(
+            target=lambda: outcome.extend(_in_threads(lambda: ensure_access_token(cid)))
+        )
+        waiting.start()
+        time.sleep(0.3)
+        assert waiting.is_alive() and outcome == []  # it waits for the row, it didn't read it
+        holder.execute(text("DELETE FROM connector_connections WHERE id = :id"), {"id": cid})
+        holder.commit()
+    waiting.join(timeout=30)
+
+    assert isinstance(outcome[0], SignInRefused)
+    assert fake.requests == [] and load(cid) is None
+
+
+# ---- B2.5: revoke ----
+
+
+def test_revoke_tells_the_provider_to_forget_the_sign_in(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    cid, stored = _connected(fake)
+
+    assert revoke(cid) is True
+    assert _forms(fake, "/revoke") == [
+        {
+            "token": stored["refresh_token"],
+            "token_type_hint": "refresh_token",
+            "client_id": stored["client"]["client_id"],
+        }
+    ]
+    assert stored["refresh_token"] not in fake.refresh_tokens
+    # It reads, it doesn't write: the row is the caller's to delete.
+    assert connectors.read_secret(load(cid)) == stored
+
+
+def test_revoke_is_best_effort_and_never_raises(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+
+    no_endpoint = signed_in(fake) | {"revocation_endpoint": None}
+    assert revoke(connection(user(), fake, status="connected", secret=no_endpoint)) is False
+    assert revoke(connection(user(), fake)) is False  # never signed in
+    assert revoke(connection(user(), fake, auth_kind="api_key", status="connected")) is False
+    assert fake.requests == []
+    assert revoke(load(connection(user(), fake)).owner_id) is False  # not a connection's id
+
+    cid, _ = _connected(fake)
+
+    def down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    for network in (down, lambda request: httpx.Response(503), lambda request: httpx.Response(400)):
+        wire(monkeypatch, network)
+        assert revoke(cid) is False
+
+
+def test_revoke_doesnt_wait_for_the_row_lock(monkeypatch):
+    """The disconnect that calls it may already hold the lock, in its own session."""
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    cid, _ = _connected(fake)
+    outcome: list = []
+
+    with get_engine().connect() as holder:
+        locked = text("SELECT 1 FROM connector_connections WHERE id = :id FOR UPDATE")
+        holder.execute(locked, {"id": cid})
+        revoking = threading.Thread(target=lambda: outcome.append(revoke(cid)))
+        revoking.start()
+        revoking.join(timeout=10)
+        assert outcome == [True]
+        holder.rollback()

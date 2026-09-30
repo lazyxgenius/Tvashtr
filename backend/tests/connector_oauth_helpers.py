@@ -1,6 +1,7 @@
 """Shared by the Connectors OAuth tests (stream B2): put the fake sign-in server behind
 ``connector_net`` and make rows to sign in to."""
 
+import time
 import uuid
 
 import httpx
@@ -9,7 +10,7 @@ from fake_connector_server import FakeConnectorServer
 from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_net, connectors
 from tvashtr.db import session_scope
-from tvashtr.models import ConnectorConnection
+from tvashtr.models import ConnectorConnection, User
 
 PUBLIC_IP = "93.184.216.34"
 PRIVATE_HOST = "internal.fake.test"  # the one name that resolves to a private address
@@ -79,3 +80,34 @@ def connection(owner_id: uuid.UUID, fake: FakeConnectorServer, **over) -> uuid.U
 def load(connection_id: uuid.UUID) -> ConnectorConnection:
     with session_scope() as session:
         return session.get(ConnectorConnection, connection_id)
+
+
+def user() -> uuid.UUID:
+    """An account, straight in the database (no session)."""
+    with session_scope() as session:
+        account = User(email=f"oauth-{uuid.uuid4().hex}@tvashtr.local", password_hash="x")
+        session.add(account)
+        session.flush()
+        return account.id
+
+
+def signed_in(fake: FakeConnectorServer, *, expires_in: float = 3600, method: str = "none") -> dict:
+    """A stored sign-in to the fake (the ``secret_encrypted`` JSON) whose tokens the fake knows:
+    a registered client with ``method`` as its auth method and one access and refresh token."""
+    client = fake._register({"token_endpoint_auth_method": method}).json()
+    reply = fake._issue(client["client_id"], "read", new_refresh=True).json()
+    stored = {"client_id": client["client_id"], "auth_method": method, "kind": "dcr"}
+    if "client_secret" in client:
+        stored["client_secret"] = client["client_secret"]
+    return {
+        "issuer": fake.issuer,
+        "client": stored,
+        "authorization_endpoint": f"{fake.base}/authorize",
+        "token_endpoint": f"{fake.base}/token",
+        "revocation_endpoint": f"{fake.base}/revoke",
+        "resource": fake.mcp_url,
+        "scope": "read",
+        "access_token": reply["access_token"],
+        "refresh_token": reply["refresh_token"],
+        "expires_at": time.time() + expires_in,
+    }

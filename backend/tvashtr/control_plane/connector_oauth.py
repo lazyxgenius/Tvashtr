@@ -656,27 +656,85 @@ def confirm(state: str, code: str, iss: str | None) -> Outcome:
     return _complete(state, code)
 
 
+# ---- tokens ----
+
+REFRESH_MARGIN_SECONDS = 300  # a token with less than this left is refreshed before it is used
+_TOKEN_KEYS = ("access_token", "refresh_token", "expires_at")
+
+
+def refresh(stored: dict) -> dict | str:
+    """One refresh of the stored sign-in. The new tokens (as :func:`_tokens` gives them), or how
+    the provider refused: ``"invalid_client"`` (its registration is gone too) or
+    ``"invalid_grant"`` (anything else that isn't a new token, and a sign-in with nothing to
+    refresh with). Raises :class:`Unreachable` when the token endpoint didn't answer, or answered
+    200 with something that isn't a token."""
+    if not (stored.get("refresh_token") and stored.get("client") and stored.get("token_endpoint")):
+        return "invalid_grant"
+    grant = {"grant_type": "refresh_token", "refresh_token": stored["refresh_token"]}
+    reply = _token_request(stored, grant)
+    if reply.status_code == 200:
+        tokens = _tokens(_document_of(reply))
+        if tokens is None:
+            raise Unreachable("the token endpoint's answer can't be read")
+        return tokens
+    error = _document_of(reply, (reply.status_code,)).get("error")
+    gone = error == "invalid_client" or reply.status_code == 401
+    return "invalid_client" if gone else "invalid_grant"
+
+
 def ensure_access_token(connection_id: uuid.UUID, *, rejected: str | None = None) -> str:
     """A provider access token that should work now. Returns the stored one while it has more
-    than five minutes left and isn't ``rejected`` (the token a provider just answered 401 to);
-    otherwise refreshes under the row lock. Opens its own session and takes ``FOR UPDATE`` on the
+    than five minutes left (or no expiry) and isn't ``rejected`` (the token a provider just
+    answered 401 to); otherwise refreshes. Opens its own session and takes ``FOR UPDATE`` on the
     row, so never call it while holding that row's lock in another session. Raises
-    :class:`SignInRefused` or :class:`Unreachable`.
-
-    Phase 0 stub: returns the stored access token and never refreshes. Stream B2.5 fills it."""
-    from tvashtr.control_plane import connectors
-
+    :class:`SignInRefused` (the row is ``needs_signin`` by then, or gone) or :class:`Unreachable`
+    (nothing was changed)."""
+    # ponytail: the refresh call runs while the row is locked (10 s timeout). Callers on an event
+    # loop run this in a worker thread. Move to a version column and a lock-free refresh if lock
+    # waits show up.
     with session_scope() as session:
-        row = session.get(ConnectorConnection, connection_id)
-        token = (connectors.read_secret(row) or {}).get("access_token") if row else None
-    if not token:
-        raise SignInRefused("no stored sign-in")
-    return token
+        row = session.execute(
+            select(ConnectorConnection)
+            .where(ConnectorConnection.id == connection_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+        # Read only now that the lock is held: a refresh or a new sign-in that was in flight has
+        # committed, so this is the sign-in as it is, and what is written below is on top of it.
+        stored = (connectors.read_secret(row) if row is not None else None) or {}
+        token = stored.get("access_token")
+        if not token and not stored.get("refresh_token"):
+            raise SignInRefused("no stored sign-in")  # gone, never signed in, or already cleared
+        expires = stored.get("expires_at")
+        fresh = expires is None or expires - time.time() > REFRESH_MARGIN_SECONDS
+        if token and token != rejected and fresh:
+            return token
+        refreshed = refresh(stored)
+        if isinstance(refreshed, dict):
+            # A reply without a new refresh token keeps the old one. The rotated one is committed
+            # (leaving this block) before the caller gets the access token.
+            kept = {k: v for k, v in stored.items() if k != "expires_at"}
+            connectors.write_secret(row, kept | refreshed)
+            return refreshed["access_token"]
+        dropped = _TOKEN_KEYS + (("client",) if refreshed == "invalid_client" else ())
+        connectors.write_secret(row, {k: v for k, v in stored.items() if k not in dropped})
+        row.status, row.last_error = "needs_signin", "Its sign-in expired."
+    raise SignInRefused(refreshed)
 
 
 def revoke(connection_id: uuid.UUID) -> bool:
     """Best-effort RFC 7009 revoke of the stored sign-in at the provider. ``True`` when the
-    provider answered 2xx. Never raises.
-
-    Phase 0 stub: revokes nothing. Stream B2.5 fills it."""
-    return False
+    provider answered 2xx. Never raises. It only reads the row and takes no lock, so a disconnect
+    may call it before or while it holds the row's lock."""
+    try:
+        with session_scope() as session:
+            row = session.get(ConnectorConnection, connection_id)
+            stored = (connectors.read_secret(row) if row is not None else None) or {}
+        endpoint, client = stored.get("revocation_endpoint"), stored.get("client")
+        hint = "refresh_token" if stored.get("refresh_token") else "access_token"
+        if not (endpoint and client and stored.get(hint)):
+            return False
+        form, auth = _client_auth(client)
+        data = {"token": stored[hint], "token_type_hint": hint, **form}
+        return _post(endpoint, data=data, auth=auth).is_success
+    except Exception:  # best effort: a failure never blocks the disconnect
+        return False
