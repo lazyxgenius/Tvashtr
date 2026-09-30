@@ -413,7 +413,8 @@ def test_serialize_a_sign_in_in_flight_and_a_sign_in_host_on_another_site():
 def test_serialize_a_key_connection_whose_entry_is_unknown():
     cid = _connection(
         _user(),
-        connector_key="com.apify/apify-mcp-server",
+        # Not in the registry snapshot (``com.apify/apify-mcp-server`` is, since B1.2).
+        connector_key="com.apify/a-server-the-catalog-doesnt-have",
         name="Apify",
         slug="apify",
         url="https://mcp.apify.com/",
