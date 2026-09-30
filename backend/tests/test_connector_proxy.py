@@ -497,6 +497,52 @@ def test_a_write_records_the_first_https_address_of_its_result():
     assert [e.payload["arg"] for e in events] == ["T" * 200, None, "by q", "first string"]
 
 
+def test_a_call_is_recorded_whatever_characters_it_or_its_result_carries():
+    """Postgres can't store a NUL in JSON, nor half of a surrogate pair: a call carrying one in
+    the argument it is shown with (or a provider answering one) must still leave its event."""
+    upstream = FakeUpstream()
+    upstream.result = CallToolResult(
+        content=[TextContent(type="text", text="made https://linear.app/a\x00b/LIN-1\ud800 ok")]
+    )
+    grant = _grant("write", access="write")
+    assert _list(grant, upstream) == ALL
+
+    assert _call(grant, upstream, "create_issue", {"name": "hidden\x00"}) is upstream.result
+    assert _call(grant, upstream, "create_issue", {"title": "half \ud800 pair"}) is upstream.result
+    assert not _call(grant, upstream, "run\x00_sql\udfff", {"q": "x"}).isError
+
+    assert len(upstream.calls) == 3  # all three reached the provider, as they were sent
+    assert upstream.calls[0][4] == {"name": "hidden\x00"}
+    events = _events(grant)
+    assert [(e.payload["tool"], e.payload["arg"]) for e in events] == [
+        ("create_issue", "hidden"),
+        ("create_issue", "half ? pair"),
+        ("run_sql?", "x"),
+    ]
+    assert {e.payload["result_url"] for e in events} == {"https://linear.app/ab/LIN-1?"}
+    assert all(e.payload["write"] and e.payload["ok"] for e in events)
+
+
+def test_what_a_call_records_is_short_whatever_the_agent_or_the_provider_sends():
+    upstream = FakeUpstream()
+    upstream.result = CallToolResult(
+        content=[TextContent(type="text", text="https://x.example/" + "a" * 3_000_000)]
+    )
+    grant = _grant("write", access="write")
+
+    assert not _call(grant, upstream, "t" * 1_000_000, {"title": "x"}).isError
+    upstream.result = CallToolResult(
+        content=[TextContent(type="text", text="see https://x.example/" + "a" * 1900 + " done")]
+    )
+    _call(grant, upstream, "create_issue", {"title": "y"})
+
+    first, second = _events(grant)
+    assert first.payload["tool"] == "t" * 200
+    assert first.payload["result_url"] is None  # too long to be a link: left out, not cut
+    assert second.payload["result_url"] == "https://x.example/" + "a" * 1900
+    assert len(json.dumps(first.payload)) < 1000
+
+
 # ---- the provider's answers: only a 401 means "sign in again" ----
 
 

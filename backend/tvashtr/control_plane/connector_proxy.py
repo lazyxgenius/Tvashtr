@@ -211,8 +211,15 @@ def sign_in_expired(run_id: str, node_id: object, row: ConnectorConnection) -> N
 
 
 _ARG_KEYS = ("query", "sql", "q", "title", "name")
-_ARG_LIMIT = 200
+NAME_LIMIT = 200  # a tool's name and title, and the one argument a call is shown with
+RESULT_URL_LIMIT = 2000
 _HTTPS_ADDRESS = re.compile(r"https://[^\s\"'<>()\[\]{}]+")
+
+
+def _storable(value: str) -> str:
+    """``value`` as Postgres can keep it in JSON: no NUL, no half of a surrogate pair. An event
+    that can't be written is a call (a write, even) the run never shows."""
+    return value.replace("\x00", "").encode("utf-8", "replace").decode()
 
 
 def _short_arg(arguments: object) -> str | None:
@@ -220,14 +227,19 @@ def _short_arg(arguments: object) -> str | None:
     if not isinstance(arguments, dict):
         return None
     strings = [arguments.get(key) for key in _ARG_KEYS] + list(arguments.values())
-    return next((value[:_ARG_LIMIT] for value in strings if isinstance(value, str)), None)
+    return next(
+        (_storable(value[:NAME_LIMIT]) for value in strings if isinstance(value, str)), None
+    )
 
 
 def _result_url(result: CallToolResult) -> str | None:
-    """The first ``https://`` address in a result's text (what a write made, LIN-214 say)."""
+    """The first ``https://`` address in a result's text (what a write made, LIN-214 say). One
+    over ``RESULT_URL_LIMIT`` is left out: half an address is no link, and the round's calls are
+    sent whole with every read of the run."""
     text = "\n".join(block.text for block in result.content if isinstance(block, TextContent))
     found = _HTTPS_ADDRESS.search(text)
-    return found.group().rstrip(".,;:") if found else None
+    url = found.group().rstrip(".,;:") if found else ""
+    return _storable(url) if 0 < len(url) <= RESULT_URL_LIMIT else None
 
 
 def record_call(
@@ -253,7 +265,7 @@ def record_call(
             "connection_id": str(row.id),
             "connector": row.name,
             "slug": row.slug,
-            "tool": tool,
+            "tool": _storable(tool[:NAME_LIMIT]),
             "write": write,
             "ok": ok,
             "blocked": blocked,
