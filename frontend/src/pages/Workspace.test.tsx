@@ -58,6 +58,24 @@ vi.mock("./engines/EnginesPage", () => ({
   ),
 }));
 
+vi.mock("./connectors/ConnectorsPage", () => ({
+  ConnectorsPage: ({ view }: { view: string }) => <div data-view={view}>CONNECTORS BODY</div>,
+}));
+vi.mock("./connectors/ConnectorDetailPage", async () => {
+  const { useState } = await import("react");
+  return {
+    ConnectorDetailPage: ({ connectorId }: { connectorId: string }) => {
+      // The id this instance was mounted for: another connector must be another instance.
+      const [mountedFor] = useState(connectorId);
+      return (
+        <div data-id={connectorId} data-mounted-for={mountedFor}>
+          CONNECTOR BODY
+        </div>
+      );
+    },
+  };
+});
+
 const user = { id: "u1", email: "lazyx@tvashtr.dev", display_name: "Lazyx" };
 
 function renderAt(hash: string) {
@@ -115,6 +133,31 @@ describe("Workspace", () => {
     renderAt("#/engines");
     expect(screen.getByText("ENGINES BODY")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Dashboard" })).toBeInTheDocument();
+  });
+
+  it("shows Toolkit › Connectors, which a bare #/toolkit opens too", () => {
+    const { unmount } = renderAt("#/toolkit/connectors/browse");
+    expect(screen.getByText("CONNECTORS BODY")).toHaveAttribute("data-view", "browse");
+    expect(screen.getByRole("button", { name: "Connectors" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    unmount();
+    renderAt("#/toolkit");
+    expect(screen.getByText("CONNECTORS BODY")).toHaveAttribute("data-view", "connected");
+  });
+
+  it("shows one connector’s page, a fresh one per connector", async () => {
+    renderAt("#/toolkit/connectors/c1");
+    expect(screen.getByText("CONNECTOR BODY")).toHaveAttribute("data-id", "c1");
+    act(() => {
+      window.location.hash = "#/toolkit/connectors/c2";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    await waitFor(() =>
+      expect(screen.getByText("CONNECTOR BODY")).toHaveAttribute("data-id", "c2"),
+    );
+    expect(screen.getByText("CONNECTOR BODY")).toHaveAttribute("data-mounted-for", "c2");
   });
 
   it("opens a team's canvas full-window, with the run from the address", () => {
