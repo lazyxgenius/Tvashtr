@@ -14,7 +14,9 @@ import { getNodeRuns, type NodeTemplate } from "../lib/api/nodes";
 import type { EnginesTab, NodeTab, Route } from "../lib/nav";
 import { nodeDescription, nodeTitle } from "../lib/nodeNames";
 import { QueryDomainPanel } from "../pages/domains/QueryDomainDrawerBody";
+import { listConnections } from "../lib/api/connectors";
 import { type AgentDraft, describeChanges, revertGroup } from "./agentDraft";
+import { connectorsRoute, savedGrantsToast } from "./connectors/connectorFormat";
 import { DrawerConfirm } from "./DrawerConfirm";
 import { DocsTab } from "./docs/DocsTab";
 import type { DocPlace } from "./docs/docView";
@@ -61,6 +63,7 @@ import { AddSkillView, type SkillSub } from "./skills/AddSkillViews";
 import { SkillsToolsTab } from "./skills/SkillsToolsTab";
 import { useShelves } from "./skills/useShelves";
 import { AddToolView, type ToolSub } from "./tools/AddToolViews";
+import { connectorsOf } from "./tools/nodeTools";
 import { useAgentDraft } from "./useAgentDraft";
 import { useDrawerToast } from "./useDrawerToast";
 import { type LeaveGuard, useUnsavedGuard } from "./useUnsavedGuard";
@@ -296,6 +299,29 @@ function AgentEditor({
   });
 
   const guard = useUnsavedGuard({ dirty: api.isDirty, agentName: name, guardRef });
+  // The plan ("Claude") this agent runs on in Tvashtr Desktop: connectors don't reach those runs.
+  const plan = desktopSubscriptionName(draft.model, cover, isDesktopApp());
+  // A link to Connectors leaves through the page, which asks about an unsaved draft first.
+  const openConnector =
+    onOpenToolkit && ((id: string | null) => onOpenToolkit(connectorsRoute(id)));
+  // Save, and after one that changed this agent's connectors say what it can use now
+  // (CnF-Grant-4). The names come from the account's connections; no toast if they can't be read.
+  const save = async (): Promise<boolean> => {
+    const grants = connectorsOf(draft.toolConfig);
+    const changed =
+      JSON.stringify(grants) !== JSON.stringify(connectorsOf(api.baseline.toolConfig));
+    const ok = await api.save();
+    if (ok && changed && grants.length > 0) {
+      void listConnections().then(
+        (connections) => {
+          const said = savedGrantsToast(name, grants, connections);
+          if (said) toast.show(said);
+        },
+        () => {},
+      );
+    }
+    return ok;
+  };
   // PANEL-22: no Save while the open Output format editor holds a broken schema.
   const schemaBroken = schemaText !== null && checkSchema(schemaText).state === "error";
   const canSave = api.isDirty && api.problem === null && !schemaBroken;
@@ -306,7 +332,7 @@ function AgentEditor({
   // ⌘S / Ctrl+S saves; while a confirm is open the confirm's own buttons decide.
   useSaveShortcut(() => {
     const busy = guard.asking || deleting || pending || forgetting || templatesOpen;
-    if (canSave && !busy && !subCoversFooter) void api.save();
+    if (canSave && !busy && !subCoversFooter) void save();
   });
 
   // Q7: a template sets the instructions and its default File access (thinker or worker: both run
@@ -493,7 +519,7 @@ function AgentEditor({
               loading={api.saveState === "saving"}
               disabled={api.problem !== null}
               onClick={() => {
-                void api.save().then((ok) => (ok ? guard.leave() : guard.keepEditing()));
+                void save().then((ok) => (ok ? guard.leave() : guard.keepEditing()));
               }}
             >
               Save
@@ -624,6 +650,9 @@ function AgentEditor({
         onEditServer: (name: string) => setToolSub({ kind: "server", edit: name }),
         onOpenToolkit,
         shelves,
+        agentName: name,
+        plan,
+        savedToolConfig: api.baseline.toolConfig,
       };
       if (!focus) body = <SkillsToolsTab {...skillsTab} />;
       else
@@ -633,7 +662,7 @@ function AgentEditor({
             node={node}
             name={name}
             nodes={nodes}
-            subscription={desktopSubscriptionName(draft.model, cover, isDesktopApp())}
+            subscription={plan}
           />
         );
       break;
@@ -667,9 +696,14 @@ function AgentEditor({
           history={history}
           verdict={routing.kind === "verdict"}
           onOpenRun={onOpenRun}
+          onOpenConnector={openConnector}
         />
       ) : (
-        <RunsTab history={history} onOpenFocus={() => onFocusChange(true)} />
+        <RunsTab
+          history={history}
+          onOpenFocus={() => onFocusChange(true)}
+          onOpenConnector={openConnector}
+        />
       );
       break;
     case "docs":
@@ -786,7 +820,7 @@ function AgentEditor({
       problem={api.problem}
       canSave={canSave}
       memoryTab={tab === "memory"}
-      onSave={() => void api.save()}
+      onSave={() => void save()}
       onDiscard={api.discard}
       onReview={
         focus

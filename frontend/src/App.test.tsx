@@ -553,6 +553,20 @@ describe("App — the drawer asks before dropping unsaved changes (F5 G2)", () =
     window.location.hash = "";
   });
 
+  it("a link to Connectors from Skills & tools asks first, then opens Connectors", async () => {
+    const { panel } = await dirtyEngineer();
+    fireEvent.click(within(panel).getByRole("tab", { name: /^Skills & tools/ }));
+    // No connections in this fixture: the checklist points to Connectors.
+    const link = await within(panel).findByRole("link", { name: "Open Connectors" });
+    expect(fireEvent.click(link)).toBe(false);
+    const dialog = within(panel).getByRole("alertdialog", { name: "Unsaved changes" });
+    expect(dialog).toHaveTextContent("Save your changes to Engineer?");
+    expect(window.location.hash).not.toContain("connectors");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard" }));
+    expect(window.location.hash).toBe("#/toolkit/connectors");
+    window.location.hash = "";
+  });
+
   it("selecting another agent asks first; Keep editing stays, Discard moves on", async () => {
     const { panel } = await dirtyEngineer();
     fireEvent.click(nodeCard("Product manager"));

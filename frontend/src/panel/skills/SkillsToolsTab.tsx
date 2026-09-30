@@ -10,7 +10,8 @@ import "./skillsTools.css";
 
 /**
  * The Skills & tools tab (PANEL-81..99, 103): Skills over Tools, bound to the draft. `note` is the
- * Desktop-subscription note (what that agent doesn't use).
+ * Desktop-subscription note (what that agent doesn't use); `plan` switches that agent's connectors
+ * off (Page-Agent-on-a-Claude-plan).
  */
 export function SkillsToolsTab({
   skills,
@@ -27,6 +28,9 @@ export function SkillsToolsTab({
   shelves,
   selected,
   onSelect,
+  agentName,
+  plan,
+  savedToolConfig,
 }: {
   skills: unknown[] | null;
   toolConfig: ToolConfig;
@@ -43,6 +47,11 @@ export function SkillsToolsTab({
   /** Focus mode: the skill shown in the detail pane. */
   selected?: number | null;
   onSelect?: (index: number) => void;
+  /** For the Connectors checklist: the agent's name, the plan it runs on in Tvashtr Desktop
+   *  ("Claude"; its connectors are off), and its tool config as last saved. */
+  agentName?: string;
+  plan?: string | null;
+  savedToolConfig?: ToolConfig;
 }) {
   const { skillLibrary, toolLibrary, secrets } = shelves;
   return (
@@ -68,6 +77,9 @@ export function SkillsToolsTab({
       />
       <ToolsPanel
         config={toolConfig}
+        savedConfig={savedToolConfig}
+        agentName={agentName}
+        plan={plan}
         library={toolLibrary}
         secrets={secrets}
         onChange={onToolsChange}

@@ -5,6 +5,8 @@
 import type { Connection } from "../../lib/api/connectors";
 import type { ConnectorCall, RoundConnectors } from "../../lib/api/roundConnectors";
 import type { Route } from "../../lib/nav";
+import { joinNames } from "../../pages/secrets/secretFormat";
+import type { ConnectorGrant } from "../tools/nodeTools";
 
 /** One connection's page, or the Connectors list when there is no id (`lib/nav.ts`, F1.1). */
 export const connectorsHref = (id?: string | null): string =>
@@ -14,6 +16,29 @@ export const connectorsHref = (id?: string | null): string =>
  *  draft before it leaves. */
 export const connectorsRoute = (id: string | null): Route =>
   id ? { page: "connector", connectorId: id } : { page: "connectors", view: "connected" };
+
+/**
+ * After a save that changed an agent's connectors (CnF-Grant-4): "Reviewer can use Supabase,
+ * Notion and Linear. All read only.", the last part only when none of them may write. Null when
+ * none of its grants is a connection that exists.
+ */
+export function savedGrantsToast(
+  agent: string,
+  grants: readonly ConnectorGrant[],
+  connections: readonly Connection[],
+): string | null {
+  const mine = grants.flatMap((g) => {
+    const c = connections.find((x) => x.id === g.id);
+    return c ? [{ name: c.name, write: g.access === "write" && c.access === "write" }] : [];
+  });
+  if (mine.length === 0) return null;
+  const readOnly = mine.some((m) => m.write)
+    ? ""
+    : mine.length === 1
+      ? " Read only."
+      : " All read only.";
+  return `${agent} can use ${joinNames(mine.map((m) => m.name))}.${readOnly}`;
+}
 
 /** "Read only · project trade-mcp-prod", "Read & write allowed", or that it needs attention. */
 export function accessLine(c: Connection): string {

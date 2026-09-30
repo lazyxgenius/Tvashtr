@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setProviderCatalogue, type TeamGraphNode } from "../../lib/api";
 import { __resetBackendStatusForTests } from "../../lib/backendStatus";
 import { CATALOGUE, edges, engineer, json, pm, reviewer, ship, stubFetch } from "../editorTestKit";
-import { NodeEditor } from "../NodeEditor";
+import { NodeEditor, type NodeEditorProps } from "../NodeEditor";
 import { resetNodeTemplates } from "../setup/useNodeTemplates";
 
 // Focus-Runs (FOCUS-62..70): the rounds rail and earlier runs beside the picked round's verdict,
@@ -52,6 +52,26 @@ const ROUND_3 = round(3, 31, {
     },
     documents: [],
     files: ["REVIEW_VERDICT.json"],
+  },
+  connectors: {
+    used: [{ connection_id: "c1", name: "Supabase", slug: "supabase", reads: 2, writes: 0 }],
+    calls: [
+      {
+        connection_id: "c1",
+        name: "Supabase",
+        tool: "execute_sql",
+        write: false,
+        ok: true,
+        blocked: false,
+        forwarded: true,
+        arg: "SELECT count(*) FROM indicator_values",
+        at: "2026-09-30T10:04:00+00:00",
+        duration_ms: 312,
+        result_url: null,
+      },
+    ],
+    total_calls: 2,
+    skipped: [{ connection_id: "c4", name: "Sentry", reason: "its sign-in expired" }],
   },
 });
 const HISTORY = {
@@ -114,7 +134,11 @@ afterEach(() => {
   __resetBackendStatusForTests();
 });
 
-function renderRuns(onOpenRun = vi.fn(), lastRun: TeamGraphNode["last_run"] = ran) {
+function renderRuns(
+  onOpenRun = vi.fn(),
+  lastRun: TeamGraphNode["last_run"] = ran,
+  onOpenToolkit?: NodeEditorProps["onOpenToolkit"],
+) {
   const saved = reviewer({ last_run: lastRun });
   render(
     <NodeEditor
@@ -131,6 +155,7 @@ function renderRuns(onOpenRun = vi.fn(), lastRun: TeamGraphNode["last_run"] = ra
       onClose={vi.fn()}
       onSaved={vi.fn()}
       onOpenRun={onOpenRun}
+      onOpenToolkit={onOpenToolkit}
     />,
   );
   return within(screen.getByRole("dialog", { name: "Reviewer in focus view" }));
@@ -163,6 +188,26 @@ describe("Focus view › Runs", () => {
 
     fireEvent.click(view.getByRole("button", { name: "Open this run on the canvas" }));
     expect(onOpenRun).toHaveBeenCalledWith("r1");
+  });
+
+  it("says what the round called through connectors and what it ran without (CnF-Run-1, CnF-Expired-2)", async () => {
+    const onOpenToolkit = vi.fn();
+    const view = renderRuns(vi.fn(), ran, onOpenToolkit);
+    const card = within(await view.findByRole("region", { name: "Connectors" }));
+    expect(card.getByRole("note")).toHaveTextContent("Ran without Sentry: its sign-in expired.");
+    expect(card.getByRole("group", { name: "Connectors used this round" })).toHaveTextContent(
+      "Supabase · 2 reads",
+    );
+    expect(within(card.getByRole("list", { name: "Calls" })).getByText("execute_sql")).toBeTruthy();
+    // "Sign in" leaves through the page, which asks about an unsaved draft first.
+    expect(fireEvent.click(card.getByRole("link", { name: "Sign in" }))).toBe(false);
+    expect(onOpenToolkit).toHaveBeenLastCalledWith({ page: "connector", connectorId: "c4" });
+
+    // A round that used none has no Connectors card.
+    const rail = within(view.getByRole("complementary", { name: "Rounds" }));
+    fireEvent.click(rail.getByRole("button", { name: /^Round 2/ }));
+    expect(view.getByText("Round 2 · 44m ago")).toBeInTheDocument();
+    expect(view.queryByRole("region", { name: "Connectors" })).toBeNull();
   });
 
   it("picks an older round, then an earlier run (its rounds replace the rail's)", async () => {

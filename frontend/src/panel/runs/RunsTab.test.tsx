@@ -162,6 +162,40 @@ describe("Runs tab", () => {
     expect(following(calls, screen.getByText("Earlier rounds"))).toBe(true);
   });
 
+  it("'Sign in' on what a round ran without leaves through the drawer, in an opened earlier round too", async () => {
+    const onOpenToolkit = vi.fn();
+    const earlier = {
+      ...HISTORY,
+      run: {
+        ...HISTORY.run,
+        rounds: [
+          HISTORY.run.rounds[0],
+          {
+            ...HISTORY.run.rounds[1],
+            connectors: {
+              used: [],
+              calls: [],
+              total_calls: 0,
+              skipped: [{ connection_id: null, name: "Notion", reason: "it was disconnected" }],
+            },
+          },
+        ],
+      },
+    };
+    stubFetch(
+      () => reviewer(),
+      (url) => (url.startsWith("/api/teams/t1/nodes/n-rev/runs") ? json(earlier) : undefined),
+    );
+    renderRuns(reviewer({ last_run: ran }), { onOpenToolkit });
+    const card = await screen.findByRole("region", { name: "Last run" });
+    // Not followed on its own: the page asks "Save your changes?" before it leaves.
+    expect(fireEvent.click(within(card).getByRole("link", { name: "Sign in" }))).toBe(false);
+    expect(onOpenToolkit).toHaveBeenLastCalledWith({ page: "connector", connectorId: "c4" });
+    fireEvent.click(screen.getByRole("button", { name: /^Round 2/ }));
+    expect(fireEvent.click(screen.getByRole("link", { name: "Open Connectors" }))).toBe(false);
+    expect(onOpenToolkit).toHaveBeenLastCalledWith({ page: "connectors", view: "connected" });
+  });
+
   it("an earlier round shows its own connectors when opened, and a round without any shows none", async () => {
     renderRuns(reviewer({ last_run: ran }));
     const two = await screen.findByRole("button", { name: /^Round 2/ });

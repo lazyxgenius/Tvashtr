@@ -3,6 +3,8 @@ import { Brain, FileText, Sparkle } from "lucide-react";
 
 import { Badge, Button } from "../../design-system/components";
 import { getNodeRuns, type NodeRound, type NodeRuns } from "../../lib/api/nodes";
+import type { OpenConnector } from "../connectors/connectorFormat";
+import { ConnectorsSkipped, ConnectorsUsed } from "../connectors/ConnectorsUsed";
 import { statusBadge } from "../nodeBadges";
 import {
   billingLine,
@@ -24,7 +26,8 @@ const small = { size: 13, strokeWidth: 1.6, "aria-hidden": true } as const;
 /**
  * The Runs tab in focus mode (Focus-Runs, FOCUS-62..70): a rail with the rounds of one run (newest
  * first) and the agent's earlier runs, and the picked round in full — its verdict, what it was
- * given, what it produced and what it cost. An earlier run opens its own rounds in the rail (OQ-15).
+ * given, what it produced, what it called through connectors (and ran without) and what it cost.
+ * An earlier run opens its own rounds in the rail (OQ-15).
  */
 export function FocusRunsTab({
   teamId,
@@ -32,6 +35,7 @@ export function FocusRunsTab({
   history,
   verdict,
   onOpenRun,
+  onOpenConnector,
 }: {
   teamId: string;
   nodeId: string;
@@ -41,6 +45,8 @@ export function FocusRunsTab({
   verdict: boolean;
   /** "Open this run on the canvas": the run view of that run. */
   onOpenRun?: (runId: string) => void;
+  /** Open a connection's page through the page's unsaved-changes guard ("Sign in"). */
+  onOpenConnector?: OpenConnector;
 }) {
   const [runId, setRunId] = useState<string | null>(null);
   const [picked, setPicked] = useState<number | null>(null);
@@ -157,6 +163,7 @@ export function FocusRunsTab({
             round={round}
             verdict={verdict}
             onOpenRun={onOpenRun && (() => onOpenRun(run.run_id))}
+            onOpenConnector={onOpenConnector}
           />
         )}
       </div>
@@ -177,10 +184,12 @@ function RoundDetail({
   round,
   verdict,
   onOpenRun,
+  onOpenConnector,
 }: {
   round: NodeRound;
   verdict: boolean;
   onOpenRun?: () => void;
+  onOpenConnector?: OpenConnector;
 }) {
   const badge = statusBadge(round, false);
   const when = roundWhen(round);
@@ -229,6 +238,10 @@ function RoundDetail({
       </li>
     )),
   ];
+
+  const conn = round.connectors;
+  const usedConnectors =
+    conn && conn.used.length + conn.calls.length + conn.skipped.length > 0 ? conn : null;
 
   const cost = [
     ...(round.cost
@@ -284,6 +297,13 @@ function RoundDetail({
           )}
         </Card>
       </div>
+      {usedConnectors && (
+        <Card label="Connectors">
+          <ConnectorsSkipped connectors={usedConnectors} onOpen={onOpenConnector} />
+          {/* Keyed on the round: another round starts with its calls folded. */}
+          <ConnectorsUsed key={round.invocation_id} connectors={usedConnectors} />
+        </Card>
+      )}
       {cost.length > 0 && (
         <Card label="Cost">
           <div className="fx-cost">

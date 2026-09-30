@@ -76,6 +76,7 @@ const SHELVES: Record<string, unknown> = {
         connector_key: "linear",
         name: "Linear",
         slug: "linear",
+        access: "write",
         scope: null,
       }),
     ],
@@ -340,6 +341,100 @@ describe("Skills & tools — Connectors (Page-Agent-Skills-tools, CnF-Grant)", (
     fireEvent.click(within(drawer).getByRole("button", { name: /^Save/ }));
     await waitFor(() => expect(bodyOf(fetchMock, "PATCH")).toBeTruthy());
     expect(bodyOf(fetchMock, "PATCH")).toEqual({ tool_config: TOOLS });
+  });
+});
+
+describe("Skills & tools — Connectors, what the drawer adds (CnF-Grant-3/4, Page-Agent-on-a-Claude-plan)", () => {
+  const toastOf = (drawer: HTMLElement) => drawer.querySelector(".nd-toast-host") as HTMLElement;
+  const save = async (drawer: HTMLElement) => {
+    fireEvent.click(within(drawer).getByRole("button", { name: /^Save/ }));
+    await within(drawer).findByText("Saved. This drives the next run you launch.");
+  };
+
+  it("names the agent on a write connection, and after Save says what it can use, all read only", async () => {
+    const { drawer } = renderTab(reviewer());
+    const section = screen.getByRole("region", { name: /^Connectors/ });
+    fireEvent.click(await within(section).findByRole("checkbox", { name: /^Supabase/ }));
+    fireEvent.click(within(section).getByRole("checkbox", { name: /^Linear/ }));
+    expect(
+      within(section).getByRole("combobox", { name: "What Reviewer may do in Linear" }),
+    ).toBeInTheDocument();
+    expect(section).toHaveTextContent(
+      "Linear is connected with read & write, so you choose per agent. Reviewer starts on read only.",
+    );
+    await save(drawer);
+    expect(
+      await within(toastOf(drawer)).findByText(
+        "Reviewer can use Supabase and Linear. All read only.",
+      ),
+    ).toBeInTheDocument();
+    // The saved grants have the tick now, so the note is the usual one again (CnF-Grant-4).
+    expect(section).not.toHaveTextContent("starts on read only");
+    expect(section).toHaveTextContent("During a run it can call the read tools of what’s ticked.");
+  });
+
+  it("leaves out 'All read only.' when a grant may write", async () => {
+    const { drawer } = renderTab(
+      reviewer({ tool_config: { tvashtr: { connectors: [{ id: "c3", access: "read" }] } } }),
+    );
+    const section = screen.getByRole("region", { name: /^Connectors/ });
+    fireEvent.change(
+      await within(section).findByRole("combobox", { name: "What Reviewer may do in Linear" }),
+      { target: { value: "write" } },
+    );
+    await save(drawer);
+    expect(await within(toastOf(drawer)).findByText("Reviewer can use Linear.")).toBeTruthy();
+  });
+
+  it("says nothing of connectors after a save that didn't change them, or that left none", async () => {
+    const { drawer, tools } = renderTab(
+      reviewer({ tool_config: { tvashtr: { connectors: [{ id: "c1", access: "read" }] } } }),
+    );
+    const connectorCalls = () =>
+      fetchMock.mock.calls.filter((c) => String(c[0]) === "/api/connectors").length;
+    fireEvent.click(await tools.findByRole("checkbox", { name: /^Support docs/ }));
+    const before = connectorCalls();
+    await save(drawer);
+    expect(connectorCalls()).toBe(before);
+    expect(toastOf(drawer)).toBeEmptyDOMElement();
+
+    const section = screen.getByRole("region", { name: /^Connectors/ });
+    fireEvent.click(within(section).getByRole("checkbox", { name: /^Supabase/ }));
+    await save(drawer);
+    await waitFor(() => expect(connectorCalls()).toBe(before));
+    expect(toastOf(drawer)).toBeEmptyDOMElement();
+  });
+
+  it("an agent on a Claude plan in Tvashtr Desktop can't tick or connect any, and is told why", async () => {
+    document.documentElement.dataset.tvashtrDesktop = "true";
+    renderTab(
+      reviewer({
+        model: "anthropic/claude-sonnet-4",
+        tool_config: { tvashtr: { connectors: [{ id: "c1", access: "read" }] } },
+      }),
+      { cover: { byok: new Set<string>(), subs: { claude: true } } },
+    );
+    const section = screen.getByRole("region", { name: /^Connectors/ });
+    const supabase = await within(section).findByRole<HTMLInputElement>("checkbox", {
+      name: /^Supabase/,
+    });
+    expect([supabase.checked, supabase.disabled]).toEqual([true, true]);
+    expect(within(section).getByRole("checkbox", { name: /^Linear/ })).toBeDisabled();
+    expect(within(section).getByRole("button", { name: "Connect an app" })).toBeDisabled();
+    const note = section.querySelector(".dm-dlist__callout") as HTMLElement;
+    expect(note).toHaveTextContent(
+      /^Reviewer runs on your Claude plan in Tvashtr Desktop\. Connectors and tools don’t reach plan runs yet\. Give it an API-key model in Setup to use them\.$/,
+    );
+    expect(note).toHaveClass("nd-conn__callout--warn");
+  });
+
+  it("the same agent on the website (its API key) ticks as usual", async () => {
+    renderTab(reviewer({ model: "anthropic/claude-sonnet-4" }), {
+      cover: { byok: new Set(["anthropic"]), subs: { claude: true } },
+    });
+    const section = screen.getByRole("region", { name: /^Connectors/ });
+    expect(await within(section).findByRole("checkbox", { name: /^Supabase/ })).toBeEnabled();
+    expect(section).not.toHaveTextContent("plan in Tvashtr Desktop");
   });
 });
 
