@@ -540,6 +540,25 @@ describe("when the sign-in goes wrong", () => {
     },
   );
 
+  it.each(["POST /api/connectors", "POST /api/connectors/c1/oauth/start"])(
+    "says to try again when too many connector requests are going, and the next try goes on (%s)",
+    async (route) => {
+      const message = "Too many connector requests at once. Try again in a moment.";
+      let busy = true;
+      const answer = route.endsWith("/start") ? START : PENDING;
+      serve({ [route]: () => (busy ? refuse(429, { code: "busy", message }) : answer) });
+      show({ entry: entry() });
+      click("Continue to Supabase");
+      expect(await screen.findByRole("alert")).toHaveTextContent(message);
+      expect(popup?.close).toHaveBeenCalled();
+
+      busy = false;
+      click("Continue to Supabase");
+      await screen.findByText("Waiting for you to finish in the Supabase window");
+      await waitFor(() => expect(popup?.location.href).toBe(AUTHORIZE));
+    },
+  );
+
   it("sends a server with no sign-in to Tools", async () => {
     window.location.hash = "#/toolkit/connectors/browse";
     serve({

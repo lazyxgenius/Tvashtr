@@ -256,6 +256,23 @@ describe("CustomConnectorSheet", () => {
     expect(onDone.mock.calls[0][0]).toMatchObject({ name: "Acme Metrics" });
   });
 
+  it("keeps the name it was checked with when the new one is refused", async () => {
+    serve({
+      "PATCH /api/connectors/c1": refuse(422, "invalid_name", "A name is 1 to 60 characters."),
+    });
+    const { onDone } = show();
+    fill();
+    click("Check the server");
+    await screen.findByText(/You’ll sign in at/);
+    type("Name", "\u202e");
+    click("Continue to auth.acme.dev");
+    await waitFor(() => expect(popup?.location.href).toBe(AUTHORIZE));
+    row = { ...PENDING, status: "connected" };
+    await poll();
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+    expect(onDone.mock.calls[0][0]).toMatchObject({ name: "acme-metrics", status: "connected" });
+  });
+
   it("doesn’t continue without a name", async () => {
     serve();
     show();
@@ -285,6 +302,19 @@ describe("CustomConnectorSheet", () => {
     expect(field).toBeInTheDocument();
     expect(document.activeElement).toBe(field);
     expect(screen.getByRole("button", { name: "Check the server" })).toBeEnabled();
+  });
+
+  it("says to try again when too many connector requests are going, and checks on the next try", async () => {
+    const message = "Too many connector requests at once. Try again in a moment.";
+    let busy = true;
+    serve({ "POST /api/connectors": () => (busy ? refuse(429, "busy", message) : PENDING) });
+    show();
+    fill();
+    click("Check the server");
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    busy = false;
+    click("Check the server");
+    expect(await screen.findByText(/You’ll sign in at/)).toBeInTheDocument();
   });
 
   it("checks again after the address is edited", async () => {

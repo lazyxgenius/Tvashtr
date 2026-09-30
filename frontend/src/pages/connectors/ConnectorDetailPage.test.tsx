@@ -287,6 +287,22 @@ describe("ConnectorDetailPage", () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    [429, "busy", "Too many connector requests at once. Try again in a moment."],
+    [409, "not_connected", "Finish connecting Supabase first."],
+  ])("says why a check was turned away (%i %s)", async (status, code, message) => {
+    serve(detail({ tools: null }), {
+      "POST /api/connectors/c1/check": new Response(JSON.stringify({ detail: { code, message } }), {
+        status,
+      }),
+    });
+    await open();
+    click("Check again");
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    // The button is back: the check can be asked for again.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Check again" })).toBeEnabled());
+  });
+
   it("shows an expired sign-in and signs in again in the window the click opened", async () => {
     const calls = serve(detail({ status: "needs_signin", last_error: "Its sign-in expired." }), {
       "POST /api/connectors/c1/oauth/start": {
