@@ -104,11 +104,16 @@ def _scopes(document: dict) -> str | None:
     return None
 
 
+DISCOVERY_SECONDS = 20.0  # for all of one discovery's requests together
+_now = time.monotonic  # the clock discovery's deadline is read from, as a name tests replace
+
+
 def discover(url: str, entry: dict | None = None) -> Discovery | None:
     """Run MCP authorization discovery on ``url``. ``None`` when the server offers no sign-in.
     ``entry`` is the catalog entry (a Featured one may pin ``oauth_hosts``). Raises
     :class:`CannotRegister` when a sign-in is there but fails a check, :class:`Unreachable` when
-    the server doesn't answer or ``url`` isn't an address Tvashtr opens."""
+    the server doesn't answer (or not within ``DISCOVERY_SECONDS``, all requests together) or
+    ``url`` isn't an address Tvashtr opens."""
     try:
         return _discover(url, _pins(entry, url))
     except (ValueError, TypeError, AttributeError) as exc:
@@ -123,14 +128,20 @@ def _discover(url: str, pins: dict) -> Discovery | None:
     except connector_net.UnsafeUrl as exc:
         raise Unreachable(str(exc)) from exc
     answered = False
+    # One deadline for every request below. Each has its own ten seconds, and there can be seven
+    # of them one after the other.
+    deadline = _now() + DISCOVERY_SECONDS
 
     with connector_net.client(headers={"Accept": "application/json, text/event-stream"}) as http:
 
         def get(address: str) -> httpx.Response | None:
             """``None`` for an address Tvashtr won't open and for one that doesn't answer."""
             nonlocal answered
+            left = deadline - _now()
+            if left <= 0:
+                raise Unreachable(f"{urlsplit(url).hostname} took too long to answer")
             try:
-                response = http.get(connector_net.check_url(address))
+                response = http.get(connector_net.check_url(address), timeout=min(10.0, left))
             except (connector_net.UnsafeUrl, httpx.HTTPError):
                 return None
             answered = answered or response.status_code < 500

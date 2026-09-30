@@ -325,6 +325,30 @@ def test_a_server_that_doesnt_answer_is_unreachable(monkeypatch):
     assert discover(MCP).issuer == BASE
 
 
+def test_discovery_has_one_deadline_for_all_its_requests(monkeypatch):
+    """Found in review: up to seven requests one after the other, each with its own ten seconds,
+    so one ``oauth/start`` could hold a worker for over a minute."""
+    fake = FakeConnectorServer(BASE, path_issuer=True)
+    clock = [1000.0]
+    monkeypatch.setattr(connector_oauth, "_now", lambda: clock[0])
+    allowed: list[float] = []
+
+    def slow(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/mcp":
+            return fake.handle(request)
+        allowed.append(request.extensions["timeout"]["read"])
+        clock[0] += 8  # every metadata address takes eight seconds to answer
+        if "oauth-protected-resource" in request.url.path:
+            return fake.handle(request)
+        return httpx.Response(404)  # a path-style issuer has three addresses to try
+
+    wire(monkeypatch, slow)
+    with pytest.raises(Unreachable):
+        discover(MCP)
+    # Twenty seconds in all: each request is given what is left, and none is sent once it is up.
+    assert allowed == [10, 10, 4]
+
+
 def test_metadata_that_isnt_a_json_object_is_skipped(monkeypatch):
     fake = FakeConnectorServer(BASE)
 

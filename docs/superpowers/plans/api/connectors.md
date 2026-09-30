@@ -336,7 +336,9 @@ frontend origin (on Desktop that is `127.0.0.1`).
    What discovery answers: a sign-in, or "no sign-in" when neither document was found, or
    `cannot_register` when resource metadata names a sign-in server whose metadata can't be read,
    or `unreachable` when nothing answered at all (or the MCP address itself isn't one Tvashtr
-   opens).
+   opens). Steps 1 and 2 share one deadline of 20 seconds: each request is given ten seconds or
+   what is left of the twenty, whichever is less, and once they are up discovery is
+   `unreachable` (there can be seven requests, one after the other).
 3. Checks: the metadata's `issuer` equals the issuer the address was built from (compared as raw
    strings, never through a URL type; **one trailing slash is not a difference**, because Google's
    resource metadata names `https://accounts.google.com/` and its server metadata says
