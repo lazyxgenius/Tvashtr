@@ -57,12 +57,18 @@ provider), `connector_proxy.py` + `tvashtr/mcp/connectors.py` (the run-time prox
 
 Encrypted JSON (never returned by any endpoint, never logged):
 - `secret_encrypted`, `oauth`: `{"issuer", "client": {"client_id", "client_secret"?, "auth_method",
-  "kind": "preregistered"|"cimd"|"dcr", "secret_expires_at"?}, "token_endpoint",
-  "revocation_endpoint"?, "resource", "scope"?, "access_token", "refresh_token"?, "expires_at"?}`.
+  "kind": "preregistered"|"cimd"|"dcr", "secret_expires_at"?}, "authorization_endpoint",
+  "token_endpoint", "revocation_endpoint"?, "resource", "scope"?, "access_token",
+  "refresh_token"?, "expires_at"?}`.
 - `secret_encrypted`, `api_key`: `{"headers": {"Authorization": "Bearer …"}}` (final header values).
 - `pending_encrypted`: `{"code_verifier", "issuer", "iss_supported", "authorization_endpoint",
   "token_endpoint", "revocation_endpoint"?, "resource", "scope"?, "client": {…}, "redirect_uri",
   "started_at"}`.
+- `POST /api/connectors` already writes what discovery found into `pending_encrypted` (`issuer`,
+  `iss_supported`, the endpoints, `resource`, `scope`; no `code_verifier`, no `client`, no
+  `started_at`, and `state_hash` stays null), so the sign-in host is known before `oauth/start`.
+  `oauth/start` repeats discovery and replaces it.
+- `started_at`, `expires_at` and `secret_expires_at` are Unix seconds (numbers).
 
 Why one table is enough:
 - **Pending sign-in** lives on the row (`pending_encrypted` + `state_hash`). A signed cookie can't
@@ -134,10 +140,13 @@ Why one table is enough:
 - `status`: `connected` (UI "Ready"), `needs_signin` (UI "Needs attention"; `last_error` says why),
   `pending` (created, first sign-in not finished; only `GET /api/connectors/{id}` and the OAuth
   routes ever return it).
-- `signin_pending`: a sign-in was started and hasn't finished or timed out (10 minutes). The
+- `signin_pending`: a sign-in was started and hasn't finished or timed out (10 minutes), that is
+  `state_hash` is set and `pending_encrypted.started_at` is under 10 minutes old. The
   frontend polls `GET /api/connectors/{id}` until it turns `false`, then reads `status` and
   `last_error`.
-- `signin_host`: where the browser is sent to sign in (`null` for `api_key`/`none`).
+- `signin_host`: where the browser is sent to sign in (`null` for `api_key`/`none`): the host of
+  `authorization_endpoint` in the sign-in in flight (`pending_encrypted`), else in the stored
+  sign-in, else the issuer's host.
   `signin_host_differs` is `true` when it is not on the same site as `host` (`connector_net.site`,
   see Outbound address rules); the UI then shows the sign-in host prominently before continuing.
 - `tools`: `null` until the first successful tool listing. `write` = Tvashtr counts the tool as a
@@ -449,7 +458,8 @@ provider). No other code builds an HTTP client for connector traffic.
   `co`, `com`, `org`, `net`, `ac`, `gov` or `edu` (`acme.co.uk`); the whole host under a
   shared-hosting suffix (`vercel.app`, `netlify.app`, `pages.dev`, `workers.dev`, `fly.dev`,
   `github.io`, `herokuapp.com`, `onrender.com`, `web.app`, `run.app`, `azurewebsites.net`,
-  `amazonaws.com`, `cloudfront.net`).
+  `amazonaws.com`, `cloudfront.net`); the whole host for an IP address.
+- The two clients take no proxy or credentials from the environment (`trust_env` off).
 
 ## Agents (grants)
 
@@ -528,7 +538,9 @@ does not expire with the provider's token.
 
 ### The proxy: `POST {public base}/mcp/connectors`
 A streamable-HTTP MCP server inside the backend (stateless, JSON replies), mounted next to
-`/mcp/domains`. The agent's sandbox talks only to it.
+`/mcp/domains`. The agent's sandbox talks only to it. The MCP SDK's localhost-only `Host` check is
+off for this mount (agents call it by the public or docker host; the run token authorizes every
+request).
 - **`tools/list`**: the provider's tools that are reads for this token's effective access (all of
   them when it is `write`). Descriptions are capped at 2,000 characters; `outputSchema` is dropped.
   The provider gets 10 s to answer. A bad token, an unreachable provider or a provider that is too

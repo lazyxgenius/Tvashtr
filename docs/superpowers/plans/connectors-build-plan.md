@@ -87,11 +87,13 @@ behaviour of another stream's function patches it (`monkeypatch.setattr`).
 | `connector_catalog.is_write(entry, tool, access) -> bool` | final | — | `connectors.serialize`, B3.3, B3.5 |
 | `connector_net.check_url`, `client()`, `async_client()`, `site(host)` | final | — | all backend streams |
 | `connector_upstream.list_tools`, `call_tool`, `list_tools_sync`, `UpstreamUnauthorized`, `UpstreamRefused`, `UpstreamUnreachable` | final | — | B1.4, B1.5, B2.4, B3.3 |
-| `connector_oauth.CannotRegister`, `SignInRefused`, `Unreachable`, `Discovery` | final | — | B1.4, B1.5, B3.2, B3.3 |
+| `connector_oauth.CannotRegister`, `SignInRefused`, `Unreachable`, `Discovery` (fields: `issuer`, `authorization_endpoint`, `token_endpoint`, `resource`, `registration_endpoint`, `revocation_endpoint`, `scope`, `iss_supported`, `cimd_supported`, `token_auth_methods`; property `signin_host`) | final | — | B1.4, B1.5, B3.2, B3.3 |
 | `connector_oauth.discover(url, entry=None) -> Discovery \| None` | returns `None` | B2.1 | B1.4 |
-| `connector_oauth.ensure_access_token(connection_id, *, rejected=None) -> str` | returns the stored token, never refreshes | B2.5 | `connectors.upstream_headers` (B1.5 check and scope-options, B2.4, B3.3), B3.2 |
+| `connector_oauth.ensure_access_token(connection_id, *, rejected=None) -> str` | returns the stored token, never refreshes (`SignInRefused` when the row or the token is gone) | B2.5 | `connectors.upstream_headers` (B1.5 check and scope-options, B2.4, B3.3), B3.2 |
 | `connector_oauth.revoke(connection_id) -> bool` | returns `False` | B2.5 | B1.5 DELETE |
-| `connectors.get_owned`, `read_secret`, `write_secret`, `serialize`, `upstream_headers(row, *, rejected=None) -> dict` | final | — | B1, B2, B3 |
+| `connectors.get_owned`, `read_secret(row, *, pending=False)`, `write_secret(row, value, *, pending=False)` (`pending=True` is `pending_encrypted`), `serialize(row, users=None)` (`users` = the usage rows behind `used_by`), `upstream_headers(row, *, rejected=None) -> dict` | final | — | B1, B2, B3 |
+| `connectors.stored_tools(tools) -> list[dict]` (the SDK's `Tool` list → the stored `{"name","title","read_only"}`) | final | — | B1.4, B1.5, B2.4, B3.3 |
+| `connectors.list_connections(owner_id) -> list[dict]` | lists with empty usage | B1.3 adds `used_by` and `used_by_agents` | `routes/connectors.py` |
 | `connectors.upstream_target(row, access) -> (url, transport)` | returns the row's `url` and `transport` | B1.5 | B1.5, B2.4, B3.3 |
 | `connector_proxy.recent_use(session, owner_id, connection_id) -> list` | returns `[]` | B3.5 | B1.3 |
 
@@ -101,7 +103,11 @@ merge.
 Worktrees: reuse the stale `.claude/worktrees/connectors` (it points at 389ab84) for Phase 0. Each
 backend stream uses its own database (`createdb tvashtr_conn_<stream>`), passed as a command-line
 variable: `make migrate DATABASE_URL=…`, `make test DATABASE_URL=…` (the Makefile's `include .env`
-beats an exported variable; prove the database by row counts).
+beats an exported variable; prove the database by row counts). A fresh worktree's venv has no
+test tools: run `cd backend && uv sync --extra dev` once (a bare `uv run pytest` otherwise picks up
+a system pytest and fails on `import sqlalchemy`). A targeted run is
+`cd backend && DATABASE_URL=… uv run pytest tests/<file>` (an environment variable beats `.env`
+there; proven by row counts in Phase 0).
 
 ## 3. Phase 0: Foundation
 
@@ -133,10 +139,15 @@ beats an exported variable; prove the database by row counts).
   life), applies the same address test, then sends the request to the validated IP with the `Host`
   header kept and `request.extensions["sni_hostname"]` set to the name (httpcore uses it for the
   TLS server name, so the certificate is checked against the name). The async one resolves in a
-  thread. The transport wraps an inner transport (default `httpx.HTTPTransport` /
-  `httpx.AsyncHTTPTransport`), so a test passes a `MockTransport` and reads what arrives. Under
+  thread. The transport wraps an inner transport per host (a pooled connection is never reused
+  for another name on the same IP), built by `connector_net._inner()` / `_async_inner()`
+  (default `httpx.HTTPTransport` / `httpx.AsyncHTTPTransport`): a test replaces those two with a
+  `MockTransport` and reads what arrives. The pinning transport itself refuses a non-`https`
+  request and a non-public address, so a caller that forgot `check_url` is still safe. Under
   `connectors_allow_local` the clients use the plain transport, so `localhost` keeps working.
-- `site(host) -> str`: the contract's "same site" rule.
+  Both clients set `trust_env=False` (no proxy or `.netrc` from the environment).
+- `site(host) -> str`: the contract's "same site" rule. An IP address is its own site (the whole
+  host), so two addresses that share their last two numbers never match.
 - `client` and `async_client` are the seams tests replace (`monkeypatch.setattr(connector_net,
   "client", …)` returning `httpx.Client(transport=httpx.MockTransport(fake.handle))`, and the same
   for `async_client`). No other module builds an httpx client for connector traffic.
@@ -165,13 +176,17 @@ beats an exported variable; prove the database by row counts).
   `no_pkce`, `mixup` (the metadata names another site's authorize endpoint). It records every
   request for assertions.
 - `app()`: a Starlette app with the same routes, an `/authorize` page with one "Allow" button, and
-  `/mcp` (mcp SDK `FastMCP`, bearer required) with tools `list_things` and `get_thing`
-  (`readOnlyHint: true`), `create_thing` (no annotation) and `list_projects`. Besides the tokens
+  `/mcp` (mcp SDK `FastMCP`, bearer required; the same server is also on `/sse` for the SSE
+  transport) with tools `list_things`, `get_thing` and `list_projects` (`readOnlyHint: true`) and
+  `create_thing` (no annotation). `handle()` answers `/mcp` with the 401 challenge (or 403 to
+  `forbidden`) and doesn't speak MCP; use the subprocess for that. Besides the tokens
   it issued, `/mcp` accepts the fixed bearer `fake-static-token` (the key path and the T.1
   probe) and answers 403 to the bearer `forbidden`.
 - `python backend/tests/fake_connector_server.py --port 9911` serves it with uvicorn.
 - `tests/conftest.py`: one session fixture `fake_connector_url` that starts it as a **subprocess**
-  on a free port. Never mount it on the shared app (`test_domain_mcp_http.py:8-10`: probing a
+  on a free port and yields its MCP address (`http://127.0.0.1:<port>/mcp`; the sign-in routes are
+  on the same origin). A test that reaches it through `connector_net` turns
+  `connectors_allow_local` on and `hosted_mode` off first (the repo `.env` sets hosted mode). Never mount it on the shared app (`test_domain_mcp_http.py:8-10`: probing a
   streamable-HTTP mount through the shared TestClient tears down the DBOS lifespan).
 - Test first: `tests/test_fake_connector_server.py`: `handle()` serves both metadata documents; the
   subprocess lists four tools with a bearer and answers 401 without.
@@ -186,7 +201,12 @@ calls `connector_net.check_url`, so a bad address fails before any connection. `
 wraps with `asyncio.run` for the sync routes.
 - Errors: `UpstreamUnauthorized` (**401 only**, the one status that means "sign in again"),
   `UpstreamRefused(status)` (any other 4xx, 403 included), `UpstreamUnreachable` (network error,
-  timeout, 5xx).
+  timeout, 5xx, and an address `check_url` refuses). The status is read from the HTTP answer
+  itself (a response hook on the client), not from how the SDK wraps it. A provider that answers
+  200 with a JSON-RPC error raises the SDK's `McpError` unchanged, and a failing tool is a result
+  with `isError`. Each call is bounded by its `timeout` as a whole (`anyio.fail_after`).
+  `list_tools` follows `nextCursor` and returns the SDK's `Tool` objects; `connectors.stored_tools`
+  turns them into the stored shape.
 - Test first: `tests/test_connector_upstream.py` against `fake_connector_url`: list and call with a
   bearer; no bearer → `UpstreamUnauthorized`; the bearer `forbidden` → `UpstreamRefused`, not
   `UpstreamUnauthorized`; a closed port → `UpstreamUnreachable`; both transports get their client
@@ -205,8 +225,10 @@ cross-stream table can be imported with its final signature.
     scope), optional `oauth_hosts` (extra endpoint hosts for the mix-up check; Google:
     `accounts.google.com`, `oauth2.googleapis.com`), `access_modes`, `revoke_hint`, and
     `featured: True`.
-  - `available(entry)`: false for `client: "google"` without both Google settings, and for
-    `hubspot`.
+  - `available(entry)`: false for `client: "google"` without both Google settings, and for an
+    entry marked `coming_soon: True` (HubSpot; B2.7 marks any entry that fails the probe). Each
+    entry also carries `website`, `transport`, `auth: "oauth"` and `key_fields: []`, and
+    `CATEGORIES` lists the five categories in order.
   - `resolve(key) -> dict | None`: Featured keys here; B1.1 adds registry and `custom:` keys.
   - `is_write(entry, tool, access) -> bool`: the contract's "Read or write" rule. `tool` is a
     stored `{"name", "title", "read_only"}`.
@@ -218,7 +240,10 @@ cross-stream table can be imported with its final signature.
     follows the annotation everywhere.
 - `control_plane/connectors.py`: `ConnectorError(status_code, detail)`,
   `get_owned(session, owner_id, connection_id, *, for_update=False)` using `node_library._as_uuid`
-  (`for_update` is the contract's one row lock), `read_secret`, `write_secret`, `serialize`,
+  (`for_update` is the contract's one row lock), `read_secret`, `write_secret` (both take
+  `pending=True` for the sign-in in flight), `stored_tools`, `serialize(row, users=None)`
+  (`signin_host` and `signin_pending` are read from the two encrypted blobs, see the contract),
+  `list_connections(owner_id)`,
   `upstream_headers(row, *, rejected=None) -> dict` (final: the key's stored headers, or
   `Authorization: Bearer` + `connector_oauth.ensure_access_token`, or `{}`), and
   `upstream_target(row, access) -> (url, transport)` (stub: the row's own `url` and `transport`;
@@ -231,7 +256,10 @@ cross-stream table can be imported with its final signature.
   returning `[]`.
 - `routes/connectors.py` (`router`), `routes/connectors_oauth.py` (`router`, `public_router`),
   `tvashtr/mcp/connectors.py` (`get_connectors_mcp()`: mcp SDK `FastMCP("tvashtr-connectors",
-  stateless_http=True, json_response=True)`, no tools yet).
+  stateless_http=True, json_response=True, streamable_http_path="/")`, no tools yet). It is built
+  with `TransportSecuritySettings(enable_dns_rebinding_protection=False)`: FastMCP's default for
+  a localhost-bound server answers **421** to any `Host` that isn't localhost, and agents reach
+  the proxy by the public host or the docker host. The run token is what guards it.
 - `main.py`: import both route modules (:43-53); add both `router`s to the authenticated tuple
   (:130-141); include `connectors_oauth.public_router` bare next to the other public routers
   (:122-124); build the proxy app like Domains (:59-61), enter its lifespan inside `_lifespan`
@@ -245,7 +273,14 @@ cross-stream table can be imported with its final signature.
 `CatalogEntry`, `Connection`, `ConnectorTool`, `ConnectorAgentsByTeam`, `RoundConnectors` (with
 `skipped`), and one
 function per contract route. Create `pages/connectors/connectorsTestUtils.ts` with `entry()` and
-`connection()` fixtures.
+`connection()` fixtures. Also exported for the streams: `connectorRefusal(e)` (the `{code,
+message, connection_id, fields}` of a refusal), `parseRoundConnectors(raw)` (F2 calls it from
+`lib/api/nodes.ts` and `lib/api.ts`), `parseConnection` and `parseCatalogEntry`. Two rules live
+in the client so no page has to remember them: `startSignIn` throws on an `authorize_url` that
+isn't `http(s)` (F1.4 still checks before it opens the window), and the app's own 502
+(`unreachable`, `refused`) is not reported to the header as "can't reach the backend"
+(`apiRequest` marks every 502 that way; the client calls `reportFetchOk()` when the 502 carries a
+`code`). A `website` or `result_url` that isn't `https://` is read as `null`.
 - Test first: `lib/api/connectors.test.ts` with `mockApi` (`pages/tools/toolsTestUtils.tsx:26-58`):
   each call hits the right method and path and a malformed answer throws.
 
@@ -299,7 +334,9 @@ holds `FEATURED`, `available`, `resolve` and `is_write` from Phase 0 (0.6). B1 a
 **B1.4 Connect.** `POST /api/connectors`: the key path (header building from the registry
 template, check through `connector_upstream.list_tools_sync`), the no-sign-in path, the custom
 path, and the hand-off to `connector_oauth.discover`. Slug from the name, de-duplicated per owner
-(`-2`, `-3`).
+(`-2`, `-3`). When discovery finds a sign-in, its fields are written to `pending_encrypted`
+(`connectors.write_secret(row, {…}, pending=True)`, no `started_at`, `state_hash` left null):
+that is where `serialize` reads `signin_host` from before `oauth/start` has run.
 - Tests first: key accepted → `connected` with tools; key rejected → 422 `key_rejected`, no row;
   `key_required`; `already_connected` with the id; `coming_soon`; `invalid_url` (private address);
   custom address without sign-in → `no_signin`; discovery found (patched `discover`) → `pending`
@@ -387,7 +424,9 @@ when the issuer matches. The pinned client, the pinned `scope` and `oauth_hosts`
   RETURNING id`) at the start of Complete and when a sign-in is cleared (callback steps 3 and 4).
   The callback GET that shows the confirm page does not use it up.
 - The write after the exchange takes the row lock (`get_owned(…, for_update=True)`) before it
-  reads or writes the stored sign-in.
+  reads or writes the stored sign-in. The stored sign-in keeps `authorization_endpoint` (the
+  contract's `secret_encrypted` shape), so `signin_host` still reads right once
+  `pending_encrypted` is cleared.
 - The confirm page shows the owner's full email. The "another account" page tells the user to log
   out of Tvashtr in that browser and start again.
 - Tools after sign-in: `connector_upstream.list_tools_sync` on
@@ -756,6 +795,21 @@ DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`),
 - **The mix-up rule can refuse an honest server** whose sign-in endpoints are on another domain
   than its issuer. A Featured entry gets `oauth_hosts`; B2.7 prints every endpoint host so the
   pins are known before release. A registry or custom server gets `cannot_register`.
+
+- **The Domains proxy answers 421 to any non-local `Host`** (found in Phase 0). `/mcp/domains`
+  is built with FastMCP's defaults, which turn on the SDK's localhost-only `Host` check, so an
+  agent that calls it as `tvashtr.fly.dev` or `host.docker.internal:8000` gets `421 Invalid Host
+  header`. It predates this work and is not fixed here; `/mcp/connectors` turns the check off
+  (0.6). Follow-up: the same one-line setting for Domains, with a test.
+- **`make lint` is not clean on the base commit** (389ab84): over `backend` and `scripts`,
+  `ruff check` reports 37 errors and `ruff format --check` 21 files (Domains tests, the
+  subscription pre-flight tests, `scripts/design-parity`), none of them connector files. Every
+  file this work touches passes both.
+  §10 step 1 needs that cleaned up first, or a lint scoped to the files this work touches.
+- **`npm run test` can exit 1 with every test passing**: `panel/docs/DocumentViewer.test.tsx`
+  leaves a tiptap focus timer that calls `Range.getClientRects`, which jsdom doesn't have, and
+  vitest counts the uncaught error. It predates this work (see the Phase 0 report for what was
+  done about it).
 
 ## 12. Needs an operator decision
 
