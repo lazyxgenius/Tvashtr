@@ -812,6 +812,73 @@ def test_no_text_from_outside_is_rendered_raw(monkeypatch, listed, unauth_client
     assert load(cid).last_error == f"You didn’t allow access on {hostile}."  # text, escaped on use
 
 
+# ---- the whole path over real HTTP ----
+
+
+def test_a_whole_sign_in_refresh_and_revoke_against_the_real_fake_server(
+    fake_connector_url, monkeypatch
+):
+    """Nothing is patched but the settings: discovery, registration, the code exchange, the tool
+    listing, a refresh and a revoke all go through ``connector_net`` to the fake's own process,
+    the way the e2e run and local development do."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "connectors_allow_local", True)
+    monkeypatch.setattr(settings, "hosted_mode", False)
+    monkeypatch.setattr(settings, "public_base_url", "http://localhost:8000")
+    origin = fake_connector_url.removesuffix("/mcp")
+    c, owner = fresh_account()
+    with session_scope() as session:
+        row = ConnectorConnection(
+            owner_id=owner,
+            connector_key=f"custom:{urlsplit(origin).netloc}/mcp",
+            name="Fake",
+            slug="fake",
+            url=fake_connector_url,
+            auth_kind="oauth",
+            status="pending",
+        )
+        session.add(row)
+        session.flush()
+        cid = row.id
+
+    started = _start(c, cid)
+    assert started.status_code == 200, started.text
+    authorize_url = started.json()["authorize_url"]
+    assert authorize_url.startswith(f"{origin}/authorize?")
+    assert _query(authorize_url)["redirect_uri"] == (
+        "http://localhost:8000/api/connectors/oauth/callback"
+    )
+    # The provider's page, then its Allow button.
+    assert "Allow" in httpx.get(authorize_url).text
+    allowed = httpx.post(authorize_url)
+    assert allowed.status_code == 302, allowed.text
+    back = dict(parse_qsl(urlsplit(allowed.headers["location"]).query))
+
+    assert CONNECTED in _page(c.get(CALLBACK_PATH, params=back))
+    row = load(cid)
+    assert row.status == "connected"
+    assert [(tool["name"], tool["read_only"]) for tool in row.tools] == [
+        ("list_things", True),
+        ("get_thing", True),
+        ("create_thing", False),
+        ("list_projects", True),
+    ]
+
+    # A provider that answered 401 to the token: refresh, and the new one works there.
+    first = connectors.read_secret(row)["access_token"]
+    second = connector_oauth.ensure_access_token(cid, rejected=first)
+    assert second != first
+    bearer = {"Authorization": f"Bearer {second}"}
+    tools = connector_upstream.list_tools_sync(fake_connector_url, "streamable-http", bearer)
+    assert len(tools) == 4
+
+    # Disconnecting revokes the refresh token at the provider: it can't be used again.
+    assert connector_oauth.revoke(cid) is True
+    with pytest.raises(connector_oauth.SignInRefused):
+        connector_oauth.ensure_access_token(cid, rejected=second)
+    assert load(cid).status == "needs_signin"
+
+
 # ---- B2.6: the client metadata document ----
 
 
