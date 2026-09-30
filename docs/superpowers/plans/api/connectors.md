@@ -1,7 +1,9 @@
 # CONNECTORS API contract (Toolkit › Connectors)
 
-Source of truth for the Connectors backend and frontend streams. Decisions and operator answers:
-`docs/superpowers/plans/connectors-decisions.md` (§3, §6). Build order:
+Source of truth for the Connectors backend and frontend. It describes `feat/connectors` with the
+six streams merged; from the merge on it has one owner, and a change to the code changes it in the
+same commit series. Decisions and operator answers:
+`docs/superpowers/plans/connectors-decisions.md` (§3, §6). Build order and what each stream built:
 `docs/superpowers/plans/connectors-build-plan.md`.
 
 All `/api/connectors…` routes need a session (401 otherwise) and are owner-scoped: another
@@ -39,8 +41,8 @@ provider), `connector_proxy.py` + `tvashtr/mcp/connectors.py` (the run-time prox
 | `id` | uuid PK | `default=uuid.uuid4` |
 | `owner_id` | uuid, not null | FK `users.id` (`fk_connector_connections_owner_id_users`), index `ix_connector_connections_owner_id` |
 | `connector_key` | text, not null | catalog key; unique `(owner_id, connector_key)` → `uq_connector_connections_owner_key` |
-| `name` | text, not null | display name |
-| `slug` | text, not null | MCP server name in the agent's config, so also the tool-name prefix. `^[a-z0-9][a-z0-9-]{0,39}$`; unique `(owner_id, slug)` → `uq_connector_connections_owner_slug`. Fixed at creation |
+| `name` | text, not null | display name: 1–60 characters, printable ones only (anything else is stored as a space) |
+| `slug` | text, not null | MCP server name in the agent's config, so also the tool-name prefix. `^[a-z0-9][a-z0-9-]{0,39}$`; unique `(owner_id, slug)` → `uq_connector_connections_owner_slug`. Made from the name (`-2`, `-3`, … when taken). Fixed once the connection is connected; a `pending` row, which no agent can have, takes it again from every name it is given |
 | `url` | text, not null | the provider's MCP address, without Tvashtr-added query parameters |
 | `transport` | text, not null, default `streamable-http` | check `ck_connector_connections_transport`: `streamable-http` \| `sse` |
 | `auth_kind` | text, not null | check: `oauth` \| `api_key` \| `none` |
@@ -50,25 +52,38 @@ provider), `connector_proxy.py` + `tvashtr/mcp/connectors.py` (the run-time prox
 | `secret_encrypted` | text, null | Fernet (`credentials.encrypt_secret`) of the sign-in JSON below |
 | `pending_encrypted` | text, null | Fernet of the in-flight sign-in (PKCE verifier and so on) |
 | `state_hash` | text, null | `sha256(state)` hex of the in-flight sign-in; unique `uq_connector_connections_state_hash` |
-| `tools` | JSONB, null | last tool list seen: `[{"name","title","read_only"}]` |
+| `tools` | JSONB, null | last tool list seen: `[{"name","title","read_only"}]`, the provider's first 500 tools, `name` and `title` cut at 200 characters |
 | `last_error` | text, null | user-facing reason for `needs_signin`, or why the last sign-in failed |
 | `connected_at` | timestamptz, null | last successful sign-in or key check |
 | `created_at`, `updated_at` | timestamptz | `server_default now()`, `onupdate now()` |
 
 Encrypted JSON (never returned by any endpoint, never logged):
-- `secret_encrypted`, `oauth`: `{"issuer", "client": {"client_id", "client_secret"?, "auth_method",
-  "kind": "preregistered"|"cimd"|"dcr", "secret_expires_at"?}, "authorization_endpoint",
+- `client` (the same shape in both sign-ins): `{"client_id", "auth_method", "kind":
+  "preregistered"|"cimd"|"dcr", "client_secret"?, "secret_expires_at"?, "redirect_uri"?}`.
+  `redirect_uri` is on a `dcr` client: the address it was registered for. `client_secret` is only
+  ever on a `dcr` client: a `preregistered` client's secret is read from the settings each time it
+  is sent, and a `cimd` client has none.
+- `secret_encrypted`, `oauth`: `{"issuer", "client": {…}, "authorization_endpoint",
   "token_endpoint", "revocation_endpoint"?, "resource", "scope"?, "access_token",
-  "refresh_token"?, "expires_at"?}`.
+  "refresh_token"?, "expires_at"?}`. After a refused refresh the three token fields are gone (and
+  `client` too, when it was the client the provider refused); the rest stays (see Tokens).
 - `secret_encrypted`, `api_key`: `{"headers": {"Authorization": "Bearer …"}}` (final header values).
-- `pending_encrypted`: `{"code_verifier", "issuer", "iss_supported", "authorization_endpoint",
-  "token_endpoint", "revocation_endpoint"?, "resource", "scope"?, "client": {…}, "redirect_uri",
-  "started_at"}`.
+- `pending_encrypted`, a sign-in in flight: `{"code_verifier", "issuer", "iss_supported",
+  "authorization_endpoint", "token_endpoint", "revocation_endpoint"?, "resource", "scope"?,
+  "client": {…}, "redirect_uri", "started_at"}`.
+- `pending_encrypted`, a sign-in that ended without connecting (denied, failed, another account):
+  the same without `code_verifier` and `started_at`, plus `"refused_client"?`: the `client_id`
+  of a registration the token endpoint refused. No later `oauth/start` reuses a registration
+  with that id, wherever it is stored (see Client and Tokens).
 - `POST /api/connectors` already writes what discovery found into `pending_encrypted` (`issuer`,
   `iss_supported`, the endpoints, `resource`, `scope`; no `code_verifier`, no `client`, no
   `started_at`, and `state_hash` stays null), so the sign-in host is known before `oauth/start`.
   `oauth/start` repeats discovery and replaces it.
 - `started_at`, `expires_at` and `secret_expires_at` are Unix seconds (numbers).
+- **A column that can't be decrypted** (`TVASHTR_SECRET_KEY` was rotated, or the value is
+  corrupt) reads as empty, everywhere. The row is still listed (with no sign-in host) and can be
+  renamed, signed in again, given a new key or disconnected; using it answers `needs_signin`
+  (check, Tokens, Run time). Nothing answers 500 for it.
 
 Why one table is enough:
 - **Pending sign-in** lives on the row (`pending_encrypted` + `state_hash`). A signed cookie can't
@@ -101,9 +116,14 @@ Why one table is enough:
 - `key`: a Featured id (`supabase`), a registry server name (`com.apify/apify-mcp-server`), or
   `custom:<host><path>` for a custom address. Keys travel in bodies and query strings, never in a
   path.
+- `name`: a display name. A registry entry's is its `title`, else its server name without the MCP
+  boilerplate (`com.apify/apify-mcp-server` → "Apify"). One that is a Featured connector's name
+  is shown with its publisher (`Supabase (waystation.ai)`): only the Featured card is called
+  "Supabase". `publisher` of a registry entry is its verified namespace read as a domain
+  (`apify.com`, `github.com/getsentry`).
 - `category`: `databases` | `docs` | `analytics` | `crm` | `work` for Featured; `null` for registry.
 - `reviewed`: `true` only for Featured. The UI labels the rest "From the MCP Registry · not reviewed
-  by Tvashtr".
+  by Tvashtr" ("Custom · not reviewed by Tvashtr" for a custom address).
 - `auth`: `oauth` | `api_key` | `none` | `unknown`. Registry entries are `api_key` when the registry
   declares a secret or required header, else `unknown` (decided by discovery when you connect).
 - `key_fields` (`api_key` only): `[{"id": "Authorization", "label": "API key", "hint": "Apify API
@@ -142,6 +162,12 @@ Why one table is enough:
 - `status`: `connected` (UI "Ready"), `needs_signin` (UI "Needs attention"; `last_error` says why),
   `pending` (created, first sign-in not finished; only `GET /api/connectors/{id}` and the OAuth
   routes ever return it).
+- `last_error` on a `needs_signin` row, by `auth_kind`: "Its sign-in expired." (`oauth`; the UI
+  offers "Sign in again"), "Its key stopped working." (`api_key`; "Replace key"), "It now asks
+  for a sign-in. Disconnect it and connect it again." (`none`: a server that took no sign-in when
+  it was connected now answers 401. There is no sign-in to renew and `oauth/start` answers
+  `not_oauth`, so the UI shows these words and offers Disconnect, never a sign-in). On any row it
+  can also say how the last sign-in ended (see the callback).
 - `signin_pending`: a sign-in was started and hasn't finished or timed out (10 minutes), that is
   `state_hash` is set and `pending_encrypted.started_at` is under 10 minutes old. The
   frontend polls `GET /api/connectors/{id}` until it turns `false`, then reads `status` and
@@ -151,8 +177,8 @@ Why one table is enough:
   sign-in, else the issuer's host.
   `signin_host_differs` is `true` when it is not on the same site as `host` (`connector_net.site`,
   see Outbound address rules); the UI then shows the sign-in host prominently before continuing.
-- `tools`: `null` until the first successful tool listing. `write` = Tvashtr counts the tool as a
-  write (below). `on` = agents can call it at this connection's `access`.
+- `tools`: `null` until the first successful tool listing; at most 500. `write` = Tvashtr counts
+  the tool as a write (below). `on` = agents can call it at this connection's `access`.
 - `used_by`: counted over the owner's **library** teams only, `agent`/`completion` nodes, like
   tools.
 - `used_by_agents` (usage rows): always on `GET /api/connectors/{id}`. On the rows of
@@ -170,8 +196,9 @@ Why one table is enough:
   annotation is a write. That includes `read_only_by: "scopes"` (Google): the read-only scopes
   stop a write at Google, and Tvashtr still offers an agent only the tools Google annotates as
   reads, so what the connection's page shows as "Off · write" is never offered.
-- The provider's read-only parameter goes on the address whenever the entry has one and the access
-  is `read`, whatever `read_only_by` says. **Neon gets both the flag and the annotation filter**:
+- The provider's read-only parameter goes on the address whenever the entry has one, unless the
+  effective access is exactly `write` (any other value fails shut), whatever `read_only_by` says.
+  **Neon gets both the flag and the annotation filter**:
   under `readonly=true` Neon hides its write tools but `run_sql` can still write (decisions §1),
   so in read mode an agent is offered only the Neon tools annotated read-only.
 
@@ -179,7 +206,7 @@ Why one table is enough:
 
 ### `GET /api/connectors/catalog?q=&category=&offset=&limit=`
 ```json
-{"items": [entry…], "total": 15036, "next_offset": 48,
+{"items": [entry…], "total": 15051, "next_offset": 48,
  "categories": ["databases", "docs", "analytics", "crm", "work"]}
 ```
 - Order: Featured first (catalog order), then registry entries by name. No network call: Featured
@@ -188,6 +215,17 @@ Why one table is enough:
   `categories` (Featured only) or absent for everything.
 - `limit` default 48, max 100. `offset` default 0. `next_offset` is `null` on the last page.
 - A registry entry whose host is a Featured host is left out (the Featured card wins).
+- Every Featured match comes before the first registry entry, and the whole Featured list (14)
+  fits on the default page. Browse relies on it: it reads the registry's count as `total` minus
+  the Featured cards on the page it loaded.
+- What the snapshot leaves out (`connector_catalog.slim_registry_entry`, applied by
+  `scripts/refresh_connector_registry.py`, `make connectors-registry`): a server that isn't
+  `active`; a Smithery proxy; one with no remote on a fixed `https://` address (ASCII only and no
+  trailing dot on the host, so no look-alike of another host); one that declares a header that
+  carries money on any remote (a payment, a wallet, a private key, a pay-per-call id); a name
+  that isn't `namespace/name`; and every namespace with more than 20 kept servers. The first
+  snapshot holds 15,045 servers, so `total` with no filter is 15,051 (14 Featured, 8 hidden on a
+  Featured host).
 - Errors: 422 `limit must be between 1 and 100.`
 
 Featured in v1 (availability as probed on 2026-09-30):
@@ -216,26 +254,39 @@ Featured in v1 (availability as probed on 2026-09-30):
 | `GET /api/connectors` | — | `{"connections": [connection…]}` oldest first, `pending` rows left out; `needs_signin` rows carry `used_by_agents` | — |
 | `POST /api/connectors` | below | 201, connection | below |
 | `GET /api/connectors/{id}` | — | connection + `used_by_agents`, `recent_use`, `revoke_hint` | 404 `Connector not found.` |
-| `PATCH /api/connectors/{id}` | `{"access"?, "scope"?, "name"?, "credentials"?}` | connection | 404; 409 and 422 below |
+| `PATCH /api/connectors/{id}` | `{"access"?, "scope"?, "name"?, "credentials"?}` | connection | 404; 409, 422 and 429 below |
 | `DELETE /api/connectors/{id}` | — | `{"removed_from_agents": 2, "revoked": true}` | 404 |
-| `POST /api/connectors/{id}/check` | — | connection (fresh `tools`, `status`) | 404; 502 `unreachable` or `refused` |
-| `GET /api/connectors/{id}/scope-options` | — | below | 404; 409 `no_scope`; 502 `unreachable` |
+| `POST /api/connectors/{id}/check` | — | connection (fresh `tools`, `status`) | 404; 409 `not_connected`; 429 `busy`; 502 `unreachable` or `refused` |
+| `GET /api/connectors/{id}/scope-options` | — | below | 404; 409 `no_scope` or `not_connected`; 429 `busy`; 502 `unreachable` |
 
 An unparseable, absent or foreign `{id}` is always 404 `Connector not found.` (same rule as
 `toolkit.get_owner_tool_row`).
+
+**Requests that wait on a provider are capped** (`connectors.provider_slot`). `POST
+/api/connectors`, `PATCH` credentials, `check`, `scope-options` and `oauth/start` each keep a
+worker thread for the provider's whole deadline (10 to 20 seconds). At most 4 of one account's and
+12 of everyone's wait at once, counted per process. The next one is refused at once with 429
+`{"code": "busy", "message": "Too many connector requests at once. Try again in a moment."}`:
+nothing is asked and nothing is written. A request is refused for what is wrong with it (a 404, a
+409, a 422) before it is refused for the crowd. `DELETE` is never refused: with no place free it
+skips the revoke and answers `revoked: false`. The UI shows the message and the same button tries
+again.
 
 ### `POST /api/connectors`
 Body, one of:
 - `{"key": "supabase", "access": "read"}` (a catalog entry)
 - `{"key": "com.apify/apify-mcp-server", "access": "read", "credentials": {"Authorization": "apify_api_…"}}`
-- `{"url": "https://mcp.acme.dev/mcp", "name": "Acme", "access": "read"}` (custom)
+- `{"url": "https://mcp.acme.dev/mcp", "name": "Acme", "access": "read"}` (custom; the same
+  thing spelled `{"key": "custom:mcp.acme.dev/mcp", …}` goes through the same checks)
 
-`access` defaults to `read`. What happens:
-1. The entry is resolved. A `pending` row for the same key is reused; any other existing row is a
-   409.
+`access` defaults to `read`. The connection's `name` is the entry's (a custom one's is the `name`
+given), with non-printable characters replaced by spaces and cut at 60. What happens:
+1. The entry is resolved. A `pending` row for the same key is reused, and takes the name given
+   now and the slug made from it; any other existing row is a 409. Two connects that pick the
+   same slug at the same moment don't collide: the second takes the next one.
 2. `auth: "api_key"` entries: `credentials` is required. Only ids declared in the entry's
-   `key_fields` are accepted, and a value may not contain a carriage return or a line feed (it
-   becomes a header). Each value is turned into its header (the registry's `value` template such
+   `key_fields` are accepted, and a value must be printable ASCII of at most 4,096 characters (it
+   becomes a header, so no line break can add another one). Each value is turned into its header (the registry's `value` template such
    as `Bearer {api_key}` when there is one; a bare value for an `Authorization` header with no
    template gets `Bearer ` in front). Tvashtr lists the server's tools with those headers. Success
    → `connected`, `tools` filled.
@@ -251,18 +302,22 @@ Errors:
 - 409 `{"code": "already_connected", "message": "Supabase is already connected.", "connection_id": "…"}`
 - 409 `{"code": "coming_soon", "message": "Google Drive isn’t available yet."}`
 - 422 `{"code": "invalid_url", "message": "Use an https:// address, like https://mcp.example.com/mcp."}`
-  (also: any scheme other than `https`, and an address that resolves to anything but a public
-  address; see Outbound address rules)
+  (a custom address only: any scheme other than `https`, an address over 2,000 characters, and
+  one that resolves to anything but a public address; see Outbound address rules. It is refused
+  by `connector_net.check_url` before discovery or anything else is asked. A catalog entry's own
+  address that Tvashtr won't open is `unreachable`: nobody typed it)
 - 422 `{"code": "invalid_access", "message": "Google Drive can only be connected read only."}`
 - 422 `{"code": "key_required", "message": "Apify needs a key.", "fields": [key field…]}`
 - 422 `{"code": "key_rejected", "message": "Apify didn’t accept the key."}` (the server answered
   401 or 403; nothing stored)
 - 422 `{"code": "invalid_key", "message": "That isn’t a key Apify takes. Check it and try again."}`
-  (an id that isn't one of `key_fields`, or a value with a line break; nothing stored)
+  (an id that isn't one of `key_fields`, or a value that isn't printable ASCII or is over 4,096
+  characters; nothing stored)
 - 422 `{"code": "no_signin", "message": "This server didn’t offer an OAuth sign-in. If it takes a key, add it in Tools and keep the key as a secret."}`
 - 422 `{"code": "cannot_register", "message": "Acme needs an app registered with it before Tvashtr can sign in."}`
   (sign-in found, but no pre-registered client, no client metadata document support, no dynamic
   registration; or the server doesn't advertise PKCE S256)
+- 429 `busy` (above)
 - 502 `{"code": "unreachable", "message": "We couldn’t reach mcp.acme.dev. Try again."}` (also a
   server that answers the tool listing with anything but a list, a 401 or a 403)
 
@@ -282,18 +337,27 @@ of the owner's last 30 runs.
 - `scope`: `{"value", "label"}` or `null`. 409 `{"code": "no_scope", …}` when the connector has no
   `scope_picker`. `value` must match `^[A-Za-z0-9_.-]{1,80}$`, else 422
   `{"code": "invalid_scope", "message": "That doesn’t look like a project id."}` (it becomes a query
-  parameter of the provider address). `label` is display text (≤ 120 characters).
-- `name`: 1–60 characters, else 422 `{"code": "invalid_name", …}`. The `slug` never changes, so
-  tool names stay stable.
+  parameter of the provider address). `label` is display text: non-printable characters become
+  spaces and it is cut at 120 characters.
+- `name`: 1–60 characters once non-printable characters are replaced by spaces and the ends
+  trimmed, else 422 `{"code": "invalid_name", "message": "A name is 1 to 60 characters."}`. The
+  `slug` of a connected connection never changes, so tool names stay stable. A `pending` row
+  takes the slug made from the new name: the custom connector sheet lets a connector be named
+  after its address is checked, and sends the name before it starts the sign-in.
 - Every field is checked before anything is written: a refused request changes nothing. The
   stored `tools` are not listed again here; call `check` after an access or scope change.
 - `credentials` (`api_key` only): replaces the key after the same rules and the same check as POST
-  (`invalid_key`, `key_rejected`); a rejected key stores nothing and leaves the status alone. 409
-  `{"code": "not_api_key", …}` otherwise. The write takes the row lock (see Tokens).
+  (`invalid_key`, `key_required`, `key_rejected`, 429 `busy`); a rejected key stores nothing and
+  leaves the status alone. 409 `{"code": "not_api_key", …}` otherwise. The fields are the
+  entry's `key_fields`; when the catalog no longer lists the connector, or a key header for it
+  (the snapshot was refreshed), they are the header names the connection stores, each required
+  and sent as it is given. The write takes the row lock (see Tokens).
 
 ### `DELETE /api/connectors/{id}`
-In one transaction, holding the row lock (see Tokens): removes the grant from every library-team
-agent (`removed_from_agents` = agents that had it), then deletes the row. Before that, a
+In one transaction, holding the row lock (see Tokens) and the locks of the agent nodes (taken in
+id order, as `PUT …/agents` takes them, so the two at once can't write back what the other
+removed): removes the grant from every library-team agent (`removed_from_agents` = agents that
+had it), then deletes the row. Before that, a
 best-effort RFC 7009 revoke at the provider's `revocation_endpoint` (`revoked` says whether it
 answered 2xx; a failure never blocks the delete).
 
@@ -307,8 +371,11 @@ Makes sure the sign-in still works (refreshing the token if needed) and re-lists
   connecting Supabase first."}` (the same on `scope-options`).
 - Success → `connected`, fresh `tools`, `last_error: null`.
 - The provider answers **401**, or the refresh is refused → 200 with `status: "needs_signin"` and
-  `last_error` ("Its sign-in expired.", or "Its key stopped working." for a key). An OAuth
-  connection gets one refresh and one retry on the 401 first, as in the proxy.
+  the `last_error` of its `auth_kind` (see Connection). An OAuth connection gets one refresh and
+  one retry on the 401 first, as in the proxy. A stored sign-in or key that can't be decrypted is
+  the same answer, with nothing sent. The refusal is about what the check sent: when the sign-in
+  or key was replaced while the provider was answering ("Sign in again", a new key), the row is
+  left as it is.
 - The provider answers 403 (or another 4xx). That is not an expired sign-in: status unchanged, 502
   `{"code": "refused", "message": "Supabase refused the request."}`.
 - The provider not answering (network error, timeout, 5xx) → 502 `unreachable`, status unchanged.
@@ -319,9 +386,11 @@ Makes sure the sign-in still works (refreshing the token if needed) and re-lists
  "options": [{"value": "abcd1234", "label": "trade-mcp-prod", "detail": "ap-southeast-1"}]}
 ```
 Calls the provider's own project-listing tool (`list_projects` for Supabase and Neon) on the
-unscoped address and reads `id`/`name`/`region` from its JSON answer. When that answer can't be
-read, or the provider answers the call 401, 403 or with an error: `{"manual": true, "options":
-[]}` and the UI asks for the id in a text field. Only a provider that doesn't answer is a 502.
+unscoped address and reads `id`/`name`/`region` from its JSON answer: at most 200 options,
+`label` and `detail` cut at 120 characters. When that answer can't be read (not JSON, nested too
+deep, no usable id), or the provider answers the call 401, 403 or with an error: `{"manual": true,
+"options": []}` and the UI asks for the id in a text field. Only a provider that doesn't answer is
+a 502. A `pending` row is 409 `not_connected`, as for `check`.
 
 ## OAuth (MCP authorization, spec revision 2026-07-28)
 
@@ -385,7 +454,10 @@ frontend origin (on Desktop that is `127.0.0.1`).
      callback refuses a parameter named twice, which only helps where the provider sends its
      own).
    - What is left to the user: the page that opens must belong to the connector being added.
-     The app should say so before a custom or registry sign-in (not built; F1's `ConnectSheet`).
+     The app says so before the first sign-in to a registry or custom connector, on the connect
+     sheet's first step and in the custom connector sheet: "The sign-in page that opens should
+     be `<name>`’s own. If it asks for access to a different service, close it." A Featured
+     entry doesn't get the line.
    - Operator decision: whether custom and registry connectors that sign in ship in v1 with this
      residual.
 
@@ -403,7 +475,8 @@ frontend origin (on Desktop that is `127.0.0.1`).
    `client_secret_basic` (Supabase, Vercel). A stored registration is reused when it was made
    with the same `issuer` **and for the same redirect address** (the stored `client` of a
    registration also carries `redirect_uri`) and its secret hasn't expired; it is looked for in
-   the sign-in in flight and in the stored sign-in. A refused registration (any 4xx, or an
+   the sign-in in flight and in the stored sign-in, and it is never one whose id either of them
+   names as `refused_client`. A refused registration (any 4xx, or an
    answer without a `client_id`) is `cannot_register`. From the reply, `client_secret` and
    `token_endpoint_auth_method` are kept only when they are strings and
    `client_secret_expires_at` only when it is a number.
@@ -421,8 +494,10 @@ changed. The authorize address carries
 `code_challenge` + `code_challenge_method=S256`, `resource` (the metadata's value, verbatim) and
 `scope` (the 401's `scope`, else `scopes_supported`, else left out; Featured entries may pin it, as
 Google's read-only scopes do). A Featured entry on its pinned address may also name extra
-parameters for its provider's authorize page (`authorize_params`; Google hands out a refresh
-token only with `access_type=offline`).
+parameters for its provider's authorize page (`authorize_params`). The three Google entries name
+`access_type=offline` and `prompt=consent`: Google hands out a refresh token only with the first,
+and on a later sign-in only with the second. Without them a Google connection would need a new
+sign-in about an hour after each one.
 `authorize_url` is always an `https://` address (`http://` only under
 `TVASHTR_CONNECTORS_ALLOW_LOCAL`). The web app and Desktop check that again before they open it.
 `signin_host` is the host of `authorize_url`, and the client holds the server to it: it reads the
@@ -430,8 +505,10 @@ host out of `authorize_url` the way a browser does (`new URL`), and refuses the 
 host isn't `signin_host` or when the address carries a user name or password. So the host that is
 shown is always the host the window opens.
 Errors: 404; 409 `{"code": "not_oauth", "message": "This connector doesn’t sign in."}` (the row
-isn't `oauth`, or its server no longer offers a sign-in); 422 `cannot_register`; 502
-`unreachable`. Nothing is stored on any of them.
+isn't `oauth`, or its server no longer offers a sign-in); 422 `cannot_register`; 429 `busy` (it
+holds one of the places for requests that wait on a provider, see Connections); 502
+`unreachable`. Nothing is stored on any of them. A row whose stored sign-in can't be decrypted
+starts a sign-in like one that never signed in (and registers afresh).
 
 ### `GET /api/connectors/oauth/callback?state=&code=&iss=&error=` (public)
 Always answers an HTML page (200), never JSON and never a redirect into the app. The owner comes
@@ -439,7 +516,8 @@ from the row found by `sha256(state)`, not from a cookie. Every page from this r
 confirm route is sent with `Referrer-Policy: no-referrer`, `Cache-Control: no-store` and
 `X-Frame-Options: DENY` (the address carries `code` and `state`).
 
-1. No row for `state`, or `started_at` older than 10 minutes → page "This sign-in link has expired.
+1. No row for `state`, `started_at` older than 10 minutes, or a sign-in in flight that can't be
+   decrypted → page "This sign-in link has expired.
    Go back to Tvashtr and try again." Finding the row does not use the `state` up; only steps 3
    and 4 and Complete do. A callback that names `state`, `code`, `iss` or `error` more than once
    gets the same page and nothing is read or written (a parameter is named once; a redirect
@@ -550,8 +628,9 @@ dynamic registration).
   of the refusals above (a gateway's 403 page, a 404, a 408, a 400 or 401 with no OAuth `error`,
   any other `error` code). A working refresh token is only given up when the provider says it is
   dead: a passing fault in front of the token endpoint must not make everyone sign in again.
-- A row with no stored sign-in at all (never signed in, or already cleared) raises `SignInRefused`
-  and is not touched: a `pending` row stays `pending`.
+- A row with no stored sign-in at all (never signed in, already cleared, or one that can't be
+  decrypted) raises `SignInRefused` and is not touched: a `pending` row stays `pending`. The
+  caller decides what that means: `check` and a run mark a connected row `needs_signin`.
 - `revoke(connection_id)` posts the refresh token (the access token when there is none) to the
   `revocation_endpoint` with the client's authentication. It reads the row without locking it and
   writes nothing, so a disconnect may call it before or while it holds the row lock.
@@ -577,6 +656,9 @@ provider). No other code builds an HTTP client for connector traffic.
   original host, so the certificate is still checked against the name. The name is never resolved
   a second time. That closes DNS rebinding (a host that answers a public address for the check and
   a private one for the connection).
+- `check_url` also refuses a host name the resolver can't encode (a label over 63 characters)
+  and an address the HTTP client won't build (over its length limit, a host it can't encode).
+  Every caller gets `UnsafeUrl`, never a stray `UnicodeError` or `InvalidURL` at the request.
 - No redirects followed. 10 s for a sign-in call and for listing tools, 120 s for a proxied tool
   call. Each is a deadline for the whole exchange, not httpx's per-read timeout (a server that
   sends a byte every few seconds would otherwise hold a worker for as long as it liked).
@@ -626,7 +708,9 @@ unlisted agent loses the grant.
 ```
 Errors: 404 `Connector not found.`; 404 `Agent not found.` (any id that isn't the owner's
 library-team agent; nothing is written); 409 `{"code": "not_connected", "message": "Finish
-connecting Supabase first."}` for a `pending` row.
+connecting Supabase first."}` for a `pending` row. It holds the connection's row lock and the
+agent nodes' locks while it writes, so it waits behind a token refresh or a disconnect that is
+under way and never leaves a grant for a connection that is gone.
 
 ## Toolkit summary (additive)
 
@@ -653,9 +737,10 @@ named twice is one server):
    reported alike, as `it was disconnected` with `name` = `a connector` and no `connection_id`,
    so a grant never tells one account anything about another's connection.
 2. `needs_signin` → warning, skip.
-3. `oauth`: `ensure_access_token`. Refused → the row becomes `needs_signin`, warning, skip. Not
-   reachable → warning, skip, status unchanged. Any other failure (a stored sign-in that can't
-   be read, say) is handled like not reachable: one connector must not fail the round.
+3. `oauth`: `ensure_access_token`. Refused → the row becomes `needs_signin`, warning, skip (a
+   stored sign-in that can't be decrypted is a refused one). Not reachable → warning, skip,
+   status unchanged. Any other failure is handled like not reachable: one connector must not
+   fail the round.
 4. Emit one server:
 ```json
 {"mcpServers": {"supabase": {"url": "https://tvashtr.fly.dev/mcp/connectors",
@@ -729,7 +814,10 @@ route next to the mount (`mount_connectors_mcp`), because a mount alone only mat
   error and changes nothing: no refresh, no `needs_signin`. An `api_key` connection can't be
   refreshed, but its key can have been replaced while the call was out: a 401 looks once at the
   stored key and, if it is no longer the one the call left with, retries with it. Only a 401 for
-  the key that is still stored marks the row `needs_signin`.
+  the key that is still stored marks the row `needs_signin`. A key that can't be decrypted is
+  handled like a 401 for it, with nothing sent. A connection with no sign-in (`auth_kind:
+  "none"`) that gets a 401 becomes `needs_signin` too, with its own `last_error` and reason
+  (`it now asks for a sign-in`).
 - Every `tools/call` (allowed, refused or failed) writes one `connector_call` event, also when
   calls arrive at the same moment (writers of one round take their `seq` one at a time, under a
   transaction advisory lock).
@@ -747,10 +835,11 @@ line is shown on the round it happened in, from `skipped` (see Rounds), with a "
 
 | `reason` | When |
 |---|---|
-| `its sign-in expired` | `needs_signin` at run start, a refused refresh, or a 401 that a refresh didn't fix |
-| `its key stopped working` | the same for an `api_key` connection |
+| `its sign-in expired` | `needs_signin` at run start, a refused refresh, a stored sign-in that can't be decrypted, or a 401 that a refresh didn't fix |
+| `its key stopped working` | the same for an `api_key` connection (a 401 for the stored key, or a key that can't be decrypted) |
+| `it now asks for a sign-in` | the same for a connection with no sign-in (`auth_kind: "none"`): its server answered 401 |
 | `it was disconnected` | the grant names a row that is gone (`name` = `a connector`) |
-| `we couldn’t reach it` | the token endpoint or the provider didn't answer (or the stored sign-in couldn't be read) |
+| `we couldn’t reach it` | the token endpoint or the provider didn't answer (or the token check failed in a way nobody foresaw) |
 
 **Desktop plan agents** (Claude or Grok plan): unchanged behaviour, `mcp_config = {}`. The existing
 `("tools", …)` warning's name list gains `N connector(s)`.
@@ -810,8 +899,8 @@ and to each invocation of `GET /api/runs/{id}/graph` (the run drawer):
 {"connectors": {
   "used": [{"connection_id": "7c1e…", "name": "Supabase", "slug": "supabase", "reads": 6, "writes": 0}],
   "calls": [{"connection_id": "7c1e…", "name": "Supabase", "tool": "execute_sql", "write": false,
-             "ok": true, "blocked": false, "arg": "SELECT …", "at": "2026-09-30T10:03:41+00:00",
-             "duration_ms": 312, "result_url": null}],
+             "ok": true, "blocked": false, "forwarded": true, "arg": "SELECT …",
+             "at": "2026-09-30T10:03:41+00:00", "duration_ms": 312, "result_url": null}],
   "total_calls": 7,
   "skipped": [{"connection_id": "9d2a…", "name": "Notion", "reason": "its sign-in expired"}]}}
 ```
@@ -823,6 +912,10 @@ provider took (`forwarded`): a write whose answer was lost or was an error may s
 data, so it counts, and it is in `calls` with `ok: false`. Blocked calls, calls that were never
 sent and failed reads are in `calls` but not in the counts, so a connector whose calls were all
 refused is in `used` with `0` and `0`. `recent_use` on the connection's page counts the same way.
+Each call carries `forwarded` as its event does (a round recorded before the field existed reads
+as `ok`), so the UI can tell the two kinds of call that aren't `ok` apart: a write that is
+`forwarded` reads "May have gone through", anything else "Failed" ("Not run: read only for this
+agent" when `blocked`).
 `skipped` comes
 from the round's `connector_skipped` events, one entry per connection and reason; the UI renders
 "Ran without Notion: its sign-in expired." with a "Sign in" button that opens that connection

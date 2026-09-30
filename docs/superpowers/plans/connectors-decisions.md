@@ -162,3 +162,15 @@ PlanetScale, Microsoft 365 — they can come in later, or by the custom-connecto
   - **No Tvashtr-built CleverTap server.** A tool with no remote connector is linked through Tools (local
     command) or a custom connector.
 - **D. Plan agents — recommendation accepted:** a follow-up, together with Tools.
+
+## 7. After the merge (2026-09-30): what is open
+
+The six streams are merged into `feat/connectors`. Decision 7 (the agent gets a Tvashtr run token,
+the sign-in stays on the server) and the read-only rule are built as written. What the stream
+reviews left for the operator is in the build plan §12, items 7 to 10:
+
+- whether custom and registry connectors that sign in ship in v1, given the mix-up by redirect
+  that the backend cannot close (the app warns before such a sign-in);
+- whether a registry entry with only an optional secret header shows the key form;
+- whether registry entries that mention x402 in their description stay listed;
+- two payment services' merchant keys are kept as key fields.

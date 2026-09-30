@@ -64,6 +64,13 @@ renders F1.4's `ConnectSheet`, which doesn't exist in F2's worktree until then);
 merges `feat/connectors` first, then builds F2.5. Stream T (e2e and gates) runs on the merged
 branch.
 
+**As merged (2026-09-30).** B1, B2, B3, F1, F2 and D are merged into `feat/connectors` in that
+order, each with `--no-ff`. The one conflict was `backend/tests/test_connector_stubs.py` (B2's
+and B3's deletions against B1's): every stub-test deletion in the table below applies. From the
+merge on, the contract and this plan have one owner, and the file ownership below is history.
+What the merge changed on top of each stream is in that stream's "At the merge" note (§4 to §9).
+Still to build: F2.5 and the wiring listed in §8, then Stream T (§10).
+
 | Stream | Owns (nobody else edits these) |
 |---|---|
 | 0 | `alembic/versions/0043_connector_connections.py`, `models.py`, `config.py`, `main.py`, `backend/pyproject.toml`, `backend/uv.lock`, `control_plane/connector_net.py`, `control_plane/connector_upstream.py`, `tests/fake_connector_server.py`, `tests/conftest.py` (one fixture), `frontend/src/lib/api/connectors.ts`. It also writes the first version of the B1–B3 modules listed in 0.6; once Phase 0 lands, each of those belongs to its stream |
@@ -97,6 +104,12 @@ behaviour of another stream's function patches it (`monkeypatch.setattr`).
 | `connectors.list_connections(owner_id) -> list[dict]` | lists with empty usage | B1.3 adds `used_by` and `used_by_agents` | `routes/connectors.py` |
 | `connectors.upstream_target(row, access) -> (url, transport)` | returns the row's `url` and `transport` | B1.5 | B1.5, B2.4, B3.3 |
 | `connector_proxy.recent_use(session, owner_id, connection_id) -> list` | returns `[]` | B3.5 | B1.3 |
+
+Three helpers joined the shared list after Phase 0, all in `connectors.py`:
+`provider_slot(owner_id)` (the cap on requests that wait on a provider; B1's review),
+`secret_or_none(row, *, pending=False)` (`read_secret` that reads a column it can't decrypt as
+empty; public since the merge) and `SIGN_IN_GONE` (`last_error` by `auth_kind`; the proxy uses it
+since the merge).
 
 **A stub's test goes with the stub.** Phase 0 asserts what each stub answers, so the stream that
 fills a stub turns that test red. "Never weaken an existing assertion" doesn't cover these seven:
@@ -469,6 +482,46 @@ change). `subscription` from `domain_usage._connected_subscriptions`.
 `connectors_needing_attention`. Update the two exact-equality assertions in
 `tests/test_toolkit_api.py` (:19, :62) first.
 
+**B1 after review** (each is in the contract's Catalog and Connections sections):
+- The snapshot's lines end at a line feed only (a U+2028 in a description can't break one), a
+  malformed registry item is dropped instead of raising, and a server that declares a payment,
+  wallet or private-key header on any remote is left out (13 entries left the first snapshot:
+  15,045 lines, catalog total 15,051).
+- A registry address must be ASCII with no trailing dot on the host, and a registry entry with
+  a Featured connector's name is shown as `Name (publisher)`.
+- `connectors.provider_slot(owner_id)`: connect, a new key, check and scope-options wait on a
+  provider in a worker thread, so at most 4 of one account's and 12 of everyone's do at once; the
+  next is a 429 `busy`. Disconnect is never refused (it skips the revoke).
+- A key can be replaced after the catalog stops listing its connector (the stored header names
+  stand in for `key_fields`).
+- A connection with no sign-in that gets a 401 says "It now asks for a sign-in. Disconnect it and
+  connect it again."
+- A sign-in or key that can't be decrypted no longer breaks the list; check reads it as gone.
+- check doesn't mark a sign-in that was replaced while the provider answered.
+- `PUT …/agents` and `DELETE` lock the agent nodes (in id order) and `PUT …/agents` takes the
+  connection's row lock, so neither writes back what the other removed.
+- A slug taken by a connect at the same moment gets the next one, not `already_connected`.
+- Names and scope labels keep only printable characters; `tools` is at most 500 items with names
+  and titles cut at 200; scope options are cut at 120 characters and survive a deeply nested
+  answer; the provider address is read only unless the access is exactly `write`.
+
+**B1 at the merge:**
+- The three Google entries carry `authorize_params` (`access_type=offline`, `prompt=consent`),
+  which B2.3 reads.
+- Until a connection is connected its slug follows its name: `POST` on a `pending` row takes the
+  name given now, and `PATCH name` on one takes a new slug (F1's custom sheet names a connector
+  after the check, and now sends the name before the sign-in).
+- `upstream_headers` raises `SignInRefused` for a key that can't be decrypted, so check and the
+  proxy both read it as a key that stopped working.
+- B2 asked for `check_url` before `discover` (discovery reports a refused address as
+  `unreachable`). B1.4 already did that for a custom address, spelled either way
+  (`test_invalid_url`, `test_a_custom_key_is_checked_like_a_custom_address`). A catalog entry's
+  own address that Tvashtr won't open stays `unreachable`: nobody typed it.
+- F1's two assumptions hold and are pinned: a registry entry's `name` is a display name and its
+  `key` the registry name, and every Featured entry is on the catalog's first page
+  (`test_every_featured_entry_fits_on_the_first_page`).
+- `make connectors-registry` runs the snapshot script.
+
 ## 5. Stream B2: OAuth
 
 All HTTP goes through `connector_net.client()`; metadata is read as plain dicts (pydantic URL types
@@ -513,9 +566,9 @@ when the issuer matches. The pinned client, the pinned `scope` and `oauth_hosts`
   write takes the lock, and it re-checks that the chosen client wasn't marked `refused_client`
   meanwhile. One `oauth/start` per connection runs at a time in a process (the same in-process
   turn a refresh takes; see B2.5). A Featured entry on its own
-  address may carry `authorize_params` (extra authorize parameters); the catalog has none yet,
-  and Google needs `{"access_type": "offline", "prompt": "consent"}` there to get a refresh token
-  (B1 owns the catalog).
+  address may carry `authorize_params` (extra authorize parameters). The three Google entries do
+  since the merge: `{"access_type": "offline", "prompt": "consent"}`, without which Google hands
+  out no refresh token.
 
 **B2.4 Callback, confirm, pages.** The two public routes and the small HTML pages (pattern:
 `desktop_auth.return_page()`). Page text is escaped; no provider-supplied text is rendered raw.
@@ -596,12 +649,27 @@ every available Featured entry reaches an authorize address. An entry that fails
   yes for Linear, Sentry and Google; no for Supabase, Neon, Notion, PostHog, Mixpanel, Amplitude,
   Intercom, Atlassian and HubSpot. A provider that doesn't can be the target of a **mix-up by
   redirect** from a custom or registry connector's sign-in server, which the backend cannot
-  close (contract, Discovery step 4). Open: a warning in the app before such a sign-in (F1), and
-  the operator's decision on shipping custom and registry OAuth connectors with that residual.
+  close (contract, Discovery step 4). The app warns before such a sign-in since the merge (§7).
+  Open: the operator's decision on shipping custom and registry OAuth connectors with that
+  residual (§12.7).
 - Not covered by a discovery-only run: whether each provider accepts the registration and the
   authorize request as sent (Intercom gets no `scope`, PostHog gets all 155 it lists), and the
   tool annotations (Neon's `run_sql`, Google's). Those need `--register` and one real sign-in
   per provider.
+
+**B2 at the merge:**
+- `oauth/start` holds one of B1's places for requests that wait on a provider while it runs
+  discovery and a registration (429 `busy` when there is none).
+- A sign-in, or one in flight, that can't be decrypted counts as none: `ensure_access_token`
+  raises `SignInRefused` and leaves the row to its caller, "Sign in again" starts (and registers
+  afresh) instead of answering 500, and a callback for the old sign-in is the expired page.
+- `connector_net.check_url` refuses a host name the resolver can't encode and an address httpx
+  won't build, so B1 and B3 callers get `UnsafeUrl` too (B2's own guards for those stay).
+- B1 asked for the connection's name to be escaped on the callback pages. It already was (every
+  page's message goes through `html.escape`); the connected and the failed page now have a test
+  for it as well.
+- F1 asked two things of the callback: it clears `last_error` when a sign-in connects, and the
+  "different account" page sets one. Both were already so.
 
 ## 6. Stream B3: run time
 
@@ -743,6 +811,24 @@ connector isn’t available for this run."
   in the word "requests." and the guard's pattern took it for the library. The comment was
   reworded; the guard is untouched.
 
+**B3 at the merge:**
+- The proxy tests run against the real `connectors.upstream_target` (the double is gone; they
+  passed unchanged), and one more covers a scoped connection.
+- `tests/test_connectors_whole_path.py` takes one connection through all three streams with
+  nothing patched but the settings: connect a custom address, sign in at the fake server, check,
+  grant, `build_mcp_config`, list and call through the proxy core, recent use, disconnect.
+- A key that can't be decrypted is handled like a 401 for it (`needs_signin`, `its key stopped
+  working`) instead of answering "This connector isn’t available for this run." with nothing
+  recorded; an OAuth sign-in that can't be decrypted is `its sign-in expired`, no longer
+  `we couldn’t reach it` on every round.
+- A connection with no sign-in that gets a 401 has its own reason, `it now asks for a sign-in`,
+  and B1's `last_error` for it.
+- The proxy reads each tool's read-only mark on its own (`_read_only`). It used to pair its list
+  with `connectors.stored_tools` by position, which holds only while that list's ceilings are
+  the larger ones.
+- A round's `calls[]` items carry `forwarded`, so the UI can tell a write the provider took from
+  a call that simply failed (§8).
+
 ## 7. Stream F1: pages, nav, badges
 
 Reuse the Tools page classes (`tk-head`, `tk-bar`, `tk-cat`, `tk-card`, `tk-crumbs`, `tk-dhead` in
@@ -837,7 +923,9 @@ on Browse. Calls `refreshBadges()` after every mutation.
     that names no field.
   - A custom connector is made read only (the check comes before the choice); Read & write is a
     `PATCH access` once the sign-in is through, and a failed one is said in a toast. A name
-    changed after the check is a `PATCH name` then too (the slug stays the first name's: B1).
+    changed after the check is a `PATCH name` sent before the sign-in starts, while the row is
+    still `pending` and its slug follows the name (since the merge; one that can't be saved
+    then is sent again after the sign-in).
     The custom sheet is one `<form>` in every state; its fields are disabled during the check.
   - The DS `Sheet` has no icon slot, so the sheet header has the title and subtitle without the
     letter tile. The account name ("Signed in to Supabase as organization lazyx") is cut (§1.7):
@@ -865,6 +953,21 @@ naming the agents from `used_by_agents` and showing `revoke_hint`. Tests first f
 **F1.7 Mounting.** `pages/Workspace.tsx` (:17-31 imports, :184-222 switch,
 `key={route.connectorId}`). Accept F1: every `Cn-Screens` web screen and the `CnF-Connect` and
 `CnF-Changes` flows (minus the cut ones) can be walked against a local backend and the fake server.
+
+**F1 at the merge:**
+- Before the first sign-in to a registry or custom connector both sheets say "The sign-in page
+  that opens should be `<name>`’s own. If it asks for access to a different service, close it."
+  (`OwnSignInNote`; B2's review, the mix-up by redirect).
+- A `needs_signin` connection with no sign-in (`auth_kind: "none"`) shows its `last_error` and
+  offers Disconnect, in the banner, the table row and on its page. "Sign in" there would only
+  get `not_oauth`.
+- 429 `busy`, 409 `not_connected` and 422 `invalid_name` needed no code: every call site already
+  shows the server's words and leaves its button to try again. Tests pin that for connect,
+  `oauth/start`, the custom check, check on the page and a refused name.
+- The command palette's "Open Toolkit" lands on Connectors.
+- `agentsByTeam` is exported from `pages/tools/toolFormat.ts` and the copy is gone.
+- Desktop: `connectSignIn.ts` opens `window.open(address, "tv-external", "noopener")`, the frame
+  name `navigationGuard.cjs` sends to the system browser. Tests on both sides pin the name.
 
 ## 8. Stream F2: drawer, runs, warnings
 
@@ -922,6 +1025,43 @@ contract, so the link reads "Open result".
 **F2.4 Run warning.** `components/RunWarnings.tsx` (:4): a `connector` kind renders "Ran without
 `<name>`: `<reason>`." with "Open Connectors". Test first.
 
+**F2 after review** (F2.1 to F2.4):
+- The checklist says "Loading your connectors…" while it loads, its "Try again" works inside the
+  run drawer's disabled fieldset, and a grant whose connection is gone shows "1 connector this
+  agent had is no longer connected." with Remove. The plan note is amber, as the canvas draws it.
+- The Skills & tools count reads grants the way the checklist does (`connectorsOf`).
+- The calls list has one toggle that keeps focus ("Show all N calls" / "Show fewer calls"; "Show
+  the first 50 calls" when the server capped the list).
+- Props that let the drawer take part, all optional: `onOpen` on the checklist and on
+  `ConnectorsSkipped`, `onOpenConnector` on `RunsTab` and `RoundsList`, `saved` on the checklist
+  and `savedConfig` on `ToolsPanel` (the "starts on read only" note goes once the saved grants
+  include the tick).
+
+**F2 at the merge:**
+- `ToolsPanel` passes the checklist `onOpen` from its `onOpenToolkit`, with F1.1's routes. The
+  Team drawer's `onOpenToolkit` is `guardLeave(() => navigate(route))` (`App.tsx`), so the
+  checklist's links now ask "Save your changes?" first.
+- The checklist's link on a connection that needs attention names the fix: "Sign in again",
+  "Replace key" or "Connect it again" (no sign-in).
+- A round's tiles use F1's `tileLetters` (by slug): "Sb" for Supabase in the Runs tab too.
+- A call that isn't `ok` reads "May have gone through" when it is a write the provider took
+  (`forwarded`), else "Failed".
+
+**Left for F2.5** (none of it is built; the props above are in place):
+- `panel/skills/SkillsToolsTab.tsx`: props `agentName`, `plan`, `savedToolConfig`, forwarded to
+  `ToolsPanel` (`savedConfig`). `panel/NodeEditor.tsx`, the `skillsTab` object: `agentName:
+  name`, `plan: desktopSubscriptionName(draft.model, cover, isDesktopApp())`, `savedToolConfig:
+  api.baseline.toolConfig`. Until then a plan agent's checkboxes are not disabled and the
+  read-only note outlives a save. Test: a plan agent's rows are disabled and the amber note shows.
+- `panel/NodeEditor.tsx`: `<RunsTab onOpenConnector=…>` with the same two routes, so "Sign in" on
+  a skipped line goes through the leave guard.
+- The save toast of `CnF-Grant-4`: after a save that changed `tool_config.tvashtr.connectors`,
+  "Reviewer can use Supabase, Notion and Linear. All read only." ("All read only." only when no
+  grant is `write`).
+- Focus mode's Runs tab (`panel/focus/FocusRunsTab.tsx`, `RoundDetail`): render
+  `<ConnectorsSkipped>` and `<ConnectorsUsed key={round.invocation_id}>`.
+- Optional: move the feed filter from `getRunEvents` into `panel/EventFeed.tsx`.
+
 **F2.5 Connect from the drawer** (after the F1 merge, not in the parallel phase: F2's worktree
 merges `feat/connectors` with F1 in it first). "Connect an app" in the checklist header opens a
 dialog with the Featured cards and "Open Connectors"; picking one opens `ConnectSheet`; on success
@@ -951,6 +1091,10 @@ today.
 
 **D.3** Version 0.13.0 in `desktop/package.json`, `npm test`, `npm run build`. Shipping is the
 operator's step.
+
+As built: the decision is `windowOpenAction(url, frameName)` in `navigationGuard.cjs`
+(`"external" | "in-window" | "deny"`), and `isGithubAuthUrl` moved there with it. At the merge:
+F1's Desktop branch opens the frame name `tv-external`, as D.1 expects.
 
 ## 10. Stream T: e2e and gates
 
@@ -987,6 +1131,24 @@ fake. The script asserts the posture before it starts anything else
    - exactly two `connector_call` rows exist for the run, one `ok` and one `blocked`;
    - after `DELETE /api/connectors/{id}` (over HTTP, cookie from `make_session_cookie_value`)
      `tools/list` is empty.
+
+What the streams left for T.1:
+- Two existing specs break on the new landing page. `frontend/e2e/revamp-shell.spec.ts:47-48`:
+  after clicking Toolkit, expect `/#\/toolkit\/connectors(\/browse)?$/` or wait for the
+  "Connectors" heading (a fresh account is sent on to `…/browse` once its list loads, so the
+  bare address is a race). `frontend/e2e/tools-c7c.spec.ts:34-36`: click the "Tools" nav child
+  after Toolkit, then assert the Tools address and heading.
+- The confirm page's button is "Connect" (it posts to `/api/connectors/oauth/confirm`); the
+  success page reads "`<name>` is connected. You can close this window."
+- The custom sheet sends `PATCH name` before `oauth/start` when the name was changed after the
+  check, and both sheets show the "should be `<name>`’s own" note before the window opens.
+- The proxy offers a tool with `name`, `title`, `description`, `inputSchema` and the four hints
+  only. A write that times out answers "… didn’t answer. `<tool>` may have gone through, so check
+  before you retry."; a deleted connection lists nothing and fails calls with "This connector
+  isn’t available for this run."
+- `tests/test_connectors_whole_path.py` already walks connect → sign in → grant → proxy →
+  disconnect in the backend; the probe still has to prove the mounted HTTP path on a running
+  backend.
 
 **T.2 Run-time check (operator-run, needs one provider key).** `scripts/connectors_run_check.py`
 (after `make seed`; LOCAL sandbox; the backend started with `TVASHTR_CONNECTORS_ALLOW_LOCAL=1`
@@ -1029,6 +1191,22 @@ DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`),
   a slow provider tool before the proxy's 120 s.
 - **Snapshot size in git.** 4–5 MB of JSON Lines, growing a little per refresh.
 - **`session_secret` rotation** fails the connector calls of runs in flight (the runs continue).
+- **`TVASHTR_SECRET_KEY` rotation** makes every stored sign-in and key unreadable. Each reads as
+  none: the connection is listed, a check or a run marks it `needs_signin`, and the user signs in
+  again or gives a new key. A wrong key set by mistake marks the connections that are used while
+  it is set, and they stay marked after it is put right (a check clears each one).
+- **Mix-up by redirect** (found in B2's review; contract, Discovery step 4). A registry or custom
+  server's own authorize page can send the browser on to a real provider's, and the provider's
+  code then reaches that server. Only a provider that sends `iss` is safe from it (Linear,
+  Sentry and Google on 2026-09-30; eight of the ten available Featured providers are not). The
+  backend can't close it. The app warns before such a sign-in, and the user has to press Allow
+  on the real provider's page for a connector they added from somewhere else. See §12.7.
+- **The request cap is per process** (`provider_slot`: 4 per account, 12 in all). It protects
+  one backend's worker threads; several processes each have their own count.
+- **Registry entries that take money by another route.** Servers that declare a payment, wallet
+  or private-key header are left out of the snapshot, from the picked remote's headers; a fresh
+  crawl also drops one that declares such a header on another remote. The 794 entries that only
+  mention x402 in their description are still listed (§12.9).
 - **Desktop** shows Connectors only after a 0.13.0 release; the 0.12.0 build has no such pages.
 - **`build_mcp_config`'s docstring says its signature is frozen.** The change is one optional
   keyword; every existing caller and test is unchanged. Update the docstring.
@@ -1109,3 +1287,16 @@ DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`),
    scopes" as a provider-side flag; the contract's rule and the code also apply the annotation
    filter to Google (fail closed). Build proceeds on the filter. Say so if you want Google's
    scopes trusted on their own, like Supabase's flag (one line in `is_write`, §11).
+7. **Do custom and registry connectors that sign in ship in v1?** They carry the mix-up by
+   redirect residual (§11): a hostile server of that kind can end up with a real provider's code
+   when the user allows it on the real provider's page. Featured entries are not the hostile
+   party, but eight of the ten available ones can be the target. Build proceeds with them on and
+   the warning in both sheets. The alternative is Featured and key connectors only until the
+   providers send `iss`.
+8. **A registry entry with only an optional secret header** (852 of the 2,692 that declare a
+   header) is `auth: "api_key"`, as the contract says, so its card shows the key form even when
+   the server also offers OAuth. Say if those should be `unknown` (decided by discovery) instead.
+9. **Registry entries that mention x402 in their description** (794) are still listed; only a
+   declared payment, wallet or private-key header drops a server. Say if they should go too.
+10. **Two payment services' merchant keys** (`TgPayCrypto-API-Token`, `x-wavepay-service-key`)
+    are kept as key fields: they are API keys, not wallets.
