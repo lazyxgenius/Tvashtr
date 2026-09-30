@@ -341,9 +341,13 @@ frontend origin (on Desktop that is `127.0.0.1`).
    strings, never through a URL type; **one trailing slash is not a difference**, because Google's
    resource metadata names `https://accounts.google.com/` and its server metadata says
    `https://accounts.google.com`. The server's own spelling is the issuer that is stored and that
-   the callback's `iss` is compared with); `code_challenge_methods_supported` contains `S256`; the
+   the callback's `iss` is compared with); `code_challenge_methods_supported` is a list that
+   contains `S256`; the
    resource metadata's `resource` covers the MCP address (`check_resource_allowed`); every endpoint
    passes `connector_net.check_url` (`https://`, a public address, no user name or backslash).
+   Everything in either document is untrusted: a value of the wrong type, or one that can't be
+   read as an address, is `cannot_register` (never a 500), and a document nested too deep to
+   parse is skipped like one that isn't JSON.
    `scope` is the 401's `scope`, else the resource metadata's `scopes_supported`, else the
    sign-in server's, else nothing.
 4. Mix-up check: `authorization_endpoint`, `token_endpoint` and `registration_endpoint` must be on
@@ -368,7 +372,9 @@ frontend origin (on Desktop that is `127.0.0.1`).
    with the same `issuer` **and for the same redirect address** (the stored `client` of a
    registration also carries `redirect_uri`) and its secret hasn't expired; it is looked for in
    the sign-in in flight and in the stored sign-in. A refused registration (any 4xx, or an
-   answer without a `client_id`) is `cannot_register`.
+   answer without a `client_id`) is `cannot_register`. From the reply, `client_secret` and
+   `token_endpoint_auth_method` are kept only when they are strings and
+   `client_secret_expires_at` only when it is a number.
 4. None of these → 422 `cannot_register`.
 
 ### `POST /api/connectors/{id}/oauth/start`
@@ -444,7 +450,9 @@ connected, no error" for as long as the code exchange and the tool listing take.
 exchanged
 (`grant_type=authorization_code`, `code`, `redirect_uri`, `client_id`, `code_verifier`, `resource`,
 plus client authentication for a registered secret), and on success the tools are listed with the
-new token. Then, under the row lock (see Tokens), everything is written at once. Success →
+new token. Whatever goes wrong in the exchange (no answer, an answer that can't be read, anything
+unexpected) is a failure, never a 500: the write below always runs, so the claim is always
+cleared. An `expires_in` that isn't a usable number (`1e999`) is no expiry. Then, under the row lock (see Tokens), everything is written at once. Success →
 `secret_encrypted` written, `status: "connected"`, `connected_at` now, `last_error` null, `tools`
 set (a failed listing leaves `tools` as it was, `null` on a first sign-in, and doesn't fail the
 sign-in), `pending_encrypted` and `state_hash` cleared. Page: "Supabase is

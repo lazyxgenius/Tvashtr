@@ -593,6 +593,50 @@ def test_a_failed_exchange_leaves_a_working_sign_in_intact(monkeypatch, listed):
     assert row.status == "connected" and connectors.read_secret(row) == WORKING
 
 
+@pytest.mark.parametrize("answer", ["too_deep", "crash"])
+def test_an_exchange_that_goes_wrong_in_any_way_still_ends_the_sign_in(monkeypatch, listed, answer):
+    """Found in review: an answer the code didn't expect was a 500 from the callback, and the row
+    stayed claimed: ``signin_pending`` with no ``last_error`` until the ten minutes ran out."""
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    c, owner = fresh_account()
+    cid = connection(owner, fake, status="connected", secret=WORKING)
+    back = _allow(fake, c, cid)
+
+    def too_deep(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="[" * 200_000)
+
+    def crash(request: httpx.Request) -> httpx.Response:
+        raise RuntimeError("not an httpx error")
+
+    wire(monkeypatch, too_deep if answer == "too_deep" else crash)
+    assert NOT_FINISHED in _page(c.get(CALLBACK_PATH, params=back))
+    row = load(cid)
+    assert (row.status, row.last_error, row.state_hash) == ("connected", NOT_FINISHED, None)
+    assert connectors.serialize(row)["signin_pending"] is False
+    assert connectors.read_secret(row) == WORKING
+
+
+def test_a_first_sign_in_whose_token_names_an_unusable_expiry_still_connects(monkeypatch, listed):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    c, owner = fresh_account()
+    cid = connection(owner, fake)
+    back = _allow(fake, c, cid)
+
+    def forever(request: httpx.Request) -> httpx.Response:
+        reply = fake.handle(request)
+        if request.url.path == "/token":
+            body = reply.text.replace('"expires_in":3600', '"expires_in":1e999')
+            assert "1e999" in body
+            return httpx.Response(200, content=body)
+        return reply
+
+    wire(monkeypatch, forever)
+    assert CONNECTED in _page(c.get(CALLBACK_PATH, params=back))
+    assert "expires_at" not in connectors.read_secret(load(cid))
+
+
 def test_sign_in_again_replaces_the_sign_in_and_keeps_the_tools_when_listing_fails(monkeypatch):
     fake = FakeConnectorServer(BASE, confidential=True, expires_in=None)
     wire(monkeypatch, fake.handle)

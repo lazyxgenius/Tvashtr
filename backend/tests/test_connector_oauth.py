@@ -197,10 +197,12 @@ def test_a_server_without_pkce_s256_is_rejected(monkeypatch):
     with pytest.raises(CannotRegister):
         discover(MCP)
 
-    plain_only = {"code_challenge_methods_supported": ["plain"]}
-    wire(monkeypatch, _rewrite(fake, SERVER_PATH, lambda meta: meta | plain_only))
-    with pytest.raises(CannotRegister):
-        discover(MCP)
+    # A list that names S256, nothing else: a string would pass by substring, a number would crash.
+    for methods in (["plain"], "S256-not-a-list", 5, True, {"S256": True}):
+        listed = {"code_challenge_methods_supported": methods}
+        wire(monkeypatch, _rewrite(fake, SERVER_PATH, lambda meta, listed=listed: meta | listed))
+        with pytest.raises(CannotRegister):
+            discover(MCP)
 
 
 def test_a_resource_that_doesnt_cover_the_address_is_rejected(monkeypatch):
@@ -346,6 +348,35 @@ def test_metadata_that_isnt_a_json_object_is_skipped(monkeypatch):
     wire(monkeypatch, no_server_metadata)
     with pytest.raises(CannotRegister):
         discover(MCP)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"authorization_servers": ["https://[bad"]},
+        {"authorization_servers": [7]},
+        {"resource": "https://[bad"},
+    ],
+)
+def test_resource_metadata_that_doesnt_name_addresses_is_cannot_register(monkeypatch, bad):
+    """Found in review: what a server's metadata says is untrusted, and a value that can't be
+    read as an address crashed discovery (a 500 from ``oauth/start``)."""
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, _rewrite(fake, RESOURCE_PATH, lambda meta: meta | bad))
+    with pytest.raises(CannotRegister):
+        discover(MCP)
+
+
+def test_metadata_nested_too_deep_to_parse_is_skipped(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == RESOURCE_PATH:
+            return httpx.Response(200, text="[" * 200_000)
+        return fake.handle(request)
+
+    wire(monkeypatch, handle)
+    assert discover(MCP).issuer == BASE  # the root resource metadata was read instead
 
 
 # ---- B2.1: the mix-up check ----
@@ -574,6 +605,41 @@ def test_a_confidential_only_server_gets_a_secret(monkeypatch):
     for methods in (("client_secret_basic",), ()):
         found = replace(discover(MCP), token_auth_methods=methods)
         assert choose_client(found, None, MCP)["auth_method"] == "client_secret_basic"
+
+
+def test_a_registration_reply_is_kept_only_where_it_is_the_right_type(monkeypatch):
+    """Found in review: a secret expiry that isn't a number was stored, and every later
+    ``oauth/start`` on that row crashed comparing it with the clock."""
+    fake = FakeConnectorServer(BASE, confidential=True)
+    found = None
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        reply = fake.handle(request)
+        if request.url.path == "/register":
+            odd = {"client_secret_expires_at": "2030-01-01", "token_endpoint_auth_method": 7}
+            return httpx.Response(201, json=reply.json() | odd)
+        return reply
+
+    wire(monkeypatch, handle)
+    found = discover(MCP)
+    client = choose_client(found, None, MCP)
+    assert "secret_expires_at" not in client
+    assert client["auth_method"] == "client_secret_post"  # the one asked for
+    assert isinstance(client["client_secret"], str)
+
+    # A secret that isn't a string isn't a secret.
+    def no_secret(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/register":
+            return httpx.Response(201, json={"client_id": "c", "client_secret": ["s"]})
+        return fake.handle(request)
+
+    wire(monkeypatch, no_secret)
+    assert "client_secret" not in choose_client(found, None, MCP)
+
+    # A row that already holds such an expiry starts a sign-in all the same.
+    wire(monkeypatch, _no_network)
+    held = client | {"secret_expires_at": "never"}
+    assert choose_client(found, None, MCP, [{"issuer": BASE, "client": held}]) == held
 
 
 def test_a_stored_registration_is_reused_only_for_the_same_issuer(monkeypatch):
@@ -874,6 +940,39 @@ def test_a_refusal_is_read_from_the_answers_error(monkeypatch, status, error, re
     assert (row.status, row.last_error) == ("needs_signin", "Its sign-in expired.")
     now = connectors.read_secret(row)
     assert "refresh_token" not in now and ("client" in now) == registration_kept
+
+
+@pytest.mark.parametrize("expires_in", ["1e999", "Infinity", "9" * 400, '"soon"', "[3600]"])
+def test_an_expiry_that_isnt_a_usable_number_is_no_expiry(monkeypatch, expires_in):
+    """Found in review: ``1e999`` raised OverflowError out of ``ensure_access_token`` after the
+    provider had already rotated the refresh token, so the row kept a spent one."""
+    fake = FakeConnectorServer(BASE)
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        reply = fake.handle(request)
+        if request.url.path == "/token" and reply.status_code == 200:
+            body = json.dumps(reply.json() | {"expires_in": 0}).replace(
+                '"expires_in": 0', f'"expires_in": {expires_in}'
+            )
+            return httpx.Response(200, content=body, headers={"content-type": "application/json"})
+        return reply
+
+    wire(monkeypatch, handle)
+    cid, stored = _connected(fake, expires_in=10)
+
+    token = ensure_access_token(cid)
+    now = connectors.read_secret(load(cid))
+    assert now["access_token"] == token and "expires_at" not in now
+    assert now["refresh_token"] in fake.refresh_tokens  # the rotated one was committed
+
+
+def test_a_token_answer_nested_too_deep_to_parse_is_unreachable(monkeypatch):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, lambda request: httpx.Response(200, text="[" * 200_000))
+    cid, stored = _connected(fake, expires_in=10)
+    with pytest.raises(Unreachable):
+        ensure_access_token(cid)
+    assert connectors.read_secret(load(cid)) == stored
 
 
 def test_a_registered_secret_is_sent_the_way_the_client_was_registered(monkeypatch):

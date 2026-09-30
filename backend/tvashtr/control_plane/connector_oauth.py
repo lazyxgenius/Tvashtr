@@ -89,7 +89,7 @@ def _document_of(response: httpx.Response | None, statuses: tuple[int, ...] = (2
         return {}
     try:
         body = response.json()
-    except ValueError:
+    except (ValueError, RecursionError):  # not JSON, or nested too deep to parse
         return {}
     return body if isinstance(body, dict) else {}
 
@@ -106,7 +106,15 @@ def discover(url: str, entry: dict | None = None) -> Discovery | None:
     ``entry`` is the catalog entry (a Featured one may pin ``oauth_hosts``). Raises
     :class:`CannotRegister` when a sign-in is there but fails a check, :class:`Unreachable` when
     the server doesn't answer or ``url`` isn't an address Tvashtr opens."""
-    pins = _pins(entry, url)
+    try:
+        return _discover(url, _pins(entry, url))
+    except (ValueError, TypeError, AttributeError) as exc:
+        # Everything a server's metadata says is untrusted. A value of the wrong type, or one
+        # that can't be read as an address, is a sign-in Tvashtr can't use, never a crash.
+        raise CannotRegister("the sign-in metadata can't be read") from exc
+
+
+def _discover(url: str, pins: dict) -> Discovery | None:
     try:
         connector_net.check_url(url)
     except connector_net.UnsafeUrl as exc:
@@ -178,7 +186,9 @@ def discover(url: str, entry: dict | None = None) -> Discovery | None:
     issuer = server.get("issuer")
     if not isinstance(issuer, str) or issuer.removesuffix("/") != asked.removesuffix("/"):
         raise CannotRegister("the sign-in server's metadata names another issuer")
-    if "S256" not in (server.get("code_challenge_methods_supported") or ()):
+    pkce = server.get("code_challenge_methods_supported")
+    # A list: ``in`` on a string is a substring test, and on a number a crash.
+    if not isinstance(pkce, list) or "S256" not in pkce:
         raise CannotRegister("the sign-in server doesn't advertise PKCE S256")
 
     # 4. Mix-up: every endpoint is an address Tvashtr opens, on the issuer's site (or on a host
@@ -310,17 +320,23 @@ def _register(found: Discovery) -> dict:
     reply = _document_of(_post(found.registration_endpoint, json=body), (200, 201))
     if not isinstance(reply.get("client_id"), str):
         raise CannotRegister("the sign-in server refused the registration")
+    # The reply is the server's to write: each value is kept only when it is the type it should be.
+    answered, secret = reply.get("token_endpoint_auth_method"), reply.get("client_secret")
     client = {
         "client_id": reply["client_id"],
-        "auth_method": reply.get("token_endpoint_auth_method") or method,
+        "auth_method": answered if answered and isinstance(answered, str) else method,
         "kind": "dcr",
         "redirect_uri": redirect,
     }
-    if reply.get("client_secret"):
-        client["client_secret"] = reply["client_secret"]
-        if reply.get("client_secret_expires_at"):  # 0 means it never expires
-            client["secret_expires_at"] = reply["client_secret_expires_at"]
+    if secret and isinstance(secret, str):
+        client["client_secret"] = secret
+        if _a_number(expires := reply.get("client_secret_expires_at")) and expires:
+            client["secret_expires_at"] = expires  # 0 means it never expires
     return client
+
+
+def _a_number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
 
 
 def _reusable(known: dict | None, issuer: str) -> dict | None:
@@ -333,7 +349,7 @@ def _reusable(known: dict | None, issuer: str) -> dict | None:
         and client.get("kind") == "dcr"
         and client.get("client_id")
         and client.get("redirect_uri") == redirect_uri()
-        and not (expires and expires < time.time() + 60)
+        and not (_a_number(expires) and expires and expires < time.time() + 60)
     ):
         return client
     return None
@@ -500,8 +516,10 @@ def _tokens(reply: dict) -> dict | None:
         tokens["refresh_token"] = reply["refresh_token"]
     try:
         tokens["expires_at"] = time.time() + int(reply["expires_in"])
-    except (KeyError, TypeError, ValueError):
-        pass  # no expiry named: the token is used until the provider refuses it
+    except (KeyError, TypeError, ValueError, OverflowError):
+        # No expiry named, or none that is a usable number (``1e999``): the token is used until
+        # the provider refuses it.
+        pass
     return tokens
 
 
@@ -598,7 +616,7 @@ def _complete(state: str, code: str) -> Outcome:
     }
     try:
         tokens = _tokens(_document_of(_token_request(pending, grant)))
-    except Unreachable:
+    except Exception:  # whatever went wrong, the write below must end the sign-in and say so
         tokens = None
     tools = _list_tools(url, transport, tokens["access_token"]) if tokens else None
 
