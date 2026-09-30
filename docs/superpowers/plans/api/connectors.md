@@ -147,7 +147,7 @@ Why one table is enough:
 ```json
 {"id": "7c1e…", "connector_key": "supabase", "name": "Supabase", "slug": "supabase",
  "publisher": "Supabase", "featured": true, "reviewed": true, "category": "databases",
- "host": "mcp.supabase.com", "auth_kind": "oauth",
+ "host": "mcp.supabase.com", "auth_kind": "oauth", "key_fields": [],
  "signin_host": "api.supabase.com", "signin_host_differs": false,
  "access": "read", "access_modes": ["read", "write"], "read_only_by": "provider",
  "scope": {"value": "abcd1234", "label": "trade-mcp-prod · ap-southeast-1"},
@@ -168,6 +168,11 @@ Why one table is enough:
   it was connected now answers 401. There is no sign-in to renew and `oauth/start` answers
   `not_oauth`, so the UI shows these words and offers Disconnect, never a sign-in). On any row it
   can also say how the last sign-in ended (see the callback).
+- `key_fields`: what "Replace key" asks for, in the catalog's shape. `[]` unless `auth_kind` is
+  `api_key`. The entry's `key_fields`; when the catalog no longer lists the connector, or a key
+  header for it, the header names the connection stores (the same fields `PATCH credentials`
+  checks against). The UI reads them from here and never searches the catalog for them: the
+  catalog pages (48 at a time), and 138 registry servers share one host.
 - `signin_pending`: a sign-in was started and hasn't finished or timed out (10 minutes), that is
   `state_hash` is set and `pending_encrypted.started_at` is under 10 minutes old. The
   frontend polls `GET /api/connectors/{id}` until it turns `false`, then reads `status` and

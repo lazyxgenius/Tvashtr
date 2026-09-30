@@ -267,7 +267,7 @@ CONNECTION_KEYS = {
     "id", "connector_key", "name", "slug", "publisher", "featured", "reviewed", "category",
     "host", "auth_kind", "signin_host", "signin_host_differs", "access", "access_modes",
     "read_only_by", "scope", "scope_picker", "status", "signin_pending", "last_error", "tools",
-    "used_by", "connected_at", "created_at", "updated_at",
+    "used_by", "connected_at", "created_at", "updated_at", "key_fields",
 }  # fmt: skip
 
 
@@ -310,6 +310,7 @@ def test_serialize_is_the_contracts_connection_and_carries_no_secret():
         "category": "databases",
         "host": "mcp.supabase.com",
         "auth_kind": "oauth",
+        "key_fields": [],
         "signin_host": "api.supabase.com",
         "signin_host_differs": False,
         "access": "read",

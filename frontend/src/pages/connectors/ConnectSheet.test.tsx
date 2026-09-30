@@ -68,6 +68,7 @@ const APIFY_ROW = connection({
   category: null,
   host: "mcp.apify.com",
   auth_kind: "api_key",
+  key_fields: APIFY.key_fields,
   signin_host: null,
   read_only_by: "annotations",
   scope: null,
@@ -909,68 +910,68 @@ describe("for a connection you already have", () => {
   });
 
   it("replaces a key", async () => {
-    const calls = mockApi({
-      "GET /api/connectors/catalog": {
-        items: [APIFY],
-        total: 1,
-        next_offset: null,
-        categories: [],
-      },
-      "PATCH /api/connectors/c9": APIFY_ROW,
-    });
+    const calls = mockApi({ "PATCH /api/connectors/c9": APIFY_ROW });
     const { onDone } = show({
       connection: { ...APIFY_ROW, status: "needs_signin" },
       mode: "signin",
       prepared: null,
     });
     const sheet = screen.getByRole("dialog", { name: "Replace Apify’s key" });
-    const input = await within(sheet).findByLabelText("API key");
-    expect(calls[0].path).toBe("/api/connectors/catalog?q=mcp.apify.com");
+    // The connection says which key it takes: nothing is looked up.
+    const input = within(sheet).getByLabelText("API key");
+    expect(sheet).toHaveTextContent("Apify API token. Sent to mcp.apify.com as its Authorization");
     // The access was chosen when it was connected; this only swaps the key.
     expect(within(sheet).queryByRole("group", { name: "What agents may do" })).toBeNull();
     fireEvent.change(input, { target: { value: "apify_api_new" } });
     click("Check and replace");
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
-    expect(calls.at(-1)).toEqual({
-      method: "PATCH",
-      path: "/api/connectors/c9",
-      body: { credentials: { Authorization: "apify_api_new" } },
-    });
+    expect(calls).toEqual([
+      {
+        method: "PATCH",
+        path: "/api/connectors/c9",
+        body: { credentials: { Authorization: "apify_api_new" } },
+      },
+    ]);
     expect(onDone.mock.calls[0][1]).toBe("signed_in");
   });
 
-  it.each([
-    ["can’t be read", () => new Response("{}", { status: 500 })],
-    ["doesn’t list it", () => ({ items: [], total: 0, next_offset: null, categories: [] })],
-  ])("doesn’t guess which key it takes when the catalog %s", async (_why, answer) => {
-    let reply: () => unknown = answer;
-    mockApi({ "GET /api/connectors/catalog": () => reply() });
-    show({ connection: { ...APIFY_ROW, status: "needs_signin" }, mode: "signin", prepared: null });
-    const sheet = screen.getByRole("dialog", { name: "Replace Apify’s key" });
-    expect(await within(sheet).findByRole("alert")).toHaveTextContent(
-      "Couldn’t load which key Apify takes.",
-    );
-    // No field for a header it only guessed: a good key would be refused in it.
-    expect(within(sheet).queryByLabelText("API key")).toBeNull();
-    expect(within(sheet).getByRole("button", { name: "Check and replace" })).toBeDisabled();
-
-    reply = () => ({ items: [APIFY], total: 1, next_offset: null, categories: [] });
-    fireEvent.click(within(sheet).getByRole("button", { name: "Retry" }));
-    expect(await within(sheet).findByLabelText("API key")).toBeInTheDocument();
-    expect(within(sheet).queryByRole("alert")).toBeNull();
-  });
-
-  it("asks for the usual header when the catalog entry names no field", async () => {
-    mockApi({
+  it("replaces the key of a connector the catalog search doesn’t show on its first page", () => {
+    // 138 registry servers share mcp.apify.com and the catalog answers 48 at a time, so a search
+    // by host can't find most of them; one the snapshot dropped is on no page at all.
+    const calls = mockApi({
       "GET /api/connectors/catalog": {
-        items: [{ ...APIFY, key_fields: [] }],
-        total: 1,
-        next_offset: null,
+        items: [APIFY],
+        total: 138,
+        next_offset: 48,
         categories: [],
       },
     });
-    show({ connection: { ...APIFY_ROW, status: "needs_signin" }, mode: "signin", prepared: null });
-    expect(await screen.findByLabelText("API key")).toBeInTheDocument();
+    const row = {
+      ...APIFY_ROW,
+      connector_key: "io.github.lintlab/pdf-to-markdown",
+      name: "lintlab PDF To Markdown",
+      status: "needs_signin" as const,
+      key_fields: [
+        { id: "Authorization", label: "API key", hint: "", secret: true },
+        { id: "X-Team", label: "X-Team", hint: "", secret: true },
+      ],
+    };
+    show({ connection: row, mode: "signin", prepared: null });
+    const sheet = screen.getByRole("dialog", { name: "Replace lintlab PDF To Markdown’s key" });
+    expect(within(sheet).getByLabelText("API key")).toBeInTheDocument();
+    expect(within(sheet).getByLabelText("X-Team")).toBeInTheDocument();
+    expect(within(sheet).queryByRole("alert")).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it("asks for the usual header when the connection names no field", () => {
+    mockApi({});
+    show({
+      connection: { ...APIFY_ROW, status: "needs_signin", key_fields: [] },
+      mode: "signin",
+      prepared: null,
+    });
+    expect(screen.getByLabelText("API key")).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toHaveTextContent(
       "Sent to mcp.apify.com as its Authorization header.",
     );

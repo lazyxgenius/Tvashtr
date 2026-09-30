@@ -109,6 +109,8 @@ export interface Connection {
   category: string | null;
   host: string;
   auth_kind: ConnectorAuth;
+  /** What "Replace key" asks for (empty unless it takes a key). */
+  key_fields: KeyField[];
   /** Where the browser is sent to sign in (null for a key or no sign-in). */
   signin_host: string | null;
   signin_host_differs: boolean;
@@ -295,6 +297,7 @@ export function parseConnection(raw: unknown): Connection | null {
     category: strOrNull(raw.category),
     host: str(raw.host),
     auth_kind: oneOf(raw.auth_kind, AUTH_KINDS) ?? "none",
+    key_fields: list(raw.key_fields, parseKeyField),
     signin_host: strOrNull(raw.signin_host),
     signin_host_differs: raw.signin_host_differs === true,
     access: oneOf(raw.access, ACCESS) ?? "read",

@@ -26,7 +26,6 @@ import {
   connectorRefusal,
   createConnection,
   getScopeOptions,
-  listCatalog,
   updateConnection,
 } from "../../lib/api/connectors";
 import { navigate } from "../../lib/nav";
@@ -106,8 +105,14 @@ export function ConnectSheet({
   const [problem, setProblem] = useState<ProblemState | null>(null);
   // The sign-in is on another site than the server: shown once, before the window opens.
   const [otherSite, setOtherSite] = useState<string | null>(null);
-  const [keyFields, setKeyFields] = useState<KeyField[] | null>(
-    entry ? entry.key_fields : keyed ? null : [],
+  // "Replace key" asks for the fields the connection names; one that names none takes the usual
+  // header.
+  const [keyFields, setKeyFields] = useState<KeyField[]>(
+    entry
+      ? entry.key_fields
+      : existing && keyed && existing.key_fields.length === 0
+        ? [DEFAULT_KEY]
+        : (existing?.key_fields ?? []),
   );
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [keyError, setKeyError] = useState<string | null>(null);
@@ -171,24 +176,6 @@ export function ConnectSheet({
     autoStarted.current = true;
     void signIn.start(target.connection, target.prepared);
   }, [target, keyed, signIn]);
-
-  // "Replace key": the fields to ask for are the catalog entry's. An entry that names none takes
-  // the usual header; one that can't be found gets no guess, which would refuse a good key.
-  const [lookup, setLookup] = useState({ failed: false, tries: 0 });
-  const tries = lookup.tries;
-  useEffect(() => {
-    if (!existing || !keyed) return;
-    let live = true;
-    const failed = () => live && setLookup({ failed: true, tries });
-    listCatalog({ q: existing.host }).then((page) => {
-      const found = page.items.find((e) => e.key === existing.connector_key);
-      if (!found) return failed();
-      if (live) setKeyFields(found.key_fields.length > 0 ? found.key_fields : [DEFAULT_KEY]);
-    }, failed);
-    return () => {
-      live = false;
-    };
-  }, [existing, keyed, tries]);
 
   // The project step lists the provider's projects; a list that can't be read asks for the id.
   const connId = conn?.id;
@@ -271,7 +258,7 @@ export function ConnectSheet({
     setStep("access");
   };
 
-  const fields = keyFields ?? [];
+  const fields = keyFields;
   const keysFilled = fields.length > 0 && fields.every((f) => (keys[f.id] ?? "").trim() !== "");
   const submitKey = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -474,42 +461,25 @@ export function ConnectSheet({
     body = (
       <form className="cn-form" onSubmit={(e) => void submitKey(e)} noValidate>
         {unreviewed}
-        {lookup.failed ? (
-          <div className="tk-state" role="alert">
-            <span>{`Couldn’t load which key ${name} takes.`}</span>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setLookup({ failed: false, tries: tries + 1 })}
-            >
-              Retry
-            </Button>
-          </div>
-        ) : keyFields === null ? (
-          <p className="cn-hint" role="status">
-            Loading…
-          </p>
-        ) : (
-          fields.map((f, i) => (
-            <Fragment key={f.id}>
-              <Input
-                label={f.label}
-                type={f.secret ? "password" : "text"}
-                autoComplete={f.secret ? "new-password" : "off"}
-                spellCheck={false}
-                value={keys[f.id] ?? ""}
-                error={i === 0 ? (keyError ?? undefined) : undefined}
-                onChange={(e) => {
-                  setKeys({ ...keys, [f.id]: e.target.value });
-                  setKeyError(null);
-                }}
-              />
-              <span className="cn-hint cn-hint--field">
-                {`${f.hint ? `${f.hint.replace(/\.$/, "")}. ` : ""}Sent to ${host} as its ${f.id} header.`}
-              </span>
-            </Fragment>
-          ))
-        )}
+        {fields.map((f, i) => (
+          <Fragment key={f.id}>
+            <Input
+              label={f.label}
+              type={f.secret ? "password" : "text"}
+              autoComplete={f.secret ? "new-password" : "off"}
+              spellCheck={false}
+              value={keys[f.id] ?? ""}
+              error={i === 0 ? (keyError ?? undefined) : undefined}
+              onChange={(e) => {
+                setKeys({ ...keys, [f.id]: e.target.value });
+                setKeyError(null);
+              }}
+            />
+            <span className="cn-hint cn-hint--field">
+              {`${f.hint ? `${f.hint.replace(/\.$/, "")}. ` : ""}Sent to ${host} as its ${f.id} header.`}
+            </span>
+          </Fragment>
+        ))}
         {!existing && choice(true)}
         <Note kind="lock">
           The key stays on Tvashtr’s servers, encrypted with this connector. Replace it from the

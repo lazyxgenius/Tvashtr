@@ -43,6 +43,7 @@ export function connection(over: Partial<Connection> = {}): Connection {
     category: "databases",
     host: "mcp.supabase.com",
     auth_kind: "oauth",
+    key_fields: [],
     signin_host: "api.supabase.com",
     signin_host_differs: false,
     access: "read",

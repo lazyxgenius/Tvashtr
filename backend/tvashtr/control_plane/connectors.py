@@ -215,6 +215,13 @@ def serialize(row: ConnectorConnection, users: list[dict] | None = None) -> dict
         "category": entry.get("category"),
         "host": host,
         "auth_kind": row.auth_kind,
+        # What "Replace key" asks for. From here and not from a catalog search: the catalog pages,
+        # and no longer lists a connector the snapshot dropped.
+        "key_fields": (
+            list(_key_entry(entry, row).get("key_fields") or [])
+            if row.auth_kind == "api_key"
+            else []
+        ),
         "signin_host": signin_host,
         "signin_host_differs": bool(
             signin_host and host and connector_net.site(signin_host) != connector_net.site(host)

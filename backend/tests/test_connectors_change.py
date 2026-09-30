@@ -433,6 +433,35 @@ def _key_connection(owner, registry_file, **over) -> str:
     return add_connection(owner, "dev.keyed/mcp", name="Keyed", **fields)
 
 
+def test_a_key_connection_says_which_key_fields_it_takes(registry_file):
+    """ "Replace key" asks for these. The app used to look them up by searching the catalog for
+    the connection's host, and a connector past the first page of that search could never have
+    its key replaced."""
+    c, owner = fresh_account()
+    cid = _key_connection(owner, registry_file)
+    listed = {"id": "Authorization", "label": "API key", "hint": "", "secret": True}
+    assert c.get(f"/api/connectors/{cid}").json()["key_fields"] == [listed]
+    [row] = c.get("/api/connectors").json()["connections"]
+    assert row["key_fields"] == [listed]
+
+    # The catalog no longer lists it: the header names the connection stores.
+    gone = add_connection(
+        owner,
+        "com.gone/server",
+        name="Gone",
+        url="https://mcp.gone.dev/mcp",
+        auth_kind="api_key",
+        secret={"headers": {"Authorization": "Bearer OLD", "X-Team": "7"}},
+    )
+    assert c.get(f"/api/connectors/{gone}").json()["key_fields"] == [
+        {"id": "Authorization", "label": "API key", "hint": "", "secret": True},
+        {"id": "X-Team", "label": "X-Team", "hint": "", "secret": True},
+    ]
+    # A connection that signs in takes none.
+    signs_in = add_connection(owner, "supabase")
+    assert c.get(f"/api/connectors/{signs_in}").json()["key_fields"] == []
+
+
 def test_patch_credentials_replaces_the_key_after_checking_it(registry_file, upstream):
     c, owner = fresh_account()
     cid = _key_connection(

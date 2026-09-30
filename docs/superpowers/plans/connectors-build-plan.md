@@ -908,8 +908,8 @@ on Browse. Calls `refreshBadges()` after every mutation.
 - As built (F1):
   - `ConnectSheet` also serves a connection that exists: "Sign in again" opens on the wait step
     (the click that opens the sheet also opens the popup, `prepareSignInWindow()`), a key
-    connection gets "Replace key" (`PATCH credentials`; the fields come from the catalog entry,
-    looked up with `q=<host>`), and "Change project" opens on the project step.
+    connection gets "Replace key" (`PATCH credentials`; the fields are the connection's own
+    `key_fields`), and "Change project" opens on the project step.
   - A sign-in that ends not connected, with a `last_error`, is a failure when the words are new
     or when it ended more than ten seconds before the ten-minute cap (`oauth/start` leaves
     `last_error` alone, so the same words can be a second failure). Otherwise it is the time cap.
@@ -921,9 +921,10 @@ on Browse. Calls `refreshBadges()` after every mutation.
     sign-in went through, so it is connected to the whole account.
   - After a scope or access `PATCH` the sheet and `ChangeAccessDialog` call `POST …/check`
     (best effort) and report its answer: B1's PATCH keeps the stored tool list.
-  - "Replace key" shows "Couldn’t load which key `<name>` takes." with Retry when the catalog
-    lookup fails or doesn't list the entry; the `Authorization` default is only for an entry
-    that names no field.
+  - "Replace key" asks for the connection's `key_fields` at once, with no lookup; the
+    `Authorization` default is only for a connection that names no field. (It first searched
+    the catalog by host and read one page, which dead-ended for the 42 key connectors on
+    `mcp.apify.com` past the first 48. Fixed after review.)
   - A custom connector is made read only (the check comes before the choice); Read & write is a
     `PATCH access` once the sign-in is through, and a failed one is said in a toast. A name
     changed after the check is a `PATCH name` sent before the sign-in starts, while the row is
