@@ -37,10 +37,13 @@ from tvashtr.control_plane.tool_skill_catalog import (
 )
 from tvashtr.control_plane.workspace_reaper import sweep_orphaned_workspaces
 from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
+from tvashtr.mcp.connectors import get_connectors_mcp
 from tvashtr.mcp.domains import get_domains_mcp
 from tvashtr.models import SpikeHelloEvent
 from tvashtr.routers import router as api_router
 from tvashtr.routes import account as revamp_account
+from tvashtr.routes import connectors as revamp_connectors
+from tvashtr.routes import connectors_oauth as revamp_connectors_oauth
 from tvashtr.routes import desktop_app as revamp_desktop_app
 from tvashtr.routes import documents as revamp_documents
 from tvashtr.routes import domains as revamp_domains
@@ -59,6 +62,8 @@ settings = get_settings()
 _domains_mcp = get_domains_mcp()
 _domains_mcp.settings.streamable_http_path = "/"
 _domains_mcp_http = _domains_mcp.streamable_http_app()
+# Connectors: the run-time proxy agents talk to (stateless streamable HTTP), built the same way.
+_connectors_mcp_http = get_connectors_mcp().streamable_http_app()
 
 
 @asynccontextmanager
@@ -75,10 +80,14 @@ async def _lifespan(app: FastAPI):
     unavailable — so startup stays ``openhands``-free and robust on any host.
 
     Phase 4b: wraps the Domains MCP streamable-HTTP session manager so tool calls on
-    ``/mcp/domains`` have a live task group for the life of the process."""
+    ``/mcp/domains`` have a live task group for the life of the process. The Connectors proxy on
+    ``/mcp/connectors`` gets its session manager the same way."""
     # Starlette sub-app has no ``.lifespan`` helper (unlike newer FastMCP ``http_app``); enter the
     # router lifespan context that runs ``session_manager.run()``.
-    async with _domains_mcp_http.router.lifespan_context(_domains_mcp_http):
+    async with (
+        _domains_mcp_http.router.lifespan_context(_domains_mcp_http),
+        _connectors_mcp_http.router.lifespan_context(_connectors_mcp_http),
+    ):
         if settings.agent_sandbox_mode == "docker":
             sweep_orphaned_agent_containers()
         elif settings.agent_sandbox_mode == "fly":
@@ -122,6 +131,9 @@ app.include_router(auth_router)
 app.include_router(revamp_desktop_app.public_router)
 # Revamp (Website): GitHub sign-in start + the public site facts (website.md) — public too.
 app.include_router(revamp_website.public_router)
+# Connectors: the OAuth callback, its confirm step and the client metadata document — public
+# because the browser that finishes a sign-in may hold no Tvashtr session (Desktop).
+app.include_router(revamp_connectors_oauth.public_router)
 # P0.2 gateway + document-layer endpoints (generate-doc, documents, costs). M-accounts Slice A: the
 # whole product surface now requires a session — one router-level dependency gates EVERY endpoint in
 # routers.py. /api/auth/* (above) and /health (below) stay open.
@@ -138,6 +150,8 @@ for _revamp_router in (
     revamp_local_repo.router,
     revamp_domains.router,
     revamp_desktop_app.router,
+    revamp_connectors.router,
+    revamp_connectors_oauth.router,
 ):
     app.include_router(_revamp_router, dependencies=[Depends(get_current_user)])
 app.include_router(api_router, dependencies=[Depends(get_current_user)])
@@ -378,6 +392,8 @@ def mount_frontend(app: FastAPI, dist_dir: str) -> bool:
 
 # Phase 4b: Domains MCP streamable HTTP — before SPA catch-all so /mcp/domains is not swallowed.
 app.mount("/mcp/domains", _domains_mcp_http)
+# Connectors proxy, next to it and for the same reason.
+app.mount("/mcp/connectors", _connectors_mcp_http)
 
 # LAST, deliberately (see mount_frontend): every API router above is already registered, so the
 # catch-all can only ever see paths nothing else claimed.
