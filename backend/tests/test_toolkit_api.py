@@ -2,6 +2,7 @@
 
 import uuid
 
+from connector_helpers import add_connection
 from toolkit_helpers import fresh_account, make_node, make_team
 
 from tvashtr.control_plane import node_library
@@ -22,6 +23,8 @@ def test_summary_is_all_zero_for_a_fresh_account():
         "skills": 0,
         "memory": {"inbox": 0, "active": 0, "archive": 0},
         "secrets_missing": 0,
+        "connectors": 0,
+        "connectors_needing_attention": 0,
     }
 
 
@@ -57,6 +60,16 @@ def test_summary_counts_tools_attention_skills_memory_and_missing_secrets():
         ):
             session.add(NodeMemory(owner_id=owner, content=f"m {status}", status=status))
         session.add(NodeMemory(owner_id=other, content="other", status="pending_review"))
+    # Connectors: connected and needs_signin rows count, a pending one (sign-in not finished)
+    # doesn't, and neither does another account's.
+    for key, status in (
+        ("supabase", "connected"),
+        ("linear", "connected"),
+        ("notion", "needs_signin"),
+        ("sentry", "pending"),
+    ):
+        add_connection(owner, key, status=status)
+    add_connection(other, "supabase", status="needs_signin")
 
     body = c.get("/api/toolkit/summary").json()
     assert body == {
@@ -65,8 +78,12 @@ def test_summary_counts_tools_attention_skills_memory_and_missing_secrets():
         "skills": 1,
         "memory": {"inbox": 2, "active": 3, "archive": 2},
         "secrets_missing": 2,  # LINEAR_TOKEN, JIRA_USER (distinct names)
+        "connectors": 3,
+        "connectors_needing_attention": 1,  # notion
     }
-    assert other_c.get("/api/toolkit/summary").json()["tools"] == 1
+    theirs = other_c.get("/api/toolkit/summary").json()
+    assert theirs["tools"] == 1
+    assert (theirs["connectors"], theirs["connectors_needing_attention"]) == (1, 1)
 
 
 # ---------------------------------------------------------------- GET /api/agents
