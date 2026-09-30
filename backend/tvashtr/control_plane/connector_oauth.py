@@ -12,6 +12,7 @@ import time
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from urllib.parse import urlencode, urlsplit
 
 import httpx
@@ -23,13 +24,15 @@ from mcp.client.auth.utils import (
     extract_scope_from_www_auth,
 )
 from mcp.shared.auth_utils import check_resource_allowed
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
 
 from tvashtr.config import get_settings
 
 # ``connectors`` imports this module too: neither may use the other while it is being imported.
-from tvashtr.control_plane import connector_catalog, connector_net, connectors
+from tvashtr.control_plane import connector_catalog, connector_net, connector_upstream, connectors
 from tvashtr.db import session_scope
-from tvashtr.models import ConnectorConnection
+from tvashtr.models import ConnectorConnection, User
 
 
 class CannotRegister(Exception):
@@ -435,6 +438,222 @@ def start(owner_id: uuid.UUID, connection_id: object) -> dict:
         "signin_host": found.signin_host,
         "expires_in": SIGNIN_TTL_SECONDS,
     }
+
+
+# ---- finishing a sign-in: the callback and its confirm step ----
+
+OTHER_ACCOUNT_ERROR = (
+    "That browser is signed in to Tvashtr as a different account. Nothing was connected."
+)
+
+
+@dataclass(frozen=True)
+class Outcome:
+    """How a callback ended. The route turns it into a page. ``kind`` is one of ``connected``,
+    ``confirm`` (ask first: the browser holds no Tvashtr session), ``expired``, ``failed``,
+    ``denied`` and ``other_account``."""
+
+    kind: str
+    name: str = ""  # the connection's name
+    email: str = ""  # the owner's, for the confirm page
+    owner: str = ""  # the owner's id
+
+
+def _not_finished(name: str) -> str:
+    return f"{name} didn’t finish the sign-in. Try again."
+
+
+def _client_auth(client: dict) -> tuple[dict, tuple[str, str] | None]:
+    """How ``client`` authenticates at the token endpoint: the form fields to add, and the
+    Basic credentials when that is its method."""
+    secret = _google_secret() if client.get("kind") == "preregistered" else None
+    secret = secret or client.get("client_secret")
+    form = {"client_id": client["client_id"]}
+    if secret and client.get("auth_method") == "client_secret_basic":
+        return form, (client["client_id"], secret)
+    if secret and client.get("auth_method") != "none":
+        form["client_secret"] = secret
+    return form, None
+
+
+def _token_request(sign_in: dict, grant: dict) -> httpx.Response:
+    """POST ``grant`` to the sign-in's token endpoint, as its client and for its resource."""
+    form, auth = _client_auth(sign_in["client"])
+    data = {**grant, **form, "resource": sign_in["resource"]}
+    return _post(sign_in["token_endpoint"], data=data, auth=auth)
+
+
+def _tokens(reply: dict) -> dict | None:
+    """The tokens of a token endpoint's answer, as they are stored. ``None`` without an access
+    token."""
+    if not isinstance(reply.get("access_token"), str) or not reply["access_token"]:
+        return None
+    tokens = {"access_token": reply["access_token"]}
+    if isinstance(reply.get("refresh_token"), str) and reply["refresh_token"]:
+        tokens["refresh_token"] = reply["refresh_token"]
+    try:
+        tokens["expires_at"] = time.time() + int(reply["expires_in"])
+    except (KeyError, TypeError, ValueError):
+        pass  # no expiry named: the token is used until the provider refuses it
+    return tokens
+
+
+def _use_up(
+    session: Session, hashed: str, replacement: str | None = None
+) -> ConnectorConnection | None:
+    """Use a ``state`` up, in one statement, and return its row (locked until the session
+    commits). ``None`` when no sign-in in flight has that state any more, so a state works once
+    and of two callbacks that arrive together exactly one goes on."""
+    used = session.execute(
+        update(ConnectorConnection)
+        .where(ConnectorConnection.state_hash == hashed)
+        .values(state_hash=replacement)
+        .returning(ConnectorConnection.id)
+        .execution_options(synchronize_session=False)
+    ).scalar_one_or_none()
+    if used is None:
+        return None
+    return session.get(ConnectorConnection, used, populate_existing=True)
+
+
+def _discovered(pending: dict) -> dict:
+    """A sign-in in flight that is over: what discovery found stays (the sign-in host is still
+    known and a registration can be reused), the PKCE verifier goes."""
+    return {k: v for k, v in pending.items() if k not in ("code_verifier", "started_at")}
+
+
+def _clear(state: str, last_error: str, kind: str, name: str) -> Outcome:
+    """Clear the sign-in in flight and say why on the row."""
+    with session_scope() as session:
+        row = _use_up(session, state_hash(state))
+        if row is None:
+            return Outcome("expired")
+        pending = connectors.read_secret(row, pending=True)
+        connectors.write_secret(row, _discovered(pending) if pending else None, pending=True)
+        row.last_error = last_error
+    return Outcome(kind, name)
+
+
+def _arrive(state: str, iss: str | None) -> Outcome:
+    """Callback steps 1 and 2. ``confirm`` (with the row's name and its owner) when ``state``
+    belongs to a sign-in started under ten minutes ago and the answer is from its issuer.
+    Nothing is used up and nothing is written."""
+    if not state:
+        return Outcome("expired")
+    with session_scope() as session:
+        row = session.execute(
+            select(ConnectorConnection).where(ConnectorConnection.state_hash == state_hash(state))
+        ).scalar_one_or_none()
+        pending = (connectors.read_secret(row, pending=True) if row else None) or {}
+        started = pending.get("started_at")
+        if not isinstance(started, int | float) or time.time() - started >= SIGNIN_TTL_SECONDS:
+            return Outcome("expired")
+        # RFC 9207. A sent ``iss`` must be the issuer the sign-in was started with, exactly; a
+        # missing one is refused only when the server said it sends one. On a mismatch nothing
+        # else in the request is acted on.
+        from_another = iss != pending.get("issuer") if iss else bool(pending.get("iss_supported"))
+        if from_another:
+            return Outcome("failed", row.name)
+        owner = session.get(User, row.owner_id)
+        return Outcome("confirm", row.name, owner.email, str(owner.id))
+
+
+def _list_tools(url: str, transport: str, access_token: str) -> list[dict] | None:
+    """The provider's tools right after a sign-in. ``None`` when they can't be listed: that
+    never fails the sign-in."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        return connectors.stored_tools(connector_upstream.list_tools_sync(url, transport, headers))
+    except Exception:  # whatever went wrong here, the sign-in itself worked
+        return None
+
+
+def _complete(state: str, code: str) -> Outcome:
+    """Exchange ``code`` and store the sign-in. The state is used up first, so this runs once
+    per sign-in. It is swapped for a value nobody knows instead of being cleared, so the row
+    reads ``signin_pending`` until the outcome is written (the app polls that field, and would
+    otherwise see a finished sign-in with nothing to show for it while the code is exchanged)."""
+    claim = state_hash(secrets.token_urlsafe(32))
+    with session_scope() as session:
+        row = _use_up(session, state_hash(state), claim)
+        if row is None:
+            return Outcome("expired")
+        pending = connectors.read_secret(row, pending=True)
+        owner_id, connection_id, name = row.owner_id, row.id, row.name
+        url, transport = connectors.upstream_target(row, row.access)
+    failed = Outcome("failed", name)
+
+    grant = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": pending["redirect_uri"],
+        "code_verifier": pending["code_verifier"],
+    }
+    try:
+        tokens = _tokens(_document_of(_token_request(pending, grant)))
+    except Unreachable:
+        tokens = None
+    tools = _list_tools(url, transport, tokens["access_token"]) if tokens else None
+
+    try:
+        with session_scope() as session:
+            # The one lock every writer of the sign-in takes before it reads or writes it.
+            row = connectors.get_owned(session, owner_id, connection_id, for_update=True)
+            if row.state_hash == claim:  # else a newer sign-in was started meanwhile: leave it
+                row.state_hash = None
+                connectors.write_secret(row, None if tokens else _discovered(pending), pending=True)
+            if tokens is None:
+                row.last_error = _not_finished(name)  # a working stored sign-in stays as it is
+                return failed
+            kept = (
+                "issuer",
+                "client",
+                "authorization_endpoint",
+                "token_endpoint",
+                "revocation_endpoint",
+                "resource",
+                "scope",
+            )
+            connectors.write_secret(row, {key: pending.get(key) for key in kept} | tokens)
+            row.status, row.last_error = "connected", None
+            row.connected_at = datetime.now(UTC)
+            if tools is not None:
+                row.tools = tools
+    except connectors.ConnectorError:
+        return failed  # disconnected while the code was exchanged
+    return Outcome("connected", name)
+
+
+def callback(
+    state: str, code: str, iss: str | None, error: str | None, session_user: str | None
+) -> Outcome:
+    """``GET /api/connectors/oauth/callback``. ``session_user`` is the user id of the browser's
+    Tvashtr session, ``None`` without one (Desktop's browser). The owner comes from the row the
+    ``state`` finds, never from the session."""
+    arrived = _arrive(state, iss)
+    if arrived.kind != "confirm":
+        return arrived
+    name = arrived.name
+    if error:
+        return _clear(state, f"You didn’t allow access on {name}.", "denied", name)
+    if not code:
+        return _clear(state, _not_finished(name), "failed", name)
+    if session_user is None:
+        return arrived  # ask first; showing the page uses nothing up
+    if session_user != arrived.owner:
+        return _clear(state, OTHER_ACCOUNT_ERROR, "other_account", name)
+    return _complete(state, code)
+
+
+def confirm(state: str, code: str, iss: str | None) -> Outcome:
+    """``POST /api/connectors/oauth/confirm``: the confirm page's button. Repeats steps 1 and 2,
+    then completes."""
+    arrived = _arrive(state, iss)
+    if arrived.kind != "confirm":
+        return arrived
+    if not code:
+        return _clear(state, _not_finished(arrived.name), "failed", arrived.name)
+    return _complete(state, code)
 
 
 def ensure_access_token(connection_id: uuid.UUID, *, rejected: str | None = None) -> str:

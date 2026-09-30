@@ -382,15 +382,25 @@ confirm route is sent with `Referrer-Policy: no-referrer`, `Cache-Control: no-st
    and 4 and Complete do.
 2. `iss`: when present it must equal the stored issuer exactly; when absent the sign-in is refused
    only if the server advertised `authorization_response_iss_parameter_supported`. On a mismatch
-   nothing else in the request is acted on (not `error` either).
+   nothing else in the request is acted on (not `error` either) and nothing is written: the page
+   says "Supabase didn’t finish the sign-in. Try again." and the row is left as it was.
 3. `error` present (for example `access_denied`) → the in-flight sign-in is cleared, `last_error`
-   = "You didn’t allow access on Supabase.", page says the same.
-4. A `tv_session` cookie is present:
+   = "You didn’t allow access on Supabase.", page says the same. A callback with neither `error`
+   nor `code` is cleared the same way, with the "didn’t finish the sign-in" line.
+4. A `tv_session` cookie is present (a cookie that doesn't read as a session counts as none):
    - it is the row's owner → complete (below);
-   - it is another account → in-flight sign-in cleared, page "This browser is signed in to Tvashtr
+   - it is another account → in-flight sign-in cleared, `last_error` = "That browser is signed in
+     to Tvashtr as a different account. Nothing was connected." (so the app's poll has a reason
+     to show), page "This browser is signed in to Tvashtr
      as a different account. Nothing was connected. Log out of Tvashtr in this browser, then start
      the sign-in again." (After logging out, the retry takes step 5. Without this line a Desktop
      user whose browser holds another account has no way through.)
+
+   "Cleared" (steps 3 and 4) is one transaction: `UPDATE connector_connections SET state_hash =
+   NULL WHERE state_hash = :h RETURNING id`, then `last_error`, and `pending_encrypted` loses its
+   `code_verifier` and `started_at`. What discovery found and the `client` stay there, so
+   `signin_host` still reads right on a row that was never connected and the next `oauth/start`
+   reuses the registration.
 5. No `tv_session` cookie (Desktop's browser) → a confirm page: "Connect Supabase to the Tvashtr
    account asha@example.com?" with one button that posts `state`, `code` and `iss` to the confirm
    route. The page shows the owner's **full** email: a masked one (`a•••@example.com`) is matched
@@ -401,16 +411,25 @@ confirm route is sent with `Referrer-Policy: no-referrer`, `Cache-Control: no-st
 Repeats steps 1–2, then completes. Answers the same HTML pages.
 
 **Complete** (both routes): the `state` is used up first, in one statement:
-`UPDATE connector_connections SET state_hash = NULL WHERE state_hash = :h RETURNING id`. No row
+`UPDATE connector_connections SET state_hash = :claim WHERE state_hash = :h RETURNING id`. No row
 back → the "expired" page and nothing else happens, so a `state` works once and two callbacks that
-arrive together make one code exchange. Then the code is exchanged
+arrive together make one code exchange. `:claim` is the hash of a fresh random value that nobody
+is ever given, not `NULL`: `signin_pending` is read from `state_hash`, and the app polls it and
+reads the outcome the moment it turns false. With `NULL` the row would say "not pending, not
+connected, no error" for as long as the code exchange and the tool listing take. Then the code is
+exchanged
 (`grant_type=authorization_code`, `code`, `redirect_uri`, `client_id`, `code_verifier`, `resource`,
-plus client authentication for a registered secret). Success → under the row lock (see Tokens),
-`secret_encrypted` written, `status: "connected"`, `connected_at` now, `last_error` null, tools
-listed (a failed listing leaves `tools: null` and doesn't fail the sign-in). Page: "Supabase is
+plus client authentication for a registered secret), and on success the tools are listed with the
+new token. Then, under the row lock (see Tokens), everything is written at once. Success →
+`secret_encrypted` written, `status: "connected"`, `connected_at` now, `last_error` null, `tools`
+set (a failed listing leaves `tools` as it was, `null` on a first sign-in, and doesn't fail the
+sign-in), `pending_encrypted` and `state_hash` cleared. Page: "Supabase is
 connected. You can close this window." and a `window.close()` (closes the web popup; a normal
 browser tab stays open with the message). Failure → `last_error` = "Supabase didn’t finish the
-sign-in. Try again.", status unchanged, page says the same.
+sign-in. Try again.", status and the stored sign-in unchanged, the in-flight sign-in cleared as in
+steps 3 and 4, page says the same. When `state_hash` is no longer the claim at that write (a newer
+`oauth/start` ran while the code was exchanged), the newer sign-in's `state_hash` and
+`pending_encrypted` are left alone. A connection disconnected meanwhile gets the failure page.
 
 ### `GET /oauth/client-metadata.json` (public)
 ```json

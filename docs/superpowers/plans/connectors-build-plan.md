@@ -465,9 +465,15 @@ when the issuer matches. The pinned client, the pinned `scope` and `oauth_hosts`
 `desktop_auth.return_page()`). Page text is escaped; no provider-supplied text is rendered raw.
 - Every page is sent with `Referrer-Policy: no-referrer`, `Cache-Control: no-store` and
   `X-Frame-Options: DENY`.
-- The `state` is used up with one statement (`UPDATE … SET state_hash = NULL WHERE state_hash = :h
+- The `state` is used up with one statement (`UPDATE … SET state_hash = … WHERE state_hash = :h
   RETURNING id`) at the start of Complete and when a sign-in is cleared (callback steps 3 and 4).
-  The callback GET that shows the confirm page does not use it up.
+  The callback GET that shows the confirm page does not use it up. A cleared sign-in sets `NULL`.
+  **Complete sets the hash of a random value instead of `NULL`** and clears it in its final
+  write: the plan first said `NULL` there too, but `signin_pending` is read from `state_hash` and
+  the app stops polling when it turns false, so for the length of the code exchange a poll would
+  have found a sign-in that ended with no `connected` and no `last_error`.
+- The tools are listed before the final write, so the row changes once: `connected`, the sign-in,
+  the tools and `signin_pending: false` together.
 - The write after the exchange takes the row lock (`get_owned(…, for_update=True)`) before it
   reads or writes the stored sign-in. The stored sign-in keeps `authorization_endpoint` (the
   contract's `secret_encrypted` shape), so `signin_host` still reads right once
