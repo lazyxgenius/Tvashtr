@@ -165,21 +165,23 @@ export function ConnectSheet({
     void signIn.start(target.connection, target.prepared);
   }, [target, keyed, signIn]);
 
-  // "Replace key": the fields to ask for are the catalog entry's.
+  // "Replace key": the fields to ask for are the catalog entry's. An entry that names none takes
+  // the usual header; one that can't be found gets no guess, which would refuse a good key.
+  const [lookup, setLookup] = useState({ failed: false, tries: 0 });
+  const tries = lookup.tries;
   useEffect(() => {
     if (!existing || !keyed) return;
     let live = true;
-    listCatalog({ q: existing.host }).then(
-      (page) => {
-        const fields = page.items.find((e) => e.key === existing.connector_key)?.key_fields;
-        if (live) setKeyFields(fields && fields.length > 0 ? fields : [DEFAULT_KEY]);
-      },
-      () => live && setKeyFields([DEFAULT_KEY]),
-    );
+    const failed = () => live && setLookup({ failed: true, tries });
+    listCatalog({ q: existing.host }).then((page) => {
+      const found = page.items.find((e) => e.key === existing.connector_key);
+      if (!found) return failed();
+      if (live) setKeyFields(found.key_fields.length > 0 ? found.key_fields : [DEFAULT_KEY]);
+    }, failed);
     return () => {
       live = false;
     };
-  }, [existing, keyed]);
+  }, [existing, keyed, tries]);
 
   // The project step lists the provider's projects; a list that can't be read asks for the id.
   const connId = conn?.id;
@@ -465,7 +467,18 @@ export function ConnectSheet({
     body = (
       <form className="cn-form" onSubmit={(e) => void submitKey(e)} noValidate>
         {unreviewed}
-        {keyFields === null ? (
+        {lookup.failed ? (
+          <div className="tk-state" role="alert">
+            <span>{`Couldn’t load which key ${name} takes.`}</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setLookup({ failed: false, tries: tries + 1 })}
+            >
+              Retry
+            </Button>
+          </div>
+        ) : keyFields === null ? (
           <p className="cn-hint" role="status">
             Loading…
           </p>

@@ -882,6 +882,43 @@ describe("for a connection you already have", () => {
     expect(onDone.mock.calls[0][1]).toBe("signed_in");
   });
 
+  it.each([
+    ["can’t be read", () => new Response("{}", { status: 500 })],
+    ["doesn’t list it", () => ({ items: [], total: 0, next_offset: null, categories: [] })],
+  ])("doesn’t guess which key it takes when the catalog %s", async (_why, answer) => {
+    let reply: () => unknown = answer;
+    mockApi({ "GET /api/connectors/catalog": () => reply() });
+    show({ connection: { ...APIFY_ROW, status: "needs_signin" }, mode: "signin", prepared: null });
+    const sheet = screen.getByRole("dialog", { name: "Replace Apify’s key" });
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent(
+      "Couldn’t load which key Apify takes.",
+    );
+    // No field for a header it only guessed: a good key would be refused in it.
+    expect(within(sheet).queryByLabelText("API key")).toBeNull();
+    expect(within(sheet).getByRole("button", { name: "Check and replace" })).toBeDisabled();
+
+    reply = () => ({ items: [APIFY], total: 1, next_offset: null, categories: [] });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Retry" }));
+    expect(await within(sheet).findByLabelText("API key")).toBeInTheDocument();
+    expect(within(sheet).queryByRole("alert")).toBeNull();
+  });
+
+  it("asks for the usual header when the catalog entry names no field", async () => {
+    mockApi({
+      "GET /api/connectors/catalog": {
+        items: [{ ...APIFY, key_fields: [] }],
+        total: 1,
+        next_offset: null,
+        categories: [],
+      },
+    });
+    show({ connection: { ...APIFY_ROW, status: "needs_signin" }, mode: "signin", prepared: null });
+    expect(await screen.findByLabelText("API key")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "Sent to mcp.apify.com as its Authorization header.",
+    );
+  });
+
   it("changes the project", async () => {
     const calls = serve();
     row = connection();
