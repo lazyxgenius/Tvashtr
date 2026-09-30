@@ -123,6 +123,8 @@ UNMARKED = {"name": "run_sql", "title": None, "read_only": False}
         ("linear", READ, "read", False),
         # Google (`scopes`) follows the annotation as well.
         ("google-drive", UNMARKED, "read", True),
+        ("google-drive", READ, "read", False),
+        ("google-sheets", UNMARKED, "read", True),
         # Access `write` follows the annotation everywhere.
         ("supabase", UNMARKED, "write", True),
         ("supabase", READ, "write", False),

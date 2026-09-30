@@ -29,7 +29,8 @@ are already installed; Phase 0 only raises the `mcp` floor, task 0.2).
    on its own. **Neon's is not**: under it `run_sql` can still write (decisions §1), so Neon gets
    the flag **and** the annotation filter. Everyone else: the proxy lists and allows only tools
    annotated `readOnlyHint: true` (missing = write). Google uses read-only scopes and is
-   read-only-only. No scope narrowing for other providers in v1.
+   read-only-only; it gets the annotation filter as well (`is_write` treats `scopes` like
+   `annotations`, see §11 and §12.6). No scope narrowing for other providers in v1.
 3. **Token work happens inside the `agent_run_step` DBOS step**, in `build_mcp_config`: check or
    refresh the provider token under a row lock, then sign the run token. Nothing secret is
    checkpointed (the step returns usage and outcome only). A re-executed step just finds a fresh
@@ -822,6 +823,15 @@ DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`),
 - **Neon's read mode rests on Neon's annotations.** If Neon marks no tool read-only, read mode
   offers nothing (the detail page says so). If the B2.7 probe shows it marks `run_sql` read-only,
   add a per-entry blocklist to `is_write` before release.
+- **Google's read mode rests on Google's annotations too.** `is_write` trusts only a `provider`
+  entry's flag; a `scopes` entry (the three Google cards) follows the annotation rule, as the
+  contract's "Read or write" says and `tests/test_connector_catalog.py` pins. The read-only
+  scopes already stop a write at Google, so the filter costs nothing in safety, but if Google's
+  servers leave tools unannotated a connected Google card offers few or none of them. It can't
+  be seen before the operator sets the Google client. At the manual sign-in (B2.7), read the
+  tool list on each Google connection's page; if reads show as "Off · write", change the first
+  branch of `is_write` to `entry.get("read_only_by") in ("provider", "scopes")`, flip the Google
+  case in that test and add `scopes` to the contract's first "Read or write" bullet (§12.6).
 - **`site()` is a short rule, not the Public Suffix List** (0.3). An unlisted shared suffix would
   let a mix-up through for providers hosted under it.
 - **The mix-up rule can refuse an honest server** whose sign-in endpoints are on another domain
@@ -867,3 +877,7 @@ DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`),
 5. **Production deploy and the Desktop 0.13.0 release** are yours to trigger; `/oauth/client-metadata.json`
    must be reachable on the production origin before Notion, Linear, Sentry, PostHog and Atlassian
    use it (otherwise they fall back to dynamic registration, which also works).
+6. **Google read-only: scopes alone, or scopes and annotations?** Decisions §4 lists "Google read
+   scopes" as a provider-side flag; the contract's rule and the code also apply the annotation
+   filter to Google (fail closed). Build proceeds on the filter. Say so if you want Google's
+   scopes trusted on their own, like Supabase's flag (one line in `is_write`, §11).

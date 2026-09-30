@@ -108,10 +108,12 @@ Why one table is enough:
   declares a secret or required header, else `unknown` (decided by discovery when you connect).
 - `key_fields` (`api_key` only): `[{"id": "Authorization", "label": "API key", "hint": "Apify API
   token", "secret": true}]`. `id` is the header name. `hint` is the registry's description.
-- `read_only_by`: which rule decides what a read is. `provider` (the provider's own URL flag is
-  trusted: Supabase) | `scopes` (read-only OAuth scopes: Google) | `annotations` (only tools the
-  server marks `readOnlyHint: true`; Neon is here and gets its URL flag as well, see "Read or
-  write").
+- `read_only_by`: what keeps a read-only connection read only, which is also what the UI says
+  about it. `provider` (the provider's own URL flag, trusted on its own: Supabase) | `scopes`
+  (the sign-in asks for read-only OAuth scopes, so the provider refuses a write itself: Google) |
+  `annotations` (only tools the server marks `readOnlyHint: true`; Neon is here and gets its URL
+  flag as well). Only `provider` changes which tools Tvashtr counts as reads: a `scopes` entry
+  follows the annotation rule like an `annotations` one (see "Read or write").
 - `website`: `null` unless it is an `https://` address.
 - `access_modes`: `["read"]` when the connector can only read (Google in v1).
 - `available: false` + `unavailable_reason: "coming_soon"` → the card shows "Coming soon" and can't
@@ -165,7 +167,9 @@ Why one table is enough:
 - `read_only_by: "provider"` (Supabase) and access `read`: every tool the provider lists under its
   read-only flag is a read (the provider enforces it).
 - Otherwise a tool is a read only when its MCP annotation has `readOnlyHint: true`. A missing
-  annotation is a write.
+  annotation is a write. That includes `read_only_by: "scopes"` (Google): the read-only scopes
+  stop a write at Google, and Tvashtr still offers an agent only the tools Google annotates as
+  reads, so what the connection's page shows as "Off · write" is never offered.
 - The provider's read-only parameter goes on the address whenever the entry has one and the access
   is `read`, whatever `read_only_by` says. **Neon gets both the flag and the annotation filter**:
   under `readonly=true` Neon hides its write tools but `run_sql` can still write (decisions §1),
