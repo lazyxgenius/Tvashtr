@@ -143,7 +143,8 @@ there; proven by row counts in Phase 0).
   for another name on the same IP), built by `connector_net._inner()` / `_async_inner()`
   (default `httpx.HTTPTransport` / `httpx.AsyncHTTPTransport`): a test replaces those two with a
   `MockTransport` and reads what arrives. The pinning transport itself refuses a non-`https`
-  request and a non-public address, so a caller that forgot `check_url` is still safe. Under
+  request and a non-public address, so a caller that forgot `check_url` is still safe. It sends
+  a copy of the request, so `response.url` still shows the host name. Under
   `connectors_allow_local` the clients use the plain transport, so `localhost` keeps working.
   Both clients set `trust_env=False` (no proxy or `.netrc` from the environment).
 - `site(host) -> str`: the contract's "same site" rule. An IP address is its own site (the whole
@@ -197,7 +198,8 @@ arguments, timeout=120)`, on `ClientSession`. The HTTP client always comes from
 `connector_net.async_client(timeout, headers)`: passed as `http_client=` to
 `mcp.client.streamable_http.streamable_http_client`, and through `httpx_client_factory=` to
 `mcp.client.sse.sse_client` (whose default factory would go around the guard). Every open also
-calls `connector_net.check_url`, so a bad address fails before any connection. `list_tools_sync`
+calls `connector_net.check_url` (in a worker thread: it resolves the host, and the proxy calls
+this module on the server's event loop), so a bad address fails before any connection. `list_tools_sync`
 wraps with `asyncio.run` for the sync routes.
 - Errors: `UpstreamUnauthorized` (**401 only**, the one status that means "sign in again"),
   `UpstreamRefused(status)` (any other 4xx, 403 included), `UpstreamUnreachable` (network error,
