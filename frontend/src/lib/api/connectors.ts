@@ -405,7 +405,7 @@ function parseCall(raw: unknown): ConnectorCall | null {
     connection_id: str(raw.connection_id),
     name: str(raw.name, "Connector"),
     tool: raw.tool,
-    write: raw.write === true,
+    write: raw.write !== false, // unreadable = a write, as for tools
     ok: raw.ok === true,
     blocked: raw.blocked === true,
     arg: strOrNull(raw.arg),

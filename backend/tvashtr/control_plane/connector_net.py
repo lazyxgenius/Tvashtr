@@ -78,6 +78,8 @@ def _resolve(host: str, port: int | None) -> str:
     addresses = [info[4][0] for info in infos]
     if not addresses or not all(_is_public(a) for a in addresses):
         raise UnsafeUrl(f"{host} isn't a public address")
+    # ponytail: the first address (the resolver's preferred one) and no fallback to the others.
+    # Try the next checked address on a connect error if a provider's first one proves unreachable.
     return addresses[0]
 
 
@@ -175,7 +177,8 @@ class _AsyncPinningTransport(httpx.AsyncBaseTransport):
         if host not in self._pins:
             ip = await anyio.to_thread.run_sync(_resolve, host, request.url.port)
             # Two first requests at once each resolve and check; the first to finish is kept.
-            self._pins.setdefault(host, (ip, _async_inner()))
+            if host not in self._pins:
+                self._pins[host] = (ip, _async_inner())
         ip, inner = self._pins[host]
         return await inner.handle_async_request(_pin(request, ip))
 
