@@ -8,9 +8,12 @@ comparisons are on the raw strings (a URL type adds a trailing slash).
 
 import hashlib
 import secrets
+import threading
 import time
 import uuid
-from collections.abc import Iterable
+import weakref
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import urlencode, urlsplit
@@ -382,6 +385,31 @@ def choose_client(
     return _register(found)
 
 
+# ---- one call to a provider per connection at a time ----
+
+_TURN_SECONDS = 15.0  # how long a caller waits for its turn before it gives up
+_turns: weakref.WeakValueDictionary[str, threading.Lock] = weakref.WeakValueDictionary()
+_turns_guard = threading.Lock()
+
+
+@contextmanager
+def _one_at_a_time(connection_id: object) -> Iterator[None]:
+    """One caller per connection at a time, in this process, around the calls that ask a
+    provider (a refresh, the start of a sign-in). Whoever waits here holds no database
+    connection. Waiting for the row lock instead held one each for as long as the provider
+    took, so one slow token endpoint could empty the pool for the whole backend. The row lock
+    is still taken: it is what orders the writers of a sign-in across processes. A caller that
+    doesn't get its turn within ``_TURN_SECONDS`` raises :class:`Unreachable`."""
+    with _turns_guard:
+        turn = _turns.setdefault(str(connection_id), threading.Lock())
+    if not turn.acquire(timeout=_TURN_SECONDS):
+        raise Unreachable("the provider is still answering an earlier call")
+    try:
+        yield
+    finally:
+        turn.release()
+
+
 # ---- starting a sign-in ----
 
 SIGNIN_TTL_SECONDS = 600  # how long a started sign-in can be finished
@@ -412,19 +440,20 @@ def start(owner_id: uuid.UUID, connection_id: object) -> dict:
         row = connectors.get_owned(session, owner_id, connection_id)
         if row.auth_kind != "oauth":
             raise not_oauth
-        url, name, entry = row.url, row.name, connector_catalog.resolve(row.connector_key)
+        row_id, url, name = row.id, row.url, row.name
+        entry = connector_catalog.resolve(row.connector_key)
     pins = _pins(entry, url)
     try:
-        found = discover(url, entry)
-        if found is None:
-            raise not_oauth
-        # ponytail: a registration (one 10 s call at most) runs while the row is locked, because
-        # the stored registration may only be read under the lock. Register before locking and
-        # re-check under it if lock waits show up.
-        with session_scope() as session:
-            row = connectors.get_owned(session, owner_id, connection_id, for_update=True)
-            in_flight = connectors.read_secret(row, pending=True)
-            client = choose_client(found, entry, url, [in_flight, connectors.read_secret(row)])
+        # The provider is asked (discovery, a registration) with no database connection held and
+        # the row not locked: only the write at the end takes the lock.
+        with _one_at_a_time(row_id):
+            found = discover(url, entry)
+            if found is None:
+                raise not_oauth
+            with session_scope() as session:
+                row = connectors.get_owned(session, owner_id, connection_id)
+                known = [connectors.read_secret(row, pending=True), connectors.read_secret(row)]
+            client = choose_client(found, entry, url, known)
             pkce = PKCEParameters.generate()
             state = secrets.token_urlsafe(32)
             pending = {
@@ -440,8 +469,17 @@ def start(owner_id: uuid.UUID, connection_id: object) -> dict:
                 "redirect_uri": redirect_uri(),
                 "started_at": time.time(),
             }
-            connectors.write_secret(row, pending, pending=True)
-            row.state_hash = state_hash(state)
+            with session_scope() as session:
+                row = connectors.get_owned(session, owner_id, connection_id, for_update=True)
+                # The registration was read before the lock was held. In this process nothing
+                # could change it since (the turn above); another process's refresh may have
+                # been told the client is gone. Then nothing is stored, and the next start
+                # registers again.
+                in_flight = connectors.read_secret(row, pending=True) or {}
+                if in_flight.get("refused_client") == client["client_id"]:
+                    raise Unreachable("the registration was refused while the sign-in started")
+                connectors.write_secret(row, pending, pending=True)
+                row.state_hash = state_hash(state)
     except (CannotRegister, Unreachable) as exc:
         raise _refusal(exc, name, url) from exc
 
@@ -742,10 +780,11 @@ def ensure_access_token(connection_id: uuid.UUID, *, rejected: str | None = None
     row, so never call it while holding that row's lock in another session. Raises
     :class:`SignInRefused` (the row is ``needs_signin`` by then, or gone) or :class:`Unreachable`
     (nothing was changed)."""
-    # ponytail: the refresh call runs while the row is locked (10 s timeout). Callers on an event
-    # loop run this in a worker thread. Move to a version column and a lock-free refresh if lock
-    # waits show up.
-    with session_scope() as session:
+    # ponytail: the refresh call runs while the row is locked (10 s timeout), so each connection
+    # being refreshed holds one pooled database connection for that long (callers waiting behind
+    # it hold none). Callers on an event loop run this in a worker thread. Move to a version
+    # column and a lock-free refresh if many connections refresh against slow providers at once.
+    with _one_at_a_time(connection_id), session_scope() as session:
         row = session.execute(
             select(ConnectorConnection)
             .where(ConnectorConnection.id == connection_id)

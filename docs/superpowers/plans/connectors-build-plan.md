@@ -464,8 +464,11 @@ when the issuer matches. The pinned client, the pinned `scope` and `oauth_hosts`
 - Tests first (`tests/test_connector_oauth_routes.py`): the authorize address has every parameter
   in the contract, `resource` verbatim from the metadata; only `sha256(state)` is stored; status is
   unchanged on a `connected` row; `not_oauth`; **another account → 404**.
-- As built: discovery runs before the row is locked; the client choice (it reads the stored
-  registration, and may register) and the write run under the lock. A Featured entry on its own
+- As built: discovery, the read of the row's registrations and the client choice (it may
+  register) all run before the row is locked and with no database connection held; only the
+  write takes the lock, and it re-checks that the chosen client wasn't marked `refused_client`
+  meanwhile. One `oauth/start` per connection runs at a time in a process (the same in-process
+  turn a refresh takes; see B2.5). A Featured entry on its own
   address may carry `authorize_params` (extra authorize parameters); the catalog has none yet,
   and Google needs `{"access_type": "offline", "prompt": "consent"}` there to get a refresh token
   (B1 owns the catalog).
@@ -514,6 +517,11 @@ on the row and reads the stored sign-in only after it holds the lock.
 - `# ponytail:` the refresh call runs while the row is locked (10 s timeout). Callers on an event
   loop run it in a worker thread (B3.3). Move to a version column and a lock-free refresh if lock
   waits show up.
+- As built after review: callers first take an in-process turn per connection
+  (`_one_at_a_time`, 15 s wait, then `Unreachable`) and only the caller whose turn it is opens a
+  session, so callers waiting behind a slow token endpoint hold no pooled database connection.
+  What is left of the ponytail note: each connection being refreshed still holds one pooled
+  connection for up to 10 s.
 
 **B2.6 Client metadata document.** `GET /oauth/client-metadata.json`; 404 unless
 `public_base_url` is https. Test both cases.

@@ -20,7 +20,7 @@ from toolkit_helpers import fresh_account
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_catalog, connector_oauth, connector_upstream, connectors
-from tvashtr.db import session_scope
+from tvashtr.db import get_engine, session_scope
 from tvashtr.main import app
 from tvashtr.models import ConnectorConnection
 
@@ -229,6 +229,57 @@ def test_start_says_cannot_register_and_unreachable_and_stores_nothing(monkeypat
     )
     row = load(cid)
     assert (row.state_hash, row.pending_encrypted, row.status) == (None, None, "pending")
+
+
+def test_start_holds_no_database_connection_while_it_asks_the_provider(monkeypatch):
+    """Found in review: the registration call ran under the row lock, so a slow registration
+    endpoint held a pooled connection, and every other ``oauth/start`` on that row held another
+    one waiting for the lock."""
+    fake = FakeConnectorServer(BASE)
+    pool = get_engine().pool
+    held: dict[str, int] = {}
+
+    def network(request: httpx.Request) -> httpx.Response:
+        held[request.url.path] = pool.checkedout()
+        return fake.handle(request)
+
+    wire(monkeypatch, network)
+    c, owner = fresh_account()
+    cid = connection(owner, fake)
+    before = pool.checkedout()
+
+    assert _start(c, cid).status_code == 200
+    assert "/register" in held and set(held.values()) == {before}
+
+
+def test_a_registration_refused_while_a_start_is_under_way_is_not_stored(monkeypatch):
+    """The registration is read before the row is locked (nothing is asked of the provider under
+    the lock). Another process's refresh may find it gone in between: the start then stores
+    nothing, and the next one registers again."""
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    c, owner = fresh_account()
+    cid = connection(owner, fake)
+    assert _query(_start(c, cid).json()["authorize_url"])["client_id"] == "client-1"
+    before = load(cid)
+    chosen = connector_oauth.choose_client
+
+    def refused_meanwhile(*args, **kwargs):
+        client = chosen(*args, **kwargs)
+        with session_scope() as session:  # what a refresh answered ``invalid_client`` writes
+            row = session.get(ConnectorConnection, cid)
+            in_flight = connectors.read_secret(row, pending=True)
+            refused = {"refused_client": client["client_id"]}
+            connectors.write_secret(row, in_flight | refused, pending=True)
+        return client
+
+    monkeypatch.setattr(connector_oauth, "choose_client", refused_meanwhile)
+    resp = _start(c, cid)
+    assert (resp.status_code, resp.json()["detail"]["code"]) == (502, "unreachable")
+    assert load(cid).state_hash == before.state_hash  # nothing was stored
+
+    monkeypatch.setattr(connector_oauth, "choose_client", chosen)
+    assert _query(_start(c, cid).json()["authorize_url"])["client_id"] == "client-2"
 
 
 def test_a_featured_entry_pins_its_client_its_scope_and_extra_authorize_parameters(monkeypatch):

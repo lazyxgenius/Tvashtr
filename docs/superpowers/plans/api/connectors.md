@@ -490,6 +490,15 @@ dynamic registration).
   credentials and `DELETE` all take `SELECT … FOR UPDATE` on the row, and read the stored sign-in
   only after they hold it. Otherwise a refresh that started earlier commits the old sign-in over a
   new one. A refresh that finds the row gone raises `SignInRefused` and writes nothing.
+  `oauth/start` is the one exception to "read after": it only writes the sign-in in flight, so it
+  reads the row's registrations before the lock, asks the provider (discovery, a registration)
+  with no database connection held, and under the lock checks that the client it chose wasn't
+  marked `refused_client` meanwhile (then 502 `unreachable` and nothing is stored).
+- **Waiting callers hold no database connection.** A refresh and `oauth/start` first take a turn
+  per connection inside the process, and only the caller whose turn it is opens a session. So a
+  slow token endpoint costs one pooled connection per connection being refreshed, not one per
+  caller. A caller that doesn't get its turn within 15 seconds gets `Unreachable` (502
+  `unreachable` from `oauth/start`). The row lock still orders writers across processes.
 - A refusal is the token endpoint's own: a 4xx answer whose JSON body names the OAuth `error`.
   `invalid_grant`, or no refresh token and an expired (or `rejected`) access token → tokens
   cleared, `status: "needs_signin"`, `last_error` = "Its sign-in expired." Raises `SignInRefused`.

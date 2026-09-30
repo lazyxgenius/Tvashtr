@@ -3,6 +3,7 @@ against the fake sign-in server behind ``connector_net.client()``.
 Contract: ``docs/superpowers/plans/api/connectors.md`` (OAuth, Tokens)."""
 
 import base64
+import contextlib
 import json
 import threading
 import time
@@ -27,7 +28,7 @@ from pydantic import SecretStr
 from sqlalchemy import text
 
 from tvashtr.config import get_settings
-from tvashtr.control_plane import connector_catalog, connectors
+from tvashtr.control_plane import connector_catalog, connector_oauth, connectors
 from tvashtr.control_plane.connector_oauth import (
     CannotRegister,
     Discovery,
@@ -1024,6 +1025,64 @@ def test_two_callers_at_once_make_one_refresh_request(monkeypatch):
     assert first == second and first in fake.access_tokens  # no spent refresh token was sent
     assert len(_forms(fake)) == 1
     assert connectors.read_secret(load(cid))["access_token"] == first
+
+
+def test_the_row_lock_alone_makes_one_refresh_request(monkeypatch):
+    """Two backend processes share no in-process turn. The row lock is what orders them."""
+    monkeypatch.setattr(connector_oauth, "_one_at_a_time", contextlib.nullcontext)
+    fake = FakeConnectorServer(BASE)
+
+    def slow(request: httpx.Request) -> httpx.Response:
+        time.sleep(0.3)
+        return fake.handle(request)
+
+    wire(monkeypatch, slow)
+    cid, _ = _connected(fake, expires_in=10)
+    first, second = _in_threads(lambda: ensure_access_token(cid), lambda: ensure_access_token(cid))
+    assert first == second and first in fake.access_tokens
+    assert len(_forms(fake)) == 1
+
+
+def test_callers_waiting_for_a_refresh_hold_no_database_connection(monkeypatch):
+    """Found in review: every caller waited for the row lock on its own pooled connection while
+    the one in front waited for the provider, so one slow token endpoint emptied the pool for
+    the whole backend. Waiting callers now hold none."""
+    fake = FakeConnectorServer(BASE)
+    pool = get_engine().pool
+    held: list[int] = []
+
+    def slow(request: httpx.Request) -> httpx.Response:
+        time.sleep(0.3)  # the other callers arrive and wait
+        held.append(pool.checkedout())
+        return httpx.Response(503)
+
+    wire(monkeypatch, slow)
+    cid, stored = _connected(fake, expires_in=10)
+    before = pool.checkedout()
+
+    results = _in_threads(*[lambda: ensure_access_token(cid)] * 4)
+    assert all(isinstance(result, Unreachable) for result in results)
+    assert len(held) == 4 and max(held) - before == 1  # the one refreshing, none of the waiting
+    assert connectors.read_secret(load(cid)) == stored
+
+
+def test_a_caller_doesnt_wait_for_its_turn_for_ever(monkeypatch):
+    """Behind a provider that keeps timing out, each waiting caller would otherwise wait for
+    all the ones in front of it (ten seconds each)."""
+    monkeypatch.setattr(connector_oauth, "_TURN_SECONDS", 0.2)
+    fake = FakeConnectorServer(BASE)
+    asked: list[str] = []
+
+    def slow(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        time.sleep(0.8)
+        return fake.handle(request)
+
+    wire(monkeypatch, slow)
+    cid, _ = _connected(fake, expires_in=10)
+    results = _in_threads(*[lambda: ensure_access_token(cid)] * 3)
+    assert sorted(type(result).__name__ for result in results) == ["Unreachable"] * 2 + ["str"]
+    assert asked == ["/token"]
 
 
 def test_a_row_deleted_while_a_refresh_waits_for_the_lock_is_refused(monkeypatch):
