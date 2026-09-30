@@ -485,6 +485,22 @@ def _key_headers(entry: dict, credentials: object, name: str) -> dict:
     }
 
 
+def _key_entry(entry: dict, row: ConnectorConnection) -> dict:
+    """The entry a key connection's new key is checked against. When the catalog no longer lists
+    the connector, or no longer declares a key header for it (the snapshot was refreshed), that
+    is the headers the connection stores: each is asked for, and sent as it is given."""
+    if any(h["secret"] or h["required"] for h in entry.get("headers") or []):
+        return entry
+    names = list((_secret_or_none(row) or {}).get("headers") or {})
+    return {
+        "headers": [{"name": n, "secret": True, "required": True, "template": None} for n in names],
+        "key_fields": [
+            {"id": n, "label": connector_catalog._key_label(n), "hint": "", "secret": True}
+            for n in names
+        ],
+    }
+
+
 def _list_tools(row: ConnectorConnection, headers: dict, wants_credentials: ConnectorError) -> list:
     """The provider's tools in the stored shape, listed with ``headers`` at the row's access. A
     401 or 403 raises ``wants_credentials``; anything else that isn't a tool list is
@@ -694,7 +710,7 @@ def change(owner_id: uuid.UUID, connection_id: object, body: dict) -> dict:
         if "credentials" in body:
             if row.auth_kind != "api_key":
                 raise _refusal(409, "not_api_key", f"{row.name} doesn’t take a key.")
-            headers = _key_headers(entry, body["credentials"], row.name)
+            headers = _key_headers(_key_entry(entry, row), body["credentials"], row.name)
             # The key is tried at the address this request leaves the connection with.
             draft = ConnectorConnection(
                 connector_key=row.connector_key,

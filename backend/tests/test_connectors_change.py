@@ -425,6 +425,51 @@ def test_patch_a_rejected_key_keeps_the_old_key_and_the_status(registry_file, up
     assert connectors.read_secret(connection_row(cid)) == KEY_SECRET
 
 
+def test_patch_credentials_when_the_catalog_no_longer_lists_the_key(registry_file, upstream):
+    """A refresh of the snapshot can drop a server, or its key header. The connection still
+    stores which headers it sends, so its key can still be replaced."""
+    c, owner = fresh_account()
+    registry_file()  # an empty registry: the connection's key no longer resolves
+    cid = add_connection(
+        owner,
+        "com.gone/server",
+        name="Gone",
+        url="https://mcp.gone.dev/mcp",
+        auth_kind="api_key",
+        secret={"headers": {"Authorization": "Bearer OLD", "X-Team": "7"}},
+        status="needs_signin",
+        last_error="Its key stopped working.",
+    )
+    path = f"/api/connectors/{cid}"
+
+    # Only the headers it stores are taken, and all of them.
+    detail = _refused(c.patch(path, json={"credentials": {"X-Other": "k"}}), 422, "invalid_key")
+    assert detail["message"] == "That isn’t a key Gone takes. Check it and try again."
+    detail = _refused(
+        c.patch(path, json={"credentials": {"Authorization": "k"}}), 422, "key_required"
+    )
+    assert detail["fields"] == [
+        {"id": "Authorization", "label": "API key", "hint": "", "secret": True},
+        {"id": "X-Team", "label": "X-Team", "hint": "", "secret": True},
+    ]
+    assert upstream.lists == [] and connection_row(cid).status == "needs_signin"
+
+    resp = c.patch(path, json={"credentials": {"Authorization": "NEW", "X-Team": "8"}})
+    assert resp.status_code == 200, resp.text
+    assert (resp.json()["status"], resp.json()["last_error"]) == ("connected", None)
+    sent = {"Authorization": "Bearer NEW", "X-Team": "8"}
+    assert upstream.lists == [("https://mcp.gone.dev/mcp", "streamable-http", sent)]
+    assert connectors.read_secret(connection_row(cid)) == {"headers": sent}
+
+    # Still listed, but it no longer declares a key header: the same.
+    registry_file(snapshot_line("com.gone/server", "https://mcp.gone.dev/mcp", title="Gone"))
+    resp = c.patch(path, json={"credentials": {"Authorization": "Bearer NEWER", "X-Team": "9"}})
+    assert resp.status_code == 200, resp.text
+    assert connectors.read_secret(connection_row(cid)) == {
+        "headers": {"Authorization": "Bearer NEWER", "X-Team": "9"}
+    }
+
+
 def test_patch_credentials_on_a_connection_that_signs_in(upstream):
     c, owner = fresh_account()
     cid = add_connection(owner, "linear", secret=OAUTH_SECRET)
