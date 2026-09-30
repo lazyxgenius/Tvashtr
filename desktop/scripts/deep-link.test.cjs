@@ -25,6 +25,7 @@ test("allow-listed places map onto the app's hash addresses", () => {
     ["tvashtr://toolkit/skills", { path: "/toolkit/skills" }],
     ["tvashtr://toolkit/memory", { path: "/toolkit/memory/inbox" }],
     ["tvashtr://toolkit/secrets", { path: "/toolkit/secrets" }],
+    ["tvashtr://toolkit/connectors", { path: "/toolkit/connectors" }],
     [`tvashtr://teams/${TEAM}`, { path: `/teams/${TEAM}` }],
   ];
   for (const [link, want] of cases) assert.deepEqual(parseDeepLink(link), want, link);
@@ -68,6 +69,8 @@ test("everything else is ignored", () => {
     "tvashtr://toolkit",
     "tvashtr://toolkit/tools/browse",
     "tvashtr://toolkit/memory/archive",
+    "tvashtr://toolkit/connectors/neon",
+    "tvashtr://connectors",
     "tvashtr://teams",
     "tvashtr://teams/not-a-uuid",
     `tvashtr://teams/${TEAM}/runs/${TEAM}`,

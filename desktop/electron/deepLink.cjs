@@ -12,7 +12,7 @@
  *   tvashtr://engines/overview                       → /engines
  *   tvashtr://engines/subscriptions[?connect=claude|grok] → /engines/subscriptions
  *   tvashtr://engines/keys                           → /engines/keys
- *   tvashtr://toolkit/tools|skills|secrets           → /toolkit/<same>
+ *   tvashtr://toolkit/tools|skills|secrets|connectors → /toolkit/<same>
  *   tvashtr://toolkit/memory                         → /toolkit/memory/inbox
  *   tvashtr://teams/<uuid>                           → /teams/<uuid>
  *
@@ -34,6 +34,7 @@ const TOOLKIT = {
   skills: "/toolkit/skills",
   memory: "/toolkit/memory/inbox",
   secrets: "/toolkit/secrets",
+  connectors: "/toolkit/connectors",
 };
 const CONNECT_PROVIDERS = ["claude", "grok"];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;

@@ -43,7 +43,11 @@ const { createSetupStore, SetupError } = require("./setupStore.cjs");
 const { appInfo } = require("./appInfo.cjs");
 const { createUpdater } = require("./updater.cjs");
 const { createUnsavedGuard, unsavedDialogOptions, DISCARD } = require("./unsavedGuard.cjs");
-const { blocksNavigation } = require("./navigationGuard.cjs");
+const {
+  blocksNavigation,
+  isGithubAuthUrl,
+  windowOpenAction,
+} = require("./navigationGuard.cjs");
 const { resolveCliEnv } = require("./harness/spawnEnv.cjs");
 const { RepoError, createGit, displayPath } = require("./repos/common.cjs");
 const { createRepoService } = require("./repos/service.cjs");
@@ -464,27 +468,6 @@ function envFlag(name, fallback = false) {
 }
 
 /**
- * GitHub OAuth / App-install URLs that return to our callback must stay in-window.
- * Unrelated github.com pages (docs, issues) still open externally.
- * @param {string} url
- */
-function isGithubAuthUrl(url) {
-  try {
-    const u = new URL(url);
-    if (u.hostname !== "github.com" && u.hostname !== "www.github.com") return false;
-    const p = u.pathname;
-    return (
-      p.startsWith("/login/oauth/") ||
-      p.includes("/installations/new") ||
-      p.includes("/installations/select_permissions") ||
-      /\/apps\/[^/]+\/installations/.test(p)
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
  * If Fly (or frontend_origin) would navigate the window off loopback after OAuth,
  * bounce back to the local SPA while keeping cookies already set for 127.0.0.1.
  * @param {string} url
@@ -532,13 +515,11 @@ async function startLocalFrontendServer() {
  * @param {import('electron').BrowserWindow} win
  */
 function attachNavigationGuards(win) {
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isGithubAuthUrl(url)) {
-      void win.loadURL(url);
-      return { action: "deny" };
-    }
-    // External docs / unrelated links → OS browser.
-    void shell.openExternal(url);
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // The decision (http(s) only; `tv-external` → OS browser) is navigationGuard's.
+    const action = windowOpenAction(url, frameName);
+    if (action === "in-window") void win.loadURL(url);
+    else if (action === "external") void shell.openExternal(url);
     return { action: "deny" };
   });
 
