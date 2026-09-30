@@ -535,6 +535,27 @@ def test_check_a_key_connection_against_the_fake_server(
     assert connection_row(forbidden).status == "connected"
 
 
+def test_check_a_key_that_cant_be_decrypted_stopped_working_and_can_be_replaced(
+    registry_file, upstream
+):
+    c, owner = fresh_account()
+    cid = _key_connection(owner, registry_file, secret=None, secret_encrypted="not-a-fernet-token")
+    resp = c.post(f"/api/connectors/{cid}/check")
+    assert resp.status_code == 200, resp.text
+    assert (resp.json()["status"], resp.json()["last_error"]) == (
+        "needs_signin",
+        "Its key stopped working.",
+    )
+    assert upstream.lists == []  # there was no key to try
+
+    resp = c.patch(f"/api/connectors/{cid}", json={"credentials": {"Authorization": "NEW-KEY"}})
+    assert resp.status_code == 200, resp.text
+    assert (resp.json()["status"], resp.json()["last_error"]) == ("connected", None)
+    assert connectors.read_secret(connection_row(cid)) == {
+        "headers": {"Authorization": "Bearer NEW-KEY"}
+    }
+
+
 def test_check_a_pending_connection_has_nothing_to_check(upstream, tokens):
     c, owner = fresh_account()
     cid = add_connection(owner, "supabase", status="pending")

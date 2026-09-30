@@ -20,6 +20,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from cryptography.fernet import InvalidToken
 from mcp import McpError
 from mcp.types import CallToolResult, Tool
 from sqlalchemy import select
@@ -109,6 +110,17 @@ def write_secret(row: ConnectorConnection, value: dict | None, *, pending: bool 
     setattr(row, _column(pending), encrypt_secret(json.dumps(value)) if value is not None else None)
 
 
+def _secret_or_none(row: ConnectorConnection, *, pending: bool = False) -> dict | None:
+    """``read_secret``, or ``None`` when the column can't be read (``TVASHTR_SECRET_KEY`` was
+    rotated, or the value is corrupt). The row then reads as having no sign-in, so it can still
+    be listed, signed in again or disconnected."""
+    try:
+        secret = read_secret(row, pending=pending)
+    except (InvalidToken, ValueError):
+        return None
+    return secret if isinstance(secret, dict) else None
+
+
 def stored_tools(tools: list[Tool]) -> list[dict]:
     """A provider's tool list in the shape kept in ``tools``: ``{"name", "title", "read_only"}``.
     ``read_only`` is true only for an explicit ``readOnlyHint: true``. It is what every list of
@@ -133,8 +145,8 @@ def _signin(row: ConnectorConnection) -> tuple[str | None, bool]:
     then the stored one."""
     if row.auth_kind != "oauth":
         return None, False
-    pending = read_secret(row, pending=True) or {}
-    stored = read_secret(row) or {}
+    pending = _secret_or_none(row, pending=True) or {}
+    stored = _secret_or_none(row) or {}
     endpoint = (
         pending.get("authorization_endpoint")
         or stored.get("authorization_endpoint")
@@ -702,8 +714,9 @@ def _with_sign_in[T](row: ConnectorConnection, use: Callable[[dict], T]) -> T:
 
 
 def _sign_in_gone() -> tuple:
-    """What ``_with_sign_in`` raises when the sign-in (or key) no longer works."""
-    return (connector_oauth.SignInRefused, connector_upstream.UpstreamUnauthorized)
+    """What ``_with_sign_in`` raises when the sign-in (or key) no longer works, or can no longer
+    be decrypted."""
+    return (connector_oauth.SignInRefused, connector_upstream.UpstreamUnauthorized, InvalidToken)
 
 
 def _no_answer() -> tuple:

@@ -408,6 +408,34 @@ def test_no_read_route_returns_a_secret_a_token_or_the_state_hash():
     assert c.get(f"/api/connectors/{cid}").json()["signin_host"] == "api.supabase.com"
 
 
+def test_a_sign_in_that_cant_be_decrypted_doesnt_break_the_list_or_the_connection():
+    """After ``TVASHTR_SECRET_KEY`` is rotated (or a column is corrupt) the row reads as having
+    no sign-in: it is still listed, and it can be renamed, signed in again or disconnected."""
+    c, owner = fresh_account()
+    fine = add_connection(owner, "linear", secret=SECRETS)
+    broken = add_connection(
+        owner,
+        "supabase",
+        secret_encrypted="not-a-fernet-token",
+        pending_encrypted="nor-is-this",
+        state_hash="STATE-HASH-" + owner.hex,
+    )
+    listed = c.get("/api/connectors")
+    assert listed.status_code == 200, listed.text
+    rows = {r["id"]: r for r in listed.json()["connections"]}
+    assert set(rows) == {fine, broken}
+    assert rows[fine]["signin_host"] == "api.supabase.com"
+    assert (rows[broken]["signin_host"], rows[broken]["signin_pending"]) == (None, False)
+
+    one = c.get(f"/api/connectors/{broken}")
+    assert one.status_code == 200, one.text
+    assert (one.json()["signin_host"], one.json()["signin_host_differs"]) == (None, False)
+    renamed = c.patch(f"/api/connectors/{broken}", json={"name": "Production"})
+    assert (renamed.status_code, renamed.json()["name"]) == (200, "Production")
+    assert c.delete(f"/api/connectors/{broken}").status_code == 200
+    assert [r["id"] for r in c.get("/api/connectors").json()["connections"]] == [fine]
+
+
 def _team_with_grants(owner, connection_id, other_connection_id=None) -> dict:
     team = make_team(owner, "Indicator sprint team")
     docs = make_team(owner, "Docs team")
