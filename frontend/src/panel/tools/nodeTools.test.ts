@@ -4,6 +4,7 @@ import {
   FETCH_SERVER,
   addLibrary,
   addServer,
+  connectorsOf,
   enabledOf,
   formOf,
   refsOf,
@@ -12,6 +13,7 @@ import {
   replaceServer,
   secretName,
   serverFrom,
+  setConnectors,
   setDomains,
   setEnabled,
   targetProblem,
@@ -49,6 +51,55 @@ describe("nodeTools", () => {
       tvashtr: { domains: ["d-a", "d-b"] },
     });
     expect(setDomains(dom, [])).toBeNull();
+  });
+
+  it("reads and writes the connectors an agent can use; an empty list tidies away", () => {
+    expect(connectorsOf(null)).toEqual([]);
+    expect(connectorsOf(cfg)).toEqual([]);
+    const one = setConnectors(null, [{ id: "c1", access: "read" }]);
+    expect(one).toEqual({ tvashtr: { connectors: [{ id: "c1", access: "read" }] } });
+    expect(connectorsOf(one)).toEqual([{ id: "c1", access: "read" }]);
+    // The rest of the config stays as it was.
+    const both = setConnectors(
+      { ...cfg, tvashtr: { domains: ["d-a"], connectors: [{ id: "c1", access: "read" }] } },
+      [
+        { id: "c1", access: "write" },
+        { id: "c2", access: "read" },
+      ],
+    );
+    expect(both).toEqual({
+      ...cfg,
+      tvashtr: {
+        domains: ["d-a"],
+        connectors: [
+          { id: "c1", access: "write" },
+          { id: "c2", access: "read" },
+        ],
+      },
+    });
+    expect(setConnectors(both, [])).toEqual({ ...cfg, tvashtr: { domains: ["d-a"] } });
+    expect(setConnectors(one, [])).toBeNull();
+  });
+
+  it("reads a grant with no access as read only and skips what isn't a grant", () => {
+    const messy = {
+      tvashtr: {
+        connectors: [
+          { id: "c1" },
+          { id: "c2", access: "write" },
+          { id: "c3", access: "admin" },
+          "c4",
+          { access: "write" },
+          null,
+        ],
+      },
+    };
+    expect(connectorsOf(messy)).toEqual([
+      { id: "c1", access: "read" },
+      { id: "c2", access: "write" },
+      { id: "c3", access: "read" },
+    ]);
+    expect(connectorsOf({ tvashtr: { connectors: "c1" } })).toEqual([]);
   });
 
   it("adds and removes servers and library references", () => {
