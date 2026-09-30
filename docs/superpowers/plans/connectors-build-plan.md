@@ -1211,6 +1211,32 @@ DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`),
 8. `make test` leaves hundreds of fixture runs and wipes provider keys: run `make seed` and clear
    the residue before T.2 or any live gate on a shared database.
 
+**Fixes after the final review** (each test-first, one commit each; the contract says what each
+one built):
+
+| Commit | What was wrong | What it is now |
+|---|---|---|
+| `9de88f6` | The public callback and confirm waited on the provider with no cap: one account could fill every API worker thread. | They hold a `provider_slot`; past the cap, a "busy" page whose button tries the same answer again. |
+| `64e1054`, `e28232a` | Narrowing a connection left each agent's `write` grant stored and hidden, so widening handed write back. | `PATCH access: read` makes every library agent's grant `read`, and the agent drawer saves a grant it loaded earlier as `read` too. |
+| `3438435` | "Replace key" read the key fields off the first page of a catalog search by host. | A connection carries `key_fields`. |
+| `d16eae9` | A call that read the row before "Sign in again" finished marked the new sign-in expired. | `sign_in_expired` marks only the sign-in its caller read. |
+| `685299a` | A provider tool named `think`, `finish`… failed the node when the connector was the agent's only MCP server. | The proxy leaves out the engine's tool names and repeats. |
+| `d331c35` | Whoever held the `state` (the sign-in server does) could read the account's email and finish or cancel the sign-in. | The app opens `GET /api/connectors/oauth/go`, which marks the browser; the callback and confirm need that cookie or the owner's session. |
+| `30229af` | The run view's warnings sat inside the 56px toolbar and "Open Connectors" was under the canvas. | A row of its own under the toolbar. |
+| `6181e6f` | The key form demanded every field, optional ones too, and sent them all. | Fields carry `required`; only filled ones are sent. |
+| `4bd0fb4` | The window opened what `oauth/start` discovered, not the site the sheet had shown. | A sign-in that moved is shown first and asked about again. |
+| `89bb5c5` | A pending row from a custom check was left behind and kept its slug. | The sheet deletes it when it lets go of it (not once a sign-in was started). |
+| `702b8ae` | Enter did nothing in a sheet with two fields. | The footer button is the form's submit button. |
+| `762db30` | Each poll of the run graph read every event of the run. | `connector_use` and `recent_use` read `seq >= 1,000,000,000` only. |
+| `254329a` | The run-events endpoint served connector rows to clients that don't know them (Desktop 0.12.0). | It leaves the two kinds out. |
+| `465f453` | 521 registry cards were all named "Site". | A lone `site` is named after its publisher; a shared name is shown with its publisher. |
+
+Left as it is, and said in the contract: a run already going keeps the access its token was
+signed with, so one started with Read & write before a narrowing writes again after a widening;
+and the node `PATCH` stores a grant as it is given, so a direct API call can store `write` under
+a read-only connection again (it shows and acts as read until the connection is widened). The
+agent drawer can't: it saves a grant it loaded before a narrowing as `read`.
+
 ## 11. Risks
 
 - **Unreviewed registry servers.** Their tool descriptions enter the agent's context (prompt

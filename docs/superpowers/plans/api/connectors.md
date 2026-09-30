@@ -362,7 +362,11 @@ of the owner's last 30 runs.
   no agent write back: each stays read only until Read & write is chosen for it again. Run
   snapshots are not rewritten, and a run that is going keeps the access its token was signed
   with (the proxy applies the lower of that and the row's), so a run started with Read & write
-  before the narrowing writes again once the connection is widened.
+  before the narrowing writes again once the connection is widened. The agent drawer never saves
+  `write` under a connection that is read only (a grant it loaded before the narrowing is saved
+  as `read`). The node `PATCH` itself stores a grant as it is given, so a direct API call can
+  still store `write` under a read-only connection: it reads and acts as `read` until the
+  connection is widened.
 - `scope`: `{"value", "label"}` or `null`. 409 `{"code": "no_scope", …}` when the connector has no
   `scope_picker`. `value` must match `^[A-Za-z0-9_.-]{1,80}$`, else 422
   `{"code": "invalid_scope", "message": "That doesn’t look like a project id."}` (it becomes a query
