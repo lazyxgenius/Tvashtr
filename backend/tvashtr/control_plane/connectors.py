@@ -61,6 +61,7 @@ TOOLS_LIMIT = 500  # tools of one connection that are stored and listed
 TOOL_TEXT_LIMIT = 200  # characters of a stored tool name or title
 SCOPE_OPTIONS_LIMIT = 200
 SCOPE_OPTIONS_TIMEOUT = 20  # seconds for the provider's project list
+_SLUG_CONSTRAINT = "uq_connector_connections_owner_slug"
 # A scope value becomes a query parameter of the provider address.
 _SCOPE_VALUE = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 
@@ -602,14 +603,39 @@ def connect(owner_id: uuid.UUID, body: dict) -> dict:
         no_signin = _refusal(422, "no_signin", _NO_SIGNIN)
         fields |= {"auth_kind": "none", "tools": _list_tools(draft, {}, no_signin)}
 
+    for attempt in (1, 2):
+        try:
+            return _store(owner_id, entry["key"], name, fields, secret, pending)
+        except IntegrityError as exc:
+            # Another connect took the slug between this one's read and its write: once more,
+            # with the next slug. Anything else is the same connector connected at the same
+            # moment.
+            diag = getattr(exc.orig, "diag", None)
+            slug_taken = getattr(diag, "constraint_name", None) == _SLUG_CONSTRAINT
+            if attempt == 2 or not slug_taken:
+                raise _refusal(409, "already_connected", f"{name} is already connected.") from None
+    raise AssertionError("unreachable")
+
+
+def _store(
+    owner_id: uuid.UUID,
+    key: str,
+    name: str,
+    fields: dict,
+    secret: dict | None,
+    pending: dict | None,
+) -> dict:
+    """Write what ``connect`` decided, in one transaction holding the row lock, and return the
+    connection. An ``IntegrityError`` (the key or the slug was taken at the same moment) leaves
+    nothing stored."""
     with session_scope() as session:
-        row = _by_key(session, owner_id, entry["key"], for_update=True)
+        row = _by_key(session, owner_id, key, for_update=True)
         if row is not None and row.status != "pending":
             raise _already_connected(row)
         if row is None:  # else the pending row is reused: its name and slug stay
             row = ConnectorConnection(
                 owner_id=owner_id,
-                connector_key=entry["key"],
+                connector_key=key,
                 name=name,
                 slug=_new_slug(session, owner_id, name),
             )
@@ -620,10 +646,7 @@ def connect(owner_id: uuid.UUID, body: dict) -> dict:
         row.last_error = row.state_hash = None
         write_secret(row, secret)
         write_secret(row, pending, pending=True)
-        try:
-            session.flush()
-        except IntegrityError:  # the same connector (or name) connected at the same moment
-            raise _refusal(409, "already_connected", f"{name} is already connected.") from None
+        session.flush()
         return serialize(row)
 
 

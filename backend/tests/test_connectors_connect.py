@@ -655,3 +655,35 @@ def test_the_slug_comes_from_the_name_and_is_unique_per_account(discovery, publi
     # A name is cut at 60 characters.
     resp = c.post("/api/connectors", json={"url": "https://eight.acme.dev/mcp", "name": "n" * 90})
     assert resp.json()["name"] == "n" * 60
+
+
+def test_a_slug_taken_at_the_same_moment_gets_the_next_one(monkeypatch, discovery, public_dns):
+    """Two connects that both read the taken slugs before either stored its row: the second
+    one's slug is gone when it writes. It takes the next one: nothing is "already connected"."""
+    discovery.answer = DISCOVERY
+    c, owner = fresh_account()
+    add_connection(owner, "custom:one.acme.dev/mcp", name="Acme", slug="acme")
+    real, stale = connectors._new_slug, ["acme"]  # the first read didn't see the row above
+
+    def new_slug(session, owner_id, name):
+        return stale.pop() if stale else real(session, owner_id, name)
+
+    monkeypatch.setattr(connectors, "_new_slug", new_slug)
+    resp = c.post("/api/connectors", json={"url": "https://two.acme.dev/mcp", "name": "Acme"})
+    assert resp.status_code == 201, resp.text
+    assert (resp.json()["slug"], resp.json()["connector_key"]) == (
+        "acme-2",
+        "custom:two.acme.dev/mcp",
+    )
+    assert [r.slug for r in connections_of(owner)] == ["acme", "acme-2"]
+
+    # The same connector connected at the same moment (this connect didn't see its row) is
+    # still "already connected", and nothing more is stored.
+    monkeypatch.setattr(connectors, "_by_key", lambda *args, **kwargs: None)
+    detail = _refused(
+        c.post("/api/connectors", json={"url": "https://two.acme.dev/mcp", "name": "Other"}),
+        409,
+        "already_connected",
+    )
+    assert detail["message"] == "Other is already connected."
+    assert [r.slug for r in connections_of(owner)] == ["acme", "acme-2"]
