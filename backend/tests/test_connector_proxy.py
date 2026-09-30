@@ -783,6 +783,28 @@ def test_a_key_that_cant_be_decrypted_has_stopped_working():
     assert set(_warnings(grant)) == {("connector", "Linear", "its key stopped working")}
 
 
+def test_a_server_with_no_sign_in_that_answers_401_now_asks_for_one():
+    """It never signed in, so nothing expired and there is no key to replace: the warning and
+    the row say what did happen, and what to do about it."""
+    upstream = FakeUpstream()
+    grant = _grant("read", auth_kind="none")
+    assert _list(grant, upstream) == READS
+    upstream.fail = [connector_upstream.UpstreamUnauthorized()]
+
+    result = _call(grant, upstream, "list_issues")
+
+    assert result.isError and _text(result) == "Linear needs you to sign in again."
+    assert len(upstream.calls) == 1
+    row = _row(grant)
+    assert (row.status, row.last_error) == (
+        "needs_signin",
+        "It now asks for a sign-in. Disconnect it and connect it again.",
+    )
+    assert _warnings(grant) == [("connector", "Linear", "it now asks for a sign-in")]
+    (skip,) = _events(grant, "connector_skipped")
+    assert skip.payload["reason"] == "it now asks for a sign-in"
+
+
 def _replace_key(grant: RunGrant, key: str) -> None:
     with session_scope() as s:
         row = s.get(ConnectorConnection, grant.connection_id)

@@ -849,8 +849,9 @@ def _no_answer() -> tuple:
     return (connector_upstream.UpstreamUnreachable, connector_oauth.Unreachable)
 
 
-# ``last_error`` when the provider answers 401, by what the connection signs in with.
-_GONE = {
+# ``last_error`` when the provider answers 401, by what the connection signs in with (``check``
+# here, and the proxy at run time).
+SIGN_IN_GONE = {
     "oauth": "Its sign-in expired.",
     "api_key": "Its key stopped working.",
     # It has no sign-in to renew and no key to replace: only connecting it again finds the
@@ -891,7 +892,7 @@ def check(owner_id: uuid.UUID, connection_id: object) -> dict:
             # in again" or a PATCH, hasn't been refused by anyone: the row is left as it is.
             held = _stored_headers(row)
             if not held or held in tried:
-                row.status, row.last_error = "needs_signin", _GONE[row.auth_kind]
+                row.status, row.last_error = "needs_signin", SIGN_IN_GONE[row.auth_kind]
         else:
             row.status, row.tools, row.last_error = "connected", stored_tools(tools), None
             if key:

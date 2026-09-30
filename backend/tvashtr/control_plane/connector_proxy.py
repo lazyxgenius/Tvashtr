@@ -113,7 +113,10 @@ def read_run_token(value: object, max_age: int = RUN_TOKEN_MAX_AGE_SECONDS) -> R
 DISCONNECTED = "it was disconnected"
 SIGNIN_EXPIRED = "its sign-in expired"
 KEY_STOPPED = "its key stopped working"
+ASKS_SIGN_IN = "it now asks for a sign-in"  # a connection that never signed in got a 401
 UNREACHABLE = "we couldn’t reach it"
+# Why a provider's 401 took a connector out of a run, by what the connection signs in with.
+_SIGN_IN_GONE = {"oauth": SIGNIN_EXPIRED, "api_key": KEY_STOPPED, "none": ASKS_SIGN_IN}
 
 # ponytail: the proxy's events share the int ``seq`` column with the engine's own (from 0) and
 # the Desktop runner's (from ``desktop_jobs.RUNNER_SEQ_OFFSET`` = 100), in a band of their own per
@@ -201,11 +204,12 @@ def record_skip(
 
 
 def sign_in_expired(run_id: str, node_id: object, row: ConnectorConnection) -> None:
-    """The provider no longer takes ``row``'s sign-in (or key): the row becomes ``needs_signin``
+    """The provider no longer takes ``row``'s sign-in (or key, or now asks one of a connection
+    that never signed in): the row becomes ``needs_signin``
     (a row that already is keeps its own ``last_error``) and the run records the skip. Takes the
     row lock in its own session, like every writer of the sign-in. A key replaced since ``row``
     was read is not the one that was refused, so the row stays as it is."""
-    reason = KEY_STOPPED if row.auth_kind == "api_key" else SIGNIN_EXPIRED
+    reason = _SIGN_IN_GONE[row.auth_kind]
     with session_scope() as session:
         live = session.get(ConnectorConnection, row.id, with_for_update=True)
         replaced = (
@@ -215,7 +219,7 @@ def sign_in_expired(run_id: str, node_id: object, row: ConnectorConnection) -> N
         )
         if live is not None and live.status == "connected" and not replaced:
             live.status = "needs_signin"
-            live.last_error = f"{reason[0].upper()}{reason[1:]}."
+            live.last_error = connectors.SIGN_IN_GONE[row.auth_kind]
     record_skip(run_id, node_id, row.id, row.name, reason)
 
 

@@ -437,7 +437,11 @@ def test_a_grant_that_names_no_connection_of_the_owner_is_skipped_as_disconnecte
 
 @pytest.mark.parametrize(
     ("auth_kind", "reason"),
-    [("oauth", "its sign-in expired"), ("api_key", "its key stopped working")],
+    [
+        ("oauth", "its sign-in expired"),
+        ("api_key", "its key stopped working"),
+        ("none", "it now asks for a sign-in"),
+    ],
 )
 def test_a_connection_that_needs_a_sign_in_is_skipped(local_base, monkeypatch, auth_kind, reason):
     def no_token(*args, **kwargs):
