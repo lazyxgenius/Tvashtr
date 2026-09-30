@@ -1,7 +1,9 @@
 """Connectors: the catalog. What can be connected, and what counts as a write.
 
 ``FEATURED`` is the curated list (a module constant: no database, no network), in display order.
-Stream B1 adds the bundled MCP Registry snapshot and custom addresses behind the same ``resolve``.
+Behind it is a snapshot of the public MCP Registry's remote servers, bundled in the repo as JSON
+Lines (``data/connector_registry.jsonl``, written by ``scripts/refresh_connector_registry.py``
+through :func:`slim_registry_entry`), and any custom address. ``resolve`` finds all three.
 
 An entry is a plain dict. Every Featured entry has ``key``, ``name``, ``publisher``, ``category``,
 ``description``, ``website``, ``url``, ``transport``, ``auth``, ``key_fields``, ``read_only_by``,
@@ -16,8 +18,19 @@ An entry is a plain dict. Every Featured entry has ``key``, ``name``, ``publishe
   check otherwise keeps them on the issuer's site). Only a Featured entry can carry these.
 * ``coming_soon``: shown, but can't be connected yet.
 
+A registry or custom entry has the same required fields with ``featured: False``, ``category:
+None`` and ``read_only_by: "annotations"``, never one of the optional ones above, plus
+``headers``: the registry's header declarations (``{"name", "secret", "required", "template",
+"hint"}``) that a key is turned into.
+
 Contract: ``docs/superpowers/plans/api/connectors.md`` (Catalog, Read or write).
 """
+
+import json
+import re
+from functools import lru_cache
+from pathlib import Path
+from urllib.parse import urlsplit
 
 from tvashtr.config import get_settings
 
@@ -222,10 +235,258 @@ def available(entry: dict) -> bool:
     return True
 
 
+# ---- the registry snapshot ----
+
+REGISTRY_PATH = Path(__file__).parent / "data" / "connector_registry.jsonl"
+DEFAULT_LIMIT = 48
+
+_OFFICIAL = "io.modelcontextprotocol.registry/official"
+_TEXT_LIMIT = 200
+_TRANSPORTS = ("streamable-http", "sse")  # in the order a remote is picked
+# Header declarations a registry entry may not make: they would change where a request goes or
+# how Tvashtr's MCP client and its response limits work, not how the user is known.
+_REFUSED_HEADERS = frozenset(
+    {
+        "host",
+        "cookie",
+        "content-length",
+        "transfer-encoding",
+        "accept",
+        "accept-encoding",
+        "content-type",
+        "connection",
+    }
+)
+_SERVER_NAME = re.compile(r"[A-Za-z0-9.-]+/[A-Za-z0-9._-]+")  # the registry's own rule
+_HEADER_NAME = re.compile(r"[A-Za-z0-9!#$%&'*+.^_`|~-]+")
+_PLACEHOLDER = re.compile(r"\{[^{}]*\}")
+_UNSAFE_ADDRESS = re.compile(r"[\s\\\x00-\x1f\x7f{}]")
+
+
+def _text(value: object) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _fixed_https(url: object) -> bool:
+    """A plain ``https://`` address: no ``{template}``, no user name, nothing a browser and Python
+    would read differently. (Whether it is a public address is checked when it is connected.)"""
+    if not isinstance(url, str) or not url.startswith("https://") or _UNSAFE_ADDRESS.search(url):
+        return False
+    try:
+        parts = urlsplit(url)
+        parts.port  # noqa: B018  (raises on a port that isn't a number)
+    except ValueError:
+        return False
+    return bool(parts.hostname) and "@" not in parts.netloc
+
+
+def _slim_header(header: object) -> dict | None:
+    name = _text(header.get("name")) if isinstance(header, dict) else ""
+    if not _HEADER_NAME.fullmatch(name) or name.lower() in _REFUSED_HEADERS:
+        return None
+    variables = header.get("variables")
+    variables = variables.values() if isinstance(variables, dict) else ()
+    value = header.get("value")
+    # A template Tvashtr can fill has exactly one placeholder (``Bearer {api_key}``). A fixed
+    # value is the publisher's example, not something to send.
+    fills = isinstance(value, str) and len(_PLACEHOLDER.findall(value)) == 1
+    return {
+        "name": name,
+        "secret": bool(
+            header.get("isSecret")
+            or any(isinstance(v, dict) and v.get("isSecret") for v in variables)
+        ),
+        "required": bool(header.get("isRequired")),
+        "template": value if fills else None,
+        "hint": _text(header.get("description"))[:_TEXT_LIMIT] or None,
+    }
+
+
+def slim_registry_entry(server_json: object) -> dict | None:
+    """One item of the MCP Registry's server list (``{"server": …, "_meta": …}``) as a line of the
+    snapshot, or ``None`` when it can't be a connector: not ``active``, a Smithery proxy (it needs
+    a Smithery key, not the vendor's), no remote with a fixed ``https://`` address, or a server
+    that takes payment per call (a ``Payment-Signature`` header). The first ``streamable-http``
+    remote is kept, else the first ``sse`` one. No icons: the UI uses letter tiles."""
+    if not isinstance(server_json, dict) or not isinstance(server_json.get("server"), dict):
+        return None
+    server = server_json["server"]
+    meta = (server_json.get("_meta") or {}).get(_OFFICIAL) or {}
+    key = _text(server.get("name"))
+    if meta.get("status") != "active" or not _SERVER_NAME.fullmatch(key):
+        return None
+    if key.startswith("ai.smithery/"):
+        return None
+    remotes = [r for r in server.get("remotes") or [] if isinstance(r, dict)]
+    declared = [h for r in remotes for h in r.get("headers") or [] if isinstance(h, dict)]
+    if any(_text(h.get("name")).lower() == "payment-signature" for h in declared):
+        return None
+    fixed = [r for r in remotes if r.get("type") in _TRANSPORTS and _fixed_https(r.get("url"))]
+    if not fixed:
+        return None
+    remote = min(fixed, key=lambda r: _TRANSPORTS.index(r["type"]))  # stable: the first of its kind
+    website = server.get("websiteUrl")
+    headers = [_slim_header(h) for h in remote.get("headers") or []]
+    return {
+        "key": key,
+        "title": _text(server.get("title")) or None,
+        "description": _text(server.get("description"))[:_TEXT_LIMIT],
+        "website": website if _fixed_https(website) else None,
+        "url": remote["url"],
+        "transport": remote["type"],
+        "headers": [h for h in headers if h],
+    }
+
+
+def _plain(name: str, **fields: object) -> dict:
+    """The fields a registry entry and a custom entry share: not reviewed, no category, the
+    annotation rule, and nothing only a Featured entry may pin."""
+    return {
+        "category": None,
+        "read_only_by": "annotations",
+        "access_modes": ["read", "write"],
+        "revoke_hint": f"To remove Tvashtr on {name}’s side too, revoke it in {name}’s settings.",
+        "featured": False,
+        "name": name,
+        **fields,
+    }
+
+
+_GENERIC_WORDS = frozenset({"mcp", "server", "remote"})
+
+
+def _name_from_key(key: str) -> str:
+    """A display name for a registry server that has no ``title``: its own name without the MCP
+    boilerplate (``apify-mcp-server`` → ``Apify``), else its publisher's last label."""
+    namespace, _, tail = key.partition("/")
+    words = [w for w in re.split(r"[-_.\s]+", tail) if w and w.lower() not in _GENERIC_WORDS]
+    return " ".join(words).title() or namespace.rsplit(".", 1)[-1].title()
+
+
+def _publisher(key: str) -> str:
+    """Who published a registry server, from its verified namespace: ``com.apify`` is
+    ``apify.com``, ``io.github.getsentry`` is ``github.com/getsentry``."""
+    namespace = key.partition("/")[0]
+    if namespace.startswith("io.github."):
+        return "github.com/" + namespace.removeprefix("io.github.")
+    return ".".join(reversed(namespace.split(".")))
+
+
+def _key_label(header_name: str) -> str:
+    return "API key" if header_name.lower() in ("authorization", "x-api-key") else header_name
+
+
+def _registry_entry(slim: dict) -> dict:
+    headers = slim.get("headers") or []
+    # The user is asked only for what the registry calls secret or required.
+    fields = [
+        {
+            "id": h["name"],
+            "label": _key_label(h["name"]),
+            "hint": h.get("hint"),
+            "secret": h["secret"],
+        }
+        for h in headers
+        if h["secret"] or h["required"]
+    ]
+    return _plain(
+        slim.get("title") or _name_from_key(slim["key"]),
+        key=slim["key"],
+        publisher=_publisher(slim["key"]),
+        description=slim.get("description") or "",
+        website=slim.get("website"),
+        url=slim["url"],
+        transport=slim["transport"],
+        auth="api_key" if fields else "unknown",
+        key_fields=fields,
+        headers=headers,
+    )
+
+
+def _host(entry: dict) -> str:
+    return (urlsplit(entry["url"]).hostname or "").lower()
+
+
+def _haystack(entry: dict) -> str:
+    """What ``q`` is matched against: name, publisher, description and host."""
+    parts = (entry["name"], entry.get("publisher") or "", entry["description"], _host(entry))
+    return "\n".join(parts).lower()
+
+
+_FEATURED_HOSTS = frozenset(_host(entry) for entry in _ENTRIES)
+
+
+@lru_cache(maxsize=1)
+def registry() -> dict[str, tuple[dict, str]]:
+    """The bundled registry snapshot: ``{key: (entry, search text)}`` in name order. Read on first
+    use, not at import. An entry on a Featured host is left out (the Featured card wins). No
+    snapshot file is an empty registry."""
+    try:
+        lines = REGISTRY_PATH.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return {}
+    entries = [_registry_entry(json.loads(line)) for line in lines if line.strip()]
+    entries = [e for e in entries if _host(e) not in _FEATURED_HOSTS]
+    entries.sort(key=lambda e: (e["name"].lower(), e["key"]))
+    return {e["key"]: (e, _haystack(e)) for e in entries}
+
+
+def search(
+    q: str | None = None, category: str | None = None, offset: int = 0, limit: int = DEFAULT_LIMIT
+) -> tuple[list[dict], int]:
+    """``(the page of entries, how many match)``: Featured first in catalog order, then the
+    registry by name. ``q`` is a case-insensitive substring of name, publisher, description or
+    host. ``category`` narrows to the Featured entries of that category."""
+    needle = (q or "").strip().lower()
+    found = [
+        e
+        for e in _ENTRIES
+        if (not category or e["category"] == category) and needle in _haystack(e)
+    ]
+    if not category:
+        found += [entry for entry, text in registry().values() if needle in text]
+    return found[offset : offset + limit], len(found)
+
+
+_CUSTOM = "custom:"
+
+
+def custom_entry(url: str, name: str | None) -> dict:
+    """The entry for a custom address. Its key is ``custom:<host><path>`` (the host in lower case,
+    with its port when it has one, and no query)."""
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    if ":" in host:
+        host = f"[{host}]"  # an IPv6 literal
+    place = host + (f":{parts.port}" if parts.port else "")
+    return _plain(
+        _text(name) or place,
+        key=f"{_CUSTOM}{place}{parts.path}",
+        publisher=None,
+        description="",
+        website=None,
+        url=url,
+        transport="streamable-http",
+        auth="unknown",
+        key_fields=[],
+        headers=[],
+    )
+
+
 def resolve(key: object) -> dict | None:
-    """The catalog entry for ``key``, or ``None``. Featured keys for now; stream B1 adds registry
-    server names and ``custom:<host><path>`` keys. The entry is shared: don't mutate it."""
-    return FEATURED.get(key) if isinstance(key, str) else None
+    """The catalog entry for ``key``, or ``None``: a Featured key, a registry server name, or a
+    ``custom:<host><path>`` key (whose entry is rebuilt from the key, so its ``name`` is the host
+    and its ``url`` has no query: a connection keeps its own). The entry is shared: don't mutate
+    it."""
+    if not isinstance(key, str):
+        return None
+    if key in FEATURED:
+        return FEATURED[key]
+    if key.startswith(_CUSTOM):
+        url = "https://" + key.removeprefix(_CUSTOM)
+        return custom_entry(url, None) if _fixed_https(url) else None
+    found = registry().get(key)
+    return found[0] if found else None
 
 
 def is_write(entry: dict | None, tool: dict, access: str) -> bool:

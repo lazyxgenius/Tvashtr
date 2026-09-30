@@ -1,11 +1,21 @@
-"""Connectors: the Featured catalog, availability and the read-or-write rule
-(``connector_catalog``)."""
+"""Connectors: the Featured catalog, the registry snapshot, search, availability and the
+read-or-write rule (``connector_catalog``)."""
+
+import json
 
 import pytest
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_catalog
-from tvashtr.control_plane.connector_catalog import FEATURED, available, is_write, resolve
+from tvashtr.control_plane.connector_catalog import (
+    FEATURED,
+    available,
+    custom_entry,
+    is_write,
+    resolve,
+    search,
+    slim_registry_entry,
+)
 
 # The contract's Featured table (docs/superpowers/plans/api/connectors.md), in its order.
 CONTRACT = [
@@ -99,11 +109,33 @@ def test_hubspot_is_coming_soon_and_the_rest_are_available():
     assert len(rest) == 10 and all(available(FEATURED[k]) for k in rest)
 
 
-# Stub test: task B1.1 (registry and custom keys) rewrites it (build plan §2).
-def test_resolve_finds_featured_keys_only_for_now():
+def test_resolve_finds_featured_registry_and_custom_keys(registry_file):
+    registry_file(
+        _server("com.apify/apify-mcp-server", remotes=[_remote("https://mcp.apify.com/")])
+    )
     assert resolve("supabase") is FEATURED["supabase"]
-    for unknown in ("com.apify/apify-mcp-server", "custom:mcp.acme.dev/mcp", "", None, 7):
+    for unknown in ("com.unknown/server", "custom:", "custom:bad host/mcp", "", None, 7):
         assert resolve(unknown) is None
+
+    apify = resolve("com.apify/apify-mcp-server")
+    assert (apify["key"], apify["url"], apify["featured"]) == (
+        "com.apify/apify-mcp-server",
+        "https://mcp.apify.com/",
+        False,
+    )
+    custom = resolve("custom:mcp.acme.dev/mcp")
+    assert (custom["key"], custom["url"], custom["featured"]) == (
+        "custom:mcp.acme.dev/mcp",
+        "https://mcp.acme.dev/mcp",
+        False,
+    )
+    for entry in (apify, custom):
+        # A registry or custom entry never carries what only a Featured entry may pin.
+        assert not {"client", "scope", "oauth_hosts", "read_only_params", "scope_picker"} & set(
+            entry
+        )
+        assert entry["read_only_by"] == "annotations" and entry["category"] is None
+        assert entry["access_modes"] == ["read", "write"] and available(entry) is True
 
 
 READ = {"name": "list_tables", "title": None, "read_only": True}
@@ -143,3 +175,347 @@ def test_is_write_without_an_entry_or_a_flag_counts_a_write():
     assert is_write(None, READ, "read") is False
     assert is_write(None, {"name": "x"}, "read") is True
     assert is_write(FEATURED["linear"], {"name": "x", "read_only": "true"}, "read") is True
+
+
+# ---- the registry snapshot: the filter (B1.1) ----
+
+OFFICIAL = "io.modelcontextprotocol.registry/official"
+
+
+def _remote(url="https://mcp.acme.dev/mcp", kind="streamable-http", headers=None) -> dict:
+    remote = {"type": kind, "url": url}
+    if headers is not None:
+        remote["headers"] = headers
+    return remote
+
+
+def _server(name="dev.acme/mcp", *, status="active", remotes=None, **fields) -> dict:
+    """One item of the registry's ``servers`` list."""
+    return {
+        "server": {
+            "name": name,
+            "description": "Acme things.",
+            "version": "1.0.0",
+            "remotes": [_remote()] if remotes is None else remotes,
+            **fields,
+        },
+        "_meta": {OFFICIAL: {"status": status, "isLatest": True}},
+    }
+
+
+@pytest.fixture
+def registry_file(tmp_path, monkeypatch):
+    """Point the catalog at a snapshot made of the given registry items (run through the filter)."""
+
+    def write(*items: dict) -> None:
+        lines = [json.dumps(slim_registry_entry(item)) for item in items]
+        path = tmp_path / "connector_registry.jsonl"
+        path.write_text("".join(line + "\n" for line in lines))
+        monkeypatch.setattr(connector_catalog, "REGISTRY_PATH", path)
+        connector_catalog.registry.cache_clear()
+
+    yield write
+    connector_catalog.registry.cache_clear()
+
+
+def test_slim_keeps_a_plain_remote_server():
+    item = _server(title="Acme", websiteUrl="https://acme.dev", icons=[{"src": "https://x/i.png"}])
+    assert slim_registry_entry(item) == {
+        "key": "dev.acme/mcp",
+        "title": "Acme",
+        "description": "Acme things.",
+        "website": "https://acme.dev",
+        "url": "https://mcp.acme.dev/mcp",
+        "transport": "streamable-http",
+        "headers": [],
+    }  # no icon: the UI uses letter tiles
+
+
+def test_slim_cuts_the_description_and_a_missing_title_is_null():
+    slim = slim_registry_entry(_server(description="x" * 500))
+    assert slim["title"] is None and slim["description"] == "x" * 200
+    assert slim_registry_entry(_server(description=None))["description"] == ""
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        _server(status="deprecated"),
+        _server(status="deleted"),
+        _server("ai.smithery/acme"),
+        _server(remotes=[]),
+        _server(remotes=[_remote("https://{tenant}.acme.dev/mcp")]),  # template-only address
+        _server(remotes=[_remote("http://mcp.acme.dev/mcp")]),
+        _server(remotes=[_remote("https://user@mcp.acme.dev/mcp")]),
+        _server(remotes=[_remote("https://mcp.acme.dev/mcp", kind="stdio")]),
+        _server(remotes=[_remote(headers=[{"name": "Payment-Signature", "isRequired": True}])]),
+        _server(remotes=[_remote(headers=[{"name": "payment-signature"}])]),
+        _server(name=""),
+        _server(name="supabase"),  # a server name always has a namespace
+        _server(name="custom:mcp.acme.dev/mcp"),
+        _server(name="dev.acme/a b"),
+        {"server": "nope"},
+        "nope",
+    ],
+)
+def test_slim_drops_what_cant_be_a_connector(item):
+    assert slim_registry_entry(item) is None
+
+
+def test_slim_picks_streamable_http_first_then_sse_and_skips_template_addresses():
+    sse = _remote("https://mcp.acme.dev/sse", kind="sse")
+    assert slim_registry_entry(_server(remotes=[sse]))["transport"] == "sse"
+
+    both = slim_registry_entry(_server(remotes=[sse, _remote("https://mcp.acme.dev/mcp")]))
+    assert (both["url"], both["transport"]) == ("https://mcp.acme.dev/mcp", "streamable-http")
+
+    fixed = slim_registry_entry(
+        _server(
+            remotes=[_remote("https://{region}.acme.dev/mcp"), _remote("https://eu.acme.dev/mcp")]
+        )
+    )
+    assert fixed["url"] == "https://eu.acme.dev/mcp"
+
+
+def test_slim_keeps_header_declarations_with_their_template():
+    headers = [
+        {
+            "name": "Authorization",
+            "description": "Acme API key. " + "y" * 300,
+            "isRequired": True,
+            "isSecret": True,
+            "value": "Bearer {api_key}",
+            "variables": {"api_key": {"isSecret": True, "isRequired": True}},
+        },
+        # Secret only through its variable; not required.
+        {"name": "X-Team", "value": "team {id}", "variables": {"id": {"isSecret": True}}},
+        # A fixed value and a two-part template are not templates Tvashtr fills.
+        {"name": "X-Plan", "value": "free", "isRequired": True},
+        {"name": "X-Pair", "value": "{public}:{private}", "isSecret": True},
+        {"name": "X-Trace"},
+    ]
+    slim = slim_registry_entry(_server(remotes=[_remote(headers=headers)]))
+    assert slim["headers"] == [
+        {
+            "name": "Authorization",
+            "secret": True,
+            "required": True,
+            "template": "Bearer {api_key}",
+            "hint": ("Acme API key. " + "y" * 300)[:200],
+        },
+        {
+            "name": "X-Team",
+            "secret": True,
+            "required": False,
+            "template": "team {id}",
+            "hint": None,
+        },
+        {"name": "X-Plan", "secret": False, "required": True, "template": None, "hint": None},
+        {"name": "X-Pair", "secret": True, "required": False, "template": None, "hint": None},
+        {"name": "X-Trace", "secret": False, "required": False, "template": None, "hint": None},
+    ]
+
+
+def test_slim_drops_header_declarations_a_registry_entry_must_not_set():
+    headers = [{"name": n, "isRequired": True} for n in (
+        "Host", "cookie", "Content-Length", "TRANSFER-ENCODING", "Accept", "Content-Type",
+        "Accept-Encoding", "Connection", "", "Bad Name", "X-Bad\r\nInjected", "X-Api-Key",
+    )]  # fmt: skip
+    slim = slim_registry_entry(_server(remotes=[_remote(headers=headers)]))
+    assert [h["name"] for h in slim["headers"]] == ["X-Api-Key"]
+
+
+@pytest.mark.parametrize(
+    "website", ["javascript:alert(1)", "http://acme.dev", "Https://acme.dev", "data:text/html,x", 7]
+)
+def test_slim_keeps_a_website_only_when_it_is_https(website):
+    assert slim_registry_entry(_server(websiteUrl=website))["website"] is None
+
+
+# ---- the registry snapshot: entries, search, custom (B1.1) ----
+
+
+def test_registry_entries_take_a_key_when_the_registry_declares_a_secret_or_required_header(
+    registry_file,
+):
+    registry_file(
+        _server(
+            "com.apify/apify-mcp-server",
+            remotes=[
+                _remote(
+                    "https://mcp.apify.com/",
+                    headers=[
+                        {
+                            "name": "Authorization",
+                            "description": "Apify API token",
+                            "isRequired": True,
+                            "isSecret": True,
+                        },
+                        {"name": "X-Trace", "description": "Optional trace id"},
+                    ],
+                )
+            ],
+        ),
+        _server("app.linear/linear", title="Linear", websiteUrl="https://linear.app"),
+        _server(
+            "io.github.pollinations/exa",
+            title="Exa Search",
+            remotes=[
+                _remote(
+                    "https://gen.pollinations.ai/mcp/exa",
+                    kind="sse",
+                    headers=[{"name": "X-API-Key", "value": "{key}", "isSecret": True}],
+                )
+            ],
+        ),
+    )
+    apify = resolve("com.apify/apify-mcp-server")
+    assert apify | {"headers": None, "revoke_hint": None} == {
+        "key": "com.apify/apify-mcp-server",
+        "name": "Apify",  # no title in the registry: read from the server name
+        "publisher": "apify.com",
+        "category": None,
+        "description": "Acme things.",
+        "website": None,
+        "url": "https://mcp.apify.com/",
+        "transport": "streamable-http",
+        "auth": "api_key",
+        # Only what the user has to give: the optional, non-secret header isn't asked for.
+        "key_fields": [
+            {"id": "Authorization", "label": "API key", "hint": "Apify API token", "secret": True}
+        ],
+        "headers": None,
+        "read_only_by": "annotations",
+        "access_modes": ["read", "write"],
+        "revoke_hint": None,
+        "featured": False,
+    }
+    assert "Apify" in apify["revoke_hint"]
+    assert [h["name"] for h in apify["headers"]] == ["Authorization", "X-Trace"]
+
+    linear = resolve("app.linear/linear")
+    assert (linear["name"], linear["publisher"], linear["auth"], linear["key_fields"]) == (
+        "Linear",
+        "linear.app",
+        "unknown",  # decided by discovery when you connect
+        [],
+    )
+    exa = resolve("io.github.pollinations/exa")
+    assert (exa["publisher"], exa["transport"], exa["auth"]) == (
+        "github.com/pollinations",
+        "sse",
+        "api_key",
+    )
+    assert exa["key_fields"] == [
+        {"id": "X-API-Key", "label": "API key", "hint": None, "secret": True}
+    ]
+
+
+@pytest.mark.parametrize(
+    ("key", "name"),
+    [
+        ("com.apify/apify-mcp-server", "Apify"),
+        ("io.github.getsentry/sentry-mcp", "Sentry"),
+        ("io.github.acme/mcp_weather_tools", "Weather Tools"),
+        ("dev.acme/mcp", "Acme"),
+        ("dev.acme/server", "Acme"),
+    ],
+)
+def test_a_registry_entry_without_a_title_is_named_after_its_server_name(registry_file, key, name):
+    registry_file(_server(key))
+    assert resolve(key)["name"] == name
+
+
+def test_search_lists_featured_first_then_the_registry_by_name(registry_file):
+    registry_file(
+        _server("dev.zeta/mcp", title="zeta", remotes=[_remote("https://mcp.zeta.dev/mcp")]),
+        _server("dev.beta/mcp", title="Beta", remotes=[_remote("https://mcp.beta.dev/mcp")]),
+        _server("dev.alpha/mcp", title="alpha", remotes=[_remote("https://mcp.alpha.dev/mcp")]),
+    )
+    items, total = search()
+    assert total == 17 and len(items) == 17
+    assert [e["key"] for e in items[:14]] == list(FEATURED)
+    assert [e["name"] for e in items[14:]] == ["alpha", "Beta", "zeta"]  # case-insensitive order
+
+
+def test_search_pages_with_offset_and_limit(registry_file):
+    registry_file(
+        *[
+            _server(
+                f"dev.n{i:02}/mcp", title=f"N{i:02}", remotes=[_remote(f"https://n{i}.dev/mcp")]
+            )
+            for i in range(10)
+        ]
+    )
+    everything, total = search(limit=100)
+    assert total == 24 and len(everything) == 24
+    page, total = search(offset=12, limit=5)
+    assert total == 24 and page == everything[12:17]  # spans Featured and the registry
+    assert search(offset=24, limit=5) == ([], 24)
+    assert search(offset=20)[0] == everything[20:]  # the default limit covers it
+
+
+def test_search_q_matches_name_publisher_description_and_host_whatever_the_case(registry_file):
+    registry_file(
+        _server("dev.weather/mcp", title="Weather", description="Forecasts."),
+        _server("com.rainco/mcp", title="Second", description="Nothing here."),
+        _server("dev.third/mcp", title="Third", description="All about RAIN gauges."),
+        _server("dev.fourth/mcp", title="Fourth", remotes=[_remote("https://rain.example/mcp")]),
+        _server("dev.fifth/mcp", title="Fifth", description="Dry."),
+    )
+    assert [e["name"] for e in search("rain")[0]] == ["Fourth", "Second", "Third"]
+    assert [e["name"] for e in search("WEATHER")[0]] == ["Weather"]
+    assert search("  weather ")[1] == 1  # surrounding spaces don't count
+    # Featured entries are searched the same way: name, publisher, description, host.
+    assert [e["key"] for e in search("supa")[0]] == ["supabase"]
+    assert [e["key"] for e in search("googleapis")[0]] == list(GOOGLE)
+    assert [e["key"] for e in search("confluence")[0]] == ["atlassian"]
+    assert search("no such connector anywhere") == ([], 0)
+
+
+def test_search_by_category_is_featured_only(registry_file):
+    registry_file(_server("dev.databases/mcp", title="databases", description="databases"))
+    items, total = search(category="databases")
+    assert [e["key"] for e in items] == ["supabase", "neon"] and total == 2
+    assert [e["key"] for e in search("neon", category="databases")[0]] == ["neon"]
+    assert search(category="nope") == ([], 0)
+
+
+def test_a_registry_entry_on_a_featured_host_is_left_out(registry_file):
+    registry_file(
+        _server(
+            "com.supabase/mcp",
+            title="Supabase MCP",
+            remotes=[_remote("https://mcp.supabase.com/mcp")],
+        ),
+        _server("dev.squat/mcp", title="Squat", remotes=[_remote("https://MCP.Linear.app/other")]),
+        _server("dev.kept/mcp", title="Kept", remotes=[_remote("https://api.supabase.com/mcp")]),
+    )
+    items, total = search(limit=100)
+    assert total == 15 and [e["key"] for e in items[14:]] == ["dev.kept/mcp"]
+    assert resolve("com.supabase/mcp") is None and resolve("dev.squat/mcp") is None
+
+
+def test_custom_entry_is_keyed_by_host_and_path():
+    entry = custom_entry("https://MCP.Acme.dev/mcp?tenant=7", "Acme")
+    assert entry | {"revoke_hint": None} == {
+        "key": "custom:mcp.acme.dev/mcp",
+        "name": "Acme",
+        "publisher": None,
+        "category": None,
+        "description": "",
+        "website": None,
+        "url": "https://MCP.Acme.dev/mcp?tenant=7",  # the address as given
+        "transport": "streamable-http",
+        "auth": "unknown",
+        "key_fields": [],
+        "headers": [],
+        "read_only_by": "annotations",
+        "access_modes": ["read", "write"],
+        "revoke_hint": None,
+        "featured": False,
+    }
+    assert custom_entry("https://mcp.acme.dev", " ")["key"] == "custom:mcp.acme.dev"
+    assert custom_entry("https://mcp.acme.dev", " ")["name"] == "mcp.acme.dev"  # no name given
+    assert custom_entry("https://mcp.acme.dev:8443/x", None)["key"] == "custom:mcp.acme.dev:8443/x"
+    assert custom_entry("http://127.0.0.1:9911/mcp", "Local")["key"] == "custom:127.0.0.1:9911/mcp"
