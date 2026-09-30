@@ -244,6 +244,68 @@ def test_a_tool_list_that_never_ends_is_cut_off(monkeypatch):
     assert seen.count("tools/list") == connector_upstream.MAX_TOOL_PAGES == 50
 
 
+# ---- the production path: the MCP client on the pinning transport ----
+
+
+class _ToTheFake(httpx.AsyncBaseTransport):
+    """The inner transport of a pinned client: records what the pinning transport sends, then
+    forwards it to the fake server's real (plain http, loopback) address."""
+
+    def __init__(self, port: int, seen: list[tuple]) -> None:
+        self._port, self._seen = port, seen
+        self._real = httpx.AsyncHTTPTransport()
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self._seen.append(
+            (request.url.host, request.headers["host"], request.extensions.get("sni_hostname"))
+        )
+        return await self._real.handle_async_request(
+            httpx.Request(
+                request.method,
+                request.url.copy_with(scheme="http", host="127.0.0.1", port=self._port),
+                headers=request.headers,
+                stream=request.stream,
+                extensions={k: v for k, v in request.extensions.items() if k != "sni_hostname"},
+            )
+        )
+
+    async def aclose(self) -> None:
+        await self._real.aclose()
+
+
+@pytest.fixture
+def pinned(monkeypatch, fake_connector_url) -> tuple[str, list[tuple]]:
+    """The production posture (pinning on), with ``pinned.example.test`` "resolving" to a public
+    address. Returns the https address of the fake's MCP endpoint and what the inner transport
+    saw: ``(connected host, Host header, TLS server name)`` per request."""
+    monkeypatch.setattr(get_settings(), "connectors_allow_local", False)
+    port = httpx.URL(fake_connector_url).port
+    seen: list[tuple] = []
+    monkeypatch.setattr(connector_net, "_resolve", lambda host, port: "93.184.216.34")
+    monkeypatch.setattr(connector_net, "_async_inner", lambda: _ToTheFake(port, seen))
+    return f"https://pinned.example.test:{port}/mcp", seen
+
+
+@pytest.mark.parametrize("transport", [HTTP, "sse"])
+def test_the_mcp_client_works_through_the_pinning_transport(pinned, transport):
+    """Streamed POST bodies, server-sent events and the 401 mapping, on the path production
+    takes: every request goes to the checked address with the name in ``Host`` and in TLS."""
+    url, seen = pinned
+    if transport == "sse":
+        url = url.removesuffix("/mcp") + "/sse"
+    name = f"pinned.example.test:{httpx.URL(url).port}"
+
+    tools = asyncio.run(list_tools(url, transport, BEARER))
+    assert [t.name for t in tools] == ["list_things", "get_thing", "create_thing", "list_projects"]
+    result = asyncio.run(call_tool(url, transport, BEARER, "get_thing", {"id": "t1"}))
+    assert "First thing" in result.content[0].text
+    with pytest.raises(UpstreamUnauthorized):
+        asyncio.run(list_tools(url, transport, {}))
+
+    assert len(seen) >= 6
+    assert set(seen) == {("93.184.216.34", name, "pinned.example.test")}
+
+
 def test_an_answer_over_the_size_limit_is_unreachable(monkeypatch):
     monkeypatch.setattr(get_settings(), "connectors_allow_local", False)
     monkeypatch.setattr(connector_net, "_resolve", lambda host, port: "93.184.216.34")
