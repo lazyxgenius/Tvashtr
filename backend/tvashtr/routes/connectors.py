@@ -37,6 +37,16 @@ def list_connections(current_user: CurrentUser) -> dict:
     return {"connections": connectors.list_connections(_owner(current_user))}
 
 
+@router.post("/api/connectors", status_code=201)
+def connect(body: dict, current_user: CurrentUser) -> dict:
+    """Connect a catalog entry (``{"key", "access"?, "credentials"?}``) or a custom address
+    (``{"url", "name"?, "access"?}``) → the connection."""
+    try:
+        return connectors.connect(_owner(current_user), body)
+    except ConnectorError as exc:
+        raise _http(exc) from None
+
+
 @router.get("/api/connectors/catalog")
 def catalog(
     current_user: CurrentUser,

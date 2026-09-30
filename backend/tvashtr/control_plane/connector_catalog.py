@@ -403,6 +403,18 @@ def _registry_entry(slim: dict) -> dict:
     )
 
 
+def header_value(declaration: dict, value: str) -> str:
+    """The header a key is sent as: the registry's template with the key in its placeholder
+    (``Bearer {api_key}``), else the key itself. A bare key for an ``Authorization`` header with
+    no template gets ``Bearer `` in front; one that already reads ``<scheme> <token>`` is kept."""
+    template = declaration.get("template")
+    if template:
+        return _PLACEHOLDER.sub(lambda _: value, template)
+    if declaration["name"].lower() == "authorization" and " " not in value:
+        return f"Bearer {value}"
+    return value
+
+
 def _host(entry: dict) -> str:
     return (urlsplit(entry["url"]).hostname or "").lower()
 

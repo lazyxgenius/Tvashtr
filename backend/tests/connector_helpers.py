@@ -52,7 +52,10 @@ def registry_file(tmp_path, monkeypatch):
     Until it is called, the catalog reads the committed snapshot."""
 
     def write(*items: dict) -> None:
-        lines = [json.dumps(connector_catalog.slim_registry_entry(item)) for item in items]
+        # A dict that already has a ``key`` is a snapshot line as it is (a fake server's
+        # ``http://127.0.0.1`` address never passes the filter).
+        slim = [i if "key" in i else connector_catalog.slim_registry_entry(i) for i in items]
+        lines = [json.dumps(entry) for entry in slim]
         path = tmp_path / "connector_registry.jsonl"
         path.write_text("".join(line + "\n" for line in lines))
         monkeypatch.setattr(connector_catalog, "REGISTRY_PATH", path)
@@ -105,3 +108,36 @@ def grant(connection_id: object, access: str | None = None) -> dict:
     """A ``tool_config`` that grants one connection."""
     item = {"id": str(connection_id)} | ({"access": access} if access else {})
     return {"tvashtr": {"connectors": [item]}}
+
+
+def snapshot_line(key: str, url: str, *headers: dict, title: str | None = None) -> dict:
+    """A snapshot line written as it is, for an address the filter would refuse."""
+    return {
+        "key": key,
+        "title": title,
+        "description": "",
+        "website": None,
+        "url": url,
+        "transport": "streamable-http",
+        "headers": list(headers),
+    }
+
+
+def header(name="Authorization", *, secret=True, required=True, template=None, hint=None) -> dict:
+    """A header declaration in the snapshot's shape."""
+    return {
+        "name": name,
+        "secret": secret,
+        "required": required,
+        "template": template,
+        "hint": hint,
+    }
+
+
+def connections_of(owner_id: uuid.UUID) -> list[ConnectorConnection]:
+    with session_scope() as s:
+        return list(
+            s.query(ConnectorConnection)
+            .filter(ConnectorConnection.owner_id == owner_id)
+            .order_by(ConnectorConnection.created_at, ConnectorConnection.id)
+        )

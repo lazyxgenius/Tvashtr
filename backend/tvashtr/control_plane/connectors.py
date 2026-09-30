@@ -12,12 +12,16 @@ Only the owner's LIBRARY teams and their ``agent``/``completion`` nodes count, a
 """
 
 import json
+import re
 import time
 import uuid
+from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
+from mcp import McpError
 from mcp.types import Tool
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from tvashtr.control_plane import (
@@ -25,6 +29,7 @@ from tvashtr.control_plane import (
     connector_net,
     connector_oauth,
     connector_proxy,
+    connector_upstream,
 )
 from tvashtr.control_plane.credentials import decrypt_secret, encrypt_secret
 from tvashtr.control_plane.node_library import _as_uuid
@@ -34,6 +39,10 @@ from tvashtr.models import ConnectorConnection
 
 NOT_FOUND = "Connector not found."
 SIGNIN_TTL_SECONDS = 600  # a started sign-in is pending for ten minutes
+NAME_LIMIT = 60
+SLUG_LIMIT = 40
+URL_LIMIT = 2000
+KEY_LIMIT = 4096  # characters of one key value
 
 
 class ConnectorError(Exception):
@@ -301,3 +310,217 @@ def get_connection(owner_id: uuid.UUID, connection_id: object) -> dict:
             "recent_use": connector_proxy.recent_use(session, owner_id, row.id),
             "revoke_hint": _revoke_hint(row),
         }
+
+
+# ---- connect (``POST /api/connectors``) ----
+
+
+def _refusal(status_code: int, code: str, message: str, **extra: object) -> ConnectorError:
+    return ConnectorError(status_code, {"code": code, "message": message, **extra})
+
+
+def _unreachable(url: str) -> ConnectorError:
+    return _refusal(502, "unreachable", f"We couldn’t reach {urlsplit(url).hostname}. Try again.")
+
+
+_NO_SIGNIN = (
+    "This server didn’t offer an OAuth sign-in. If it takes a key, add it in Tools and keep the "
+    "key as a secret."
+)
+
+
+def _entry_for(key: object, url: object, name: object) -> dict:
+    """The catalog entry a connect request names: a custom address when it gives ``url``, else
+    its ``key``."""
+    if url is None:
+        entry = connector_catalog.resolve(key) if key else None
+        if entry is None:
+            raise _refusal(404, "unknown_connector", "We couldn’t find that connector.")
+        return entry
+    try:
+        if not isinstance(url, str) or len(url) > URL_LIMIT:
+            raise connector_net.UnsafeUrl("not an address")
+        connector_net.check_url(url)
+    except connector_net.UnsafeUrl:
+        raise _refusal(
+            422, "invalid_url", "Use an https:// address, like https://mcp.example.com/mcp."
+        ) from None
+    return connector_catalog.custom_entry(url, name if isinstance(name, str) else None)
+
+
+def _check_access(entry: dict, access: object, name: str) -> None:
+    if access not in ("read", "write"):
+        raise _refusal(422, "invalid_access", "Access is read or write.")
+    if access not in entry["access_modes"]:
+        raise _refusal(422, "invalid_access", f"{name} can only be connected read only.")
+
+
+def _key_headers(entry: dict, credentials: object) -> dict:
+    """The headers a key connection sends, from the values the user gave for the entry's key
+    fields. Refuses an id the entry doesn't declare and a value that can't be a header
+    (``invalid_key``), and a missing key (``key_required``)."""
+    name = entry["name"]
+    declared = {h["name"]: h for h in entry.get("headers") or [] if h["secret"] or h["required"]}
+    values: dict[str, str] = {}
+    for field, value in (credentials if isinstance(credentials, dict) else {}).items():
+        sendable = (
+            field in declared
+            and isinstance(value, str)
+            and len(value) <= KEY_LIMIT
+            # It becomes a header: printable ASCII only, so no line break can add another one.
+            and value.isascii()
+            and value.isprintable()
+        )
+        if not sendable:
+            raise _refusal(
+                422, "invalid_key", f"That isn’t a key {name} takes. Check it and try again."
+            )
+        if value.strip():
+            values[field] = value.strip()
+    if not values or any(h["required"] and n not in values for n, h in declared.items()):
+        raise _refusal(422, "key_required", f"{name} needs a key.", fields=entry["key_fields"])
+    return {
+        n: connector_catalog.header_value(h, values[n]) for n, h in declared.items() if n in values
+    }
+
+
+def _list_tools(row: ConnectorConnection, headers: dict, wants_credentials: ConnectorError) -> list:
+    """The provider's tools in the stored shape, listed with ``headers`` at the row's access. A
+    401 or 403 raises ``wants_credentials``; anything else that isn't a tool list is
+    ``unreachable``."""
+    url, transport = upstream_target(row, row.access)
+    try:
+        return stored_tools(connector_upstream.list_tools_sync(url, transport, headers))
+    except connector_upstream.UpstreamUnauthorized:
+        raise wants_credentials from None
+    except connector_upstream.UpstreamRefused as exc:
+        raise (wants_credentials if exc.status == 403 else _unreachable(row.url)) from None
+    except (connector_upstream.UpstreamUnreachable, McpError):
+        raise _unreachable(row.url) from None
+
+
+def _discover(entry: dict, url: str) -> connector_oauth.Discovery | None:
+    try:
+        return connector_oauth.discover(url, entry)
+    except connector_oauth.CannotRegister:
+        raise _refusal(
+            422,
+            "cannot_register",
+            f"{entry['name']} needs an app registered with it before Tvashtr can sign in.",
+        ) from None
+    except (connector_oauth.Unreachable, connector_net.UnsafeUrl):
+        raise _unreachable(url) from None
+
+
+def _found_signin(found: connector_oauth.Discovery) -> dict:
+    """What discovery found, as ``pending_encrypted`` holds it before a sign-in is started: no
+    verifier, no client and no ``started_at`` (``oauth/start`` repeats discovery and adds them)."""
+    pending = {
+        "issuer": found.issuer,
+        "iss_supported": found.iss_supported,
+        "authorization_endpoint": found.authorization_endpoint,
+        "token_endpoint": found.token_endpoint,
+        "resource": found.resource,
+    }
+    if found.revocation_endpoint:
+        pending["revocation_endpoint"] = found.revocation_endpoint
+    if found.scope:
+        pending["scope"] = found.scope
+    return pending
+
+
+def _new_slug(session: Session, owner_id: uuid.UUID, name: str) -> str:
+    """The connection's MCP server name: the name in ``[a-z0-9-]``, at most 40 characters, made
+    unique among the owner's connections with ``-2``, ``-3``, …"""
+    base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:SLUG_LIMIT].strip("-")
+    base = base or "connector"
+    taken = set(
+        session.execute(
+            select(ConnectorConnection.slug).where(ConnectorConnection.owner_id == owner_id)
+        ).scalars()
+    )
+    slug, n = base, 1
+    while slug in taken:
+        n += 1
+        slug = base[: SLUG_LIMIT - len(f"-{n}")].rstrip("-") + f"-{n}"
+    return slug
+
+
+def _by_key(
+    session: Session, owner_id: uuid.UUID, key: str, *, for_update: bool = False
+) -> ConnectorConnection | None:
+    query = select(ConnectorConnection).where(
+        ConnectorConnection.owner_id == owner_id, ConnectorConnection.connector_key == key
+    )
+    return session.execute(query.with_for_update() if for_update else query).scalar_one_or_none()
+
+
+def _already_connected(row: ConnectorConnection) -> ConnectorError:
+    return _refusal(
+        409, "already_connected", f"{row.name} is already connected.", connection_id=str(row.id)
+    )
+
+
+def connect(owner_id: uuid.UUID, body: dict) -> dict:
+    """``POST /api/connectors``: connect a catalog entry (``key``) or a custom address (``url``,
+    ``name``). A key is checked against the server and stored; a server with a sign-in becomes a
+    ``pending`` connection (``oauth/start`` is next); a catalog server with neither connects as it
+    is. Nothing is stored when the request is refused."""
+    entry = _entry_for(body.get("key"), body.get("url"), body.get("name"))
+    name = entry["name"][:NAME_LIMIT]
+    if not connector_catalog.available(entry):
+        raise _refusal(409, "coming_soon", f"{name} isn’t available yet.")
+    access = body.get("access", "read")
+    _check_access(entry, access, name)
+    with session_scope() as session:
+        existing = _by_key(session, owner_id, entry["key"])
+        if existing is not None and existing.status != "pending":
+            raise _already_connected(existing)
+
+    # The provider is asked outside any transaction, on a row that isn't stored yet.
+    fields = {
+        "url": entry["url"],
+        "transport": entry["transport"],
+        "access": access,
+        "status": "connected",
+        "tools": None,
+    }
+    draft = ConnectorConnection(connector_key=entry["key"], **fields)
+    secret = pending = None
+    if entry["auth"] == "api_key":
+        headers = _key_headers(entry, body.get("credentials"))
+        rejected = _refusal(422, "key_rejected", f"{name} didn’t accept the key.")
+        fields |= {"auth_kind": "api_key", "tools": _list_tools(draft, headers, rejected)}
+        secret = {"headers": headers}
+    elif (found := _discover(entry, entry["url"])) is not None:
+        fields |= {"auth_kind": "oauth", "status": "pending"}
+        pending = _found_signin(found)
+    elif entry["key"].startswith("custom:"):
+        raise _refusal(422, "no_signin", _NO_SIGNIN)  # an open custom server is never connected
+    else:
+        no_signin = _refusal(422, "no_signin", _NO_SIGNIN)
+        fields |= {"auth_kind": "none", "tools": _list_tools(draft, {}, no_signin)}
+
+    with session_scope() as session:
+        row = _by_key(session, owner_id, entry["key"], for_update=True)
+        if row is not None and row.status != "pending":
+            raise _already_connected(row)
+        if row is None:  # else the pending row is reused: its name and slug stay
+            row = ConnectorConnection(
+                owner_id=owner_id,
+                connector_key=entry["key"],
+                name=name,
+                slug=_new_slug(session, owner_id, name),
+            )
+            session.add(row)
+        for field, value in fields.items():
+            setattr(row, field, value)
+        row.connected_at = datetime.now(UTC) if row.status == "connected" else None
+        row.last_error = row.state_hash = None
+        write_secret(row, secret)
+        write_secret(row, pending, pending=True)
+        try:
+            session.flush()
+        except IntegrityError:  # the same connector (or name) connected at the same moment
+            raise _refusal(409, "already_connected", f"{name} is already connected.") from None
+        return serialize(row)
