@@ -104,8 +104,10 @@ function serve(routes: Record<string, unknown> = {}) {
 function show(target: ConnectTarget) {
   const onClose = vi.fn();
   const onDone = vi.fn();
-  renderWithProviders(<ConnectSheet target={target} onClose={onClose} onDone={onDone} />);
-  return { onClose, onDone };
+  const { unmount } = renderWithProviders(
+    <ConnectSheet target={target} onClose={onClose} onDone={onDone} />,
+  );
+  return { onClose, onDone, unmount };
 }
 
 /** Let the sheet's two-second poll come round. */
@@ -561,6 +563,66 @@ describe("when the sign-in goes wrong", () => {
     click("Continue to auth.example.net");
     await screen.findByText("Waiting for you to finish in the Apify window");
     expect(popup?.location.href).toBe("https://auth.example.net/authorize?state=s1");
+  });
+});
+
+describe("while the server is answering", () => {
+  /** `POST /api/connectors` that answers when the test says so. */
+  function held() {
+    let answer: (row: Connection) => void = () => {};
+    const calls = serve({
+      "POST /api/connectors": () => new Promise<Connection>((resolve) => (answer = resolve)),
+    });
+    return {
+      calls,
+      answer: (row: Connection) =>
+        act(async () => {
+          answer(row);
+          await Promise.resolve();
+        }),
+    };
+  }
+  const started = (calls: { path: string }[]) =>
+    calls.filter((c) => c.path.endsWith("/oauth/start")).length;
+
+  it("doesn’t close: what it started would go on behind it", async () => {
+    const { calls, answer } = held();
+    const { onClose } = show({ entry: entry() });
+    click("Continue to Supabase");
+    await waitFor(() => expect(calls).toHaveLength(1));
+    click("Close"); // the sheet's own ✕ (Escape and the scrim call the same thing)
+    expect(onClose).not.toHaveBeenCalled();
+
+    await answer(PENDING);
+    expect(
+      await screen.findByText("Waiting for you to finish in the Supabase window"),
+    ).toBeInTheDocument();
+    expect(popup?.location.href).toBe(AUTHORIZE);
+  });
+
+  it("opens no sign-in once the sheet is gone", async () => {
+    const { calls, answer } = held();
+    const { onDone, unmount } = show({ entry: entry() });
+    click("Continue to Supabase");
+    await waitFor(() => expect(calls).toHaveLength(1));
+    unmount(); // the page under it went away
+    await answer(PENDING);
+    await poll();
+    expect(started(calls)).toBe(0);
+    expect(popup?.location.href).toBe("about:blank");
+    expect(popup?.close).toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("reports no connection to a page that is gone", async () => {
+    const { calls, answer } = held();
+    const { onDone, unmount } = show({ entry: APIFY });
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "apify_api_x" } });
+    click("Check and connect");
+    await waitFor(() => expect(calls).toHaveLength(1));
+    unmount();
+    await answer(APIFY_ROW);
+    expect(onDone).not.toHaveBeenCalled();
   });
 });
 

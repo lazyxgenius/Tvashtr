@@ -20,7 +20,7 @@ import {
 import { navigate } from "../../lib/nav";
 import { AccessChoice, Note, Problem, SignInStaysNote, SignInWait } from "./connectParts";
 import { firstSentence } from "./connectorFormat";
-import { type SignInOutcome, useConnectSignIn } from "./useConnectSignIn";
+import { type SignInOutcome, useAlive, useConnectSignIn } from "./useConnectSignIn";
 
 /** Why the server can't be connected here, or the provider's refusal (`failed`). */
 type Trouble =
@@ -46,6 +46,11 @@ export function CustomConnectorSheet({
   const [notice, setNotice] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<Trouble | null>(null);
   const label = name.trim();
+  // A sheet that is gone reports nothing: the page that opened it may be gone too.
+  const alive = useAlive();
+  const done = (connection: Connection) => {
+    if (alive.current) onDone(connection);
+  };
 
   const onOutcome = async (outcome: SignInOutcome) => {
     setWaiting(false);
@@ -53,12 +58,12 @@ export function CustomConnectorSheet({
       // The row was made read only (the check came before the choice): widen it now.
       if (access === "write") {
         try {
-          return onDone(await updateConnection(outcome.connection.id, { access }));
+          return done(await updateConnection(outcome.connection.id, { access }));
         } catch {
           // It is connected, read only; its page can change that.
         }
       }
-      return onDone(outcome.connection);
+      return done(outcome.connection);
     }
     if (outcome.kind === "failed") return setTrouble({ kind: "failed", message: outcome.message });
     if (outcome.kind === "refused" && outcome.refusal?.code === "cannot_register") {
@@ -96,7 +101,7 @@ export function CustomConnectorSheet({
     setNotice(null);
     try {
       const made = await createConnection({ url: url.trim(), name: label, access: "read" });
-      if (made.status === "connected") return onDone(made);
+      if (made.status === "connected") return done(made);
       setConn(made);
     } catch (err) {
       const refusal = connectorRefusal(err);
@@ -124,6 +129,8 @@ export function CustomConnectorSheet({
   };
 
   const close = () => {
+    // The check would carry on behind a closed sheet: it closes once that answers.
+    if (busy) return;
     signIn.cancel();
     onClose();
   };

@@ -188,6 +188,23 @@ describe("CustomConnectorSheet", () => {
     expect(screen.getByRole("button", { name: "Check the server" })).toBeEnabled();
   });
 
+  it("doesn’t close while the server is being checked", async () => {
+    let answer: (row: Connection) => void = () => {};
+    serve({
+      "POST /api/connectors": () => new Promise<Connection>((resolve) => (answer = resolve)),
+    });
+    const { onClose } = show();
+    fill();
+    click("Check the server");
+    click("Close");
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => {
+      answer(PENDING);
+      await Promise.resolve();
+    });
+    expect(await screen.findByText(/You’ll sign in at/)).toBeInTheDocument();
+  });
+
   it("goes back to the sign-in site when you cancel the wait", async () => {
     serve();
     const { onClose } = show();

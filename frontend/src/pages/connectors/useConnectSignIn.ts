@@ -57,6 +57,18 @@ export interface ConnectSignIn {
   cancel: () => void;
 }
 
+/** False once the component is gone (and true again on StrictMode's second mount). */
+export function useAlive(): { readonly current: boolean } {
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  return alive;
+}
+
 export function useConnectSignIn(onOutcome: (outcome: SignInOutcome) => void): ConnectSignIn {
   const [state, setState] = useState<State>({ phase: "idle" });
   const popup = useRef<Window | null>(null);
@@ -65,6 +77,8 @@ export function useConnectSignIn(onOutcome: (outcome: SignInOutcome) => void): C
   const run = useRef(0);
   const report = useRef(onOutcome);
   report.current = onOutcome;
+  // A sheet that is gone opens no window and hears no answer.
+  const alive = useAlive();
 
   const closeWindow = useCallback(() => {
     popup.current?.close();
@@ -79,11 +93,13 @@ export function useConnectSignIn(onOutcome: (outcome: SignInOutcome) => void): C
     async (connection: Connection, prepared?: Window | null) => {
       const mine = ++run.current;
       if (prepared !== undefined) popup.current = prepared;
+      if (!alive.current) return closeWindow();
       setState({ phase: "starting" });
       let refusal: ConnectorRefusal | null = null;
       try {
         const { authorize_url } = await startSignIn(connection.id);
         if (run.current !== mine) return;
+        if (!alive.current) return closeWindow();
         const opened = openSignIn(authorize_url, popup.current);
         if (opened !== "refused") {
           address.current = authorize_url;
@@ -98,13 +114,14 @@ export function useConnectSignIn(onOutcome: (outcome: SignInOutcome) => void): C
         }
       } catch (e) {
         if (run.current !== mine) return;
+        if (!alive.current) return closeWindow();
         refusal = connectorRefusal(e);
       }
       closeWindow();
       setState({ phase: "idle" });
       report.current({ kind: "refused", refusal });
     },
-    [closeWindow],
+    [closeWindow, alive],
   );
 
   const reopen = useCallback(() => {

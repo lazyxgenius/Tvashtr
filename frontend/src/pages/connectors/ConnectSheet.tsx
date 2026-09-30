@@ -31,7 +31,7 @@ import {
 import { navigate } from "../../lib/nav";
 import { AccessChoice, Note, Problem, SignInStaysNote, SignInWait } from "./connectParts";
 import { firstSentence, readOnlyHint, usesKey } from "./connectorFormat";
-import { type SignInOutcome, useConnectSignIn } from "./useConnectSignIn";
+import { type SignInOutcome, useAlive, useConnectSignIn } from "./useConnectSignIn";
 
 export type ConnectTarget =
   /** Connect a catalog entry (Browse). */
@@ -106,8 +106,13 @@ export function ConnectSheet({
   const [options, setOptions] = useState<ScopeOptions | null>(null);
   const [picked, setPicked] = useState(existing?.scope?.value ?? "");
 
+  // A sheet that is gone reports nothing: the page that opened it may be gone too.
+  const alive = useAlive();
+  const done: typeof onDone = (connection, what) => {
+    if (alive.current) onDone(connection, what);
+  };
   const finish = (connection: Connection) =>
-    onDone(connection, mode === "signin" ? "signed_in" : "connected");
+    done(connection, mode === "signin" ? "signed_in" : "connected");
   // Connected: a new connection with projects asks which one; anything else is done.
   const afterConnected = (connection: Connection) => {
     setConn(connection);
@@ -293,7 +298,7 @@ export function ConnectSheet({
         scope: { value: scopeValue, label },
         ...(access !== conn.access ? { access } : {}),
       });
-      onDone(saved, mode === "project" ? "project" : "connected");
+      done(saved, mode === "project" ? "project" : "connected");
     } catch (err) {
       setNotice(serverWords(err, connectorRefusal(err)) ?? "Couldn’t save the project. Try again.");
     } finally {
@@ -302,6 +307,8 @@ export function ConnectSheet({
   };
 
   const close = () => {
+    // A request that is going would carry on behind a closed sheet: it closes once that answers.
+    if (busy) return;
     signIn.cancel();
     onClose();
   };
