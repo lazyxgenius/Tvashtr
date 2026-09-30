@@ -99,8 +99,10 @@ export function ConnectedTab({
     );
   }
 
-  const rows = filterConnections(connections, query, status);
-  const expired = connections.filter((c) => c.status === "needs_signin");
+  // The API answers oldest first; the page shows what you connected last on top.
+  const newestFirst = [...connections].reverse();
+  const rows = filterConnections(newestFirst, query, status);
+  const expired = newestFirst.filter((c) => c.status === "needs_signin");
 
   return (
     <>
@@ -185,9 +187,12 @@ function ConnectionsTable({
                 <div className="tk-toolcell">
                   <ConnectorTile connectorKey={c.connector_key} name={c.name} />
                   <div>
-                    <a className="tk-toolcell__name" href={routeToHash(pageOf(c))}>
-                      {c.name}
-                    </a>
+                    <div className="cn-name">
+                      <a className="tk-toolcell__name" href={routeToHash(pageOf(c))}>
+                        {c.name}
+                      </a>
+                      {!c.reviewed && <Badge variant="outline">Not reviewed</Badge>}
+                    </div>
                     <div className="cn-sub">{connectionSubline(c)}</div>
                   </div>
                 </div>

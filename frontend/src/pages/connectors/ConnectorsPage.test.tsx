@@ -163,9 +163,10 @@ function catalog(url: URL) {
   };
 }
 
+/** `connections` as the page shows them, newest first: the API answers oldest first. */
 function serve(connections: Connection[]) {
   return mockApi({
-    "GET /api/connectors": { connections },
+    "GET /api/connectors": { connections: [...connections].reverse() },
     "GET /api/connectors/catalog": catalog,
   });
 }
@@ -206,6 +207,42 @@ describe("Connected", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
     expect(window.location.hash).toBe("#/toolkit/connectors/browse");
+  });
+
+  it("puts the newest connection first", async () => {
+    mockApi({ "GET /api/connectors": { connections: [POSTHOG, NOTION, SUPABASE] } });
+    renderWithProviders(<ConnectorsPage view="connected" />);
+    const rows = await screen.findAllByRole("row");
+    expect(rows.slice(1).map((r) => within(r).getByRole("link").textContent)).toEqual([
+      "Supabase",
+      "Notion",
+      "PostHog",
+    ]);
+  });
+
+  it("marks a connection Tvashtr hasn’t reviewed, and shows its address", async () => {
+    serve([
+      connection({
+        ...plain,
+        id: "c9",
+        connector_key: APIFY.key,
+        name: "Apify",
+        slug: "apify",
+        publisher: "Apify",
+        featured: false,
+        reviewed: false,
+        host: "mcp.apify.com",
+        auth_kind: "api_key",
+        used_by: { agent_count: 0, team_count: 0 },
+      }),
+      SUPABASE,
+    ]);
+    renderWithProviders(<ConnectorsPage view="connected" />);
+    const rows = await screen.findAllByRole("row");
+    expect(rows[1]).toHaveTextContent(
+      "ApApifyNot reviewedmcp.apify.comRead onlyReadyNot used yet · Give an agent access",
+    );
+    expect(rows[2]).not.toHaveTextContent("Not reviewed");
   });
 
   it("says a connector with projects covers the whole account until one is picked", async () => {

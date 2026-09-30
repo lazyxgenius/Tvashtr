@@ -46,11 +46,12 @@ export function accessLabel(access: ConnectorAccess): string {
   return access === "write" ? "Read & write" : "Read only";
 }
 
-/** Under a connection's name: its project (or that none is picked), else who makes it. */
+/** Under a connection's name: its project (or that none is picked), else who makes it; a server
+ *  Tvashtr hasn't reviewed shows its address instead of a maker nobody checked. */
 export function connectionSubline(c: Connection): string {
   if (c.scope) return `${c.scope_picker?.label ?? "Project"} ${c.scope.label.split(" · ")[0]}`;
   if (c.scope_picker) return "The whole account";
-  return c.publisher ? `By ${c.publisher}` : c.host;
+  return c.reviewed && c.publisher ? `By ${c.publisher}` : c.host;
 }
 
 /** The rows the search words (name, maker, host) and the Status filter keep, in order. */
