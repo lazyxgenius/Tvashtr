@@ -4,18 +4,24 @@
  * writes, and "Sign in again" on one that needs attention. It edits the agent's
  * `tool_config.tvashtr.connectors` and the drawer saves it.
  *
+ * "Connect an app" (CnF-FromAgent-1..3) connects one more without leaving the drawer: the Featured
+ * connectors, then the connect sheet, and the new connection is ticked here, first and marked New,
+ * until the agent is saved.
+ *
  * Every list it writes keeps only connections that exist, so a grant to a disconnected connector
  * drops out on the next save, and "Remove" drops it right away. Until the list has loaded there is
  * nothing to tick, so a failed load can't wipe the agent's grants.
  */
 import { useId, useRef, useState } from "react";
-import { Info, Pencil, TriangleAlert } from "lucide-react";
+import { CircleCheck, Info, Pencil, Plus, TriangleAlert } from "lucide-react";
 
-import { Checkbox, Select } from "../../design-system/components";
-import { listConnections } from "../../lib/api/connectors";
+import { Badge, Button, Checkbox, Select } from "../../design-system/components";
+import { type CatalogEntry, type Connection, listConnections } from "../../lib/api/connectors";
+import { ConnectSheet } from "../../pages/connectors/ConnectSheet";
 import { InfoTip } from "../InfoTip";
 import { useLoaded } from "../runs/useLoaded";
 import type { ConnectorGrant } from "../tools/nodeTools";
+import { ConnectAppDialog } from "./ConnectAppDialog";
 import {
   type OpenConnector,
   accessLine,
@@ -36,6 +42,7 @@ export function ConnectorsChecklist({
   onChange,
   saved,
   onOpen,
+  onBrowse,
   agentName,
   plan = null,
 }: {
@@ -49,13 +56,22 @@ export function ConnectorsChecklist({
    * "Save your changes?" first; without it the links are plain addresses.
    */
   onOpen?: OpenConnector;
+  /** Open Connectors › Browse the same way (the "Connect an app" dialog's "Open Connectors"). */
+  onBrowse?: () => void;
   /** "Reviewer": names the agent in the Access select and the notes. */
   agentName?: string;
   /** "Claude" / "Grok" when the agent runs on that plan in Tvashtr Desktop (no connectors yet). */
   plan?: string | null;
 }) {
   const list = useLoaded("connections", listConnections);
-  const connections = list.value;
+  // Connected from here since the list loaded ("Connect an app"), newest first.
+  const [added, setAdded] = useState<Connection[]>([]);
+  // The "Connect an app" dialog, then the sheet of the connector picked in it.
+  const [connecting, setConnecting] = useState<"pick" | CatalogEntry | null>(null);
+  const connections = list.value && [
+    ...added,
+    ...list.value.filter((c) => !added.some((a) => a.id === c.id)),
+  ];
   // The write-capable connection ticked last: the callout says its access starts on read only.
   const [fresh, setFresh] = useState<string | null>(null);
   const headId = useId();
@@ -72,6 +88,14 @@ export function ConnectorsChecklist({
     (c) =>
       c.id === fresh && granted.some((g) => g.id === c.id) && !saved?.some((g) => g.id === c.id),
   );
+  // Connected from here and not saved with this agent yet: its row says New.
+  const isNew = (id: string) => added.some((a) => a.id === id) && !saved?.some((g) => g.id === id);
+  const newOne = added.find((a) => isNew(a.id) && granted.some((g) => g.id === a.id));
+  const connected = (c: Connection) => {
+    setConnecting(null);
+    setAdded((prev) => [c, ...prev.filter((a) => a.id !== c.id)]);
+    if (!granted.some((g) => g.id === c.id)) write([...granted, { id: c.id, access: "read" }]);
+  };
   // Grants whose connection no longer exists (known only once the list has loaded).
   const gone = value.length - granted.length;
   // "Try again" leaves the page when the list reloads, so focus moves to the heading.
@@ -79,7 +103,7 @@ export function ConnectorsChecklist({
     list.retry();
     headRef.current?.focus();
   };
-  const Note = plan ? TriangleAlert : freshOne ? Pencil : Info;
+  const Note = plan ? TriangleAlert : newOne ? CircleCheck : freshOne ? Pencil : Info;
 
   return (
     <section
@@ -93,6 +117,17 @@ export function ConnectorsChecklist({
           <span className="nd-kit__count">{granted.length}</span>
           <InfoTip text="Apps you connected in Toolkit › Connectors. Tick the ones this agent may use." />
         </h3>
+        {/* Off for an agent on a plan (nothing here reaches its runs) and until the list is known. */}
+        <Button
+          variant="secondary"
+          size="sm"
+          className="nd-btn-flush"
+          disabled={plan !== null || list.state !== "ready"}
+          onClick={() => setConnecting("pick")}
+        >
+          <Plus size={13} strokeWidth={1.6} aria-hidden />
+          <span>Connect an app</span>
+        </Button>
       </div>
       <span className="dm-dlist__head">Connectors this agent can use</span>
       {list.state === "loading" ? (
@@ -147,6 +182,7 @@ export function ConnectorsChecklist({
                     }
                   />
                 </div>
+                {isNew(c.id) && <Badge variant="success">New</Badge>}
                 {c.status === "needs_signin" ? (
                   <a
                     className="nd-link"
@@ -189,7 +225,9 @@ export function ConnectorsChecklist({
         </div>
       )}
       <div
-        className={`dm-dlist__callout nd-conn__callout${plan ? " nd-conn__callout--warn" : freshOne ? " nd-conn__callout--plain" : ""}`}
+        className={`dm-dlist__callout nd-conn__callout${plan ? " nd-conn__callout--warn" : newOne ? " nd-conn__callout--ok" : freshOne ? " nd-conn__callout--plain" : ""}`}
+        // Announced when it appears: nothing else on screen says the connect went through.
+        role={!plan && newOne ? "status" : undefined}
       >
         <span className="dm-dlist__icon">
           <Note size={14} strokeWidth={1.6} aria-hidden />
@@ -197,11 +235,30 @@ export function ConnectorsChecklist({
         <span className="dm-dlist__text">
           {plan
             ? `${who} runs on your ${plan} plan in Tvashtr Desktop. Connectors and tools don’t reach plan runs yet. Give it an API-key model in Setup to use them.`
-            : freshOne
-              ? `${freshOne.name} is connected with read & write, so you choose per agent. ${who} starts on read only.`
-              : "During a run it can call the read tools of what’s ticked. Calls go through Tvashtr, so the agent never holds your sign-in."}
+            : newOne
+              ? `${newOne.name} is connected and ticked for ${agentName ?? "this agent"}. Save to keep it.`
+              : freshOne
+                ? `${freshOne.name} is connected with read & write, so you choose per agent. ${who} starts on read only.`
+                : "During a run it can call the read tools of what’s ticked. Calls go through Tvashtr, so the agent never holds your sign-in."}
         </span>
       </div>
+      {connecting === "pick" ? (
+        <ConnectAppDialog
+          agentName={agentName ?? "this agent"}
+          connectedKeys={new Set((connections ?? []).map((c) => c.connector_key))}
+          onPick={setConnecting}
+          onBrowse={onBrowse}
+          onClose={() => setConnecting(null)}
+        />
+      ) : (
+        connecting && (
+          <ConnectSheet
+            target={{ entry: connecting }}
+            onClose={() => setConnecting(null)}
+            onDone={connected}
+          />
+        )
+      )}
     </section>
   );
 }

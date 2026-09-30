@@ -30,6 +30,43 @@
   border: 1px solid var(--amber-100);
   color: #6b4a1f;
 }
+/* Just connected from here and ticked (CnF-FromAgent-3). */
+.nd-conn__callout--ok {
+  background: #eef2e6;
+  border: 1px solid #d5dfc4;
+  color: #3f4b30;
+}
+/* "Connect an app for <agent>" (CnF-FromAgent-2): one row per connector. */
+.nd-conn-pick {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(340px, 50vh);
+  overflow-y: auto;
+}
+.nd-conn-pick__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+}
+.nd-conn-pick__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.nd-conn-pick__note {
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
 /* A line with its one action: the failed load's "Try again", a gone connector's "Remove". */
 .nd-conn__error {
   display: flex;

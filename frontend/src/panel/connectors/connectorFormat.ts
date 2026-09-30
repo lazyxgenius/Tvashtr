@@ -4,10 +4,16 @@
  */
 import type { Connection } from "../../lib/api/connectors";
 import type { ConnectorCall, RoundConnectors } from "../../lib/api/roundConnectors";
+import type { Route } from "../../lib/nav";
 
 /** One connection's page, or the Connectors list when there is no id (`lib/nav.ts`, F1.1). */
 export const connectorsHref = (id?: string | null): string =>
   id ? `#/toolkit/connectors/${encodeURIComponent(id)}` : "#/toolkit/connectors";
+
+/** The same place as a route: what the Team drawer hands the page, which asks about an unsaved
+ *  draft before it leaves. */
+export const connectorsRoute = (id: string | null): Route =>
+  id ? { page: "connector", connectorId: id } : { page: "connectors", view: "connected" };
 
 /** "Read only · project trade-mcp-prod", "Read & write allowed", or that it needs attention. */
 export function accessLine(c: Connection): string {

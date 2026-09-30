@@ -81,5 +81,13 @@ describe("ToolsPanel — Connectors", () => {
     render(panel);
     fireEvent.click(await screen.findByRole("link", { name: "Open Connectors" }));
     expect(onOpenToolkit).toHaveBeenLastCalledWith({ page: "connectors", view: "connected" });
+
+    // "Connect an app" › "Open Connectors" is for what isn't Featured: Browse, the same way.
+    fireEvent.click(screen.getByRole("button", { name: "Connect an app" }));
+    const dialog = await screen.findByRole("dialog", { name: "Connect an app for this agent" });
+    expect(fireEvent.click(within(dialog).getByRole("link", { name: "Open Connectors" }))).toBe(
+      false,
+    );
+    expect(onOpenToolkit).toHaveBeenLastCalledWith({ page: "connectors", view: "browse" });
   });
 });

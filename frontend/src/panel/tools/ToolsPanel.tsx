@@ -5,6 +5,7 @@ import type { ToolLibraryItem } from "../../lib/api";
 import type { Route } from "../../lib/nav";
 import { DomainsChecklist } from "../../pages/domains/DomainsChecklist";
 import { accessOf } from "../../pages/domains/queryNodeFormat";
+import { connectorsRoute } from "../connectors/connectorFormat";
 import { ConnectorsChecklist } from "../connectors/ConnectorsChecklist";
 import { InfoTip } from "../InfoTip";
 import type { ToastAction } from "../useDrawerToast";
@@ -81,15 +82,8 @@ export function ToolsPanel({
         agentName={agentName}
         plan={plan}
         // Through the drawer, so leaving with an unsaved draft asks first.
-        onOpen={
-          onOpenToolkit &&
-          ((id) =>
-            onOpenToolkit(
-              id
-                ? { page: "connector", connectorId: id }
-                : { page: "connectors", view: "connected" },
-            ))
-        }
+        onOpen={onOpenToolkit && ((id) => onOpenToolkit(connectorsRoute(id)))}
+        onBrowse={onOpenToolkit && (() => onOpenToolkit({ page: "connectors", view: "browse" }))}
       />
       <section className="nd-kit nd-kit--tools" aria-labelledby="nd-kit-tools">
         <div className="nd-kit__head">
