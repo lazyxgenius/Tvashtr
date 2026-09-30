@@ -6,7 +6,13 @@ the FastAPI lifespan and tears it down at the end of the session.
 """
 
 import os
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -143,6 +149,36 @@ def client():
         _AUTH_USER_ID = resp.json()["id"]
         _seed_dummy_credentials(_AUTH_USER_ID)
         yield test_client
+
+
+@pytest.fixture(scope="session")
+def fake_connector_url():
+    """The MCP address (``http://127.0.0.1:<port>/mcp``) of the fake OAuth MCP server
+    (``tests/fake_connector_server.py``), started once per session as a SUBPROCESS on a free port.
+    Its sign-in routes are on the same origin. It is a separate process on purpose: probing a
+    streamable-HTTP mount through the shared TestClient tears down the DBOS lifespan
+    (``test_domain_mcp_http.py``). A test that reaches it through ``connector_net`` must turn
+    ``connectors_allow_local`` on and ``hosted_mode`` off first."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    script = Path(__file__).with_name("fake_connector_server.py")
+    proc = subprocess.Popen([sys.executable, str(script), "--port", str(port)])
+    base = f"http://127.0.0.1:{port}"
+    try:
+        deadline = time.monotonic() + 20
+        while True:
+            try:
+                urllib.request.urlopen(f"{base}/.well-known/oauth-protected-resource", timeout=1)
+                break
+            except OSError:
+                assert proc.poll() is None, "the fake connector server exited at start-up"
+                assert time.monotonic() < deadline, "the fake connector server didn't come up"
+                time.sleep(0.1)
+        yield f"{base}/mcp"
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
 
 
 @pytest.fixture
