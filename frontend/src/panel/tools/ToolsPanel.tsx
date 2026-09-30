@@ -80,6 +80,16 @@ export function ToolsPanel({
         saved={savedConfig === undefined ? undefined : connectorsOf(savedConfig)}
         agentName={agentName}
         plan={plan}
+        // Through the drawer, so leaving with an unsaved draft asks first.
+        onOpen={
+          onOpenToolkit &&
+          ((id) =>
+            onOpenToolkit(
+              id
+                ? { page: "connector", connectorId: id }
+                : { page: "connectors", view: "connected" },
+            ))
+        }
       />
       <section className="nd-kit nd-kit--tools" aria-labelledby="nd-kit-tools">
         <div className="nd-kit__head">

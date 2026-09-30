@@ -49,4 +49,37 @@ describe("ToolsPanel — Connectors", () => {
     expect(section).not.toHaveTextContent("starts on read only");
     expect(section).toHaveTextContent("During a run it can call the read tools of what’s ticked.");
   });
+
+  it("a link to Connectors leaves through the drawer, which asks about an unsaved draft", async () => {
+    const SENTRY = connection({ id: "c5", name: "Sentry", slug: "sentry", status: "needs_signin" });
+    let connections = [SENTRY];
+    mockApi({
+      "GET /api/connectors": () => ({ connections }),
+      "GET /api/domains": { domains: [] },
+    });
+    const onOpenToolkit = vi.fn();
+    const panel = (
+      <ToolsPanel
+        config={null}
+        library={[]}
+        secrets={[]}
+        onChange={noop}
+        notify={noop}
+        onAdd={noop}
+        onEditServer={noop}
+        onOpenToolkit={onOpenToolkit}
+      />
+    );
+    const { unmount } = render(panel);
+    const link = await screen.findByRole("link", { name: "Sign in again" });
+    // Not followed on its own: the drawer decides (it has the "Save your changes?" question).
+    expect(fireEvent.click(link)).toBe(false);
+    expect(onOpenToolkit).toHaveBeenLastCalledWith({ page: "connector", connectorId: "c5" });
+
+    unmount();
+    connections = [];
+    render(panel);
+    fireEvent.click(await screen.findByRole("link", { name: "Open Connectors" }));
+    expect(onOpenToolkit).toHaveBeenLastCalledWith({ page: "connectors", view: "connected" });
+  });
 });
