@@ -5,16 +5,25 @@ Stream B3 (build plan B3.1, B3.3, B3.5); the MCP mount that calls it is
 What a run shows).
 """
 
+import functools
 import logging
+import re
+import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Any
 
+import anyio
 from itsdangerous import BadData, URLSafeTimedSerializer
+from mcp import McpError
+from mcp.types import CallToolResult, TextContent, Tool
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from tvashtr.config import get_settings
+from tvashtr.control_plane import connector_catalog, connector_oauth, connector_upstream, connectors
 from tvashtr.control_plane.node_library import _as_uuid
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.control_plane.run_views import TERMINAL_STATUSES
@@ -186,6 +195,248 @@ def sign_in_expired(run_id: str, node_id: object, row: ConnectorConnection) -> N
             live.status = "needs_signin"
             live.last_error = f"{reason[0].upper()}{reason[1:]}."
     record_skip(run_id, node_id, row.id, row.name, reason)
+
+
+_ARG_KEYS = ("query", "sql", "q", "title", "name")
+_ARG_LIMIT = 200
+_HTTPS_ADDRESS = re.compile(r"https://[^\s\"'<>()\[\]{}]+")
+
+
+def _short_arg(arguments: object) -> str | None:
+    """The one argument a call is shown with: the first string, preferring the usual names."""
+    if not isinstance(arguments, dict):
+        return None
+    strings = [arguments.get(key) for key in _ARG_KEYS] + list(arguments.values())
+    return next((value[:_ARG_LIMIT] for value in strings if isinstance(value, str)), None)
+
+
+def _result_url(result: CallToolResult) -> str | None:
+    """The first ``https://`` address in a result's text (what a write made, LIN-214 say)."""
+    text = "\n".join(block.text for block in result.content if isinstance(block, TextContent))
+    found = _HTTPS_ADDRESS.search(text)
+    return found.group().rstrip(".,;:") if found else None
+
+
+def record_call(
+    grant: RunGrant,
+    row: ConnectorConnection,
+    tool: str,
+    *,
+    write: bool,
+    blocked: bool = False,
+    arguments: object = None,
+    duration_ms: int = 0,
+    result: CallToolResult | None = None,
+) -> None:
+    """One ``connector_call`` event for one ``tools/call``: allowed, refused (``blocked``) or
+    failed (``result`` is ``None``, or a result with ``isError``). Full arguments and results are
+    not stored. Sync database work: call it off the event loop."""
+    ok = result is not None and not result.isError
+    _write_event(
+        grant.run_id,
+        grant.node_id,
+        "connector_call",
+        {
+            "connection_id": str(row.id),
+            "connector": row.name,
+            "slug": row.slug,
+            "tool": tool,
+            "write": write,
+            "ok": ok,
+            "blocked": blocked,
+            "arg": _short_arg(arguments),
+            "duration_ms": duration_ms,
+            "result_url": _result_url(result) if ok and write else None,
+        },
+    )
+
+
+# ---- The proxy core: what ``tools/list`` and ``tools/call`` answer for one run token ----
+#
+# FastMCP awaits these on the server's event loop, so every piece of sync work (the row load, the
+# token refresh and its row lock, the records) goes through ``_thread``: one slow refresh must not
+# stall every other agent's calls. The provider credential is added here and goes nowhere else:
+# not into an answer, an event or a log line.
+
+LIST_TIMEOUT_SECONDS = 10.0
+CALL_TIMEOUT_SECONDS = 120.0
+DESCRIPTION_LIMIT = 2000
+UNAVAILABLE = "This connector isn’t available for this run."
+
+# ponytail: each connection's ``{tool: readOnlyHint}`` as the provider last listed it, kept per
+# process and refreshed by every listing; a call for a tool that isn't in it lists first. Keep it
+# on the row if an extra listing after a restart (or on a second machine) ever costs too much.
+_read_only_hints: dict[uuid.UUID, dict[str, bool]] = {}
+
+
+class _Failed(Exception):
+    """A request that got no usable answer. Its text is what the agent is told."""
+
+
+async def _thread[T](func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    return await anyio.to_thread.run_sync(functools.partial(func, *args, **kwargs))
+
+
+def _connection(grant: RunGrant) -> tuple[ConnectorConnection, dict | None, str] | None:
+    """``(row, catalog entry, effective access)`` as they are now, or ``None`` when the connection
+    is gone. The effective access is the lower of the token's and the row's."""
+    with session_scope() as session:
+        row = session.get(ConnectorConnection, grant.connection_id)
+    if row is None or row.status == "pending":
+        return None
+    access = "write" if grant.access == "write" and row.access == "write" else "read"
+    return row, connector_catalog.resolve(row.connector_key), access
+
+
+async def _provider[T](
+    grant: RunGrant,
+    row: ConnectorConnection,
+    access: str,
+    request: Callable[[str, str, dict], Awaitable[T]],
+) -> T:
+    """``request(url, transport, headers)`` against the provider, the credential added here. Only
+    a 401 means the sign-in expired: one refresh and one retry, then ``needs_signin``. Anything
+    else changes nothing. Raises :class:`_Failed`."""
+    unauthorized = connector_upstream.UpstreamUnauthorized
+    try:
+        if row.status != "connected":
+            raise connector_oauth.SignInRefused
+        url, transport = await _thread(connectors.upstream_target, row, access)
+        headers = await _thread(connectors.upstream_headers, row)
+        try:
+            return await request(url, transport, headers)
+        except unauthorized:
+            if row.auth_kind != "oauth":
+                raise connector_oauth.SignInRefused from None  # a key can't be refreshed
+            rejected = headers.get("Authorization", "").removeprefix("Bearer ")
+            headers = await _thread(connectors.upstream_headers, row, rejected=rejected)
+            try:
+                return await request(url, transport, headers)
+            except unauthorized:
+                raise connector_oauth.SignInRefused from None
+    except connector_oauth.SignInRefused:
+        await _thread(sign_in_expired, grant.run_id, grant.node_id, row)
+        raise _Failed(f"{row.name} needs you to sign in again.") from None
+    except (connector_oauth.Unreachable, connector_upstream.UpstreamUnreachable, TimeoutError):
+        await _thread(record_skip, grant.run_id, grant.node_id, row.id, row.name, UNREACHABLE)
+        raise _Failed(f"We couldn’t reach {row.name}. Try again.") from None
+    except connector_upstream.UpstreamRefused as exc:
+        raise _Failed(f"{row.name} refused the request ({exc.status}).") from None
+    except McpError as exc:
+        raise _Failed(f"{row.name} answered an error: {exc.error.message}") from None
+
+
+async def _listed(grant: RunGrant, row: ConnectorConnection, access: str, upstream: Any) -> list:
+    """The provider's own tool list, within ``LIST_TIMEOUT_SECONDS``."""
+
+    async def request(url: str, transport: str, headers: dict) -> list[Tool]:
+        try:
+            with anyio.fail_after(LIST_TIMEOUT_SECONDS):
+                return await upstream.list_tools(
+                    url, transport, headers, timeout=LIST_TIMEOUT_SECONDS
+                )
+        except (connector_upstream.UpstreamRefused, McpError) as exc:
+            # A list has no tool error to carry a refusal: the agent gets no tools, so the run
+            # went without the connector all the same.
+            raise connector_upstream.UpstreamUnreachable(type(exc).__name__) from None
+
+    tools = await _provider(grant, row, access, request)
+    _read_only_hints.setdefault(row.id, {}).update(
+        {tool["name"]: tool["read_only"] for tool in connectors.stored_tools(tools)}
+    )
+    return tools
+
+
+async def proxy_list_tools(grant: RunGrant, upstream: Any = connector_upstream) -> list[Tool]:
+    """``tools/list``: the provider's tools that are reads at the token's effective access (all of
+    them when it is ``write``). Never an error: a failing server would stop the agent from
+    starting, so a provider that can't be asked is an empty list (and a skip on the round)."""
+    found = await _thread(_connection, grant)
+    if found is None:
+        return []
+    row, entry, access = found
+    try:
+        tools = await _listed(grant, row, access, upstream)
+    except _Failed:
+        return []
+    return [
+        tool.model_copy(
+            update={
+                "description": tool.description[:DESCRIPTION_LIMIT] if tool.description else None,
+                "outputSchema": None,
+            }
+        )
+        for tool, stored in zip(tools, connectors.stored_tools(tools), strict=True)
+        if access == "write" or not connector_catalog.is_write(entry, stored, access)
+    ]
+
+
+async def _is_write(
+    grant: RunGrant,
+    row: ConnectorConnection,
+    entry: dict | None,
+    access: str,
+    name: str,
+    upstream: Any,
+) -> bool:
+    """``connector_catalog.is_write`` for a tool known only by name. The provider is asked for
+    its list when this process hasn't seen the tool listed; one it doesn't list is a write."""
+    if not connector_catalog.is_write(entry, {"name": name, "read_only": False}, access):
+        return False  # a read whatever its annotation (the provider's own flag is on)
+    if name not in _read_only_hints.get(row.id, {}):
+        await _listed(grant, row, access, upstream)
+    read_only = _read_only_hints.get(row.id, {}).get(name, False)
+    return connector_catalog.is_write(entry, {"name": name, "read_only": read_only}, access)
+
+
+def _tool_error(message: str) -> CallToolResult:
+    return CallToolResult(content=[TextContent(type="text", text=message)], isError=True)
+
+
+async def proxy_call_tool(
+    grant: RunGrant, name: str, arguments: dict | None, upstream: Any = connector_upstream
+) -> CallToolResult:
+    """``tools/call``: a tool the read-only rule doesn't allow is refused here; any other call is
+    forwarded with the provider credential and its result returned as-is. Every call writes one
+    ``connector_call`` event. Never raises: what went wrong is a tool error for the agent."""
+    started = time.monotonic()
+    found = await _thread(_connection, grant)
+    if found is None:
+        return _tool_error(UNAVAILABLE)
+    row, entry, access = found
+    write, blocked, result = True, False, None  # a tool nothing is known about is a write
+    try:
+        write = await _is_write(grant, row, entry, access, name, upstream)
+        if write and access != "write":
+            blocked = True
+            raise _Failed(
+                f"{row.name} is read only for this agent. {name} can change data, so it’s off."
+            )
+
+        async def request(url: str, transport: str, headers: dict) -> CallToolResult:
+            return await upstream.call_tool(
+                url, transport, headers, name, arguments, timeout=CALL_TIMEOUT_SECONDS
+            )
+
+        result = await _provider(grant, row, access, request)
+        answer = result
+    except _Failed as exc:
+        answer = _tool_error(str(exc))
+    try:
+        await _thread(
+            record_call,
+            grant,
+            row,
+            name,
+            write=write,
+            blocked=blocked,
+            arguments=arguments,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            result=result,
+        )
+    except Exception as exc:  # the provider already answered: don't turn that into a failure
+        logger.warning("connectors: couldn’t record a %s call (%s)", row.slug, type(exc).__name__)
+    return answer
 
 
 def recent_use(session: Session, owner_id: uuid.UUID, connection_id: uuid.UUID) -> list:
