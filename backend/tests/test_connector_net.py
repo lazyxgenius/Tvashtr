@@ -54,6 +54,7 @@ def test_mcp_floor_has_the_client_pieces_connectors_need():
 
 import asyncio  # noqa: E402
 import gzip  # noqa: E402
+import re  # noqa: E402
 import socket  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
@@ -458,11 +459,113 @@ def test_site_values():
     assert site("team.vercel.app") == "team.vercel.app"
 
 
+# ---- the guard on the guard: nothing else opens a connection for a connector ----
+
+# Every way to make an HTTP call that isn't one of ``connector_net``'s two clients.
+_BYPASS = re.compile(
+    r"\bhttpx\.(?:get|post|put|patch|delete|head|options|request|stream)\b"
+    r"|\bhttpx\.(?:Client|AsyncClient)\s*\("  # built, not named: an annotation is fine
+    r"|from httpx import"
+    r"|create_mcp_http_client"  # the SDK's own client: follows redirects, pins nothing
+    r"|streamablehttp_client\("  # the SDK's older entry point, which builds that client
+    r"|\burllib\.request\b|from urllib import request"
+    r"|\burllib3\b|\baiohttp\b|import requests\b|\brequests\."
+)
+# The SDK's two transports build their own client unless they are handed one.
+_NEEDS = {"streamable_http_client(": "http_client=", "sse_client(": "httpx_client_factory="}
+_IMPORTS_A_CONNECTOR_MODULE = re.compile(r"^\s*(?:from|import)\s.*\bconnector", re.MULTILINE)
+
+
+def _call_arguments(source: str, start: int) -> str:
+    """The text between the parenthesis that opens at ``start - 1`` and the one that closes it."""
+    depth, at = 1, start
+    while depth and at < len(source):
+        depth += {"(": 1, ")": -1}.get(source[at], 0)
+        at += 1
+    return source[start : at - 1]
+
+
+def _bypasses(source: str) -> list[str]:
+    """What in ``source`` makes (or lets the SDK make) an HTTP client of its own."""
+    found = _BYPASS.findall(source)
+    for call, keyword in _NEEDS.items():
+        for match in re.finditer(rf"(?<![\w.]){re.escape(call)}", source):
+            if keyword not in _call_arguments(source, match.end()):
+                found.append(f"{call}…) without {keyword}")
+    return found
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "httpx.Client()",
+        "httpx.AsyncClient(timeout=3)",
+        "httpx.post(token_endpoint, data=form)",
+        "httpx.get(url)",
+        'httpx.request("GET", url)',
+        'with httpx.stream("GET", url) as reply:',
+        "from httpx import AsyncClient",
+        "from mcp.shared._httpx_utils import create_mcp_http_client",
+        "async with streamablehttp_client(url) as streams:",
+        "urllib.request.urlopen(url)",
+        "from urllib.request import urlopen",
+        "from urllib import request",
+        "import requests",
+        "requests.get(url)",
+        "import aiohttp",
+        "async with streamable_http_client(url) as streams:",
+        "sse_client(url, headers=headers)",
+        "sse_client(\n    url,\n    timeout=(5),\n)",
+    ],
+)
+def test_the_guard_sees_each_way_around_connector_net(source):
+    assert _bypasses(source)
+
+
+def test_the_guard_passes_the_guarded_calls():
+    source = """
+from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamable_http_client
+reply = httpx.Response(200, request=httpx.Request("GET", url))
+with connector_net.client() as http:
+    http.post(token_endpoint, data=form)
+streamable_http_client(url, http_client=client)
+sse_client(
+    url,
+    httpx_client_factory=make(timeout=(5)),
+)
+pending_requests.append(request)
+def token_request(http: httpx.Client) -> httpx.Response: ...
+"""
+    assert _bypasses(source) == []
+
+
 def test_no_other_connector_module_builds_an_http_client():
-    offenders = [
-        str(path.relative_to(_BACKEND))
-        for path in (_BACKEND / "tvashtr").rglob("connector*.py")
-        if path.name != "connector_net.py"
-        and any(s in path.read_text() for s in ("httpx.Client(", "httpx.AsyncClient("))
-    ]
-    assert offenders == []
+    """Every module named ``connector*.py`` and every module that imports one, ``connector_net``
+    excepted: the two guarded clients are the only way out."""
+    offenders = {}
+    for path in (_BACKEND / "tvashtr").rglob("*.py"):
+        source = path.read_text()
+        if path.name == "connector_net.py":
+            continue
+        if path.name.startswith("connector") or _IMPORTS_A_CONNECTOR_MODULE.search(source):
+            if found := _bypasses(source):
+                offenders[str(path.relative_to(_BACKEND))] = found
+    assert offenders == {}
+
+
+def test_the_guard_reads_the_modules_the_streams_will_touch():
+    scanned = {
+        path.name
+        for path in (_BACKEND / "tvashtr").rglob("*.py")
+        if path.name.startswith("connector") or _IMPORTS_A_CONNECTOR_MODULE.search(path.read_text())
+    }
+    assert scanned >= {
+        "connector_catalog.py",
+        "connector_oauth.py",
+        "connector_proxy.py",
+        "connector_upstream.py",
+        "connectors.py",
+        "connectors_oauth.py",
+        "main.py",
+    }
