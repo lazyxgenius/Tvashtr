@@ -1289,6 +1289,7 @@ def test_the_proxy_over_http_lists_and_calls_the_provider_for_a_run_token(fake_c
         "DATABASE_URL": get_settings().database_url,
         "TVASHTR_CONNECTORS_ALLOW_LOCAL": "1",  # the fake provider is on 127.0.0.1
         "TVASHTR_HOSTED_MODE": "false",
+        "TVASHTR_PUBLIC_BASE_URL": "https://tvashtr.fly.dev",  # the host the probe comes in by
         "RUN_TOKEN": _bearer(grant).removeprefix("Bearer "),
     }
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 from starlette.applications import Starlette
 
 from tvashtr.control_plane.domain_mcp import create_domains_fastmcp
-from tvashtr.mcp import mount_streamable
+from tvashtr.mcp import agent_transport_security, mount_streamable
 
 PATH = "/mcp/domains"
 
@@ -21,6 +21,9 @@ def get_domains_mcp():
         _mcp = create_domains_fastmcp()
         # The mount root is the MCP endpoint (the agent's address ends at /mcp/domains).
         _mcp.settings.streamable_http_path = "/"
+        # FastMCP's default only answers a localhost ``Host`` (421 otherwise), and agents come in
+        # by the public host or the docker host.
+        _mcp.settings.transport_security = agent_transport_security()
     return _mcp
 
 

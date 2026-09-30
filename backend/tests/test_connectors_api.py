@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import uuid
@@ -138,6 +139,15 @@ async def main():
                     answers.append([host, path, reply.status_code, server])
                 page = await client.get("/toolkit/connectors")
                 answers.append([host, "GET /toolkit/connectors", page.status_code, page.json()])
+        # What it refuses: a Host that isn't one of ours, and a browser page from elsewhere.
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="https://other.example") as c:
+            reply = await c.post("/mcp/connectors", json=INITIALIZE, headers=HEADERS)
+            answers.append(["other host", reply.status_code, reply.text])
+        async with httpx.AsyncClient(transport=transport, base_url="https://tvashtr.fly.dev") as c:
+            page = {**HEADERS, "origin": "https://other.example"}
+            reply = await c.post("/mcp/connectors", json=INITIALIZE, headers=page)
+            answers.append(["other origin", reply.status_code, reply.text])
     print(json.dumps(answers))
 
 
@@ -153,9 +163,15 @@ def test_the_proxy_answers_at_its_address_behind_the_spa_catch_all():
     ``client`` already started it. It never imports ``tvashtr.main``.
 
     Also the Host check: the SDK's default for a localhost-bound server answers 421 to any other
-    ``Host``, and agents come in by the public host or the docker host."""
+    ``Host``, and agents come in by the public host or the docker host. Those are listed
+    (``agent_transport_security``); any other host is still refused."""
     ran = subprocess.run(
-        [sys.executable, "-c", _PROBE], capture_output=True, text=True, timeout=60, check=False
+        [sys.executable, "-c", _PROBE],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env={**os.environ, "TVASHTR_PUBLIC_BASE_URL": "https://tvashtr.fly.dev"},  # as fly.toml
     )
     assert ran.returncode == 0, ran.stderr
     answers = json.loads(ran.stdout.strip().splitlines()[-1])
@@ -167,6 +183,10 @@ def test_the_proxy_answers_at_its_address_behind_the_spa_catch_all():
             # …and the catch-all still serves the app's own pages.
             [host, "GET /toolkit/connectors", 200, {"spa": "toolkit/connectors"}],
         ]
+    expected += [
+        ["other host", 421, "Invalid Host header"],
+        ["other origin", 403, "Invalid Origin header"],
+    ]
     assert answers == expected
 
 

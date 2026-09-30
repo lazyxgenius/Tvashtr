@@ -16,6 +16,7 @@ from mcp.types import Tool, ToolAnnotations
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from tvashtr.config import get_settings
 from tvashtr.control_plane import (
     connector_catalog,
     connector_net,
@@ -26,6 +27,7 @@ from tvashtr.control_plane import (
 )
 from tvashtr.control_plane.connectors import ConnectorError
 from tvashtr.db import get_engine, session_scope
+from tvashtr.mcp import agent_transport_security
 from tvashtr.mcp.connectors import get_connectors_mcp
 from tvashtr.models import ConnectorConnection, User
 from tvashtr.routes import connectors as connectors_routes
@@ -146,15 +148,43 @@ def test_ensure_access_token_refuses_a_row_that_is_gone_or_has_no_token():
         connector_oauth.ensure_access_token(_connection(_user()))
 
 
-def test_the_proxy_server_is_stateless_and_accepts_any_host():
+def test_the_proxy_server_is_stateless_and_accepts_the_hosts_agents_use():
     mcp = get_connectors_mcp()
     assert mcp is get_connectors_mcp()
     assert mcp.name == "tvashtr-connectors"
     assert mcp.settings.stateless_http is True and mcp.settings.json_response is True
     assert mcp.settings.streamable_http_path == "/"
     # Agents reach it by the public host (or the docker host), never by localhost: the SDK's
-    # localhost-only Host check would answer them 421. The run token is what guards it.
-    assert mcp.settings.transport_security.enable_dns_rebinding_protection is False
+    # localhost-only Host check would answer them 421. The check is on, with those hosts listed.
+    security = mcp.settings.transport_security
+    assert security.enable_dns_rebinding_protection is True
+    assert security.allowed_hosts == agent_transport_security().allowed_hosts
+
+
+def test_the_hosts_agents_use_are_the_public_host_the_docker_host_and_localhost(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "public_base_url", "https://tvashtr.fly.dev/")
+    monkeypatch.setattr(settings, "litellm_proxy_host_docker", "host.docker.internal")
+    security = agent_transport_security()
+    assert security.enable_dns_rebinding_protection is True
+    assert security.allowed_hosts == [
+        "localhost",
+        "localhost:*",
+        "127.0.0.1",
+        "127.0.0.1:*",
+        "[::1]",
+        "[::1]:*",
+        "host.docker.internal",
+        "host.docker.internal:*",
+        "tvashtr.fly.dev",
+        "tvashtr.fly.dev:*",
+    ]
+    assert security.allowed_origins == []  # agents send no Origin; a browser page gets 403
+
+    # The local default names localhost once, and an unset base adds nothing.
+    for base in ("http://localhost:8000", ""):
+        monkeypatch.setattr(settings, "public_base_url", base)
+        assert agent_transport_security().allowed_hosts == security.allowed_hosts[:8]
 
 
 # ---- connectors.py: the shared helpers (final) ----

@@ -12,12 +12,11 @@ import logging
 
 import anyio
 from mcp.server.fastmcp import FastMCP
-from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import CallToolRequest, CallToolResult, ServerResult, TextContent, Tool
 from starlette.applications import Starlette
 
 from tvashtr.control_plane import connector_proxy
-from tvashtr.mcp import mount_streamable
+from tvashtr.mcp import agent_transport_security, mount_streamable
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +85,8 @@ def get_connectors_mcp() -> FastMCP:
             # The mount root is the MCP endpoint (the agent's address ends at /mcp/connectors).
             streamable_http_path="/",
             # FastMCP's default for a localhost-bound server only accepts a localhost ``Host``
-            # header (421 otherwise). Agents reach this by the public host, or the docker host,
-            # and every request is authorized by its run token, so that check is off.
-            transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+            # header (421 otherwise). Agents reach this by the public host, or the docker host.
+            transport_security=agent_transport_security(),
         )
     return _mcp
 

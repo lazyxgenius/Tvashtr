@@ -84,6 +84,14 @@ async def main():
                     out["posts"].append([base, path, reply.status_code, server_name(reply)])
                 page = await client.get("/domains")
                 out["posts"].append([base, "GET /domains", page.status_code, page.json()])
+        # What it refuses: a Host that isn't one of ours, and a browser page from elsewhere.
+        async with httpx.AsyncClient(transport=transport, base_url="https://other.example") as c:
+            reply = await c.post("/mcp/domains", json=INITIALIZE, headers=HEADERS)
+            out["other_host"] = [reply.status_code, reply.text]
+        async with httpx.AsyncClient(transport=transport, base_url=HOSTS[0]) as c:
+            page = {**HEADERS, "origin": "https://other.example"}
+            reply = await c.post("/mcp/domains", json=INITIALIZE, headers=page)
+            out["other_origin"] = [reply.status_code, reply.text]
         # A real MCP client, at the address an agent is given (no trailing slash).
         http = httpx.AsyncClient(transport=transport)
         async with http, streamable_http_client(HOSTS[0] + "/mcp/domains", http_client=http) as (
@@ -141,3 +149,22 @@ def test_tool_handler_path_uses_cookie_owner():
     token = make_session_cookie_value(str(uid))
     assert token
     assert SESSION_COOKIE_NAME
+
+
+def test_domains_answers_the_hosts_agents_come_in_by_and_no_other():
+    """The SDK's default for a localhost-bound server answers **421** "Invalid Host header" to
+    any other ``Host``, and agents come in by the public host (a Fly sandbox) or the docker host.
+    The check stays on, with those hosts listed (``agent_transport_security``)."""
+    bases = ["https://tvashtr.fly.dev", "http://host.docker.internal:8000", "http://localhost:8000"]
+    out = _probe(bases, TVASHTR_PUBLIC_BASE_URL="https://tvashtr.fly.dev")
+    expected = []
+    for base in bases:
+        expected += [
+            [base, "/mcp/domains", 200, "tvashtr-domains"],
+            [base, "/mcp/domains/", 200, "tvashtr-domains"],
+            [base, "GET /domains", 200, {"spa": "domains"}],
+        ]
+    assert out["posts"] == expected
+    assert out["tools"] == ["domain_ask", "domain_retrieve"]
+    assert out["other_host"] == [421, "Invalid Host header"]
+    assert out["other_origin"] == [403, "Invalid Origin header"]
