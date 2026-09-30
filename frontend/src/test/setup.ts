@@ -62,6 +62,14 @@ Object.defineProperties(HTMLElement.prototype, {
 (SVGElement.prototype as unknown as { getBBox: () => DOMRect }).getBBox = () =>
   ({ x: 0, y: 0, width: 0, height: 0 }) as DOMRect;
 
+// The document editor (tiptap) focuses on the next animation frame and then scrolls the selection
+// into view, for which ProseMirror measures a Range. jsdom has no layout, so its Range has neither
+// method: the call threw from a timer, after the test's assertions, and vitest failed the whole run
+// on the uncaught error with every test passing. An empty measurement is what "no layout" means.
+Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+Range.prototype.getBoundingClientRect = () =>
+  ({ x: 0, y: 0, top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0 }) as DOMRect;
+
 // M-runnable: the provider catalogue is served on GET /api/config and cached in api.ts at boot. Tests
 // have no boot fetch, so seed a representative catalogue here (mirrors the backend
 // control_plane.teams.PROVIDER_CATALOGUE) exactly as getConfig would — so the node picker's
