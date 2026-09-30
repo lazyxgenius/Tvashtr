@@ -3,8 +3,8 @@
 the server, the one refresh a 401 gets, what is recorded, and that none of the sync work runs on
 the event loop.
 
-``connectors.upstream_target`` belongs to stream B1.5 (a stub here), so these tests put in a double
-that does what the contract says it does: the entry's read-only parameters at access ``read``.
+The provider's address is the real ``connectors.upstream_target`` (stream B1.5): the entry's
+read-only parameters at access ``read``, and the scope parameter.
 
 Contract: ``docs/superpowers/plans/api/connectors.md`` (The proxy, ``connector_call`` events)."""
 
@@ -19,7 +19,6 @@ import threading
 import time
 import uuid
 from types import SimpleNamespace
-from urllib.parse import urlencode
 
 import anyio
 import pytest
@@ -38,7 +37,6 @@ from starlette.datastructures import Headers
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane import (
-    connector_catalog,
     connector_oauth,
     connector_proxy,
     connector_upstream,
@@ -105,13 +103,7 @@ class FakeUpstream:
 
 
 @pytest.fixture(autouse=True)
-def _proxy_seams(monkeypatch):
-    def target(row, access):
-        entry = connector_catalog.resolve(row.connector_key) or {}
-        params = entry.get("read_only_params") if access == "read" else None
-        return (f"{row.url}?{urlencode(params)}" if params else row.url), row.transport
-
-    monkeypatch.setattr(connectors, "upstream_target", target)
+def _proxy_seams():
     connector_proxy._read_only_hints.clear()
 
 
@@ -262,6 +254,26 @@ def test_a_provider_flag_entry_in_read_mode_lists_everything_on_the_read_only_ad
     _call(write, upstream, "run_sql", {"query": "delete from t"})
     assert upstream.calls[1][0] == "https://mcp.supabase.com/mcp"
     assert _events(write)[0].payload["write"] is True
+
+
+def test_a_scoped_connection_is_asked_at_its_project_with_the_read_only_flag_last():
+    """The proxy and ``connectors.upstream_target`` together: the scope the user picked narrows
+    every request, and an agent with write access on a write connection gets no read-only flag."""
+    upstream = FakeUpstream()
+    supabase = {
+        "connector_key": "supabase",
+        "name": "Supabase",
+        "url": "https://mcp.supabase.com/mcp",
+        "scope": {"value": "abcd1234", "label": "trade-mcp-prod"},
+    }
+    grant = _grant("read", **supabase)
+    assert _list(grant, upstream) == ALL
+    scoped = "https://mcp.supabase.com/mcp?project_ref=abcd1234"
+    assert upstream.lists[0][0] == f"{scoped}&read_only=true"
+
+    writer = _grant("write", access="write", **supabase)
+    _call(writer, upstream, "run_sql", {"query": "select 1"})
+    assert upstream.calls[-1][0] == scoped
 
 
 def test_neon_in_read_mode_gets_its_flag_and_still_hides_and_blocks_an_unannotated_run_sql():
