@@ -156,7 +156,7 @@ class CreateRunRequest(BaseModel):
     # Which hardcoded team the run builds (P1.5a). Default ``two_node`` keeps
     # skeleton-run/skeleton-crash (which POST neither field) byte-for-byte unchanged;
     # ``review_loop`` builds the 3-node PM -> Engineer <-> Reviewer cyclic team that
-    # ``make loop-run`` requests.
+    # ``make loop-run`` asks for.
     team_shape: Literal["two_node", "review_loop"] = "two_node"
     # Clone-on-launch (P1.8b): when set to the persistent authored team's id, the run is launched
     # on a fresh deep-clone of THAT team (the user's edited prompts/models), not a throwaway

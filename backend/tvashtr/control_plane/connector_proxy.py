@@ -275,6 +275,8 @@ class _Failed(Exception):
 
 
 async def _thread[T](func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    # ponytail: anyio's default thread limiter (40), shared with the API's sync routes. Give the
+    # proxy its own if refreshes waiting on a row lock ever crowd those out.
     return await anyio.to_thread.run_sync(functools.partial(func, *args, **kwargs))
 
 
@@ -399,7 +401,8 @@ async def proxy_call_tool(
 ) -> CallToolResult:
     """``tools/call``: a tool the read-only rule doesn't allow is refused here; any other call is
     forwarded with the provider credential and its result returned as-is. Every call writes one
-    ``connector_call`` event. Never raises: what went wrong is a tool error for the agent."""
+    ``connector_call`` event. What went wrong at the provider is a tool error for the agent, not
+    an exception."""
     started = time.monotonic()
     found = await _thread(_connection, grant)
     if found is None:
