@@ -60,43 +60,46 @@ export function useConnectSignIn(onOutcome: (outcome: SignInOutcome) => void): C
   const report = useRef(onOutcome);
   report.current = onOutcome;
 
-  const closeWindow = () => {
+  const closeWindow = useCallback(() => {
     popup.current?.close();
     popup.current = null;
-  };
+  }, []);
 
   const prepare = useCallback(() => {
     popup.current = prepareSignInWindow();
   }, []);
 
-  const start = useCallback(async (connection: Connection, prepared?: Window | null) => {
-    const mine = ++run.current;
-    if (prepared !== undefined) popup.current = prepared;
-    setState({ phase: "starting" });
-    let refusal: ConnectorRefusal | null = null;
-    try {
-      const { authorize_url } = await startSignIn(connection.id);
-      if (run.current !== mine) return;
-      const opened = openSignIn(authorize_url, popup.current);
-      if (opened !== "refused") {
-        address.current = authorize_url;
-        setState({
-          phase: "waiting",
-          id: connection.id,
-          baseline: connection.last_error,
-          since: Date.now(),
-          blocked: opened === "blocked",
-        });
-        return;
+  const start = useCallback(
+    async (connection: Connection, prepared?: Window | null) => {
+      const mine = ++run.current;
+      if (prepared !== undefined) popup.current = prepared;
+      setState({ phase: "starting" });
+      let refusal: ConnectorRefusal | null = null;
+      try {
+        const { authorize_url } = await startSignIn(connection.id);
+        if (run.current !== mine) return;
+        const opened = openSignIn(authorize_url, popup.current);
+        if (opened !== "refused") {
+          address.current = authorize_url;
+          setState({
+            phase: "waiting",
+            id: connection.id,
+            baseline: connection.last_error,
+            since: Date.now(),
+            blocked: opened === "blocked",
+          });
+          return;
+        }
+      } catch (e) {
+        if (run.current !== mine) return;
+        refusal = connectorRefusal(e);
       }
-    } catch (e) {
-      if (run.current !== mine) return;
-      refusal = connectorRefusal(e);
-    }
-    closeWindow();
-    setState({ phase: "idle" });
-    report.current({ kind: "refused", refusal });
-  }, []);
+      closeWindow();
+      setState({ phase: "idle" });
+      report.current({ kind: "refused", refusal });
+    },
+    [closeWindow],
+  );
 
   const reopen = useCallback(() => {
     if (!address.current) return;
@@ -109,7 +112,7 @@ export function useConnectSignIn(onOutcome: (outcome: SignInOutcome) => void): C
     run.current++;
     closeWindow();
     setState({ phase: "idle" });
-  }, []);
+  }, [closeWindow]);
 
   const waiting = state.phase === "waiting" ? state : null;
   const id = waiting?.id;
@@ -121,7 +124,8 @@ export function useConnectSignIn(onOutcome: (outcome: SignInOutcome) => void): C
     let busy = false;
     const finish = (outcome: SignInOutcome) => {
       live = false;
-      popup.current = null;
+      // The callback page closes itself where the browser lets it; this closes it where not.
+      closeWindow();
       setState({ phase: "idle" });
       report.current(outcome);
     };
@@ -157,7 +161,7 @@ export function useConnectSignIn(onOutcome: (outcome: SignInOutcome) => void): C
       window.removeEventListener("focus", onReturn);
       document.removeEventListener("visibilitychange", onReturn);
     };
-  }, [id, baseline, since]);
+  }, [id, baseline, since, closeWindow]);
 
   const phase = waiting ? (waiting.blocked ? "blocked" : "waiting") : state.phase;
   return { phase, prepare, start, reopen, cancel };

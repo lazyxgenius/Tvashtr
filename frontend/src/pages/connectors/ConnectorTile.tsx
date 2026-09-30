@@ -1,4 +1,4 @@
-/** A connector's letter tile ("Sb", "No"): 32px in lists, 40px in a sheet, 44px on its page. */
+/** A connector's letter tile ("Sb", "No"): 32px in lists, 44px on its page. */
 import { cx } from "../../design-system/components/utils";
 import { tileLetters } from "./connectorFormat";
 
@@ -9,10 +9,10 @@ export function ConnectorTile({
 }: {
   connectorKey: string;
   name: string;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "lg";
 }) {
   return (
-    <span className={cx("cn-tile", size !== "sm" && `cn-tile--${size}`)} aria-hidden="true">
+    <span className={cx("cn-tile", size === "lg" && "cn-tile--lg")} aria-hidden="true">
       {tileLetters(connectorKey, name)}
     </span>
   );

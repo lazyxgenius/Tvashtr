@@ -305,10 +305,13 @@ function Connector({
                 c.auth_kind === "oauth" && (
                   <>
                     <dt>Sign-in</dt>
-                    <dd>{c.last_error ?? "Renews by itself"}</dd>
+                    <dd>
+                      {c.last_error ??
+                        (c.status === "pending" ? "Not finished yet" : "Renews by itself")}
+                    </dd>
                     <dd>
                       <Button variant="ghost" size="sm" onClick={signInAgain}>
-                        Sign in again
+                        {c.status === "pending" ? "Sign in" : "Sign in again"}
                       </Button>
                     </dd>
                   </>

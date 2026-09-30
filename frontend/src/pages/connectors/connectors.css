@@ -12,7 +12,7 @@
   width: 260px;
 }
 
-/* ---- Letter tile: 32px in lists, 40px in a sheet, 44px on the connector's page ---- */
+/* ---- Letter tile: 32px in lists, 44px on the connector's page ---- */
 .cn-tile {
   box-sizing: content-box;
   flex: none;
@@ -32,12 +32,6 @@
 }
 .cn-tile--icon {
   color: var(--ink-700);
-}
-.cn-tile--md {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  font-size: 14px;
 }
 .cn-tile--lg {
   width: 44px;

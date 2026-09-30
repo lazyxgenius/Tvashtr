@@ -189,10 +189,13 @@ describe("signing in to a catalog connector", () => {
     expect(polls(calls)).toBe(1);
     expect(screen.getByText("Waiting for you to finish in the Supabase window")).toBeVisible();
 
+    expect(popup?.close).not.toHaveBeenCalled();
     row = CONNECTED;
     await poll();
     const sheet = screen.getByRole("dialog", { name: "Connect Supabase" });
     expect(sheet).toHaveTextContent("Step 3 of 3 · pick a project");
+    // The sign-in is over: a window the callback page left open is closed.
+    expect(popup?.close).toHaveBeenCalledOnce();
     expect(sheet).toHaveTextContent("Signed in to Supabase.");
     expect(sheet).toHaveTextContent("Which project can agents use?");
     expect(sheet).toHaveTextContent("Agents only see this one project. You can change it later.");
@@ -324,6 +327,18 @@ describe("signing in to a catalog connector", () => {
     expect(onDone).toHaveBeenCalledOnce();
     expect(onDone.mock.calls[0][0]).toMatchObject({ id: "c1", status: "connected" });
     expect(onDone.mock.calls[0][1]).toBe("connected");
+  });
+
+  it("connects a server that needs no sign-in without opening a window", async () => {
+    const calls = serve({
+      "POST /api/connectors": { ...CONNECTED, auth_kind: "none", scope_picker: null },
+    });
+    const { onDone } = show({ entry: { ...NOTION, auth: "none" } });
+    click("Continue to Notion");
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+    expect(onDone.mock.calls[0][1]).toBe("connected");
+    expect(open).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(1);
   });
 
   it("offers no Read & write on a connector that can only read", () => {

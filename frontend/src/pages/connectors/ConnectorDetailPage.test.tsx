@@ -292,6 +292,20 @@ describe("ConnectorDetailPage", () => {
     );
   });
 
+  it("shows a connection whose first sign-in never finished", async () => {
+    serve(detail({ status: "pending", connected_at: null, tools: null, used_by_agents: [] }));
+    await open();
+    expect(screen.getByRole("heading", { level: 1 }).parentElement).toHaveTextContent(
+      "SupabaseNot connected yet",
+    );
+    const conn = card("Connection");
+    expect(conn).toHaveTextContent("Connected—");
+    expect(conn).toHaveTextContent("Sign-inNot finished yet");
+    expect(within(conn).getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    // Nobody can be given a connector that isn't connected.
+    expect(screen.getByRole("button", { name: "Give an agent access" })).toBeDisabled();
+  });
+
   it("replaces the key of a key connection", async () => {
     serve(detail({ auth_kind: "api_key", signin_host: null, scope: null, scope_picker: null }), {
       "GET /api/connectors/catalog": { items: [], total: 0, next_offset: null, categories: [] },

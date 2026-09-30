@@ -208,7 +208,8 @@ export function ConnectSheet({
   const toProvider = async () => {
     // Back from the project step: the sign-in is done.
     if (mode === "new" && conn?.status === "connected") return setStep("project");
-    signIn.prepare();
+    // A server the catalog knows needs no sign-in gets no window.
+    if (entry?.auth !== "none") signIn.prepare();
     setNotice(null);
     setBusy(true);
     try {
