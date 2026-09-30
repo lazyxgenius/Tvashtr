@@ -29,6 +29,18 @@ const usage = (role_name: string, access: "read" | "write" = "read") => ({
   access,
 });
 
+/** An agent as `GET …/agents` lists it. */
+const grantable = (role_name: string, enabled = true) => ({
+  node_id: `n-${role_name}`,
+  role_name,
+  title: null,
+  kind: "agent",
+  edits_allowed: false,
+  enabled,
+  access: enabled ? "read" : null,
+  subscription: null,
+});
+
 const tool = (name: string, write = false, on = !write) => ({ name, title: null, write, on });
 
 function detail(over: Partial<ConnectionDetail> = {}): ConnectionDetail {
@@ -72,6 +84,15 @@ function serve(
   let row = structuredClone(initial);
   return mockApi({
     "GET /api/connectors/c1": () => row,
+    "GET /api/connectors/c1/agents": () => ({
+      teams: [
+        {
+          team_id: "team-ind",
+          team_name: "Indicator sprint team",
+          agents: row.used_by_agents.map((a) => grantable(a.role_name)),
+        },
+      ],
+    }),
     "POST /api/connectors/c1/check": () => {
       row = { ...row, ...checked };
       return row;
@@ -415,6 +436,39 @@ describe("ConnectorDetailPage", () => {
     expect(refreshBadges).toHaveBeenCalled();
   });
 
+  it("keeps an agent that was given access since the page loaded", async () => {
+    // The page shows Engineer and Reviewer; the Product manager got it in another tab.
+    const calls = serve(detail(), {
+      "GET /api/connectors/c1/agents": {
+        teams: [
+          {
+            team_id: "team-ind",
+            team_name: "Indicator sprint team",
+            agents: ["pm", "engineer", "reviewer"].map((role_name) => grantable(role_name)),
+          },
+        ],
+      },
+    });
+    await open();
+    click("Remove access for Engineer");
+    await screen.findByText("Engineer can’t use Supabase any more.");
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
+      node_ids: ["n-pm", "n-reviewer"],
+    });
+  });
+
+  it("removes nobody when it can’t read who has access now", async () => {
+    const calls = serve(detail(), {
+      "GET /api/connectors/c1/agents": new Response("{}", { status: 500 }),
+    });
+    await open();
+    click("Remove access for Engineer");
+    expect(
+      await screen.findByText("Couldn’t remove Engineer’s access. Try again."),
+    ).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+
   it("says nobody uses it yet, and nothing has called it", async () => {
     serve(detail({ used_by_agents: [], recent_use: [] }));
     await open();
@@ -441,16 +495,9 @@ describe("ConnectorDetailPage", () => {
           {
             team_id: "team-ind",
             team_name: "Indicator sprint team",
-            agents: ["pm", "engineer", "reviewer"].map((role_name) => ({
-              node_id: `n-${role_name}`,
-              role_name,
-              title: null,
-              kind: "agent",
-              edits_allowed: false,
-              enabled: role_name !== "pm",
-              access: role_name === "pm" ? null : "read",
-              subscription: null,
-            })),
+            agents: ["pm", "engineer", "reviewer"].map((role_name) =>
+              grantable(role_name, role_name !== "pm"),
+            ),
           },
         ],
       },
@@ -496,6 +543,24 @@ describe("ConnectorDetailPage", () => {
     ).toBeInTheDocument();
     expect(calls.map((c) => c.method)).toEqual(["GET", "DELETE"]);
     expect(refreshBadges).toHaveBeenCalled();
+  });
+
+  it("labels a custom connector as yours, not as the registry’s", async () => {
+    serve(
+      detail({
+        connector_key: "custom:mcp.acme.dev/mcp",
+        name: "Acme",
+        featured: false,
+        reviewed: false,
+        publisher: null,
+        host: "mcp.acme.dev",
+      }),
+    );
+    await open();
+    expect(screen.getByRole("heading", { level: 1 }).parentElement).toHaveTextContent(
+      "mcp.acme.devCustom · not reviewed by Tvashtr",
+    );
+    expect(screen.queryByText(/From the MCP Registry/)).toBeNull();
   });
 
   it("labels a server Tvashtr hasn’t reviewed", async () => {

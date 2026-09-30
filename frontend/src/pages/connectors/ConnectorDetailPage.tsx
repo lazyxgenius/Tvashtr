@@ -25,6 +25,7 @@ import {
   checkConnection,
   connectorRefusal,
   getConnection,
+  listConnectorAgents,
   setConnectorAgents,
 } from "../../lib/api/connectors";
 import { navigate, routeToHash } from "../../lib/nav";
@@ -190,9 +191,12 @@ function Connector({
   const removeAccess = async (agent: ConnectorUsageRow) => {
     setRemoving(agent.node_id);
     try {
+      // The PUT takes the full set: who has it now, not who had it when this page loaded, so a
+      // grant made elsewhere since stays.
+      const now = (await listConnectorAgents(c.id)).flatMap((t) => t.agents);
       await setConnectorAgents(
         c.id,
-        c.used_by_agents.filter((a) => a.node_id !== agent.node_id).map((a) => a.node_id),
+        now.filter((a) => a.enabled && a.node_id !== agent.node_id).map((a) => a.node_id),
       );
       await changed();
       toast({ message: `${agentName(agent)} can’t use ${c.name} any more.` });
@@ -228,7 +232,9 @@ function Connector({
             <AccessBadge access={c.access} />
             <Badge variant="outline">{c.publisher ? `By ${c.publisher}` : c.host}</Badge>
             {!c.reviewed && (
-              <Badge variant="outline">From the MCP Registry · not reviewed by Tvashtr</Badge>
+              <Badge variant="outline">
+                {`${c.connector_key.startsWith("custom:") ? "Custom" : "From the MCP Registry"} · not reviewed by Tvashtr`}
+              </Badge>
             )}
           </div>
         </div>
