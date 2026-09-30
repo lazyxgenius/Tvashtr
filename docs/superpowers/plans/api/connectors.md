@@ -540,7 +540,8 @@ named twice is one server):
    so a grant never tells one account anything about another's connection.
 2. `needs_signin` → warning, skip.
 3. `oauth`: `ensure_access_token`. Refused → the row becomes `needs_signin`, warning, skip. Not
-   reachable → warning, skip, status unchanged.
+   reachable → warning, skip, status unchanged. Any other failure (a stored sign-in that can't
+   be read, say) is handled like not reachable: one connector must not fail the round.
 4. Emit one server:
 ```json
 {"mcpServers": {"supabase": {"url": "https://tvashtr.fly.dev/mcp/connectors",
@@ -550,7 +551,9 @@ Every skip in steps 1–3 writes its warning and a `connector_skipped` event (be
 
 The server name is the row's `slug`; when an inline or library server already has that name the
 connector takes `conn-<slug>` (a server switched off for this agent still holds its name, and so
-does `tvashtr-domains`, so tool names stay the same from run to run). The address comes from the
+does `tvashtr-domains`, so tool names stay the same from run to run). The prefix is added again
+while that name is taken too, and a name given to one connector is taken for the next, so a
+connector never replaces a server of the node's or another connector. The address comes from the
 same helper as Domains (in docker mode a localhost base is rewritten to the docker host).
 
 **Run token**: `URLSafeTimedSerializer(session_secret, salt="tvashtr.connector-run")` over
@@ -569,18 +572,29 @@ request). The address has no trailing slash and is answered as written: the path
 route next to the mount (`mount_connectors_mcp`), because a mount alone only matches
 `/mcp/connectors/…` and the app's page catch-all would answer the bare path 405.
 - **`tools/list`**: the provider's tools that are reads for this token's effective access (all of
-  them when it is `write`). Descriptions are capped at 2,000 characters; `outputSchema` is dropped.
-  The provider gets 10 s to answer. A bad token, an unreachable provider or a provider that is too
-  slow answers an empty list, never an error (one failing server must not stop the agent from
-  starting); the unreachable and too-slow cases also write a warning. So does a provider that
+  them when it is `write`). Every field has a ceiling, so a server can't pour text into an
+  agent's context: a tool is offered with its `name`, `title` (≤ 200 characters), `description`
+  (≤ 2,000), `inputSchema` and the four hints of `annotations` (its `title` ≤ 200), and nothing
+  else (`outputSchema`, `icons`, `_meta` and any extra field are dropped). A tool whose name is
+  over 200 characters or whose `inputSchema` is over 32,000 characters of JSON is left out, and
+  only the provider's first 200 tools are read. A tool that is left out is not callable as a
+  read either. The provider gets 10 s to answer. A bad token, an unreachable provider or a
+  provider that is too slow answers an empty list, never an error (one failing server must not
+  stop the agent from starting); the unreachable and too-slow cases also write a warning. So
+  does a provider that
   refuses the list (a 403, or a JSON-RPC error): a list has no tool error to carry the refusal,
   the agent gets no tools, and the round records `we couldn’t reach it`.
 - **`tools/call`**: a tool that isn't allowed returns a tool error "Linear is read only for this
   agent. create_issue can change data, so it’s off." Otherwise the call is forwarded with the
   provider credential added server-side, and its result returned as-is. Whether a tool is a read
-  comes from the provider's own annotations as the proxy last saw them listed (kept per process;
-  a call for a tool it hasn't seen listed asks the provider for its list first). A tool the
-  provider doesn't list is a write.
+  comes from the provider's own annotations as the proxy last saw them listed **at that
+  effective access** (a provider can annotate a tool differently under its read-only flag). The
+  last listing is kept per process, per connection and access, for 60 s; a call with none, or an
+  older one, asks the provider for its list first, and the new listing replaces the old. A tool
+  that listing doesn't have is a write. With read access a call whose listing fails is not made
+  (the tool error below). With write access the rule allows the call either way and the listing
+  only tells the record a read from a write, so the call is forwarded anyway, recorded as a
+  write when nothing is known, with no warning; the provider isn't asked to list again for 60 s.
 - **A bad token on `tools/call`** (or a connection deleted since) is the tool error "This
   connector isn’t available for this run." Nothing is recorded: the token names nothing usable.
 - **A connection that is `needs_signin`** lists no tools and fails calls with "Supabase needs you
@@ -588,7 +602,9 @@ route next to the mount (`mount_connectors_mcp`), because a mount alone only mat
 - The other tool errors: "We couldn’t reach Supabase. Try again." (no answer, with a
   `we couldn’t reach it` skip), "Supabase refused the request (403)." and "Supabase answered an
   error: …" (the provider's own JSON-RPC message). None of them carries an address, a header or
-  the credential.
+  the credential. **A write that was sent and got no answer** (a timeout, an answer over the
+  size limit) may have been carried out, so its error is "Supabase didn’t answer. apply_migration
+  may have gone through, so check before you retry." instead of "Try again."
 - **Provider address**: the row's `url`, plus the scope parameter when `scope` is set, plus the
   provider's read-only parameter when the effective access is `read` and the entry has one. It is
   built with `urllib.parse.urlencode`; a parameter of the same name already in the address is
@@ -596,10 +612,18 @@ route next to the mount (`mount_connectors_mcp`), because a mount alone only mat
 - **Only a provider `401` means the sign-in expired**: one `ensure_access_token(rejected=<that
   token>)` and one retry; still 401 → `needs_signin`, a warning, and a tool error "Supabase needs
   you to sign in again." A `403` (or any other error status) goes back to the agent as a tool
-  error and changes nothing: no refresh, no `needs_signin`.
-- Every `tools/call` (allowed, refused or failed) writes one `connector_call` event.
+  error and changes nothing: no refresh, no `needs_signin`. An `api_key` connection can't be
+  refreshed, but its key can have been replaced while the call was out: a 401 looks once at the
+  stored key and, if it is no longer the one the call left with, retries with it. Only a 401 for
+  the key that is still stored marks the row `needs_signin`.
+- Every `tools/call` (allowed, refused or failed) writes one `connector_call` event, also when
+  calls arrive at the same moment (writers of one round take their `seq` one at a time, under a
+  transaction advisory lock).
 - The proxy's database and token work runs in worker threads, never on the server's event loop, so
-  one slow token refresh can't stall other agents' calls.
+  one slow token refresh can't stall other agents' calls. Those are 8 threads of the proxy's own
+  (fewer than the database pool has connections), not the API's, and calls for one connection's
+  token wait their turn on the event loop, so a slow token endpoint costs one thread and one
+  database connection, not the backend's.
 
 ### Warnings
 `run_warnings` rows with `source_kind: "connector"`, shown by `GET /api/runs/{id}/graph` in
@@ -612,7 +636,7 @@ line is shown on the round it happened in, from `skipped` (see Rounds), with a "
 | `its sign-in expired` | `needs_signin` at run start, a refused refresh, or a 401 that a refresh didn't fix |
 | `its key stopped working` | the same for an `api_key` connection |
 | `it was disconnected` | the grant names a row that is gone (`name` = `a connector`) |
-| `we couldn’t reach it` | the token endpoint or the provider didn't answer |
+| `we couldn’t reach it` | the token endpoint or the provider didn't answer (or the stored sign-in couldn't be read) |
 
 **Desktop plan agents** (Claude or Grok plan): unchanged behaviour, `mcp_config = {}`. The existing
 `("tools", …)` warning's name list gains `N connector(s)`.
@@ -625,6 +649,7 @@ line is shown on the round it happened in, from `skipped` (see Rounds), with a "
  "invocation_id": 9123, "node_id": "…", "iteration": 2,
  "payload": {"connection_id": "7c1e…", "connector": "Supabase", "slug": "supabase",
              "tool": "execute_sql", "write": false, "ok": true, "blocked": false,
+             "forwarded": true,
              "arg": "SELECT count(*) FROM indicator_values WHERE name = 'rsi_14'",
              "duration_ms": 312, "result_url": null}}
 ```
@@ -634,11 +659,19 @@ line is shown on the round it happened in, from `skipped` (see Rounds), with a "
   that is running); `null` when the token has no node. Events with no round share one band for
   the run.
 - `ok` = the provider answered and its result isn't an error (`isError`).
+- `forwarded` = the provider took the call: it was sent and not turned away with a 4xx, whatever
+  became of the answer. `false` for a blocked call, one that was never sent (no token, a
+  connection that needs a sign-in) and a 401 or 403. A write that is `forwarded` and not `ok`
+  (its answer was lost, or was an error) may still have changed data.
+- `tool` is cut to 200 characters. `tool`, `arg` and `result_url` are stored without the
+  characters Postgres can't keep in JSON (a NUL is dropped, half a surrogate pair becomes `?`),
+  so a call is recorded whatever it carries.
 - `seq` = `1_000_000_000 + n`, its own band per invocation (the same trick as the Desktop runner's
   band), so it never collides with the engine's own events.
 - `arg`: the first string argument, preferring `query`, `sql`, `q`, `title`, `name`; ≤ 200
   characters. Full arguments and results are not stored here.
-- `result_url`: for a write, the first `https://` address in the result text, else `null`.
+- `result_url`: for a write, the first `https://` address in the result text, else `null`
+  (also `null` when that address is over 2,000 characters).
 - `blocked: true` = refused by the read-only rule (`ok` is then `false`).
 - The engine's own `action`/`observation` events for the same call are unchanged. The Activity feed
   skips `connector_call` and `connector_skipped` rows so a call isn't shown twice.
@@ -671,9 +704,12 @@ and to each invocation of `GET /api/runs/{id}/graph` (the run drawer):
 `connectors` is `null` only for a round with no calls and nothing skipped; a round that only
 skipped a connector has `used: []`, `calls: []`, `total_calls: 0` and `skipped` filled. `used` is
 ordered by first call. `calls` lists writes first, then by time, capped at 50 (`total_calls` is the
-real number). `reads` and `writes` count the calls that worked (`ok`): blocked and failed calls are
-in `calls` but not in the counts, so a connector whose calls were all refused is in `used` with
-`0` and `0`. `recent_use` on the connection's page counts the same way. `skipped` comes
+real number). `reads` counts the reads that worked (`ok`). `writes` counts the writes the
+provider took (`forwarded`): a write whose answer was lost or was an error may still have changed
+data, so it counts, and it is in `calls` with `ok: false`. Blocked calls, calls that were never
+sent and failed reads are in `calls` but not in the counts, so a connector whose calls were all
+refused is in `used` with `0` and `0`. `recent_use` on the connection's page counts the same way.
+`skipped` comes
 from the round's `connector_skipped` events, one entry per connection and reason; the UI renders
 "Ran without Notion: its sign-in expired." with a "Sign in" button that opens that connection
 ("Open Connectors" when `connection_id` is `null`).
