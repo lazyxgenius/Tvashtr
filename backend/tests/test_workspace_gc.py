@@ -677,7 +677,8 @@ def test_the_boot_sweep_actually_runs_during_lifespan_startup():
     # The Domains MCP session manager (mounted inside the lifespan) can only run ONCE per process,
     # and the suite's session ``client`` already ran it — so re-entering the real one here failed
     # whenever this test ran after that fixture (pre-existing order dependence). It is not what this
-    # test is about: stub it, like the sibling sweeps.
+    # test is about: stub it, like the sibling sweeps. The Connectors proxy's session manager is
+    # entered by the same lifespan and has the same run-once rule, so it is stubbed the same way.
     @asynccontextmanager
     async def _no_mcp_lifespan(_app):
         yield
@@ -689,6 +690,7 @@ def test_the_boot_sweep_actually_runs_during_lifespan_startup():
         patch.object(main, "sweep_orphaned_agent_containers", side_effect=lambda: None),
         patch.object(main, "sweep_orphaned_fly_apps", side_effect=lambda: None),
         patch.object(main._domains_mcp_http.router, "lifespan_context", _no_mcp_lifespan),
+        patch.object(main._connectors_mcp_http.router, "lifespan_context", _no_mcp_lifespan),
     ):
 
         async def drive() -> list[str]:
