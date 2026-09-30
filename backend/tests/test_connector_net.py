@@ -8,7 +8,18 @@ from tvashtr.config import Settings
 _BACKEND = Path(__file__).resolve().parents[1]
 
 
-def test_connector_settings_default_to_off():
+_ENV_NAMES = (
+    "TVASHTR_GOOGLE_OAUTH_CLIENT_ID",
+    "TVASHTR_GOOGLE_OAUTH_CLIENT_SECRET",
+    "TVASHTR_CONNECTORS_ALLOW_LOCAL",
+)
+
+
+def test_connector_settings_default_to_off(monkeypatch):
+    # ``_env_file=None`` skips the file, not the process environment, and ``make test`` exports
+    # every ``.env`` line: an operator who sets these must not turn the gate red.
+    for name in _ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
     s = Settings(_env_file=None)
     assert s.google_oauth_client_id == ""
     assert s.google_oauth_client_secret.get_secret_value() == ""
