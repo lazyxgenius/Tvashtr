@@ -11,15 +11,17 @@ Only the owner's LIBRARY teams and their ``agent``/``completion`` nodes count, a
 (``tool_usage``): run-snapshot clones are run history and are never read or rewritten here.
 """
 
+import asyncio
 import json
 import re
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from mcp import McpError
-from mcp.types import Tool
+from mcp.types import CallToolResult, Tool
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -43,6 +45,11 @@ NAME_LIMIT = 60
 SLUG_LIMIT = 40
 URL_LIMIT = 2000
 KEY_LIMIT = 4096  # characters of one key value
+LABEL_LIMIT = 120
+SCOPE_OPTIONS_LIMIT = 200
+SCOPE_OPTIONS_TIMEOUT = 20  # seconds for the provider's project list
+# A scope value becomes a query parameter of the provider address.
+_SCOPE_VALUE = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 
 
 class ConnectorError(Exception):
@@ -192,27 +199,75 @@ def upstream_headers(row: ConnectorConnection, *, rejected: str | None = None) -
     return {}
 
 
+def _target(row: ConnectorConnection, access: str, *, scoped: bool = True) -> tuple[str, str]:
+    """``upstream_target``, or with ``scoped=False`` the same address without the scope
+    parameter (the provider's project list is asked there)."""
+    entry = connector_catalog.resolve(row.connector_key) or {}
+    added: dict[str, str] = {}
+    picker = entry.get("scope_picker")
+    value = row.scope.get("value") if isinstance(row.scope, dict) else None
+    if scoped and picker and value:
+        added[picker["param"]] = str(value)
+    if access == "read":
+        added |= entry.get("read_only_params") or {}  # last, so nothing after it overrides it
+    if not added:
+        return row.url, row.transport
+    parts = urlsplit(row.url)
+    kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k not in added]
+    query = urlencode([*kept, *added.items()])
+    return urlunsplit(parts._replace(query=query)), row.transport
+
+
 def upstream_target(row: ConnectorConnection, access: str) -> tuple[str, str]:
     """``(url, transport)`` for a request to the provider at the effective ``access``: the row's
-    address plus the scope parameter, plus the entry's read-only parameters when ``access`` is
-    ``read``.
-
-    Phase 0 stub: the row's own ``url`` and ``transport``. Stream B1.5 adds the parameters."""
-    return row.url, row.transport
+    address, plus the scope parameter when the connection is scoped, plus the entry's read-only
+    parameters when ``access`` is ``read`` (every entry that has them, Neon included). A
+    parameter of the same name already in the address is replaced, and the read-only parameter
+    goes last. The agent can't change either: only the proxy builds this address."""
+    return _target(row, access)
 
 
 # ---- who uses a connection ----
 
 
+def _grants(tool_config: object) -> list:
+    meta = tool_config.get("tvashtr") if isinstance(tool_config, dict) else None
+    grants = meta.get("connectors") if isinstance(meta, dict) else None
+    return grants if isinstance(grants, list) else []
+
+
+def _is_grant(item: object, connection_id: uuid.UUID) -> bool:
+    return isinstance(item, dict) and _as_uuid(item.get("id")) == connection_id
+
+
 def grant_access(tool_config: object, connection_id: uuid.UUID) -> str | None:
     """The access of the node's grant for this connection (``read`` when the grant names none),
     or ``None`` when the node has no grant for it."""
-    meta = tool_config.get("tvashtr") if isinstance(tool_config, dict) else None
-    grants = meta.get("connectors") if isinstance(meta, dict) else None
-    for item in grants if isinstance(grants, list) else []:
-        if isinstance(item, dict) and _as_uuid(item.get("id")) == connection_id:
+    for item in _grants(tool_config):
+        if _is_grant(item, connection_id):
             return "write" if item.get("access") == "write" else "read"
     return None
+
+
+def _with_grants(tool_config: object, grants: list) -> dict | None:
+    """A fresh ``tool_config`` whose ``tvashtr.connectors`` is ``grants`` (fresh dicts, so JSONB
+    dirty-tracking sees the change). An empty list drops the key, and the shells it leaves empty,
+    down to ``None``: a node that uses nothing goes back to NULL."""
+    config = dict(tool_config) if isinstance(tool_config, dict) else {}
+    meta = dict(config["tvashtr"]) if isinstance(config.get("tvashtr"), dict) else {}
+    meta.pop("connectors", None)
+    config.pop("tvashtr", None)
+    if grants:
+        meta["connectors"] = grants
+    if meta:
+        config["tvashtr"] = meta
+    return config or None
+
+
+def _without_grant(tool_config: object, connection_id: uuid.UUID) -> dict | None:
+    return _with_grants(
+        tool_config, [g for g in _grants(tool_config) if not _is_grant(g, connection_id)]
+    )
 
 
 def _users(nodes: list, row: ConnectorConnection) -> list[dict]:
@@ -351,15 +406,14 @@ def _entry_for(key: object, url: object, name: object) -> dict:
 def _check_access(entry: dict, access: object, name: str) -> None:
     if access not in ("read", "write"):
         raise _refusal(422, "invalid_access", "Access is read or write.")
-    if access not in entry["access_modes"]:
+    if access not in (entry.get("access_modes") or ["read", "write"]):
         raise _refusal(422, "invalid_access", f"{name} can only be connected read only.")
 
 
-def _key_headers(entry: dict, credentials: object) -> dict:
+def _key_headers(entry: dict, credentials: object, name: str) -> dict:
     """The headers a key connection sends, from the values the user gave for the entry's key
     fields. Refuses an id the entry doesn't declare and a value that can't be a header
     (``invalid_key``), and a missing key (``key_required``)."""
-    name = entry["name"]
     declared = {h["name"]: h for h in entry.get("headers") or [] if h["secret"] or h["required"]}
     values: dict[str, str] = {}
     for field, value in (credentials if isinstance(credentials, dict) else {}).items():
@@ -378,7 +432,9 @@ def _key_headers(entry: dict, credentials: object) -> dict:
         if value.strip():
             values[field] = value.strip()
     if not values or any(h["required"] and n not in values for n, h in declared.items()):
-        raise _refusal(422, "key_required", f"{name} needs a key.", fields=entry["key_fields"])
+        raise _refusal(
+            422, "key_required", f"{name} needs a key.", fields=entry.get("key_fields") or []
+        )
     return {
         n: connector_catalog.header_value(h, values[n]) for n, h in declared.items() if n in values
     }
@@ -488,7 +544,7 @@ def connect(owner_id: uuid.UUID, body: dict) -> dict:
     draft = ConnectorConnection(connector_key=entry["key"], **fields)
     secret = pending = None
     if entry["auth"] == "api_key":
-        headers = _key_headers(entry, body.get("credentials"))
+        headers = _key_headers(entry, body.get("credentials"), name)
         rejected = _refusal(422, "key_rejected", f"{name} didn’t accept the key.")
         fields |= {"auth_kind": "api_key", "tools": _list_tools(draft, headers, rejected)}
         secret = {"headers": headers}
@@ -524,3 +580,231 @@ def connect(owner_id: uuid.UUID, body: dict) -> dict:
         except IntegrityError:  # the same connector (or name) connected at the same moment
             raise _refusal(409, "already_connected", f"{name} is already connected.") from None
         return serialize(row)
+
+
+# ---- change, check, scope, disconnect ----
+
+
+def _view(session: Session, owner_id: uuid.UUID, row: ConnectorConnection) -> dict:
+    """The connection with who uses it counted."""
+    return serialize(row, _users(owner_agent_nodes(session, owner_id), row))
+
+
+def _new_scope(entry: dict, raw: object, name: str) -> dict | None:
+    if not entry.get("scope_picker"):
+        raise _refusal(409, "no_scope", f"{name} has no project to choose.")
+    if raw is None:
+        return None
+    value = raw.get("value") if isinstance(raw, dict) else None
+    if not isinstance(value, str) or not _SCOPE_VALUE.fullmatch(value):
+        raise _refusal(422, "invalid_scope", "That doesn’t look like a project id.")
+    label = raw.get("label")
+    label = label.strip() if isinstance(label, str) else ""
+    return {"value": value, "label": (label or value)[:LABEL_LIMIT]}
+
+
+def change(owner_id: uuid.UUID, connection_id: object, body: dict) -> dict:
+    """``PATCH /api/connectors/{id}``: ``access``, ``scope``, ``name`` and, for a key connection,
+    ``credentials``. Every field is checked before anything is written, so a refused request
+    changes nothing. A new key is checked against the provider first; a rejected one leaves the
+    old key and the status alone."""
+    changes: dict = {}
+    headers = tools = None
+    with session_scope() as session:
+        row = get_owned(session, owner_id, connection_id)
+        entry = connector_catalog.resolve(row.connector_key) or {}
+        if "access" in body:
+            _check_access(entry, body["access"], row.name)
+            changes["access"] = body["access"]
+        if "scope" in body:
+            changes["scope"] = _new_scope(entry, body["scope"], row.name)
+        if "name" in body:
+            name = body["name"].strip() if isinstance(body["name"], str) else ""
+            if not 1 <= len(name) <= NAME_LIMIT:
+                raise _refusal(422, "invalid_name", f"A name is 1 to {NAME_LIMIT} characters.")
+            changes["name"] = name
+        if "credentials" in body:
+            if row.auth_kind != "api_key":
+                raise _refusal(409, "not_api_key", f"{row.name} doesn’t take a key.")
+            headers = _key_headers(entry, body["credentials"], row.name)
+            # The key is tried at the address this request leaves the connection with.
+            draft = ConnectorConnection(
+                connector_key=row.connector_key,
+                url=row.url,
+                transport=row.transport,
+                access=changes.get("access", row.access),
+                scope=changes.get("scope", row.scope),
+            )
+            rejected = _refusal(422, "key_rejected", f"{row.name} didn’t accept the key.")
+    if headers is not None:
+        tools = _list_tools(draft, headers, rejected)
+
+    with session_scope() as session:
+        # The key is part of the stored sign-in: its writer holds the row lock.
+        row = get_owned(session, owner_id, connection_id, for_update=headers is not None)
+        for field, value in changes.items():
+            setattr(row, field, value)
+        if headers is not None:
+            write_secret(row, {"headers": headers})
+            row.tools, row.status, row.last_error = tools, "connected", None
+            row.connected_at = datetime.now(UTC)
+        session.flush()
+        return _view(session, owner_id, row)
+
+
+def _loaded(owner_id: uuid.UUID, connection_id: object) -> ConnectorConnection:
+    """The owner's connection, read and let go of (the provider is never asked inside a
+    transaction). A ``pending`` one has no sign-in to use yet."""
+    with session_scope() as session:
+        row = get_owned(session, owner_id, connection_id)
+        if row.status == "pending":
+            raise _refusal(409, "not_connected", f"Finish connecting {row.name} first.")
+        session.expunge(row)
+        return row
+
+
+def _with_sign_in[T](row: ConnectorConnection, use: Callable[[dict], T]) -> T:
+    """``use(headers)`` with the connection's credentials. Only a 401 means the sign-in may have
+    expired: an OAuth connection then gets one refresh (the refused token is named, so it is
+    replaced) and one retry. ``SignInRefused`` or ``UpstreamUnauthorized`` out of here means the
+    sign-in is gone."""
+    headers = upstream_headers(row)
+    try:
+        return use(headers)
+    except connector_upstream.UpstreamUnauthorized:
+        if row.auth_kind != "oauth":
+            raise
+        refused = headers["Authorization"].removeprefix("Bearer ")
+        return use(upstream_headers(row, rejected=refused))
+
+
+_SIGN_IN_GONE = (connector_oauth.SignInRefused, connector_upstream.UpstreamUnauthorized)
+_NO_ANSWER = (connector_upstream.UpstreamUnreachable, connector_oauth.Unreachable)
+
+
+def check(owner_id: uuid.UUID, connection_id: object) -> dict:
+    """``POST /api/connectors/{id}/check``: make sure the sign-in (or key) still works and list
+    the tools again. A 401, or a refused refresh, is ``needs_signin`` (a 200: that is an answer,
+    not a failure). A 403 or another 4xx is ``refused`` and a provider that doesn't answer is
+    ``unreachable``; neither changes the status."""
+    row = _loaded(owner_id, connection_id)
+    url, transport = upstream_target(row, row.access)
+    try:
+        tools = _with_sign_in(
+            row, lambda headers: connector_upstream.list_tools_sync(url, transport, headers)
+        )
+    except _SIGN_IN_GONE:
+        tools = None
+    except connector_upstream.UpstreamRefused:
+        raise _refusal(502, "refused", f"{row.name} refused the request.") from None
+    except (*_NO_ANSWER, McpError):
+        raise _unreachable(row.url) from None
+
+    key = row.auth_kind == "api_key"
+    with session_scope() as session:
+        row = get_owned(session, owner_id, connection_id, for_update=True)
+        if tools is None:
+            row.status = "needs_signin"
+            row.last_error = "Its key stopped working." if key else "Its sign-in expired."
+        else:
+            row.status, row.tools, row.last_error = "connected", stored_tools(tools), None
+            if key:
+                row.connected_at = datetime.now(UTC)  # a key's "sign-in" is its last good check
+        session.flush()
+        return _view(session, owner_id, row)
+
+
+def _project(raw: object) -> dict | None:
+    """One project of a provider's list as a scope option, or ``None`` when it has no id that
+    could be a scope value."""
+    value = raw.get("id") if isinstance(raw, dict) else None
+    if isinstance(value, bool) or not isinstance(value, str | int):
+        return None
+    if not _SCOPE_VALUE.fullmatch(str(value)):
+        return None
+    name, region = raw.get("name"), raw.get("region") or raw.get("region_id")
+    return {
+        "value": str(value),
+        "label": name if isinstance(name, str) and name else str(value),
+        "detail": region if isinstance(region, str) and region else None,
+    }
+
+
+def _projects(result: CallToolResult) -> list[dict]:
+    """The scope options in a project-listing tool's answer: a JSON list of objects with ``id``,
+    ``name`` and ``region`` (Supabase), or an object holding such a list (Neon). Nothing when the
+    answer can't be read that way."""
+    if result.isError:
+        return []
+    payloads: list[object] = []
+    for item in result.content:
+        if getattr(item, "type", None) == "text":
+            try:
+                payloads.append(json.loads(item.text))
+            except ValueError:
+                continue
+    payloads.append(result.structuredContent)
+    for payload in payloads:
+        if isinstance(payload, dict):
+            payload = next((v for v in payload.values() if isinstance(v, list)), None)
+        if isinstance(payload, list) and (options := [o for p in payload if (o := _project(p))]):
+            return options[:SCOPE_OPTIONS_LIMIT]
+    return []
+
+
+def scope_options(owner_id: uuid.UUID, connection_id: object) -> dict:
+    """``GET /api/connectors/{id}/scope-options``: the projects the connection can be narrowed to,
+    from the provider's own project-listing tool on the unscoped address. ``manual: true`` when
+    that answer can't be read (the UI then asks for the id in a text field)."""
+    with session_scope() as session:
+        row = get_owned(session, owner_id, connection_id)
+        picker = (connector_catalog.resolve(row.connector_key) or {}).get("scope_picker")
+        if not picker:
+            raise _refusal(409, "no_scope", f"{row.name} has no project to choose.")
+    row = _loaded(owner_id, connection_id)
+    url, transport = _target(row, row.access, scoped=False)
+
+    def ask(headers: dict) -> CallToolResult:
+        return asyncio.run(
+            connector_upstream.call_tool(
+                url, transport, headers, picker["tool"], {}, timeout=SCOPE_OPTIONS_TIMEOUT
+            )
+        )
+
+    try:
+        options = _projects(_with_sign_in(row, ask))
+    except _NO_ANSWER:
+        raise _unreachable(row.url) from None
+    except (*_SIGN_IN_GONE, connector_upstream.UpstreamRefused, McpError):
+        options = []
+    return {
+        "param": picker["param"],
+        "label": picker["label"],
+        "manual": not options,
+        "options": options,
+    }
+
+
+def disconnect(owner_id: uuid.UUID, connection_id: object) -> dict:
+    """``DELETE /api/connectors/{id}``: a best-effort revoke at the provider first, then, in one
+    transaction holding the row lock, the grant is removed from every library-team agent and the
+    row is deleted. Run snapshots are run history: their grants stay and point at nothing."""
+    with session_scope() as session:
+        row = get_owned(session, owner_id, connection_id)
+        rid = row.id
+        signed_in = row.auth_kind == "oauth" and row.secret_encrypted is not None
+    revoked = False
+    if signed_in:
+        try:  # outside our transaction: revoke takes the row lock in its own session
+            revoked = bool(connector_oauth.revoke(rid))
+        except Exception:  # a failed revoke never blocks the delete
+            revoked = False
+    with session_scope() as session:
+        row = get_owned(session, owner_id, rid, for_update=True)
+        removed = 0
+        for node, _team in owner_agent_nodes(session, owner_id):
+            if grant_access(node.tool_config, row.id) is not None:
+                node.tool_config = _without_grant(node.tool_config, row.id)
+                removed += 1
+        session.delete(row)
+    return {"removed_from_agents": removed, "revoked": revoked}

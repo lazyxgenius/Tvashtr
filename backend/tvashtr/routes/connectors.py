@@ -70,3 +70,41 @@ def get_connection(connection_id: str, current_user: CurrentUser) -> dict:
         return connectors.get_connection(_owner(current_user), connection_id)
     except ConnectorError as exc:
         raise _http(exc) from None
+
+
+@router.patch("/api/connectors/{connection_id}")
+def change(connection_id: str, body: dict, current_user: CurrentUser) -> dict:
+    """Change ``access``, ``scope``, ``name`` or (a key connection) ``credentials`` → the
+    connection."""
+    try:
+        return connectors.change(_owner(current_user), connection_id, body)
+    except ConnectorError as exc:
+        raise _http(exc) from None
+
+
+@router.delete("/api/connectors/{connection_id}")
+def disconnect(connection_id: str, current_user: CurrentUser) -> dict:
+    """Disconnect: every agent loses it → ``{"removed_from_agents", "revoked"}``."""
+    try:
+        return connectors.disconnect(_owner(current_user), connection_id)
+    except ConnectorError as exc:
+        raise _http(exc) from None
+
+
+@router.post("/api/connectors/{connection_id}/check")
+def check(connection_id: str, current_user: CurrentUser) -> dict:
+    """Make sure the sign-in still works and list the tools again → the connection."""
+    try:
+        return connectors.check(_owner(current_user), connection_id)
+    except ConnectorError as exc:
+        raise _http(exc) from None
+
+
+@router.get("/api/connectors/{connection_id}/scope-options")
+def scope_options(connection_id: str, current_user: CurrentUser) -> dict:
+    """The projects the connection can be narrowed to → ``{"param", "label", "manual",
+    "options"}``."""
+    try:
+        return connectors.scope_options(_owner(current_user), connection_id)
+    except ConnectorError as exc:
+        raise _http(exc) from None
