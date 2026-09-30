@@ -1,7 +1,7 @@
 # Handover — Connectors (2026-09-30)
 
-Toolkit › Connectors is built on `feat/connectors` and shipped to `main` (see the ship row at the
-end). Docs: `docs/superpowers/plans/connectors-decisions.md` (decisions and the operator's answers),
+Toolkit › Connectors is built on `feat/connectors` and shipped to `main` on 2026-09-30 (ship row at
+the end). Docs: `docs/superpowers/plans/connectors-decisions.md` (decisions and the operator's answers),
 `plans/api/connectors.md` (the contract), `plans/connectors-build-plan.md` (what each stream built,
 "as built" notes, risks §11, open decisions §12). Design: the Claude Design canvas, pages
 **Connectors** and **Connectors flows** (https://claude.ai/artifact/V6THVh3i7RFjMUtuS2dskK).
@@ -80,4 +80,6 @@ provider; switch any that fails to "Coming soon" in `connector_catalog.py`.
 
 | Area | main sha | Fly release | Desktop tag | DMG check |
 |---|---|---|---|---|
-| Connectors | (filled at ship) | (filled at ship) | desktop-v0.13.0 | (filled at ship) |
+| Connectors | ac2073d | v29 (migration 0043 applied) | desktop-v0.13.0 | app 0.13.0 bundles `index-DXwje35F.js` = the live site |
+
+Live smoke after the deploy (no session): site 200; `GET /api/connectors` 401; `/oauth/client-metadata.json` 200; `POST /mcp/domains` and `POST /mcp/connectors` answer 200 at both path spellings (before: 405 and 421 on Domains). Not done: a signed-in walk through Connectors on the live site, and a real provider sign-in.
