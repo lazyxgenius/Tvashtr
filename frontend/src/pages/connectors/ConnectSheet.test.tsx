@@ -4,6 +4,7 @@
  * Also opened for an existing connection: Sign in again, Replace key, Change project.
  */
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Connection } from "../../lib/api/connectors";
@@ -793,6 +794,28 @@ describe("for a connection you already have", () => {
     await poll();
     expect(onDone).toHaveBeenCalledOnce();
     expect(onDone.mock.calls[0][1]).toBe("signed_in");
+  });
+
+  it("still signs in under StrictMode, which mounts the sheet twice", async () => {
+    const calls = serve();
+    const prepared = fakePopup();
+    renderWithProviders(
+      <StrictMode>
+        <ConnectSheet
+          target={{
+            connection: connection(),
+            mode: "signin",
+            prepared: prepared as unknown as Window,
+          }}
+          onClose={vi.fn()}
+          onDone={vi.fn()}
+        />
+      </StrictMode>,
+    );
+    await screen.findByText("Waiting for you to finish in the Supabase window");
+    expect(calls.filter((c) => c.path.endsWith("/oauth/start"))).toHaveLength(1);
+    expect(prepared.location.href).toBe(AUTHORIZE);
+    expect(prepared.close).not.toHaveBeenCalled();
   });
 
   it("keeps the old sign-in’s words apart from a new failure", async () => {
