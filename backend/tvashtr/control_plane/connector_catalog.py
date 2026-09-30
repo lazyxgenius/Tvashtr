@@ -267,6 +267,15 @@ def _text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _list(value: object) -> list:
+    """A registry field that should be a list, or nothing when it isn't one."""
+    return value if isinstance(value, list) else []
+
+
+def _dict(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
 def _fixed_https(url: object) -> bool:
     """A plain ``https://`` address: no ``{template}``, no user name, nothing a browser and Python
     would read differently. (Whether it is a public address is checked when it is connected.)"""
@@ -307,18 +316,20 @@ def slim_registry_entry(server_json: object) -> dict | None:
     snapshot, or ``None`` when it can't be a connector: not ``active``, a Smithery proxy (it needs
     a Smithery key, not the vendor's), no remote with a fixed ``https://`` address, or a server
     that takes payment per call (a ``Payment-Signature`` header). The first ``streamable-http``
-    remote is kept, else the first ``sse`` one. No icons: the UI uses letter tiles."""
+    remote is kept, else the first ``sse`` one. No icons: the UI uses letter tiles. An item that
+    breaks the registry's own shape is dropped too, never an exception (one bad item must not
+    stop a refresh)."""
     if not isinstance(server_json, dict) or not isinstance(server_json.get("server"), dict):
         return None
     server = server_json["server"]
-    meta = (server_json.get("_meta") or {}).get(_OFFICIAL) or {}
+    meta = _dict(_dict(server_json.get("_meta")).get(_OFFICIAL))
     key = _text(server.get("name"))
     if meta.get("status") != "active" or not _SERVER_NAME.fullmatch(key):
         return None
     if key.startswith("ai.smithery/"):
         return None
-    remotes = [r for r in server.get("remotes") or [] if isinstance(r, dict)]
-    declared = [h for r in remotes for h in r.get("headers") or [] if isinstance(h, dict)]
+    remotes = [r for r in _list(server.get("remotes")) if isinstance(r, dict)]
+    declared = [h for r in remotes for h in _list(r.get("headers")) if isinstance(h, dict)]
     if any(_text(h.get("name")).lower() == "payment-signature" for h in declared):
         return None
     fixed = [r for r in remotes if r.get("type") in _TRANSPORTS and _fixed_https(r.get("url"))]
@@ -326,7 +337,7 @@ def slim_registry_entry(server_json: object) -> dict | None:
         return None
     remote = min(fixed, key=lambda r: _TRANSPORTS.index(r["type"]))  # stable: the first of its kind
     website = server.get("websiteUrl")
-    headers = [_slim_header(h) for h in remote.get("headers") or []]
+    headers = [_slim_header(h) for h in _list(remote.get("headers"))]
     return {
         "key": key,
         "title": _text(server.get("title")) or None,

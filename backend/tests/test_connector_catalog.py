@@ -2,6 +2,7 @@
 read-or-write rule (``connector_catalog``)."""
 
 import pytest
+from connector_helpers import OFFICIAL
 from connector_helpers import remote as _remote
 from connector_helpers import server as _server
 
@@ -224,6 +225,30 @@ def test_slim_cuts_the_description_and_a_missing_title_is_null():
 )
 def test_slim_drops_what_cant_be_a_connector(item):
     assert slim_registry_entry(item) is None
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        _server(remotes=5),
+        _server(remotes={"type": "streamable-http", "url": "https://mcp.acme.dev/mcp"}),
+        _server() | {"_meta": [1]},
+        _server() | {"_meta": {OFFICIAL: "active"}},
+        _server() | {"_meta": {OFFICIAL: ["active"]}},
+    ],
+)
+def test_slim_drops_an_item_that_breaks_the_registrys_own_shape(item):
+    """One malformed item must not stop a refresh: it is dropped, never an exception."""
+    assert slim_registry_entry(item) is None
+
+
+def test_slim_reads_headers_that_arent_a_list_as_no_headers():
+    for headers in (7, "Authorization", {"name": "Authorization"}):
+        odd = _remote("https://odd.acme.dev/mcp") | {"headers": headers}
+        assert slim_registry_entry(_server(remotes=[odd]))["headers"] == []
+        # The same on a remote that isn't the one picked.
+        kept = slim_registry_entry(_server(remotes=[_remote(), odd | {"type": "sse"}]))
+        assert (kept["url"], kept["headers"]) == ("https://mcp.acme.dev/mcp", [])
 
 
 def test_slim_picks_streamable_http_first_then_sse_and_skips_template_addresses():
