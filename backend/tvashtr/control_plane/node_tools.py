@@ -17,6 +17,9 @@ Behavior:
   * ``${NAME}`` refs in a server's ``env``/``headers`` values are resolved from the run owner's
     encrypted ``mcp_secrets`` and substituted in place. A server with ANY unresolved ref is DROPPED
     and a resolution warning is recorded (the run CONTINUES).
+  * Each grant at ``tvashtr.connectors`` becomes one server that points at Tvashtr's own proxy
+    (``/mcp/connectors``) and carries a run token. The provider's sign-in never enters this dict.
+    A connector that can't be used is left out, with a warning and a ``connector_skipped`` event.
 
 Openhands-free + litellm-free at import (it returns a plain dict). The resolved plaintext values in
 the returned dict are the design — they travel into the docker sandbox exactly like the LLM key (the
@@ -25,6 +28,7 @@ SDK's ``RemoteConversation`` create path serializes the agent with ``expose_secr
 """
 
 import copy
+import logging
 import re
 import uuid
 from urllib.parse import urlparse, urlunparse
@@ -33,11 +37,14 @@ from sqlalchemy import select
 
 from tvashtr.auth import SESSION_COOKIE_NAME, make_session_cookie_value
 from tvashtr.config import get_settings
+from tvashtr.control_plane import connector_oauth, connector_proxy, connectors
 from tvashtr.control_plane.mcp_secrets import resolve_owner_mcp_secret
 from tvashtr.control_plane.node_library import resolve_owner_tool
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.db import session_scope
 from tvashtr.models import Run
+
+logger = logging.getLogger(__name__)
 
 # ``${NAME}`` — an env-var-style reference (letters/digits/underscore, not starting with a digit).
 _REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -81,8 +88,9 @@ def _substitute(server: dict, values: dict[str, str]) -> dict:
     return out
 
 
-def domains_mcp_url() -> str:
-    """Control-plane Domains MCP URL reachable from the OpenHands agent process."""
+def _agent_base_url() -> str:
+    """The control plane's base address as the OpenHands agent process reaches it (in docker mode
+    a localhost base is rewritten to the docker host). No trailing slash."""
     settings = get_settings()
     base = (settings.public_base_url or "http://127.0.0.1:8000").rstrip("/")
     parsed = urlparse(base)
@@ -96,7 +104,18 @@ def domains_mcp_url() -> str:
             netloc = f"{host}:8000"
         parsed = parsed._replace(netloc=netloc)
         base = urlunparse(parsed).rstrip("/")
-    return f"{base}/mcp/domains"
+    return base
+
+
+def domains_mcp_url() -> str:
+    """Control-plane Domains MCP URL reachable from the OpenHands agent process."""
+    return f"{_agent_base_url()}/mcp/domains"
+
+
+def connectors_mcp_url() -> str:
+    """The Connectors proxy's address for an agent. It ends at ``/mcp/connectors``, with no
+    trailing slash: that exact path has its own route (``mount_connectors_mcp``)."""
+    return f"{_agent_base_url()}/mcp/connectors"
 
 
 # The header naming the domains an agent may search (``tvashtr.domains`` as a list of ids, DM-96);
@@ -113,10 +132,74 @@ def _domains_opt_in(tvashtr_meta: dict) -> bool:
     return isinstance(flag, list) and bool(flag)
 
 
-def build_mcp_config(tool_config: dict | None, run_id: str) -> dict:
+def _connector_servers(
+    grants: list, run_id: str, node_id: str | None, owner: uuid.UUID, taken: set[str]
+) -> dict:
+    """The proxy servers for a node's connector grants (``[{"id", "access"?}]``), in grant order.
+    ``taken`` are the server names the node already uses, and it gains each name handed out here:
+    a connection whose slug is one of them is named ``conn-<slug>`` (the prefix again while that
+    is taken too). A grant that can't be used is skipped with its warning and
+    ``connector_skipped`` event (``connector_proxy.record_skip``); the run goes on without it."""
+    servers: dict = {}
+    seen: set[uuid.UUID] = set()
+    for grant in grants:
+        try:
+            with session_scope() as session:
+                row = connectors.get_owned(
+                    session, owner, grant.get("id") if isinstance(grant, dict) else None
+                )
+        except connectors.ConnectorError:
+            row = None  # gone, another account's, or not an id at all
+        if row is None or row.status == "pending":
+            connector_proxy.record_skip(
+                run_id, node_id, None, "a connector", connector_proxy.DISCONNECTED
+            )
+            continue
+        if row.id in seen:
+            continue
+        seen.add(row.id)
+        if row.status != "connected":
+            connector_proxy.sign_in_expired(run_id, node_id, row)
+            continue
+        if row.auth_kind == "oauth":
+            # Check (or refresh) the provider token now, so a dead sign-in is a warning on this
+            # round and not a row of tool errors. The token itself stays on the server.
+            try:
+                connector_oauth.ensure_access_token(row.id)
+            except connector_oauth.SignInRefused:
+                connector_proxy.sign_in_expired(run_id, node_id, row)
+                continue
+            except Exception as exc:
+                # ``Unreachable``, or a sign-in that can't even be read (a rotated secret key):
+                # one connector that can't be used must not fail the round. The type only: an
+                # error's text can carry an address or a credential.
+                if not isinstance(exc, connector_oauth.Unreachable):
+                    logger.warning(
+                        "connectors: couldn’t check %s's sign-in (%s)",
+                        row.slug,
+                        type(exc).__name__,
+                    )
+                connector_proxy.record_skip(
+                    run_id, node_id, row.id, row.name, connector_proxy.UNREACHABLE
+                )
+                continue
+        token = connector_proxy.sign_run_token(run_id, node_id, row.id, grant.get("access"))
+        name = row.slug
+        while name in taken:
+            name = f"conn-{name}"
+        taken.add(name)
+        servers[name] = {
+            "url": connectors_mcp_url(),
+            "headers": {"Authorization": f"Bearer {token}"},
+        }
+    return servers
+
+
+def build_mcp_config(tool_config: dict | None, run_id: str, *, node_id: str | None = None) -> dict:
     """Resolve a node's MCP config into the dict passed to ``Agent(mcp_config=…)`` — see the module
-    docstring for the full contract. Signature is FROZEN (do NOT widen it — keeps this milestone
-    out of ``team_run.py``).
+    docstring for the full contract. ``node_id`` (optional; ``agent_run_step`` passes it) is the
+    agent a connector's run token names, and the round its skips are recorded on. Without
+    ``tvashtr.connectors`` the output is byte-for-byte what it was before Connectors.
 
     C7.C: BEFORE the per-server resolution, any ids at ``tool_config.tvashtr.library`` are expanded
     into a base servers dict from the owner's ``tool_library`` (a LIVE lookup, fresh each run;
@@ -183,8 +266,15 @@ def build_mcp_config(tool_config: dict | None, run_id: str) -> dict:
             record_resolution_warning(run_id, "tool", name, f"missing secret {', '.join(missing)}")
             continue  # SKIP the server; the run continues without it
         resolved[name] = _substitute(server, values)  # type: ignore[arg-type]
-    # Phase 4b: inject Domains MCP when opted in (inline wins if already present).
     meta = tvashtr_meta if isinstance(tvashtr_meta, dict) else {}
+    # Connectors: one proxy server per grant, after the node's own servers and before Domains.
+    grants = meta.get("connectors")
+    if isinstance(grants, list) and grants:
+        owner = _owner()
+        if owner is not None:
+            taken = set(servers) | {"tvashtr-domains"}
+            resolved.update(_connector_servers(grants, run_id, node_id, owner, taken))
+    # Phase 4b: inject Domains MCP when opted in (inline wins if already present).
     if _domains_opt_in(meta):
         owner = _owner()
         if owner is not None and "tvashtr-domains" not in resolved:

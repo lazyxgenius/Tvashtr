@@ -36,6 +36,7 @@ from tvashtr.control_plane import (
     run_views,
     toolkit,
 )
+from tvashtr.control_plane.connector_proxy import connector_use
 from tvashtr.control_plane.context_compiler import resolve_fallback_model, resolve_multimodal
 from tvashtr.control_plane.credential_gate import (
     RUNNER_SUBSCRIPTIONS,
@@ -155,7 +156,7 @@ class CreateRunRequest(BaseModel):
     # Which hardcoded team the run builds (P1.5a). Default ``two_node`` keeps
     # skeleton-run/skeleton-crash (which POST neither field) byte-for-byte unchanged;
     # ``review_loop`` builds the 3-node PM -> Engineer <-> Reviewer cyclic team that
-    # ``make loop-run`` requests.
+    # ``make loop-run`` asks for.
     team_shape: Literal["two_node", "review_loop"] = "two_node"
     # Clone-on-launch (P1.8b): when set to the persistent authored team's id, the run is launched
     # on a fresh deep-clone of THAT team (the user's edited prompts/models), not a throwaway
@@ -1809,6 +1810,8 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
         # M-ledger C5: the per-invocation cost (the cost_records.invocation_id join), keyed by
         # invocation id — attached to each invocation dict below (null when no cost row links).
         cost_by_inv = _cost_by_invocation(session, run_id)
+        # Connectors (additive): what each round called or ran without (null when neither).
+        connectors_by_inv = connector_use(session, run.id, [inv.id for inv in invocations])
         # The node's live state = its latest invocation (max iteration for that node).
         latest_by_node: dict[str, AgentInvocation] = {}
         # The node's full per-round history, ascending by iteration — the verdict-view
@@ -1874,6 +1877,7 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                             # the cost_records.invocation_id join (null when no cost row links).
                             "context_manifest": inv.context_manifest,
                             "cost": cost_by_inv.get(inv.id),
+                            "connectors": connectors_by_inv.get(inv.id),
                             "started_at": inv.started_at.isoformat(),
                             "ended_at": inv.ended_at.isoformat() if inv.ended_at else None,
                         }

@@ -7,14 +7,16 @@ the clone(s) of that node — the same clone→origin join ``_latest_invocation_
 ``teams.list_team_runs`` use. Read-only; no DBOS, no LLM.
 
 Each round reports what the agent was given (documents with the version it read, remembered
-lessons, skills), what it produced (a verdict, a document version, changed files), its cost and the
-billing route (a Desktop subscription job vs an API key)."""
+lessons, skills), what it produced (a verdict, a document version, changed files), its cost, the
+billing route (a Desktop subscription job vs an API key) and the connectors it called or ran
+without (``connectors``; ``null`` when it did neither)."""
 
 import uuid
 from datetime import datetime
 
 from sqlalchemy import func, or_, select
 
+from tvashtr.control_plane.connector_proxy import connector_use
 from tvashtr.control_plane.context_compiler import resolve_reads_from
 from tvashtr.control_plane.credentials import provider_for_model
 from tvashtr.control_plane.memory import repo_key_for_run, repo_label
@@ -196,6 +198,7 @@ def _run_detail(session, node: AgentNode, run_id: str, owner_id: uuid.UUID) -> d
     inv_ids = [inv.id for inv in invocations]
     costs = _cost_by_invocation(session, str(run.id), inv_ids)
     jobs = _desktop_jobs_by_invocation(session, str(run.id), inv_ids)
+    connectors = connector_use(session, run.id, inv_ids)
     docs = _run_documents(session, run)
     skills = _skills_given(session, clone.skills, owner_id)
 
@@ -226,6 +229,7 @@ def _run_detail(session, node: AgentNode, run_id: str, owner_id: uuid.UUID) -> d
                     "skills": skills,
                 },
                 "produced": _produced(inv, clone, run, docs, emits, is_entry, job),
+                "connectors": connectors.get(inv.id),
             }
         )
         if clone.kind == "domain_query":

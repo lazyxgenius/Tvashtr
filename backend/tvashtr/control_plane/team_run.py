@@ -276,6 +276,9 @@ def _tool_names(tool_config: dict | None) -> list[str]:
         names.append(f"{len(library)} library tool(s)")
     if extra.get("domains") is True:
         names.append("domains")
+    connectors = extra.get("connectors")
+    if isinstance(connectors, list) and connectors:
+        names.append(f"{len(connectors)} connector(s)")
     return names
 
 
@@ -1519,7 +1522,9 @@ def agent_run_step(
         # byte-for-byte inert. ``workspace`` is this worker's own dir (the workspace_dir arg).
         # B-NODES: a Desktop-routed node uses neither (its skills were folded into the instruction
         # above and its tools recorded as unused), so neither is resolved for it.
-        mcp_config=build_mcp_config(tool_config, run_id) if desktop_route is None else {},
+        mcp_config=(
+            build_mcp_config(tool_config, run_id, node_id=node_id) if desktop_route is None else {}
+        ),
         skills=build_skills(skills, workspace, run_id) if desktop_route is None else [],
         # M-unify U2: the per-node sandbox-reuse key. The Control Plane passes only the KEY (never
         # a live handle) — the adapter reuses this node's warm container + continues its
