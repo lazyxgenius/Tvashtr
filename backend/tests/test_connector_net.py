@@ -53,14 +53,22 @@ def test_mcp_floor_has_the_client_pieces_connectors_need():
 # ---- 0.3: the outbound address guard and the two HTTP clients ----
 
 import asyncio  # noqa: E402
+import gzip  # noqa: E402
 import socket  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402
 
 from tvashtr.config import get_settings  # noqa: E402
 from tvashtr.control_plane import connector_net  # noqa: E402
-from tvashtr.control_plane.connector_net import UnsafeUrl, check_url, site  # noqa: E402
+from tvashtr.control_plane.connector_net import (  # noqa: E402
+    UnsafeResponse,
+    UnsafeUrl,
+    check_url,
+    site,
+)
 
 PUBLIC = "93.184.216.34"
 
@@ -278,6 +286,119 @@ def test_a_redirect_is_returned_not_followed(strict, monkeypatch):
     monkeypatch.setattr(connector_net, "_inner", lambda: inner)
     with connector_net.client() as c:
         assert c.get("https://ok.example.com/mcp").status_code == 302
+
+
+# ---- what a provider can send back: no compression, a size limit, one deadline for the lot ----
+
+
+def _answering(monkeypatch, make_response, seen: list[httpx.Request] | None = None) -> None:
+    """Both inner transports answer every request with ``make_response()``."""
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if seen is not None:
+            seen.append(request)
+        return make_response()
+
+    _dns(monkeypatch, {"big.example.com": [PUBLIC]})
+    monkeypatch.setattr(connector_net, "_inner", lambda: httpx.MockTransport(handle))
+    monkeypatch.setattr(connector_net, "_async_inner", lambda: httpx.MockTransport(handle))
+
+
+def _gzip_bomb() -> httpx.Response:
+    # 64 MB of zeros is about 65 KB on the wire. ``stream=`` so building it decodes nothing.
+    wire = gzip.compress(bytes(64 * 1024 * 1024), compresslevel=1)
+    return httpx.Response(200, headers={"content-encoding": "gzip"}, stream=httpx.ByteStream(wire))
+
+
+def _body(size: int) -> httpx.Response:
+    return httpx.Response(200, stream=httpx.ByteStream(bytes(size)))
+
+
+def test_both_clients_ask_for_an_uncompressed_answer_and_refuse_a_compressed_one(
+    strict, monkeypatch
+):
+    """httpx decodes gzip on its own, so a 65 KB answer would become 64 MB in memory."""
+    seen: list[httpx.Request] = []
+    _answering(monkeypatch, _gzip_bomb, seen)
+
+    with connector_net.client(headers={"Accept-Encoding": "gzip"}) as c:
+        with pytest.raises(UnsafeResponse):
+            c.get("https://big.example.com/.well-known/oauth-authorization-server")
+
+    async def go():
+        async with connector_net.async_client() as c:
+            with pytest.raises(UnsafeResponse):
+                await c.post("https://big.example.com/mcp", json={})
+
+    asyncio.run(go())
+    assert [r.headers["accept-encoding"] for r in seen] == ["identity", "identity"]
+
+
+def test_the_sync_client_reads_at_most_one_megabyte(strict, monkeypatch):
+    _answering(monkeypatch, lambda: _body(connector_net.BODY_LIMIT))
+    with connector_net.client() as c:
+        assert len(c.get("https://big.example.com/token").content) == 1024 * 1024
+
+    _answering(monkeypatch, lambda: _body(connector_net.BODY_LIMIT + 1))
+    with connector_net.client() as c:
+        with pytest.raises(UnsafeResponse):
+            c.get("https://big.example.com/token")
+
+
+def test_the_async_client_stops_reading_at_its_limit(strict, monkeypatch):
+    assert connector_net.MCP_BODY_LIMIT == 10 * 1024 * 1024
+    monkeypatch.setattr(connector_net, "MCP_BODY_LIMIT", 4096)
+
+    async def get(size: int) -> int:
+        _answering(monkeypatch, lambda: _body(size))
+        async with connector_net.async_client() as c:
+            return len((await c.get("https://big.example.com/mcp")).content)
+
+    assert asyncio.run(get(4096)) == 4096
+    with pytest.raises(UnsafeResponse):
+        asyncio.run(get(4097))
+
+    async def streamed() -> int:
+        """The SDK reads answers as a stream: the limit holds there too."""
+        _answering(monkeypatch, lambda: _body(4097))
+        read = 0
+        async with connector_net.async_client() as c:
+            async with c.stream("POST", "https://big.example.com/mcp") as reply:
+                async for chunk in reply.aiter_bytes():
+                    read += len(chunk)
+        return read
+
+    with pytest.raises(UnsafeResponse):
+        asyncio.run(streamed())
+
+
+def test_the_sync_client_gives_a_provider_one_deadline_for_the_whole_answer(strict, monkeypatch):
+    """httpx's timeout is per read: a server that sends a byte every few seconds would otherwise
+    hold the calling thread (a FastAPI worker) for as long as it liked."""
+    release = threading.Event()
+
+    def never_answers() -> httpx.Response:
+        release.wait(30)
+        return _body(1)
+
+    def drips() -> httpx.Response:
+        def body():
+            while not release.is_set():
+                time.sleep(0.02)
+                yield b"."
+
+        return httpx.Response(200, content=body())
+
+    try:
+        for slow in (never_answers, drips):
+            _answering(monkeypatch, slow)
+            started = time.monotonic()
+            with connector_net.client(timeout=0.3) as c:
+                with pytest.raises(httpx.TimeoutException):
+                    c.get("https://big.example.com/token")
+            assert time.monotonic() - started < 3
+    finally:
+        release.set()
 
 
 def test_allow_local_lets_http_and_loopback_through_but_no_third_scheme(monkeypatch):

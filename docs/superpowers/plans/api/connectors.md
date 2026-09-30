@@ -459,8 +459,14 @@ provider). No other code builds an HTTP client for connector traffic.
   original host, so the certificate is still checked against the name. The name is never resolved
   a second time. That closes DNS rebinding (a host that answers a public address for the check and
   a private one for the connection).
-- No redirects followed. 10 s timeout for sign-in calls and for listing tools, 120 s for a proxied
-  tool call. Metadata bodies capped at 1 MB.
+- No redirects followed. 10 s for a sign-in call and for listing tools, 120 s for a proxied tool
+  call. Each is a deadline for the whole exchange, not httpx's per-read timeout (a server that
+  sends a byte every few seconds would otherwise hold a worker for as long as it liked).
+- What a provider sends back is bounded. Both clients send `Accept-Encoding: identity` and refuse
+  an answer that carries a `Content-Encoding` (httpx would inflate it in memory: 65 KB of gzip is
+  64 MB). `client()` reads at most 1 MB of an answer; `async_client()` cuts a body off at 10 MB;
+  `list_tools` follows at most 50 pages. Each of these is "didn’t answer" to the caller
+  (`UnsafeResponse`, an `httpx.TransportError`; `UpstreamUnreachable` from the MCP client).
 - `TVASHTR_CONNECTORS_ALLOW_LOCAL=1` also allows `http://` and non-public addresses, for local
   development and the e2e fake server. It never allows a third scheme (`javascript:`, `file:`,
   `data:`), and it is ignored when `hosted_mode` is on.

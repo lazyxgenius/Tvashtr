@@ -131,8 +131,11 @@ there; proven by row counts in Phase 0).
 
 **0.3 Outbound address guard and the two HTTP clients.** Create `control_plane/connector_net.py`:
 - `check_url(url) -> str` (raises `UnsafeUrl`): the contract's scheme and address rules. The
-  address test is `ipaddress.ip_address(a).is_global` on every resolved address, with an
-  IPv4-mapped IPv6 address unwrapped first (`.ipv4_mapped`).
+  address test is `ipaddress.ip_address(a).is_global` (and not multicast) on every resolved
+  address; an IPv4-mapped or NAT64 (`64:ff9b::/96`) IPv6 address is judged by the IPv4 address
+  inside it, and any other IPv6 address must be in `2000::/3`. An address with a space, a control
+  character, a backslash or a user name in it is refused before it is parsed (Python and a
+  browser read a different host out of `https://a\@b/`).
 - `client(timeout=10.0, headers=None) -> httpx.Client` and
   `async_client(timeout=10.0, headers=None) -> httpx.AsyncClient`, both `follow_redirects=False`
   and both on a **pinning transport**: it resolves the request's host once (kept for the client's
@@ -152,7 +155,17 @@ there; proven by row counts in Phase 0).
 - `client` and `async_client` are the seams tests replace (`monkeypatch.setattr(connector_net,
   "client", …)` returning `httpx.Client(transport=httpx.MockTransport(fake.handle))`, and the same
   for `async_client`). No other module builds an httpx client for connector traffic.
-- Test first: `tests/test_connector_net.py` (patch `socket.getaddrinfo`):
+- **What comes back is bounded** (added by the Phase 0 review). Both clients send
+  `Accept-Encoding: identity`, and the pinning transports raise `UnsafeResponse` (an
+  `httpx.TransportError`, so B2 treats it like any other "didn't answer") for an answer that
+  carries a `Content-Encoding`. The sync transport reads the whole answer on a helper thread: at
+  most `BODY_LIMIT` (1 MB), and within one deadline for the whole exchange (the client's
+  `timeout`; httpx's own is per read), so `client()` answers are never streams. The async
+  transport keeps the stream (server-sent events) and cuts it off at `MCP_BODY_LIMIT` (10 MB).
+  A `MockTransport` client put in through the `client` / `async_client` seam has none of this;
+  tests of the limits replace `_inner` / `_async_inner` instead.
+- Test first: `tests/test_connector_net.py` (patch `connector_net._getaddrinfo`, never
+  `socket.getaddrinfo`: that one is the whole process's resolver and psycopg uses it):
   - `http://`, `javascript:` and `file:` refused; a public address passes;
   - hosts resolving to `127.0.0.1`, `10.0.0.5`, `169.254.169.254`, `fdaa::1`, `0.0.0.0`, `::1`,
     `::ffff:10.0.0.1` and `100.64.0.1` refused; a host with one public and one private address
