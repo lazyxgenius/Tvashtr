@@ -3,6 +3,7 @@ server running as a subprocess."""
 
 import asyncio
 import socket
+import threading
 
 import pytest
 from fake_connector_server import STATIC_TOKEN
@@ -122,6 +123,26 @@ def test_a_bad_address_fails_before_any_connection(monkeypatch, counted):
         with pytest.raises(UpstreamUnreachable):
             asyncio.run(list_tools(url, "sse", BEARER))
     assert counted == []
+
+
+def test_the_address_check_runs_off_the_event_loop(fake_connector_url, monkeypatch):
+    """``check_url`` resolves the host (a blocking lookup). The proxy calls this module on the
+    server's event loop, so the check must run in a worker thread."""
+    threads: dict[str, int] = {}
+    real = connector_net.check_url
+
+    def checking(url: str) -> str:
+        threads["check"] = threading.get_ident()
+        return real(url)
+
+    monkeypatch.setattr(connector_net, "check_url", checking)
+
+    async def go():
+        threads["loop"] = threading.get_ident()
+        await list_tools(fake_connector_url, HTTP, BEARER)
+
+    asyncio.run(go())
+    assert threads["check"] != threads["loop"]
 
 
 def test_list_tools_sync_wraps_the_async_one(fake_connector_url):

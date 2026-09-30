@@ -79,7 +79,8 @@ async def _with_session[T](
         return made
 
     try:
-        connector_net.check_url(url)
+        # The check resolves the host (a blocking lookup), and callers may be on an event loop.
+        await anyio.to_thread.run_sync(connector_net.check_url, url)
         with anyio.fail_after(timeout):
             async with AsyncExitStack() as stack:
                 if transport == "sse":

@@ -161,8 +161,11 @@ def test_client_connects_to_the_address_it_checked_even_when_dns_changes(strict,
 
     with connector_net.client() as c:
         assert c.follow_redirects is False
-        c.get("https://rebind.example.com/mcp")
+        reply = c.get("https://rebind.example.com/mcp")
         c.post("https://rebind.example.com/token", data={"a": "b"})
+
+    # The caller still sees the name: only the connection goes to the IP.
+    assert str(reply.url) == str(reply.request.url) == "https://rebind.example.com/mcp"
 
     assert [r.url.host for r in seen] == [PUBLIC, PUBLIC]
     assert [r.headers["host"] for r in seen] == ["rebind.example.com"] * 2
@@ -179,10 +182,12 @@ def test_async_client_connects_to_the_address_it_checked_even_when_dns_changes(s
     async def go():
         async with connector_net.async_client(headers={"Authorization": "Bearer t"}) as c:
             assert c.follow_redirects is False
+            reply = await c.get("https://rebind.example.com/mcp")
             await c.get("https://rebind.example.com/mcp")
-            await c.get("https://rebind.example.com/mcp")
+            return reply
 
-    asyncio.run(go())
+    reply = asyncio.run(go())
+    assert str(reply.url) == str(reply.request.url) == "https://rebind.example.com/mcp"
 
     assert [r.url.host for r in seen] == [PUBLIC, PUBLIC]
     assert [r.headers["host"] for r in seen] == ["rebind.example.com"] * 2

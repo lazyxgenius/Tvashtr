@@ -103,6 +103,25 @@ def test_every_column_has_the_contract_type_and_nullability():
     }
 
 
+def test_the_database_itself_defaults_transport_access_and_the_two_timestamps():
+    with session_scope() as s:
+        defaults = dict(
+            s.execute(
+                text(
+                    "SELECT column_name, column_default FROM information_schema.columns "
+                    "WHERE table_name = :t AND column_default IS NOT NULL"
+                ),
+                {"t": _TABLE},
+            ).all()
+        )
+    assert defaults == {
+        "transport": "'streamable-http'::text",
+        "access": "'read'::text",
+        "created_at": "now()",
+        "updated_at": "now()",
+    }
+
+
 def test_constraints_and_the_owner_index_are_named_as_the_contract_says():
     assert _constraints("u") == {
         "uq_connector_connections_owner_key",

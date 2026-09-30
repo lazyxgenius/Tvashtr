@@ -132,12 +132,17 @@ def _require_https(request: httpx.Request) -> str:
 
 
 def _pin(request: httpx.Request, ip: str) -> httpx.Request:
-    """Point ``request`` at the validated ``ip``. The ``Host`` header (set when the request was
-    built) keeps the name, and ``sni_hostname`` makes httpcore use the name for TLS, so the
-    certificate is checked against the name and not the IP."""
-    request.extensions = {**request.extensions, "sni_hostname": request.url.host}
-    request.url = request.url.copy_with(host=ip)
-    return request
+    """A copy of ``request`` addressed to the validated ``ip``. The ``Host`` header (set when the
+    request was built) keeps the name, and ``sni_hostname`` makes httpcore use the name for TLS, so
+    the certificate is checked against the name and not the IP. The caller's request is left as it
+    was, so ``response.url`` still shows the name."""
+    return httpx.Request(
+        request.method,
+        request.url.copy_with(host=ip),
+        headers=request.headers,
+        stream=request.stream,
+        extensions={**request.extensions, "sni_hostname": request.url.host},
+    )
 
 
 class _PinningTransport(httpx.BaseTransport):
