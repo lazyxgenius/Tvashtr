@@ -1,10 +1,13 @@
 """Connectors: per-agent grants (B1.6): ``GET`` and ``PUT /api/connectors/{id}/agents``."""
 
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from connector_helpers import add_connection, connection_row, grant
 from toolkit_helpers import fresh_account, make_node, make_team, node_row
 
+from tvashtr.control_plane import connectors
 from tvashtr.db import session_scope
 from tvashtr.models import AgentNode, EngineSubscriptionStatus
 
@@ -309,3 +312,62 @@ def test_put_agents_needs_a_list_of_ids():
     cid = add_connection(owner, "supabase")
     assert c.put(f"/api/connectors/{cid}/agents", json={}).status_code == 422
     assert c.put(f"/api/connectors/{cid}/agents", json={"node_ids": "x"}).status_code == 422
+
+
+# ---- two writers of grants at once ----
+
+
+def _first_call_waits(monkeypatch, name: str) -> tuple[threading.Event, threading.Event]:
+    """Make the first call of ``connectors.<name>`` wait: the writer that makes it has read its
+    nodes and written nothing yet. Returns ``(inside, release)``."""
+    inside, release = threading.Event(), threading.Event()
+    real = getattr(connectors, name)
+
+    def paused(*args):
+        if not inside.is_set():
+            inside.set()
+            assert release.wait(10)
+        return real(*args)
+
+    monkeypatch.setattr(connectors, name, paused)
+    return inside, release
+
+
+def test_two_disconnects_at_once_leave_no_grant_behind(monkeypatch):
+    """Each rewrites the node's whole ``tool_config``. From the same stale read, the second
+    would write back the grant the first removed, for a connection that is gone."""
+    _, owner = fresh_account()
+    a, b = add_connection(owner, "supabase"), add_connection(owner, "linear")
+    node = make_node(
+        make_team(owner, "Team"),
+        "PM",
+        tool_config={"tvashtr": {"connectors": [{"id": a}, {"id": b}]}},
+    )
+    inside, release = _first_call_waits(monkeypatch, "_without_grant")
+    with ThreadPoolExecutor(2) as pool:
+        first = pool.submit(connectors.disconnect, owner, a)
+        assert inside.wait(10)
+        second = pool.submit(connectors.disconnect, owner, b)
+        wait([second], timeout=1)  # it has to queue behind the first, not finish here
+        release.set()
+        assert first.result(10) == {"removed_from_agents": 1, "revoked": False}
+        assert second.result(10) == {"removed_from_agents": 1, "revoked": False}
+    assert connection_row(a) is None and connection_row(b) is None
+    assert node_row(node).tool_config is None
+
+
+def test_put_agents_and_a_disconnect_at_once_leave_no_grant_behind(monkeypatch):
+    _, owner = fresh_account()
+    cid = add_connection(owner, "supabase")
+    node = make_node(make_team(owner, "Team"), "PM")
+    inside, release = _first_call_waits(monkeypatch, "_with_grants")
+    with ThreadPoolExecutor(2) as pool:
+        put = pool.submit(connectors.set_agents, owner, cid, [str(node)])
+        assert inside.wait(10)
+        delete = pool.submit(connectors.disconnect, owner, cid)
+        wait([delete], timeout=1)  # it has to queue behind the PUT, not delete the row here
+        release.set()
+        assert put.result(10)["agent_count"] == 1
+        assert delete.result(10) == {"removed_from_agents": 1, "revoked": False}
+    assert connection_row(cid) is None
+    assert node_row(node).tool_config is None

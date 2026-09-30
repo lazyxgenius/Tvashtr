@@ -48,7 +48,7 @@ from tvashtr.control_plane.tool_usage import (
     usage_row,
 )
 from tvashtr.db import session_scope
-from tvashtr.models import ConnectorConnection
+from tvashtr.models import AgentNode, ConnectorConnection
 
 NOT_FOUND = "Connector not found."
 SIGNIN_TTL_SECONDS = 600  # a started sign-in is pending for ten minutes
@@ -309,6 +309,22 @@ def _without_grant(tool_config: object, connection_id: uuid.UUID) -> dict | None
     return _with_grants(
         tool_config, [g for g in _grants(tool_config) if not _is_grant(g, connection_id)]
     )
+
+
+def _lock_nodes(session: Session, nodes: list) -> None:
+    """Take the row lock on each agent node just read, and read it again under the lock. Every
+    writer of grants rewrites a node's whole ``tool_config``, so without it two at once (two
+    disconnects, or a disconnect and a PUT agents) write back what the other removed. Locked in
+    id order, the same for every writer, so two can't deadlock."""
+    ids = [node.id for node, _team in nodes]
+    if ids:
+        session.execute(
+            select(AgentNode)
+            .where(AgentNode.id.in_(ids))
+            .order_by(AgentNode.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).all()
 
 
 def _users(nodes: list, row: ConnectorConnection) -> list[dict]:
@@ -907,8 +923,9 @@ def scope_options(owner_id: uuid.UUID, connection_id: object) -> dict:
 
 def disconnect(owner_id: uuid.UUID, connection_id: object) -> dict:
     """``DELETE /api/connectors/{id}``: a best-effort revoke at the provider first, then, in one
-    transaction holding the row lock, the grant is removed from every library-team agent and the
-    row is deleted. Run snapshots are run history: their grants stay and point at nothing."""
+    transaction holding the row lock and the agent nodes' locks, the grant is removed from every
+    library-team agent and the row is deleted. Run snapshots are run history: their grants stay
+    and point at nothing."""
     with session_scope() as session:
         row = get_owned(session, owner_id, connection_id)
         rid = row.id
@@ -921,8 +938,10 @@ def disconnect(owner_id: uuid.UUID, connection_id: object) -> dict:
             revoked = False
     with session_scope() as session:
         row = get_owned(session, owner_id, rid, for_update=True)
+        nodes = owner_agent_nodes(session, owner_id)
+        _lock_nodes(session, nodes)
         removed = 0
-        for node, _team in owner_agent_nodes(session, owner_id):
+        for node, _team in nodes:
             if grant_access(node.tool_config, row.id) is not None:
                 node.tool_config = _without_grant(node.tool_config, row.id)
                 removed += 1
@@ -969,13 +988,16 @@ def set_agents(owner_id: uuid.UUID, connection_id: object, node_ids: list[str]) 
     keeps the access it has; an unlisted one loses the grant. An id that isn't one of the owner's
     library-team agents is a 404 and nothing is written."""
     with session_scope() as session:
-        row = get_owned(session, owner_id, connection_id)
+        # The row lock: a disconnect at the same moment queues behind this, and then takes the
+        # grants this wrote with it (or went first, and this is a 404).
+        row = get_owned(session, owner_id, connection_id, for_update=True)
         if row.status == "pending":
             raise _refusal(409, "not_connected", f"Finish connecting {row.name} first.")
         try:
             nodes, wanted = _select_nodes(session, owner_id, node_ids)
         except LookupError:
             raise ConnectorError(404, "Agent not found.") from None
+        _lock_nodes(session, nodes)
         for node, _team in nodes:
             has = grant_access(node.tool_config, row.id) is not None
             if node.id in wanted and not has:
