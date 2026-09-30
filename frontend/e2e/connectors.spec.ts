@@ -70,13 +70,15 @@ test("Connectors: connect a custom server, give an agent access, disconnect", as
   // Custom connector: a name and the fake server's address, then "Check the server".
   await page.getByRole("button", { name: "Custom connector", exact: true }).click();
   const sheet = page.getByRole("dialog", { name: "Custom connector" });
-  await sheet.getByLabel("Name", { exact: true }).fill("Fake");
+  await sheet.getByLabel("Name", { exact: true }).fill("Fake server");
   await sheet.getByLabel("Server address").fill(`${FAKE}/mcp`);
   await shot(page, "02-custom-connector-sheet");
   await sheet.getByRole("button", { name: "Check the server" }).click();
   // The sign-in site is named by its host alone (no port).
   const host = new URL(FAKE).hostname;
   await expect(sheet.getByText(`You’ll sign in at ${host}.`)).toBeVisible({ timeout: 30_000 });
+  // The name can still change after the check (the address can't, without another check).
+  await sheet.getByLabel("Name", { exact: true }).fill("Fake");
   await expect(sheet.getByText("The sign-in page that opens should be Fake’s own.")).toBeVisible();
   await expect(sheet.getByRole("button", { name: "Read only", exact: true })).toHaveAttribute(
     "aria-pressed",
@@ -96,9 +98,17 @@ test("Connectors: connect a custom server, give an agent access, disconnect", as
   await expect(popup).toHaveURL(/\/api\/connectors\/oauth\/callback\?/);
   await expect(popup.getByText(`Connect Fake to the Tvashtr account ${email}?`)).toBeVisible();
   await shot(popup, "04-confirm-page");
+  // The page that answers Connect closes its own window, so its words are read off the wire.
+  let answer = "";
+  await popup.route("**/api/connectors/oauth/confirm", async (route) => {
+    const response = await route.fetch();
+    answer = await response.text();
+    await route.fulfill({ response });
+  });
   const closed = popup.waitForEvent("close");
   await popup.getByRole("button", { name: "Connect", exact: true }).click();
-  await closed; // "Fake is connected. You can close this window." closes itself
+  await closed;
+  expect(answer).toContain("Fake is connected. You can close this window.");
 
   // The sheet moves on by itself: the Connected tab, with the new row read only and Ready.
   await expect(page).toHaveURL(/#\/toolkit\/connectors$/, { timeout: 30_000 });
@@ -114,6 +124,14 @@ test("Connectors: connect a custom server, give an agent access, disconnect", as
   await expect(row).toContainText("Ready");
   await expect(row).toContainText("Not used yet");
   await shot(page, "05-connected-tab");
+  // It was checked as "Fake server" and renamed before the sign-in: the last name is the one it
+  // has, and the prefix of its tools' names (the slug) is made from that name.
+  const made = (await (await page.request.get("/api/connectors")).json()) as {
+    connections: { name: string; slug: string; access: string; status: string }[];
+  };
+  expect(made.connections).toMatchObject([
+    { name: "Fake", slug: "fake", access: "read", status: "connected" },
+  ]);
 
   // Its page: the reads are on, and the tool the server doesn't mark read-only is off.
   await link.click();
