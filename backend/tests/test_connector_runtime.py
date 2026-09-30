@@ -535,7 +535,7 @@ def test_a_sign_in_that_cannot_even_be_read_skips_the_connector_and_the_run_goes
     local_base, monkeypatch, caplog
 ):
     def broken(connection_id, *, rejected=None):
-        raise ValueError("could not decrypt PLAINTEXT")  # a rotated secret key, say
+        raise ValueError("could not decrypt PLAINTEXT")  # a failure nobody foresaw
 
     monkeypatch.setattr(connector_oauth, "ensure_access_token", broken)
     owner = _user()

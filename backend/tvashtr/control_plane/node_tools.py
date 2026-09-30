@@ -170,9 +170,9 @@ def _connector_servers(
                 connector_proxy.sign_in_expired(run_id, node_id, row)
                 continue
             except Exception as exc:
-                # ``Unreachable``, or a sign-in that can't even be read (a rotated secret key):
-                # one connector that can't be used must not fail the round. The type only: an
-                # error's text can carry an address or a credential.
+                # ``Unreachable``, or a failure nobody foresaw: one connector that can't be used
+                # must not fail the round. (A sign-in that can't be decrypted is ``SignInRefused``
+                # above.) The type only: an error's text can carry an address or a credential.
                 if not isinstance(exc, connector_oauth.Unreachable):
                     logger.warning(
                         "connectors: couldn’t check %s's sign-in (%s)",
