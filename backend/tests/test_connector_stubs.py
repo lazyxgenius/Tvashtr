@@ -182,13 +182,6 @@ def test_upstream_target_is_the_rows_own_address():
     assert connectors.upstream_target(row, "write") == ("https://mcp.acme.dev/sse", "sse")
 
 
-# Stub test: task B3.5 (call events and rounds) deletes it with its own tests (build plan §2).
-def test_recent_use_is_empty():
-    owner = _user()
-    with session_scope() as s:
-        assert connector_proxy.recent_use(s, owner, _connection(owner)) == []
-
-
 def test_the_proxy_server_is_stateless_and_accepts_any_host():
     mcp = get_connectors_mcp()
     assert mcp is get_connectors_mcp()

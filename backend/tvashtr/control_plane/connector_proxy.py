@@ -26,9 +26,10 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_catalog, connector_oauth, connector_upstream, connectors
 from tvashtr.control_plane.node_library import _as_uuid
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
+from tvashtr.control_plane.run_failure import node_label
 from tvashtr.control_plane.run_views import TERMINAL_STATUSES
 from tvashtr.db import session_scope
-from tvashtr.models import AgentInvocation, ConnectorConnection, Run, RunEvent
+from tvashtr.models import AgentInvocation, AgentNode, ConnectorConnection, Run, RunEvent
 
 logger = logging.getLogger(__name__)
 
@@ -439,9 +440,126 @@ async def proxy_call_tool(
     return answer
 
 
+# ---- What a run shows: a round's ``connectors`` block, and a connection's recent use ----
+
+CALLS_LIMIT = 50
+RECENT_USE_RUNS = 30
+RECENT_USE_ROWS = 10
+_EVENT_KINDS = ("connector_call", "connector_skipped")
+
+
+def connector_use(session: Session, run_id: object, invocation_ids: list[int]) -> dict[int, dict]:
+    """``{invocation_id: connectors}`` for the rounds of ``run_id`` that called or skipped a
+    connector; a round that did neither has no key (its ``connectors`` is ``null``).
+
+    ``used`` is ordered by first call and counts the calls that worked (not the blocked or failed
+    ones); ``calls`` lists writes first, then by time, at most ``CALLS_LIMIT`` of ``total_calls``;
+    ``skipped`` has one entry per connection and reason."""
+    if not invocation_ids:
+        return {}
+    events = session.execute(
+        select(RunEvent)
+        .where(
+            RunEvent.run_id == str(run_id),
+            RunEvent.invocation_id.in_(invocation_ids),
+            RunEvent.kind.in_(_EVENT_KINDS),
+        )
+        .order_by(RunEvent.seq)
+    ).scalars()
+    rounds: dict[int, dict] = {}
+    for event in events:
+        block = rounds.setdefault(event.invocation_id, {"used": {}, "calls": [], "skipped": {}})
+        payload = event.payload
+        connection_id, name = payload.get("connection_id"), payload.get("connector")
+        if event.kind == "connector_skipped":
+            block["skipped"].setdefault(
+                (connection_id, payload.get("reason")),
+                {"connection_id": connection_id, "name": name, "reason": payload.get("reason")},
+            )
+            continue
+        used = block["used"].setdefault(
+            connection_id,
+            {
+                "connection_id": connection_id,
+                "name": name,
+                "slug": payload.get("slug"),
+                "reads": 0,
+                "writes": 0,
+            },
+        )
+        if payload.get("ok"):
+            used["writes" if payload.get("write") else "reads"] += 1
+        block["calls"].append(
+            {
+                "connection_id": connection_id,
+                "name": name,
+                "tool": payload.get("tool"),
+                "write": bool(payload.get("write")),
+                "ok": bool(payload.get("ok")),
+                "blocked": bool(payload.get("blocked")),
+                "arg": payload.get("arg"),
+                "at": event.created_at.isoformat(),
+                "duration_ms": payload.get("duration_ms"),
+                "result_url": payload.get("result_url"),
+            }
+        )
+    return {
+        invocation_id: {
+            "used": list(block["used"].values()),
+            # A stable sort: writes first, each half still in the order the calls were made.
+            "calls": sorted(block["calls"], key=lambda call: not call["write"])[:CALLS_LIMIT],
+            "total_calls": len(block["calls"]),
+            "skipped": list(block["skipped"].values()),
+        }
+        for invocation_id, block in rounds.items()
+    }
+
+
 def recent_use(session: Session, owner_id: uuid.UUID, connection_id: uuid.UUID) -> list:
     """Up to 10 rows, newest first, one per run and agent, read from the ``connector_call`` events
     of the owner's last 30 runs: ``{"run_id", "run_number", "agent", "reads", "writes", "at"}``.
+    The counts are the calls that worked."""
+    # ``node_history`` imports ``team_run``, which imports ``node_tools``, which imports this.
+    from tvashtr.control_plane.node_history import _run_number
 
-    Phase 0 stub: nothing has been used yet. Stream B3.5 fills it."""
-    return []
+    runs = {
+        str(run.id): run
+        for run in session.execute(
+            select(Run)
+            .where(Run.owner_id == owner_id)
+            .order_by(Run.created_at.desc(), Run.id)
+            .limit(RECENT_USE_RUNS)
+        ).scalars()
+    }
+    if not runs:
+        return []
+    events = session.execute(
+        select(RunEvent, AgentNode)
+        .outerjoin(AgentInvocation, AgentInvocation.id == RunEvent.invocation_id)
+        .outerjoin(AgentNode, AgentNode.id == AgentInvocation.node_id)
+        .where(
+            RunEvent.run_id.in_(runs),
+            RunEvent.kind == "connector_call",
+            RunEvent.payload["connection_id"].astext == str(connection_id),
+        )
+        .order_by(RunEvent.id)
+    ).all()
+    uses: dict[tuple, dict] = {}
+    for event, node in events:
+        use = uses.setdefault(
+            (event.run_id, node.id if node is not None else None),
+            {
+                "run_id": event.run_id,
+                "run_number": _run_number(session, runs[event.run_id]),
+                "agent": node_label(node.role_name, node.kind, node.config) if node else None,
+                "reads": 0,
+                "writes": 0,
+            },
+        )
+        if event.payload.get("ok"):
+            use["writes" if event.payload.get("write") else "reads"] += 1
+        use["at"] = event.created_at.isoformat()  # the latest call: events come oldest first
+    # Python's sort is stable and ``uses`` is in order of first call, so reversing puts the row
+    # whose last call is newest first even when two stamps are equal.
+    newest_first = sorted(reversed(uses.values()), key=lambda use: use["at"], reverse=True)
+    return newest_first[:RECENT_USE_ROWS]

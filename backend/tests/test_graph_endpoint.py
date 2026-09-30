@@ -202,8 +202,11 @@ def test_graph_endpoint_node_invocations_are_ordered_per_round_history(client):
         "ended_at",
         # B-NODES (additive): the invocation's id (the focus view's rounds rail keys on it).
         "invocation_id",
+        # Connectors (additive): what the round called or ran without; null when neither.
+        "connectors",
     }
     assert rounds[0]["context_manifest"] is None and rounds[0]["cost"] is None
+    assert rounds[0]["connectors"] is None and rounds[1]["connectors"] is None
     assert rounds[0]["outcome_detail"] == "missing tests for the edge case"
     assert rounds[1]["outcome_detail"] is None
     assert rounds[0]["status"] == "done" and rounds[0]["started_at"] is not None
