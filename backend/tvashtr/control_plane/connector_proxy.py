@@ -373,8 +373,8 @@ async def _provider[T](
     """``request(url, transport, headers)`` against the provider, the credential added here. Only
     a 401 means the sign-in expired: one refresh (for a key: one look at whether it was replaced
     meanwhile) and one retry, then ``needs_signin``. Anything else changes nothing. Raises
-    :class:`_Failed`. ``quiet`` is for a request the agent's call
-    doesn't depend on: its failure marks and records nothing."""
+    :class:`_Failed`. ``quiet`` is for a request the agent's call doesn't depend on: its failure
+    marks and records nothing."""
     unauthorized = connector_upstream.UpstreamUnauthorized
     try:
         if row.status != "connected":
