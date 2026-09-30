@@ -287,5 +287,7 @@ def test_the_subprocess_answers_401_without_a_bearer_and_403_to_forbidden(fake_c
         fake_connector_url, json=body, headers={"Authorization": "Bearer forbidden"}
     )
     assert forbidden.status_code == 403
+    # The same MCP server over the older SSE transport, behind the same bearer gate.
+    assert httpx.get(f"{base}/sse").status_code == 401
     # The sign-in routes are served by the same process, with an Allow page.
     assert httpx.get(f"{base}/.well-known/oauth-authorization-server").json()["issuer"] == base

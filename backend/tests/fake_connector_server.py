@@ -7,7 +7,8 @@ Two ways to use it:
   ``/authorize`` (a page with one Allow button), ``/token`` (code and refresh grants), ``/revoke``,
   and the 401 an unauthenticated ``/mcp`` request gets. It records every request in ``requests``.
 * ``FakeConnectorServer(base_url).app()`` is the same behind a real HTTP server, plus a real MCP
-  endpoint at ``/mcp`` (bearer required). ``python backend/tests/fake_connector_server.py --port
+  endpoint at ``/mcp`` (streamable HTTP) and at ``/sse`` (the older SSE transport), bearer
+  required on both. ``python backend/tests/fake_connector_server.py --port
   9911`` serves it; the ``fake_connector_url`` fixture runs that as a subprocess. Never mount it on
   the shared test app (``test_domain_mcp_http.py``: probing a streamable-HTTP mount through the
   shared TestClient tears down the DBOS lifespan).
@@ -45,6 +46,9 @@ _ENDPOINTS = {
     "revocation_endpoint": "/revoke",
     "registration_endpoint": "/register",
 }
+
+
+_MCP_PATHS = ("/mcp", "/sse", "/messages")
 
 
 def _json(status: int, body: dict) -> httpx.Response:
@@ -268,8 +272,8 @@ class FakeConnectorServer:
     # ---- the real server ----
 
     def app(self):
-        """A Starlette app: ``/mcp`` is a real MCP server (mcp SDK ``FastMCP``, bearer required),
-        every other path goes to :meth:`handle`."""
+        """A Starlette app: ``/mcp`` and ``/sse`` are a real MCP server (mcp SDK ``FastMCP``,
+        bearer required), every other path goes to :meth:`handle`."""
         from mcp.server.fastmcp import FastMCP
         from mcp.server.transport_security import TransportSecuritySettings
         from mcp.types import ToolAnnotations
@@ -340,13 +344,14 @@ class FakeConnectorServer:
                 self.inner = inner
 
             async def __call__(self, scope, receive, send) -> None:
-                if scope["type"] == "http" and scope["path"] == "/mcp":
+                if scope["type"] == "http" and scope["path"].startswith(_MCP_PATHS):
                     refusal = fake.mcp_refusal(Headers(scope=scope).get("authorization"))
                     if refusal is not None:
                         return await _reply(refusal)(scope, receive, send)
                 await self.inner(scope, receive, send)
 
         app = mcp.streamable_http_app()  # has the /mcp route and the session manager's lifespan
+        app.router.routes.extend(mcp.sse_app().routes)  # /sse and /messages/
         app.router.routes.append(Route("/{path:path}", sign_in, methods=["GET", "POST"]))
         app.add_middleware(BearerGate)
         return app
