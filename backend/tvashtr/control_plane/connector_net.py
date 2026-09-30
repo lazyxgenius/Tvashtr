@@ -108,7 +108,7 @@ def _resolve(host: str, port: int | None) -> str:
     public, else :class:`UnsafeUrl`."""
     try:
         infos = _getaddrinfo(host, port or 443, type=socket.SOCK_STREAM)
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:  # no such host, or a name the resolver can't encode
         raise UnsafeUrl(f"{host} doesn't resolve") from exc
     addresses = [info[4][0] for info in infos]
     if not addresses or not all(_is_public(a) for a in addresses):
@@ -138,6 +138,10 @@ def check_url(url: str) -> str:
         raise UnsafeUrl("the address has a user name in it")
     if not host:
         raise UnsafeUrl("the address has no host")
+    try:
+        httpx.URL(url)  # and one the HTTP client builds: not too long, a host name it can encode
+    except httpx.InvalidURL as exc:
+        raise UnsafeUrl("not an address the HTTP client takes") from exc
     if not allow_local:
         _resolve(host, port)
     return url

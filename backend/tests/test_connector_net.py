@@ -206,6 +206,32 @@ def test_a_host_that_does_not_resolve_is_refused(strict, monkeypatch):
         check_url("https://nowhere.example.com/mcp")
 
 
+def test_a_host_name_the_resolver_cant_encode_is_refused(strict, monkeypatch):
+    """A label over 63 characters makes ``getaddrinfo`` raise ``UnicodeError``, which is not an
+    ``OSError``: callers are promised ``UnsafeUrl``."""
+
+    def boom(*args, **kwargs):
+        raise UnicodeError("encoding with 'idna' codec failed (label too long)")
+
+    monkeypatch.setattr(connector_net, "_getaddrinfo", boom)
+    with pytest.raises(UnsafeUrl):
+        check_url("https://" + "a" * 64 + ".example.com/mcp")
+
+
+@pytest.mark.parametrize("url", ["https://mcp.example.com/" + "a" * 70_000, "https://☃.-/oauth"])
+def test_an_address_the_http_client_wont_build_is_refused(strict, monkeypatch, url):
+    """``urlsplit`` reads both and both resolve; httpx refuses the first as too long and the
+    second as a host name it can't encode, with ``InvalidURL``. The guard says so first, so no
+    caller meets that error at the request."""
+    _dns(monkeypatch, {"mcp.example.com": [PUBLIC], "☃.-": [PUBLIC]})
+    with pytest.raises(UnsafeUrl):
+        check_url(url)
+    monkeypatch.setattr(get_settings(), "connectors_allow_local", True)
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)
+    with pytest.raises(UnsafeUrl):  # local development opens more addresses, not broken ones
+        check_url(url)
+
+
 def _recording_inner(seen: list[httpx.Request]) -> httpx.MockTransport:
     def handle(request: httpx.Request) -> httpx.Response:
         seen.append(request)
