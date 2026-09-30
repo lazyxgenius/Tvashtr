@@ -360,7 +360,8 @@ def choose_client(
 ) -> dict:
     """The client for this sign-in, as stored under ``client``: ``{"client_id", "auth_method",
     "kind", …}``. ``known`` are the row's sign-ins (the one in flight, the stored one): a
-    registration made with the same issuer is reused. Registers when it has to. Raises
+    registration made with the same issuer is reused, unless one of them records that the
+    provider refused it (``refused_client``). Registers when it has to. Raises
     :class:`CannotRegister` or :class:`Unreachable`."""
     kind = client_kind(found, entry, url)
     if kind == "preregistered":
@@ -372,8 +373,11 @@ def choose_client(
         }
     if kind == "cimd":
         return {"client_id": client_metadata()["client_id"], "auth_method": "none", "kind": kind}
+    known = [sign_in for sign_in in known if sign_in]
+    refused = {sign_in.get("refused_client") for sign_in in known}
     for sign_in in known:
-        if client := _reusable(sign_in, found.issuer):
+        client = _reusable(sign_in, found.issuer)
+        if client and client["client_id"] not in refused:
             return client
     return _register(found)
 
@@ -541,10 +545,15 @@ def _use_up(
     return session.get(ConnectorConnection, used, populate_existing=True)
 
 
-def _discovered(pending: dict) -> dict:
+def _discovered(pending: dict, *, client_refused: bool = False) -> dict:
     """A sign-in in flight that is over: what discovery found stays (the sign-in host is still
-    known and a registration can be reused), the PKCE verifier goes."""
-    return {k: v for k, v in pending.items() if k not in ("code_verifier", "started_at")}
+    known and a registration can be reused), the PKCE verifier goes. ``client_refused``: the token
+    endpoint refused the client itself, so its id is recorded as ``refused_client`` and no later
+    sign-in reuses that registration (from here or from the stored sign-in)."""
+    kept = {k: v for k, v in pending.items() if k not in ("code_verifier", "started_at")}
+    if client_refused:
+        kept["refused_client"] = pending["client"]["client_id"]
+    return kept
 
 
 def _clear(state: str, last_error: str, kind: str, name: str) -> Outcome:
@@ -614,8 +623,11 @@ def _complete(state: str, code: str) -> Outcome:
         "redirect_uri": pending["redirect_uri"],
         "code_verifier": pending["code_verifier"],
     }
+    client_refused = False
     try:
-        tokens = _tokens(_document_of(_token_request(pending, grant)))
+        reply = _token_request(pending, grant)
+        tokens = _tokens(_document_of(reply))
+        client_refused = reply.status_code == 401 or _refused(reply) == "invalid_client"
     except Exception:  # whatever went wrong, the write below must end the sign-in and say so
         tokens = None
     tools = _list_tools(url, transport, tokens["access_token"]) if tokens else None
@@ -626,7 +638,8 @@ def _complete(state: str, code: str) -> Outcome:
             row = connectors.get_owned(session, owner_id, connection_id, for_update=True)
             if row.state_hash == claim:  # else a newer sign-in was started meanwhile: leave it
                 row.state_hash = None
-                connectors.write_secret(row, None if tokens else _discovered(pending), pending=True)
+                over = None if tokens else _discovered(pending, client_refused=client_refused)
+                connectors.write_secret(row, over, pending=True)
             if tokens is None:
                 row.last_error = _not_finished(name)  # a working stored sign-in stays as it is
                 return failed
@@ -757,6 +770,12 @@ def ensure_access_token(connection_id: uuid.UUID, *, rejected: str | None = None
             return refreshed["access_token"]
         dropped = _TOKEN_KEYS + (("client",) if refreshed == "invalid_client" else ())
         connectors.write_secret(row, {k: v for k, v in stored.items() if k not in dropped})
+        in_flight = connectors.read_secret(row, pending=True)
+        if refreshed == "invalid_client" and in_flight:
+            # A sign-in in flight (or the last one cleared) may hold the same registration: say
+            # so there too, or the next ``oauth/start`` would reuse the client that is gone.
+            refused = {"refused_client": stored["client"]["client_id"]}
+            connectors.write_secret(row, in_flight | refused, pending=True)
         row.status, row.last_error = "needs_signin", "Its sign-in expired."
     raise SignInRefused(refreshed)
 

@@ -459,7 +459,10 @@ sign-in), `pending_encrypted` and `state_hash` cleared. Page: "Supabase is
 connected. You can close this window." and a `window.close()` (closes the web popup; a normal
 browser tab stays open with the message). Failure → `last_error` = "Supabase didn’t finish the
 sign-in. Try again.", status and the stored sign-in unchanged, the in-flight sign-in cleared as in
-steps 3 and 4, page says the same. When `state_hash` is no longer the claim at that write (a newer
+steps 3 and 4, page says the same. When the token endpoint refused the client itself (a 401, or
+the `error` `invalid_client` or `unauthorized_client`), the cleared sign-in also records the
+client's id as `refused_client`, so the next `oauth/start` registers again instead of reusing it
+(from the cleared sign-in or from the stored one, which is still left as it was). When `state_hash` is no longer the claim at that write (a newer
 `oauth/start` ran while the code was exchanged), the newer sign-in's `state_hash` and
 `pending_encrypted` are left alone. A connection disconnected meanwhile gets the failure page.
 
@@ -493,7 +496,9 @@ dynamic registration).
   What stays in `secret_encrypted` is the issuer, the endpoints and the registration, so the
   sign-in host still shows and "Sign in again" reuses the client.
 - `invalid_client` or `unauthorized_client` → the same, and the stored registration is dropped so
-  the next sign-in registers again.
+  the next sign-in registers again. A sign-in in flight (or the last one cleared) may hold that
+  same registration in `pending_encrypted`: it gets `refused_client` (the client's id), and
+  `oauth/start` never reuses a registration whose id either of the row's sign-ins names there.
 - Every other answer → `Unreachable`: the connector is left out of what asked for it, and the
   status and the stored sign-in are unchanged. That is a 5xx, a 429, a network error, a 200 that
   carries no token, a redirect (never followed), a 2xx other than 200, and a 4xx that isn't one

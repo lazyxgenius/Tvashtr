@@ -637,6 +637,84 @@ def test_a_first_sign_in_whose_token_names_an_unusable_expiry_still_connects(mon
     assert "expires_at" not in connectors.read_secret(load(cid))
 
 
+def _reusable_sign_in(fake: FakeConnectorServer, **over) -> dict:
+    """A stored sign-in to the fake whose registration ``oauth/start`` reuses (it was made for
+    this redirect address)."""
+    stored = signed_in(fake, **over)
+    stored["client"]["redirect_uri"] = CALLBACK
+    return stored
+
+
+def test_a_registration_a_refresh_found_gone_is_not_reused_from_the_sign_in_in_flight(
+    monkeypatch, listed
+):
+    """Found in review: ``invalid_client`` on a refresh dropped the registration from the stored
+    sign-in only. A "Sign in again" that was started earlier still carried it, so every later
+    ``oauth/start`` reused the dead client and the connection could never be signed in again."""
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    c, owner = fresh_account()
+    cid = connection(owner, fake, status="connected", secret=_reusable_sign_in(fake, expires_in=9))
+
+    # "Sign in again", then walked away from: the sign-in in flight holds the registration.
+    assert _query(_start(c, cid).json()["authorize_url"])["client_id"] == "client-1"
+    assert "/register" not in paths(fake)
+
+    fake.fail_refresh = "invalid_client"  # the provider has forgotten the client
+    with pytest.raises(connector_oauth.SignInRefused):
+        connector_oauth.ensure_access_token(cid)
+    assert "client" not in connectors.read_secret(load(cid))
+
+    again = _query(_start(c, cid).json()["authorize_url"])
+    assert again["client_id"] == "client-2" and paths(fake).count("/register") == 1
+    # …and that new registration is the one reused from here on.
+    assert _query(_start(c, cid).json()["authorize_url"])["client_id"] == "client-2"
+    assert paths(fake).count("/register") == 1
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "registers_again"),
+    [
+        (401, {"error": "invalid_client"}, True),
+        (401, None, True),
+        (400, {"error": "unauthorized_client"}, True),
+        (400, {"error": "invalid_grant"}, False),  # the code was refused, not the client
+    ],
+)
+def test_a_client_the_token_endpoint_refuses_at_the_exchange_is_not_reused(
+    monkeypatch, listed, status, body, registers_again
+):
+    """Found in review: the same, from the code exchange. The cleared sign-in kept the client and
+    so did the stored one, and three sign-ins in a row were sent with the refused client."""
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, fake.handle)
+    c, owner = fresh_account()
+    tokens = ("access_token", "refresh_token", "expires_at")
+    stored = {k: v for k, v in _reusable_sign_in(fake).items() if k not in tokens}
+    cid = connection(owner, fake, status="needs_signin", secret=stored)
+    back = _allow(fake, c, cid)
+    assert "/register" not in paths(fake)  # the stored registration was reused
+
+    def refuses(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/token":
+            return httpx.Response(status, json=body) if body else httpx.Response(status)
+        return fake.handle(request)
+
+    wire(monkeypatch, refuses)
+    assert NOT_FINISHED in _page(c.get(CALLBACK_PATH, params=back))
+    row = load(cid)
+    assert connectors.read_secret(row) == stored  # a failed exchange leaves the stored sign-in
+    assert (row.status, row.state_hash) == ("needs_signin", None)
+    assert connectors.serialize(row)["signin_host"] == "mcp.fake.test"
+
+    wire(monkeypatch, fake.handle)
+    back = _allow(fake, c, cid)
+    assert ("/register" in paths(fake)) == registers_again
+    assert CONNECTED in _page(c.get(CALLBACK_PATH, params=back))
+    used = connectors.read_secret(load(cid))["client"]["client_id"]
+    assert used == ("client-2" if registers_again else "client-1")
+
+
 def test_sign_in_again_replaces_the_sign_in_and_keeps_the_tools_when_listing_fails(monkeypatch):
     fake = FakeConnectorServer(BASE, confidential=True, expires_in=None)
     wire(monkeypatch, fake.handle)
