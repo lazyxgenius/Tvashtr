@@ -162,6 +162,12 @@ describe("CommandPalette", () => {
     expect(window.location.hash).toBe("#/engines/keys");
   });
 
+  it("Open Toolkit lands on Toolkit's first page, Connectors", async () => {
+    render(<CommandPalette open onClose={vi.fn()} />);
+    await userEvent.click(await screen.findByRole("option", { name: /Open Toolkit/ }));
+    expect(window.location.hash).toBe("#/toolkit/connectors");
+  });
+
   it("opens a domain at its own address", async () => {
     render(<CommandPalette open onClose={vi.fn()} />);
     await screen.findByRole("group", { name: "Needs you" });

@@ -69,7 +69,7 @@ function go(target: PaletteTarget): void {
       navigate({ page: "engines", tab: "overview" });
       return;
     case "toolkit":
-      navigate({ page: "tools", view: "installed" });
+      navigate({ page: "connectors", view: "connected" });
       return;
     case "domains":
       navigate(
