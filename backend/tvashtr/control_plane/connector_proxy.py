@@ -5,16 +5,23 @@ Stream B3 (build plan B3.1, B3.3, B3.5); the MCP mount that calls it is
 What a run shows).
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 
 from itsdangerous import BadData, URLSafeTimedSerializer
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from tvashtr.config import get_settings
+from tvashtr.control_plane.node_library import _as_uuid
+from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.control_plane.run_views import TERMINAL_STATUSES
 from tvashtr.db import session_scope
-from tvashtr.models import ConnectorConnection, Run
+from tvashtr.models import AgentInvocation, ConnectorConnection, Run, RunEvent
+
+logger = logging.getLogger(__name__)
 
 # ---- The run token: the only credential an agent's sandbox gets for a connector ----
 
@@ -84,6 +91,101 @@ def read_run_token(value: object, max_age: int = RUN_TOKEN_MAX_AGE_SECONDS) -> R
         connection_id=connection_id,
         access="write" if access == "write" else "read",
     )
+
+
+# ---- What a run records: ``connector_skipped`` (and, below, ``connector_call``) events ----
+
+# Why a run went without a connector (the contract's Warnings table).
+DISCONNECTED = "it was disconnected"
+SIGNIN_EXPIRED = "its sign-in expired"
+KEY_STOPPED = "its key stopped working"
+UNREACHABLE = "we couldn’t reach it"
+
+# ponytail: the proxy's events share the int ``seq`` column with the engine's own (from 0) and
+# the Desktop runner's (from ``desktop_jobs.RUNNER_SEQ_OFFSET`` = 100), in a band of their own per
+# invocation. The three never meet below a billion events; give the kinds their own column if
+# they ever need to.
+EVENT_SEQ_BAND = 1_000_000_000
+_SEQ_ATTEMPTS = 5
+
+
+def _latest_invocation(session: Session, run_id: str, node_id: object) -> int | None:
+    """The round that is running: the latest ``agent_invocations`` row for the run and node.
+    ``None`` without a node, or before its first round opened."""
+    nid = _as_uuid(node_id)
+    if nid is None:
+        return None
+    return session.execute(
+        select(AgentInvocation.id)
+        .where(AgentInvocation.run_id == run_id, AgentInvocation.node_id == nid)
+        .order_by(AgentInvocation.iteration.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def _next_seq(session: Session, run_id: str, invocation_id: int | None) -> int:
+    last = session.execute(
+        select(func.max(RunEvent.seq)).where(
+            RunEvent.run_id == run_id,
+            RunEvent.invocation_id.is_not_distinct_from(invocation_id),
+            RunEvent.seq >= EVENT_SEQ_BAND,
+        )
+    ).scalar_one()
+    return EVENT_SEQ_BAND if last is None else last + 1
+
+
+def _write_event(run_id: str, node_id: object, kind: str, payload: dict) -> None:
+    """One ``run_events`` row in the proxy's band. Two writers can read the same next ``seq``; the
+    loser of ``(run_id, invocation_id, seq)`` reads again."""
+    for _ in range(_SEQ_ATTEMPTS):
+        try:
+            with session_scope() as session:
+                invocation_id = _latest_invocation(session, run_id, node_id)
+                session.add(
+                    RunEvent(
+                        run_id=run_id,
+                        invocation_id=invocation_id,
+                        seq=_next_seq(session, run_id, invocation_id),
+                        kind=kind,
+                        payload=payload,
+                    )
+                )
+            return
+        except IntegrityError:
+            continue
+    logger.warning("connectors: gave up recording a %s event for run %s", kind, run_id)
+
+
+def record_skip(
+    run_id: str, node_id: object, connection_id: object | None, name: str, reason: str
+) -> None:
+    """A run went without a connector: the ``run_warnings`` row and the ``connector_skipped``
+    event, always together. ``connection_id`` is ``None`` (and ``name`` "a connector") when the
+    grant names nothing of the owner's. Sync database work: call it off the event loop."""
+    record_resolution_warning(run_id, "connector", name, reason)
+    _write_event(
+        run_id,
+        node_id,
+        "connector_skipped",
+        {
+            "connection_id": str(connection_id) if connection_id is not None else None,
+            "connector": name,
+            "reason": reason,
+        },
+    )
+
+
+def sign_in_expired(run_id: str, node_id: object, row: ConnectorConnection) -> None:
+    """The provider no longer takes ``row``'s sign-in (or key): the row becomes ``needs_signin``
+    (a row that already is keeps its own ``last_error``) and the run records the skip. Takes the
+    row lock in its own session, like every writer of the sign-in."""
+    reason = KEY_STOPPED if row.auth_kind == "api_key" else SIGNIN_EXPIRED
+    with session_scope() as session:
+        live = session.get(ConnectorConnection, row.id, with_for_update=True)
+        if live is not None and live.status == "connected":
+            live.status = "needs_signin"
+            live.last_error = f"{reason[0].upper()}{reason[1:]}."
+    record_skip(run_id, node_id, row.id, row.name, reason)
 
 
 def recent_use(session: Session, owner_id: uuid.UUID, connection_id: uuid.UUID) -> list:
