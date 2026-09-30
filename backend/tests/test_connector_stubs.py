@@ -189,9 +189,7 @@ def test_recent_use_is_empty():
         assert connector_proxy.recent_use(s, owner, _connection(owner)) == []
 
 
-def test_the_proxy_server_is_stateless_has_no_tools_yet_and_accepts_any_host():
-    import asyncio
-
+def test_the_proxy_server_is_stateless_and_accepts_any_host():
     mcp = get_connectors_mcp()
     assert mcp is get_connectors_mcp()
     assert mcp.name == "tvashtr-connectors"
@@ -200,8 +198,6 @@ def test_the_proxy_server_is_stateless_has_no_tools_yet_and_accepts_any_host():
     # Agents reach it by the public host (or the docker host), never by localhost: the SDK's
     # localhost-only Host check would answer them 421. The run token is what guards it.
     assert mcp.settings.transport_security.enable_dns_rebinding_protection is False
-    # Stub assertion: task B3.4 (the list and call overrides) removes this line (build plan §2).
-    assert asyncio.run(mcp.list_tools()) == []
 
 
 # ---- connectors.py: the shared helpers (final) ----

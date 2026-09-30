@@ -1,6 +1,7 @@
-"""Connectors: the proxy core (stream B3.3). ``proxy_list_tools`` and ``proxy_call_tool`` against
-an in-memory provider: the read-only rule, the credential added on the server, the one refresh a
-401 gets, what is recorded, and that none of the sync work runs on the event loop.
+"""Connectors: the proxy core (stream B3.3) and its mount (B3.4). ``proxy_list_tools`` and
+``proxy_call_tool`` against an in-memory provider: the read-only rule, the credential added on
+the server, the one refresh a 401 gets, what is recorded, and that none of the sync work runs on
+the event loop.
 
 ``connectors.upstream_target`` belongs to stream B1.5 (a stub here), so these tests put in a double
 that does what the contract says it does: the entry's read-only parameters at access ``read``.
@@ -8,17 +9,32 @@ that does what the contract says it does: the entry's read-only parameters at ac
 Contract: ``docs/superpowers/plans/api/connectors.md`` (The proxy, ``connector_call`` events)."""
 
 import asyncio
+import json
 import logging
+import os
+import subprocess
+import sys
 import threading
 import uuid
+from types import SimpleNamespace
 from urllib.parse import urlencode
 
 import anyio
 import pytest
 from mcp import McpError
-from mcp.types import CallToolResult, ErrorData, TextContent, Tool, ToolAnnotations
+from mcp.types import (
+    CallToolRequest,
+    CallToolRequestParams,
+    CallToolResult,
+    ErrorData,
+    TextContent,
+    Tool,
+    ToolAnnotations,
+)
 from sqlalchemy import select
+from starlette.datastructures import Headers
 
+from tvashtr.config import get_settings
 from tvashtr.control_plane import (
     connector_catalog,
     connector_oauth,
@@ -29,6 +45,7 @@ from tvashtr.control_plane import (
 from tvashtr.control_plane.connector_proxy import RunGrant, proxy_call_tool, proxy_list_tools
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.db import session_scope
+from tvashtr.mcp.connectors import get_connectors_mcp
 from tvashtr.models import (
     AgentInvocation,
     AgentNode,
@@ -665,3 +682,223 @@ def test_the_provider_credential_is_never_returned_recorded_or_logged(monkeypatc
         seen = repr((answers, recorded, _warnings(grant), _row(grant).last_error)) + caplog.text
         for secret in ("PLAINTEXT", "Bearer"):
             assert secret not in seen
+
+
+# ---- B3.4: the mount (``tvashtr/mcp/connectors.py``) reads the run token off the request ----
+
+
+def _mount(monkeypatch, authorization: str | None, upstream: FakeUpstream):
+    """The mounted server with a stub request context that carries ``authorization``, and the
+    provider replaced by ``upstream``."""
+    mcp = get_connectors_mcp()
+    headers = Headers({"Authorization": authorization} if authorization is not None else {})
+    context = SimpleNamespace(
+        request_context=SimpleNamespace(request=SimpleNamespace(headers=headers))
+    )
+    monkeypatch.setattr(mcp, "get_context", lambda: context)
+    monkeypatch.setattr(connector_upstream, "list_tools", upstream.list_tools)
+    monkeypatch.setattr(connector_upstream, "call_tool", upstream.call_tool)
+    return mcp
+
+
+def _bearer(grant: RunGrant) -> str:
+    token = connector_proxy.sign_run_token(
+        grant.run_id, grant.node_id, grant.connection_id, grant.access
+    )
+    return f"Bearer {token}"
+
+
+def test_the_mount_lists_and_calls_for_a_good_run_token(monkeypatch):
+    upstream = FakeUpstream()
+    grant = _grant("write")  # the token says write, the connection is read only
+    mcp = _mount(monkeypatch, _bearer(grant), upstream)
+
+    assert [tool.name for tool in asyncio.run(mcp.list_tools())] == READS
+    result = asyncio.run(mcp.call_tool("list_issues", {"query": "is:open"}))
+    assert result is upstream.result
+    blocked = asyncio.run(mcp.call_tool("create_issue", {"title": "Ship it"}))
+    assert blocked.isError and _text(blocked) == READ_ONLY_ERROR
+
+    assert upstream.calls[0][2] == {"Authorization": "Bearer KEY-PLAINTEXT"}  # never the run token
+    assert [(e.payload["tool"], e.payload["ok"], e.payload["blocked"]) for e in _events(grant)] == [
+        ("list_issues", True, False),
+        ("create_issue", False, True),
+    ]
+    # The scheme is matched the way HTTP says: any case.
+    mcp = _mount(monkeypatch, _bearer(grant).replace("Bearer", "bearer"), upstream)
+    assert [tool.name for tool in asyncio.run(mcp.list_tools())] == READS
+
+
+@pytest.mark.parametrize("authorization", [None, "", "Bearer", "Bearer nope", "Basic abc", "junk"])
+def test_the_mount_offers_nothing_without_a_good_run_token(monkeypatch, authorization):
+    upstream = FakeUpstream()
+    mcp = _mount(monkeypatch, authorization, upstream)
+
+    assert asyncio.run(mcp.list_tools()) == []
+    result = asyncio.run(mcp.call_tool("list_issues", {}))
+    assert result.isError and _text(result) == "This connector isn’t available for this run."
+    assert upstream.lists == [] and upstream.calls == []
+
+
+def test_a_token_stops_at_the_mount_when_its_run_ends_or_its_connection_goes(monkeypatch):
+    upstream = FakeUpstream()
+    grant = _grant("read")
+    mcp = _mount(monkeypatch, _bearer(grant), upstream)
+    assert [tool.name for tool in asyncio.run(mcp.list_tools())] == READS
+
+    with session_scope() as s:
+        s.get(Run, uuid.UUID(grant.run_id)).status = "completed"
+    assert asyncio.run(mcp.list_tools()) == []
+    assert asyncio.run(mcp.call_tool("list_issues", {})).isError
+    assert len(upstream.lists) == 1 and upstream.calls == []
+
+    with session_scope() as s:
+        s.get(Run, uuid.UUID(grant.run_id)).status = "running"
+        s.delete(s.get(ConnectorConnection, grant.connection_id))  # disconnected mid-run
+    assert asyncio.run(mcp.list_tools()) == []
+    result = asyncio.run(mcp.call_tool("list_issues", {}))
+    assert result.isError and _text(result) == "This connector isn’t available for this run."
+
+
+def test_the_mount_outside_a_request_offers_nothing():
+    mcp = get_connectors_mcp()
+    assert asyncio.run(mcp.list_tools()) == []
+    assert asyncio.run(mcp.call_tool("list_issues", {})).isError
+
+
+def test_the_mount_reads_the_token_off_the_event_loop(monkeypatch):
+    threads: dict[str, int] = {}
+    real = connector_proxy.read_run_token
+
+    def fake_read(value):
+        threads["token"] = threading.get_ident()
+        return real(value)
+
+    monkeypatch.setattr(connector_proxy, "read_run_token", fake_read)
+    mcp = _mount(monkeypatch, _bearer(_grant("read")), FakeUpstream())
+
+    async def on_loop() -> list:
+        threads["loop"] = threading.get_ident()
+        return await mcp.list_tools()
+
+    assert len(asyncio.run(on_loop())) == 2
+    assert threads["token"] != threads["loop"]
+
+
+def test_the_mounts_call_handler_goes_straight_to_the_call(monkeypatch):
+    """The SDK's own ``tools/call`` handler first looks the tool up in a cache it fills by calling
+    ``list_tools``: one more provider round trip per miss, in a cache every agent shares. With
+    input validation off nothing uses what it finds."""
+    upstream = FakeUpstream()
+    grant = _grant("read")
+    mcp = _mount(monkeypatch, _bearer(grant), upstream)
+    handler = mcp._mcp_server.request_handlers[CallToolRequest]
+    asyncio.run(mcp.list_tools())
+    assert len(upstream.lists) == 1
+
+    def call(name: str, arguments: dict | None):
+        params = CallToolRequestParams(name=name, arguments=arguments)
+        return asyncio.run(handler(CallToolRequest(method="tools/call", params=params))).root
+
+    # Another agent's listing empties the SDK's cache; this agent's call must not list again.
+    mcp._mcp_server._tool_cache.clear()
+    assert call("list_issues", {"query": "is:open"}) is upstream.result
+    assert call("list_issues", None) is upstream.result  # no arguments at all
+    assert _text(call("create_issue", {"title": "x"})) == READ_ONLY_ERROR
+    assert len(upstream.lists) == 1
+    assert [call[4] for call in upstream.calls] == [{"query": "is:open"}, {}]
+
+
+def test_the_mount_answers_safely_when_something_breaks(monkeypatch, caplog):
+    def broken(value):
+        raise RuntimeError("could not connect: postgresql://tvashtr:PLAINTEXT@db/tvashtr")
+
+    monkeypatch.setattr(connector_proxy, "read_run_token", broken)
+    mcp = _mount(monkeypatch, "Bearer anything", FakeUpstream())
+
+    assert asyncio.run(mcp.list_tools()) == []  # a failing server would stop the agent starting
+    result = asyncio.run(mcp.call_tool("list_issues", {}))
+    assert result.isError and _text(result) == "This connector isn’t available for this run."
+    assert "PLAINTEXT" not in caplog.text and "RuntimeError" in caplog.text
+
+
+# The whole HTTP path, in a subprocess: the proxy's session manager can be started once per
+# process and the suite's ``client`` already started it (and probing a streamable-HTTP mount on
+# the shared app tears down DBOS). It never imports ``tvashtr.main``.
+_HTTP_PROBE = """
+import asyncio, json, logging, os
+
+import httpx
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
+from starlette.applications import Starlette
+
+from tvashtr.mcp.connectors import get_connectors_mcp, mount_connectors_mcp
+
+logging.disable(logging.CRITICAL)
+proxy = get_connectors_mcp().streamable_http_app()
+app = Starlette()
+mount_connectors_mcp(app, proxy)
+
+
+async def main():
+    out = {}
+    headers = {"Authorization": "Bearer " + os.environ["RUN_TOKEN"]}
+    async with proxy.router.lifespan_context(proxy):
+        http = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), headers=headers)
+        # The address an agent is given: a public host, no trailing slash.
+        address = "https://tvashtr.fly.dev/mcp/connectors"
+        async with http, streamable_http_client(address, http_client=http) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                out["tools"] = [
+                    [tool.name, tool.outputSchema] for tool in (await session.list_tools()).tools
+                ]
+                for name, arguments in (("list_things", {}), ("create_thing", {"name": "x"})):
+                    result = await session.call_tool(name, arguments)
+                    out[name] = [result.isError, "".join(b.text for b in result.content)]
+    print(json.dumps(out))
+
+
+asyncio.run(main())
+"""
+
+
+def test_the_proxy_over_http_lists_and_calls_the_provider_for_a_run_token(fake_connector_url):
+    grant = _grant("write", name="Fake", slug="fake", url=fake_connector_url, connector_key="x")
+    with session_scope() as s:
+        connectors.write_secret(
+            s.get(ConnectorConnection, grant.connection_id),
+            {"headers": {"Authorization": "Bearer fake-static-token"}},
+        )
+    env = {
+        **os.environ,
+        "DATABASE_URL": get_settings().database_url,
+        "TVASHTR_CONNECTORS_ALLOW_LOCAL": "1",  # the fake provider is on 127.0.0.1
+        "TVASHTR_HOSTED_MODE": "false",
+        "RUN_TOKEN": _bearer(grant).removeprefix("Bearer "),
+    }
+
+    ran = subprocess.run(
+        [sys.executable, "-c", _HTTP_PROBE],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env=env,
+    )
+
+    assert ran.returncode == 0, ran.stderr
+    out = json.loads(ran.stdout.strip().splitlines()[-1])
+    # The connection is read only, whatever the token says: the write isn't offered.
+    assert out["tools"] == [["list_things", None], ["get_thing", None], ["list_projects", None]]
+    assert out["list_things"][0] is False and '"t1"' in out["list_things"][1]
+    assert out["create_thing"] == [
+        True,
+        "Fake is read only for this agent. create_thing can change data, so it’s off.",
+    ]
+    assert "fake-static-token" not in ran.stdout + ran.stderr
+    assert [(e.payload["tool"], e.payload["ok"], e.payload["blocked"]) for e in _events(grant)] == [
+        ("list_things", True, False),
+        ("create_thing", False, True),
+    ]
