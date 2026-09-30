@@ -66,9 +66,10 @@ PUBLIC = "93.184.216.34"
 
 
 def _dns(monkeypatch, table: dict[str, list[str]]) -> list[str]:
-    """Patch ``socket.getaddrinfo`` with a fixed table. A list of lists answers one list per call
-    (the last one repeats). A host that isn't in the table answers itself, as a literal IP does.
-    Returns the list of hosts that were looked up."""
+    """Replace ``connector_net``'s lookup with a fixed table (``socket.getaddrinfo`` itself is left
+    alone: it is the whole process's resolver). A list of lists answers one list per call (the last
+    one repeats). A host that isn't in the table answers itself, as a literal IP does. Returns the
+    list of hosts that were looked up."""
     calls: list[str] = []
 
     def fake(host, port, *args, **kwargs):  # noqa: ARG001
@@ -87,8 +88,17 @@ def _dns(monkeypatch, table: dict[str, list[str]]) -> list[str]:
             for a in answers
         ]
 
-    monkeypatch.setattr(socket, "getaddrinfo", fake)
+    monkeypatch.setattr(connector_net, "_getaddrinfo", fake)
     return calls
+
+
+def test_the_dns_fake_leaves_the_process_resolver_alone(monkeypatch):
+    """psycopg resolves the database host through ``socket.getaddrinfo``: a fake installed there
+    would fail any Postgres connection another thread opens while one of these tests runs."""
+    real = socket.getaddrinfo
+    _dns(monkeypatch, {"mcp.example.com": [PUBLIC]})
+    assert socket.getaddrinfo is real
+    assert connector_net._resolve("mcp.example.com", None) == PUBLIC
 
 
 @pytest.fixture
@@ -151,7 +161,7 @@ def test_a_host_that_does_not_resolve_is_refused(strict, monkeypatch):
     def boom(*args, **kwargs):
         raise socket.gaierror("no such host")
 
-    monkeypatch.setattr(socket, "getaddrinfo", boom)
+    monkeypatch.setattr(connector_net, "_getaddrinfo", boom)
     with pytest.raises(UnsafeUrl):
         check_url("https://nowhere.example.com/mcp")
 

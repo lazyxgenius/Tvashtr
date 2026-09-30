@@ -68,11 +68,16 @@ def _is_public(address: str) -> bool:
     return (mapped or ip).is_global
 
 
+# The lookup, as a name tests replace. They must not patch ``socket.getaddrinfo`` itself: that is
+# the whole process's resolver (psycopg resolves the database host through it).
+_getaddrinfo = socket.getaddrinfo
+
+
 def _resolve(host: str, port: int | None) -> str:
     """Resolve ``host`` and return the address to connect to. Every address it resolves to must be
     public, else :class:`UnsafeUrl`."""
     try:
-        infos = socket.getaddrinfo(host, port or 443, type=socket.SOCK_STREAM)
+        infos = _getaddrinfo(host, port or 443, type=socket.SOCK_STREAM)
     except OSError as exc:
         raise UnsafeUrl(f"{host} doesn't resolve") from exc
     addresses = [info[4][0] for info in infos]
