@@ -40,7 +40,8 @@ def page_url(cursor: str | None) -> str:
 
 def fetch_page(cursor: str | None) -> dict:
     """One page of the registry. About one request in ten never answers (a normal page takes
-    under two seconds), so the wait is short and a page is tried several times."""
+    under two seconds), and a page can stay that way for a minute or two, so the wait is short
+    and a page is tried several times with a growing pause."""
     request = urllib.request.Request(page_url(cursor), headers={"Accept": "application/json"})
     for attempt in range(1, ATTEMPTS + 1):
         try:
@@ -49,7 +50,7 @@ def fetch_page(cursor: str | None) -> dict:
         except (OSError, ValueError) as exc:  # URLError and a timeout are OSErrors
             if attempt == ATTEMPTS:
                 raise SystemExit(f"the registry didn't answer ({exc}); nothing written") from exc
-            time.sleep(attempt)
+            time.sleep(5 * attempt)
     raise AssertionError("unreachable")
 
 
