@@ -1153,6 +1153,29 @@ What the streams left for T.1:
   disconnect in the backend; the probe still has to prove the mounted HTTP path on a running
   backend.
 
+**T.1 as built:**
+- `scripts/connectors_e2e.sh`: backend :8043, Vite :5243, the fake on :9911 (`PORT`, `VITE_PORT`,
+  `FAKE_PORT`), database `tvashtr_conn_e2e` (`TVASHTR_CONNECTORS_E2E_DATABASE_URL`; created when
+  missing, migrated to head). It sets its posture after it reads `.env`, asserts it, runs the
+  spec, then the probe, and exits non-zero if either failed. Spec paths given as arguments run
+  instead of the default, on the same stack: `./scripts/connectors_e2e.sh e2e/connectors.spec.ts
+  e2e/revamp-shell.spec.ts e2e/tools-c7c.spec.ts`.
+- `TVASHTR_CONNECTORS_SHOTS_DIR` makes the spec save a screenshot of each key screen (Browse on a
+  first visit, the custom sheet before and after the check, the confirm page, the Connected tab,
+  the connector's page, the agent's drawer, the Disconnect dialog).
+- The spec makes its team through the API (`two_node`), as it makes its account. It checks the
+  server as "Fake server" and renames it "Fake" before the sign-in, then asserts the name and the
+  slug `fake`. The sheet names the sign-in site by host without a port (`127.0.0.1`). The design
+  system's checkbox keeps its input out of sight, so the spec clicks the label.
+- Both spec changes above are made. `revamp-shell` asserts the final address (`…/browse`, which
+  the assertion waits for), the heading and the nav's current item.
+- `scripts/tools_c7c_e2e.sh` and the other `:8000` scripts migrate the database `.env` names.
+  From this branch, before it is merged, that would put 0043 on the shared database, so the two
+  older specs were run through `connectors_e2e.sh` instead. `revamp-shell` has no script of its
+  own and needs `TVASHTR_HOSTED_MODE=false`, which that stack has.
+- Not covered in the browser: a callback window that does hold the owner's session (the web's
+  usual case; `tests/test_connector_oauth_routes.py` covers it), Featured connectors, and Desktop.
+
 **T.2 Run-time check (operator-run, needs one provider key).** `scripts/connectors_run_check.py`
 (after `make seed`; LOCAL sandbox; the backend started with `TVASHTR_CONNECTORS_ALLOW_LOCAL=1`
 and `TVASHTR_HOSTED_MODE=false`, for the reason in T.1): connect the fake server through the API, grant it to a
