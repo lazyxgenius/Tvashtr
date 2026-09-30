@@ -195,7 +195,9 @@ export function BrowseTab({
           </div>
         </section>
       ) : page === null ? (
-        <div className="cn-grid" aria-busy="true" aria-label="Loading the catalog" />
+        <section className="tk-card" aria-busy="true">
+          <div className="tk-state">Loading the catalog…</div>
+        </section>
       ) : (
         <>
           {showGrid ? (
@@ -275,7 +277,7 @@ export function BrowseTab({
                 ))}
               </ul>
               {page.next_offset !== null && (
-                <div>
+                <div className="cn-more">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -285,6 +287,11 @@ export function BrowseTab({
                   >
                     Show more
                   </Button>
+                  {catalog.moreFailed && (
+                    <span className="cn-error" role="alert">
+                      Couldn’t load more. Try again.
+                    </span>
+                  )}
                 </div>
               )}
             </section>

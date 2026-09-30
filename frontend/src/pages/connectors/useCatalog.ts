@@ -21,6 +21,8 @@ export interface Catalog {
   failed: boolean;
   retry: () => void;
   loadingMore: boolean;
+  /** The last "Show more" didn't load (until the next try, or another list). */
+  moreFailed: boolean;
   more: () => void;
   /** How many connectors the whole catalog holds (null until an unfiltered answer). */
   size: number | null;
@@ -33,6 +35,7 @@ export function useCatalog(enabled: boolean): Catalog {
   const [page, setPage] = useState<CatalogPage | null>(null);
   const [failed, setFailed] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [moreFailed, setMoreFailed] = useState(false);
   const [size, setSize] = useState<number | null>(null);
   const [attempt, setAttempt] = useState(0);
   // Which list is on screen: a "Show more" answer for an older one is dropped.
@@ -48,6 +51,7 @@ export function useCatalog(enabled: boolean): Catalog {
     const mine = ++generation.current;
     setFailed(false);
     setLoadingMore(false);
+    setMoreFailed(false);
     listCatalog({ q: applied, category: category ?? undefined }).then(
       (next) => {
         if (generation.current !== mine) return;
@@ -62,13 +66,18 @@ export function useCatalog(enabled: boolean): Catalog {
     if (!page || page.next_offset === null || loadingMore) return;
     const mine = generation.current;
     setLoadingMore(true);
+    setMoreFailed(false);
     listCatalog({ q: applied, category: category ?? undefined, offset: page.next_offset }).then(
       (next) => {
         if (generation.current !== mine) return;
         setLoadingMore(false);
         setPage({ ...next, items: [...page.items, ...next.items] });
       },
-      () => generation.current === mine && setLoadingMore(false),
+      () => {
+        if (generation.current !== mine) return;
+        setLoadingMore(false);
+        setMoreFailed(true);
+      },
     );
   }, [page, applied, category, loadingMore]);
 
@@ -84,6 +93,7 @@ export function useCatalog(enabled: boolean): Catalog {
     failed,
     retry,
     loadingMore,
+    moreFailed,
     more,
     size,
   };

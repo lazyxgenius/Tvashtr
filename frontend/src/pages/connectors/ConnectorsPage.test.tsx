@@ -469,6 +469,46 @@ describe("Browse", () => {
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 
+  it("says when more couldn’t be loaded, and loads it on the next try", async () => {
+    let fail = true;
+    mockApi({
+      "GET /api/connectors": { connections: [SUPABASE] },
+      "GET /api/connectors/catalog": (url: URL) =>
+        fail && url.searchParams.has("offset")
+          ? new Response(JSON.stringify({ detail: "boom" }), { status: 500 })
+          : catalog(url),
+    });
+    renderWithProviders(<ConnectorsPage view="browse" />);
+    const reg = await screen.findByRole("region", { name: "From the MCP Registry" });
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(await within(reg).findByRole("alert")).toHaveTextContent(
+      "Couldn’t load more. Try again.",
+    );
+    expect(within(reg).getAllByRole("listitem")).toHaveLength(2);
+
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    await waitFor(() => expect(within(reg).getAllByRole("listitem")).toHaveLength(3));
+    expect(within(reg).queryByRole("alert")).toBeNull();
+  });
+
+  it("says it is loading the catalog", async () => {
+    let answer: (page: unknown) => void = () => {};
+    mockApi({
+      "GET /api/connectors": { connections: [SUPABASE] },
+      "GET /api/connectors/catalog": () => new Promise((resolve) => (answer = resolve)),
+    });
+    renderWithProviders(<ConnectorsPage view="browse" />);
+    // Words on the page, as the connector's own page has while it loads.
+    expect(await screen.findByText("Loading the catalog…")).toBeVisible();
+    await act(async () => {
+      answer(catalog(new URL("http://localhost/api/connectors/catalog")));
+      await Promise.resolve();
+    });
+    expect(await screen.findByRole("region", { name: "Featured" })).toBeInTheDocument();
+    expect(screen.queryByText("Loading the catalog…")).toBeNull();
+  });
+
   it("says the catalog couldn’t load, and retries", async () => {
     let fail = true;
     mockApi({
