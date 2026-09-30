@@ -83,6 +83,9 @@ export function CustomConnectorSheet({
       }
       return done(made);
     }
+    // The sign-in isn't where the check found it: the form shows the site it is at now, and the
+    // next click opens it.
+    if (outcome.kind === "moved") return setConn(outcome.connection);
     if (outcome.kind === "failed") return setTrouble({ kind: "failed", message: outcome.message });
     if (outcome.kind === "refused" && outcome.refusal?.code === "cannot_register") {
       return setTrouble({ kind: "cannot_register" });

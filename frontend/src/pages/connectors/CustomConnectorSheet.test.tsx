@@ -105,6 +105,44 @@ describe("CustomConnectorSheet", () => {
     expect(screen.getByRole("button", { name: "Check the server" })).toBeEnabled();
   });
 
+  it("opens nothing when the sign-in has moved since the check, and asks again with the new site", async () => {
+    // The server names another sign-in server the second time it is asked (`oauth/start` runs
+    // discovery again). The window only ever opens at a site the sheet has shown.
+    const checked = { ...PENDING, signin_host: "mcp.acme.dev", signin_host_differs: false };
+    const moved = { ...checked, signin_host: "login.elsewhere.io", signin_host_differs: true };
+    const ELSEWHERE = "https://login.elsewhere.io/authorize?state=s1";
+    const calls = serve({
+      "POST /api/connectors": checked,
+      "POST /api/connectors/c1/oauth/start": {
+        authorize_url: ELSEWHERE,
+        signin_host: "login.elsewhere.io",
+        expires_in: 600,
+      },
+    });
+    show();
+    fill();
+    click("Check the server");
+    expect(await screen.findByText(/You’ll sign in at/)).toHaveTextContent(
+      "You’ll sign in at mcp.acme.dev.",
+    );
+    row = moved;
+    click("Continue to mcp.acme.dev");
+
+    expect(await screen.findByText(/a different site from mcp\.acme\.dev/)).toHaveTextContent(
+      "You’ll sign in at login.elsewhere.io, a different site from mcp.acme.dev. Only continue if you know it.",
+    );
+    expect(popup?.location.href).toBe("about:blank");
+    expect(popup?.close).toHaveBeenCalled();
+    expect(screen.queryByText(/Waiting for you to finish/)).toBeNull();
+    expect(calls.filter((c) => c.path.endsWith("/oauth/start"))).toHaveLength(1);
+
+    // Shown now: the next click opens it.
+    popup = fakePopup();
+    click("Continue to login.elsewhere.io");
+    await screen.findByText("Waiting for you to finish in the acme-metrics window");
+    expect(popup.location.href).toBe(ELSEWHERE);
+  });
+
   it("checks the server, shows where you’ll sign in, and connects", async () => {
     const calls = serve();
     const { onDone } = show();

@@ -530,8 +530,15 @@ sign-in about an hour after each one.
 `TVASHTR_CONNECTORS_ALLOW_LOCAL`). The web app and Desktop check that again before they open it.
 `signin_host` is the host of `authorize_url`, and the client holds the server to it: it reads the
 host out of `authorize_url` the way a browser does (`new URL`), and refuses the answer when that
-host isn't `signin_host` or when the address carries a user name or password. So the host that is
-shown is always the host the window opens.
+host isn't `signin_host` or when the address carries a user name or password. `oauth/start` runs
+discovery again, so its `signin_host` can differ from the one the connection carried when the
+sheet showed it (`POST /api/connectors`, or the stored sign-in for "Sign in again", which shows no
+host at all). The client compares the two (`useConnectSignIn`; a connection with no `signin_host`
+counts as its `host`): when they differ it opens nothing, reads the connection again (its
+`signin_host` and `signin_host_differs` now name the new site), shows "You’ll sign in at
+<host>" (with ", a different site from <connector host>. Only continue if you know it." when it
+differs) and asks for another click. So the host that is shown is always the host the window
+opens.
 Errors: 404; 409 `{"code": "not_oauth", "message": "This connector doesn’t sign in."}` (the row
 isn't `oauth`, or its server no longer offers a sign-in); 422 `cannot_register`; 429 `busy` (it
 holds one of the places for requests that wait on a provider, see Connections); 502

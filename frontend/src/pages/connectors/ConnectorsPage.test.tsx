@@ -81,6 +81,7 @@ const SENTRY = connection({
   slug: "sentry",
   publisher: "Sentry",
   host: "mcp.sentry.dev",
+  signin_host: "sentry.io", // where it signed in: "Sign in again" opens only there
   status: "needs_signin",
   last_error: "Its sign-in expired.",
   used_by: { agent_count: 1, team_count: 1 },

@@ -920,6 +920,33 @@ describe("for a connection you already have", () => {
     expect(prepared.close).not.toHaveBeenCalled();
   });
 
+  it("doesn’t open a sign-in that has moved to another site before it has shown it", async () => {
+    // "Sign in again" shows no host: the window opens where the sign-in was when it was
+    // connected. A server that has moved it since is shown first, and asked about.
+    const prepared = fakePopup();
+    const ELSEWHERE = "https://login.elsewhere.io/authorize?state=s1";
+    const calls = serve({
+      "POST /api/connectors/c1/oauth/start": {
+        authorize_url: ELSEWHERE,
+        signin_host: "login.elsewhere.io",
+        expires_in: 600,
+      },
+    });
+    row = connection({ signin_host: "login.elsewhere.io", signin_host_differs: true });
+    show({ connection: connection(), mode: "signin", prepared: prepared as unknown as Window });
+
+    expect(await screen.findByText(/a different site from/)).toHaveTextContent(
+      "You’ll sign in at login.elsewhere.io, a different site from mcp.supabase.com. Only continue if you know it.",
+    );
+    expect(prepared.location.href).toBe("about:blank");
+    expect(prepared.close).toHaveBeenCalled();
+    expect(calls.filter((c) => c.path.endsWith("/oauth/start"))).toHaveLength(1);
+
+    click("Continue to login.elsewhere.io");
+    await screen.findByText("Waiting for you to finish in the Supabase window");
+    expect(popup?.location.href).toBe(ELSEWHERE);
+  });
+
   it("keeps the old sign-in’s words apart from a new failure", async () => {
     const expired = connection({ status: "needs_signin", last_error: "Its sign-in expired." });
     serve();

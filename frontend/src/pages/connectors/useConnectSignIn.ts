@@ -35,6 +35,9 @@ export type SignInOutcome =
   | { kind: "timeout" }
   /** The connection was disconnected while the sign-in was going. */
   | { kind: "gone" }
+  /** The sign-in is at another site than the one that was shown. Nothing was opened:
+   *  `connection` names the site now, to show before the next try. */
+  | { kind: "moved"; connection: ConnectionDetail }
   /** The sign-in couldn't be started, or its address couldn't be opened (`refusal` null). */
   | { kind: "refused"; refusal: ConnectorRefusal | null };
 
@@ -97,9 +100,18 @@ export function useConnectSignIn(onOutcome: (outcome: SignInOutcome) => void): C
       setState({ phase: "starting" });
       let refusal: ConnectorRefusal | null = null;
       try {
-        const { authorize_url, open_url } = await startSignIn(connection.id);
+        const { authorize_url, open_url, signin_host } = await startSignIn(connection.id);
         if (run.current !== mine) return;
         if (!alive.current) return closeWindow();
+        // The window opens only at the site that was shown. The server looks the sign-in up
+        // again when it starts one, and may find it somewhere else than it did before.
+        if (signin_host !== (connection.signin_host ?? connection.host).toLowerCase()) {
+          const now = await getConnection(connection.id);
+          if (run.current !== mine) return;
+          closeWindow();
+          setState({ phase: "idle" });
+          return report.current({ kind: "moved", connection: now });
+        }
         // Tvashtr's own address when the server names one: it leads to `authorize_url`.
         const target = open_url ?? authorize_url;
         const opened = openSignIn(target, popup.current);

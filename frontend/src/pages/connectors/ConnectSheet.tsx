@@ -150,6 +150,12 @@ export function ConnectSheet({
 
   const onOutcome = (outcome: SignInOutcome) => {
     if (outcome.kind === "connected") return afterConnected(outcome.connection);
+    if (outcome.kind === "moved") {
+      // Not where the sheet said (or, for "Sign in again", where it was): shown before it opens.
+      setConn(outcome.connection);
+      setOtherSite(outcome.connection.signin_host ?? outcome.connection.host);
+      return setStep("access");
+    }
     if (outcome.kind === "failed") {
       setProblem({
         title: firstSentence(outcome.message),
@@ -509,25 +515,36 @@ export function ConnectSheet({
     );
   } else {
     const signedIn = mode === "new" && conn?.status === "connected";
+    // Same site as the connector (a sign-in that moved within it): said plainly, no warning.
+    const whereNote =
+      otherSite &&
+      (conn && !conn.signin_host_differs ? (
+        <Note kind="info">
+          You’ll sign in at <b>{otherSite}</b>.
+        </Note>
+      ) : (
+        <Note kind="warn">
+          You’ll sign in at <b>{otherSite}</b>, a different site from {host}. Only continue if you
+          know it.
+        </Note>
+      ));
     body = (
       <>
         {mode === "new" ? (
           <>
             {unreviewed}
             {entry?.description && <p className="cn-lead">{entry.description}</p>}
-            {otherSite && (
-              <Note kind="warn">
-                You’ll sign in at <b>{otherSite}</b>, a different site from {host}. Only continue if
-                you know it.
-              </Note>
-            )}
+            {whereNote}
             {!reviewed && entry?.auth !== "none" && <OwnSignInNote name={name} />}
             {choice(true)}
           </>
         ) : (
-          <p className="cn-lead">
-            {`Sign in to ${name} again. The agents that use it keep their access.`}
-          </p>
+          <>
+            <p className="cn-lead">
+              {`Sign in to ${name} again. The agents that use it keep their access.`}
+            </p>
+            {whereNote}
+          </>
         )}
         <SignInStaysNote />
         {alert}
