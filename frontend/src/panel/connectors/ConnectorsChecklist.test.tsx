@@ -116,6 +116,19 @@ describe("Connectors this agent can use", () => {
     expect(onChange).toHaveBeenLastCalledWith([{ id: "c2", access: "read" }]);
   });
 
+  it("never saves read & write under a connection that is read only", async () => {
+    // A drawer opened before the connection was narrowed still holds the old grant. Saved back,
+    // it would show nowhere and hand the agent write again once the connection is widened.
+    mockApi({ "GET /api/connectors": { connections: ALL } });
+    const onChange = vi.fn();
+    render(<ConnectorsChecklist value={[{ id: "c1", access: "write" }]} onChange={onChange} />);
+    fireEvent.click(await box("Notion"));
+    expect(onChange).toHaveBeenLastCalledWith([
+      { id: "c1", access: "read" },
+      { id: "c2", access: "read" },
+    ]);
+  });
+
   it("offers Access only on a ticked connection that allows writes (CnF-Grant-3)", async () => {
     mockApi({ "GET /api/connectors": { connections: ALL } });
     const onChange = vi.fn();

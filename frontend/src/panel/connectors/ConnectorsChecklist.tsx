@@ -81,7 +81,15 @@ export function ConnectorsChecklist({
   const granted = connections ? value.filter((g) => known.has(g.id)) : value;
   const write = (next: ConnectorGrant[], ticked: string | null = null) => {
     setFresh(ticked);
-    onChange(next);
+    // Read & write is never saved under a connection that is read only (a grant loaded before
+    // the connection was narrowed): it would show nowhere, and come back by itself when the
+    // connection is widened.
+    const readOnly = new Set(
+      (connections ?? []).filter((c) => c.access !== "write").map((c) => c.id),
+    );
+    onChange(
+      next.map((g) => (readOnly.has(g.id) && g.access === "write" ? { ...g, access: "read" } : g)),
+    );
   };
   const who = agentName ?? "This agent";
   const freshOne = connections?.find(
