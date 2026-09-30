@@ -293,13 +293,50 @@ def test_descriptions_are_capped_and_output_schemas_dropped():
     )
     long, short, bare = asyncio.run(proxy_list_tools(_grant(), upstream))
     assert long.description == "x" * 2000 and long.outputSchema is None
-    # Everything else about a tool is the provider's.
+    # Its title, input schema and hints are the provider's.
     assert (long.title, long.inputSchema, long.annotations.readOnlyHint) == (
         "Long",
         {"type": "object"},
         True,
     )
     assert short.description == "Lists things." and bare.description is None
+
+
+def test_a_listed_tool_is_bounded_in_every_field_and_so_is_the_list():
+    """The description cap is there so an unreviewed server can't pour text into an agent's
+    context. It has to hold for every field a tool can carry, and for the number of tools."""
+    big = "x" * 1_160_000
+    wide = Tool(
+        name="wide",
+        title=big,
+        inputSchema={"type": "object"},
+        annotations=ToolAnnotations(title=big, readOnlyHint=True, idempotentHint=True, note=big),
+        _meta={"note": big},
+        icons=[{"src": "https://x.example/i.png?" + big}],
+        smuggled=big,
+    )
+    deep = Tool(
+        name="deep",
+        inputSchema={"type": "object", "properties": {"q": {"description": big}}},
+        annotations=ToolAnnotations(readOnlyHint=True),
+    )
+    upstream = FakeUpstream([wide, deep, _tool("n" * 201, True), _tool("fine", True)])
+    grant = _grant()
+
+    tools = asyncio.run(proxy_list_tools(grant, upstream))
+
+    # A tool whose input schema or name is oversized isn't offered: cut, it would be another tool.
+    assert [tool.name for tool in tools] == ["wide", "fine"]
+    assert tools[0].title == "x" * 200 and tools[0].annotations.title == "x" * 200
+    assert (tools[0].annotations.readOnlyHint, tools[0].annotations.idempotentHint) == (True, True)
+    assert len(tools[0].model_dump_json()) < 1000  # nothing else rides along
+    # What isn't offered isn't callable as a read either.
+    assert _call(grant, upstream, "deep").isError and upstream.calls == []
+
+    many = FakeUpstream([_tool(f"tool_{n}", True) for n in range(500)])
+    offered = _list(_grant(), many)
+    assert offered == [f"tool_{n}" for n in range(200)] and connector_proxy.TOOLS_LIMIT == 200
+    assert {len(kept) for _when, kept in connector_proxy._read_only_hints.values()} == {2, 200}
 
 
 @pytest.mark.parametrize(

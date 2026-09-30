@@ -6,6 +6,7 @@ What a run shows).
 """
 
 import functools
+import json
 import logging
 import re
 import time
@@ -18,7 +19,7 @@ from typing import Any
 import anyio
 from itsdangerous import BadData, URLSafeTimedSerializer
 from mcp import McpError
-from mcp.types import CallToolResult, TextContent, Tool
+from mcp.types import CallToolResult, TextContent, Tool, ToolAnnotations
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -286,6 +287,9 @@ def record_call(
 LIST_TIMEOUT_SECONDS = 10.0
 CALL_TIMEOUT_SECONDS = 120.0
 DESCRIPTION_LIMIT = 2000
+SCHEMA_LIMIT = 32_000  # a tool's input schema, as JSON
+TOOLS_LIMIT = 200
+_HINTS = ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint")
 UNAVAILABLE = "This connector isn’t available for this run."
 
 # ponytail: ``{(connection, effective access): (when, {tool: readOnlyHint})}``, the provider's
@@ -363,10 +367,38 @@ async def _provider[T](
         raise _Failed(f"{row.name} answered an error: {exc.error.message}") from None
 
 
+def _bounded(tools: list[Tool]) -> list[Tool]:
+    """A provider's tools as an agent may see them: the first ``TOOLS_LIMIT``, each with only the
+    fields below and a ceiling on every one, so an unreviewed server can't pour text into an
+    agent's context (or into what this process keeps). A tool whose name or input schema is over
+    its ceiling is left out: cut, it would be another tool."""
+    kept: list[Tool] = []
+    for tool in tools:
+        if len(kept) == TOOLS_LIMIT:
+            break
+        if len(tool.name) > NAME_LIMIT or len(json.dumps(tool.inputSchema)) > SCHEMA_LIMIT:
+            continue
+        notes = tool.annotations
+        kept.append(
+            Tool(
+                name=tool.name,
+                title=tool.title[:NAME_LIMIT] if tool.title else None,
+                description=tool.description[:DESCRIPTION_LIMIT] if tool.description else None,
+                inputSchema=tool.inputSchema,
+                annotations=notes
+                and ToolAnnotations(
+                    title=notes.title[:NAME_LIMIT] if notes.title else None,
+                    **{hint: getattr(notes, hint) for hint in _HINTS},
+                ),
+            )
+        )
+    return kept
+
+
 async def _listed(
     grant: RunGrant, row: ConnectorConnection, access: str, upstream: Any, *, quiet: bool = False
-) -> list:
-    """The provider's own tool list, within ``LIST_TIMEOUT_SECONDS``."""
+) -> list[Tool]:
+    """The provider's own tool list (``_bounded``), within ``LIST_TIMEOUT_SECONDS``."""
 
     async def request(url: str, transport: str, headers: dict) -> list[Tool]:
         try:
@@ -379,7 +411,7 @@ async def _listed(
             # went without the connector all the same.
             raise connector_upstream.UpstreamUnreachable(type(exc).__name__) from None
 
-    tools = await _provider(grant, row, access, request, quiet=quiet)
+    tools = _bounded(await _provider(grant, row, access, request, quiet=quiet))
     _read_only_hints[row.id, access] = (
         time.monotonic(),
         {tool["name"]: tool["read_only"] for tool in connectors.stored_tools(tools)},
@@ -400,12 +432,7 @@ async def proxy_list_tools(grant: RunGrant, upstream: Any = connector_upstream) 
     except _Failed:
         return []
     return [
-        tool.model_copy(
-            update={
-                "description": tool.description[:DESCRIPTION_LIMIT] if tool.description else None,
-                "outputSchema": None,
-            }
-        )
+        tool
         for tool, stored in zip(tools, connectors.stored_tools(tools), strict=True)
         if access == "write" or not connector_catalog.is_write(entry, stored, access)
     ]
