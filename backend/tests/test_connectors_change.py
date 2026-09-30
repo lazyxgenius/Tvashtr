@@ -3,9 +3,17 @@
 
 import json
 import uuid
+from contextlib import ExitStack
 
 import pytest
-from connector_helpers import add_connection, connection_row, grant, header, snapshot_line
+from connector_helpers import (
+    add_connection,
+    connection_row,
+    connections_of,
+    grant,
+    header,
+    snapshot_line,
+)
 from mcp import McpError
 from mcp.types import CallToolResult, ErrorData, TextContent, Tool, ToolAnnotations
 from toolkit_helpers import fresh_account, make_node, make_team, node_row
@@ -976,6 +984,72 @@ def test_the_connector_can_be_connected_again_after_a_delete():
     cid = add_connection(owner, "supabase")
     assert c.delete(f"/api/connectors/{cid}").status_code == 200
     add_connection(owner, "supabase")  # the (owner, key) and (owner, slug) pairs are free again
+
+
+# ---- requests that wait on a provider are capped ----
+
+BUSY = "Too many connector requests at once. Try again in a moment."
+
+
+def test_requests_that_wait_on_a_provider_are_capped_per_account(
+    monkeypatch, registry_file, upstream, tokens
+):
+    """Each one keeps a worker thread for the provider's whole deadline. Past the cap they are
+    refused at once: nothing is asked, nothing is written, and nobody else is held up."""
+    c, owner = fresh_account()
+    other_c, other = fresh_account()
+    key = _key_connection(owner, registry_file)
+    supabase = add_connection(owner, "supabase", secret=OAUTH_SECRET, tools=STORED)
+    theirs = add_connection(other, "supabase", secret=OAUTH_SECRET)
+    monkeypatch.setattr(connector_oauth, "discover", lambda url, entry=None: pytest.fail("asked"))
+    monkeypatch.setattr(connector_oauth, "revoke", lambda connection_id: pytest.fail("asked"))
+    before = (_snapshot(key), _snapshot(supabase))
+    waiting = [
+        lambda: c.post(f"/api/connectors/{supabase}/check"),
+        lambda: c.get(f"/api/connectors/{supabase}/scope-options"),
+        lambda: c.patch(f"/api/connectors/{key}", json={"credentials": {"Authorization": "NEW"}}),
+        lambda: c.post("/api/connectors", json={"key": "linear"}),
+    ]
+    with ExitStack() as held:
+        for _ in range(connectors.OWNER_PROVIDER_CALLS):
+            held.enter_context(connectors.provider_slot(owner))
+        for send in waiting:
+            assert _refused(send(), 429, "busy")["message"] == BUSY
+        assert upstream.lists == [] and upstream.calls == [] and tokens.asked == []
+        assert (_snapshot(key), _snapshot(supabase)) == before
+        assert [r.connector_key for r in connections_of(owner)] == ["dev.keyed/mcp", "supabase"]
+
+        # A request is refused for what is wrong with it before it is refused for the crowd.
+        _refused(c.post("/api/connectors", json={"key": "supabase"}), 409, "already_connected")
+        _refused(c.patch(f"/api/connectors/{key}", json={"credentials": {}}), 422, "key_required")
+        # Another account isn't held up, and neither is a route that asks no provider.
+        assert other_c.post(f"/api/connectors/{theirs}/check").status_code == 200
+        assert c.patch(f"/api/connectors/{supabase}", json={"access": "write"}).status_code == 200
+        assert c.get("/api/connectors").status_code == 200
+        # A disconnect always goes through: it skips the best-effort revoke instead.
+        assert c.delete(f"/api/connectors/{supabase}").json() == {
+            "removed_from_agents": 0,
+            "revoked": False,
+        }
+
+    # A place is given back when its request ends, also when the provider failed it.
+    upstream.tools = connector_upstream.UpstreamUnreachable("down")
+    for _ in range(connectors.OWNER_PROVIDER_CALLS + 1):
+        _refused(c.post(f"/api/connectors/{key}/check"), 502, "unreachable")
+    upstream.tools = TOOLS
+    assert c.post(f"/api/connectors/{key}/check").status_code == 200
+
+
+def test_requests_that_wait_on_a_provider_are_capped_across_accounts(upstream, tokens):
+    c, owner = fresh_account()
+    cid = add_connection(owner, "supabase", secret=OAUTH_SECRET)
+    assert connectors.OWNER_PROVIDER_CALLS < connectors.PROVIDER_CALLS <= 16  # of ~40 threads
+    with ExitStack() as held:
+        for _ in range(connectors.PROVIDER_CALLS):
+            held.enter_context(connectors.provider_slot(uuid.uuid4()))  # one each: other accounts
+        assert _refused(c.post(f"/api/connectors/{cid}/check"), 429, "busy")["message"] == BUSY
+        assert upstream.lists == [] and tokens.asked == []
+    assert c.post(f"/api/connectors/{cid}/check").status_code == 200
 
 
 # ---- another account is a 404 on every one of these routes, and the row is untouched ----

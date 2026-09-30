@@ -14,9 +14,12 @@ Only the owner's LIBRARY teams and their ``agent``/``completion`` nodes count, a
 import asyncio
 import json
 import re
+import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections import Counter
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -62,6 +65,10 @@ TOOL_TEXT_LIMIT = 200  # characters of a stored tool name or title
 SCOPE_OPTIONS_LIMIT = 200
 SCOPE_OPTIONS_TIMEOUT = 20  # seconds for the provider's project list
 _SLUG_CONSTRAINT = "uq_connector_connections_owner_slug"
+# Requests that may be waiting on a provider at once: of every account, and of one. (A sync
+# route keeps one of the API's ~40 worker threads for as long as it waits.)
+PROVIDER_CALLS = 12
+OWNER_PROVIDER_CALLS = 4
 # A scope value becomes a query parameter of the provider address.
 _SCOPE_VALUE = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 
@@ -433,6 +440,34 @@ def _refusal(status_code: int, code: str, message: str, **extra: object) -> Conn
     return ConnectorError(status_code, {"code": code, "message": message, **extra})
 
 
+_waiting: Counter[uuid.UUID] = Counter()  # requests waiting on a provider, by account
+_waiting_lock = threading.Lock()
+
+
+@contextmanager
+def provider_slot(owner_id: uuid.UUID) -> Iterator[None]:
+    """Hold one of the few places for a request that waits on a provider: connect, a new key,
+    check, scope options. Such a request keeps a worker thread for the provider's whole deadline
+    (10 to 20 seconds, twice on a retry), so without a cap one account pointing connects at
+    slow servers stalls every other route. It never waits for a place: when the account's, or
+    everyone's, are taken the request is a 429 ``busy`` at once."""
+    # ponytail: counted in this process only. A shared limiter if the API ever runs as many
+    # small processes instead of one with a thread pool.
+    with _waiting_lock:
+        if _waiting[owner_id] >= OWNER_PROVIDER_CALLS or _waiting.total() >= PROVIDER_CALLS:
+            raise _refusal(
+                429, "busy", "Too many connector requests at once. Try again in a moment."
+            )
+        _waiting[owner_id] += 1
+    try:
+        yield
+    finally:
+        with _waiting_lock:
+            _waiting[owner_id] -= 1
+            if not _waiting[owner_id]:
+                del _waiting[owner_id]
+
+
 def _unreachable(url: str) -> ConnectorError:
     return _refusal(502, "unreachable", f"We couldn’t reach {urlsplit(url).hostname}. Try again.")
 
@@ -621,19 +656,23 @@ def connect(owner_id: uuid.UUID, body: dict) -> dict:
     }
     draft = ConnectorConnection(connector_key=entry["key"], **fields)
     secret = pending = None
+    headers = None
     if entry["auth"] == "api_key":
         headers = _key_headers(entry, body.get("credentials"), name)
-        rejected = _refusal(422, "key_rejected", f"{name} didn’t accept the key.")
-        fields |= {"auth_kind": "api_key", "tools": _list_tools(draft, headers, rejected)}
-        secret = {"headers": headers}
-    elif (found := _discover(entry, entry["url"])) is not None:
-        fields |= {"auth_kind": "oauth", "status": "pending"}
-        pending = _found_signin(found)
-    elif entry["key"].startswith("custom:"):
-        raise _refusal(422, "no_signin", _NO_SIGNIN)  # an open custom server is never connected
-    else:
-        no_signin = _refusal(422, "no_signin", _NO_SIGNIN)
-        fields |= {"auth_kind": "none", "tools": _list_tools(draft, {}, no_signin)}
+    with provider_slot(owner_id):
+        if headers is not None:
+            rejected = _refusal(422, "key_rejected", f"{name} didn’t accept the key.")
+            fields |= {"auth_kind": "api_key", "tools": _list_tools(draft, headers, rejected)}
+            secret = {"headers": headers}
+        elif (found := _discover(entry, entry["url"])) is not None:
+            fields |= {"auth_kind": "oauth", "status": "pending"}
+            pending = _found_signin(found)
+        elif entry["key"].startswith("custom:"):
+            # An open custom server is never connected.
+            raise _refusal(422, "no_signin", _NO_SIGNIN)
+        else:
+            no_signin = _refusal(422, "no_signin", _NO_SIGNIN)
+            fields |= {"auth_kind": "none", "tools": _list_tools(draft, {}, no_signin)}
 
     for attempt in (1, 2):
         try:
@@ -737,7 +776,8 @@ def change(owner_id: uuid.UUID, connection_id: object, body: dict) -> dict:
             )
             rejected = _refusal(422, "key_rejected", f"{row.name} didn’t accept the key.")
     if headers is not None:
-        tools = _list_tools(draft, headers, rejected)
+        with provider_slot(owner_id):
+            tools = _list_tools(draft, headers, rejected)
 
     with session_scope() as session:
         # The key is part of the stored sign-in: its writer holds the row lock.
@@ -825,7 +865,8 @@ def check(owner_id: uuid.UUID, connection_id: object) -> dict:
         return connector_upstream.list_tools_sync(url, transport, headers)
 
     try:
-        tools = _with_sign_in(row, ask)
+        with provider_slot(owner_id):
+            tools = _with_sign_in(row, ask)
     except _sign_in_gone():
         tools = None
     except connector_upstream.UpstreamRefused:
@@ -908,7 +949,8 @@ def scope_options(owner_id: uuid.UUID, connection_id: object) -> dict:
         )
 
     try:
-        options = _projects(_with_sign_in(row, ask))
+        with provider_slot(owner_id):
+            options = _projects(_with_sign_in(row, ask))
     except _no_answer():
         raise _unreachable(row.url) from None
     except (*_sign_in_gone(), connector_upstream.UpstreamRefused, McpError):
@@ -933,8 +975,9 @@ def disconnect(owner_id: uuid.UUID, connection_id: object) -> dict:
     revoked = False
     if signed_in:
         try:  # outside our transaction: revoke takes the row lock in its own session
-            revoked = bool(connector_oauth.revoke(rid))
-        except Exception:  # a failed revoke never blocks the delete
+            with provider_slot(owner_id):
+                revoked = bool(connector_oauth.revoke(rid))
+        except Exception:  # a failed revoke, or no place to wait for one, never blocks the delete
             revoked = False
     with session_scope() as session:
         row = get_owned(session, owner_id, rid, for_update=True)
