@@ -543,7 +543,6 @@ def test_dynamic_registration_asks_for_a_public_web_client(monkeypatch):
     assert (request.method, request.url.path) == ("POST", "/register")
     assert json.loads(request.content) == {
         "client_name": "Tvashtr",
-        "client_uri": TVASHTR,
         "redirect_uris": [CALLBACK],
         "grant_types": ["authorization_code", "refresh_token"],
         "response_types": ["code"],
@@ -551,6 +550,16 @@ def test_dynamic_registration_asks_for_a_public_web_client(monkeypatch):
         "token_endpoint_auth_method": "none",
         "scope": "read",
     }
+
+    # Local development: a redirect to http://localhost is what a "native" client has. A sign-in
+    # server that holds "web" clients to https redirects would refuse the registration otherwise.
+    monkeypatch.setattr(get_settings(), "public_base_url", "http://localhost:8000")
+    fake.requests.clear()
+    local = choose_client(found, None, MCP)
+    body = json.loads(fake.requests[0].content)
+    assert body["application_type"] == "native"
+    assert body["redirect_uris"] == ["http://localhost:8000/api/connectors/oauth/callback"]
+    assert local["redirect_uri"] == body["redirect_uris"][0]
 
 
 def test_a_confidential_only_server_gets_a_secret(monkeypatch):

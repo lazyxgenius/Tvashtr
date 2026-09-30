@@ -294,13 +294,15 @@ def _register(found: Discovery) -> dict:
     method = next(
         (m for m in ("none", "client_secret_post") if m in methods), "client_secret_basic"
     )
+    redirect = redirect_uri()
     body = {
         "client_name": "Tvashtr",
-        "client_uri": _base_url(),
-        "redirect_uris": [redirect_uri()],
+        "redirect_uris": [redirect],
         "grant_types": ["authorization_code", "refresh_token"],
         "response_types": ["code"],
-        "application_type": "web",
+        # "web" everywhere it matters. A redirect to http://localhost (local development) is a
+        # "native" client's: servers that hold "web" clients to https would refuse it.
+        "application_type": "web" if redirect.startswith("https://") else "native",
         "token_endpoint_auth_method": method,
     }
     if found.scope:
@@ -312,7 +314,7 @@ def _register(found: Discovery) -> dict:
         "client_id": reply["client_id"],
         "auth_method": reply.get("token_endpoint_auth_method") or method,
         "kind": "dcr",
-        "redirect_uri": redirect_uri(),
+        "redirect_uri": redirect,
     }
     if reply.get("client_secret"):
         client["client_secret"] = reply["client_secret"]
