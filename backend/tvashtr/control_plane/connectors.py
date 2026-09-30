@@ -56,6 +56,8 @@ SLUG_LIMIT = 40
 URL_LIMIT = 2000
 KEY_LIMIT = 4096  # characters of one key value
 LABEL_LIMIT = 120
+TOOLS_LIMIT = 500  # tools of one connection that are stored and listed
+TOOL_TEXT_LIMIT = 200  # characters of a stored tool name or title
 SCOPE_OPTIONS_LIMIT = 200
 SCOPE_OPTIONS_TIMEOUT = 20  # seconds for the provider's project list
 # A scope value becomes a query parameter of the provider address.
@@ -109,15 +111,21 @@ def write_secret(row: ConnectorConnection, value: dict | None, *, pending: bool 
 
 def stored_tools(tools: list[Tool]) -> list[dict]:
     """A provider's tool list in the shape kept in ``tools``: ``{"name", "title", "read_only"}``.
-    ``read_only`` is true only for an explicit ``readOnlyHint: true``."""
-    return [
-        {
-            "name": tool.name,
-            "title": tool.title or (tool.annotations.title if tool.annotations else None),
-            "read_only": bool(tool.annotations and tool.annotations.readOnlyHint is True),
-        }
-        for tool in tools
-    ]
+    ``read_only`` is true only for an explicit ``readOnlyHint: true``. It is what every list of
+    connections sends back, and the provider is not trusted with its size: the first
+    ``TOOLS_LIMIT`` tools, ``TOOL_TEXT_LIMIT`` characters of each name and title. (So it can be
+    shorter than ``tools``: don't pair the two lists up by position.)"""
+    stored = []
+    for tool in tools[:TOOLS_LIMIT]:
+        title = tool.title or (tool.annotations.title if tool.annotations else None)
+        stored.append(
+            {
+                "name": tool.name[:TOOL_TEXT_LIMIT],
+                "title": title[:TOOL_TEXT_LIMIT] if title else None,
+                "read_only": bool(tool.annotations and tool.annotations.readOnlyHint is True),
+            }
+        )
+    return stored
 
 
 def _signin(row: ConnectorConnection) -> tuple[str | None, bool]:

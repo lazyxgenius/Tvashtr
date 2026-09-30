@@ -497,6 +497,39 @@ def test_a_catalog_server_with_no_sign_in_that_lists_its_tools_connects_without_
     assert row.secret_encrypted is None and row.pending_encrypted is None
 
 
+def test_a_servers_tool_list_is_stored_within_bounds(registry_file, discovery, upstream):
+    """An unreviewed server can list any number of tools with names of any length. What is
+    stored, and sent back by every list of connections, is the first 500 with 200 characters of
+    name and title."""
+    registry_file(server("dev.open/mcp", title="Open Data"))
+    upstream.answer = [
+        Tool(name=f"{i:05}" + "n" * 345, title="t" * 350, inputSchema={}) for i in range(600)
+    ]
+    c, owner = fresh_account()
+    resp = c.post("/api/connectors", json={"key": "dev.open/mcp"})
+    assert resp.status_code == 201, resp.text
+    stored = connection_row(resp.json()["id"]).tools
+    for tools in (
+        resp.json()["tools"],
+        stored,
+        c.get("/api/connectors").json()["connections"][0]["tools"],
+    ):
+        assert len(tools) == 500
+        assert {(len(t["name"]), t["title"]) for t in tools} == {(200, "t" * 200)}
+        assert (tools[0]["name"][:5], tools[-1]["name"][:5]) == ("00000", "00499")
+    assert len(resp.content) < 300_000
+
+    # The title an annotation carries is cut the same way; a short list is kept as it is.
+    annotated = Tool(
+        name="a", inputSchema={}, annotations=ToolAnnotations(title="x" * 300, readOnlyHint=True)
+    )
+    assert connectors.stored_tools([annotated, *TOOLS]) == [
+        {"name": "a", "title": "x" * 200, "read_only": True},
+        {"name": "list_things", "title": None, "read_only": True},
+        {"name": "create_thing", "title": None, "read_only": False},
+    ]
+
+
 def test_no_sign_in_and_the_server_wants_credentials(registry_file, discovery, upstream):
     registry_file(server("dev.closed/mcp", title="Closed"))
     c, owner = fresh_account()
