@@ -1,9 +1,9 @@
 """Connectors: the Featured catalog, the registry snapshot, search, availability and the
 read-or-write rule (``connector_catalog``)."""
 
-import json
-
 import pytest
+from connector_helpers import remote as _remote
+from connector_helpers import server as _server
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_catalog
@@ -35,6 +35,8 @@ CONTRACT = [
     ("atlassian", "work", "https://mcp.atlassian.com/v2/mcp", "annotations"),
 ]
 GOOGLE = ("google-drive", "google-docs", "google-sheets")
+
+pytest_plugins = ["connector_helpers"]  # the ``registry_file`` fixture
 
 
 def test_the_fourteen_featured_entries_match_the_contract_table():
@@ -178,44 +180,6 @@ def test_is_write_without_an_entry_or_a_flag_counts_a_write():
 
 
 # ---- the registry snapshot: the filter (B1.1) ----
-
-OFFICIAL = "io.modelcontextprotocol.registry/official"
-
-
-def _remote(url="https://mcp.acme.dev/mcp", kind="streamable-http", headers=None) -> dict:
-    remote = {"type": kind, "url": url}
-    if headers is not None:
-        remote["headers"] = headers
-    return remote
-
-
-def _server(name="dev.acme/mcp", *, status="active", remotes=None, **fields) -> dict:
-    """One item of the registry's ``servers`` list."""
-    return {
-        "server": {
-            "name": name,
-            "description": "Acme things.",
-            "version": "1.0.0",
-            "remotes": [_remote()] if remotes is None else remotes,
-            **fields,
-        },
-        "_meta": {OFFICIAL: {"status": status, "isLatest": True}},
-    }
-
-
-@pytest.fixture
-def registry_file(tmp_path, monkeypatch):
-    """Point the catalog at a snapshot made of the given registry items (run through the filter)."""
-
-    def write(*items: dict) -> None:
-        lines = [json.dumps(slim_registry_entry(item)) for item in items]
-        path = tmp_path / "connector_registry.jsonl"
-        path.write_text("".join(line + "\n" for line in lines))
-        monkeypatch.setattr(connector_catalog, "REGISTRY_PATH", path)
-        connector_catalog.registry.cache_clear()
-
-    yield write
-    connector_catalog.registry.cache_clear()
 
 
 def test_slim_keeps_a_plain_remote_server():
@@ -407,7 +371,7 @@ def test_registry_entries_take_a_key_when_the_registry_declares_a_secret_or_requ
         "api_key",
     )
     assert exa["key_fields"] == [
-        {"id": "X-API-Key", "label": "API key", "hint": None, "secret": True}
+        {"id": "X-API-Key", "label": "API key", "hint": "", "secret": True}
     ]
 
 

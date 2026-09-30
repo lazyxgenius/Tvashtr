@@ -383,7 +383,7 @@ def _registry_entry(slim: dict) -> dict:
         {
             "id": h["name"],
             "label": _key_label(h["name"]),
-            "hint": h.get("hint"),
+            "hint": h.get("hint") or "",
             "secret": h["secret"],
         }
         for h in headers
@@ -487,6 +487,33 @@ def resolve(key: object) -> dict | None:
         return custom_entry(url, None) if _fixed_https(url) else None
     found = registry().get(key)
     return found[0] if found else None
+
+
+def card(entry: dict) -> dict:
+    """The entry as ``GET /api/connectors/catalog`` returns it, before this account's connection
+    is marked on it. ``reviewed`` is true only for Featured."""
+    picker = entry.get("scope_picker")
+    can_connect = available(entry)
+    return {
+        "key": entry["key"],
+        "name": entry["name"],
+        "publisher": entry.get("publisher"),
+        "featured": entry["featured"],
+        "reviewed": entry["featured"],
+        "category": entry.get("category"),
+        "description": entry["description"],
+        "website": entry.get("website"),
+        "host": _host(entry),
+        "auth": entry["auth"],
+        "key_fields": entry["key_fields"],
+        "access_modes": entry["access_modes"],
+        "read_only_by": entry["read_only_by"],
+        "scope_picker": {"param": picker["param"], "label": picker["label"]} if picker else None,
+        "available": can_connect,
+        "unavailable_reason": None if can_connect else "coming_soon",
+        "connection_id": None,
+        "connection_status": None,
+    }
 
 
 def is_write(entry: dict | None, tool: dict, access: str) -> bool:

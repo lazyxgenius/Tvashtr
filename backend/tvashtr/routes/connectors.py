@@ -3,7 +3,10 @@
 Thin HTTP layer over :mod:`tvashtr.control_plane.connectors` (the rules) and
 :mod:`tvashtr.control_plane.connector_catalog`. Every route needs a session and is owner-scoped:
 another account's connection or agent is a 404. Contract:
-``docs/superpowers/plans/api/connectors.md``. Phase 0 has the list only; stream B1 adds the rest.
+``docs/superpowers/plans/api/connectors.md``.
+
+``/api/connectors/catalog`` is declared before ``/api/connectors/{connection_id}`` so the literal
+path is never read as an id.
 """
 
 import uuid
@@ -12,7 +15,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 
 from tvashtr.auth import UserOut, get_current_user
-from tvashtr.control_plane import connectors
+from tvashtr.control_plane import connector_catalog, connectors
 from tvashtr.control_plane.connectors import ConnectorError
 
 router = APIRouter()
@@ -32,3 +35,28 @@ def _http(exc: ConnectorError) -> HTTPException:
 def list_connections(current_user: CurrentUser) -> dict:
     """``{"connections": [connection…]}``, oldest first, ``pending`` rows left out."""
     return {"connections": connectors.list_connections(_owner(current_user))}
+
+
+@router.get("/api/connectors/catalog")
+def catalog(
+    current_user: CurrentUser,
+    q: str | None = None,
+    category: str | None = None,
+    offset: int = 0,
+    limit: int = connector_catalog.DEFAULT_LIMIT,
+) -> dict:
+    """One page of what can be connected: Featured first, then the MCP Registry snapshot by name
+    → ``{"items", "total", "next_offset", "categories"}``."""
+    try:
+        return connectors.catalog(_owner(current_user), q, category, offset, limit)
+    except ConnectorError as exc:
+        raise _http(exc) from None
+
+
+@router.get("/api/connectors/{connection_id}")
+def get_connection(connection_id: str, current_user: CurrentUser) -> dict:
+    """One connection with ``used_by_agents``, ``recent_use`` and ``revoke_hint``."""
+    try:
+        return connectors.get_connection(_owner(current_user), connection_id)
+    except ConnectorError as exc:
+        raise _http(exc) from None

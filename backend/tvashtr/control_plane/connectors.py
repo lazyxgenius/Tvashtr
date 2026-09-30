@@ -1,10 +1,14 @@
 """Connectors: connections (the rules behind ``/api/connectors``) and the helpers every stream
 shares.
 
-Final in Phase 0: :class:`ConnectorError`, :func:`get_owned`, :func:`read_secret`,
-:func:`write_secret`, :func:`stored_tools`, :func:`serialize`, :func:`upstream_headers`.
-:func:`upstream_target` is a stub (stream B1.5). Stream B1 adds connect, change, check, scope,
-disconnect and grants. Contract: ``docs/superpowers/plans/api/connectors.md``.
+Shared with the OAuth and run-time streams: :class:`ConnectorError`, :func:`get_owned`,
+:func:`read_secret`, :func:`write_secret`, :func:`stored_tools`, :func:`serialize`,
+:func:`upstream_headers`, :func:`upstream_target`. The rest is what the routes in
+``routes/connectors.py`` call. Contract: ``docs/superpowers/plans/api/connectors.md``.
+
+A grant is an item of an agent node's ``tool_config.tvashtr.connectors``: ``{"id", "access"?}``.
+Only the owner's LIBRARY teams and their ``agent``/``completion`` nodes count, as for tools
+(``tool_usage``): run-snapshot clones are run history and are never read or rewritten here.
 """
 
 import json
@@ -16,10 +20,15 @@ from mcp.types import Tool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tvashtr.control_plane import connector_catalog, connector_net, connector_oauth
+from tvashtr.control_plane import (
+    connector_catalog,
+    connector_net,
+    connector_oauth,
+    connector_proxy,
+)
 from tvashtr.control_plane.credentials import decrypt_secret, encrypt_secret
 from tvashtr.control_plane.node_library import _as_uuid
-from tvashtr.control_plane.tool_usage import usage_counts
+from tvashtr.control_plane.tool_usage import owner_agent_nodes, usage_counts, usage_row
 from tvashtr.db import session_scope
 from tvashtr.models import ConnectorConnection
 
@@ -183,9 +192,87 @@ def upstream_target(row: ConnectorConnection, access: str) -> tuple[str, str]:
     return row.url, row.transport
 
 
+# ---- who uses a connection ----
+
+
+def grant_access(tool_config: object, connection_id: uuid.UUID) -> str | None:
+    """The access of the node's grant for this connection (``read`` when the grant names none),
+    or ``None`` when the node has no grant for it."""
+    meta = tool_config.get("tvashtr") if isinstance(tool_config, dict) else None
+    grants = meta.get("connectors") if isinstance(meta, dict) else None
+    for item in grants if isinstance(grants, list) else []:
+        if isinstance(item, dict) and _as_uuid(item.get("id")) == connection_id:
+            return "write" if item.get("access") == "write" else "read"
+    return None
+
+
+def _users(nodes: list, row: ConnectorConnection) -> list[dict]:
+    """The usage rows of the agents that have ``row``. ``access`` is the agent's effective
+    access: ``write`` only when the connection and the grant both say so."""
+    users = []
+    for node, team in nodes:
+        access = grant_access(node.tool_config, row.id)
+        if access is not None:
+            effective = "write" if access == row.access == "write" else "read"
+            users.append(usage_row(node, team) | {"access": effective})
+    return users
+
+
+def _revoke_hint(row: ConnectorConnection) -> str | None:
+    if row.auth_kind == "none":
+        return None  # nothing was handed out, so there is nothing to revoke
+    entry = connector_catalog.resolve(row.connector_key) or {}
+    if entry.get("featured"):
+        return entry["revoke_hint"]
+    return f"To remove Tvashtr on {row.name}’s side too, revoke it in {row.name}’s settings."
+
+
+# ---- the read routes ----
+
+
+def catalog(
+    owner_id: uuid.UUID, q: str | None, category: str | None, offset: int, limit: int
+) -> dict:
+    """``GET /api/connectors/catalog``: one page of the catalog, each entry marked with this
+    account's connection to it (a ``pending`` one is not reported)."""
+    if not 1 <= limit <= 100:
+        raise ConnectorError(422, "limit must be between 1 and 100.")
+    offset = max(offset, 0)
+    entries, total = connector_catalog.search(q, category, offset, limit)
+    with session_scope() as session:
+        mine = {
+            key: (str(connection_id), status)
+            for key, connection_id, status in session.execute(
+                select(
+                    ConnectorConnection.connector_key,
+                    ConnectorConnection.id,
+                    ConnectorConnection.status,
+                ).where(
+                    ConnectorConnection.owner_id == owner_id,
+                    ConnectorConnection.status != "pending",
+                    ConnectorConnection.connector_key.in_([e["key"] for e in entries]),
+                )
+            )
+        }
+    items = []
+    for entry in entries:
+        connection_id, status = mine.get(entry["key"], (None, None))
+        items.append(
+            connector_catalog.card(entry)
+            | {"connection_id": connection_id, "connection_status": status}
+        )
+    return {
+        "items": items,
+        "total": total,
+        "next_offset": offset + limit if offset + limit < total else None,
+        "categories": connector_catalog.CATEGORIES,
+    }
+
+
 def list_connections(owner_id: uuid.UUID) -> list[dict]:
     """The owner's connections, oldest first, ``pending`` rows left out
-    (``GET /api/connectors``)."""
+    (``GET /api/connectors``). A ``needs_signin`` row names the agents that lost it
+    (``used_by_agents``); the others carry ``null`` there."""
     with session_scope() as session:
         rows = session.execute(
             select(ConnectorConnection)
@@ -194,4 +281,23 @@ def list_connections(owner_id: uuid.UUID) -> list[dict]:
             )
             .order_by(ConnectorConnection.created_at, ConnectorConnection.id)
         ).scalars()
-        return [serialize(row) for row in rows]
+        nodes = owner_agent_nodes(session, owner_id)
+        listed = []
+        for row in rows:
+            users = _users(nodes, row)
+            needs = row.status == "needs_signin"
+            listed.append(serialize(row, users) | {"used_by_agents": users if needs else None})
+        return listed
+
+
+def get_connection(owner_id: uuid.UUID, connection_id: object) -> dict:
+    """``GET /api/connectors/{id}``: the connection (a ``pending`` one too) with who uses it,
+    its recent use and how to revoke Tvashtr at the provider."""
+    with session_scope() as session:
+        row = get_owned(session, owner_id, connection_id)
+        users = _users(owner_agent_nodes(session, owner_id), row)
+        return serialize(row, users) | {
+            "used_by_agents": users,
+            "recent_use": connector_proxy.recent_use(session, owner_id, row.id),
+            "revoke_hint": _revoke_hint(row),
+        }
