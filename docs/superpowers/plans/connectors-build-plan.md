@@ -296,9 +296,17 @@ cross-stream table can be imported with its final signature.
 function per contract route. Create `pages/connectors/connectorsTestUtils.ts` with `entry()` and
 `connection()` fixtures. Also exported for the streams: `connectorRefusal(e)` (the `{code,
 message, connection_id, fields}` of a refusal), `parseRoundConnectors(raw)` (F2 calls it from
-`lib/api/nodes.ts` and `lib/api.ts`), `parseConnection` and `parseCatalogEntry`. Two rules live
+`lib/api/nodes.ts` and `lib/api.ts`), `parseConnection` and `parseCatalogEntry`.
+**`parseRoundConnectors`, `RoundConnectors` and `ConnectorCall` live in
+`lib/api/roundConnectors.ts`, a module that imports nothing, and `lib/api.ts` must import them
+from there, never from `lib/api/connectors.ts`**: `connectors.ts` imports `./runs`, whose
+`ApiDetailError` extends `ApiError` from `lib/api.ts` at load, so that value import is a cycle
+that throws "Class extends value undefined" for any entry that loads `lib/api.ts` first (tsc and
+`vite build` don't catch it; `lib/api/roundConnectors.test.ts` does). `connectors.ts` re-exports
+the three for everyone else. Two rules live
 in the client so no page has to remember them: `startSignIn` throws on an `authorize_url` that
-isn't `http(s)` (F1.4 still checks before it opens the window), and the app's own 502
+isn't `http(s)`, that carries a user name, or whose host (read with `new URL`, as the browser
+reads it) isn't the server's `signin_host` (F1.4 still checks before it opens the window), and the app's own 502
 (`unreachable`, `refused`) is not reported to the header as "can't reach the backend"
 (`apiRequest` marks every 502 that way; the client calls `reportFetchOk()` when the 502 carries a
 `code`). A `website` or `result_url` that isn't `https://` is read as `null`.
@@ -683,7 +691,9 @@ per `skipped` entry: "Ran without Notion: its sign-in expired." with "Sign in", 
 connection's page ("Open Connectors" when `connection_id` is `null`). Compose it into the `more` slot in
 `panel/runs/RunsTab.tsx` (:118-186) and beside `RoundLedger` in `panel/run/RunNodeDrawer.tsx`
 (:326-329). Types: `connectors` on `NodeRound` (`lib/api/nodes.ts:60-81`) and on `NodeInvocation`
-(`lib/api.ts:126`). `lib/events.ts`: the Activity feed skips the kinds `connector_call` and
+(`lib/api.ts:126`). In `lib/api.ts` the parser and the type come from `./api/roundConnectors`
+(the leaf module), not from `./api/connectors`: that import is a load-time cycle (0.7).
+`lib/events.ts`: the Activity feed skips the kinds `connector_call` and
 `connector_skipped`.
 - Tests first: `ConnectorsUsed.test.tsx` (including: a round with only `skipped`; a
   `javascript:` `result_url` is not a link), `panel/runs/RunsTab.test.tsx`, the events test.

@@ -8,42 +8,19 @@
  * `ApiDetailError` (`message` = the server's copy; `connectorRefusal` reads a `{code, …}` detail).
  */
 import { reportFetchOk } from "../backendStatus";
+import { count, httpsOrNull, isRecord, type Json, list, str, strOrNull } from "./roundConnectors";
 import { ApiDetailError, apiRequest } from "./runs";
 
-// ---- Small validators ----
+// The round block lives in a module that imports nothing, so `lib/api.ts` can use it (see there).
+export { type ConnectorCall, parseRoundConnectors, type RoundConnectors } from "./roundConnectors";
 
-type Json = Record<string, unknown>;
+// ---- Small validators (the rest are in `./roundConnectors`) ----
 
-function isRecord(v: unknown): v is Json {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-function str(v: unknown, fallback = ""): string {
-  return typeof v === "string" ? v : fallback;
-}
-function strOrNull(v: unknown): string | null {
-  return typeof v === "string" ? v : null;
-}
-function count(v: unknown): number {
-  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
-}
 function strings(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
 }
 function oneOf<T extends string>(v: unknown, allowed: readonly T[]): T | null {
   return allowed.includes(v as T) ? (v as T) : null;
-}
-function list<T>(v: unknown, parse: (raw: unknown) => T | null): T[] {
-  if (!Array.isArray(v)) return [];
-  const out: T[] = [];
-  for (const raw of v) {
-    const item = parse(raw);
-    if (item !== null) out.push(item);
-  }
-  return out;
-}
-/** An address only when it is `https://` (it becomes a link). */
-function httpsOrNull(v: unknown): string | null {
-  return typeof v === "string" && v.startsWith("https://") ? v : null;
 }
 const enc = encodeURIComponent;
 const unreadable = (what: string) => new Error(`The server sent ${what} we couldn’t read.`);
@@ -222,31 +199,6 @@ export interface ConnectorAgentsSaved {
   team_count: number;
 }
 
-export interface ConnectorCall {
-  connection_id: string;
-  name: string;
-  tool: string;
-  write: boolean;
-  ok: boolean;
-  /** Refused by the read-only rule. */
-  blocked: boolean;
-  arg: string | null;
-  at: string | null;
-  duration_ms: number | null;
-  /** For a write, the first `https://` address in its result. */
-  result_url: string | null;
-}
-
-/** The `connectors` block of one round (the agent drawer's Runs tab and the run drawer). */
-export interface RoundConnectors {
-  used: { connection_id: string; name: string; slug: string; reads: number; writes: number }[];
-  /** Writes first, then by time; capped at 50 (`total_calls` is the real number). */
-  calls: ConnectorCall[];
-  total_calls: number;
-  /** Connectors the round ran without. `connection_id` is null when the row is gone. */
-  skipped: { connection_id: string | null; name: string; reason: string }[];
-}
-
 /** A `{code, message, …}` refusal from a connectors route. */
 export interface ConnectorRefusal {
   code: string;
@@ -396,52 +348,6 @@ function parseAgent(raw: unknown): ConnectorAgent | null {
     enabled,
     access: enabled ? (oneOf(raw.access, ACCESS) ?? "read") : null,
     subscription: oneOf(raw.subscription, ["claude", "grok"] as const),
-  };
-}
-
-function parseCall(raw: unknown): ConnectorCall | null {
-  if (!isRecord(raw) || typeof raw.tool !== "string") return null;
-  return {
-    connection_id: str(raw.connection_id),
-    name: str(raw.name, "Connector"),
-    tool: raw.tool,
-    write: raw.write !== false, // unreadable = a write, as for tools
-    ok: raw.ok === true,
-    blocked: raw.blocked === true,
-    arg: strOrNull(raw.arg),
-    at: strOrNull(raw.at),
-    duration_ms: typeof raw.duration_ms === "number" ? raw.duration_ms : null,
-    result_url: httpsOrNull(raw.result_url),
-  };
-}
-
-/** The `connectors` block of a round, or null for a round with no calls and nothing skipped. */
-export function parseRoundConnectors(raw: unknown): RoundConnectors | null {
-  if (!isRecord(raw)) return null;
-  const calls = list(raw.calls, parseCall);
-  return {
-    used: list(raw.used, (u) =>
-      isRecord(u) && typeof u.connection_id === "string"
-        ? {
-            connection_id: u.connection_id,
-            name: str(u.name, "Connector"),
-            slug: str(u.slug),
-            reads: count(u.reads),
-            writes: count(u.writes),
-          }
-        : null,
-    ),
-    calls,
-    total_calls: Math.max(count(raw.total_calls), calls.length),
-    skipped: list(raw.skipped, (s) =>
-      isRecord(s) && typeof s.reason === "string"
-        ? {
-            connection_id: strOrNull(s.connection_id),
-            name: str(s.name, "a connector"),
-            reason: s.reason,
-          }
-        : null,
-    ),
   };
 }
 
