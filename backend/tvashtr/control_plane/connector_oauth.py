@@ -191,7 +191,7 @@ def discover(url: str, entry: dict | None = None) -> Discovery | None:
         except (connector_net.UnsafeUrl, TypeError, AttributeError) as exc:
             raise CannotRegister(f"{name} isn't an address Tvashtr opens") from exc
         if connector_net.site(host) != home and host not in pinned:
-            raise CannotRegister(f"{name} is on another site than its issuer")
+            raise CannotRegister(f"{name} is on {host}, another site than its issuer {issuer}")
         return value
 
     authorization, token = endpoint("authorization_endpoint"), endpoint("token_endpoint")
