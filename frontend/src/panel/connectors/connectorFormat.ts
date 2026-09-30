@@ -51,6 +51,11 @@ export function usedLabel(u: RoundConnectors["used"][number]): string {
   return `${u.name} · ${counts.join(" · ")}`;
 }
 
+/** A write the provider took may have changed data even though no good answer came back (the
+ *  round's chips count it as a write). Anything else that isn't `ok` simply failed. */
+const notOk = (call: ConnectorCall) =>
+  call.write && call.forwarded ? "May have gone through" : "Failed";
+
 /** Under a call: when, how long, and what became of it when it didn't go through ("10:04 · 0.3 s"). */
 export function callMeta(call: ConnectorCall): string {
   const at = call.at ? new Date(call.at) : null;
@@ -59,7 +64,7 @@ export function callMeta(call: ConnectorCall): string {
       ? at.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
       : null,
     call.duration_ms !== null ? `${(call.duration_ms / 1000).toFixed(1)} s` : null,
-    call.blocked ? "Not run: read only for this agent" : call.ok ? null : "Failed",
+    call.blocked ? "Not run: read only for this agent" : call.ok ? null : notOk(call),
   ]
     .filter(Boolean)
     .join(" · ");

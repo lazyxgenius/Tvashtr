@@ -51,6 +51,9 @@ export interface ConnectorCall {
   ok: boolean;
   /** Refused by the read-only rule. */
   blocked: boolean;
+  /** The provider took the call. A write that is `forwarded` and not `ok` (its answer was lost,
+   *  or was an error) may still have changed data. */
+  forwarded: boolean;
   arg: string | null;
   at: string | null;
   duration_ms: number | null;
@@ -79,6 +82,8 @@ function parseCall(raw: unknown): ConnectorCall | null {
     write: raw.write !== false, // unreadable = a write, as for tools
     ok: raw.ok === true,
     blocked: raw.blocked === true,
+    // A round from before the field existed: the provider took a call that worked.
+    forwarded: raw.forwarded === undefined ? raw.ok === true : raw.forwarded === true,
     arg: strOrNull(raw.arg),
     at: strOrNull(raw.at),
     duration_ms: typeof raw.duration_ms === "number" ? raw.duration_ms : null,

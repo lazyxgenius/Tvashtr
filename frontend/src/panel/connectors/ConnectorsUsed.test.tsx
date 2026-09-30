@@ -16,6 +16,7 @@ const call = (over: Partial<ConnectorCall> = {}): ConnectorCall => ({
   write: false,
   ok: true,
   blocked: false,
+  forwarded: true,
   arg: "SELECT count(*) FROM indicator_values WHERE name = 'rsi_14'",
   at: "2026-09-30T10:04:00+00:00",
   duration_ms: 312,
@@ -157,6 +158,23 @@ describe("ConnectorsUsed — chips and calls", () => {
     const [blocked, failed] = calls();
     expect(blocked).toHaveTextContent("Not run: read only for this agent");
     expect(failed).toHaveTextContent("Failed");
+  });
+
+  it("says a write the provider took may have gone through, not that it failed", () => {
+    const lost = { tool: "create_issue", write: true, ok: false };
+    render(
+      <ConnectorsUsed
+        connectors={round({
+          calls: [call({ ...lost, forwarded: true }), call({ ...lost, forwarded: false })],
+          total_calls: 2,
+        })}
+      />,
+    );
+    // Its answer was lost, or was an error: the chips count it as a write, so the call says why.
+    const [taken, neverSent] = calls();
+    expect(taken).toHaveTextContent("May have gone through");
+    expect(taken).not.toHaveTextContent("Failed");
+    expect(neverSent).toHaveTextContent("Failed");
   });
 
   it("shows the first four calls, then all of them on request", () => {

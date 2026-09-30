@@ -18,6 +18,7 @@ const SUPABASE_CALL = {
   write: false,
   ok: true,
   blocked: false,
+  forwarded: true,
   arg: "SELECT count(*) FROM indicator_values",
   at: "2026-09-30T10:04:00+00:00",
   duration_ms: 312,

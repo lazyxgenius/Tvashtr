@@ -307,6 +307,7 @@ describe("RunNodeDrawer — Runs: this run's rounds", () => {
           write: false,
           ok: true,
           blocked: false,
+          forwarded: true,
           arg: "schema: public",
           at: "2026-01-01T00:00:30Z",
           duration_ms: 400,

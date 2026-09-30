@@ -464,6 +464,24 @@ describe("connectors API — refusals", () => {
 });
 
 describe("parseRoundConnectors — what a round shows", () => {
+  it("reads whether the provider took a call; a round from before the field says it did when it worked", () => {
+    const call = { connection_id: "c1", name: "Linear", tool: "create_issue", write: true };
+    const calls = [
+      { ...call, ok: false, forwarded: true },
+      { ...call, ok: false, forwarded: false },
+      { ...call, ok: true },
+      { ...call, ok: false },
+      { ...call, ok: false, forwarded: "yes" },
+    ];
+    expect(parseRoundConnectors({ calls })?.calls.map((c) => c.forwarded)).toEqual([
+      true,
+      false,
+      true,
+      false,
+      false,
+    ]);
+  });
+
   it("is null for a round with no connector activity", () => {
     expect(parseRoundConnectors(null)).toBeNull();
     expect(parseRoundConnectors(undefined)).toBeNull();
@@ -478,6 +496,7 @@ describe("parseRoundConnectors — what a round shows", () => {
       write: false,
       ok: true,
       blocked: false,
+      forwarded: true,
       arg: "SELECT 1",
       at: "2026-09-30T10:03:41+00:00",
       duration_ms: 312,
