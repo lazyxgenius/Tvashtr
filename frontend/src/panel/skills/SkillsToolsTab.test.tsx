@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setProviderCatalogue, type TeamGraphNode } from "../../lib/api";
 import { __resetBackendStatusForTests } from "../../lib/backendStatus";
 import { __resetWorkspaceStatusForTests } from "../../lib/workspaceStatus";
+import { connection } from "../../pages/connectors/connectorsTestUtils";
 import { sampleDomains } from "../../pages/domains/domainsTestUtils";
 import {
   bodyOf,
@@ -66,6 +67,19 @@ const SHELVES: Record<string, unknown> = {
   "/api/secrets": { secrets: [] },
   // "Domains this agent can search" lists the account's domains (DM-105).
   "/api/domains": { domains: sampleDomains() },
+  // "Connectors this agent can use" lists the account's connections.
+  "/api/connectors": {
+    connections: [
+      connection(),
+      connection({
+        id: "c3",
+        connector_key: "linear",
+        name: "Linear",
+        slug: "linear",
+        scope: null,
+      }),
+    ],
+  },
 };
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -289,6 +303,46 @@ describe("Skills & tools — remove with Undo (Flow-SkillMenu, Flow-ToolMenu)", 
   });
 });
 
+describe("Skills & tools — Connectors (Page-Agent-Skills-tools, CnF-Grant)", () => {
+  it("sits between Skills and Tools, and a tick goes into tool_config, the tab count and Save", async () => {
+    const { drawer } = renderTab(reviewer());
+    const section = screen.getByRole("region", { name: /^Connectors/ });
+    const after = (a: Element, b: Element) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect(after(screen.getByRole("region", { name: /^Skills/ }), section)).toBe(true);
+    expect(after(section, screen.getByRole("region", { name: /^Tools/ }))).toBe(true);
+    const supabase = await within(section).findByRole<HTMLInputElement>("checkbox", {
+      name: /^Supabase/,
+    });
+    expect(supabase.checked).toBe(false);
+    fireEvent.click(supabase);
+    expect(within(section).getByRole("heading", { name: /^Connectors\s*1/ })).toBeTruthy();
+    // A grant counts in the tab, like a tool server.
+    expect(within(drawer).getByRole("tab", { name: /^Skills & tools\s*1$/ })).toBeTruthy();
+    fireEvent.click(within(drawer).getByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(bodyOf(fetchMock, "PATCH")).toBeTruthy());
+    expect(bodyOf(fetchMock, "PATCH")).toEqual({
+      tool_config: { tvashtr: { connectors: [{ id: "c1", access: "read" }] } },
+    });
+  });
+
+  it("keeps the rest of tool_config when a connector is unticked", async () => {
+    const { drawer } = renderTab(
+      reviewer({
+        tool_config: {
+          ...TOOLS,
+          tvashtr: { ...TOOLS.tvashtr, connectors: [{ id: "c1", access: "read" }] },
+        },
+      }),
+    );
+    const section = screen.getByRole("region", { name: /^Connectors/ });
+    fireEvent.click(await within(section).findByRole("checkbox", { name: /^Supabase/ }));
+    fireEvent.click(within(drawer).getByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(bodyOf(fetchMock, "PATCH")).toBeTruthy());
+    expect(bodyOf(fetchMock, "PATCH")).toEqual({ tool_config: TOOLS });
+  });
+});
+
 describe("Skills & tools — empty state and switches", () => {
   it("shows the four ways in, the rules switch, and adds Web fetch inline (Q15)", async () => {
     const { skills, tools, drawer } = renderTab(reviewer());
@@ -340,7 +394,7 @@ describe("Skills & tools — Desktop subscription agents (PANEL-103)", () => {
     document.documentElement.dataset.tvashtrDesktop = "true";
     renderTab(full(), { cover });
     expect(screen.getByRole("note").textContent).toMatch(
-      /^Runs on your Grok subscription on this computer\. Its skills are added to its instructions, but tools, Domains and the repo’s rules files aren’t used there yet\.$/,
+      /^Runs on your Grok subscription on this computer\. Its skills are added to its instructions, but tools, connectors, Domains and the repo’s rules files aren’t used there yet\.$/,
     );
   });
 

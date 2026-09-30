@@ -5,6 +5,7 @@ import type { ToolLibraryItem } from "../../lib/api";
 import type { Route } from "../../lib/nav";
 import { DomainsChecklist } from "../../pages/domains/DomainsChecklist";
 import { accessOf } from "../../pages/domains/queryNodeFormat";
+import { ConnectorsChecklist } from "../connectors/ConnectorsChecklist";
 import { InfoTip } from "../InfoTip";
 import type { ToastAction } from "../useDrawerToast";
 import {
@@ -12,8 +13,10 @@ import {
   type ToolConfig,
   type ToolRowData,
   addServer,
+  connectorsOf,
   removeLibrary,
   removeServer,
+  setConnectors,
   setDomains,
   setEnabled,
   toolRows,
@@ -24,7 +27,8 @@ export type AddToolKind = "server" | "library" | "paste";
 const icon = { size: 15, strokeWidth: 1.6, "aria-hidden": true } as const;
 
 /**
- * Skills & tools › Tools (PANEL-92..99; Web-Skills, Panel-SkillsEmpty, Flow-ToolMenu): the 280px
+ * Skills & tools › Connectors, then Tools (PANEL-92..99; Web-Skills, Panel-SkillsEmpty,
+ * Flow-ToolMenu; Page-Agent-Skills-tools): the connectors this agent can use, the 280px
  * "Add tool" menu, the domains this agent can search (DM-105, OQ-2: the Domains checklist replaces
  * the round-1 Domains switch), one row per MCP server (inline or from the library) with its
  * badge, target, Enable switch and ⋯ menu, and the empty state's inline Web fetch Add (Q15). Every
@@ -39,6 +43,8 @@ export function ToolsPanel({
   onAdd,
   onEditServer,
   onOpenToolkit,
+  agentName,
+  plan,
 }: {
   config: ToolConfig;
   /** The account's library tools and secret names (null while unknown). */
@@ -49,6 +55,9 @@ export function ToolsPanel({
   onAdd: (kind: AddToolKind) => void;
   onEditServer: (name: string) => void;
   onOpenToolkit?: (route: Route) => void;
+  /** The agent's name and, on Tvashtr Desktop, the plan it runs on (the Connectors notes). */
+  agentName?: string;
+  plan?: string | null;
 }) {
   const rows = toolRows(config, library, secrets);
   const remove = (row: ToolRowData) => {
@@ -61,101 +70,109 @@ export function ToolsPanel({
     notify(`Removed ${row.name}`, { label: "Undo", onAction: () => onChange(before) });
   };
   return (
-    <section className="nd-kit nd-kit--tools" aria-labelledby="nd-kit-tools">
-      <div className="nd-kit__head">
-        <h3 className="nd-kit__title" id="nd-kit-tools">
-          Tools
-          {rows.length > 0 && <span className="nd-kit__count">{rows.length}</span>}
-          <InfoTip text="MCP servers this agent can call. Secrets stay as ${NAME} and are filled in at run time." />
-        </h3>
-        <span className="nd-kit__add nd-kit__add--up">
-          <Menu
-            label="Add tool"
-            items={[
-              {
-                key: "server",
-                label: "Add a server",
-                description: "Name, Local or Remote, command or URL",
-                icon: <Server {...icon} />,
-                onSelect: () => onAdd("server"),
-              },
-              {
-                key: "library",
-                label: "From your library",
-                icon: <BookOpen {...icon} />,
-                onSelect: () => onAdd("library"),
-              },
-              {
-                key: "paste",
-                label: "Paste mcp.json",
-                icon: <Braces {...icon} />,
-                onSelect: () => onAdd("paste"),
-              },
-            ]}
-            trigger={(props) => (
+    <>
+      <ConnectorsChecklist
+        value={connectorsOf(config)}
+        onChange={(grants) => onChange(setConnectors(config, grants))}
+        agentName={agentName}
+        plan={plan}
+      />
+      <section className="nd-kit nd-kit--tools" aria-labelledby="nd-kit-tools">
+        <div className="nd-kit__head">
+          <h3 className="nd-kit__title" id="nd-kit-tools">
+            Tools
+            {rows.length > 0 && <span className="nd-kit__count">{rows.length}</span>}
+            <InfoTip text="MCP servers this agent can call. Secrets stay as ${NAME} and are filled in at run time." />
+          </h3>
+          <span className="nd-kit__add nd-kit__add--up">
+            <Menu
+              label="Add tool"
+              items={[
+                {
+                  key: "server",
+                  label: "Add a server",
+                  description: "Name, Local or Remote, command or URL",
+                  icon: <Server {...icon} />,
+                  onSelect: () => onAdd("server"),
+                },
+                {
+                  key: "library",
+                  label: "From your library",
+                  icon: <BookOpen {...icon} />,
+                  onSelect: () => onAdd("library"),
+                },
+                {
+                  key: "paste",
+                  label: "Paste mcp.json",
+                  icon: <Braces {...icon} />,
+                  onSelect: () => onAdd("paste"),
+                },
+              ]}
+              trigger={(props) => (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="nd-btn-flush"
+                  data-add-tool
+                  {...props}
+                >
+                  <Plus size={13} strokeWidth={1.6} aria-hidden />
+                  <span>Add tool</span>
+                </Button>
+              )}
+            />
+          </span>
+        </div>
+        <DomainsChecklist
+          value={accessOf(config)}
+          onChange={(ids) => onChange(setDomains(config, ids))}
+        />
+        {rows.length === 0 && (
+          <div className="nd-kit__card">
+            <div className="nd-kit__opt">
+              <div>
+                <div className="nd-kit__opt-title" id="nd-kit-fetch">
+                  Web fetch
+                </div>
+                <div className="nd-kit__opt-desc">Let it fetch web pages. No login needed.</div>
+              </div>
               <Button
                 variant="secondary"
                 size="sm"
                 className="nd-btn-flush"
-                data-add-tool
-                {...props}
+                aria-describedby="nd-kit-fetch"
+                onClick={() => onChange(addServer(config, "fetch", FETCH_SERVER))}
               >
                 <Plus size={13} strokeWidth={1.6} aria-hidden />
-                <span>Add tool</span>
+                <span>Add</span>
               </Button>
-            )}
-          />
-        </span>
-      </div>
-      <DomainsChecklist
-        value={accessOf(config)}
-        onChange={(ids) => onChange(setDomains(config, ids))}
-      />
-      {rows.length === 0 && (
-        <div className="nd-kit__card">
-          <div className="nd-kit__opt">
-            <div>
-              <div className="nd-kit__opt-title" id="nd-kit-fetch">
-                Web fetch
-              </div>
-              <div className="nd-kit__opt-desc">Let it fetch web pages. No login needed.</div>
             </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="nd-btn-flush"
-              aria-describedby="nd-kit-fetch"
-              onClick={() => onChange(addServer(config, "fetch", FETCH_SERVER))}
-            >
-              <Plus size={13} strokeWidth={1.6} aria-hidden />
-              <span>Add</span>
-            </Button>
           </div>
-        </div>
-      )}
-      {rows.length > 0 ? (
-        <ul className="nd-kit__list">
-          {rows.map((row) => (
-            <ToolRow
-              key={row.key}
-              row={row}
-              onEnable={(on) => onChange(setEnabled(config, row.name, on))}
-              onEdit={row.source === "inline" ? () => onEditServer(row.name) : undefined}
-              onOpenToolkit={
-                row.source === "library" && row.id && onOpenToolkit
-                  ? () => onOpenToolkit({ page: "tool", toolId: row.id as string })
-                  : undefined
-              }
-              onRemove={() => remove(row)}
-            />
-          ))}
-        </ul>
-      ) : (
-        <div className="nd-kit__empty">
-          No servers yet. Add one, pick from your library, or paste an mcp.json.
-        </div>
-      )}
-    </section>
+        )}
+        {rows.length > 0 ? (
+          <ul className="nd-kit__list">
+            {rows.map((row) => (
+              <ToolRow
+                key={row.key}
+                row={row}
+                onEnable={(on) => onChange(setEnabled(config, row.name, on))}
+                onEdit={row.source === "inline" ? () => onEditServer(row.name) : undefined}
+                onOpenToolkit={
+                  row.source === "library" && row.id && onOpenToolkit
+                    ? () => onOpenToolkit({ page: "tool", toolId: row.id as string })
+                    : undefined
+                }
+                onRemove={() => remove(row)}
+              />
+            ))}
+          </ul>
+        ) : (
+          <div className="nd-kit__empty">
+            No servers yet. Add one, pick from your library, or paste an mcp.json.
+          </div>
+        )}
+      </section>
+    </>
   );
 }
 

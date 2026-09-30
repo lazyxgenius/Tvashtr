@@ -1,0 +1,34 @@
+/* ---- Connectors in the agent drawer (Page-Agent-Skills-tools, CnF-Grant-1..4). Every value is
+   the design's px. The section head, sub-head and callout reuse `nd-kit` and `dm-dlist`. ---- */
+.nd-conn {
+  gap: 12px;
+}
+.nd-conn__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nd-conn__check {
+  flex: 1;
+  min-width: 0;
+}
+.nd-conn__access {
+  flex: none;
+  width: 124px;
+}
+/* The stack's 18px between the list and the callout, inside the section's 12px gap. */
+.nd-conn__callout {
+  margin-top: 6px;
+}
+.nd-conn__callout--plain {
+  background: var(--surface-sunk);
+  color: var(--ink-600);
+}
+.nd-conn__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
