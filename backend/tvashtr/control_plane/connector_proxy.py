@@ -11,12 +11,14 @@ import logging
 import re
 import time
 import uuid
+import weakref
 import zlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
 import anyio
+from anyio.lowlevel import RunVar
 from itsdangerous import BadData, URLSafeTimedSerializer
 from mcp import McpError
 from mcp.types import CallToolResult, TextContent, Tool, ToolAnnotations
@@ -320,10 +322,31 @@ class _Unanswered(_Failed):
     A request that was sent may still have been carried out."""
 
 
+# The proxy's own worker threads, fewer than the database pool has connections (5 + 10). Its sync
+# work can wait on a row lock that a refresh holds across a 10 s token request; on anyio's default
+# limiter (40, shared with the API's sync routes) a burst of calls would take every route's
+# threads and pooled connections with it.
+PROXY_THREADS = 8
+_limiter: RunVar[anyio.CapacityLimiter] = RunVar("tvashtr_connector_proxy_threads")
+_token_locks: weakref.WeakValueDictionary[uuid.UUID, anyio.Lock] = weakref.WeakValueDictionary()
+
+
 async def _thread[T](func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
-    # ponytail: anyio's default thread limiter (40), shared with the API's sync routes. Give the
-    # proxy its own if refreshes waiting on a row lock ever crowd those out.
-    return await anyio.to_thread.run_sync(functools.partial(func, *args, **kwargs))
+    limiter = _limiter.get(None)
+    if limiter is None:  # one per event loop, like anyio's default
+        limiter = anyio.CapacityLimiter(PROXY_THREADS)
+        _limiter.set(limiter)
+    return await anyio.to_thread.run_sync(functools.partial(func, *args, **kwargs), limiter=limiter)
+
+
+async def _headers(row: ConnectorConnection, *, rejected: str | None = None) -> dict:
+    """``connectors.upstream_headers`` in a worker thread, one call at a time per connection. A
+    refresh holds the row lock, so the calls behind it wait here on the event loop, not each in
+    a thread with a database connection: one connection's slow token endpoint costs one thread.
+    ponytail: each waiter still asks in its turn, so N calls behind a token endpoint that is down
+    take N timeouts. Remember the failure for a few seconds if that ever matters."""
+    async with _token_locks.setdefault(row.id, anyio.Lock()):
+        return await _thread(connectors.upstream_headers, row, rejected=rejected)
 
 
 def _connection(grant: RunGrant) -> tuple[ConnectorConnection, dict | None, str] | None:
@@ -357,13 +380,13 @@ async def _provider[T](
         if row.status != "connected":
             raise connector_oauth.SignInRefused
         url, transport = await _thread(connectors.upstream_target, row, access)
-        headers = await _thread(connectors.upstream_headers, row)
+        headers = await _headers(row)
         try:
             return await request(url, transport, headers)
         except unauthorized:
             if row.auth_kind == "oauth":
                 rejected = headers.get("Authorization", "").removeprefix("Bearer ")
-                headers = await _thread(connectors.upstream_headers, row, rejected=rejected)
+                headers = await _headers(row, rejected=rejected)
             else:
                 # A key can't be refreshed, but it can have been replaced while the call was
                 # out: the 401 was for the old one, and the stored one hasn't been tried.
@@ -371,7 +394,7 @@ async def _provider[T](
                 if live is None or live[0].secret_encrypted == row.secret_encrypted:
                     raise connector_oauth.SignInRefused from None
                 row = live[0]
-                headers = await _thread(connectors.upstream_headers, row)
+                headers = await _headers(row)
             try:
                 return await request(url, transport, headers)
             except unauthorized:

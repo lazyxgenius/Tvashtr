@@ -50,6 +50,8 @@ class _ConnectorsMCP(FastMCP):
         scheme, _, token = (request.headers.get("authorization") or "").partition(" ")
         if scheme.lower() != "bearer" or not token.strip():
             return None
+        # On anyio's default limiter, not the proxy's few threads: a short read that must not
+        # queue behind another connection's token refresh.
         return await anyio.to_thread.run_sync(connector_proxy.read_run_token, token.strip())
 
     async def list_tools(self) -> list[Tool]:

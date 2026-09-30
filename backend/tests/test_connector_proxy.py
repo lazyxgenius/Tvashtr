@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from types import SimpleNamespace
 from urllib.parse import urlencode
@@ -935,6 +936,66 @@ def test_token_and_record_work_runs_on_a_thread_that_is_not_the_loops(monkeypatc
     assert set(threads) == {"loop", "token", "record"}
     assert threads["token"] != threads["loop"] and threads["record"] != threads["loop"]
     assert len(_events(grant)) == 1
+
+
+class _Busy:
+    """Counts how many worker threads are inside at once."""
+
+    def __init__(self) -> None:
+        self.now, self.most, self._lock = 0, 0, threading.Lock()
+
+    def __call__(self, *_args, **_kwargs) -> str:
+        with self._lock:
+            self.now += 1
+            self.most = max(self.most, self.now)
+        time.sleep(0.05)
+        with self._lock:
+            self.now -= 1
+        return "T1"
+
+
+def test_the_proxy_has_its_own_few_worker_threads(monkeypatch):
+    """Its sync work can wait on a row lock held across a 10 s token request. On the shared
+    default limiter (40 threads, more than the database pool has connections) a burst of calls
+    would take every API route's threads and connections with it."""
+    monkeypatch.setattr(connector_proxy, "PROXY_THREADS", 2)
+    busy = _Busy()
+
+    async def burst() -> None:
+        async with anyio.create_task_group() as group:
+            for _ in range(8):
+                group.start_soon(connector_proxy._thread, busy)
+
+    asyncio.run(burst())
+    assert busy.most == 2
+    assert 0 < connector_proxy.PROXY_THREADS < 15  # under the pool's 5 + 10 connections
+
+
+def test_one_connections_calls_ask_for_its_token_one_at_a_time(monkeypatch):
+    """A refresh holds the row lock: calls waiting for the same connection's token wait on the
+    event loop, not each in a worker thread with a database connection."""
+    busy = _Busy()
+    monkeypatch.setattr(connector_oauth, "ensure_access_token", busy)
+    upstream = FakeUpstream()
+    grant = _grant("read", auth_kind="oauth")
+    assert _list(grant, upstream) == READS
+
+    async def burst() -> list:
+        results: list = []
+
+        async def call() -> None:
+            results.append(await proxy_call_tool(grant, "list_issues", {}, upstream))
+
+        async with anyio.create_task_group() as group:
+            for _ in range(6):
+                group.start_soon(call)
+        return results
+
+    results = asyncio.run(burst())
+    assert [result is upstream.result for result in results] == [True] * 6
+    assert busy.most == 1
+    assert len(_events(grant)) == 6
+    assert len(connector_proxy._token_locks) == 0  # a lock lives only while calls wait on it
 
 
 def test_a_record_that_cannot_be_written_does_not_lose_the_providers_answer(monkeypatch):
