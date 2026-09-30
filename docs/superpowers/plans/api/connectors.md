@@ -263,7 +263,8 @@ Errors:
 - 422 `{"code": "cannot_register", "message": "Acme needs an app registered with it before Tvashtr can sign in."}`
   (sign-in found, but no pre-registered client, no client metadata document support, no dynamic
   registration; or the server doesn't advertise PKCE S256)
-- 502 `{"code": "unreachable", "message": "We couldn’t reach mcp.acme.dev. Try again."}`
+- 502 `{"code": "unreachable", "message": "We couldn’t reach mcp.acme.dev. Try again."}` (also a
+  server that answers the tool listing with anything but a list, a 401 or a 403)
 
 ### `GET /api/connectors/{id}` extras
 ```json
@@ -282,7 +283,10 @@ of the owner's last 30 runs.
   `scope_picker`. `value` must match `^[A-Za-z0-9_.-]{1,80}$`, else 422
   `{"code": "invalid_scope", "message": "That doesn’t look like a project id."}` (it becomes a query
   parameter of the provider address). `label` is display text (≤ 120 characters).
-- `name`: 1–60 characters. The `slug` never changes, so tool names stay stable.
+- `name`: 1–60 characters, else 422 `{"code": "invalid_name", …}`. The `slug` never changes, so
+  tool names stay stable.
+- Every field is checked before anything is written: a refused request changes nothing. The
+  stored `tools` are not listed again here; call `check` after an access or scope change.
 - `credentials` (`api_key` only): replaces the key after the same rules and the same check as POST
   (`invalid_key`, `key_rejected`); a rejected key stores nothing and leaves the status alone. 409
   `{"code": "not_api_key", …}` otherwise. The write takes the row lock (see Tokens).
@@ -299,9 +303,12 @@ run, or a saved node that still names the id, skips it with the warning `it was 
 
 ### `POST /api/connectors/{id}/check`
 Makes sure the sign-in still works (refreshing the token if needed) and re-lists the tools.
+- A `pending` row has no sign-in to check: 409 `{"code": "not_connected", "message": "Finish
+  connecting Supabase first."}` (the same on `scope-options`).
 - Success → `connected`, fresh `tools`, `last_error: null`.
 - The provider answers **401**, or the refresh is refused → 200 with `status: "needs_signin"` and
-  `last_error`.
+  `last_error` ("Its sign-in expired.", or "Its key stopped working." for a key). An OAuth
+  connection gets one refresh and one retry on the 401 first, as in the proxy.
 - The provider answers 403 (or another 4xx). That is not an expired sign-in: status unchanged, 502
   `{"code": "refused", "message": "Supabase refused the request."}`.
 - The provider not answering (network error, timeout, 5xx) → 502 `unreachable`, status unchanged.
@@ -313,7 +320,8 @@ Makes sure the sign-in still works (refreshing the token if needed) and re-lists
 ```
 Calls the provider's own project-listing tool (`list_projects` for Supabase and Neon) on the
 unscoped address and reads `id`/`name`/`region` from its JSON answer. When that answer can't be
-read: `{"manual": true, "options": []}` and the UI asks for the id in a text field.
+read, or the provider answers the call 401, 403 or with an error: `{"manual": true, "options":
+[]}` and the UI asks for the id in a text field. Only a provider that doesn't answer is a 502.
 
 ## OAuth (MCP authorization, spec revision 2026-07-28)
 

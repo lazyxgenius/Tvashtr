@@ -21,7 +21,13 @@ from tvashtr.control_plane import mcp_secrets, node_library, tool_usage
 from tvashtr.control_plane.node_library import _as_uuid
 from tvashtr.control_plane.node_tools import _secret_refs
 from tvashtr.db import session_scope
-from tvashtr.models import McpSecret, NodeMemory, SkillLibraryItem, ToolLibraryItem
+from tvashtr.models import (
+    ConnectorConnection,
+    McpSecret,
+    NodeMemory,
+    SkillLibraryItem,
+    ToolLibraryItem,
+)
 
 TOOL_NOT_FOUND = "tool not found in your library"
 SKILL_NOT_FOUND = "skill not found in your library"
@@ -748,10 +754,23 @@ def summary(owner_id: uuid.UUID) -> dict:
             .select_from(SkillLibraryItem)
             .where(SkillLibraryItem.owner_id == owner_id)
         ).scalar_one()
+        # Connections by status; a ``pending`` one (first sign-in not finished) isn't counted.
+        connectors = dict(
+            session.execute(
+                select(ConnectorConnection.status, func.count())
+                .where(
+                    ConnectorConnection.owner_id == owner_id,
+                    ConnectorConnection.status.in_(("connected", "needs_signin")),
+                )
+                .group_by(ConnectorConnection.status)
+            ).all()
+        )
         return {
             "tools": len(tools),
             "tools_needing_attention": attention,
             "skills": int(skills),
             "memory": memory_counts(session, owner_id),
             "secrets_missing": len(missing_secrets(tools, names)),
+            "connectors": int(sum(connectors.values())),
+            "connectors_needing_attention": int(connectors.get("needs_signin", 0)),
         }

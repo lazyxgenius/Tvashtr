@@ -175,13 +175,6 @@ def test_revoke_says_nothing_was_revoked():
     assert connector_oauth.revoke(_connection(_user())) is False
 
 
-# Stub test: task B1.5 (the address parameters) deletes it with its own tests (build plan §2).
-def test_upstream_target_is_the_rows_own_address():
-    row = _row(_connection(_user(), transport="sse", url="https://mcp.acme.dev/sse"))
-    assert connectors.upstream_target(row, "read") == ("https://mcp.acme.dev/sse", "sse")
-    assert connectors.upstream_target(row, "write") == ("https://mcp.acme.dev/sse", "sse")
-
-
 # Stub test: task B3.5 (call events and rounds) deletes it with its own tests (build plan §2).
 def test_recent_use_is_empty():
     owner = _user()
@@ -413,7 +406,8 @@ def test_serialize_a_sign_in_in_flight_and_a_sign_in_host_on_another_site():
 def test_serialize_a_key_connection_whose_entry_is_unknown():
     cid = _connection(
         _user(),
-        connector_key="com.apify/apify-mcp-server",
+        # Not in the registry snapshot (``com.apify/apify-mcp-server`` is, since B1.2).
+        connector_key="com.apify/a-server-the-catalog-doesnt-have",
         name="Apify",
         slug="apify",
         url="https://mcp.apify.com/",
