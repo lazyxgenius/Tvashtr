@@ -320,11 +320,10 @@ from there, never from `lib/api/connectors.ts`**: `connectors.ts` imports `./run
 `ApiDetailError` extends `ApiError` from `lib/api.ts` at load, so that value import is a cycle
 that throws "Class extends value undefined" for any entry that loads `lib/api.ts` first (tsc and
 `vite build` don't catch it; `lib/api/roundConnectors.test.ts` does). `connectors.ts` re-exports
-the three for everyone else. Two rules live
-in the client so no page has to remember them: `startSignIn` throws on an `authorize_url` that
-isn't `http(s)`, that carries a user name, or whose host (read with `new URL`, as the browser
-reads it) isn't the server's `signin_host` (F1.4 still checks before it opens the window), and the app's own 502
-(`unreachable`, `refused`) is not reported to the header as "can't reach the backend"
+the three for everyone else. Two rules live in the client so no page has to remember them:
+`startSignIn` throws on an `authorize_url` that isn't `http(s)`, that carries a user name, or
+whose host (read with `new URL`, as the browser reads it) isn't the server's `signin_host` (F1.4
+still checks before it opens the window), and the app's own 502 (`unreachable`, `refused`) is not reported to the header as "can't reach the backend"
 (`apiRequest` marks every 502 that way; the client calls `reportFetchOk()` when the 502 carries a
 `code`). A `website` or `result_url` that isn't `https://` is read as `null`.
 - Test first: `lib/api/connectors.test.ts` with `mockApi` (`pages/tools/toolsTestUtils.tsx:26-58`):
