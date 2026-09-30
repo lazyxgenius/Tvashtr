@@ -736,9 +736,16 @@ operator's step.
 
 **T.1 Browser e2e and the proxy probe.** `scripts/connectors_e2e.sh` (copy
 `scripts/secret_gate_e2e.sh`: isolated ports, its own database, `TVASHTR_AGENT_SANDBOX=local`)
-starts the fake server on :9911 and the backend with `TVASHTR_CONNECTORS_ALLOW_LOCAL=1` and
+starts the fake server on :9911 and the backend with `TVASHTR_CONNECTORS_ALLOW_LOCAL=1`,
+**`TVASHTR_HOSTED_MODE=false`** and
 `TVASHTR_PUBLIC_BASE_URL=http://localhost:<port>` (the app itself is opened on `127.0.0.1`, so the
 callback sees no session cookie and the confirm page is exercised), then runs two things.
+The hosted-mode override is not optional: settings read the repo `.env`, which sets
+`TVASHTR_HOSTED_MODE=true`, the copied script doesn't touch it, and `connector_net` (rightly)
+ignores allow-local in hosted mode. Without it the first step (Check on
+`http://127.0.0.1:9911/mcp`) is refused with 422 `invalid_url` and the proxy can't reach the
+fake. The script asserts the posture before it starts anything else
+(`connector_net.check_url("http://127.0.0.1:9911/mcp")` must pass).
 
 1. `frontend/e2e/connectors.spec.ts`:
    `registerFresh` → Toolkit → Connectors lands on Browse → Custom connector → paste
@@ -762,7 +769,8 @@ callback sees no session cookie and the confirm page is exercised), then runs tw
      `tools/list` is empty.
 
 **T.2 Run-time check (operator-run, needs one provider key).** `scripts/connectors_run_check.py`
-(after `make seed`; LOCAL sandbox): connect the fake server through the API, grant it to a
+(after `make seed`; LOCAL sandbox; the backend started with `TVASHTR_CONNECTORS_ALLOW_LOCAL=1`
+and `TVASHTR_HOSTED_MODE=false`, for the reason in T.1): connect the fake server through the API, grant it to a
 one-agent team, run with an instruction to call `list_things` and then `create_thing`, poll to the
 DBOS workflow terminal, and assert: a `connector_call` for `list_things` (`ok`), one for
 `create_thing` (`blocked`), `connectors.used` on the round, and no provider token anywhere in
