@@ -36,6 +36,7 @@ const icon = { size: 15, strokeWidth: 1.6, "aria-hidden": true } as const;
  */
 export function ToolsPanel({
   config,
+  savedConfig,
   library,
   secrets,
   onChange,
@@ -47,6 +48,8 @@ export function ToolsPanel({
   plan,
 }: {
   config: ToolConfig;
+  /** The agent's tool config as last saved (the drawer's baseline); absent in the run view. */
+  savedConfig?: ToolConfig;
   /** The account's library tools and secret names (null while unknown). */
   library: readonly ToolLibraryItem[] | null;
   secrets: readonly string[] | null;
@@ -74,6 +77,7 @@ export function ToolsPanel({
       <ConnectorsChecklist
         value={connectorsOf(config)}
         onChange={(grants) => onChange(setConnectors(config, grants))}
+        saved={savedConfig === undefined ? undefined : connectorsOf(savedConfig)}
         agentName={agentName}
         plan={plan}
       />

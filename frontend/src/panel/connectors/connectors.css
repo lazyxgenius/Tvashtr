@@ -24,6 +24,13 @@
   background: var(--surface-sunk);
   color: var(--ink-600);
 }
+/* An agent on a plan: the drawer's amber warning notice (Page-Agent-on-a-Claude-plan). */
+.nd-conn__callout--warn {
+  background: #fbf3e6;
+  border: 1px solid var(--amber-100);
+  color: #6b4a1f;
+}
+/* A line with its one action: the failed load's "Try again", a gone connector's "Remove". */
 .nd-conn__error {
   display: flex;
   align-items: center;

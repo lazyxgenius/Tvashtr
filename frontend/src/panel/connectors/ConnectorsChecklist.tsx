@@ -5,11 +5,11 @@
  * `tool_config.tvashtr.connectors` and the drawer saves it.
  *
  * Every list it writes keeps only connections that exist, so a grant to a disconnected connector
- * drops out on the next save. Until the list has loaded there is nothing to tick, so a failed load
- * can't wipe the agent's grants.
+ * drops out on the next save, and "Remove" drops it right away. Until the list has loaded there is
+ * nothing to tick, so a failed load can't wipe the agent's grants.
  */
-import { useId, useState } from "react";
-import { Info } from "lucide-react";
+import { type MouseEvent, useId, useRef, useState } from "react";
+import { Info, Pencil, TriangleAlert } from "lucide-react";
 
 import { Checkbox, Select } from "../../design-system/components";
 import { listConnections } from "../../lib/api/connectors";
@@ -28,12 +28,21 @@ const ACCESS_OPTIONS = [
 export function ConnectorsChecklist({
   value,
   onChange,
+  saved,
+  onOpen,
   agentName,
   plan = null,
 }: {
   /** The agent's grants (`connectorsOf`). */
   value: ConnectorGrant[];
   onChange: (grants: ConnectorGrant[]) => void;
+  /** The grants as last saved: the "starts on read only" note goes once its tick is saved. */
+  saved?: ConnectorGrant[];
+  /**
+   * Open one connection's page (`null`: the Connectors list). The drawer gives it so leaving asks
+   * "Save your changes?" first; without it the links are plain addresses.
+   */
+  onOpen?: (connectionId: string | null) => void;
   /** "Reviewer": names the agent in the Access select and the notes. */
   agentName?: string;
   /** "Claude" / "Grok" when the agent runs on that plan in Tvashtr Desktop (no connectors yet). */
@@ -44,6 +53,7 @@ export function ConnectorsChecklist({
   // The write-capable connection ticked last: the callout says its access starts on read only.
   const [fresh, setFresh] = useState<string | null>(null);
   const headId = useId();
+  const headRef = useRef<HTMLHeadingElement>(null);
 
   const known = new Set((connections ?? []).map((c) => c.id));
   const granted = connections ? value.filter((g) => known.has(g.id)) : value;
@@ -52,29 +62,66 @@ export function ConnectorsChecklist({
     onChange(next);
   };
   const who = agentName ?? "This agent";
-  const freshOne = connections?.find((c) => c.id === fresh && granted.some((g) => g.id === c.id));
+  const freshOne = connections?.find(
+    (c) =>
+      c.id === fresh && granted.some((g) => g.id === c.id) && !saved?.some((g) => g.id === c.id),
+  );
+  // Grants whose connection no longer exists (known only once the list has loaded).
+  const gone = value.length - granted.length;
+  const open = (id: string | null) =>
+    onOpen &&
+    ((e: MouseEvent) => {
+      e.preventDefault();
+      onOpen(id);
+    });
+  // "Try again" leaves the page when the list reloads, so focus moves to the heading.
+  const retry = () => {
+    list.retry();
+    headRef.current?.focus();
+  };
+  const Note = plan ? TriangleAlert : freshOne ? Pencil : Info;
 
   return (
-    <section className="nd-kit nd-kit--tools nd-conn" aria-labelledby={headId}>
+    <section
+      className="nd-kit nd-kit--tools nd-conn"
+      aria-labelledby={headId}
+      aria-busy={list.state === "loading" || undefined}
+    >
       <div className="nd-kit__head">
-        <h3 className="nd-kit__title" id={headId}>
+        <h3 className="nd-kit__title" id={headId} ref={headRef} tabIndex={-1}>
           Connectors
           <span className="nd-kit__count">{granted.length}</span>
           <InfoTip text="Apps you connected in Toolkit › Connectors. Tick the ones this agent may use." />
         </h3>
       </div>
       <span className="dm-dlist__head">Connectors this agent can use</span>
-      {list.state === "error" ? (
+      {list.state === "loading" ? (
+        <p className="dm-dlist__empty" role="status">
+          Loading your connectors…
+        </p>
+      ) : list.state === "error" ? (
         <div className="nd-conn__error" role="alert">
           Couldn’t load your connectors.
-          <button type="button" className="nd-link" onClick={list.retry}>
+          {/* Not a <button>: the run view shows this tab inside a disabled fieldset, which would
+              switch a button off. */}
+          <span
+            role="button"
+            tabIndex={0}
+            className="nd-link"
+            onClick={retry}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              retry();
+            }}
+          >
             Try again
-          </button>
+          </span>
         </div>
       ) : connections && connections.length === 0 ? (
         <p className="dm-dlist__empty">
           You haven’t connected an app yet.{" "}
-          <a className="nd-link" href={connectorsHref()}>
+          <a className="nd-link" href={connectorsHref()} onClick={open(null)}>
             Open Connectors
           </a>
         </p>
@@ -101,8 +148,7 @@ export function ConnectorsChecklist({
                   />
                 </div>
                 {c.status === "needs_signin" ? (
-                  // A plain address: it works before and after the Connectors routes land.
-                  <a className="nd-link" href={connectorsHref(c.id)}>
+                  <a className="nd-link" href={connectorsHref(c.id)} onClick={open(c.id)}>
                     Sign in again
                   </a>
                 ) : (
@@ -128,11 +174,21 @@ export function ConnectorsChecklist({
           })}
         </div>
       )}
+      {gone > 0 && (
+        <div className="nd-conn__error">
+          {gone === 1
+            ? "1 connector this agent had is no longer connected."
+            : `${gone} connectors this agent had are no longer connected.`}
+          <button type="button" className="nd-link" onClick={() => write(granted)}>
+            Remove
+          </button>
+        </div>
+      )}
       <div
-        className={`dm-dlist__callout nd-conn__callout${freshOne && !plan ? " nd-conn__callout--plain" : ""}`}
+        className={`dm-dlist__callout nd-conn__callout${plan ? " nd-conn__callout--warn" : freshOne ? " nd-conn__callout--plain" : ""}`}
       >
         <span className="dm-dlist__icon">
-          <Info size={14} strokeWidth={1.6} aria-hidden />
+          <Note size={14} strokeWidth={1.6} aria-hidden />
         </span>
         <span className="dm-dlist__text">
           {plan
