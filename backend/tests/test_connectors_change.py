@@ -313,6 +313,48 @@ def test_patch_name_renames_and_never_changes_the_slug():
     assert connection_row(cid).name == "n" * 60 and connection_row(cid).slug == "supabase"
 
 
+@pytest.mark.parametrize(
+    ("given", "stored"),
+    [
+        ("a\x00b", "a b"),  # PostgreSQL can't store a NUL
+        ("ok\nline\r\n", "ok line"),
+        ("\u202e<img src=x onerror=alert(1)>", "<img src=x onerror=alert(1)>"),  # a bidi override
+        ("Acme\u200b\u2028Prod", "Acme  Prod"),
+        (
+            "Datenbank für Zürich 日本語",
+            "Datenbank für Zürich 日本語",
+        ),  # letters of any script stay
+    ],
+)
+def test_patch_name_keeps_only_printable_characters(given, stored):
+    c, owner = fresh_account()
+    cid = add_connection(owner, "supabase")
+    resp = c.patch(f"/api/connectors/{cid}", json={"name": given})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == stored and connection_row(cid).name == stored
+
+
+def test_patch_a_name_or_a_scope_label_of_hidden_characters_only():
+    c, owner = fresh_account()
+    cid = add_connection(owner, "supabase")
+    _refused(c.patch(f"/api/connectors/{cid}", json={"name": "\x00\u202e\n"}), 422, "invalid_name")
+    assert connection_row(cid).name == "Supabase"
+    # A lone surrogate (JSON can spell one) can't be stored either.
+    resp = c.patch(
+        f"/api/connectors/{cid}",
+        content=b'{"name": "Acme\\ud800Prod"}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert (resp.status_code, resp.json()["name"]) == (200, "Acme Prod")
+
+    # A scope label is display text too: the same characters go, and nothing left is the value.
+    for label, stored in (("l\x00l\u202e", "l l"), ("\x00\u2028", "abc")):
+        resp = c.patch(f"/api/connectors/{cid}", json={"scope": {"value": "abc", "label": label}})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["scope"] == {"value": "abc", "label": stored}
+        assert connection_row(cid).scope == {"value": "abc", "label": stored}
+
+
 def test_patch_refuses_the_whole_request_when_one_field_is_wrong():
     c, owner = fresh_account()
     cid = add_connection(owner, "supabase")

@@ -65,6 +65,15 @@ SCOPE_OPTIONS_TIMEOUT = 20  # seconds for the provider's project list
 _SCOPE_VALUE = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 
 
+def _printable(text: str) -> str:
+    """``text`` with every character that isn't printable turned into a space, and trimmed: a
+    NUL (PostgreSQL can't store one), a line break, a bidi override, a zero-width or no-break
+    space. A name goes into run warnings and the sign-in pages."""
+    # ponytail: ``str.isprintable`` also takes the zero-width non-joiner Persian spells with; a
+    # per-script allow-list if a name ever needs one.
+    return "".join(ch if ch.isprintable() else " " for ch in text).strip()
+
+
 class ConnectorError(Exception):
     """A rule violation with the HTTP status and ``detail`` (a user-facing string, or a
     ``{code, message, …}`` dict) the route returns verbatim."""
@@ -435,7 +444,7 @@ def _entry_for(key: object, url: object, name: object) -> dict:
         raise _refusal(
             422, "invalid_url", "Use an https:// address, like https://mcp.example.com/mcp."
         ) from None
-    return connector_catalog.custom_entry(url, name if isinstance(name, str) else None)
+    return connector_catalog.custom_entry(url, _printable(name) if isinstance(name, str) else None)
 
 
 def _check_access(entry: dict, access: object, name: str) -> None:
@@ -558,7 +567,8 @@ def connect(owner_id: uuid.UUID, body: dict) -> dict:
     ``pending`` connection (``oauth/start`` is next); a catalog server with neither connects as it
     is. Nothing is stored when the request is refused."""
     entry = _entry_for(body.get("key"), body.get("url"), body.get("name"))
-    name = entry["name"][:NAME_LIMIT]
+    # A registry title is as unreviewed as a name someone types.
+    name = _printable(entry["name"])[:NAME_LIMIT] or entry["key"][:NAME_LIMIT]
     if not connector_catalog.available(entry):
         raise _refusal(409, "coming_soon", f"{name} isn’t available yet.")
     access = body.get("access", "read")
@@ -634,7 +644,7 @@ def _new_scope(entry: dict, raw: object, name: str) -> dict | None:
     if not isinstance(value, str) or not _SCOPE_VALUE.fullmatch(value):
         raise _refusal(422, "invalid_scope", "That doesn’t look like a project id.")
     label = raw.get("label")
-    label = label.strip() if isinstance(label, str) else ""
+    label = _printable(label) if isinstance(label, str) else ""
     return {"value": value, "label": (label or value)[:LABEL_LIMIT]}
 
 
@@ -654,7 +664,7 @@ def change(owner_id: uuid.UUID, connection_id: object, body: dict) -> dict:
         if "scope" in body:
             changes["scope"] = _new_scope(entry, body["scope"], row.name)
         if "name" in body:
-            name = body["name"].strip() if isinstance(body["name"], str) else ""
+            name = _printable(body["name"]) if isinstance(body["name"], str) else ""
             if not 1 <= len(name) <= NAME_LIMIT:
                 raise _refusal(422, "invalid_name", f"A name is 1 to {NAME_LIMIT} characters.")
             changes["name"] = name

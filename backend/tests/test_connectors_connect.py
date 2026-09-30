@@ -590,6 +590,28 @@ def test_a_custom_address_with_a_sign_in(discovery, upstream, public_dns):
     assert (other["name"], other["slug"]) == ("mcp.other.dev", "mcp-other-dev")
 
 
+def test_a_connection_name_keeps_only_printable_characters(registry_file, discovery, public_dns):
+    discovery.answer = DISCOVERY
+    c, owner = fresh_account()
+
+    def custom(url: str, name: str) -> dict:
+        resp = c.post("/api/connectors", json={"url": url, "name": name})
+        assert resp.status_code == 201, resp.text
+        assert connection_row(resp.json()["id"]).name == resp.json()["name"]
+        return resp.json()
+
+    assert custom("https://one.acme.dev/mcp", "a\x00b")["name"] == "a b"
+    assert custom("https://two.acme.dev/mcp", "\u202eAcme\nProd")["name"] == "Acme Prod"
+    # Nothing printable in it: the host stands in, as when no name is given.
+    assert custom("https://three.acme.dev/mcp", "\x00\u202e")["name"] == "three.acme.dev"
+
+    # A registry title is not reviewed either.
+    registry_file(server("dev.odd/mcp", title="Odd\x00\u202eTools\u200c"))
+    resp = c.post("/api/connectors", json={"key": "dev.odd/mcp"})
+    assert resp.status_code == 201, resp.text
+    assert (resp.json()["name"], resp.json()["slug"]) == ("Odd  Tools", "odd-tools")
+
+
 def test_a_custom_address_without_a_sign_in_is_refused_even_when_it_lists_tools(
     discovery, upstream, public_dns
 ):
