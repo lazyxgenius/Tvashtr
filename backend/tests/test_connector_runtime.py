@@ -360,6 +360,38 @@ def test_a_slug_an_inline_or_library_server_already_has_becomes_conn_slug(local_
     assert "Cookie" in out["tvashtr-domains"]["headers"]
 
 
+def test_a_connector_never_takes_a_name_that_is_in_use(local_base):
+    owner = _user()
+    run_id = _run(owner)
+    linear = _connection(owner)
+    other = _connection(owner, connector_key="custom:x", name="Other", slug="conn-linear")
+    mine = {"url": "https://mine.example/mcp"}
+    inline = {"linear": {"url": "https://a.example/mcp"}, "conn-linear": mine}
+
+    # The node has servers called both ``linear`` and ``conn-linear``: the prefix is added again.
+    out = build_mcp_config(
+        {"mcpServers": inline, "tvashtr": {"connectors": [{"id": str(linear)}]}}, run_id
+    )["mcpServers"]
+    assert list(out) == ["linear", "conn-linear", "conn-conn-linear"]
+    assert out["conn-linear"] == mine  # the node's own server is still there
+    assert out["conn-conn-linear"]["url"] == PROXY_URL
+
+    # Two connectors: the name one was given is taken for the next.
+    out = build_mcp_config(
+        {
+            "mcpServers": {"linear": {"url": "https://a.example/mcp"}},
+            "tvashtr": {"connectors": [{"id": str(linear)}, {"id": str(other)}]},
+        },
+        run_id,
+    )["mcpServers"]
+    assert list(out) == ["linear", "conn-linear", "conn-conn-linear"]
+    tokens = [
+        out[name]["headers"]["Authorization"].removeprefix("Bearer ") for name in list(out)[1:]
+    ]
+    assert [read_run_token(token).connection_id for token in tokens] == [linear, other]
+    assert _warnings(run_id) == []
+
+
 def test_a_grant_that_names_no_connection_of_the_owner_is_skipped_as_disconnected(local_base):
     owner, other = _user(), _user()
     run_id = _run(owner)
@@ -477,6 +509,29 @@ def test_a_token_endpoint_that_does_not_answer_skips_it_and_leaves_the_status(
     with session_scope() as s:
         row = s.get(ConnectorConnection, cid)
         assert (row.status, row.last_error) == ("connected", None)
+
+
+def test_a_sign_in_that_cannot_even_be_read_skips_the_connector_and_the_run_goes_on(
+    local_base, monkeypatch, caplog
+):
+    def broken(connection_id, *, rejected=None):
+        raise ValueError("could not decrypt PLAINTEXT")  # a rotated secret key, say
+
+    monkeypatch.setattr(connector_oauth, "ensure_access_token", broken)
+    owner = _user()
+    run_id = _run(owner)
+    cid = _connection(owner, auth_kind="oauth")
+    key = _connection(owner, connector_key="sentry", name="Sentry", slug="sentry")
+
+    out = build_mcp_config(_grants(cid, key), run_id)
+
+    assert list(out["mcpServers"]) == ["sentry"]
+    assert _warnings(run_id) == [("connector", "Linear", SKIPPED)]
+    (event,) = _events(run_id)
+    assert event.payload == {"connection_id": str(cid), "connector": "Linear", "reason": SKIPPED}
+    with session_scope() as s:
+        assert s.get(ConnectorConnection, cid).status == "connected"
+    assert "ValueError" in caplog.text and "PLAINTEXT" not in caplog.text  # the type only
 
 
 def test_a_skip_belongs_to_the_round_that_is_running(local_base):

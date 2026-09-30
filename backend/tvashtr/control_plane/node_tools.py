@@ -28,6 +28,7 @@ SDK's ``RemoteConversation`` create path serializes the agent with ``expose_secr
 """
 
 import copy
+import logging
 import re
 import uuid
 from urllib.parse import urlparse, urlunparse
@@ -42,6 +43,8 @@ from tvashtr.control_plane.node_library import resolve_owner_tool
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.db import session_scope
 from tvashtr.models import Run
+
+logger = logging.getLogger(__name__)
 
 # ``${NAME}`` — an env-var-style reference (letters/digits/underscore, not starting with a digit).
 _REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -133,8 +136,9 @@ def _connector_servers(
     grants: list, run_id: str, node_id: str | None, owner: uuid.UUID, taken: set[str]
 ) -> dict:
     """The proxy servers for a node's connector grants (``[{"id", "access"?}]``), in grant order.
-    ``taken`` are the server names the node already uses: a connection whose slug is one of them
-    is named ``conn-<slug>``. A grant that can't be used is skipped with its warning and
+    ``taken`` are the server names the node already uses, and it gains each name handed out here:
+    a connection whose slug is one of them is named ``conn-<slug>`` (the prefix again while that
+    is taken too). A grant that can't be used is skipped with its warning and
     ``connector_skipped`` event (``connector_proxy.record_skip``); the run goes on without it."""
     servers: dict = {}
     seen: set[uuid.UUID] = set()
@@ -165,13 +169,26 @@ def _connector_servers(
             except connector_oauth.SignInRefused:
                 connector_proxy.sign_in_expired(run_id, node_id, row)
                 continue
-            except connector_oauth.Unreachable:
+            except Exception as exc:
+                # ``Unreachable``, or a sign-in that can't even be read (a rotated secret key):
+                # one connector that can't be used must not fail the round. The type only: an
+                # error's text can carry an address or a credential.
+                if not isinstance(exc, connector_oauth.Unreachable):
+                    logger.warning(
+                        "connectors: couldn’t check %s's sign-in (%s)",
+                        row.slug,
+                        type(exc).__name__,
+                    )
                 connector_proxy.record_skip(
                     run_id, node_id, row.id, row.name, connector_proxy.UNREACHABLE
                 )
                 continue
         token = connector_proxy.sign_run_token(run_id, node_id, row.id, grant.get("access"))
-        servers[f"conn-{row.slug}" if row.slug in taken else row.slug] = {
+        name = row.slug
+        while name in taken:
+            name = f"conn-{name}"
+        taken.add(name)
+        servers[name] = {
             "url": connectors_mcp_url(),
             "headers": {"Authorization": f"Bearer {token}"},
         }
