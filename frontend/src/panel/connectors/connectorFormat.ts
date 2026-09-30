@@ -40,12 +40,6 @@ export const opening = (onOpen: OpenConnector | undefined, id: string | null) =>
 
 // ---- What a round called (the Runs tab) ----
 
-/** The two letters on a connector's tile: "Supabase" → "Su". */
-export function tileLetters(name: string): string {
-  const letters = name.replace(/[^\p{L}\p{N}]/gu, "");
-  return letters ? letters[0].toUpperCase() + letters.slice(1, 2).toLowerCase() : "?";
-}
-
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** A chip's words: "Supabase · 6 reads", "Linear · 1 write", writes first when it did both. */

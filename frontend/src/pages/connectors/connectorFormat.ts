@@ -23,10 +23,11 @@ const TILE: Record<string, string> = {
   hubspot: "Hs",
 };
 
-/** The two letters on a connector's tile: "Sb" for Supabase, else the name's first two ("No"). */
+/** The two letters on a connector's tile: "Sb" for Supabase, else the name's first two ("No").
+ *  `key` is the connector's key, or a connection's slug (a Featured one's is its key). */
 export function tileLetters(key: string, name: string): string {
   if (TILE[key]) return TILE[key];
-  const letters = name.replace(/[^A-Za-z0-9]/g, "").slice(0, 2);
+  const letters = name.replace(/[^\p{L}\p{N}]/gu, "").slice(0, 2);
   return letters ? letters.charAt(0).toUpperCase() + letters.slice(1).toLowerCase() : "?";
 }
 

@@ -9,12 +9,12 @@ import { Ban, Eye, Pencil, TriangleAlert } from "lucide-react";
 
 import { Badge, ButtonLink } from "../../design-system/components";
 import type { ConnectorCall, RoundConnectors } from "../../lib/api/roundConnectors";
+import { tileLetters } from "../../pages/connectors/connectorFormat";
 import {
   type OpenConnector,
   callMeta,
   connectorsHref,
   opening,
-  tileLetters,
   usedLabel,
 } from "./connectorFormat";
 import "./connectors.css";
@@ -33,6 +33,8 @@ export function ConnectorsUsed({ connectors }: { connectors: RoundConnectors | n
   // The server sends at most the first 50 calls of a round; `total` counts them all.
   const capped = total > calls.length;
   const shown = all ? calls : calls.slice(0, FIRST_CALLS);
+  // A call names its connection; the tile's letters go by the slug, which `used` carries.
+  const slugs = new Map(used.map((u) => [u.connection_id, u.slug]));
   return (
     <>
       {used.length > 0 && (
@@ -44,7 +46,7 @@ export function ConnectorsUsed({ connectors }: { connectors: RoundConnectors | n
             {used.map((u) => (
               <li className="nd-conn-chip" key={u.connection_id}>
                 <span className="nd-conn-tile" aria-hidden="true">
-                  {tileLetters(u.name)}
+                  {tileLetters(u.slug, u.name)}
                 </span>
                 {usedLabel(u)}
               </li>
@@ -65,7 +67,7 @@ export function ConnectorsUsed({ connectors }: { connectors: RoundConnectors | n
           </span>
           <ul className="nd-conn-calls" id={listId} aria-labelledby={callsId}>
             {shown.map((call, i) => (
-              <Call key={i} call={call} />
+              <Call key={i} call={call} slug={slugs.get(call.connection_id) ?? ""} />
             ))}
           </ul>
           {calls.length > FIRST_CALLS && (
@@ -98,13 +100,13 @@ export function ConnectorsUsed({ connectors }: { connectors: RoundConnectors | n
 /** A write that went through (a refused one changed nothing). */
 const wrote = (call: ConnectorCall) => call.write && !call.blocked;
 
-function Call({ call }: { call: ConnectorCall }) {
+function Call({ call, slug }: { call: ConnectorCall; slug: string }) {
   // Only an https address becomes a link: never `javascript:` or anything else a server sent.
   const url = call.result_url?.startsWith("https://") ? call.result_url : null;
   return (
     <li className={`nd-conn-call${wrote(call) ? " nd-conn-call--write" : ""}`}>
       <span className="nd-conn-tile" aria-hidden="true">
-        {tileLetters(call.name)}
+        {tileLetters(slug, call.name)}
       </span>
       <div className="nd-conn-call__body">
         <div className="nd-conn-call__top">

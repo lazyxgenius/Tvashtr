@@ -50,6 +50,24 @@ describe("ConnectorsUsed — chips and calls", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("draws a connector's tile with the letters it has on the Connectors page", () => {
+    const { container } = render(
+      <ConnectorsUsed
+        connectors={round({
+          used: [
+            { connection_id: "c1", name: "Supabase", slug: "supabase", reads: 6, writes: 0 },
+            { connection_id: "c2", name: "Notion", slug: "notion", reads: 1, writes: 0 },
+          ],
+          calls: [call(), call({ connection_id: "c2", name: "Notion", tool: "search" })],
+          total_calls: 2,
+        })}
+      />,
+    );
+    const tiles = [...container.querySelectorAll(".nd-conn-tile")].map((t) => t.textContent);
+    // Two chips, then two calls. "Sb" is the design's tile for Supabase, not its first letters.
+    expect(tiles).toEqual(["Sb", "No", "Sb", "No"]);
+  });
+
   it("counts each connector's reads and writes on a chip, in the order they were used", () => {
     render(
       <ConnectorsUsed
@@ -69,9 +87,9 @@ describe("ConnectorsUsed — chips and calls", () => {
         .map((c) => c.textContent),
     ).toEqual([
       "LiLinear · 1 write",
-      "SuSupabase · 6 reads",
+      "SbSupabase · 6 reads",
       "NoNotion · 1 read",
-      "PoPostHog · 3 writes · 2 reads",
+      "PhPostHog · 3 writes · 2 reads",
     ]);
   });
 
