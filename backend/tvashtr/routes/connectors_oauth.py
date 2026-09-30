@@ -52,6 +52,7 @@ _PAGE_HEADERS = {
     "Cache-Control": "no-store",
     "X-Frame-Options": "DENY",
 }
+_BUSY = "Tvashtr is busy right now. Try again in a moment."
 _STYLE = """
 :root { color-scheme: light; }
 body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
@@ -93,6 +94,15 @@ def _hidden(name: str, value: str) -> str:
     return f'<input type="hidden" name="{name}" value="{html.escape(value, quote=True)}">'
 
 
+def _form(button: str, state: str, code: str, iss: str) -> str:
+    """One button that posts the sign-in's answer to the confirm route."""
+    fields = _hidden("state", state) + _hidden("code", code) + (_hidden("iss", iss) if iss else "")
+    return (
+        f'<form method="post" action="{CONFIRM_PATH}">{fields}'
+        f'<button type="submit">{button}</button></form>'
+    )
+
+
 def _render(outcome: Outcome, state: str, code: str, iss: str) -> HTMLResponse:
     name = outcome.name
     if outcome.kind == "connected":
@@ -102,14 +112,13 @@ def _render(outcome: Outcome, state: str, code: str, iss: str) -> HTMLResponse:
         )
     if outcome.kind == "confirm":
         # The owner's email in full: a masked one is matched by any account an attacker registers.
-        fields = (
-            _hidden("state", state) + _hidden("code", code) + (_hidden("iss", iss) if iss else "")
+        return _page(
+            f"Connect {name} to the Tvashtr account {outcome.email}?",
+            _form("Connect", state, code, iss),
         )
-        form = (
-            f'<form method="post" action="{CONFIRM_PATH}">{fields}'
-            '<button type="submit">Connect</button></form>'
-        )
-        return _page(f"Connect {name} to the Tvashtr account {outcome.email}?", form)
+    if outcome.kind == "busy":
+        # Nothing was used up, so the same answer finishes the sign-in on the next try.
+        return _page(_BUSY, _form("Try again", state, code, iss))
     if outcome.kind == "denied":
         return _page(f"You didn’t allow access on {name}.")
     if outcome.kind == "other_account":

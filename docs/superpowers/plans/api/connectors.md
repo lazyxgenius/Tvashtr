@@ -272,6 +272,13 @@ nothing is asked and nothing is written. A request is refused for what is wrong 
 skips the revoke and answers `revoked: false`. The UI shows the message and the same button tries
 again.
 
+Finishing a sign-in waits on the provider too (the code exchange, then the tool listing), and its
+two routes are public, so **Complete** (below) holds a place of the row's owner as well. With none
+free the callback and the confirm route answer the page "Tvashtr is busy right now. Try again in a
+moment." with one "Try again" button that posts the same `state`, `code` and `iss` to the confirm
+route. The place is asked for before the `state` is used up: nothing is asked of the provider,
+nothing is written, and the sign-in can still be finished.
+
 ### `POST /api/connectors`
 Body, one of:
 - `{"key": "supabase", "access": "read"}` (a catalog entry)
@@ -552,7 +559,8 @@ confirm route is sent with `Referrer-Policy: no-referrer`, `Cache-Control: no-st
 ### `POST /api/connectors/oauth/confirm` (public, form-encoded `state`, `code`, `iss`)
 Repeats steps 1–2, then completes. Answers the same HTML pages.
 
-**Complete** (both routes): the `state` is used up first, in one statement:
+**Complete** (both routes): a place for a request that waits on a provider is taken first (none
+free → the "busy" page above, nothing used up). Then the `state` is used up, in one statement:
 `UPDATE connector_connections SET state_hash = :claim WHERE state_hash = :h RETURNING id`. No row
 back → the "expired" page and nothing else happens, so a `state` works once and two callbacks that
 arrive together make one code exchange. `:claim` is the hash of a fresh random value that nobody

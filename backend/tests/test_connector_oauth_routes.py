@@ -542,6 +542,54 @@ def test_without_a_session_the_callback_asks_first_and_the_confirm_step_connects
     assert len(_token_requests(fake)) == 1 and len(listed) == 1
 
 
+BUSY = "Tvashtr is busy right now. Try again in a moment."
+
+
+@pytest.mark.parametrize("with_session", [True, False])
+def test_finishing_a_sign_in_is_capped_like_every_request_that_waits_on_a_provider(
+    monkeypatch, listed, unauth_client, with_session
+):
+    """The code exchange and the tool listing keep a worker thread for up to twenty seconds. One
+    account with many sign-ins started could otherwise fill every worker thread from these two
+    public routes. Past the cap nothing is asked and the ``state`` stays usable."""
+    fake = FakeConnectorServer(BASE)
+    during: list[int] = []
+
+    def network(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/token":
+            during.append(connectors._waiting[owner])
+        return fake.handle(request)
+
+    wire(monkeypatch, network)
+    c, owner = fresh_account()
+    cid = connection(owner, fake)
+    back = _allow(fake, c, cid)
+
+    def finish() -> str:
+        if with_session:
+            return _page(c.get(CALLBACK_PATH, params=back))
+        return _page(unauth_client.post(CONFIRM_PATH, data=back))
+
+    with ExitStack() as held:
+        for _ in range(connectors.OWNER_PROVIDER_CALLS):
+            held.enter_context(connectors.provider_slot(owner))
+        page = finish()
+        assert BUSY in page and CONNECTED not in page
+        # The page's button finishes the same sign-in: nothing was used up.
+        assert f'<form method="post" action="{CONFIRM_PATH}">' in page
+        for name in ("state", "code"):
+            assert f'<input type="hidden" name="{name}" value="{back[name]}">' in page
+        assert ">Try again</button>" in page
+        row = load(cid)
+        assert (row.state_hash, row.status) == (_sha256(back["state"]), "pending")
+        assert _token_requests(fake) == [] and listed == []
+
+    assert CONNECTED in finish()
+    assert load(cid).status == "connected"
+    assert during == [1]  # its own place, for as long as it asks
+    assert owner not in connectors._waiting  # and given back
+
+
 def test_another_accounts_session_connects_nothing_and_says_how_to_go_on(monkeypatch, listed):
     fake = FakeConnectorServer(BASE)
     wire(monkeypatch, fake.handle)

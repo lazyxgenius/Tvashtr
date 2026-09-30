@@ -13,7 +13,7 @@ import time
 import uuid
 import weakref
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import urlencode, urlsplit
@@ -549,7 +549,8 @@ OTHER_ACCOUNT_ERROR = (
 class Outcome:
     """How a callback ended. The route turns it into a page. ``kind`` is one of ``connected``,
     ``confirm`` (ask first: the browser holds no Tvashtr session), ``expired``, ``failed``,
-    ``denied`` and ``other_account``."""
+    ``denied``, ``other_account`` and ``busy`` (no place to wait on the provider: nothing was used
+    up, the same ``state`` and ``code`` finish it on the next try)."""
 
     kind: str
     name: str = ""  # the connection's name
@@ -733,6 +734,18 @@ def _complete(state: str, code: str) -> Outcome:
     return Outcome("connected", name)
 
 
+def _finish(arrived: Outcome, state: str, code: str) -> Outcome:
+    """Complete, holding one of the places for requests that wait on a provider (the exchange
+    and the tool listing keep a worker thread for up to twenty seconds, and these routes are
+    public). The place is taken before the ``state`` is used up."""
+    with ExitStack() as held:
+        try:
+            held.enter_context(connectors.provider_slot(uuid.UUID(arrived.owner)))
+        except connectors.ConnectorError:
+            return Outcome("busy", arrived.name)
+        return _complete(state, code)
+
+
 def callback(
     state: str, code: str, iss: str | None, error: str | None, session_user: str | None
 ) -> Outcome:
@@ -751,7 +764,7 @@ def callback(
         return arrived  # ask first; showing the page uses nothing up
     if session_user != arrived.owner:
         return _clear(state, OTHER_ACCOUNT_ERROR, "other_account", name)
-    return _complete(state, code)
+    return _finish(arrived, state, code)
 
 
 def confirm(state: str, code: str, iss: str | None) -> Outcome:
@@ -762,7 +775,7 @@ def confirm(state: str, code: str, iss: str | None) -> Outcome:
         return arrived
     if not code:
         return _clear(state, _not_finished(arrived.name), "failed", arrived.name)
-    return _complete(state, code)
+    return _finish(arrived, state, code)
 
 
 # ---- tokens ----
