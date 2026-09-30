@@ -218,7 +218,7 @@ def _target(row: ConnectorConnection, access: str, *, scoped: bool = True) -> tu
     value = row.scope.get("value") if isinstance(row.scope, dict) else None
     if scoped and picker and value:
         added[picker["param"]] = str(value)
-    if access == "read":
+    if access != "write":  # anything but an exact ``write`` is read only: a bad value fails shut
         added |= entry.get("read_only_params") or {}  # last, so nothing after it overrides it
     if not added:
         return row.url, row.transport
@@ -231,9 +231,10 @@ def _target(row: ConnectorConnection, access: str, *, scoped: bool = True) -> tu
 def upstream_target(row: ConnectorConnection, access: str) -> tuple[str, str]:
     """``(url, transport)`` for a request to the provider at the effective ``access``: the row's
     address, plus the scope parameter when the connection is scoped, plus the entry's read-only
-    parameters when ``access`` is ``read`` (every entry that has them, Neon included). A
-    parameter of the same name already in the address is replaced, and the read-only parameter
-    goes last. The agent can't change either: only the proxy builds this address."""
+    parameters unless ``access`` is exactly ``write`` (every entry that has them, Neon included;
+    a value that is neither ``read`` nor ``write`` is read only). A parameter of the same name
+    already in the address is replaced, and the read-only parameter goes last. The agent can't
+    change either: only the proxy builds this address."""
     return _target(row, access)
 
 

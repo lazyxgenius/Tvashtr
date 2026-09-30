@@ -163,6 +163,17 @@ def test_upstream_target_replaces_a_same_named_parameter_and_puts_read_only_last
     assert _target("write", url=url) == url
 
 
+@pytest.mark.parametrize("access", ["Read", "readonly", "", None, "WRITE", 1])
+def test_upstream_target_is_read_only_unless_the_access_is_exactly_write(access):
+    """The run-time stream passes an access read from a run token: a value that isn't ``write``
+    must never build the write address."""
+    scope = {"value": "abcd", "label": "x"}
+    assert _target(access, scope=scope) == (
+        "https://mcp.supabase.com/mcp?project_ref=abcd&read_only=true"
+    )
+    assert _target(access, "neon") == "https://mcp.neon.tech/mcp?readonly=true"
+
+
 def test_upstream_target_encodes_a_scope_value_so_it_cant_add_a_parameter():
     hostile = {"value": "x&read_only=false#frag", "label": "x"}  # never stored by PATCH (see below)
     assert _target("read", scope=hostile) == (
