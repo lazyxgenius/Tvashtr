@@ -773,6 +773,16 @@ def _no_answer() -> tuple:
     return (connector_upstream.UpstreamUnreachable, connector_oauth.Unreachable)
 
 
+# ``last_error`` when the provider answers 401, by what the connection signs in with.
+_GONE = {
+    "oauth": "Its sign-in expired.",
+    "api_key": "Its key stopped working.",
+    # It has no sign-in to renew and no key to replace: only connecting it again finds the
+    # sign-in the server now has.
+    "none": "It now asks for a sign-in. Disconnect it and connect it again.",
+}
+
+
 def check(owner_id: uuid.UUID, connection_id: object) -> dict:
     """``POST /api/connectors/{id}/check``: make sure the sign-in (or key) still works and list
     the tools again. A 401, or a refused refresh, is ``needs_signin`` (a 200: that is an answer,
@@ -795,8 +805,7 @@ def check(owner_id: uuid.UUID, connection_id: object) -> dict:
     with session_scope() as session:
         row = get_owned(session, owner_id, connection_id, for_update=True)
         if tools is None:
-            row.status = "needs_signin"
-            row.last_error = "Its key stopped working." if key else "Its sign-in expired."
+            row.status, row.last_error = "needs_signin", _GONE[row.auth_kind]
         else:
             row.status, row.tools, row.last_error = "connected", stored_tools(tools), None
             if key:

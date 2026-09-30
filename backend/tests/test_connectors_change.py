@@ -643,6 +643,23 @@ def test_check_a_key_that_cant_be_decrypted_stopped_working_and_can_be_replaced(
     }
 
 
+def test_check_a_server_with_no_sign_in_that_now_asks_for_one(upstream, tokens):
+    """It has no sign-in to renew and no key to replace, so the reason says what does work."""
+    c, owner = fresh_account()
+    cid = add_connection(
+        owner, "dev.open/mcp", name="Open Data", url="https://mcp.open.dev/mcp", auth_kind="none"
+    )
+    upstream.tools = connector_upstream.UpstreamUnauthorized()
+    resp = c.post(f"/api/connectors/{cid}/check")
+    assert resp.status_code == 200, resp.text
+    assert (resp.json()["status"], resp.json()["last_error"]) == (
+        "needs_signin",
+        "It now asks for a sign-in. Disconnect it and connect it again.",
+    )
+    assert upstream.lists == [("https://mcp.open.dev/mcp", "streamable-http", {})]
+    assert tokens.asked == []  # asked once, with nothing: there is no token to refresh
+
+
 def test_check_a_pending_connection_has_nothing_to_check(upstream, tokens):
     c, owner = fresh_account()
     cid = add_connection(owner, "supabase", status="pending")
