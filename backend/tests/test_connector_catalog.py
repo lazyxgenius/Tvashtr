@@ -99,6 +99,7 @@ def test_hubspot_is_coming_soon_and_the_rest_are_available():
     assert len(rest) == 10 and all(available(FEATURED[k]) for k in rest)
 
 
+# Stub test: task B1.1 (registry and custom keys) rewrites it (build plan §2).
 def test_resolve_finds_featured_keys_only_for_now():
     assert resolve("supabase") is FEATURED["supabase"]
     for unknown in ("com.apify/apify-mcp-server", "custom:mcp.acme.dev/mcp", "", None, 7):

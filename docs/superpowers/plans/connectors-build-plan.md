@@ -98,6 +98,22 @@ behaviour of another stream's function patches it (`monkeypatch.setattr`).
 | `connectors.upstream_target(row, access) -> (url, transport)` | returns the row's `url` and `transport` | B1.5 | B1.5, B2.4, B3.3 |
 | `connector_proxy.recent_use(session, owner_id, connection_id) -> list` | returns `[]` | B3.5 | B1.3 |
 
+**A stub's test goes with the stub.** Phase 0 asserts what each stub answers, so the stream that
+fills a stub turns that test red. "Never weaken an existing assertion" doesn't cover these seven:
+the task that fills the stub **deletes (or, where noted, rewrites) its stub test in the same
+commit** as its own tests, which replace it. Every other Phase 0 test stays as it is. Each stub
+test carries a comment naming its owner.
+
+| Phase 0 test | Task that removes it | Replaced by |
+|---|---|---|
+| `test_connector_catalog.py::test_resolve_finds_featured_keys_only_for_now` | B1.1 | rewritten there: Featured keys still resolve, `""`, `None` and `7` still don't; a registry name and a `custom:` key now do |
+| `test_connector_stubs.py::test_upstream_target_is_the_rows_own_address` | B1.5 | B1.5's `upstream_target` tests (scope and read-only parameters) |
+| `test_connector_stubs.py::test_discover_finds_nothing_yet` | B2.1 | `tests/test_connector_oauth.py` (discovery) |
+| `test_connector_stubs.py::test_ensure_access_token_returns_the_stored_token_and_never_refreshes` | B2.5 | B2.5's token tests (it keeps `…refuses_a_row_that_is_gone_or_has_no_token`, which stays true) |
+| `test_connector_stubs.py::test_revoke_says_nothing_was_revoked` | B2.5 | B2.5's revoke tests |
+| `test_connector_stubs.py::test_the_proxy_server_is_stateless_has_no_tools_yet_and_accepts_any_host` | B3.4 | only its last line (`list_tools() == []`) goes; the settings assertions stay, and B3.4's subclass tests cover listing |
+| `test_connector_stubs.py::test_recent_use_is_empty` | B3.5 | `tests/test_connector_rounds.py` (`recent_use`) |
+
 One cross-stream component: F2.5 uses F1.4's `ConnectSheet`, which is why F2.5 waits for the F1
 merge.
 

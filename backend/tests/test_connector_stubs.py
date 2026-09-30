@@ -1,6 +1,10 @@
 """Connectors Phase 0: every name the streams call across module lines exists with its final
 signature, each stub answers what the build plan's table says, and the shared helpers in
-``control_plane/connectors.py`` (final in Phase 0) do their job."""
+``control_plane/connectors.py`` (final in Phase 0) do their job.
+
+The tests of what a STUB answers are marked "Stub test": the task that fills the stub deletes its
+test in the same commit as the tests that replace it (build plan §2, "A stub's test goes with the
+stub"). Everything else here stays."""
 
 import inspect
 import time
@@ -117,6 +121,7 @@ def test_every_cross_stream_name_has_its_final_signature():
 # ---- the stubs: what each answers until its stream fills it ----
 
 
+# Stub test: task B2.1 (discovery) deletes it with its own tests (build plan §2).
 def test_discover_finds_nothing_yet():
     assert connector_oauth.discover("https://mcp.supabase.com/mcp") is None
     assert (
@@ -143,6 +148,7 @@ def test_discovery_is_the_final_dataclass():
         found.issuer = "https://evil.example"  # frozen
 
 
+# Stub test: task B2.5 (tokens) deletes it with its own tests (build plan §2).
 def test_ensure_access_token_returns_the_stored_token_and_never_refreshes(monkeypatch):
     def no_network(*args, **kwargs):
         raise AssertionError("the Phase 0 stub must not open a connection")
@@ -164,16 +170,19 @@ def test_ensure_access_token_refuses_a_row_that_is_gone_or_has_no_token():
         connector_oauth.ensure_access_token(_connection(_user()))
 
 
+# Stub test: task B2.5 (tokens) deletes it with its own tests (build plan §2).
 def test_revoke_says_nothing_was_revoked():
     assert connector_oauth.revoke(_connection(_user())) is False
 
 
+# Stub test: task B1.5 (the address parameters) deletes it with its own tests (build plan §2).
 def test_upstream_target_is_the_rows_own_address():
     row = _row(_connection(_user(), transport="sse", url="https://mcp.acme.dev/sse"))
     assert connectors.upstream_target(row, "read") == ("https://mcp.acme.dev/sse", "sse")
     assert connectors.upstream_target(row, "write") == ("https://mcp.acme.dev/sse", "sse")
 
 
+# Stub test: task B3.5 (call events and rounds) deletes it with its own tests (build plan §2).
 def test_recent_use_is_empty():
     owner = _user()
     with session_scope() as s:
@@ -191,6 +200,7 @@ def test_the_proxy_server_is_stateless_has_no_tools_yet_and_accepts_any_host():
     # Agents reach it by the public host (or the docker host), never by localhost: the SDK's
     # localhost-only Host check would answer them 421. The run token is what guards it.
     assert mcp.settings.transport_security.enable_dns_rebinding_protection is False
+    # Stub assertion: task B3.4 (the list and call overrides) removes this line (build plan §2).
     assert asyncio.run(mcp.list_tools()) == []
 
 
