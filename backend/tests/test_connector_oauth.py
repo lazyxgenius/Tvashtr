@@ -822,6 +822,60 @@ def test_a_token_endpoint_that_doesnt_answer_is_unreachable_and_changes_nothing(
         assert unchanged()
 
 
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        (204, None),
+        (302, None),
+        (307, None),
+        (403, "<html>blocked by the gateway</html>"),
+        (404, None),
+        (408, None),
+        (421, None),
+        (400, None),
+        (401, None),
+        (400, {"error": "temporarily_unavailable"}),
+        (400, {"error": ["invalid_grant"]}),
+    ],
+)
+def test_only_the_providers_own_refusal_ends_a_sign_in(monkeypatch, status, body):
+    """Found in review: a redirect (they aren't followed), a gateway's 403 page or a 408 says
+    nothing about the refresh token, and wiping it would make everyone sign in again over a
+    passing fault. Only the token endpoint's own OAuth refusal ends the sign-in."""
+    fake = FakeConnectorServer(BASE)
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if isinstance(body, dict):
+            return httpx.Response(status, json=body)
+        return httpx.Response(status, text=body or "")
+
+    wire(monkeypatch, answer)
+    cid, stored = _connected(fake, expires_in=10)
+
+    with pytest.raises(Unreachable):
+        ensure_access_token(cid)
+    row = load(cid)
+    assert (row.status, row.last_error) == ("connected", None)
+    assert connectors.read_secret(row) == stored
+
+
+@pytest.mark.parametrize(
+    ("status", "error", "registration_kept"),
+    [(403, "invalid_grant", True), (400, "unauthorized_client", False)],
+)
+def test_a_refusal_is_read_from_the_answers_error(monkeypatch, status, error, registration_kept):
+    fake = FakeConnectorServer(BASE)
+    wire(monkeypatch, lambda request: httpx.Response(status, json={"error": error}))
+    cid, _ = _connected(fake, expires_in=10)
+
+    with pytest.raises(SignInRefused):
+        ensure_access_token(cid)
+    row = load(cid)
+    assert (row.status, row.last_error) == ("needs_signin", "Its sign-in expired.")
+    now = connectors.read_secret(row)
+    assert "refresh_token" not in now and ("client" in now) == registration_kept
+
+
 def test_a_registered_secret_is_sent_the_way_the_client_was_registered(monkeypatch):
     fake = FakeConnectorServer(BASE, confidential=True)
     wire(monkeypatch, fake.handle)

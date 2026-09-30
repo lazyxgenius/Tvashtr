@@ -669,12 +669,26 @@ REFRESH_MARGIN_SECONDS = 300  # a token with less than this left is refreshed be
 _TOKEN_KEYS = ("access_token", "refresh_token", "expires_at")
 
 
+def _refused(reply: httpx.Response) -> str | None:
+    """How a token endpoint's answer refuses, read from the OAuth ``error`` of a 4xx:
+    ``"invalid_client"`` (the client itself is refused: ``invalid_client``,
+    ``unauthorized_client``) or ``"invalid_grant"``. ``None`` when the answer isn't the
+    endpoint's own refusal: a redirect, a gateway's 403 page, a 404, a 408, any other error."""
+    if not 400 <= reply.status_code < 500:
+        return None
+    error = _document_of(reply, (reply.status_code,)).get("error")
+    if error in ("invalid_client", "unauthorized_client"):
+        return "invalid_client"
+    return "invalid_grant" if error == "invalid_grant" else None
+
+
 def refresh(stored: dict) -> dict | str:
     """One refresh of the stored sign-in. The new tokens (as :func:`_tokens` gives them), or how
     the provider refused: ``"invalid_client"`` (its registration is gone too) or
-    ``"invalid_grant"`` (anything else that isn't a new token, and a sign-in with nothing to
-    refresh with). Raises :class:`Unreachable` when the token endpoint didn't answer, or answered
-    200 with something that isn't a token."""
+    ``"invalid_grant"`` (also a sign-in with nothing to refresh with). Raises
+    :class:`Unreachable` for every other answer: the token endpoint didn't answer, answered 200
+    with something that isn't a token, or answered something that isn't its own refusal (see
+    :func:`_refused`). A refresh token is only given up when the provider says it is dead."""
     if not (stored.get("refresh_token") and stored.get("client") and stored.get("token_endpoint")):
         return "invalid_grant"
     grant = {"grant_type": "refresh_token", "refresh_token": stored["refresh_token"]}
@@ -684,9 +698,10 @@ def refresh(stored: dict) -> dict | str:
         if tokens is None:
             raise Unreachable("the token endpoint's answer can't be read")
         return tokens
-    error = _document_of(reply, (reply.status_code,)).get("error")
-    gone = error == "invalid_client" or reply.status_code == 401
-    return "invalid_client" if gone else "invalid_grant"
+    refused = _refused(reply)
+    if refused is None:
+        raise Unreachable(f"the token endpoint answered {reply.status_code}")
+    return refused
 
 
 def ensure_access_token(connection_id: uuid.UUID, *, rejected: str | None = None) -> str:

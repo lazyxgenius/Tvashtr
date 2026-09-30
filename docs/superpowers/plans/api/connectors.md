@@ -479,15 +479,19 @@ dynamic registration).
   credentials and `DELETE` all take `SELECT … FOR UPDATE` on the row, and read the stored sign-in
   only after they hold it. Otherwise a refresh that started earlier commits the old sign-in over a
   new one. A refresh that finds the row gone raises `SignInRefused` and writes nothing.
-- `invalid_grant`, or no refresh token and an expired (or `rejected`) access token → tokens
+- A refusal is the token endpoint's own: a 4xx answer whose JSON body names the OAuth `error`.
+  `invalid_grant`, or no refresh token and an expired (or `rejected`) access token → tokens
   cleared, `status: "needs_signin"`, `last_error` = "Its sign-in expired." Raises `SignInRefused`.
-  Any other 4xx answer to a refresh is treated the same. What stays in `secret_encrypted` is the
-  issuer, the endpoints and the registration, so the sign-in host still shows and "Sign in again"
-  reuses the client.
-- `invalid_client` (or a 401) → the same, and the stored registration is dropped so the next
-  sign-in registers again.
-- A 5xx, a 429, a network error, or a 200 that carries no token → `Unreachable`: the connector is
-  left out of what asked for it; status unchanged.
+  What stays in `secret_encrypted` is the issuer, the endpoints and the registration, so the
+  sign-in host still shows and "Sign in again" reuses the client.
+- `invalid_client` or `unauthorized_client` → the same, and the stored registration is dropped so
+  the next sign-in registers again.
+- Every other answer → `Unreachable`: the connector is left out of what asked for it, and the
+  status and the stored sign-in are unchanged. That is a 5xx, a 429, a network error, a 200 that
+  carries no token, a redirect (never followed), a 2xx other than 200, and a 4xx that isn't one
+  of the refusals above (a gateway's 403 page, a 404, a 408, a 400 or 401 with no OAuth `error`,
+  any other `error` code). A working refresh token is only given up when the provider says it is
+  dead: a passing fault in front of the token endpoint must not make everyone sign in again.
 - A row with no stored sign-in at all (never signed in, or already cleared) raises `SignInRefused`
   and is not touched: a `pending` row stays `pending`.
 - `revoke(connection_id)` posts the refresh token (the access token when there is none) to the
