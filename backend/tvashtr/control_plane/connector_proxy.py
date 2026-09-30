@@ -464,9 +464,16 @@ async def _listed(
     tools = _bounded(await _provider(grant, row, access, request, quiet=quiet))
     _read_only_hints[row.id, access] = (
         time.monotonic(),
-        {tool["name"]: tool["read_only"] for tool in connectors.stored_tools(tools)},
+        {tool.name: _read_only(tool) for tool in tools},
     )
     return tools
+
+
+def _read_only(tool: Tool) -> bool:
+    """Whether the provider marks ``tool`` as a read, as ``connectors.stored_tools`` reads it.
+    One tool at a time: that list has ceilings of its own, so it isn't paired with this one by
+    position."""
+    return connectors.stored_tools([tool])[0]["read_only"]
 
 
 async def proxy_list_tools(grant: RunGrant, upstream: Any = connector_upstream) -> list[Tool]:
@@ -483,8 +490,11 @@ async def proxy_list_tools(grant: RunGrant, upstream: Any = connector_upstream) 
         return []
     return [
         tool
-        for tool, stored in zip(tools, connectors.stored_tools(tools), strict=True)
-        if access == "write" or not connector_catalog.is_write(entry, stored, access)
+        for tool in tools
+        if access == "write"
+        or not connector_catalog.is_write(
+            entry, {"name": tool.name, "read_only": _read_only(tool)}, access
+        )
     ]
 
 

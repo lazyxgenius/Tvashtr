@@ -256,6 +256,19 @@ def test_a_provider_flag_entry_in_read_mode_lists_everything_on_the_read_only_ad
     assert _events(write)[0].payload["write"] is True
 
 
+def test_what_is_a_read_doesnt_depend_on_how_many_tools_a_connection_stores(monkeypatch):
+    """``connectors.stored_tools`` keeps a connection's first ``TOOLS_LIMIT`` tools and may cut a
+    name. The proxy has ceilings of its own, so it never pairs its list with that one by
+    position, or looks a tool up in it."""
+    monkeypatch.setattr(connectors, "TOOLS_LIMIT", 1)
+    upstream = FakeUpstream()
+    grant = _grant("read")
+
+    assert _list(grant, upstream) == READS
+    assert _call(grant, upstream, "get_issue") is upstream.result  # the second tool, a read
+    assert _text(_call(grant, upstream, "create_issue")) == READ_ONLY_ERROR
+
+
 def test_a_scoped_connection_is_asked_at_its_project_with_the_read_only_flag_last():
     """The proxy and ``connectors.upstream_target`` together: the scope the user picked narrows
     every request, and an agent with write access on a write connection gets no read-only flag."""
