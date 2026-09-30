@@ -189,6 +189,27 @@ describe("Connectors this agent can use", () => {
     expect(within(section()).getByText(/^Needs attention/)).toBeInTheDocument();
   });
 
+  it("names what fixes a connection that needs attention: a key is replaced, no sign-in is connected again", async () => {
+    const needs = (id: string, name: string, auth_kind: "api_key" | "none") =>
+      connection({ id, name, slug: id, auth_kind, signin_host: null, status: "needs_signin" });
+    mockApi({
+      "GET /api/connectors": {
+        connections: [needs("c7", "Apify", "api_key"), needs("c8", "Acme", "none")],
+      },
+    });
+    render(<ConnectorsChecklist value={[]} onChange={() => {}} />);
+    await box("Apify");
+    expect(within(section()).getByRole("link", { name: "Replace key" })).toHaveAttribute(
+      "href",
+      "#/toolkit/connectors/c7",
+    );
+    expect(within(section()).getByRole("link", { name: "Connect it again" })).toHaveAttribute(
+      "href",
+      "#/toolkit/connectors/c8",
+    );
+    expect(within(section()).queryByRole("link", { name: "Sign in again" })).toBeNull();
+  });
+
   it("given onOpen, its links ask the drawer to go there instead of leaving on their own", async () => {
     mockApi({ "GET /api/connectors": { connections: ALL } });
     const onOpen = vi.fn();

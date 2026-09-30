@@ -17,6 +17,13 @@ export function accessLine(c: Connection): string {
   return `${access} · ${(c.scope_picker?.label ?? "Project").toLowerCase()} ${c.scope.label}`;
 }
 
+/** The link on a connection that needs attention: what fixes it, on its page. */
+export function fixLabel(c: Pick<Connection, "auth_kind">): string {
+  if (c.auth_kind === "api_key") return "Replace key";
+  // It never signed in, so there is nothing to renew: it is disconnected and connected again.
+  return c.auth_kind === "none" ? "Connect it again" : "Sign in again";
+}
+
 /** Open one connection's page, or the Connectors list (`null`). */
 export type OpenConnector = (connectionId: string | null) => void;
 

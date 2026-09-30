@@ -16,7 +16,13 @@ import { listConnections } from "../../lib/api/connectors";
 import { InfoTip } from "../InfoTip";
 import { useLoaded } from "../runs/useLoaded";
 import type { ConnectorGrant } from "../tools/nodeTools";
-import { type OpenConnector, accessLine, connectorsHref, opening } from "./connectorFormat";
+import {
+  type OpenConnector,
+  accessLine,
+  connectorsHref,
+  fixLabel,
+  opening,
+} from "./connectorFormat";
 import "../../pages/domains/queryNode.css";
 import "./connectors.css";
 
@@ -147,7 +153,7 @@ export function ConnectorsChecklist({
                     href={connectorsHref(c.id)}
                     onClick={opening(onOpen, c.id)}
                   >
-                    Sign in again
+                    {fixLabel(c)}
                   </a>
                 ) : (
                   grant &&
