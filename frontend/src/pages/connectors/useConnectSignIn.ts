@@ -18,10 +18,14 @@ import {
   getConnection,
   startSignIn,
 } from "../../lib/api/connectors";
+import { ApiDetailError } from "../../lib/api/runs";
 import { openSignIn, prepareSignInWindow } from "./connectSignIn";
 
 const POLL_MS = 2000;
 const CAP_MS = 10 * 60_000;
+// The server counts its ten minutes from a moment before the app does. A sign-in that ends this
+// close to the cap with the words the row already had is read as time that ran out.
+const CAP_SLACK_MS = 10_000;
 
 export type SignInOutcome =
   | { kind: "connected"; connection: ConnectionDetail }
@@ -29,6 +33,8 @@ export type SignInOutcome =
   | { kind: "failed"; message: string }
   /** Not finished within ten minutes (or the server's own ten). */
   | { kind: "timeout" }
+  /** The connection was disconnected while the sign-in was going. */
+  | { kind: "gone" }
   /** The sign-in couldn't be started, or its address couldn't be opened (`refusal` null). */
   | { kind: "refused"; refusal: ConnectorRefusal | null };
 
@@ -138,13 +144,20 @@ export function useConnectSignIn(onOutcome: (outcome: SignInOutcome) => void): C
         if (!live || connection.signin_pending) return;
         if (connection.status === "connected" && connection.last_error === null) {
           finish({ kind: "connected", connection });
-        } else if (connection.last_error && connection.last_error !== baseline) {
+          return;
+        }
+        // `oauth/start` leaves `last_error` alone, so the same words can be a second failure: a
+        // sign-in that ended well before the cap didn't run out of time.
+        const early = Date.now() - since < CAP_MS - CAP_SLACK_MS;
+        if (connection.last_error && (connection.last_error !== baseline || early)) {
           finish({ kind: "failed", message: connection.last_error });
         } else {
           finish({ kind: "timeout" });
         }
-      } catch {
-        // A blip: the next check tries again, and the ten minutes still end it.
+      } catch (e) {
+        if (!live) return;
+        if (e instanceof ApiDetailError && e.status === 404) return finish({ kind: "gone" });
+        // Anything else is a blip: the next check tries again, and the ten minutes still end it.
       } finally {
         busy = false;
       }

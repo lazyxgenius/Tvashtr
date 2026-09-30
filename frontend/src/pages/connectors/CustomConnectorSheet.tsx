@@ -64,6 +64,13 @@ export function CustomConnectorSheet({
     if (outcome.kind === "refused" && outcome.refusal?.code === "cannot_register") {
       return setTrouble({ kind: "cannot_register" });
     }
+    if (outcome.kind === "gone") {
+      // The row this sheet made is no more: back to the first step, which makes it again.
+      setConn(null);
+      return setUrlError(
+        `${label} was removed before the sign-in finished. Check the server again.`,
+      );
+    }
     setNotice(
       outcome.kind === "timeout"
         ? "The sign-in wasn’t finished in time. Try again."

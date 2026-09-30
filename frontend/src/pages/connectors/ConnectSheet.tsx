@@ -139,7 +139,13 @@ export function ConnectSheet({
       cannotSignIn(outcome.refusal);
       return setStep("problem");
     }
-    setNotice(outcome.kind === "timeout" ? TIMED_OUT : (outcome.refusal?.message ?? COULDNT_OPEN));
+    setNotice(
+      outcome.kind === "timeout"
+        ? TIMED_OUT
+        : outcome.kind === "gone"
+          ? `${name} was disconnected before the sign-in finished.`
+          : (outcome.refusal?.message ?? COULDNT_OPEN),
+    );
     setStep("access");
   };
   const signIn = useConnectSignIn(onOutcome);

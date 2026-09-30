@@ -717,6 +717,50 @@ describe("for a connection you already have", () => {
     );
   });
 
+  it("says why when the sign-in fails the same way twice", async () => {
+    // Denied once already: the row carries those words, and starting again doesn't clear them.
+    const denied = connection({ last_error: "You didn’t allow access on Supabase." });
+    serve();
+    show({ connection: denied, mode: "signin", prepared: null });
+    await screen.findByText("Waiting for you to finish in the Supabase window");
+    row = denied;
+    await poll();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "You didn’t allow access on SupabaseNothing changed. Try again when you’re ready; you can pick a different Supabase account in the window.",
+    );
+  });
+
+  it("reads the server’s own ten minutes as time that ran out, not as a failure", async () => {
+    const expired = connection({ status: "needs_signin", last_error: "Its sign-in expired." });
+    serve();
+    show({ connection: expired, mode: "signin", prepared: null });
+    await screen.findByText("Waiting for you to finish in the Supabase window");
+    row = { ...expired, signin_pending: true };
+    await poll(10 * 60_000 - 4000);
+    expect(screen.getByText("Waiting for you to finish in the Supabase window")).toBeVisible();
+    // The server counts from a moment before the app does.
+    row = expired;
+    await poll();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The sign-in wasn’t finished in time. Try again.",
+    );
+  });
+
+  it("stops waiting when the connection was disconnected meanwhile", async () => {
+    const calls = serve({
+      "GET /api/connectors/c1": refuse(404, "Connector not found."),
+    });
+    show({ connection: connection(), mode: "signin", prepared: null });
+    await screen.findByText("Waiting for you to finish in the Supabase window");
+    await poll();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Supabase was disconnected before the sign-in finished.",
+    );
+    const after = polls(calls);
+    await poll(6000);
+    expect(polls(calls)).toBe(after);
+  });
+
   it("replaces a key", async () => {
     const calls = mockApi({
       "GET /api/connectors/catalog": {

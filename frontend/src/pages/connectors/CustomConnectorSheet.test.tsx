@@ -264,6 +264,29 @@ describe("CustomConnectorSheet", () => {
     expect(screen.getByRole("button", { name: "Check the server" })).toBeEnabled();
   });
 
+  it("goes back to checking the server when the connection was removed meanwhile", async () => {
+    serve();
+    show();
+    fill();
+    click("Check the server");
+    await screen.findByText(/You’ll sign in at/);
+    click("Continue to auth.acme.dev");
+    await screen.findByText("Waiting for you to finish in the acme-metrics window");
+    vi.mocked(fetch).mockClear();
+    vi.mocked(fetch).mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ detail: "Connector not found." }), { status: 404 }),
+      ),
+    );
+    await poll();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "acme-metrics was removed before the sign-in finished. Check the server again.",
+    );
+    expect(screen.getByRole("button", { name: "Check the server" })).toBeEnabled();
+    await poll(6000);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+  });
+
   it("shows the provider’s refusal with Try again", async () => {
     serve();
     show();
