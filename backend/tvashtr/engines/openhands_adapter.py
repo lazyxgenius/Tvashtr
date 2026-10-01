@@ -34,6 +34,7 @@ from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.terminal import TerminalTool
 
 from tvashtr.config import agent_llm_routing, get_settings
+from tvashtr.control_plane.live_state import TERMINAL_TOOLS
 from tvashtr.engines import sandbox_cache
 from tvashtr.engines.base import AgentRunResult, AgentTask, EngineEvent
 
@@ -97,6 +98,16 @@ def _kind_of(event: Event) -> str | None:
     return None
 
 
+def _keep_ends(text: str, half: int = 1000) -> str:
+    """A long terminal result's first and last ``half`` characters, joined by "\\n…\\n": its end
+    carries the test summary and the exit code. The tail never starts on an escaped character (a
+    cut between ``\\`` and the ``'`` it escapes would end the repr'd text early)."""
+    start = len(text) - half
+    if (start - len(text[:start].rstrip("\\"))) % 2:
+        start += 1
+    return text[:half] + "\n…\n" + text[start:]
+
+
 def _payload_of(event: Event, kind: str) -> dict:
     """Extract a small, JSON-able, engine-neutral payload (no OpenHands types)."""
     try:
@@ -122,10 +133,13 @@ def _payload_of(event: Event, kind: str) -> dict:
                 payload["message"] = message[:_CLOSING_TEXT_CAP]
             return payload
         if kind == "observation":
-            return {
-                "tool_name": getattr(event, "tool_name", None),
-                "observation": str(getattr(event, "observation", ""))[:2000],
-            }
+            tool_name = getattr(event, "tool_name", None)
+            observation = str(getattr(event, "observation", ""))
+            if len(observation) > 2000 and str(tool_name or "").lower() in TERMINAL_TOOLS:
+                observation = _keep_ends(observation)  # its end has the summary and exit code
+            else:
+                observation = observation[:2000]
+            return {"tool_name": tool_name, "observation": observation}
         if kind == "error":
             return {"error": str(getattr(event, "error", "") or event)[:2000]}
         if kind == "condensation":

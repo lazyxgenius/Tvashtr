@@ -718,3 +718,15 @@ def test_an_error_settles_the_command_it_answers_and_later_results_pair_right():
     )
     assert tests["refs"]["running"] is False
     assert reply["cursor"] == f"{tests['at']}|ev:3"  # nothing is left open
+
+
+def test_the_summary_counts_passing_tests_only_when_the_last_run_was_green():
+    pm, eng, _ = _engineer_world()
+    invs = [_inv(1, pm, end=30), _inv(2, eng, start=40, end=100)]
+    ev = _Events()
+    ev.add(2, 50, "action", _terminal("python -m pytest -q"))
+    ev.add(2, 52, "observation", _terminal_out("41 passed in 0.8s"))
+    ev.add(2, 60, "action", _terminal("python -m pytest -q"))
+    ev.add(2, 62, "observation", _terminal_out("2 failed, 39 passed in 0.9s", exit_code=1))
+    reply = _build(_run("completed"), [pm, eng], invs, ev.rows)
+    assert reply["summary"]["tests_passed"] is None

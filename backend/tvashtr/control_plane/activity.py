@@ -835,7 +835,10 @@ def build(
             "cost_usd": cost,
             "branch": run.ship_branch,
             "base_ref": run.base_ref,
-            "tests_passed": tests_line["refs"]["passed"] if tests_line else None,
+            # Only a green last test run counts ("41 tests passing").
+            "tests_passed": tests_line["refs"]["passed"]
+            if tests_line and tests_line["refs"]["failed"] == 0
+            else None,
         }
 
     # The cursor: the last line before the first one that can still change.
