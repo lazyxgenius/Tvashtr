@@ -154,9 +154,10 @@ describe("NowBar", () => {
       const { unmount } = render(
         <NowBar agents={AGENTS} graph={GRAPH} status={status} now={NOW} onSelect={() => {}} />,
       );
-      expect(screen.getByRole("button", { name: /^Reviewer/ })).toHaveTextContent(
-        "WaitingNot reached",
-      );
+      // Prob-Failed draws it in the state slot ("Reviewer Not reached"), not as a waiting line.
+      const chip = screen.getByRole("button", { name: /^Reviewer/ });
+      expect(chip.querySelector(".lv-chip__state")).toHaveTextContent("Not reached");
+      expect(chip).not.toHaveTextContent("Waiting");
       unmount();
     }
   });

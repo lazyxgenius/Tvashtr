@@ -501,7 +501,8 @@ const agentsOf = (over) =>
 
 const done = (activity, at, iteration = 1) => ({ state: "done", activity, at, iteration });
 const PM_DONE = done("Wrote the spec (v2)", "10:42:05");
-const GATE_DONE = done("You approved · 10:43", "10:43:10");
+// The server says "You approved"; the app adds the local time from when (10:43).
+const GATE_DONE = done("You approved", "10:43:10");
 const REV_R1 = done("Round 1 · changes requested", "10:48:40");
 
 // Each board: its moment, the run (status, elapsed seconds, cost), the agents, the lines, the
@@ -591,8 +592,10 @@ function boardOf(board) {
         node_id: "n-prd",
         label: "Approval gate",
         title: "The approval gate is waiting for you",
-        body: "Read the spec, then approve or reject it. The run is paused until you decide, and the timer has stopped.",
+        // The server's words (the board's minus "and the timer has stopped", which isn't so here).
+        body: "Read the spec, then approve or reject it. The run is paused until you decide.",
         task_id: 12,
+        gate_kind: "prd_approval",
         backup_model: null,
       },
     },
@@ -604,7 +607,7 @@ function boardOf(board) {
       liveState: "running_command",
       agents: {
         "n-pm": done("Wrote the spec (v2)", "10:46:00"),
-        "n-prd": done("You approved · 10:43", "10:47:00"),
+        "n-prd": GATE_DONE,
         "n-eng": {
           state: "running_command",
           activity: "python -m pytest -q · no output for 40 s",
@@ -629,7 +632,7 @@ function boardOf(board) {
       liveState: "retrying",
       agents: {
         "n-pm": done("Wrote the spec (v2)", "10:45:54"),
-        "n-prd": done("You approved · 10:43", "10:46:54"),
+        "n-prd": GATE_DONE,
         "n-eng": {
           state: "retrying",
           activity: "Model busy · trying again in 20 s (2 of 3)",
@@ -662,7 +665,7 @@ function boardOf(board) {
       liveState: "quiet",
       agents: {
         "n-pm": done("Wrote the spec (v2)", "10:46:02"),
-        "n-prd": done("You approved · 10:43", "10:47:02"),
+        "n-prd": GATE_DONE,
         "n-eng": {
           state: "quiet",
           activity: "Asked the model",
@@ -687,7 +690,7 @@ function boardOf(board) {
       liveState: "stalled",
       agents: {
         "n-pm": done("Wrote the spec (v2)", "10:43:40"),
-        "n-prd": done("You approved · 10:43", "10:45:40"),
+        "n-prd": GATE_DONE,
         "n-eng": { state: "stalled", activity: "Asked the model", at: "10:53:30", iteration: 2 },
         "n-rev": { ...REV_R1, at: "10:50:40", state: "waiting" },
       },
@@ -715,7 +718,7 @@ function boardOf(board) {
       liveState: "failed",
       agents: {
         "n-pm": done("Wrote the spec (v2)", "10:44:05"),
-        "n-prd": done("You approved · 10:43", "10:45:05"),
+        "n-prd": GATE_DONE,
         "n-eng": {
           state: "failed",
           activity: "The model didn’t answer after 3 tries",

@@ -156,3 +156,36 @@ Prob-Failed web: matched 63/92 design items · 2 with size/type drift · 53 only
 Prob-Failed desktop: matched 65/92 design items · 3 with size/type drift · 52 only moved · 27 not found in app — covered: W1×1, W3×2
 Prob-NotifyAsk web: matched 73/97 design items · 2 with size/type drift · 26 only moved · 24 not found in app — covered: W1×2
 Prob-NotifyAsk desktop: matched 75/97 design items · 2 with size/type drift · 26 only moved · 22 not found in app — covered: W1×2
+
+# RE-SHOT after the independent review's fixes (feat/m02-live-run-view: merge c4d163d + the 'Not reached' state slot),
+#   2026-10-02 ~04:45 IST. Fixtures follow the fixed contract: a decided gate's activity is "You approved" (the app adds the
+#   local time from last_event_at, so every board's gate chip reads "You approved · 10:43" and its "N m ago" follows
+#   10:43 — the boards' own "5m ago"/"8m ago" stamps disagree with their 10:43, so that stamp is now a copy note, one
+#   'not found' per gate-done board); the pinned gate carries gate_kind "prd_approval" ("Review the spec" shows) and the
+#   server's body (the board's minus "and the timer has stopped", untrue here: a copy note). An ended run's never-reached
+#   agent says "Not reached" in the chip's state slot (Prob-Failed), as drawn. Same scratchpad classify.py: uncovered 0.
+# GATE (re-shot): MET — the same waivers W1–W4; no new element drifts.
+Live-Working web: matched 62/86 design items · 1 with size/type drift · 16 only moved · 24 not found in app — covered: W1×1
+Live-Working desktop: matched 64/86 design items · 1 with size/type drift · 16 only moved · 22 not found in app — covered: W1×1
+Live-NeedsYou web: matched 68/87 design items · 5 with size/type drift · 28 only moved · 19 not found in app — covered: W1×3, W2×1, W3×1
+Live-NeedsYou desktop: matched 70/87 design items · 5 with size/type drift · 28 only moved · 17 not found in app — covered: W1×3, W2×1, W3×1
+Live-Command web: matched 55/85 design items · 2 with size/type drift · 14 only moved · 30 not found in app — covered: W1×1, W3×1
+Live-Command desktop: matched 57/85 design items · 2 with size/type drift · 14 only moved · 28 not found in app — covered: W1×1, W3×1
+Live-Retrying web: matched 59/83 design items · 4 with size/type drift · 26 only moved · 24 not found in app — covered: W1×2, W2×1, W3×1
+Live-Retrying desktop: matched 61/83 design items · 4 with size/type drift · 26 only moved · 22 not found in app — covered: W1×2, W2×1, W3×1
+Live-Quiet web: matched 55/87 design items · 2 with size/type drift · 25 only moved · 32 not found in app — covered: W1×1, W3×1
+Live-Quiet desktop: matched 57/87 design items · 2 with size/type drift · 25 only moved · 30 not found in app — covered: W1×1, W3×1
+Live-Done web: matched 53/77 design items · 5 with size/type drift · 25 only moved · 24 not found in app — covered: W1×2, W2×1, W3×2
+Live-Done desktop: matched 55/77 design items · 5 with size/type drift · 25 only moved · 22 not found in app — covered: W1×2, W2×1, W3×2
+Live-Website web: matched 62/86 design items · 1 with size/type drift · 17 only moved · 24 not found in app — covered: W1×1
+Live-Website desktop: matched 62/86 design items · 1 with size/type drift · 17 only moved · 24 not found in app — covered: W1×1
+Live-Home web: matched 45/67 design items · 2 with size/type drift · 29 only moved · 22 not found in app — covered: W4×2
+Live-Home desktop: matched 45/67 design items · 2 with size/type drift · 29 only moved · 22 not found in app — covered: W4×2
+Live-AgentSteps web: matched 58/92 design items · 0 with size/type drift · 36 only moved · 34 not found in app
+Live-AgentSteps desktop: matched 60/92 design items · 0 with size/type drift · 36 only moved · 32 not found in app
+Prob-Stalled web: matched 63/92 design items · 5 with size/type drift · 38 only moved · 29 not found in app — covered: W1×2, W2×2, W3×1
+Prob-Stalled desktop: matched 65/92 design items · 5 with size/type drift · 38 only moved · 27 not found in app — covered: W1×2, W2×2, W3×1
+Prob-Failed web: matched 63/92 design items · 3 with size/type drift · 51 only moved · 29 not found in app — covered: W1×1, W3×2
+Prob-Failed desktop: matched 65/92 design items · 2 with size/type drift · 52 only moved · 27 not found in app — covered: W1×1, W3×1
+Prob-NotifyAsk web: matched 73/97 design items · 2 with size/type drift · 26 only moved · 24 not found in app — covered: W1×2
+Prob-NotifyAsk desktop: matched 75/97 design items · 2 with size/type drift · 26 only moved · 22 not found in app — covered: W1×2

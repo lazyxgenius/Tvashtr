@@ -102,6 +102,8 @@ export function NowBar({
             </button>
           );
         }
+        // An ended run's agent it never reached (Prob-Failed: "Reviewer · Not reached").
+        const notReached = ended && a.live_state === "waiting";
         return (
           <button
             key={a.node_id}
@@ -116,10 +118,12 @@ export function NowBar({
               <span className="lv-chip__top">
                 <span className="lv-chip__name">{a.label}</span>
                 <span className={`lv-chip__state lv-tone--${stateTone(a.live_state)}`}>
-                  {stateWord(a.live_state)}
+                  {notReached ? "Not reached" : stateWord(a.live_state)}
                 </span>
               </span>
-              <span className="lv-chip__line">{chipLine(a, graph, agentsById, now, ended)}</span>
+              <span className="lv-chip__line">
+                {notReached ? "" : chipLine(a, graph, agentsById, now, ended)}
+              </span>
             </span>
             <span className="lv-chip__ago">{ago(a, now)}</span>
           </button>
