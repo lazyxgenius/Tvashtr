@@ -2,6 +2,7 @@
 node PATCH/POST keys, the deleted-domain validity check, the v2 run steps (spec section, stop on no
 answer, wait while re-reading, cost on the run) and the node history's ``domain`` block."""
 
+import threading
 import uuid
 
 import pytest
@@ -331,6 +332,9 @@ def test_a_covered_answer_goes_into_the_spec_the_next_agents_read(client, monkey
         # M1 stall guard: the round also hands over its run-event hook (pinned callable below).
         hook = kw.pop("on_event")
         assert callable(hook)
+        # M2: and its switch signal ("Switch to the backup model now"), unset.
+        signal = kw.pop("switch_signal")
+        assert isinstance(signal, threading.Event) and not signal.is_set()
         asked.append((did, question, kw))
         return _answer()
 

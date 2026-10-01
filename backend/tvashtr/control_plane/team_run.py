@@ -2063,11 +2063,10 @@ def _domain_round_event(run_id: str, invocation_id: int, kind: str, payload: dic
             "fallback_model",
             str(payload.get("to_model")),
             f"primary {payload.get('from_model')!r} "
-            + (
-                "stayed busy after its retries — switched to the backup model"
-                if payload.get("reason") == "busy"
-                else "failed — switched to the backup model"
-            ),
+            + {
+                "busy": "stayed busy after its retries — switched to the backup model",
+                "asked": "was busy — you switched to the backup model",
+            }.get(payload.get("reason"), "failed — switched to the backup model"),
         )
 
 
@@ -2108,6 +2107,8 @@ def domain_query_step_v2(
                 run_id, invocation_id, kind, payload
             ),
             backup_capability="thinker",
+            # M2: the run view's "Switch to the backup model now" ends a retry wait early.
+            switch_signal=live_state.switch_signal(run_id, invocation_id),
         )
     except DomainAskError as exc:
         if exc.code == "paused":
@@ -2115,6 +2116,8 @@ def domain_query_step_v2(
         return {"status": "failed", "domain_name": domain, "error": format_domain_ask_error(exc)}
     except Exception as exc:  # noqa: BLE001 — surface unexpected failures like other nodes
         return {"status": "failed", "domain_name": domain, "error": f"domain query failed: {exc}"}
+    finally:
+        live_state.clear_switch(run_id, invocation_id)
     usage = result.get("usage") or {}
     if usage.get("cost_usd") or usage.get("total_tokens"):
         record_agent_cost(

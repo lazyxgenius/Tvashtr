@@ -1,5 +1,6 @@
 """Phase 3 — ask_domain sync flow with mocked gateway."""
 
+import threading
 import uuid
 
 import pytest
@@ -269,8 +270,10 @@ def test_ask_domain_passes_the_run_event_hook_to_the_gateway(monkeypatch):
     def hook(kind, payload):
         return None
 
-    ask_domain(owner_id, did, "How long do refunds take?", on_event=hook)
+    signal = threading.Event()  # M2: "Switch to the backup model now" reaches the gateway too
+    ask_domain(owner_id, did, "How long do refunds take?", on_event=hook, switch_signal=signal)
     assert seen[0].on_event is hook
+    assert seen[0].switch_signal is signal
 
 
 def test_a_domain_round_gets_the_account_backup_for_its_seat(monkeypatch):

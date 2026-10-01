@@ -21,11 +21,12 @@ from sqlalchemy import func, select
 
 from tvashtr import routers
 from tvashtr.config import get_settings
-from tvashtr.control_plane import github_app
+from tvashtr.control_plane import github_app, live_state
 from tvashtr.db import session_scope
 from tvashtr.documents.service import create_document_with_initial_version
 from tvashtr.gateway import CompletionResult
 from tvashtr.models import (
+    AgentInvocation,
     AgentNode,
     CostRecord,
     GithubInstallation,
@@ -239,6 +240,7 @@ _READS = {
     "diff": "/api/runs/{run}/diff",
     "memories": "/api/runs/{run}/memories",
     "graph": "/api/runs/{run}/graph",
+    "activity": "/api/runs/{run}/activity",
     "tasks": "/api/runs/{run}/tasks",
     "ab_pair": "/api/ab-runs/{pair}",
 }
@@ -301,6 +303,34 @@ def test_b_cannot_ask_a_node_of_a_run(w, monkeypatch):
     # B's own run with B's own node is served: the mixed 404 above is A's node, not B's run.
     own = w.b.post(f"/api/runs/{w.b_run}/nodes/{w.b_engineer}/ask", json=body)
     assert own.status_code == 200, own.text
+
+
+# ---------------------------------------------------------------------------- switch to backup
+
+
+def test_b_cannot_switch_a_node_to_its_backup(w):
+    """M2: the Retrying callout's switch. A's engineer is mid-retry with its call in this process;
+    B (on A's run, or on B's own run with A's node) gets a 404 and A's signal stays unset."""
+    add_invocation(w.run, w.engineer, "running", iteration=2)
+    with session_scope() as session:
+        inv_id = session.execute(
+            select(AgentInvocation.id).where(
+                AgentInvocation.run_id == w.run, AgentInvocation.iteration == 2
+            )
+        ).scalar_one()
+    live_state.record_host_event(
+        w.run, inv_id, "retry", {"attempt": 1, "of": 3, "backup_model": "openai/gpt-4.1-mini"}
+    )
+    signal = live_state.switch_signal(w.run, inv_id)
+    try:
+        _assert_refused(w.b.post(f"/api/runs/{w.run}/nodes/{w.engineer}/switch-backup"), w)
+        _assert_refused(w.b.post(f"/api/runs/{w.b_run}/nodes/{w.engineer}/switch-backup"), w)
+        assert not signal.is_set()
+        mine = w.a.post(f"/api/runs/{w.run}/nodes/{w.engineer}/switch-backup")
+        assert mine.status_code == 200, mine.text
+        assert signal.is_set()
+    finally:
+        live_state.clear_switch(w.run, inv_id)
 
 
 # ---------------------------------------------------------------------------- tasks

@@ -250,9 +250,13 @@ def _next_role(gate_id: str, edges: list[dict], nodes: dict) -> str | None:
     return None
 
 
+_STEP_FIELDS = ("live_state", "activity", "last_event_at", "activity_started_at")
+
+
 def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> dict:
     """The computed fields for each run, keyed by ``run.id``: ``team``, ``spent_usd``,
-    ``awaiting``, ``failure`` and (when asked) ``progress``. A fixed number of queries per page."""
+    ``awaiting``, ``failure``, ``live_state``, ``live`` (the worst running step, or ``None``) and
+    (when asked) ``progress``. A fixed number of queries per page."""
     if not runs:
         return {}
     run_keys = [str(r.id) for r in runs]
@@ -302,22 +306,29 @@ def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> d
         for nid, n in nodes.items()
     }
 
-    # M1 stall guard: each in-flight run's running steps give it one live state (its worst).
+    # M1 stall guard: each in-flight run's running steps give it one live state (its worst). M2: the
+    # worst step itself (its label and live block) is the run's ``live`` (Home's Running now card).
     step_states: dict[str, list[str]] = {}
+    worst_step: dict[str, dict] = {}
     in_flight = [str(r.id) for r in runs if r.status not in TERMINAL_STATUSES]
     if in_flight:
         running = session.execute(
-            select(AgentInvocation, AgentNode.kind)
+            select(AgentInvocation, AgentNode)
             .join(AgentNode, AgentNode.id == AgentInvocation.node_id)
             .where(AgentInvocation.run_id.in_(in_flight), AgentInvocation.status == "running")
         ).all()
         live_by_inv = live_state.invocation_live(
-            session, [inv for inv, kind in running if kind in live_state.STEP_KINDS]
+            session, [inv for inv, node in running if node.kind in live_state.STEP_KINDS]
         )
-        for inv, kind in running:
-            step_states.setdefault(inv.run_id, []).append(
-                live_state.node_live(kind, inv, live_by_inv)["live_state"]
-            )
+        for inv, node in running:
+            step = live_state.node_live(node.kind, inv, live_by_inv)
+            step_states.setdefault(inv.run_id, []).append(step["live_state"])
+            held = worst_step.get(inv.run_id, {}).get("live_state")
+            if held is None or live_state.worst([step["live_state"], held]) != held:
+                worst_step[inv.run_id] = {
+                    "label": _label(node),
+                    **{k: step[k] for k in _STEP_FIELDS},
+                }
 
     out: dict = {}
     for run in runs:
@@ -368,6 +379,7 @@ def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> d
             "awaiting": awaiting,
             "failure": failure,
             "live_state": live_state.run_live_state(run.status, step_states.get(rid, [])),
+            "live": worst_step.get(rid),
         }
         if include_progress:
             extras["progress"] = _progress(run, nodes, edges, invs_by_run.get(rid, []), tasks)

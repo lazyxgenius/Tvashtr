@@ -7,6 +7,7 @@ is captured as raw token counts *and* a computed USD figure — the counts stay
 meaningful even when a free-tier call legitimately costs ``0.0``.
 """
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -45,6 +46,10 @@ class CompletionRequest:
     # ``model_retries`` (3). Interactive callers (node Ask, the domain chat, an agent's domain tool)
     # pass 0 so a person — or an agent's tool call — gets its answer or its error at once.
     retries: int | None = None
+    # M2: "Switch to the backup model now". Set while the PRIMARY waits out a retry backoff, it ends
+    # the wait at once and the call switches to its backup (``backup_model`` reason ``"asked"``).
+    # ``None`` ⇒ the backoff is a plain sleep, as before.
+    switch_signal: threading.Event | None = None
 
 
 @dataclass(frozen=True)

@@ -101,6 +101,33 @@ def test_the_run_payloads_carry_the_runs_worst_state(client):
     assert rows[run_id]["live_state"] == "quiet"
 
 
+def test_the_run_payloads_carry_the_runs_worst_running_step(client):
+    """M2: Home's Running now cards show the run's worst running step — its label and live block
+    (``live``); null once the run is over or before any step runs."""
+    c, owner = fresh_account("live-step")
+    team = library_team(c)
+    run_id, _ = _quiet_run(owner, team)
+    done, _ = make_run(owner, team, status="completed")
+    fresh, _ = make_run(owner, team, status="running")
+
+    live = c.get(f"/api/runs/{run_id}").json()["run"]["live"]
+    assert set(live) == {"label", "live_state", "activity", "last_event_at", "activity_started_at"}
+    assert live["label"] == "Engineer" and live["live_state"] == "quiet"
+    assert live["activity"] == "Asked the model for the next step"
+    assert live["last_event_at"] and live["activity_started_at"]
+    assert c.get(f"/api/runs/{done}").json()["run"]["live"] is None
+    assert c.get(f"/api/runs/{fresh}").json()["run"]["live"] is None
+    rows = {r["run_id"]: r for r in c.get("/api/runs", params={"status": "all"}).json()["runs"]}
+    assert rows[run_id]["live"] == live and rows[done]["live"] is None
+
+    # Two running steps: the worse one is the run's.
+    both, clone = _quiet_run(owner, team)
+    rev = _invocation(both, clone_node(clone, "reviewer"), "running", started_ago=900)
+    _event(both, rev, 310)
+    live = c.get(f"/api/runs/{both}").json()["run"]["live"]
+    assert (live["label"], live["live_state"]) == ("Reviewer", "stalled")
+
+
 def test_a_stalled_run_is_in_needs_you_and_a_fresh_one_is_not(client):
     c, owner = fresh_account("live-inbox")
     team = library_team(c)

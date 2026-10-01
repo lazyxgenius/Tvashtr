@@ -331,6 +331,7 @@ def ask_domain(
     on_event=None,
     retries: int | None = None,
     backup_capability: str | None = None,
+    switch_signal=None,
 ) -> dict:
     """Sync cited ask. Raises DomainAskError for mapped HTTP statuses.
 
@@ -342,7 +343,8 @@ def ask_domain(
     call's retries and backup switch — a Query domain node writes them as run events. ``retries``
     is the gateway's per-request retry count (``None`` ⇒ the configured 3; interactive callers
     pass 0). ``backup_capability`` (a Query domain node's run step: ``"thinker"``) gives the call
-    the account's backup model for that capability (R2), when the owner holds a key for it."""
+    the account's backup model for that capability (R2), when the owner holds a key for it.
+    ``switch_signal`` (M2) ends a retry wait early and switches the call to that backup."""
     q = (question or "").strip()
     if not q:
         raise DomainAskError("bad_request", "question must be non-empty")
@@ -441,6 +443,7 @@ def ask_domain(
                 api_key=chat_key,
                 on_event=on_event,
                 retries=retries,
+                switch_signal=switch_signal,
                 **_account_backup(owner_id, backup_capability, gen_model),
             )
         )

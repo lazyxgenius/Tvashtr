@@ -18,6 +18,7 @@ Openhands-free and litellm-free at import, so ``team_run`` may use it.
 
 import logging
 import re
+import threading
 import zlib
 from datetime import UTC, datetime
 
@@ -299,3 +300,33 @@ def run_live_state(run_status: str, step_states) -> str | None:
     if run_status == "awaiting_human":
         states.append("needs_you")
     return worst(states) or "waiting"
+
+
+# M2: "Switch to the backup model now" — one signal per running gateway step, keyed by
+# ``(run_id, invocation_id)``. The step registers it (:func:`switch_signal`) and hands it to its
+# model call, whose retry backoff waits on it; the route sets it (:func:`request_switch`).
+# ponytail: in-process only — a switch asked of another process finds nothing (the route's 409);
+# move to a Postgres NOTIFY if steps and the API ever run on separate machines.
+_SWITCHES: dict[tuple[str, int], threading.Event] = {}
+_SWITCHES_LOCK = threading.Lock()
+
+
+def switch_signal(run_id: str, invocation_id: int) -> threading.Event:
+    """The step's switch signal (registered on first ask)."""
+    with _SWITCHES_LOCK:
+        return _SWITCHES.setdefault((run_id, invocation_id), threading.Event())
+
+
+def request_switch(run_id: str, invocation_id: int) -> bool:
+    """Set the step's signal; ``False`` when no such step runs in this process."""
+    with _SWITCHES_LOCK:
+        signal = _SWITCHES.get((run_id, invocation_id))
+    if signal is None:
+        return False
+    signal.set()
+    return True
+
+
+def clear_switch(run_id: str, invocation_id: int) -> None:
+    with _SWITCHES_LOCK:
+        _SWITCHES.pop((run_id, invocation_id), None)

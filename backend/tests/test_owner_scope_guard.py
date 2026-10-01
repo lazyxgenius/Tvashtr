@@ -438,6 +438,10 @@ ROUTES: dict[str, tuple[str, object]] = {
     "GET /api/runs": ("list", ["test_owner_scope_runs::test_run_list_is_owner_scoped"]),
     "POST /api/runs": ("id", ["test_owner_scope_runs::test_b_cannot_launch_on_a_object"]),
     "GET /api/runs/{run_id}": ("id", ["test_owner_scope_runs::test_b_cannot_read_a_run"]),
+    "GET /api/runs/{run_id}/activity": (
+        "id",
+        ["test_owner_scope_runs::test_b_cannot_read_a_run"],
+    ),
     "POST /api/runs/{run_id}/cancel": ("id", ["test_owner_scope_runs::test_b_cannot_cancel_a_run"]),
     "GET /api/runs/{run_id}/diff": ("id", ["test_owner_scope_runs::test_b_cannot_read_a_run"]),
     "GET /api/runs/{run_id}/documents": ("id", ["test_owner_scope_runs::test_b_cannot_read_a_run"]),
@@ -446,6 +450,10 @@ ROUTES: dict[str, tuple[str, object]] = {
     "POST /api/runs/{run_id}/nodes/{node_id}/ask": (
         "id",
         ["test_owner_scope_runs::test_b_cannot_ask_a_node_of_a_run"],
+    ),
+    "POST /api/runs/{run_id}/nodes/{node_id}/switch-backup": (
+        "id",
+        ["test_owner_scope_runs::test_b_cannot_switch_a_node_to_its_backup"],
     ),
     "GET /api/runs/{run_id}/ship-bundle": (
         "id",

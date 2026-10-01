@@ -21,6 +21,7 @@ from tvashtr import db
 from tvashtr.auth import UserOut, _store_installation, get_current_user
 from tvashtr.config import get_settings
 from tvashtr.control_plane import (
+    activity,
     desktop_jobs,
     document_views,
     domain_read,
@@ -1951,6 +1952,69 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                 for w in resolution_warnings
             ],
         }
+
+
+@router.get("/api/runs/{run_id}/activity")
+def get_run_activity(
+    run_id: str,
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+    after: str | None = None,
+) -> dict:
+    """M2 live run view: the run's steps in plain words, each agent's live state, the one thing
+    needing action and (once completed) the summary — ``control_plane/activity.py``. Owner-scoped
+    (404). ``after`` is a previous reply's ``cursor``: only newer lines (and any line still
+    changing) come back; everything else is always whole. Polled every 2 s (R15)."""
+    with db.session_scope() as session:
+        run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
+        return activity.run_activity(session, run, after)
+
+
+@router.post("/api/runs/{run_id}/nodes/{node_id}/switch-backup")
+def switch_node_to_backup(
+    run_id: str, node_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """M2: the Retrying callout's "Switch to the backup model now" — ends the node's current retry
+    wait so its model call switches to its backup at once (R2). 404 unless the run is the caller's
+    and the node is in it; 409 ``nothing to switch`` unless the node's latest step is running, its
+    newest event is a host retry that names a backup, and that call runs in this process."""
+    nothing = HTTPException(status_code=409, detail="nothing to switch")
+    with db.session_scope() as session:
+        run = _require_owned_run(session, run_id, uuid.UUID(current_user.id))
+        try:
+            node_uuid = uuid.UUID(node_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="node not found") from None
+        in_run = session.execute(
+            select(AgentNode.id).where(
+                AgentNode.id == node_uuid, AgentNode.team_graph_id == run.team_graph_id
+            )
+        ).scalar_one_or_none()
+        if in_run is None:
+            raise HTTPException(status_code=404, detail="node not found")
+        inv = session.execute(
+            select(AgentInvocation)
+            .where(AgentInvocation.run_id == run_id, AgentInvocation.node_id == node_uuid)
+            .order_by(AgentInvocation.iteration.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if inv is None or inv.status != "running":
+            raise nothing
+        newest = session.execute(
+            select(RunEvent)
+            .where(RunEvent.run_id == run_id, RunEvent.invocation_id == inv.id)
+            .order_by(RunEvent.created_at.desc(), RunEvent.id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if (
+            newest is None
+            or newest.kind != "retry"
+            or not (newest.payload or {}).get("backup_model")
+        ):
+            raise nothing
+        invocation_id = inv.id
+    if not live_state.request_switch(run_id, invocation_id):
+        raise nothing
+    return {"switched": True}
 
 
 # ---- Provider credentials (M-accounts Slice B): the account's BYOK keys, encrypted at rest ----
