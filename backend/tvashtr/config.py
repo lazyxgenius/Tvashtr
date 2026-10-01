@@ -231,6 +231,50 @@ class Settings(BaseSettings):
         gt=0,
         validation_alias=AliasChoices("TVASHTR_AGENT_REQUEST_TIMEOUT", "agent_request_timeout_s"),
     )
+    # M1 stall guard (R2): the host-side completion path (``gateway.complete``) retries a 429 / 5xx
+    # / connection error / timeout this many times, waiting ``backoff * 2**(n-1)`` seconds (10, 20,
+    # 40), before it switches once to the backup model. The per-call limit is
+    # ``agent_request_timeout_s`` above (R1: every model call has one).
+    model_retries: int = Field(
+        default=3, ge=0, validation_alias=AliasChoices("TVASHTR_MODEL_RETRIES", "model_retries")
+    )
+    model_retry_backoff_s: float = Field(
+        default=10.0,
+        ge=0,
+        validation_alias=AliasChoices("TVASHTR_MODEL_RETRY_BACKOFF_S", "model_retry_backoff_s"),
+    )
+    # M1 stall guard (R1): a running step with no new event (and no command running) is Quiet after
+    # ``quiet_after_s``, Stalled after ``stalled_after_s``, and ended as Failed ("stalled") by the
+    # periodic sweep after ``stall_fail_after_s``. ``stall_sweep_enabled`` registers the sweep (the
+    # offline suite turns it off in conftest; the sweep is unit-tested directly); its cron decides
+    # how often it looks.
+    quiet_after_s: int = Field(
+        default=90, gt=0, validation_alias=AliasChoices("TVASHTR_QUIET_AFTER_S", "quiet_after_s")
+    )
+    stalled_after_s: int = Field(
+        default=300,
+        gt=0,
+        validation_alias=AliasChoices("TVASHTR_STALLED_AFTER_S", "stalled_after_s"),
+    )
+    stall_fail_after_s: int = Field(
+        default=1200,
+        gt=0,
+        validation_alias=AliasChoices("TVASHTR_STALL_FAIL_AFTER_S", "stall_fail_after_s"),
+    )
+    stall_sweep_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("TVASHTR_STALL_SWEEP", "stall_sweep_enabled"),
+    )
+    stall_sweep_cron: str = Field(
+        default="* * * * *",
+        validation_alias=AliasChoices("TVASHTR_STALL_SWEEP_CRON", "stall_sweep_cron"),
+    )
+    # M1 live proof only: the node whose ``role_name`` matches waits like a model that never
+    # answers (no LLM call), until its run's sandboxes are closed. Unset ⇒ inert.
+    force_hang_role: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("TVASHTR_FORCE_HANG_ROLE", "force_hang_role"),
+    )
     # M-live: the condenser's TOKEN trigger. M-ctx0 gave every adapter
     # ``LLMSummarizingCondenser(keep_first=2, max_size=80)`` to stop a long transcript overrunning
     # the model's context window — but ``max_size`` counts EVENTS, and the SDK gates its

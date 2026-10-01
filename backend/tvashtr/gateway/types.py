@@ -7,6 +7,7 @@ is captured as raw token counts *and* a computed USD figure — the counts stay
 meaningful even when a free-tier call legitimately costs ``0.0``.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 
@@ -36,6 +37,10 @@ class CompletionRequest:
     fallback_model: str | None = None
     fallback_api_key: str | None = None
     multimodal: bool = False
+    # M1 stall guard (R2): told about each retry (``"retry"``) and the one-time switch to the backup
+    # (``"backup_model"``) as ``on_event(kind, payload)`` — the caller writes them as run events.
+    # ``None`` ⇒ silent. A hook that raises never breaks the call.
+    on_event: Callable[[str, dict], None] | None = None
 
 
 @dataclass(frozen=True)

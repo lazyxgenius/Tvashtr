@@ -293,26 +293,40 @@ def test_no_fallback_set_still_raises_on_the_same_hard_failure(monkeypatch):
 
 
 def test_a_429_on_the_primary_does_NOT_use_the_node_fallback(monkeypatch):
-    """A 429 is explicitly NOT a hard failure: the Milestone-B retry envelope owns rate limits, so
-    the per-node fallback must NOT burn on one."""
+    """A 429 is explicitly NOT a hard failure: the retry envelope owns rate limits, so the per-node
+    fallback must NOT burn on one the retries can ride out. M1 (ruling R2) moved the envelope into
+    the gateway — 3 tries with backoff — and only a 429 that outlasts all of them switches (pinned
+    in ``test_stall_guard_gateway``); here three 429s then an answer never touch the fallback."""
     _no_global_fallbacks(monkeypatch)
+    monkeypatch.setattr(
+        gw,
+        "get_settings",
+        lambda: SimpleNamespace(
+            model_fallbacks=[],
+            default_max_tokens_per_call=None,
+            model_retries=3,
+            model_retry_backoff_s=0.0,
+        ),
+    )
     calls: list[str] = []
 
     def fake_completion(*, model, messages, **kwargs):
         calls.append(model)
-        raise _RateLimited("429 Too Many Requests")
+        if len(calls) <= 3:
+            raise _RateLimited("429 Too Many Requests")
+        return _canned_response("ok", model)
 
     monkeypatch.setattr(gw.litellm, "completion", fake_completion)
 
-    with pytest.raises(GatewayError):
-        complete(
-            CompletionRequest(
-                model="primary/down",
-                messages=[{"role": "user", "content": "hi"}],
-                fallback_model="backup/up",
-            )
+    result = complete(
+        CompletionRequest(
+            model="primary/down",
+            messages=[{"role": "user", "content": "hi"}],
+            fallback_model="backup/up",
         )
-    assert calls == ["primary/down"]  # the fallback was NOT tried
+    )
+    assert calls == ["primary/down"] * 4  # the fallback was NOT tried
+    assert result.model_used == "primary/down"
 
 
 def test_the_fallback_call_uses_its_own_provider_key(monkeypatch):

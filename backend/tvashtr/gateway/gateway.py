@@ -16,7 +16,10 @@ Persisting the cost is the caller's job (a DBOS step), which is what keeps
 metering idempotent under DBOS's at-least-once step retries.
 """
 
+import contextvars
+import threading
 import time
+from datetime import UTC, datetime, timedelta
 
 import litellm
 
@@ -113,6 +116,78 @@ def _is_rate_limit(exc: Exception) -> bool:
     return "429" in text or "rate limit" in text or "ratelimit" in text
 
 
+# M1 stall guard (R2): errors the host-side retry envelope rides out — a rate limit, a server-side
+# 5xx, a connection drop and a timeout (litellm's own, or the per-call limit below). Matched by
+# status code first, then by EXACT exception class name (litellm's typed errors), never by message
+# text: a plain ``RuntimeError("connection refused ...")`` stays a hard failure, as it always was.
+_TRANSIENT_TYPES = {
+    "ratelimiterror": "busy",
+    "timeout": "timeout",
+    "timeouterror": "timeout",
+    "apitimeouterror": "timeout",
+    "modeltimeout": "timeout",
+    "apiconnectionerror": "unavailable",
+    "internalservererror": "unavailable",
+    "serviceunavailableerror": "unavailable",
+}
+
+# Indirection so tests record the backoff instead of waiting it out.
+_sleep = time.sleep
+
+
+class ModelTimeout(Exception):
+    """The model didn't answer within the per-call limit (R1)."""
+
+
+def _transient_reason(exc: Exception) -> str | None:
+    """``"busy"`` / ``"timeout"`` / ``"unavailable"`` for an error worth retrying, else ``None``."""
+    status = getattr(exc, "status_code", None)
+    if status == 429:
+        return "busy"
+    if isinstance(status, int) and 500 <= status <= 599:
+        return "unavailable"
+    return _TRANSIENT_TYPES.get(type(exc).__name__.lower())
+
+
+def _call_with_limit(kwargs: dict, limit: float | None) -> object:
+    """``litellm.completion(**kwargs)``, cut at ``limit`` seconds (R1: every model call has one).
+
+    The limit rides on the provider call too (``timeout=``), but a provider that accepts the
+    connection and then trickles nothing can outlive an HTTP read timeout, so the host also stops
+    waiting at the limit. The abandoned call runs out on a daemon thread (never blocks shutdown).
+    ``limit=None`` (a settings stand-in without one) calls straight through, as before M1."""
+    if limit is None:
+        return litellm.completion(**kwargs)
+    kwargs["timeout"] = limit
+    box: dict = {}
+    context = contextvars.copy_context()
+
+    def call() -> None:
+        try:
+            box["response"] = context.run(lambda: litellm.completion(**kwargs))
+        except BaseException as exc:  # noqa: BLE001 — handed back to the caller's thread
+            box["error"] = exc
+
+    worker = threading.Thread(target=call, daemon=True, name="gateway-call")
+    worker.start()
+    worker.join(limit)
+    if worker.is_alive():
+        raise ModelTimeout(f"the model didn't answer within {limit:g} seconds")
+    if "error" in box:
+        raise box["error"]
+    return box["response"]
+
+
+def _emit(request: CompletionRequest, kind: str, payload: dict) -> None:
+    """Tell the caller (best effort): a hook that fails never breaks the model call."""
+    if request.on_event is None:
+        return
+    try:
+        request.on_event(kind, payload)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def multimodal_supported(model: str) -> bool:
     """Best-effort: can ``model`` actually accept non-text (image) input?
 
@@ -138,21 +213,30 @@ def _cost_of(response: object) -> float:
 def complete(request: CompletionRequest) -> CompletionResult:
     """Route a completion to the requested model, failing over through fallbacks.
 
+    M1 stall guard: each call is cut at the per-call limit (R1); the PRIMARY is retried on a
+    transient error (429 / 5xx / connection / timeout) up to ``model_retries`` times with backoff,
+    then — or at once on a hard failure — the request switches ONCE to its per-node backup
+    (``fallback_model``, R2). Retries and the switch are reported through ``request.on_event``.
+
     Raises ``GatewayError`` only if *every* candidate model fails.
     """
+    settings = get_settings()
+    limit = getattr(settings, "agent_request_timeout_s", None)
+    retries = getattr(settings, "model_retries", 0)
+    backoff = getattr(settings, "model_retry_backoff_s", 0.0)
     last_error: Exception | None = None
     # Apply the configured per-call output ceiling when the caller didn't set one
     # (static config, like the fallback list — NOT run state, so the gateway stays
     # a pure request->result function).
     max_tokens = request.max_tokens
     if max_tokens is None:
-        max_tokens = get_settings().default_max_tokens_per_call
+        max_tokens = settings.default_max_tokens_per_call
     # Each candidate is ``(model, api_key)``: the per-node fallback may be a DIFFERENT provider than
     # the primary, so it carries the key the executor resolved for ITS provider. The list comes from
     # :func:`_static_candidates` (requested + whichever static config fallbacks the credential in
     # hand actually belongs to) and is MUTATED below — the per-node fallback is spliced in directly
-    # after the primary, but ONLY when the primary fails HARD. A request with no ``fallback_model``
-    # never splices, so its order and semantics are byte-identical to before that feature.
+    # after the primary once the primary has failed for good. A request with no ``fallback_model``
+    # never splices.
     candidates, uncredentialed = _static_candidates(request)
     index = 0
     while index < len(candidates):
@@ -168,50 +252,76 @@ def complete(request: CompletionRequest) -> CompletionResult:
         if api_key is not None:
             kwargs["api_key"] = api_key
 
-        started = time.perf_counter()
-        try:
-            response = litellm.completion(**kwargs)
-        except Exception as exc:  # noqa: BLE001 — any provider error means: try the next model
-            last_error = exc
-            # The per-node failover: swap ONCE, only off the PRIMARY (``index == 0``), only on a
-            # HARD failure (never a 429 — see :func:`_is_rate_limit`), and only if the fallback slug
-            # isn't already queued. Tried BEFORE the static ``model_fallbacks`` because an AUTHORED
-            # per-node choice is more specific than a deployment-wide default.
-            fallback = request.fallback_model
-            if (
-                index == 0
-                and fallback
-                and fallback not in [m for m, _ in candidates]
-                and not _is_rate_limit(exc)
-            ):
-                fallback_key = (
-                    request.fallback_api_key
-                    if request.fallback_api_key is not None
-                    else request.api_key
-                )
-                candidates.insert(1, (fallback, fallback_key))
-            index += 1
-            continue
-        latency_ms = (time.perf_counter() - started) * 1000.0
+        attempt = 0
+        while True:
+            started = time.perf_counter()
+            try:
+                response = _call_with_limit(dict(kwargs), limit)
+            except Exception as exc:  # noqa: BLE001 — any provider error: retry or try the next
+                last_error = exc
+                reason = _transient_reason(exc)
+                # R2: only the PRIMARY rides out a busy spell; the backup gets one try.
+                if index == 0 and reason is not None and attempt < retries:
+                    attempt += 1
+                    wait = backoff * 2 ** (attempt - 1)
+                    _emit(
+                        request,
+                        "retry",
+                        {
+                            "attempt": attempt,
+                            "of": retries,
+                            "wait_s": wait,
+                            "next_at": (datetime.now(UTC) + timedelta(seconds=wait)).isoformat(),
+                            "reason": reason,
+                            "model": model,
+                        },
+                    )
+                    _sleep(wait)
+                    continue
+                break
+            latency_ms = (time.perf_counter() - started) * 1000.0
 
-        usage = getattr(response, "usage", None)
-        prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
-        completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
-        total_tokens = int(getattr(usage, "total_tokens", 0) or 0) or (
-            prompt_tokens + completion_tokens
-        )
+            usage = getattr(response, "usage", None)
+            prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+            completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+            total_tokens = int(getattr(usage, "total_tokens", 0) or 0) or (
+                prompt_tokens + completion_tokens
+            )
 
-        return CompletionResult(
-            text=response.choices[0].message.content or "",
-            model_requested=request.model,
-            model_used=model,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens,
-            cost_usd=_cost_of(response),
-            raw_provider=_provider_of(model),
-            latency_ms=latency_ms,
-        )
+            return CompletionResult(
+                text=response.choices[0].message.content or "",
+                model_requested=request.model,
+                model_used=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                cost_usd=_cost_of(response),
+                raw_provider=_provider_of(model),
+                latency_ms=latency_ms,
+            )
+
+        # The per-node failover: swap ONCE, only off the PRIMARY (``index == 0``), once it failed
+        # hard or used up its retries (R2), and only if the fallback slug isn't already queued.
+        # Tried BEFORE the static ``model_fallbacks`` because an AUTHORED per-node choice is more
+        # specific than a deployment-wide default.
+        fallback = request.fallback_model
+        if index == 0 and fallback and fallback not in [m for m, _ in candidates]:
+            fallback_key = (
+                request.fallback_api_key
+                if request.fallback_api_key is not None
+                else request.api_key
+            )
+            candidates.insert(1, (fallback, fallback_key))
+            _emit(
+                request,
+                "backup_model",
+                {
+                    "from_model": model,
+                    "to_model": fallback,
+                    "reason": "busy" if _transient_reason(last_error) else "error",
+                },
+            )
+        index += 1
 
     # The primary's own error is what propagates: a candidate skipped for want of its own credential
     # must never mask it. Name the skipped slugs so the omission is legible rather than silent.
