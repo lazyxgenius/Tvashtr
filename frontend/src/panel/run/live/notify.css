@@ -1,0 +1,44 @@
+/* The ask-once dialog under the run bar's bell (M2, Prob-NotifyAsk). */
+.ds-popover.tv-notify {
+  padding: 16px;
+  border-radius: 14px;
+  gap: 12px;
+  font-family: var(--font-ui);
+}
+.tv-notify__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.tv-notify__icon {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--coral-100);
+  color: var(--coral-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tv-notify__title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.tv-notify__body {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-600);
+  margin-top: 3px;
+}
+.tv-notify__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tv-notify__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

@@ -63,6 +63,15 @@ export async function saveNotifyPrefs(next: NotifyPrefs): Promise<void> {
   }
 }
 
+let autoAsked = false;
+
+/** True the first time a run view's bell may ask on its own this session (then never again). */
+export function claimAutoAsk(): boolean {
+  if (autoAsked) return false;
+  autoAsked = true;
+  return true;
+}
+
 const notificationsAllowed = () =>
   typeof Notification !== "undefined" && Notification.permission === "granted";
 
@@ -197,4 +206,5 @@ export function useRunNotifier(): void {
 export function __resetNotifyPrefsForTests(): void {
   prefs = null;
   loading = null;
+  autoAsked = false;
 }
