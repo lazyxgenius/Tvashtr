@@ -145,3 +145,21 @@ def test_the_periodic_body_delegates_to_the_sweep(monkeypatch):
     monkeypatch.setattr(stall_sweep, "sweep_stalled_steps", lambda: seen.append(True) or [])
     stall_sweep._periodic_stall_sweep(datetime.now(UTC), datetime.now(UTC))
     assert seen == [True]
+
+
+def test_two_stalled_rounds_of_one_node_are_ended_once(client, released):
+    """Review / full-suite finding: two running invocations of the same node (a leftover round) must
+    not trip the sweep over a shared ORM object."""
+    c, owner = fresh_account("sweep-twice")
+    run_id, node, _ = _stale_step(owner, library_team(c), silent_for=1300)
+    with session_scope() as s:
+        s.add(
+            AgentInvocation(
+                run_id=run_id,
+                node_id=uuid.UUID(node),
+                iteration=3,
+                status="running",
+                started_at=NOW - timedelta(hours=2),
+            )
+        )
+    assert run_id in stall_sweep.sweep_stalled_steps(now=NOW)

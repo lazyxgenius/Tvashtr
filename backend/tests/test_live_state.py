@@ -189,3 +189,17 @@ def test_host_events_take_their_own_seq_band(client):
             .all()
         )
     assert seqs == [live_state.HOST_EVENT_SEQ_BAND, live_state.HOST_EVENT_SEQ_BAND + 1]
+
+
+def test_events_of_another_run_with_the_same_invocation_id_are_ignored(client):
+    """``run_events.invocation_id`` is not a foreign key: an event another run wrote under the same
+    number (legacy / test rows) must not count as this step's news."""
+    now = datetime.now(UTC)
+    run_id, inv_id = _running_invocation(now - timedelta(minutes=10))
+    _add_event(
+        run_id, inv_id, 0, "message", {"source": "user", "text": "x"}, now - timedelta(minutes=9)
+    )
+    _add_event("someone-else", inv_id, 0, "message", {"source": "user", "text": "y"}, now)
+    with session_scope() as s:
+        inv = s.get(AgentInvocation, inv_id)
+        assert live_state.invocation_live(s, [inv], now=now)[inv_id]["live_state"] == "stalled"

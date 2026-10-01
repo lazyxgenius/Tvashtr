@@ -60,7 +60,7 @@ from tvashtr.engines.openhands_adapter import (
     _read_usage,
     _text_has_budget_signature,
     _text_has_provider_signature,
-    _text_has_transient_signature,
+    _text_is_model_busy,
 )
 
 logger = logging.getLogger("tvashtr.engines.openhands_docker")
@@ -509,7 +509,7 @@ class OpenHandsDockerAdapter:
                 and not provider_failure
                 and (
                     _is_transient_error(exc)
-                    or any(_text_has_transient_signature(t) for t in error_event_texts)
+                    or any(_text_is_model_busy(t) for t in error_event_texts)
                 )
             )
             error = str(exc)

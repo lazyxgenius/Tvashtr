@@ -237,6 +237,15 @@ def _resolve_model_and_key(run_id: str, model: str, fallback_model: str | None) 
         return fallback_model, key
 
 
+def _run_is_live(run_id: str) -> bool:
+    """The run is still in flight (not ended by the stall sweep, a Stop, a failure elsewhere)."""
+    with session_scope() as session:
+        status = session.execute(
+            select(Run.status).where(Run.id == uuid.UUID(run_id))
+        ).scalar_one_or_none()
+    return status in ("pending", "running", "awaiting_human")
+
+
 def _account_backup_model(run_id: str, capability: str | None, primary: str) -> str | None:
     """M1 (ruling R2): the account's backup model for a node of ``capability`` — used when the
     node authored no ``fallback_model`` — or ``None``. Only a model the run owner holds a key for
@@ -250,7 +259,13 @@ def _account_backup_model(run_id: str, capability: str | None, primary: str) -> 
             return None
         held = held_provider_slugs(owner_id)
         backup = account_fallback_model(held, capability)
-        if backup is None or backup == primary or provider_for_model(backup) not in held:
+        if (
+            backup is None
+            or backup == primary
+            or provider_for_model(backup) not in held
+            # Review fix: a "backup" on the primary's own provider shares its key and its limit.
+            or provider_for_model(backup) == provider_for_model(primary)
+        ):
             return None
         return backup
     except Exception:
@@ -1659,8 +1674,19 @@ def agent_run_step(
         # switches too. Either way the backup is the node's ``fallback_model``, else the account's
         # backup for the node's capability (resolved only when a switch is due). Either switch is a
         # ``backup_model`` run event for the Activity feed.
+        #
+        # Review fix: never on a run that already ended — the agent's own envelope can outlast the
+        # 20-minute stall sweep, which fails the run and frees its slot; a step coming back "busy"
+        # after that must not start a second, uncounted agent run on the backup.
         backup = None
-        if result.status == "failed" and (result.provider_failure or result.retries_exhausted):
+        if (
+            result.status == "failed"
+            and (result.provider_failure or result.retries_exhausted)
+            and _run_is_live(run_id)
+        ):
+            # The node's own fallback, else the account's backup for the node's capability. A node
+            # fallback the pre-flight swap already ran on equals ``model`` below and so stops here
+            # (``test_a_fallback_equal_to_the_model_that_just_ran_is_not_retried``).
             backup = fallback_model or _account_backup_model(run_id, capability, model)
         if backup and backup != model:
             busy = not result.provider_failure

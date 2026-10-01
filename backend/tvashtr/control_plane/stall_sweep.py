@@ -46,10 +46,9 @@ def stalled_message(label: str, after_s: float) -> str:
     )
 
 
-def _end(run_id: str, inv_id: int, node: AgentNode, silent_s: float, ceiling: float) -> bool:
-    message = stalled_message(
-        run_failure.node_label(node.role_name, node.kind, node.config), ceiling
-    )
+def _end(run_id: str, inv_id: int, node: tuple, silent_s: float, ceiling: float) -> bool:
+    node_id, role_name, kind, config = node
+    message = stalled_message(run_failure.node_label(role_name, kind, config), ceiling)
     total = running_cost(run_id)
     with session_scope() as session:
         ended = session.execute(
@@ -60,7 +59,7 @@ def _end(run_id: str, inv_id: int, node: AgentNode, silent_s: float, ceiling: fl
                 cost_total_usd=total,
                 failure_code=run_failure.STALLED,
                 failure_message=message,
-                failed_node_id=node.id,
+                failed_node_id=node_id,
             )
         ).rowcount
         if not ended:
@@ -102,13 +101,17 @@ def sweep_stalled_steps(now: datetime | None = None) -> list[str]:
             )
         ).all()
         live = live_state.invocation_live(session, [inv for inv, _ in rows], now=now)
+        # Plain values, not ORM rows: they outlive this session, and one node can have two rounds.
         due = [
-            (inv.run_id, inv.id, node, live_state.stalled_for(live[inv.id], now))
+            (
+                inv.run_id,
+                inv.id,
+                (node.id, node.role_name, node.kind, node.config),
+                live_state.stalled_for(live[inv.id], now),
+            )
             for inv, node in rows
             if live_state.stalled_for(live[inv.id], now) >= ceiling
         ]
-        for _, _, node, _ in due:
-            session.expunge(node)
     ended: list[str] = []
     for run_id, inv_id, node, silent in due:
         if run_id not in ended and _end(run_id, inv_id, node, silent, ceiling):

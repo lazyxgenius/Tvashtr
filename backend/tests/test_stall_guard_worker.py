@@ -167,7 +167,14 @@ def test_fly_flags_retries_exhausted_from_the_error_event(tmp_path):
 
 
 def test_is_transient_error_excludes_the_budget_cutoff():
-    assert local_mod._is_transient_error(RuntimeError("429 Too Many Requests")) is True
+    assert (
+        local_mod._is_transient_error(
+            RuntimeError("litellm.RateLimitError: OpenAIException - 429 Too Many Requests")
+        )
+        is True
+    )
+    # Review fix: a bare "429" with no litellm error around it is not evidence of a busy MODEL.
+    assert local_mod._is_transient_error(RuntimeError("429 Too Many Requests")) is False
     assert local_mod._is_transient_error(_FakeProxyRateLimitError()) is False
     assert local_mod._is_transient_error(RuntimeError("boom")) is False
 
@@ -256,7 +263,16 @@ class _BusyAdapter:
         )
 
 
-def _run(monkeypatch, tmp_path, tasks, *, fallback=None, engineer_model=None, **adapter_kwargs):
+def _run(
+    monkeypatch,
+    tmp_path,
+    tasks,
+    *,
+    fallback=None,
+    engineer_model=None,
+    adapter_cls=None,
+    **adapter_kwargs,
+):
     """Build the two-node team (optionally authoring the Engineer's fallback / model), seed an
     owned run and drive the REAL workflow. Returns ``(run_id, result)``."""
     from tvashtr.control_plane import team_run
@@ -269,7 +285,9 @@ def _run(monkeypatch, tmp_path, tasks, *, fallback=None, engineer_model=None, **
     init_workspace_repo(str(ws))
     monkeypatch.setattr(team_run, "engineer_setup_step", lambda run_id: str(ws))
     monkeypatch.setattr(
-        team_run, "resolve_adapter", lambda name: _BusyAdapter(tasks, **adapter_kwargs)
+        team_run,
+        "resolve_adapter",
+        lambda name: (adapter_cls or _BusyAdapter)(tasks, **adapter_kwargs),
     )
     team_graph_id = build_two_node_team()
     if fallback is not None:
@@ -449,3 +467,62 @@ def test_a_hard_failure_without_a_node_fallback_uses_the_account_backup(
     assert [e.payload for e in _backup_events(run_id)] == [
         {"from_model": tasks[0].model, "to_model": backup, "reason": "error"}
     ]
+
+
+# ---- review fixes: only a MODEL-layer busy error counts; never switch on a run that ended --------
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        # A Fly agent server that never came up — an infrastructure timeout, not a busy model.
+        RuntimeError(
+            "tv-run-x agent server never became healthy within 300.0s (last: ReadTimeout)"
+        ),
+        type("ReadTimeout", (Exception,), {})("pull timed out"),
+        type("ConnectTimeout", (Exception,), {})(""),
+        RuntimeError("upstream said 429 while pulling the workspace"),
+    ],
+)
+def test_an_infrastructure_timeout_is_not_retries_exhausted(tmp_path, monkeypatch, exc):
+    result = _local(tmp_path, monkeypatch, exc)
+    assert (result.status, result.retries_exhausted) == ("failed", False)
+
+
+def test_a_docker_event_without_model_evidence_is_not_retries_exhausted(tmp_path):
+    event = ConversationErrorEvent.model_construct(
+        code="SandboxError", detail="sandbox request timed out (ReadTimeout)"
+    )
+    result = _run_docker_result(tmp_path, feed_events=[event], raise_exc=_GENERIC_REMOTE_EXC)
+    assert result.retries_exhausted is False
+
+
+def test_no_switch_once_the_run_has_ended(client, monkeypatch, tmp_path):
+    """Review finding 2: the agent's envelope can outlast the 20-minute sweep; a step that comes
+    back 'busy' after its run was failed (slot freed) must not start a second run on the backup."""
+    from tvashtr.engines.sandbox_cache import _run_id_of
+    from tvashtr.models import Run
+
+    class _EndsTheRun(_BusyAdapter):
+        def run(self, task, on_event=None):
+            out = super().run(task, on_event)
+            if out.status == "failed" and task.session_key:
+                with session_scope() as s:
+                    s.execute(
+                        update(Run)
+                        .where(Run.workflow_id == _run_id_of(task.session_key))
+                        .values(status="failed", failure_code="stalled")
+                    )
+            return out
+
+    tasks: list = []
+    run_id, _ = _run(
+        monkeypatch,
+        tmp_path,
+        tasks,
+        fallback=_NODE_FALLBACK,
+        fail_times=1,
+        adapter_cls=_EndsTheRun,
+    )
+    assert len(tasks) == 1, [t.model for t in tasks]
+    assert _backup_events(run_id) == []

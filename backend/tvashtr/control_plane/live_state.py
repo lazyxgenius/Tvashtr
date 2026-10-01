@@ -170,14 +170,18 @@ def invocation_live(
         return {}
     now = now or datetime.now(UTC)
     ids = [i.id for i in running]
-    last = _newest(session, ids)
+    # ``run_events.invocation_id`` is not a foreign key: scope to these runs too, so a number
+    # another run wrote (a legacy or test row) is never read as this step's news.
+    of_these_runs = RunEvent.run_id.in_({i.run_id for i in running})
+    last = _newest(session, ids, of_these_runs)
     terminal = _newest(
         session,
         ids,
+        of_these_runs,
         RunEvent.kind.in_(("action", "observation")),
         RunEvent.payload["tool_name"].astext.in_(TERMINAL_TOOLS),
     )
-    backups = _newest(session, ids, RunEvent.kind == "backup_model")
+    backups = _newest(session, ids, of_these_runs, RunEvent.kind == "backup_model")
     return {
         inv.id: derive(
             started_at=inv.started_at,

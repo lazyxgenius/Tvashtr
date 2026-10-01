@@ -80,7 +80,7 @@ from tvashtr.engines.openhands_adapter import (
     _read_usage,
     _text_has_budget_signature,
     _text_has_provider_signature,
-    _text_has_transient_signature,
+    _text_is_model_busy,
 )
 
 # The host<->workspace sync helpers, REUSED from the docker adapter unchanged (they are pure
@@ -632,7 +632,7 @@ class OpenHandsFlyAdapter:
                 and not provider_failure
                 and (
                     _is_transient_error(exc)
-                    or any(_text_has_transient_signature(t) for t in error_event_texts)
+                    or any(_text_is_model_busy(t) for t in error_event_texts)
                 )
             )
             error = str(exc)

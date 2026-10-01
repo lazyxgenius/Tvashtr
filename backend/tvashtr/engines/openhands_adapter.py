@@ -476,16 +476,47 @@ def _is_provider_error(exc: BaseException) -> bool:
     return bool(types & _PROVIDER_ERROR_TYPES)
 
 
+# M1 (ruling R2), review fix: "the agent's retries ran out on a BUSY model" needs MODEL-layer
+# evidence — litellm's typed errors, by exact class name or by their ``litellm.<Class>`` text. The
+# broad transient list above is a VETO (it only ever blocked a failover, so a false match was
+# harmless); reused as a TRIGGER it would read an infrastructure timeout (a Fly agent server that
+# never became healthy, a workspace pull's ReadTimeout) as a busy model and buy a whole second run.
+_MODEL_BUSY_TYPES = frozenset(
+    {
+        "ratelimiterror",
+        "timeout",  # litellm.Timeout (httpx's are ReadTimeout / ConnectTimeout / TimeoutException)
+        "apitimeouterror",
+        "internalservererror",
+        "serviceunavailableerror",
+    }
+)
+_MODEL_BUSY_TEXT = (
+    "litellm.ratelimiterror",
+    "litellm.timeout",
+    "litellm.apitimeouterror",
+    "litellm.internalservererror",
+    "litellm.serviceunavailableerror",
+)
+
+
+def _text_is_model_busy(text: str) -> bool:
+    """True if ``text`` carries a litellm busy-model error (never the proxy's budget cutoff)."""
+    if not text or _text_has_budget_signature(text):
+        return False
+    lowered = text.lower()
+    return any(sig in lowered for sig in _MODEL_BUSY_TEXT)
+
+
 def _is_transient_error(exc: Exception) -> bool:
-    """True when ``exc`` is a busy provider (429 / rate limit / timeout / overload) — the failures
-    the agent's own retry envelope rides out, so one reaching here means its tries are used up (M1,
+    """True when ``exc`` is a busy MODEL (rate limit / model timeout / overload) — the failures the
+    agent's own retry envelope rides out, so one reaching here means its tries are used up (M1,
     ruling R2). Never the proxy's budget cutoff, which shares the 429 wrapper but owns
-    ``over_budget``."""
+    ``over_budget``, and never an infrastructure timeout."""
     if _is_budget_error(exc):
         return False
-    if (_exception_chain_type_names(exc) & _TRANSIENT_ERROR_TYPES) - {"budgetexceedederror"}:
+    if _exception_chain_type_names(exc) & _MODEL_BUSY_TYPES:
         return True
-    return _text_has_transient_signature(_exception_chain_text(exc))
+    return _text_is_model_busy(_exception_chain_text(exc))
 
 
 class _LocalHandle:
