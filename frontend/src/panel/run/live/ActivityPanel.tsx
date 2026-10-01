@@ -15,7 +15,8 @@ export interface ActivityActions {
   onOpenDocument: (documentId: string) => void;
   onApprove: (taskId: number) => void;
   onReject: (taskId: number) => void;
-  onReviewSpec: () => void;
+  /** Absent when the run has no spec to open. */
+  onReviewSpec?: () => void;
   /** Rejects with the server's reason when there is nothing to switch. */
   onSwitchBackup: (nodeId: string) => Promise<unknown>;
   onStop: () => void;
@@ -236,15 +237,17 @@ function Pinned({
                 >
                   Approve
                 </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={busy}
-                  iconLeft={<FileText size={14} strokeWidth={1.6} aria-hidden />}
-                  onClick={actions.onReviewSpec}
-                >
-                  Review the spec
-                </Button>
+                {pin.gate_kind === "prd_approval" && actions.onReviewSpec && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    iconLeft={<FileText size={14} strokeWidth={1.6} aria-hidden />}
+                    onClick={actions.onReviewSpec}
+                  >
+                    Review the spec
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"

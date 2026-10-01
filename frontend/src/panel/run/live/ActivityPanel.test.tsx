@@ -227,6 +227,7 @@ describe("ActivityPanel", () => {
       body: "Read the spec, then approve or reject it.",
       task_id: 12,
       backup_model: null,
+      gate_kind: "prd_approval",
     };
     render(<ActivityPanel activity={activity({ pinned })} now={NOW} actions={a} />);
     expect(screen.getByText("The approval gate is waiting for you")).toBeInTheDocument();
@@ -434,5 +435,35 @@ describe("ActivityPanel", () => {
     expect(screen.getByText("Asked for 2 fixes").closest("li")).toContainElement(notes[0]);
     fireEvent.click(notes[0]);
     expect(container.querySelector(".lv-out")?.textContent).toBe("a\nb");
+  });
+
+  it("Review the spec only on the spec's gate, and only when the run has a spec", () => {
+    const gate: PinnedCallout = {
+      kind: "gate",
+      node_id: "n-ship-gate",
+      label: "Ship gate",
+      title: "The ship gate is waiting for you",
+      body: "Approve to ship.",
+      task_id: 13,
+      backup_model: null,
+      gate_kind: "ship_approval",
+    };
+    const { rerender } = render(
+      <ActivityPanel activity={activity({ pinned: gate })} now={NOW} actions={actions()} />,
+    );
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Review the spec" })).toBeNull();
+
+    const noSpec = { ...actions(), onReviewSpec: undefined };
+    rerender(
+      <ActivityPanel
+        activity={activity({ pinned: { ...gate, gate_kind: "prd_approval" } })}
+        now={NOW}
+        actions={noSpec}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Review the spec" })).toBeNull();
   });
 });

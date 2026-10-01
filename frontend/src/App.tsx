@@ -802,14 +802,13 @@ export default function App({
       setRunTool(tool ? { node: nodeId, tool, n: Date.now() } : null);
       setPlace({ node: nodeId, tab: "runs", focus: false });
     });
+  const specId = run?.pm_document_id;
   const liveActions: ActivityActions = {
     onViewChange: (nodeId) => openRunNodeTool(nodeId, "changes"),
     onOpenDocument: (docId) => openRunDoc(docId),
     onApprove: (taskId) => void handleResolve(taskId, "approve"),
     onReject: (taskId) => void handleResolve(taskId, "reject"),
-    onReviewSpec: () => {
-      if (run?.pm_document_id) openRunDoc(run.pm_document_id);
-    },
+    onReviewSpec: specId ? () => openRunDoc(specId) : undefined,
     onSwitchBackup: (nodeId) => (runId ? switchToBackup(runId, nodeId) : Promise.resolve()),
     onStop: () => void handleCancel(),
     onRetryFromStart: () => {
