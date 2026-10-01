@@ -104,6 +104,7 @@ describe("Running now — live state (Live-Home)", () => {
     );
     renderHome();
     await screen.findByRole("article", { name: "Docs team: Write the API guide" });
+    expect(screen.getByText("Updates as it happens")).toBeInTheDocument();
 
     const needs = card("Indicator sprint team: Add an RSI indicator with tests");
     expect(within(needs).getByText("Needs you")).toBeInTheDocument();

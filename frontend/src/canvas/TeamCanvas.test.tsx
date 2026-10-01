@@ -218,10 +218,23 @@ describe("TeamCanvas — M2: a running card shows what it is doing now", () => {
       <TeamCanvas graph={quiet} run={mkRun()} workflowStatus="PENDING" tasks={[gateTask]} />,
     );
     expect(screen.getAllByText("● Working…").length).toBeGreaterThan(0);
-    expect(screen.getByText("● Quiet")).toBeInTheDocument();
+    // 92 s of silence, read a moment later.
+    expect(screen.getByText(/^● Quiet · 1m 3\ds$/)).toBeInTheDocument();
     expect(screen.getByText("Asked the model for the next step")).toBeInTheDocument();
     expect(screen.getByText("1m")).toBeInTheDocument();
     expect(container.querySelector(".rf-node--live-quiet")).not.toBeNull();
+  });
+
+  it("a waiting card says what it starts after, as its Now bar chip does", () => {
+    const waiting = { ...quiet.nodes.find((n) => n.id === "n-eng")!.live!, live_state: "waiting" };
+    const g: GraphData = {
+      ...graph,
+      nodes: graph.nodes.map((n) =>
+        n.id === "n-rev" ? { ...n, status: "idle", live: waiting } : n,
+      ),
+    };
+    render(<TeamCanvas graph={g} run={mkRun()} workflowStatus="PENDING" tasks={[gateTask]} />);
+    expect(screen.getByText("Starts after the Engineer")).toBeInTheDocument();
   });
 
   it("draws nothing new for a card with no live block (authoring, older servers)", () => {

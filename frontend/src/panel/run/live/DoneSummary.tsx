@@ -1,5 +1,7 @@
 import "./live.css";
 
+import { GitPullRequest } from "lucide-react";
+
 import { ButtonLink } from "../../../design-system/components";
 import type { RunSummary } from "../../../lib/api/activity";
 import { duration } from "./liveFormat";
@@ -51,6 +53,7 @@ export function DoneSummary({ idea, summary }: { idea: string; summary: RunSumma
           <ButtonLink
             variant="primary"
             size="sm"
+            iconLeft={<GitPullRequest size={14} strokeWidth={1.6} aria-hidden />}
             href={summary.pr_url}
             target="_blank"
             rel="noreferrer"

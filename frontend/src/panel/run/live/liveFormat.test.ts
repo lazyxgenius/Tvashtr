@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ActivityLine, RunActivity } from "../../../lib/api/activity";
-import { agoLong, agoShort, mergeActivity, stateWord } from "./liveFormat";
+import { agoLong, agoShort, currentLineIds, mergeActivity, stateWord } from "./liveFormat";
 
 const NOW = Date.parse("2026-10-02T10:45:24Z");
 const at = (secondsAgo: number) => new Date(NOW - secondsAgo * 1000).toISOString();
@@ -87,5 +87,35 @@ describe("mergeActivity", () => {
     expect(next.lines.map((l) => l.text)).toEqual(["a", "Ran make test", "z"]);
     expect(next.cursor).toBe("c2");
     expect(next.total).toBe(3);
+  });
+});
+
+describe("currentLineIds", () => {
+  const l = (id: string, node_id: string | null, kind: string, tone = "neutral"): ActivityLine => ({
+    id,
+    at: at(0),
+    node_id,
+    label: node_id ?? "Run",
+    iteration: null,
+    kind,
+    text: id,
+    tone: tone as ActivityLine["tone"],
+    refs: {},
+  });
+
+  it("marks each agent's newest line when it says where the agent is now (Prob-Failed)", () => {
+    const ids = currentLineIds([
+      l("busy", "n-eng", "retry", "warn"),
+      l("timeout", "n-eng", "error", "danger"),
+      l("failed", "n-eng", "error", "danger"),
+      l("stopped", null, "done"),
+    ]);
+    expect([...ids]).toEqual(["failed"]);
+  });
+
+  it("marks a finished run's Done line, not a plain step", () => {
+    expect([
+      ...currentLineIds([l("asked", "n-eng", "message"), l("done", null, "done", "ok")]),
+    ]).toEqual(["done"]);
   });
 });

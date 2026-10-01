@@ -1,0 +1,158 @@
+# M2 — Live run view: parity record, branch feat/m02-parity (from feat/m02-live-run-view 12e8a9f), 2026-10-02.
+# Design: the Claude Design "Tvashtr Runs" canvas (canvas.json v3, design system Tvashtr Labs 1790312796-5243), pages
+#   Live run and Problems. Shot with shoot-design.mjs at 1440x900: Live-Working, Live-NeedsYou, Live-Command,
+#   Live-Retrying, Live-Quiet, Live-Done, Live-Website, Live-Home, Live-AgentSteps, Prob-Stalled, Prob-Failed,
+#   Prob-NotifyAsk (12 design shots, 12 fonts-ok).
+# App: scripts/design-parity/scenarios/runs-live.mjs + runs-fixtures.mjs (activityFor(board): one
+#   GET /api/runs/r-12/activity reply per board mirroring its agents, lines, pinned callout and summary; the graph's
+#   live blocks, run status, the open gate task; Date.now frozen at the board's moment; endings named by the server's
+#   kinds "ship" / "stop", as on feat/m02-live-run-view 37a0a84) and, for Live-Home, home-fixtures'
+#   homeRoutes with four live runs and a run_stalled inbox item. States are reached through the UI: "Show output"
+#   (Live-Working, -Website, Prob-NotifyAsk), the Engineer's drawer on Runs with "Hide activity" (Live-AgentSteps), the
+#   bell's dialog (Prob-NotifyAsk), Home scrolled 206px so Needs you and Running now sit where the board draws them
+#   (Live-Home). 24 app shots (website + Desktop).
+# Which render is the comparison: every board except Live-Website and Live-Home is drawn in Desktop (the 30px title
+#   strip "Tvashtr — the living canvas"): its Desktop render is the comparison and its web render is framed 30px down
+#   (panel-shell.mjs underTitleStrip). Live-Website and Live-Home are website boards: the web render is the comparison and
+#   the Desktop render is framed 30px up (aboveTitleStrip). Both renders of every board are recorded below.
+# skipped: Prob-Notify — draws macOS notifications outside the app window (the OS's banners), not an app screen.
+# skipped: Main — the milestone map ("Map · all eleven milestones"), not an app screen.
+# GATE: MET — every new M2 element (Now bar, Activity panel and its pinned callouts, Done summary, Readable steps, the
+#   card's live chip and line, the bell's dialog, Home's live line, badges and Run stalled row) is at 0 size/type drift
+#   except W1 (the design-system Button's icon gap, as connectors W1); every other drift item is an existing element or
+#   chrome the app governs (W2–W4). Each render line ends "— covered: <id>×<n>", one per drift item (scratchpad
+#   classify.py mapped every drift item to an id: 0 uncovered).
+# built in this sweep (each change under frontend/, vitest + tsc + eslint + prettier green):
+#   7b44a0e the Activity panel: the agent filter is the app's segmented control at 12.5px (.lv-seg) and lists every agent
+#     a person sees, the Reviewer before it starts (a gate only once the run reaches it); each agent's current line is
+#     bold (running, waiting for you, retrying, stalled, failed, a finished run's Done — liveFormat.currentLineIds); the
+#     model / search / command a line ends with is set as code ("Switched to the backup model, openai/gpt-4.1-mini",
+#     "Looked up how indicators are registered: INDICATORS", "Running the full test suite: python -m pytest -q"); a
+#     running command's latest output stays in view (Live-Command); a waiting gate shows how long it has waited ("14 s");
+#     "live · 4 s" and that wait in the boards' 11px code face; Show files is the quiet 11.5px/400 link; Show N earlier
+#     steps has its chevron, Jump to live its arrow, Approve / Review the spec / Switch to the backup model now / Stop run
+#     (stalled) their icons. Readable steps in the drawer: 10.5px times, the panel's line icons and words (edits with
+#     their file and counts), 12.5px text and note, the current line bold; the Readable / Raw log toggle at 12.5px.
+#     The Done summary's Open pull request #42 has its icon.
+#   7312269 the bell's dialog: it opened off screen (x -75; the bell sits at the left of the run toolbar and the dialog
+#     was anchored to its end) — it now opens from its start; Turn on's bell sat above its label inside the label span —
+#     it is the Button's iconLeft.
+#   a3c7cfd the card's live chip carries its time or attempt ("● Quiet · 1m 32s", "● Stalled · 5m 10s", "● Retrying 2 of
+#     3"); a run's step that hasn't started says what it starts after, as its Now bar chip does ("Starts after your
+#     approval", "Starts after the Engineer"; Live-NeedsYou) — the board's 11px card line had paired with the Now bar.
+#   981a941 Home's Running now head says "Updates as it happens" (Live-Home; the existing 12px .hm-section__aside).
+#   (after 4dbe67f) the Now bar and the Activity filter take the server's ending kinds: NowBar.tsx carries the same two
+#     lines as feat/m02-live-run-view 37a0a84 (Ship is the dashed chip, Stop is left out), and the filter leaves out
+#     "ship" / "stop" as well as "terminal".
+# waiver W1 (app governs, brief 2.2/2.3 — the shared design-system Button) [ctl] width +8 on every new button with a
+#   leading icon: 'Jump to live' 115→123, 'Approve' 93→101, 'Review the spec' 142→150, 'Switch to the backup model now'
+#   242→250, 'Stop run' (Prob-Stalled callout) 93→101, 'Open pull request #42' 178→186, 'Turn on' 88→96 — the Button's
+#   8px icon gap; the boards draw the icon flush only because they pass `<svg/><span>label</span>` as the canvas
+#   Button's children, which it wraps in one span (same as connectors W1). Without the icons the same buttons are 14px
+#   narrower than drawn.
+# waiver W2 (app governs, brief 2.2/2.3 — the run bar is the app's CanvasToolbar + RunBanner) [txt]/[ctl] the boards'
+#   run bar ("● Running", "run #12", "4m 18s", "$0.38 of $5.00", "Stop run", "More for this run") is drawn
+#   approximately; the app keeps its toolbar (Edit this team, the bell, Cancel run, RunBanner, Documents, spend). Where a
+#   run-bar word has no counterpart it pairs with a new element further down: 'Needs you' 12→11.5px (Live-NeedsYou badge
+#   → the Now bar's state word), 'Stalled' 12→11.5px (Prob-Stalled badge → the Now bar's state word), 'Stop run' 93→79
+#   (Live-Retrying, → the callout's ghost Stop run) / 93→101 (Prob-Stalled, → the callout's Stop run), '22m 38s'
+#   12.5→14px (Live-Done's run-bar time → the Done summary's 14px stat).
+# waiver W3 (app governs, brief 2.2/2.3 — the canvas cards' existing parts) [txt] 'Round 2' 10→10.5px, 400→500 (the
+#   card's existing "round 2" label, .rf-node__round; the boards draw a "Round N" chip), 'Needs you' 9.5→11.5px
+#   (Live-NeedsYou's gate card label → the Now bar's state word: the app's gate card draws its existing state), and
+#   'Product manager' 600→500 / 'Ship' 10.5→12.5px (Live-Done; Prob-Failed desktop 'Ship'): the card title and the Ship
+#   node pair with the Activity filter, the Ship line or the Ship chip because the app fits the whole graph to the
+#   canvas, so the cards sit elsewhere (the fit settles a little differently from sweep to sweep, which moves these
+#   pairings between renders).
+# waiver W4 (app governs, brief 2.2/2.3 — the dashboard chrome, Live-Home) [ctl] '⌘K' height 18→22 (the header search's
+#   kbd), 'Home2' weight 600→500 (the nav's current item).
+# note (only moved) the Now bar's row sits where drawn and every chip item it shares with a board (name, state word,
+#   line, ago) is at the board's size; its copy differences are the notes below. The canvas fits the whole graph (Stop and the escalation gate included) at a
+#   smaller zoom than the boards' hand-placed cards, so card text is "only moved" (computed sizes match); the Activity
+#   panel is 340px on every board where the boards grow it to 360–410px when a callout is pinned, so its rows sit
+#   20–70px lower; the bell sits at the left of the toolbar (the app's order) and its dialog opens under it.
+# note (copy: the brief rules on these; not drift) the state words are exactly brief 2.5's: the Now bar's 'Running
+#   tests' / 'Running the tests' (Live-Working, -Command, -AgentSteps, Prob-NotifyAsk) read "Running a command", the
+#   AgentSteps card's '● Running tests' reads "● Running a command", the round-2 Reviewer's 'Waiting for round 2' and
+#   Prob-Failed's 'Not reached' read "Waiting"; a waiting step's line is "Starts after the Engineer" / "Starts after your
+#   approval", where boards write 'Starts when the tests pass' / 'After the tests' or, for the round-2 Reviewer, 'Round 1
+#   · changes requested' with '3m ago' (a waiting chip shows no ago); Prob-Failed's Ship 'Nothing shipped' reads "Not
+#   yet".
+# note (one activity string per agent, activity.md) the server sends one `activity` per agent, which the Now bar and the
+#   card both show; the boards word the two differently: cards 'Running the full test suite · 2m 10s', 'Model busy · next
+#   try in 20 s', 'Last: asked the model for the next step' with '1m 32s' (Quiet) / '5m' (Stalled), Live-Command's chip
+#   ago '2m 10s' (the command's own time; the app's ago is "40 s ago", its last output). The fixtures carry the Now bar's
+#   words. The card's model footer stays the node's model, so Live-Quiet's 'openai/gpt-4.1-mini · backup' is not shown.
+# note (copy inside server text, not built) the boards bold words inside a line or a callout body: 'core/' 'tests/'
+#   (Read 6 files in core/ and tests/), 'lazyxgenius/trade_mcp' 'main' (Started on …), 'Nothing has shipped.'
+#   (Prob-Stalled), 'Impact:' 'Safe:' 'Next:' (Prob-Failed), and set 'openai/gpt-4.1-mini' as code in Live-Retrying's
+#   callout body; the app shows the server's text plain (the words are there). The fixtures carry the boards' callout
+#   words; the server's (feat/m02-live-run-view 8ee1a82) differ where the boards say what isn't so here: the gate's body
+#   drops "and the timer has stopped", the retry's says "tries again", the stalled body is "No update for 5m 10s. Its
+#   last step: Asked the model for the next step. Nothing has shipped.", the failed title is "Engineer failed" with
+#   "<failure message>. Nothing was shipped." — same elements and sizes, other words. Live-Command's 'Edited core/indicators.py
+#   and tests/test_indicators.py' is one line for two files; the API sends one edited line per file.
+# note (layout) 'Show 4 earlier steps' matches (Live-Working); the app always shows the last 6 steps, where boards with a
+#   callout or open output show 3–5, so 'Show 20 earlier steps' (Live-Quiet) / 'Show 26 earlier steps' (Live-Done) read
+#   18 / 25 in the app (Live-Command 11, -Retrying 15, Prob-Stalled 19, Prob-Failed 21 — those boards draw no button).
+# note (drawer, app governs) Live-AgentSteps draws the drawer's run card differently from the app's existing one: the
+#   header badges 'Running tests · 4 s ago' / 'Round 1', 'Focus mode' / 'More actions' (the run drawer has Close only),
+#   'Skills & tools4' / 'Memory3' counts, the round card 'Running tests' + 'Round 1 · 2m', 'Steps', 'Earlier rounds' /
+#   'No earlier rounds in this run'. The app keeps its drawer (LAST RUN card, Activity / Changes / Ask) and adds the
+#   Readable / Raw log toggle and the Readable steps inside it, which match. Its step 'Tests: 3 failed, 38 passed' reads
+#   the panel's "Ran the tests: 3 failed, 38 passed"; 'Edited +48 −3' / 'Edited +6 −2' (Prob-Stalled 'Edited +12 −4')
+#   are one run of text on the boards and separate spans in the app (as Live-Working draws them).
+# note (Live-Home, app governs the existing rows and cards) the awaiting run's card keeps its existing "Waiting for you
+#   at Approval gate" line and Open / Stop (the board's '· waiting for you to approve the spec' + 'Approval gate' and
+#   'Review' are not repeated, RunningNow.tsx); the cards' age is the existing "1m"/"6m" ('1m 04s', '6m 40s', '18m 02s',
+#   '9m 12s'); the approval row reads "waiting just now" ('… · waiting 14 s'); the Writer's line is one text "· Editing
+#   docs/api.md" ('· Editing' + code 'docs/api.md'); the page header and composer are above the scrolled view ('Good
+#   morning, Lazyx.', '2 things need you', '4 runs going', 'New team'); the nav's 'Engines 2 to fix' / 'Toolkit 1
+#   missing' badges need /api/toolkit/summary and /api/engines/usage fixtures this scenario doesn't serve.
+# note (run bar / canvas, app governs: counted in "not found") 'Back to the team', 'Add an RSI indicator', 'run #12',
+#   the elapsed times, '$… of $5.00', 'Paused for you · 1m 04s', 'More for this run'; the cards' 'Spec written', 'Grok
+#   plan · this Mac', 'Spec v2 · 1 page' / 'Spec v3 · updated in round 2', their stamps, 'Spec approval' / 'Approved by
+#   you', 'Round 1 of 3' / 'Round 2 of 3' / '3 rounds' (the loop edge), 'Round 1' (the app labels rounds from 2),
+#   'Changes requested' / 'Round 1 · asked for 2 fixes', 'Tests pass' / '41 tests passed', 'Round 3 · approved',
+#   'Model didn’t answer after 3 tries' (Prob-Failed's card: the app's failed state).
+# Not found in app (new, not built):
+#   deliberately not built (brief 2.4, no dead buttons): 'Start the next run from this' (Live-Done; M10), 'Resume from
+#     the last finished step' (Prob-Stalled; M3), 'Resume from Engineer, round 2' (Prob-Failed; M3), Home's 'Resume' on
+#     the Run stalled row and the stalled card (M3).
+#   'What does Stalled mean?' (Prob-Stalled) and 'Show what happened' (Prob-Failed) — callout links whose result no
+#     board draws.
+#   the Quiet tooltip 'Quiet means no news for over 90 seconds' + 'Usually the model is still thinking. If nothing changes
+#     for 5 minutes, …' (Live-Quiet) — a hover card on the Quiet chip.
+#   'A command that is still running never turns Quiet. Its own timer shows how long it has run, and its latest output
+#     stays visible.' (Live-Command) — an explainer row above the steps; no API field marks when to show it.
+#   the Quiet line '10:55:02 · No update for 1m 32s · Stalled at 5m' (Live-Quiet) and 'No update for 1m 30s · Quiet'
+#     (Prob-Stalled) — Quiet is a state, not a line (docs/superpowers/plans/api/activity.md), so the server never sends
+#     it and the fixtures leave it out.
+#   the right-hand status words 'next: backup model' (Live-Retrying), 'waiting on the model' (Prob-Stalled) and
+#     'running 2m 10s' (Live-Command; the app says "live · 2m 10s", as Live-Working's "live · 4 s").
+#   (not measured) the boards tint a step's row amber / red / coral (warn, danger, running) on Live-Command,
+#     Prob-Stalled and Prob-Failed but not Live-Working's failed test run; the app tints only the line's icon.
+Live-Working web: matched 62/86 design items · 1 with size/type drift · 16 only moved · 24 not found in app — covered: W1×1
+Live-Working desktop: matched 64/86 design items · 1 with size/type drift · 16 only moved · 22 not found in app — covered: W1×1
+Live-NeedsYou web: matched 69/87 design items · 5 with size/type drift · 29 only moved · 18 not found in app — covered: W1×3, W2×1, W3×1
+Live-NeedsYou desktop: matched 71/87 design items · 5 with size/type drift · 29 only moved · 16 not found in app — covered: W1×3, W2×1, W3×1
+Live-Command web: matched 56/85 design items · 2 with size/type drift · 14 only moved · 29 not found in app — covered: W1×1, W3×1
+Live-Command desktop: matched 58/85 design items · 2 with size/type drift · 14 only moved · 27 not found in app — covered: W1×1, W3×1
+Live-Retrying web: matched 60/83 design items · 4 with size/type drift · 26 only moved · 23 not found in app — covered: W1×2, W2×1, W3×1
+Live-Retrying desktop: matched 62/83 design items · 4 with size/type drift · 26 only moved · 21 not found in app — covered: W1×2, W2×1, W3×1
+Live-Quiet web: matched 56/87 design items · 2 with size/type drift · 25 only moved · 31 not found in app — covered: W1×1, W3×1
+Live-Quiet desktop: matched 58/87 design items · 2 with size/type drift · 25 only moved · 29 not found in app — covered: W1×1, W3×1
+Live-Done web: matched 53/77 design items · 5 with size/type drift · 25 only moved · 24 not found in app — covered: W1×2, W2×1, W3×2
+Live-Done desktop: matched 55/77 design items · 5 with size/type drift · 25 only moved · 22 not found in app — covered: W1×2, W2×1, W3×2
+Live-Website web: matched 62/86 design items · 1 with size/type drift · 17 only moved · 24 not found in app — covered: W1×1
+Live-Website desktop: matched 62/86 design items · 1 with size/type drift · 17 only moved · 24 not found in app — covered: W1×1
+Live-Home web: matched 46/67 design items · 2 with size/type drift · 29 only moved · 21 not found in app — covered: W4×2
+Live-Home desktop: matched 46/67 design items · 2 with size/type drift · 29 only moved · 21 not found in app — covered: W4×2
+Live-AgentSteps web: matched 58/92 design items · 0 with size/type drift · 36 only moved · 34 not found in app
+Live-AgentSteps desktop: matched 60/92 design items · 0 with size/type drift · 36 only moved · 32 not found in app
+Prob-Stalled web: matched 64/92 design items · 5 with size/type drift · 38 only moved · 28 not found in app — covered: W1×2, W2×2, W3×1
+Prob-Stalled desktop: matched 66/92 design items · 5 with size/type drift · 38 only moved · 26 not found in app — covered: W1×2, W2×2, W3×1
+Prob-Failed web: matched 63/92 design items · 2 with size/type drift · 53 only moved · 29 not found in app — covered: W1×1, W3×1
+Prob-Failed desktop: matched 65/92 design items · 3 with size/type drift · 52 only moved · 27 not found in app — covered: W1×1, W3×2
+Prob-NotifyAsk web: matched 73/97 design items · 2 with size/type drift · 26 only moved · 24 not found in app — covered: W1×2
+Prob-NotifyAsk desktop: matched 75/97 design items · 2 with size/type drift · 26 only moved · 22 not found in app — covered: W1×2

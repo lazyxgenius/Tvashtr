@@ -274,6 +274,37 @@ describe("ActivityPanel", () => {
     expect(screen.queryByRole("button", { name: /Resume/ })).toBeNull();
   });
 
+  it("lists every agent a person sees, reached or not; a gate only once the run reaches it", () => {
+    const base = activity().agents[2];
+    const agents = [
+      ...activity().agents,
+      { ...base, node_id: "n-rev", label: "Reviewer", live_state: "waiting" as const },
+      {
+        ...base,
+        node_id: "n-esc",
+        label: "Escalation gate",
+        kind: "gate",
+        live_state: "waiting" as const,
+      },
+      { ...base, node_id: "n-stop", label: "Stop", kind: "stop" },
+    ];
+    render(<ActivityPanel activity={activity({ agents })} now={NOW} actions={actions()} />);
+    expect(screen.getByRole("button", { name: "Reviewer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Escalation gate" })).toBeNull();
+    // An ending is never a filter, whatever the server calls it.
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+  });
+
+  it("sets where an agent is now in bold, its command as code, its running output in view", () => {
+    const lines = LINES.map((l) =>
+      l.id === "again" ? { ...l, refs: { ...l.refs, output_tail: ["tests/a.py .... [ 41%]"] } } : l,
+    );
+    render(<ActivityPanel activity={activity({ lines })} now={NOW} actions={actions()} />);
+    expect(screen.getByText("Running the tests again")).toHaveClass("lv-now-line");
+    expect(screen.getByText("You approved the spec")).not.toHaveClass("lv-now-line");
+    expect(screen.getByText(/tests\/a.py/)).toBeInTheDocument();
+  });
+
   it("hides and shows itself", () => {
     render(<ActivityPanel activity={activity()} now={NOW} actions={actions()} />);
     fireEvent.click(screen.getByRole("button", { name: "Hide activity" }));

@@ -30,7 +30,9 @@ import type {
   TeamGraphNode,
   TerminalConfig,
 } from "../lib/api";
+import { nodeTitle } from "../lib/nodeNames";
 import { deriveGateState, deriveNodeStatus, deriveTerminalState } from "../lib/status";
+import { startsAfter } from "../panel/run/live/liveFormat";
 import { closesLoop, type ValidityFlags, validityFlags } from "../lib/topology";
 import { AgentNodeCard, type AgentNodeData } from "./AgentNodeCard";
 import type { RunDoc } from "../lib/api/docs";
@@ -65,6 +67,17 @@ function entryNodeIds(graph: GraphData): Set<string> {
   return new Set(graph.nodes.filter((n) => !forwardTargets.has(n.id)).map((n) => n.id));
 }
 
+/** M2: a run's step that hasn't started says what it starts after, as its Now bar chip does
+ *  (Live-NeedsYou). */
+function waitingLine(graph: GraphData, n: GraphNode): string | null {
+  if (n.live?.live_state !== "waiting" || n.status !== "idle") return null;
+  const from = graph.edges.find(
+    (e) => e.target_node_id === n.id && e.edge_type !== "escalation",
+  )?.source_node_id;
+  const before = graph.nodes.find((x) => x.id === from);
+  return before ? startsAfter({ kind: before.kind, label: nodeTitle(before) }) : null;
+}
+
 /** The canvas node `data` for one graph node: the thin agent/completion status overlay, plus
  *  the gate's task-derived state and the terminal's reached-state, threaded for the card to
  *  render by `kind`, plus (P1.8d) any validity flag on the node and (F1a) the entry flag. */
@@ -76,6 +89,7 @@ function nodeData(
   runId: string,
   flags: ValidityFlags,
   isEntry: boolean,
+  waits: string | null = null,
 ): AgentNodeData {
   return {
     role_name: n.role_name,
@@ -104,8 +118,15 @@ function nodeData(
     toolConfig: (n as Partial<TeamGraphNode>).tool_config,
     live:
       n.live && n.status === "running"
-        ? { state: n.live.live_state, activity: n.live.activity, at: n.live.last_event_at }
-        : undefined,
+        ? {
+            state: n.live.live_state,
+            activity: n.live.activity,
+            at: n.live.last_event_at,
+            retry: n.live.retry,
+          }
+        : waits
+          ? { state: "waiting", activity: waits, at: null }
+          : undefined,
   };
 }
 
@@ -277,7 +298,16 @@ export function TeamCanvas({
         // it while the mouse is still on the source node (the hover effect only re-applies on a
         // hoverNodeId change, which a rebuild doesn't cause).
         data: {
-          ...nodeData(n, run, workflowStatus, tasks, graph.run_id, flags, entry.has(n.id)),
+          ...nodeData(
+            n,
+            run,
+            workflowStatus,
+            tasks,
+            graph.run_id,
+            flags,
+            entry.has(n.id),
+            waitingLine(graph, n),
+          ),
           hovered: editable && hoverNodeId === n.id,
         },
       })),
@@ -299,7 +329,16 @@ export function TeamCanvas({
               // Preserve the transient hover flag (Part 1) across the graph refresh — it is driven by
               // the hover effect below, not by the graph-derived node data.
               data: {
-                ...nodeData(n, run, workflowStatus, tasks, graph.run_id, flags, entry.has(n.id)),
+                ...nodeData(
+                  n,
+                  run,
+                  workflowStatus,
+                  tasks,
+                  graph.run_id,
+                  flags,
+                  entry.has(n.id),
+                  waitingLine(graph, n),
+                ),
                 hovered: nd.data.hovered,
               },
             }

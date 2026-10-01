@@ -238,6 +238,8 @@ export function RunningNow() {
       <div className="hm-section__head">
         <h2 className="hm-section__title">Running now</h2>
         {liveCount > 0 && <span className="hm-pill">{liveCount}</span>}
+        {/* M2 (Live-Home): the cards follow each run as it happens. */}
+        <span className="hm-section__aside">Updates as it happens</span>
       </div>
       <div className="hm-grid2">
         {rows.map((r) => (

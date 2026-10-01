@@ -1,4 +1,4 @@
-import { agoShort } from "../panel/run/live/liveFormat";
+import { agoShort, duration } from "../panel/run/live/liveFormat";
 import { useContext } from "react";
 import { Handle, NodeToolbar, Position, type NodeProps } from "@xyflow/react";
 import {
@@ -59,7 +59,12 @@ export type AgentNodeData = {
   toolConfig?: Record<string, unknown> | null;
   // M2 (run view): what the step is doing now — its live state, activity line and when it last
   // moved. Absent in authoring and for a step that is not running.
-  live?: { state: string; activity: string | null; at: string | null };
+  live?: {
+    state: string;
+    activity: string | null;
+    at: string | null;
+    retry?: { attempt: number; of: number } | null;
+  };
 };
 
 /** The authoring overlay classes for a node (P1.8d): a red ring for a blocking issue, a dim for an
@@ -73,6 +78,17 @@ const LIVE_CHIP: Record<string, [string, "live" | "warn" | "danger"]> = {
   stalled: ["Stalled", "danger"],
 };
 const LIVE_RING = new Set(["retrying", "quiet", "stalled"]);
+
+/** The live chip's words: "Retrying 2 of 3", "Quiet · 1m 32s", "Stalled · 5m 10s". */
+function liveChipText(live: NonNullable<AgentNodeData["live"]>): string {
+  const word = LIVE_CHIP[live.state][0];
+  if (live.state === "retrying" && live.retry)
+    return `${word} ${live.retry.attempt} of ${live.retry.of}`;
+  if ((live.state === "quiet" || live.state === "stalled") && live.at) {
+    return `${word} · ${duration((Date.now() - Date.parse(live.at)) / 1000)}`;
+  }
+  return word;
+}
 
 function flagClasses(d: AgentNodeData): string {
   return `${d.errorMessage ? " tv-node--invalid" : ""}${d.isOrphan ? " tv-node--orphan" : ""}`;
@@ -283,7 +299,7 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
         <CardStatus status={d.status} />
         {d.live && LIVE_CHIP[d.live.state] && (
           <span className={`rf-node__livechip rf-node__livechip--${LIVE_CHIP[d.live.state][1]}`}>
-            ● {LIVE_CHIP[d.live.state][0]}
+            ● {liveChipText(d.live)}
           </span>
         )}
       </div>

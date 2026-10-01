@@ -2,7 +2,7 @@ import "./live.css";
 
 import type { GraphData, GraphNode } from "../../../lib/api";
 import type { ActivityAgent } from "../../../lib/api/activity";
-import { agoLong, duration, stateTone, stateWord } from "./liveFormat";
+import { agoLong, duration, startsAfter, stateTone, stateWord } from "./liveFormat";
 import { StateGlyph } from "./StateGlyph";
 
 /** Hidden from the Now bar: the Stop ending, and an escalation gate the run never reached. */
@@ -36,10 +36,7 @@ function chipLine(
       (e) => e.target_node_id === a.node_id && e.edge_type !== "escalation",
     )?.source_node_id;
     const before = from ? agents.get(from) : undefined;
-    if (!before) return "";
-    return before.kind === "gate"
-      ? "Starts after your approval"
-      : `Starts after the ${before.label}`;
+    return before ? startsAfter(before) : "";
   }
   return a.activity ?? "";
 }
