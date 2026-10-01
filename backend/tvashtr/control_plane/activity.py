@@ -705,17 +705,19 @@ def build(
                 last_event_at=open_task[0].created_at.isoformat(),
             )
         elif nd.kind == "gate" and inv is not None and inv.status != "running":
-            decided = next(
+            decided = max(
                 (
                     t
                     for t in tasks
                     if run_views._topic_node(t.topic) == ("gate", nid) and t.resolved_at is not None
                 ),
-                None,
+                key=lambda t: (t.resolved_at, t.id),
+                default=None,
             )
             if decided is not None and decided.resolution in _RESOLVED:
+                # No clock here: the frontend shows last_event_at in the person's own time.
                 live.update(
-                    activity=f"You {decided.resolution} · {decided.resolved_at:%H:%M}",
+                    activity=f"You {decided.resolution}",
                     last_event_at=decided.resolved_at.isoformat(),
                 )
         elif inv is not None and inv.status != "running" and nid in last_line:
@@ -765,6 +767,7 @@ def build(
                 else task.description
             ),
             "task_id": task.id,
+            "gate_kind": task.kind,
         }
     elif stalled is not None:
         pinned = {
@@ -823,6 +826,7 @@ def build(
         }
     if pinned is not None:
         pinned.setdefault("backup_model", None)
+        pinned.setdefault("gate_kind", None)
 
     summary = None
     if run.status == "completed":

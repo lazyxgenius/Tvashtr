@@ -354,6 +354,7 @@ def test_a_retrying_step_is_pinned_with_its_backup():
         ),
         "task_id": None,
         "backup_model": "openai/gpt-4.1-mini",
+        "gate_kind": None,
     }
     agent = {a["label"]: a for a in reply["agents"]}["Engineer"]
     assert agent["live_state"] == "retrying" and agent["retry"]["attempt"] == 2
@@ -418,6 +419,7 @@ def test_an_open_gate_is_a_line_the_pinned_callout_and_needs_you():
         "body": "Read the spec, then approve or reject it. The run is paused until you decide.",
         "task_id": 7,
         "backup_model": None,
+        "gate_kind": "prd_approval",
     }
     agents = {a["label"]: a for a in reply["agents"]}
     assert agents["Approval"]["live_state"] == "needs_you"
@@ -530,7 +532,8 @@ def test_a_shipped_run_reads_start_to_finish():
     assert agents["Engineer"]["iteration"] == 2
     assert agents["Reviewer"]["activity"] == "Approved"
     assert agents["PM"]["activity"] == "Wrote the spec (v1)"
-    assert agents["Approval"]["activity"] == "You approved · 10:00"
+    assert agents["Approval"]["activity"] == "You approved"  # the frontend adds the local time
+    assert agents["Approval"]["last_event_at"] == _at(59).isoformat()
     assert agents["Ship"]["activity"] == (
         "Pushed branch tvashtr/run-12 and opened pull request #42"
     )
@@ -601,6 +604,7 @@ def test_a_stalled_step_is_pinned_and_outranks_a_retrying_one():
         "body": "No update for 6m 00s. Its last step: x. Nothing has shipped.",
         "task_id": None,
         "backup_model": None,
+        "gate_kind": None,
     }
     assert reply["live_state"] == "stalled"
 
@@ -730,3 +734,20 @@ def test_the_summary_counts_passing_tests_only_when_the_last_run_was_green():
     ev.add(2, 62, "observation", _terminal_out("2 failed, 39 passed in 0.9s", exit_code=1))
     reply = _build(_run("completed"), [pm, eng], invs, ev.rows)
     assert reply["summary"]["tests_passed"] is None
+
+
+def test_a_decided_gate_says_its_latest_decision_without_a_clock():
+    pm, gate, eng, rev, ship, edges = _review_world()
+    invs = [_inv(1, pm, end=30), _inv(2, gate, start=31, end=60, outcome="approved")]
+    tasks = [
+        _gate_task(7, gate, status="resolved", resolution="rejected", opened=31, resolved=40),
+        _gate_task(8, gate, status="resolved", resolution="approved", opened=45, resolved=59),
+    ]
+    reply = _build(_run(), [pm, gate, eng, rev, ship], invs, tasks=tasks, edges=edges)
+    approval = {a["label"]: a for a in reply["agents"]}["Approval"]
+    assert approval["activity"] == "You approved"
+    assert approval["last_event_at"] == _at(59).isoformat()
+    reversed_order = _build(
+        _run(), [pm, gate, eng, rev, ship], invs, tasks=tasks[::-1], edges=edges
+    )
+    assert {a["label"]: a for a in reversed_order["agents"]}["Approval"] == approval

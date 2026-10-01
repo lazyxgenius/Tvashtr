@@ -57,7 +57,8 @@ every line.
     "title": "The approval gate is waiting for you",
     "body": "Read the spec, then approve or reject it. …",
     "task_id": 12 | null,                 // gate: the human task to resolve
-    "backup_model": "openai/gpt-4.1-mini" | null   // retrying: what "Switch to the backup model now" switches to
+    "backup_model": "openai/gpt-4.1-mini" | null,  // retrying: what "Switch to the backup model now" switches to
+    "gate_kind": "prd_approval" | null    // gate: the task's kind (prd_approval | ship_approval | review_escalation | budget_approval | …); else null
   } | null,
   "summary": {                            // a finished run only (status completed), else null
     "pr_url": "…" | null, "pr_number": 42 | null, "rounds": 3, "elapsed_s": 1358, "cost_usd": 1.12,
@@ -76,8 +77,9 @@ every line.
   the spec (v2)", Reviewer "Asked for 2 fixes: …", Engineer "Ran the tests: all 41 passed"), and
   `last_event_at` = that line's `at`. A finished step with no line keeps `null`.
 - **Gate**: open ⇒ `live_state` `needs_you`, activity "Waiting for you", `last_event_at` = when the
-  task opened; decided ⇒ "You approved · HH:MM" / "You rejected · HH:MM" (UTC), `last_event_at` =
-  the decision.
+  task opened; decided ⇒ "You approved" / "You rejected" (the gate's LATEST decision; no clock in the
+  text — the frontend appends `last_event_at` in the person's local time, "You approved · 10:42"),
+  `last_event_at` = the decision.
 - **Waiting** (never reached): `activity` `null` (the frontend writes "Starts after …").
 - A step still `running` when the run ended shows `failed` (run failed) or `stopped`.
 
