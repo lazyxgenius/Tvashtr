@@ -34,9 +34,17 @@ def test_proof_route_answers_404_in_hosted_mode(
     client, unauth_client, monkeypatch, method, path, body
 ):
     monkeypatch.setattr(get_settings(), "hosted_mode", True)
+    monkeypatch.setattr(doc_writer, "complete", lambda request: pytest.fail("a model call"))
     for c in (client, unauth_client):  # signed in, and not: the same answer as no route at all
         resp = _call(c, method, path, body)
         assert (resp.status_code, resp.json()) == (404, {"detail": "Not found"}), resp.text
+
+
+@pytest.mark.parametrize("path", ["/api/spike/generate-docs", "/api/spike/hello-durable-x"])
+def test_only_the_proof_routes_are_matched(client, monkeypatch, path):
+    monkeypatch.setattr(get_settings(), "hosted_mode", True)
+    resp = client.post(path)  # not a route: the router's own answer (404 or 405), not the 404 above
+    assert (resp.status_code, resp.json()) != (404, {"detail": "Not found"}), resp.text
 
 
 def test_run_events_is_unchanged_in_hosted_mode(client, monkeypatch):

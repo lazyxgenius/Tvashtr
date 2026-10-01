@@ -124,6 +124,7 @@ _dbos_config: DBOSConfig = {
 DBOS(fastapi=app, config=_dbos_config)
 
 _SPIKE_PROOF_ROUTES = ("/api/spike/hello-durable", "/api/spike/generate-doc")
+_SPIKE_PROOF_STATUS = tuple(f"{route}/" for route in _SPIKE_PROOF_ROUTES)
 
 
 class _SpikeProofOffWhenHosted:
@@ -138,7 +139,8 @@ class _SpikeProofOffWhenHosted:
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "") if scope["type"] == "http" else ""
-        if path.startswith(_SPIKE_PROOF_ROUTES) and get_settings().hosted_mode:
+        proof = path in _SPIKE_PROOF_ROUTES or path.startswith(_SPIKE_PROOF_STATUS)
+        if proof and get_settings().hosted_mode:
             await JSONResponse({"detail": "Not found"}, status_code=404)(scope, receive, send)
             return
         await self.inner(scope, receive, send)
