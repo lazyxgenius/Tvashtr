@@ -38,14 +38,10 @@ export function durationShort(iso: string | null | undefined, now = Date.now()):
   return `${Math.floor(s / 3600)}h ${pad(Math.floor(s / 60) % 60)}m`;
 }
 
-/** The Running now badge for a live run's state (Live-Home); null = keep the status badge. */
-const LIVE_LOOK: Partial<
-  Record<LiveState, { label: string; variant: "warning" | "accent" | "danger" }>
-> = {
+/** The live badge a Running now card adds beside its status badge (Live-Home, brief M2): only
+ *  Quiet / Stalled / Needs you — the status badge already says a run is running. Else null. */
+const LIVE_LOOK: Partial<Record<LiveState, { label: string; variant: "warning" | "danger" }>> = {
   needs_you: { label: "Needs you", variant: "warning" },
-  working: { label: "Working", variant: "accent" },
-  running_command: { label: "Running a command", variant: "accent" },
-  retrying: { label: "Retrying", variant: "warning" },
   quiet: { label: "Quiet", variant: "warning" },
   stalled: { label: "Stalled", variant: "danger" },
 };

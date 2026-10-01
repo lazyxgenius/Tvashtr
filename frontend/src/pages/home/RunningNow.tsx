@@ -3,7 +3,8 @@ import { useState } from "react";
 
 import { type RunListRow, type RunLive, stopRun } from "../../lib/api/runs";
 import { navigate } from "../../lib/nav";
-import { Badge, Button, ConfirmDialog, useToast } from "../../design-system/components";
+import { StopRunDialog } from "../../components/StopRunDialog";
+import { Badge, Button, useToast } from "../../design-system/components";
 import { useHome } from "./homeContext";
 import { markRunEnded, refreshHome, useHomeData } from "./homeData";
 import {
@@ -65,8 +66,9 @@ function RunCard({
   onStop: (row: RunListRow) => void;
 }) {
   const live = LIVE.has(row.status);
-  // M2: a live run wears its live state; an ended one (or an older server) keeps its status badge.
-  const look = (live && liveLook(row.live_state)) || runStatusLook(row.status);
+  const look = runStatusLook(row.status);
+  // M2: a live run that is Quiet, Stalled or Needs you says so beside its status badge.
+  const liveBadge = live ? liveLook(row.live_state) : null;
   // The waiting-for-you line already says what a gate needs, so it isn't repeated.
   const step = live && !row.awaiting ? row.live : null;
   const line = step ? liveLine(row, step) : null;
@@ -90,6 +92,11 @@ function RunCard({
         <Badge variant={look.variant} dot>
           {look.label}
         </Badge>
+        {liveBadge && (
+          <Badge variant={liveBadge.variant} dot>
+            {liveBadge.label}
+          </Badge>
+        )}
         <span className="hm-run__age">{elapsedShort(row.created_at)}</span>
       </div>
       <div className="hm-run__idea">“{row.idea}”</div>
@@ -246,11 +253,9 @@ export function RunningNow() {
           <RunCard key={r.run_id} row={r} fresh={r.run_id === justLaunched} onStop={setStopping} />
         ))}
       </div>
-      <ConfirmDialog
+      <StopRunDialog
         open={stopping !== null}
-        title="Stop this run?"
-        confirmLabel="Stop run"
-        cancelLabel="Keep running"
+        teamName={stopping?.team?.name}
         busy={busy}
         error={error}
         onConfirm={() => void confirmStop()}
@@ -258,10 +263,7 @@ export function RunningNow() {
           setStopping(null);
           setError(null);
         }}
-      >
-        {stopping?.team?.name ?? "This team"} stops now and the run is marked Stopped. Anything
-        already pushed stays on its branch. You can’t resume a stopped run.
-      </ConfirmDialog>
+      />
     </section>
   );
 }

@@ -73,7 +73,7 @@ export interface ActivityRefs {
   name?: string;
   task_id?: number;
   verdict?: string;
-  reasons?: string | null;
+  reasons?: string[] | string | null;
   to_model?: string;
   from_model?: string;
   pr_url?: string;
@@ -106,6 +106,8 @@ export interface PinnedCallout {
   body: string;
   task_id: number | null;
   backup_model: string | null;
+  /** gate: what the gate decides ("prd_approval" = the spec). */
+  gate_kind?: string | null;
 }
 
 export interface RunSummary {

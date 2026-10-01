@@ -2,7 +2,8 @@ import "./live.css";
 
 import type { GraphData, GraphNode } from "../../../lib/api";
 import type { ActivityAgent } from "../../../lib/api/activity";
-import { agoLong, duration, startsAfter, stateTone, stateWord } from "./liveFormat";
+import { RUN_TERMINAL } from "../../../lib/status";
+import { agoLong, clock, duration, startsAfter, stateTone, stateWord } from "./liveFormat";
 import { StateGlyph } from "./StateGlyph";
 
 /** Hidden from the Now bar: the Stop ending, and an escalation gate the run never reached. */
@@ -26,18 +27,23 @@ function chipLine(
   graph: GraphData | null,
   agents: Map<string, ActivityAgent>,
   now: number,
+  ended: boolean,
 ): string {
   if (a.live_state === "quiet" || a.live_state === "stalled") {
     const last = a.activity ? ` · last: ${lowerFirst(a.activity)}` : "";
     return `No update for ${duration(silentSeconds(a, now))}${last}`;
   }
   if (a.live_state === "waiting") {
+    if (ended) return "Not reached";
     const from = graph?.edges.find(
       (e) => e.target_node_id === a.node_id && e.edge_type !== "escalation",
     )?.source_node_id;
     const before = from ? agents.get(from) : undefined;
     return before ? startsAfter(before) : "";
   }
+  // A decided gate: "You approved · 10:43" — the time in the viewer's clock.
+  if (a.kind === "gate" && a.live_state !== "needs_you" && a.activity && a.last_event_at)
+    return `${a.activity} · ${clock(a.last_event_at).slice(0, 5)}`;
   return a.activity ?? "";
 }
 
@@ -57,14 +63,18 @@ const BUSY = new Set(["working", "running_command", "needs_you", "retrying", "qu
 export function NowBar({
   agents,
   graph,
+  status,
   now = Date.now(),
   onSelect,
 }: {
   agents: ActivityAgent[];
   graph: GraphData | null;
+  /** The run's status: once it ended, an agent it never reached says so. */
+  status?: string;
   now?: number;
   onSelect: (nodeId: string) => void;
 }) {
+  const ended = RUN_TERMINAL.has(status ?? "");
   const byId = new Map((graph?.nodes ?? []).map((n) => [n.id, n]));
   const agentsById = new Map(agents.map((a) => [a.node_id, a]));
   const shown = agents.filter((a) => !hidden(byId.get(a.node_id), a));
@@ -109,7 +119,7 @@ export function NowBar({
                   {stateWord(a.live_state)}
                 </span>
               </span>
-              <span className="lv-chip__line">{chipLine(a, graph, agentsById, now)}</span>
+              <span className="lv-chip__line">{chipLine(a, graph, agentsById, now, ended)}</span>
             </span>
             <span className="lv-chip__ago">{ago(a, now)}</span>
           </button>

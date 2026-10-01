@@ -3,6 +3,7 @@ import "./live.css";
 import { ArrowDown, Check, ChevronUp, FileText, RefreshCw, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { StopRunDialog } from "../../../components/StopRunDialog";
 import { Button, IconButton } from "../../../design-system/components";
 import type { ActivityLine, PinnedCallout, RunActivity } from "../../../lib/api/activity";
 import { clock, currentLineIds, duration } from "./liveFormat";
@@ -14,8 +15,10 @@ export interface ActivityActions {
   onOpenDocument: (documentId: string) => void;
   onApprove: (taskId: number) => void;
   onReject: (taskId: number) => void;
-  onReviewSpec: () => void;
-  onSwitchBackup: (nodeId: string) => void;
+  /** Absent when the run has no spec to open. */
+  onReviewSpec?: () => void;
+  /** Rejects with the server's reason when there is nothing to switch. */
+  onSwitchBackup: (nodeId: string) => Promise<unknown>;
   onStop: () => void;
   onRetryFromStart: () => void;
 }
@@ -96,6 +99,8 @@ function Line({
   const [open, setOpen] = useState(false);
   const r = line.refs;
   const output = r.output_tail && r.output_tail.length > 0;
+  // The server sends a list (an older one sent a string).
+  const reasons = Array.isArray(r.reasons) ? r.reasons : r.reasons ? [r.reasons] : [];
   let extra: React.ReactNode = null;
   if (line.kind === "edited" && r.file) {
     if (line.node_id) {
@@ -129,7 +134,7 @@ function Line({
         {open ? "Hide files" : "Show files"}
       </button>
     );
-  } else if (line.kind === "verdict" && r.reasons) {
+  } else if (line.kind === "verdict" && reasons.length > 0) {
     extra = (
       <button
         type="button"
@@ -160,7 +165,7 @@ function Line({
     line.kind === "read"
       ? (r.files ?? []).join("\n")
       : line.kind === "verdict"
-        ? (r.reasons ?? "")
+        ? reasons.join("\n")
         : // A running command's latest output stays in view (Live-Command); its command is in
           // the line already.
           [r.command && !r.running ? `$ ${r.command}` : null, ...(r.output_tail ?? [])]
@@ -180,7 +185,27 @@ function Line({
   );
 }
 
-function Pinned({ pin, actions }: { pin: PinnedCallout; actions: ActivityActions }) {
+function Pinned({
+  pin,
+  actions,
+  busy,
+  teamName,
+}: {
+  pin: PinnedCallout;
+  actions: ActivityActions;
+  busy: boolean;
+  teamName: string | undefined;
+}) {
+  const [askStop, setAskStop] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
+  const switchNow = async (nodeId: string) => {
+    setSwitchError(null);
+    try {
+      await actions.onSwitchBackup(nodeId);
+    } catch (e) {
+      setSwitchError(e instanceof Error ? e.message : String(e));
+    }
+  };
   const tone =
     pin.kind === "gate"
       ? ""
@@ -206,22 +231,27 @@ function Pinned({ pin, actions }: { pin: PinnedCallout; actions: ActivityActions
                 <Button
                   variant="primary"
                   size="sm"
+                  disabled={busy}
                   iconLeft={<Check size={14} strokeWidth={1.8} aria-hidden />}
                   onClick={() => actions.onApprove(pin.task_id as number)}
                 >
                   Approve
                 </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  iconLeft={<FileText size={14} strokeWidth={1.6} aria-hidden />}
-                  onClick={actions.onReviewSpec}
-                >
-                  Review the spec
-                </Button>
+                {pin.gate_kind === "prd_approval" && actions.onReviewSpec && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    iconLeft={<FileText size={14} strokeWidth={1.6} aria-hidden />}
+                    onClick={actions.onReviewSpec}
+                  >
+                    Review the spec
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
+                  disabled={busy}
                   onClick={() => actions.onReject(pin.task_id as number)}
                 >
                   Reject
@@ -230,15 +260,18 @@ function Pinned({ pin, actions }: { pin: PinnedCallout; actions: ActivityActions
             )}
             {pin.kind === "retrying" && pin.node_id && (
               <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  iconLeft={<RefreshCw size={14} strokeWidth={1.6} aria-hidden />}
-                  onClick={() => actions.onSwitchBackup(pin.node_id as string)}
-                >
-                  Switch to the backup model now
-                </Button>
-                <Button variant="ghost" size="sm" onClick={actions.onStop}>
+                {pin.backup_model && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    iconLeft={<RefreshCw size={14} strokeWidth={1.6} aria-hidden />}
+                    onClick={() => void switchNow(pin.node_id as string)}
+                  >
+                    Switch to the backup model now
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => setAskStop(true)}>
                   Stop run
                 </Button>
               </>
@@ -247,20 +280,40 @@ function Pinned({ pin, actions }: { pin: PinnedCallout; actions: ActivityActions
               <Button
                 variant="secondary"
                 size="sm"
+                disabled={busy}
                 iconLeft={<Square size={14} strokeWidth={1.6} aria-hidden />}
-                onClick={actions.onStop}
+                onClick={() => setAskStop(true)}
               >
                 Stop run
               </Button>
             )}
             {pin.kind === "failed" && (
-              <Button variant="secondary" size="sm" onClick={actions.onRetryFromStart}>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={busy}
+                onClick={actions.onRetryFromStart}
+              >
                 Retry from the start
               </Button>
             )}
           </div>
+          {switchError && (
+            <div className="lv-pin__error" role="status">
+              {switchError}
+            </div>
+          )}
         </div>
       </div>
+      <StopRunDialog
+        open={askStop}
+        teamName={teamName}
+        onConfirm={() => {
+          setAskStop(false);
+          actions.onStop();
+        }}
+        onCancel={() => setAskStop(false)}
+      />
     </div>
   );
 }
@@ -273,10 +326,16 @@ export function ActivityPanel({
   activity,
   now = Date.now(),
   actions,
+  busy = false,
+  teamName,
 }: {
   activity: RunActivity;
   now?: number;
   actions: ActivityActions;
+  /** An action is on its way: the pinned buttons wait. */
+  busy?: boolean;
+  /** Named in the Stop confirmation. */
+  teamName?: string;
 }) {
   const [filter, setFilter] = useState<string | null>(null);
   const [earlier, setEarlier] = useState(false);
@@ -366,7 +425,9 @@ export function ActivityPanel({
       </div>
       {!folded && (
         <>
-          {activity.pinned && <Pinned pin={activity.pinned} actions={actions} />}
+          {activity.pinned && (
+            <Pinned pin={activity.pinned} actions={actions} busy={busy} teamName={teamName} />
+          )}
           {hiddenCount > 0 && (
             <div className="lv-act__earlier">
               <button type="button" className="lv-linkbtn" onClick={() => setEarlier(true)}>

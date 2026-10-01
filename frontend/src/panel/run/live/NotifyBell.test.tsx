@@ -34,7 +34,8 @@ const box = (name: RegExp) => screen.getByRole("checkbox", { name });
 beforeEach(() => {
   resetHomeState();
   __resetNotifyPrefsForTests();
-  requestPermission.mockClear();
+  requestPermission.mockReset();
+  requestPermission.mockImplementation(() => Promise.resolve("granted"));
   vi.stubGlobal("Notification", { permission: "default", requestPermission });
 });
 afterEach(() => {
@@ -110,5 +111,47 @@ describe("NotifyBell", () => {
     expect(box(/When a run needs you/)).toBeChecked();
     expect(box(/When a run stalls or fails/)).not.toBeChecked();
     expect(box(/When a run finishes/)).toBeChecked();
+  });
+
+  it.each(["denied", "default"])(
+    "Turn on with the browser's answer %s saves every choice off, the dialog's words unchanged",
+    async (answer) => {
+      requestPermission.mockImplementation(() => Promise.resolve(answer));
+      const calls = serve(DEFAULTS);
+      render(<NotifyBell />);
+      const dialog = await screen.findByRole("dialog", { name: "Notifications" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Turn on" }));
+      expect(requestPermission).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(patches(calls)).toHaveLength(1));
+      expect(patches(calls)[0].body).toEqual({
+        notify_asked: true,
+        notify_needs_you: false,
+        notify_stalls_fails: false,
+        notify_finishes: false,
+      });
+      // Asked again from the bell: the same words, the choices as saved.
+      fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+      const again = await screen.findByRole("dialog", { name: "Notifications" });
+      expect(
+        within(again).getByText("Get a notification when a run needs you?"),
+      ).toBeInTheDocument();
+      expect(box(/When a run needs you/)).not.toBeChecked();
+    },
+  );
+
+  it("Turn on when the browser already blocks notifications saves every choice off", async () => {
+    vi.stubGlobal("Notification", { permission: "denied", requestPermission });
+    const calls = serve(DEFAULTS);
+    render(<NotifyBell />);
+    const dialog = await screen.findByRole("dialog", { name: "Notifications" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Turn on" }));
+    await waitFor(() => expect(patches(calls)).toHaveLength(1));
+    expect(patches(calls)[0].body).toMatchObject({
+      notify_asked: true,
+      notify_needs_you: false,
+      notify_stalls_fails: false,
+      notify_finishes: false,
+    });
+    expect(requestPermission).not.toHaveBeenCalled();
   });
 });

@@ -31,7 +31,12 @@ import type {
   TerminalConfig,
 } from "../lib/api";
 import { nodeTitle } from "../lib/nodeNames";
-import { deriveGateState, deriveNodeStatus, deriveTerminalState } from "../lib/status";
+import {
+  RUN_TERMINAL,
+  deriveGateState,
+  deriveNodeStatus,
+  deriveTerminalState,
+} from "../lib/status";
 import { startsAfter } from "../panel/run/live/liveFormat";
 import { closesLoop, type ValidityFlags, validityFlags } from "../lib/topology";
 import { AgentNodeCard, type AgentNodeData } from "./AgentNodeCard";
@@ -68,9 +73,10 @@ function entryNodeIds(graph: GraphData): Set<string> {
 }
 
 /** M2: a run's step that hasn't started says what it starts after, as its Now bar chip does
- *  (Live-NeedsYou). */
-function waitingLine(graph: GraphData, n: GraphNode): string | null {
+ *  (Live-NeedsYou) — or, once the run ended, that it was never reached. */
+function waitingLine(graph: GraphData, n: GraphNode, run: RunRow | null): string | null {
   if (n.live?.live_state !== "waiting" || n.status !== "idle") return null;
+  if (run && RUN_TERMINAL.has(run.status)) return "Not reached";
   const from = graph.edges.find(
     (e) => e.target_node_id === n.id && e.edge_type !== "escalation",
   )?.source_node_id;
@@ -306,7 +312,7 @@ export function TeamCanvas({
             graph.run_id,
             flags,
             entry.has(n.id),
-            waitingLine(graph, n),
+            waitingLine(graph, n, run),
           ),
           hovered: editable && hoverNodeId === n.id,
         },
@@ -337,7 +343,7 @@ export function TeamCanvas({
                   graph.run_id,
                   flags,
                   entry.has(n.id),
-                  waitingLine(graph, n),
+                  waitingLine(graph, n, run),
                 ),
                 hovered: nd.data.hovered,
               },

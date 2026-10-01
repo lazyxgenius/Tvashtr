@@ -5,6 +5,7 @@ import type { SubscriptionProviderId, SubscriptionSource, SubscriptionStatus } f
 export type { SubscriptionProviderId, SubscriptionStatus } from "./engines";
 
 import type { DomainCitation } from "./api/domains";
+import type { RunTarget } from "./api/runs";
 // The leaf module, never `./api/connectors`: that one imports `./api/runs`, which extends
 // `ApiError` from this file when it loads (a cycle that throws for any entry loading this first).
 import { parseRoundConnectors, type RoundConnectors } from "./api/roundConnectors";
@@ -204,6 +205,8 @@ export interface RunRow {
   // server has sent them since revamp P3).
   subpath?: string | null;
   budget_cap_usd?: number | null;
+  // What the run works on (the Retry prefill's target; the server sends it via `run_fields`).
+  target?: RunTarget | null;
 }
 
 export interface CostRow {

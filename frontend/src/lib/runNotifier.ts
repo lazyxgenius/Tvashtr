@@ -75,11 +75,12 @@ export function claimAutoAsk(): boolean {
 const notificationsAllowed = () =>
   typeof Notification !== "undefined" && Notification.permission === "granted";
 
-/** Ask the OS (the browser's prompt; Desktop answers "granted"). Call it inside the click. */
-export function askNotificationPermission(): Promise<unknown> {
-  if (typeof Notification === "undefined" || Notification.permission !== "default")
-    return Promise.resolve();
-  return Notification.requestPermission().catch(() => undefined);
+/** Ask the OS (the browser's prompt; Desktop answers "granted") and say what it answered. Call
+ *  it inside the click. */
+export function askNotificationPermission(): Promise<NotificationPermission> {
+  if (typeof Notification === "undefined") return Promise.resolve("denied");
+  if (Notification.permission !== "default") return Promise.resolve(Notification.permission);
+  return Notification.requestPermission().catch(() => "default" as const);
 }
 
 // ---- What a notification says (Prob-Notify) ----
@@ -92,14 +93,14 @@ interface Note {
   runId: string;
 }
 
-function inboxNote(item: InboxItem, p: NotifyPrefs): Note | null {
+function inboxNote(item: InboxItem, p: NotifyPrefs, stalled: Set<string>): Note | null {
   const team = ("team" in item && item.team?.name) || "A run";
   if (item.kind === "approval" && p.notify_needs_you)
     return {
       key: item.key,
       title: `${team} needs you`,
       body: `${approvalTitle(item.task.kind)} for “${item.run.idea}”.`,
-      teamId: item.team?.id,
+      teamId: item.team?.id ?? item.run.library_team_id,
       runId: item.run.id,
     };
   if (item.kind === "run_stalled" && p.notify_stalls_fails) {
@@ -113,7 +114,8 @@ function inboxNote(item: InboxItem, p: NotifyPrefs): Note | null {
       runId: item.run.id,
     };
   }
-  if (item.kind === "run_failed" && p.notify_stalls_fails)
+  // A stall the person already heard about fails at the 20-minute ceiling (R1): once is enough.
+  if (item.kind === "run_failed" && p.notify_stalls_fails && !stalled.has(item.run.id))
     return {
       key: item.key,
       title: `${team} failed`,
@@ -125,7 +127,12 @@ function inboxNote(item: InboxItem, p: NotifyPrefs): Note | null {
 }
 
 function fire(note: Note): void {
-  const n = new Notification(note.title, { body: note.body, tag: note.key });
+  let n: Notification;
+  try {
+    n = new Notification(note.title, { body: note.body, tag: note.key });
+  } catch {
+    return; // the OS refused (e.g. a mobile browser): the key still counts as seen
+  }
   n.onclick = () => {
     window.focus();
     if (note.teamId) navigate({ page: "team", teamId: note.teamId, runId: note.runId });
@@ -154,6 +161,8 @@ export function useRunNotifier(): void {
   useEffect(() => {
     // What the last poll saw; null = the next poll only learns what's there.
     let seen: { keys: Set<string>; runs: Set<string> } | null = null;
+    // Runs whose stall was announced (their failure isn't, R1).
+    const stalled = new Set<string>();
     let busy = false;
     let stopped = false;
 
@@ -179,8 +188,10 @@ export function useRunNotifier(): void {
         if (seen) {
           const before = seen;
           for (const item of inbox.items) {
-            const note = before.keys.has(item.key) ? null : inboxNote(item, p);
-            if (note) fire(note);
+            const note = before.keys.has(item.key) ? null : inboxNote(item, p, stalled);
+            if (!note) continue;
+            fire(note);
+            if (item.kind === "run_stalled") stalled.add(item.run.id);
           }
           if (p.notify_finishes)
             for (const id of before.runs) if (!runs.has(id)) void notifyIfFinished(id);

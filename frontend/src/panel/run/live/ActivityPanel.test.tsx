@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActivityLine, PinnedCallout, RunActivity } from "../../../lib/api/activity";
+import { ApiDetailError } from "../../../lib/api/runs";
 import { ActivityPanel, type ActivityActions } from "./ActivityPanel";
 
 const T = (h: number, m: number, s: number) => new Date(2026, 9, 2, h, m, s).toISOString();
@@ -168,6 +169,16 @@ const actions = (): ActivityActions => ({
 
 const NOW = Date.parse(T(10, 45, 24));
 
+const STALLED: PinnedCallout = {
+  kind: "stalled",
+  node_id: "n-eng",
+  label: "Engineer",
+  title: "Engineer stopped responding",
+  body: "No update for 6 minutes.",
+  task_id: null,
+  backup_model: null,
+};
+
 describe("ActivityPanel", () => {
   it("shows the run's last steps in plain words and hides the earlier ones behind a button", () => {
     render(<ActivityPanel activity={activity()} now={NOW} actions={actions()} />);
@@ -216,6 +227,7 @@ describe("ActivityPanel", () => {
       body: "Read the spec, then approve or reject it.",
       task_id: 12,
       backup_model: null,
+      gate_kind: "prd_approval",
     };
     render(<ActivityPanel activity={activity({ pinned })} now={NOW} actions={a} />);
     expect(screen.getByText("The approval gate is waiting for you")).toBeInTheDocument();
@@ -249,7 +261,12 @@ describe("ActivityPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Switch to the backup model now" }));
     expect(a.onSwitchBackup).toHaveBeenCalledWith("n-eng");
     fireEvent.click(screen.getByRole("button", { name: "Stop run" }));
-    expect(a.onStop).toHaveBeenCalled();
+    fireEvent.click(
+      within(screen.getByRole("alertdialog", { name: "Stop this run?" })).getByRole("button", {
+        name: "Stop run",
+      }),
+    );
+    expect(a.onStop).toHaveBeenCalledTimes(1);
     rerender(
       <ActivityPanel
         activity={activity({
@@ -312,5 +329,141 @@ describe("ActivityPanel", () => {
     expect(screen.getByText("8 steps · hidden")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show activity" }));
     expect(screen.getByText("Ran the tests: 3 failed, 38 passed")).toBeInTheDocument();
+  });
+
+  it("Stop run asks first, with Home's Stop confirmation; Keep running does nothing", () => {
+    const a = actions();
+    render(
+      <ActivityPanel
+        activity={activity({ pinned: STALLED })}
+        now={NOW}
+        actions={a}
+        teamName="Bugfix squad"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Stop run" }));
+    const ask = screen.getByRole("alertdialog", { name: "Stop this run?" });
+    expect(ask).toHaveTextContent(
+      "Bugfix squad stops now and the run is marked Stopped. Anything already pushed stays on its branch. You can’t resume a stopped run.",
+    );
+    expect(a.onStop).not.toHaveBeenCalled();
+    fireEvent.click(within(ask).getByRole("button", { name: "Keep running" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(a.onStop).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop run" }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog", { name: "Stop this run?" })).getByRole("button", {
+        name: "Stop run",
+      }),
+    );
+    expect(a.onStop).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("the pinned buttons wait while an action is on its way", () => {
+    render(
+      <ActivityPanel activity={activity({ pinned: STALLED })} now={NOW} actions={actions()} busy />,
+    );
+    expect(screen.getByRole("button", { name: "Stop run" })).toBeDisabled();
+  });
+
+  it("offers the backup switch only when the retry names a backup", () => {
+    render(
+      <ActivityPanel
+        activity={activity({
+          pinned: {
+            ...STALLED,
+            kind: "retrying",
+            title: "Engineer is retrying",
+            backup_model: null,
+          },
+        })}
+        now={NOW}
+        actions={actions()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Switch to the backup model now" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Stop run" })).toBeInTheDocument();
+  });
+
+  it("says why a switch didn't happen, under the callout's buttons", async () => {
+    const a = actions();
+    a.onSwitchBackup = vi.fn(() =>
+      Promise.reject(new ApiDetailError(409, "nothing to switch", "nothing to switch")),
+    );
+    render(
+      <ActivityPanel
+        activity={activity({
+          pinned: {
+            ...STALLED,
+            kind: "retrying",
+            title: "Engineer is retrying",
+            backup_model: "openai/gpt-4.1-mini",
+          },
+        })}
+        now={NOW}
+        actions={a}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Switch to the backup model now" }));
+    const said = await screen.findByText("nothing to switch");
+    expect(said).toHaveAttribute("role", "status");
+  });
+
+  it("a verdict's notes: Read notes only when it has reasons, one per line", () => {
+    const verdict = (id: string, reasons: string[]) =>
+      line(id, {
+        node_id: "n-rev",
+        label: "Reviewer",
+        kind: "verdict",
+        text: id,
+        tone: "warn",
+        refs: { verdict: "changes_requested", reasons },
+      });
+    const { container } = render(
+      <ActivityPanel
+        activity={activity({
+          lines: [verdict("Approved", []), verdict("Asked for 2 fixes", ["a", "b"])],
+        })}
+        now={NOW}
+        actions={actions()}
+      />,
+    );
+    const notes = screen.getAllByRole("button", { name: "Read notes" });
+    expect(notes).toHaveLength(1);
+    expect(screen.getByText("Asked for 2 fixes").closest("li")).toContainElement(notes[0]);
+    fireEvent.click(notes[0]);
+    expect(container.querySelector(".lv-out")?.textContent).toBe("a\nb");
+  });
+
+  it("Review the spec only on the spec's gate, and only when the run has a spec", () => {
+    const gate: PinnedCallout = {
+      kind: "gate",
+      node_id: "n-ship-gate",
+      label: "Ship gate",
+      title: "The ship gate is waiting for you",
+      body: "Approve to ship.",
+      task_id: 13,
+      backup_model: null,
+      gate_kind: "ship_approval",
+    };
+    const { rerender } = render(
+      <ActivityPanel activity={activity({ pinned: gate })} now={NOW} actions={actions()} />,
+    );
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Review the spec" })).toBeNull();
+
+    const noSpec = { ...actions(), onReviewSpec: undefined };
+    rerender(
+      <ActivityPanel
+        activity={activity({ pinned: { ...gate, gate_kind: "prd_approval" } })}
+        now={NOW}
+        actions={noSpec}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Review the spec" })).toBeNull();
   });
 });

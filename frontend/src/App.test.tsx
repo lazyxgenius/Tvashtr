@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
+import { type HomeAction, useHomeActionHandler } from "./lib/homeActions";
 import type {
   GraphData,
   GraphNode,
@@ -138,6 +139,7 @@ function runStatusFor(phase: Phase): RunStatus {
     cost_total_usd: completed ? 0.0123 : null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
+    ...runExtra,
   };
   return {
     run_id: RUN_ID,
@@ -156,9 +158,12 @@ let extraTasks: HumanTask[];
 let runWarnings: NonNullable<GraphData["resolution_warnings"]>;
 // M2: what GET /api/runs/{id}/activity answers (null → an older server's empty body).
 let activityReply: unknown;
+// More fields on the polled run (a test's target, team, budget).
+let runExtra: Partial<RunRow>;
 
 beforeEach(() => {
   phase = "running";
+  runExtra = {};
   extraTasks = [];
   runWarnings = [];
   activityReply = null;
@@ -890,5 +895,58 @@ describe("App — M2 live run view", () => {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }
     expect(screen.getByRole("toolbar", { name: "Team" })).toBeInTheDocument();
+  });
+
+  it("Retry from the start hands the composer Needs you's Retry prefill (a Desktop folder stays)", async () => {
+    runExtra = {
+      status: "failed",
+      library_team_id: "team-1",
+      target: { kind: "desktop_folder", label: "trade_mcp", base_ref: "dev", subpath: "core" },
+      budget_cap_usd: 2,
+    };
+    activityReply = {
+      run_id: RUN_ID,
+      status: "failed",
+      live_state: "failed",
+      cursor: "c1",
+      total: 0,
+      agents: [],
+      lines: [],
+      pinned: {
+        kind: "failed",
+        node_id: "n-eng",
+        label: "Engineer",
+        title: "Engineer failed",
+        body: "Nothing was shipped.",
+        task_id: null,
+        backup_model: null,
+      },
+      summary: null,
+    };
+    const asked: HomeAction[] = [];
+    function HomeStandIn() {
+      useHomeActionHandler((a) => asked.push(a));
+      return null;
+    }
+    render(
+      <>
+        <HomeStandIn />
+        <App teamId="team-1" initialRunId={RUN_ID} />
+      </>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Retry from the start" }));
+    // (An earlier test's queued "new-run" may arrive first: the stand-in drains the queue.)
+    expect(asked.at(-1)).toEqual({
+      kind: "retry",
+      prefill: {
+        teamId: "team-1",
+        idea: "idea",
+        target: { kind: "folder", path: "trade_mcp", label: "trade_mcp" },
+        baseRef: "dev",
+        subpath: "core",
+        budget: 2,
+        retryOfRunId: RUN_ID,
+      },
+    });
   });
 });
