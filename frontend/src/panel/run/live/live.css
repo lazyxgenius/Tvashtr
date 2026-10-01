@@ -187,6 +187,11 @@
   font-size: 12px;
   color: var(--ink-500);
 }
+/* The agent filter and the drawer's Readable / Raw log: the app's segmented control at the boards'
+   12.5px. */
+.lv-seg .tv-seg__btn {
+  font-size: 12.5px;
+}
 .lv-act__tools {
   margin-left: auto;
   display: flex;
@@ -213,6 +218,11 @@
 .lv-linkbtn--accent {
   gap: 5px;
   color: var(--coral-700);
+}
+.lv-linkbtn--quiet {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--ink-500);
 }
 .lv-act__list {
   list-style: none;
@@ -285,6 +295,16 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+/* A line's status words on the right: "live · 4 s", how long a gate has waited. */
+.lv-line__note {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--ink-500);
+}
+/* Where an agent is now (liveFormat.currentLineIds). */
+.lv-now-line {
+  font-weight: 600;
 }
 .lv-code {
   font-family: var(--font-code);
@@ -435,18 +455,24 @@
 }
 .lv-steps__row {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  column-gap: 10px;
+  grid-template-columns: 54px 22px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
   padding: 4px 0;
 }
+.lv-steps__time {
+  font-family: var(--font-code);
+  font-size: 10.5px;
+  color: var(--ink-500);
+}
 .lv-steps__what {
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--ink-800);
 }
 .lv-steps__empty,
 .lv-steps__note {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.5;
   color: var(--ink-500);
 }

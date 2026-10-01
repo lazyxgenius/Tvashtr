@@ -54,6 +54,11 @@ function span(s: number, sep: string): string {
   return `${Math.floor(s / 3600)}h`;
 }
 
+/** A waiting step's line (the Now bar chip and its card): what it starts after. */
+export function startsAfter(before: { kind: string; label: string }): string {
+  return before.kind === "gate" ? "Starts after your approval" : `Starts after the ${before.label}`;
+}
+
 /** "4 s ago" / "3m ago" (the Now bar). */
 export function agoLong(iso: string | null, now = Date.now()): string {
   const s = seconds(iso, now);
@@ -92,4 +97,21 @@ export function mergeActivity(prev: RunActivity | null, next: RunActivity): RunA
     a.at === b.at ? 0 : Date.parse(a.at) - Date.parse(b.at),
   );
   return { ...next, lines };
+}
+
+/** Line kinds that say where an agent is now when they are its newest line. */
+const NOW_KINDS = new Set(["gate_waiting", "retry", "stalled", "error"]);
+
+/** The lines the boards set in bold: each agent's newest line when it is a state worth reading
+ *  (running, waiting for you, retrying, stalled, failed), and a run's "Done" line. */
+export function currentLineIds(lines: ActivityLine[]): Set<string> {
+  const newest = new Map<string | null, ActivityLine>();
+  for (const l of lines) newest.set(l.node_id, l);
+  const ids = new Set<string>();
+  for (const l of newest.values()) {
+    if (l.refs.running || NOW_KINDS.has(l.kind) || (l.kind === "done" && l.tone === "ok")) {
+      ids.add(l.id);
+    }
+  }
+  return ids;
 }

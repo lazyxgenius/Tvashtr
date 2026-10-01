@@ -363,7 +363,7 @@ function RunRounds({
           {tool === "activity" ? (
             activityLines ? (
               <>
-                <div className="tv-seg" role="group" aria-label="Steps">
+                <div className="tv-seg lv-seg" role="group" aria-label="Steps">
                   <button
                     type="button"
                     aria-pressed={!raw}
