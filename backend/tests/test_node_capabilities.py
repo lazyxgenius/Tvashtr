@@ -994,8 +994,12 @@ def test_the_failover_happens_at_most_once(client, monkeypatch, tmp_path):
 
 
 def test_a_node_with_no_fallback_model_is_never_retried(client, monkeypatch, tmp_path):
-    """THE BYTE-IDENTICAL GUARD: with no ``fallback_model`` authored, the retry branch is never
-    entered — a provider failure propagates as ``failed`` exactly as it does on main."""
+    """THE BYTE-IDENTICAL GUARD: with no backup — no ``fallback_model`` authored and (M1, ruling
+    R2) no account backup for the node's capability — the retry branch is never entered: a
+    provider failure propagates as ``failed`` exactly as it does on main."""
+    from tvashtr.control_plane import team_run
+
+    monkeypatch.setattr(team_run, "account_fallback_model", lambda held, capability: None)
     tasks: list = []
     run_id, result = _two_node_run(monkeypatch, tmp_path, tasks, fallback=None, fail_times=1)
     assert result["status"] == "failed", result

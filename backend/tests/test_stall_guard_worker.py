@@ -430,3 +430,22 @@ def test_a_hard_failure_switch_is_a_backup_model_event_too(client, monkeypatch, 
     assert [w.reason for w in _fallback_warnings(run_id)] == [
         f"primary {tasks[0].model!r} hard-failed mid-run — failed over to the node's fallback model"
     ]
+
+
+def test_a_hard_failure_without_a_node_fallback_uses_the_account_backup(
+    client, monkeypatch, tmp_path
+):
+    """R2 covers the hard failure too: "When the tries are used up (or on a hard failure), the step
+    switches ONCE to its backup model: the node's config.fallback_model, else
+    teams.account_fallback_model for its capability"."""
+    backup = _account_worker_backup()
+    tasks: list = []
+    run_id, result = _run(
+        monkeypatch, tmp_path, tasks, fail_times=1, retries_exhausted=False, provider_failure=True
+    )
+    assert backup is not None and backup != tasks[0].model, (backup, tasks[0].model)
+    assert result["status"] == "completed", result
+    assert [t.model for t in tasks][1:] == [backup]
+    assert [e.payload for e in _backup_events(run_id)] == [
+        {"from_model": tasks[0].model, "to_model": backup, "reason": "error"}
+    ]

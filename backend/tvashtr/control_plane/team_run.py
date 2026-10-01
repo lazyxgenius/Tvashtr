@@ -1656,15 +1656,12 @@ def agent_run_step(
         # full agent run (and a misleading swap warning).
         #
         # M1 (ruling R2): a BUSY primary whose retry envelope is used up (``retries_exhausted``)
-        # switches too, to the node's ``fallback_model``, else the account's backup for the node's
-        # capability (resolved only when a switch is due). Either switch is a ``backup_model`` run
-        # event for the Activity feed. A HARD failure keeps the node's own fallback only:
-        # ``test_a_node_with_no_fallback_model_is_never_retried`` pins that, pending a ruling.
+        # switches too. Either way the backup is the node's ``fallback_model``, else the account's
+        # backup for the node's capability (resolved only when a switch is due). Either switch is a
+        # ``backup_model`` run event for the Activity feed.
         backup = None
         if result.status == "failed" and (result.provider_failure or result.retries_exhausted):
-            backup = fallback_model
-            if not backup and result.retries_exhausted:
-                backup = _account_backup_model(run_id, capability, model)
+            backup = fallback_model or _account_backup_model(run_id, capability, model)
         if backup and backup != model:
             busy = not result.provider_failure
             try:
