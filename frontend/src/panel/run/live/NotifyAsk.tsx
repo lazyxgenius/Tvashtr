@@ -57,8 +57,12 @@ export function NotifyAsk({
         <Button variant="ghost" size="sm" onClick={onNotNow}>
           Not now
         </Button>
-        <Button variant="primary" size="sm" onClick={() => onTurnOn(choices)}>
-          <Bell size={14} strokeWidth={2} aria-hidden />
+        <Button
+          variant="primary"
+          size="sm"
+          iconLeft={<Bell size={14} strokeWidth={1.6} aria-hidden />}
+          onClick={() => onTurnOn(choices)}
+        >
           Turn on
         </Button>
       </div>

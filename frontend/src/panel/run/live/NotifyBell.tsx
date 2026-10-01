@@ -45,7 +45,6 @@ export function NotifyBell() {
     <Popover
       open={open}
       onClose={() => setOpen(false)}
-      align="end"
       width={360}
       label="Notifications"
       className="tv-notify"
