@@ -237,6 +237,21 @@ describe("TeamCanvas — M2: a running card shows what it is doing now", () => {
     expect(screen.getByText("Starts after the Engineer")).toBeInTheDocument();
   });
 
+  it("a run that ended: a card it never reached says Not reached", () => {
+    const waiting = { ...quiet.nodes.find((n) => n.id === "n-eng")!.live!, live_state: "waiting" };
+    const g: GraphData = {
+      ...graph,
+      nodes: graph.nodes.map((n) =>
+        n.id === "n-rev" ? { ...n, status: "idle", live: waiting } : n,
+      ),
+    };
+    render(
+      <TeamCanvas graph={g} run={mkRun({ status: "failed" })} workflowStatus="ERROR" tasks={[]} />,
+    );
+    expect(screen.getByText("Not reached")).toBeInTheDocument();
+    expect(screen.queryByText(/^Starts after/)).toBeNull();
+  });
+
   it("draws nothing new for a card with no live block (authoring, older servers)", () => {
     const { container } = render(
       <TeamCanvas graph={graph} run={mkRun()} workflowStatus="PENDING" tasks={[gateTask]} />,

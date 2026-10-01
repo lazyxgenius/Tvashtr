@@ -148,4 +148,16 @@ describe("NowBar", () => {
       "Needs youWaiting for you30 s ago",
     );
   });
+
+  it("a run that ended: an agent it never reached says Not reached", () => {
+    for (const status of ["completed", "failed", "cancelled", "rejected", "over_budget"]) {
+      const { unmount } = render(
+        <NowBar agents={AGENTS} graph={GRAPH} status={status} now={NOW} onSelect={() => {}} />,
+      );
+      expect(screen.getByRole("button", { name: /^Reviewer/ })).toHaveTextContent(
+        "WaitingNot reached",
+      );
+      unmount();
+    }
+  });
 });

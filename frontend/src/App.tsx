@@ -879,6 +879,7 @@ export default function App({
           <NowBar
             agents={activity.agents}
             graph={graph}
+            status={activity.status}
             onSelect={(nodeId) => openRunNodeTool(nodeId, null)}
           />
         ))}
