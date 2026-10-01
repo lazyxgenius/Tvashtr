@@ -328,6 +328,9 @@ def test_a_covered_answer_goes_into_the_spec_the_next_agents_read(client, monkey
     asked = []
 
     def ask(owner, did, question, **kw):
+        # M1 stall guard: the round also hands over its run-event hook (pinned callable below).
+        hook = kw.pop("on_event")
+        assert callable(hook)
         asked.append((did, question, kw))
         return _answer()
 

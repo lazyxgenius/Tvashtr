@@ -51,6 +51,7 @@ from tvashtr.config import get_settings
 from tvashtr.control_plane import (
     clone_reaper,
     github_app,
+    live_state,
     local_repo,
     run_failure,
     workspace_reaper,
@@ -1954,7 +1955,15 @@ def domain_query_step_v2(
         return {"status": "failed", "error": "This Query domain node’s domain was deleted."}
     try:
         result = domain_ask_mod.ask_domain(
-            owner_id, did, question, persist=False, mark_not_found=True
+            owner_id,
+            did,
+            question,
+            persist=False,
+            mark_not_found=True,
+            # M1 stall guard: the model call's retries and backup switch, on this round.
+            on_event=lambda kind, payload: live_state.record_host_event(
+                run_id, invocation_id, kind, payload
+            ),
         )
     except DomainAskError as exc:
         if exc.code == "paused":

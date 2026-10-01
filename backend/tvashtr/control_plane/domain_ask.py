@@ -308,6 +308,7 @@ def ask_domain(
     use_history: bool = False,
     persist: bool = False,
     mark_not_found: bool = False,
+    on_event=None,
 ) -> dict:
     """Sync cited ask. Raises DomainAskError for mapped HTTP statuses.
 
@@ -315,7 +316,8 @@ def ask_domain(
     (DM-65). ``persist=True`` writes the question and the answer to the domain's chat — only the
     chat endpoint does; Query domain nodes and agent tools stay out of it (finding 8, OQ-13).
     ``mark_not_found``: the NOT_FOUND rule (OQ-22). The answer carries the Ask tab's keys
-    (``answer_fields``) next to the original ones."""
+    (``answer_fields``) next to the original ones. ``on_event`` (M1 stall guard) hears the model
+    call's retries and backup switch — a Query domain node writes them as run events."""
     q = (question or "").strip()
     if not q:
         raise DomainAskError("bad_request", "question must be non-empty")
@@ -408,7 +410,9 @@ def ask_domain(
     messages = build_ask_messages(q, chunks, history, mark_not_found)
     try:
         completion = complete(
-            CompletionRequest(model=gen_model, messages=messages, api_key=chat_key)
+            CompletionRequest(
+                model=gen_model, messages=messages, api_key=chat_key, on_event=on_event
+            )
         )
     except GatewayError as e:
         raise DomainAskError("gateway", f"generation failed: {e}") from e

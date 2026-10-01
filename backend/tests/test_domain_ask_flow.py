@@ -208,3 +208,66 @@ def test_ask_domain_bad_top_k_defaults_without_500(monkeypatch):
     result = ask_domain(owner_id, did, "How long?")
     assert "Answer" in result["answer"]
     assert result["latency_ms"] == 10
+
+
+def test_ask_domain_passes_the_run_event_hook_to_the_gateway(monkeypatch):
+    """M1 stall guard: a Query domain node's model call reports its retries and backup switch —
+    ``ask_domain(on_event=...)`` reaches the gateway request."""
+    _c, owner_id, did = _register()
+    with session_scope() as session:
+        doc = DomainDocument(
+            domain_id=did,
+            filename="faq.txt",
+            content_type="text/plain",
+            storage_path=f"x/{did}/d/faq.txt",
+            byte_size=12,
+            ingest_status="ready",
+        )
+        session.add(doc)
+        session.flush()
+        session.add(
+            DomainChunk(
+                domain_id=did,
+                document_id=doc.id,
+                ordinal=0,
+                text="Refunds take 5 business days.",
+                embedding=[0.0] * 1536,
+            )
+        )
+    emb = EmbeddingResult(
+        vectors=[[0.0] * 1536],
+        model="openai/text-embedding-3-small",
+        prompt_tokens=1,
+        total_tokens=1,
+        cost_usd=0.0,
+        raw_provider="openai",
+        latency_ms=1.0,
+    )
+    cmp = CompletionResult(
+        text="Refunds take 5 business days [1].",
+        model_requested="openai/gpt-4o-mini",
+        model_used="openai/gpt-4o-mini",
+        prompt_tokens=10,
+        completion_tokens=5,
+        total_tokens=15,
+        cost_usd=0.001,
+        raw_provider="openai",
+        latency_ms=12.0,
+    )
+    seen: list = []
+    monkeypatch.setattr(
+        "tvashtr.control_plane.domain_ask.held_provider_slugs", lambda oid: {"openai"}
+    )
+    monkeypatch.setattr(
+        "tvashtr.control_plane.domain_ask.resolve_owner_api_key", lambda oid, model: "sk-test"
+    )
+    monkeypatch.setattr("tvashtr.control_plane.domain_ask.embed", lambda req: emb)
+    monkeypatch.setattr(
+        "tvashtr.control_plane.domain_ask.complete", lambda req: seen.append(req) or cmp
+    )
+
+    def hook(kind, payload):
+        return None
+
+    ask_domain(owner_id, did, "How long do refunds take?", on_event=hook)
+    assert seen[0].on_event is hook
