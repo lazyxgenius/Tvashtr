@@ -476,6 +476,18 @@ def _is_provider_error(exc: BaseException) -> bool:
     return bool(types & _PROVIDER_ERROR_TYPES)
 
 
+def _is_transient_error(exc: Exception) -> bool:
+    """True when ``exc`` is a busy provider (429 / rate limit / timeout / overload) — the failures
+    the agent's own retry envelope rides out, so one reaching here means its tries are used up (M1,
+    ruling R2). Never the proxy's budget cutoff, which shares the 429 wrapper but owns
+    ``over_budget``."""
+    if _is_budget_error(exc):
+        return False
+    if (_exception_chain_type_names(exc) & _TRANSIENT_ERROR_TYPES) - {"budgetexceedederror"}:
+        return True
+    return _text_has_transient_signature(_exception_chain_text(exc))
+
+
 class _LocalHandle:
     """The live local sandbox stashed in ``sandbox_cache`` for cross-round conversation-carry
     (M-unify U2): the in-process ``Conversation`` bound to the shared per-run workspace dir, plus a
@@ -554,6 +566,7 @@ class OpenHandsAdapter:
         status = "completed"
         error: str | None = None
         provider_failure = False
+        retries_exhausted = False
         prompt_tokens = 0
         completion_tokens = 0
         cost_usd = 0.0
@@ -655,6 +668,8 @@ class OpenHandsAdapter:
             # Mirrored here for consistency with the remote adapters; local mode sees the real
             # exception, so the chain classification alone suffices (no event surface to consult).
             provider_failure = not budget_hit and _is_provider_error(exc)
+            # M1 (R2): a busy provider whose retries ran out — the step's backup-model trigger.
+            retries_exhausted = not budget_hit and not provider_failure and _is_transient_error(exc)
             error = str(exc)
             # M-fail METER-ON-FAILURE: read whatever partial usage accrued for ANY non-completed
             # status, not only the budget cutoff. A run that failed mid-loop still SPENT money, and
@@ -702,4 +717,5 @@ class OpenHandsAdapter:
             total_tokens=total_tokens,
             cost_usd=cost_usd,
             provider_failure=provider_failure,
+            retries_exhausted=retries_exhausted,
         )

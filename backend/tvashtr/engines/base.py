@@ -144,6 +144,12 @@ class AgentRunResult:
     # such a run is still ``"failed"``, so the workflow finalizer and every existing status switch
     # stay byte-identical when no provider failure occurs.
     provider_failure: bool = False
+    # ``retries_exhausted`` (M1 stall guard, ruling R2): this ``failed`` run died on a BUSY
+    # provider — a 429 / rate limit / timeout / overload that outlasted the agent's own retry
+    # envelope — and explicitly NOT the proxy's budget cutoff (``over_budget`` owns that). The
+    # Control Plane reads it to switch the node ONCE to its backup model. Additive and default-False
+    # like ``provider_failure``: ``status`` vocabulary is unchanged.
+    retries_exhausted: bool = False
 
 
 @runtime_checkable
