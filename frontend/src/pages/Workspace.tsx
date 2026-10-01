@@ -11,6 +11,7 @@ import {
 import { useDesktopDeepLinks } from "../lib/desktopDeepLinks";
 import { requestHomeAction } from "../lib/homeActions";
 import { type DashView, HOME, type Route, isPublicRoute, navigate, useNav } from "../lib/nav";
+import { useRunNotifier } from "../lib/runNotifier";
 import { useGlobalShortcuts } from "../lib/useGlobalShortcuts";
 import { refreshBadges, useNavBadges } from "../lib/workspaceStatus";
 import { ConnectorDetailPage } from "./connectors/ConnectorDetailPage";
@@ -80,6 +81,8 @@ export function Workspace({
     if (!onCanvas) void refreshBadges();
   }, [onCanvas]);
   useGithubReturn(); // Desktop: back from the GitHub App install → Toolkit › Tools › Browse
+  // R10: run notifications, on the canvas and the dashboard alike (Workspace spans both).
+  useRunNotifier();
   // Tvashtr Desktop: follow `tvashtr://` links (a no-op on the website).
   useDesktopDeepLinks();
 

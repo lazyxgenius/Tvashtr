@@ -284,6 +284,34 @@ export const INBOX_ITEMS = [
   },
 ];
 
+/** A "Run stalled" inbox item (M1) whose step has been silent for `silentS` seconds. */
+export function stalledInboxItem(silentS: number) {
+  const at = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+  return {
+    key: "run_stalled:r-stall",
+    kind: "run_stalled",
+    since: at(silentS),
+    team: { id: "t-bug", name: "Bugfix squad" },
+    run: {
+      id: "r-stall",
+      idea: "Fix the flaky login test",
+      status: "running",
+      created_at: at(silentS + 772),
+      target: null,
+      library_team_id: "t-bug",
+    },
+    node: { id: "n-eng", label: "Engineer", iteration: 1 },
+    live: {
+      live_state: "stalled",
+      last_event_at: at(silentS),
+      activity: "Asked the model for the next step",
+      activity_started_at: at(silentS),
+      retry: null,
+      backup_model: null,
+    },
+  };
+}
+
 export const SPEND = {
   tz: "UTC",
   month: { label: "September", start: ago(30000), total_usd: 15.93 },

@@ -118,6 +118,28 @@ export interface RunProgressChip {
   loops_with: string | null;
 }
 
+/** A step's live state (M1 stall guard, ruling R1); the run's is its worst running step. */
+export type LiveState =
+  | "waiting"
+  | "working"
+  | "running_command"
+  | "needs_you"
+  | "retrying"
+  | "quiet"
+  | "stalled"
+  | "failed"
+  | "done"
+  | "stopped";
+
+/** The run's worst running step, as Home's Running now card reads it (M2). */
+export interface RunLive {
+  label: string;
+  live_state: LiveState;
+  activity: string;
+  last_event_at: string | null;
+  activity_started_at: string | null;
+}
+
 export interface RunListRow {
   run_id: string;
   idea: string;
@@ -142,6 +164,10 @@ export interface RunListRow {
   awaiting: RunAwaiting | null;
   failure: RunFailure | null;
   progress?: RunProgressChip[];
+  /** M1: the run's worst step state (null/absent from an older server). */
+  live_state?: LiveState | null;
+  /** M2: what that step is doing now — Running now's activity line, when the server sends it. */
+  live?: RunLive | null;
 }
 
 export type RunStatusFilter =
@@ -198,6 +224,8 @@ export interface RunDetail {
   pm_document_id: string | null;
   status_group?: StatusGroup;
   spent_usd?: number;
+  pr_url?: string | null;
+  pr_number?: number | null;
 }
 
 export async function getRunDetail(runId: string): Promise<RunDetail | null> {

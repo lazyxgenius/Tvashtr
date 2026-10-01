@@ -1,4 +1,5 @@
 /** Small formatters Home's sections share (copy rules from home-run.md §2). */
+import type { LiveState } from "../../lib/api/runs";
 
 /** "$6.19" — money is dollars with two decimals. */
 export function money(n: number | null | undefined): string {
@@ -24,6 +25,33 @@ export function elapsedShort(iso: string | null | undefined, now = Date.now()): 
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h`;
   return `${Math.floor(h / 24)}d`;
+}
+
+/** Time since `iso`, to the second: "4 s", "5m 10s", "1h 02m" (the Live-* boards' durations). */
+export function durationShort(iso: string | null | undefined, now = Date.now()): string {
+  const t = iso ? new Date(iso).getTime() : NaN;
+  if (Number.isNaN(t)) return "";
+  const s = Math.max(0, Math.floor((now - t) / 1000));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${pad(s % 60)}s`;
+  return `${Math.floor(s / 3600)}h ${pad(Math.floor(s / 60) % 60)}m`;
+}
+
+/** The Running now badge for a live run's state (Live-Home); null = keep the status badge. */
+const LIVE_LOOK: Partial<
+  Record<LiveState, { label: string; variant: "warning" | "accent" | "danger" }>
+> = {
+  needs_you: { label: "Needs you", variant: "warning" },
+  working: { label: "Working", variant: "accent" },
+  running_command: { label: "Running a command", variant: "accent" },
+  retrying: { label: "Retrying", variant: "warning" },
+  quiet: { label: "Quiet", variant: "warning" },
+  stalled: { label: "Stalled", variant: "danger" },
+};
+
+export function liveLook(state: LiveState | null | undefined) {
+  return (state && LIVE_LOOK[state]) || null;
 }
 
 /** "Good morning" before noon, "Good afternoon" until 6pm, else "Good evening" (local clock). */

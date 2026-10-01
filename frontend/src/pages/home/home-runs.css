@@ -513,6 +513,30 @@
   align-items: center;
   gap: 12px;
 }
+.hm-run--stalled {
+  border-color: #e5bfb7;
+}
+/* M2 (Live-Home): the step's current activity, under the progress chips. */
+.hm-run__live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-200);
+  font-size: 12.5px;
+  color: var(--ink-700);
+  min-width: 0;
+}
+.hm-run__live b {
+  font-weight: 600;
+}
+.hm-run__live-aside {
+  margin-left: auto;
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--ink-500);
+  white-space: nowrap;
+}
 .hm-run__waiting {
   display: flex;
   align-items: center;
