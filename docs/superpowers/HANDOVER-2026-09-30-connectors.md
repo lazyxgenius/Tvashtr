@@ -81,5 +81,15 @@ provider; switch any that fails to "Coming soon" in `connector_catalog.py`.
 | Area | main sha | Fly release | Desktop tag | DMG check |
 |---|---|---|---|---|
 | Connectors | ac2073d | v29 (migration 0043 applied) | desktop-v0.13.0 | app 0.13.0 bundles `index-DXwje35F.js` = the live site |
+| Connectors parity (ruling 4, 2026-10-01) | (filled at ship) | (filled at ship) | desktop-v0.14.0 | (filled at ship) |
 
 Live smoke after the deploy (no session): site 200; `GET /api/connectors` 401; `/oauth/client-metadata.json` 200; `POST /mcp/domains` and `POST /mcp/connectors` answer 200 at both path spellings (before: 405 and 421 on Domains). Not done: a signed-in walk through Connectors on the live site, and a real provider sign-in.
+
+**Parity (2026-10-01, s1-ship session, `fix/connectors-parity`):** the architect's ruling 4 built the three
+design-governed items (the row ⋯ menu's 230px rows, the connect sheet's 42px provider tile, the "Read only / Only
+with read & write" box for Supabase) and waived four (the icon gap, the drawer's access select, the dialog's Team
+label, "Signed in to Supabase."). `docs/superpowers/parity/connectors.txt` is the re-shot record: every one of the
+86 renders is at 0 size/type drift or its drift is waived or noted; four real gaps outside that ruling are noted
+there, not built (Sign in again on a round's skipped line, the LIN-214 write label, agent descriptions in Give
+agents access, "Yesterday"), plus the Browse search box's 240px (a CSS load-order bug) and the access lists of
+the connectors other than Supabase (new content).
