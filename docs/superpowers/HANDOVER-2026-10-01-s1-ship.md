@@ -38,7 +38,9 @@ On `fix/connectors-parity` (from `main` 7a7f6fd, fast-forwarded into `main`):
   `desktop/package.json` (+ lock) 0.14.0.
 
 Local only: deleted the untracked strays `backend/DEMO_PROOF.md` and `backend/docs/DEMO_PROOF.md` (after
-`git ls-files --error-unmatch` showed both untracked); the checkout is on `main`.
+`git ls-files --error-unmatch` showed both untracked), and `backend/REPORT.md`, which the LOCAL-sandbox PM of
+this session's last demo-proof run wrote outside its workspace at 18:26 (untracked; the known LOCAL issue). The
+checkout is on `main`; the root `REPORT.md` (2026-09-30) is the operator's and was left.
 
 ## Verified (actual results)
 
