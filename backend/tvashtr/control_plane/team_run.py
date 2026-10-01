@@ -73,7 +73,12 @@ from tvashtr.control_plane.context_compiler import (
     resolve_writes_to,
 )
 from tvashtr.control_plane.credential_gate import subscription_for_model
-from tvashtr.control_plane.credentials import NoCredentialError, resolve_owner_api_key
+from tvashtr.control_plane.credentials import (
+    NoCredentialError,
+    held_provider_slugs,
+    provider_for_model,
+    resolve_owner_api_key,
+)
 from tvashtr.control_plane.domain_ask import DomainAskError
 from tvashtr.control_plane.domain_query_node import (
     domain_query_manifest,
@@ -89,6 +94,7 @@ from tvashtr.control_plane.guardrails import (
 )
 from tvashtr.control_plane.invocations import close_invocation_step, open_invocation_step
 from tvashtr.control_plane.litellm_admin import delete_virtual_key, mint_virtual_key
+from tvashtr.control_plane.live_state import record_host_event
 from tvashtr.control_plane.memory import repo_key_for_run
 from tvashtr.control_plane.memory_retrieval import (
     embed_query_metered,
@@ -101,6 +107,7 @@ from tvashtr.control_plane.node_tools import build_mcp_config
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.control_plane.run_diff import compute_run_diff
 from tvashtr.control_plane.shipping import idempotent_ship, init_workspace_repo
+from tvashtr.control_plane.teams import account_fallback_model, capability_of
 from tvashtr.control_plane.worktree import (
     add_worktree,
     build_repo_grounding,
@@ -225,6 +232,27 @@ def _resolve_model_and_key(run_id: str, model: str, fallback_model: str | None) 
             f"no credential for {model!r}'s provider — failed over to the node's fallback model",
         )
         return fallback_model, key
+
+
+def _account_backup_model(run_id: str, capability: str | None, primary: str) -> str | None:
+    """M1 (ruling R2): the account's backup model for a node of ``capability`` — used when the
+    node authored no ``fallback_model`` — or ``None``. Only a model the run owner holds a key for
+    and that differs from ``primary``; ``capability`` None (a caller that doesn't thread it) ⇒
+    ``None``. A lookup error is ``None`` too: a missing backup must never crash the step."""
+    if capability is None:
+        return None
+    try:
+        owner_id = owner_for_run(run_id)
+        if owner_id is None:
+            return None
+        held = held_provider_slugs(owner_id)
+        backup = account_fallback_model(held, capability)
+        if backup is None or backup == primary or provider_for_model(backup) not in held:
+            return None
+        return backup
+    except Exception:
+        logger.warning("account backup lookup failed run_id=%s", run_id, exc_info=True)
+        return None
 
 
 def _output_schema_violation(output: str | None, schema: dict | None) -> str | None:
@@ -1334,6 +1362,7 @@ def agent_run_step(
     multimodal: bool = False,
     output_schema: dict | None = None,
     output_schema_name: str | None = None,
+    capability: str | None = None,
 ) -> dict:
     """The ONE generic agent step (P1.8a) — replaces the role-specific ``engineer_run_step`` AND
     ``reviewer_agent_run_step``. M-unify U1: it is now the SINGLE path EVERY AgentNode executes
@@ -1571,22 +1600,27 @@ def agent_run_step(
         # pre-flight swap, so after that swap fires the node's fallback IS the slug that just ran.
         # Re-running the identical model + key it just hard-failed on buys nothing but a second
         # full agent run (and a misleading swap warning).
-        if (
-            result.status == "failed"
-            and result.provider_failure
-            and fallback_model
-            and fallback_model != model
-        ):
+        #
+        # M1 (ruling R2): a BUSY primary whose retry envelope is used up (``retries_exhausted``)
+        # switches too, to the node's ``fallback_model``, else the account's backup for the node's
+        # capability (resolved only when a switch is due). Either switch is a ``backup_model`` run
+        # event for the Activity feed. A HARD failure keeps the node's own fallback only:
+        # ``test_a_node_with_no_fallback_model_is_never_retried`` pins that, pending a ruling.
+        backup = None
+        if result.status == "failed" and (result.provider_failure or result.retries_exhausted):
+            backup = fallback_model
+            if not backup and result.retries_exhausted:
+                backup = _account_backup_model(run_id, capability, model)
+        if backup and backup != model:
+            busy = not result.provider_failure
             try:
                 if get_settings().litellm_proxy_enabled:
                     # Proxy-ON: the per-run virtual key is model-agnostic (the proxy holds the
                     # upstream keys), so only the slug changes — mirroring the resolution above.
-                    failover_model, failover_key = fallback_model, vkey
+                    failover_model, failover_key = backup, vkey
                 else:
                     # The fallback has no further fallback: at most ONE swap per invocation.
-                    failover_model, failover_key = _resolve_model_and_key(
-                        run_id, fallback_model, None
-                    )
+                    failover_model, failover_key = _resolve_model_and_key(run_id, backup, None)
             except NoCredentialError:
                 # An unresolvable fallback must never be WORSE than having none: the launch
                 # pre-flight validates node MODELS only (``_missing_provider_credentials``), never
@@ -1596,8 +1630,11 @@ def agent_run_step(
                 record_resolution_warning(
                     run_id,
                     "fallback_model",
-                    fallback_model,
-                    f"primary {model!r} hard-failed mid-run but the fallback model's provider "
+                    backup,
+                    f"primary {model!r} stayed busy after its retries but the backup model's "
+                    f"provider has no credential — switch skipped"
+                    if busy
+                    else f"primary {model!r} hard-failed mid-run but the fallback model's provider "
                     f"has no credential — failover skipped",
                 )
             else:
@@ -1605,8 +1642,21 @@ def agent_run_step(
                     run_id,
                     "fallback_model",
                     failover_model,
-                    f"primary {model!r} hard-failed mid-run — failed over to the node's "
+                    f"primary {model!r} stayed busy after its retries — switched to the "
+                    f"backup model"
+                    if busy
+                    else f"primary {model!r} hard-failed mid-run — failed over to the node's "
                     f"fallback model",
+                )
+                record_host_event(
+                    run_id,
+                    invocation_id,
+                    "backup_model",
+                    {
+                        "from_model": model,
+                        "to_model": failover_model,
+                        "reason": "busy" if busy else "error",
+                    },
                 )
                 result = adapter.run(
                     # Identical to the primary task but for the model + its key — and the
@@ -2480,6 +2530,7 @@ def run_graph(run_id: str, graph: dict, idea: str) -> dict:
                 **memory_kwargs,  # M-memory S3: the retrieved facts (absent ⇒ byte-identical call)
                 **docs_kwargs,  # M-docs: the reads_from documents (absent ⇒ byte-identical call)
                 **capability_kwargs,  # Session A: fallback_model (absent ⇒ byte-identical call)
+                capability=capability_of(node["kind"]),  # M1 (R2): the seat its backup serves
             )
             delete_vkey_step(run_id, vkey)
 
