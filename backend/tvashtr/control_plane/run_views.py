@@ -17,6 +17,7 @@ from decimal import Decimal
 
 from sqlalchemy import func, or_, select, tuple_
 
+from tvashtr.control_plane import live_state
 from tvashtr.control_plane.run_failure import describe_run_failure, node_label
 from tvashtr.db import session_scope
 from tvashtr.models import AgentInvocation, AgentNode, CostRecord, Edge, HumanTask, Run, TeamGraph
@@ -301,6 +302,23 @@ def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> d
         for nid, n in nodes.items()
     }
 
+    # M1 stall guard: each in-flight run's running steps give it one live state (its worst).
+    step_states: dict[str, list[str]] = {}
+    in_flight = [str(r.id) for r in runs if r.status not in TERMINAL_STATUSES]
+    if in_flight:
+        running = session.execute(
+            select(AgentInvocation, AgentNode.kind)
+            .join(AgentNode, AgentNode.id == AgentInvocation.node_id)
+            .where(AgentInvocation.run_id.in_(in_flight), AgentInvocation.status == "running")
+        ).all()
+        live_by_inv = live_state.invocation_live(
+            session, [inv for inv, kind in running if kind in live_state.STEP_KINDS]
+        )
+        for inv, kind in running:
+            step_states.setdefault(inv.run_id, []).append(
+                live_state.node_live(kind, inv, live_by_inv)["live_state"]
+            )
+
     out: dict = {}
     for run in runs:
         rid = str(run.id)
@@ -349,6 +367,7 @@ def run_extras(session, runs: list[Run], *, include_progress: bool = False) -> d
             "spent_usd": spent_usd(run, live),
             "awaiting": awaiting,
             "failure": failure,
+            "live_state": live_state.run_live_state(run.status, step_states.get(rid, [])),
         }
         if include_progress:
             extras["progress"] = _progress(run, nodes, edges, invs_by_run.get(rid, []), tasks)

@@ -5,6 +5,9 @@ Items, oldest first:
 * ``approval`` — a pending BLOCKING human task on a live run (a spec / ship / escalation gate, or a
   ``budget_approval``). Key ``gate:<task id>``. Can be snoozed, never dismissed.
 * ``nudge`` — a pending non-blocking task (the 80%-of-budget note). Key ``nudge:<task id>``.
+* ``run_stalled`` — a live run with a step Stalled: no update for ``stalled_after_s`` (5 minutes)
+  and no command running (M1 stall guard). Key ``run_stalled:<run id>``; it comes back after a
+  dismissal when the step's last update changes.
 * ``run_failed`` — a run that failed in the last 14 days and has not been retried (no run points at
   it through ``retry_of_run_id``). Key ``run_failed:<run id>``.
 * ``setup_gap`` — a library team that can't run on the website (or, on Desktop, on this computer)
@@ -23,7 +26,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from tvashtr.control_plane import desktop_jobs, run_views
+from tvashtr.control_plane import desktop_jobs, live_state, run_views
 from tvashtr.control_plane.credential_gate import (
     MODEL_PROVIDER_TO_SUB,
     RUNNER_SUBSCRIPTIONS,
@@ -114,6 +117,58 @@ def _approval_items(session, owner_id: uuid.UUID) -> list[dict]:
                     "next_role": awaiting.get("next_role"),
                 },
                 "document_id": str(run.pm_document_id) if run.pm_document_id else None,
+            }
+        )
+    return items
+
+
+def _stalled_run_items(session, owner_id: uuid.UUID, now: datetime) -> list[dict]:
+    rows = session.execute(
+        select(AgentInvocation, AgentNode, Run)
+        .join(AgentNode, AgentNode.id == AgentInvocation.node_id)
+        .join(Run, Run.workflow_id == AgentInvocation.run_id)
+        .where(
+            Run.owner_id == owner_id,
+            Run.status.in_(("running", "awaiting_human")),
+            AgentInvocation.status == "running",
+            AgentNode.kind.in_(live_state.STEP_KINDS),
+        )
+        .order_by(AgentInvocation.started_at, AgentInvocation.id)
+    ).all()
+    if not rows:
+        return []
+    live = live_state.invocation_live(session, [inv for inv, _, _ in rows], now=now)
+    stalled: dict = {}
+    for inv, node, run in rows:
+        if live[inv.id]["live_state"] == "stalled" and run.id not in stalled:
+            stalled[run.id] = (inv, node, run)
+    if not stalled:
+        return []
+    extras = run_views.run_extras(session, [run for _, _, run in stalled.values()])
+    items = []
+    for inv, node, run in stalled.values():
+        step = live[inv.id]
+        items.append(
+            {
+                "key": f"run_stalled:{run.id}",
+                "kind": "run_stalled",
+                "_since": datetime.fromisoformat(step["last_event_at"]),
+                "_fingerprint": step["last_event_at"],
+                "team": extras[run.id]["team"],
+                "run": {
+                    "id": str(run.id),
+                    "idea": run.idea,
+                    "status": run.status,
+                    "created_at": run.created_at.isoformat(),
+                    "target": run_views.run_target(run),
+                    "library_team_id": str(run.library_team_id) if run.library_team_id else None,
+                },
+                "node": {
+                    "id": str(node.id),
+                    "label": node_label(node.role_name, node.kind, node.config),
+                    "iteration": inv.iteration,
+                },
+                "live": step,
             }
         )
     return items
@@ -351,6 +406,7 @@ def _raw_items(owner_id: uuid.UUID, surface: str, now: datetime) -> list[dict]:
     with session_scope() as session:
         items = (
             _approval_items(session, owner_id)
+            + _stalled_run_items(session, owner_id, now)
             + _failed_run_items(session, owner_id, now)
             + _setup_gap_items(session, owner_id, surface, now)
             + _memories_item(session, owner_id)

@@ -236,3 +236,48 @@ def record_host_event(run_id: str, invocation_id: int | None, kind: str, payload
             logger.warning("live_state: could not record a %s event for run %s", kind, run_id)
             return
     logger.warning("live_state: gave up recording a %s event for run %s", kind, run_id)
+
+
+# A finished step's state is its invocation status; a run's, once it is over, its run status.
+_ENDED_STATE = {"done": "done", "failed": "failed", "stopped": "stopped"}
+_RUN_ENDED_STATE = {
+    "completed": "done",
+    "failed": "failed",
+    "rejected": "stopped",
+    "cancelled": "stopped",
+    "over_budget": "stopped",
+}
+STEP_KINDS = ("agent", "completion")
+
+
+def _plain(state: str) -> dict:
+    return {
+        "live_state": state,
+        "last_event_at": None,
+        "activity": None,
+        "activity_started_at": None,
+        "retry": None,
+        "backup_model": None,
+    }
+
+
+def node_live(kind: str, latest: AgentInvocation | None, live_by_inv: dict[int, dict]) -> dict:
+    """A node's live block for the run view: from its latest invocation (``None`` = not reached)."""
+    if latest is None:
+        return _plain("waiting")
+    if latest.status != "running":
+        return _plain(_ENDED_STATE.get(latest.status, latest.status))
+    if kind == "gate":
+        return _plain("needs_you")
+    return live_by_inv.get(latest.id) or _plain("working")
+
+
+def run_live_state(run_status: str, step_states) -> str | None:
+    """A run's one state: its run status once it is over, else the worst of its steps' (an
+    ``awaiting_human`` run needs you even when no gate step is open)."""
+    if run_status in _RUN_ENDED_STATE:
+        return _RUN_ENDED_STATE[run_status]
+    states = list(step_states)
+    if run_status == "awaiting_human":
+        states.append("needs_you")
+    return worst(states) or "waiting"

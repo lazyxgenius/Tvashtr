@@ -28,6 +28,7 @@ from tvashtr.control_plane import (
     domain_views,
     github_app,
     github_targets,
+    live_state,
     local_repo,
     memory,
     memory_distill,
@@ -1863,6 +1864,22 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
         # Deterministic left-to-right order (PM at x=0 before Engineer/Reviewer).
         nodes = sorted(nodes, key=lambda n: (n.position.get("x", 0), str(n.id)))
 
+        # M1 stall guard (additive): what each node is doing right now, derived from its latest
+        # invocation and that round's newest events (``live_state``), and the run's worst state.
+        kind_of = {str(n.id): n.kind for n in nodes}
+        live_by_inv = live_state.invocation_live(
+            session,
+            [
+                inv
+                for key, inv in latest_by_node.items()
+                if kind_of.get(key) in live_state.STEP_KINDS
+            ],
+        )
+        live_by_node = {
+            str(n.id): live_state.node_live(n.kind, latest_by_node.get(str(n.id)), live_by_inv)
+            for n in nodes
+        }
+
         # M-tools C7.A (SHARED CONTRACT S1): run-scoped resolution warnings — tools/skills that
         # FAILED to resolve at run time and were SKIPPED (the run continued). Oldest-first; [] none.
         resolution_warnings = (
@@ -1918,9 +1935,13 @@ def get_run_graph(run_id: str, current_user: Annotated[UserOut, Depends(get_curr
                         }
                         for inv in invs_by_node.get(str(n.id), [])
                     ],
+                    "live": live_by_node[str(n.id)],
                 }
                 for n in nodes
             ],
+            "live_state": live_state.run_live_state(
+                run.status, (v["live_state"] for v in live_by_node.values())
+            ),
             "edges": [_edge_to_dict(e) for e in edges],
             "resolution_warnings": [
                 {"source_kind": w.source_kind, "name": w.name, "reason": w.reason}
