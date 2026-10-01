@@ -39,6 +39,7 @@ module (and app startup) never loads it.
 import json
 import logging
 import os
+import threading
 import uuid
 from dataclasses import replace
 from pathlib import Path
@@ -118,7 +119,8 @@ from tvashtr.documents.service import (
     latest_version_by_name,
     latest_version_of,
 )
-from tvashtr.engines.base import AgentTask, DesktopJobSpec
+from tvashtr.engines import sandbox_cache
+from tvashtr.engines.base import AgentTask, DesktopJobSpec, EngineEvent
 from tvashtr.engines.registry import resolve_adapter
 from tvashtr.engines.run_event_sink import make_run_event_sink
 from tvashtr.engines.sandbox_cache import close_run_sandboxes, session_key_for
@@ -1156,6 +1158,54 @@ _FORCE_REVISIONS_ENV = "TVASHTR_FORCE_REVISIONS"
 _REVIEW_MAX_REASONS = 2000
 
 
+# M1 live proof: the longest a forced hang waits before giving up on its own (the stall sweep
+# releases it long before that).
+_FORCED_HANG_CAP_S = 3600
+
+
+def _forced_hang(run_id: str, node_id: str | None, invocation_id: int) -> dict | None:
+    """The stall-guard proof harness (``TVASHTR_FORCE_HANG_ROLE``): the node whose ``role_name``
+    matches waits like a model that never answers — no adapter, no LLM, no key — until its run's
+    sandboxes are closed (what the stall sweep does) and then fails like a dropped call. Writes the
+    one event a real step writes first (the instruction going to the model), so the live state
+    counts from it. ``None`` for every other node, and always when the setting is unset."""
+    role = get_settings().force_hang_role
+    if not role or node_id is None:
+        return None
+    with session_scope() as session:
+        node_role = session.execute(
+            select(AgentNode.role_name).where(AgentNode.id == uuid.UUID(str(node_id)))
+        ).scalar_one_or_none()
+    if node_role != role:
+        return None
+    released = threading.Event()
+    sandbox_cache.put(
+        session_key_for(run_id, str(node_id)),
+        sandbox_cache.CachedSandbox(handle=None, close=released.set),
+    )
+    make_run_event_sink(run_id, invocation_id)(
+        EngineEvent(
+            seq=0,
+            kind="message",
+            payload={"source": "user", "text": "(forced hang) waiting on a silent model"},
+        )
+    )
+    released.wait(_FORCED_HANG_CAP_S)
+    return {
+        "status": "failed",
+        "outcome": None,
+        "reasons": None,
+        "files_changed": [],
+        "report": None,
+        "error": "the model never answered (forced hang)",
+        "context_manifest": None,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cost_usd": 0.0,
+    }
+
+
 def _forced_review_outcome(iteration: int) -> dict | None:
     """The forced-revisions harness, factored out of the agent step as a pure + importable helper
     (P1.8a) so it stays directly unit-testable and the offline workflow tests can drive the loop
@@ -1387,6 +1437,9 @@ def agent_run_step(
         forced = _forced_review_outcome(iteration)
         if forced is not None:
             return forced
+    hung = _forced_hang(run_id, node_id, invocation_id)
+    if hung is not None:
+        return hung
 
     # M-ctx1 (C2/C4): assemble the instruction via the pure compiler (the moved-out typed-parts
     # assembly — byte-identical on the small path). It preserves the EXACT prior conditional logic:
