@@ -40,6 +40,7 @@ WORST_ORDER = (
     "working",
     "waiting",
 )
+# Matched lower-cased: Claude Code (a Desktop subscription node) names its shell tool "Bash".
 TERMINAL_TOOLS = ("terminal", "execute_bash", "bash")
 
 # ponytail: host events share the int ``seq`` column with the engine's (from 0), the Desktop
@@ -74,7 +75,7 @@ def activity_line(kind: str | None, payload: dict | None) -> str:
         return "Stopped responding"
     if kind == "action":
         tool = payload.get("tool_name")
-        if tool in TERMINAL_TOOLS:
+        if str(tool or "").lower() in TERMINAL_TOOLS:
             return f"Running a command: {_command_of(payload)}"
         if tool == "finish":
             return "Finished its step"
@@ -114,7 +115,17 @@ def derive(
     stalled_after = stalled_after_s if stalled_after_s is not None else settings.stalled_after_s
     last_at = last["created_at"] if last else started_at
     retry = None
-    if terminal is not None and terminal["kind"] == "action":
+    if (
+        last is not None
+        and last["kind"] == "message"
+        and (last["payload"] or {}).get("source") == "tvashtr"
+    ):
+        # A Desktop job queued for the owner's runner (or behind another job on the same
+        # subscription): its own offline expiry owns it, so it is Waiting — never Quiet or Stalled.
+        state = "waiting"
+        activity = str((last["payload"] or {}).get("text") or "Waiting")
+        activity_at = last["created_at"]
+    elif terminal is not None and terminal["kind"] == "action":
         state = "running_command"
         activity = activity_line("action", terminal["payload"])
         activity_at = terminal["created_at"]
@@ -179,7 +190,7 @@ def invocation_live(
         ids,
         of_these_runs,
         RunEvent.kind.in_(("action", "observation")),
-        RunEvent.payload["tool_name"].astext.in_(TERMINAL_TOOLS),
+        func.lower(RunEvent.payload["tool_name"].astext).in_(TERMINAL_TOOLS),
     )
     backups = _newest(session, ids, of_these_runs, RunEvent.kind == "backup_model")
     return {
@@ -198,7 +209,7 @@ def invocation_live(
 
 def stalled_for(live: dict, now: datetime) -> float:
     """Seconds a step has been without news (0 for a running command)."""
-    if live["live_state"] == "running_command" or not live["last_event_at"]:
+    if live["live_state"] in ("running_command", "waiting") or not live["last_event_at"]:
         return 0.0
     return (now - datetime.fromisoformat(live["last_event_at"])).total_seconds()
 
@@ -251,7 +262,10 @@ _RUN_ENDED_STATE = {
     "cancelled": "stopped",
     "over_budget": "stopped",
 }
-STEP_KINDS = ("agent", "completion")
+# Steps with a live state: agents (thinkers and workers) and Query domain rounds (a gateway call).
+STEP_KINDS = ("agent", "completion", "domain_query")
+# The host's own events. The pre-M2 feed (``/api/spike/run-events``) leaves them out.
+HOST_EVENT_KINDS = ("retry", "backup_model", "stalled")
 
 
 def _plain(state: str) -> dict:

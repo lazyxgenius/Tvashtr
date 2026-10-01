@@ -163,3 +163,35 @@ def test_two_stalled_rounds_of_one_node_are_ended_once(client, released):
             )
         )
     assert run_id in stall_sweep.sweep_stalled_steps(now=NOW)
+
+
+def test_the_sweep_leaves_a_step_that_closed_meanwhile(client, released):
+    """Review finding 12: guarded on the step too — a round that finished between the look and the
+    write keeps its run alive."""
+    c, owner = fresh_account("sweep-race")
+    run_id, node, inv_id = _stale_step(owner, library_team(c), silent_for=1300)
+    with session_scope() as s:
+        s.get(AgentInvocation, inv_id).status = "done"
+    node_row = (uuid.UUID(node), "engineer", "agent", {})
+    assert stall_sweep._end(run_id, inv_id, node_row, 1300, 1200, NOW) is False
+    with session_scope() as s:
+        assert s.get(Run, uuid.UUID(run_id)).status == "running"
+
+
+def test_the_sweep_leaves_a_step_that_spoke_meanwhile(client, released):
+    c, owner = fresh_account("sweep-spoke")
+    run_id, node, inv_id = _stale_step(owner, library_team(c), silent_for=1300)
+    with session_scope() as s:
+        s.add(
+            RunEvent(
+                run_id=run_id,
+                invocation_id=inv_id,
+                seq=1,
+                kind="action",
+                payload={"tool_name": "file_editor"},
+            )
+        )
+    node_row = (uuid.UUID(node), "engineer", "agent", {})
+    assert stall_sweep._end(run_id, inv_id, node_row, 1300, 1200, NOW) is False
+    with session_scope() as s:
+        assert s.get(Run, uuid.UUID(run_id)).status == "running"

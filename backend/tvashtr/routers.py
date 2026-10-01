@@ -696,6 +696,8 @@ def get_run_events(
                 # would sort after every engine event, and an app that doesn't know the kinds
                 # (Desktop 0.12.0's) lists them as the last rows of the Activity feed.
                 RunEvent.kind.notin_(CONNECTOR_EVENT_KINDS),
+                # M1: likewise the host's retry / backup / stall notes (M2's Activity reads them).
+                RunEvent.kind.notin_(live_state.HOST_EVENT_KINDS),
             )
             .order_by(RunEvent.seq)
         ).all()

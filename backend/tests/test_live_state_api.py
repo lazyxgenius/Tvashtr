@@ -119,3 +119,42 @@ def test_a_stalled_run_is_in_needs_you_and_a_fresh_one_is_not(client):
 
     other, _ = fresh_account("live-inbox-b")
     assert not [i for i in other.get("/api/inbox").json()["items"] if i["kind"] == "run_stalled"]
+
+
+def test_the_old_event_feed_never_shows_host_events(client):
+    """Review finding 9: today's feed (``/api/spike/run-events``, web and Desktop 0.14.0) renders an
+    unknown kind as a blank row and orders by ``seq``; the host's retry / backup / stall events wait
+    for M2's Activity endpoint."""
+    from tvashtr.control_plane import live_state
+
+    c, owner = fresh_account("live-feed")
+    run_id, clone = make_run(owner, library_team(c), status="running")
+    eng = _invocation(run_id, clone_node(clone, "engineer"), "running")
+    _event(run_id, eng, 5)
+    live_state.record_host_event(run_id, eng, "retry", {"attempt": 1, "of": 3})
+    kinds = [e["kind"] for e in c.get(f"/api/spike/run-events/{run_id}").json()["events"]]
+    assert kinds == ["message"]
+
+
+def test_a_connector_event_after_a_host_event_stays_in_its_own_band(client):
+    """Review finding 11: the connector proxy's band (from 1e9) no longer runs into the host's."""
+    from sqlalchemy import select as _select
+
+    from tvashtr.control_plane import connector_proxy, live_state
+    from tvashtr.models import RunEvent as _RE
+
+    c, owner = fresh_account("live-band")
+    run_id, clone = make_run(owner, library_team(c), status="running")
+    node = clone_node(clone, "engineer")
+    eng = _invocation(run_id, node, "running")
+    live_state.record_host_event(run_id, eng, "retry", {"attempt": 1})
+    connector_proxy._write_event(run_id, node, "connector_call", {"name": "x"})
+    with session_scope() as s:
+        seqs = (
+            s.execute(
+                _select(_RE.seq).where(_RE.invocation_id == eng, _RE.kind == "connector_call")
+            )
+            .scalars()
+            .all()
+        )
+    assert seqs == [connector_proxy.EVENT_SEQ_BAND]

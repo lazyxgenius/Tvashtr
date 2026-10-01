@@ -203,3 +203,47 @@ def test_events_of_another_run_with_the_same_invocation_id_are_ignored(client):
     with session_scope() as s:
         inv = s.get(AgentInvocation, inv_id)
         assert live_state.invocation_live(s, [inv], now=now)[inv_id]["live_state"] == "stalled"
+
+
+def test_a_desktop_job_waiting_for_its_runner_is_waiting_not_stalled():
+    """Review finding 4: a Desktop job queued behind another job on the same subscription writes one
+    note and then nothing — its own offline expiry owns it; it is never Quiet, Stalled or swept."""
+    waiting = _ev(
+        "message",
+        {
+            "source": "tvashtr",
+            "text": "Waiting for your Claude Max subscription — one job at a time.",
+        },
+        T0,
+    )
+    out = _derive(3600, last=waiting)
+    assert out["live_state"] == "waiting"
+    assert out["activity"] == "Waiting for your Claude Max subscription — one job at a time."
+    assert live_state.stalled_for(out, T0 + timedelta(seconds=3600)) == 0.0
+
+
+def test_claude_codes_bash_tool_is_a_command():
+    command = _ev("action", {"tool_name": "Bash", "action": "Bash(command='npm test')"}, T0)
+    assert _derive(7200, last=command, terminal=command)["live_state"] == "running_command"
+
+
+def test_a_query_domain_step_is_a_live_step():
+    assert "domain_query" in live_state.STEP_KINDS
+
+
+def test_a_running_bash_command_is_found_in_the_events(client):
+    now = datetime.now(UTC)
+    run_id, inv_id = _running_invocation(now - timedelta(hours=2))
+    _add_event(
+        run_id,
+        inv_id,
+        0,
+        "action",
+        {"tool_name": "Bash", "action": "Bash(command='npm test')"},
+        now - timedelta(hours=1),
+    )
+    with session_scope() as s:
+        inv = s.get(AgentInvocation, inv_id)
+        out = live_state.invocation_live(s, [inv], now=now)[inv_id]
+    assert out["live_state"] == "running_command"
+    assert out["activity"] == "Running a command: npm test"

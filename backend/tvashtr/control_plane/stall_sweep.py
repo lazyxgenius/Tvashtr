@@ -19,14 +19,14 @@ import uuid
 from datetime import UTC, datetime
 
 from dbos import DBOS
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane import live_state, run_failure
 from tvashtr.db import session_scope
 from tvashtr.engines import sandbox_cache
 from tvashtr.metering import running_cost
-from tvashtr.models import AgentInvocation, AgentNode, Run
+from tvashtr.models import AgentInvocation, AgentNode, Run, RunEvent
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +46,34 @@ def stalled_message(label: str, after_s: float) -> str:
     )
 
 
-def _end(run_id: str, inv_id: int, node: tuple, silent_s: float, ceiling: float) -> bool:
+def _end(
+    run_id: str, inv_id: int, node: tuple, silent_s: float, ceiling: float, now: datetime
+) -> bool:
     node_id, role_name, kind, config = node
     message = stalled_message(run_failure.node_label(role_name, kind, config), ceiling)
     total = running_cost(run_id)
     with session_scope() as session:
+        # Guarded on the step as well as the run: a round that closed, or spoke, between the look
+        # and this write keeps its run alive.
+        newest = session.execute(
+            select(func.max(RunEvent.created_at)).where(
+                RunEvent.run_id == run_id, RunEvent.invocation_id == inv_id
+            )
+        ).scalar_one()
+        if newest is not None and (now - newest).total_seconds() < ceiling:
+            return False
+        closed = session.execute(
+            update(AgentInvocation)
+            .where(AgentInvocation.id == inv_id, AgentInvocation.status == "running")
+            .values(
+                status="failed",
+                outcome="stalled",
+                outcome_detail=message,
+                ended_at=datetime.now(UTC),
+            )
+        ).rowcount
+        if not closed:
+            return False
         ended = session.execute(
             update(Run)
             .where(Run.id == uuid.UUID(run_id), Run.status == "running")
@@ -63,17 +86,8 @@ def _end(run_id: str, inv_id: int, node: tuple, silent_s: float, ceiling: float)
             )
         ).rowcount
         if not ended:
+            session.rollback()  # the run ended meanwhile: leave its step as it was too
             return False
-        session.execute(
-            update(AgentInvocation)
-            .where(AgentInvocation.id == inv_id, AgentInvocation.status == "running")
-            .values(
-                status="failed",
-                outcome="stalled",
-                outcome_detail=message,
-                ended_at=datetime.now(UTC),
-            )
-        )
     live_state.record_host_event(
         run_id, inv_id, "stalled", {"after_s": int(silent_s), "message": message}
     )
@@ -114,16 +128,23 @@ def sweep_stalled_steps(now: datetime | None = None) -> list[str]:
         ]
     ended: list[str] = []
     for run_id, inv_id, node, silent in due:
-        if run_id not in ended and _end(run_id, inv_id, node, silent, ceiling):
+        if run_id not in ended and _end(run_id, inv_id, node, silent, ceiling, now):
             ended.append(run_id)
     if ended:
         logger.warning("stall sweep: ended %d stalled run(s): %s", len(ended), ended)
     return ended
 
 
+@DBOS.step()
+def sweep_step() -> list[str]:
+    """The sweep as ONE DBOS step: its reads, writes and workflow cancels are recorded as a unit, so
+    a recovered sweep replays its result instead of re-deciding (review finding 10)."""
+    return sweep_stalled_steps()
+
+
 def _periodic_stall_sweep(scheduled_time: datetime, actual_time: datetime) -> None:
     try:
-        sweep_stalled_steps()
+        sweep_step()
     except Exception:  # noqa: BLE001 — a failing sweep must never crash the scheduler
         logger.warning("stall sweep failed", exc_info=True)
 

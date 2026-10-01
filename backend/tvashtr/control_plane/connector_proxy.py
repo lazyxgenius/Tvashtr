@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_catalog, connector_oauth, connector_upstream, connectors
+from tvashtr.control_plane.live_state import HOST_EVENT_SEQ_BAND
 from tvashtr.control_plane.node_library import _as_uuid
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
 from tvashtr.control_plane.run_failure import node_label
@@ -147,6 +148,8 @@ def _next_seq(session: Session, run_id: str, invocation_id: int | None) -> int:
             RunEvent.run_id == run_id,
             RunEvent.invocation_id.is_not_distinct_from(invocation_id),
             RunEvent.seq >= EVENT_SEQ_BAND,
+            # M1: the host's band (live_state.HOST_EVENT_SEQ_BAND) starts above this one.
+            RunEvent.seq < HOST_EVENT_SEQ_BAND,
         )
     ).scalar_one()
     return EVENT_SEQ_BAND if last is None else last + 1

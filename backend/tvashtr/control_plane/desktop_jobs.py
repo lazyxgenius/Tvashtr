@@ -430,6 +430,8 @@ def _release_count(session, run_id: str, invocation_id: int | None) -> int:
             RunEvent.run_id == run_id,
             RunEvent.invocation_id == invocation_id,
             RunEvent.seq >= RUNNER_SEQ_OFFSET,
+            # The runner's band ends where the connector proxy's (1e9) and the host's begin.
+            RunEvent.seq < 1_000_000_000,
             (RunEvent.seq - RUNNER_SEQ_OFFSET + 1) % RUNNER_CLAIM_SEQS == 0,
         )
     ).scalar_one()
