@@ -20,6 +20,7 @@ import { useLoaded } from "./panel/runs/useLoaded";
 import { RunNodeDrawer } from "./panel/run/RunNodeDrawer";
 import { ActivityPanel, type ActivityActions } from "./panel/run/live/ActivityPanel";
 import { DoneSummary } from "./panel/run/live/DoneSummary";
+import { NotifyBell } from "./panel/run/live/NotifyBell";
 import { NowBar } from "./panel/run/live/NowBar";
 import { useRunActivity } from "./panel/run/live/useRunActivity";
 import { switchToBackup } from "./lib/api/activity";
@@ -864,6 +865,7 @@ export default function App({
             <button className="tv-btn tv-btn--ghost" onClick={handleEditTeam} disabled={inFlight}>
               {inFlight ? "Running…" : "Edit this team"}
             </button>
+            <NotifyBell />
             {inFlight && <CancelRunButton onCancel={() => void handleCancel()} disabled={acting} />}
             <RunBanner runId={runId} run={run} workflowStatus={workflowStatus} costs={costs} />
           </>
