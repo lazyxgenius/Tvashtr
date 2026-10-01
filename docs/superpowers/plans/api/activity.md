@@ -93,4 +93,4 @@ backoff wait.
 
 `GET/PATCH /api/account/preferences` gains four booleans (whitelist in `control_plane/preferences.py`):
 `notify_asked` (false — the bell asked once), `notify_needs_you` (true), `notify_stalls_fails`
-(true), `notify_finishes` (false).
+(true), `notify_finishes` (true — the `Prob-NotifyAsk` board draws all three choices checked).

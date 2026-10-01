@@ -13,9 +13,15 @@ from tvashtr.models import User
 
 # key -> default. ``get_started_hidden``: the account hid Home's get-started checklist.
 # ``domains_howto_hidden``: the account hid the Domains list's "how it works" strip (DM-6).
+# ``notify_*`` (M2, R10): the run bar's bell asked once (``notify_asked``), then which runs notify —
+# one that needs you, one that stalls or fails, one that finishes.
 PREFERENCE_DEFAULTS: dict[str, bool] = {
     "get_started_hidden": False,
     "domains_howto_hidden": False,
+    "notify_asked": False,
+    "notify_needs_you": True,
+    "notify_stalls_fails": True,
+    "notify_finishes": True,
 }
 
 

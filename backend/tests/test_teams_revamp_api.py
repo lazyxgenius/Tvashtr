@@ -522,6 +522,14 @@ def test_delete_removes_runs_linked_only_by_library_team_id(client):
 
 # ---- preferences ------------------------------------------------------------------------------
 
+# M2 (R10): the notification choices, asked once by the run bar's bell.
+_NOTIFY = {
+    "notify_asked": False,
+    "notify_needs_you": True,
+    "notify_stalls_fails": True,
+    "notify_finishes": True,
+}
+
 
 def test_preferences_default_merge_and_owner_scope(client):
     c, owner = _fresh()
@@ -529,26 +537,31 @@ def test_preferences_default_merge_and_owner_scope(client):
     assert c.get("/api/account/preferences").json() == {
         "get_started_hidden": False,
         "domains_howto_hidden": False,
+        **_NOTIFY,
     }
 
     resp = c.patch("/api/account/preferences", json={"get_started_hidden": True})
     assert resp.status_code == 200 and resp.json() == {
         "get_started_hidden": True,
         "domains_howto_hidden": False,
+        **_NOTIFY,
     }
     assert c.get("/api/account/preferences").json() == {
         "get_started_hidden": True,
         "domains_howto_hidden": False,
+        **_NOTIFY,
     }
     # An empty patch changes nothing.
     assert c.patch("/api/account/preferences", json={}).json() == {
         "get_started_hidden": True,
         "domains_howto_hidden": False,
+        **_NOTIFY,
     }
     # Another account keeps its own default.
     assert other.get("/api/account/preferences").json() == {
         "get_started_hidden": False,
         "domains_howto_hidden": False,
+        **_NOTIFY,
     }
     with session_scope() as session:
         assert session.get(User, owner).preferences == {"get_started_hidden": True}
@@ -567,6 +580,7 @@ def test_preferences_reject_unknown_keys_and_wrong_types(client):
     assert c.get("/api/account/preferences").json() == {
         "get_started_hidden": False,
         "domains_howto_hidden": False,
+        **_NOTIFY,
     }
 
 
@@ -576,7 +590,11 @@ def test_preferences_domains_howto_hidden(client):
     other, _ = _fresh("teams-other")
     resp = c.patch("/api/account/preferences", json={"domains_howto_hidden": True})
     assert resp.status_code == 200
-    assert resp.json() == {"get_started_hidden": False, "domains_howto_hidden": True}
+    assert resp.json() == {
+        "get_started_hidden": False,
+        "domains_howto_hidden": True,
+        **_NOTIFY,
+    }
     assert other.get("/api/account/preferences").json()["domains_howto_hidden"] is False
     resp = c.patch("/api/account/preferences", json={"domains_howto_hidden": 1})
     assert resp.status_code == 422
@@ -638,3 +656,29 @@ def test_team_shape_helper_matches_the_summary_strip(client):
             ).scalars()
         ]
     assert _summary(c, tid)["shape"] == team_shape(nodes, edges)
+
+
+def test_preferences_notification_choices(client):
+    """M2 (R10): three per-account notification choices plus "the bell asked once"."""
+    c, owner = _fresh()
+    other, _ = _fresh("teams-other")
+    resp = c.patch(
+        "/api/account/preferences", json={"notify_asked": True, "notify_finishes": False}
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "get_started_hidden": False,
+        "domains_howto_hidden": False,
+        **_NOTIFY,
+        "notify_asked": True,
+        "notify_finishes": False,
+    }
+    assert other.get("/api/account/preferences").json()["notify_asked"] is False
+    resp = c.patch("/api/account/preferences", json={"notify_needs_you": "no"})
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "notify_needs_you must be true or false."
+    with session_scope() as session:
+        assert session.get(User, owner).preferences == {
+            "notify_asked": True,
+            "notify_finishes": False,
+        }
