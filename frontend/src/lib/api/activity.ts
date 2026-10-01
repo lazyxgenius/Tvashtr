@@ -111,6 +111,9 @@ export interface PinnedCallout {
 export interface RunSummary {
   pr_url: string | null;
   pr_number: number | null;
+  branch?: string | null;
+  base_ref?: string | null;
+  tests_passed?: number | null;
   rounds: number;
   elapsed_s: number;
   cost_usd: number;

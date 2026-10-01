@@ -130,6 +130,19 @@ export interface GraphNode {
   iteration: number; // 1-based count of this node's runs; 0 before it is reached
   // P1.5c: the node's full per-round history, ascending by iteration ([] before reached).
   invocations: NodeInvocation[];
+  /** M1 stall guard: what the node is doing right now (derived server-side; absent on older
+   *  servers). */
+  live?: NodeLive;
+}
+
+/** M1: a node's live block on the run graph. */
+export interface NodeLive {
+  live_state: string;
+  last_event_at: string | null;
+  activity: string | null;
+  activity_started_at: string | null;
+  retry: { attempt: number; of: number; next_at: string } | null;
+  backup_model: string | null;
 }
 
 export interface GraphEdge {
@@ -187,6 +200,10 @@ export interface RunRow {
   updated_at: string;
   // Revamp P11 (additive): the library team this run was launched from.
   library_team_id?: string | null;
+  // Run payload fields the run view's "Retry from the start" hands the composer (additive; the
+  // server has sent them since revamp P3).
+  subpath?: string | null;
+  budget_cap_usd?: number | null;
 }
 
 export interface CostRow {

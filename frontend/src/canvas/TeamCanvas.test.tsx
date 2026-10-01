@@ -192,3 +192,42 @@ describe("TeamCanvas — run-view selection is by node id, not role_name (Option
     expect(picks).toEqual(["n-think-a", "n-think-b"]);
   });
 });
+
+describe("TeamCanvas — M2: a running card shows what it is doing now", () => {
+  const quiet: GraphData = {
+    ...graph,
+    nodes: graph.nodes.map((n) =>
+      n.id === "n-eng"
+        ? {
+            ...n,
+            live: {
+              live_state: "quiet",
+              last_event_at: new Date(Date.now() - 92_000).toISOString(),
+              activity: "Asked the model for the next step",
+              activity_started_at: null,
+              retry: null,
+              backup_model: null,
+            },
+          }
+        : n,
+    ),
+  };
+
+  it("adds the activity line, the Quiet chip and the ring — the status chip is unchanged", () => {
+    const { container } = render(
+      <TeamCanvas graph={quiet} run={mkRun()} workflowStatus="PENDING" tasks={[gateTask]} />,
+    );
+    expect(screen.getAllByText("● Working…").length).toBeGreaterThan(0);
+    expect(screen.getByText("● Quiet")).toBeInTheDocument();
+    expect(screen.getByText("Asked the model for the next step")).toBeInTheDocument();
+    expect(screen.getByText("1m")).toBeInTheDocument();
+    expect(container.querySelector(".rf-node--live-quiet")).not.toBeNull();
+  });
+
+  it("draws nothing new for a card with no live block (authoring, older servers)", () => {
+    const { container } = render(
+      <TeamCanvas graph={graph} run={mkRun()} workflowStatus="PENDING" tasks={[gateTask]} />,
+    );
+    expect(container.querySelector(".rf-node__live, .rf-node__livechip")).toBeNull();
+  });
+});

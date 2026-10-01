@@ -18,6 +18,11 @@ import { useRunDocs } from "./panel/docs/useRunDocs";
 import { NodeEditor } from "./panel/NodeEditor";
 import { useLoaded } from "./panel/runs/useLoaded";
 import { RunNodeDrawer } from "./panel/run/RunNodeDrawer";
+import { ActivityPanel, type ActivityActions } from "./panel/run/live/ActivityPanel";
+import { DoneSummary } from "./panel/run/live/DoneSummary";
+import { NowBar } from "./panel/run/live/NowBar";
+import { useRunActivity } from "./panel/run/live/useRunActivity";
+import { switchToBackup } from "./lib/api/activity";
 import type { LeaveGuard } from "./panel/useUnsavedGuard";
 import {
   acknowledgeTask,
@@ -698,6 +703,9 @@ export default function App({
     (n) => n.kind === "agent" || n.kind === "completion",
   ).length;
   const nodeDrawerOpen = authoring ? selectedTeamNode !== null : selectedRunNode !== null;
+  // M2: the run's Activity (null on the canvas), and the drawer tool a "View change" asks for.
+  const activity = useRunActivity(authoring ? null : runId, terminal);
+  const [runTool, setRunTool] = useState<{ node: string; tool: "changes"; n: number } | null>(null);
   const docsOpen = docsDrawer !== null && !nodeDrawerOpen;
   // OQ-20: opening the Documents drawer closes the agent drawer (through its unsaved guard).
   const openDocuments = useCallback(
@@ -785,6 +793,42 @@ export default function App({
       : undefined;
   };
 
+  // M2 — the live run view: the Now bar, the Activity panel and the Done summary, fed by one
+  // owner-scoped read polled every 2 s (R15). Every button reuses an existing action.
+  const openRunNodeTool = (nodeId: string, tool: "changes" | null) =>
+    guardLeave(() => {
+      setRunTool(tool ? { node: nodeId, tool, n: Date.now() } : null);
+      setPlace({ node: nodeId, tab: "runs", focus: false });
+    });
+  const liveActions: ActivityActions = {
+    onViewChange: (nodeId) => openRunNodeTool(nodeId, "changes"),
+    onOpenDocument: (docId) => openRunDoc(docId),
+    onApprove: (taskId) => void handleResolve(taskId, "approve"),
+    onReject: (taskId) => void handleResolve(taskId, "reject"),
+    onReviewSpec: () => {
+      if (run?.pm_document_id) openRunDoc(run.pm_document_id);
+    },
+    onSwitchBackup: (nodeId) => {
+      if (runId) void switchToBackup(runId, nodeId).catch(() => undefined);
+    },
+    onStop: () => void handleCancel(),
+    onRetryFromStart: () => {
+      if (!run) return;
+      requestHomeAction({
+        kind: "retry",
+        prefill: {
+          teamId: run.library_team_id ?? currentTeamId,
+          idea: run.idea,
+          target: run.github_repo ? { kind: "github", repo: run.github_repo } : null,
+          baseRef: run.base_ref ?? null,
+          subpath: run.subpath ?? null,
+          budget: run.budget_cap_usd ?? null,
+          retryOfRunId: run.id,
+        },
+      });
+    },
+  };
+
   return (
     <>
       <CanvasHeader user={user} onLogout={onLogout} />
@@ -835,6 +879,17 @@ export default function App({
           <RunWarnings warnings={graph?.resolution_warnings ?? []} />
         </div>
       )}
+      {!authoring &&
+        activity &&
+        (run?.status === "completed" && activity.summary ? (
+          <DoneSummary idea={run.idea} summary={activity.summary} />
+        ) : (
+          <NowBar
+            agents={activity.agents}
+            graph={graph}
+            onSelect={(nodeId) => openRunNodeTool(nodeId, null)}
+          />
+        ))}
 
       <main className="cv-main">
         {docsOpen && docsDrawer && (
@@ -948,7 +1003,13 @@ export default function App({
           : selectedRunNode &&
             graph && (
               <RunNodeDrawer
-                key={selectedRunNode.id}
+                key={
+                  runTool?.node === selectedRunNode.id
+                    ? `${selectedRunNode.id}:${runTool.n}`
+                    : selectedRunNode.id
+                }
+                initialTool={runTool?.node === selectedRunNode.id ? runTool.tool : undefined}
+                activityLines={activity?.lines.filter((l) => l.node_id === selectedRunNode.id)}
                 node={selectedRunNode}
                 nodes={graph.nodes}
                 edges={graph.edges}
@@ -977,6 +1038,7 @@ export default function App({
           />
         )}
       </main>
+      {!authoring && activity && <ActivityPanel activity={activity} actions={liveActions} />}
     </>
   );
 }

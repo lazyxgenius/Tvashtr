@@ -1,3 +1,4 @@
+import { agoShort } from "../panel/run/live/liveFormat";
 import { useContext } from "react";
 import { Handle, NodeToolbar, Position, type NodeProps } from "@xyflow/react";
 import {
@@ -56,10 +57,23 @@ export type AgentNodeData = {
   errorCode?: string;
   lastOutcome?: string | null;
   toolConfig?: Record<string, unknown> | null;
+  // M2 (run view): what the step is doing now — its live state, activity line and when it last
+  // moved. Absent in authoring and for a step that is not running.
+  live?: { state: string; activity: string | null; at: string | null };
 };
 
 /** The authoring overlay classes for a node (P1.8d): a red ring for a blocking issue, a dim for an
  *  orphan warning. Empty in the run view (no flags set). */
+// M2: the run view's new R1 states, drawn beside the card's unchanged status chip, and the ring
+// a silent or retrying step wears (Runs › Live-Command / Live-Retrying / Live-Quiet, Prob-Stalled).
+const LIVE_CHIP: Record<string, [string, "live" | "warn" | "danger"]> = {
+  running_command: ["Running a command", "live"],
+  retrying: ["Retrying", "warn"],
+  quiet: ["Quiet", "warn"],
+  stalled: ["Stalled", "danger"],
+};
+const LIVE_RING = new Set(["retrying", "quiet", "stalled"]);
+
 function flagClasses(d: AgentNodeData): string {
   return `${d.errorMessage ? " tv-node--invalid" : ""}${d.isOrphan ? " tv-node--orphan" : ""}`;
 }
@@ -243,7 +257,7 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
 
   return (
     <div
-      className={`rf-node rf-node--${d.status}${d.isEntry ? " rf-node--entry" : ""}${flagClasses(d)}`}
+      className={`rf-node rf-node--${d.status}${d.isEntry ? " rf-node--entry" : ""}${flagClasses(d)}${d.live && LIVE_RING.has(d.live.state) ? ` rf-node--live-${d.live.state}` : ""}`}
       title={d.errorMessage}
     >
       <NodeHandles />
@@ -267,7 +281,18 @@ function AgentCard({ nodeId, data: d }: { nodeId: string; data: AgentNodeData })
         </span>
         {d.engine && <span className="rf-node__engine">{prettyEngine(d.engine)}</span>}
         <CardStatus status={d.status} />
+        {d.live && LIVE_CHIP[d.live.state] && (
+          <span className={`rf-node__livechip rf-node__livechip--${LIVE_CHIP[d.live.state][1]}`}>
+            ● {LIVE_CHIP[d.live.state][0]}
+          </span>
+        )}
       </div>
+      {d.live?.activity && (
+        <div className="rf-node__live">
+          <span>{d.live.activity}</span>
+          <span className="rf-node__live-ago">{agoShort(d.live.at)}</span>
+        </div>
+      )}
       {/* F1c: the model footer opens the drawer's Model field in author mode; inert in the run view. */}
       <ModelChip nodeId={nodeId} model={d.model} />
       <DocChips nodeId={nodeId} />

@@ -102,6 +102,10 @@ function nodeData(
       n.invocations?.[n.invocations.length - 1]?.outcome ??
       (n as Partial<TeamGraphNode>).last_run?.outcome,
     toolConfig: (n as Partial<TeamGraphNode>).tool_config,
+    live:
+      n.live && n.status === "running"
+        ? { state: n.live.live_state, activity: n.live.activity, at: n.live.last_event_at }
+        : undefined,
   };
 }
 

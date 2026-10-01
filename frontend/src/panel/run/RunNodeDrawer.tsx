@@ -1,3 +1,5 @@
+import type { ActivityLine } from "../../lib/api/activity";
+import { ReadableSteps } from "./live/ReadableSteps";
 import { useState } from "react";
 import { FileText, Zap } from "lucide-react";
 
@@ -128,6 +130,8 @@ export function RunNodeDrawer({
   onOpenDoc,
   onEditOnTeam,
   offTeam = false,
+  initialTool,
+  activityLines,
 }: {
   node: GraphNode;
   /** The run's graph: the read-only Setup's routing, reads and writes. */
@@ -147,6 +151,10 @@ export function RunNodeDrawer({
   onEditOnTeam?: () => void;
   /** The agent this run copied has since been deleted from the team. */
   offTeam?: boolean;
+  /** M2: the run tool to open on (the Activity panel's "View change" opens Changes). */
+  initialTool?: "changes";
+  /** M2: this agent's plain-language steps (the drawer's Readable steps). */
+  activityLines?: ActivityLine[];
 }) {
   const shelves = useShelves(tab === "skills");
   const title = nodeTitle(node);
@@ -221,6 +229,8 @@ export function RunNodeDrawer({
           workflowStatus={workflowStatus}
           status={status}
           live={live}
+          initialTool={initialTool}
+          activityLines={activityLines}
         />
       );
   }
@@ -298,6 +308,8 @@ function RunRounds({
   workflowStatus,
   status,
   live,
+  initialTool,
+  activityLines,
 }: {
   node: GraphNode;
   runId: string | null;
@@ -305,12 +317,16 @@ function RunRounds({
   workflowStatus: string | null;
   status: NodeStatus;
   live: boolean;
+  initialTool?: "changes";
+  activityLines?: ActivityLine[];
 }) {
   const tools: RunTool[] = [
     ...(node.kind === "agent" ? (["activity", "changes"] as const) : []),
     ...(node.invocations.length > 0 ? (["ask"] as const) : []),
   ];
-  const [picked, setPicked] = useState<RunTool | null>(null);
+  const [picked, setPicked] = useState<RunTool | null>(initialTool ?? null);
+  // M2 (Runs › Live-AgentSteps): Readable steps by default; Raw log is the existing EventFeed.
+  const [raw, setRaw] = useState(false);
   const tool = picked && tools.includes(picked) ? picked : (tools[0] ?? null);
   const rounds = roundsOf(node, status);
   const byIteration = new Map(node.invocations.map((inv) => [inv.iteration, inv]));
@@ -345,7 +361,35 @@ function RunRounds({
             ))}
           </div>
           {tool === "activity" ? (
-            <EventFeed node={node} runId={runId} run={run} workflowStatus={workflowStatus} />
+            activityLines ? (
+              <>
+                <div className="tv-seg" role="group" aria-label="Steps">
+                  <button
+                    type="button"
+                    aria-pressed={!raw}
+                    className={`tv-seg__btn${!raw ? " tv-seg__btn--active" : ""}`}
+                    onClick={() => setRaw(false)}
+                  >
+                    Readable
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={raw}
+                    className={`tv-seg__btn${raw ? " tv-seg__btn--active" : ""}`}
+                    onClick={() => setRaw(true)}
+                  >
+                    Raw log
+                  </button>
+                </div>
+                {raw ? (
+                  <EventFeed node={node} runId={runId} run={run} workflowStatus={workflowStatus} />
+                ) : (
+                  <ReadableSteps lines={activityLines} />
+                )}
+              </>
+            ) : (
+              <EventFeed node={node} runId={runId} run={run} workflowStatus={workflowStatus} />
+            )
           ) : tool === "changes" ? (
             <RunDiff runId={runId} />
           ) : (

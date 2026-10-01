@@ -4,13 +4,17 @@
  * `useHomeActionHandler`; asking from another page opens Home first and the action runs as soon as
  * Home mounts.
  */
+import type { ComposerPrefill } from "../pages/home/homeData";
 import { useEffect, useRef } from "react";
 
 import { NAVIGATION_KEPT, navigate } from "./nav";
 
 export type HomeAction =
   | { kind: "new-run"; teamId?: string }
-  | { kind: "new-team"; templateKey?: string };
+  | { kind: "new-team"; templateKey?: string }
+  // M2: the run view's "Retry from the start" — the same prefill Needs you's Retry hands the
+  // composer (the existing Retry flow, started from another page).
+  | { kind: "retry"; prefill: ComposerPrefill };
 
 let handler: ((action: HomeAction) => void) | null = null;
 let pending: HomeAction | null = null;

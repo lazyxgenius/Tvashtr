@@ -154,11 +154,14 @@ let fetchMock: ReturnType<typeof vi.fn>;
 let extraTasks: HumanTask[];
 // What the run went without (`resolution_warnings` on its graph).
 let runWarnings: NonNullable<GraphData["resolution_warnings"]>;
+// M2: what GET /api/runs/{id}/activity answers (null → an older server's empty body).
+let activityReply: unknown;
 
 beforeEach(() => {
   phase = "running";
   extraTasks = [];
   runWarnings = [];
+  activityReply = null;
   fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = urlOf(input);
     const method = init?.method ?? "GET";
@@ -209,6 +212,8 @@ beforeEach(() => {
     if (url === "/api/engines/subscriptions") return Promise.resolve(jsonOk({ subscriptions: [] }));
     if (url.startsWith("/api/spike/run-events/"))
       return Promise.resolve(jsonOk({ run_id: RUN_ID, events: [] }));
+    if (url.startsWith(`/api/runs/${RUN_ID}/activity`))
+      return Promise.resolve(jsonOk(activityReply ?? {}));
     return Promise.resolve(jsonOk({}));
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -830,5 +835,57 @@ describe("App — F-canvas-fidelity-1 screen shell", () => {
     await user.click(within(banner).getByRole("button", { name: "Open Engines" }));
     expect(onBack).toHaveBeenCalledTimes(1);
     expect(onBack).toHaveBeenLastCalledWith("engines");
+  });
+});
+
+describe("App — M2 live run view", () => {
+  it("adds the Now bar and the Activity panel to the run view, keeping its toolbar", async () => {
+    activityReply = {
+      run_id: RUN_ID,
+      status: "running",
+      live_state: "running_command",
+      cursor: "c1",
+      total: 1,
+      agents: [
+        {
+          node_id: "n-eng",
+          origin_node_id: null,
+          label: "Engineer",
+          kind: "agent",
+          iteration: 1,
+          rounds_limit: 3,
+          live_state: "running_command",
+          activity: "Running tests · tests/test_indicators.py",
+          last_event_at: new Date().toISOString(),
+          activity_started_at: null,
+          retry: null,
+          backup_model: null,
+          model: null,
+        },
+      ],
+      lines: [
+        {
+          id: "ev:1",
+          at: new Date().toISOString(),
+          node_id: "n-eng",
+          label: "Engineer",
+          iteration: 1,
+          kind: "edited",
+          text: "Edited core/indicators.py",
+          tone: "neutral",
+          refs: { file: "core/indicators.py", added: 48, removed: 3 },
+        },
+      ],
+      pinned: null,
+      summary: null,
+    };
+    render(<App teamId="team-1" initialRunId={RUN_ID} />);
+    const now = await screen.findByRole("region", { name: "Now" });
+    expect(now).toHaveTextContent("Running a command");
+    const activity = screen.getByRole("region", { name: "Activity" });
+    expect(activity).toHaveTextContent("+48");
+    // Additive: the run view's own toolbar controls are all still there.
+    expect(screen.getByRole("button", { name: "Cancel run" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Running…" })).toBeInTheDocument();
   });
 });

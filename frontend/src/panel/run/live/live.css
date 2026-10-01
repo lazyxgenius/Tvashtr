@@ -364,79 +364,89 @@
   margin-top: 4px;
 }
 
-/* ---- the node card's live line and ring (canvas) ---- */
-.rf-node--live-quiet,
-.rf-node--live-retrying {
-  border: 1.5px solid var(--amber-500);
-  box-shadow:
-    0 0 0 4px rgba(201, 138, 62, 0.18),
-    var(--shadow-node);
-}
-.rf-node--live-retrying {
-  border-color: #e2c48f;
-  box-shadow:
-    0 0 0 4px rgba(201, 138, 62, 0.12),
-    var(--shadow-node);
-}
-.rf-node--live-stalled {
-  border: 1.5px solid var(--red-500);
-  box-shadow:
-    0 0 0 4px rgba(194, 90, 75, 0.16),
-    var(--shadow-node);
-}
-.rf-node--live-quiet::after,
-.rf-node--live-retrying::after,
-.rf-node--live-stalled::after {
-  display: none;
-}
-.rf-node__live {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
-  font-size: 11px;
-  line-height: 1.35;
-  color: var(--ink-700);
-}
-.rf-node__live-ago {
-  flex: none;
-  font-family: var(--font-code);
-  font-size: 9.5px;
-  color: var(--ink-500);
-}
-.rf-node__livechip {
-  font-size: 10px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-.rf-node__livechip--live {
-  background: var(--coral-100);
-  color: var(--coral-700);
-}
-.rf-node__livechip--warn {
-  background: var(--amber-100);
-  color: #7a5423;
-}
-.rf-node__livechip--danger {
-  background: var(--red-100);
-  color: #8f3b2f;
-}
-
-/* ---- the Done summary ---- */
+/* ---- the Done summary (Live-Done: it takes the Now bar's row) ---- */
 .lv-done {
+  height: 64px;
   flex: none;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 10px 20px;
-  background: var(--sage-100);
+  padding: 0 20px;
+  background: #f3f6ee;
   border-bottom: 1px solid #c9d3b8;
   font-family: var(--font-ui);
-  font-size: 13px;
-  color: #3d4a2c;
+}
+.lv-done__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--sage-100);
+  color: #52613e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.lv-done__what {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.lv-done__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.lv-done__sub {
+  font-size: 12.5px;
+  color: var(--ink-600);
+}
+.lv-done__stats {
+  display: flex;
+  gap: 22px;
+  margin-left: 24px;
+  font-size: 12.5px;
+  color: var(--ink-600);
 }
 .lv-done__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.lv-done__num {
   font-family: var(--font-code);
-  font-size: 12.5px;
+  font-size: 14px;
+  color: var(--ink-900);
+}
+.lv-done__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- one agent's Readable steps, in its drawer (Live-AgentSteps) ---- */
+.lv-steps {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lv-steps__row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  column-gap: 10px;
+  padding: 4px 0;
+}
+.lv-steps__what {
+  font-size: 13px;
+  color: var(--ink-800);
+}
+.lv-steps__empty,
+.lv-steps__note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-500);
 }

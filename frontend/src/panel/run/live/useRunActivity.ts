@@ -25,7 +25,9 @@ export function useRunActivity(runId: string | null, terminal: boolean): RunActi
     const pull = async () => {
       try {
         const next = await getRunActivity(runId, cursor.current);
-        if (!alive) return;
+        // A server without the Activity read (an older backend) answers something else: show
+        // nothing new rather than break the run view.
+        if (!alive || !Array.isArray(next?.agents) || !Array.isArray(next?.lines)) return;
         cursor.current = next.cursor;
         setActivity((prev) => mergeActivity(prev, next));
       } catch {

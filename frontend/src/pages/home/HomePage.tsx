@@ -112,7 +112,9 @@ export function HomePage({ user = null }: { user?: AuthUser | null } = {}) {
   );
 
   useHomeActionHandler((action: HomeAction) => {
-    if (action.kind === "new-team") {
+    if (action.kind === "retry") {
+      requestComposerPrefill(action.prefill);
+    } else if (action.kind === "new-team") {
       setNewTeam({ templateKey: action.templateKey });
     } else if (teams.length === 0 && !teamsLoading) {
       setNewTeam({});
