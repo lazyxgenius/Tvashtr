@@ -178,6 +178,18 @@ def _assert_no_leak(resp, acct: SimpleNamespace) -> None:
         assert marker not in resp.text, f"response leaks {marker!r}: {resp.text[:500]}"
 
 
+def _assert_same_answer(resp, real_id: str, ghost, ghost_id: str) -> None:
+    """No existence oracle: B's answer naming A's id == B's answer naming a nonexistent id —
+    same status, same JSON body once each id is normalised to ``<id>``."""
+    assert resp.status_code == ghost.status_code, (
+        f"A's id -> {resp.status_code}: {resp.text[:500]} / "
+        f"nonexistent id -> {ghost.status_code}: {ghost.text[:500]}"
+    )
+    assert json.loads(resp.text.replace(real_id, "<id>")) == json.loads(
+        ghost.text.replace(ghost_id, "<id>")
+    ), f"A's id: {resp.text[:500]} / nonexistent id: {ghost.text[:500]}"
+
+
 # ---- 1. B calls with A's ids in the PATH --------------------------------------------------------
 
 # (method, path, json body) — `{team}` / `{node}` / `{edge}` / `{node2}` are A's; the body is valid
@@ -466,6 +478,8 @@ def test_node_body_with_a_toolkit_id_is_404(ab, route, kind):
     before, view_before = _snapshot(a), a.c.get(a_view).json()
 
     resp = b.c.request(method, url, json=TOOLKIT_BODY[kind](a_id))
+    ghost_id = str(uuid.uuid4())  # never a row: B's answer for it is the "doesn't exist" baseline
+    ghost = b.c.request(method, url, json=TOOLKIT_BODY[kind](ghost_id))
     _assert_no_leak(resp, a)
     for text in a_text:
         assert text not in resp.text, f"response leaks A's {kind} {text!r}: {resp.text[:500]}"
@@ -479,8 +493,9 @@ def test_node_body_with_a_toolkit_id_is_404(ab, route, kind):
     if route == "preview":
         assert all(text in own.text for text in b_text), own.text[:500]
 
-    # The uniform contract, checked last so the checks above are evidence either way.
-    assert resp.status_code == 404, f"B {method} {url} ({kind}) -> {resp.status_code}: {resp.text}"
+    # S1-C exception: a foreign toolkit id is stored verbatim + inert (resolved owner-scoped at run
+    # time) or skipped by the preview — B's answer must not differ from a nonexistent id's.
+    _assert_same_answer(resp, a_id, ghost, ghost_id)
 
 
 def test_positions_with_a_node_in_body_leaves_a_unchanged(ab):
@@ -498,13 +513,17 @@ def test_positions_with_a_node_in_body_leaves_a_unchanged(ab):
 
 
 def test_positions_with_a_node_in_body_is_refused_404(ab):
-    """The uniform contract: A's node id in B's positions body is refused with 404."""
+    """A's node id in B's positions body is refused exactly as a nonexistent node id is."""
     a, b = ab
+    a_node, ghost_id = a.nodes["pm"]["id"], str(uuid.uuid4())
     resp = b.c.post(
-        f"/api/teams/{b.tid}/positions",
-        json={"positions": {a.nodes["pm"]["id"]: {"x": 999, "y": 999}}},
+        f"/api/teams/{b.tid}/positions", json={"positions": {a_node: {"x": 999, "y": 999}}}
     )
-    assert resp.status_code == 404, f"B positions(A node) -> {resp.status_code}: {resp.text}"
+    ghost = b.c.post(
+        f"/api/teams/{b.tid}/positions", json={"positions": {ghost_id: {"x": 999, "y": 999}}}
+    )
+    # S1-C exception: off-team ids are ignored by design (layout is best-effort, never an error).
+    _assert_same_answer(resp, a_node, ghost, ghost_id)
 
     own = b.c.post(
         f"/api/teams/{b.tid}/positions",

@@ -7,6 +7,7 @@ Every route that takes A's id answers B 404 with none of A's data, A's own ident
 LLM: workflows, search and ask are faked.
 """
 
+import json
 import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -210,6 +211,25 @@ def _refused(resp, w) -> None:
     """B's attempt: 404, and nothing of A's in the answer."""
     assert resp.status_code == 404, f"B got {resp.status_code}: {resp.text}"
     assert w.tag not in resp.text, f"B's 404 leaks A's data: {resp.text}"
+
+
+def _same_as_ghost(r, ghost, a_id: str, ghost_id: str, w, *server_fields: str) -> None:
+    """No existence oracle: B's answer for A's id is B's answer for an id that doesn't exist
+    (same status, same body once the two ids read "<id>" and ``server_fields`` are dropped)."""
+    assert w.tag not in r.text, f"B's answer leaks A's data: {r.text}"
+
+    def norm(resp, i: str) -> str:
+        body = {k: v for k, v in resp.json().items() if k not in server_fields}
+        return json.dumps(body, sort_keys=True).replace(i, "<id>")
+
+    assert r.status_code == ghost.status_code, (r.status_code, r.text, ghost.text)
+    assert norm(r, a_id) == norm(ghost, ghost_id)
+
+
+def _b_case_delta(before: dict, after: dict, doc_id: str) -> list[str]:
+    """B's case rows added or changed, without row ids, ``doc_id`` read as "<id>"."""
+    new = set(after["b_cases"]) - set(before["b_cases"])
+    return sorted(str(r[1:]).replace(doc_id, "<id>") for r in new)
 
 
 # ---- list / own ----
@@ -427,13 +447,20 @@ def test_create_eval_case_with_a_file_id_is_refused_for_b(w):
     )
     after = _snapshot(w)
     assert _without(after, "b_cases") == _without(before, "b_cases")  # A's rows untouched
+    ghost_id = str(uuid.uuid4())
+    ghost = w.b.post(
+        f"/api/domains/{w.b_did}/eval/cases",
+        json={"question": "B's question?", "expected_citation_doc_ids": [ghost_id]},
+    )
+    after_ghost = _snapshot(w)
     mine = w.a.post(
         f"/api/domains/{w.a_did}/eval/cases",
         json={"question": "A again?", "expected_citation_doc_ids": [w.a_doc]},
     )
     assert mine.status_code == 200, mine.text
-    _refused(r, w)
-    assert after == before
+    # S1-C exception: A's id is stored on B's own case and shown exists:false, as an unknown id
+    _same_as_ghost(r, ghost, w.a_doc, ghost_id, w, "case_id", "created_at")
+    assert _b_case_delta(before, after, w.a_doc) == _b_case_delta(after, after_ghost, ghost_id)
 
 
 @pytest.mark.parametrize("via", ["a_domain", "b_domain"])
@@ -457,13 +484,20 @@ def test_patch_eval_case_with_a_file_id_is_refused_for_b(w):
     )
     after = _snapshot(w)
     assert _without(after, "b_cases") == _without(before, "b_cases")  # A's rows untouched
+    ghost_id = str(uuid.uuid4())
+    ghost = w.b.patch(
+        f"/api/domains/{w.b_did}/eval/cases/{w.b_case}",
+        json={"expected_citation_doc_ids": [ghost_id]},
+    )
+    after_ghost = _snapshot(w)
     mine = w.a.patch(
         f"/api/domains/{w.a_did}/eval/cases/{w.a_case}",
         json={"expected_citation_doc_ids": [w.a_doc]},
     )
     assert mine.status_code == 200, mine.text
-    _refused(r, w)
-    assert after == before
+    # S1-C exception: A's id is stored on B's own case and shown exists:false, as an unknown id
+    _same_as_ghost(r, ghost, w.a_doc, ghost_id, w)
+    assert _b_case_delta(before, after, w.a_doc) == _b_case_delta(before, after_ghost, ghost_id)
 
 
 @pytest.mark.parametrize("via", ["a_domain", "b_domain"])

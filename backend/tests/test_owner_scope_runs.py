@@ -4,9 +4,11 @@ Two fresh accounts per test: A owns everything (a library team, runs with events
 memories, a diff snapshot, gate + nudge tasks, an A/B pair, a Desktop folder snapshot, a GitHub
 installation); B is a separate signed-in account. For every route that takes one of A's ids, B gets
 a 404 whose body carries none of A's data, the same request by A is NOT a 404 (so B's 404 comes from
-ownership, not a bad path or body), and a write leaves A's rows unchanged. Every list route shows A
-its rows and B none of them. No workflow, LLM or GitHub call is real: ``DBOS.start_workflow`` /
-``DBOS.send`` / ``DBOS.cancel_workflow``, the gateway ``complete`` and the GitHub App are stubbed.
+ownership, not a bad path or body), and a write leaves A's rows unchanged. The accepted S1-C
+exceptions (marked at their assertion) answer B instead exactly as they answer an id that doesn't
+exist. Every list route shows A its rows and B none of them. No workflow, LLM or GitHub call is
+real: ``DBOS.start_workflow`` / ``DBOS.send`` / ``DBOS.cancel_workflow``, the gateway ``complete``
+and the GitHub App are stubbed.
 """
 
 import uuid
@@ -200,6 +202,15 @@ def _assert_refused(resp, w) -> None:
         assert leaked not in resp.text, f"B's 404 leaks {leaked!r}: {resp.text}"
 
 
+def _assert_same_as_unknown(theirs, unknown, a_key: str, unknown_key: str, w) -> None:
+    """No existence oracle: B's answer for A's id equals B's answer for an id that doesn't exist
+    (same status, same body once each id is normalised to ``<id>``) and carries none of A's data."""
+    assert theirs.status_code == unknown.status_code, (theirs.text, unknown.text)
+    assert theirs.text.replace(a_key, "<id>") == unknown.text.replace(unknown_key, "<id>")
+    for leaked in _a_ids(w):
+        assert leaked not in theirs.text, f"B's answer leaks {leaked!r}: {theirs.text}"
+
+
 def _assert_no_leak(resp, w) -> None:
     assert resp.status_code == 200, resp.text
     for leaked in _a_ids(w):
@@ -381,8 +392,8 @@ def test_b_cannot_dismiss_an_item_of_a(w, item):
 
 
 def test_b_cannot_undo_a_dismissal_of_a(w):
-    """The key names A's run and A's dismissal row: B's undo of it is refused (404) and A's
-    dismissal stays. A's own undo is served and brings the item back."""
+    """The key names A's run and A's dismissal row: B's undo of it is answered exactly as an
+    unknown key is and A's dismissal stays. A's own undo is served and brings the item back."""
     key = f"run_failed:{w.failed}"
     mine = w.a.post("/api/inbox/dismissals", json={"key": key, "action": "dismiss"})
     assert mine.status_code == 200, mine.text
@@ -392,12 +403,15 @@ def test_b_cannot_undo_a_dismissal_of_a(w):
 
     theirs = w.b.delete(f"/api/inbox/dismissals/{key}")
     assert _dismissals(key) == before and key not in _inbox_keys(w.a)
+    unknown_key = f"run_failed:{uuid.uuid4()}"
+    unknown = w.b.delete(f"/api/inbox/dismissals/{unknown_key}")
 
     # Positive control (last: it deletes).
     undo = w.a.delete(f"/api/inbox/dismissals/{key}")
     assert undo.status_code == 204, undo.text
     assert _dismissals(key) == [] and key in _inbox_keys(w.a)
-    _assert_refused(theirs, w)
+    # S1-C exception: an idempotent owner-filtered undo answers 204 for any key, A's or unknown.
+    _assert_same_as_unknown(theirs, unknown, key, unknown_key, w)
 
 
 # ---------------------------------------------------------------------------- launch with A's ids
@@ -440,6 +454,14 @@ def _launch_body(w, field: str) -> dict:
     if field == "local_repo.snapshot_id":
         return {"idea": "x", "desktop_target": True, "local_repo": {"snapshot_id": w.snapshot}}
     return {"idea": "x", "github_repo": _REPO}
+
+
+# The launch fields whose refusal is the 422 an unknown value gets (an existing API contract), with
+# a fresh value that names nothing.
+_UNKNOWN = {
+    "retry_of_run_id": lambda: str(uuid.uuid4()),
+    "github_repo": lambda: f"acct-a/no-such-repo-{uuid.uuid4().hex}",
+}
 
 
 def _installations(owner_id: uuid.UUID) -> list[int]:
@@ -485,12 +507,19 @@ def test_b_cannot_launch_on_a_object(w, monkeypatch, field):
     theirs = w.b.post("/api/runs", json=body)
     assert _a_state(w, field) == before
     assert _runs_owned_by(w.b_id) == b_runs  # nothing launched for B
+    if field in _UNKNOWN:
+        a_value, unknown_value = body[field], _UNKNOWN[field]()
+        unknown = w.b.post("/api/runs", json={**body, field: unknown_value})
 
     # Positive control first (it is the last write), so a failing B status below is proven to be
     # the ownership answer and not a malformed body.
     mine = w.a.post("/api/runs", json=body)
     assert mine.status_code == 200, mine.text
-    _assert_refused(theirs, w)
+    if field in _UNKNOWN:
+        # S1-C exception: A's retry id / repo get B the same 422 as an unknown one (API contract).
+        _assert_same_as_unknown(theirs, unknown, a_value, unknown_value, w)
+    else:
+        _assert_refused(theirs, w)
 
 
 # ---------------------------------------------------------------------------- lists

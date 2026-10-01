@@ -10,6 +10,7 @@ and completion gateway) is faked; nothing touches the network.
 """
 
 import hashlib
+import json
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -90,20 +91,28 @@ def _snap(model, *where) -> list[dict]:
         return [{k: getattr(r, k) for k in keys} for r in rows]
 
 
-def _verdict(rb, ra, *, before=None, after=None, leaks=(), unknown=None) -> None:
+def _answer(resp, the_id: str, server_fields=()) -> tuple:
+    """``(status, body)`` with ``the_id`` written ``<id>``; ``server_fields`` (a create's new row id
+    and timestamps, which differ call to call) are blanked in the JSON body."""
+    text = resp.text.replace(the_id, "<id>")
+    if not server_fields:
+        return resp.status_code, text
+    body = json.loads(text)
+    return resp.status_code, {**body, **{k: "<server>" for k in server_fields if k in body}}
+
+
+def _verdict(rb, ra, *, before=None, after=None, leaks=(), unknown=None, server_fields=()) -> None:
     """The four checks of an id route, all reported together so a failure shows every problem.
     ``unknown`` = ``(answer to an id that doesn't exist, that id, A's id)``, for a route whose
     contract answers an unknown id without a 404 (S1-C exception, recorded in the guard's table):
-    B's answer to A's id must then be exactly that answer, so it says nothing about A's row."""
+    B's answer to A's id must then be exactly that answer (bar ``server_fields``), so it says
+    nothing about A's row."""
     problems = []
     if after != before:
         problems.append(f"B's call changed A's object: {before} -> {after}")
     if unknown is not None:
         ru, unknown_id, a_id = unknown
-        if (rb.status_code, rb.text.replace(a_id, "<id>")) != (
-            ru.status_code,
-            ru.text.replace(unknown_id, "<id>"),
-        ):
+        if _answer(rb, a_id, server_fields) != _answer(ru, unknown_id, server_fields):
             problems.append(f"B's answer differs from an unknown id's: {ru.status_code} {ru.text}")
     elif rb.status_code != 404:
         problems.append(f"B got {rb.status_code} (want 404)")
@@ -285,9 +294,19 @@ def test_provider_delete_is_owner_scoped(a, b):
     before = _snap(ProviderCredential, *where)
     rb = cb.delete("/api/providers/openrouter")
     after = _snap(ProviderCredential, *where)
+    ghost = _marker("ghost")  # a provider slug no account has a key for
+    ru = cb.delete(f"/api/providers/{ghost}")
     ra = ca.delete("/api/providers/openrouter")
     assert _snap(ProviderCredential, *where) == []  # A's own delete really removed it
-    _verdict(rb, ra, before=before, after=after, leaks=(a_key[-4:],))
+    # S1-C exception: idempotent owner-filtered delete — 204 whether or not the caller has a row
+    _verdict(
+        rb,
+        ra,
+        before=before,
+        after=after,
+        leaks=(a_key[-4:],),
+        unknown=(ru, ghost, "openrouter"),
+    )
 
 
 # ------------------------------------------------------------------------------ engines
@@ -339,9 +358,13 @@ def test_engine_subscription_delete_is_owner_scoped(a, b):
     before = _snap(EngineSubscriptionStatus, *where)
     rb = cb.delete("/api/engines/subscriptions/claude")
     after = _snap(EngineSubscriptionStatus, *where)
+    # The slug is a fixed public enum (an off-list one 404s on shape), so the unused key is a valid
+    # provider nobody here has a status row for.
+    ru = cb.delete("/api/engines/subscriptions/grok")
     ra = ca.delete("/api/engines/subscriptions/claude")
     assert _snap(EngineSubscriptionStatus, *where) == []
-    _verdict(rb, ra, before=before, after=after, leaks=(hint,))
+    # S1-C exception: idempotent owner-filtered delete — 204 whether or not the caller has a row
+    _verdict(rb, ra, before=before, after=after, leaks=(hint,), unknown=(ru, "grok", "claude"))
 
 
 # ------------------------------------------------------------------------------ memories
@@ -381,15 +404,22 @@ def test_memory_id_routes_are_owner_scoped(a, b, action):
     before = _snap(NodeMemory, *where)
     rb = cb.request(method, url, json=body)
     after = _snap(NodeMemory, *where)
+    unknown = None
+    if action == "delete":
+        ghost = str(uuid.uuid4())
+        ru = cb.request(method, f"/api/memories/{ghost}{suffix}", json=body)
+        unknown = (ru, ghost, mid)
     ra = ca.request(method, url, json=body)
     if action == "delete":
         assert _snap(NodeMemory, *where) == []  # A's own delete really removed it
-    _verdict(rb, ra, before=before, after=after, leaks=(secret,))
+    # S1-C exception (delete only): idempotent owner-filtered delete, an absent/foreign id 204s
+    _verdict(rb, ra, before=before, after=after, leaks=(secret,), unknown=unknown)
 
 
 def test_memory_create_refuses_another_accounts_node_id(a, b):
-    """``node_id`` in the ``POST /api/memories`` body names an agent node; B naming A's node must
-    be refused, and A's node and memories stay as they were."""
+    """``node_id`` in the ``POST /api/memories`` body names an agent node; B naming A's node gets
+    exactly what a node id that doesn't exist gets (an inert id on B's own memory, no enrichment),
+    and A's node and memories stay as they were."""
     (ca, a_id), (cb, _) = a, b
     team = make_team(a_id, _marker("A team"))
     node = make_node(team, _marker("a-role"))
@@ -399,13 +429,19 @@ def test_memory_create_refuses_another_accounts_node_id(a, b):
     a_memories_before = _snap(NodeMemory, NodeMemory.owner_id == a_id)
     rb = cb.post("/api/memories", json={"content": "B's note", "node_id": str(node)})
     after = (_snap(AgentNode, AgentNode.id == node), _snap(NodeMemory, NodeMemory.owner_id == a_id))
+    ghost = str(uuid.uuid4())
+    ru = cb.post("/api/memories", json={"content": "B's note", "node_id": ghost})
     ra = ca.post("/api/memories", json={"content": "A's note", "node_id": str(node)})
+    # S1-C exception: a foreign node_id is stored verbatim on B's own memory but inert (retrieval
+    # and enrichment are owner-scoped); the whole body is compared bar B's new row id + timestamps.
     _verdict(
         rb,
         ra,
         before=(a_node_before, a_memories_before),
         after=after,
         leaks=(role, team_name),
+        unknown=(ru, ghost, str(node)),
+        server_fields=("id", "valid_from", "created_at", "updated_at"),
     )
 
 

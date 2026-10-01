@@ -211,6 +211,33 @@ ID_ROUTES = [
     ("POST", "/api/connectors/{a.conn}/oauth/start", None, 409),
 ]
 
+# S1-C accepted exceptions: B is refused without a 404, so B's answer for A's id must instead equal
+# B's answer for an id nobody has (no existence oracle). Value: why the route keeps its contract.
+NO_ORACLE_ROUTES = {
+    ("DELETE", "/api/skill-library/{a.skill}"): "owner-filtered delete, 200 for an absent id",
+    ("DELETE", "/api/secrets/{a.secret}"): "idempotent owner-filtered delete, 204",
+    ("DELETE", "/api/tool-library/{a.tool}"): "owner-filtered delete, 200 for an absent id",
+}
+
+
+def _ghost(a: SimpleNamespace) -> SimpleNamespace:
+    """A's namespace with every path id swapped for one that exists for nobody."""
+    h = uuid.uuid4().hex[:10].upper()
+    return SimpleNamespace(
+        **{
+            **vars(a),
+            "skill": str(uuid.uuid4()),
+            "tool": str(uuid.uuid4()),
+            "secret": f"GHOST_SECRET_{h}",
+        }
+    )
+
+
+def _normalised(text: str, who: SimpleNamespace) -> str:
+    for ident in (who.skill, who.tool, who.secret):
+        text = text.replace(ident, "<id>")
+    return text
+
 
 @pytest.mark.parametrize(
     ("method", "path", "body", "a_status"),
@@ -222,6 +249,10 @@ def test_b_with_a_path_id_is_a_404_and_a_is_unchanged(ab, method, path, body, a_
     before_a, before_b = _state(a.uid), _state(b.uid)
 
     resp = _call(b, method, _fill(path, a, b, b), _fill(body, a, b, b))
+    exception = NO_ORACLE_ROUTES.get((method, path))
+    if exception:
+        ghost = _ghost(a)
+        absent = _call(b, method, _fill(path, ghost, b, b), _fill(body, ghost, b, b))
 
     # The security property first: nothing of A's moved, nothing was written to B from A's row
     # (a copy, a grant to A's item), and no provider was asked for A's row.
@@ -236,7 +267,14 @@ def test_b_with_a_path_id_is_a_404_and_a_is_unchanged(ab, method, path, body, a_
     if method == "DELETE":
         assert _state(a.uid) != before_a  # A's delete really removed A's row
 
-    assert resp.status_code == 404, f"B got {resp.status_code}: {resp.text} (A: {mine.text})"
+    if exception:
+        # S1-C exception: idempotent owner-filtered delete (per route: NO_ORACLE_ROUTES), no oracle
+        assert (resp.status_code, _normalised(resp.text, a)) == (
+            absent.status_code,
+            _normalised(absent.text, ghost),
+        ), f"{exception}: A's id {resp.text!r}, absent {absent.text!r}"
+    else:
+        assert resp.status_code == 404, f"B got {resp.status_code}: {resp.text} (A: {mine.text})"
     for marker in _markers(a):
         assert marker not in resp.text
 
