@@ -1,0 +1,442 @@
+/* M2 — the live run view (Runs › Live-* boards): the Now bar, the Activity panel, its pinned
+   callout, the Done summary. Sizes are the boards'. */
+
+/* ---- tones ---- */
+.lv-tone--ok {
+  color: #52613e;
+}
+.lv-tone--live {
+  color: var(--coral-700);
+}
+.lv-tone--warn {
+  color: #7a5423;
+}
+.lv-tone--danger {
+  color: #8f3b2f;
+}
+.lv-tone--idle {
+  color: var(--ink-500);
+}
+
+.lv-sq {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.lv-sq--ok {
+  background: var(--sage-100);
+  color: #52613e;
+}
+.lv-sq--live {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.lv-sq--warn {
+  background: var(--amber-100);
+  color: #7a5423;
+}
+.lv-sq--danger {
+  background: var(--red-100);
+  color: #8f3b2f;
+}
+.lv-sq--idle {
+  background: var(--panel-300);
+  color: var(--ink-500);
+}
+
+/* ---- the Now bar ---- */
+.lv-now {
+  height: 64px;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px;
+  background: var(--surface-page);
+  border-bottom: 1px solid var(--border-hairline);
+  font-family: var(--font-ui);
+}
+.lv-now__label {
+  flex: none;
+  margin-right: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.lv-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 46px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  border: 1px solid var(--line-300);
+  border-radius: 10px;
+  background: var(--surface-card);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lv-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.lv-chip--busy {
+  flex: 1.4 1 0;
+}
+.lv-chip--ok {
+  border-color: #c9d3b8;
+}
+.lv-chip--live {
+  border-color: var(--coral-200);
+}
+.lv-chip--warn {
+  border-color: var(--amber-500);
+}
+.lv-chip--danger {
+  border-color: var(--red-500);
+}
+.lv-chip--ship {
+  flex: none;
+  gap: 8px;
+  padding: 0 12px;
+  border-style: dashed;
+  color: var(--ink-500);
+}
+.lv-chip__text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.lv-chip__top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.lv-chip__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+  white-space: nowrap;
+}
+.lv-chip__state {
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.lv-chip__line,
+.lv-chip__ship {
+  font-size: 11.5px;
+  color: var(--ink-600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lv-chip__ship {
+  color: var(--ink-500);
+}
+.lv-chip__ago {
+  flex: none;
+  font-family: var(--font-code);
+  font-size: 10.5px;
+  color: var(--ink-500);
+}
+
+/* ---- the Activity panel ---- */
+.lv-act {
+  height: 340px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-card);
+  border-top: 1px solid var(--border-hairline);
+  box-shadow: 0 -10px 30px -24px rgba(20, 20, 19, 0.2);
+  font-family: var(--font-ui);
+}
+.lv-act--folded {
+  height: 48px;
+}
+.lv-act__head {
+  height: 48px;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--line-200);
+}
+.lv-act__title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  color: var(--ink-900);
+}
+.lv-act__count {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.lv-act__tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lv-act__earlier {
+  flex: none;
+  padding: 8px 20px 0;
+}
+.lv-linkbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-600);
+  cursor: pointer;
+}
+.lv-linkbtn--accent {
+  gap: 5px;
+  color: var(--coral-700);
+}
+.lv-act__list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.lv-line {
+  display: grid;
+  grid-template-columns: 64px 24px 128px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 5px 8px;
+}
+.lv-line__time {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--ink-500);
+}
+.lv-line__icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-300);
+  color: var(--ink-600);
+}
+.lv-line__icon--ok {
+  background: var(--sage-100);
+  color: #52613e;
+}
+.lv-line__icon--warn {
+  background: var(--amber-100);
+  color: #7a5423;
+}
+.lv-line__icon--danger {
+  background: var(--red-100);
+  color: #8f3b2f;
+}
+.lv-line__icon--live {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.lv-line__who {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lv-line__what {
+  font-size: 13px;
+  color: var(--ink-800);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lv-line__extra {
+  font-size: 11.5px;
+  color: var(--ink-500);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lv-code {
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  background: var(--surface-sunk);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.lv-plus {
+  color: var(--sage-500);
+}
+.lv-minus {
+  color: var(--red-500);
+}
+.lv-out {
+  grid-column: 3 / -1;
+  margin: 2px 0 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-sunk);
+  border: 1px solid var(--line-200);
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-800);
+  white-space: pre-wrap;
+}
+
+/* ---- the pinned callout ---- */
+.lv-pin {
+  flex: none;
+  padding: 10px 20px 0;
+}
+.lv-pin__box {
+  box-sizing: border-box;
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--coral-100);
+  border: 1px solid var(--coral-200);
+}
+.lv-pin__box--warn {
+  background: #fbf5ea;
+  border-color: #e2c48f;
+}
+.lv-pin__box--danger {
+  background: #fbefec;
+  border-color: #e7b9b0;
+}
+.lv-pin__icon {
+  flex: none;
+  display: inline-flex;
+  margin-top: 1px;
+}
+.lv-pin__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lv-pin__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.lv-pin__text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-700);
+}
+.lv-pin__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+/* ---- the node card's live line and ring (canvas) ---- */
+.rf-node--live-quiet,
+.rf-node--live-retrying {
+  border: 1.5px solid var(--amber-500);
+  box-shadow:
+    0 0 0 4px rgba(201, 138, 62, 0.18),
+    var(--shadow-node);
+}
+.rf-node--live-retrying {
+  border-color: #e2c48f;
+  box-shadow:
+    0 0 0 4px rgba(201, 138, 62, 0.12),
+    var(--shadow-node);
+}
+.rf-node--live-stalled {
+  border: 1.5px solid var(--red-500);
+  box-shadow:
+    0 0 0 4px rgba(194, 90, 75, 0.16),
+    var(--shadow-node);
+}
+.rf-node--live-quiet::after,
+.rf-node--live-retrying::after,
+.rf-node--live-stalled::after {
+  display: none;
+}
+.rf-node__live {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-700);
+}
+.rf-node__live-ago {
+  flex: none;
+  font-family: var(--font-code);
+  font-size: 9.5px;
+  color: var(--ink-500);
+}
+.rf-node__livechip {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.rf-node__livechip--live {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+.rf-node__livechip--warn {
+  background: var(--amber-100);
+  color: #7a5423;
+}
+.rf-node__livechip--danger {
+  background: var(--red-100);
+  color: #8f3b2f;
+}
+
+/* ---- the Done summary ---- */
+.lv-done {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: var(--sage-100);
+  border-bottom: 1px solid #c9d3b8;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: #3d4a2c;
+}
+.lv-done__stat {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+}
