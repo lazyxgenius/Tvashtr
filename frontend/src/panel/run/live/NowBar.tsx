@@ -2,7 +2,7 @@ import "./live.css";
 
 import type { GraphData, GraphNode } from "../../../lib/api";
 import type { ActivityAgent } from "../../../lib/api/activity";
-import { agoLong, duration, startsAfter, stateTone, stateWord } from "./liveFormat";
+import { agoLong, clock, duration, startsAfter, stateTone, stateWord } from "./liveFormat";
 import { StateGlyph } from "./StateGlyph";
 
 /** Hidden from the Now bar: the Stop ending, and an escalation gate the run never reached. */
@@ -38,6 +38,9 @@ function chipLine(
     const before = from ? agents.get(from) : undefined;
     return before ? startsAfter(before) : "";
   }
+  // A decided gate: "You approved · 10:43" — the time in the viewer's clock.
+  if (a.kind === "gate" && a.live_state !== "needs_you" && a.activity && a.last_event_at)
+    return `${a.activity} · ${clock(a.last_event_at).slice(0, 5)}`;
   return a.activity ?? "";
 }
 

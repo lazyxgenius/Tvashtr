@@ -39,7 +39,7 @@ const AGENTS: ActivityAgent[] = [
     label: "Approval gate",
     kind: "gate",
     live_state: "done",
-    activity: "You approved · 10:43",
+    activity: "You approved",
     last_event_at: at(120),
   }),
   agent({
@@ -127,5 +127,25 @@ describe("NowBar", () => {
     render(<NowBar agents={AGENTS} graph={GRAPH} now={NOW} onSelect={onSelect} />);
     fireEvent.click(screen.getByRole("button", { name: /^Engineer/ }));
     expect(onSelect).toHaveBeenCalledWith("n-eng");
+  });
+
+  it("a decided gate says when, in local time; an open one doesn't", () => {
+    const d = new Date(at(120));
+    const hhmm = [d.getHours(), d.getMinutes()].map((n) => String(n).padStart(2, "0")).join(":");
+    const open = agent({
+      node_id: "n-gate2",
+      label: "Ship gate",
+      kind: "gate",
+      live_state: "needs_you",
+      activity: "Waiting for you",
+      last_event_at: at(30),
+    });
+    render(<NowBar agents={[...AGENTS, open]} graph={GRAPH} now={NOW} onSelect={() => {}} />);
+    expect(screen.getByRole("button", { name: /^Approval gate/ })).toHaveTextContent(
+      `DoneYou approved · ${hhmm}2m ago`,
+    );
+    expect(screen.getByRole("button", { name: /^Ship gate/ })).toHaveTextContent(
+      "Needs youWaiting for you30 s ago",
+    );
   });
 });
