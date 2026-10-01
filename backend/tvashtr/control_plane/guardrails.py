@@ -140,11 +140,19 @@ def _mask_match(match: re.Match) -> str:
     return whole[: match.start(1) - start] + _MASK + whole[match.end(1) - start :]
 
 
+# Every match of a case-insensitive (labelled) pattern above contains one of these; those patterns
+# cost ~6x the shape ones, so they run only when a label is there.
+_LABELS = ("key", "secret", "token", "passw", "auth")
+
+
 def mask_secrets(text: str) -> str:
     """``text`` with every secret shape replaced by "••••" — for words a person sees (the run
     view's commands, output and errors). Over-masks rather than under: placeholders too."""
+    lowered = text.lower()
+    labelled = any(label in lowered for label in _LABELS)
     for pattern in _MASK_PATTERNS:
-        text = pattern.sub(_mask_match, text)
+        if labelled or not pattern.flags & re.IGNORECASE:
+            text = pattern.sub(_mask_match, text)
     return text
 
 
