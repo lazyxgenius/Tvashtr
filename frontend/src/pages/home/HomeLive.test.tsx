@@ -1,6 +1,7 @@
 /**
- * M2 (Live-Home board): Running now cards gain the live state badge and the current-activity
- * line; Needs you lists a stalled run with "View run".
+ * M2 (Live-Home board): Running now cards keep their status badge and gain a Quiet / Stalled /
+ * Needs you badge beside it plus the current-activity line; Needs you lists a stalled run with
+ * "View run".
  */
 import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -92,8 +93,12 @@ function card(name: string) {
   return within(screen.getByRole("region", { name: "Running now" })).getByRole("article", { name });
 }
 
+/** A card's badges, in order: the status badge it always had, then any live badge. */
+const badges = (el: HTMLElement) =>
+  Array.from(el.querySelectorAll(".ds-badge"), (b) => b.textContent);
+
 describe("Running now — live state (Live-Home)", () => {
-  it("badges each card with its live state and shows the current-activity line", async () => {
+  it("keeps each card's status badge, adds Quiet / Stalled / Needs you beside it, and shows the current-activity line", async () => {
     mockApi(
       homeRoutes({
         "GET /api/runs": {
@@ -107,19 +112,21 @@ describe("Running now — live state (Live-Home)", () => {
     expect(screen.getByText("Updates as it happens")).toBeInTheDocument();
 
     const needs = card("Indicator sprint team: Add an RSI indicator with tests");
-    expect(within(needs).getByText("Needs you")).toBeInTheDocument();
+    // Additive (brief §2.2): the status badge keeps its label; the live badge sits beside it.
+    expect(badges(needs)).toEqual(["Awaiting you", "Needs you"]);
     // The existing waiting line stays; no second line repeats it.
     expect(within(needs).getByText("Waiting for you at Approval")).toBeInTheDocument();
     expect(within(needs).queryByText(/Asked the model/)).toBeNull();
 
     const working = card("Docs team: Write the API guide");
-    expect(within(working).getByText("Working")).toBeInTheDocument();
+    // Working / Running a command / Retrying: the status badge already says it's running.
+    expect(badges(working)).toEqual(["Running"]);
     expect(within(working).getByText("Writer")).toBeInTheDocument();
     expect(within(working).getByText("· Edited a file")).toBeInTheDocument();
     expect(within(working).getByText("4 s ago")).toBeInTheDocument();
 
     const stalled = card("Bugfix squad: Fix the flaky login test");
-    expect(within(stalled).getByText("Stalled")).toBeInTheDocument();
+    expect(badges(stalled)).toEqual(["Running", "Stalled"]);
     expect(
       within(stalled).getByText("· no update for 5m 10s · nothing shipped yet"),
     ).toBeInTheDocument();
@@ -127,22 +134,22 @@ describe("Running now — live state (Live-Home)", () => {
     expect(within(stalled).queryByRole("button", { name: /Resume/ })).toBeNull();
 
     const quiet = card("Research pod: Compare three charting libraries");
-    expect(within(quiet).getByText("Quiet")).toBeInTheDocument();
+    expect(badges(quiet)).toEqual(["Running", "Quiet"]);
     expect(
       within(quiet).getByText("· no update for 1m 40s · usually still thinking"),
     ).toBeInTheDocument();
 
     const command = card("Command team: Run the suite");
-    expect(within(command).getByText("Running a command")).toBeInTheDocument();
+    expect(badges(command)).toEqual(["Running"]);
     expect(
       within(command).getByText("· Running a command: python -m pytest -q"),
     ).toBeInTheDocument();
 
-    expect(within(card("Retry team: Try again later")).getByText("Retrying")).toBeInTheDocument();
+    expect(badges(card("Retry team: Try again later"))).toEqual(["Running"]);
 
     // No live fields: the card is exactly as before.
     const plain = card("Plain team: No live fields");
-    expect(within(plain).getByText("Running")).toBeInTheDocument();
+    expect(badges(plain)).toEqual(["Running"]);
     expect(within(plain).queryByText(/·/)).toBeNull();
   });
 });

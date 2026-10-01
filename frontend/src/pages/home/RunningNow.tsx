@@ -66,8 +66,9 @@ function RunCard({
   onStop: (row: RunListRow) => void;
 }) {
   const live = LIVE.has(row.status);
-  // M2: a live run wears its live state; an ended one (or an older server) keeps its status badge.
-  const look = (live && liveLook(row.live_state)) || runStatusLook(row.status);
+  const look = runStatusLook(row.status);
+  // M2: a live run that is Quiet, Stalled or Needs you says so beside its status badge.
+  const liveBadge = live ? liveLook(row.live_state) : null;
   // The waiting-for-you line already says what a gate needs, so it isn't repeated.
   const step = live && !row.awaiting ? row.live : null;
   const line = step ? liveLine(row, step) : null;
@@ -91,6 +92,11 @@ function RunCard({
         <Badge variant={look.variant} dot>
           {look.label}
         </Badge>
+        {liveBadge && (
+          <Badge variant={liveBadge.variant} dot>
+            {liveBadge.label}
+          </Badge>
+        )}
         <span className="hm-run__age">{elapsedShort(row.created_at)}</span>
       </div>
       <div className="hm-run__idea">“{row.idea}”</div>
