@@ -4,7 +4,7 @@ import uuid
 from unittest.mock import patch
 
 from tvashtr.auth import SESSION_COOKIE_NAME
-from tvashtr.control_plane.node_tools import build_mcp_config, domains_mcp_url
+from tvashtr.control_plane.node_tools import build_mcp_config, domains_mcp_url, read_domains_token
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.db import session_scope
 from tvashtr.models import Run, User
@@ -43,7 +43,7 @@ def test_domains_off_is_inert():
     assert "tvashtr-domains" not in out.get("mcpServers", {})
 
 
-def test_domains_on_injects_url_and_cookie():
+def test_domains_on_injects_url_and_run_token():
     owner, run_id = _seed_owner()
     with patch(
         "tvashtr.control_plane.node_tools.domains_mcp_url",
@@ -52,16 +52,18 @@ def test_domains_on_injects_url_and_cookie():
         out = build_mcp_config({"tvashtr": {"domains": True}}, run_id)
     server = out["mcpServers"]["tvashtr-domains"]
     assert server["url"] == "http://host.docker.internal:8000/mcp/domains"
-    cookie = server["headers"]["Cookie"]
-    assert cookie.startswith(SESSION_COOKIE_NAME + "=")
+    # Security S1: a run token, never the owner's login cookie.
+    assert list(server["headers"]) == ["Authorization"]
+    assert SESSION_COOKIE_NAME not in str(server)
+    scheme, _, token = server["headers"]["Authorization"].partition(" ")
+    assert scheme == "Bearer"
+    assert read_domains_token(token) == (owner, None)
 
 
 def test_inline_tvashtr_domains_wins():
     owner, run_id = _seed_owner()
     inline = {
-        "mcpServers": {
-            "tvashtr-domains": {"url": "http://example.test/mcp", "headers": {}}
-        },
+        "mcpServers": {"tvashtr-domains": {"url": "http://example.test/mcp", "headers": {}}},
         "tvashtr": {"domains": True},
     }
     out = build_mcp_config(inline, run_id)

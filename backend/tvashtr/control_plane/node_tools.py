@@ -20,6 +20,8 @@ Behavior:
   * Each grant at ``tvashtr.connectors`` becomes one server that points at Tvashtr's own proxy
     (``/mcp/connectors``) and carries a run token. The provider's sign-in never enters this dict.
     A connector that can't be used is left out, with a warning and a ``connector_skipped`` event.
+  * ``tvashtr.domains`` adds ``tvashtr-domains`` (``/mcp/domains``) with a Domains run token naming
+    the run, the agent and the domains it may search. The owner's login never enters this dict.
 
 Openhands-free + litellm-free at import (it returns a plain dict). The resolved plaintext values in
 the returned dict are the design — they travel into the docker sandbox exactly like the LLM key (the
@@ -33,14 +35,15 @@ import re
 import uuid
 from urllib.parse import urlparse, urlunparse
 
+from itsdangerous import BadData, URLSafeTimedSerializer
 from sqlalchemy import select
 
-from tvashtr.auth import SESSION_COOKIE_NAME, make_session_cookie_value
 from tvashtr.config import get_settings
 from tvashtr.control_plane import connector_oauth, connector_proxy, connectors
 from tvashtr.control_plane.mcp_secrets import resolve_owner_mcp_secret
 from tvashtr.control_plane.node_library import resolve_owner_tool
 from tvashtr.control_plane.resolution_warnings import record_resolution_warning
+from tvashtr.control_plane.run_views import TERMINAL_STATUSES
 from tvashtr.db import session_scope
 from tvashtr.models import Run
 
@@ -118,9 +121,51 @@ def connectors_mcp_url() -> str:
     return f"{_agent_base_url()}/mcp/connectors"
 
 
-# The header naming the domains an agent may search (``tvashtr.domains`` as a list of ids, DM-96);
-# absent = every domain (the legacy ``true`` switch). The Domains MCP enforces it.
-DOMAINS_HEADER = "X-Tvashtr-Domains"
+# ---- The Domains run token: the only credential an agent's sandbox gets for ``/mcp/domains`` ----
+
+# Not the Connectors salt: neither token opens the other's endpoint.
+_DOMAINS_TOKEN_SALT = "tvashtr.domains-run"
+
+
+def _domains_signer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(
+        get_settings().session_secret.get_secret_value(), salt=_DOMAINS_TOKEN_SALT
+    )
+
+
+def sign_domains_token(run_id: object, node_id: object | None, domains: list | None) -> str:
+    """The token for one run and one agent, naming the domain ids it may search (``tvashtr.domains``
+    as a list, DM-96); ``None`` = every domain the run's owner has (the ``true`` switch)."""
+    return _domains_signer().dumps(
+        {
+            "r": str(run_id),
+            "n": str(node_id) if node_id is not None else None,
+            "d": None if domains is None else [str(d) for d in domains],
+        }
+    )
+
+
+def read_domains_token(value: object) -> tuple[uuid.UUID, set[str] | None] | None:
+    """``(the run's owner, the domain ids it may search or None for all)``, or ``None`` when the
+    token must not be honoured: a bad signature, too old, or a run that is gone or ended. The
+    search itself only ever looks at the owner's own domains (``domain_mcp._usable``)."""
+    if not isinstance(value, str):
+        return None
+    try:
+        data = _domains_signer().loads(value, max_age=connector_proxy.RUN_TOKEN_MAX_AGE_SECONDS)
+        run_id, listed = uuid.UUID(data["r"]), data["d"]
+        if listed is not None and not isinstance(listed, list):
+            return None
+        allowed = (
+            None if listed is None else {str(d).strip().lower() for d in listed if str(d).strip()}
+        )
+    except (BadData, KeyError, TypeError, ValueError, AttributeError):
+        return None
+    with session_scope() as session:
+        run = session.get(Run, run_id)
+        if run is None or run.owner_id is None or run.status in TERMINAL_STATUSES:
+            return None
+        return run.owner_id, allowed
 
 
 def _domains_opt_in(tvashtr_meta: dict) -> bool:
@@ -278,11 +323,14 @@ def build_mcp_config(tool_config: dict | None, run_id: str, *, node_id: str | No
     if _domains_opt_in(meta):
         owner = _owner()
         if owner is not None and "tvashtr-domains" not in resolved:
-            cookie_val = make_session_cookie_value(str(owner))
-            headers = {"Cookie": f"{SESSION_COOKIE_NAME}={cookie_val}"}
-            if isinstance(meta.get("domains"), list):
-                headers[DOMAINS_HEADER] = ",".join(str(d) for d in meta["domains"])
-            resolved["tvashtr-domains"] = {"url": domains_mcp_url(), "headers": headers}
+            listed = meta.get("domains")
+            token = sign_domains_token(
+                run_id, node_id, listed if isinstance(listed, list) else None
+            )
+            resolved["tvashtr-domains"] = {
+                "url": domains_mcp_url(),
+                "headers": {"Authorization": f"Bearer {token}"},
+            }
 
     # Return ONLY ``{"mcpServers": {…}}`` — the ``tvashtr`` block (incl. ``library``) is stripped.
     return {"mcpServers": resolved}

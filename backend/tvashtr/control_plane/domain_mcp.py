@@ -12,14 +12,13 @@ from mcp.types import Tool as MCPTool
 from sqlalchemy import select
 from starlette.requests import Request
 
-from tvashtr.auth import SESSION_COOKIE_NAME, read_session_cookie
 from tvashtr.control_plane.domain_ask import (
     DomainAskError,
     ask_domain,
     retrieve_domain,
 )
 from tvashtr.control_plane.domain_query_node import format_domain_ask_error
-from tvashtr.control_plane.node_tools import DOMAINS_HEADER
+from tvashtr.control_plane.node_tools import read_domains_token
 from tvashtr.db import session_scope
 from tvashtr.models import Domain
 
@@ -37,14 +36,6 @@ def parse_domain_uuid(domain_id: str) -> uuid.UUID:
         return uuid.UUID(str(domain_id).strip())
     except (ValueError, AttributeError, TypeError) as e:
         raise DomainAskError("bad_request", "domain_id must be a UUID") from e
-
-
-def allowed_domains(header: str | None) -> set[str] | None:
-    """The domain ids an agent may search, from the ``X-Tvashtr-Domains`` header its run sends
-    (DM-96); ``None`` (no header) = every domain — the legacy all-domains switch."""
-    if header is None:
-        return None
-    return {part.strip().lower() for part in header.split(",") if part.strip()}
 
 
 def _usable(owner_id: uuid.UUID, allowed: set[str] | None) -> list[tuple[str, str]]:
@@ -124,54 +115,26 @@ def run_domain_retrieve_tool(
     )
 
 
-def owner_id_from_headers(cookie_header: str | None) -> uuid.UUID:
-    if not cookie_header:
-        raise DomainMcpToolError("authentication required — missing session cookie")
-    # cookie_header may be full "tv_session=..." or a Cookie header with multiple pairs
-    raw = None
-    for part in str(cookie_header).split(";"):
-        part = part.strip()
-        if part.startswith(SESSION_COOKIE_NAME + "="):
-            raw = part.split("=", 1)[1]
-            break
-    if raw is None and "=" not in str(cookie_header):
-        raw = str(cookie_header)
-    user_id = read_session_cookie(raw) if raw else None
-    if not user_id:
-        raise DomainMcpToolError("authentication required — invalid or expired session")
-    try:
-        return uuid.UUID(user_id)
-    except ValueError as e:
-        raise DomainMcpToolError("authentication required — invalid session subject") from e
-
-
-def _owner_from_ctx(ctx: Context) -> uuid.UUID:
-    # Prefer HTTP request cookie when mounted; fall back to env for stdio debug.
+def _grant_from_ctx(ctx: Context) -> tuple[uuid.UUID, set[str] | None]:
+    """The run owner and the domain ids this agent may search (``None`` = all), from the request's
+    ``Authorization: Bearer <Domains run token>`` — never a login cookie, never a header list.
+    Without a request (a stdio debug run): ``TVASHTR_OWNER_ID``, every domain."""
     request: Request | None = None
     try:
         request = ctx.request_context.request  # type: ignore[attr-defined]
     except Exception:
         request = None
     if request is not None:
-        raw = request.headers.get("cookie") or request.cookies.get(SESSION_COOKIE_NAME)
-        if request.cookies.get(SESSION_COOKIE_NAME):
-            return owner_id_from_headers(
-                f"{SESSION_COOKIE_NAME}={request.cookies.get(SESSION_COOKIE_NAME)}"
-            )
-        return owner_id_from_headers(raw)
+        scheme, _, token = (request.headers.get("authorization") or "").partition(" ")
+        grant = read_domains_token(token.strip()) if scheme.lower() == "bearer" else None
+        if grant is None:
+            raise DomainMcpToolError("authentication required — no valid run token")
+        return grant
 
     env_oid = os.environ.get("TVASHTR_OWNER_ID")
     if env_oid:
-        return uuid.UUID(env_oid)
+        return uuid.UUID(env_oid), None
     raise DomainMcpToolError("authentication required")
-
-
-def _allowed_from_ctx(ctx: Context) -> set[str] | None:
-    try:
-        request = ctx.request_context.request  # type: ignore[attr-defined]
-    except Exception:
-        request = None
-    return allowed_domains(request.headers.get(DOMAINS_HEADER)) if request else None
 
 
 class _DomainsMCP(FastMCP):
@@ -181,9 +144,9 @@ class _DomainsMCP(FastMCP):
         tools = await super().list_tools()
         ctx = self.get_context()
         try:
-            line = searchable_line(_owner_from_ctx(ctx), _allowed_from_ctx(ctx))
+            line = searchable_line(*_grant_from_ctx(ctx))
         except DomainMcpToolError:
-            return tools  # no session: the plain descriptions
+            return tools  # no run token: the plain descriptions
         for tool in tools:
             tool.description = f"{tool.description or ''}\n\n{line}"
         return tools
@@ -197,8 +160,8 @@ def create_domains_fastmcp() -> FastMCP:
     def domain_ask(question: str, ctx: Context, domain: str = "", domain_id: str = "") -> str:
         """Ask one of your domains (a library of the user's files) a question; returns the answer
         and its sources as JSON. ``domain`` is the domain's name, e.g. "Support docs"."""
-        owner = _owner_from_ctx(ctx)
-        did = resolve_domain_ref(owner, domain or domain_id, _allowed_from_ctx(ctx))
+        owner, allowed = _grant_from_ctx(ctx)
+        did = resolve_domain_ref(owner, domain or domain_id, allowed)
         return run_domain_ask_tool(owner, did, question)
 
     @mcp.tool(name="domain_retrieve")
@@ -207,8 +170,8 @@ def create_domains_fastmcp() -> FastMCP:
     ) -> str:
         """Find the passages in one of your domains that match ``query`` (no answer is written);
         returns them with their sources as JSON. ``domain`` is the domain's name."""
-        owner = _owner_from_ctx(ctx)
-        did = resolve_domain_ref(owner, domain or domain_id, _allowed_from_ctx(ctx))
+        owner, allowed = _grant_from_ctx(ctx)
+        did = resolve_domain_ref(owner, domain or domain_id, allowed)
         return run_domain_retrieve_tool(owner, did, query, top_k=top_k)
 
     return mcp

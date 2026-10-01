@@ -6,15 +6,15 @@ from unittest.mock import patch
 
 import pytest
 
-from tvashtr.auth import SESSION_COOKIE_NAME, make_session_cookie_value
+from tvashtr.auth import make_session_cookie_value
 from tvashtr.control_plane.domain_ask import DomainAskError
 from tvashtr.control_plane.domain_mcp import (
     DomainMcpToolError,
     create_domains_fastmcp,
-    owner_id_from_headers,
     run_domain_ask_tool,
     run_domain_retrieve_tool,
 )
+from tvashtr.control_plane.node_tools import read_domains_token
 
 
 def test_ask_tool_includes_citations():
@@ -90,16 +90,15 @@ def test_bad_domain_id():
     assert "domain_id" in ei.value.message.lower() or "uuid" in ei.value.message.lower()
 
 
+def test_a_login_cookie_is_not_a_domains_token():
+    # Security S1: ``/mcp/domains`` takes a Domains run token only (tests/test_domains_run_token.py
+    # has the round trip); the owner's login is refused.
+    assert read_domains_token(make_session_cookie_value(str(uuid.uuid4()))) is None
 
-def test_owner_id_from_headers_roundtrip():
-    uid = uuid.uuid4()
-    cookie = f"{SESSION_COOKIE_NAME}={make_session_cookie_value(str(uid))}"
-    assert owner_id_from_headers(cookie) == uid
 
-
-def test_owner_id_from_headers_missing():
-    with pytest.raises(DomainMcpToolError):
-        owner_id_from_headers(None)
+def test_a_missing_or_garbled_token_is_refused():
+    for value in (None, "", "not-a-token"):
+        assert read_domains_token(value) is None
 
 
 def test_fastmcp_registers_locked_tool_names():

@@ -1,4 +1,4 @@
-"""Phase 4b — /mcp/domains mount + session cookie gate."""
+"""Phase 4b — /mcp/domains mount + its run-token gate (Security S1)."""
 
 import json
 import os
@@ -8,7 +8,8 @@ import uuid
 
 from starlette.routing import Mount, Route
 
-from tvashtr.auth import SESSION_COOKIE_NAME, make_session_cookie_value
+from tvashtr.auth import make_session_cookie_value
+from tvashtr.control_plane.node_tools import read_domains_token
 from tvashtr.main import app
 
 
@@ -141,14 +142,11 @@ def test_domains_answers_at_its_address_behind_the_spa_catch_all():
     assert out["tools"] == ["domain_ask", "domain_retrieve"]
 
 
-def test_tool_handler_path_uses_cookie_owner():
-    # Unit-level: mounting works; deep protocol tests optional.
-    # Call run_domain_ask_tool via MCP is covered in Task 3; here ensure Cookie roundtrip
-    # used by injection is accepted by owner_id_from_headers (already Task 4).
+def test_tool_handler_refuses_the_owners_login():
+    # Security S1: the tools take their owner from a Domains run token only; the login cookie
+    # that was handed to agents before is refused (tests/test_domains_run_token.py: end to end).
     uid = uuid.uuid4()
-    token = make_session_cookie_value(str(uid))
-    assert token
-    assert SESSION_COOKIE_NAME
+    assert read_domains_token(make_session_cookie_value(str(uid))) is None
 
 
 def test_domains_answers_the_hosts_agents_come_in_by_and_no_other():

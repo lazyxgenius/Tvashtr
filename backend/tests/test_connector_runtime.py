@@ -21,7 +21,12 @@ from tvashtr.control_plane import (
     team_run,
 )
 from tvashtr.control_plane.connector_proxy import RunGrant, read_run_token, sign_run_token
-from tvashtr.control_plane.node_tools import build_mcp_config, connectors_mcp_url, domains_mcp_url
+from tvashtr.control_plane.node_tools import (
+    build_mcp_config,
+    connectors_mcp_url,
+    domains_mcp_url,
+    read_domains_token,
+)
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.db import session_scope
 from tvashtr.engines.base import AgentRunResult
@@ -357,7 +362,10 @@ def test_a_slug_an_inline_or_library_server_already_has_becomes_conn_slug(local_
         {"tvashtr": {"domains": True, "connectors": [{"id": str(domains)}]}}, run_id
     )["mcpServers"]
     assert list(out) == ["conn-tvashtr-domains", "tvashtr-domains"]
-    assert "Cookie" in out["tvashtr-domains"]["headers"]
+    # …and it is the real Domains server, with its own run token (Security S1: never a login).
+    assert out["tvashtr-domains"]["url"].endswith("/mcp/domains")
+    scheme, _, token = out["tvashtr-domains"]["headers"]["Authorization"].partition(" ")
+    assert scheme == "Bearer" and read_domains_token(token) == (owner, None)
 
 
 def test_a_connector_never_takes_a_name_that_is_in_use(local_base):

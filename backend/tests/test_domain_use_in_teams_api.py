@@ -12,7 +12,11 @@ from tvashtr.control_plane import domain_mcp
 from tvashtr.control_plane.domain_mcp import DomainMcpToolError, resolve_domain_ref
 from tvashtr.control_plane.domain_usage import step_title
 from tvashtr.control_plane.graph_validity import graph_dicts, validate_graph
-from tvashtr.control_plane.node_tools import DOMAINS_HEADER, build_mcp_config
+from tvashtr.control_plane.node_tools import (
+    build_mcp_config,
+    read_domains_token,
+    sign_domains_token,
+)
 from tvashtr.db import session_scope
 from tvashtr.main import app
 from tvashtr.models import AgentNode, Edge, EngineSubscriptionStatus, Run, TeamGraph
@@ -436,16 +440,24 @@ def _owned_run(owner: uuid.UUID) -> str:
     return run_id
 
 
-def test_a_domain_list_sends_the_allowlist_header():
+def _token_of(out: dict) -> str:
+    auth = out["mcpServers"]["tvashtr-domains"]["headers"]["Authorization"]
+    scheme, _, token = auth.partition(" ")
+    assert scheme == "Bearer"
+    return token
+
+
+def test_a_domain_list_is_named_by_the_run_token():
     _, owner = _fresh()
     run_id = _owned_run(owner)
     a, b = str(uuid.uuid4()), str(uuid.uuid4())
     out = build_mcp_config({"tvashtr": {"domains": [a, b]}}, run_id)
-    headers = out["mcpServers"]["tvashtr-domains"]["headers"]
-    assert headers[DOMAINS_HEADER] == f"{a},{b}"
-    # The legacy switch still means every domain: no header.
+    # Security S1: the allowlist travels inside the run token, never as a header.
+    assert list(out["mcpServers"]["tvashtr-domains"]["headers"]) == ["Authorization"]
+    assert read_domains_token(_token_of(out)) == (owner, {a, b})
+    # The legacy switch still means every domain.
     out = build_mcp_config({"tvashtr": {"domains": True}}, run_id)
-    assert DOMAINS_HEADER not in out["mcpServers"]["tvashtr-domains"]["headers"]
+    assert read_domains_token(_token_of(out)) == (owner, None)
     # An emptied list gives no Domains tools at all.
     out = build_mcp_config({"tvashtr": {"domains": []}}, run_id)
     assert "tvashtr-domains" not in out["mcpServers"]
@@ -470,10 +482,15 @@ def test_tools_find_the_domain_by_name_within_the_allowlist():
     assert ei.value.message == "You can’t search any domains."
 
 
-def test_allowlist_header_parses_ids():
+def test_the_token_allowlist_parses_ids():
+    _, owner = _fresh()
+    run_id = _owned_run(owner)
     a = str(uuid.uuid4())
-    assert domain_mcp.allowed_domains(None) is None
-    assert domain_mcp.allowed_domains(f" {a.upper()} ,") == {a}
+    assert read_domains_token(sign_domains_token(run_id, None, None)) == (owner, None)
+    assert read_domains_token(sign_domains_token(run_id, None, [f" {a.upper()} ", ""])) == (
+        owner,
+        {a},
+    )
 
 
 def test_ask_tool_uses_the_resolved_domain():
@@ -494,12 +511,12 @@ def test_the_tool_list_names_the_domains_the_agent_can_search(monkeypatch):
 
     from starlette.requests import Request
 
-    from tvashtr.auth import SESSION_COOKIE_NAME, make_session_cookie_value
-
     c, owner = _fresh()
     support = _domain(c)
     _domain(c, "Vendor contracts", "legal")
-    cookie = f"{SESSION_COOKIE_NAME}={make_session_cookie_value(str(owner))}"
+    run_id = _owned_run(owner)
+    listed = f"Bearer {sign_domains_token(run_id, None, [support])}"
+    every = f"Bearer {sign_domains_token(run_id, None, None)}"
 
     def ctx(headers: dict) -> SimpleNamespace:
         raw = [(k.lower().encode(), v.encode()) for k, v in headers.items()]
@@ -508,40 +525,36 @@ def test_the_tool_list_names_the_domains_the_agent_can_search(monkeypatch):
         )
 
     mcp = domain_mcp.create_domains_fastmcp()
-    monkeypatch.setattr(
-        mcp, "get_context", lambda: ctx({"cookie": cookie, DOMAINS_HEADER: support})
-    )
+    monkeypatch.setattr(mcp, "get_context", lambda: ctx({"authorization": listed}))
     tools = asyncio.run(mcp.list_tools())
     assert {t.name for t in tools} == {"domain_ask", "domain_retrieve"}
     assert all(t.description.endswith("\n\nDomains you can search: Support docs.") for t in tools)
-    # The legacy switch (no header) searches every domain.
-    monkeypatch.setattr(mcp, "get_context", lambda: ctx({"cookie": cookie}))
+    # The legacy switch (no list) searches every domain.
+    monkeypatch.setattr(mcp, "get_context", lambda: ctx({"authorization": every}))
     tools = asyncio.run(mcp.list_tools())
     assert all(
         t.description.endswith("Domains you can search: Support docs, Vendor contracts.")
         for t in tools
     )
-    # No session (a stdio debug run): the plain descriptions.
+    # No run token: the plain descriptions.
     monkeypatch.setattr(mcp, "get_context", lambda: ctx({}))
     assert all("Domains you can search" not in t.description for t in asyncio.run(mcp.list_tools()))
 
 
 def test_a_foreign_domain_in_the_allowlist_header_is_not_usable(monkeypatch):
-    """Review (missing cross-account test): another account's domain id in the agent's
-    ``X-Tvashtr-Domains`` header is never searched — by id or by name, with either tool."""
+    """Review (missing cross-account test): another account's domain id in the agent's run
+    token allowlist is never searched — by id or by name, with either tool."""
     import asyncio
     from types import SimpleNamespace
 
     from starlette.requests import Request
 
-    from tvashtr.auth import SESSION_COOKIE_NAME, make_session_cookie_value
-
     c, owner = _fresh()
     _domain(c)
     stranger, _ = _fresh()
     theirs = _domain(stranger, "Secret docs")
-    cookie = f"{SESSION_COOKIE_NAME}={make_session_cookie_value(str(owner))}"
-    raw = [(b"cookie", cookie.encode()), (DOMAINS_HEADER.lower().encode(), theirs.encode())]
+    token = sign_domains_token(_owned_run(owner), None, [theirs])
+    raw = [(b"authorization", f"Bearer {token}".encode())]
     ctx = SimpleNamespace(
         request_context=SimpleNamespace(request=Request({"type": "http", "headers": raw}))
     )
