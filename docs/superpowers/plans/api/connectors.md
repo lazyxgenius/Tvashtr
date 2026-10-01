@@ -343,7 +343,9 @@ Errors:
 - 422 `{"code": "borrowed_signin", "message": "This server wants to use Notion’s sign-in. Connect Notion from its own card instead."}`
   (Security S1: a registry or custom server, or a Featured entry on another address than its own,
   whose sign-in issuer is on a Featured entry's sign-in site — its address's site or a host it
-  pins. Also answered by `oauth/start`, for a connection made before the check existed.)
+  pins. Also answered by `oauth/start`, for a connection made before the check existed; such a
+  connection's stored sign-in is dropped the first time a run or the proxy would use it, and it
+  becomes `needs_signin` with this message.)
 - 429 `busy` (above)
 - 502 `{"code": "unreachable", "message": "We couldn’t reach mcp.acme.dev. Try again."}` (also a
   server that answers the tool listing with anything but a list, a 401 or a 403)

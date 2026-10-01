@@ -957,27 +957,45 @@ def ensure_access_token(connection_id: uuid.UUID, *, rejected: str | None = None
         if not token and not stored.get("refresh_token"):
             # Gone, never signed in, already cleared, or one that can't be decrypted.
             raise SignInRefused("no stored sign-in")
-        expires = stored.get("expires_at")
-        fresh = expires is None or expires - time.time() > REFRESH_MARGIN_SECONDS
-        if token and token != rejected and fresh:
-            return token
-        refreshed = refresh(stored)
-        if isinstance(refreshed, dict):
-            # A reply without a new refresh token keeps the old one. The rotated one is committed
-            # (leaving this block) before the caller gets the access token.
-            kept = {k: v for k, v in stored.items() if k != "expires_at"}
-            connectors.write_secret(row, kept | refreshed)
-            return refreshed["access_token"]
-        dropped = _TOKEN_KEYS + (("client",) if refreshed == "invalid_client" else ())
-        connectors.write_secret(row, {k: v for k, v in stored.items() if k not in dropped})
-        in_flight = connectors.secret_or_none(row, pending=True)
-        if refreshed == "invalid_client" and in_flight:
-            # A sign-in in flight (or the last one cleared) may hold the same registration: say
-            # so there too, or the next ``oauth/start`` would reuse the client that is gone.
-            refused = {"refused_client": stored["client"]["client_id"]}
-            connectors.write_secret(row, in_flight | refused, pending=True)
-        row.status, row.last_error = "needs_signin", "Its sign-in expired."
+        provider = _borrowed_from(row, stored)
+        if provider is not None:
+            # Security S1: a Featured provider's sign-in held by a connection that isn't that
+            # provider's own card (made before discovery refused it) is never used again.
+            connectors.write_secret(row, {k: v for k, v in stored.items() if k not in _TOKEN_KEYS})
+            row.status, row.last_error = "needs_signin", BorrowedSignIn(provider).message
+            refreshed = "borrowed_signin"
+        else:
+            expires = stored.get("expires_at")
+            fresh = expires is None or expires - time.time() > REFRESH_MARGIN_SECONDS
+            if token and token != rejected and fresh:
+                return token
+            refreshed = refresh(stored)
+            if isinstance(refreshed, dict):
+                # A reply without a new refresh token keeps the old one. The rotated one is
+                # committed (leaving this block) before the caller gets the access token.
+                kept = {k: v for k, v in stored.items() if k != "expires_at"}
+                connectors.write_secret(row, kept | refreshed)
+                return refreshed["access_token"]
+            dropped = _TOKEN_KEYS + (("client",) if refreshed == "invalid_client" else ())
+            connectors.write_secret(row, {k: v for k, v in stored.items() if k not in dropped})
+            in_flight = connectors.secret_or_none(row, pending=True)
+            if refreshed == "invalid_client" and in_flight:
+                # A sign-in in flight (or the last one cleared) may hold the same registration:
+                # say so there too, or the next ``oauth/start`` would reuse the client that is gone.
+                refused = {"refused_client": stored["client"]["client_id"]}
+                connectors.write_secret(row, in_flight | refused, pending=True)
+            row.status, row.last_error = "needs_signin", "Its sign-in expired."
     raise SignInRefused(refreshed)
+
+
+def _borrowed_from(row: ConnectorConnection, stored: dict) -> str | None:
+    """The Featured provider whose sign-in ``row`` holds without being that provider's own card on
+    its own address, else ``None`` (the check discovery makes, applied to a stored sign-in)."""
+    if _pins(connector_catalog.resolve(row.connector_key), row.url):
+        return None
+    issuer = stored.get("issuer")
+    host = urlsplit(issuer).hostname if isinstance(issuer, str) else None
+    return _featured_signin_sites().get(connector_net.site(host)) if host else None
 
 
 def revoke(connection_id: uuid.UUID) -> bool:

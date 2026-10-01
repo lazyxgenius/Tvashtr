@@ -5,15 +5,17 @@ unreviewed server's resource metadata simply names a Featured provider's sign-in
 would approve Notion on Notion's real page, and the proxy would then send that Notion token to the
 unreviewed server. A connection that isn't the Featured entry itself is refused instead."""
 
+import time
+from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 import httpx
 import pytest
 from connector_helpers import connections_of, snapshot_line
-from connector_oauth_helpers import wire
+from connector_oauth_helpers import connection, load, user, wire
 from toolkit_helpers import fresh_account
 
-from tvashtr.control_plane import connector_catalog, connector_oauth
+from tvashtr.control_plane import connector_catalog, connector_oauth, connectors
 from tvashtr.control_plane.connector_oauth import CannotRegister, Discovery, discover
 
 pytest_plugins = ["connector_fixtures"]
@@ -107,3 +109,49 @@ def test_signing_in_again_to_a_connection_made_before_the_fix_is_refused(monkeyp
     assert resp.status_code == 422, resp.text
     assert resp.json()["detail"] == {"code": "borrowed_signin", "message": REFUSAL}
     assert connections_of(owner)[0].state_hash is None  # no sign-in was started
+
+
+def _stored_notion_sign_in() -> dict:
+    """A stored sign-in whose issuer is Notion's, with a token that hasn't expired."""
+    return {
+        "issuer": NOTION,
+        "client": {"client_id": "c-1", "auth_method": "none", "kind": "dcr"},
+        "authorization_endpoint": f"{NOTION}/authorize",
+        "token_endpoint": f"{NOTION}/token",
+        "resource": EVIL,
+        "access_token": "notion-access-token",
+        "refresh_token": "notion-refresh-token",
+        "expires_at": time.time() + 3600,
+    }
+
+
+def test_a_sign_in_borrowed_before_the_fix_is_never_used_again(monkeypatch):
+    """Review B1: a custom connection that already holds Notion's sign-in (made before discovery
+    refused it) must not have that token used by a run or the proxy: ensure_access_token, which
+    both go through, drops it and marks the connection needs_signin."""
+    wire(monkeypatch, _names_notions_signin("mcp.evil.test"))
+    owner = user()
+    fake = SimpleNamespace(mcp_url=EVIL)
+    borrowed = connection(owner, fake, status="connected", secret=_stored_notion_sign_in())
+    with pytest.raises(connector_oauth.SignInRefused):
+        connector_oauth.ensure_access_token(borrowed)
+    row = load(borrowed)
+    assert (row.status, row.last_error) == ("needs_signin", REFUSAL)
+    stored = connectors.read_secret(row) or {}
+    assert not {"access_token", "refresh_token"} & stored.keys()
+
+
+def test_notions_own_card_keeps_its_stored_sign_in(monkeypatch):
+    wire(monkeypatch, _names_notions_signin("mcp.notion.com"))
+    notion = connector_catalog.FEATURED["notion"]
+    owner = user()
+    fake = SimpleNamespace(mcp_url=notion["url"])
+    own = connection(
+        owner,
+        fake,
+        status="connected",
+        connector_key="notion",
+        secret=_stored_notion_sign_in() | {"resource": notion["url"]},
+    )
+    assert connector_oauth.ensure_access_token(own) == "notion-access-token"
+    assert load(own).status == "connected"
