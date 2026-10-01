@@ -1993,7 +1993,7 @@ def switch_node_to_backup(
             raise HTTPException(status_code=404, detail="node not found")
         inv = session.execute(
             select(AgentInvocation)
-            .where(AgentInvocation.run_id == run_id, AgentInvocation.node_id == node_uuid)
+            .where(AgentInvocation.run_id == run.workflow_id, AgentInvocation.node_id == node_uuid)
             .order_by(AgentInvocation.iteration.desc())
             .limit(1)
         ).scalar_one_or_none()
@@ -2001,7 +2001,7 @@ def switch_node_to_backup(
             raise nothing
         newest = session.execute(
             select(RunEvent)
-            .where(RunEvent.run_id == run_id, RunEvent.invocation_id == inv.id)
+            .where(RunEvent.run_id == run.workflow_id, RunEvent.invocation_id == inv.id)
             .order_by(RunEvent.created_at.desc(), RunEvent.id.desc())
             .limit(1)
         ).scalar_one_or_none()
@@ -2011,8 +2011,8 @@ def switch_node_to_backup(
             or not (newest.payload or {}).get("backup_model")
         ):
             raise nothing
-        invocation_id = inv.id
-    if not live_state.request_switch(run_id, invocation_id):
+        workflow_id, invocation_id = run.workflow_id, inv.id
+    if not live_state.request_switch(workflow_id, invocation_id):
         raise nothing
     return {"switched": True}
 

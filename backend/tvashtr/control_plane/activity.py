@@ -189,7 +189,9 @@ def _search_query(command: str) -> str | None:
     for word in rest:
         if word in ("-e", "--regexp"):
             return next(rest, None)
-        if not word.startswith("-"):
+        if word in ("-A", "-B", "-C", "-m"):  # a flag that takes a value: skip the value
+            next(rest, None)
+        elif not word.startswith("-"):
             return word
     return None
 
@@ -197,9 +199,10 @@ def _search_query(command: str) -> str | None:
 def _read_text(files: list[str]) -> str:
     if len(files) == 1:
         return f"Read {files[0]}"
-    dirs = list(dict.fromkeys(f.split("/", 1)[0] + "/" for f in files if "/" in f))
-    if not dirs:
+    # Folders are named only when every file is inside one of them.
+    if not all("/" in f for f in files):
         return f"Read {len(files)} files"
+    dirs = list(dict.fromkeys(f.split("/", 1)[0] + "/" for f in files))
     if len(dirs) > 3:
         dirs = [*dirs[:2], f"{len(dirs) - 2} more folders"]
     where = dirs[0] if len(dirs) == 1 else ", ".join(dirs[:-1]) + " and " + dirs[-1]

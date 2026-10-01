@@ -149,7 +149,7 @@ def test_consecutive_reads_collapse_into_one_line():
     reply = _build(_run(), [pm, eng], invs, ev.rows)
     lines = [ln for ln in reply["lines"] if ln["kind"] == "read"]
     assert [ln["text"] for ln in lines] == [
-        "Read 4 files in core/ and tests/",
+        "Read 4 files",  # README.md sits in no folder, so no folders are named
         "Read core/macd.py",
     ]
     assert lines[0]["refs"]["files"] == [
@@ -767,3 +767,13 @@ def test_the_done_time_is_the_runs_last_step_not_a_later_write():
     # No step and no event yet: the run's own last write is all there is.
     bare = _build(_run("failed", updated_at=_at(7)), [pm, eng], [])
     assert bare["lines"][-1]["text"] == "Failed after 7s · $1.12"
+
+
+def test_search_and_read_words():
+    assert activity._search_query("grep -A 3 X") == "X"
+    assert activity._search_query("grep -n -B 2 -C 1 -m 5 -i X src/") == "X"
+    assert activity._search_query("rg -e X src/") == "X"
+    assert activity._read_text(["README.md", "core/a.py"]) == "Read 2 files"
+    assert activity._read_text(["core/a.py", "core/b.py", "tests/t.py"]) == (
+        "Read 3 files in core/ and tests/"
+    )

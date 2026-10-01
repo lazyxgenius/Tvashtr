@@ -94,8 +94,8 @@ Raw log shows them.
 | kind | from | text (examples, the boards' words) | refs |
 |---|---|---|---|
 | `started` | run start / an agent's round start | "Started on lazyxgenius/trade_mcp, branch main" (run; "Started" with no target) · "Started" (round 1) · "Started round 2" · "Started round 2 with the reviewer's notes" (after a `changes_requested` verdict) | run: `{repo, branch}`; a round: `{}` |
-| `read` | consecutive reads of one step (collapsed; a re-read counts once) | "Read 6 files in core/ and tests/" · "Read core/indicators.py" · "Read 2 files" (root files only) | `{files: [...]}` (paths relative to the workspace) |
-| `searched` | terminal grep/rg/ag/find, or a search tool (Grep, Glob, …) | "Searched for INDICATORS" | `{query}` |
+| `read` | consecutive reads of one step (collapsed; a re-read counts once) | "Read 6 files in core/ and tests/" · "Read core/indicators.py" · "Read 2 files" (folders are named only when every file is inside one) | `{files: [...]}` (paths relative to the workspace) |
+| `searched` | terminal grep/rg/ag/find, or a search tool (Grep, Glob, …) | "Searched for INDICATORS" (the pattern; `-A`/`-B`/`-C`/`-m` values are skipped, `-e` names it) | `{query}` |
 | `edited` | `file_editor` create/str_replace/insert, Edit/Write/MultiEdit | "Edited core/indicators.py" | `{file, added, removed}` (a diff of old/new; `null` when the call didn't carry the text) |
 | `wrote_doc` | a document version (`doc:<document_id>:v<n>`) | "Wrote the spec (v2)" · a person's edit: "You edited the spec (v3)" (`node_id` null) | `{document_id, version, name}` |
 | `command` | terminal action (+ its observation) | "Ran python -m pytest -q" / running: "Running python -m pytest -q"; tone `warn` on a non-zero exit | `{command, running: bool, started_at, exit_code, output_tail: [last ≤12 non-empty lines]}` |
