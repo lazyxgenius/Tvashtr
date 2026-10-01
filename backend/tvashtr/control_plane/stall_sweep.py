@@ -37,6 +37,12 @@ def _cancel_workflow(run_id: str) -> None:
 
 def _close_sandboxes(run_id: str) -> None:
     sandbox_cache.close_run_sandboxes(run_id)
+    # The cache is per process. On Fly the run's own app can be deleted from anywhere: the Fly
+    # reaper deletes the app of every run that is no longer live — and this one just ended.
+    if get_settings().agent_sandbox_mode == "fly":
+        from tvashtr.control_plane import fly_reaper
+
+        fly_reaper.sweep_orphaned_fly_apps()
 
 
 def stalled_message(label: str, after_s: float) -> str:

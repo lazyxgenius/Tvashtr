@@ -2055,6 +2055,22 @@ DOMAIN_REREAD_POLL_S = 30
 DOMAIN_REREAD_WAIT_S = 600
 
 
+def _domain_round_event(run_id: str, invocation_id: int, kind: str, payload: dict) -> None:
+    live_state.record_host_event(run_id, invocation_id, kind, payload)
+    if kind == "backup_model":
+        record_resolution_warning(
+            run_id,
+            "fallback_model",
+            str(payload.get("to_model")),
+            f"primary {payload.get('from_model')!r} "
+            + (
+                "stayed busy after its retries — switched to the backup model"
+                if payload.get("reason") == "busy"
+                else "failed — switched to the backup model"
+            ),
+        )
+
+
 @DBOS.step()
 def domain_query_step_v2(
     run_id: str, node_id: str, iteration: int, invocation_id: int, domain_id: str, question: str
@@ -2086,10 +2102,12 @@ def domain_query_step_v2(
             question,
             persist=False,
             mark_not_found=True,
-            # M1 stall guard: the model call's retries and backup switch, on this round.
-            on_event=lambda kind, payload: live_state.record_host_event(
+            # M1 stall guard: the model call's retries and backup switch, on this round; the
+            # switch is also a RunWarning (R2), to the account's backup for a thinker seat.
+            on_event=lambda kind, payload: _domain_round_event(
                 run_id, invocation_id, kind, payload
             ),
+            backup_capability="thinker",
         )
     except DomainAskError as exc:
         if exc.code == "paused":

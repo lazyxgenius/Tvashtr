@@ -271,3 +271,20 @@ def test_ask_domain_passes_the_run_event_hook_to_the_gateway(monkeypatch):
 
     ask_domain(owner_id, did, "How long do refunds take?", on_event=hook)
     assert seen[0].on_event is hook
+
+
+def test_a_domain_round_gets_the_account_backup_for_its_seat(monkeypatch):
+    """M1 (R2): ``backup_capability`` gives the call the account's backup model — on another
+    provider the owner holds a key for — with that provider's key."""
+    from tvashtr.control_plane import domain_ask as mod
+
+    monkeypatch.setattr(mod, "held_provider_slugs", lambda oid: {"openai", "gemini"})
+    monkeypatch.setattr(mod, "resolve_owner_api_key", lambda oid, model: f"key-for-{model}")
+    monkeypatch.setattr(mod, "account_fallback_model", lambda held, cap: "gemini/gemini-2.5-flash")
+    assert mod._account_backup(uuid.uuid4(), "thinker", "openai/gpt-4o-mini") == {
+        "fallback_model": "gemini/gemini-2.5-flash",
+        "fallback_api_key": "key-for-gemini/gemini-2.5-flash",
+    }
+    # Same provider as the primary: not a backup. No capability: none asked for.
+    assert mod._account_backup(uuid.uuid4(), "thinker", "gemini/gemini-2.0") == {}
+    assert mod._account_backup(uuid.uuid4(), None, "openai/gpt-4o-mini") == {}

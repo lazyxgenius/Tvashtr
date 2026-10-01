@@ -342,7 +342,7 @@ def test_a_covered_answer_goes_into_the_spec_the_next_agents_read(client, monkey
         (
             domain_id,
             "What do our support docs say about a self-serve refund button?",
-            {"persist": False, "mark_not_found": True},
+            {"persist": False, "mark_not_found": True, "backup_capability": "thinker"},
         )
     ]
     with session_scope() as s:

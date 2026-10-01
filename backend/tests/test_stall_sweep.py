@@ -195,3 +195,31 @@ def test_the_sweep_leaves_a_step_that_spoke_meanwhile(client, released):
     assert stall_sweep._end(run_id, inv_id, node_row, 1300, 1200, NOW) is False
     with session_scope() as s:
         assert s.get(Run, uuid.UUID(run_id)).status == "running"
+
+
+def test_releasing_a_fly_run_reaps_its_app(monkeypatch):
+    """Review finding 3: the sandbox cache is per process; on Fly the sweep also runs the Fly
+    reaper, which deletes the app of every run that is no longer live (this one just ended)."""
+    from tvashtr.control_plane import fly_reaper
+
+    closed, reaped = [], []
+    monkeypatch.setattr(stall_sweep.sandbox_cache, "close_run_sandboxes", closed.append)
+    monkeypatch.setattr(fly_reaper, "sweep_orphaned_fly_apps", lambda: reaped.append(True) or 1)
+    monkeypatch.setattr(
+        stall_sweep, "get_settings", lambda: type("S", (), {"agent_sandbox_mode": "fly"})()
+    )
+    stall_sweep._close_sandboxes("r1")
+    assert closed == ["r1"] and reaped == [True]
+
+
+def test_releasing_a_local_run_does_not_touch_fly(monkeypatch):
+    from tvashtr.control_plane import fly_reaper
+
+    reaped = []
+    monkeypatch.setattr(stall_sweep.sandbox_cache, "close_run_sandboxes", lambda r: None)
+    monkeypatch.setattr(fly_reaper, "sweep_orphaned_fly_apps", lambda: reaped.append(True))
+    monkeypatch.setattr(
+        stall_sweep, "get_settings", lambda: type("S", (), {"agent_sandbox_mode": "local"})()
+    )
+    stall_sweep._close_sandboxes("r1")
+    assert reaped == []

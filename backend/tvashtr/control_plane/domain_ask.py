@@ -29,7 +29,7 @@ from tvashtr.control_plane.domain_retrieve import (
 )
 from tvashtr.control_plane.domain_views import answer_model_label
 from tvashtr.control_plane.domains import _owned_domain, model_rereading
-from tvashtr.control_plane.teams import account_default_model
+from tvashtr.control_plane.teams import account_default_model, account_fallback_model
 from tvashtr.db import session_scope
 from tvashtr.gateway import (
     CompletionRequest,
@@ -300,6 +300,26 @@ def _check_not_paused(domain_id: uuid.UUID, domain) -> None:
         raise DomainAskError("paused", f"Ask is paused while {domain.name} re-reads its files.")
 
 
+def _account_backup(owner_id: uuid.UUID, capability: str | None, primary: str) -> dict:
+    """``{fallback_model, fallback_api_key}`` for the account's backup model of ``capability``
+    (M1, R2), or ``{}``: only on another provider the owner holds a key for. Never raises."""
+    if not capability:
+        return {}
+    try:
+        held = held_provider_slugs(owner_id)
+        backup = account_fallback_model(held, capability)
+        if not backup or provider_for_model(backup) in (provider_for_model(primary), None):
+            return {}
+        if provider_for_model(backup) not in held:
+            return {}
+        return {
+            "fallback_model": backup,
+            "fallback_api_key": resolve_owner_api_key(owner_id, backup),
+        }
+    except Exception:  # noqa: BLE001 — no backup is never worse than a failed ask
+        return {}
+
+
 def ask_domain(
     owner_id: uuid.UUID,
     domain_id: uuid.UUID,
@@ -309,6 +329,8 @@ def ask_domain(
     persist: bool = False,
     mark_not_found: bool = False,
     on_event=None,
+    retries: int | None = None,
+    backup_capability: str | None = None,
 ) -> dict:
     """Sync cited ask. Raises DomainAskError for mapped HTTP statuses.
 
@@ -317,7 +339,10 @@ def ask_domain(
     chat endpoint does; Query domain nodes and agent tools stay out of it (finding 8, OQ-13).
     ``mark_not_found``: the NOT_FOUND rule (OQ-22). The answer carries the Ask tab's keys
     (``answer_fields``) next to the original ones. ``on_event`` (M1 stall guard) hears the model
-    call's retries and backup switch — a Query domain node writes them as run events."""
+    call's retries and backup switch — a Query domain node writes them as run events. ``retries``
+    is the gateway's per-request retry count (``None`` ⇒ the configured 3; interactive callers
+    pass 0). ``backup_capability`` (a Query domain node's run step: ``"thinker"``) gives the call
+    the account's backup model for that capability (R2), when the owner holds a key for it."""
     q = (question or "").strip()
     if not q:
         raise DomainAskError("bad_request", "question must be non-empty")
@@ -411,7 +436,12 @@ def ask_domain(
     try:
         completion = complete(
             CompletionRequest(
-                model=gen_model, messages=messages, api_key=chat_key, on_event=on_event
+                model=gen_model,
+                messages=messages,
+                api_key=chat_key,
+                on_event=on_event,
+                retries=retries,
+                **_account_backup(owner_id, backup_capability, gen_model),
             )
         )
     except GatewayError as e:

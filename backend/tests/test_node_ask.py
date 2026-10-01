@@ -129,6 +129,7 @@ def test_node_ask_system_message_carries_the_node_trail(client, monkeypatch):
         captured["messages"] = list(request.messages)
         captured["model"] = request.model
         captured["api_key"] = request.api_key
+        captured["retries"] = request.retries
         return _canned_result()
 
     monkeypatch.setattr(routers, "complete", _capture)
@@ -155,6 +156,8 @@ def test_node_ask_system_message_carries_the_node_trail(client, monkeypatch):
     # Called with the node's own model + the run-owner's resolved (dummy) BYOK key.
     assert captured["model"] == node_model
     assert captured["api_key"] == "dummy-offline-test-key-0000"
+    # M1 review finding 7: a person is waiting — one try (then the backup), no 70 s of retries.
+    assert captured["retries"] == 0
 
 
 def test_node_ask_is_owner_scoped(client, monkeypatch):

@@ -41,6 +41,10 @@ class CompletionRequest:
     # (``"backup_model"``) as ``on_event(kind, payload)`` — the caller writes them as run events.
     # ``None`` ⇒ silent. A hook that raises never breaks the call.
     on_event: Callable[[str, dict], None] | None = None
+    # M1: how many times the PRIMARY is retried on a busy error; ``None`` ⇒ the configured
+    # ``model_retries`` (3). Interactive callers (node Ask, the domain chat, an agent's domain tool)
+    # pass 0 so a person — or an agent's tool call — gets its answer or its error at once.
+    retries: int | None = None
 
 
 @dataclass(frozen=True)

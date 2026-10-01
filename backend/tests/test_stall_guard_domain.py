@@ -9,7 +9,7 @@ from tvashtr.control_plane import domain_ask as domain_ask_mod
 from tvashtr.control_plane import team_run
 from tvashtr.control_plane.teams import build_two_node_team
 from tvashtr.db import session_scope
-from tvashtr.models import AgentInvocation, AgentNode, Run, RunEvent
+from tvashtr.models import AgentInvocation, AgentNode, Run, RunEvent, RunWarning
 
 
 def test_the_domain_round_records_the_gateway_retry_events(client, monkeypatch):
@@ -38,8 +38,12 @@ def test_the_domain_round_records_the_gateway_retry_events(client, monkeypatch):
         s.flush()
         inv_id = inv.id
 
+    asked: dict = {}
+
     def fake_ask(*args, on_event=None, **kwargs):
+        asked.update(kwargs)
         on_event("retry", {"attempt": 1, "of": 3, "wait_s": 10.0, "reason": "busy"})
+        on_event("backup_model", {"from_model": "a/x", "to_model": "b/y", "reason": "busy"})
         return {"answer": "x", "answer_text": "x", "covered": True, "sources": [], "usage": {}}
 
     monkeypatch.setattr(domain_ask_mod, "ask_domain", fake_ask)
@@ -49,4 +53,13 @@ def test_the_domain_round_records_the_gateway_retry_events(client, monkeypatch):
         kinds = (
             s.execute(select(RunEvent.kind).where(RunEvent.invocation_id == inv_id)).scalars().all()
         )
-    assert kinds == ["retry"]
+    assert kinds == ["retry", "backup_model"]
+    # R2: the round gets the account's backup for a thinker seat, and the switch is a RunWarning.
+    assert asked["backup_capability"] == "thinker"
+    with session_scope() as s:
+        warnings = s.execute(
+            select(RunWarning.name, RunWarning.reason).where(RunWarning.run_id == uuid.UUID(run_id))
+        ).all()
+    assert warnings == [
+        ("b/y", "primary 'a/x' stayed busy after its retries — switched to the backup model")
+    ]

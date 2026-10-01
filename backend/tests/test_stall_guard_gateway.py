@@ -237,3 +237,38 @@ def test_a_failing_event_hook_never_breaks_the_call(monkeypatch, waits):
         )
     )
     assert result.text == "ok"
+
+
+def test_a_hung_embedding_is_cut_at_the_time_limit(monkeypatch):
+    """Review finding 6: R1 says EVERY model call has a time limit — embeddings too."""
+    from tvashtr.gateway import EmbeddingRequest, embed
+
+    monkeypatch.setattr(
+        gw,
+        "get_settings",
+        lambda: SimpleNamespace(agent_request_timeout_s=0.2),
+    )
+    release = threading.Event()
+    monkeypatch.setattr(gw.litellm, "embedding", lambda **kw: release.wait(30))
+    started = time.monotonic()
+    try:
+        with pytest.raises(GatewayError, match="didn't answer within"):
+            embed(EmbeddingRequest(model="openai/text-embedding-3-small", input=["x"]))
+    finally:
+        release.set()
+    assert time.monotonic() - started < 5
+
+
+def test_a_request_can_ask_for_fewer_retries(monkeypatch, waits):
+    """Review finding 7: an interactive caller (node Ask, the domain chat, an agent's domain tool)
+    answers fast — ``retries=0`` means one try, then the backup, then the error."""
+    calls: list[str] = []
+
+    def busy(*, model, messages, **kwargs):
+        calls.append(model)
+        raise _RateLimited("429")
+
+    monkeypatch.setattr(gw.litellm, "completion", busy)
+    with pytest.raises(GatewayError):
+        complete(_request([], retries=0))
+    assert calls == ["primary/m"] and waits == []

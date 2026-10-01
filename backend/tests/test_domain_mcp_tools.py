@@ -73,7 +73,10 @@ def test_ask_tool_surfaces_byok():
     exc = DomainAskError(
         "missing_providers",
         {
-            "message": "you have no API key for: openai — needed to embed the question and generate an answer.",
+            "message": (
+                "you have no API key for: openai — needed to embed the question and generate an "
+                "answer."
+            ),
             "missing_providers": ["openai"],
         },
     )
@@ -107,3 +110,12 @@ def test_fastmcp_registers_locked_tool_names():
     registered = set(mcp._tool_manager._tools)
     assert "domain_ask" in registered
     assert "domain_retrieve" in registered
+
+
+def test_an_agents_domain_question_is_tried_once():
+    """M1 review finding 7: an agent's tool call gives up long before the run path's retry
+    envelope would; the tool's model call is tried once (then its backup)."""
+    fake = {"answer": "x", "citations": [], "latency_ms": 1, "model": "m", "message_id": None}
+    with patch("tvashtr.control_plane.domain_mcp.ask_domain", return_value=fake) as asked:
+        run_domain_ask_tool(uuid.uuid4(), str(uuid.uuid4()), "Q?")
+    assert asked.call_args.kwargs["retries"] == 0

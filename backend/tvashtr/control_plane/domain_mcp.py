@@ -80,7 +80,8 @@ def run_domain_ask_tool(owner_id: uuid.UUID, domain_id: str, question: str) -> s
     try:
         did = parse_domain_uuid(domain_id)
         # Agent asks stay out of the user's chat (finding 8).
-        result = ask_domain(owner_id, did, question, persist=False)
+        # M1: an agent's tool call gives up long before the run path's retries would end.
+        result = ask_domain(owner_id, did, question, persist=False, retries=0)
     except DomainAskError as exc:
         raise DomainMcpToolError(format_domain_ask_error(exc)) from exc
     return _json_ok(

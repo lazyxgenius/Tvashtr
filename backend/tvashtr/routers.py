@@ -1802,6 +1802,7 @@ def ask_node(
                 fallback_model=fallback_model,
                 fallback_api_key=fallback_api_key,
                 multimodal=multimodal,
+                retries=0,  # M1: a person is waiting — one try, then the backup
             )
         )
     except GatewayError as exc:
@@ -3002,6 +3003,7 @@ def post_domain_ask(
             use_history=body.use_history,
             persist=True,
             mark_not_found=True,
+            retries=0,  # M1: a person is waiting — one try, then the backup
         )
     except DomainAskError as e:
         if e.code == "not_found":

@@ -79,6 +79,7 @@ class _Gateway:
         self.answers = answers
         self.embedded: list[list[str]] = []
         self.prompts: list[list[dict]] = []
+        self.requests: list = []
         monkeypatch.setattr(domain_ask, "held_provider_slugs", lambda oid: {"openai"})
         monkeypatch.setattr(domain_ask, "resolve_owner_api_key", lambda oid, model: "sk-test")
         monkeypatch.setattr(domain_ask, "embed", self.embed)
@@ -97,6 +98,7 @@ class _Gateway:
         )
 
     def complete(self, req):
+        self.requests.append(req)
         self.prompts.append(list(req.messages))
         return CompletionResult(
             text=self.answers.pop(0),
@@ -326,7 +328,7 @@ def test_mcp_ask_tool_does_not_write_the_chat(monkeypatch):
 
     monkeypatch.setattr(domain_mcp, "ask_domain", fake)
     domain_mcp.run_domain_ask_tool(uuid.uuid4(), str(uuid.uuid4()), "q")
-    assert seen == {"persist": False}
+    assert seen == {"persist": False, "retries": 0}
 
 
 # ---- Clear chat ----
@@ -366,3 +368,14 @@ def test_answer_model_labels():
     assert answer_model_label("groq/openai/gpt-oss-120b") == "Groq gpt-oss-120b"
     assert answer_model_label("anthropic/claude-x") == "anthropic claude-x"
     assert answer_model_label(None) is None
+
+
+def test_the_chat_answers_without_the_long_retry_envelope(monkeypatch):
+    """M1 review finding 7: a person is waiting — the chat's model call is tried once (then its
+    backup), never the run path's 3 retries with up to 70 s of backoff."""
+    c, _owner, did = _fresh()
+    _seed(did)
+    gw = _Gateway(monkeypatch, ["Within 30 days [1]."])
+    monkeypatch.setattr(domain_ask, "retrieve_for_query", _rank(did))
+    assert c.post(f"/api/domains/{did}/ask", json={"question": "Refunds?"}).status_code == 200
+    assert gw.requests[0].retries == 0

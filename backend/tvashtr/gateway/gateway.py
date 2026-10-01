@@ -149,26 +149,26 @@ def _transient_reason(exc: Exception) -> str | None:
     return _TRANSIENT_TYPES.get(type(exc).__name__.lower())
 
 
-def _call_with_limit(kwargs: dict, limit: float | None) -> object:
-    """``litellm.completion(**kwargs)``, cut at ``limit`` seconds (R1: every model call has one).
+def _call_with_limit(kwargs: dict, limit: float | None, call: str = "completion") -> object:
+    """``litellm.<call>(**kwargs)``, cut at ``limit`` seconds (R1: every model call has one).
 
     The limit rides on the provider call too (``timeout=``), but a provider that accepts the
     connection and then trickles nothing can outlive an HTTP read timeout, so the host also stops
     waiting at the limit. The abandoned call runs out on a daemon thread (never blocks shutdown).
     ``limit=None`` (a settings stand-in without one) calls straight through, as before M1."""
     if limit is None:
-        return litellm.completion(**kwargs)
+        return getattr(litellm, call)(**kwargs)
     kwargs["timeout"] = limit
     box: dict = {}
     context = contextvars.copy_context()
 
-    def call() -> None:
+    def run() -> None:
         try:
-            box["response"] = context.run(lambda: litellm.completion(**kwargs))
+            box["response"] = context.run(lambda: getattr(litellm, call)(**kwargs))
         except BaseException as exc:  # noqa: BLE001 — handed back to the caller's thread
             box["error"] = exc
 
-    worker = threading.Thread(target=call, daemon=True, name="gateway-call")
+    worker = threading.Thread(target=run, daemon=True, name="gateway-call")
     worker.start()
     worker.join(limit)
     if worker.is_alive():
@@ -222,7 +222,9 @@ def complete(request: CompletionRequest) -> CompletionResult:
     """
     settings = get_settings()
     limit = getattr(settings, "agent_request_timeout_s", None)
-    retries = getattr(settings, "model_retries", 0)
+    retries = (
+        request.retries if request.retries is not None else getattr(settings, "model_retries", 0)
+    )
     backoff = getattr(settings, "model_retry_backoff_s", 0.0)
     last_error: Exception | None = None
     # Apply the configured per-call output ceiling when the caller didn't set one
@@ -417,7 +419,10 @@ def embed(request: EmbeddingRequest) -> EmbeddingResult:
 
     started = time.perf_counter()
     try:
-        response = litellm.embedding(**kwargs)
+        # R1: an embedding is a model call too — cut at the same per-call limit.
+        response = _call_with_limit(
+            kwargs, getattr(get_settings(), "agent_request_timeout_s", None), "embedding"
+        )
     except Exception as exc:  # noqa: BLE001 — surface any provider error as a GatewayError
         if request.model.startswith("huggingface/"):
             if _is_rate_limit(exc):
