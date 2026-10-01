@@ -74,11 +74,13 @@ from tvashtr.engines.openhands_adapter import (
     _MAX_ITERATIONS,
     _is_budget_error,
     _is_provider_error,
+    _is_transient_error,
     _kind_of,
     _payload_of,
     _read_usage,
     _text_has_budget_signature,
     _text_has_provider_signature,
+    _text_has_transient_signature,
 )
 
 # The host<->workspace sync helpers, REUSED from the docker adapter unchanged (they are pure
@@ -491,6 +493,7 @@ class OpenHandsFlyAdapter:
         status = "completed"
         error: str | None = None
         provider_failure = False
+        retries_exhausted = False
         prompt_tokens = 0
         completion_tokens = 0
         cost_usd = 0.0
@@ -623,6 +626,15 @@ class OpenHandsFlyAdapter:
                 _is_provider_error(exc)
                 or any(_text_has_provider_signature(t) for t in error_event_texts)
             )
+            # M1 (R2): a busy provider whose retries ran out — read off the same dual surface.
+            retries_exhausted = (
+                not budget_hit
+                and not provider_failure
+                and (
+                    _is_transient_error(exc)
+                    or any(_text_has_transient_signature(t) for t in error_event_texts)
+                )
+            )
             error = str(exc)
             # M-fail METER-ON-FAILURE: meter partial usage for ANY non-completed status, not only
             # the budget cutoff. A run that failed mid-loop still spent money (run 6fd2c911). Same
@@ -682,4 +694,5 @@ class OpenHandsFlyAdapter:
             total_tokens=total_tokens,
             cost_usd=cost_usd,
             provider_failure=provider_failure,
+            retries_exhausted=retries_exhausted,
         )
