@@ -31,7 +31,7 @@ every line.
       "node_id": "…", "origin_node_id": "…", "label": "Engineer", "kind": "agent",
       "iteration": 2, "rounds_limit": 3,          // rounds_limit: the loop limit on its back-edge, else null
       "live_state": "running_command",            // waiting|working|running_command|needs_you|retrying|quiet|stalled|failed|done|stopped
-      "activity": "Running the tests · tests/test_indicators.py",  // see "Agent activity" below
+      "activity": "Running a command: python -m pytest -q",  // see "Agent activity" below
       "last_event_at": "…", "activity_started_at": "…",
       "retry": {"attempt": 2, "of": 3, "next_at": "…"} | null,
       "backup_model": "openai/gpt-4.1-mini" | null,
