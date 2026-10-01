@@ -13,11 +13,18 @@ import { NotifyAsk } from "./NotifyAsk";
 import "./notify.css";
 
 const ALL_ON = { notify_needs_you: true, notify_stalls_fails: true, notify_finishes: true };
+const ALL_OFF: NotifyPrefs = {
+  notify_asked: true,
+  notify_needs_you: false,
+  notify_stalls_fails: false,
+  notify_finishes: false,
+};
 
 /**
  * The run bar's bell (ruling R10, Prob-NotifyAsk): opens the ask dialog, and opens it on its own
- * once a session while the account hasn't answered. Turn on asks the OS and saves the choices;
- * Not now saves the answer with every choice off. lib/runNotifier does the notifying.
+ * once a session while the account hasn't answered. Turn on asks the OS and saves the choices
+ * (every choice off when the OS blocks or the prompt is dismissed); Not now saves the answer with
+ * every choice off. lib/runNotifier does the notifying.
  */
 export function NotifyBell() {
   const [open, setOpen] = useState(false);
@@ -63,17 +70,14 @@ export function NotifyBell() {
       <NotifyAsk
         initial={prefs ?? ALL_ON}
         onTurnOn={(choices) => {
-          void askNotificationPermission(); // inside the click, so the browser shows its prompt
-          answer({ ...choices, notify_asked: true });
+          setOpen(false);
+          // Inside the click, so the browser shows its prompt. Blocked or dismissed: nothing
+          // can be shown, so the answer is saved with every choice off.
+          void askNotificationPermission().then((permission) =>
+            answer(permission === "granted" ? { ...choices, notify_asked: true } : ALL_OFF),
+          );
         }}
-        onNotNow={() =>
-          answer({
-            notify_asked: true,
-            notify_needs_you: false,
-            notify_stalls_fails: false,
-            notify_finishes: false,
-          })
-        }
+        onNotNow={() => answer(ALL_OFF)}
       />
     </Popover>
   );

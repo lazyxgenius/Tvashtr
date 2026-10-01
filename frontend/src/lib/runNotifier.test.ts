@@ -183,4 +183,54 @@ describe("useRunNotifier", () => {
     expect(window.location.hash).toBe("#/teams/t-ind/runs/r-rsi");
     expect(n.close).toHaveBeenCalled();
   });
+
+  it("an approval without a team opens its run through the run's library team", async () => {
+    serve();
+    renderHook(() => useRunNotifier());
+    await settle();
+    inbox = [{ ...APPROVAL, team: null, run: { ...APPROVAL.run, library_team_id: "t-ind" } }];
+    await nextPoll();
+    FakeNotification.sent[0].onclick?.();
+    expect(window.location.hash).toBe("#/teams/t-ind/runs/r-rsi");
+  });
+
+  it("a notification the OS refuses is tried once, not on every poll", async () => {
+    let tries = 0;
+    vi.stubGlobal(
+      "Notification",
+      class {
+        static permission = "granted";
+        constructor() {
+          tries += 1;
+          throw new TypeError("Illegal constructor");
+        }
+      },
+    );
+    serve();
+    renderHook(() => useRunNotifier());
+    await settle();
+    inbox = [APPROVAL];
+    await nextPoll();
+    await nextPoll();
+    await nextPoll();
+    expect(tries).toBe(1);
+  });
+
+  it("a run already notified as stalled isn't notified again when it then fails", async () => {
+    serve();
+    renderHook(() => useRunNotifier());
+    await settle();
+    inbox = [stalledInboxItem(310)];
+    await nextPoll();
+    inbox = [
+      {
+        ...FAILED,
+        key: "run_failed:r-stall",
+        run: { ...FAILED.run, id: "r-stall" },
+      },
+    ];
+    await nextPoll();
+    await nextPoll();
+    expect(titles()).toEqual(["Bugfix squad stalled"]);
+  });
 });

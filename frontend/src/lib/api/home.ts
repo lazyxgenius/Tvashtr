@@ -20,6 +20,7 @@ interface InboxRunRef {
   status: string;
   spent_usd?: number;
   budget_cap_usd?: number | null;
+  library_team_id?: string | null;
 }
 
 export interface InboxApproval {
