@@ -30,9 +30,9 @@ import {
   useToast,
 } from "../../design-system/components";
 import { ApproveSheet } from "./ApproveSheet";
+import { retryPrefill } from "./composerTarget";
 import { useHome } from "./homeContext";
 import {
-  type ComposerTarget,
   getHomeData,
   markRunEnded,
   refreshHome,
@@ -69,17 +69,6 @@ function inAnHour(): string {
 
 function openRun(teamId: string | null | undefined, runId: string) {
   if (teamId) navigate({ page: "team", teamId, runId });
-}
-
-function composerTargetOf(run: InboxRunFailed["run"]): ComposerTarget | null {
-  const t = run.target;
-  if (t?.kind === "github" && t.label) return { kind: "github", repo: t.label };
-  if (t?.kind === "desktop_folder" && t.label)
-    return { kind: "folder", path: t.label, label: t.label };
-  if (t?.kind === "local" && t.label) return { kind: "local", path: t.label };
-  if (t?.kind === "none") return { kind: "none" };
-  if (run.github_repo) return { kind: "github", repo: run.github_repo };
-  return null;
 }
 
 function Row({
@@ -167,18 +156,10 @@ export function NeedsYou() {
   const remindInHour = (item: InboxItem) =>
     void hide(item, "snooze", inAnHour(), "We’ll remind you in an hour.");
 
-  const retry = (item: InboxRunFailed) => {
-    const run = item.run;
-    requestComposerPrefill({
-      teamId: item.team?.id ?? run.library_team_id ?? null,
-      idea: run.idea,
-      target: composerTargetOf(run),
-      baseRef: run.target?.base_ref ?? run.base_ref ?? null,
-      subpath: run.target?.subpath ?? run.subpath ?? null,
-      budget: run.budget_cap_usd ?? null,
-      retryOfRunId: run.id,
-    });
-  };
+  const retry = (item: InboxRunFailed) =>
+    requestComposerPrefill(
+      retryPrefill(item.run, item.team?.id ?? item.run.library_team_id ?? null),
+    );
 
   const fixKeys = (teamName: string, providers: string[], key: string) =>
     requestAddKeys({

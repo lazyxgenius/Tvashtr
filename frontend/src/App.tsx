@@ -65,6 +65,7 @@ import { patchAgentNode } from "./lib/api/nodes";
 import type { EdgeConfirm } from "./canvas/EdgeRoleEditor";
 import { nextDropPosition, withLayout } from "./lib/topology";
 import { requestHomeAction } from "./lib/homeActions";
+import { retryPrefill } from "./pages/home/composerTarget";
 import { isRunTerminal } from "./lib/status";
 
 // P1.8d-fix1: a STABLE empty task list for the authoring view. A fresh `[]` literal at the call site
@@ -814,19 +815,11 @@ export default function App({
     },
     onStop: () => void handleCancel(),
     onRetryFromStart: () => {
-      if (!run) return;
-      requestHomeAction({
-        kind: "retry",
-        prefill: {
-          teamId: run.library_team_id ?? currentTeamId,
-          idea: run.idea,
-          target: run.github_repo ? { kind: "github", repo: run.github_repo } : null,
-          baseRef: run.base_ref ?? null,
-          subpath: run.subpath ?? null,
-          budget: run.budget_cap_usd ?? null,
-          retryOfRunId: run.id,
-        },
-      });
+      if (run)
+        requestHomeAction({
+          kind: "retry",
+          prefill: retryPrefill(run, run.library_team_id ?? currentTeamId),
+        });
     },
   };
 
