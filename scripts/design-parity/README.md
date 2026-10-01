@@ -22,6 +22,10 @@ eye but shipped larger text and buttons; this harness turns that into a measured
 #    runtime saved beside the artboards as support.js.
 DESIGN_DIR=/path/to/export/project node scripts/design-parity/shoot-design.mjs /tmp/parity/design Home-Main
 
+#    A composite board (a grid of <figure> frames, e.g. the Connectors boards) is split first, one
+#    artboard per frame (<Board>-1, -2, …), into a scratch DESIGN_DIR (copy support.js, tokens, ds/ there):
+python3 scripts/design-parity/split-composite.py /path/to/export/project /tmp/parity/split Cn-Screens
+
 # 2. The app (no backend needed):
 (cd frontend && npx vite --port 5199) &
 node scripts/design-parity/shoot-app.mjs /tmp/parity/app scripts/design-parity/scenarios/home.mjs home-web
