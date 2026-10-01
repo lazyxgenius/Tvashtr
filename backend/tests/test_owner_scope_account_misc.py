@@ -199,9 +199,10 @@ def test_documents_list_is_owner_scoped(a, b):
 # ------------------------------------------------------------------------------ spike workflow
 
 
-def test_spike_generate_doc_status_is_owner_scoped_run_workflow(a, b):
+def test_spike_generate_doc_status_is_owner_scoped_run_workflow(a, b, monkeypatch):
     """``GET /api/spike/generate-doc/{workflow_id}`` with A's RUN workflow id (a run's workflow_id
     is its run id) returns that workflow's cost rows to whoever asks."""
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # local posture (hosted: 404)
     (ca, a_id), (cb, _) = a, b
     run_wf = _owned_run(a_id)
     secret_key, secret_model = f"{run_wf}:{_marker('a-cost')}", _marker("a-model")
@@ -228,6 +229,7 @@ def test_spike_generate_doc_status_is_owner_scoped_run_workflow(a, b):
 
 def test_spike_generate_doc_status_is_owner_scoped_started_workflow(a, b, monkeypatch):
     """A starts a generate-doc workflow (``POST``); B reads it back with A's workflow id."""
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # local posture (hosted: 404)
     (ca, _), (cb, _) = a, b
     model = _marker("a-doc-model")
     monkeypatch.setattr(

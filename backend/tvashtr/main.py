@@ -16,7 +16,7 @@ from typing import Annotated
 
 from dbos import DBOS, DBOSConfig, SetWorkflowID
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -122,6 +122,29 @@ _dbos_config: DBOSConfig = {
     "run_admin_server": settings.run_dbos_admin_server,
 }
 DBOS(fastapi=app, config=_dbos_config)
+
+_SPIKE_PROOF_ROUTES = ("/api/spike/hello-durable", "/api/spike/generate-doc")
+
+
+class _SpikeProofOffWhenHosted:
+    """S1 ship (ruling 3): the spike proof routes don't exist in hosted mode. ``generate-doc``
+    starts a model call on the server's default model with no owner and no limit, so in hosted mode
+    the four answer 404 for everyone, before any sign-in check, like a route that isn't served.
+    Local (self-hosted) mode is unchanged; ``/api/spike/run-events/{run_id}`` is not a proof route.
+    """
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "") if scope["type"] == "http" else ""
+        if path.startswith(_SPIKE_PROOF_ROUTES) and get_settings().hosted_mode:
+            await JSONResponse({"detail": "Not found"}, status_code=404)(scope, receive, send)
+            return
+        await self.inner(scope, receive, send)
+
+
+app.add_middleware(_SpikeProofOffWhenHosted)
 
 # M-accounts Slice A: auth endpoints (register/login/logout/me) — NO login dependency (these are
 # how you obtain a session). Everything else under /api requires a logged-in user.

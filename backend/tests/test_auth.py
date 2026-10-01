@@ -14,6 +14,7 @@ from tvashtr.auth import (
     read_session_cookie,
     verify_password,
 )
+from tvashtr.config import get_settings
 
 
 def _uuid_email() -> str:
@@ -180,7 +181,8 @@ def test_health_stays_open(unauth_client):
     assert unauth_client.get("/health").status_code == 200
 
 
-def test_spike_endpoints_require_a_session(unauth_client):
+def test_spike_endpoints_require_a_session(unauth_client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # local posture (hosted: 404)
     assert unauth_client.get("/api/spike/hello-durable/nope").status_code == 401
     assert unauth_client.post("/api/spike/hello-durable").status_code == 401
 

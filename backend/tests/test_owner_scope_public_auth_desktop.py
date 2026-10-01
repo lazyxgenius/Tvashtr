@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from toolkit_helpers import fresh_account
 
 from tvashtr import db
+from tvashtr.config import get_settings
 from tvashtr.control_plane import desktop_jobs
 from tvashtr.control_plane.hello_durable import hello_durable
 from tvashtr.control_plane.teams import build_two_node_team
@@ -203,12 +204,13 @@ def test_ship_bundle_is_a_404_for_another_account():
 # ------------------------------------------------------------------ spike hello-durable (id)
 
 
-def test_hello_durable_status_is_a_404_for_another_account():
+def test_hello_durable_status_is_a_404_for_another_account(monkeypatch):
     """The id is A's RUN id: a run's DBOS workflow id IS its run id (``POST /api/runs`` starts
     ``run_team`` under ``SetWorkflowID(run_id)``). ``hello_durable`` stands in for ``run_team``
     under that id; the handler only looks the id up in DBOS, so the workflow function is irrelevant.
     (A workflow started on ``POST /api/spike/hello-durable`` carries its owner in its id since S1.)
     """
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # local posture (hosted: 404)
     a, a_id = fresh_account()
     b, _ = fresh_account()
     run_id = _run_for(a_id)

@@ -10,6 +10,7 @@ import uuid
 from conftest import auth_user_id
 from dbos import DBOS, SetWorkflowID
 
+from tvashtr.config import get_settings
 from tvashtr.control_plane import doc_writer
 from tvashtr.documents.service import get_document_with_versions
 from tvashtr.gateway import CompletionResult
@@ -33,6 +34,7 @@ def _canned_result() -> CompletionResult:
 
 
 def test_generate_doc_end_to_end(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # local posture (hosted: 404)
     # Patch the gateway call the workflow's llm_step resolves at call time.
     monkeypatch.setattr(doc_writer, "complete", lambda request: _canned_result())
 
@@ -73,7 +75,8 @@ def test_generate_doc_end_to_end(client, monkeypatch):
     assert filtered == []
 
 
-def test_generate_doc_status_unknown_workflow(client):
+def test_generate_doc_status_unknown_workflow(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "hosted_mode", False)  # local posture (hosted: 404)
     resp = client.get("/api/spike/generate-doc/does-not-exist")
     assert resp.status_code == 200
     assert resp.json()["status"] == "NOT_FOUND"
