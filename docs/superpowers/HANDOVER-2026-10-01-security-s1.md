@@ -128,13 +128,13 @@ Two fixes:
 - Real provider sign-ins (Notion, Linear, …) were not exercised; the tests use the fake OAuth server.
 
 ## Unfinished or blocked
-- **6. Ship: not done (blocked).** Two Ship Protocol step 1 gates are red:
+- **6. Ship: not done (blocked).** One Ship Protocol step 1 gate is red, the Connectors boards (every other gate passed on the final head; see "Final gate runs"):
   - **Connectors boards at 0 drift: NOT MET**, 0 size/type drift on only 16 of 86 renders. Four differences are real and need a Claude Design ruling before any screen change, which is an operator action:
     - The leading-icon gap: +8px on 52 renders. The canvas Button wraps the icon and label in one span, so the frames draw the icon flush.
     - The agent drawer's access select: 44px at 16px in the design, which clips its own label to "Read onl".
     - The Give agents access dialog's Team label: 13px vs 14px.
     - The row menu's width: 230 vs 218.
-  - **`make demo-proof` attempt 1 failed.**
+  - For the record, **`make demo-proof` attempt 1 failed**, from the environment:
     - C1–C10 passed. Run `1ec0f881`'s `ship_step` then hit `git add -A` exit 1, because the run's workspace had been emptied by another process's startup reaper (see Risks), not by this branch's code.
     - The PR was not reached. The team `demo-proof-2026-10-01T06-50-49-269Z` is kept in the local dev database for diagnosis, and the run is marked cancelled there.
     - Attempt 2, with nothing else running: **C1–C12 PASSED**, PR https://github.com/lazyxgenius/trade_mcp/pull/30 (run `554ecb56`, workflow SUCCESS). It also deleted attempt 1's kept team.
