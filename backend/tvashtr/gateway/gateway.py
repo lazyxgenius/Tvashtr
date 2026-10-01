@@ -241,6 +241,7 @@ def complete(request: CompletionRequest) -> CompletionResult:
     # never splices.
     candidates, uncredentialed = _static_candidates(request)
     index = 0
+    switched = False  # M2: the person asked for the backup during a backoff
     while index < len(candidates):
         model, api_key = candidates[index]
         kwargs: dict = {"model": model, "messages": request.messages}
@@ -276,9 +277,15 @@ def complete(request: CompletionRequest) -> CompletionResult:
                             "next_at": (datetime.now(UTC) + timedelta(seconds=wait)).isoformat(),
                             "reason": reason,
                             "model": model,
+                            # M2: what "Switch to the backup model now" would switch to (or None).
+                            "backup_model": request.fallback_model,
                         },
                     )
-                    _sleep(wait)
+                    if request.switch_signal is None:
+                        _sleep(wait)
+                    elif request.switch_signal.wait(wait):
+                        switched = True
+                        break
                     continue
                 break
             latency_ms = (time.perf_counter() - started) * 1000.0
@@ -307,6 +314,9 @@ def complete(request: CompletionRequest) -> CompletionResult:
         # Tried BEFORE the static ``model_fallbacks`` because an AUTHORED per-node choice is more
         # specific than a deployment-wide default.
         fallback = request.fallback_model
+        switch_reason = (
+            "asked" if switched else "busy" if _transient_reason(last_error) else "error"
+        )
         if index == 0 and fallback and fallback not in [m for m, _ in candidates]:
             fallback_key = (
                 request.fallback_api_key
@@ -320,7 +330,7 @@ def complete(request: CompletionRequest) -> CompletionResult:
                 {
                     "from_model": model,
                     "to_model": fallback,
-                    "reason": "busy" if _transient_reason(last_error) else "error",
+                    "reason": switch_reason,
                 },
             )
         index += 1

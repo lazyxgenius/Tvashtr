@@ -272,3 +272,75 @@ def test_a_request_can_ask_for_fewer_retries(monkeypatch, waits):
     with pytest.raises(GatewayError):
         complete(_request([], retries=0))
     assert calls == ["primary/m"] and waits == []
+
+
+# ---- M2: "Switch to the backup model now" -----------------------------------------------------
+
+
+def test_a_switch_signal_cuts_the_backoff_and_switches_to_the_backup(monkeypatch, waits):
+    """The person asks for the backup during the first backoff: the wait ends at once (no sleep),
+    the primary is not tried again, the backup serves, and the switch says it was asked for."""
+    calls: list[str] = []
+
+    def busy_primary(*, model, messages, **kwargs):
+        calls.append(model)
+        if model == "primary/m":
+            raise _RateLimited("429 Too Many Requests")
+        return _canned("from backup", model)
+
+    monkeypatch.setattr(gw.litellm, "completion", busy_primary)
+    signal = threading.Event()
+    events: list = []
+
+    def on_event(kind, payload):
+        events.append((kind, payload))
+        if kind == "retry":
+            signal.set()  # the person clicks while the first retry waits
+
+    started = time.monotonic()
+    result = complete(
+        CompletionRequest(
+            model="primary/m",
+            messages=[{"role": "user", "content": "hi"}],
+            on_event=on_event,
+            fallback_model="backup/m",
+            switch_signal=signal,
+        )
+    )
+    assert time.monotonic() - started < 5  # never waited out the 10 s backoff
+    assert result.model_used == "backup/m" and result.text == "from backup"
+    assert calls == ["primary/m", "backup/m"]
+    assert waits == []
+    assert [k for k, _ in events] == ["retry", "backup_model"]
+    assert events[0][1]["backup_model"] == "backup/m"  # the callout names what it switches to
+    assert events[1][1] == {"from_model": "primary/m", "to_model": "backup/m", "reason": "asked"}
+
+
+def test_an_unset_switch_signal_is_only_a_bounded_wait(monkeypatch):
+    """A signal nobody sets waits the backoff out and the retries carry on as before."""
+    monkeypatch.setattr(
+        gw,
+        "get_settings",
+        lambda: SimpleNamespace(
+            model_fallbacks=[],
+            default_max_tokens_per_call=None,
+            agent_request_timeout_s=5,
+            model_retries=3,
+            model_retry_backoff_s=0.01,
+        ),
+    )
+    monkeypatch.setattr(gw.litellm, "completion_cost", lambda **kw: 0.0)
+    calls: list[str] = []
+
+    def flaky(*, model, messages, **kwargs):
+        calls.append(model)
+        if len(calls) <= 2:
+            raise _RateLimited("429 Too Many Requests")
+        return _canned("ok", model)
+
+    monkeypatch.setattr(gw.litellm, "completion", flaky)
+    events: list = []
+    result = complete(_request(events, fallback_model="backup/m", switch_signal=threading.Event()))
+    assert result.model_used == "primary/m"
+    assert calls == ["primary/m"] * 3
+    assert [k for k, _ in events] == ["retry", "retry"]
