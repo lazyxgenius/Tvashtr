@@ -1,10 +1,12 @@
-# Connectors — parity sweep, branch fix/security-s1 @ d3a842a (Security S1 item 5; the Connectors ship skipped it)
-# Design: the Claude Design canvas's Connectors boards (Cn-Screens, CnF-Connect, CnF-Agents, CnF-Changes) are composites,
-#   a grid of 1440x900 <figure> frames. scripts/design-parity/split-composite.py splits each into one artboard per figure,
-#   numbered in document order (Cn-Screens-1..9, CnF-Connect-1..15, CnF-Agents-1..11, CnF-Changes-1..10), keeping the
-#   board's <head>, <helmet> and data-dc-script so {{holes}} resolve. App: scenarios/connectors-{connect,page,drawer,
-#   agents,changes}.mjs + connectors-fixtures.mjs (the design's sample data). Every flow is reached by the real UI
-#   (Connect → Continue → the sign-in stub; Check and connect; Check the server; ⋯ → Disconnect; Connect an app).
+# Connectors — parity sweep, branch fix/connectors-parity @ a6ececf (s1-ship session, 2026-10-01; brief
+#   prompts/s1-ship-connectors-parity.md, architect ruling 4). Re-shot after the three design-governed items were built.
+# Design: the Claude Design canvas's Connectors boards (Cn-Screens, CnF-Connect, CnF-Agents, CnF-Changes), canvas version
+#   1790834788-b76f, are composites: a grid of 1440x900 <figure> frames. scripts/design-parity/split-composite.py splits each
+#   into one artboard per figure, numbered in document order (Cn-Screens-1..9, CnF-Connect-1..15, CnF-Agents-1..11,
+#   CnF-Changes-1..10), keeping the board's <head>, <helmet> and data-dc-script so {{holes}} resolve. App: scenarios/
+#   connectors-{connect,page,drawer,agents,changes}.mjs + connectors-fixtures.mjs (the design's sample data). Every flow is
+#   reached by the real UI (Connect → Continue → the sign-in stub; Check and connect; Check the server; ⋯ → Disconnect;
+#   Connect an app). 43 design shots (43 fonts-ok), 86 app shots (web + Desktop).
 # skipped: CnF-Index — index board ('Connectors flows' lists the flows and screen counts), not an app screen
 # skipped: CnF-Changes-8 / CnF-Changes-9 — the server's own sign-in callback pages (tvashtr.fly.dev/api/connectors/oauth/
 #   callback: "Connect Neon to this Tvashtr account?" / "Neon is connected"), rendered by the backend, not the frontend
@@ -13,154 +15,204 @@
 #   their web renders sit 30px higher ("only moved"). Every other frame is drawn on the website: the Connectors page
 #   frames' Desktop renders sit 30px lower ("only moved"); the canvas/drawer frames (Cn-Screens-6..8, CnF-Agents-1..7,
 #   10, 11, CnF-Changes-2) are framed 30px up on Desktop, as the panel's Web-Skills / Web-Runs, so both renders agree.
-# GATE: NOT MET — 0 size/type drift on 16 of 86 renders (Cn-Screens-6..8, CnF-Agents-1, -5, -10, -11, CnF-Changes-2,
-#   web + Desktop). Every drift is explained below: most are measurement artifacts (a label pairs with a different
-#   element, or an inline-vs-button box); four are real differences (the icon gap, the access select, the dialog's
-#   Team label, the row-menu width) that need a Claude Design ruling before any screen change (out of scope here: no
-#   app code was changed).
-# note (real, 52 renders) [ctl] 'Custom connector' width 173→181, and the same +8px on every button with a leading icon:
-#   'Continue to Supabase' 177→185, 'Continue to auth.acme.dev' 208→216, 'Open the window again' 186→194, 'Open the
-#   browser again' 189→197, 'Back' 71→79, 'Try again' 98→106, 'Add it in Tools' 128→136, 'Open Connectors' 149→157
-#   (CnF-Agents-6). The label sits at the same x in both (Custom connector: span x 1223 design and app); the button
-#   starts 8px further left in the app. Probe of the design DOM: the canvas Button renders its children inside ONE
-#   <span> (`<button class="tv-btn"><span><svg…/>Custom connector</span>`), so the button's 8px flex gap never falls
-#   between the icon and the label and the frames draw the icon flush against it; the app's Button takes the icon as
-#   `iconLeft` (its own flex item, 8px gap). Same font, weight and height. Ruling needed: icon-to-label gap 0 or 8px.
-# note (artifact, 34 renders) [ctl] 'Give an agent access' height 15→20 — the "Not used yet · Give an agent access" row
-#   link: the design draws an inline <a> (its box is the 15px text run at 12.5px/500, line-height 20px), the app a
-#   <button> (a 20px line box). Same font, weight and width (128). On CnF-Connect-5 / -9 the third item ('Give an agent
-#   access' 13→12.5px, 600→500, 138→128) is the frame's toast button ("Supabase is connected. No agent can use
-#   it…"): the scenario opens the list directly, so there is no toast, and that button pairs with a row link.
-# note (artifact) [ctl] 'Change' height 32→13, width 74→48 (Cn-Screens-5, CnF-Agents-8, -9) — the app's two Change buttons
-#   carry aria-labels ("Change project", "Change what agents may do"), which measure.js uses as their names, so the
-#   design's unlabeled 'Change' buttons pair with the app's 13px label spans. The app's buttons are 74x32 at x 742, as
-#   drawn.
-# note (artifact) [ctl] 'Connectors' width 1100→92 (Cn-Screens-5, CnF-Agents-8, -9) — the back link: the design's <a> is a
-#   block spanning the row, the app's is sized to its text. Same 13px/500.
-# note (real: the icon gap) [ctl] 'Give an agent access' width 173→181 (Cn-Screens-5, CnF-Agents-8, -9) — the icon gap
-#   above, on the connector page's button.
-# note (artifact) [txt] 'Sb' / 'Ap' / 'Ne' font 14→12px (CnF-Connect-2..4, -7, -8, -10, -11, CnF-Changes-7) — the
-#   connect sheet's header: the design draws a 42px provider tile (14px/700 letters) left of "Connect Supabase", the app
-#   draws the title alone (x 925, where the design's title is at 979). With no tile in the app, the frame's tile pairs
-#   with the page card's 34px tile (12px). Ruling needed on whether the sheet gets the tile (a missing element, not a
-#   size).
-# note (artifact) [txt] 'Read only' font 11.5→12.5px, weight 600→500 (CnF-Connect-2) — the design's "READ ONLY / ONLY
-#   WITH READ & WRITE" box (what each access allows) isn't in the app's sheet (it shows the entry's description); its
-#   11.5px/600 heading pairs with the 12.5px/500 "Read only" segment.
-# note (artifact) [ctl] 'on' font 13.3333→16px, family Arial→Inter (CnF-Connect-4, three per render) — the project
-#   radios: an input's value "on" is its name for measure.js; a radio draws no text, so the font is not visible.
-# note (artifact) [ctl] 'Connect' height 32→13, width 79→53 (CnF-Agents-6, five per render) — the Connect an app dialog's
-#   buttons are aria-labelled "Connect Neon" etc. (79x32 at x 886, as drawn), so the frame's 'Connect' pairs with the
-#   label spans.
-# note (artifact) [ctl] 'Save' height 32→13 (CnF-Agents-2, -3, -7) — the drawer's SaveBar reads "Save ⌘S" when there are
-#   unsaved changes (F5 `Desktop-Editing`, as recorded for Dm-AgentAccess), so the frame's 'Save' keys to its 13px
-#   label.
-# note (artifact) Cn-Screens-3: [ctl]/[txt] 'Custom connector' weight 500→600, [txt] 'Connected' 14→12px, and 14 not
-#   found — the frame keeps the page header, tabs and category chips in place and scrolls only the grid (Sentry's card at
-#   y 330 under the chips); the app scrolls the whole page, so with "From the MCP Registry" at the frame's y 484 the
-#   header is off screen and its words pair with the Custom connector card and a "Connected" badge.
-# note (real) [ctl] 'What Reviewer may do in Linear' font 16→14px, height 44→36 (CnF-Agents-3, -4) — the access select
-#   in the drawer's checklist: the frame uses the canvas Select at its default size (44px, 16px) in a 124px box, which
-#   clips its own label to "Read onl"; the app uses the small Select (36px, 14px), same width, label whole.
-# note (real) [txt] 'Team' font 13→14px (CnF-Agents-8) — the Give agents access dialog's "Team" field label: 13px/500 in
-#   the frame, 14px/500 (the Field label) in the app.
-# note (real) [ctl] 'Open' / 'Change project' / 'Disconnect' width 230→218 (CnF-Changes-4) — the row ⋯ menu: the app's
-#   ConnectorRowMenu passes width 230 to Menu, whose rows are then 218 (5px padding + 1px border each side); the
-#   frame's rows are 230 (a ~242px menu).
-# note copy (not drift, counted in "not found"): the sheet's "Signed in to Supabase as organization lazyx." is "Signed in
-#   to Supabase." (CnF-Connect-4); the connector page has no "Signed in as · Organization lazyx" row (Cn-Screens-5,
-#   CnF-Agents-8, -9); the checklist's Supabase line is "Read only · project trade-mcp-prod · ap-southeast-1" (the full
-#   scope label) where the frames draw "Read only · project trade-mcp-prod"; the nav's Secrets badge shows only
-#   "N missing", so the frames' "Secrets 3" isn't drawn; the frames' typos "2 results servers" (CnF-Connect-6) and
-#   "Used by · 1 agents" (CnF-Agents-8) read "2 results" / "Used by · 1 agent".
-# note Cn-Screens-8 web: the Claude-plan note is Desktop only (a plan runs only in Tvashtr Desktop), so the web render
-#   doesn't show it ("not found"); the Desktop render matches it. The frame draws the Reviewer's chip as "Grok 4.7" while
-#   its note says Claude plan; the scenario gives the Reviewer a Claude Sonnet model on a connected Claude plan.
-# note canvas frames: the canvas cards (approved / rejected edges, the four agent cards) are "only moved" on every drawer
-#   frame — the canvas fits the graph to the space left of the drawer, as on the panel's Web-* records.
-Cn-Screens-1 web: matched 59/60 design items · 2 with size/type drift · 1 only moved · 1 not found in app
-Cn-Screens-1 desktop: matched 59/60 design items · 2 with size/type drift · 55 only moved · 1 not found in app
-Cn-Screens-2 web: matched 109/111 design items · 1 with size/type drift · 6 only moved · 2 not found in app
-Cn-Screens-2 desktop: matched 103/111 design items · 1 with size/type drift · 100 only moved · 8 not found in app
-Cn-Screens-3 web: matched 71/85 design items · 3 with size/type drift · 0 only moved · 14 not found in app
-Cn-Screens-3 desktop: matched 71/85 design items · 3 with size/type drift · 11 only moved · 14 not found in app
-Cn-Screens-4 web: matched 89/91 design items · 1 with size/type drift · 0 only moved · 2 not found in app
-Cn-Screens-4 desktop: matched 89/91 design items · 1 with size/type drift · 86 only moved · 2 not found in app
-Cn-Screens-5 web: matched 72/76 design items · 4 with size/type drift · 24 only moved · 4 not found in app
-Cn-Screens-5 desktop: matched 72/76 design items · 4 with size/type drift · 47 only moved · 4 not found in app
+# GATE: MET — every render is at 0 size/type drift (16 of 86) or every drift item on it is a ruling-4 waiver (W1–W3) or a
+#   note below (each render line ends "— covered: <id>×<n>", one per drift item; scratchpad classify_drift.py checked that
+#   every drift item maps to an id and that the counts add up).
+# built (ruling 4, the design governs; a6ececf, each with a vitest):
+#   the row ⋯ menu's rows are 230px wide (CnF-Changes-4; Menu width 242 = 230 + 5px padding + 1px border each side) — the
+#     'Open' / 'Change project' / 'Disconnect' 230→218 drift is gone;
+#   the connect sheet's header shows the provider's 42px tile (40px + border) left of "Connect <name>" (CnF-Connect-2..4,
+#     -7, -8, -10, -11, CnF-Changes-7; Sheet gains an additive `icon`) — the 'Sb' / 'Ap' / 'Ne' 14→12px pairing is gone;
+#   the sheet shows the "Read only / Only with read & write" box that says what each access allows (CnF-Connect-2), in
+#     place of the entry's description — the 'Read only' 11.5→12.5px pairing is gone. The boards draw the list for
+#     Supabase only, so only Supabase has one; any other connector keeps its description until its list is designed
+#     (recorded for the operator: new per-connector content, not built).
+# waiver W1 (ruling 4: the app governs) [ctl] the leading-icon gap, +8px on every button with a leading icon: 'Custom
+#   connector' 173→181, 'Give an agent access' 173→181, 'Continue to Supabase' 177→185, 'Continue to auth.acme.dev'
+#   208→216, 'Open the window again' 186→194, 'Open the browser again' 189→197, 'Back' 71→79, 'Try again' 98→106, 'Add it
+#   in Tools' 128→136, 'Open Connectors' 149→157 — the design-system Button's 8px gap; the frames draw the icon flush only
+#   because the canvas Button wraps icon and label in one <span>.
+# waiver W2 (ruling 4: the app governs) [ctl] 'What Reviewer may do in Linear' font 16→14px, height 44→36 (CnF-Agents-3,
+#   -4) — the drawer's access select: the app's small Select keeps its label whole; the frame's default-size Select clips
+#   it to "Read onl".
+# waiver W3 (ruling 4: the app governs) [txt] 'Team' font 13→14px (CnF-Agents-8) — the Give agents access dialog's "Team"
+#   label is the shared Field label, 14px.
+# waiver W4 (ruling 4: the app governs) copy, counted in "not found": "Signed in to Supabase." without the organization
+#   name (CnF-Connect-4: 'Signed in to Supabase as organization .', 'lazyx') — the app doesn't know the organization, so
+#   the honest copy stays; the same holds for the connector page's "Signed in as · Organization lazyx" row (Cn-Screens-5,
+#   CnF-Agents-8, -9).
+# note N-link (artifact, from the last session) [ctl] 'Give an agent access' height 15→20 — the "Not used yet · Give an
+#   agent access" row link: the design draws an inline <a> (its box is the 15px text run at 12.5px/500, line-height 20px),
+#   the app a <button> (a 20px line box). Same font, weight and width.
+# note N-toast (artifact, from the last session) [ctl] 'Give an agent access' 13→12.5px, 600→500, 138→128 (CnF-Connect-5,
+#   -9) — the frame's toast button ("Supabase is connected. No agent can use it…"): the scenario opens the list directly,
+#   so there is no toast, and that button pairs with a row link.
+# note N-change (artifact, from the last session) [ctl] 'Change' height 32→13, width 74→48 (Cn-Screens-5, CnF-Agents-8,
+#   -9) — the app's two Change buttons carry aria-labels ("Change project", "Change what agents may do"), which measure.js
+#   uses as their names, so the design's unlabeled 'Change' buttons pair with the app's 13px label spans. The app's
+#   buttons are 74x32 at x 742, as drawn.
+# note N-back (artifact, from the last session) [ctl] 'Connectors' width 1100→92 (Cn-Screens-5, CnF-Agents-8, -9) — the
+#   back link: the design's <a> is a block spanning the row, the app's is sized to its text. Same 13px/500.
+# note N-radio (artifact, from the last session) [ctl] 'on' font 13.3333→16px, family Arial→Inter (CnF-Connect-4) — the
+#   project radios: an input's value "on" is its name for measure.js; a radio draws no text.
+# note N-connect (artifact, from the last session) [ctl] 'Connect' height 32→13, width 79→53 (CnF-Agents-6) — the Connect an
+#   app dialog's buttons are aria-labelled "Connect Neon" etc. (79x32, as drawn), so 'Connect' pairs with the label spans.
+# note N-save (artifact, from the last session) [ctl] 'Save' height 32→13 (CnF-Agents-2, -3, -7) — the drawer's SaveBar
+#   reads "Save ⌘S" when there are unsaved changes (F5 Desktop-Editing, as recorded for Dm-AgentAccess), so the frame's
+#   'Save' keys to its 13px label.
+# note N-scroll (artifact, from the last session) Cn-Screens-3: [ctl]/[txt] 'Custom connector' weight 500→600, [txt]
+#   'Connected' 14→12px, and 14 not found — the frame keeps the page header, tabs and category chips in place and scrolls
+#   only the grid; the app scrolls the whole page, so with "From the MCP Registry" at the frame's y 484 the header is off
+#   screen and its words pair with the Custom connector card and a "Connected" badge.
+# note copy (from the last session; not drift, counted in "not found"): the checklist's Supabase line is "Read only ·
+#   project trade-mcp-prod · ap-southeast-1" (the full scope label) where the frames draw "Read only · project
+#   trade-mcp-prod"; the nav's Secrets badge shows only "N missing", so the frames' "Secrets 3" isn't drawn; the frames'
+#   typos "2 results servers" (CnF-Connect-6) and "Used by · 1 agents" (CnF-Agents-8) read "2 results" / "Used by · 1 agent".
+# note Cn-Screens-8 web (from the last session): the Claude-plan note is Desktop only (a plan runs only in Tvashtr
+#   Desktop), so the web render doesn't show it ("not found"); the Desktop render matches it. The frame draws the
+#   Reviewer's chip as "Grok 4.7" while its note says Claude plan; the scenario gives the Reviewer a Claude Sonnet model.
+# note canvas frames (from the last session): the canvas cards are "only moved" on every drawer frame — the canvas fits the
+#   graph to the space left of the drawer, as on the panel's Web-* records.
+# Not found in app (Ship Protocol: each real control or text is built or noted). Read from every render's MISSING lines
+#   (362 lines, ~58 distinct items) by two read-only helpers, each checked against the app renders and the source.
+# note (artifact) [ctl] 'Search 15,000+ connectors' (every Browse frame) — Browse's search box is aria-labelled "Search
+#   connectors", which measure.js uses as its name; its placeholder reads "Search 15,000+ connectors" as drawn.
+# note (artifact) [ctl] 'apify_api_••••' (CnF-Connect-7, -8) — a password input: measure.js names it by its value (the
+#   scenario's key), which both renders mask in the same 491x44 box.
+# note (artifact) [ctl] 'https://mcp.acme.dev/mcp' (CnF-Connect-12..15) — the Server address input has a placeholder, which
+#   measure.js prefers over its value; the value is the frame's address, in the same box.
+# note (fixture) [txt] 'Apify API token. Sent to mcp.apify.com as its Authorization…' (CnF-Connect-7, -8) — the scenario's
+#   hint already ends with the "Sent to … header." sentence the sheet appends, so the app render shows it twice (the
+#   sheet's own test uses the hint "Apify API token"). Harness fixture, not app: not changed here.
+# note (sample) [txt] 'tvashtr.fly.dev' (Cn-Screens-6..8, CnF-Agents-1..7, -10, -11, CnF-Changes-2) — the canvas header's
+#   host chip shows the page's own host (CanvasHeader EnvChip): "localhost:5199" under the harness, "Tvashtr Desktop" on
+#   Desktop; the frames draw the hosted site's host. Same chip, same box.
+# note (sample) [ctl] 'Skills & tools 6' (the drawer frames) — the frames draw a fixed 6; the app's count is skills + tool
+#   servers + connector grants, so with the scenario's fixtures it reads 5–8 and changes as connectors are ticked.
+# note (copy) [txt] 'When working on a real folder, also use its CLAUDE.md, AGENTS.md and .cursorrules.' (Cn-Screens-6, -8,
+#   CnF-Agents-1..7) — the rules-files switch keeps the F5 Web-Skills / Focus-Skills copy ("…, .cursorrules and
+#   .cursor/rules.", which the resolver reads); the Connectors boards shorten it.
+# note (sample) [txt] 'Read only · project trade-mcp' (CnF-Agents-7), 'Project trade-mcp' (CnF-Changes-10), 'Step 2 of 3'
+#   (CnF-Changes-7) — the fixture's Neon has no project picker, so its line reads "Read only", its row "By Neon", and
+#   its sheet has 2 steps.
+# note (sample) [ctl] 'Connectors3' (CnF-Changes-6) — the app re-reads the nav badges after Disconnect, but the scenario's
+#   /api/toolkit/summary still answers 4.
+# note (copy) [txt] 'Unsaved changes' (CnF-Agents-2, -3, -7) — the SaveBar says "N unsaved change(s)" with Discard (F5
+#   Desktop-Editing), as for 'Save ⌘S' above.
+# note (toast/transient, not triggered by the scenario, which loads the saved state) [txt] 'Reviewer can use Supabase,
+#   Notion and Linear. All read only.' (CnF-Agents-4), 'Engineer can now use Supabase (read only).' (CnF-Agents-9),
+#   'Sentry is ready again.' (CnF-Changes-3), 'Neon is connected. It works for runs from the website and from Desktop.'
+#   (CnF-Changes-10), and the row badge 'New' (CnF-Connect-5, -9, CnF-Changes-10), which marks a row connected during
+#   this visit.
+# note (non-comparison render) Desktop only: the bottom row of Featured cards ('By Sentry', 'By Atlassian', 'Any server
+#   that signs in', their descriptions) falls below 900px (the Desktop render sits lower), and 'Tools' / 'Add tool'
+#   (Cn-Screens-8) are pushed past the fold by the Desktop-only plan note; CnF-Connect-3 / -10 on Desktop show the
+#   system-browser wait ("Finish signing in to Supabase in your browser", "Open the browser again"), as Desktop has no
+#   pop-up. Web only: 'Tvashtr — the living canvas' (Cn-Screens-9, CnF-Changes-7, -10 web) is Desktop's title strip, and
+#   CnF-Changes-7's system-browser copy is on its Desktop render (the comparison). Each is present on the comparison render.
+# note (provider's window) [txt] 'api.supabase.com/v1/oauth/authorize', 'Supabase's own sign-in, then its Allow access
+#   page…', 'Their page, not ours' (CnF-Connect-3) — the frame draws Supabase's own sign-in window beside the sheet; the
+#   scenario stubs that window (the provider's page, not Tvashtr's).
+# note (copy, needs a ruling; not built) [txt] 'Cf' (Cn-Screens-3) — the frame names Cloudflare's tile "Cf"; registry
+#   tiles use the name's first two letters ("Cl"), the TILE map holds only Featured keys.
+# note (copy, needs a ruling; not built) [txt] 'Yesterday' (Cn-Screens-5, CnF-Agents-8, -9) — the app's shared
+#   formatRelativeTime (lib/time.ts) says "1d ago" everywhere; other boards draw "1d ago" too.
+# note (real, not built: outside this brief, which builds only ruling 4's three items and says to note anything else)
+#   [ctl]/[txt] 'Sign in again' (CnF-Changes-2) — a round's skipped-connector line says "Sign in"
+#   (panel/connectors/ConnectorsUsed.tsx); "Sign in again" would be wrong for "its key stopped working" or "we couldn't
+#   reach it", so the label should follow the reason.
+# note (real, not built: needs new data) [ctl] 'LIN-214', [txt] 'Writes are listed first and marked. This one created
+#   LIN-214 in Linear.', '10:06 · 0.9 s · LIN-214' (CnF-Agents-11) — the connector_call contract has only result_url, no
+#   label; the app shows "Writes are listed first and marked." and "· Open result". A result_label field (contract +
+#   event) or a design call is needed.
+# note (real, not built: needs new data) [txt] 'Drafts the spec', 'Writes & ships it' (CnF-Agents-8) — the agents'
+#   descriptions in Give agents access: GET /api/connectors/{id}/agents carries no description.
+# note (found, not recorded by measure.js; not built) the Browse search box renders 240px at x 1124 where the frame draws
+#   260 at 1104: tools.css's `.tk-search.ds-input {width: 240px}` has the same specificity as connectors.css's
+#   `.cn-search.ds-input` and loads later.
+Cn-Screens-1 web: matched 59/60 design items · 2 with size/type drift · 1 only moved · 1 not found in app — covered: N-link×1, W1×1
+Cn-Screens-1 desktop: matched 59/60 design items · 2 with size/type drift · 55 only moved · 1 not found in app — covered: N-link×1, W1×1
+Cn-Screens-2 web: matched 109/111 design items · 1 with size/type drift · 6 only moved · 2 not found in app — covered: W1×1
+Cn-Screens-2 desktop: matched 103/111 design items · 1 with size/type drift · 100 only moved · 8 not found in app — covered: W1×1
+Cn-Screens-3 web: matched 71/85 design items · 3 with size/type drift · 0 only moved · 14 not found in app — covered: N-scroll×3
+Cn-Screens-3 desktop: matched 71/85 design items · 3 with size/type drift · 11 only moved · 14 not found in app — covered: N-scroll×3
+Cn-Screens-4 web: matched 89/91 design items · 1 with size/type drift · 0 only moved · 2 not found in app — covered: W1×1
+Cn-Screens-4 desktop: matched 89/91 design items · 1 with size/type drift · 86 only moved · 2 not found in app — covered: W1×1
+Cn-Screens-5 web: matched 72/76 design items · 4 with size/type drift · 24 only moved · 4 not found in app — covered: N-back×1, N-change×2, W1×1
+Cn-Screens-5 desktop: matched 72/76 design items · 4 with size/type drift · 47 only moved · 4 not found in app — covered: N-back×1, N-change×2, W1×1
 Cn-Screens-6 web: matched 76/80 design items · 0 with size/type drift · 43 only moved · 4 not found in app
 Cn-Screens-6 desktop: matched 76/80 design items · 0 with size/type drift · 43 only moved · 4 not found in app
 Cn-Screens-7 web: matched 91/93 design items · 0 with size/type drift · 59 only moved · 2 not found in app
 Cn-Screens-7 desktop: matched 91/93 design items · 0 with size/type drift · 59 only moved · 2 not found in app
 Cn-Screens-8 web: matched 73/79 design items · 0 with size/type drift · 39 only moved · 6 not found in app
 Cn-Screens-8 desktop: matched 72/79 design items · 0 with size/type drift · 40 only moved · 7 not found in app
-Cn-Screens-9 web: matched 59/61 design items · 2 with size/type drift · 55 only moved · 2 not found in app
-Cn-Screens-9 desktop: matched 60/61 design items · 2 with size/type drift · 1 only moved · 1 not found in app
+Cn-Screens-9 web: matched 59/61 design items · 2 with size/type drift · 55 only moved · 2 not found in app — covered: N-link×1, W1×1
+Cn-Screens-9 desktop: matched 60/61 design items · 2 with size/type drift · 1 only moved · 1 not found in app — covered: N-link×1, W1×1
+CnF-Connect-1 web: matched 109/111 design items · 1 with size/type drift · 6 only moved · 2 not found in app — covered: W1×1
+CnF-Connect-1 desktop: matched 103/111 design items · 1 with size/type drift · 100 only moved · 8 not found in app — covered: W1×1
+CnF-Connect-2 web: matched 130/132 design items · 2 with size/type drift · 6 only moved · 2 not found in app — covered: W1×2
+CnF-Connect-2 desktop: matched 124/132 design items · 2 with size/type drift · 117 only moved · 8 not found in app — covered: W1×2
+CnF-Connect-3 web: matched 120/125 design items · 2 with size/type drift · 6 only moved · 5 not found in app — covered: W1×2
+CnF-Connect-3 desktop: matched 110/125 design items · 1 with size/type drift · 104 only moved · 15 not found in app — covered: W1×1
+CnF-Connect-4 web: matched 131/135 design items · 5 with size/type drift · 6 only moved · 4 not found in app — covered: N-radio×3, W1×2
+CnF-Connect-4 desktop: matched 125/135 design items · 5 with size/type drift · 115 only moved · 10 not found in app — covered: N-radio×3, W1×2
+CnF-Connect-5 web: matched 61/64 design items · 4 with size/type drift · 16 only moved · 3 not found in app — covered: N-link×2, N-toast×1, W1×1
+CnF-Connect-5 desktop: matched 61/64 design items · 4 with size/type drift · 55 only moved · 3 not found in app — covered: N-link×2, N-toast×1, W1×1
+CnF-Connect-6 web: matched 37/40 design items · 1 with size/type drift · 0 only moved · 3 not found in app — covered: W1×1
+CnF-Connect-6 desktop: matched 37/40 design items · 1 with size/type drift · 34 only moved · 3 not found in app — covered: W1×1
+CnF-Connect-7 web: matched 53/58 design items · 1 with size/type drift · 5 only moved · 5 not found in app — covered: W1×1
+CnF-Connect-7 desktop: matched 53/58 design items · 1 with size/type drift · 46 only moved · 5 not found in app — covered: W1×1
+CnF-Connect-8 web: matched 54/59 design items · 1 with size/type drift · 5 only moved · 5 not found in app — covered: W1×1
+CnF-Connect-8 desktop: matched 54/59 design items · 1 with size/type drift · 47 only moved · 5 not found in app — covered: W1×1
+CnF-Connect-9 web: matched 69/72 design items · 4 with size/type drift · 19 only moved · 3 not found in app — covered: N-link×2, N-toast×1, W1×1
+CnF-Connect-9 desktop: matched 69/72 design items · 4 with size/type drift · 63 only moved · 3 not found in app — covered: N-link×2, N-toast×1, W1×1
+CnF-Connect-10 web: matched 120/122 design items · 2 with size/type drift · 6 only moved · 2 not found in app — covered: W1×2
+CnF-Connect-10 desktop: matched 110/122 design items · 1 with size/type drift · 104 only moved · 12 not found in app — covered: W1×1
+CnF-Connect-11 web: matched 119/121 design items · 2 with size/type drift · 6 only moved · 2 not found in app — covered: W1×2
+CnF-Connect-11 desktop: matched 113/121 design items · 2 with size/type drift · 107 only moved · 8 not found in app — covered: W1×2
+CnF-Connect-12 web: matched 71/73 design items · 3 with size/type drift · 1 only moved · 2 not found in app — covered: N-link×1, W1×2
+CnF-Connect-12 desktop: matched 71/73 design items · 3 with size/type drift · 63 only moved · 2 not found in app — covered: N-link×1, W1×2
+CnF-Connect-13 web: matched 71/73 design items · 2 with size/type drift · 1 only moved · 2 not found in app — covered: N-link×1, W1×1
+CnF-Connect-13 desktop: matched 71/73 design items · 2 with size/type drift · 63 only moved · 2 not found in app — covered: N-link×1, W1×1
+CnF-Connect-14 web: matched 76/78 design items · 3 with size/type drift · 6 only moved · 2 not found in app — covered: N-link×1, W1×2
+CnF-Connect-14 desktop: matched 76/78 design items · 3 with size/type drift · 68 only moved · 2 not found in app — covered: N-link×1, W1×2
+CnF-Connect-15 web: matched 70/72 design items · 3 with size/type drift · 1 only moved · 2 not found in app — covered: N-link×1, W1×2
+CnF-Connect-15 desktop: matched 70/72 design items · 3 with size/type drift · 62 only moved · 2 not found in app — covered: N-link×1, W1×2
 CnF-Agents-1 web: matched 76/80 design items · 0 with size/type drift · 43 only moved · 4 not found in app
 CnF-Agents-1 desktop: matched 76/80 design items · 0 with size/type drift · 43 only moved · 4 not found in app
-CnF-Agents-2 web: matched 75/80 design items · 1 with size/type drift · 44 only moved · 5 not found in app
-CnF-Agents-2 desktop: matched 75/80 design items · 1 with size/type drift · 44 only moved · 5 not found in app
-CnF-Agents-3 web: matched 76/81 design items · 2 with size/type drift · 44 only moved · 5 not found in app
-CnF-Agents-3 desktop: matched 76/81 design items · 2 with size/type drift · 44 only moved · 5 not found in app
-CnF-Agents-4 web: matched 77/82 design items · 1 with size/type drift · 43 only moved · 5 not found in app
-CnF-Agents-4 desktop: matched 77/82 design items · 1 with size/type drift · 43 only moved · 5 not found in app
+CnF-Agents-2 web: matched 75/80 design items · 1 with size/type drift · 44 only moved · 5 not found in app — covered: N-save×1
+CnF-Agents-2 desktop: matched 75/80 design items · 1 with size/type drift · 44 only moved · 5 not found in app — covered: N-save×1
+CnF-Agents-3 web: matched 76/81 design items · 2 with size/type drift · 44 only moved · 5 not found in app — covered: N-save×1, W2×1
+CnF-Agents-3 desktop: matched 76/81 design items · 2 with size/type drift · 44 only moved · 5 not found in app — covered: N-save×1, W2×1
+CnF-Agents-4 web: matched 77/82 design items · 1 with size/type drift · 43 only moved · 5 not found in app — covered: W2×1
+CnF-Agents-4 desktop: matched 77/82 design items · 1 with size/type drift · 43 only moved · 5 not found in app — covered: W2×1
 CnF-Agents-5 web: matched 76/80 design items · 0 with size/type drift · 43 only moved · 4 not found in app
 CnF-Agents-5 desktop: matched 76/80 design items · 0 with size/type drift · 43 only moved · 4 not found in app
-CnF-Agents-6 web: matched 108/112 design items · 6 with size/type drift · 69 only moved · 4 not found in app
-CnF-Agents-6 desktop: matched 108/112 design items · 6 with size/type drift · 69 only moved · 4 not found in app
-CnF-Agents-7 web: matched 74/80 design items · 1 with size/type drift · 41 only moved · 6 not found in app
-CnF-Agents-7 desktop: matched 74/80 design items · 1 with size/type drift · 41 only moved · 6 not found in app
-CnF-Agents-8 web: matched 80/87 design items · 5 with size/type drift · 29 only moved · 7 not found in app
-CnF-Agents-8 desktop: matched 80/87 design items · 5 with size/type drift · 47 only moved · 7 not found in app
-CnF-Agents-9 web: matched 72/77 design items · 4 with size/type drift · 24 only moved · 5 not found in app
-CnF-Agents-9 desktop: matched 72/77 design items · 4 with size/type drift · 47 only moved · 5 not found in app
+CnF-Agents-6 web: matched 108/112 design items · 6 with size/type drift · 69 only moved · 4 not found in app — covered: N-connect×5, W1×1
+CnF-Agents-6 desktop: matched 108/112 design items · 6 with size/type drift · 69 only moved · 4 not found in app — covered: N-connect×5, W1×1
+CnF-Agents-7 web: matched 74/80 design items · 1 with size/type drift · 41 only moved · 6 not found in app — covered: N-save×1
+CnF-Agents-7 desktop: matched 74/80 design items · 1 with size/type drift · 41 only moved · 6 not found in app — covered: N-save×1
+CnF-Agents-8 web: matched 80/87 design items · 5 with size/type drift · 29 only moved · 7 not found in app — covered: N-back×1, N-change×2, W1×1, W3×1
+CnF-Agents-8 desktop: matched 80/87 design items · 5 with size/type drift · 47 only moved · 7 not found in app — covered: N-back×1, N-change×2, W1×1, W3×1
+CnF-Agents-9 web: matched 72/77 design items · 4 with size/type drift · 24 only moved · 5 not found in app — covered: N-back×1, N-change×2, W1×1
+CnF-Agents-9 desktop: matched 72/77 design items · 4 with size/type drift · 47 only moved · 5 not found in app — covered: N-back×1, N-change×2, W1×1
 CnF-Agents-10 web: matched 91/93 design items · 0 with size/type drift · 59 only moved · 2 not found in app
 CnF-Agents-10 desktop: matched 91/93 design items · 0 with size/type drift · 59 only moved · 2 not found in app
 CnF-Agents-11 web: matched 86/91 design items · 0 with size/type drift · 47 only moved · 5 not found in app
 CnF-Agents-11 desktop: matched 86/91 design items · 0 with size/type drift · 47 only moved · 5 not found in app
-CnF-Changes-1 web: matched 73/74 design items · 2 with size/type drift · 1 only moved · 1 not found in app
-CnF-Changes-1 desktop: matched 73/74 design items · 2 with size/type drift · 69 only moved · 1 not found in app
+CnF-Changes-1 web: matched 73/74 design items · 2 with size/type drift · 1 only moved · 1 not found in app — covered: N-link×1, W1×1
+CnF-Changes-1 desktop: matched 73/74 design items · 2 with size/type drift · 69 only moved · 1 not found in app — covered: N-link×1, W1×1
 CnF-Changes-2 web: matched 82/86 design items · 0 with size/type drift · 30 only moved · 4 not found in app
 CnF-Changes-2 desktop: matched 82/86 design items · 0 with size/type drift · 30 only moved · 4 not found in app
-CnF-Changes-3 web: matched 66/68 design items · 2 with size/type drift · 1 only moved · 2 not found in app
-CnF-Changes-3 desktop: matched 66/68 design items · 2 with size/type drift · 62 only moved · 2 not found in app
-CnF-Changes-4 web: matched 65/66 design items · 5 with size/type drift · 4 only moved · 1 not found in app
-CnF-Changes-4 desktop: matched 65/66 design items · 5 with size/type drift · 58 only moved · 1 not found in app
-CnF-Changes-5 web: matched 65/66 design items · 2 with size/type drift · 7 only moved · 1 not found in app
-CnF-Changes-5 desktop: matched 65/66 design items · 2 with size/type drift · 61 only moved · 1 not found in app
-CnF-Changes-6 web: matched 52/54 design items · 2 with size/type drift · 1 only moved · 2 not found in app
-CnF-Changes-6 desktop: matched 52/54 design items · 2 with size/type drift · 47 only moved · 2 not found in app
-CnF-Changes-7 web: matched 112/121 design items · 2 with size/type drift · 105 only moved · 9 not found in app
-CnF-Changes-7 desktop: matched 115/121 design items · 3 with size/type drift · 13 only moved · 6 not found in app
-CnF-Changes-10 web: matched 66/71 design items · 3 with size/type drift · 61 only moved · 5 not found in app
-CnF-Changes-10 desktop: matched 67/71 design items · 3 with size/type drift · 19 only moved · 4 not found in app
-CnF-Connect-1 web: matched 109/111 design items · 1 with size/type drift · 6 only moved · 2 not found in app
-CnF-Connect-1 desktop: matched 103/111 design items · 1 with size/type drift · 100 only moved · 8 not found in app
-CnF-Connect-2 web: matched 123/132 design items · 4 with size/type drift · 13 only moved · 9 not found in app
-CnF-Connect-2 desktop: matched 117/132 design items · 4 with size/type drift · 108 only moved · 15 not found in app
-CnF-Connect-3 web: matched 120/125 design items · 3 with size/type drift · 8 only moved · 5 not found in app
-CnF-Connect-3 desktop: matched 110/125 design items · 2 with size/type drift · 103 only moved · 15 not found in app
-CnF-Connect-4 web: matched 131/135 design items · 6 with size/type drift · 8 only moved · 4 not found in app
-CnF-Connect-4 desktop: matched 125/135 design items · 6 with size/type drift · 114 only moved · 10 not found in app
-CnF-Connect-5 web: matched 61/64 design items · 4 with size/type drift · 16 only moved · 3 not found in app
-CnF-Connect-5 desktop: matched 61/64 design items · 4 with size/type drift · 55 only moved · 3 not found in app
-CnF-Connect-6 web: matched 37/40 design items · 1 with size/type drift · 0 only moved · 3 not found in app
-CnF-Connect-6 desktop: matched 37/40 design items · 1 with size/type drift · 34 only moved · 3 not found in app
-CnF-Connect-7 web: matched 53/58 design items · 2 with size/type drift · 7 only moved · 5 not found in app
-CnF-Connect-7 desktop: matched 53/58 design items · 2 with size/type drift · 45 only moved · 5 not found in app
-CnF-Connect-8 web: matched 54/59 design items · 2 with size/type drift · 7 only moved · 5 not found in app
-CnF-Connect-8 desktop: matched 54/59 design items · 2 with size/type drift · 46 only moved · 5 not found in app
-CnF-Connect-9 web: matched 69/72 design items · 4 with size/type drift · 19 only moved · 3 not found in app
-CnF-Connect-9 desktop: matched 69/72 design items · 4 with size/type drift · 63 only moved · 3 not found in app
-CnF-Connect-10 web: matched 120/122 design items · 3 with size/type drift · 8 only moved · 2 not found in app
-CnF-Connect-10 desktop: matched 110/122 design items · 2 with size/type drift · 103 only moved · 12 not found in app
-CnF-Connect-11 web: matched 119/121 design items · 3 with size/type drift · 8 only moved · 2 not found in app
-CnF-Connect-11 desktop: matched 113/121 design items · 3 with size/type drift · 106 only moved · 8 not found in app
-CnF-Connect-12 web: matched 71/73 design items · 3 with size/type drift · 1 only moved · 2 not found in app
-CnF-Connect-12 desktop: matched 71/73 design items · 3 with size/type drift · 63 only moved · 2 not found in app
-CnF-Connect-13 web: matched 71/73 design items · 2 with size/type drift · 1 only moved · 2 not found in app
-CnF-Connect-13 desktop: matched 71/73 design items · 2 with size/type drift · 63 only moved · 2 not found in app
-CnF-Connect-14 web: matched 76/78 design items · 3 with size/type drift · 6 only moved · 2 not found in app
-CnF-Connect-14 desktop: matched 76/78 design items · 3 with size/type drift · 68 only moved · 2 not found in app
-CnF-Connect-15 web: matched 70/72 design items · 3 with size/type drift · 1 only moved · 2 not found in app
-CnF-Connect-15 desktop: matched 70/72 design items · 3 with size/type drift · 62 only moved · 2 not found in app
+CnF-Changes-3 web: matched 66/68 design items · 2 with size/type drift · 1 only moved · 2 not found in app — covered: N-link×1, W1×1
+CnF-Changes-3 desktop: matched 66/68 design items · 2 with size/type drift · 62 only moved · 2 not found in app — covered: N-link×1, W1×1
+CnF-Changes-4 web: matched 65/66 design items · 2 with size/type drift · 7 only moved · 1 not found in app — covered: N-link×1, W1×1
+CnF-Changes-4 desktop: matched 65/66 design items · 2 with size/type drift · 61 only moved · 1 not found in app — covered: N-link×1, W1×1
+CnF-Changes-5 web: matched 65/66 design items · 2 with size/type drift · 7 only moved · 1 not found in app — covered: N-link×1, W1×1
+CnF-Changes-5 desktop: matched 65/66 design items · 2 with size/type drift · 61 only moved · 1 not found in app — covered: N-link×1, W1×1
+CnF-Changes-6 web: matched 52/54 design items · 2 with size/type drift · 1 only moved · 2 not found in app — covered: N-link×1, W1×1
+CnF-Changes-6 desktop: matched 52/54 design items · 2 with size/type drift · 47 only moved · 2 not found in app — covered: N-link×1, W1×1
+CnF-Changes-7 web: matched 112/121 design items · 1 with size/type drift · 103 only moved · 9 not found in app — covered: W1×1
+CnF-Changes-7 desktop: matched 115/121 design items · 2 with size/type drift · 14 only moved · 6 not found in app — covered: W1×2
+CnF-Changes-10 web: matched 66/71 design items · 3 with size/type drift · 61 only moved · 5 not found in app — covered: N-link×2, W1×1
+CnF-Changes-10 desktop: matched 67/71 design items · 3 with size/type drift · 19 only moved · 4 not found in app — covered: N-link×2, W1×1
