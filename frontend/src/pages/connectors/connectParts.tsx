@@ -3,6 +3,7 @@
  * may do" choice, the boxed notes, the wait-for-the-window panel and the "it went wrong" panel.
  */
 import {
+  Check,
   CircleCheck,
   ExternalLink,
   Info,
@@ -68,6 +69,54 @@ export function OwnSignInNote({ name }: { name: string }) {
       The sign-in page that opens should be {name}’s own. If it asks for access to a different
       service, close it.
     </Note>
+  );
+}
+
+// ponytail: only the boards' own list (CnF-Connect-2, Supabase). Another connector shows its
+// description until its list is designed; move this into the catalog once there are several.
+const ALLOWS: Record<string, { read: string[]; write: string[] }> = {
+  supabase: {
+    read: ["List projects and tables", "Run read-only SQL", "Read logs and advisors"],
+    write: ["Apply migrations", "Create branches", "Change project settings"],
+  },
+};
+
+/** What each access allows (CnF-Connect-2), or `fallback` for a connector the boards draw no list
+ * for. */
+export function AccessAllows({
+  connectorKey,
+  fallback,
+}: {
+  connectorKey: string;
+  fallback: ReactNode;
+}) {
+  const allows = ALLOWS[connectorKey];
+  if (!allows) return fallback;
+  return (
+    <div className="cn-allows" role="group" aria-label="What each access allows">
+      <div className="cn-allows__col">
+        <span className="cn-allows__head">Read only</span>
+        <ul className="cn-allows__list">
+          {allows.read.map((item) => (
+            <li key={item} className="cn-allows__item">
+              <Check size={13} strokeWidth={1.6} className="cn-allows__ok" aria-hidden />
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="cn-allows__col">
+        <span className="cn-allows__head">Only with read &amp; write</span>
+        <ul className="cn-allows__list">
+          {allows.write.map((item) => (
+            <li key={item} className="cn-allows__item cn-allows__item--write">
+              <Lock size={12} strokeWidth={1.6} className="cn-allows__lock" aria-hidden />
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
 

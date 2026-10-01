@@ -57,7 +57,8 @@ export function ConnectorRowMenu({
     <span className="tk-rowmenu">
       <Menu
         label={label}
-        width={230}
+        // The board's rows are 230px: 230 + 5px padding + 1px border on each side.
+        width={242}
         items={items}
         trigger={(props) => (
           <IconButton ref={triggerRef} size={size} aria-label={label} {...props}>

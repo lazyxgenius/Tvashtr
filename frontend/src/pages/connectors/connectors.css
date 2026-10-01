@@ -33,6 +33,12 @@
 .cn-tile--icon {
   color: var(--ink-700);
 }
+.cn-tile--md {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 14px;
+}
 .cn-tile--lg {
   width: 44px;
   height: 44px;
@@ -673,4 +679,51 @@
   background: var(--surface-page);
   max-height: 260px;
   overflow-y: auto;
+}
+
+/* ---- What each access allows (CnF-Connect-2) ---- */
+.cn-allows {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.cn-allows__col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-200);
+  border-radius: 12px;
+  background: var(--surface-page);
+}
+.cn-allows__head {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.cn-allows__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cn-allows__item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--ink-800);
+}
+.cn-allows__item--write {
+  color: var(--ink-400, #9c9a92);
+}
+.cn-allows__ok {
+  color: #52613e;
+}
+.cn-allows__lock {
+  color: var(--ink-500);
 }

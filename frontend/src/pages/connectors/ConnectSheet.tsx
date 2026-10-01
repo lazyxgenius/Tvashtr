@@ -38,6 +38,7 @@ import {
 } from "../../lib/api/connectors";
 import { navigate } from "../../lib/nav";
 import {
+  AccessAllows,
   AccessChoice,
   Note,
   OwnSignInNote,
@@ -45,6 +46,7 @@ import {
   SignInStaysNote,
   SignInWait,
 } from "./connectParts";
+import { ConnectorTile } from "./ConnectorTile";
 import { firstSentence, readOnlyHint, usesKey } from "./connectorFormat";
 import { type SignInOutcome, useAlive, useConnectSignIn } from "./useConnectSignIn";
 
@@ -544,7 +546,12 @@ export function ConnectSheet({
         {mode === "new" ? (
           <>
             {unreviewed}
-            {entry?.description && <p className="cn-lead">{entry.description}</p>}
+            {entry && (
+              <AccessAllows
+                connectorKey={entry.key}
+                fallback={entry.description && <p className="cn-lead">{entry.description}</p>}
+              />
+            )}
             {whereNote}
             {!reviewed && entry?.auth !== "none" && <OwnSignInNote name={name} />}
             {choice(true)}
@@ -579,6 +586,13 @@ export function ConnectSheet({
       open
       title={title}
       subtitle={subtitle}
+      icon={
+        <ConnectorTile
+          connectorKey={entry?.key ?? existing?.connector_key ?? ""}
+          name={name}
+          size="md"
+        />
+      }
       onClose={close}
       width={540}
       footerNote={left}

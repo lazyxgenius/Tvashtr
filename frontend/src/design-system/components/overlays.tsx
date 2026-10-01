@@ -304,10 +304,13 @@ export function Sheet({
   footer,
   footerNote,
   width = 520,
+  icon,
 }: {
   open: boolean;
   title: string;
   subtitle?: ReactNode;
+  /** Drawn left of the title, e.g. a connector's tile. */
+  icon?: ReactNode;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
@@ -316,6 +319,12 @@ export function Sheet({
 }) {
   const ref = useModalDialog<HTMLElement>(open, onClose);
   if (!open) return null;
+  const titles = (
+    <div className="ds-sheet__titles">
+      <h2 className="ds-sheet__title">{title}</h2>
+      {subtitle && <div className="ds-sheet__subtitle">{subtitle}</div>}
+    </div>
+  );
   return createPortal(
     <>
       <div className="ds-scrim" onClick={onClose} aria-hidden />
@@ -329,10 +338,14 @@ export function Sheet({
         tabIndex={-1}
       >
         <header className="ds-sheet__head">
-          <div className="ds-sheet__titles">
-            <h2 className="ds-sheet__title">{title}</h2>
-            {subtitle && <div className="ds-sheet__subtitle">{subtitle}</div>}
-          </div>
+          {icon ? (
+            <div className="ds-sheet__lead">
+              {icon}
+              {titles}
+            </div>
+          ) : (
+            titles
+          )}
           <IconButton size="sm" aria-label="Close" onClick={onClose}>
             <X size={16} strokeWidth={1.8} aria-hidden />
           </IconButton>

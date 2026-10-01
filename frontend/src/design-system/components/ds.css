@@ -965,6 +965,13 @@
   flex: 1;
   min-width: 0;
 }
+.ds-sheet__lead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
 .ds-sheet__title {
   margin: 0;
   font-family: var(--font-display);

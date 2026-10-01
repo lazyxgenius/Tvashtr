@@ -152,7 +152,23 @@ describe("signing in to a catalog connector", () => {
     show({ entry: entry() });
     const sheet = screen.getByRole("dialog", { name: "Connect Supabase" });
     expect(sheet).toHaveTextContent("By Supabase · signs in with your Supabase account");
-    expect(sheet).toHaveTextContent(
+    // What each access allows (CnF-Connect-2, ruling 4): the box takes the description's place.
+    const allows = within(sheet).getByRole("group", { name: "What each access allows" });
+    expect(allows).toHaveTextContent("Read only");
+    expect(allows).toHaveTextContent("Only with read & write");
+    expect(
+      within(allows)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual([
+      "List projects and tables",
+      "Run read-only SQL",
+      "Read logs and advisors",
+      "Apply migrations",
+      "Create branches",
+      "Change project settings",
+    ]);
+    expect(sheet).not.toHaveTextContent(
       "Read tables, run read-only SQL and check logs in one project.",
     );
     const seg = within(sheet).getByRole("group", { name: "What agents may do" });
@@ -174,6 +190,25 @@ describe("signing in to a catalog connector", () => {
     expect(within(sheet).getByRole("button", { name: "Continue to Supabase" })).toBeEnabled();
     // A connector that isn't Tvashtr-reviewed says so; a Featured one doesn't.
     expect(sheet).not.toHaveTextContent("hasn’t reviewed");
+  });
+
+  it("shows the provider's tile left of the title (CnF-Connect-2..4)", () => {
+    serve();
+    show({ entry: entry() });
+    const head = screen.getByRole("dialog", { name: "Connect Supabase" }).querySelector("header");
+    const tile = head?.querySelector(".cn-tile.cn-tile--md");
+    expect(tile).toHaveTextContent("Sb");
+    const title = within(head as HTMLElement).getByRole("heading", { name: "Connect Supabase" });
+    expect(tile?.compareDocumentPosition(title)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("shows the entry's description where the boards draw no access list", () => {
+    serve();
+    show({ entry: NOTION });
+    const sheet = screen.getByRole("dialog", { name: "Connect Notion" });
+    expect(sheet).toHaveTextContent("Search and read pages and databases.");
+    expect(within(sheet).queryByRole("group", { name: "What each access allows" })).toBeNull();
+    expect(sheet.querySelector("header .cn-tile--md")).toHaveTextContent("No");
   });
 
   it("opens the window, waits, asks for the project and finishes", async () => {
@@ -276,9 +311,7 @@ describe("signing in to a catalog connector", () => {
     await screen.findAllByRole("radio");
 
     click("Back");
-    expect(screen.getByRole("dialog")).toHaveTextContent(
-      "Read tables, run read-only SQL and check logs in one project.",
-    );
+    expect(screen.getByRole("dialog")).toHaveTextContent("Only with read & write");
     click("Continue");
     expect(await screen.findAllByRole("radio")).toHaveLength(3);
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(2);
