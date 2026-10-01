@@ -168,6 +168,16 @@ const actions = (): ActivityActions => ({
 
 const NOW = Date.parse(T(10, 45, 24));
 
+const STALLED: PinnedCallout = {
+  kind: "stalled",
+  node_id: "n-eng",
+  label: "Engineer",
+  title: "Engineer stopped responding",
+  body: "No update for 6 minutes.",
+  task_id: null,
+  backup_model: null,
+};
+
 describe("ActivityPanel", () => {
   it("shows the run's last steps in plain words and hides the earlier ones behind a button", () => {
     render(<ActivityPanel activity={activity()} now={NOW} actions={actions()} />);
@@ -249,7 +259,12 @@ describe("ActivityPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Switch to the backup model now" }));
     expect(a.onSwitchBackup).toHaveBeenCalledWith("n-eng");
     fireEvent.click(screen.getByRole("button", { name: "Stop run" }));
-    expect(a.onStop).toHaveBeenCalled();
+    fireEvent.click(
+      within(screen.getByRole("alertdialog", { name: "Stop this run?" })).getByRole("button", {
+        name: "Stop run",
+      }),
+    );
+    expect(a.onStop).toHaveBeenCalledTimes(1);
     rerender(
       <ActivityPanel
         activity={activity({
@@ -312,5 +327,42 @@ describe("ActivityPanel", () => {
     expect(screen.getByText("8 steps · hidden")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show activity" }));
     expect(screen.getByText("Ran the tests: 3 failed, 38 passed")).toBeInTheDocument();
+  });
+
+  it("Stop run asks first, with Home's Stop confirmation; Keep running does nothing", () => {
+    const a = actions();
+    render(
+      <ActivityPanel
+        activity={activity({ pinned: STALLED })}
+        now={NOW}
+        actions={a}
+        teamName="Bugfix squad"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Stop run" }));
+    const ask = screen.getByRole("alertdialog", { name: "Stop this run?" });
+    expect(ask).toHaveTextContent(
+      "Bugfix squad stops now and the run is marked Stopped. Anything already pushed stays on its branch. You can’t resume a stopped run.",
+    );
+    expect(a.onStop).not.toHaveBeenCalled();
+    fireEvent.click(within(ask).getByRole("button", { name: "Keep running" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(a.onStop).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop run" }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog", { name: "Stop this run?" })).getByRole("button", {
+        name: "Stop run",
+      }),
+    );
+    expect(a.onStop).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("the pinned buttons wait while an action is on its way", () => {
+    render(
+      <ActivityPanel activity={activity({ pinned: STALLED })} now={NOW} actions={actions()} busy />,
+    );
+    expect(screen.getByRole("button", { name: "Stop run" })).toBeDisabled();
   });
 });

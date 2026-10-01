@@ -3,7 +3,8 @@ import { useState } from "react";
 
 import { type RunListRow, type RunLive, stopRun } from "../../lib/api/runs";
 import { navigate } from "../../lib/nav";
-import { Badge, Button, ConfirmDialog, useToast } from "../../design-system/components";
+import { StopRunDialog } from "../../components/StopRunDialog";
+import { Badge, Button, useToast } from "../../design-system/components";
 import { useHome } from "./homeContext";
 import { markRunEnded, refreshHome, useHomeData } from "./homeData";
 import {
@@ -246,11 +247,9 @@ export function RunningNow() {
           <RunCard key={r.run_id} row={r} fresh={r.run_id === justLaunched} onStop={setStopping} />
         ))}
       </div>
-      <ConfirmDialog
+      <StopRunDialog
         open={stopping !== null}
-        title="Stop this run?"
-        confirmLabel="Stop run"
-        cancelLabel="Keep running"
+        teamName={stopping?.team?.name}
         busy={busy}
         error={error}
         onConfirm={() => void confirmStop()}
@@ -258,10 +257,7 @@ export function RunningNow() {
           setStopping(null);
           setError(null);
         }}
-      >
-        {stopping?.team?.name ?? "This team"} stops now and the run is marked Stopped. Anything
-        already pushed stays on its branch. You can’t resume a stopped run.
-      </ConfirmDialog>
+      />
     </section>
   );
 }

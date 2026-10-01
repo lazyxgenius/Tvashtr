@@ -1033,7 +1033,14 @@ export default function App({
           />
         )}
       </main>
-      {!authoring && activity && <ActivityPanel activity={activity} actions={liveActions} />}
+      {!authoring && activity && (
+        <ActivityPanel
+          activity={activity}
+          actions={liveActions}
+          busy={acting}
+          teamName={teamGraph?.name}
+        />
+      )}
     </>
   );
 }

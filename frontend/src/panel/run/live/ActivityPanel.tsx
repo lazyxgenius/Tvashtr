@@ -3,6 +3,7 @@ import "./live.css";
 import { ArrowDown, Check, ChevronUp, FileText, RefreshCw, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { StopRunDialog } from "../../../components/StopRunDialog";
 import { Button, IconButton } from "../../../design-system/components";
 import type { ActivityLine, PinnedCallout, RunActivity } from "../../../lib/api/activity";
 import { clock, currentLineIds, duration } from "./liveFormat";
@@ -180,7 +181,18 @@ function Line({
   );
 }
 
-function Pinned({ pin, actions }: { pin: PinnedCallout; actions: ActivityActions }) {
+function Pinned({
+  pin,
+  actions,
+  busy,
+  teamName,
+}: {
+  pin: PinnedCallout;
+  actions: ActivityActions;
+  busy: boolean;
+  teamName: string | undefined;
+}) {
+  const [askStop, setAskStop] = useState(false);
   const tone =
     pin.kind === "gate"
       ? ""
@@ -206,6 +218,7 @@ function Pinned({ pin, actions }: { pin: PinnedCallout; actions: ActivityActions
                 <Button
                   variant="primary"
                   size="sm"
+                  disabled={busy}
                   iconLeft={<Check size={14} strokeWidth={1.8} aria-hidden />}
                   onClick={() => actions.onApprove(pin.task_id as number)}
                 >
@@ -214,6 +227,7 @@ function Pinned({ pin, actions }: { pin: PinnedCallout; actions: ActivityActions
                 <Button
                   variant="secondary"
                   size="sm"
+                  disabled={busy}
                   iconLeft={<FileText size={14} strokeWidth={1.6} aria-hidden />}
                   onClick={actions.onReviewSpec}
                 >
@@ -222,6 +236,7 @@ function Pinned({ pin, actions }: { pin: PinnedCallout; actions: ActivityActions
                 <Button
                   variant="ghost"
                   size="sm"
+                  disabled={busy}
                   onClick={() => actions.onReject(pin.task_id as number)}
                 >
                   Reject
@@ -233,12 +248,13 @@ function Pinned({ pin, actions }: { pin: PinnedCallout; actions: ActivityActions
                 <Button
                   variant="secondary"
                   size="sm"
+                  disabled={busy}
                   iconLeft={<RefreshCw size={14} strokeWidth={1.6} aria-hidden />}
                   onClick={() => actions.onSwitchBackup(pin.node_id as string)}
                 >
                   Switch to the backup model now
                 </Button>
-                <Button variant="ghost" size="sm" onClick={actions.onStop}>
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => setAskStop(true)}>
                   Stop run
                 </Button>
               </>
@@ -247,20 +263,35 @@ function Pinned({ pin, actions }: { pin: PinnedCallout; actions: ActivityActions
               <Button
                 variant="secondary"
                 size="sm"
+                disabled={busy}
                 iconLeft={<Square size={14} strokeWidth={1.6} aria-hidden />}
-                onClick={actions.onStop}
+                onClick={() => setAskStop(true)}
               >
                 Stop run
               </Button>
             )}
             {pin.kind === "failed" && (
-              <Button variant="secondary" size="sm" onClick={actions.onRetryFromStart}>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={busy}
+                onClick={actions.onRetryFromStart}
+              >
                 Retry from the start
               </Button>
             )}
           </div>
         </div>
       </div>
+      <StopRunDialog
+        open={askStop}
+        teamName={teamName}
+        onConfirm={() => {
+          setAskStop(false);
+          actions.onStop();
+        }}
+        onCancel={() => setAskStop(false)}
+      />
     </div>
   );
 }
@@ -273,10 +304,16 @@ export function ActivityPanel({
   activity,
   now = Date.now(),
   actions,
+  busy = false,
+  teamName,
 }: {
   activity: RunActivity;
   now?: number;
   actions: ActivityActions;
+  /** An action is on its way: the pinned buttons wait. */
+  busy?: boolean;
+  /** Named in the Stop confirmation. */
+  teamName?: string;
 }) {
   const [filter, setFilter] = useState<string | null>(null);
   const [earlier, setEarlier] = useState(false);
@@ -366,7 +403,9 @@ export function ActivityPanel({
       </div>
       {!folded && (
         <>
-          {activity.pinned && <Pinned pin={activity.pinned} actions={actions} />}
+          {activity.pinned && (
+            <Pinned pin={activity.pinned} actions={actions} busy={busy} teamName={teamName} />
+          )}
           {hiddenCount > 0 && (
             <div className="lv-act__earlier">
               <button type="button" className="lv-linkbtn" onClick={() => setEarlier(true)}>
