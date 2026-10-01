@@ -107,7 +107,7 @@ Raw log shows them.
 | `stalled` | host event (the sweep) | "Stopped responding: no update for 20 minutes" | `{after_s}` |
 | `error` | a failed close (`inv:<id>:end`) / an engine error event (`ev:`) | "Failed: the model didn't answer after 3 tries" · engine error: "Hit an error: …" (the step may carry on) · a stalled close has no error line (its `stalled` line says it) | `{message}` |
 | `pr` | ship (`node_id` = the Ship node) | "Pushed branch tvashtr/run-12 and opened pull request #42" | `{pr_url, pr_number, branch}` |
-| `done` | run end | "Done in 22m 38s · $1.12" · "Failed after 3m 10s · $0.12" · "Stopped. Nothing shipped." | `{elapsed_s, cost_usd}` |
+| `done` | run end | "Done in 22m 38s · $1.12" · "Failed after 3m 10s · $0.12" · "Stopped. Nothing shipped." | `{elapsed_s, cost_usd}` (the run's end = its latest step close / event, a step left open counting from its start; `updated_at` only when it has neither — it moves on any later write; `at` and `summary.elapsed_s` likewise) |
 | `message` | an agent's closing message: the `finish` tool, an OpenHands agent reply, Claude Code's "Finished:" (never its words or reasoning) | "Finished its step" | `{}` |
 
 `quiet`, `carried_over` are states, not lines (`carried_over` arrives with M3).

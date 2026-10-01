@@ -442,7 +442,7 @@ def test_a_shipped_run_reads_start_to_finish():
              detail="1. Handle an empty price list\n2. Add a test for period=1"),
         _inv(5, eng, iteration=2, start=401, end=700, outcome="built"),
         _inv(6, rev, iteration=2, start=701, end=800, outcome="approved"),
-        _inv(7, ship, start=801, end=900, outcome="shipped"),
+        _inv(7, ship, start=801, end=1358, outcome="shipped"),  # the run ends here
     ]  # fmt: skip
     ev = _Events()
     ev.add(5, 600, "action", _terminal("python -m pytest -q"))
@@ -544,7 +544,7 @@ def test_a_failed_run_pins_its_failure_and_ends_with_a_failed_line():
     pm, eng, _ = _engineer_world()
     invs = [
         _inv(1, pm, end=30),
-        _inv(2, eng, status="failed", start=40, end=100,
+        _inv(2, eng, status="failed", start=40, end=1358,
              detail="the model didn't answer after 3 tries"),
     ]  # fmt: skip
     run = _run("failed", failed_node_id=eng.id, failure_message="Engineer: it broke")
@@ -751,3 +751,19 @@ def test_a_decided_gate_says_its_latest_decision_without_a_clock():
         _run(), [pm, gate, eng, rev, ship], invs, tasks=tasks[::-1], edges=edges
     )
     assert {a["label"]: a for a in reversed_order["agents"]}["Approval"] == approval
+
+
+def test_the_done_time_is_the_runs_last_step_not_a_later_write():
+    pm, eng, _ = _engineer_world()
+    invs = [_inv(1, pm, end=30), _inv(2, eng, start=40, end=900)]
+    ev = _Events()
+    ev.add(2, 950, "message", {"source": "agent", "text": "done"})
+    run = _run("completed", updated_at=_at(5000))  # a later write moved updated_at
+    reply = _build(run, [pm, eng], invs, ev.rows)
+    done = reply["lines"][-1]
+    assert (done["kind"], done["text"]) == ("done", "Done in 15m 50s · $1.12")
+    assert done["at"] == _at(950).isoformat()
+    assert done["refs"]["elapsed_s"] == 950 and reply["summary"]["elapsed_s"] == 950
+    # No step and no event yet: the run's own last write is all there is.
+    bare = _build(_run("failed", updated_at=_at(7)), [pm, eng], [])
+    assert bare["lines"][-1]["text"] == "Failed after 7s · $1.12"

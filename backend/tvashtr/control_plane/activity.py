@@ -641,8 +641,13 @@ def build(
             },
         )
 
-    # The end: the pull request, then done / failed / stopped.
-    elapsed_s = int((run.updated_at - run.created_at).total_seconds())
+    # The end: the pull request, then done / failed / stopped. The run ended at its last step close
+    # or event — ``updated_at`` moves on any later write. (A step left open counts from its start.)
+    end_at = max(
+        [i.ended_at or i.started_at for i in invs] + [ev.created_at for ev in events],
+        default=run.updated_at,
+    )
+    elapsed_s = int((end_at - run.created_at).total_seconds())
     cost = round(float(spent_usd), 2)
     pr_number = run_views.pr_number(run.pr_url)
     if run.pr_url:
@@ -658,7 +663,7 @@ def build(
         branch = f"Pushed branch {run.ship_branch} and opened" if run.ship_branch else "Opened"
         out.add(
             "run:pr",
-            (ship.ended_at if ship and ship.ended_at else run.updated_at),
+            (ship.ended_at if ship and ship.ended_at else end_at),
             str(ship.node_id) if ship else None,
             1 if ship else None,
             "pr",
@@ -675,7 +680,7 @@ def build(
             text, tone = "Stopped. Nothing shipped.", "neutral"
         out.add(
             "run:done",
-            run.updated_at,
+            end_at,
             None,
             None,
             "done",
