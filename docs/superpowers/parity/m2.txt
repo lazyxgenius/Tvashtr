@@ -1,11 +1,12 @@
-# M2 — Live run view: parity record, branch feat/m02-parity @ 981a941 (from feat/m02-live-run-view 12e8a9f), 2026-10-02.
+# M2 — Live run view: parity record, branch feat/m02-parity (from feat/m02-live-run-view 12e8a9f), 2026-10-02.
 # Design: the Claude Design "Tvashtr Runs" canvas (canvas.json v3, design system Tvashtr Labs 1790312796-5243), pages
 #   Live run and Problems. Shot with shoot-design.mjs at 1440x900: Live-Working, Live-NeedsYou, Live-Command,
 #   Live-Retrying, Live-Quiet, Live-Done, Live-Website, Live-Home, Live-AgentSteps, Prob-Stalled, Prob-Failed,
 #   Prob-NotifyAsk (12 design shots, 12 fonts-ok).
 # App: scripts/design-parity/scenarios/runs-live.mjs + runs-fixtures.mjs (activityFor(board): one
 #   GET /api/runs/r-12/activity reply per board mirroring its agents, lines, pinned callout and summary; the graph's
-#   live blocks, run status, the open gate task; Date.now frozen at the board's moment) and, for Live-Home, home-fixtures'
+#   live blocks, run status, the open gate task; Date.now frozen at the board's moment; endings named by the server's
+#   kinds "ship" / "stop", as on feat/m02-live-run-view 37a0a84) and, for Live-Home, home-fixtures'
 #   homeRoutes with four live runs and a run_stalled inbox item. States are reached through the UI: "Show output"
 #   (Live-Working, -Website, Prob-NotifyAsk), the Engineer's drawer on Runs with "Hide activity" (Live-AgentSteps), the
 #   bell's dialog (Prob-NotifyAsk), Home scrolled 206px so Needs you and Running now sit where the board draws them
@@ -40,6 +41,9 @@
 #     3"); a run's step that hasn't started says what it starts after, as its Now bar chip does ("Starts after your
 #     approval", "Starts after the Engineer"; Live-NeedsYou) — the board's 11px card line had paired with the Now bar.
 #   981a941 Home's Running now head says "Updates as it happens" (Live-Home; the existing 12px .hm-section__aside).
+#   (after 4dbe67f) the Now bar and the Activity filter take the server's ending kinds: NowBar.tsx carries the same two
+#     lines as feat/m02-live-run-view 37a0a84 (Ship is the dashed chip, Stop is left out), and the filter leaves out
+#     "ship" / "stop" as well as "terminal".
 # waiver W1 (app governs, brief 2.2/2.3 — the shared design-system Button) [ctl] width +8 on every new button with a
 #   leading icon: 'Jump to live' 115→123, 'Approve' 93→101, 'Review the spec' 142→150, 'Switch to the backup model now'
 #   242→250, 'Stop run' (Prob-Stalled callout) 93→101, 'Open pull request #42' 178→186, 'Turn on' 88→96 — the Button's
@@ -55,9 +59,11 @@
 #   12.5→14px (Live-Done's run-bar time → the Done summary's 14px stat).
 # waiver W3 (app governs, brief 2.2/2.3 — the canvas cards' existing parts) [txt] 'Round 2' 10→10.5px, 400→500 (the
 #   card's existing "round 2" label, .rf-node__round; the boards draw a "Round N" chip), 'Needs you' 9.5→11.5px
-#   (Live-NeedsYou's gate card label → the Now bar's state word: the app's gate card draws its existing state), and on
-#   Live-Done 'Product manager' 600→500 / 'Ship' 10.5→12.5px (the card title and Ship node pair with the Activity filter
-#   and the Ship line: the app fits the whole graph to the canvas, so the cards sit elsewhere).
+#   (Live-NeedsYou's gate card label → the Now bar's state word: the app's gate card draws its existing state), and
+#   'Product manager' 600→500 / 'Ship' 10.5→12.5px (Live-Done; Prob-Failed desktop 'Ship'): the card title and the Ship
+#   node pair with the Activity filter, the Ship line or the Ship chip because the app fits the whole graph to the
+#   canvas, so the cards sit elsewhere (the fit settles a little differently from sweep to sweep, which moves these
+#   pairings between renders).
 # waiver W4 (app governs, brief 2.2/2.3 — the dashboard chrome, Live-Home) [ctl] '⌘K' height 18→22 (the header search's
 #   kbd), 'Home2' weight 600→500 (the nav's current item).
 # note (only moved) the Now bar's row sits where drawn and every chip item it shares with a board (name, state word,
@@ -80,7 +86,11 @@
 # note (copy inside server text, not built) the boards bold words inside a line or a callout body: 'core/' 'tests/'
 #   (Read 6 files in core/ and tests/), 'lazyxgenius/trade_mcp' 'main' (Started on …), 'Nothing has shipped.'
 #   (Prob-Stalled), 'Impact:' 'Safe:' 'Next:' (Prob-Failed), and set 'openai/gpt-4.1-mini' as code in Live-Retrying's
-#   callout body; the app shows the server's text plain (the words are there). Live-Command's 'Edited core/indicators.py
+#   callout body; the app shows the server's text plain (the words are there). The fixtures carry the boards' callout
+#   words; the server's (feat/m02-live-run-view 8ee1a82) differ where the boards say what isn't so here: the gate's body
+#   drops "and the timer has stopped", the retry's says "tries again", the stalled body is "No update for 5m 10s. Its
+#   last step: Asked the model for the next step. Nothing has shipped.", the failed title is "Engineer failed" with
+#   "<failure message>. Nothing was shipped." — same elements and sizes, other words. Live-Command's 'Edited core/indicators.py
 #   and tests/test_indicators.py' is one line for two files; the API sends one edited line per file.
 # note (layout) 'Show 4 earlier steps' matches (Live-Working); the app always shows the last 6 steps, where boards with a
 #   callout or open output show 3–5, so 'Show 20 earlier steps' (Live-Quiet) / 'Show 26 earlier steps' (Live-Done) read
@@ -143,6 +153,6 @@ Live-AgentSteps desktop: matched 60/92 design items · 0 with size/type drift ·
 Prob-Stalled web: matched 64/92 design items · 5 with size/type drift · 38 only moved · 28 not found in app — covered: W1×2, W2×2, W3×1
 Prob-Stalled desktop: matched 66/92 design items · 5 with size/type drift · 38 only moved · 26 not found in app — covered: W1×2, W2×2, W3×1
 Prob-Failed web: matched 63/92 design items · 2 with size/type drift · 53 only moved · 29 not found in app — covered: W1×1, W3×1
-Prob-Failed desktop: matched 65/92 design items · 2 with size/type drift · 53 only moved · 27 not found in app — covered: W1×1, W3×1
+Prob-Failed desktop: matched 65/92 design items · 3 with size/type drift · 52 only moved · 27 not found in app — covered: W1×1, W3×2
 Prob-NotifyAsk web: matched 73/97 design items · 2 with size/type drift · 26 only moved · 24 not found in app — covered: W1×2
 Prob-NotifyAsk desktop: matched 75/97 design items · 2 with size/type drift · 26 only moved · 22 not found in app — covered: W1×2
