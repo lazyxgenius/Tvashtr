@@ -14,6 +14,7 @@ import {
   renderHome,
   resetHomeState,
   runRow,
+  stalledInboxItem,
 } from "./homeTestUtils";
 
 const NOW = new Date("2026-10-02T10:50:00Z").getTime();
@@ -145,33 +146,13 @@ describe("Running now — live state (Live-Home)", () => {
   });
 });
 
-const STALLED_ITEM = {
-  key: "run_stalled:r-stall",
-  kind: "run_stalled",
-  since: secsAgo(310),
-  team: { id: "t-bug", name: "Bugfix squad" },
-  run: {
-    id: "r-stall",
-    idea: "Fix the flaky login test",
-    status: "running",
-    created_at: secsAgo(1082),
-    target: null,
-    library_team_id: "t-bug",
-  },
-  node: { id: "n-eng", label: "Engineer", iteration: 1 },
-  live: {
-    live_state: "stalled",
-    last_event_at: secsAgo(310),
-    activity: "Asked the model for the next step",
-    activity_started_at: secsAgo(310),
-    retry: null,
-    backup_model: null,
-  },
-};
-
 describe("Needs you — Run stalled (Live-Home)", () => {
   it("lists a stalled run with View run, which opens the run", async () => {
-    mockApi(homeRoutes({ "GET /api/inbox": { count: 5, items: [...INBOX_ITEMS, STALLED_ITEM] } }));
+    mockApi(
+      homeRoutes({
+        "GET /api/inbox": { count: 5, items: [...INBOX_ITEMS, stalledInboxItem(310)] },
+      }),
+    );
     renderHome();
     const section = await screen.findByRole("region", { name: "Needs you" });
     await within(section).findByText("Run stalled");
