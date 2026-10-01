@@ -7,11 +7,13 @@ is exercised deterministically without a live provider call.
 
 import uuid
 
-from dbos import DBOS
+from conftest import auth_user_id
+from dbos import DBOS, SetWorkflowID
 
 from tvashtr.control_plane import doc_writer
 from tvashtr.documents.service import get_document_with_versions
 from tvashtr.gateway import CompletionResult
+from tvashtr.routers import spike_workflow_id
 
 _MODEL = "openrouter/meta-llama/llama-3.1-8b-instruct"
 
@@ -34,7 +36,10 @@ def test_generate_doc_end_to_end(client, monkeypatch):
     # Patch the gateway call the workflow's llm_step resolves at call time.
     monkeypatch.setattr(doc_writer, "complete", lambda request: _canned_result())
 
-    handle = DBOS.start_workflow(doc_writer.generate_doc, "a notes app")
+    # Started as the spike route starts it: the id names the account (Security S1), so the
+    # status route below answers the `client` account that owns it.
+    with SetWorkflowID(spike_workflow_id(str(auth_user_id()))):
+        handle = DBOS.start_workflow(doc_writer.generate_doc, "a notes app")
     result = handle.get_result()
     wf_id = handle.workflow_id
 

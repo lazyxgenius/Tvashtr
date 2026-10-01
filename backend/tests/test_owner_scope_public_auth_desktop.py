@@ -216,13 +216,17 @@ def test_hello_durable_status_is_a_404_for_another_account():
         DBOS.start_workflow(hello_durable, f"run {SECRET}", 0.1)
     DBOS.retrieve_workflow(run_id).get_result()
 
-    # The route never answers 404: an id DBOS doesn't know is 200 "NOT_FOUND". This is what B
-    # should see at most for A's run.
-    unknown = b.get(f"/api/spike/hello-durable/{uuid.uuid4()}")
-    assert unknown.json()["status"] == "NOT_FOUND"
+    # The route never answers 404 (S1-C exception): an id DBOS doesn't know is 200 "NOT_FOUND",
+    # and B's answer for A's run must be exactly that, so it says nothing about A's run.
+    ghost = str(uuid.uuid4())
+    unknown = b.get(f"/api/spike/hello-durable/{ghost}")
+    assert unknown.status_code == 200 and unknown.json()["status"] == "NOT_FOUND"
 
     theirs = b.get(f"/api/spike/hello-durable/{run_id}")
-    assert theirs.status_code == 404, (theirs.status_code, theirs.text)
+    assert (theirs.status_code, theirs.text.replace(run_id, "<id>")) == (
+        unknown.status_code,
+        unknown.text.replace(ghost, "<id>"),
+    ), theirs.text
     assert "SUCCESS" not in theirs.text and "step1" not in theirs.text
 
     mine = a.get(f"/api/spike/hello-durable/{run_id}")  # positive control

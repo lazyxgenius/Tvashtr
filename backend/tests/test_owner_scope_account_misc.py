@@ -90,12 +90,22 @@ def _snap(model, *where) -> list[dict]:
         return [{k: getattr(r, k) for k in keys} for r in rows]
 
 
-def _verdict(rb, ra, *, before=None, after=None, leaks=()) -> None:
-    """The four checks of an id route, all reported together so a failure shows every problem."""
+def _verdict(rb, ra, *, before=None, after=None, leaks=(), unknown=None) -> None:
+    """The four checks of an id route, all reported together so a failure shows every problem.
+    ``unknown`` = ``(answer to an id that doesn't exist, that id, A's id)``, for a route whose
+    contract answers an unknown id without a 404 (S1-C exception, recorded in the guard's table):
+    B's answer to A's id must then be exactly that answer, so it says nothing about A's row."""
     problems = []
     if after != before:
         problems.append(f"B's call changed A's object: {before} -> {after}")
-    if rb.status_code != 404:
+    if unknown is not None:
+        ru, unknown_id, a_id = unknown
+        if (rb.status_code, rb.text.replace(a_id, "<id>")) != (
+            ru.status_code,
+            ru.text.replace(unknown_id, "<id>"),
+        ):
+            problems.append(f"B's answer differs from an unknown id's: {ru.status_code} {ru.text}")
+    elif rb.status_code != 404:
         problems.append(f"B got {rb.status_code} (want 404)")
     leaked = [leak for leak in leaks if leak in rb.text]
     if leaked:
@@ -201,7 +211,10 @@ def test_spike_generate_doc_status_is_owner_scoped_run_workflow(a, b):
         )
     rb = cb.get(f"/api/spike/generate-doc/{run_wf}")
     ra = ca.get(f"/api/spike/generate-doc/{run_wf}")
-    _verdict(rb, ra, leaks=(secret_key, secret_model))
+    ghost = str(uuid.uuid4())
+    ru = cb.get(f"/api/spike/generate-doc/{ghost}")
+    _verdict(rb, ra, leaks=(secret_key, secret_model), unknown=(ru, ghost, run_wf))
+    assert secret_key in ra.text  # A still reads its own run's cost rows
 
 
 def test_spike_generate_doc_status_is_owner_scoped_started_workflow(a, b, monkeypatch):
@@ -229,7 +242,10 @@ def test_spike_generate_doc_status_is_owner_scoped_started_workflow(a, b, monkey
     document_id = DBOS.retrieve_workflow(wf_id).get_result()["document_id"]
     rb = cb.get(f"/api/spike/generate-doc/{wf_id}")
     ra = ca.get(f"/api/spike/generate-doc/{wf_id}")
-    _verdict(rb, ra, leaks=(document_id, model))
+    ghost = str(uuid.uuid4())
+    ru = cb.get(f"/api/spike/generate-doc/{ghost}")
+    _verdict(rb, ra, leaks=(document_id, model), unknown=(ru, ghost, wf_id))
+    assert ra.json()["status"] == "SUCCESS" and ra.json()["result"]["document_id"] == document_id
 
 
 # ------------------------------------------------------------------------------ providers

@@ -521,16 +521,44 @@ def _edge_to_dict(e: Edge) -> dict:
     }
 
 
+def spike_workflow_id(owner_id: str) -> str:
+    """The id a spike route starts a workflow under: it names the account that started it."""
+    return f"spike-{owner_id}-{uuid.uuid4()}"
+
+
+def owns_workflow(owner_id: str, workflow_id: str) -> bool:
+    """Whether the account may read ``workflow_id`` on a spike status route (Security S1): a
+    workflow it started there (:func:`spike_workflow_id`), or one of its runs (a run's workflow id
+    is its run id). Anything else is answered exactly like an id nobody knows."""
+    if workflow_id.startswith(f"spike-{owner_id}-"):
+        return True
+    with db.session_scope() as session:
+        owned = session.execute(
+            select(Run.id)
+            .where(Run.workflow_id == workflow_id, Run.owner_id == uuid.UUID(owner_id))
+            .limit(1)
+        ).first()
+    return owned is not None
+
+
 @router.post("/api/spike/generate-doc", response_model=StartResponse)
-def start_generate_doc(body: GenerateDocRequest) -> StartResponse:
+def start_generate_doc(
+    body: GenerateDocRequest, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> StartResponse:
     """Start the generate_doc workflow in the background; return its id."""
-    handle = DBOS.start_workflow(generate_doc, body.topic)
+    with SetWorkflowID(spike_workflow_id(current_user.id)):
+        handle = DBOS.start_workflow(generate_doc, body.topic)
     return StartResponse(workflow_id=handle.workflow_id)
 
 
 @router.get("/api/spike/generate-doc/{workflow_id}")
-def get_generate_doc(workflow_id: str) -> dict:
-    """Return DBOS status, the workflow result (if finished), and its cost rows."""
+def get_generate_doc(
+    workflow_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Return DBOS status, the workflow result (if finished), and its cost rows — for the
+    caller's own workflows; any other id is ``NOT_FOUND`` with nothing in it."""
+    if not owns_workflow(current_user.id, workflow_id):
+        return {"workflow_id": workflow_id, "status": "NOT_FOUND", "result": None, "costs": []}
     status = DBOS.get_workflow_status(workflow_id)
     state = status.status if status is not None else "NOT_FOUND"
     result = status.output if status is not None and state == "SUCCESS" else None

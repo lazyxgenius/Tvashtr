@@ -12,8 +12,9 @@ emitted only after the lifespan's startup phase, so the sweep precedes any resum
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 
-from dbos import DBOS, DBOSConfig
+from dbos import DBOS, DBOSConfig, SetWorkflowID
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,7 +23,7 @@ from sqlalchemy import select
 
 import tvashtr.control_plane.domain_ingest  # noqa: F401  — register DBOS workflow
 from tvashtr import db
-from tvashtr.auth import auth_router, get_current_user
+from tvashtr.auth import UserOut, auth_router, get_current_user
 from tvashtr.config import get_settings
 from tvashtr.control_plane import github_app
 from tvashtr.control_plane.clone_reaper import sweep_orphaned_clones
@@ -40,6 +41,7 @@ from tvashtr.engines.docker_runtime import sweep_orphaned_agent_containers
 from tvashtr.mcp.connectors import get_connectors_mcp, mount_connectors_mcp
 from tvashtr.mcp.domains import get_domains_mcp, mount_domains_mcp
 from tvashtr.models import SpikeHelloEvent
+from tvashtr.routers import owns_workflow, spike_workflow_id
 from tvashtr.routers import router as api_router
 from tvashtr.routes import account as revamp_account
 from tvashtr.routes import connectors as revamp_connectors
@@ -287,20 +289,24 @@ def skill_presets() -> dict:
     return {"skills": public_skill_presets()}
 
 
-@app.post(
-    "/api/spike/hello-durable",
-    response_model=StartResponse,
-    dependencies=[Depends(get_current_user)],
-)
-def start_hello_durable() -> StartResponse:
+@app.post("/api/spike/hello-durable", response_model=StartResponse)
+def start_hello_durable(
+    current_user: Annotated[UserOut, Depends(get_current_user)],
+) -> StartResponse:
     """Start hello_durable in the background; return its workflow id."""
-    handle = DBOS.start_workflow(hello_durable, "demo", get_settings().hello_sleep_seconds)
+    with SetWorkflowID(spike_workflow_id(current_user.id)):
+        handle = DBOS.start_workflow(hello_durable, "demo", get_settings().hello_sleep_seconds)
     return StartResponse(workflow_id=handle.workflow_id)
 
 
-@app.get("/api/spike/hello-durable/{workflow_id}", dependencies=[Depends(get_current_user)])
-def get_hello_durable(workflow_id: str) -> dict:
-    """Return the DBOS workflow status plus recorded events for this workflow."""
+@app.get("/api/spike/hello-durable/{workflow_id}")
+def get_hello_durable(
+    workflow_id: str, current_user: Annotated[UserOut, Depends(get_current_user)]
+) -> dict:
+    """Return the DBOS workflow status plus recorded events — for the caller's own workflows;
+    any other id is ``NOT_FOUND`` with nothing in it (``routers.owns_workflow``)."""
+    if not owns_workflow(current_user.id, workflow_id):
+        return {"workflow_id": workflow_id, "status": "NOT_FOUND", "events": []}
     status = DBOS.get_workflow_status(workflow_id)
     with db.session_scope() as session:
         rows = (
