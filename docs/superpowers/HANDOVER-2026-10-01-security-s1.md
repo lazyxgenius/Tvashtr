@@ -391,4 +391,6 @@ All on branch head `1a4b3b7`, run one at a time with nothing else running:
 
 | Area | main sha | Fly release | Desktop tag | DMG check |
 |---|---|---|---|---|
-| Security S1 (backend only) | (filled at ship) | (filled at ship) | none: frontend and `desktop/` unchanged | n/a |
+| Security S1 (backend only) | e39717b | v30 (image `deployment-01M3VPCTYJSV2PHD9EKSY2ECR4`; release_command `alembic upgrade head` ran, no new migration) | none: frontend and `desktop/` unchanged | n/a (live asset still `index-DXwje35F.js`) |
+
+Live smoke after the deploy (2026-10-01 ~17:50 IST): `/health` ok; `make deploy-smoke` 0 failed / 7; headless `#/welcome` and `#/signin` 200 with 0 page errors; the four spike proof routes answer 404 `{"detail": "Not found"}` with no session (`POST /api/spike/generate-doc` was 401 on v29); `GET /api/spike/run-events/x` still 401; `/mcp/domains` refuses a request with no token and one with a (non-real) `tv_session` cookie with "authentication required — no valid run token" (v29 answered "missing session cookie" / "invalid or expired session", i.e. it read cookies); 0 5xx and 0 tracebacks in the logs. Rollback image (v29): `registry.fly.io/tvashtr:deployment-01M3SFE9BVDKEWCB5H9YEAYFYH`. Not done: a check with a real prod login cookie (no prod session is available; `.playwright/prod-session.json`'s `tv_session` expired 2026-09-27, so `make demo-proof-prod` was skipped).
