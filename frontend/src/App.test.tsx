@@ -884,8 +884,11 @@ describe("App — M2 live run view", () => {
     expect(now).toHaveTextContent("Running a command");
     const activity = screen.getByRole("region", { name: "Activity" });
     expect(activity).toHaveTextContent("+48");
-    // Additive: the run view's own toolbar controls are all still there.
-    expect(screen.getByRole("button", { name: "Cancel run" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Running…" })).toBeInTheDocument();
+    // Additive (brief §2.2, docs/superpowers/parity/kept-runview.txt): the run view's own controls
+    // are all still there.
+    for (const name of ["Cancel run", "Running…", /^Documents/]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("toolbar", { name: "Team" })).toBeInTheDocument();
   });
 });
