@@ -207,7 +207,7 @@ def test_hello_durable_status_is_a_404_for_another_account():
     """The id is A's RUN id: a run's DBOS workflow id IS its run id (``POST /api/runs`` starts
     ``run_team`` under ``SetWorkflowID(run_id)``). ``hello_durable`` stands in for ``run_team``
     under that id; the handler only looks the id up in DBOS, so the workflow function is irrelevant.
-    A bare spike workflow (``POST /api/spike/hello-durable``) stores no owner, so it is not used.
+    (A workflow started on ``POST /api/spike/hello-durable`` carries its owner in its id since S1.)
     """
     a, a_id = fresh_account()
     b, _ = fresh_account()

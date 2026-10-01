@@ -185,3 +185,86 @@ def test_connectors_and_domains_tokens_dont_cross(monkeypatch):
     mcp = _mcp(monkeypatch, {"Authorization": f"Bearer {connectors_token}"})
     with pytest.raises(Exception, match="authentication required"):
         _ask(mcp, domain="anything")
+
+
+_HTTP_PROBE = """
+import asyncio, json, logging, os
+from contextlib import asynccontextmanager
+
+import httpx
+from fastapi import FastAPI
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
+
+from tvashtr.control_plane import domain_mcp
+from tvashtr.mcp.domains import get_domains_mcp, mount_domains_mcp
+
+logging.disable(logging.CRITICAL)
+# The search itself is not under test: answer with the domain id it was asked for.
+domain_mcp.retrieve_domain = lambda owner, did, query, top_k=None: {
+    "citations": [{"domain": str(did)}], "latency_ms": 1}
+domains = get_domains_mcp().streamable_http_app()
+
+
+@asynccontextmanager
+async def lifespan(app):
+    async with domains.router.lifespan_context(domains):
+        yield
+
+
+app = FastAPI(lifespan=lifespan)
+mount_domains_mcp(app, domains)
+
+
+async def call(headers):
+    http = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), headers=headers)
+    url = "http://127.0.0.1:8000/mcp/domains"
+    async with http, streamable_http_client(url, http_client=http) as (read, write, _):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            res = await session.call_tool(
+                "domain_retrieve", {"query": "q", "domain": os.environ["PROBE_DOMAIN"]})
+            return [res.isError, " ".join(getattr(c, "text", "") for c in res.content)]
+
+
+async def main():
+    async with lifespan(app):
+        out = {
+            "cookie": await call({"cookie": os.environ["PROBE_COOKIE"]}),
+            "bearer": await call({"authorization": "Bearer " + os.environ["PROBE_TOKEN"]}),
+        }
+    print(json.dumps(out))
+
+
+asyncio.run(main())
+"""
+
+
+def test_the_real_mount_refuses_a_login_cookie_and_takes_the_run_token():
+    """Review A1: through the real ``/mcp/domains`` mount and a real MCP client (in a subprocess,
+    as tests/test_domain_mcp_http.py explains), the owner's login cookie is refused and the run's
+    Bearer token reaches the owner's domain."""
+    import os
+    import subprocess
+    import sys
+
+    c, owner = _account()
+    did = _domain(c, "Support docs")
+    cookie = f"{SESSION_COOKIE_NAME}={make_session_cookie_value(str(owner))}"
+    ran = subprocess.run(
+        [sys.executable, "-c", _HTTP_PROBE],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env={
+            **os.environ,
+            "PROBE_DOMAIN": "Support docs",
+            "PROBE_COOKIE": cookie,
+            "PROBE_TOKEN": _token(_run(owner), [did]),
+        },
+    )
+    assert ran.returncode == 0, ran.stderr[-2000:]
+    out = json.loads(ran.stdout.strip().splitlines()[-1])
+    assert out["cookie"][0] is True and "authentication required" in out["cookie"][1]
+    assert out["bearer"][0] is False and did in out["bearer"][1]

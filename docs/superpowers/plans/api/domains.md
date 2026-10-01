@@ -49,7 +49,7 @@ in `routers.py` and changed there in place.
 | `POST /api/domains/{id}/steps` | **new** — add the domain to a team as a Query domain step (`201`) | G11 |
 | `GET /api/domains/{id}/agents` | **new** — every agent and whether it can search the domain | G11 |
 | `PUT /api/domains/{id}/agents` | **new** — exactly these agents can search the domain | G11 |
-| agent tools (`tool_config.tvashtr.domains`) | a list of domain ids now works (sends `X-Tvashtr-Domains`); the Domains MCP tools take the domain by name | G11 |
+| agent tools (`tool_config.tvashtr.domains`) | a list of domain ids now works (inside the agent's Domains run token since Security S1; before, an `X-Tvashtr-Domains` header); the Domains MCP tools take the domain by name | G11 |
 | `POST /api/teams/{team_id}/nodes` (`domain_query`) | a new node's `config` gains `pass_to_spec: true`, `on_no_answer: "continue"` | G12 |
 | `PATCH /api/teams/{team_id}/nodes/{node_id}` (`domain_query`) | optional `pass_to_spec`, `on_no_answer` (`"continue"`/`"stop"`, else `422`) | G12 |
 | `GET /api/teams/{team_id}/validate`, `POST /api/runs` | `domain_query_no_domain` also for a domain that isn't one of the account's (deleted) | G12 |
@@ -823,11 +823,13 @@ domain of the account as an explicit list. Answers `{"agents": [ …usage agent 
 ### The run side of agent access
 
 - `node_tools.build_mcp_config`: a non-empty `tvashtr.domains` list injects the Domains MCP like
-  `true` does, plus a header `X-Tvashtr-Domains: <id>,<id>` (absent = every domain). An empty list
-  gives no Domains tools.
+  `true` does. Since Security S1 the agent gets `Authorization: Bearer <Domains run token>` and
+  nothing else (never the owner's `tv_session`): the token names the run, the agent and the list
+  (`true` = every domain); it is refused once the run has ended. An empty list gives no Domains
+  tools. (Before S1: the owner's session cookie plus an `X-Tvashtr-Domains` header, now ignored.)
 - The Domains MCP tools `domain_ask(question, domain)` and `domain_retrieve(query, domain, top_k?)`
   take the domain by name (any case) or id (`domain_id` still works for older agents), within the
-  header's allowlist; with one domain to search `domain` may be left out. Anything else errors with
+  token's allowlist; with one domain to search `domain` may be left out. Anything else errors with
   "Domains you can search: Support docs, Vendor contracts." (or "You can’t search any domains.").
 - The tool list names them: each tool's description (MCP `tools/list`) ends with a blank line and
   "Domains you can search: Support docs, Vendor contracts." — the agent's allowlist, or every domain

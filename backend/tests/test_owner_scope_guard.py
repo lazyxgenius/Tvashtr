@@ -533,7 +533,7 @@ ROUTES: dict[str, tuple[str, object]] = {
     "GET /api/spend": ("list", ["test_owner_scope_runs::test_spend_is_owner_scoped"]),
     "POST /api/spike/generate-doc": (
         "own",
-        "takes only a topic and starts a doc_writer workflow; it names no account's object",
+        "takes only a topic; starts a doc_writer workflow under an id naming the caller (routers.spike_workflow_id)",
     ),
     "GET /api/spike/generate-doc/{workflow_id}": (
         "id",
@@ -542,7 +542,10 @@ ROUTES: dict[str, tuple[str, object]] = {
             "test_owner_scope_account_misc::test_spike_generate_doc_status_is_owner_scoped_started_workflow",
         ],
     ),
-    "POST /api/spike/hello-durable": ("own", "starts an ownerless demo workflow and takes no id"),
+    "POST /api/spike/hello-durable": (
+        "own",
+        "starts a demo workflow under an id naming the caller (routers.spike_workflow_id); takes no id",
+    ),
     "GET /api/spike/hello-durable/{workflow_id}": (
         "id",
         [
