@@ -45,6 +45,7 @@ import {
 import {
   SECTION_IDS,
   approvalTitle,
+  durationShort,
   elapsedShort,
   listNatural,
   money,
@@ -377,6 +378,37 @@ export function NeedsYou() {
                   </Button>
                 )}
                 {more("Run failed", [
+                  { key: "open", label: "Open run", onSelect: () => openRun(teamId, item.run.id) },
+                  "separator",
+                  {
+                    key: "dismiss",
+                    label: "Dismiss",
+                    icon: <X size={15} strokeWidth={1.6} />,
+                    onSelect: () => dismiss(item),
+                  },
+                ])}
+              </>
+            }
+          />
+        );
+      }
+      case "run_stalled": {
+        // Live-Home: Resume arrives with M3, so only View run for now (no dead buttons).
+        const teamId = item.team?.id ?? item.run.library_team_id;
+        const since = durationShort(item.live.last_event_at ?? item.since);
+        return (
+          <Row
+            key={item.key}
+            tone="red"
+            icon={<TriangleAlert {...ICON} />}
+            title="Run stalled"
+            meta={`${item.team?.name ?? "A run"} · “${item.run.idea}” · no update for ${since} · ${item.node.label}`}
+            actions={
+              <>
+                <Button variant="ghost" size="sm" onClick={() => openRun(teamId, item.run.id)}>
+                  View run
+                </Button>
+                {more("Run stalled", [
                   { key: "open", label: "Open run", onSelect: () => openRun(teamId, item.run.id) },
                   "separator",
                   {

@@ -1,12 +1,19 @@
 import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
 
-import { type RunListRow, stopRun } from "../../lib/api/runs";
+import { type RunListRow, type RunLive, stopRun } from "../../lib/api/runs";
 import { navigate } from "../../lib/nav";
 import { Badge, Button, ConfirmDialog, useToast } from "../../design-system/components";
 import { useHome } from "./homeContext";
 import { markRunEnded, refreshHome, useHomeData } from "./homeData";
-import { SECTION_IDS, elapsedShort, money, runStatusLook } from "./homeFormat";
+import {
+  SECTION_IDS,
+  durationShort,
+  elapsedShort,
+  liveLook,
+  money,
+  runStatusLook,
+} from "./homeFormat";
 import { type PipelineChip, RunProgressStrip } from "./RunProgressStrip";
 import "./home-runs.css";
 
@@ -31,6 +38,23 @@ function chipsOf(row: RunListRow): { chips: PipelineChip[]; loopBefore: Set<numb
   return { chips, loopBefore };
 }
 
+/** The current-activity line's words (Live-Home): what the step does now, or how long it's been
+ *  silent when Quiet / Stalled. */
+function liveLine(row: RunListRow, step: RunLive): { text: string; aside: string } {
+  const since = durationShort(step.last_event_at);
+  if (step.live_state === "stalled")
+    return {
+      text: `no update for ${since}${row.pr_url ? "" : " · nothing shipped yet"}`,
+      aside: "",
+    };
+  if (step.live_state === "quiet")
+    return {
+      text: `no update for ${since} · usually still thinking`,
+      aside: durationShort(step.activity_started_at),
+    };
+  return { text: step.activity, aside: since && `${since} ago` };
+}
+
 function RunCard({
   row,
   fresh,
@@ -40,15 +64,25 @@ function RunCard({
   fresh: boolean;
   onStop: (row: RunListRow) => void;
 }) {
-  const look = runStatusLook(row.status);
   const live = LIVE.has(row.status);
+  // M2: a live run wears its live state; an ended one (or an older server) keeps its status badge.
+  const look = (live && liveLook(row.live_state)) || runStatusLook(row.status);
+  // The waiting-for-you line already says what a gate needs, so it isn't repeated.
+  const step = live && !row.awaiting ? row.live : null;
+  const line = step ? liveLine(row, step) : null;
   const teamId = row.team?.id ?? row.library_team_id;
   const cap = row.budget_cap_usd;
   const pct = cap && cap > 0 ? Math.min(100, Math.round((row.spent_usd / cap) * 100)) : 0;
   const { chips, loopBefore } = chipsOf(row);
   return (
     <article
-      className={fresh ? "hm-run hm-run--new" : "hm-run"}
+      className={[
+        "hm-run",
+        fresh && "hm-run--new",
+        live && row.live_state === "stalled" && "hm-run--stalled",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       aria-label={`${row.team?.name ?? "Run"}: ${row.idea}`}
     >
       <div className="hm-run__top">
@@ -62,6 +96,13 @@ function RunCard({
       {chips.length > 0 && (
         <div className="hm-run__chips">
           <RunProgressStrip chips={chips} loopBefore={loopBefore} label="Progress" />
+        </div>
+      )}
+      {step && line && (
+        <div className="hm-run__live">
+          <b>{step.label}</b>
+          {` · ${line.text}`}
+          {line.aside && <span className="hm-run__live-aside">{line.aside}</span>}
         </div>
       )}
       {live && row.awaiting && (
