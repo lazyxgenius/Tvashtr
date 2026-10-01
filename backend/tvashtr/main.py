@@ -25,7 +25,7 @@ import tvashtr.control_plane.domain_ingest  # noqa: F401  — register DBOS work
 from tvashtr import db
 from tvashtr.auth import UserOut, auth_router, get_current_user
 from tvashtr.config import get_settings
-from tvashtr.control_plane import github_app
+from tvashtr.control_plane import github_app, stall_sweep  # noqa: F401 — registers the sweep
 from tvashtr.control_plane.clone_reaper import sweep_orphaned_clones
 from tvashtr.control_plane.domain_embedding import public_embedding_presets
 from tvashtr.control_plane.fly_reaper import sweep_orphaned_fly_apps

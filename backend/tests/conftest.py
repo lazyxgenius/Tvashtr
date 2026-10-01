@@ -18,6 +18,10 @@ import pytest
 
 # Shrink the durable sleep before the app (and its cached settings) import.
 os.environ.setdefault("HELLO_SLEEP_SECONDS", "0.1")
+# M1 stall guard: no real stall-sweep cron while the suite runs (its tests call the sweep directly),
+# and the gateway's retry backoff never really waits.
+os.environ.setdefault("TVASHTR_STALL_SWEEP", "0")
+os.environ.setdefault("TVASHTR_MODEL_RETRY_BACKOFF_S", "0")
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select, update  # noqa: E402
