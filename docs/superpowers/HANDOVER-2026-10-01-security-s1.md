@@ -1,8 +1,19 @@
 # Handover — Security S1 (2026-10-01)
 
-Branch `fix/security-s1` from `main` `f6f8b3f`, pushed to origin. **Not shipped**: `main`, Fly and
-the Desktop release are untouched (one ship gate is red; see Unfinished). Clock: start 11:38:56
-IST; T+3:00 14:38:56; T+3:30 15:08:56; T+4:00 15:38:56.
+**Ship update (s1-ship session, 2026-10-01 evening; brief `prompts/s1-ship-connectors-parity.md`):**
+the architect ruled that S1 ships without the Connectors parity (S1 changes no screen; ruling 1),
+that the sweep's exceptions keep their unknown-id answer (ruling 2), and that the spike proof
+routes don't exist in hosted mode (ruling 3, commit `8be8c74`: `POST/GET
+/api/spike/hello-durable[/{id}]` and `POST/GET /api/spike/generate-doc[/{id}]` answer 404
+`{"detail": "Not found"}` in hosted mode, before any sign-in check; `/api/spike/run-events` and
+local mode are unchanged). S1 ships backend-only: the frontend and `desktop/` are unchanged, so
+there is no Desktop release. The ship row is at the end of this file; the s1-ship session's own
+record is `docs/superpowers/HANDOVER-2026-10-01-s1-ship.md`. Next: the operator rotates
+`TVASHTR_SESSION_SECRET` (Operator actions, 3).
+
+Branch `fix/security-s1` from `main` `f6f8b3f`, pushed to origin. As first written (before the ship
+update above): **Not shipped**: `main`, Fly and the Desktop release are untouched (one ship gate is
+red; see Unfinished). Clock: start 11:38:56 IST; T+3:00 14:38:56; T+3:30 15:08:56; T+4:00 15:38:56.
 
 The brief on disk, `prompts/security-s1.md`, is byte-identical to `prompts/security-s1.v1.md`
 (`cmp` printed nothing; the v2 rewrite never reached the disk). The checklist came from the
@@ -375,3 +386,9 @@ All on branch head `1a4b3b7`, run one at a time with nothing else running:
   - Migration files changed vs main: 0.
   - `main` = `origin/main` = `f6f8b3f`, untouched.
 - Left running: nothing. The stacks the gates started are stopped; the `docker compose` containers (Postgres, LiteLLM), which this session started, are stopped; the session's scratch databases are dropped.
+
+## Ship row
+
+| Area | main sha | Fly release | Desktop tag | DMG check |
+|---|---|---|---|---|
+| Security S1 (backend only) | (filled at ship) | (filled at ship) | none: frontend and `desktop/` unchanged | n/a |
