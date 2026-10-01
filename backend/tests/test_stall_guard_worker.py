@@ -163,3 +163,47 @@ def test_is_transient_error_excludes_the_budget_cutoff():
     assert local_mod._is_transient_error(RuntimeError("429 Too Many Requests")) is True
     assert local_mod._is_transient_error(_FakeProxyRateLimitError()) is False
     assert local_mod._is_transient_error(RuntimeError("boom")) is False
+
+
+# ---- host events: the executor's own run events, in a seq band of their own ----------------------
+
+
+def _events(run_id: str):
+    from sqlalchemy import select
+
+    from tvashtr.db import session_scope
+    from tvashtr.models import RunEvent
+
+    with session_scope() as session:
+        return list(
+            session.execute(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)
+            ).scalars()
+        )
+
+
+def test_record_host_event_appends_in_its_own_band_per_invocation():
+    import uuid
+
+    from tvashtr.control_plane.live_state import HOST_EVENT_SEQ_BAND, record_host_event
+
+    run_id = str(uuid.uuid4())
+    record_host_event(run_id, 7, "backup_model", {"to_model": "a"})
+    record_host_event(run_id, 7, "backup_model", {"to_model": "b"})
+    record_host_event(run_id, 8, "backup_model", {"to_model": "c"})
+    rows = [(e.invocation_id, e.seq, e.kind, e.payload["to_model"]) for e in _events(run_id)]
+    assert sorted(rows) == [
+        (7, HOST_EVENT_SEQ_BAND, "backup_model", "a"),
+        (7, HOST_EVENT_SEQ_BAND + 1, "backup_model", "b"),
+        (8, HOST_EVENT_SEQ_BAND, "backup_model", "c"),
+    ]
+
+
+def test_record_host_event_never_raises(monkeypatch):
+    from tvashtr.control_plane import live_state
+
+    def _boom():
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(live_state, "session_scope", _boom)
+    live_state.record_host_event("not-a-run", 1, "backup_model", {})  # logs, never raises
