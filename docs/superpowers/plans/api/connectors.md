@@ -340,6 +340,10 @@ Errors:
 - 422 `{"code": "cannot_register", "message": "Acme needs an app registered with it before Tvashtr can sign in."}`
   (sign-in found, but no pre-registered client, no client metadata document support, no dynamic
   registration; or the server doesn't advertise PKCE S256)
+- 422 `{"code": "borrowed_signin", "message": "This server wants to use Notion’s sign-in. Connect Notion from its own card instead."}`
+  (Security S1: a registry or custom server, or a Featured entry on another address than its own,
+  whose sign-in issuer is on a Featured entry's sign-in site — its address's site or a host it
+  pins. Also answered by `oauth/start`, for a connection made before the check existed.)
 - 429 `busy` (above)
 - 502 `{"code": "unreachable", "message": "We couldn’t reach mcp.acme.dev. Try again."}` (also a
   server that answers the tool listing with anything but a list, a 401 or a 403)

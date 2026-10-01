@@ -47,6 +47,34 @@ class CannotRegister(Exception):
     ``cannot_register``."""
 
 
+class BorrowedSignIn(CannotRegister):
+    """A registry or custom server (or a Featured entry on another address than its own) whose
+    sign-in is on a Featured provider's sign-in site: the user would approve ``provider`` on its
+    real page, and its token would go to a server nobody reviewed. The routes answer 422
+    ``borrowed_signin``."""
+
+    def __init__(self, provider: str):
+        self.provider = provider
+        self.message = (
+            f"This server wants to use {provider}’s sign-in. "
+            f"Connect {provider} from its own card instead."
+        )
+        super().__init__(self.message)
+
+
+def _featured_signin_sites() -> dict[str, str]:
+    """The site of each Featured entry's sign-in → its publisher: the site of its address, and of
+    each host it pins (``oauth_hosts``)."""
+    # ponytail: a Featured provider's sign-in is taken to be on its address's site (or a pinned
+    # host). One that signs in on another site needs that host in its ``oauth_hosts``.
+    sites: dict[str, str] = {}
+    for entry in connector_catalog.FEATURED.values():
+        hosts = [urlsplit(entry["url"]).hostname or "", *entry.get("oauth_hosts", ())]
+        for host in hosts:
+            sites.setdefault(connector_net.site(host), entry["publisher"])
+    return sites
+
+
 class SignInRefused(Exception):
     """The stored sign-in no longer works: the refresh was refused (``invalid_grant``,
     ``invalid_client``), there is no refresh token and the access token expired, or the row is
@@ -209,6 +237,11 @@ def _discover(url: str, pins: dict) -> Discovery | None:
     issuer = server.get("issuer")
     if not isinstance(issuer, str) or issuer.removesuffix("/") != asked.removesuffix("/"):
         raise CannotRegister("the sign-in server's metadata names another issuer")
+    # A sign-in on a Featured provider's site is for that provider's own card only.
+    if not pins:
+        provider = _featured_signin_sites().get(connector_net.site(urlsplit(issuer).hostname or ""))
+        if provider:
+            raise BorrowedSignIn(provider)
     pkce = server.get("code_challenge_methods_supported")
     # A list: ``in`` on a string is a substring test, and on a number a crash.
     if not isinstance(pkce, list) or "S256" not in pkce:
@@ -452,6 +485,8 @@ def state_hash(state: str) -> str:
 
 def _refusal(exc: Exception, name: str, url: str) -> "connectors.ConnectorError":
     """The route's answer to a sign-in that can't be started."""
+    if isinstance(exc, BorrowedSignIn):
+        return connectors.ConnectorError(422, {"code": "borrowed_signin", "message": exc.message})
     if isinstance(exc, CannotRegister):
         message = f"{name} needs an app registered with it before Tvashtr can sign in."
         return connectors.ConnectorError(422, {"code": "cannot_register", "message": message})

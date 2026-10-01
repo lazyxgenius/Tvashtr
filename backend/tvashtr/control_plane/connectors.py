@@ -601,6 +601,8 @@ def _list_tools(row: ConnectorConnection, headers: dict, wants_credentials: Conn
 def _discover(entry: dict, url: str) -> "connector_oauth.Discovery | None":
     try:
         return connector_oauth.discover(url, entry)
+    except connector_oauth.BorrowedSignIn as exc:
+        raise _refusal(422, "borrowed_signin", exc.message) from None
     except connector_oauth.CannotRegister:
         raise _refusal(
             422,
