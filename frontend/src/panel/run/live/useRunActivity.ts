@@ -22,6 +22,7 @@ export function useRunActivity(runId: string | null, terminal: boolean): RunActi
   useEffect(() => {
     if (!runId) return;
     let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const pull = async () => {
       try {
         const next = await getRunActivity(runId, cursor.current);
@@ -34,12 +35,16 @@ export function useRunActivity(runId: string | null, terminal: boolean): RunActi
         // A missed poll is retried on the next tick; the view keeps what it showed.
       }
     };
-    void pull();
-    if (terminal) return () => void (alive = false);
-    const timer = setInterval(() => void pull(), ACTIVITY_POLL_MS);
+    // The next poll is scheduled when the previous reply is in (review finding 1): a slow read on a
+    // long run never stacks requests, and an older reply never lands after a newer one.
+    const loop = async () => {
+      await pull();
+      if (alive && !terminal) timer = setTimeout(() => void loop(), ACTIVITY_POLL_MS);
+    };
+    void loop();
     return () => {
       alive = false;
-      clearInterval(timer);
+      clearTimeout(timer);
     };
   }, [runId, terminal]);
 

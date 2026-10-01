@@ -53,3 +53,49 @@ describe("useRunActivity", () => {
     expect(await screen.findByText("lines:1")).toBeInTheDocument();
   });
 });
+
+describe("useRunActivity — polling", () => {
+  it("never overlaps: the next poll waits for the previous reply (review finding 1)", async () => {
+    vi.useFakeTimers();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const resolvers: Array<() => void> = [];
+    const body = {
+      run_id: "r-1",
+      status: "running",
+      live_state: "working",
+      cursor: "c",
+      total: 0,
+      agents: [],
+      lines: [],
+      pinned: null,
+      summary: null,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        return new Promise<Response>((resolve) =>
+          resolvers.push(() => {
+            inFlight -= 1;
+            resolve(new Response(JSON.stringify(body), { status: 200 }));
+          }),
+        );
+      }),
+    );
+    function Live() {
+      useRunActivity("r-1", false);
+      return null;
+    }
+    render(<Live />);
+    // The first reply is slow (10 s): no second request may start meanwhile.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(maxInFlight).toBe(1);
+    resolvers.shift()?.();
+    await vi.advanceTimersByTimeAsync(2_100);
+    expect(resolvers.length).toBe(1); // the next poll, 2 s after the reply
+    expect(maxInFlight).toBe(1);
+    vi.useRealTimers();
+  });
+});
