@@ -98,6 +98,8 @@ function Line({
   const [open, setOpen] = useState(false);
   const r = line.refs;
   const output = r.output_tail && r.output_tail.length > 0;
+  // The server sends a list (an older one sent a string).
+  const reasons = Array.isArray(r.reasons) ? r.reasons : r.reasons ? [r.reasons] : [];
   let extra: React.ReactNode = null;
   if (line.kind === "edited" && r.file) {
     if (line.node_id) {
@@ -131,7 +133,7 @@ function Line({
         {open ? "Hide files" : "Show files"}
       </button>
     );
-  } else if (line.kind === "verdict" && r.reasons) {
+  } else if (line.kind === "verdict" && reasons.length > 0) {
     extra = (
       <button
         type="button"
@@ -162,7 +164,7 @@ function Line({
     line.kind === "read"
       ? (r.files ?? []).join("\n")
       : line.kind === "verdict"
-        ? (r.reasons ?? "")
+        ? reasons.join("\n")
         : // A running command's latest output stays in view (Live-Command); its command is in
           // the line already.
           [r.command && !r.running ? `$ ${r.command}` : null, ...(r.output_tail ?? [])]

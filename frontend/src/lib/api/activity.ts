@@ -73,7 +73,7 @@ export interface ActivityRefs {
   name?: string;
   task_id?: number;
   verdict?: string;
-  reasons?: string | null;
+  reasons?: string[] | string | null;
   to_model?: string;
   from_model?: string;
   pr_url?: string;

@@ -409,4 +409,30 @@ describe("ActivityPanel", () => {
     const said = await screen.findByText("nothing to switch");
     expect(said).toHaveAttribute("role", "status");
   });
+
+  it("a verdict's notes: Read notes only when it has reasons, one per line", () => {
+    const verdict = (id: string, reasons: string[]) =>
+      line(id, {
+        node_id: "n-rev",
+        label: "Reviewer",
+        kind: "verdict",
+        text: id,
+        tone: "warn",
+        refs: { verdict: "changes_requested", reasons },
+      });
+    const { container } = render(
+      <ActivityPanel
+        activity={activity({
+          lines: [verdict("Approved", []), verdict("Asked for 2 fixes", ["a", "b"])],
+        })}
+        now={NOW}
+        actions={actions()}
+      />,
+    );
+    const notes = screen.getAllByRole("button", { name: "Read notes" });
+    expect(notes).toHaveLength(1);
+    expect(screen.getByText("Asked for 2 fixes").closest("li")).toContainElement(notes[0]);
+    fireEvent.click(notes[0]);
+    expect(container.querySelector(".lv-out")?.textContent).toBe("a\nb");
+  });
 });
