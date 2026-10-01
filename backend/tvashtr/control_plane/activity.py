@@ -15,13 +15,16 @@ Openhands-free, like the rest of ``control_plane``.
 
 import ast
 import difflib
+import hashlib
 import json
 import re
 import shlex
 import uuid
+from collections import OrderedDict
 from datetime import UTC, datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import literal_column, or_, select
+from sqlalchemy.dialects.postgresql import JSONB
 
 from tvashtr.control_plane import live_state, run_views
 from tvashtr.control_plane.connector_proxy import EVENT_KINDS as CONNECTOR_EVENT_KINDS
@@ -226,6 +229,50 @@ def _duration(seconds: int) -> str:
     return f"{seconds // 3600}h {seconds % 3600 // 60}m"
 
 
+def _parse(kind: str, tool: str, raw: str) -> dict:
+    """What one engine event's text says: the costly part of a line (regex, shlex, difflib).
+    Pure, so :func:`_facts` memoises it. ``{}`` = nothing a line is made from."""
+    if kind == "observation":
+        text, exit_code = _output(raw)
+        return {"exit_code": exit_code, "tail": _tail(text), "summary": parse_test_summary(text)}
+    if kind == "error":
+        return {"message": _cap(_first_line(raw))}
+    args = _args(raw)
+    file = _path(str(args.get("path") or args.get("file_path") or args.get("target_file") or ""))
+    if tool in _READ_TOOLS or (tool in _EDITOR_TOOLS and args.get("command") == "view"):
+        return {"kind": "read", "file": file} if file else {}
+    if tool in live_state.TERMINAL_TOOLS:
+        command = _cap(_first_line(str(args.get("command") or "")))
+        return {"kind": "command", "command": command, "query": _search_query(command)}
+    if tool in _EDIT_TOOLS or tool in _EDITOR_TOOLS:
+        added, removed = _edit_counts(args)
+        return {"kind": "edited", "file": file, "added": added, "removed": removed}
+    if tool in _SEARCH_TOOLS:
+        query = str(args.get("pattern") or args.get("query") or "").strip()
+        return {"kind": "searched", "query": query}
+    return {}
+
+
+# ponytail: one in-process memo of parsed events, FIFO-bounded (a few MB at the bound); every
+# 2 s poll re-reads the run's events, and a parse never changes for the same text. Move to a
+# per-run cache of finished lines if runs grow far past ~10k events.
+_MEMO_MAX = 20_000
+_memo: OrderedDict = OrderedDict()
+_TEXT_FIELD = {"action": "action", "observation": "observation", "error": "error"}
+
+
+def _facts(ev, tool: str) -> dict:
+    """:func:`_parse` of one event, memoised by its id and a digest of the text parsed."""
+    raw = str((ev.payload or {}).get(_TEXT_FIELD[ev.kind]) or "")
+    key = (ev.id, ev.kind, tool, hashlib.blake2b(raw.encode(), digest_size=16).digest())
+    facts = _memo.get(key)
+    if facts is None:
+        facts = _memo[key] = _parse(ev.kind, tool, raw)
+        if len(_memo) > _MEMO_MAX:
+            _memo.popitem(last=False)
+    return facts
+
+
 # ---------------------------------------------------------------------------------- lines
 
 
@@ -276,12 +323,11 @@ def _event_lines(out: _Lines, inv, node_id: str, events: list, open_step: bool) 
             line = pending.pop(0)
             if line["kind"] == "searched":
                 continue
-            text, exit_code = _output(str(p.get("observation") or ""))
+            facts = _facts(ev, tool)
             refs = line["refs"]
-            refs.update(running=False, exit_code=exit_code, output_tail=_tail(text))
-            summary = parse_test_summary(text)
-            if summary is not None:
-                passed, failed = summary
+            refs.update(running=False, exit_code=facts["exit_code"], output_tail=facts["tail"])
+            if facts["summary"] is not None:
+                passed, failed = facts["summary"]
                 line["kind"], line["refs"] = "tests", {**refs, "passed": passed, "failed": failed}
                 line["text"] = (
                     f"Ran the tests: all {passed} passed"
@@ -296,31 +342,24 @@ def _event_lines(out: _Lines, inv, node_id: str, events: list, open_step: bool) 
                 line["tone"] = "warn" if failed else "ok"
             else:
                 line["text"] = f"Ran {refs['command']}"
-                line["tone"] = "warn" if exit_code not in (None, 0) else "neutral"
+                line["tone"] = "warn" if facts["exit_code"] not in (None, 0) else "neutral"
             line["_final"] = True
             continue
         if ev.kind not in ("action", "message", "error", *live_state.HOST_EVENT_KINDS):
             continue
 
-        args = _args(str(p.get("action") or "")) if ev.kind == "action" else {}
-        file = _path(
-            str(args.get("path") or args.get("file_path") or args.get("target_file") or "")
-        )
-        is_read = ev.kind == "action" and (
-            tool in _READ_TOOLS or (tool in _EDITOR_TOOLS and args.get("command") == "view")
-        )
-        if is_read and file:
+        facts = _facts(ev, tool) if ev.kind in ("action", "error") else {}
+        if facts.get("kind") == "read":
             if reading is None:
                 reading = out.add(line_id, at, node_id, n, "read", "", refs={"files": []})
-            if file not in reading["refs"]["files"]:
-                reading["refs"]["files"].append(file)
+            if facts["file"] not in reading["refs"]["files"]:
+                reading["refs"]["files"].append(facts["file"])
             reading["text"] = _read_text(reading["refs"]["files"])
             continue
 
         before = len(out.rows)
-        if ev.kind == "action" and tool in live_state.TERMINAL_TOOLS:
-            command = _cap(_first_line(str(args.get("command") or "")))
-            query = _search_query(command)
+        if facts.get("kind") == "command":
+            command, query = facts["command"], facts["query"]
             if query is not None:
                 pending.append(
                     out.add(
@@ -354,10 +393,8 @@ def _event_lines(out: _Lines, inv, node_id: str, events: list, open_step: bool) 
                         final=not open_step,
                     )
                 )
-        elif ev.kind == "action" and (
-            tool in _EDIT_TOOLS or (tool in _EDITOR_TOOLS and args.get("command") != "view")
-        ):
-            added, removed = _edit_counts(args)
+        elif facts.get("kind") == "edited":
+            file = facts["file"]
             out.add(
                 line_id,
                 at,
@@ -365,18 +402,17 @@ def _event_lines(out: _Lines, inv, node_id: str, events: list, open_step: bool) 
                 n,
                 "edited",
                 f"Edited {file}" if file else "Edited a file",
-                refs={"file": file or None, "added": added, "removed": removed},
+                refs={"file": file or None, "added": facts["added"], "removed": facts["removed"]},
             )
-        elif ev.kind == "action" and tool in _SEARCH_TOOLS:
-            query = str(args.get("pattern") or args.get("query") or "").strip()
+        elif facts.get("kind") == "searched":
             out.add(
                 line_id,
                 at,
                 node_id,
                 n,
                 "searched",
-                f"Searched for {_cap(query, 80)}",
-                refs={"query": query},
+                f"Searched for {_cap(facts['query'], 80)}",
+                refs={"query": facts["query"]},
             )
         elif (ev.kind == "action" and tool == "finish") or (
             ev.kind == "message"
@@ -387,7 +423,7 @@ def _event_lines(out: _Lines, inv, node_id: str, events: list, open_step: bool) 
         ):
             out.add(line_id, at, node_id, n, "message", "Finished its step")
         elif ev.kind == "error":
-            message = _cap(_first_line(str(p.get("error") or ""))) or "an error"
+            message = facts["message"] or "an error"
             out.add(
                 line_id,
                 at,
@@ -858,15 +894,20 @@ def run_activity(session, run: Run, after: str | None = None) -> dict:
         .scalars()
         .all()
     )
-    events = (
-        session.execute(
-            select(RunEvent)
-            .where(RunEvent.run_id == run_id, RunEvent.kind.notin_(CONNECTOR_EVENT_KINDS))
-            .order_by(RunEvent.created_at, RunEvent.id)
+    # The payload without the action's ``thought`` (never read; up to 1000 characters a row).
+    events = session.execute(
+        select(
+            RunEvent.id,
+            RunEvent.invocation_id,
+            RunEvent.kind,
+            RunEvent.payload.op("-", return_type=JSONB)(literal_column("'thought'")).label(
+                "payload"
+            ),
+            RunEvent.created_at,
         )
-        .scalars()
-        .all()
-    )
+        .where(RunEvent.run_id == run_id, RunEvent.kind.notin_(CONNECTOR_EVENT_KINDS))
+        .order_by(RunEvent.created_at, RunEvent.id)
+    ).all()
     tasks = session.execute(select(HumanTask).where(HumanTask.run_id == run_id)).scalars().all()
     doc_filter = Document.run_id == run.id
     if run.pm_document_id is not None:

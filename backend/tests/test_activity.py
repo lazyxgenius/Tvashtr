@@ -613,3 +613,39 @@ def test_verdict_reasons_given_as_a_list():
     assert activity._reasons('["a", "b"]') == ["a", "b"]
     assert activity._reasons("- one\n* two\n3) three") == ["one", "two", "three"]
     assert activity._reasons(None) == []
+
+
+# ---------------------------------------------------------------------------- cost per poll
+
+
+def test_a_second_build_does_not_parse_the_same_events_again(monkeypatch):
+    activity._memo.clear()
+    calls = {"args": 0, "edits": 0}
+    real_args, real_edits = activity._args, activity._edit_counts
+
+    def counting_args(text):
+        calls["args"] += 1
+        return real_args(text)
+
+    def counting_edits(args):
+        calls["edits"] += 1
+        return real_edits(args)
+
+    monkeypatch.setattr(activity, "_args", counting_args)
+    monkeypatch.setattr(activity, "_edit_counts", counting_edits)
+    pm, eng, invs = _engineer_world()
+    ev = _Events()
+    ev.add(2, 41, "action", _editor("str_replace", "core/rsi.py", old_str="a", new_str="a\nb"))
+    ev.add(2, 50, "action", _terminal("python -m pytest -q"))
+    ev.add(2, 52, "observation", _terminal_out("41 passed in 0.8s"))
+    first = _build(_run(), [pm, eng], invs, ev.rows)
+    parsed = dict(calls)
+    assert parsed["args"] >= 3 and parsed["edits"] == 1
+    second = _build(_run(), [pm, eng], invs, ev.rows)
+    assert calls == parsed  # nothing parsed again: no regex, no difflib
+    assert second == first
+    # A changed payload under the same id is parsed afresh.
+    ev.rows[1].payload = _terminal("make lint")
+    third = _build(_run(), [pm, eng], invs, ev.rows)
+    assert calls["args"] > parsed["args"]
+    assert {ln["id"]: ln for ln in third["lines"]}["ev:2"]["refs"]["command"] == "make lint"

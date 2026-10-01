@@ -201,3 +201,34 @@ def test_switch_backup_is_a_404_for_another_account_or_another_runs_node(client)
         assert not signal.is_set()
     finally:
         live_state.clear_switch(run_id, inv)
+
+
+def test_the_activity_read_never_selects_the_thought(client, monkeypatch):
+    from tvashtr.control_plane import activity
+
+    c, owner = fresh_account("activity-thought")
+    run_id, _clone, _eng, inv = _engineer_run(c, owner)
+    _event(
+        run_id,
+        inv,
+        0,
+        "action",
+        {
+            "tool_name": "terminal",
+            "thought": "SECRET-THOUGHT " * 60,
+            "action": "command='make lint' is_input=False kind='TerminalAction'",
+        },
+        60,
+    )
+    seen = []
+    real_build = activity.build
+
+    def spy(run, nodes, edges, invocations, events, *rest, **kw):
+        seen.extend(events)
+        return real_build(run, nodes, edges, invocations, events, *rest, **kw)
+
+    monkeypatch.setattr(activity, "build", spy)
+    body = c.get(f"/api/runs/{run_id}/activity").json()
+    assert body["lines"][-1]["text"] == "Running make lint"
+    assert seen and all("thought" not in (e.payload or {}) for e in seen)
+    assert any("make lint" in str((e.payload or {}).get("action")) for e in seen)
