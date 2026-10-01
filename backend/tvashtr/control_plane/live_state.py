@@ -26,6 +26,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
 from tvashtr.config import get_settings
+from tvashtr.control_plane.guardrails import mask_secrets
 from tvashtr.db import session_scope
 from tvashtr.models import AgentInvocation, RunEvent
 
@@ -58,7 +59,7 @@ _RETRY_LEAD = {"busy": "Model busy", "timeout": "No answer", "unavailable": "Mod
 def _command_of(payload: dict) -> str:
     action = str((payload or {}).get("action") or "")
     match = _COMMAND.search(action)
-    return (match.group(2) if match else action).strip()[:200]
+    return mask_secrets(match.group(2) if match else action).strip()[:200]
 
 
 def activity_line(kind: str | None, payload: dict | None) -> str:

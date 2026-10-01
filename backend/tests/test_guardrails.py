@@ -569,3 +569,23 @@ def test_output_schema_gate_routes_approve_and_ships(client, monkeypatch, tmp_pa
     outcome, _ = _gate_invocation_outcome(run_id, ids["gate"])
     print(f"[C9-e2e] Kind2 output_schema_check -> resolution={outcome!r} (run completed)")
     assert outcome == "approved"
+
+
+# ---- unit: mask_secrets (the run view's words) -----------------------------
+
+
+def test_mask_secrets_masks_keys_tokens_and_env_dumps_but_keeps_names():
+    from tvashtr.control_plane.guardrails import mask_secrets
+
+    key = "sk-proj-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z"
+    assert mask_secrets(f"OPENAI_API_KEY={key}") == "OPENAI_API_KEY=••••"
+    assert mask_secrets("export SLACK_TOKEN=abc DB_PASSWORD='p w' X=1") == (
+        "export SLACK_TOKEN=•••• DB_PASSWORD=•••• X=1"
+    )
+    assert mask_secrets("Authorization: Bearer abc") == "Authorization: Bearer ••••"
+    assert mask_secrets(f"aws {_PLANTED_AWS_KEY} ok") == "aws •••• ok"
+    pem = "-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----\nafter"
+    assert mask_secrets(pem) == "••••\nafter"
+    assert mask_secrets("nothing secret: PATH=/usr/bin, pytest -q") == (
+        "nothing secret: PATH=/usr/bin, pytest -q"
+    )

@@ -149,7 +149,7 @@ def test_consecutive_reads_collapse_into_one_line():
     reply = _build(_run(), [pm, eng], invs, ev.rows)
     lines = [ln for ln in reply["lines"] if ln["kind"] == "read"]
     assert [ln["text"] for ln in lines] == [
-        "Read 4 files in core/ and tests/",
+        "Read 4 files",  # README.md sits in no folder, so no folders are named
         "Read core/macd.py",
     ]
     assert lines[0]["refs"]["files"] == [
@@ -354,6 +354,7 @@ def test_a_retrying_step_is_pinned_with_its_backup():
         ),
         "task_id": None,
         "backup_model": "openai/gpt-4.1-mini",
+        "gate_kind": None,
     }
     agent = {a["label"]: a for a in reply["agents"]}["Engineer"]
     assert agent["live_state"] == "retrying" and agent["retry"]["attempt"] == 2
@@ -418,6 +419,7 @@ def test_an_open_gate_is_a_line_the_pinned_callout_and_needs_you():
         "body": "Read the spec, then approve or reject it. The run is paused until you decide.",
         "task_id": 7,
         "backup_model": None,
+        "gate_kind": "prd_approval",
     }
     agents = {a["label"]: a for a in reply["agents"]}
     assert agents["Approval"]["live_state"] == "needs_you"
@@ -440,7 +442,7 @@ def test_a_shipped_run_reads_start_to_finish():
              detail="1. Handle an empty price list\n2. Add a test for period=1"),
         _inv(5, eng, iteration=2, start=401, end=700, outcome="built"),
         _inv(6, rev, iteration=2, start=701, end=800, outcome="approved"),
-        _inv(7, ship, start=801, end=900, outcome="shipped"),
+        _inv(7, ship, start=801, end=1358, outcome="shipped"),  # the run ends here
     ]  # fmt: skip
     ev = _Events()
     ev.add(5, 600, "action", _terminal("python -m pytest -q"))
@@ -530,7 +532,8 @@ def test_a_shipped_run_reads_start_to_finish():
     assert agents["Engineer"]["iteration"] == 2
     assert agents["Reviewer"]["activity"] == "Approved"
     assert agents["PM"]["activity"] == "Wrote the spec (v1)"
-    assert agents["Approval"]["activity"] == "You approved · 10:00"
+    assert agents["Approval"]["activity"] == "You approved"  # the frontend adds the local time
+    assert agents["Approval"]["last_event_at"] == _at(59).isoformat()
     assert agents["Ship"]["activity"] == (
         "Pushed branch tvashtr/run-12 and opened pull request #42"
     )
@@ -541,7 +544,7 @@ def test_a_failed_run_pins_its_failure_and_ends_with_a_failed_line():
     pm, eng, _ = _engineer_world()
     invs = [
         _inv(1, pm, end=30),
-        _inv(2, eng, status="failed", start=40, end=100,
+        _inv(2, eng, status="failed", start=40, end=1358,
              detail="the model didn't answer after 3 tries"),
     ]  # fmt: skip
     run = _run("failed", failed_node_id=eng.id, failure_message="Engineer: it broke")
@@ -601,6 +604,7 @@ def test_a_stalled_step_is_pinned_and_outranks_a_retrying_one():
         "body": "No update for 6m 00s. Its last step: x. Nothing has shipped.",
         "task_id": None,
         "backup_model": None,
+        "gate_kind": None,
     }
     assert reply["live_state"] == "stalled"
 
@@ -613,3 +617,163 @@ def test_verdict_reasons_given_as_a_list():
     assert activity._reasons('["a", "b"]') == ["a", "b"]
     assert activity._reasons("- one\n* two\n3) three") == ["one", "two", "three"]
     assert activity._reasons(None) == []
+
+
+# ---------------------------------------------------------------------------- cost per poll
+
+
+def test_a_second_build_does_not_parse_the_same_events_again(monkeypatch):
+    activity._memo.clear()
+    calls = {"args": 0, "edits": 0}
+    real_args, real_edits = activity._args, activity._edit_counts
+
+    def counting_args(text):
+        calls["args"] += 1
+        return real_args(text)
+
+    def counting_edits(args):
+        calls["edits"] += 1
+        return real_edits(args)
+
+    monkeypatch.setattr(activity, "_args", counting_args)
+    monkeypatch.setattr(activity, "_edit_counts", counting_edits)
+    pm, eng, invs = _engineer_world()
+    ev = _Events()
+    ev.add(2, 41, "action", _editor("str_replace", "core/rsi.py", old_str="a", new_str="a\nb"))
+    ev.add(2, 50, "action", _terminal("python -m pytest -q"))
+    ev.add(2, 52, "observation", _terminal_out("41 passed in 0.8s"))
+    first = _build(_run(), [pm, eng], invs, ev.rows)
+    parsed = dict(calls)
+    assert parsed["args"] >= 3 and parsed["edits"] == 1
+    second = _build(_run(), [pm, eng], invs, ev.rows)
+    assert calls == parsed  # nothing parsed again: no regex, no difflib
+    assert second == first
+    # A changed payload under the same id is parsed afresh.
+    ev.rows[1].payload = _terminal("make lint")
+    third = _build(_run(), [pm, eng], invs, ev.rows)
+    assert calls["args"] > parsed["args"]
+    assert {ln["id"]: ln for ln in third["lines"]}["ev:2"]["refs"]["command"] == "make lint"
+
+
+# ---------------------------------------------------------------------------- secrets
+
+_KEY = "sk-proj-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z"
+
+
+def test_secrets_never_reach_a_line_an_agent_or_the_pinned_callout():
+    pm, eng, _ = _engineer_world()
+    invs = [
+        _inv(1, pm, end=30),
+        _inv(2, eng, status="failed", start=40, end=200, detail=f"bad key {_KEY}"),
+    ]
+    ev = _Events()
+    ev.add(2, 41, "action", _terminal('curl -H "Authorization: Bearer abc123token" https://x.io'))
+    ev.add(2, 42, "observation", _terminal_out("{}"))
+    ev.add(2, 50, "action", _terminal("env"))
+    dump = f"PATH=/usr/bin\nOPENAI_API_KEY={_KEY}\nGITHUB_TOKEN=shorty\nDB_PASSWORD=hunter2\n"
+    ev.add(2, 51, "observation", _terminal_out(dump + "HOME=/root"))
+    ev.add(2, 60, "action", _terminal(f"export OPENAI_API_KEY={_KEY} && make deploy"))
+    ev.add(2, 61, "error", {"error": f"AuthenticationError: Incorrect API key: {_KEY}"})
+    ev.add(2, 70, "error", {"error": f"AuthenticationError: Incorrect API key: {_KEY}"})
+    run = _run("failed", failed_node_id=eng.id, failure_message=f"Engineer: bad key {_KEY}")
+    reply = _build(run, [pm, eng], invs, ev.rows)
+    text = json.dumps(reply, ensure_ascii=False)
+    for secret in (_KEY, "abc123token", "shorty", "hunter2"):
+        assert secret not in text
+    by_id = {ln["id"]: ln for ln in reply["lines"]}
+    assert by_id["ev:1"]["text"] == 'Ran curl -H "Authorization: Bearer ••••" https://x.io'
+    assert by_id["ev:3"]["refs"]["output_tail"] == [
+        "PATH=/usr/bin",
+        "OPENAI_API_KEY=••••",
+        "GITHUB_TOKEN=••••",
+        "DB_PASSWORD=••••",
+        "HOME=/root",
+    ]
+    assert by_id["ev:5"]["refs"]["command"] == "export OPENAI_API_KEY=•••• && make deploy"
+    assert by_id["ev:7"]["text"] == "Hit an error: AuthenticationError: Incorrect API key: ••••"
+    assert by_id["inv:2:end"]["text"] == "Failed: bad key ••••"
+    engineer = {a["label"]: a for a in reply["agents"]}["Engineer"]
+    assert engineer["activity"] == "Failed: bad key ••••"
+    assert reply["pinned"]["body"] == "Engineer: bad key ••••. Nothing was shipped."
+
+
+def test_an_error_settles_the_command_it_answers_and_later_results_pair_right():
+    pm, eng, invs = _engineer_world()  # the step still runs
+    ev = _Events()
+    ev.add(2, 50, "action", _terminal("bad --flag"))
+    ev.add(2, 51, "error", {"error": "Tool 'terminal' failed: bad: unknown flag --flag\nusage"})
+    ev.add(2, 60, "action", _terminal("python -m pytest -q"))
+    ev.add(2, 62, "observation", _terminal_out("....\n4 passed in 0.2s"))
+    reply = _build(_run(), [pm, eng], invs, ev.rows)
+    by_id = {ln["id"]: ln for ln in reply["lines"]}
+    bad = by_id["ev:1"]
+    assert (bad["kind"], bad["text"], bad["tone"]) == ("command", "Ran bad --flag", "danger")
+    assert bad["refs"]["running"] is False and bad["refs"]["exit_code"] is None
+    assert bad["refs"]["output_tail"] == [
+        "Tool 'terminal' failed: bad: unknown flag --flag",
+        "usage",
+    ]
+    assert "ev:2" not in by_id  # the error is the command's result, not a line of its own
+    tests = by_id["ev:3"]
+    assert (tests["kind"], tests["text"], tests["tone"]) == (
+        "tests",
+        "Ran the tests: all 4 passed",
+        "ok",
+    )
+    assert tests["refs"]["running"] is False
+    assert reply["cursor"] == f"{tests['at']}|ev:3"  # nothing is left open
+
+
+def test_the_summary_counts_passing_tests_only_when_the_last_run_was_green():
+    pm, eng, _ = _engineer_world()
+    invs = [_inv(1, pm, end=30), _inv(2, eng, start=40, end=100)]
+    ev = _Events()
+    ev.add(2, 50, "action", _terminal("python -m pytest -q"))
+    ev.add(2, 52, "observation", _terminal_out("41 passed in 0.8s"))
+    ev.add(2, 60, "action", _terminal("python -m pytest -q"))
+    ev.add(2, 62, "observation", _terminal_out("2 failed, 39 passed in 0.9s", exit_code=1))
+    reply = _build(_run("completed"), [pm, eng], invs, ev.rows)
+    assert reply["summary"]["tests_passed"] is None
+
+
+def test_a_decided_gate_says_its_latest_decision_without_a_clock():
+    pm, gate, eng, rev, ship, edges = _review_world()
+    invs = [_inv(1, pm, end=30), _inv(2, gate, start=31, end=60, outcome="approved")]
+    tasks = [
+        _gate_task(7, gate, status="resolved", resolution="rejected", opened=31, resolved=40),
+        _gate_task(8, gate, status="resolved", resolution="approved", opened=45, resolved=59),
+    ]
+    reply = _build(_run(), [pm, gate, eng, rev, ship], invs, tasks=tasks, edges=edges)
+    approval = {a["label"]: a for a in reply["agents"]}["Approval"]
+    assert approval["activity"] == "You approved"
+    assert approval["last_event_at"] == _at(59).isoformat()
+    reversed_order = _build(
+        _run(), [pm, gate, eng, rev, ship], invs, tasks=tasks[::-1], edges=edges
+    )
+    assert {a["label"]: a for a in reversed_order["agents"]}["Approval"] == approval
+
+
+def test_the_done_time_is_the_runs_last_step_not_a_later_write():
+    pm, eng, _ = _engineer_world()
+    invs = [_inv(1, pm, end=30), _inv(2, eng, start=40, end=900)]
+    ev = _Events()
+    ev.add(2, 950, "message", {"source": "agent", "text": "done"})
+    run = _run("completed", updated_at=_at(5000))  # a later write moved updated_at
+    reply = _build(run, [pm, eng], invs, ev.rows)
+    done = reply["lines"][-1]
+    assert (done["kind"], done["text"]) == ("done", "Done in 15m 50s · $1.12")
+    assert done["at"] == _at(950).isoformat()
+    assert done["refs"]["elapsed_s"] == 950 and reply["summary"]["elapsed_s"] == 950
+    # No step and no event yet: the run's own last write is all there is.
+    bare = _build(_run("failed", updated_at=_at(7)), [pm, eng], [])
+    assert bare["lines"][-1]["text"] == "Failed after 7s · $1.12"
+
+
+def test_search_and_read_words():
+    assert activity._search_query("grep -A 3 X") == "X"
+    assert activity._search_query("grep -n -B 2 -C 1 -m 5 -i X src/") == "X"
+    assert activity._search_query("rg -e X src/") == "X"
+    assert activity._read_text(["README.md", "core/a.py"]) == "Read 2 files"
+    assert activity._read_text(["core/a.py", "core/b.py", "tests/t.py"]) == (
+        "Read 3 files in core/ and tests/"
+    )

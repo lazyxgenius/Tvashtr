@@ -247,3 +247,17 @@ def test_a_running_bash_command_is_found_in_the_events(client):
         out = live_state.invocation_live(s, [inv], now=now)[inv_id]
     assert out["live_state"] == "running_command"
     assert out["activity"] == "Running a command: npm test"
+
+
+def test_a_running_commands_secrets_are_masked():
+    key = "sk-proj-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z"
+    curl = {
+        "tool_name": "terminal",
+        "action": "command='curl -H \"Authorization: Bearer abc123token\" https://x.io' "
+        "kind='TerminalAction'",
+    }
+    assert live_state.activity_line("action", curl) == (
+        'Running a command: curl -H "Authorization: Bearer ••••" https://x.io'
+    )
+    export = {"tool_name": "Bash", "action": f'{{"command": "OPENAI_API_KEY={key} make deploy"}}'}
+    assert key not in live_state.activity_line("action", export)
