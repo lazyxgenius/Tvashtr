@@ -64,7 +64,7 @@ every line.
     "pr_url": "…" | null, "pr_number": 42 | null, "rounds": 3, "elapsed_s": 1358, "cost_usd": 1.12,
     "branch": "tvashtr/run-12" | null,    // Run.ship_branch
     "base_ref": "main" | null,            // Run.base_ref — "branch tvashtr/run-12 → main"
-    "tests_passed": 41 | null             // `passed` of the run's last `tests` line ("41 tests passing")
+    "tests_passed": 41 | null             // `passed` of the run's last `tests` line ("41 tests passing") when it has 0 failed, else null
   } | null
 }
 ```
@@ -91,6 +91,12 @@ and Grok's (`read_file`, `write`, `grep`) map like OpenHands' (`terminal`, `file
 Unrecognised tools (MCP/connector tools, `think`, `task_tracker`, …) make no line — the drawer's
 Raw log shows them.
 
+**Secrets are masked.** Every command, search query, `output_tail` line and error text (lines,
+`agents[].activity`, the pinned callout, and the run payloads' `live` via `live_state.activity_line`)
+goes through `guardrails.mask_secrets`: the secret-scan shapes (`sk-…`, `ghp_…`, AWS ids, Bearer
+tokens, private-key blocks, labelled assignments), an `Authorization:` header's credential and env
+dumps' `*_KEY` / `*_TOKEN` / `*_SECRET` / `*PASSWORD` values read "••••" (names stay).
+
 | kind | from | text (examples, the boards' words) | refs |
 |---|---|---|---|
 | `started` | run start / an agent's round start | "Started on lazyxgenius/trade_mcp, branch main" (run; "Started" with no target) · "Started" (round 1) · "Started round 2" · "Started round 2 with the reviewer's notes" (after a `changes_requested` verdict) | run: `{repo, branch}`; a round: `{}` |
@@ -98,14 +104,14 @@ Raw log shows them.
 | `searched` | terminal grep/rg/ag/find, or a search tool (Grep, Glob, …) | "Searched for INDICATORS" (the pattern; `-A`/`-B`/`-C`/`-m` values are skipped, `-e` names it) | `{query}` |
 | `edited` | `file_editor` create/str_replace/insert, Edit/Write/MultiEdit | "Edited core/indicators.py" | `{file, added, removed}` (a diff of old/new; `null` when the call didn't carry the text) |
 | `wrote_doc` | a document version (`doc:<document_id>:v<n>`) | "Wrote the spec (v2)" · a person's edit: "You edited the spec (v3)" (`node_id` null) | `{document_id, version, name}` |
-| `command` | terminal action (+ its observation) | "Ran python -m pytest -q" / running: "Running python -m pytest -q"; tone `warn` on a non-zero exit | `{command, running: bool, started_at, exit_code, output_tail: [last ≤12 non-empty lines]}` |
+| `command` | terminal action (+ its observation, or the engine `error` that ended it) | "Ran python -m pytest -q" / running: "Running python -m pytest -q"; tone `warn` on a non-zero exit, `danger` when the call ended in an error (its last lines are the `output_tail`; no separate error line) | `{command, running: bool, started_at, exit_code, output_tail: [last ≤12 non-empty lines]}` |
 | `tests` | a terminal observation with a test summary (pytest, jest, vitest; errors count as failed) | "Ran the tests: 3 failed, 38 passed" · "Ran the tests: all 41 passed" · "Ran the tests: 1 failed"; tone `ok` / `warn` | `{command, passed, failed, output_tail}` + the `command` keys (`running`, `started_at`, `exit_code`) |
 | `gate_waiting` / `gate_approved` / `gate_rejected` | blocking human tasks (gates and the budget gate) | "Waiting for you to approve the spec" · "You approved the spec" · "You rejected the spec"; what is approved by gate kind: the spec / the ship / shipping the last build / going over the budget / this step | `{task_id, title}` (`title`: the gate's own title) |
 | `verdict` | a reviewer round's close | "Asked for 2 fixes: a; b" · "Asked for 1 fix: …" · "Approved" · "Approved: …" | `{verdict, reasons: [str]}` |
 | `retry` | host event | "Model busy (too many requests). Trying again in 10 s · 1 of 3" | `{attempt, of, wait_s, next_at, reason}` |
 | `backup` | host event | "Switched to the backup model, openai/gpt-4.1-mini" | `{from_model, to_model}` |
 | `stalled` | host event (the sweep) | "Stopped responding: no update for 20 minutes" | `{after_s}` |
-| `error` | a failed close (`inv:<id>:end`) / an engine error event (`ev:`) | "Failed: the model didn't answer after 3 tries" · engine error: "Hit an error: …" (the step may carry on) · a stalled close has no error line (its `stalled` line says it) | `{message}` |
+| `error` | a failed close (`inv:<id>:end`) / an engine error event (`ev:`) | "Failed: the model didn't answer after 3 tries" · engine error: "Hit an error: …" (the step may carry on; an error answering a pending command settles that command instead) · a stalled close has no error line (its `stalled` line says it) | `{message}` |
 | `pr` | ship (`node_id` = the Ship node) | "Pushed branch tvashtr/run-12 and opened pull request #42" | `{pr_url, pr_number, branch}` |
 | `done` | run end | "Done in 22m 38s · $1.12" · "Failed after 3m 10s · $0.12" · "Stopped. Nothing shipped." | `{elapsed_s, cost_usd}` (the run's end = its latest step close / event, a step left open counting from its start; `updated_at` only when it has neither — it moves on any later write; `at` and `summary.elapsed_s` likewise) |
 | `message` | an agent's closing message: the `finish` tool, an OpenHands agent reply, Claude Code's "Finished:" (never its words or reasoning) | "Finished its step" | `{}` |
@@ -128,11 +134,14 @@ the backup that retry names, `null` when it has none — then hide the switch), 
 
 ### Known ceilings (as built)
 
-- OpenHands' adapter keeps the first 2000 characters of an action and of an observation. A long
-  edit's `added`/`removed` undercount, and a long test run's summary line and exit code fall past
-  the cut — it shows as a `command` line with `exit_code` null. (Fix, if it matters: have
-  `_payload_of` also keep a terminal observation's tail — an engine change, not done here.)
-- Every poll rebuilds the run's lines from its rows (fine at today's run sizes).
+- OpenHands' adapter keeps the first 2000 characters of an action and of an observation; a long
+  edit's `added`/`removed` undercount. A terminal result longer than 2000 characters keeps its
+  first 1000 and last 1000 joined by "\n…\n" (`_payload_of`), so its summary line and exit code
+  survive; `output_tail` is the last ≤12 lines of that kept text (it can reach the "…" line).
+- Every poll rebuilds the run's lines from its rows. The read selects the payload without the
+  never-read `thought` (`payload - 'thought'`), and each event's parse (regex, shlex, difflib) is
+  memoised in-process by event id + a digest of its text (FIFO, 20,000 entries), so a repeat poll
+  re-parses nothing. A 5,000-event run: ~125 ms a poll (was ~630 ms).
 
 ## `POST /api/runs/{run_id}/nodes/{node_id}/switch-backup`
 
