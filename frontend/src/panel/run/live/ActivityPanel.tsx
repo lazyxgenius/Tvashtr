@@ -16,7 +16,8 @@ export interface ActivityActions {
   onApprove: (taskId: number) => void;
   onReject: (taskId: number) => void;
   onReviewSpec: () => void;
-  onSwitchBackup: (nodeId: string) => void;
+  /** Rejects with the server's reason when there is nothing to switch. */
+  onSwitchBackup: (nodeId: string) => Promise<unknown>;
   onStop: () => void;
   onRetryFromStart: () => void;
 }
@@ -193,6 +194,15 @@ function Pinned({
   teamName: string | undefined;
 }) {
   const [askStop, setAskStop] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
+  const switchNow = async (nodeId: string) => {
+    setSwitchError(null);
+    try {
+      await actions.onSwitchBackup(nodeId);
+    } catch (e) {
+      setSwitchError(e instanceof Error ? e.message : String(e));
+    }
+  };
   const tone =
     pin.kind === "gate"
       ? ""
@@ -245,15 +255,17 @@ function Pinned({
             )}
             {pin.kind === "retrying" && pin.node_id && (
               <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={busy}
-                  iconLeft={<RefreshCw size={14} strokeWidth={1.6} aria-hidden />}
-                  onClick={() => actions.onSwitchBackup(pin.node_id as string)}
-                >
-                  Switch to the backup model now
-                </Button>
+                {pin.backup_model && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    iconLeft={<RefreshCw size={14} strokeWidth={1.6} aria-hidden />}
+                    onClick={() => void switchNow(pin.node_id as string)}
+                  >
+                    Switch to the backup model now
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" disabled={busy} onClick={() => setAskStop(true)}>
                   Stop run
                 </Button>
@@ -281,6 +293,11 @@ function Pinned({
               </Button>
             )}
           </div>
+          {switchError && (
+            <div className="lv-pin__error" role="status">
+              {switchError}
+            </div>
+          )}
         </div>
       </div>
       <StopRunDialog

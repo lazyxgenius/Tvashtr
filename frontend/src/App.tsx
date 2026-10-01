@@ -810,9 +810,7 @@ export default function App({
     onReviewSpec: () => {
       if (run?.pm_document_id) openRunDoc(run.pm_document_id);
     },
-    onSwitchBackup: (nodeId) => {
-      if (runId) void switchToBackup(runId, nodeId).catch(() => undefined);
-    },
+    onSwitchBackup: (nodeId) => (runId ? switchToBackup(runId, nodeId) : Promise.resolve()),
     onStop: () => void handleCancel(),
     onRetryFromStart: () => {
       if (run)

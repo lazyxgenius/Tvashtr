@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActivityLine, PinnedCallout, RunActivity } from "../../../lib/api/activity";
+import { ApiDetailError } from "../../../lib/api/runs";
 import { ActivityPanel, type ActivityActions } from "./ActivityPanel";
 
 const T = (h: number, m: number, s: number) => new Date(2026, 9, 2, h, m, s).toISOString();
@@ -364,5 +365,48 @@ describe("ActivityPanel", () => {
       <ActivityPanel activity={activity({ pinned: STALLED })} now={NOW} actions={actions()} busy />,
     );
     expect(screen.getByRole("button", { name: "Stop run" })).toBeDisabled();
+  });
+
+  it("offers the backup switch only when the retry names a backup", () => {
+    render(
+      <ActivityPanel
+        activity={activity({
+          pinned: {
+            ...STALLED,
+            kind: "retrying",
+            title: "Engineer is retrying",
+            backup_model: null,
+          },
+        })}
+        now={NOW}
+        actions={actions()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Switch to the backup model now" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Stop run" })).toBeInTheDocument();
+  });
+
+  it("says why a switch didn't happen, under the callout's buttons", async () => {
+    const a = actions();
+    a.onSwitchBackup = vi.fn(() =>
+      Promise.reject(new ApiDetailError(409, "nothing to switch", "nothing to switch")),
+    );
+    render(
+      <ActivityPanel
+        activity={activity({
+          pinned: {
+            ...STALLED,
+            kind: "retrying",
+            title: "Engineer is retrying",
+            backup_model: "openai/gpt-4.1-mini",
+          },
+        })}
+        now={NOW}
+        actions={a}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Switch to the backup model now" }));
+    const said = await screen.findByText("nothing to switch");
+    expect(said).toHaveAttribute("role", "status");
   });
 });
