@@ -1,0 +1,16 @@
+# M1 — Stall guard: parity record
+
+M1 is backend only (brief §4 M1: "the screens come in M2"; "No Desktop release").
+Its boards — Runs › Live-Command, Live-Retrying, Live-Quiet, Prob-Stalled, Prob-Failed — are what
+M2 draws from M1's states; they are shot and gated in docs/superpowers/parity/m2.txt.
+
+M1 changed no file under frontend/ or desktop/ (proof at ship: `git diff <main> <m1> -- frontend
+desktop | wc -l` → 0), so there is no app screen to shoot and no existing screen whose kept-elements
+inventory could change.
+
+What M1 gives those boards (API, additive):
+- /api/runs/{id}/graph → nodes[].live {live_state, last_event_at, activity, activity_started_at,
+  retry {attempt, of, next_at}, backup_model}; top-level live_state.
+- /api/runs/{id}, /api/runs list → run.live_state (the run's worst step).
+- /api/inbox → kind "run_stalled" (key run_stalled:<run id>, node {id, label, iteration}, live).
+- run_events kinds written by the host: retry, backup_model, stalled.
