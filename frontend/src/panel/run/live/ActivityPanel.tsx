@@ -285,10 +285,10 @@ export function ActivityPanel({
   const list = useRef<HTMLOListElement>(null);
 
   // Every agent a person sees, reached or not (the boards list the Reviewer before it starts); a
-  // gate only once the run reaches it, so an unused escalation gate stays out.
+  // gate only once the run reaches it, so an unused escalation gate stays out; never an ending.
   const agents = activity.agents.filter(
     (a) =>
-      a.kind !== "terminal" &&
+      !["terminal", "ship", "stop"].includes(a.kind) &&
       (a.kind !== "gate" ||
         a.live_state !== "waiting" ||
         activity.lines.some((l) => l.node_id === a.node_id)),

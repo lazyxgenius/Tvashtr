@@ -286,10 +286,13 @@ describe("ActivityPanel", () => {
         kind: "gate",
         live_state: "waiting" as const,
       },
+      { ...base, node_id: "n-stop", label: "Stop", kind: "stop" },
     ];
     render(<ActivityPanel activity={activity({ agents })} now={NOW} actions={actions()} />);
     expect(screen.getByRole("button", { name: "Reviewer" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Escalation gate" })).toBeNull();
+    // An ending is never a filter, whatever the server calls it.
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
   });
 
   it("sets where an agent is now in bold, its command as code, its running output in view", () => {

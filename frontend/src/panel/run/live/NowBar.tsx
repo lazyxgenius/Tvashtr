@@ -8,7 +8,7 @@ import { StateGlyph } from "./StateGlyph";
 /** Hidden from the Now bar: the Stop ending, and an escalation gate the run never reached. */
 function hidden(node: GraphNode | undefined, a: ActivityAgent): boolean {
   const cfg = (node?.config ?? {}) as Record<string, unknown>;
-  if (a.kind === "terminal" && cfg.terminal_kind !== "ship") return true;
+  if (a.kind === "stop" || (a.kind === "terminal" && cfg.terminal_kind !== "ship")) return true;
   return a.kind === "gate" && cfg.gate_kind === "review_escalation" && a.live_state === "waiting";
 }
 
@@ -72,7 +72,8 @@ export function NowBar({
     <section className="lv-now" aria-label="Now">
       <span className="lv-now__label">Now</span>
       {shown.map((a) => {
-        const ship = a.kind === "terminal";
+        // The server names an ending by its kind ("ship"); an older one says "terminal".
+        const ship = a.kind === "ship" || a.kind === "terminal";
         if (ship) {
           return (
             <button
