@@ -473,11 +473,11 @@ function withEarlier(total, shown, story) {
 const AGENT_BASE = {
   "n-pm": ["Product manager", "completion", null],
   "n-prd": ["Approval gate", "gate", null],
-  "n-stop": ["Stop", "terminal", null],
+  "n-stop": ["Stop", "stop", null],
   "n-eng": ["Engineer", "agent", 3],
   "n-rev": ["Reviewer", "agent", 3],
   "n-esc": ["Escalation gate", "gate", null],
-  "n-ship": ["Ship", "terminal", null],
+  "n-ship": ["Ship", "ship", null],
 };
 const agentsOf = (over) =>
   Object.entries(AGENT_BASE).map(([id, [label, kind, rounds_limit]]) => {
