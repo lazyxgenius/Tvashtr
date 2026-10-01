@@ -79,6 +79,7 @@ def test_an_approval_item_names_the_gate_and_the_next_role(client):
     assert item["kind"] == "approval"
     assert item["team"] == {"id": team, "name": "Indicator sprint team"}
     assert item["run"]["id"] == run_id and item["run"]["idea"] == "Add an RSI indicator with tests"
+    assert item["run"]["library_team_id"] == team  # the notifier's click falls back to it
     assert item["task"]["id"] == task_id
     assert item["task"]["kind"] == "prd_approval"
     assert item["task"]["gate_node_id"] == gate
@@ -86,6 +87,14 @@ def test_an_approval_item_names_the_gate_and_the_next_role(client):
     assert item["task"]["next_role"] == "Engineer"
     assert item["document_id"] is None
     assert item["since"]
+
+
+def test_an_approval_on_a_run_without_a_library_team_says_so(client):
+    c, owner = fresh_account()
+    run_id, _clone = make_run(owner, None, status="awaiting_human")
+    task_id = open_gate(run_id, str(uuid.uuid4()))
+    item = _items(c)[f"gate:{task_id}"]
+    assert item["run"]["id"] == run_id and item["run"]["library_team_id"] is None
 
 
 def test_nudges_are_listed_and_finished_runs_drop_their_tasks(client):

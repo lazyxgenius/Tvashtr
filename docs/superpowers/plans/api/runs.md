@@ -147,7 +147,8 @@ Response 200:
       "team": {"id": "0f7c2d1e-…", "name": "Indicator sprint team"},
       "run": {
         "id": "4c1d…", "idea": "Add an RSI indicator with tests", "status": "awaiting_human",
-        "spent_usd": 1.21, "budget_cap_usd": 5.0
+        "spent_usd": 1.21, "budget_cap_usd": 5.0,
+        "library_team_id": "0f7c2d1e-…"   // M2 (additive): null for a run of no library team
       },
       "task": {
         "id": 812, "kind": "prd_approval", "title": "Approve the PRD before the Engineer builds",
@@ -161,7 +162,7 @@ Response 200:
       "since": "2026-09-25T08:20:00+00:00",
       "team": {"id": "…", "name": "Docs team"},
       "run": {"id": "…", "idea": "Write the API reference", "status": "running",
-              "spent_usd": 4.1, "budget_cap_usd": 5.0},
+              "spent_usd": 4.1, "budget_cap_usd": 5.0, "library_team_id": "…"},
       "task": {"id": 815, "kind": "budget_threshold", "title": "…"}
     },
     {

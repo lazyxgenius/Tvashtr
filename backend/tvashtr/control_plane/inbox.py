@@ -84,6 +84,8 @@ def _approval_items(session, owner_id: uuid.UUID) -> list[dict]:
             "status": run.status,
             "spent_usd": ex["spent_usd"],
             "budget_cap_usd": float(run.budget_cap_usd) if run.budget_cap_usd is not None else None,
+            # M2: the notifier's click falls back to it when ``team`` is null.
+            "library_team_id": str(run.library_team_id) if run.library_team_id else None,
         }
         if not task.blocking:
             items.append(
