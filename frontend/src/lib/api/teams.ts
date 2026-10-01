@@ -34,6 +34,11 @@ export interface AccountPreferences {
   get_started_hidden: boolean;
   /** The Domains list's how-it-works strip is hidden (DM-6). */
   domains_howto_hidden?: boolean;
+  /** R10: the run bar's bell asked once; then which runs notify (M2). */
+  notify_asked?: boolean;
+  notify_needs_you?: boolean;
+  notify_stalls_fails?: boolean;
+  notify_finishes?: boolean;
 }
 
 async function send(url: string, init?: RequestInit): Promise<Response> {

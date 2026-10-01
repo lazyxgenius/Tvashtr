@@ -4,7 +4,7 @@
  * public `/api/config` Home reads (provider directory, default budget, GitHub links).
  */
 import { rewriteGithubInstallUrlForDesktop } from "../api";
-import type { RunFailure, RunTarget } from "./runs";
+import type { LiveState, RunFailure, RunTarget } from "./runs";
 import { apiRequest } from "./runs";
 
 export type InboxSurface = "website" | "desktop";
@@ -67,6 +67,31 @@ export interface InboxRunFailed {
   failure: RunFailure | null;
 }
 
+/** A running step with no update for 5 minutes (M1, ruling R1); Resume arrives with M3. */
+export interface InboxRunStalled {
+  key: string;
+  kind: "run_stalled";
+  since: string;
+  team: InboxTeam | null;
+  run: {
+    id: string;
+    idea: string;
+    status: string;
+    created_at: string;
+    target: RunTarget | null;
+    library_team_id: string | null;
+  };
+  node: { id: string; label: string; iteration: number };
+  live: {
+    live_state: LiveState;
+    last_event_at: string | null;
+    activity: string;
+    activity_started_at: string | null;
+    retry: { attempt: number; of: number; next_at: string } | null;
+    backup_model: string | null;
+  };
+}
+
 export interface InboxSetupGap {
   key: string;
   kind: "setup_gap";
@@ -99,6 +124,7 @@ export type InboxItem =
   | InboxApproval
   | InboxNudge
   | InboxRunFailed
+  | InboxRunStalled
   | InboxSetupGap
   | InboxSetupGapsFolded
   | InboxMemories;
@@ -112,6 +138,7 @@ const KNOWN_KINDS = new Set([
   "approval",
   "nudge",
   "run_failed",
+  "run_stalled",
   "setup_gap",
   "setup_gaps_folded",
   "memories",
