@@ -1,0 +1,61 @@
+# Kept-elements inventory — runview, captured on main 98cb091 (before M2) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/runs-live.mjs (kept-runview-*). After the change every line must still be present (superset).
+
+## kept-runview-desktop
+button: Account
+button: Back to teams
+button: Cancel run
+button: Documents 0
+button: Fit View
+button: Running…
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+main: 
+toolbar: Team
+
+## kept-runview-drawer-web
+aside: Engineer in this run
+button: Account
+button: Activity
+button: Ask
+button: Back to teams
+button: Cancel run
+button: Changes
+button: Close panel
+button: Documents 0
+button: Fit View
+button: Running…
+button: See the last run
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+heading: Engineer
+main: 
+section: In this run
+section: Last run
+tab: Docs
+tab: Memory
+tab: Runs
+tab: Setup
+tab: Skills & tools
+toolbar: Team
+
+## kept-runview-web
+button: Account
+button: Back to teams
+button: Cancel run
+button: Documents 0
+button: Fit View
+button: Running…
+button: Zoom In
+button: Zoom Out
+button: anthropic/claude-sonnet-4
+button: xai/grok-4.7
+header: 
+main: 
+toolbar: Team

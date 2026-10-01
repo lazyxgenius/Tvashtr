@@ -15,7 +15,12 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { routeFonts } from "./fonts-route.mjs";
-import { loadChromium, MEASURE } from "./lib.mjs";
+import { loadChromium, MEASURE, REPO } from "./lib.mjs";
+
+// INVENTORY=1 also writes <name>.inventory.txt — the kept-elements list (brief §2.2).
+const INVENTORY = process.env.INVENTORY
+  ? fs.readFileSync(path.join(REPO, "scripts", "design-parity", "inventory.js"), "utf8")
+  : null;
 
 const [outDir, scenarioFile, ...only] = process.argv.slice(2);
 fs.mkdirSync(outDir, { recursive: true });
@@ -113,6 +118,9 @@ for (const sc of scenarios) {
   await page.waitForTimeout(sc.settle ?? 400);
   await page.screenshot({ path: path.join(outDir, `${sc.name}.png`), fullPage: Boolean(sc.fullPage) });
   fs.writeFileSync(path.join(outDir, `${sc.name}.json`), JSON.stringify(await page.evaluate(MEASURE)));
+  if (INVENTORY) {
+    fs.writeFileSync(path.join(outDir, `${sc.name}.inventory.txt`), await page.evaluate(INVENTORY));
+  }
   console.log(
     sc.name,
     `${sc.width ?? 1440}x${sc.height ?? 900}`,

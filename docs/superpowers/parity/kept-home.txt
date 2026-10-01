@@ -1,0 +1,133 @@
+# Kept-elements inventory — home, captured on main 98cb091 (before M2) with scripts/design-parity/shoot-app.mjs INVENTORY=1
+# Scenarios: scripts/design-parity/scenarios/home-kept.mjs (kept-home-*). After the change every line must still be present (superset).
+
+## kept-home-desktop
+button: Account
+button: Add CSV export to reports
+button: Add MACD to the registry
+button: Add an RSI indicator with tests
+button: All runs
+button: Claude and Grok nodes run on this computer — keep Tvashtr Desktop open until the run finishes.
+button: Domains
+button: Engines
+button: Fix
+button: Fix the flaky login test
+button: Home 4
+button: I Indicator sprint team
+button: More actions for Bugfix squad
+button: More actions for Docs team
+button: More actions for Full feature squad
+button: More actions for Indicator sprint team
+button: More actions for Landing page team
+button: More for 2 new memories to review
+button: More for Approve the spec
+button: More for Indicator sprint team can’t run on the website
+button: More for Run failed
+button: New team
+button: Open
+button: Options
+button: Retry
+button: Review
+button: Run
+button: Search teams, runs and actions
+button: Sort: Last active
+button: Stop
+button: Toolkit
+button: View run
+button: Write the API reference for /runs
+button: ~/code/trade_mcp · main
+header: 
+heading: Good morning, Lazyx.
+heading: Needs you
+heading: Recent runs
+heading: Running now
+heading: Spend
+heading: Teams
+input[text]: Search teams
+link: $6.19 spent this week
+link: 1 run in progress
+link: 4 things need you
+link: PR #39
+link: PR #42
+link: Show more
+main: 
+nav: Dashboard
+section: Needs you
+section: Recent runs
+section: Running now
+section: Spend
+section: Start a run
+section: Teams
+tab: All 5
+tab: Grid
+tab: List
+tab: Needs you 2
+tab: Not run yet 1
+tab: Running 1
+textarea: What should the team build? For example: Add an RSI indicator with tests
+
+## kept-home-web
+button: Account
+button: Add CSV export to reports
+button: Add MACD to the registry
+button: Add an RSI indicator with tests
+button: All runs
+button: Domains
+button: Engines
+button: Fix
+button: Fix the flaky login test
+button: Home 4
+button: I Indicator sprint team
+button: Launch
+button: More actions for Bugfix squad
+button: More actions for Docs team
+button: More actions for Full feature squad
+button: More actions for Indicator sprint team
+button: More actions for Landing page team
+button: More for 2 new memories to review
+button: More for Approve the spec
+button: More for Indicator sprint team can’t run on the website
+button: More for Run failed
+button: New team
+button: Open
+button: Options
+button: Retry
+button: Review
+button: Run
+button: Search teams, runs and actions
+button: Sort: Last active
+button: Stop
+button: Toolkit
+button: View run
+button: Write the API reference for /runs
+button: lazyxgenius/trade_mcp · main
+header: 
+heading: Good morning, Lazyx.
+heading: Needs you
+heading: Recent runs
+heading: Running now
+heading: Spend
+heading: Teams
+input[text]: Search teams
+link: $6.19 spent this week
+link: 1 run in progress
+link: 4 things need you
+link: Fix
+link: PR #39
+link: PR #42
+link: Show more
+main: 
+nav: Dashboard
+section: Needs you
+section: Recent runs
+section: Running now
+section: Spend
+section: Start a run
+section: Teams
+tab: All 5
+tab: Grid
+tab: List
+tab: Needs you 2
+tab: Not run yet 1
+tab: Running 1
+textarea: What should the team build? For example: Add an RSI indicator with tests
